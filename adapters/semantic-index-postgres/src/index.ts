@@ -1,15 +1,22 @@
 import type { Pool, QueryResultRow } from 'pg';
 
 import {
+  type PruneGenerationsInput,
+  type PruneGenerationsResult,
+  type RollbackActiveGenerationInput,
+  type SemanticActiveGenerationReaderPort,
+  type SemanticActivePointer,
   type SemanticCandidateQuery,
   type SemanticCandidateResult,
   type SemanticDistanceMetric,
   type SemanticIndexRepositoryPort,
+  type SemanticLifecycleRepositoryPort,
   type SemanticNormalizationPolicy,
   type SemanticProjectionGeneration,
   type SemanticProjectionGenerationStatus,
   type SemanticProjectionItem,
   type SemanticResourceType,
+  type SwitchActiveGenerationInput,
   SemanticEmbeddingError,
   validateFiniteVector,
   validatePersistedItem,
@@ -83,6 +90,14 @@ type CandidateRow = QueryResultRow & {
   readonly distance: number;
 };
 
+type PointerRow = QueryResultRow & {
+  readonly project_id: string;
+  readonly active_generation_id: string;
+  readonly last_known_good_generation_id: string | null;
+  readonly pointer_revision: number;
+  readonly updated_at: Date;
+};
+
 const mapGeneration = (row: GenerationRow): SemanticProjectionGeneration => ({
   projectId: row.project_id,
   generationId: row.generation_id,
@@ -146,7 +161,9 @@ const handlePostgresError = (error: unknown, operation: string): never => {
   throw error;
 };
 
-export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryPort {
+export class PostgresSemanticIndexRepository
+  implements SemanticIndexRepositoryPort, SemanticLifecycleRepositoryPort
+{
   constructor(private readonly pool: Pool) {}
 
   async saveGeneration(
@@ -268,6 +285,315 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
       [projectId, generationId],
     );
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async updateGenerationStatus(
+    projectId: string,
+    generationId: string,
+    status: SemanticProjectionGenerationStatus,
+  ): Promise<void> {
+    const result = await this.pool.query(
+      `UPDATE projection.semantic_generations
+       SET build_status = $3
+       WHERE project_id = $1 AND generation_id = $2`,
+      [projectId, generationId, status],
+    );
+    if ((result.rowCount ?? 0) === 0) {
+      throw new SemanticEmbeddingError({
+        code: 'CONFIGURATION_REQUIRED',
+        safeMessage: `Projection generation '${generationId}' for project '${projectId}' was not found.`,
+        operation: 'update-generation-status',
+      });
+    }
+  }
+
+  async getActivePointer(projectId: string): Promise<SemanticActivePointer | undefined> {
+    const result = await this.pool.query<PointerRow>(
+      `SELECT project_id, active_generation_id, last_known_good_generation_id, pointer_revision, updated_at
+       FROM projection.semantic_generation_pointers
+       WHERE project_id = $1`,
+      [projectId],
+    );
+    const row = result.rows[0];
+    if (!row) return undefined;
+    return {
+      projectId: row.project_id,
+      activeGenerationId: row.active_generation_id,
+      lastKnownGoodGenerationId: row.last_known_good_generation_id ?? undefined,
+      pointerRevision: row.pointer_revision,
+      updatedAt: row.updated_at.toISOString(),
+    };
+  }
+
+  async switchActiveGeneration(input: SwitchActiveGenerationInput): Promise<SemanticActivePointer> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const genRes = await client.query<GenerationRow>(
+        `SELECT project_id, generation_id, build_status
+         FROM projection.semantic_generations
+         WHERE project_id = $1 AND generation_id = $2`,
+        [input.projectId, input.targetGenerationId],
+      );
+      const targetGen = genRes.rows[0];
+      if (!targetGen) {
+        throw new SemanticEmbeddingError({
+          code: 'CONFIGURATION_REQUIRED',
+          safeMessage: `Target generation '${input.targetGenerationId}' does not exist for project '${input.projectId}'.`,
+          operation: 'switch-active-generation',
+        });
+      }
+      if (targetGen.build_status !== 'READY') {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: `Target generation '${input.targetGenerationId}' is in status '${targetGen.build_status}', but only READY generations may be activated.`,
+          operation: 'switch-active-generation',
+        });
+      }
+
+      const pointerRes = await client.query<PointerRow>(
+        `SELECT project_id, active_generation_id, last_known_good_generation_id, pointer_revision, updated_at
+         FROM projection.semantic_generation_pointers
+         WHERE project_id = $1
+         FOR UPDATE`,
+        [input.projectId],
+      );
+      const current = pointerRes.rows[0];
+
+      let updatedRow: PointerRow;
+      if (current) {
+        if (
+          input.expectedCurrentActiveGenerationId !== undefined &&
+          current.active_generation_id !== input.expectedCurrentActiveGenerationId
+        ) {
+          throw new SemanticEmbeddingError({
+            code: 'CONFLICT',
+            safeMessage: `Active generation conflict: expected active '${input.expectedCurrentActiveGenerationId}', found '${current.active_generation_id}'.`,
+            operation: 'switch-active-generation',
+          });
+        }
+        if (
+          input.expectedPointerRevision !== undefined &&
+          current.pointer_revision !== input.expectedPointerRevision
+        ) {
+          throw new SemanticEmbeddingError({
+            code: 'CONFLICT',
+            safeMessage: `Pointer revision conflict: expected revision ${input.expectedPointerRevision}, found ${current.pointer_revision}.`,
+            operation: 'switch-active-generation',
+          });
+        }
+
+        const updateRes = await client.query<PointerRow>(
+          `UPDATE projection.semantic_generation_pointers
+           SET active_generation_id = $2,
+               last_known_good_generation_id = $3,
+               pointer_revision = pointer_revision + 1,
+               updated_at = now()
+           WHERE project_id = $1
+           RETURNING project_id, active_generation_id, last_known_good_generation_id, pointer_revision, updated_at`,
+          [input.projectId, input.targetGenerationId, current.active_generation_id],
+        );
+        updatedRow = updateRes.rows[0]!;
+      } else {
+        if (input.expectedCurrentActiveGenerationId !== undefined) {
+          throw new SemanticEmbeddingError({
+            code: 'CONFLICT',
+            safeMessage: `Active generation conflict: expected active '${input.expectedCurrentActiveGenerationId}', but no active pointer exists.`,
+            operation: 'switch-active-generation',
+          });
+        }
+        if (input.expectedPointerRevision !== undefined && input.expectedPointerRevision !== 1) {
+          throw new SemanticEmbeddingError({
+            code: 'CONFLICT',
+            safeMessage: `Pointer revision conflict: expected initial revision ${input.expectedPointerRevision}, but no active pointer exists.`,
+            operation: 'switch-active-generation',
+          });
+        }
+
+        const insertRes = await client.query<PointerRow>(
+          `INSERT INTO projection.semantic_generation_pointers (
+             project_id, active_generation_id, last_known_good_generation_id, pointer_revision, updated_at
+           ) VALUES ($1, $2, NULL, 1, now())
+           RETURNING project_id, active_generation_id, last_known_good_generation_id, pointer_revision, updated_at`,
+          [input.projectId, input.targetGenerationId],
+        );
+        updatedRow = insertRes.rows[0]!;
+      }
+
+      await client.query('COMMIT');
+      return {
+        projectId: updatedRow.project_id,
+        activeGenerationId: updatedRow.active_generation_id,
+        lastKnownGoodGenerationId: updatedRow.last_known_good_generation_id ?? undefined,
+        pointerRevision: updatedRow.pointer_revision,
+        updatedAt: updatedRow.updated_at.toISOString(),
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async rollbackActiveGeneration(
+    input: RollbackActiveGenerationInput,
+  ): Promise<SemanticActivePointer> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const pointerRes = await client.query<PointerRow>(
+        `SELECT project_id, active_generation_id, last_known_good_generation_id, pointer_revision, updated_at
+         FROM projection.semantic_generation_pointers
+         WHERE project_id = $1
+         FOR UPDATE`,
+        [input.projectId],
+      );
+      const current = pointerRes.rows[0];
+      if (!current || !current.last_known_good_generation_id) {
+        throw new SemanticEmbeddingError({
+          code: 'CONFIGURATION_REQUIRED',
+          safeMessage: `No rollback generation exists for project '${input.projectId}'.`,
+          operation: 'rollback-active-generation',
+        });
+      }
+
+      if (
+        input.expectedCurrentActiveGenerationId !== undefined &&
+        current.active_generation_id !== input.expectedCurrentActiveGenerationId
+      ) {
+        throw new SemanticEmbeddingError({
+          code: 'CONFLICT',
+          safeMessage: `Active generation conflict during rollback: expected active '${input.expectedCurrentActiveGenerationId}', found '${current.active_generation_id}'.`,
+          operation: 'rollback-active-generation',
+        });
+      }
+
+      const genRes = await client.query<GenerationRow>(
+        `SELECT project_id, generation_id, build_status
+         FROM projection.semantic_generations
+         WHERE project_id = $1 AND generation_id = $2`,
+        [input.projectId, current.last_known_good_generation_id],
+      );
+      const targetGen = genRes.rows[0];
+      if (!targetGen || targetGen.build_status !== 'READY') {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: `Rollback target generation '${current.last_known_good_generation_id}' is not in READY status.`,
+          operation: 'rollback-active-generation',
+        });
+      }
+
+      const updateRes = await client.query<PointerRow>(
+        `UPDATE projection.semantic_generation_pointers
+         SET active_generation_id = $2,
+             last_known_good_generation_id = NULL,
+             pointer_revision = pointer_revision + 1,
+             updated_at = now()
+         WHERE project_id = $1
+         RETURNING project_id, active_generation_id, last_known_good_generation_id, pointer_revision, updated_at`,
+        [input.projectId, current.last_known_good_generation_id],
+      );
+      const updatedRow = updateRes.rows[0]!;
+
+      await client.query('COMMIT');
+      return {
+        projectId: updatedRow.project_id,
+        activeGenerationId: updatedRow.active_generation_id,
+        lastKnownGoodGenerationId: updatedRow.last_known_good_generation_id ?? undefined,
+        pointerRevision: updatedRow.pointer_revision,
+        updatedAt: updatedRow.updated_at.toISOString(),
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async pruneGenerations(input: PruneGenerationsInput): Promise<PruneGenerationsResult> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const pointerRes = await client.query<PointerRow>(
+        `SELECT active_generation_id, last_known_good_generation_id
+         FROM projection.semantic_generation_pointers
+         WHERE project_id = $1`,
+        [input.projectId],
+      );
+      const pointer = pointerRes.rows[0];
+
+      const protectedSet = new Set<string>();
+      if (pointer) {
+        protectedSet.add(pointer.active_generation_id);
+        if (pointer.last_known_good_generation_id) {
+          protectedSet.add(pointer.last_known_good_generation_id);
+        }
+      }
+
+      const buildingRes = await client.query<{ generation_id: string }>(
+        `SELECT generation_id
+         FROM projection.semantic_generations
+         WHERE project_id = $1 AND build_status = 'BUILDING'`,
+        [input.projectId],
+      );
+      for (const row of buildingRes.rows) {
+        protectedSet.add(row.generation_id);
+      }
+
+      const allGenRes = await client.query<{ generation_id: string; build_status: string }>(
+        `SELECT generation_id, build_status
+         FROM projection.semantic_generations
+         WHERE project_id = $1
+         ORDER BY created_at DESC, generation_id DESC`,
+        [input.projectId],
+      );
+
+      const allGens = allGenRes.rows;
+      const retainMaxCount = input.retainMaxCount ?? 2;
+      let retainedCount = 0;
+      const prunedGenerationIds: string[] = [];
+      const retainedGenerationIds: string[] = [];
+
+      for (const gen of allGens) {
+        if (protectedSet.has(gen.generation_id)) {
+          retainedGenerationIds.push(gen.generation_id);
+          retainedCount++;
+        } else if (retainedCount < retainMaxCount) {
+          retainedGenerationIds.push(gen.generation_id);
+          retainedCount++;
+        } else {
+          prunedGenerationIds.push(gen.generation_id);
+        }
+      }
+
+      for (const genId of prunedGenerationIds) {
+        await client.query(
+          `DELETE FROM projection.semantic_items WHERE project_id = $1 AND generation_id = $2`,
+          [input.projectId, genId],
+        );
+        await client.query(
+          `DELETE FROM projection.semantic_generations WHERE project_id = $1 AND generation_id = $2`,
+          [input.projectId, genId],
+        );
+      }
+
+      await client.query('COMMIT');
+      return {
+        projectId: input.projectId,
+        prunedGenerationIds,
+        retainedGenerationIds,
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async upsertItem(item: SemanticProjectionItem): Promise<void> {
@@ -653,5 +979,26 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     }));
+  }
+}
+
+export class PostgresSemanticActiveGenerationReader implements SemanticActiveGenerationReaderPort {
+  constructor(private readonly pool: Pool) {}
+
+  async getActiveGeneration(projectId: string): Promise<SemanticProjectionGeneration | undefined> {
+    const result = await this.pool.query<GenerationRow>(
+      `SELECT g.project_id, g.generation_id, g.source_projection_digest, g.canonical_base_version,
+              g.credential_id, g.credential_revision, g.provider_policy_fingerprint,
+              g.provider_id, g.embedding_model_id, g.embedding_profile_id, g.embedding_profile_revision,
+              g.provider_registry_revision, g.capability_catalog_revision,
+              g.representation_version, g.dimension, g.distance_metric, g.normalization_policy,
+              g.build_status, g.created_at
+       FROM projection.semantic_generation_pointers p
+       JOIN projection.semantic_generations g
+         ON p.project_id = g.project_id AND p.active_generation_id = g.generation_id
+       WHERE p.project_id = $1`,
+      [projectId],
+    );
+    return result.rows[0] ? mapGeneration(result.rows[0]) : undefined;
   }
 }

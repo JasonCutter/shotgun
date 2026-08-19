@@ -3,6 +3,7 @@ import {
   type SemanticCandidateResult,
   type SemanticIndexRepositoryPort,
   type SemanticProjectionGeneration,
+  type SemanticProjectionGenerationStatus,
   type SemanticProjectionItem,
   type SemanticResourceType,
   SemanticEmbeddingError,
@@ -139,6 +140,23 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
       await this.deleteItemsByGeneration(projectId, generationId);
     }
     return existed;
+  }
+
+  async updateGenerationStatus(
+    projectId: string,
+    generationId: string,
+    status: SemanticProjectionGenerationStatus,
+  ): Promise<void> {
+    const key = genKey(projectId, generationId);
+    const gen = this.generations.get(key);
+    if (!gen) {
+      throw new SemanticEmbeddingError({
+        code: 'CONFIGURATION_REQUIRED',
+        safeMessage: `Projection generation '${generationId}' for project '${projectId}' was not found.`,
+        operation: 'update-generation-status',
+      });
+    }
+    this.generations.set(key, { ...gen, buildStatus: status });
   }
 
   async upsertItem(item: SemanticProjectionItem): Promise<void> {

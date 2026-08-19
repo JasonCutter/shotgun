@@ -1,7 +1,7 @@
 import type { CanonicalSearchMatch, ProjectionReadiness } from './cited-search.js';
 import type { SourceSelector, TextPositionSelector } from './document-evidence.js';
 import type { SemanticCandidateResult, SemanticProjectionGeneration } from './semantic-index.js';
-import type { SemanticResourceType } from './semantic-representation.js';
+import type { SemanticResourceInput, SemanticResourceType } from './semantic-representation.js';
 
 export const HYBRID_FUSION_POLICY_RRF_V1 = 'rrf:v1' as const;
 export const HYBRID_FUSION_DEFAULT_RRF_K = 60 as const;
@@ -122,7 +122,7 @@ export type HybridFusionPolicy = {
 };
 
 export type SemanticReadinessStatus =
-  'READY' | 'STALE' | 'DEGRADED' | 'UNAVAILABLE' | 'NOT_CONFIGURED';
+  'BUILDING' | 'READY' | 'STALE' | 'FAILED' | 'DEGRADED' | 'UNAVAILABLE' | 'NOT_CONFIGURED';
 
 export type SemanticReadiness = {
   readonly status: SemanticReadinessStatus;
@@ -131,6 +131,54 @@ export type SemanticReadiness = {
   readonly dimension?: number;
   readonly reason?: string;
   readonly updatedAt?: string;
+};
+
+export type SemanticCorpusItem = {
+  readonly resourceType: SemanticResourceType;
+  readonly resourceId: string;
+  readonly canonicalVersion: number;
+  readonly representationInput: SemanticResourceInput;
+  readonly semanticText: string;
+  readonly semanticTextDigest: string;
+  readonly representationVersion: string;
+  readonly evidenceIds: readonly string[];
+  readonly accessScope: readonly string[];
+  readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  readonly sourceVersionId?: string;
+};
+
+export type SemanticCorpusSnapshot = {
+  readonly projectId: string;
+  readonly canonicalBaseVersion: number;
+  readonly canonicalSnapshotDigest: string;
+  readonly sourceProjectionDigest: string;
+  readonly corpusDigest: string;
+  readonly items: readonly SemanticCorpusItem[];
+  readonly totalItems: number;
+};
+
+export type SemanticCorpusReaderPort = {
+  readCorpus(projectId: string): Promise<SemanticCorpusSnapshot>;
+};
+
+export type BuildGenerationInput = {
+  readonly projectId: string;
+  readonly mode?: 'FULL' | 'INCREMENTAL';
+  readonly autoActivate?: boolean;
+};
+
+export type BuildGenerationResult = {
+  readonly generation: SemanticProjectionGeneration;
+  readonly totalItemsCount: number;
+  readonly reusedCount: number;
+  readonly newlyEmbeddedCount: number;
+  readonly membershipFingerprint: string;
+  readonly activated: boolean;
+};
+
+export type SemanticProjectionRebuilderPort = {
+  buildGeneration(input: BuildGenerationInput): Promise<BuildGenerationResult>;
+  getReadiness(projectId: string): Promise<SemanticReadiness>;
 };
 
 export type HybridSearchReadiness = {

@@ -128,6 +128,7 @@ describe('SemanticRetriever Unit Tests', () => {
       getGeneration: async () => generation,
       listGenerations: async () => (generation ? [generation] : []),
       deleteGeneration: async () => true,
+      updateGenerationStatus: async () => {},
       upsertItem: async () => {},
       upsertItems: async () => {},
       getItem: async () => undefined,

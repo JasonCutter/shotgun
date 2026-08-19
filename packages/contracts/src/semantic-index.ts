@@ -216,6 +216,49 @@ export const validateSecurityInput = (query: SemanticCandidateQuery, operation: 
   }
 };
 
+export type SemanticActivePointer = {
+  readonly projectId: string;
+  readonly activeGenerationId: string;
+  readonly lastKnownGoodGenerationId?: string;
+  readonly pointerRevision: number;
+  readonly updatedAt: string;
+};
+
+export type SwitchActiveGenerationInput = {
+  readonly projectId: string;
+  readonly targetGenerationId: string;
+  readonly expectedCurrentActiveGenerationId?: string;
+  readonly expectedPointerRevision?: number;
+};
+
+export type RollbackActiveGenerationInput = {
+  readonly projectId: string;
+  readonly expectedCurrentActiveGenerationId?: string;
+};
+
+export type PruneGenerationsInput = {
+  readonly projectId: string;
+  readonly retainMaxCount?: number;
+};
+
+export type PruneGenerationsResult = {
+  readonly projectId: string;
+  readonly prunedGenerationIds: readonly string[];
+  readonly retainedGenerationIds: readonly string[];
+};
+
+export type SemanticLifecycleRepositoryPort = {
+  getActivePointer(projectId: string): Promise<SemanticActivePointer | undefined>;
+  switchActiveGeneration(input: SwitchActiveGenerationInput): Promise<SemanticActivePointer>;
+  rollbackActiveGeneration(input: RollbackActiveGenerationInput): Promise<SemanticActivePointer>;
+  updateGenerationStatus(
+    projectId: string,
+    generationId: string,
+    status: SemanticProjectionGenerationStatus,
+  ): Promise<void>;
+  pruneGenerations(input: PruneGenerationsInput): Promise<PruneGenerationsResult>;
+};
+
 export type SemanticIndexRepositoryPort = {
   // Generation persistence
   saveGeneration(
@@ -227,6 +270,17 @@ export type SemanticIndexRepositoryPort = {
   ): Promise<SemanticProjectionGeneration | undefined>;
   listGenerations(projectId: string): Promise<readonly SemanticProjectionGeneration[]>;
   deleteGeneration(projectId: string, generationId: string): Promise<boolean>;
+  updateGenerationStatus(
+    projectId: string,
+    generationId: string,
+    status: SemanticProjectionGenerationStatus,
+  ): Promise<void>;
+
+  // Lifecycle pointer management
+  getActivePointer?(projectId: string): Promise<SemanticActivePointer | undefined>;
+  switchActiveGeneration?(input: SwitchActiveGenerationInput): Promise<SemanticActivePointer>;
+  rollbackActiveGeneration?(input: RollbackActiveGenerationInput): Promise<SemanticActivePointer>;
+  pruneGenerations?(input: PruneGenerationsInput): Promise<PruneGenerationsResult>;
 
   // Item persistence
   upsertItem(item: SemanticProjectionItem): Promise<void>;

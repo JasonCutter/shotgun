@@ -196,6 +196,9 @@ export class SemanticRetriever implements SemanticRetrieverPort {
     private readonly resolver: SemanticEmbeddingResolverPort,
     private readonly executionPort: SemanticEmbeddingExecutionPort,
     private readonly activeGenerationReader: SemanticActiveGenerationReaderPort,
+    private readonly getCanonicalSnapshot?: (
+      projectId: string,
+    ) => Promise<CanonicalSnapshot | undefined>,
   ) {}
 
   async retrieve(input: SemanticRetrieverInput): Promise<readonly SemanticCandidateResult[]> {
@@ -257,6 +260,18 @@ export class SemanticRetriever implements SemanticRetrieverPort {
         safeMessage: `No ready active semantic projection generation was found for project '${projectId}'.`,
         operation: 'semantic-retriever:retrieve',
       });
+    }
+
+    // 2b. STALE safety check: do not query vector store or execute query embedding if active generation is stale
+    if (this.getCanonicalSnapshot) {
+      const snap = await this.getCanonicalSnapshot(projectId);
+      if (snap && snap.version > gen.canonicalBaseVersion) {
+        throw new SemanticEmbeddingError({
+          code: 'CAPABILITY_UNAVAILABLE',
+          safeMessage: `Active semantic projection generation '${gen.generationId}' is stale (canonical version ${snap.version} > base version ${gen.canonicalBaseVersion}).`,
+          operation: 'semantic-retriever:retrieve',
+        });
+      }
     }
 
     // 3. Complete execution pin compatibility validation
@@ -581,13 +596,20 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
         } else {
           const activeGen = await this.activeGenerationReader?.getActiveGeneration(projectId);
           if (activeGen) {
+            const isStale =
+              lexicalResult.readiness.canonicalVersion !== undefined &&
+              activeGen.canonicalBaseVersion < lexicalResult.readiness.canonicalVersion;
             semanticReadiness = {
-              status: 'READY',
+              status: isStale ? 'STALE' : 'READY',
               activeGenerationId: activeGen.generationId,
               embeddingProfileId: activeGen.embeddingProfileId,
               dimension: activeGen.dimension,
               updatedAt: activeGen.createdAt,
+              ...(isStale ? { reason: 'Semantic projection is behind Canonical Knowledge.' } : {}),
             };
+            if (isStale) {
+              semanticDegradedReason = 'Semantic projection is behind Canonical Knowledge.';
+            }
           }
         }
       } catch (err: unknown) {
@@ -600,13 +622,19 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
               };
               semanticDegradedReason = 'Active semantic embedding profile is not configured.';
               break;
-            case 'CAPABILITY_UNAVAILABLE':
+            case 'CAPABILITY_UNAVAILABLE': {
+              const isStale = err.safeMessage.toLowerCase().includes('stale');
               semanticReadiness = {
-                status: 'UNAVAILABLE',
-                reason: 'Active semantic projection generation is unavailable.',
+                status: isStale ? 'STALE' : 'UNAVAILABLE',
+                reason: isStale
+                  ? 'Semantic projection is behind Canonical Knowledge.'
+                  : 'Active semantic projection generation is unavailable.',
               };
-              semanticDegradedReason = 'Active semantic projection generation is unavailable.';
+              semanticDegradedReason = isStale
+                ? 'Semantic projection is behind Canonical Knowledge.'
+                : 'Active semantic projection generation is unavailable.';
               break;
+            }
             case 'POLICY_DENIED':
               semanticReadiness = {
                 status: 'DEGRADED',
@@ -1119,3 +1147,5 @@ export const createHybridRetrievalModule = (
 });
 
 export type { SourceVersionResolverPort };
+export * from './corpus-reader.js';
+export * from './lifecycle-coordinator.js';

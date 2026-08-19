@@ -2,7 +2,7 @@ import type {
   ProviderEmbeddingConnectivityPort,
   ProviderEmbeddingRequest,
   ProviderEmbeddingResponse,
-} from '../../../modules/semantic-embedding/src/index.js';
+} from '../../semantic-embedding-resolution/src/index.js';
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;

@@ -433,5 +433,3 @@ export class DeterministicFakeEmbeddingAdapter implements SemanticEmbeddingExecu
     return Promise.all(payloads.map((payload) => this.embed(payload)));
   }
 }
-
-export * from './router.js';

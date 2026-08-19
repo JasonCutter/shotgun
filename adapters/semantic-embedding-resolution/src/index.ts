@@ -236,3 +236,5 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
     };
   }
 }
+
+export * from './router.js';

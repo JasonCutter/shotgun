@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { InMemorySemanticEmbeddingProfileRepository } from '../../adapters/semantic-embedding-in-memory/src/index.js';
-import { SemanticEmbeddingAuthorityResolver } from '../../adapters/semantic-embedding-resolution/src/index.js';
 import {
-  initialSemanticEmbeddingRegistry,
   type ProviderEmbeddingConnectivityPort,
   type ProviderEmbeddingRequest,
   type ProviderEmbeddingResponse,
-  SemanticEmbeddingProfileService,
+  SemanticEmbeddingAuthorityResolver,
   SemanticEmbeddingRouter,
+} from '../../adapters/semantic-embedding-resolution/src/index.js';
+import {
+  initialSemanticEmbeddingRegistry,
+  SemanticEmbeddingProfileService,
 } from '../../modules/semantic-embedding/src/index.js';
 import { initialProviderRegistry } from '../../modules/ai-configuration/src/index.js';
 import {

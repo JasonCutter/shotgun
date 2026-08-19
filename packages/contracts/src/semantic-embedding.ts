@@ -4,7 +4,8 @@ import type { SemanticResourceType } from './semantic-representation.js';
 export const SEMANTIC_EMBEDDING_PROFILE_REVISION = 1;
 export const SEMANTIC_EMBEDDING_CATALOG_REVISION = 'semantic-embedding-catalog:v1' as const;
 
-export type SemanticEmbeddingProfileStatus = 'BUILDING' | 'ACTIVE' | 'RETIRED' | 'FAILED';
+export type SemanticEmbeddingProfileStatus =
+  'PREPARED' | 'BUILDING' | 'ACTIVE' | 'RETIRED' | 'FAILED';
 export type SemanticDistanceMetric = 'cosine' | 'dot_product' | 'euclidean';
 export type SemanticNormalizationPolicy = 'unit_length' | 'none';
 
@@ -22,6 +23,7 @@ export type SemanticEmbeddingProfile = {
   readonly normalizationPolicy: SemanticNormalizationPolicy;
   readonly status: SemanticEmbeddingProfileStatus;
   readonly createdAt: string;
+  readonly createdBy?: string;
   readonly activatedAt?: string;
   readonly updatedBy: string;
   readonly updatedAt: string;
@@ -91,6 +93,7 @@ export type SemanticEmbeddingProfilePort = {
     readonly dimension?: number;
     readonly distanceMetric?: SemanticDistanceMetric;
     readonly normalizationPolicy?: SemanticNormalizationPolicy;
+    readonly status?: SemanticEmbeddingProfileStatus;
     readonly updatedBy: string;
     readonly now?: string;
   }): Promise<SemanticEmbeddingProfile>;
@@ -159,6 +162,33 @@ export type SemanticEmbeddingExecutionPort = {
   ): Promise<readonly SemanticEmbeddingResult[]>;
 };
 
+export type ProviderEmbeddingRequest = {
+  readonly modelId: string;
+  readonly input: string | readonly string[];
+  readonly dimension?: number;
+  readonly apiKey: string;
+  readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
+};
+
+export type ProviderEmbeddingResponseItem = {
+  readonly vector: readonly number[];
+  readonly dimension: number;
+  readonly tokenCount?: number;
+};
+
+export type ProviderEmbeddingResponse = {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly items: readonly ProviderEmbeddingResponseItem[];
+  readonly totalTokens?: number;
+};
+
+export type ProviderEmbeddingConnectivityPort = {
+  readonly providerId: string;
+  embed(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResponse>;
+};
+
 export type SemanticEmbeddingExecutionPin = {
   readonly projectId: string;
   readonly providerId: string;
@@ -188,6 +218,19 @@ export type SemanticEmbeddingResolverPort = {
     readonly credentialId?: string;
     readonly credentialRevision?: number;
   }): Promise<ResolvedSemanticEmbeddingExecution>;
+};
+
+export type SemanticEmbeddingRouterPort = {
+  embed(
+    pin: SemanticEmbeddingExecutionPin,
+    payload: SemanticEmbeddingPayload,
+    sensitivity?: 'public' | 'internal' | 'private' | 'restricted',
+  ): Promise<SemanticEmbeddingResult>;
+  embedBatch(
+    pin: SemanticEmbeddingExecutionPin,
+    payloads: readonly SemanticEmbeddingPayload[],
+    sensitivity?: 'public' | 'internal' | 'private' | 'restricted',
+  ): Promise<readonly SemanticEmbeddingResult[]>;
 };
 
 export type SemanticEmbeddingErrorCode =

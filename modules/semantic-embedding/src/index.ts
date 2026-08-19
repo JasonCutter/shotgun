@@ -275,8 +275,9 @@ export class SemanticEmbeddingProfileService implements SemanticEmbeddingProfile
       dimension,
       distanceMetric,
       normalizationPolicy,
-      status: 'BUILDING',
+      status: input.status ?? 'PREPARED',
       createdAt: now,
+      createdBy: updatedBy,
       updatedBy,
       updatedAt: now,
     };
@@ -432,3 +433,5 @@ export class DeterministicFakeEmbeddingAdapter implements SemanticEmbeddingExecu
     return Promise.all(payloads.map((payload) => this.embed(payload)));
   }
 }
+
+export * from './router.js';

@@ -82,20 +82,6 @@ export class InMemorySemanticEmbeddingProfileRepository implements SemanticEmbed
     }
 
     if (input.status === 'ACTIVE') {
-      const prevActive = this.active.get(input.projectId);
-      if (prevActive && prevActive.profileRevision !== input.profileRevision) {
-        const prevKey = keyOf(input.projectId, prevActive.profileRevision);
-        const retiredPrev: SemanticEmbeddingProfile = {
-          ...prevActive,
-          status: 'RETIRED',
-          updatedBy: input.updatedBy,
-          updatedAt: input.updatedAt,
-        };
-        this.history.set(prevKey, retiredPrev);
-        if (latest?.profileRevision === prevActive.profileRevision) {
-          this.current.set(input.projectId, retiredPrev);
-        }
-      }
       this.active.set(input.projectId, updated);
     } else if (this.active.get(input.projectId)?.profileRevision === input.profileRevision) {
       this.active.delete(input.projectId);

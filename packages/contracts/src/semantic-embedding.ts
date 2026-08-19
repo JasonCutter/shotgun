@@ -162,33 +162,6 @@ export type SemanticEmbeddingExecutionPort = {
   ): Promise<readonly SemanticEmbeddingResult[]>;
 };
 
-export type ProviderEmbeddingRequest = {
-  readonly modelId: string;
-  readonly input: string | readonly string[];
-  readonly dimension?: number;
-  readonly apiKey: string;
-  readonly timeoutMs?: number;
-  readonly signal?: AbortSignal;
-};
-
-export type ProviderEmbeddingResponseItem = {
-  readonly vector: readonly number[];
-  readonly dimension: number;
-  readonly tokenCount?: number;
-};
-
-export type ProviderEmbeddingResponse = {
-  readonly providerId: string;
-  readonly modelId: string;
-  readonly items: readonly ProviderEmbeddingResponseItem[];
-  readonly totalTokens?: number;
-};
-
-export type ProviderEmbeddingConnectivityPort = {
-  readonly providerId: string;
-  embed(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResponse>;
-};
-
 export type SemanticEmbeddingExecutionPin = {
   readonly projectId: string;
   readonly providerId: string;
@@ -201,6 +174,7 @@ export type SemanticEmbeddingExecutionPin = {
   readonly capabilityCatalogRevision: string;
   readonly providerPolicyFingerprint: string;
   readonly representationVersion: string;
+  readonly dimension: number;
   readonly createdAt: string;
 };
 

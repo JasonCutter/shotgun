@@ -1,9 +1,9 @@
-import {
-  type ProviderEmbeddingConnectivityPort,
-  type ProviderEmbeddingRequest,
-  type ProviderEmbeddingResponse,
-  ShotgunError,
-} from '../../../packages/contracts/src/index.js';
+import type {
+  ProviderEmbeddingConnectivityPort,
+  ProviderEmbeddingRequest,
+  ProviderEmbeddingResponse,
+} from '../../../modules/semantic-embedding/src/index.js';
+import { ShotgunError } from '../../../packages/contracts/src/index.js';
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -84,9 +84,13 @@ export class OpenAIEmbeddingConnectivityAdapter implements ProviderEmbeddingConn
   }
 
   async embed(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResponse> {
-    const apiKey = request.apiKey?.trim();
+    if (!request.secretBytes || request.secretBytes.length === 0) {
+      throw errorFor('AUTHENTICATION_FAILED', 'OpenAI credential secret is missing or empty.');
+    }
+
+    const apiKey = new TextDecoder().decode(request.secretBytes).trim();
     if (!apiKey) {
-      throw errorFor('AUTHENTICATION_FAILED', 'OpenAI API key is missing or empty.');
+      throw errorFor('AUTHENTICATION_FAILED', 'OpenAI credential secret is empty.');
     }
 
     const model = request.modelId?.trim();
@@ -103,16 +107,15 @@ export class OpenAIEmbeddingConnectivityAdapter implements ProviderEmbeddingConn
       throw errorFor('VALIDATION_ERROR', 'OpenAI input must be a string or array of strings.');
     }
 
+    if (!request.dimension || !Number.isSafeInteger(request.dimension) || request.dimension <= 0) {
+      throw errorFor('VALIDATION_ERROR', 'Requested dimension must be a positive integer.');
+    }
+
     const body: Record<string, unknown> = {
       model,
       input,
+      dimensions: request.dimension,
     };
-    if (request.dimension !== undefined) {
-      if (!Number.isSafeInteger(request.dimension) || request.dimension <= 0) {
-        throw errorFor('VALIDATION_ERROR', 'Requested dimension must be a positive integer.');
-      }
-      body.dimensions = request.dimension;
-    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), request.timeoutMs ?? this.timeoutMs);

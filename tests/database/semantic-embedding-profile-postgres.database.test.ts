@@ -339,5 +339,81 @@ describe('AKP-1R R1: PostgreSQL SemanticEmbeddingProfile Persistence & CAS Autho
         updatedBy: 'actor-conflict',
       }),
     ).rejects.toMatchObject({ embeddingErrorCode: 'CONFLICT' });
+
+    // Activate P1 in both
+    await pgService.activateProfile({
+      projectId: testProjectA,
+      profileId: pgP1.profileId,
+      profileRevision: 1,
+      updatedBy: 'actor-act',
+    });
+    await memService.activateProfile({
+      projectId: testProjectA,
+      profileId: memP1.profileId,
+      profileRevision: 1,
+      updatedBy: 'actor-act',
+    });
+
+    // Create and activate P2 in both
+    const pgP2 = await pgService.createProfile({
+      projectId: testProjectA,
+      expectedRevision: 1,
+      providerId: 'google-gemini',
+      embeddingModelId: 'gemini-embedding-001',
+      credentialId: 'cred-gemini-1',
+      credentialRevision: 1,
+      updatedBy: 'actor-p2',
+    });
+    const memP2 = await memService.createProfile({
+      projectId: testProjectA,
+      expectedRevision: 1,
+      providerId: 'google-gemini',
+      embeddingModelId: 'gemini-embedding-001',
+      credentialId: 'cred-gemini-1',
+      credentialRevision: 1,
+      updatedBy: 'actor-p2',
+    });
+
+    await pgService.activateProfile({
+      projectId: testProjectA,
+      profileId: pgP2.profileId,
+      profileRevision: 2,
+      updatedBy: 'actor-act-p2',
+    });
+    await memService.activateProfile({
+      projectId: testProjectA,
+      profileId: memP2.profileId,
+      profileRevision: 2,
+      updatedBy: 'actor-act-p2',
+    });
+
+    expect((await pgService.getActive(testProjectA))?.profileId).toBe(pgP2.profileId);
+    expect((await memService.getActive(testProjectA))?.profileId).toBe(memP2.profileId);
+
+    // Update P2 status to RETIRED in both
+    await pgRepo.updateStatus({
+      projectId: testProjectA,
+      profileId: pgP2.profileId,
+      profileRevision: 2,
+      status: 'RETIRED',
+      updatedBy: 'actor-retire',
+      updatedAt: '2026-08-19T12:00:00.000Z',
+    });
+    await memRepo.updateStatus({
+      projectId: testProjectA,
+      profileId: memP2.profileId,
+      profileRevision: 2,
+      status: 'RETIRED',
+      updatedBy: 'actor-retire',
+      updatedAt: '2026-08-19T12:00:00.000Z',
+    });
+
+    // Both faithfully return remaining active P1
+    const pgActiveRemaining = await pgService.getActive(testProjectA);
+    const memActiveRemaining = await memService.getActive(testProjectA);
+    expect(pgActiveRemaining?.profileId).toBe(pgP1.profileId);
+    expect(memActiveRemaining?.profileId).toBe(memP1.profileId);
+    expect(pgActiveRemaining?.status).toBe('ACTIVE');
+    expect(memActiveRemaining?.status).toBe('ACTIVE');
   });
 });

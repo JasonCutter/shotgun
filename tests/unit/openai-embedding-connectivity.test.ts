@@ -4,6 +4,8 @@ import { OpenAIEmbeddingConnectivityAdapter } from '../../adapters/ai-provider-o
 import { ShotgunError } from '../../packages/contracts/src/index.js';
 
 describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
+  const sampleSecretBytes = new TextEncoder().encode('test-openai-credential-token-fixture');
+
   it('14. Request uses /embeddings endpoint, expected model, input, dimensions, and Bearer credential', async () => {
     let capturedUrl: string | URL | undefined;
     let capturedInit: RequestInit | undefined;
@@ -48,13 +50,13 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       modelId: 'text-embedding-3-small',
       input: ['Text 1', 'Text 2'],
       dimension: 512,
-      apiKey: 'sk-secret-openai-api-key-test',
+      secretBytes: sampleSecretBytes,
     });
 
     expect(String(capturedUrl)).toBe('https://api.openai.com/v1/embeddings');
     expect(capturedInit?.method).toBe('POST');
     expect((capturedInit?.headers as Record<string, string>)['Authorization']).toBe(
-      'Bearer sk-secret-openai-api-key-test',
+      'Bearer test-openai-credential-token-fixture',
     );
     expect((capturedInit?.headers as Record<string, string>)['Content-Type']).toBe(
       'application/json',
@@ -107,15 +109,15 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
     const response = await adapter.embed({
       modelId: 'text-embedding-3-small',
       input: ['Item 0', 'Item 1'],
-      apiKey: 'sk-test',
+      dimension: 2,
+      secretBytes: sampleSecretBytes,
     });
 
     expect(response.items[0]?.vector).toEqual([0.1, 0.2]);
     expect(response.items[1]?.vector).toEqual([0.2, 0.3]);
   });
 
-  it('16. 401/403, 429, 5xx, timeout, invalid JSON/schema and network failures map to safe typed failures', async () => {
-    // 1. 401 Authentication failure
+  it('16a. 401/403 Authentication failure maps to AUTHENTICATION_FAILED without secret in error message', async () => {
     const authFailAdapter = new OpenAIEmbeddingConnectivityAdapter({
       fetch: async () => new Response('Unauthorized', { status: 401 }),
     });
@@ -123,17 +125,19 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       authFailAdapter.embed({
         modelId: 'text-embedding-3-small',
         input: 'Test',
-        apiKey: 'sk-invalid-key-should-not-leak',
+        dimension: 1536,
+        secretBytes: sampleSecretBytes,
       }),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
       const shotgunErr = err as ShotgunError;
       expect(shotgunErr.code).toBe('AUTHENTICATION_FAILED');
-      expect(shotgunErr.safeMessage).not.toContain('sk-');
+      expect(shotgunErr.safeMessage).not.toContain('test-openai');
       return true;
     });
+  });
 
-    // 2. 429 Rate limited
+  it('16b. 429 Rate limit maps to RATE_LIMITED with retryable=true', async () => {
     const rateLimitAdapter = new OpenAIEmbeddingConnectivityAdapter({
       fetch: async () => new Response('Too Many Requests', { status: 429 }),
     });
@@ -141,7 +145,8 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       rateLimitAdapter.embed({
         modelId: 'text-embedding-3-small',
         input: 'Test',
-        apiKey: 'sk-test',
+        dimension: 1536,
+        secretBytes: sampleSecretBytes,
       }),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
@@ -150,8 +155,9 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       expect(shotgunErr.retryable).toBe(true);
       return true;
     });
+  });
 
-    // 3. 500 Server error
+  it('16c. 5xx Server error maps to RETRYABLE_DEPENDENCY with retryable=true', async () => {
     const serverErrorAdapter = new OpenAIEmbeddingConnectivityAdapter({
       fetch: async () => new Response('Internal Server Error', { status: 500 }),
     });
@@ -159,7 +165,8 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       serverErrorAdapter.embed({
         modelId: 'text-embedding-3-small',
         input: 'Test',
-        apiKey: 'sk-test',
+        dimension: 1536,
+        secretBytes: sampleSecretBytes,
       }),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
@@ -168,8 +175,9 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       expect(shotgunErr.retryable).toBe(true);
       return true;
     });
+  });
 
-    // 4. Timeout
+  it('16d. Timeout maps to TIMEOUT with retryable=true', async () => {
     const timeoutAdapter = new OpenAIEmbeddingConnectivityAdapter({
       timeoutMs: 10,
       fetch: async () => new Promise((resolve) => setTimeout(resolve, 100)),
@@ -178,16 +186,20 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       timeoutAdapter.embed({
         modelId: 'text-embedding-3-small',
         input: 'Test',
-        apiKey: 'sk-test',
+        dimension: 1536,
+        secretBytes: sampleSecretBytes,
       }),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
       const shotgunErr = err as ShotgunError;
       expect(shotgunErr.code).toBe('TIMEOUT');
+      expect(shotgunErr.retryable).toBe(true);
       return true;
     });
+  });
 
-    // 5. Invalid JSON response
+  it('16e. Invalid JSON / schema maps to VALIDATION_ERROR', async () => {
+    // 1. Invalid HTML response
     const invalidJsonAdapter = new OpenAIEmbeddingConnectivityAdapter({
       fetch: async () => new Response('<html>Error page</html>', { status: 200 }),
     });
@@ -195,7 +207,8 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       invalidJsonAdapter.embed({
         modelId: 'text-embedding-3-small',
         input: 'Test',
-        apiKey: 'sk-test',
+        dimension: 1536,
+        secretBytes: sampleSecretBytes,
       }),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
@@ -204,7 +217,7 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       return true;
     });
 
-    // 6. Malformed response schema (empty data)
+    // 2. Malformed schema (empty data array)
     const malformedSchemaAdapter = new OpenAIEmbeddingConnectivityAdapter({
       fetch: async () =>
         new Response(JSON.stringify({ object: 'list', data: [] }), { status: 200 }),
@@ -213,12 +226,36 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       malformedSchemaAdapter.embed({
         modelId: 'text-embedding-3-small',
         input: 'Test',
-        apiKey: 'sk-test',
+        dimension: 1536,
+        secretBytes: sampleSecretBytes,
       }),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
       const shotgunErr = err as ShotgunError;
       expect(shotgunErr.code).toBe('VALIDATION_ERROR');
+      return true;
+    });
+  });
+
+  it('16f. Network failure (e.g. fetch TypeError/connection drop) maps to RETRYABLE_DEPENDENCY with retryable=true', async () => {
+    const networkFailAdapter = new OpenAIEmbeddingConnectivityAdapter({
+      fetch: async () => {
+        throw new TypeError('fetch failed: ECONNREFUSED 127.0.0.1:443');
+      },
+    });
+    await expect(
+      networkFailAdapter.embed({
+        modelId: 'text-embedding-3-small',
+        input: 'Test',
+        dimension: 1536,
+        secretBytes: sampleSecretBytes,
+      }),
+    ).rejects.toSatisfy((err: unknown) => {
+      expect(err).toBeInstanceOf(ShotgunError);
+      const shotgunErr = err as ShotgunError;
+      expect(shotgunErr.code).toBe('RETRYABLE_DEPENDENCY');
+      expect(shotgunErr.retryable).toBe(true);
+      expect(shotgunErr.safeMessage).toBe('OpenAI could not be reached.');
       return true;
     });
   });

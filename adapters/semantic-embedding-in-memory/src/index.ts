@@ -13,11 +13,17 @@ const copy = (profile: SemanticEmbeddingProfile): SemanticEmbeddingProfile => ({
 export class InMemorySemanticEmbeddingProfileRepository implements SemanticEmbeddingProfileRepositoryPort {
   private readonly current = new Map<string, SemanticEmbeddingProfile>();
   private readonly history = new Map<string, SemanticEmbeddingProfile>();
-  private readonly active = new Map<string, SemanticEmbeddingProfile>();
 
   async findActive(projectId: string): Promise<SemanticEmbeddingProfile | undefined> {
-    const value = this.active.get(projectId);
-    return value ? copy(value) : undefined;
+    let highestActive: SemanticEmbeddingProfile | undefined;
+    for (const profile of this.history.values()) {
+      if (profile.projectId === projectId && profile.status === 'ACTIVE') {
+        if (!highestActive || profile.profileRevision > highestActive.profileRevision) {
+          highestActive = profile;
+        }
+      }
+    }
+    return highestActive ? copy(highestActive) : undefined;
   }
 
   async findCurrent(projectId: string): Promise<SemanticEmbeddingProfile | undefined> {
@@ -47,9 +53,6 @@ export class InMemorySemanticEmbeddingProfileRepository implements SemanticEmbed
     const nextCopy = copy(input.next);
     this.history.set(historyKey, nextCopy);
     this.current.set(input.next.projectId, nextCopy);
-    if (input.next.status === 'ACTIVE') {
-      this.active.set(input.next.projectId, nextCopy);
-    }
     return existing ? 'UPDATED' : 'CREATED';
   }
 
@@ -79,12 +82,6 @@ export class InMemorySemanticEmbeddingProfileRepository implements SemanticEmbed
     const latest = this.current.get(input.projectId);
     if (latest?.profileRevision === input.profileRevision) {
       this.current.set(input.projectId, updated);
-    }
-
-    if (input.status === 'ACTIVE') {
-      this.active.set(input.projectId, updated);
-    } else if (this.active.get(input.projectId)?.profileRevision === input.profileRevision) {
-      this.active.delete(input.projectId);
     }
 
     return copy(updated);

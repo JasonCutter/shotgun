@@ -4,6 +4,9 @@ import { InMemorySemanticEmbeddingProfileRepository } from '../../adapters/seman
 import { SemanticEmbeddingAuthorityResolver } from '../../adapters/semantic-embedding-resolution/src/index.js';
 import {
   initialSemanticEmbeddingRegistry,
+  type ProviderEmbeddingConnectivityPort,
+  type ProviderEmbeddingRequest,
+  type ProviderEmbeddingResponse,
   SemanticEmbeddingProfileService,
   SemanticEmbeddingRouter,
 } from '../../modules/semantic-embedding/src/index.js';
@@ -16,44 +19,45 @@ import type {
   CredentialMetadata,
   CredentialVaultPort,
 } from '../../modules/credential-vault/src/index.js';
-import type {
-  ProviderEmbeddingConnectivityPort,
-  ProviderEmbeddingRequest,
-  ProviderEmbeddingResponse,
-} from '../../packages/contracts/src/index.js';
 
 describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', () => {
   class RecordingFakeEmbeddingConnectivity implements ProviderEmbeddingConnectivityPort {
-    readonly providerId = 'openai';
+    readonly providerId: string;
     callCount = 0;
     lastRequest?: ProviderEmbeddingRequest;
-    receivedApiKey?: string;
+    receivedSecretBytes?: Uint8Array;
 
     customResponseItems?: (request: ProviderEmbeddingRequest) => {
       vector: readonly number[];
       dimension: number;
     }[];
+    customResponseProviderId?: string;
+    customResponseModelId?: string;
+
+    constructor(providerId = 'openai') {
+      this.providerId = providerId;
+    }
 
     async embed(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResponse> {
       this.callCount++;
       this.lastRequest = request;
-      this.receivedApiKey = request.apiKey;
+      this.receivedSecretBytes = request.secretBytes;
 
       const inputs = Array.isArray(request.input) ? request.input : [request.input];
-      const dimension = request.dimension ?? 1536;
+      const dimension = request.dimension;
 
       if (this.customResponseItems) {
         return {
-          providerId: this.providerId,
-          modelId: request.modelId,
+          providerId: this.customResponseProviderId ?? this.providerId,
+          modelId: this.customResponseModelId ?? request.modelId,
           items: this.customResponseItems(request),
           totalTokens: inputs.length * 4,
         };
       }
 
       return {
-        providerId: this.providerId,
-        modelId: request.modelId,
+        providerId: this.customResponseProviderId ?? this.providerId,
+        modelId: this.customResponseModelId ?? request.modelId,
         items: inputs.map((text, idx) => ({
           vector: new Array(dimension).fill(0.1 * (idx + 1)),
           dimension,
@@ -148,7 +152,7 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
           throw new Error('Pinned credential revision is revoked or unavailable.');
         }
 
-        const secret = new TextEncoder().encode('sk-secret-test-key-12345');
+        const secret = new TextEncoder().encode('test-vault-secret-bytes-payload-sample');
         return callback(secret, record);
       },
     };
@@ -229,7 +233,7 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
     };
   };
 
-  it('7. Real resolver produces exact non-secret pin from durable profile revision', async () => {
+  it('7. Real resolver produces exact non-secret pin from durable profile revision with exact dimension', async () => {
     const { profileService, resolver } = createRig();
 
     const profile = await profileService.createProfile({
@@ -239,6 +243,7 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
       embeddingModelId: 'text-embedding-3-small',
       credentialId: 'cred-openai-1',
       credentialRevision: 1,
+      dimension: 512,
       updatedBy: 'principal-owner',
     });
 
@@ -259,16 +264,17 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
       providerRegistryRevision: 'provider-registry:v1',
       capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
       representationVersion: 'semantic-representation:v1',
+      dimension: 512,
     });
 
     // Check no plaintext secrets exist anywhere on resolved output
-    expect(JSON.stringify(resolved)).not.toContain('sk-');
+    expect(JSON.stringify(resolved)).not.toContain('test-vault-secret');
     expect((resolved as Record<string, unknown>).credentialSecret).toBeUndefined();
     expect((resolved.pin as Record<string, unknown>).credentialSecret).toBeUndefined();
   });
 
-  it('8. Router invokes CredentialVault.withCredential() with exactly the pinned Project/provider/credential/revision', async () => {
-    const { profileService, resolver, router, vaultSpy } = createRig();
+  it('8. Router invokes CredentialVault.withCredential() with exactly the pinned Project/provider/credential/revision and forwards exact pinned dimension', async () => {
+    const { profileService, resolver, router, connectivity, vaultSpy } = createRig();
 
     const profile = await profileService.createProfile({
       projectId: 'project-r1',
@@ -277,6 +283,7 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
       embeddingModelId: 'text-embedding-3-small',
       credentialId: 'cred-openai-1',
       credentialRevision: 1,
+      dimension: 512,
       updatedBy: 'principal-owner',
     });
 
@@ -289,10 +296,13 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
     const result = await router.embed(resolved.pin, {
       text: 'Machine learning for knowledge graphs',
     });
-    expect(result.vector).toHaveLength(1536);
-    expect(result.dimension).toBe(1536);
+    expect(result.vector).toHaveLength(512);
+    expect(result.dimension).toBe(512);
     expect(result.modelId).toBe('text-embedding-3-small');
     expect(result.providerId).toBe('openai');
+
+    // Connectivity received exact pinned dimension
+    expect(connectivity.lastRequest?.dimension).toBe(512);
 
     // Verify exact vault invocation scope
     expect(vaultSpy()).toEqual({
@@ -303,7 +313,7 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
     });
   });
 
-  it('9. Fake provider connectivity receives the secret only inside the vault callback and the returned public result contains no secret', async () => {
+  it('9. Fake provider connectivity receives secret bytes only inside the vault callback and the returned public result contains no secret', async () => {
     const { profileService, resolver, router, connectivity } = createRig();
 
     const profile = await profileService.createProfile({
@@ -324,11 +334,13 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
 
     const result = await router.embed(resolved.pin, { text: 'Shotgun architecture test' });
 
-    // Connectivity received secret inside callback
-    expect(connectivity.receivedApiKey).toBe('sk-secret-test-key-12345');
+    // Connectivity received secret bytes inside callback
+    expect(connectivity.receivedSecretBytes).toBeDefined();
+    const decoded = new TextDecoder().decode(connectivity.receivedSecretBytes);
+    expect(decoded).toBe('test-vault-secret-bytes-payload-sample');
 
     // Returned result contains NO secret
-    expect(JSON.stringify(result)).not.toContain('sk-');
+    expect(JSON.stringify(result)).not.toContain('test-vault-secret');
     expect((result as Record<string, unknown>).apiKey).toBeUndefined();
     expect((result as Record<string, unknown>).secret).toBeUndefined();
   });
@@ -336,8 +348,6 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
   it('10. Revoked exact credential revision after pin creation causes execution failure; router does not substitute latest credential', async () => {
     const { router } = createRig({ credentialRevoked: true });
 
-    // Note: createProfile would fail with revoked credential, so create profile with active cred first
-    // In our test rig when credentialRevoked=true, revision 1 is revoked while revision 2 is active
     const pin = {
       projectId: 'project-r1',
       providerId: 'openai',
@@ -351,6 +361,7 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
       providerPolicyFingerprint:
         'sha256:0000000000000000000000000000000000000000000000000000000000000000',
       representationVersion: 'semantic-representation:v1',
+      dimension: 1536,
       createdAt: '2026-08-19T12:00:00.000Z',
     };
 
@@ -363,10 +374,9 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
     });
   });
 
-  it('11. Provider/model/dimension mismatch from connectivity fails validation', async () => {
+  it('11a. Provider mismatch in connectivity response is rejected with VALIDATION_FAILURE', async () => {
     const connectivity = new RecordingFakeEmbeddingConnectivity();
-    // Return empty vector to simulate malformed provider output
-    connectivity.customResponseItems = () => [{ vector: [], dimension: 0 }];
+    connectivity.customResponseProviderId = 'google-gemini'; // Pinned is openai
 
     const { router } = createRig({ customConnectivity: connectivity });
 
@@ -383,10 +393,136 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
       providerPolicyFingerprint:
         'sha256:0000000000000000000000000000000000000000000000000000000000000000',
       representationVersion: 'semantic-representation:v1',
+      dimension: 1536,
       createdAt: '2026-08-19T12:00:00.000Z',
     };
 
-    await expect(router.embed(pin, { text: 'Test malformed output' })).rejects.toMatchObject({
+    await expect(router.embed(pin, { text: 'Test provider mismatch' })).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'VALIDATION_FAILURE',
+    });
+  });
+
+  it('11b. Model mismatch in connectivity response is rejected with VALIDATION_FAILURE', async () => {
+    const connectivity = new RecordingFakeEmbeddingConnectivity();
+    connectivity.customResponseModelId = 'text-embedding-3-large'; // Pinned is text-embedding-3-small
+
+    const { router } = createRig({ customConnectivity: connectivity });
+
+    const pin = {
+      projectId: 'project-r1',
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
+      providerPolicyFingerprint:
+        'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+      representationVersion: 'semantic-representation:v1',
+      dimension: 1536,
+      createdAt: '2026-08-19T12:00:00.000Z',
+    };
+
+    await expect(router.embed(pin, { text: 'Test model mismatch' })).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'VALIDATION_FAILURE',
+    });
+  });
+
+  it('11c. Dimension mismatch in connectivity response vector is rejected with VALIDATION_FAILURE', async () => {
+    const connectivity = new RecordingFakeEmbeddingConnectivity();
+    // Return 768-dim vector when pinned dimension is 1536
+    connectivity.customResponseItems = () => [{ vector: new Array(768).fill(0.1), dimension: 768 }];
+
+    const { router } = createRig({ customConnectivity: connectivity });
+
+    const pin = {
+      projectId: 'project-r1',
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
+      providerPolicyFingerprint:
+        'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+      representationVersion: 'semantic-representation:v1',
+      dimension: 1536,
+      createdAt: '2026-08-19T12:00:00.000Z',
+    };
+
+    await expect(router.embed(pin, { text: 'Test dimension mismatch' })).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'VALIDATION_FAILURE',
+    });
+  });
+
+  it('11d. Item dimension and vector length disagreement is rejected with VALIDATION_FAILURE', async () => {
+    const connectivity = new RecordingFakeEmbeddingConnectivity();
+    // Item dimension says 1536 but vector length is 512
+    connectivity.customResponseItems = () => [
+      { vector: new Array(512).fill(0.1), dimension: 1536 },
+    ];
+
+    const { router } = createRig({ customConnectivity: connectivity });
+
+    const pin = {
+      projectId: 'project-r1',
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
+      providerPolicyFingerprint:
+        'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+      representationVersion: 'semantic-representation:v1',
+      dimension: 1536,
+      createdAt: '2026-08-19T12:00:00.000Z',
+    };
+
+    await expect(router.embed(pin, { text: 'Test disagreement' })).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'VALIDATION_FAILURE',
+    });
+  });
+
+  it('11e. One wrong dimension inside a batch is rejected with VALIDATION_FAILURE', async () => {
+    const connectivity = new RecordingFakeEmbeddingConnectivity();
+    connectivity.customResponseItems = () => [
+      { vector: new Array(1536).fill(0.1), dimension: 1536 },
+      { vector: new Array(512).fill(0.2), dimension: 512 }, // Invalid dimension in batch
+    ];
+
+    const { router } = createRig({ customConnectivity: connectivity });
+
+    const pin = {
+      projectId: 'project-r1',
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
+      providerPolicyFingerprint:
+        'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+      representationVersion: 'semantic-representation:v1',
+      dimension: 1536,
+      createdAt: '2026-08-19T12:00:00.000Z',
+    };
+
+    await expect(
+      router.embedBatch(pin, [{ text: 'Item 1' }, { text: 'Item 2' }]),
+    ).rejects.toMatchObject({
       name: 'SemanticEmbeddingError',
       embeddingErrorCode: 'VALIDATION_FAILURE',
     });
@@ -409,6 +545,7 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
       providerPolicyFingerprint:
         'sha256:0000000000000000000000000000000000000000000000000000000000000000',
       representationVersion: 'semantic-representation:v1',
+      dimension: 1536,
       createdAt: '2026-08-19T12:00:00.000Z',
     };
 
@@ -422,7 +559,7 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
     expect(connectivity.callCount).toBe(0);
   });
 
-  it('13. Batch result cardinality, order, and dimension are validated', async () => {
+  it('13. Valid exact-dimension batch preserves input cardinality, order, and dimensions', async () => {
     const { router, connectivity } = createRig();
 
     const pin = {
@@ -438,6 +575,7 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
       providerPolicyFingerprint:
         'sha256:0000000000000000000000000000000000000000000000000000000000000000',
       representationVersion: 'semantic-representation:v1',
+      dimension: 1536,
       createdAt: '2026-08-19T12:00:00.000Z',
     };
 
@@ -446,9 +584,16 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
     const results = await router.embedBatch(pin, payloads);
 
     expect(results).toHaveLength(3);
+    expect(results[0]?.vector).toHaveLength(1536);
+    expect(results[0]?.dimension).toBe(1536);
     expect(results[0]?.vector[0]).toBeCloseTo(0.1);
+    expect(results[1]?.vector).toHaveLength(1536);
+    expect(results[1]?.dimension).toBe(1536);
     expect(results[1]?.vector[0]).toBeCloseTo(0.2);
+    expect(results[2]?.vector).toHaveLength(1536);
+    expect(results[2]?.dimension).toBe(1536);
     expect(results[2]?.vector[0]).toBeCloseTo(0.3);
     expect(connectivity.callCount).toBe(1);
+    expect(connectivity.lastRequest?.dimension).toBe(1536);
   });
 });

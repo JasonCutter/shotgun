@@ -6,8 +6,6 @@ import {
 } from '../../../modules/provider-privacy-policy/src/index.js';
 import type { CredentialVaultPort } from '../../../modules/credential-vault/src/index.js';
 import {
-  type ProviderEmbeddingConnectivityPort,
-  type ProviderEmbeddingResponse,
   type ProviderStatusReaderPort,
   type SemanticEmbeddingExecutionPin,
   type SemanticEmbeddingPayload,
@@ -17,6 +15,33 @@ import {
   SemanticEmbeddingError,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
+
+export type ProviderEmbeddingRequest = {
+  readonly modelId: string;
+  readonly input: string | readonly string[];
+  readonly dimension: number;
+  readonly secretBytes: Uint8Array;
+  readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
+};
+
+export type ProviderEmbeddingResponseItem = {
+  readonly vector: readonly number[];
+  readonly dimension: number;
+  readonly tokenCount?: number;
+};
+
+export type ProviderEmbeddingResponse = {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly items: readonly ProviderEmbeddingResponseItem[];
+  readonly totalTokens?: number;
+};
+
+export type ProviderEmbeddingConnectivityPort = {
+  readonly providerId: string;
+  embed(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResponse>;
+};
 
 export type SemanticEmbeddingRouterOptions = {
   readonly legacyExternalTransferAllowed?: (projectId: string) => Promise<boolean>;
@@ -151,6 +176,14 @@ export class SemanticEmbeddingRouter implements SemanticEmbeddingRouterPort {
       });
     }
 
+    if (!pin.dimension || !Number.isSafeInteger(pin.dimension) || pin.dimension <= 0) {
+      throw new SemanticEmbeddingError({
+        code: 'INVALID_INPUT',
+        safeMessage: 'Pinned dimension must be a positive integer.',
+        operation: 'embed-batch',
+      });
+    }
+
     // 1. Validate payload texts
     for (let i = 0; i < payloads.length; i++) {
       const p = payloads[i]!;
@@ -269,12 +302,12 @@ export class SemanticEmbeddingRouter implements SemanticEmbeddingRouterPort {
               operation: 'embed-batch',
             });
           }
-          const apiKey = new TextDecoder().decode(secret);
           response = await connectivity.embed({
             modelId: pin.embeddingModelId,
             input: payloads.map((p) => p.text),
+            dimension: pin.dimension,
+            secretBytes: secret,
             ...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
-            apiKey,
           });
           return { status: 'SUCCEEDED' };
         },
@@ -290,11 +323,27 @@ export class SemanticEmbeddingRouter implements SemanticEmbeddingRouterPort {
       throw mapToSemanticEmbeddingError(error, 'embed-batch');
     }
 
-    // 9. Validate response items against contract
+    // 9. Validate response items against contract strictly
     if (!response || !Array.isArray(response.items)) {
       throw new SemanticEmbeddingError({
         code: 'VALIDATION_FAILURE',
         safeMessage: 'Malformed embedding response from provider connectivity.',
+        operation: 'embed-batch',
+      });
+    }
+
+    if (response.providerId !== pin.providerId) {
+      throw new SemanticEmbeddingError({
+        code: 'VALIDATION_FAILURE',
+        safeMessage: `Provider response providerId '${response.providerId}' does not match pinned providerId '${pin.providerId}'.`,
+        operation: 'embed-batch',
+      });
+    }
+
+    if (response.modelId !== pin.embeddingModelId) {
+      throw new SemanticEmbeddingError({
+        code: 'VALIDATION_FAILURE',
+        safeMessage: `Provider response modelId '${response.modelId}' does not match pinned modelId '${pin.embeddingModelId}'.`,
         operation: 'embed-batch',
       });
     }
@@ -310,7 +359,12 @@ export class SemanticEmbeddingRouter implements SemanticEmbeddingRouterPort {
     const results: SemanticEmbeddingResult[] = [];
     for (let i = 0; i < response.items.length; i++) {
       const item = response.items[i]!;
-      if (!item.vector || !Array.isArray(item.vector) || item.vector.length === 0) {
+      if (
+        !item ||
+        typeof item !== 'object' ||
+        !Array.isArray(item.vector) ||
+        item.vector.length === 0
+      ) {
         throw new SemanticEmbeddingError({
           code: 'VALIDATION_FAILURE',
           safeMessage: `Provider returned invalid or empty vector at index ${i}.`,
@@ -318,9 +372,32 @@ export class SemanticEmbeddingRouter implements SemanticEmbeddingRouterPort {
         });
       }
 
-      // Check all vector numbers are finite
+      if (item.dimension !== pin.dimension) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: `Item dimension ${item.dimension} at index ${i} does not match pinned dimension ${pin.dimension}.`,
+          operation: 'embed-batch',
+        });
+      }
+
+      if (item.vector.length !== pin.dimension) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: `Vector length ${item.vector.length} at index ${i} does not match pinned dimension ${pin.dimension}.`,
+          operation: 'embed-batch',
+        });
+      }
+
+      if (item.dimension !== item.vector.length) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: `Item dimension ${item.dimension} does not match vector length ${item.vector.length} at index ${i}.`,
+          operation: 'embed-batch',
+        });
+      }
+
       for (let j = 0; j < item.vector.length; j++) {
-        if (!Number.isFinite(item.vector[j])) {
+        if (typeof item.vector[j] !== 'number' || !Number.isFinite(item.vector[j])) {
           throw new SemanticEmbeddingError({
             code: 'VALIDATION_FAILURE',
             safeMessage: `Provider vector at index ${i} contains non-finite values.`,
@@ -331,9 +408,9 @@ export class SemanticEmbeddingRouter implements SemanticEmbeddingRouterPort {
 
       results.push({
         vector: item.vector,
-        dimension: item.dimension ?? item.vector.length,
-        modelId: response.modelId ?? pin.embeddingModelId,
-        providerId: response.providerId ?? pin.providerId,
+        dimension: pin.dimension,
+        modelId: pin.embeddingModelId,
+        providerId: pin.providerId,
         ...(item.tokenCount !== undefined ? { tokenCount: item.tokenCount } : {}),
       });
     }

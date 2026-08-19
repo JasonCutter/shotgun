@@ -287,4 +287,54 @@ describe('AKP-1 WP4: PostgreSQL Durable Semantic Lifecycle & Pointer Management'
     expect(retainedLkg).toBeDefined();
     expect(retainedBuilding).toBeDefined();
   });
+
+  it('7. verifies Postgres Coordinator CAS activation race: competing pointer switch causes CONFLICT, preserves competing ACTIVE generation, keeps candidate READY', async () => {
+    // Gen A active (rev 1)
+    const genA = makeSampleGeneration(testProjectA, 'gen-pg-a');
+    await postgresRepo.saveGeneration(genA);
+    await postgresRepo.switchActiveGeneration({
+      projectId: testProjectA,
+      targetGenerationId: 'gen-pg-a',
+    });
+
+    const pointerA = await postgresRepo.getActivePointer(testProjectA);
+    expect(pointerA?.activeGenerationId).toBe('gen-pg-a');
+    expect(pointerA?.pointerRevision).toBe(1);
+
+    // Gen B is prepared (READY) based on pointerA
+    const genB = makeSampleGeneration(testProjectA, 'gen-pg-b');
+    await postgresRepo.saveGeneration(genB);
+
+    // Competing switch changes active pointer to Gen C (rev 2)
+    const genC = makeSampleGeneration(testProjectA, 'gen-pg-c');
+    await postgresRepo.saveGeneration(genC);
+    await postgresRepo.switchActiveGeneration({
+      projectId: testProjectA,
+      targetGenerationId: 'gen-pg-c',
+      expectedCurrentActiveGenerationId: 'gen-pg-a',
+      expectedPointerRevision: 1,
+    });
+
+    // Gen B tries to activate with stale captured CAS (expected active: gen-pg-a, expected revision: 1)
+    await expect(
+      postgresRepo.switchActiveGeneration({
+        projectId: testProjectA,
+        targetGenerationId: 'gen-pg-b',
+        expectedCurrentActiveGenerationId: 'gen-pg-a',
+        expectedPointerRevision: 1,
+      }),
+    ).rejects.toThrow(/conflict/i);
+
+    // Verify Gen C remains ACTIVE in database (pointer revision 2)
+    const pointerAfterRace = await postgresRepo.getActivePointer(testProjectA);
+    expect(pointerAfterRace?.activeGenerationId).toBe('gen-pg-c');
+    expect(pointerAfterRace?.pointerRevision).toBe(2);
+
+    const activeGen = await activeReader.getActiveGeneration(testProjectA);
+    expect(activeGen?.generationId).toBe('gen-pg-c');
+
+    // Verify Gen B remains in READY status in database (not FAILED, not ACTIVE)
+    const genBRecord = await postgresRepo.getGeneration(testProjectA, 'gen-pg-b');
+    expect(genBRecord?.buildStatus).toBe('READY');
+  });
 });

@@ -227,8 +227,8 @@ export type SemanticActivePointer = {
 export type SwitchActiveGenerationInput = {
   readonly projectId: string;
   readonly targetGenerationId: string;
-  readonly expectedCurrentActiveGenerationId?: string;
-  readonly expectedPointerRevision?: number;
+  readonly expectedCurrentActiveGenerationId?: string | null;
+  readonly expectedPointerRevision?: number | null;
 };
 
 export type RollbackActiveGenerationInput = {

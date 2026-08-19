@@ -3,9 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   type CanonicalClaim,
   type CanonicalSnapshot,
-  type CompiledTruthProjection,
+  type KnowledgeCandidate,
   type KnowledgeReviewGroup,
-  SEMANTIC_REPRESENTATION_VERSION,
 } from '../../packages/contracts/src/index.js';
 import {
   type CanonicalKnowledgeReaderPort,
@@ -101,12 +100,12 @@ describe('AKP-1 WP4: ProductSemanticCorpusReader', () => {
       {
         // FACT candidate must be excluded from product eligibility!
         candidateId: 'fact-1',
-        candidateType: 'FACT' as any,
+        candidateType: 'FACT' as unknown as KnowledgeCandidate['candidateType'],
         revisionNumber: 1,
         sourceVersionId: 'sv-1',
         evidenceIds: ['ev-1'],
         modelOutputs: [],
-      } as any,
+      } as unknown as KnowledgeCandidate,
     ],
     decisions: [],
     accessScope: ['engineering'],

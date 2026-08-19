@@ -77,14 +77,22 @@ export class InMemorySemanticLifecycleRepository implements SemanticLifecycleRep
       this.pointers.set(input.projectId, updated);
       return { ...updated };
     } else {
-      if (input.expectedCurrentActiveGenerationId !== undefined) {
+      if (
+        input.expectedCurrentActiveGenerationId !== undefined &&
+        input.expectedCurrentActiveGenerationId !== null
+      ) {
         throw new SemanticEmbeddingError({
           code: 'CONFLICT',
           safeMessage: `Active generation conflict: expected active '${input.expectedCurrentActiveGenerationId}', but no active pointer exists.`,
           operation: 'switch-active-generation',
         });
       }
-      if (input.expectedPointerRevision !== undefined && input.expectedPointerRevision !== 1) {
+      if (
+        input.expectedPointerRevision !== undefined &&
+        input.expectedPointerRevision !== null &&
+        input.expectedPointerRevision !== 0 &&
+        input.expectedPointerRevision !== 1
+      ) {
         throw new SemanticEmbeddingError({
           code: 'CONFLICT',
           safeMessage: `Pointer revision conflict: expected initial revision ${input.expectedPointerRevision}, but no active pointer exists.`,

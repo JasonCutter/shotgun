@@ -30,12 +30,15 @@ import {
   type ProjectionWatermark,
   type SemanticActiveGenerationReaderPort,
   type SemanticCandidateResult,
+  type SemanticCorpusReaderPort,
   SemanticEmbeddingError,
   type SemanticEmbeddingExecutionPort,
   type SemanticEmbeddingProfilePort,
   type SemanticEmbeddingResolverPort,
   type SemanticIndexRepositoryPort,
+  type SemanticProjectionGeneration,
   type SemanticReadiness,
+  type SemanticReadinessStatus,
   type SemanticResourceType,
   type SemanticRetrieverInput,
   type SemanticRetrieverPort,
@@ -190,15 +193,20 @@ export class ProductKnowledgeResourceResolver implements KnowledgeResourceResolv
   }
 }
 
+export type SemanticReadinessAuthorityPort = {
+  getReadiness(projectId: string): Promise<SemanticReadiness>;
+};
+
 export class SemanticRetriever implements SemanticRetrieverPort {
   constructor(
     private readonly repository: SemanticIndexRepositoryPort,
     private readonly resolver: SemanticEmbeddingResolverPort,
     private readonly executionPort: SemanticEmbeddingExecutionPort,
     private readonly activeGenerationReader: SemanticActiveGenerationReaderPort,
-    private readonly getCanonicalSnapshot?: (
-      projectId: string,
-    ) => Promise<CanonicalSnapshot | undefined>,
+    private readonly readinessAuthority?:
+      | SemanticReadinessAuthorityPort
+      | SemanticCorpusReaderPort
+      | ((projectId: string) => Promise<SemanticReadiness | CanonicalSnapshot | undefined>),
   ) {}
 
   async retrieve(input: SemanticRetrieverInput): Promise<readonly SemanticCandidateResult[]> {
@@ -259,17 +267,57 @@ export class SemanticRetriever implements SemanticRetrieverPort {
         code: 'CAPABILITY_UNAVAILABLE',
         safeMessage: `No ready active semantic projection generation was found for project '${projectId}'.`,
         operation: 'semantic-retriever:retrieve',
+        cause: { readinessStatus: gen?.buildStatus === 'FAILED' ? 'FAILED' : 'UNAVAILABLE' },
       });
     }
 
-    // 2b. STALE safety check: do not query vector store or execute query embedding if active generation is stale
-    if (this.getCanonicalSnapshot) {
-      const snap = await this.getCanonicalSnapshot(projectId);
-      if (snap && snap.version > gen.canonicalBaseVersion) {
+    // 2b. STALE fast-fail safety check using shared readiness / corpus authority
+    // BEFORE query embedding and BEFORE vector Top-K:
+    if (this.readinessAuthority) {
+      let isStale = false;
+      let nonReadyStatus: SemanticReadinessStatus | undefined;
+      let nonReadyReason: string | undefined;
+
+      if (typeof this.readinessAuthority === 'function') {
+        const res = await this.readinessAuthority(projectId);
+        if (res && 'status' in res) {
+          if (res.status !== 'READY') {
+            nonReadyStatus = res.status;
+            nonReadyReason = res.reason;
+            isStale = res.status === 'STALE';
+          }
+        } else if (res && 'version' in res) {
+          if (res.version > gen.canonicalBaseVersion) {
+            isStale = true;
+          }
+        }
+      } else if ('getReadiness' in this.readinessAuthority) {
+        const readiness = await this.readinessAuthority.getReadiness(projectId);
+        if (readiness.status !== 'READY') {
+          nonReadyStatus = readiness.status;
+          nonReadyReason = readiness.reason;
+          isStale = readiness.status === 'STALE';
+        }
+      } else if ('readCorpus' in this.readinessAuthority) {
+        const currentCorpus = await this.readinessAuthority.readCorpus(projectId);
+        if (
+          gen.canonicalBaseVersion < currentCorpus.canonicalBaseVersion ||
+          gen.sourceProjectionDigest !== currentCorpus.sourceProjectionDigest
+        ) {
+          isStale = true;
+        }
+      }
+
+      if (isStale || (nonReadyStatus && nonReadyStatus !== 'READY')) {
+        const status = isStale ? 'STALE' : (nonReadyStatus ?? 'UNAVAILABLE');
+        const defaultMessage = isStale
+          ? `Active semantic projection generation '${gen.generationId}' is stale (behind Canonical Knowledge).`
+          : 'Semantic projection is not ready.';
         throw new SemanticEmbeddingError({
           code: 'CAPABILITY_UNAVAILABLE',
-          safeMessage: `Active semantic projection generation '${gen.generationId}' is stale (canonical version ${snap.version} > base version ${gen.canonicalBaseVersion}).`,
+          safeMessage: nonReadyReason ?? defaultMessage,
           operation: 'semantic-retriever:retrieve',
+          cause: { readinessStatus: status },
         });
       }
     }
@@ -565,6 +613,7 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       reason: 'Semantic retrieval is not configured.',
     };
     let semanticDegradedReason: string | undefined;
+    let activeGen: SemanticProjectionGeneration | undefined;
 
     if (!this.semanticRetriever) {
       semanticReadiness = {
@@ -574,6 +623,7 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       semanticDegradedReason = 'Semantic retrieval is not configured.';
     } else {
       try {
+        activeGen = await this.activeGenerationReader?.getActiveGeneration(projectId);
         semanticItems = await this.semanticRetriever.retrieve({
           projectId,
           query,
@@ -594,7 +644,6 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           };
           semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
         } else {
-          const activeGen = await this.activeGenerationReader?.getActiveGeneration(projectId);
           if (activeGen) {
             const isStale =
               lexicalResult.readiness.canonicalVersion !== undefined &&
@@ -623,12 +672,20 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
               semanticDegradedReason = 'Active semantic embedding profile is not configured.';
               break;
             case 'CAPABILITY_UNAVAILABLE': {
-              const isStale = err.safeMessage.toLowerCase().includes('stale');
+              const statusFromCause = (err.cause as { readinessStatus?: SemanticReadinessStatus })
+                ?.readinessStatus;
+              const isStale =
+                statusFromCause === 'STALE' ||
+                err.safeMessage.toLowerCase().includes('stale') ||
+                (activeGen !== undefined &&
+                  lexicalResult.readiness.canonicalVersion !== undefined &&
+                  activeGen.canonicalBaseVersion < lexicalResult.readiness.canonicalVersion);
+              const status = isStale ? 'STALE' : (statusFromCause ?? 'UNAVAILABLE');
               semanticReadiness = {
-                status: isStale ? 'STALE' : 'UNAVAILABLE',
+                status,
                 reason: isStale
                   ? 'Semantic projection is behind Canonical Knowledge.'
-                  : 'Active semantic projection generation is unavailable.',
+                  : err.safeMessage || 'Active semantic projection generation is unavailable.',
               };
               semanticDegradedReason = isStale
                 ? 'Semantic projection is behind Canonical Knowledge.'

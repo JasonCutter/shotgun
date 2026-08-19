@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   type CanonicalSnapshot,
   type LexicalRetrieverPort,
-  type SemanticCandidateResult,
   type SemanticCorpusReaderPort,
   type SemanticCorpusSnapshot,
   type SemanticEmbeddingExecutionPort,
@@ -213,7 +212,7 @@ describe('AKP-1 WP4: Semantic Lifecycle, Invalidation, Readiness & Generation Sw
     const lifecycleRepo = new InMemorySemanticLifecycleRepository(indexRepo);
     const activeReader = new InMemorySemanticActiveGenerationReader(lifecycleRepo, indexRepo);
 
-    let corpus = createCorpusSnapshot(1);
+    const corpus = createCorpusSnapshot(1);
     const corpusReader: SemanticCorpusReaderPort = {
       readCorpus: async () => corpus,
     };
@@ -348,8 +347,6 @@ describe('AKP-1 WP4: Semantic Lifecycle, Invalidation, Readiness & Generation Sw
   });
 
   it('5. proves healthy lexical retrieval survives semantic STALE/FAILED/UNAVAILABLE state (AKP1-AC-09)', async () => {
-    let canonicalVersion = 2; // Canonical moved to version 2
-
     const mockLexicalRetriever: LexicalRetrieverPort = {
       retrieve: async () => ({
         items: [
@@ -549,5 +546,306 @@ describe('AKP-1 WP4: Semantic Lifecycle, Invalidation, Readiness & Generation Sw
     expect(pruneResult.retainedGenerationIds).toContain('gen-2-active');
     expect(pruneResult.retainedGenerationIds).toContain('gen-1-lkg');
     expect(pruneResult.retainedGenerationIds).toContain('gen-3-building');
+  });
+
+  it('8. proves coordinator CAS activation race: Build B begins with A active -> pointer changes A -> C before B activation -> B activation fails CONFLICT -> C remains ACTIVE -> B remains READY', async () => {
+    const indexRepo = new InMemorySemanticIndexRepository();
+    const lifecycleRepo = new InMemorySemanticLifecycleRepository(indexRepo);
+    const activeReader = new InMemorySemanticActiveGenerationReader(lifecycleRepo, indexRepo);
+
+    const corpus = createCorpusSnapshot(1);
+    const corpusReader: SemanticCorpusReaderPort = {
+      readCorpus: async () => corpus,
+    };
+
+    const coordinator = new SemanticLifecycleCoordinator(
+      corpusReader,
+      mockResolver,
+      fakeEmbedder,
+      indexRepo,
+      activeReader,
+      lifecycleRepo,
+    );
+
+    // 1. Initial build creates Generation A (ACTIVE, rev 1)
+    const genA = await coordinator.buildGeneration({ projectId });
+    expect(genA.activated).toBe(true);
+    const pointerA = await lifecycleRepo.getActivePointer(projectId);
+    expect(pointerA?.activeGenerationId).toBe(genA.generation.generationId);
+    expect(pointerA?.pointerRevision).toBe(1);
+
+    // 2. Build Generation C directly in indexRepo and switch pointer to C (ACTIVE, rev 2)
+    const genC: SemanticProjectionGeneration = {
+      ...genA.generation,
+      generationId: 'gen-C',
+      createdAt: '2026-08-18T10:15:00.000Z',
+    };
+    await indexRepo.saveGeneration(genC);
+
+    let switched = false;
+    const raceEmbedder: SemanticEmbeddingExecutionPort = {
+      identity: fakeEmbedder.identity,
+      embed: async (input) => {
+        // While B is embedding, competing process switches active pointer to C!
+        if (!switched) {
+          switched = true;
+          await lifecycleRepo.switchActiveGeneration({
+            projectId,
+            targetGenerationId: 'gen-C',
+            expectedCurrentActiveGenerationId: genA.generation.generationId,
+            expectedPointerRevision: 1,
+          });
+        }
+        return fakeEmbedder.embed(input);
+      },
+      embedBatch: async (inputs) => {
+        return fakeEmbedder.embedBatch(inputs);
+      },
+    };
+
+    const coordinatorB = new SemanticLifecycleCoordinator(
+      corpusReader,
+      mockResolver,
+      raceEmbedder,
+      indexRepo,
+      activeReader,
+      lifecycleRepo,
+    );
+
+    // 3. Build B fails activation with CONFLICT because pointer changed during build!
+    let caughtError: unknown;
+    try {
+      await coordinatorB.buildGeneration({ projectId, mode: 'FULL' });
+    } catch (err) {
+      caughtError = err;
+    }
+
+    expect(caughtError).toBeInstanceOf(SemanticEmbeddingError);
+    expect((caughtError as SemanticEmbeddingError).embeddingErrorCode).toBe('CONFLICT');
+
+    // 4. Generation C remains ACTIVE (pointer revision 2)
+    const pointerAfterRace = await lifecycleRepo.getActivePointer(projectId);
+    expect(pointerAfterRace?.activeGenerationId).toBe('gen-C');
+    expect(pointerAfterRace?.pointerRevision).toBe(2);
+
+    const activeGen = await activeReader.getActiveGeneration(projectId);
+    expect(activeGen?.generationId).toBe('gen-C');
+
+    // 5. Generation B was built and remains READY in repository, but was NOT activated!
+    const allGens = await indexRepo.listGenerations(projectId);
+    const genBRecord = allGens.find(
+      (g) => g.generationId !== genA.generation.generationId && g.generationId !== 'gen-C',
+    );
+    expect(genBRecord).toBeDefined();
+    expect(genBRecord?.buildStatus).toBe('READY');
+  });
+
+  it('9. proves same-canonical-version corpus STALE fast-fail: 0 query embed calls, 0 vector Top-K calls, healthy lexical preserved', async () => {
+    const trackingIndexRepo = new InMemorySemanticIndexRepository();
+    const lifecycleRepo = new InMemorySemanticLifecycleRepository(trackingIndexRepo);
+    const activeReader = new InMemorySemanticActiveGenerationReader(
+      lifecycleRepo,
+      trackingIndexRepo,
+    );
+
+    // Initial corpus snapshot at canonicalBaseVersion 1 with sensitivity 'internal'
+    let currentCorpus = createCorpusSnapshot(1);
+    const corpusReader: SemanticCorpusReaderPort = {
+      readCorpus: async () => currentCorpus,
+    };
+
+    let queryEmbedCallCount = 0;
+    const trackingEmbedder: SemanticEmbeddingExecutionPort = {
+      identity: fakeEmbedder.identity,
+      embed: async (input) => {
+        if (input.resourceType === 'QUERY') {
+          queryEmbedCallCount++;
+        }
+        return fakeEmbedder.embed(input);
+      },
+      embedBatch: async (inputs) => {
+        for (const i of inputs) {
+          if (i.resourceType === 'QUERY') {
+            queryEmbedCallCount++;
+          }
+        }
+        return fakeEmbedder.embedBatch(inputs);
+      },
+    };
+
+    let vectorTopKCallCount = 0;
+    const originalFindNearest = trackingIndexRepo.findNearestNeighbors.bind(trackingIndexRepo);
+    trackingIndexRepo.findNearestNeighbors = async (query) => {
+      vectorTopKCallCount++;
+      return originalFindNearest(query);
+    };
+
+    const coordinator = new SemanticLifecycleCoordinator(
+      corpusReader,
+      mockResolver,
+      trackingEmbedder,
+      trackingIndexRepo,
+      activeReader,
+      lifecycleRepo,
+    );
+
+    // Build Generation 1 for initial corpus
+    await coordinator.buildGeneration({ projectId });
+    expect(queryEmbedCallCount).toBe(0); // Only item embeddings during build
+
+    // SemanticRetriever with full corpus readiness authority
+    const retriever = new SemanticRetriever(
+      trackingIndexRepo,
+      mockResolver,
+      trackingEmbedder,
+      activeReader,
+      coordinator, // Provides getReadiness()
+    );
+
+    // Lexical retriever mock
+    const mockLexicalRetriever: LexicalRetrieverPort = {
+      retrieve: async () => ({
+        items: [
+          {
+            claimId: 'claim-lex-1',
+            commitId: 'commit-1',
+            revisionId: 'rev-1',
+            canonicalVersion: 1,
+            claimText: 'Healthy lexical result',
+            sourceVersionId: 'sv-1',
+            evidenceIds: ['ev-1'],
+            accessScope: ['engineering'],
+            sensitivity: 'internal',
+            score: 0.95,
+            matchType: 'FULL_TEXT',
+            rank: 1,
+          },
+        ],
+        readiness: {
+          status: 'READY',
+          canonicalVersion: 1,
+          projectedCanonicalVersion: 1,
+          canonicalSnapshotDigest: 'sha256:snap-1',
+          lag: 0,
+        },
+      }),
+    };
+
+    const mockResourceResolver = {
+      resolveResource: async (
+        _pId: string,
+        type: 'CLAIM' | 'ENTITY' | 'RELATION' | 'EVENT' | 'DECISION',
+        id: string,
+      ) => ({
+        resourceType: type,
+        resourceId: id,
+        text: `Claim text for ${id}`,
+        canonicalVersion: 1,
+        evidenceIds: [`ev-${id.replace('claim-', '')}`],
+        accessScope: ['engineering'],
+        sensitivity: 'internal' as const,
+      }),
+    };
+
+    const hybridCoordinator = new HybridRetrievalCoordinator(
+      mockLexicalRetriever,
+      retriever,
+      mockResourceResolver,
+      {
+        getEvidenceSpan: async (_pId, evidenceId) => ({
+          evidenceId,
+          projectId,
+          sourceId: 'src-1',
+          sourceVersionId: 'sv-1',
+          revisionId: 'rev-1',
+          pointer: '/blocks/0',
+          nodeKind: 'paragraph',
+          position: { type: 'TextPositionSelector', start: 0, end: 50, unit: 'unicode-code-point' },
+          quote: { type: 'TextQuoteSelector', exact: 'Claim text' },
+          exactHash: 'sha256:exact',
+          accessScope: ['engineering'],
+          sensitivity: 'internal',
+          origin: 'source',
+          createdAt: '2026-08-18T10:00:00.000Z',
+        }),
+      },
+      {
+        getSourceVersion: async () => ({
+          sourceVersionId: 'sv-1',
+          projectId,
+          sourceId: 'src-1',
+        }),
+      },
+      activeReader,
+    );
+
+    // Initial search when corpus is fresh: succeeds, calls 1 query embed and 1 vector Top-K
+    const res1 = await hybridCoordinator.search({
+      projectId,
+      query: 'test query',
+      accessScopes: ['engineering'],
+      allowedSensitivities: ['internal'],
+    });
+    expect(res1.readiness.semantic.status).toBe('READY');
+    expect(queryEmbedCallCount).toBe(1);
+    expect(vectorTopKCallCount).toBe(1);
+
+    // CANONICAL VERSION REMAINS 1, BUT CORPUS IDENTITY (accessScope / sensitivity / digest) CHANGES!
+    const modifiedItems = currentCorpus.items.map((it, idx) =>
+      idx === 0
+        ? { ...it, sensitivity: 'restricted' as const, semanticTextDigest: 'sha256:changed-digest' }
+        : it,
+    );
+    currentCorpus = {
+      ...currentCorpus,
+      sourceProjectionDigest: 'sha256:modified-source-proj-digest',
+      corpusDigest: 'sha256:modified-corpus-digest',
+      items: Object.freeze(modifiedItems),
+    };
+
+    // Reset counters to measure STALE request behavior
+    queryEmbedCallCount = 0;
+    vectorTopKCallCount = 0;
+
+    // Direct semantic retrieval against STALE corpus throws CAPABILITY_UNAVAILABLE with cause STALE
+    let retrieverError: unknown;
+    try {
+      await retriever.retrieve({
+        projectId,
+        query: 'test query',
+        accessScopes: ['engineering'],
+        allowedSensitivities: ['internal'],
+      });
+    } catch (err) {
+      retrieverError = err;
+    }
+    expect(retrieverError).toBeInstanceOf(SemanticEmbeddingError);
+    expect(
+      ((retrieverError as SemanticEmbeddingError).cause as { readinessStatus?: string })
+        ?.readinessStatus,
+    ).toBe('STALE');
+
+    // CRITICAL: Query embedding call count MUST be 0, Vector Top-K call count MUST be 0!
+    expect(queryEmbedCallCount).toBe(0);
+    expect(vectorTopKCallCount).toBe(0);
+
+    // Hybrid search against STALE corpus preserves healthy lexical results and reports STALE
+    const hybridRes = await hybridCoordinator.search({
+      projectId,
+      query: 'test query',
+      accessScopes: ['engineering'],
+      allowedSensitivities: ['internal'],
+    });
+
+    expect(hybridRes.readiness.semantic.status).toBe('STALE');
+    expect(hybridRes.readiness.lexical.status).toBe('READY');
+    expect(hybridRes.readiness.degraded).toBe(true);
+    expect(hybridRes.items.length).toBe(1);
+    expect(hybridRes.items[0]?.resourceId).toBe('claim-lex-1');
+    expect(hybridRes.items[0]?.signals).toEqual(['LEXICAL']);
+
+    // Still 0 query embeddings and 0 vector Top-K queries!
+    expect(queryEmbedCallCount).toBe(0);
+    expect(vectorTopKCallCount).toBe(0);
   });
 });

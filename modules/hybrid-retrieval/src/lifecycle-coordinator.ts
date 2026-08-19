@@ -108,6 +108,9 @@ export class SemanticLifecycleCoordinator implements SemanticProjectionRebuilder
     const mode = input.mode ?? 'INCREMENTAL';
     const autoActivate = input.autoActivate ?? true;
 
+    // 0. Capture initial active pointer at build start for CAS guard
+    const initialPointer = await this.lifecycleRepository?.getActivePointer(projectId);
+
     // 1. Resolve exact target corpus snapshot
     const corpus = await this.corpusReader.readCorpus(projectId);
 
@@ -282,12 +285,16 @@ export class SemanticLifecycleCoordinator implements SemanticProjectionRebuilder
         buildStatus: 'READY',
       };
 
-      // 8. Explicit Atomic Switch
+      // 8. Explicit Atomic Switch with captured CAS guards
       let activated = false;
       if (autoActivate && this.lifecycleRepository) {
         await this.lifecycleRepository.switchActiveGeneration({
           projectId,
           targetGenerationId: generationId,
+          expectedCurrentActiveGenerationId: initialPointer
+            ? initialPointer.activeGenerationId
+            : null,
+          expectedPointerRevision: initialPointer ? initialPointer.pointerRevision : 0,
         });
         activated = true;
       }
@@ -301,11 +308,13 @@ export class SemanticLifecycleCoordinator implements SemanticProjectionRebuilder
         activated,
       };
     } catch (error) {
-      // Mark generation as FAILED on error
-      try {
-        await this.indexRepository.updateGenerationStatus(projectId, generationId, 'FAILED');
-      } catch {
-        // Ignore secondary update error
+      // Mark generation as FAILED on error, unless it already validated and became READY and only failed on CAS activation conflict
+      if (!(error instanceof SemanticEmbeddingError && error.embeddingErrorCode === 'CONFLICT')) {
+        try {
+          await this.indexRepository.updateGenerationStatus(projectId, generationId, 'FAILED');
+        } catch {
+          // Ignore secondary update error
+        }
       }
       throw error;
     }

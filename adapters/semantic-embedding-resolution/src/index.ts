@@ -225,6 +225,7 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       capabilityCatalogRevision: model.capabilityRevision,
       providerPolicyFingerprint,
       representationVersion: profile.representationVersion,
+      dimension: profile.dimension,
       createdAt: this.clock(),
     });
 
@@ -235,3 +236,5 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
     };
   }
 }
+
+export * from './router.js';

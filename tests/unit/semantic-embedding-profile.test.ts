@@ -88,7 +88,7 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
     };
   };
 
-  it('creates server-owned SemanticEmbeddingProfile in BUILDING status with pinned credential and dimension metadata', async () => {
+  it('creates server-owned SemanticEmbeddingProfile in PREPARED status with pinned credential and dimension metadata', async () => {
     const { embeddingProfileService } = createServices();
 
     const profile = await embeddingProfileService.createProfile({
@@ -112,7 +112,7 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
       dimension: 1536,
       distanceMetric: 'cosine',
       normalizationPolicy: 'unit_length',
-      status: 'BUILDING',
+      status: 'PREPARED',
       updatedBy: 'actor-creator',
       createdAt: '2026-08-18T12:00:00.000Z',
       updatedAt: '2026-08-18T12:00:00.000Z',
@@ -187,7 +187,7 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
       now: '2026-08-18T10:00:00.000Z',
     });
     expect(p1.updatedBy).toBe('actor-creator-a');
-    expect(p1.status).toBe('BUILDING');
+    expect(p1.status).toBe('PREPARED');
 
     // Actor B activates the profile
     const activatedP1 = await embeddingProfileService.activateProfile({
@@ -218,7 +218,7 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
     expect(historicalRev1?.activatedAt).toBe('2026-08-18T11:00:00.000Z');
   });
 
-  it('handles profile activation and persists activating actor on auto-retired previous profile', async () => {
+  it('preparing new profile P2 preserves previous profile P1 history without auto-retiring P1', async () => {
     const { embeddingProfileService } = createServices();
 
     // Actor A creates P1
@@ -253,29 +253,16 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
       updatedBy: 'actor-c',
       now: '2026-08-18T11:00:00.000Z',
     });
-    expect(p2.status).toBe('BUILDING');
+    expect(p2.status).toBe('PREPARED');
     expect(p2.dimension).toBe(768);
 
-    // Actor D activates P2 (which auto-retires P1)
-    await embeddingProfileService.activateProfile({
-      projectId: 'project-akp-1',
-      profileId: p2.profileId,
-      profileRevision: 2,
-      updatedBy: 'actor-d',
-      now: '2026-08-18T12:00:00.000Z',
-    });
+    // Creating P2 does NOT retire P1
+    const activeWhileP2Prepared = await embeddingProfileService.getActive('project-akp-1');
+    expect(activeWhileP2Prepared?.profileId).toBe(p1.profileId);
+    expect(activeWhileP2Prepared?.status).toBe('ACTIVE');
 
-    // Now active is p2 with actor-d
-    const currentActive = await embeddingProfileService.getActive('project-akp-1');
-    expect(currentActive?.profileId).toBe(p2.profileId);
-    expect(currentActive?.status).toBe('ACTIVE');
-    expect(currentActive?.updatedBy).toBe('actor-d');
-
-    // And p1 has become RETIRED, with updatedBy recorded as actor-d and updatedAt = 12:00:00
-    const retiredP1 = await embeddingProfileService.getRevision('project-akp-1', 1);
-    expect(retiredP1?.status).toBe('RETIRED');
-    expect(retiredP1?.updatedBy).toBe('actor-d');
-    expect(retiredP1?.updatedAt).toBe('2026-08-18T12:00:00.000Z');
+    const rev1 = await embeddingProfileService.getRevision('project-akp-1', 1);
+    expect(rev1?.status).toBe('ACTIVE');
   });
 
   it('rejects stale profile creation revisions with CONFLICT error', async () => {

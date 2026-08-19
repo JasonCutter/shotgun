@@ -223,3 +223,5 @@ export class OpenAIConnectivityAdapter implements AIProviderConnectivityAdapter 
     }
   }
 }
+
+export * from './embedding.js';

@@ -275,8 +275,9 @@ export class SemanticEmbeddingProfileService implements SemanticEmbeddingProfile
       dimension,
       distanceMetric,
       normalizationPolicy,
-      status: 'BUILDING',
+      status: input.status ?? 'PREPARED',
       createdAt: now,
+      createdBy: updatedBy,
       updatedBy,
       updatedAt: now,
     };

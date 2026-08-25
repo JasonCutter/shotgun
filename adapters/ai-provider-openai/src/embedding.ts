@@ -83,12 +83,15 @@ export class OpenAIEmbeddingConnectivityAdapter implements ProviderEmbeddingConn
     this.fetch = options.fetch ?? globalThis.fetch;
   }
 
-  async embed(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResponse> {
-    if (!request.secretBytes || request.secretBytes.length === 0) {
+  async embed(
+    request: ProviderEmbeddingRequest,
+    credentialBytes: Uint8Array,
+  ): Promise<ProviderEmbeddingResponse> {
+    if (!credentialBytes || credentialBytes.length === 0) {
       throw errorFor('AUTHENTICATION_FAILED', 'OpenAI credential secret is missing or empty.');
     }
 
-    const apiKey = new TextDecoder().decode(request.secretBytes).trim();
+    const apiKey = new TextDecoder().decode(credentialBytes).trim();
     if (!apiKey) {
       throw errorFor('AUTHENTICATION_FAILED', 'OpenAI credential secret is empty.');
     }
@@ -153,6 +156,10 @@ export class OpenAIEmbeddingConnectivityAdapter implements ProviderEmbeddingConn
         throw errorFor('VALIDATION_ERROR', 'OpenAI response data array is empty or missing.');
       }
 
+      if (typeof parsed.model !== 'string' || !parsed.model.trim()) {
+        throw errorFor('VALIDATION_ERROR', 'OpenAI response model is missing or invalid.');
+      }
+
       const expectedCount = isArray ? input.length : 1;
       if (parsed.data.length !== expectedCount) {
         throw errorFor(
@@ -195,7 +202,7 @@ export class OpenAIEmbeddingConnectivityAdapter implements ProviderEmbeddingConn
 
       return {
         providerId: 'openai',
-        modelId: typeof parsed.model === 'string' ? parsed.model : model,
+        modelId: parsed.model,
         items,
         ...(numberOrUndefined(parsed.usage?.total_tokens) !== undefined
           ? { totalTokens: numberOrUndefined(parsed.usage?.total_tokens) }

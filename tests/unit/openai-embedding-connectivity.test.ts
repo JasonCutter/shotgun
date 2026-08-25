@@ -4,9 +4,9 @@ import { OpenAIEmbeddingConnectivityAdapter } from '../../adapters/ai-provider-o
 import { ShotgunError } from '../../packages/contracts/src/index.js';
 
 describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
-  const sampleSecretBytes = new TextEncoder().encode('test-openai-credential-token-fixture');
+  const fixtureCredentialBytes = new TextEncoder().encode('fixture-credential-bytes');
 
-  it('14. Request uses /embeddings endpoint, expected model, input, dimensions, and Bearer credential', async () => {
+  it('14. Request uses /embeddings endpoint, expected model, input, dimensions, and bounded credential bytes', async () => {
     let capturedUrl: string | URL | undefined;
     let capturedInit: RequestInit | undefined;
 
@@ -46,17 +46,19 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       fetch: fakeFetch,
     });
 
-    const response = await adapter.embed({
-      modelId: 'text-embedding-3-small',
-      input: ['Text 1', 'Text 2'],
-      dimension: 512,
-      secretBytes: sampleSecretBytes,
-    });
+    const response = await adapter.embed(
+      {
+        modelId: 'text-embedding-3-small',
+        input: ['Text 1', 'Text 2'],
+        dimension: 512,
+      },
+      fixtureCredentialBytes,
+    );
 
     expect(String(capturedUrl)).toBe('https://api.openai.com/v1/embeddings');
     expect(capturedInit?.method).toBe('POST');
     expect((capturedInit?.headers as Record<string, string>)['Authorization']).toBe(
-      'Bearer test-openai-credential-token-fixture',
+      'Bearer fixture-credential-bytes',
     );
     expect((capturedInit?.headers as Record<string, string>)['Content-Type']).toBe(
       'application/json',
@@ -106,35 +108,41 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
 
     const adapter = new OpenAIEmbeddingConnectivityAdapter({ fetch: fakeFetch });
 
-    const response = await adapter.embed({
-      modelId: 'text-embedding-3-small',
-      input: ['Item 0', 'Item 1'],
-      dimension: 2,
-      secretBytes: sampleSecretBytes,
-    });
+    const response = await adapter.embed(
+      {
+        modelId: 'text-embedding-3-small',
+        input: ['Item 0', 'Item 1'],
+        dimension: 2,
+      },
+      fixtureCredentialBytes,
+    );
 
     expect(response.items[0]?.vector).toEqual([0.1, 0.2]);
     expect(response.items[1]?.vector).toEqual([0.2, 0.3]);
   });
 
   it('16a. 401/403 Authentication failure maps to AUTHENTICATION_FAILED without secret in error message', async () => {
-    const authFailAdapter = new OpenAIEmbeddingConnectivityAdapter({
-      fetch: async () => new Response('Unauthorized', { status: 401 }),
-    });
-    await expect(
-      authFailAdapter.embed({
-        modelId: 'text-embedding-3-small',
-        input: 'Test',
-        dimension: 1536,
-        secretBytes: sampleSecretBytes,
-      }),
-    ).rejects.toSatisfy((err: unknown) => {
-      expect(err).toBeInstanceOf(ShotgunError);
-      const shotgunErr = err as ShotgunError;
-      expect(shotgunErr.code).toBe('AUTHENTICATION_FAILED');
-      expect(shotgunErr.safeMessage).not.toContain('test-openai');
-      return true;
-    });
+    for (const status of [401, 403]) {
+      const authFailAdapter = new OpenAIEmbeddingConnectivityAdapter({
+        fetch: async () => new Response('Unauthorized', { status }),
+      });
+      await expect(
+        authFailAdapter.embed(
+          {
+            modelId: 'text-embedding-3-small',
+            input: 'Test',
+            dimension: 1536,
+          },
+          fixtureCredentialBytes,
+        ),
+      ).rejects.toSatisfy((err: unknown) => {
+        expect(err).toBeInstanceOf(ShotgunError);
+        const shotgunErr = err as ShotgunError;
+        expect(shotgunErr.code).toBe('AUTHENTICATION_FAILED');
+        expect(shotgunErr.safeMessage).not.toContain('fixture-credential-bytes');
+        return true;
+      });
+    }
   });
 
   it('16b. 429 Rate limit maps to RATE_LIMITED with retryable=true', async () => {
@@ -142,12 +150,14 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       fetch: async () => new Response('Too Many Requests', { status: 429 }),
     });
     await expect(
-      rateLimitAdapter.embed({
-        modelId: 'text-embedding-3-small',
-        input: 'Test',
-        dimension: 1536,
-        secretBytes: sampleSecretBytes,
-      }),
+      rateLimitAdapter.embed(
+        {
+          modelId: 'text-embedding-3-small',
+          input: 'Test',
+          dimension: 1536,
+        },
+        fixtureCredentialBytes,
+      ),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
       const shotgunErr = err as ShotgunError;
@@ -162,12 +172,14 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       fetch: async () => new Response('Internal Server Error', { status: 500 }),
     });
     await expect(
-      serverErrorAdapter.embed({
-        modelId: 'text-embedding-3-small',
-        input: 'Test',
-        dimension: 1536,
-        secretBytes: sampleSecretBytes,
-      }),
+      serverErrorAdapter.embed(
+        {
+          modelId: 'text-embedding-3-small',
+          input: 'Test',
+          dimension: 1536,
+        },
+        fixtureCredentialBytes,
+      ),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
       const shotgunErr = err as ShotgunError;
@@ -183,12 +195,14 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       fetch: async () => new Promise((resolve) => setTimeout(resolve, 100)),
     });
     await expect(
-      timeoutAdapter.embed({
-        modelId: 'text-embedding-3-small',
-        input: 'Test',
-        dimension: 1536,
-        secretBytes: sampleSecretBytes,
-      }),
+      timeoutAdapter.embed(
+        {
+          modelId: 'text-embedding-3-small',
+          input: 'Test',
+          dimension: 1536,
+        },
+        fixtureCredentialBytes,
+      ),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
       const shotgunErr = err as ShotgunError;
@@ -204,12 +218,14 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       fetch: async () => new Response('<html>Error page</html>', { status: 200 }),
     });
     await expect(
-      invalidJsonAdapter.embed({
-        modelId: 'text-embedding-3-small',
-        input: 'Test',
-        dimension: 1536,
-        secretBytes: sampleSecretBytes,
-      }),
+      invalidJsonAdapter.embed(
+        {
+          modelId: 'text-embedding-3-small',
+          input: 'Test',
+          dimension: 1536,
+        },
+        fixtureCredentialBytes,
+      ),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
       const shotgunErr = err as ShotgunError;
@@ -223,12 +239,37 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
         new Response(JSON.stringify({ object: 'list', data: [] }), { status: 200 }),
     });
     await expect(
-      malformedSchemaAdapter.embed({
-        modelId: 'text-embedding-3-small',
-        input: 'Test',
-        dimension: 1536,
-        secretBytes: sampleSecretBytes,
-      }),
+      malformedSchemaAdapter.embed(
+        {
+          modelId: 'text-embedding-3-small',
+          input: 'Test',
+          dimension: 1536,
+        },
+        fixtureCredentialBytes,
+      ),
+    ).rejects.toSatisfy((err: unknown) => {
+      expect(err).toBeInstanceOf(ShotgunError);
+      const shotgunErr = err as ShotgunError;
+      expect(shotgunErr.code).toBe('VALIDATION_ERROR');
+      return true;
+    });
+
+    // 3. Missing model metadata must not be substituted with the requested model.
+    const missingModelAdapter = new OpenAIEmbeddingConnectivityAdapter({
+      fetch: async () =>
+        new Response(JSON.stringify({ object: 'list', data: [{ embedding: [0.1] }] }), {
+          status: 200,
+        }),
+    });
+    await expect(
+      missingModelAdapter.embed(
+        {
+          modelId: 'text-embedding-3-small',
+          input: 'Test',
+          dimension: 1,
+        },
+        fixtureCredentialBytes,
+      ),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
       const shotgunErr = err as ShotgunError;
@@ -244,12 +285,14 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
       },
     });
     await expect(
-      networkFailAdapter.embed({
-        modelId: 'text-embedding-3-small',
-        input: 'Test',
-        dimension: 1536,
-        secretBytes: sampleSecretBytes,
-      }),
+      networkFailAdapter.embed(
+        {
+          modelId: 'text-embedding-3-small',
+          input: 'Test',
+          dimension: 1536,
+        },
+        fixtureCredentialBytes,
+      ),
     ).rejects.toSatisfy((err: unknown) => {
       expect(err).toBeInstanceOf(ShotgunError);
       const shotgunErr = err as ShotgunError;

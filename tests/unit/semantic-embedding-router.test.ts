@@ -23,11 +23,15 @@ import type {
 } from '../../modules/credential-vault/src/index.js';
 
 describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', () => {
+  const FIXTURE_CREDENTIAL_TEXT = 'fixture-credential-bytes';
+
   class RecordingFakeEmbeddingConnectivity implements ProviderEmbeddingConnectivityPort {
     readonly providerId: string;
     callCount = 0;
     lastRequest?: ProviderEmbeddingRequest;
-    receivedSecretBytes?: Uint8Array;
+    secretObservedInsideVaultCallback = false;
+    secretMatchedFixture = false;
+    private readonly isVaultCallbackActive: () => boolean;
 
     customResponseItems?: (request: ProviderEmbeddingRequest) => {
       vector: readonly number[];
@@ -36,14 +40,20 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
     customResponseProviderId?: string;
     customResponseModelId?: string;
 
-    constructor(providerId = 'openai') {
+    constructor(providerId = 'openai', isVaultCallbackActive: () => boolean = () => false) {
       this.providerId = providerId;
+      this.isVaultCallbackActive = isVaultCallbackActive;
     }
 
-    async embed(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResponse> {
+    async embed(
+      request: ProviderEmbeddingRequest,
+      credentialBytes: Uint8Array,
+    ): Promise<ProviderEmbeddingResponse> {
       this.callCount++;
       this.lastRequest = request;
-      this.receivedSecretBytes = request.secretBytes;
+      this.secretObservedInsideVaultCallback = this.isVaultCallbackActive();
+      this.secretMatchedFixture =
+        new TextDecoder().decode(credentialBytes) === FIXTURE_CREDENTIAL_TEXT;
 
       const inputs = Array.isArray(request.input) ? request.input : [request.input];
       const dimension = request.dimension;
@@ -81,7 +91,10 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
     const embeddingRegistry = initialSemanticEmbeddingRegistry();
     const profileRepo = new InMemorySemanticEmbeddingProfileRepository();
 
-    const connectivity = options.customConnectivity ?? new RecordingFakeEmbeddingConnectivity();
+    let vaultCallbackActive = false;
+    const connectivity =
+      options.customConnectivity ??
+      new RecordingFakeEmbeddingConnectivity('openai', () => vaultCallbackActive);
 
     const credentialsList: CredentialMetadata[] = [
       {
@@ -154,8 +167,14 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
           throw new Error('Pinned credential revision is revoked or unavailable.');
         }
 
-        const secret = new TextEncoder().encode('test-vault-secret-bytes-payload-sample');
-        return callback(secret, record);
+        const secret = new TextEncoder().encode(FIXTURE_CREDENTIAL_TEXT);
+        vaultCallbackActive = true;
+        try {
+          return await callback(secret, record);
+        } finally {
+          vaultCallbackActive = false;
+          secret.fill(0);
+        }
       },
     };
 
@@ -270,7 +289,7 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
     });
 
     // Check no plaintext secrets exist anywhere on resolved output
-    expect(JSON.stringify(resolved)).not.toContain('test-vault-secret');
+    expect(JSON.stringify(resolved)).not.toContain(FIXTURE_CREDENTIAL_TEXT);
     expect((resolved as Record<string, unknown>).credentialSecret).toBeUndefined();
     expect((resolved.pin as Record<string, unknown>).credentialSecret).toBeUndefined();
   });
@@ -336,13 +355,13 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
 
     const result = await router.embed(resolved.pin, { text: 'Shotgun architecture test' });
 
-    // Connectivity received secret bytes inside callback
-    expect(connectivity.receivedSecretBytes).toBeDefined();
-    const decoded = new TextDecoder().decode(connectivity.receivedSecretBytes);
-    expect(decoded).toBe('test-vault-secret-bytes-payload-sample');
+    // Connectivity received credential bytes only inside the vault callback.
+    expect(connectivity.secretObservedInsideVaultCallback).toBe(true);
+    expect(connectivity.secretMatchedFixture).toBe(true);
+    expect(connectivity.lastRequest).not.toHaveProperty('secretBytes');
 
     // Returned result contains NO secret
-    expect(JSON.stringify(result)).not.toContain('test-vault-secret');
+    expect(JSON.stringify(result)).not.toContain(FIXTURE_CREDENTIAL_TEXT);
     expect((result as Record<string, unknown>).apiKey).toBeUndefined();
     expect((result as Record<string, unknown>).secret).toBeUndefined();
   });

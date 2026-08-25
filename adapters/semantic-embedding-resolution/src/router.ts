@@ -20,7 +20,6 @@ export type ProviderEmbeddingRequest = {
   readonly modelId: string;
   readonly input: string | readonly string[];
   readonly dimension: number;
-  readonly secretBytes: Uint8Array;
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
 };
@@ -40,7 +39,14 @@ export type ProviderEmbeddingResponse = {
 
 export type ProviderEmbeddingConnectivityPort = {
   readonly providerId: string;
-  embed(request: ProviderEmbeddingRequest): Promise<ProviderEmbeddingResponse>;
+  /**
+   * The credential bytes are deliberately a separate, non-serializable execution argument.
+   * Callers must invoke this boundary only from CredentialVault.withCredential().
+   */
+  embed(
+    request: ProviderEmbeddingRequest,
+    credentialBytes: Uint8Array,
+  ): Promise<ProviderEmbeddingResponse>;
 };
 
 export type SemanticEmbeddingRouterOptions = {
@@ -302,13 +308,15 @@ export class SemanticEmbeddingRouter implements SemanticEmbeddingRouterPort {
               operation: 'embed-batch',
             });
           }
-          response = await connectivity.embed({
-            modelId: pin.embeddingModelId,
-            input: payloads.map((p) => p.text),
-            dimension: pin.dimension,
-            secretBytes: secret,
-            ...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
-          });
+          response = await connectivity.embed(
+            {
+              modelId: pin.embeddingModelId,
+              input: payloads.map((p) => p.text),
+              dimension: pin.dimension,
+              ...(this.options.timeoutMs ? { timeoutMs: this.options.timeoutMs } : {}),
+            },
+            secret,
+          );
           return { status: 'SUCCEEDED' };
         },
       );

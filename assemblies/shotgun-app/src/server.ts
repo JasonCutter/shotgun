@@ -288,6 +288,8 @@ import {
   createCompiledTruthModule,
   type CompiledTruthRepositoryPort,
 } from '../../../modules/compiled-truth/src/index.js';
+import { RepositorySemanticCorpusSourceSnapshotReader } from '../../../modules/semantic-corpus/src/index.js';
+import type { SemanticCorpusSourceSnapshotReaderPort } from '../../../packages/contracts/src/index.js';
 import {
   type ActionConnectorPort,
   type ActionCandidateRepositoryPort,
@@ -510,6 +512,7 @@ export type ApplicationOptions = {
   readonly searchProjectionRepository?: SearchProjectionRepositoryPort;
   readonly knowledgeModelRepository?: KnowledgeModelRepositoryPort;
   readonly compiledTruthRepository?: CompiledTruthRepositoryPort;
+  readonly semanticCorpusSourceSnapshotReader?: SemanticCorpusSourceSnapshotReaderPort;
   readonly actionCandidateRepository?: ActionCandidateRepositoryPort;
   readonly actionExecutionRepository?: ActionExecutionRepositoryPort;
   readonly actionConnector?: ActionConnectorPort;
@@ -1261,6 +1264,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.knowledgeModelRepository ?? new InMemoryKnowledgeModelRepository();
   const compiledTruthRepository =
     options.compiledTruthRepository ?? new InMemoryCompiledTruthRepository();
+  const semanticCorpusSourceSnapshotReader =
+    options.semanticCorpusSourceSnapshotReader ??
+    new RepositorySemanticCorpusSourceSnapshotReader(
+      canonicalKnowledgeRepository,
+      knowledgeModelRepository,
+      compiledTruthRepository,
+    );
   const actionExecutionRepository =
     options.actionExecutionRepository ?? new InMemoryActionExecutionRepository();
   const canonicalProjectionRecoveryReporter =
@@ -1539,7 +1549,11 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const projectionSearch = createProjectionSearchModule(searchProjectionRepository);
   const citedAnswer = createCitedAnswerModule();
   const knowledgeModel = createKnowledgeModelModule(knowledgeModelRepository);
-  const compiledTruth = createCompiledTruthModule(compiledTruthRepository);
+  const compiledTruth = createCompiledTruthModule(
+    compiledTruthRepository,
+    undefined,
+    semanticCorpusSourceSnapshotReader,
+  );
   const actionExecution = createActionExecutionModule(
     actionExecutionRepository,
     actionCandidateRepository,

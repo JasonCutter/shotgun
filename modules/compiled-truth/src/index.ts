@@ -13,6 +13,7 @@ import type {
   ProjectionTemporalState,
   CommandEnvelope,
   QueryEnvelope,
+  SemanticCorpusSourceSnapshotReaderPort,
 } from '../../../packages/contracts/src/index.js';
 import {
   compiledTruthLogicalDigest,
@@ -20,15 +21,15 @@ import {
   decodeGetCompiledTruthReadSnapshotResult,
   discoveryFingerprint,
   GET_COMPILED_TRUTH_READ_SNAPSHOT,
-  sha256Text,
-  stableJson,
   ShotgunError,
+  utf16OrdinalCompare,
 } from '../../../packages/contracts/src/index.js';
 import getCompiledTruthReadSnapshotSchema from '../../../packages/contracts/schemas/get-compiled-truth-read-snapshot.v1.schema.json';
 import getCompiledTruthReadSnapshotOutputSchema from '../../../packages/contracts/schemas/get-compiled-truth-read-snapshot-output.v1.schema.json';
 import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
 import type { HandlerContext, ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 import type { GetCompiledTruthReadSnapshotResult } from '../../../packages/contracts/src/index.js';
+import { buildSemanticCorpusSourceSnapshot } from '../../semantic-corpus/src/index.js';
 
 export const COMPILED_TRUTH_PROJECTOR_VERSION = '1.0.0';
 const COMPILED_TRUTH_BUILD_FAILED = 'COMPILED_TRUTH_BUILD_FAILED';
@@ -150,7 +151,11 @@ const temporalState = (candidate: KnowledgeCandidate, asOf: string): ProjectionT
   return 'CURRENT';
 };
 
-const sourceSnapshot = async (context: HandlerContext) => {
+const compiledTruthProjectionSource = async (
+  projectId: string,
+  context: HandlerContext,
+  semanticSourceReader?: SemanticCorpusSourceSnapshotReaderPort,
+) => {
   const canonical = (
     await context.query<Record<string, never>, CanonicalSnapshot>({
       messageType: 'GetCanonicalSnapshot',
@@ -166,7 +171,7 @@ const sourceSnapshot = async (context: HandlerContext) => {
     })
   ).payload.items
     .filter((group) => group.status === 'APPROVED')
-    .sort((left, right) => left.groupId.localeCompare(right.groupId));
+    .sort((left, right) => utf16OrdinalCompare(left.groupId, right.groupId));
   const claims = await Promise.all(
     canonical.claims.map(
       async ({ claimId }) =>
@@ -209,7 +214,7 @@ const sourceSnapshot = async (context: HandlerContext) => {
     })),
   );
   const items = [...claimItems, ...candidateItems].sort((left, right) =>
-    left.id.localeCompare(right.id),
+    utf16OrdinalCompare(left.id, right.id),
   );
   const edges: CompiledTruthEdge[] = groups
     .flatMap((group) => group.items)
@@ -225,22 +230,20 @@ const sourceSnapshot = async (context: HandlerContext) => {
       direction: candidate.direction,
       source: 'APPROVED_TYPED_EDGE' as const,
     }))
-    .sort((left, right) => left.id.localeCompare(right.id));
+    .sort((left, right) => utf16OrdinalCompare(left.id, right.id));
+  const semanticSource = semanticSourceReader
+    ? await semanticSourceReader.readSnapshot(projectId)
+    : buildSemanticCorpusSourceSnapshot({
+        projectId,
+        canonical,
+        claims,
+        approvedGroups: groups,
+      });
   return {
     canonical,
     items,
     edges,
-    digest: sha256Text(
-      stableJson({
-        canonicalDigest: canonical.digest,
-        effectiveAt,
-        approvedGroups: groups.map((group) => ({
-          groupId: group.groupId,
-          contentDigest: group.contentDigest,
-          revisionNumber: group.revisionNumber,
-        })),
-      }),
-    ),
+    digest: semanticSource.sourceSnapshotDigest,
   };
 };
 
@@ -332,6 +335,7 @@ const statusFor = async (
 export const createCompiledTruthModule = (
   repository: CompiledTruthRepositoryPort,
   clock: ClockPort = systemClock,
+  semanticSourceReader?: SemanticCorpusSourceSnapshotReaderPort,
 ): ShotgunModule => ({
   manifest: {
     id: 'stage10.compiled-truth',
@@ -423,7 +427,11 @@ export const createCompiledTruthModule = (
           const { mode } = envelope.payload as { mode: ProjectionBuildMode };
           const projectedAt = clock.now();
           try {
-            const source = await sourceSnapshot(context);
+            const source = await compiledTruthProjectionSource(
+              projectId,
+              context,
+              semanticSourceReader,
+            );
             const projection: CompiledTruthProjection = {
               projectId,
               projectorVersion: COMPILED_TRUTH_PROJECTOR_VERSION,
@@ -458,7 +466,11 @@ export const createCompiledTruthModule = (
             maxNodes: number;
             maxSuggestions: number;
           };
-          const source = await sourceSnapshot(context);
+          const source = await compiledTruthProjectionSource(
+            projectId,
+            context,
+            semanticSourceReader,
+          );
           const status = await statusFor(repository, projectId, source.canonical, source.digest);
           if (status.status !== 'READY') {
             throw new ShotgunError({
@@ -518,7 +530,11 @@ export const createCompiledTruthModule = (
         requiredAccessScopes: ['owner'],
         async handle(envelope, context) {
           const { projectId, accessScope, sensitivity } = assertContext(envelope);
-          const source = await sourceSnapshot(context);
+          const source = await compiledTruthProjectionSource(
+            projectId,
+            context,
+            semanticSourceReader,
+          );
           const status = await statusFor(repository, projectId, source.canonical, source.digest);
           if (status.status !== 'READY') {
             throw new ShotgunError({
@@ -539,7 +555,11 @@ export const createCompiledTruthModule = (
         async handle(envelope, context): Promise<GetCompiledTruthReadSnapshotResult> {
           const { projectId, accessScope, sensitivity } = assertContext(envelope);
           decodeGetCompiledTruthReadSnapshotRequest(envelope.payload);
-          const source = await sourceSnapshot(context);
+          const source = await compiledTruthProjectionSource(
+            projectId,
+            context,
+            semanticSourceReader,
+          );
           const status = await statusFor(repository, projectId, source.canonical, source.digest);
           const stored =
             status.status === 'NOT_BUILT' ? undefined : await repository.findProjection(projectId);
@@ -568,7 +588,11 @@ export const createCompiledTruthModule = (
         requiredAccessScopes: ['owner'],
         async handle(envelope, context) {
           const { projectId } = assertContext(envelope);
-          const source = await sourceSnapshot(context);
+          const source = await compiledTruthProjectionSource(
+            projectId,
+            context,
+            semanticSourceReader,
+          );
           return statusFor(repository, projectId, source.canonical, source.digest);
         },
       },

@@ -81,6 +81,7 @@ import {
 import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres-stage6/src/index.js';
 import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
 import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
+import { PostgresSemanticCorpusSourceSnapshotReader } from '../../../adapters/semantic-corpus-postgres/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
@@ -449,6 +450,7 @@ export const startShotgunApplication = async (
       searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
       knowledgeModelRepository: new PostgresKnowledgeModelRepository(pool),
       compiledTruthRepository: new PostgresCompiledTruthRepository(pool),
+      semanticCorpusSourceSnapshotReader: new PostgresSemanticCorpusSourceSnapshotReader(pool),
       actionCandidateRepository: new PostgresActionCandidateRepository(pool),
       actionExecutionRepository: new PostgresActionExecutionRepository(pool),
       authRepository: new PostgresAuthRepository(pool),

@@ -292,7 +292,7 @@ describe.runIf(databaseUrl)('AKP-1R R2 PostgreSQL Semantic Corpus Source Snapsho
       exact.resources.filter((resource) => resource.authority === 'COMPILED_TRUTH'),
     ).toHaveLength(3);
 
-    await compiledTruthRepository.synchronize(projection(digest('z')));
+    await compiledTruthRepository.synchronize(projection(contentHash('stale')));
     const stale = await reader.readSnapshot(projectId);
     expect(stale.resources.some((resource) => resource.authority === 'COMPILED_TRUTH')).toBe(false);
 

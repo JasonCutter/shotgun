@@ -36,4 +36,5 @@ export * from './semantic-representation.js';
 export * from './semantic-corpus.js';
 export * from './semantic-embedding.js';
 export * from './semantic-index.js';
+export * from './semantic-generation.js';
 export * from './hybrid-retrieval.js';

@@ -3,6 +3,10 @@ import {
   type SemanticNormalizationPolicy,
   SemanticEmbeddingError,
 } from './semantic-embedding.js';
+import type {
+  SemanticCorpusAuthority,
+  SemanticCorpusResourceProvenance,
+} from './semantic-corpus.js';
 import type { SemanticResourceType } from './semantic-representation.js';
 
 export const SEMANTIC_PROJECTION_SCHEMA_VERSION = 'semantic-projection:v1' as const;
@@ -49,6 +53,13 @@ export type SemanticProjectionItem = {
   readonly evidenceIds: readonly string[];
   readonly accessScope: readonly string[];
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  /** R3 execution identity. Legacy callers may omit these fields. */
+  readonly providerId?: string;
+  readonly embeddingModelId?: string;
+  readonly normalizationPolicy?: SemanticNormalizationPolicy;
+  /** R3 membership authority/provenance. Legacy index rows may omit these fields. */
+  readonly authority?: SemanticCorpusAuthority;
+  readonly provenance?: SemanticCorpusResourceProvenance;
   readonly indexedAt: string;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -253,3 +264,68 @@ export type SemanticIndexRepositoryPort = {
   // Security-before-Top-K Nearest Neighbor search
   findNearestNeighbors(query: SemanticCandidateQuery): Promise<readonly SemanticCandidateResult[]>;
 };
+
+export type SemanticGenerationMembershipSummary = {
+  readonly projectId: string;
+  readonly generationId: string;
+  readonly itemCount: number;
+  readonly membershipDigest: string;
+};
+
+export type SemanticGenerationPointer = {
+  readonly projectId: string;
+  readonly activeGenerationId: string;
+  readonly pointerRevision: number;
+  readonly sourceProjectionDigest: string;
+  readonly canonicalBaseVersion: number;
+  readonly updatedAt: string;
+};
+
+export type SemanticGenerationPointerExpectation =
+  | { readonly kind: 'NONE' }
+  | {
+      readonly kind: 'EXISTING';
+      readonly activeGenerationId: string;
+      readonly pointerRevision: number;
+    };
+
+export type SemanticGenerationActivationResult =
+  | { readonly status: 'ACTIVATED'; readonly pointer: SemanticGenerationPointer }
+  | { readonly status: 'CONFLICT'; readonly pointer?: SemanticGenerationPointer };
+
+export type SemanticGenerationLifecycleRepositoryPort = {
+  transitionGenerationStatus(input: {
+    readonly projectId: string;
+    readonly generationId: string;
+    readonly expectedStatus: SemanticProjectionGenerationStatus;
+    readonly nextStatus: Exclude<SemanticProjectionGenerationStatus, 'BUILDING'>;
+  }): Promise<'UPDATED' | 'NOT_FOUND' | 'CONFLICT'>;
+  readGenerationMembershipSummary(
+    projectId: string,
+    generationId: string,
+  ): Promise<SemanticGenerationMembershipSummary | undefined>;
+  getActiveGenerationPointer(projectId: string): Promise<SemanticGenerationPointer | undefined>;
+  activateGeneration(input: {
+    readonly projectId: string;
+    readonly generationId: string;
+    readonly expectedPointer: SemanticGenerationPointerExpectation;
+    readonly sourceProjectionDigest: string;
+    readonly canonicalBaseVersion: number;
+    readonly updatedAt: string;
+  }): Promise<SemanticGenerationActivationResult>;
+  /** R3 Product corpus write boundary; FACT is rejected by implementations. */
+  upsertGenerationItems(items: readonly SemanticProjectionItem[]): Promise<void>;
+};
+
+export const semanticProductResourceTypes = [
+  'CLAIM',
+  'ENTITY',
+  'RELATION',
+  'EVENT',
+  'DECISION',
+] as const;
+
+export const isSemanticGenerationResourceType = (
+  value: SemanticResourceType,
+): value is Exclude<SemanticResourceType, 'FACT'> =>
+  (semanticProductResourceTypes as readonly string[]).includes(value);

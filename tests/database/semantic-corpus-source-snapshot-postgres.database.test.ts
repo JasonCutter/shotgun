@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
@@ -28,6 +28,8 @@ describe.runIf(databaseUrl)('AKP-1R R2 PostgreSQL Semantic Corpus Source Snapsho
   const queryTexts: string[] = [];
 
   const digest = (value: string): string => `sha256:${value.repeat(64).slice(0, 64)}`;
+  const contentHash = (value: string): string =>
+    `sha256:${createHash('sha256').update(value).digest('hex')}`;
 
   const entity = (candidateId: string, name: string): KnowledgeCandidate =>
     ({
@@ -173,7 +175,7 @@ describe.runIf(databaseUrl)('AKP-1R R2 PostgreSQL Semantic Corpus Source Snapsho
     await pool.query(
       `INSERT INTO asset.original_assets (asset_id, content_hash, size_bytes, storage_key, created_at)
        VALUES ($1, $2, 1, $3, $4)`,
-      [assetId, digest('asset'), `r2-source/${assetId}`, '2026-08-26T08:00:00.000Z'],
+      [assetId, contentHash('asset'), `r2-source/${assetId}`, '2026-08-26T08:00:00.000Z'],
     );
     await pool.query(
       `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)

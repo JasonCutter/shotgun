@@ -288,7 +288,7 @@ import {
   createCompiledTruthModule,
   type CompiledTruthRepositoryPort,
 } from '../../../modules/compiled-truth/src/index.js';
-import { RepositorySemanticCorpusSourceSnapshotReader } from '../../../modules/semantic-corpus/src/index.js';
+import { RepositorySemanticCorpusSourceSnapshotReader } from '../../../adapters/semantic-corpus-repository/src/index.js';
 import type { SemanticCorpusSourceSnapshotReaderPort } from '../../../packages/contracts/src/index.js';
 import {
   type ActionConnectorPort,

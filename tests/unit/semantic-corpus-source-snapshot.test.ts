@@ -12,10 +12,8 @@ import {
   type KnowledgeCandidate,
   type KnowledgeReviewGroup,
 } from '../../packages/contracts/src/index.js';
-import {
-  buildSemanticCorpusSourceSnapshot,
-  RepositorySemanticCorpusSourceSnapshotReader,
-} from '../../modules/semantic-corpus/src/index.js';
+import { buildSemanticCorpusSourceSnapshot } from '../../modules/semantic-corpus/src/index.js';
+import { RepositorySemanticCorpusSourceSnapshotReader } from '../../adapters/semantic-corpus-repository/src/index.js';
 import { PostgresSemanticCorpusSourceSnapshotReader } from '../../adapters/semantic-corpus-postgres/src/index.js';
 
 const digest = (value: string): string => `sha256:${value.repeat(64).slice(0, 64)}`;

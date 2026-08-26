@@ -16,11 +16,14 @@ import type {
   SemanticCorpusSourceSnapshotReaderPort,
 } from '../../../packages/contracts/src/index.js';
 import {
+  approvedKnowledgeDigest,
+  approvedKnowledgeSourceIdentity,
   compiledTruthLogicalDigest,
   decodeGetCompiledTruthReadSnapshotRequest,
   decodeGetCompiledTruthReadSnapshotResult,
   discoveryFingerprint,
   GET_COMPILED_TRUTH_READ_SNAPSHOT,
+  semanticCorpusSourceSnapshotDigest,
   ShotgunError,
   utf16OrdinalCompare,
 } from '../../../packages/contracts/src/index.js';
@@ -29,7 +32,6 @@ import getCompiledTruthReadSnapshotOutputSchema from '../../../packages/contract
 import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
 import type { HandlerContext, ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 import type { GetCompiledTruthReadSnapshotResult } from '../../../packages/contracts/src/index.js';
-import { buildSemanticCorpusSourceSnapshot } from '../../semantic-corpus/src/index.js';
 
 export const COMPILED_TRUTH_PROJECTOR_VERSION = '1.0.0';
 const COMPILED_TRUTH_BUILD_FAILED = 'COMPILED_TRUTH_BUILD_FAILED';
@@ -231,19 +233,21 @@ const compiledTruthProjectionSource = async (
       source: 'APPROVED_TYPED_EDGE' as const,
     }))
     .sort((left, right) => utf16OrdinalCompare(left.id, right.id));
-  const semanticSource = semanticSourceReader
-    ? await semanticSourceReader.readSnapshot(projectId)
-    : buildSemanticCorpusSourceSnapshot({
+  const digest = semanticSourceReader
+    ? (await semanticSourceReader.readWatermark(projectId)).sourceSnapshotDigest
+    : semanticCorpusSourceSnapshotDigest({
         projectId,
-        canonical,
-        claims,
-        approvedGroups: groups,
+        canonicalVersion: canonical.version,
+        canonicalSnapshotDigest: canonical.digest,
+        approvedKnowledgeDigest: approvedKnowledgeDigest(
+          groups.map(approvedKnowledgeSourceIdentity),
+        ),
       });
   return {
     canonical,
     items,
     edges,
-    digest: semanticSource.sourceSnapshotDigest,
+    digest,
   };
 };
 

@@ -15,6 +15,19 @@ ALTER TABLE projection.semantic_items
   ADD CONSTRAINT chk_semantic_items_canonical_version_nonnegative
   CHECK (canonical_version >= 0);
 
+-- FACT is an epistemic record, not Product semantic-generation membership.
+-- Derived projection rows are rebuildable, so remove any legacy FACT rows before
+-- replacing the historical 042 resource-type check.
+DELETE FROM projection.semantic_items
+WHERE resource_type = 'FACT';
+
+ALTER TABLE projection.semantic_items
+  DROP CONSTRAINT IF EXISTS semantic_items_resource_type_check;
+
+ALTER TABLE projection.semantic_items
+  ADD CONSTRAINT chk_semantic_items_product_resource_type
+  CHECK (resource_type IN ('CLAIM', 'ENTITY', 'RELATION', 'EVENT', 'DECISION'));
+
 ALTER TABLE projection.semantic_items
   ADD COLUMN IF NOT EXISTS provider_id text,
   ADD COLUMN IF NOT EXISTS embedding_model_id text,

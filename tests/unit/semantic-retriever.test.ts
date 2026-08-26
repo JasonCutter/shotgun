@@ -121,6 +121,7 @@ describe('SemanticRetriever Unit Tests', () => {
           model,
         };
       },
+      resolveCompatibility: async (input) => input,
     };
 
     const recordedQueries: SemanticCandidateQuery[] = [];

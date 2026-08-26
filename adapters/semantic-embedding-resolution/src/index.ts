@@ -5,6 +5,9 @@ import {
   type ProviderStatusReaderPort,
   type ResolvedSemanticEmbeddingExecution,
   type SemanticEmbeddingExecutionPin,
+  type SemanticEmbeddingCompatibility,
+  type SemanticEmbeddingCompatibilityInput,
+  type SemanticEmbeddingCompatibilityPort,
   type SemanticEmbeddingProfile,
   type SemanticEmbeddingProfilePort,
   type SemanticEmbeddingRegistryPort,
@@ -26,7 +29,9 @@ export type SemanticEmbeddingAuthorityResolverOptions = {
   readonly clock?: () => string;
 };
 
-export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingResolverPort {
+export class SemanticEmbeddingAuthorityResolver
+  implements SemanticEmbeddingResolverPort, SemanticEmbeddingCompatibilityPort
+{
   private readonly clock: () => string;
 
   constructor(
@@ -233,6 +238,115 @@ export class SemanticEmbeddingAuthorityResolver implements SemanticEmbeddingReso
       pin,
       profile,
       model,
+    };
+  }
+
+  async resolveCompatibility(
+    input: SemanticEmbeddingCompatibilityInput,
+  ): Promise<SemanticEmbeddingCompatibility> {
+    const projectId = input.projectId.trim();
+    if (!projectId) {
+      throw new SemanticEmbeddingError({
+        code: 'INVALID_INPUT',
+        safeMessage: 'Project ID is required.',
+        operation: 'resolve-compatibility',
+      });
+    }
+
+    const profile = await this.profileService.getRevision(
+      projectId,
+      input.embeddingProfileRevision,
+    );
+    if (!profile || profile.status === 'FAILED') {
+      throw new SemanticEmbeddingError({
+        code: 'CAPABILITY_UNAVAILABLE',
+        safeMessage: 'Pinned embedding profile is unavailable.',
+        operation: 'resolve-compatibility-profile',
+      });
+    }
+
+    if (
+      profile.profileId !== input.embeddingProfileId ||
+      profile.providerId !== input.providerId ||
+      profile.embeddingModelId !== input.embeddingModelId ||
+      profile.credentialId !== input.credentialId ||
+      profile.credentialRevision !== input.credentialRevision ||
+      profile.representationVersion !== input.representationVersion ||
+      profile.dimension !== input.dimension ||
+      profile.distanceMetric !== input.distanceMetric ||
+      profile.normalizationPolicy !== input.normalizationPolicy
+    ) {
+      throw new SemanticEmbeddingError({
+        code: 'CAPABILITY_UNAVAILABLE',
+        safeMessage: 'Pinned semantic execution identity is unavailable.',
+        operation: 'resolve-compatibility-profile',
+      });
+    }
+
+    const provider = this.providerRegistry.getProvider(profile.providerId);
+    if (!provider || provider.status !== 'active' || !provider.registryRevision) {
+      throw new SemanticEmbeddingError({
+        code: 'CAPABILITY_UNAVAILABLE',
+        safeMessage: 'Configured embedding provider is unavailable.',
+        operation: 'resolve-compatibility-provider',
+      });
+    }
+
+    const model = this.embeddingRegistry.getModel(profile.providerId, profile.embeddingModelId);
+    if (
+      !model ||
+      !model.shotgunAllowedDimensions.includes(profile.dimension) ||
+      !model.supportedDistanceMetrics.includes(profile.distanceMetric)
+    ) {
+      throw new SemanticEmbeddingError({
+        code: 'CAPABILITY_UNAVAILABLE',
+        safeMessage: 'Configured embedding model capability is unavailable.',
+        operation: 'resolve-compatibility-model',
+      });
+    }
+
+    const availability = this.vault.getAvailability();
+    if (availability.state !== 'AVAILABLE') {
+      throw new SemanticEmbeddingError({
+        code: 'CONFIGURATION_REQUIRED',
+        safeMessage: 'Credential vault is unavailable.',
+        operation: 'resolve-compatibility-vault',
+      });
+    }
+
+    const credential = await this.vault.getMetadata({
+      projectId,
+      providerId: profile.providerId,
+      credentialId: profile.credentialId,
+      credentialRevision: profile.credentialRevision,
+    });
+    if (
+      !credential ||
+      credential.projectId !== projectId ||
+      credential.providerId !== profile.providerId ||
+      credential.credentialId !== profile.credentialId ||
+      credential.credentialRevision !== profile.credentialRevision ||
+      credential.lifecycleState !== 'active'
+    ) {
+      throw new SemanticEmbeddingError({
+        code: 'CAPABILITY_UNAVAILABLE',
+        safeMessage: 'Pinned credential revision is unavailable.',
+        operation: 'resolve-compatibility-credential',
+      });
+    }
+
+    return {
+      projectId,
+      providerId: profile.providerId,
+      embeddingModelId: model.modelId,
+      embeddingProfileId: profile.profileId,
+      embeddingProfileRevision: profile.profileRevision,
+      credentialId: credential.credentialId,
+      credentialRevision: credential.credentialRevision,
+      representationVersion: profile.representationVersion,
+      dimension: profile.dimension,
+      distanceMetric: profile.distanceMetric,
+      normalizationPolicy: profile.normalizationPolicy,
     };
   }
 }

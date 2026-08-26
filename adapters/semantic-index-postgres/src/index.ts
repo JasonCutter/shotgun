@@ -312,6 +312,13 @@ export class PostgresSemanticIndexRepository
   }
 
   async upsertItem(item: SemanticProjectionItem): Promise<void> {
+    if (item.resourceType === 'FACT') {
+      throw new SemanticEmbeddingError({
+        code: 'VALIDATION_FAILURE',
+        safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
+        operation: 'upsert-item',
+      });
+    }
     const gen = await this.getGeneration(item.projectId, item.generationId);
     if (!gen) {
       throw new SemanticEmbeddingError({
@@ -325,13 +332,6 @@ export class PostgresSemanticIndexRepository
       item.providerId !== undefined ||
       item.embeddingModelId !== undefined ||
       item.authority !== undefined;
-    if (hasR3Identity && !isSemanticGenerationResourceType(item.resourceType)) {
-      throw new SemanticEmbeddingError({
-        code: 'VALIDATION_FAILURE',
-        safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
-        operation: 'upsert-item',
-      });
-    }
     if (
       item.dimension !== gen.dimension ||
       item.embeddingProfileId !== gen.embeddingProfileId ||
@@ -443,6 +443,13 @@ export class PostgresSemanticIndexRepository
     try {
       await client.query('BEGIN');
       for (const item of items) {
+        if (item.resourceType === 'FACT') {
+          throw new SemanticEmbeddingError({
+            code: 'VALIDATION_FAILURE',
+            safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
+            operation: 'upsert-items',
+          });
+        }
         // Validate generation using the SAME connected transaction client
         const genRes = await client.query<GenerationRow>(
           `SELECT project_id, generation_id, dimension, embedding_profile_id, embedding_profile_revision, representation_version, normalization_policy,
@@ -464,13 +471,6 @@ export class PostgresSemanticIndexRepository
           item.providerId !== undefined ||
           item.embeddingModelId !== undefined ||
           item.authority !== undefined;
-        if (hasR3Identity && !isSemanticGenerationResourceType(item.resourceType)) {
-          throw new SemanticEmbeddingError({
-            code: 'VALIDATION_FAILURE',
-            safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
-            operation: 'upsert-items',
-          });
-        }
         if (
           item.dimension !== gen.dimension ||
           item.embeddingProfileId !== gen.embedding_profile_id ||

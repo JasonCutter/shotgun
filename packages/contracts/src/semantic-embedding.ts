@@ -184,7 +184,33 @@ export type ResolvedSemanticEmbeddingExecution = {
   readonly model: SemanticEmbeddingModelDescriptor;
 };
 
-export type SemanticEmbeddingResolverPort = {
+export type SemanticEmbeddingCompatibilityInput = {
+  readonly projectId: string;
+  readonly providerId: string;
+  readonly embeddingModelId: string;
+  readonly embeddingProfileId: string;
+  readonly embeddingProfileRevision: number;
+  readonly credentialId: string;
+  readonly credentialRevision: number;
+  readonly representationVersion: string;
+  readonly dimension: number;
+  readonly distanceMetric: SemanticDistanceMetric;
+  readonly normalizationPolicy: SemanticNormalizationPolicy;
+};
+
+/**
+ * Current execution capability only. Build-time audit revisions and policy
+ * fingerprints intentionally do not cross this boundary.
+ */
+export type SemanticEmbeddingCompatibility = SemanticEmbeddingCompatibilityInput;
+
+export type SemanticEmbeddingCompatibilityPort = {
+  resolveCompatibility(
+    input: SemanticEmbeddingCompatibilityInput,
+  ): Promise<SemanticEmbeddingCompatibility>;
+};
+
+export type SemanticEmbeddingResolverPort = SemanticEmbeddingCompatibilityPort & {
   resolveExecution(input: {
     readonly projectId: string;
     readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';

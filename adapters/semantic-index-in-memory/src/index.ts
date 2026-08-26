@@ -155,6 +155,13 @@ export class InMemorySemanticIndexRepository
   }
 
   async upsertItem(item: SemanticProjectionItem): Promise<void> {
+    if (item.resourceType === 'FACT') {
+      throw new SemanticEmbeddingError({
+        code: 'VALIDATION_FAILURE',
+        safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
+        operation: 'upsert-item',
+      });
+    }
     const gen = await this.getGeneration(item.projectId, item.generationId);
     if (!gen) {
       throw new SemanticEmbeddingError({
@@ -168,13 +175,6 @@ export class InMemorySemanticIndexRepository
       item.providerId !== undefined ||
       item.embeddingModelId !== undefined ||
       item.authority !== undefined;
-    if (hasR3Identity && !isSemanticGenerationResourceType(item.resourceType)) {
-      throw new SemanticEmbeddingError({
-        code: 'VALIDATION_FAILURE',
-        safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
-        operation: 'upsert-item',
-      });
-    }
     if (
       item.dimension !== gen.dimension ||
       item.embeddingProfileId !== gen.embeddingProfileId ||
@@ -240,6 +240,13 @@ export class InMemorySemanticIndexRepository
     const stagedSemanticKeys = new Map(this.semanticKeyToItemKey);
 
     for (const item of items) {
+      if (item.resourceType === 'FACT') {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
+          operation: 'upsert-items',
+        });
+      }
       const gen = await this.getGeneration(item.projectId, item.generationId);
       if (!gen) {
         throw new SemanticEmbeddingError({
@@ -253,13 +260,6 @@ export class InMemorySemanticIndexRepository
         item.providerId !== undefined ||
         item.embeddingModelId !== undefined ||
         item.authority !== undefined;
-      if (hasR3Identity && !isSemanticGenerationResourceType(item.resourceType)) {
-        throw new SemanticEmbeddingError({
-          code: 'VALIDATION_FAILURE',
-          safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
-          operation: 'upsert-items',
-        });
-      }
       if (
         item.dimension !== gen.dimension ||
         item.embeddingProfileId !== gen.embeddingProfileId ||

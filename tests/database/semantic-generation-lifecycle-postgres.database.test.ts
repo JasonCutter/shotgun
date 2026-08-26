@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
@@ -27,7 +28,8 @@ if (process.env.TEST_DATABASE_URL?.trim()) {
 const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const projectId = 'project-r3-postgres-lifecycle';
-const digest = (value: string): string => `sha256:${value.repeat(64).slice(0, 64)}`;
+const digest = (value: string): string =>
+  `sha256:${createHash('sha256').update(value).digest('hex')}`;
 
 const generation = (
   generationId: string,
@@ -121,6 +123,13 @@ describe('AKP-1R R3: PostgreSQL semantic generation lifecycle', () => {
     const repository = new PostgresSemanticIndexRepository(pool);
     const generationA = generation('generation-a', digest('source-a'), 'BUILDING', 0);
     const itemA = item(generationA.generationId, generationA.sourceProjectionDigest);
+    for (const fixtureDigest of [
+      generationA.sourceProjectionDigest,
+      generationA.providerPolicyFingerprint,
+      itemA.semanticTextDigest,
+    ]) {
+      expect(fixtureDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
+    }
     expect(await repository.saveGeneration(generationA)).toBe('CREATED');
     expect(
       await repository.transitionGenerationStatus({
@@ -225,6 +234,39 @@ describe('AKP-1R R3: PostgreSQL semantic generation lifecycle', () => {
         },
       ]),
     ).rejects.toMatchObject({ embeddingErrorCode: 'VALIDATION_FAILURE' });
+    await expect(
+      repository.upsertItem({
+        ...item(generationA.generationId, generationA.sourceProjectionDigest),
+        resourceType: 'FACT',
+      }),
+    ).rejects.toMatchObject({ embeddingErrorCode: 'VALIDATION_FAILURE' });
+
+    await expect(
+      pool.query(
+        `INSERT INTO projection.semantic_items (
+           project_id, generation_id, semantic_item_id, resource_type, resource_id,
+           source_projection_digest, canonical_version, semantic_text_digest,
+           embedding_profile_id, embedding_profile_revision, representation_version,
+           vector, dimension, evidence_ids, access_scope, sensitivity,
+           provider_id, embedding_model_id, normalization_policy, authority, provenance,
+           indexed_at, created_at, updated_at
+         ) VALUES (
+           $1, $2, 'sem-fact-direct', 'FACT', 'fact-direct',
+           $3, 0, $4,
+           'profile-r3', 1, $5,
+           '[1,0]'::vector, 2, '{evidence-r3}', '{project:r3}', 'internal',
+           'provider-r3', 'model-r3', 'unit_length', 'CANONICAL', '{}'::jsonb,
+           now(), now(), now()
+         )`,
+        [
+          projectId,
+          generationA.generationId,
+          generationA.sourceProjectionDigest,
+          digest('semantic-text-direct'),
+          SEMANTIC_REPRESENTATION_VERSION_V2,
+        ],
+      ),
+    ).rejects.toThrow(/chk_semantic_items_product_resource_type/);
     expect(
       await repository.getItem(projectId, generationA.generationId, 'CLAIM', 'claim-r3'),
     ).toBeUndefined();

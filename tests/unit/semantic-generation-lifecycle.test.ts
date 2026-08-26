@@ -5,7 +5,9 @@ import { SemanticGenerationBuilder } from '../../modules/semantic-generation/src
 import {
   SEMANTIC_REPRESENTATION_VERSION_V2,
   buildSemanticRepresentationV2,
+  sha256Text,
   semanticMembershipDigest,
+  type SemanticEmbeddingCompatibility,
   semanticVectorPayloadIdentity,
   type ResolvedSemanticEmbeddingExecution,
   type SemanticCorpusSourceResource,
@@ -17,7 +19,7 @@ import {
   type SemanticCorpusSourceWatermark,
 } from '../../packages/contracts/src/index.js';
 
-const digest = (value: string): string => `sha256:${value.repeat(64).slice(0, 64)}`;
+const digest = (value: string): string => sha256Text(value);
 
 const profile = {
   profileId: 'profile-r3',
@@ -121,13 +123,23 @@ const makeRig = (initialSnapshot: SemanticCorpusSourceSnapshot) => {
   };
   let batchCalls = 0;
   let payloadCalls = 0;
+  let executionCalls = 0;
+  let compatibilityOverrides: Partial<SemanticEmbeddingCompatibility> = {};
+  let compatibilityFailure: Error | undefined;
 
   const source = {
     readSnapshot: async () => snapshot,
     readWatermark: async () => watermark,
   };
   const resolver: SemanticEmbeddingResolverPort = {
-    resolveExecution: async () => resolved,
+    resolveExecution: async () => {
+      executionCalls++;
+      return resolved;
+    },
+    resolveCompatibility: async (input) => {
+      if (compatibilityFailure) throw compatibilityFailure;
+      return { ...input, ...compatibilityOverrides };
+    },
   };
   const router: SemanticEmbeddingRouterPort = {
     embed: async () => ({
@@ -165,6 +177,13 @@ const makeRig = (initialSnapshot: SemanticCorpusSourceSnapshot) => {
       watermark = next;
     },
     counts: () => ({ batchCalls, payloadCalls }),
+    executionCalls: () => executionCalls,
+    setCompatibility: (overrides: Partial<SemanticEmbeddingCompatibility>) => {
+      compatibilityOverrides = overrides;
+    },
+    setCompatibilityFailure: (error: Error | undefined) => {
+      compatibilityFailure = error;
+    },
   };
 };
 
@@ -193,6 +212,8 @@ describe('R3 semantic generation lifecycle', () => {
     ).toMatchObject({ itemCount: 5, membershipDigest: result.membershipDigest });
     const pointer = await rig.repository.getActiveGenerationPointer('project-r3');
     expect(pointer).toBeDefined();
+    const embeddingCountsBeforeRollback = rig.counts();
+    expect(rig.executionCalls()).toBe(1);
     const rollback = await rig.builder('unused-generation-id').rollback({
       projectId: 'project-r3',
       targetGenerationId: 'generation-a',
@@ -206,6 +227,90 @@ describe('R3 semantic generation lifecycle', () => {
     expect((await rig.repository.getActiveGenerationPointer('project-r3'))?.pointerRevision).toBe(
       2,
     );
+    expect(rig.counts()).toEqual(embeddingCountsBeforeRollback);
+    expect(rig.executionCalls()).toBe(1);
+  });
+
+  it('permits rollback when only historical audit revisions differ from current compatibility', async () => {
+    const snapshot = makeSnapshot([makeResource('claim-1')], digest('snapshot-a'));
+    const rig = makeRig(snapshot);
+    await rig.builder('generation-a').build({ projectId: 'project-r3', targetProfileRevision: 1 });
+    const pointer = await rig.repository.getActiveGenerationPointer('project-r3');
+
+    const result = await rig.builder('unused-generation-id').rollback({
+      projectId: 'project-r3',
+      targetGenerationId: 'generation-a',
+      expectedPointer: {
+        kind: 'EXISTING',
+        activeGenerationId: pointer!.activeGenerationId,
+        pointerRevision: pointer!.pointerRevision,
+      },
+    });
+
+    expect(result.status).toBe('ACTIVATED');
+  });
+
+  it('rejects rollback when current credential capability is unavailable', async () => {
+    const snapshot = makeSnapshot([makeResource('claim-1')], digest('snapshot-a'));
+    const rig = makeRig(snapshot);
+    await rig.builder('generation-a').build({ projectId: 'project-r3', targetProfileRevision: 1 });
+    rig.setCompatibilityFailure(new Error('credential revoked'));
+    const pointer = await rig.repository.getActiveGenerationPointer('project-r3');
+
+    await expect(
+      rig.builder('unused-generation-id').rollback({
+        projectId: 'project-r3',
+        targetGenerationId: 'generation-a',
+        expectedPointer: {
+          kind: 'EXISTING',
+          activeGenerationId: pointer!.activeGenerationId,
+          pointerRevision: pointer!.pointerRevision,
+        },
+      }),
+    ).rejects.toThrow('credential revoked');
+  });
+
+  it('rejects rollback when the current provider/model compatibility is unavailable', async () => {
+    const snapshot = makeSnapshot([makeResource('claim-1')], digest('snapshot-a'));
+    const rig = makeRig(snapshot);
+    await rig.builder('generation-a').build({ projectId: 'project-r3', targetProfileRevision: 1 });
+    rig.setCompatibilityFailure(new Error('provider unavailable'));
+    const pointer = await rig.repository.getActiveGenerationPointer('project-r3');
+
+    await expect(
+      rig.builder('unused-generation-id').rollback({
+        projectId: 'project-r3',
+        targetGenerationId: 'generation-a',
+        expectedPointer: {
+          kind: 'EXISTING',
+          activeGenerationId: pointer!.activeGenerationId,
+          pointerRevision: pointer!.pointerRevision,
+        },
+      }),
+    ).rejects.toThrow('provider unavailable');
+  });
+
+  it('rejects rollback when the target source watermark is stale', async () => {
+    const snapshot = makeSnapshot([makeResource('claim-1')], digest('snapshot-a'));
+    const rig = makeRig(snapshot);
+    await rig.builder('generation-a').build({ projectId: 'project-r3', targetProfileRevision: 1 });
+    rig.setWatermark({
+      ...snapshot,
+      sourceSnapshotDigest: digest('snapshot-advanced'),
+    });
+    const pointer = await rig.repository.getActiveGenerationPointer('project-r3');
+
+    await expect(
+      rig.builder('unused-generation-id').rollback({
+        projectId: 'project-r3',
+        targetGenerationId: 'generation-a',
+        expectedPointer: {
+          kind: 'EXISTING',
+          activeGenerationId: pointer!.activeGenerationId,
+          pointerRevision: pointer!.pointerRevision,
+        },
+      }),
+    ).rejects.toMatchObject({ embeddingErrorCode: 'CONFLICT' });
   });
 
   it('reuses only the active generation vector when payload identity is unchanged', async () => {

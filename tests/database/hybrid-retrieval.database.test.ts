@@ -111,6 +111,7 @@ describe('AKP-1 WP3: Hybrid Retrieval Database Integration Tests', () => {
         defaultNormalizationPolicy: 'unit_length',
       },
     }),
+    resolveCompatibility: async (input) => input,
   };
 
   beforeEach(async () => {

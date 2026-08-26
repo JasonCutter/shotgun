@@ -105,7 +105,7 @@ describe('AKP-1 WP2: InMemorySemanticIndexRepository Unit & Parity Tests', () =>
     };
     await repo.upsertItem(item1);
 
-    // 1. Attempting to assign the same semanticItemId to a different resource (FACT:fact-2) throws CONFLICT
+    // 1. FACT is not persistable through the generic repository boundary.
     const itemConflict: SemanticProjectionItem = {
       semanticItemId: 'sem-unique-1',
       projectId: 'proj-1',
@@ -129,7 +129,7 @@ describe('AKP-1 WP2: InMemorySemanticIndexRepository Unit & Parity Tests', () =>
     };
     await expect(repo.upsertItem(itemConflict)).rejects.toMatchObject({
       name: 'SemanticEmbeddingError',
-      embeddingErrorCode: 'CONFLICT',
+      embeddingErrorCode: 'VALIDATION_FAILURE',
     });
 
     // 2. Same resource (CLAIM:claim-1) updates to a new semanticItemId 'sem-unique-new'
@@ -201,8 +201,8 @@ describe('AKP-1 WP2: InMemorySemanticIndexRepository Unit & Parity Tests', () =>
       semanticItemId: 'sem-batch-invalid',
       projectId: 'proj-1',
       generationId: 'gen-1',
-      resourceType: 'FACT',
-      resourceId: 'fact-batch-2',
+      resourceType: 'ENTITY',
+      resourceId: 'entity-batch-2',
       sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
       canonicalVersion: 1,
       semanticTextDigest: 'sha256:' + '2'.repeat(64),
@@ -226,7 +226,7 @@ describe('AKP-1 WP2: InMemorySemanticIndexRepository Unit & Parity Tests', () =>
 
     // Neither item must be visible
     expect(await repo.getItem('proj-1', 'gen-1', 'CLAIM', 'claim-batch-1')).toBeUndefined();
-    expect(await repo.getItem('proj-1', 'gen-1', 'FACT', 'fact-batch-2')).toBeUndefined();
+    expect(await repo.getItem('proj-1', 'gen-1', 'ENTITY', 'entity-batch-2')).toBeUndefined();
     expect(await repo.getItemBySemanticId('proj-1', 'gen-1', 'sem-batch-valid')).toBeUndefined();
   });
 

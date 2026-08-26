@@ -8,6 +8,7 @@ import {
   semanticVectorPayloadIdentity,
   semanticVectorPayloadIdentityDigest,
   type ResolvedSemanticEmbeddingExecution,
+  type SemanticEmbeddingCompatibilityPort,
   type SemanticCorpusSourceResource,
   type SemanticCorpusSourceSnapshot,
   type SemanticCorpusSourceWatermark,
@@ -132,7 +133,8 @@ export class SemanticGenerationBuilder {
       readSnapshot(projectId: string): Promise<SemanticCorpusSourceSnapshot>;
       readWatermark(projectId: string): Promise<SemanticCorpusSourceWatermark>;
     },
-    private readonly embeddingResolver: SemanticEmbeddingResolverPort,
+    private readonly embeddingResolver: SemanticEmbeddingResolverPort &
+      SemanticEmbeddingCompatibilityPort,
     private readonly embeddingRouter: SemanticEmbeddingRouterPort,
     private readonly profileService?: SemanticEmbeddingProfilePort,
     private readonly options: SemanticGenerationBuilderOptions = {},
@@ -322,25 +324,30 @@ export class SemanticGenerationBuilder {
         operation: 'semantic-generation:rollback',
       });
     }
-    const execution = await this.embeddingResolver.resolveExecution({
+    const compatibility = await this.embeddingResolver.resolveCompatibility({
       projectId: input.projectId,
-      sensitivity: 'internal',
-      profileRevision: target.embeddingProfileRevision,
+      providerId: target.providerId,
+      embeddingModelId: target.embeddingModelId,
+      embeddingProfileId: target.embeddingProfileId,
+      embeddingProfileRevision: target.embeddingProfileRevision,
+      credentialId: target.credentialId,
+      credentialRevision: target.credentialRevision,
+      representationVersion: target.representationVersion,
+      dimension: target.dimension,
+      distanceMetric: target.distanceMetric,
+      normalizationPolicy: target.normalizationPolicy,
     });
     if (
-      target.providerId !== execution.pin.providerId ||
-      target.embeddingModelId !== execution.pin.embeddingModelId ||
-      target.embeddingProfileId !== execution.pin.embeddingProfileId ||
-      target.embeddingProfileRevision !== execution.pin.embeddingProfileRevision ||
-      target.credentialId !== execution.pin.credentialId ||
-      target.credentialRevision !== execution.pin.credentialRevision ||
-      target.providerRegistryRevision !== execution.pin.providerRegistryRevision ||
-      target.capabilityCatalogRevision !== execution.pin.capabilityCatalogRevision ||
-      target.providerPolicyFingerprint !== execution.pin.providerPolicyFingerprint ||
-      target.representationVersion !== execution.pin.representationVersion ||
-      target.dimension !== execution.profile.dimension ||
-      target.distanceMetric !== execution.profile.distanceMetric ||
-      target.normalizationPolicy !== execution.profile.normalizationPolicy
+      target.providerId !== compatibility.providerId ||
+      target.embeddingModelId !== compatibility.embeddingModelId ||
+      target.embeddingProfileId !== compatibility.embeddingProfileId ||
+      target.embeddingProfileRevision !== compatibility.embeddingProfileRevision ||
+      target.credentialId !== compatibility.credentialId ||
+      target.credentialRevision !== compatibility.credentialRevision ||
+      target.representationVersion !== compatibility.representationVersion ||
+      target.dimension !== compatibility.dimension ||
+      target.distanceMetric !== compatibility.distanceMetric ||
+      target.normalizationPolicy !== compatibility.normalizationPolicy
     ) {
       throw new SemanticEmbeddingError({
         code: 'CONFLICT',

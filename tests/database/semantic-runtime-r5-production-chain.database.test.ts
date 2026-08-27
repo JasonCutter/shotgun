@@ -13,6 +13,7 @@ import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.j
 import { PostgresProviderExternalTransferApprovalRepository } from '../../adapters/provider-privacy-deployment-postgres/src/index.js';
 import { PostgresSemanticEmbeddingProfileRepository } from '../../adapters/semantic-embedding-postgres/src/index.js';
 import { PostgresSemanticIndexRepository } from '../../adapters/semantic-index-postgres/src/index.js';
+import { PostgresSemanticCorpusSourceSnapshotReader } from '../../adapters/semantic-corpus-postgres/src/index.js';
 import {
   EnvironmentCredentialMasterKeyAuthority,
   CredentialVaultService,
@@ -55,11 +56,26 @@ if (process.env.TEST_DATABASE_URL?.trim()) {
 const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const digest = (value: string): string => sha256Text(value);
+const P1_DIMENSION = 512;
+const P2_DIMENSION = 1536;
 
 type ProviderRequest = {
+  readonly model: unknown;
+  readonly input: unknown;
+  readonly dimensions: unknown;
+};
+
+type ProviderRequestObservation = {
   readonly model: string;
-  readonly input: string | readonly string[];
-  readonly dimensions: number;
+  readonly dimension: number;
+  readonly inputCount: number;
+  readonly inputShape: 'string' | 'array';
+  readonly classification: 'BUILD' | 'QUERY';
+};
+
+type BuildPhase = {
+  readonly model: string;
+  readonly dimension: number;
 };
 
 /**
@@ -70,11 +86,17 @@ class DeterministicOpenAIProvider {
   private server: Server | undefined;
   private readonly releaseWaiters: Array<() => void> = [];
   private paused = false;
+  private buildPhase: BuildPhase | undefined;
+  private readonly requestObservations: ProviderRequestObservation[] = [];
 
   baseUrl = '';
   totalRequests = 0;
   buildRequests = 0;
   queryRequests = 0;
+
+  get observations(): readonly ProviderRequestObservation[] {
+    return [...this.requestObservations];
+  }
 
   async listen(): Promise<void> {
     this.server = createServer((request, response) => {
@@ -107,6 +129,16 @@ class DeterministicOpenAIProvider {
     this.totalRequests = 0;
     this.buildRequests = 0;
     this.queryRequests = 0;
+    this.buildPhase = undefined;
+    this.requestObservations.length = 0;
+  }
+
+  beginBuildPhase(build: BuildPhase): void {
+    this.buildPhase = build;
+  }
+
+  endBuildPhase(): void {
+    this.buildPhase = undefined;
   }
 
   pauseBuilds(): void {
@@ -125,7 +157,7 @@ class DeterministicOpenAIProvider {
     }
     if (this.buildRequests < count) {
       throw new Error(
-        `R5 provider harness observed ${this.buildRequests} build requests, expected ${count}.`,
+        `R5 provider harness observed ${this.buildRequests} build requests, expected ${count}; safe provider observations=${JSON.stringify(this.requestObservations)}.`,
       );
     }
   }
@@ -151,20 +183,38 @@ class DeterministicOpenAIProvider {
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as ProviderRequest;
-      const inputs = Array.isArray(body.input) ? body.input : [body.input];
+      const rawInputs = Array.isArray(body.input) ? body.input : [body.input];
+      const model = body.model;
+      const dimension = body.dimensions;
       if (
-        typeof body.model !== 'string' ||
-        !Number.isSafeInteger(body.dimensions) ||
-        body.dimensions < 1 ||
-        inputs.length < 1 ||
-        inputs.some((input) => typeof input !== 'string')
+        typeof model !== 'string' ||
+        typeof dimension !== 'number' ||
+        !Number.isSafeInteger(dimension) ||
+        dimension < 1 ||
+        rawInputs.length < 1 ||
+        rawInputs.some((input) => typeof input !== 'string')
       ) {
         send(400, { error: 'invalid request' });
         return;
       }
+      const inputs = rawInputs as string[];
 
       this.totalRequests += 1;
-      const isBuild = Array.isArray(body.input);
+      // The real SemanticEmbeddingRouter sends an array for both generation
+      // batches and one-item query embeddings. Operation classification must
+      // therefore use the explicit test-owned build phase plus the pinned
+      // model/dimension, never input shape or semantic text.
+      const isBuild =
+        this.buildPhase !== undefined &&
+        model === this.buildPhase.model &&
+        dimension === this.buildPhase.dimension;
+      this.requestObservations.push({
+        model,
+        dimension,
+        inputCount: inputs.length,
+        inputShape: Array.isArray(body.input) ? 'array' : 'string',
+        classification: isBuild ? 'BUILD' : 'QUERY',
+      });
       if (isBuild) {
         this.buildRequests += 1;
         if (this.paused) await new Promise<void>((resolve) => this.releaseWaiters.push(resolve));
@@ -177,9 +227,9 @@ class DeterministicOpenAIProvider {
         data: inputs.map((input, index) => ({
           object: 'embedding',
           index,
-          embedding: this.vectorFor(input as string, body.dimensions),
+          embedding: this.vectorFor(input, dimension),
         })),
-        model: body.model,
+        model,
         usage: { prompt_tokens: 1, total_tokens: inputs.length },
       });
     } catch {
@@ -215,6 +265,32 @@ type Fixture = {
   readonly vault: CredentialVaultService;
   readonly profileService: SemanticEmbeddingProfileService;
   readonly approvalService: ProviderExternalTransferApprovalService;
+};
+
+type RefreshResponse = { readonly statusCode: number; readonly body: string };
+
+const safeRefreshResponseSummary = (response: RefreshResponse) => {
+  try {
+    const body = JSON.parse(response.body) as {
+      readonly code?: unknown;
+      readonly refresh?: {
+        readonly status?: unknown;
+        readonly profileRevision?: unknown;
+        readonly itemCount?: unknown;
+      };
+    };
+    return {
+      statusCode: response.statusCode,
+      ...(typeof body.code === 'string' ? { code: body.code } : {}),
+      ...(typeof body.refresh?.status === 'string' ? { refreshStatus: body.refresh.status } : {}),
+      ...(typeof body.refresh?.profileRevision === 'number'
+        ? { profileRevision: body.refresh.profileRevision }
+        : {}),
+      ...(typeof body.refresh?.itemCount === 'number' ? { itemCount: body.refresh.itemCount } : {}),
+    };
+  } catch {
+    return { statusCode: response.statusCode, bodyShape: 'non-json' as const };
+  }
 };
 
 const createFixture = async (): Promise<Fixture> => {
@@ -440,7 +516,7 @@ const createFixture = async (): Promise<Fixture> => {
     embeddingModelId: 'text-embedding-3-small',
     credentialId: credential.credentialId,
     credentialRevision: credential.credentialRevision,
-    dimension: 512,
+    dimension: P1_DIMENSION,
     distanceMetric: 'cosine',
     normalizationPolicy: 'unit_length',
     status: 'PREPARED',
@@ -547,6 +623,37 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       return { statusCode: response.statusCode, body: response.body };
     };
     const refresh = async () => post('/projection/semantic/refresh', {});
+    const runInitialBuildRace = async (): Promise<readonly RefreshResponse[]> => {
+      provider.beginBuildPhase({ model: 'text-embedding-3-small', dimension: P1_DIMENSION });
+      provider.pauseBuilds();
+      const requests = [refresh(), refresh()];
+      let waitError: unknown;
+      try {
+        await provider.waitForBuildRequests(2);
+      } catch (error) {
+        waitError = error;
+      } finally {
+        provider.endBuildPhase();
+        // Do not leave an HTTP request suspended if the arrival assertion
+        // fails; the test teardown must remain bounded.
+        provider.releaseBuilds();
+      }
+      const settled = await Promise.allSettled(requests);
+      const rejected = settled.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+      if (waitError || rejected) {
+        const responseSummary = settled.map((result) =>
+          result.status === 'fulfilled'
+            ? safeRefreshResponseSummary(result.value)
+            : { status: 'rejected' as const },
+        );
+        throw new Error(
+          `R5 initial build race failed: ${waitError instanceof Error ? waitError.message : 'refresh request rejected'}; safe refresh responses=${JSON.stringify(responseSummary)}; safe provider observations=${JSON.stringify(provider.observations)}.`,
+        );
+      }
+      return settled.map((result) => (result as PromiseFulfilledResult<RefreshResponse>).value);
+    };
     const hybrid = async (query = 'R5 canonical production chain') => {
       const response = await post('/search/hybrid', { query, limit: 10 });
       expect(response.statusCode).toBe(200);
@@ -577,6 +684,28 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         : undefined;
       return { pointer: pointer.rows[0], generation: generation.rows[0], membership };
     };
+    const generationIdentities = async (generationId: string) =>
+      (
+        await pool.query<{
+          resource_type: string;
+          semantic_text_digest: string;
+          representation_version: string;
+          provider_id: string;
+          embedding_model_id: string;
+          embedding_profile_id: string;
+          embedding_profile_revision: number;
+          dimension: number;
+          normalization_policy: string;
+        }>(
+          `SELECT resource_type, semantic_text_digest, representation_version, provider_id,
+                  embedding_model_id, embedding_profile_id, embedding_profile_revision,
+                  dimension, normalization_policy
+             FROM projection.semantic_items
+            WHERE project_id = $1 AND generation_id = $2
+            ORDER BY resource_type, resource_id`,
+          [fixture.projectId, generationId],
+        )
+      ).rows;
 
     try {
       // The normal startup recovery may create a valid compiled-truth row.
@@ -631,20 +760,32 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         ],
       );
 
+      const sourceSnapshot = await new PostgresSemanticCorpusSourceSnapshotReader(
+        pool,
+      ).readSnapshot(fixture.projectId);
+      expect(sourceSnapshot.resources.map((resource) => resource.resourceType)).toEqual([
+        'CLAIM',
+        'ENTITY',
+      ]);
+      expect(sourceSnapshot.resources).toHaveLength(2);
+      expect(
+        sourceSnapshot.resources.every(
+          (resource) => resource.provenance.sourceVersionId === fixture.sourceVersionId,
+        ),
+      ).toBe(true);
+      expect(
+        sourceSnapshot.resources.every((resource) =>
+          resource.provenance.evidenceIds.includes(fixture.evidenceId),
+        ),
+      ).toBe(true);
+      expect(
+        sourceSnapshot.resources.every((resource) => String(resource.resourceType) !== 'FACT'),
+      ).toBe(true);
+
       // Initial build: real profile service/resolver, real approval/vault,
       // real OpenAI adapter, real Postgres lifecycle and normal refresh API.
       provider.reset();
-      provider.pauseBuilds();
-      const initialBuildA = refresh();
-      const initialBuildB = refresh();
-      try {
-        await provider.waitForBuildRequests(2);
-      } finally {
-        // Do not leave an HTTP request suspended if the arrival assertion
-        // fails; the test teardown must remain bounded.
-        provider.releaseBuilds();
-      }
-      const initialResponses = await Promise.all([initialBuildA, initialBuildB]);
+      const initialResponses = await runInitialBuildRace();
       expect(initialResponses.every((response) => response.statusCode === 200)).toBe(true);
       const initialResults = initialResponses.map(
         (response) =>
@@ -660,6 +801,22 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       expect(initialResult.refresh.itemCount).toBe(2);
       expect(provider.buildRequests).toBe(2);
       expect(provider.queryRequests).toBe(0);
+      expect(provider.observations).toEqual([
+        {
+          model: 'text-embedding-3-small',
+          dimension: P1_DIMENSION,
+          inputCount: 2,
+          inputShape: 'array',
+          classification: 'BUILD',
+        },
+        {
+          model: 'text-embedding-3-small',
+          dimension: P1_DIMENSION,
+          inputCount: 2,
+          inputShape: 'array',
+          classification: 'BUILD',
+        },
+      ]);
       const first = await activeGeneration();
       expect(first.generation?.build_status).toBe('READY');
       expect(first.generation?.embedding_profile_revision).toBe(1);
@@ -686,6 +843,10 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
           )
         ).rows.map((row) => row.resource_type),
       ).toEqual(['CLAIM', 'ENTITY']);
+      const firstIdentities = await generationIdentities(first.pointer!.active_generation_id);
+      expect(firstIdentities).toHaveLength(2);
+      expect(firstIdentities.every((item) => item.embedding_profile_revision === 1)).toBe(true);
+      expect(firstIdentities.every((item) => item.dimension === P1_DIMENSION)).toBe(true);
 
       topKCalls = 0;
       provider.reset();
@@ -741,34 +902,63 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         embeddingModelId: 'text-embedding-3-small',
         credentialId: fixture.credential.credentialId,
         credentialRevision: fixture.credential.credentialRevision,
-        dimension: 512,
+        dimension: P2_DIMENSION,
         distanceMetric: 'cosine',
         normalizationPolicy: 'unit_length',
         status: 'PREPARED',
         updatedBy: fixture.principalId,
       });
+      expect(profile2.profileRevision).toBe(2);
+      expect(profile2.status).toBe('PREPARED');
+      expect(profile2.dimension).toBe(P2_DIMENSION);
+      expect((await fixture.profileService.getCurrent(fixture.projectId))?.profileRevision).toBe(2);
 
       // Two real refreshes race against the same G1 pointer while the
       // deterministic provider holds both P2/G2 builds in BUILDING.
       provider.reset();
       topKCalls = 0;
+      provider.beginBuildPhase({ model: 'text-embedding-3-small', dimension: P2_DIMENSION });
       provider.pauseBuilds();
       const buildA = refresh();
       const buildB = refresh();
       let duringReplacement: HybridSearchResponse | undefined;
+      let replacementError: unknown;
       try {
         await provider.waitForBuildRequests(2);
+        // End the explicit build phase before issuing the query that must use
+        // the still-active G1. The provider request itself remains suspended
+        // until release, so this does not use timing as an operation signal.
+        provider.endBuildPhase();
         duringReplacement = await hybrid('R5 canonical production chain while replacing');
+      } catch (error) {
+        replacementError = error;
       } finally {
+        provider.endBuildPhase();
         // Keep the in-flight provider boundary releasable on assertion error.
         provider.releaseBuilds();
+      }
+      const replacementSettled = await Promise.allSettled([buildA, buildB]);
+      const replacementRejected = replacementSettled.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+      if (replacementError || replacementRejected) {
+        const responseSummary = replacementSettled.map((result) =>
+          result.status === 'fulfilled'
+            ? safeRefreshResponseSummary(result.value)
+            : { status: 'rejected' as const },
+        );
+        throw new Error(
+          `R5 replacement build race failed: ${replacementError instanceof Error ? replacementError.message : 'refresh request rejected'}; safe refresh responses=${JSON.stringify(responseSummary)}; safe provider observations=${JSON.stringify(provider.observations)}.`,
+        );
       }
       expect(duringReplacement?.readiness.semantic.activeGenerationId).toBe(
         first.pointer?.active_generation_id,
       );
       expect(provider.queryRequests).toBe(1);
       expect(topKCalls).toBe(1);
-      const replacementResponses = await Promise.all([buildA, buildB]);
+      const replacementResponses = replacementSettled.map(
+        (result) => (result as PromiseFulfilledResult<RefreshResponse>).value,
+      );
       const replacementResults = replacementResponses.map(
         (response) =>
           (JSON.parse(response.body) as { refresh: { status: string; generationId: string } })
@@ -795,6 +985,40 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       expect(second.pointer?.pointer_revision).toBe('2');
       expect(second.generation?.embedding_profile_revision).toBe(profile2.profileRevision);
       expect(second.membership?.itemCount).toBe(2);
+      const secondIdentities = await generationIdentities(second.pointer!.active_generation_id);
+      expect(secondIdentities).toHaveLength(2);
+      expect(secondIdentities.every((item) => item.embedding_profile_revision === 2)).toBe(true);
+      expect(secondIdentities.every((item) => item.dimension === P2_DIMENSION)).toBe(true);
+      expect(secondIdentities.map((item) => item.semantic_text_digest)).toEqual(
+        firstIdentities.map((item) => item.semantic_text_digest),
+      );
+      expect(provider.buildRequests).toBe(2);
+      expect(provider.queryRequests).toBe(1);
+      expect(provider.observations.filter((item) => item.classification === 'BUILD')).toEqual([
+        {
+          model: 'text-embedding-3-small',
+          dimension: P2_DIMENSION,
+          inputCount: 2,
+          inputShape: 'array',
+          classification: 'BUILD',
+        },
+        {
+          model: 'text-embedding-3-small',
+          dimension: P2_DIMENSION,
+          inputCount: 2,
+          inputShape: 'array',
+          classification: 'BUILD',
+        },
+      ]);
+      expect(provider.observations.filter((item) => item.classification === 'QUERY')).toEqual([
+        {
+          model: 'text-embedding-3-small',
+          dimension: P1_DIMENSION,
+          inputCount: 1,
+          inputShape: 'array',
+          classification: 'QUERY',
+        },
+      ]);
       await fixture.profileService.activateProfile({
         projectId: fixture.projectId,
         profileId: profile2.profileId,

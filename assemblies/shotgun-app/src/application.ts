@@ -10,6 +10,7 @@ import { FakeAIProviderAdapter } from '../../../adapters/ai-provider-fake/src/in
 import { GeminiAIProviderAdapter } from '../../../adapters/ai-provider-gemini/src/index.js';
 import { GeminiConnectivityAdapter } from '../../../adapters/ai-provider-gemini/src/connectivity.js';
 import { OpenAIConnectivityAdapter } from '../../../adapters/ai-provider-openai/src/index.js';
+import { OpenAIEmbeddingConnectivityAdapter } from '../../../adapters/ai-provider-openai/src/embedding.js';
 import { DeepSeekConnectivityAdapter } from '../../../adapters/ai-provider-deepseek/src/index.js';
 import { PostgresCredentialVaultRepository } from '../../../adapters/credential-vault-postgres/src/index.js';
 import { PostgresProjectAIConfigurationRepository } from '../../../adapters/ai-configuration-postgres/src/index.js';
@@ -82,6 +83,11 @@ import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres
 import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
 import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
 import { PostgresSemanticCorpusSourceSnapshotReader } from '../../../adapters/semantic-corpus-postgres/src/index.js';
+import {
+  PostgresSemanticActiveGenerationReader,
+  PostgresSemanticIndexRepository,
+} from '../../../adapters/semantic-index-postgres/src/index.js';
+import { PostgresSemanticEmbeddingProfileRepository } from '../../../adapters/semantic-embedding-postgres/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
@@ -111,6 +117,20 @@ import {
   UnavailableAIProviderAdapter,
 } from '../../../adapters/ai-runtime-resolution/src/index.js';
 import { AIProviderRouter } from '../../../adapters/ai-provider-router/src/index.js';
+import { SemanticEmbeddingAuthorityResolver } from '../../../adapters/semantic-embedding-resolution/src/index.js';
+import {
+  SemanticEmbeddingProfileService,
+  initialSemanticEmbeddingRegistry,
+} from '../../../modules/semantic-embedding/src/index.js';
+import { SemanticEmbeddingRouter } from '../../../adapters/semantic-embedding-resolution/src/router.js';
+import {
+  SemanticGenerationBuilder,
+  SemanticProjectionRefreshService,
+} from '../../../modules/semantic-generation/src/index.js';
+import {
+  DeterministicSemanticQueryClassificationPolicy,
+  SemanticRetriever,
+} from '../../../modules/hybrid-retrieval/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
@@ -258,6 +278,11 @@ export const startShotgunApplication = async (
           productService: sourcesProductService,
         });
     const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
+    const semanticCorpusSourceSnapshotReader = new PostgresSemanticCorpusSourceSnapshotReader(pool);
+    const semanticIndexRepository = new PostgresSemanticIndexRepository(pool);
+    const semanticActiveGenerationReader = new PostgresSemanticActiveGenerationReader(
+      semanticIndexRepository,
+    );
     const askConversationRepository = new PostgresAskConversationRepository(pool);
     const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
     const askSourceSelectionValidator = new PostgresAskSourceSelectionValidator(pool);
@@ -295,6 +320,54 @@ export const startShotgunApplication = async (
         return privacy.availability === 'AVAILABLE' && privacy.data.externalTransferAllowed;
       },
     };
+    const semanticEmbeddingRegistry = initialSemanticEmbeddingRegistry();
+    const semanticProfileService = new SemanticEmbeddingProfileService(
+      aiProviderRegistry,
+      semanticEmbeddingRegistry,
+      new PostgresSemanticEmbeddingProfileRepository(pool),
+      credentialVault,
+    );
+    const semanticAuthorityResolver = new SemanticEmbeddingAuthorityResolver(
+      aiProviderRegistry,
+      semanticEmbeddingRegistry,
+      semanticProfileService,
+      credentialVault,
+      {
+        deploymentCeiling,
+        approvalAuthority: providerApprovalService,
+        legacyExternalTransferAllowed: legacyPrivacy.getLegacyExternalTransferAllowed,
+      },
+    );
+    const semanticEmbeddingRouter = new SemanticEmbeddingRouter(
+      aiProviderRegistry,
+      semanticEmbeddingRegistry,
+      credentialVault,
+      providerApprovalService,
+      deploymentCeiling,
+      [new OpenAIEmbeddingConnectivityAdapter({ baseUrl: process.env.OPENAI_BASE_URL })],
+      { legacyExternalTransferAllowed: legacyPrivacy.getLegacyExternalTransferAllowed },
+    );
+    const semanticGenerationBuilder = new SemanticGenerationBuilder(
+      semanticIndexRepository,
+      semanticCorpusSourceSnapshotReader,
+      semanticAuthorityResolver,
+      semanticEmbeddingRouter,
+      semanticProfileService,
+    );
+    const semanticRetriever = new SemanticRetriever(
+      semanticIndexRepository,
+      semanticAuthorityResolver,
+      semanticEmbeddingRouter,
+      semanticActiveGenerationReader,
+      {
+        sourceWatermarkReader: semanticCorpusSourceSnapshotReader,
+        queryClassifier: new DeterministicSemanticQueryClassificationPolicy(),
+      },
+    );
+    const semanticProjectionRefresh = new SemanticProjectionRefreshService(
+      semanticProfileService,
+      semanticGenerationBuilder,
+    );
     const aiSettingsBackend = new AISettingsBackendService(
       aiProviderRegistry,
       projectAIConfiguration,
@@ -450,7 +523,10 @@ export const startShotgunApplication = async (
       searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
       knowledgeModelRepository: new PostgresKnowledgeModelRepository(pool),
       compiledTruthRepository: new PostgresCompiledTruthRepository(pool),
-      semanticCorpusSourceSnapshotReader: new PostgresSemanticCorpusSourceSnapshotReader(pool),
+      semanticCorpusSourceSnapshotReader,
+      semanticRetriever,
+      semanticActiveGenerationReader,
+      semanticProjectionRefresh,
       actionCandidateRepository: new PostgresActionCandidateRepository(pool),
       actionExecutionRepository: new PostgresActionExecutionRepository(pool),
       authRepository: new PostgresAuthRepository(pool),

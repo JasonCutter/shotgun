@@ -92,6 +92,9 @@ export type SemanticCandidateResult = {
   readonly evidenceIds: readonly string[];
   readonly accessScope: readonly string[];
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  /** R3 membership authority/provenance. Legacy query rows may omit these. */
+  readonly authority?: SemanticCorpusAuthority;
+  readonly provenance?: SemanticCorpusResourceProvenance;
   readonly indexedAt: string;
   readonly createdAt: string;
   readonly updatedAt: string;

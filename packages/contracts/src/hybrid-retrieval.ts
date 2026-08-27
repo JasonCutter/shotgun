@@ -1,7 +1,10 @@
 import type { CanonicalSearchMatch, ProjectionReadiness } from './cited-search.js';
 import type { SourceSelector, TextPositionSelector } from './document-evidence.js';
+import type { SemanticCorpusAuthority, SemanticProductResourceType } from './semantic-corpus.js';
 import type { SemanticCandidateResult, SemanticProjectionGeneration } from './semantic-index.js';
 import type { SemanticResourceType } from './semantic-representation.js';
+import type { SemanticDataReadiness, SemanticExecutionReadiness } from './semantic-query.js';
+import type { Actor, SecurityContext } from './types.js';
 
 export const HYBRID_FUSION_POLICY_RRF_V1 = 'rrf:v1' as const;
 export const HYBRID_FUSION_DEFAULT_RRF_K = 60 as const;
@@ -17,6 +20,8 @@ export type SemanticRetrieverInput = {
   readonly query: string;
   readonly accessScopes: readonly string[];
   readonly allowedSensitivities: readonly ('public' | 'internal' | 'private' | 'restricted')[];
+  readonly actor?: Actor;
+  readonly security?: SecurityContext;
   readonly limit?: number;
 };
 
@@ -56,6 +61,12 @@ export type LexicalRetrieverPort = {
 export type KnowledgeResourceContent = {
   readonly text: string;
   readonly canonicalVersion?: number;
+  readonly authority?: SemanticCorpusAuthority;
+  readonly authorityRevision?: number;
+  readonly resourceRevision?: number;
+  readonly baseCanonicalVersion?: number;
+  readonly sourceSnapshotDigest?: string;
+  readonly sourceProjectionDigest?: string;
   readonly evidenceIds?: readonly string[];
   readonly sourceVersionId?: string;
   readonly accessScope?: readonly string[];
@@ -67,6 +78,7 @@ export type KnowledgeResourceResolverPort = {
     projectId: string,
     resourceType: SemanticResourceType,
     resourceId: string,
+    expectedAuthority?: SemanticCorpusAuthority,
   ): Promise<KnowledgeResourceContent | undefined>;
 };
 
@@ -97,10 +109,16 @@ export type HybridCitation = {
 };
 
 export type HybridCandidateResult = {
-  readonly resourceType: SemanticResourceType;
+  readonly resourceType: SemanticProductResourceType;
   readonly resourceId: string;
   readonly text: string;
-  readonly canonicalVersion: number;
+  readonly authority: SemanticCorpusAuthority;
+  readonly authorityRevision: number;
+  readonly resourceRevision?: number;
+  readonly canonicalVersion?: number;
+  readonly baseCanonicalVersion?: number;
+  readonly sourceSnapshotDigest?: string;
+  readonly sourceProjectionDigest?: string;
   readonly evidenceIds: readonly string[];
   readonly citations: readonly HybridCitation[];
   readonly accessScope: readonly string[];
@@ -126,6 +144,8 @@ export type SemanticReadinessStatus =
 
 export type SemanticReadiness = {
   readonly status: SemanticReadinessStatus;
+  readonly data: SemanticDataReadiness;
+  readonly execution: SemanticExecutionReadiness;
   readonly activeGenerationId?: string;
   readonly embeddingProfileId?: string;
   readonly dimension?: number;
@@ -160,6 +180,8 @@ export type HybridRetrievalInput = {
   readonly query: string;
   readonly accessScopes: readonly string[];
   readonly allowedSensitivities: readonly ('public' | 'internal' | 'private' | 'restricted')[];
+  readonly actor?: Actor;
+  readonly security?: SecurityContext;
   readonly limit?: number;
 };
 

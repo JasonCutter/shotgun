@@ -21,6 +21,8 @@ import {
   type SemanticIndexRepositoryPort,
   type SemanticProjectionGeneration,
   type SemanticProjectionItem,
+  type SemanticProjectionRefreshPort,
+  type SemanticProjectionRefreshResult,
   type SemanticSensitivity,
   SemanticEmbeddingError,
   validateFiniteVector,
@@ -529,5 +531,63 @@ export class SemanticGenerationBuilder {
     for (let offset = 0; offset < items.length; offset += batchSize) {
       await this.repository.upsertGenerationItems(items.slice(offset, offset + batchSize));
     }
+  }
+}
+
+/**
+ * Product-facing manual refresh boundary. It resolves both the target profile
+ * and project from trusted server context, then delegates all persistence and
+ * activation decisions to the R3 generation builder.
+ */
+export class SemanticProjectionRefreshService implements SemanticProjectionRefreshPort {
+  constructor(
+    private readonly profileService: SemanticEmbeddingProfilePort,
+    private readonly builder: Pick<SemanticGenerationBuilder, 'build'>,
+  ) {}
+
+  async refresh(
+    input: Parameters<SemanticProjectionRefreshPort['refresh']>[0],
+  ): Promise<SemanticProjectionRefreshResult> {
+    const projectId = input.projectId.trim();
+    if (!projectId) {
+      throw new SemanticEmbeddingError({
+        code: 'INVALID_INPUT',
+        safeMessage: 'Project ID is required for semantic projection refresh.',
+        operation: 'semantic-projection:refresh',
+      });
+    }
+    if (
+      !input.actor?.id?.trim() ||
+      (!input.security.accessScope.includes('owner') &&
+        !input.security.accessScope.includes('admin'))
+    ) {
+      throw new SemanticEmbeddingError({
+        code: 'POLICY_DENIED',
+        safeMessage: 'Administrative authority is required for semantic projection refresh.',
+        operation: 'semantic-projection:refresh',
+      });
+    }
+
+    const profile = await this.profileService.getCurrent(projectId);
+    if (!profile || !['PREPARED', 'ACTIVE'].includes(profile.status)) {
+      throw new SemanticEmbeddingError({
+        code: 'CONFIGURATION_REQUIRED',
+        safeMessage: 'A configured semantic embedding profile is required for refresh.',
+        operation: 'semantic-projection:resolve-target',
+      });
+    }
+
+    const result = await this.builder.build({
+      projectId,
+      targetProfileRevision: profile.profileRevision,
+    });
+    return {
+      projectId,
+      profileRevision: profile.profileRevision,
+      status: result.status,
+      generationId: result.generationId,
+      itemCount: result.itemCount,
+      membershipDigest: result.membershipDigest,
+    };
   }
 }

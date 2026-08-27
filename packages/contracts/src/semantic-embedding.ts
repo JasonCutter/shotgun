@@ -235,6 +235,7 @@ export type SemanticEmbeddingRouterPort = {
 
 export type SemanticEmbeddingErrorCode =
   | 'CONFIGURATION_REQUIRED'
+  | 'STALE'
   | 'CAPABILITY_UNAVAILABLE'
   | 'POLICY_DENIED'
   | 'PROVIDER_FAILURE'
@@ -247,6 +248,8 @@ const mapErrorCode = (code: SemanticEmbeddingErrorCode): ErrorCode => {
   switch (code) {
     case 'CONFIGURATION_REQUIRED':
       return 'CONFIGURATION_REQUIRED';
+    case 'STALE':
+      return 'STALE';
     case 'CAPABILITY_UNAVAILABLE':
       return 'AI_CAPABILITY_UNAVAILABLE';
     case 'POLICY_DENIED':

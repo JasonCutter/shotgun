@@ -346,6 +346,8 @@ describe('ProductKnowledgeResourceResolver & Application Composition Tests', () 
     const claim = typeMap.get('CLAIM');
     expect(claim).toBeDefined();
     expect(claim!.text).toBe('Canonical claim statement from repository.');
+    expect(claim!.authority).toBe('CANONICAL');
+    expect(claim!.authorityRevision).toBe(1);
     expect(claim!.citations).toHaveLength(1);
     expect(claim!.citations[0]!.evidenceId).toBe(evidenceId);
 
@@ -353,6 +355,9 @@ describe('ProductKnowledgeResourceResolver & Application Composition Tests', () 
     const entity = typeMap.get('ENTITY');
     expect(entity).toBeDefined();
     expect(entity!.text).toBe('Global Tech Holdings');
+    expect(entity!.authority).toBe('APPROVED_KNOWLEDGE');
+    expect(entity!.canonicalVersion).toBeUndefined();
+    expect(entity!.authorityRevision).toBe(1);
     expect(entity!.citations).toHaveLength(1);
 
     // RELATION
@@ -374,7 +379,7 @@ describe('ProductKnowledgeResourceResolver & Application Composition Tests', () 
     expect(decision!.citations).toHaveLength(1);
 
     // FACT must not be present
-    expect(typeMap.get('FACT')).toBeUndefined();
+    expect((typeMap as Map<string, HybridCandidateResult>).get('FACT')).toBeUndefined();
   });
 
   it('degrades semantic channel cleanly to lexical fallback when semantic candidate unexpectedly contains FACT', async () => {

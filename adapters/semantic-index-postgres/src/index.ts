@@ -3,6 +3,7 @@ import type { Pool, QueryResultRow } from 'pg';
 import {
   type SemanticCandidateQuery,
   type SemanticCandidateResult,
+  type SemanticActiveGenerationReaderPort,
   type SemanticDistanceMetric,
   type SemanticGenerationActivationResult,
   type SemanticGenerationLifecycleRepositoryPort,
@@ -89,6 +90,8 @@ type CandidateRow = QueryResultRow & {
   readonly evidence_ids: string[];
   readonly access_scope: string[];
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  readonly authority: string | null;
+  readonly provenance: unknown;
   readonly indexed_at: Date;
   readonly created_at: Date;
   readonly updated_at: Date;
@@ -715,6 +718,8 @@ export class PostgresSemanticIndexRepository
          evidence_ids,
          access_scope,
          sensitivity,
+         authority,
+         provenance,
          indexed_at,
          created_at,
          updated_at,
@@ -755,6 +760,12 @@ export class PostgresSemanticIndexRepository
       evidenceIds: row.evidence_ids,
       accessScope: row.access_scope,
       sensitivity: row.sensitivity,
+      ...(row.authority === null
+        ? {}
+        : { authority: row.authority as SemanticCandidateResult['authority'] }),
+      ...(row.provenance === null
+        ? {}
+        : { provenance: row.provenance as SemanticCandidateResult['provenance'] }),
       indexedAt: row.indexed_at.toISOString(),
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
@@ -1030,5 +1041,16 @@ export class PostgresSemanticIndexRepository
     } finally {
       client.release();
     }
+  }
+}
+
+/** Reads the generation selected by the durable R3 pointer/CAS boundary. */
+export class PostgresSemanticActiveGenerationReader implements SemanticActiveGenerationReaderPort {
+  constructor(private readonly repository: PostgresSemanticIndexRepository) {}
+
+  async getActiveGeneration(projectId: string): Promise<SemanticProjectionGeneration | undefined> {
+    const pointer = await this.repository.getActiveGenerationPointer(projectId);
+    if (!pointer) return undefined;
+    return this.repository.getGeneration(projectId, pointer.activeGenerationId);
   }
 }

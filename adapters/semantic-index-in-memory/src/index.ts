@@ -479,6 +479,8 @@ export class InMemorySemanticIndexRepository
       evidenceIds: [...item.evidenceIds],
       accessScope: [...item.accessScope],
       sensitivity: item.sensitivity,
+      ...(item.authority === undefined ? {} : { authority: item.authority }),
+      ...(item.provenance === undefined ? {} : { provenance: item.provenance }),
       indexedAt: item.indexedAt,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,

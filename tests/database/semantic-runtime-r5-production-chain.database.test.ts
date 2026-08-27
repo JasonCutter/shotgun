@@ -764,8 +764,8 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         pool,
       ).readSnapshot(fixture.projectId);
       expect(sourceSnapshot.resources.map((resource) => resource.resourceType)).toEqual([
-        'CLAIM',
         'ENTITY',
+        'CLAIM',
       ]);
       expect(sourceSnapshot.resources).toHaveLength(2);
       expect(

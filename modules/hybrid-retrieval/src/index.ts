@@ -103,18 +103,17 @@ export const AKP1_PRODUCT_ELIGIBLE_SEMANTIC_RESOURCE_TYPES: readonly SemanticPro
   Object.freeze(['CLAIM', 'ENTITY', 'RELATION', 'EVENT', 'DECISION']);
 
 /**
- * R4 server-owned, deterministic egress policy. Query text may select only
- * an explicit, server-recognized classification marker; caller clearance is
- * deliberately not consulted as the provider egress classification.
+ * R4 server-owned, deterministic egress policy. Browser/user query text is
+ * private by default. Only an explicit, server-recognized restricted marker
+ * may escalate that conservative default; caller clearance and lower
+ * sensitivity markers never downgrade provider egress classification.
  */
 export class DeterministicSemanticQueryClassificationPolicy implements SemanticQueryClassificationPort {
   classify(_input: SemanticQueryClassificationInput) {
     const query = _input.query.trim().toLowerCase();
     const classification = query.includes('[restricted]')
       ? ('restricted' as const)
-      : query.includes('[private]')
-        ? ('private' as const)
-        : ('internal' as const);
+      : ('private' as const);
     return {
       classification,
       policyRevision: 'semantic-query-classification:v1' as const,
@@ -833,7 +832,7 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
               semanticReadiness = {
                 status: 'STALE',
                 data: 'STALE',
-                execution: 'NOT_CONFIGURED',
+                execution: 'NOT_EVALUATED',
                 reason: 'Semantic projection is stale relative to current Product knowledge.',
               };
               semanticDegradedReason =

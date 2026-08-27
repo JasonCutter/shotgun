@@ -17,6 +17,7 @@ import {
   StaticCredentialMasterKeyAuthority,
 } from '../../modules/credential-vault/src/index.js';
 import {
+  DeterministicSemanticQueryClassificationPolicy,
   HybridRetrievalCoordinator,
   SemanticRetriever,
 } from '../../modules/hybrid-retrieval/src/index.js';
@@ -30,6 +31,7 @@ import {
   parseProviderDeploymentCeiling,
   type ProviderExternalTransferApprovalPort,
 } from '../../modules/provider-privacy-policy/src/index.js';
+import hybridSearchResponseSchema from '../../packages/contracts/schemas/hybrid-search-response.v1.schema.json';
 import type {
   EvidenceSpan,
   LexicalCandidateResult,
@@ -37,6 +39,7 @@ import type {
   SemanticCandidateQuery,
   SemanticCandidateResult,
   SemanticCorpusSourceSnapshotReaderPort,
+  SemanticExecutionReadiness,
   SemanticEmbeddingProfile,
   SemanticProjectionGeneration,
   SemanticQueryClassificationInput,
@@ -46,6 +49,16 @@ import { InMemoryAuthRepository } from '../../packages/authentication/src/index.
 
 const projectId = 'project-r4-query';
 const credentialId = 'credential-r4';
+
+const semanticExecutionReadinessValues = [
+  'NOT_EVALUATED',
+  'NOT_CONFIGURED',
+  'AVAILABLE',
+  'CREDENTIAL_UNAVAILABLE',
+  'PROVIDER_UNAVAILABLE',
+  'POLICY_DENIED',
+  'TEMPORARILY_UNAVAILABLE',
+] as const satisfies readonly SemanticExecutionReadiness[];
 
 class RecordingEmbeddingConnectivity implements ProviderEmbeddingConnectivityPort {
   readonly providerId = 'openai';
@@ -134,6 +147,8 @@ const createRig = async (
     readonly watermarkCanonicalVersion?: number;
     readonly wrongDimension?: boolean;
     readonly activeGeneration?: boolean;
+    readonly deploymentAllowsProvider?: boolean;
+    readonly projectApproval?: boolean;
   } = {},
 ) => {
   const providerRegistry = initialProviderRegistry();
@@ -169,8 +184,10 @@ const createRig = async (
     updatedBy: 'owner-r4',
     now: '2026-08-27T00:00:00.000Z',
   });
-  const approval = approvalAuthority();
-  const deployment = parseProviderDeploymentCeiling({ providerAllowlist: 'openai' });
+  const approval = approvalAuthority(options.projectApproval ?? true);
+  const deployment = parseProviderDeploymentCeiling({
+    providerAllowlist: options.deploymentAllowsProvider === false ? 'deepseek' : 'openai',
+  });
   const resolver = new SemanticEmbeddingAuthorityResolver(
     providerRegistry,
     embeddingRegistry,
@@ -256,22 +273,195 @@ describe('AKP-1R R4 semantic query runtime authority', () => {
     expect(rig.connectivity.secretSeen).toBe('r4-test-secret');
   });
 
+  it('classifies browser queries conservatively without allowing clearance or markers to downgrade them', () => {
+    const policy = new DeterministicSemanticQueryClassificationPolicy();
+    const base = {
+      projectId,
+      actor: { type: 'user' as const, id: 'principal-r4' },
+      searchSurface: 'HYBRID_SEARCH' as const,
+    };
+
+    for (const sensitivity of ['public', 'internal', 'private', 'restricted'] as const) {
+      expect(
+        policy.classify({
+          ...base,
+          security: {
+            accessScope: ['project:r4'],
+            sensitivity,
+            dataClassification: 'user-query',
+          },
+          query: 'Which semantic source is current?',
+        }).classification,
+      ).toBe('private');
+    }
+
+    expect(
+      policy.classify({
+        ...base,
+        security: query().security,
+        query: '[private] Which semantic source is current?',
+      }).classification,
+    ).toBe('private');
+    expect(
+      policy.classify({
+        ...base,
+        security: query().security,
+        query: '[internal] Which semantic source is current?',
+      }).classification,
+    ).toBe('private');
+    expect(
+      policy.classify({
+        ...base,
+        security: query().security,
+        query: '[public] Which semantic source is current?',
+      }).classification,
+    ).toBe('private');
+    expect(
+      policy.classify({
+        ...base,
+        security: query().security,
+        query: '[restricted] Which semantic source is current?',
+      }).classification,
+    ).toBe('restricted');
+  });
+
+  it('keeps the semantic execution readiness TypeScript contract aligned with its JSON schema', () => {
+    const schemaExecutionValues = (
+      hybridSearchResponseSchema.$defs as unknown as {
+        semanticReadiness: { properties: { execution: { enum: readonly string[] } } };
+      }
+    ).semanticReadiness.properties.execution.enum;
+
+    expect(schemaExecutionValues).toEqual(semanticExecutionReadinessValues);
+  });
+
+  it('denies an ordinary private query without deployment permission before provider or Top-K work', async () => {
+    const rig = await createRig({ deploymentAllowsProvider: false });
+
+    await expect(rig.retriever.retrieve(query())).rejects.toMatchObject({
+      embeddingErrorCode: 'POLICY_DENIED',
+    });
+    expect(rig.connectivity.calls).toBe(0);
+    expect(rig.repository.nearestNeighborCalls).toBe(0);
+  });
+
+  it('denies an ordinary private query without Project approval before provider or Top-K work', async () => {
+    const rig = await createRig({ projectApproval: false });
+
+    await expect(rig.retriever.retrieve(query())).rejects.toMatchObject({
+      embeddingErrorCode: 'POLICY_DENIED',
+    });
+    expect(rig.connectivity.calls).toBe(0);
+    expect(rig.repository.nearestNeighborCalls).toBe(0);
+  });
+
   it('detects known STALE before provider, vault callback, or semantic Top-K work', async () => {
-    const rig = await createRig({ watermarkDigest: 'sha256:changed-source' });
+    let classifierCalls = 0;
+    const rig = await createRig({
+      watermarkDigest: 'sha256:changed-source',
+      classifier: {
+        classify: () => {
+          classifierCalls++;
+          return { classification: 'private', policyRevision: 'semantic-query-classification:v1' };
+        },
+      },
+    });
 
     await expect(rig.retriever.retrieve(query())).rejects.toMatchObject({
       embeddingErrorCode: 'STALE',
     });
+    expect(classifierCalls).toBe(0);
+    expect(rig.connectivity.calls).toBe(0);
+    expect(rig.repository.nearestNeighborCalls).toBe(0);
+  });
+
+  it('projects STALE before query classification while preserving healthy lexical results', async () => {
+    let classifierCalls = 0;
+    const rig = await createRig({
+      watermarkDigest: 'sha256:changed-source',
+      classifier: {
+        classify: () => {
+          classifierCalls++;
+          return { classification: 'private', policyRevision: 'semantic-query-classification:v1' };
+        },
+      },
+    });
+    const lexicalItem: LexicalCandidateResult = {
+      claimId: 'claim-r4-stale-lexical',
+      commitId: 'commit-r4-stale-lexical',
+      revisionId: 'revision-r4-stale-lexical',
+      canonicalVersion: 7,
+      claimText: 'Lexical results remain available while semantic data is stale.',
+      sourceVersionId: 'source-r4-stale-lexical',
+      evidenceIds: ['evidence-r4-stale-lexical'],
+      accessScope: ['project:r4'],
+      sensitivity: 'internal',
+      score: 1,
+      matchType: 'FULL_TEXT',
+      rank: 1,
+    };
+    const evidence: EvidenceSpan = {
+      evidenceId: lexicalItem.evidenceIds[0]!,
+      revisionId: lexicalItem.revisionId,
+      projectId,
+      sourceId: 'source-r4-stale-lexical',
+      sourceVersionId: lexicalItem.sourceVersionId,
+      pointer: '/blocks/0',
+      nodeKind: 'paragraph',
+      origin: 'source',
+      position: { type: 'TextPositionSelector', start: 0, end: 10, unit: 'unicode-code-point' },
+      quote: { type: 'TextQuoteSelector', exact: lexicalItem.claimText },
+      exactHash: 'sha256:stale-quote-r4',
+      accessScope: ['project:r4'],
+      sensitivity: 'internal',
+      createdAt: '2026-08-27T00:00:00.000Z',
+    };
+    const coordinator = new HybridRetrievalCoordinator(
+      {
+        retrieve: async () => ({
+          items: [lexicalItem],
+          readiness: {
+            status: 'READY' as const,
+            projectedCanonicalVersion: 7,
+            canonicalVersion: 7,
+            lag: 0,
+            canonicalSnapshotDigest: 'sha256:canonical-r4',
+          },
+        }),
+      },
+      rig.retriever,
+      undefined,
+      { getEvidenceSpan: async () => evidence },
+      {
+        getSourceVersion: async () => ({
+          sourceVersionId: lexicalItem.sourceVersionId,
+          projectId,
+          sourceId: evidence.sourceId,
+        }),
+      },
+      rig.activeReader,
+    );
+
+    const response = await coordinator.search(query());
+
+    expect(response.items.map((item) => item.resourceId)).toEqual([lexicalItem.claimId]);
+    expect(response.readiness.semantic).toMatchObject({
+      status: 'STALE',
+      data: 'STALE',
+      execution: 'NOT_EVALUATED',
+    });
+    expect(classifierCalls).toBe(0);
     expect(rig.connectivity.calls).toBe(0);
     expect(rig.repository.nearestNeighborCalls).toBe(0);
   });
 
   it('keeps caller clearance independent from server-owned query egress classification', async () => {
     const inputs: SemanticQueryClassificationInput[] = [];
+    const policy = new DeterministicSemanticQueryClassificationPolicy();
     const classifier: SemanticQueryClassificationPort = {
       classify: (input) => {
         inputs.push(input);
-        return { classification: 'internal', policyRevision: 'semantic-query-classification:v1' };
+        return policy.classify(input);
       },
     };
     const rig = await createRig({ classifier });
@@ -279,19 +469,16 @@ describe('AKP-1R R4 semantic query runtime authority', () => {
     await rig.retriever.retrieve(query({ allowedSensitivities: ['public'] }));
     expect(inputs[0]?.security.sensitivity).toBe('restricted');
     expect(inputs[0]?.query).toBe('Which semantic source is current?');
+    expect(inputs[0] && policy.classify(inputs[0]).classification).toBe('private');
     expect(rig.connectivity.calls).toBe(1);
   });
 
   it('denies a restricted provider egress classification before provider or Top-K work', async () => {
-    const classifier: SemanticQueryClassificationPort = {
-      classify: () => ({
-        classification: 'restricted',
-        policyRevision: 'semantic-query-classification:v1',
-      }),
-    };
-    const rig = await createRig({ classifier });
+    const rig = await createRig();
 
-    await expect(rig.retriever.retrieve(query())).rejects.toMatchObject({
+    await expect(
+      rig.retriever.retrieve(query({ query: '[restricted] Which semantic source is current?' })),
+    ).rejects.toMatchObject({
       embeddingErrorCode: 'POLICY_DENIED',
     });
     expect(rig.connectivity.calls).toBe(0);

@@ -30,6 +30,7 @@ export type SemanticQueryClassificationPort = {
 export type SemanticDataReadiness = 'NO_ACTIVE_GENERATION' | 'READY' | 'STALE';
 
 export type SemanticExecutionReadiness =
+  | 'NOT_EVALUATED'
   | 'NOT_CONFIGURED'
   | 'AVAILABLE'
   | 'CREDENTIAL_UNAVAILABLE'

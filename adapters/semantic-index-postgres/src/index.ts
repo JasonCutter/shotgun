@@ -191,7 +191,13 @@ const handlePostgresError = (error: unknown, operation: string): never => {
 export class PostgresSemanticIndexRepository
   implements SemanticIndexRepositoryPort, SemanticGenerationLifecycleRepositoryPort
 {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly observation: {
+      /** Observation-only seam; it cannot alter SQL, ordering, or results. */
+      readonly onNearestNeighbors?: () => void;
+    } = {},
+  ) {}
 
   async saveGeneration(
     generation: SemanticProjectionGeneration,
@@ -701,6 +707,7 @@ export class PostgresSemanticIndexRepository
     // SECURITY BEFORE TOP-K:
     // Candidate filtering (project_id, generation_id, dimension, access_scope, sensitivity)
     // is applied strictly in the WHERE clause BEFORE ORDER BY distance and LIMIT.
+    this.observation.onNearestNeighbors?.();
     const result = await this.pool.query<CandidateRow>(
       `SELECT
          project_id,

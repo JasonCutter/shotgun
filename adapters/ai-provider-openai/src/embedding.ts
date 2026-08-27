@@ -72,7 +72,13 @@ export class OpenAIEmbeddingConnectivityAdapter implements ProviderEmbeddingConn
 
   constructor(options: OpenAIEmbeddingConnectivityOptions = {}) {
     const baseUrl = new URL(options.baseUrl?.trim() || 'https://api.openai.com/v1');
-    if (baseUrl.protocol !== 'https:' || baseUrl.username || baseUrl.password) {
+    // R5 uses a deterministic OpenAI-compatible HTTP server on loopback. Keep
+    // real external endpoints HTTPS-only; the narrow loopback exception does
+    // not permit plaintext credentials to leave the local test boundary.
+    const loopbackHttp =
+      baseUrl.protocol === 'http:' &&
+      ['localhost', '127.0.0.1', '::1', '[::1]'].includes(baseUrl.hostname);
+    if ((!loopbackHttp && baseUrl.protocol !== 'https:') || baseUrl.username || baseUrl.password) {
       throw new Error('OpenAI base URL must be an HTTPS URL without embedded credentials.');
     }
     this.endpoint = `${baseUrl.toString().replace(/\/$/, '')}/embeddings`;

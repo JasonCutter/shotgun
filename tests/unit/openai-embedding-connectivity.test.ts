@@ -303,7 +303,13 @@ describe('AKP-1R R1: OpenAIEmbeddingConnectivityAdapter', () => {
     });
   });
 
-  it('rejects insecure HTTP base URL without https protocol', () => {
+  it('allows only loopback HTTP for the deterministic provider harness', () => {
+    expect(
+      () =>
+        new OpenAIEmbeddingConnectivityAdapter({
+          baseUrl: 'http://127.0.0.1:43127/v1',
+        }),
+    ).not.toThrow();
     expect(
       () =>
         new OpenAIEmbeddingConnectivityAdapter({

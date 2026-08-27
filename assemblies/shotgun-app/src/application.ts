@@ -164,6 +164,8 @@ export type StartShotgunApplicationOptions = {
    *  ONLY the Canonical Projection Recovery. Defaults to `true` (normal
    *  Product startup behavior unchanged). */
   readonly aiDurableMaterializationRecoveryEnabled?: boolean;
+  /** R5 verification-only observation; it cannot affect semantic results. */
+  readonly semanticNearestNeighborObserver?: () => void;
 };
 
 export type RecoveryApplicationOptions = {
@@ -279,7 +281,9 @@ export const startShotgunApplication = async (
         });
     const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
     const semanticCorpusSourceSnapshotReader = new PostgresSemanticCorpusSourceSnapshotReader(pool);
-    const semanticIndexRepository = new PostgresSemanticIndexRepository(pool);
+    const semanticIndexRepository = new PostgresSemanticIndexRepository(pool, {
+      onNearestNeighbors: options.semanticNearestNeighborObserver,
+    });
     const semanticActiveGenerationReader = new PostgresSemanticActiveGenerationReader(
       semanticIndexRepository,
     );

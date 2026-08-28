@@ -273,6 +273,7 @@ const safeRefreshResponseSummary = (response: RefreshResponse) => {
   try {
     const body = JSON.parse(response.body) as {
       readonly code?: unknown;
+      readonly message?: unknown;
       readonly refresh?: {
         readonly status?: unknown;
         readonly profileRevision?: unknown;
@@ -282,6 +283,7 @@ const safeRefreshResponseSummary = (response: RefreshResponse) => {
     return {
       statusCode: response.statusCode,
       ...(typeof body.code === 'string' ? { code: body.code } : {}),
+      ...(typeof body.message === 'string' ? { message: body.message } : {}),
       ...(typeof body.refresh?.status === 'string' ? { refreshStatus: body.refresh.status } : {}),
       ...(typeof body.refresh?.profileRevision === 'number'
         ? { profileRevision: body.refresh.profileRevision }
@@ -627,29 +629,59 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       provider.beginBuildPhase({ model: 'text-embedding-3-small', dimension: P1_DIMENSION });
       provider.pauseBuilds();
       const requests = [refresh(), refresh()];
-      let waitError: unknown;
+      const observedResponses: RefreshResponse[] = [];
+      let requestRejected = false;
+      const responseObservers = requests.map((request) =>
+        request.then(
+          (response) => {
+            observedResponses.push(response);
+          },
+          () => {
+            requestRejected = true;
+          },
+        ),
+      );
+      const deadline = Date.now() + 10_000;
       try {
-        await provider.waitForBuildRequests(2);
-      } catch (error) {
-        waitError = error;
+        // A refresh response is the authoritative signal for a pre-provider
+        // rejection. Do not wait for the provider-count timeout when either
+        // refresh has already returned a non-success response.
+        while (
+          provider.buildRequests < 2 &&
+          !requestRejected &&
+          !observedResponses.some((response) => response.statusCode >= 400) &&
+          Date.now() < deadline
+        ) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 10));
+        }
       } finally {
         provider.endBuildPhase();
         // Do not leave an HTTP request suspended if the arrival assertion
         // fails; the test teardown must remain bounded.
         provider.releaseBuilds();
       }
+      await Promise.all(responseObservers);
       const settled = await Promise.allSettled(requests);
       const rejected = settled.find(
         (result): result is PromiseRejectedResult => result.status === 'rejected',
       );
-      if (waitError || rejected) {
+      const nonSuccess = settled.find(
+        (result): result is PromiseFulfilledResult<RefreshResponse> =>
+          result.status === 'fulfilled' && result.value.statusCode >= 400,
+      );
+      if (nonSuccess || rejected || provider.buildRequests < 2) {
         const responseSummary = settled.map((result) =>
           result.status === 'fulfilled'
             ? safeRefreshResponseSummary(result.value)
             : { status: 'rejected' as const },
         );
+        const failureReason = nonSuccess
+          ? 'refresh returned a non-success response before provider execution'
+          : rejected
+            ? 'refresh request rejected'
+            : `R5 provider harness observed ${provider.buildRequests} build requests, expected 2`;
         throw new Error(
-          `R5 initial build race failed: ${waitError instanceof Error ? waitError.message : 'refresh request rejected'}; safe refresh responses=${JSON.stringify(responseSummary)}; safe provider observations=${JSON.stringify(provider.observations)}.`,
+          `R5 initial build race failed: ${failureReason}; safe refresh responses=${JSON.stringify(responseSummary)}; safe provider observations=${JSON.stringify(provider.observations)}.`,
         );
       }
       return settled.map((result) => (result as PromiseFulfilledResult<RefreshResponse>).value);

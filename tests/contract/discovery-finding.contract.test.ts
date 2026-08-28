@@ -292,8 +292,10 @@ describe('AKP-2 WP1 Discovery finding contracts', () => {
       providerId: 'openai',
       modelId: 'gpt-5.6-luna',
       modelVersion: '2026-08-20',
-      configurationRevision: 'config-7',
+      aiConfigurationRevision: 'config-7',
+      credentialId: 'credential-openai-primary',
       credentialRevision: 'credential-3',
+      providerPolicyFingerprint: 'sha256:provider-policy-4',
       privacyPolicyRevision: 'privacy-2',
       dataPolicyRevision: 'provider-policy-4',
       promptVersion: 'discovery-v1',
@@ -307,9 +309,24 @@ describe('AKP-2 WP1 Discovery finding contracts', () => {
     );
     expect(ai.provenance).toMatchObject({
       providerId: 'openai',
+      aiConfigurationRevision: 'config-7',
+      credentialId: 'credential-openai-primary',
       credentialRevision: 'credential-3',
+      providerPolicyFingerprint: 'sha256:provider-policy-4',
     });
     expect(ai.provenance).not.toHaveProperty('credentialPlaintext');
+
+    const otherCredential = createDiscoveryFindingEnvelopeV1(
+      baseEnvelope(entry.findingType, entry.payload, entry.relatedResourceRefs, {
+        generationMethod: 'AI_ASSISTED',
+        provenance: { ...aiProvenance, credentialId: 'credential-openai-secondary' },
+      }),
+    );
+    expect(otherCredential.provenance).not.toEqual(ai.provenance);
+    expect(otherCredential.provenance).toMatchObject({
+      credentialId: 'credential-openai-secondary',
+      credentialRevision: 'credential-3',
+    });
 
     const hybrid = createDiscoveryFindingEnvelopeV1(
       baseEnvelope(entry.findingType, entry.payload, entry.relatedResourceRefs, {
@@ -326,8 +343,10 @@ describe('AKP-2 WP1 Discovery finding contracts', () => {
             providerId: aiProvenance.providerId,
             modelId: aiProvenance.modelId,
             modelVersion: aiProvenance.modelVersion,
-            configurationRevision: aiProvenance.configurationRevision,
+            aiConfigurationRevision: aiProvenance.aiConfigurationRevision,
+            credentialId: aiProvenance.credentialId,
             credentialRevision: aiProvenance.credentialRevision,
+            providerPolicyFingerprint: aiProvenance.providerPolicyFingerprint,
             privacyPolicyRevision: aiProvenance.privacyPolicyRevision,
             dataPolicyRevision: aiProvenance.dataPolicyRevision,
             promptVersion: aiProvenance.promptVersion,
@@ -339,13 +358,64 @@ describe('AKP-2 WP1 Discovery finding contracts', () => {
     expect(hybrid.provenance.kind).toBe('HYBRID');
     expect(hybrid.provenance).toHaveProperty('deterministic');
     expect(hybrid.provenance).toHaveProperty('aiExecution');
+    expect(hybrid.provenance).toMatchObject({
+      aiExecution: {
+        providerId: 'openai',
+        modelId: 'gpt-5.6-luna',
+        aiConfigurationRevision: 'config-7',
+        credentialId: 'credential-openai-primary',
+        credentialRevision: 'credential-3',
+        providerPolicyFingerprint: 'sha256:provider-policy-4',
+        promptVersion: 'discovery-v1',
+        outputSchemaVersion: 'finding-payload-v1',
+      },
+    });
 
-    expect(() =>
-      decodeDiscoveryFindingEnvelopeV1({
-        ...ai,
-        provenance: { ...aiProvenance, apiKey: 'secret' },
-      }),
-    ).toThrow(/unknown field/);
+    for (const secretKey of [
+      'credentialPlaintext',
+      'apiKey',
+      'authorizationHeader',
+      'encryptedSecretPayload',
+    ]) {
+      expect(() =>
+        decodeDiscoveryFindingEnvelopeV1({
+          ...ai,
+          provenance: { ...aiProvenance, [secretKey]: 'secret' },
+        }),
+      ).toThrow(/unknown field/);
+    }
+  });
+
+  it('uses UTF-16 ordinal ordering for Unicode logical normalization', () => {
+    const payload = validPayloads()[0]!;
+    const umlaut = '\u00e4';
+    const finding = createDiscoveryFindingEnvelopeV1({
+      ...baseEnvelope(payload.findingType, payload.payload, payload.relatedResourceRefs),
+      accessScope: ['z', umlaut],
+    });
+    expect(finding.accessScope).toEqual(['z', umlaut]);
+
+    const normalized = normalizeDiscoveryFingerprintInputV1({
+      findingType: 'KNOWLEDGE_GAP',
+      relatedResourceRefs: [ref(umlaut), ref('z')],
+      semanticEssence: 'unicode ordering',
+      fingerprintVersion: 'discovery-fingerprint-v1',
+    });
+    expect(normalized.relatedResourceRefs.map((resource) => resource.resourceId)).toEqual([
+      'z',
+      umlaut,
+    ]);
+
+    const security = composeDiscoveryFindingSecurityV1({
+      findingProjectId: 'project-1',
+      resources: [{ projectId: 'project-1', accessScope: [umlaut, 'z'], sensitivity: 'internal' }],
+      executionContext: {
+        projectId: 'project-1',
+        accessScope: ['z', umlaut],
+        sensitivity: 'internal',
+      },
+    });
+    expect(security).toMatchObject({ accessScope: ['z', umlaut] });
   });
 
   it('composes same-project security restrictively and deterministically', () => {
@@ -478,6 +548,23 @@ describe('AKP-2 WP1 Discovery finding contracts', () => {
       );
     }
     expect(DISCOVERY_REENTRY_TARGET_BY_TYPE.ACTION_SUGGESTION).toBe('ACTION_CANDIDATE_GOVERNANCE');
+  });
+
+  it('preserves a CANONICAL_DECISION reference through lineage and fingerprint input', () => {
+    const decision = ref('decision-1', { resourceKind: 'CANONICAL_DECISION' });
+    const entry = validPayloads()[0]!;
+    const finding = createDiscoveryFindingEnvelopeV1(
+      baseEnvelope(entry.findingType, entry.payload, [decision]),
+    );
+    expect(finding.relatedResourceRefs).toEqual([decision]);
+
+    const normalized = normalizeDiscoveryFingerprintInputV1({
+      findingType: 'KNOWLEDGE_GAP',
+      relatedResourceRefs: [decision],
+      semanticEssence: 'decision requires review',
+      fingerprintVersion: 'discovery-fingerprint-v1',
+    });
+    expect(normalized.relatedResourceRefs).toEqual([decision]);
   });
 
   it('leaves the historical Stage-10 candidate contract unchanged', () => {

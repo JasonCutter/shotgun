@@ -1,3 +1,4 @@
+import { utf16OrdinalCompare } from './semantic-representation.js';
 import type { SecurityContext } from './types.js';
 
 /**
@@ -47,6 +48,7 @@ export const DISCOVERY_RESOURCE_KINDS = [
   'CANONICAL_EVENT',
   'CANONICAL_RELATION',
   'CANONICAL_CONFLICT',
+  'CANONICAL_DECISION',
   'SOURCE',
   'SOURCE_VERSION',
   'COMPILED_TRUTH_ITEM',
@@ -195,9 +197,13 @@ export type DiscoveryAiExecutionProvenanceV1 = {
   readonly providerId: string;
   readonly modelId: string;
   readonly modelVersion: string;
-  readonly configurationRevision: string;
-  /** Revision/reference only; never a credential or secret value. */
+  readonly aiConfigurationRevision: string;
+  /** Server-owned credential identity; never a credential or secret value. */
+  readonly credentialId: string;
+  /** Immutable credential revision; never a credential or secret value. */
   readonly credentialRevision: string;
+  /** Effective ADR-133 provider-policy decision identity. */
+  readonly providerPolicyFingerprint: string;
   readonly privacyPolicyRevision: string;
   readonly dataPolicyRevision: string;
   readonly promptVersion: string;
@@ -389,7 +395,7 @@ const normalizedScope = (value: unknown, path: string): readonly string[] => {
   const scope = stringArray(value, path);
   const unique = [...new Set(scope)];
   if (unique.length === 0) return fail(path, 'must contain at least one access scope');
-  return unique.sort((left, right) => left.localeCompare(right));
+  return unique.sort(utf16OrdinalCompare);
 };
 
 const decodeResourceRef = (value: unknown, path: string): DiscoveryResourceRefV1 => {
@@ -819,8 +825,10 @@ const decodeAiDetails = (
       'providerId',
       'modelId',
       'modelVersion',
-      'configurationRevision',
+      'aiConfigurationRevision',
+      'credentialId',
       'credentialRevision',
+      'providerPolicyFingerprint',
       'privacyPolicyRevision',
       'dataPolicyRevision',
       'promptVersion',
@@ -832,13 +840,18 @@ const decodeAiDetails = (
     providerId: text(required(object, 'providerId', path), `${path}.providerId`),
     modelId: text(required(object, 'modelId', path), `${path}.modelId`),
     modelVersion: text(required(object, 'modelVersion', path), `${path}.modelVersion`),
-    configurationRevision: text(
-      required(object, 'configurationRevision', path),
-      `${path}.configurationRevision`,
+    aiConfigurationRevision: text(
+      required(object, 'aiConfigurationRevision', path),
+      `${path}.aiConfigurationRevision`,
     ),
+    credentialId: text(required(object, 'credentialId', path), `${path}.credentialId`),
     credentialRevision: text(
       required(object, 'credentialRevision', path),
       `${path}.credentialRevision`,
+    ),
+    providerPolicyFingerprint: text(
+      required(object, 'providerPolicyFingerprint', path),
+      `${path}.providerPolicyFingerprint`,
     ),
     privacyPolicyRevision: text(
       required(object, 'privacyPolicyRevision', path),
@@ -896,8 +909,10 @@ const decodeProvenance = (
         'providerId',
         'modelId',
         'modelVersion',
-        'configurationRevision',
+        'aiConfigurationRevision',
+        'credentialId',
         'credentialRevision',
+        'providerPolicyFingerprint',
         'privacyPolicyRevision',
         'dataPolicyRevision',
         'promptVersion',
@@ -1263,7 +1278,7 @@ export const normalizeDiscoveryFingerprintInputV1 = (
           : { resourceRevision: decoded.resourceRevision }),
       };
     })
-    .sort((left, right) => resourceKey(left).localeCompare(resourceKey(right)));
+    .sort((left, right) => utf16OrdinalCompare(resourceKey(left), resourceKey(right)));
   return { findingType, relatedResourceRefs, semanticEssence, fingerprintVersion };
 };
 
@@ -1318,7 +1333,7 @@ const normalizeServerProjectId = (value: string): string => value.trim();
 
 const normalizeServerScope = (scope: readonly string[]): readonly string[] =>
   [...new Set(scope.map((entry) => entry.trim()).filter((entry) => entry.length > 0))].sort(
-    (left, right) => left.localeCompare(right),
+    utf16OrdinalCompare,
   );
 
 /**
@@ -1362,7 +1377,7 @@ export const composeDiscoveryFindingSecurityV1 = (input: {
   return {
     materializable: true,
     projectId: findingProjectId,
-    accessScope: [...commonScope].sort((left, right) => left.localeCompare(right)),
+    accessScope: [...commonScope].sort(utf16OrdinalCompare),
     sensitivity: highestSensitivity,
   };
 };

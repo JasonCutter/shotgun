@@ -624,7 +624,7 @@ describe('createFrontendExternalActionClient (FE-P4-S2 WP4 Product API connectio
     expect(posted).toBe(1);
   });
 
-  it('refreshes the CSRF token once on a 403 and retries a READ POST', async () => {
+  it('refreshes the CSRF token once on a typed CSRF denial and retries a READ POST', async () => {
     let posted = 0;
     const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
       if (String(url).endsWith('/api/v1/security/csrf')) {
@@ -634,7 +634,12 @@ describe('createFrontendExternalActionClient (FE-P4-S2 WP4 Product API connectio
       }
       if (String(url).includes('/external-action/actions/read')) {
         posted += 1;
-        if (posted === 1) return new Response('', { status: 403 });
+        if (posted === 1) {
+          return jsonResponse(403, {
+            code: 'REQUEST_ORIGIN_DENIED',
+            message: 'The Product request was denied.',
+          });
+        }
         return jsonResponse(200, { schemaVersion: '1.0.0', action: actionAggregate });
       }
       return jsonResponse(500, {});

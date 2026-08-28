@@ -83,6 +83,7 @@ import {
 } from '../../contracts/src/index.js';
 import { decodeProductApiErrorBody } from './decode.js';
 import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
+import { getSharedCsrfMutationManager, isCsrfFailureResponse } from './csrf-manager.js';
 
 // The shared per-command semantic digests are re-exported so the browser
 // computes exactly the digests the server validates for OUTCOME_UNKNOWN
@@ -255,11 +256,13 @@ const assertCommandIdentity = (
 
 /**
  * Typed FE-P4-S2 WP4 External Action client. Same-origin credentials, cached
- * CSRF token with a single retry on 403 (session refresh) for READ POSTs only,
- * strict decoding of every response, `AbortSignal` support and NO automatic
- * governed-mutation retry (Review 4863146027 item 2). A governed mutation is
- * sent exactly ONCE; a general 403 (project access denied, capability denied,
- * session loss, policy change) returns the typed failure without a resend.
+ * CSRF token with a single retry only for typed REQUEST_ORIGIN_DENIED on reads,
+ * strict decoding of every response, `AbortSignal` support and no automatic
+ * governed-mutation retry for authorization failures (Review 4863146027 item
+ * 2). A governed mutation is sent once unless the transport receives the
+ * typed pre-handler CSRF denial; a general 403 (project access denied,
+ * capability denied, session loss, policy change) returns the typed failure
+ * without a resend.
  * The server is always the authority for Principal, Project, access, policy,
  * capability, credential and budget; this client never derives them itself and
  * never re-executes an OUTCOME_UNKNOWN command — recovery is always
@@ -269,21 +272,7 @@ export const createFrontendExternalActionClient = (
   options: { readonly fetch?: typeof globalThis.fetch } = {},
 ): FrontendExternalActionClient => {
   const request = options.fetch ?? globalThis.fetch;
-  let csrfToken: string | undefined;
-
-  const csrf = async (signal?: AbortSignal): Promise<string> => {
-    if (csrfToken) return csrfToken;
-    const response = await request('/api/v1/security/csrf', {
-      credentials: 'same-origin',
-      signal,
-    });
-    const body = (await assertOk(response)) as { readonly csrfToken?: unknown };
-    if (typeof body.csrfToken !== 'string' || body.csrfToken.length === 0) {
-      throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'The CSRF token response is invalid.');
-    }
-    csrfToken = body.csrfToken;
-    return csrfToken;
-  };
+  const csrf = getSharedCsrfMutationManager(request);
 
   const post = (
     path: string,
@@ -299,23 +288,21 @@ export const createFrontendExternalActionClient = (
       signal,
     });
 
-  // READ POST: idempotent and safe, so a CSRF refresh + single retry on a
-  // general 403 is allowed (session rotation must not break a plain read).
   const read = async (path: string, params: unknown, signal?: AbortSignal): Promise<Response> => {
-    let response = await post(path, params, await csrf(signal), signal);
-    if (response.status === 403) {
-      csrfToken = undefined;
-      response = await post(path, params, await csrf(signal), signal);
-    }
-    return response;
+    return csrf.run((token) => post(path, params, token, signal), {
+      signal,
+      recoverOnResponse: isCsrfFailureResponse,
+    });
   };
 
-  // GOVERNED MUTATION: sent exactly once. A general 403 is never auto-retried
-  // — the typed failure is surfaced to the caller instead (Review 4863146027
-  // item 2; AC-20). Only a CSRF rejection explicitly retried by the caller is
-  // ever re-sent, and no mutation is re-sent with a NEW identity.
+  // GOVERNED MUTATION: no authorization failure is auto-retried. A typed CSRF
+  // rejection may be recovered once by the shared transport coordinator; no
+  // mutation is re-sent with a NEW identity.
   const mutate = async (path: string, params: unknown, signal?: AbortSignal): Promise<Response> =>
-    post(path, params, await csrf(signal), signal);
+    csrf.run((token) => post(path, params, token, signal), {
+      signal,
+      recoverOnResponse: isCsrfFailureResponse,
+    });
 
   return {
     // ------------------------------------------------------------------

@@ -46,11 +46,16 @@ describe('createFrontendKnowledgeDraftClient (FE-P3-S2 Product API connection)',
     expect(materialize?.init?.headers).toMatchObject({ 'x-csrf-token': 'csrf-1' });
   });
 
-  it('retries once with a fresh CSRF token on a 403 response', async () => {
+  it('retries once with a fresh CSRF token on a typed CSRF denial', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { csrfToken: 'csrf-stale' }))
-      .mockResolvedValueOnce(jsonResponse(403, { code: 'FORBIDDEN' }))
+      .mockResolvedValueOnce(
+        jsonResponse(403, {
+          code: 'REQUEST_ORIGIN_DENIED',
+          message: 'The Product request was denied.',
+        }),
+      )
       .mockResolvedValueOnce(jsonResponse(200, { csrfToken: 'csrf-fresh' }))
       .mockResolvedValueOnce(jsonResponse(200, materializeResult()));
 

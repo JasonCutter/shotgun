@@ -27,6 +27,7 @@ import type {
 } from '../../contracts/src/index.js';
 import { decodeProductApiErrorBody } from './decode.js';
 import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
+import { getSharedCsrfMutationManager, isCsrfFailureResponse } from './csrf-manager.js';
 
 /**
  * FE-P5-S1 WP4 — Activity Product API read client.
@@ -37,8 +38,8 @@ import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './e
  * Retry and Cancel are NOT Activity commands (WP5 keeps them on the owning
  * Domain routes); this client is read + explicit-refresh only.
  *
- * READ POSTs are idempotent and safe: a CSRF refresh + single retry on a
- * general 403 is allowed (session rotation must not break a plain read). Every
+ * READ POSTs are idempotent and safe: a CSRF refresh + single retry is allowed
+ * only for the typed REQUEST_ORIGIN_DENIED failure. Every
  * response is strictly decoded; a decoded Detail must echo the requested
  * Activity identity before it is trusted.
  */
@@ -304,21 +305,7 @@ export const createFrontendActivityClient = (
   options: { readonly fetch?: typeof globalThis.fetch } = {},
 ): FrontendActivityClient => {
   const request = options.fetch ?? globalThis.fetch;
-  let csrfToken: string | undefined;
-
-  const csrf = async (signal?: AbortSignal): Promise<string> => {
-    if (csrfToken) return csrfToken;
-    const response = await request('/api/v1/security/csrf', {
-      credentials: 'same-origin',
-      signal,
-    });
-    const body = (await assertOk(response)) as { readonly csrfToken?: unknown };
-    if (typeof body.csrfToken !== 'string' || body.csrfToken.length === 0) {
-      throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'The CSRF token response is invalid.');
-    }
-    csrfToken = body.csrfToken;
-    return csrfToken;
-  };
+  const csrf = getSharedCsrfMutationManager(request);
 
   const post = (
     path: string,
@@ -334,15 +321,11 @@ export const createFrontendActivityClient = (
       signal,
     });
 
-  // READ POST: idempotent and safe, so a CSRF refresh + single retry on a
-  // general 403 is allowed (session rotation must not break a plain read).
   const read = async (path: string, params: unknown, signal?: AbortSignal): Promise<Response> => {
-    let response = await post(path, params, await csrf(signal), signal);
-    if (response.status === 403) {
-      csrfToken = undefined;
-      response = await post(path, params, await csrf(signal), signal);
-    }
-    return response;
+    return csrf.run((token) => post(path, params, token, signal), {
+      signal,
+      recoverOnResponse: isCsrfFailureResponse,
+    });
   };
 
   return {

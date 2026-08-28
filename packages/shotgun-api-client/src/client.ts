@@ -12,7 +12,7 @@ import type {
   FrontendCommandSubmission,
   FrontendCommandMutationResponse,
 } from './contracts.js';
-import { createCsrfMutationManager } from './csrf-manager.js';
+import { getSharedCsrfMutationManager } from './csrf-manager.js';
 import {
   decodeAICredentialMetadataEnvelope,
   decodeAIConfigurationEnvelope,
@@ -20,7 +20,6 @@ import {
   decodeAISettingsApprovalEnvelope,
   decodeAISettingsReadModel,
   decodeAITestConnectionResult,
-  decodeCsrfEnvelope,
   decodeLogoutEnvelope,
   decodeProductApiErrorBody,
   decodeSessionEnvelope,
@@ -202,16 +201,12 @@ export const createShotgunApiClient = (
       credentials: 'same-origin',
     });
 
-  const csrf = createCsrfMutationManager();
+  const csrf = getSharedCsrfMutationManager(fetchImplementation);
 
   const runMutation = async <T>(
     signal: AbortSignal | undefined,
     mutation: (csrfToken: string) => Promise<T>,
-  ): Promise<T> =>
-    csrf.run(async () => {
-      const response = await request('/security/csrf', { signal });
-      return decodeCsrfEnvelope(await assertOk(response));
-    }, mutation);
+  ): Promise<T> => csrf.run(mutation, { signal });
 
   const runCommandMutation = async <T>(
     signal: AbortSignal | undefined,

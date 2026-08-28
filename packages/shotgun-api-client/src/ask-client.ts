@@ -36,6 +36,7 @@ import {
 } from '../../contracts/src/index.js';
 import { decodeProductApiErrorBody } from './decode.js';
 import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
+import { getSharedCsrfMutationManager, isCsrfFailureResponse } from './csrf-manager.js';
 
 export type AskWorkspaceClient = {
   getWorkspace(
@@ -137,65 +138,37 @@ export const createAskWorkspaceClient = (
   options: { readonly fetch?: typeof globalThis.fetch } = {},
 ): AskWorkspaceClient => {
   const request = options.fetch ?? globalThis.fetch;
-  let csrfToken: string | undefined;
-
-  const csrf = async (signal?: AbortSignal): Promise<string> => {
-    if (csrfToken) return csrfToken;
-    const response = await request('/api/v1/security/csrf', {
-      credentials: 'same-origin',
-      signal,
-    });
-    const body = (await assertOk(response)) as { readonly csrfToken?: unknown };
-    if (typeof body.csrfToken !== 'string' || body.csrfToken.length === 0) {
-      throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'The CSRF token response is invalid.');
-    }
-    csrfToken = body.csrfToken;
-    return csrfToken;
-  };
+  const csrf = getSharedCsrfMutationManager(request);
 
   const submit = async (
     params: SubmitAskQuestionRequest,
     signal?: AbortSignal,
   ): Promise<Response> => {
-    const token = await csrf(signal);
-    let response = await request('/product-api/frontend/ask/questions', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-csrf-token': token },
-      credentials: 'same-origin',
-      body: JSON.stringify(params),
-      signal,
-    });
-    if (response.status === 403) {
-      csrfToken = undefined;
-      response = await request('/product-api/frontend/ask/questions', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-csrf-token': await csrf(signal),
-        },
-        credentials: 'same-origin',
-        body: JSON.stringify(params),
-        signal,
-      });
-    }
-    return response;
+    return csrf.run(
+      (token) =>
+        request('/product-api/frontend/ask/questions', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': token },
+          credentials: 'same-origin',
+          body: JSON.stringify(params),
+          signal,
+        }),
+      { signal, recoverOnResponse: isCsrfFailureResponse },
+    );
   };
 
   const mutate = async (path: string, params: unknown, signal?: AbortSignal): Promise<Response> => {
-    const send = async (token: string): Promise<Response> =>
-      request(path, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-csrf-token': token },
-        credentials: 'same-origin',
-        body: JSON.stringify(params),
-        signal,
-      });
-    let response = await send(await csrf(signal));
-    if (response.status === 403) {
-      csrfToken = undefined;
-      response = await send(await csrf(signal));
-    }
-    return response;
+    return csrf.run(
+      (token) =>
+        request(path, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': token },
+          credentials: 'same-origin',
+          body: JSON.stringify(params),
+          signal,
+        }),
+      { signal, recoverOnResponse: isCsrfFailureResponse },
+    );
   };
 
   return {

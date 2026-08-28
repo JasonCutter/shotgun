@@ -32,6 +32,7 @@ import {
 } from '../../contracts/src/index.js';
 import { decodeProductApiErrorBody } from './decode.js';
 import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
+import { getSharedCsrfMutationManager, isCsrfFailureResponse } from './csrf-manager.js';
 
 // The shared per-command semantic digests and the revision content digest are
 // re-exported here so the browser Draft State Machine computes exactly the
@@ -105,7 +106,8 @@ const identityMismatch = (message: string): never => {
 
 /**
  * Typed FE-P3-S2 Knowledge Draft client. Mirrors the Ask workspace client:
- * same-origin credentials, cached CSRF token with a single retry on 403, and
+ * same-origin credentials, shared CSRF coordination with a single retry only
+ * for REQUEST_ORIGIN_DENIED, and
  * strict decoding of every response. The server Draft is always authoritative;
  * this client never merges or refreshes a Draft automatically.
  */
@@ -113,37 +115,20 @@ export const createFrontendKnowledgeDraftClient = (
   options: { readonly fetch?: typeof globalThis.fetch } = {},
 ): FrontendKnowledgeDraftClient => {
   const request = options.fetch ?? globalThis.fetch;
-  let csrfToken: string | undefined;
-
-  const csrf = async (signal?: AbortSignal): Promise<string> => {
-    if (csrfToken) return csrfToken;
-    const response = await request('/api/v1/security/csrf', {
-      credentials: 'same-origin',
-      signal,
-    });
-    const body = (await assertOk(response)) as { readonly csrfToken?: unknown };
-    if (typeof body.csrfToken !== 'string' || body.csrfToken.length === 0) {
-      throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'The CSRF token response is invalid.');
-    }
-    csrfToken = body.csrfToken;
-    return csrfToken;
-  };
+  const csrf = getSharedCsrfMutationManager(request);
 
   const mutate = async (path: string, params: unknown, signal?: AbortSignal): Promise<Response> => {
-    const send = async (token: string): Promise<Response> =>
-      request(path, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-csrf-token': token },
-        credentials: 'same-origin',
-        body: JSON.stringify(params),
-        signal,
-      });
-    let response = await send(await csrf(signal));
-    if (response.status === 403) {
-      csrfToken = undefined;
-      response = await send(await csrf(signal));
-    }
-    return response;
+    return csrf.run(
+      (token) =>
+        request(path, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': token },
+          credentials: 'same-origin',
+          body: JSON.stringify(params),
+          signal,
+        }),
+      { signal, recoverOnResponse: isCsrfFailureResponse },
+    );
   };
 
   return {

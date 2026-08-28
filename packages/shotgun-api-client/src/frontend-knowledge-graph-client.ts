@@ -37,6 +37,7 @@ import {
 } from '../../contracts/src/index.js';
 import { decodeProductApiErrorBody } from './decode.js';
 import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
+import { getSharedCsrfMutationManager, isCsrfFailureResponse } from './csrf-manager.js';
 
 export type FrontendKnowledgeGraphClient = {
   getGraphSnapshot(
@@ -102,29 +103,15 @@ const identityMismatch = (message: string): never => {
 };
 
 /**
- * Typed FE-P3-S3 graph read client. Same-origin credentials, cached CSRF with a
- * single retry on 403, strict decoding of every response, `AbortSignal`
+ * Typed FE-P3-S3 graph read client. Same-origin credentials, shared CSRF with a
+ * single retry only for REQUEST_ORIGIN_DENIED, strict decoding of every response, `AbortSignal`
  * cancellation and typed failure mapping.
  */
 export const createFrontendKnowledgeGraphClient = (
   options: { readonly fetch?: typeof globalThis.fetch } = {},
 ): FrontendKnowledgeGraphClient => {
   const request = options.fetch ?? globalThis.fetch;
-  let csrfToken: string | undefined;
-
-  const csrf = async (signal?: AbortSignal): Promise<string> => {
-    if (csrfToken) return csrfToken;
-    const response = await request('/api/v1/security/csrf', {
-      credentials: 'same-origin',
-      signal,
-    });
-    const body = (await assertOk(response)) as { readonly csrfToken?: unknown };
-    if (typeof body.csrfToken !== 'string' || body.csrfToken.length === 0) {
-      throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'The CSRF token response is invalid.');
-    }
-    csrfToken = body.csrfToken;
-    return csrfToken;
-  };
+  const csrf = getSharedCsrfMutationManager(request);
 
   const post = async (path: string, params: unknown, signal?: AbortSignal): Promise<unknown> => {
     const send = async (token: string): Promise<Response> =>
@@ -135,11 +122,10 @@ export const createFrontendKnowledgeGraphClient = (
         body: JSON.stringify(params),
         signal,
       });
-    let response = await send(await csrf(signal));
-    if (response.status === 403) {
-      csrfToken = undefined;
-      response = await send(await csrf(signal));
-    }
+    const response = await csrf.run((token) => send(token), {
+      signal,
+      recoverOnResponse: isCsrfFailureResponse,
+    });
     return assertOk(response);
   };
 

@@ -77,12 +77,17 @@ export const waitForAskConversationRouteReady = async (page: Page): Promise<Resp
     if (response === null) {
       throw new Error('The Ask conversation route-guard request did not receive a response.');
     }
-    if (response.status() !== 200) {
-      throw new Error(
-        `The Ask conversation route-guard returned HTTP ${response.status()} instead of 200.`,
-      );
-    }
-    return response;
+    if (response.status() === 200) return response;
+
+    // A typed REQUEST_ORIGIN_DENIED may be recovered once by the shared
+    // browser-session CSRF coordinator. Keep waiting for the actual successful
+    // route-guard response; never treat the denial itself as readiness.
+    return await page.waitForResponse(
+      (candidate) =>
+        isAskRouteGuardRequest(candidate.request()) &&
+        candidate.request().method() === 'POST' &&
+        candidate.status() === 200,
+    );
   } catch (reason: unknown) {
     const message = reason instanceof Error ? reason.message : String(reason);
     throw new Error(`${message}\nAsk route-guard observation: ${await observation.summary()}`);

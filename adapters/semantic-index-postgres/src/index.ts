@@ -3,7 +3,13 @@ import type { Pool, QueryResultRow } from 'pg';
 import {
   type SemanticCandidateQuery,
   type SemanticCandidateResult,
+  type SemanticActiveGenerationReaderPort,
   type SemanticDistanceMetric,
+  type SemanticGenerationActivationResult,
+  type SemanticGenerationLifecycleRepositoryPort,
+  type SemanticGenerationMembershipSummary,
+  type SemanticGenerationPointer,
+  type SemanticGenerationPointerExpectation,
   type SemanticIndexRepositoryPort,
   type SemanticNormalizationPolicy,
   type SemanticProjectionGeneration,
@@ -15,7 +21,9 @@ import {
   validatePersistedItem,
   validateSecurityInput,
   validateUnitLength,
+  isSemanticGenerationResourceType,
 } from '../../../packages/contracts/src/index.js';
+import { semanticMembershipDigest } from '../../../packages/contracts/src/index.js';
 
 type GenerationRow = QueryResultRow & {
   readonly project_id: string;
@@ -56,6 +64,11 @@ type ItemRow = QueryResultRow & {
   readonly evidence_ids: string[];
   readonly access_scope: string[];
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  readonly provider_id: string;
+  readonly embedding_model_id: string;
+  readonly normalization_policy: SemanticNormalizationPolicy;
+  readonly authority: string | null;
+  readonly provenance: unknown;
   readonly indexed_at: Date;
   readonly created_at: Date;
   readonly updated_at: Date;
@@ -77,10 +90,25 @@ type CandidateRow = QueryResultRow & {
   readonly evidence_ids: string[];
   readonly access_scope: string[];
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  readonly authority: string | null;
+  readonly provenance: unknown;
   readonly indexed_at: Date;
   readonly created_at: Date;
   readonly updated_at: Date;
   readonly distance: number;
+};
+
+type MembershipRow = QueryResultRow & {
+  readonly resource_type: SemanticResourceType;
+  readonly resource_id: string;
+  readonly source_projection_digest: string;
+  readonly canonical_version: number;
+  readonly semantic_text_digest: string;
+  readonly evidence_ids: string[];
+  readonly access_scope: string[];
+  readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  readonly authority: string | null;
+  readonly provenance: unknown;
 };
 
 const mapGeneration = (row: GenerationRow): SemanticProjectionGeneration => ({
@@ -105,27 +133,41 @@ const mapGeneration = (row: GenerationRow): SemanticProjectionGeneration => ({
   createdAt: row.created_at.toISOString(),
 });
 
-const mapItem = (row: ItemRow): SemanticProjectionItem => ({
-  semanticItemId: row.semantic_item_id,
-  projectId: row.project_id,
-  generationId: row.generation_id,
-  resourceType: row.resource_type,
-  resourceId: row.resource_id,
-  sourceProjectionDigest: row.source_projection_digest,
-  canonicalVersion: row.canonical_version,
-  semanticTextDigest: row.semantic_text_digest,
-  embeddingProfileId: row.embedding_profile_id,
-  embeddingProfileRevision: row.embedding_profile_revision,
-  representationVersion: row.representation_version,
-  vector: JSON.parse(row.vector_text) as number[],
-  dimension: row.dimension,
-  evidenceIds: row.evidence_ids,
-  accessScope: row.access_scope,
-  sensitivity: row.sensitivity,
-  indexedAt: row.indexed_at.toISOString(),
-  createdAt: row.created_at.toISOString(),
-  updatedAt: row.updated_at.toISOString(),
-});
+const mapItem = (row: ItemRow): SemanticProjectionItem => {
+  const item: SemanticProjectionItem = {
+    semanticItemId: row.semantic_item_id,
+    projectId: row.project_id,
+    generationId: row.generation_id,
+    resourceType: row.resource_type,
+    resourceId: row.resource_id,
+    sourceProjectionDigest: row.source_projection_digest,
+    canonicalVersion: row.canonical_version,
+    semanticTextDigest: row.semantic_text_digest,
+    embeddingProfileId: row.embedding_profile_id,
+    embeddingProfileRevision: row.embedding_profile_revision,
+    representationVersion: row.representation_version,
+    vector: JSON.parse(row.vector_text) as number[],
+    dimension: row.dimension,
+    evidenceIds: row.evidence_ids,
+    accessScope: row.access_scope,
+    sensitivity: row.sensitivity,
+    indexedAt: row.indexed_at.toISOString(),
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+  };
+  // Preserve the R1/R2 read shape for legacy rows while exposing the full R3
+  // execution and provenance identity for generation-built rows.
+  return row.authority !== null || row.provenance !== null
+    ? {
+        ...item,
+        providerId: row.provider_id,
+        embeddingModelId: row.embedding_model_id,
+        normalizationPolicy: row.normalization_policy,
+        authority: row.authority as SemanticProjectionItem['authority'],
+        provenance: row.provenance as SemanticProjectionItem['provenance'],
+      }
+    : item;
+};
 
 const handlePostgresError = (error: unknown, operation: string): never => {
   if (
@@ -146,8 +188,16 @@ const handlePostgresError = (error: unknown, operation: string): never => {
   throw error;
 };
 
-export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryPort {
-  constructor(private readonly pool: Pool) {}
+export class PostgresSemanticIndexRepository
+  implements SemanticIndexRepositoryPort, SemanticGenerationLifecycleRepositoryPort
+{
+  constructor(
+    private readonly pool: Pool,
+    private readonly observation: {
+      /** Observation-only seam; it cannot alter SQL, ordering, or results. */
+      readonly onNearestNeighbors?: () => void;
+    } = {},
+  ) {}
 
   async saveGeneration(
     generation: SemanticProjectionGeneration,
@@ -271,6 +321,13 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
   }
 
   async upsertItem(item: SemanticProjectionItem): Promise<void> {
+    if (item.resourceType === 'FACT') {
+      throw new SemanticEmbeddingError({
+        code: 'VALIDATION_FAILURE',
+        safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
+        operation: 'upsert-item',
+      });
+    }
     const gen = await this.getGeneration(item.projectId, item.generationId);
     if (!gen) {
       throw new SemanticEmbeddingError({
@@ -280,11 +337,20 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
       });
     }
     validatePersistedItem(item, 'upsert-item');
+    const hasR3Identity =
+      item.providerId !== undefined ||
+      item.embeddingModelId !== undefined ||
+      item.authority !== undefined;
     if (
       item.dimension !== gen.dimension ||
       item.embeddingProfileId !== gen.embeddingProfileId ||
       item.embeddingProfileRevision !== gen.embeddingProfileRevision ||
-      item.representationVersion !== gen.representationVersion
+      item.representationVersion !== gen.representationVersion ||
+      (hasR3Identity &&
+        (item.sourceProjectionDigest !== gen.sourceProjectionDigest ||
+          item.providerId !== gen.providerId ||
+          item.embeddingModelId !== gen.embeddingModelId ||
+          item.normalizationPolicy !== gen.normalizationPolicy))
     ) {
       throw new SemanticEmbeddingError({
         code: 'VALIDATION_FAILURE',
@@ -306,6 +372,9 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
     }
 
     const vectorString = JSON.stringify(item.vector);
+    const providerId = item.providerId ?? gen.providerId;
+    const embeddingModelId = item.embeddingModelId ?? gen.embeddingModelId;
+    const normalizationPolicy = item.normalizationPolicy ?? gen.normalizationPolicy;
 
     try {
       await this.pool.query(
@@ -314,13 +383,15 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
            source_projection_digest, canonical_version, semantic_text_digest,
            embedding_profile_id, embedding_profile_revision, representation_version,
            vector, dimension, evidence_ids, access_scope, sensitivity,
+           provider_id, embedding_model_id, normalization_policy, authority, provenance,
            indexed_at, created_at, updated_at
          ) VALUES (
            $1, $2, $3, $4, $5,
            $6, $7, $8,
            $9, $10, $11,
            $12::vector, $13, $14::text[], $15::text[], $16,
-           $17, $18, $19
+           $17, $18, $19, $20, $21::jsonb,
+           $22, $23, $24
          )
          ON CONFLICT (project_id, generation_id, resource_type, resource_id)
          DO UPDATE SET
@@ -336,6 +407,11 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
            evidence_ids = EXCLUDED.evidence_ids,
            access_scope = EXCLUDED.access_scope,
            sensitivity = EXCLUDED.sensitivity,
+           provider_id = EXCLUDED.provider_id,
+           embedding_model_id = EXCLUDED.embedding_model_id,
+           normalization_policy = EXCLUDED.normalization_policy,
+           authority = EXCLUDED.authority,
+           provenance = EXCLUDED.provenance,
            indexed_at = EXCLUDED.indexed_at,
            updated_at = EXCLUDED.updated_at`,
         [
@@ -355,6 +431,11 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
           item.evidenceIds,
           item.accessScope,
           item.sensitivity,
+          providerId,
+          embeddingModelId,
+          normalizationPolicy,
+          item.authority ?? null,
+          item.provenance === undefined ? null : JSON.stringify(item.provenance),
           item.indexedAt,
           item.createdAt,
           item.updatedAt,
@@ -371,9 +452,17 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
     try {
       await client.query('BEGIN');
       for (const item of items) {
+        if (item.resourceType === 'FACT') {
+          throw new SemanticEmbeddingError({
+            code: 'VALIDATION_FAILURE',
+            safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
+            operation: 'upsert-items',
+          });
+        }
         // Validate generation using the SAME connected transaction client
         const genRes = await client.query<GenerationRow>(
-          `SELECT project_id, generation_id, dimension, embedding_profile_id, embedding_profile_revision, representation_version, normalization_policy
+          `SELECT project_id, generation_id, dimension, embedding_profile_id, embedding_profile_revision, representation_version, normalization_policy,
+                  provider_id, embedding_model_id, source_projection_digest
            FROM projection.semantic_generations
            WHERE project_id = $1 AND generation_id = $2`,
           [item.projectId, item.generationId],
@@ -387,11 +476,20 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
           });
         }
         validatePersistedItem(item, 'upsert-items');
+        const hasR3Identity =
+          item.providerId !== undefined ||
+          item.embeddingModelId !== undefined ||
+          item.authority !== undefined;
         if (
           item.dimension !== gen.dimension ||
           item.embeddingProfileId !== gen.embedding_profile_id ||
           item.embeddingProfileRevision !== gen.embedding_profile_revision ||
-          item.representationVersion !== gen.representation_version
+          item.representationVersion !== gen.representation_version ||
+          (hasR3Identity &&
+            (item.sourceProjectionDigest !== gen.source_projection_digest ||
+              item.providerId !== gen.provider_id ||
+              item.embeddingModelId !== gen.embedding_model_id ||
+              item.normalizationPolicy !== gen.normalization_policy))
         ) {
           throw new SemanticEmbeddingError({
             code: 'VALIDATION_FAILURE',
@@ -413,19 +511,24 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
         }
 
         const vectorString = JSON.stringify(item.vector);
+        const providerId = item.providerId ?? gen.provider_id;
+        const embeddingModelId = item.embeddingModelId ?? gen.embedding_model_id;
+        const normalizationPolicy = item.normalizationPolicy ?? gen.normalization_policy;
         await client.query(
           `INSERT INTO projection.semantic_items (
              project_id, generation_id, semantic_item_id, resource_type, resource_id,
              source_projection_digest, canonical_version, semantic_text_digest,
              embedding_profile_id, embedding_profile_revision, representation_version,
              vector, dimension, evidence_ids, access_scope, sensitivity,
+             provider_id, embedding_model_id, normalization_policy, authority, provenance,
              indexed_at, created_at, updated_at
            ) VALUES (
              $1, $2, $3, $4, $5,
              $6, $7, $8,
              $9, $10, $11,
              $12::vector, $13, $14::text[], $15::text[], $16,
-             $17, $18, $19
+             $17, $18, $19, $20, $21::jsonb,
+             $22, $23, $24
            )
            ON CONFLICT (project_id, generation_id, resource_type, resource_id)
            DO UPDATE SET
@@ -441,6 +544,11 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
              evidence_ids = EXCLUDED.evidence_ids,
              access_scope = EXCLUDED.access_scope,
              sensitivity = EXCLUDED.sensitivity,
+             provider_id = EXCLUDED.provider_id,
+             embedding_model_id = EXCLUDED.embedding_model_id,
+             normalization_policy = EXCLUDED.normalization_policy,
+             authority = EXCLUDED.authority,
+             provenance = EXCLUDED.provenance,
              indexed_at = EXCLUDED.indexed_at,
              updated_at = EXCLUDED.updated_at`,
           [
@@ -460,6 +568,11 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
             item.evidenceIds,
             item.accessScope,
             item.sensitivity,
+            providerId,
+            embeddingModelId,
+            normalizationPolicy,
+            item.authority ?? null,
+            item.provenance === undefined ? null : JSON.stringify(item.provenance),
             item.indexedAt,
             item.createdAt,
             item.updatedAt,
@@ -486,6 +599,7 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
               source_projection_digest, canonical_version, semantic_text_digest,
               embedding_profile_id, embedding_profile_revision, representation_version,
               vector::text AS vector_text, dimension, evidence_ids, access_scope, sensitivity,
+              provider_id, embedding_model_id, normalization_policy, authority, provenance,
               indexed_at, created_at, updated_at
        FROM projection.semantic_items
        WHERE project_id = $1 AND generation_id = $2 AND resource_type = $3 AND resource_id = $4`,
@@ -505,6 +619,7 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
               source_projection_digest, canonical_version, semantic_text_digest,
               embedding_profile_id, embedding_profile_revision, representation_version,
               vector::text AS vector_text, dimension, evidence_ids, access_scope, sensitivity,
+              provider_id, embedding_model_id, normalization_policy, authority, provenance,
               indexed_at, created_at, updated_at
        FROM projection.semantic_items
        WHERE project_id = $1 AND generation_id = $2 AND semantic_item_id = $3`,
@@ -592,6 +707,7 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
     // SECURITY BEFORE TOP-K:
     // Candidate filtering (project_id, generation_id, dimension, access_scope, sensitivity)
     // is applied strictly in the WHERE clause BEFORE ORDER BY distance and LIMIT.
+    this.observation.onNearestNeighbors?.();
     const result = await this.pool.query<CandidateRow>(
       `SELECT
          project_id,
@@ -609,6 +725,8 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
          evidence_ids,
          access_scope,
          sensitivity,
+         authority,
+         provenance,
          indexed_at,
          created_at,
          updated_at,
@@ -649,9 +767,297 @@ export class PostgresSemanticIndexRepository implements SemanticIndexRepositoryP
       evidenceIds: row.evidence_ids,
       accessScope: row.access_scope,
       sensitivity: row.sensitivity,
+      ...(row.authority === null
+        ? {}
+        : { authority: row.authority as SemanticCandidateResult['authority'] }),
+      ...(row.provenance === null
+        ? {}
+        : { provenance: row.provenance as SemanticCandidateResult['provenance'] }),
       indexedAt: row.indexed_at.toISOString(),
       createdAt: row.created_at.toISOString(),
       updatedAt: row.updated_at.toISOString(),
     }));
+  }
+
+  async upsertGenerationItems(items: readonly SemanticProjectionItem[]): Promise<void> {
+    for (const item of items) {
+      if (!isSemanticGenerationResourceType(item.resourceType)) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
+          operation: 'upsert-generation-items',
+        });
+      }
+      const generation = await this.getGeneration(item.projectId, item.generationId);
+      if (!generation) {
+        throw new SemanticEmbeddingError({
+          code: 'CONFIGURATION_REQUIRED',
+          safeMessage: 'Referenced projection generation does not exist.',
+          operation: 'upsert-generation-items',
+        });
+      }
+      if (
+        item.sourceProjectionDigest !== generation.sourceProjectionDigest ||
+        item.providerId !== generation.providerId ||
+        item.embeddingModelId !== generation.embeddingModelId ||
+        item.normalizationPolicy !== generation.normalizationPolicy
+      ) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: 'R3 item execution identity does not match the generation.',
+          operation: 'upsert-generation-items',
+        });
+      }
+    }
+    await this.upsertItems(items);
+  }
+
+  async transitionGenerationStatus(input: {
+    readonly projectId: string;
+    readonly generationId: string;
+    readonly expectedStatus: SemanticProjectionGenerationStatus;
+    readonly nextStatus: Exclude<SemanticProjectionGenerationStatus, 'BUILDING'>;
+  }): Promise<'UPDATED' | 'NOT_FOUND' | 'CONFLICT'> {
+    if (input.expectedStatus !== 'BUILDING') return 'CONFLICT';
+    const result = await this.pool.query(
+      `UPDATE projection.semantic_generations
+       SET build_status = $4
+       WHERE project_id = $1
+         AND generation_id = $2
+         AND build_status = $3
+       RETURNING generation_id`,
+      [input.projectId, input.generationId, input.expectedStatus, input.nextStatus],
+    );
+    if ((result.rowCount ?? 0) > 0) return 'UPDATED';
+    const exists = await this.pool.query(
+      `SELECT 1 FROM projection.semantic_generations
+       WHERE project_id = $1 AND generation_id = $2`,
+      [input.projectId, input.generationId],
+    );
+    return (exists.rowCount ?? 0) > 0 ? 'CONFLICT' : 'NOT_FOUND';
+  }
+
+  async readGenerationMembershipSummary(
+    projectId: string,
+    generationId: string,
+  ): Promise<SemanticGenerationMembershipSummary | undefined> {
+    const generation = await this.getGeneration(projectId, generationId);
+    if (!generation) return undefined;
+    // Only persisted membership/provenance columns are selected. Vector bytes,
+    // timestamps and physical row order are deliberately excluded.
+    const result = await this.pool.query<MembershipRow>(
+      `SELECT resource_type, resource_id, source_projection_digest,
+              canonical_version, semantic_text_digest, evidence_ids,
+              access_scope, sensitivity, authority, provenance
+       FROM projection.semantic_items
+       WHERE project_id = $1 AND generation_id = $2`,
+      [projectId, generationId],
+    );
+    const identityItems = result.rows.map((row) => ({
+      resourceType: row.resource_type,
+      resourceId: row.resource_id,
+      sourceProjectionDigest: row.source_projection_digest,
+      canonicalVersion: row.canonical_version,
+      semanticTextDigest: row.semantic_text_digest,
+      evidenceIds: row.evidence_ids,
+      accessScope: row.access_scope,
+      sensitivity: row.sensitivity,
+      ...(row.authority === null
+        ? {}
+        : { authority: row.authority as SemanticProjectionItem['authority'] }),
+      ...(row.provenance === null
+        ? {}
+        : { provenance: row.provenance as SemanticProjectionItem['provenance'] }),
+    }));
+    return {
+      projectId,
+      generationId,
+      itemCount: result.rows.length,
+      membershipDigest: semanticMembershipDigest(identityItems),
+    };
+  }
+
+  async getActiveGenerationPointer(
+    projectId: string,
+  ): Promise<SemanticGenerationPointer | undefined> {
+    const result = await this.pool.query<{
+      project_id: string;
+      active_generation_id: string;
+      pointer_revision: string | number;
+      source_projection_digest: string;
+      canonical_base_version: number;
+      updated_at: Date;
+    }>(
+      `SELECT project_id, active_generation_id, pointer_revision,
+              source_projection_digest, canonical_base_version, updated_at
+       FROM projection.semantic_generation_pointers
+       WHERE project_id = $1`,
+      [projectId],
+    );
+    const row = result.rows[0];
+    return row
+      ? {
+          projectId: row.project_id,
+          activeGenerationId: row.active_generation_id,
+          pointerRevision: Number(row.pointer_revision),
+          sourceProjectionDigest: row.source_projection_digest,
+          canonicalBaseVersion: row.canonical_base_version,
+          updatedAt: row.updated_at.toISOString(),
+        }
+      : undefined;
+  }
+
+  async activateGeneration(input: {
+    readonly projectId: string;
+    readonly generationId: string;
+    readonly expectedPointer: SemanticGenerationPointerExpectation;
+    readonly sourceProjectionDigest: string;
+    readonly canonicalBaseVersion: number;
+    readonly updatedAt: string;
+  }): Promise<SemanticGenerationActivationResult> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const generationResult = await client.query<{
+        build_status: SemanticProjectionGenerationStatus;
+        source_projection_digest: string;
+        canonical_base_version: number;
+      }>(
+        `SELECT build_status, source_projection_digest, canonical_base_version
+         FROM projection.semantic_generations
+         WHERE project_id = $1 AND generation_id = $2
+         FOR SHARE`,
+        [input.projectId, input.generationId],
+      );
+      const generation = generationResult.rows[0];
+      if (
+        !generation ||
+        generation.build_status !== 'READY' ||
+        generation.source_projection_digest !== input.sourceProjectionDigest ||
+        generation.canonical_base_version !== input.canonicalBaseVersion
+      ) {
+        await client.query('ROLLBACK');
+        return { status: 'CONFLICT' };
+      }
+
+      let pointerResult;
+      if (input.expectedPointer.kind === 'NONE') {
+        pointerResult = await client.query<{
+          project_id: string;
+          active_generation_id: string;
+          pointer_revision: string | number;
+          source_projection_digest: string;
+          canonical_base_version: number;
+          updated_at: Date;
+        }>(
+          `INSERT INTO projection.semantic_generation_pointers (
+             project_id, active_generation_id, pointer_revision,
+             source_projection_digest, canonical_base_version, updated_at
+           ) VALUES ($1, $2, 1, $3, $4, $5)
+           ON CONFLICT (project_id) DO NOTHING
+           RETURNING project_id, active_generation_id, pointer_revision,
+                     source_projection_digest, canonical_base_version, updated_at`,
+          [
+            input.projectId,
+            input.generationId,
+            input.sourceProjectionDigest,
+            input.canonicalBaseVersion,
+            input.updatedAt,
+          ],
+        );
+      } else {
+        pointerResult = await client.query<{
+          project_id: string;
+          active_generation_id: string;
+          pointer_revision: string | number;
+          source_projection_digest: string;
+          canonical_base_version: number;
+          updated_at: Date;
+        }>(
+          `UPDATE projection.semantic_generation_pointers
+           SET active_generation_id = $4,
+               pointer_revision = pointer_revision + 1,
+               source_projection_digest = $5,
+               canonical_base_version = $6,
+               updated_at = $7
+           WHERE project_id = $1
+             AND active_generation_id = $2
+             AND pointer_revision = $3
+           RETURNING project_id, active_generation_id, pointer_revision,
+                     source_projection_digest, canonical_base_version, updated_at`,
+          [
+            input.projectId,
+            input.expectedPointer.activeGenerationId,
+            input.expectedPointer.pointerRevision,
+            input.generationId,
+            input.sourceProjectionDigest,
+            input.canonicalBaseVersion,
+            input.updatedAt,
+          ],
+        );
+      }
+
+      const row = pointerResult.rows[0];
+      if (!row) {
+        const currentResult = await client.query<{
+          project_id: string;
+          active_generation_id: string;
+          pointer_revision: string | number;
+          source_projection_digest: string;
+          canonical_base_version: number;
+          updated_at: Date;
+        }>(
+          `SELECT project_id, active_generation_id, pointer_revision,
+                  source_projection_digest, canonical_base_version, updated_at
+           FROM projection.semantic_generation_pointers
+           WHERE project_id = $1`,
+          [input.projectId],
+        );
+        await client.query('ROLLBACK');
+        const current = currentResult.rows[0];
+        return current
+          ? {
+              status: 'CONFLICT',
+              pointer: {
+                projectId: current.project_id,
+                activeGenerationId: current.active_generation_id,
+                pointerRevision: Number(current.pointer_revision),
+                sourceProjectionDigest: current.source_projection_digest,
+                canonicalBaseVersion: current.canonical_base_version,
+                updatedAt: current.updated_at.toISOString(),
+              },
+            }
+          : { status: 'CONFLICT' };
+      }
+
+      await client.query('COMMIT');
+      return {
+        status: 'ACTIVATED',
+        pointer: {
+          projectId: row.project_id,
+          activeGenerationId: row.active_generation_id,
+          pointerRevision: Number(row.pointer_revision),
+          sourceProjectionDigest: row.source_projection_digest,
+          canonicalBaseVersion: row.canonical_base_version,
+          updatedAt: row.updated_at.toISOString(),
+        },
+      };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      return handlePostgresError(error, 'activate-generation');
+    } finally {
+      client.release();
+    }
+  }
+}
+
+/** Reads the generation selected by the durable R3 pointer/CAS boundary. */
+export class PostgresSemanticActiveGenerationReader implements SemanticActiveGenerationReaderPort {
+  constructor(private readonly repository: PostgresSemanticIndexRepository) {}
+
+  async getActiveGeneration(projectId: string): Promise<SemanticProjectionGeneration | undefined> {
+    const pointer = await this.repository.getActiveGenerationPointer(projectId);
+    if (!pointer) return undefined;
+    return this.repository.getGeneration(projectId, pointer.activeGenerationId);
   }
 }

@@ -2,6 +2,10 @@ import { expect, test } from '@playwright/test';
 
 import { ASK_FIXTURE } from './fixtures/ask-workspace-fixture.js';
 import { switchProject } from './helpers/hfm-commands.js';
+import {
+  waitForAskConversationRouteReady,
+  waitForAskConversationSourceContextReady,
+} from './helpers/ask-readiness.js';
 
 test('Active B -> Conversation A uses only A Sources and submits the follow-up to A', async ({
   page,
@@ -11,8 +15,10 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
 
   const questionInput = page.getByRole('textbox', { name: 'Question', exact: true });
   await questionInput.fill('Create the Project A conversation for the cross-project boundary.');
+  const routeReadyResponse = waitForAskConversationRouteReady(page);
   await page.getByRole('button', { name: 'Submit question' }).click();
   await expect(page).toHaveURL(/\/ask\/conversations\/[^/]+$/);
+  await routeReadyResponse;
   const conversationUrl = new URL(page.url()).pathname;
   const conversationId = conversationUrl.split('/').at(-1)!;
   await expect(page.locator('.ask-workspace')).toBeVisible();
@@ -29,8 +35,10 @@ test('Active B -> Conversation A uses only A Sources and submits the follow-up t
       .url()
       .endsWith(`/product-api/frontend/ask/conversations/${conversationId}/source-context/query`),
   );
+  const sourceContextResponse = waitForAskConversationSourceContextReady(page, conversationId);
   await page.getByRole('combobox', { name: 'Ask mode' }).selectOption('SOURCE_EXPLORATION');
-  const sourceRequestBody = (await sourceContextRequest).postDataJSON() as Record<string, unknown>;
+  const [sourceRequest] = await Promise.all([sourceContextRequest, sourceContextResponse]);
+  const sourceRequestBody = sourceRequest.postDataJSON() as Record<string, unknown>;
   expect(Object.keys(sourceRequestBody).sort()).toEqual([
     'filters',
     'limit',

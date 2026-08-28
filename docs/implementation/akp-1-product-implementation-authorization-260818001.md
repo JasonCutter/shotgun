@@ -1,100 +1,127 @@
 ---
 id: AKP-1-PRODUCT-IMPLEMENTATION-AUTHORIZATION-260818001
 classification: ACCEPTED
-status: AUTHORIZED_PENDING_CANONICALIZATION
+status: AUTHORIZED_IN_PROGRESS
 accepted_at: 2026-08-18
+updated_at: 2026-08-19
 accepted_by: USER
 program: AKP — Active Knowledge Productization v1
 section: AKP-1 — Hybrid Semantic Retrieval
-subject_base: 4d4623ffde04b1f7d4ca2835b3a3cc0137578a96
+subject_base: 3ea9a8ec5aada6f026b8cccd8b72cdc3bae677a5
 contract_acceptance: docs/architecture/contracts/snapshots/akp-1/AKP-1-CONTRACT-ACCEPTANCE-260818001.md
-governing_adr: ADR-135
+repair_contract_amendment: docs/architecture/contracts/snapshots/akp-1/AKP-1-CONTRACT-AMENDMENT-SEMANTIC-RUNTIME-AUTHORITY-260819001.md
+governing_adrs: ADR-135, ADR-147, ADR-148
 ---
 
 # AKP-1 — Product Implementation Authorization
 
-## 1. Authority
+## 1. Current authority
 
-The USER explicitly instructed Shotgun to begin AKP-1 on 2026-08-18 after the AKP-1 Contract had been accepted and frozen.
+The USER originally authorized AKP-1 Product implementation on 2026-08-18. After a full cross-WP implementation audit on 2026-08-19, the USER explicitly authorized the proposed improvement path and replacement implementation plan.
 
-This record authorizes AKP-1 Product implementation under the frozen Contract and Work Package sequence. It does **not** authorize Ready for Review, merge, deployment, Production Verification, AKP-2, or any scope outside AKP-1.
-
-Because the frozen AKP-0 baseline and AKP-1 Contract are still carried by Draft PR #120 rather than Canonical `main`, implementation execution is gated as follows:
+The active implementation authority is now:
 
 ```text
-Product implementation authority: AUTHORIZED
-Execution before PR #120 canonicalization: BLOCKED
-Execution after PR #120 canonicalization: AUTHORIZED
-First implementation unit: AKP-1 WP1 only
-Ready / Merge: NOT_AUTHORIZED
-AKP-2+: NOT_AUTHORIZED
+AKP-1R — Cross-WP Semantic Runtime Repair
+R0 -> R1 -> R2 -> R3 -> R4 -> R5 -> existing AKP-1 WP5 closure
 ```
 
-No implementation branch may treat this record as permission to bypass Canonical architecture/Contract authority.
-
-## 2. Authorized implementation scope
-
-Only the frozen AKP-1 sequence is authorized:
-
-1. WP1 — Contracts, semantic representation, embedding capability and profile
-2. WP2 — Projection persistence and PostgreSQL/pgvector adapter
-3. WP3 — Semantic retrieval, Hybrid coordinator and citation preservation
-4. WP4 — Incremental lifecycle, invalidation, readiness and generation switch
-5. WP5 — Quality, security, privacy, performance and Section closure evidence
-
-Implementation proceeds one Work Package at a time. WP2 cannot begin until WP1 is reviewed and accepted, and the same rule applies through WP5.
-
-## 3. WP1 execution boundary
-
-After PR #120 is Canonicalized, WP1 may implement only:
-
-- deterministic typed semantic representation for Claim, Fact, Entity, Relation, Event and Decision;
-- representation version and semantic text digest;
-- independent semantic embedding capability/model registry boundary;
-- `SemanticEmbeddingProfile` authority independent from Ask `ProjectAIConfiguration.activeModelId`;
-- embedding execution Port and deterministic fake adapter for focused verification;
-- reuse of existing provider identity, CredentialVault, provider privacy/deployment policy and immutable execution pinning;
-- typed provider/configuration/policy/timeout/validation failures required by the frozen Contract;
-- focused evidence for AKP1-AC-03 and AKP1-AC-04.
-
-WP1 does not authorize vector persistence, `pgvector` migration, Search cutover, Hybrid ranking, AKP-2 finding generation, or live paid embedding verification beyond a separately bounded verification instruction.
-
-## 4. Dependency and migration boundary
-
-This authorization does not pre-authorize arbitrary dependencies or migrations.
-
-- WP1: no vector-store migration is authorized.
-- WP2: additive semantic-projection migration and PostgreSQL `vector` extension work become executable only after WP1 completion/acceptance and normal dependency/environment verification.
-- External vector DB remains prohibited by the frozen Contract.
-- A new runtime package must still have a demonstrated need and normal dependency review.
-
-## 5. Verification discipline
-
-The project-wide non-duplication rule remains mandatory:
-
-- do not manually rerun CI already executed for the same exact head;
-- use focused tests for changed WP scope;
-- rely on automatically triggered CI for each new exact head;
-- do not repeat Section-wide Golden Query/security/lifecycle closure before WP5;
-- reuse valid unchanged Stage-7, A1–A9, ADR-144 and Stage-12 evidence.
-
-## 6. PR #120 CI disposition at authorization time
-
-The accepted Contract candidate head `6c3fd8ba927e804ef2b5e52b3e09bdd55ba25eea` passed automatic CI #1009 in full.
-
-The subsequent freeze-record head `05890510bbea24e6716748c0e28340c2672d4566` passed Quality, frontend typecheck, frontend unit tests (289/289), frontend build, and 80 of 81 frontend E2E tests in automatic CI #1010. The single failed E2E was the pre-existing Sources test `Sources keeps Project switching blocked after a partial delete and releases it after the last delete`, which timed out waiting for the `Label` control. No Product/frontend/test code changed in that head.
-
-No manual rerun was dispatched. This authorization record is a substantive governance change and therefore creates a new exact head whose automatically triggered CI is the next valid verification evidence.
-
-## 7. Current decision state
+The former WP1–WP5 implementation request is replaced by the current repair plan at:
 
 ```text
-AKP-0: COMPLETE / BASELINE_REVALIDATED_FROZEN
-AKP-1 Contract: ACCEPTED / FROZEN
-AKP-1 Product implementation authority: AUTHORIZED
-AKP-1 Product implementation execution: PENDING PR #120 CANONICALIZATION
-First executable unit after canonicalization: WP1
-PR #120 Ready / Merge: NOT_AUTHORIZED
-Deployment / Production Verification: NOT_AUTHORIZED
-AKP-2+: NOT_STARTED / NOT_AUTHORIZED
+docs/implementation/akp-1-hybrid-semantic-retrieval-implementation-request-260818001.md
+```
+
+The detailed implementation authority is:
+
+```text
+docs/implementation/akp-1-semantic-runtime-repair-detailed-design-260819001.md
+```
+
+ADR-148 and the semantic runtime Contract Amendment govern the repair.
+
+## 2. Authorized scope
+
+Authorized now:
+
+- R0 architecture/contract/plan replacement and obsolete-current-tree cleanup;
+- R1 durable SemanticEmbeddingProfile authority and bounded provider embedding execution router;
+- R2 coherent semantic corpus source snapshot and representation v2;
+- R3 generation build/persisted validation/CAS/readiness/rollback/pruning repair;
+- R4 normal Product semantic composition and explicit server-owned refresh boundary;
+- R5 cross-WP production-chain proof;
+- after R5 acceptance, existing AKP-1 WP5 final quality/security/privacy/performance closure.
+
+Implementation proceeds in this order. A later Repair WP must not be used to hide an unresolved earlier authority defect.
+
+## 3. Cleanup authority
+
+The USER authorized removal of obsolete implementation material. On the repair branch, code/docs/tests may be deleted when they implement only superseded mechanics and no accepted Product path depends on them.
+
+This does not authorize rewriting Git history or deleting accepted ADR/Canonical/Evidence/audit history. Historical rationale remains available through Git and explicit ADR relationships; obsolete active-tree implementation instructions should not remain as competing authority.
+
+## 4. Branch authority
+
+Repair branch:
+
+```text
+codex/akp-1r-semantic-runtime-repair
+```
+
+Base:
+
+```text
+main@3ea9a8ec5aada6f026b8cccd8b72cdc3bae677a5
+```
+
+The existing WP4 Draft PR is superseded and must not be merged into Canonical main. A new Draft PR is the repair vehicle.
+
+## 5. External provider boundary
+
+R1 may implement the real provider embedding connectivity needed by ADR-148 using the already accepted provider/model/credential/privacy authority. At least one concrete external embedding adapter must be production-capable before AKP-1 final closure.
+
+Deterministic fake connectivity is allowed for deterministic tests at the provider-network boundary. Repeated paid/live calls are not required for deterministic mechanics and remain bounded verification work.
+
+No raw credential may leave CredentialVault as generic plaintext Product data.
+
+## 6. Migration and dependency authority
+
+Additive semantic-owned PostgreSQL migrations required by R1/R3 are authorized. No destructive Canonical/Evidence/SourceVersion/Stage-7 migration is authorized.
+
+Existing `pg`/PostgreSQL/pgvector foundations are reused. No external vector database is authorized. New runtime dependencies require demonstrated need; prefer existing platform/runtime facilities where possible.
+
+## 7. Verification discipline
+
+- Never rerun already-PASS exact-head CI.
+- R1–R4 use focused changed-scope tests plus normal automatic PR CI for pushed exact heads.
+- R5 owns the real cross-WP production-chain proof.
+- WP5 owns final Golden Query/security/privacy/performance closure.
+- Do not create no-op commits for CI.
+- Do not duplicate low-level tests when a stronger cross-WP proof protects the same invariant.
+
+## 8. Explicitly not authorized
+
+- Ready for Review;
+- merge;
+- deployment;
+- Production Verification;
+- AKP-2 through AKP-8 implementation;
+- Raw Source vectorization;
+- FACT Product authority;
+- external vector DB;
+- automatic AI/Discovery Canonical mutation.
+
+## 9. Current state
+
+```text
+AKP-0: COMPLETE / FROZEN
+AKP-1 strategy/ADR-135 direction: ACCEPTED / PRESERVED
+ADR-147: ACCEPTED / FACT EXCLUDED
+ADR-148: ACCEPTED
+AKP-1R R0: IN_PROGRESS
+AKP-1R R1-R5: AUTHORIZED IN SEQUENCE
+AKP-1 WP5: BLOCKED UNTIL R5
+Old WP4 Draft: SUPERSEDED / DO_NOT_MERGE
+Ready / Merge: NOT_AUTHORIZED
+AKP-2+: NOT_STARTED
 ```

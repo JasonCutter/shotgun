@@ -199,12 +199,14 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
            project_id, generation_id, semantic_item_id, resource_type, resource_id,
            source_projection_digest, canonical_version, semantic_text_digest,
            embedding_profile_id, embedding_profile_revision, representation_version,
-           vector, dimension, evidence_ids, access_scope, sensitivity
+           vector, dimension, evidence_ids, access_scope, sensitivity,
+           provider_id, embedding_model_id, normalization_policy
          ) VALUES (
            $1, $2, 'sem-lie-1', 'CLAIM', 'claim-lie-1',
            $3, 1, $4,
            'prof-1', 1, $5,
-           '[1,2,3]'::vector, 768, '{}', '{public}', 'public'
+           '[1,2,3]'::vector, 768, '{}', '{public}', 'public',
+           'google-gemini', 'gemini-embedding-001', 'none'
          )`,
         [
           testProjectA,
@@ -250,12 +252,14 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
            project_id, generation_id, semantic_item_id, resource_type, resource_id,
            source_projection_digest, canonical_version, semantic_text_digest,
            embedding_profile_id, embedding_profile_revision, representation_version,
-           vector, dimension, evidence_ids, access_scope, sensitivity
+           vector, dimension, evidence_ids, access_scope, sensitivity,
+           provider_id, embedding_model_id, normalization_policy
          ) VALUES (
            $1, $2, 'sem-fk-lie', 'CLAIM', 'claim-fk-lie',
            $3, 1, $4,
            'prof-mismatch', 1, $5,
-           $6::vector, 768, '{}', '{public}', 'public'
+           $6::vector, 768, '{}', '{public}', 'public',
+           'google-gemini', 'gemini-embedding-001', 'none'
          )`,
         [
           testProjectA,
@@ -330,12 +334,14 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
            project_id, generation_id, semantic_item_id, resource_type, resource_id,
            source_projection_digest, canonical_version, semantic_text_digest,
            embedding_profile_id, embedding_profile_revision, representation_version,
-           vector, dimension, evidence_ids, access_scope, sensitivity
+           vector, dimension, evidence_ids, access_scope, sensitivity,
+           provider_id, embedding_model_id, normalization_policy
          ) VALUES (
            $1, $2, 'sem-sql-empty-scope', 'CLAIM', 'claim-sql-empty-scope',
            $3, 1, $4,
            'prof-1', 1, $5,
-           $6::vector, 768, '{}', '{}', 'public'
+           $6::vector, 768, '{}', '{}', 'public',
+           'google-gemini', 'gemini-embedding-001', 'none'
          )`,
         [
           testProjectA,
@@ -543,8 +549,8 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
       semanticItemId: 'sem-1536-1',
       projectId: testProjectA,
       generationId: 'gen-openai-1536',
-      resourceType: 'FACT',
-      resourceId: 'fact-openai-1',
+      resourceType: 'ENTITY',
+      resourceId: 'entity-openai-1',
       sourceProjectionDigest: 'sha256:' + 'b'.repeat(64),
       canonicalVersion: 1,
       semanticTextDigest: 'sha256:' + 'b'.repeat(64),
@@ -570,8 +576,8 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     const reloaded1536 = await postgresRepo.getItem(
       testProjectA,
       'gen-openai-1536',
-      'FACT',
-      'fact-openai-1',
+      'ENTITY',
+      'entity-openai-1',
     );
 
     expect(reloaded768?.dimension).toBe(768);
@@ -923,8 +929,8 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
       semanticItemId: 'sem-tx-invalid-2',
       projectId: testProjectA,
       generationId: 'gen-tx-test',
-      resourceType: 'FACT',
-      resourceId: 'fact-tx-2',
+      resourceType: 'ENTITY',
+      resourceId: 'entity-tx-2',
       sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
       canonicalVersion: 1,
       semanticTextDigest: 'sha256:' + '2'.repeat(64),
@@ -951,7 +957,7 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
       await postgresRepo.getItem(testProjectA, 'gen-tx-test', 'CLAIM', 'claim-tx-1'),
     ).toBeUndefined();
     expect(
-      await postgresRepo.getItem(testProjectA, 'gen-tx-test', 'FACT', 'fact-tx-2'),
+      await postgresRepo.getItem(testProjectA, 'gen-tx-test', 'ENTITY', 'entity-tx-2'),
     ).toBeUndefined();
   });
 
@@ -982,11 +988,11 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     const vec = new Array(768).fill(0.01);
 
     const itemZ: SemanticProjectionItem = {
-      semanticItemId: 'sem-fact-z',
+      semanticItemId: 'sem-entity-z',
       projectId: testProjectA,
       generationId: 'gen-tiebreak',
-      resourceType: 'FACT',
-      resourceId: 'fact-z',
+      resourceType: 'ENTITY',
+      resourceId: 'entity-z',
       sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
       canonicalVersion: 1,
       semanticTextDigest: 'sha256:' + '9'.repeat(64),
@@ -1004,11 +1010,11 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     };
 
     const itemA: SemanticProjectionItem = {
-      semanticItemId: 'sem-fact-a',
+      semanticItemId: 'sem-entity-a',
       projectId: testProjectA,
       generationId: 'gen-tiebreak',
-      resourceType: 'FACT',
-      resourceId: 'fact-a',
+      resourceType: 'ENTITY',
+      resourceId: 'entity-a',
       sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
       canonicalVersion: 1,
       semanticTextDigest: 'sha256:' + 'a'.repeat(64),
@@ -1060,11 +1066,11 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
     });
 
     expect(results).toHaveLength(3);
-    // Order must be CLAIM claim-a, then FACT fact-a, then FACT fact-z (by resourceType ASC, resourceId ASC)
+    // Order must be CLAIM claim-a, then ENTITY entity-a, then ENTITY entity-z.
     expect(results.map((r) => `${r.resourceType}:${r.resourceId}`)).toEqual([
       'CLAIM:claim-a',
-      'FACT:fact-a',
-      'FACT:fact-z',
+      'ENTITY:entity-a',
+      'ENTITY:entity-z',
     ]);
   });
 
@@ -1197,8 +1203,8 @@ describe('AKP-1 WP2: PostgreSQL + pgvector Semantic Projection Persistence', () 
       semanticItemId: 'sem-dup-target-1',
       projectId: testProjectA,
       generationId: 'gen-dup-sem-id',
-      resourceType: 'FACT',
-      resourceId: 'fact-intruder-2',
+      resourceType: 'ENTITY',
+      resourceId: 'entity-intruder-2',
       sourceProjectionDigest: 'sha256:' + '0'.repeat(64),
       canonicalVersion: 1,
       semanticTextDigest: 'sha256:' + '2'.repeat(64),

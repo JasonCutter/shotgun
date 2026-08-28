@@ -114,12 +114,14 @@ describe('SemanticRetriever Unit Tests', () => {
             capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
             providerPolicyFingerprint: 'sha256:policy-fp',
             representationVersion: profile.representationVersion,
+            dimension: profile.dimension,
             createdAt: '2026-08-18T10:00:00.000Z',
           },
           profile,
           model,
         };
       },
+      resolveCompatibility: async (input) => input,
     };
 
     const recordedQueries: SemanticCandidateQuery[] = [];

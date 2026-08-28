@@ -16,7 +16,10 @@ import type {
   CredentialMetadata,
   CredentialVaultPort,
 } from '../../modules/credential-vault/src/index.js';
-import type { ProviderStatusReaderPort } from '../../packages/contracts/src/index.js';
+import type {
+  ProviderStatusReaderPort,
+  SemanticEmbeddingRegistryPort,
+} from '../../packages/contracts/src/index.js';
 
 describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () => {
   const createTestRig = (
@@ -30,9 +33,10 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       readonly omitApprovalAuthority?: boolean;
       readonly legacyGeminiAllowed?: boolean;
       readonly customProviderRegistry?: ProviderStatusReaderPort;
+      readonly customEmbeddingRegistry?: SemanticEmbeddingRegistryPort;
     } = {},
   ) => {
-    const embeddingRegistry = initialSemanticEmbeddingRegistry();
+    const embeddingRegistry = options.customEmbeddingRegistry ?? initialSemanticEmbeddingRegistry();
     const providerRegistry: ProviderStatusReaderPort =
       options.customProviderRegistry ?? initialProviderRegistry();
     const repository = new InMemorySemanticEmbeddingProfileRepository();
@@ -165,6 +169,15 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       profileService,
       resolver,
       vault,
+      setCredentialLifecycle: (
+        credentialId: string,
+        lifecycleState: CredentialMetadata['lifecycleState'],
+      ) => {
+        const credential = credentialList.find(
+          (candidate) => candidate.credentialId === credentialId,
+        );
+        if (credential) Object.assign(credential, { lifecycleState });
+      },
     };
   };
 
@@ -298,6 +311,182 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     });
 
     expect(resolved.pin.providerRegistryRevision).toBe('custom-provider-registry:v2-governed');
+  });
+
+  it('checks current execution compatibility without requiring transfer policy or reproducing build audit fields', async () => {
+    const { resolver, profileService } = createTestRig({
+      omitDeploymentCeiling: true,
+      omitApprovalAuthority: true,
+    });
+    const profile = await profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+
+    await expect(
+      resolver.resolveCompatibility({
+        projectId: 'project-1',
+        providerId: profile.providerId,
+        embeddingModelId: profile.embeddingModelId,
+        embeddingProfileId: profile.profileId,
+        embeddingProfileRevision: profile.profileRevision,
+        credentialId: profile.credentialId,
+        credentialRevision: profile.credentialRevision,
+        representationVersion: profile.representationVersion,
+        dimension: profile.dimension,
+        distanceMetric: profile.distanceMetric,
+        normalizationPolicy: profile.normalizationPolicy,
+      }),
+    ).resolves.toMatchObject({
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialRevision: 1,
+    });
+  });
+
+  it('fails compatibility when the pinned credential is revoked', async () => {
+    const rig = createTestRig();
+    const profile = await rig.profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await rig.profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    rig.setCredentialLifecycle('cred-openai-1', 'revoked');
+
+    await expect(
+      rig.resolver.resolveCompatibility({
+        projectId: 'project-1',
+        providerId: profile.providerId,
+        embeddingModelId: profile.embeddingModelId,
+        embeddingProfileId: profile.profileId,
+        embeddingProfileRevision: profile.profileRevision,
+        credentialId: profile.credentialId,
+        credentialRevision: profile.credentialRevision,
+        representationVersion: profile.representationVersion,
+        dimension: profile.dimension,
+        distanceMetric: profile.distanceMetric,
+        normalizationPolicy: profile.normalizationPolicy,
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'CAPABILITY_UNAVAILABLE',
+    });
+  });
+
+  it('fails compatibility when the current provider is unavailable', async () => {
+    let providerActive = true;
+    const baseProviderRegistry = initialProviderRegistry();
+    const providerRegistry: ProviderStatusReaderPort = {
+      getProvider: (providerId) => {
+        const provider = baseProviderRegistry.getProvider(providerId);
+        return providerId === 'openai' && provider
+          ? { ...provider, status: providerActive ? 'active' : 'disabled' }
+          : provider;
+      },
+    };
+    const rig = createTestRig({ customProviderRegistry: providerRegistry });
+    const profile = await rig.profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await rig.profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    providerActive = false;
+
+    await expect(
+      rig.resolver.resolveCompatibility({
+        projectId: 'project-1',
+        providerId: profile.providerId,
+        embeddingModelId: profile.embeddingModelId,
+        embeddingProfileId: profile.profileId,
+        embeddingProfileRevision: profile.profileRevision,
+        credentialId: profile.credentialId,
+        credentialRevision: profile.credentialRevision,
+        representationVersion: profile.representationVersion,
+        dimension: profile.dimension,
+        distanceMetric: profile.distanceMetric,
+        normalizationPolicy: profile.normalizationPolicy,
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'CAPABILITY_UNAVAILABLE',
+    });
+  });
+
+  it('fails compatibility when the current embedding model is unavailable', async () => {
+    let modelAvailable = true;
+    const baseEmbeddingRegistry = initialSemanticEmbeddingRegistry();
+    const embeddingRegistry: SemanticEmbeddingRegistryPort = {
+      listModels: (providerId) => baseEmbeddingRegistry.listModels(providerId),
+      getModel: (providerId, modelId) =>
+        modelAvailable ? baseEmbeddingRegistry.getModel(providerId, modelId) : undefined,
+    };
+    const rig = createTestRig({ customEmbeddingRegistry: embeddingRegistry });
+    const profile = await rig.profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await rig.profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    modelAvailable = false;
+
+    await expect(
+      rig.resolver.resolveCompatibility({
+        projectId: 'project-1',
+        providerId: profile.providerId,
+        embeddingModelId: profile.embeddingModelId,
+        embeddingProfileId: profile.profileId,
+        embeddingProfileRevision: profile.profileRevision,
+        credentialId: profile.credentialId,
+        credentialRevision: profile.credentialRevision,
+        representationVersion: profile.representationVersion,
+        dimension: profile.dimension,
+        distanceMetric: profile.distanceMetric,
+        normalizationPolicy: profile.normalizationPolicy,
+      }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'CAPABILITY_UNAVAILABLE',
+    });
   });
 
   it('proves providerPolicyFingerprint changes when governed policy inputs change', async () => {

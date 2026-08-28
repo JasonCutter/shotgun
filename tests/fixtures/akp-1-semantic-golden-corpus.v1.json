@@ -1,0 +1,322 @@
+{
+  "manifest": {
+    "contractVersion": "1.0.0",
+    "corpusId": "shotgun-akp-1-semantic-retrieval",
+    "corpusVersion": "1.0.0",
+    "labelSetRevision": 1,
+    "title": "AKP-1 semantic retrieval Golden Query corpus",
+    "description": "Synthetic, closed, competing-resource queries for lexical-only, semantic-only and Hybrid comparison.",
+    "createdAt": "2026-08-28T00:00:00.000Z",
+    "updatedAt": "2026-08-28T00:00:00.000Z",
+    "digestAlgorithm": "sha256",
+    "corpusDigest": "sha256:b12bf32f22be7d4de9032d71dffbeedce4bd6e97703fcae03bb6728517501c5f",
+    "caseIds": ["akp-1-semantic-core"],
+    "licenseSummary": "Shotgun-authored synthetic data; repository license applies.",
+    "dataPolicy": {
+      "classification": "SYNTHETIC",
+      "containsProductionData": false,
+      "liveProviderEligible": false
+    },
+    "corpusKind": "SEMANTIC_SEARCH"
+  },
+  "cases": [
+    {
+      "caseId": "akp-1-semantic-core",
+      "caseVersion": "1.0.0",
+      "title": "Competing typed semantic resources",
+      "description": "A closed synthetic corpus with canonical and approved resources, close neighbors, and security-sensitive controls.",
+      "language": "ko-en-mixed",
+      "sourceFormat": "plain-text",
+      "sourceContent": "Release trains ship weekly.\nThe release policy requires signed approval.\nAtlas is the project codename.\nAtlas links to the retrieval index.\nThe migration started on 2026-08-20.\nExternal provider transfer requires project approval.\nCredential material stays inside the vault.\nA private key never belongs in search results.",
+      "sourceContentHash": "sha256:7942911171d1fc7ee0d67ef18dd39c95af8fb2e8cfd7c02f425348a6c0d41e7e",
+      "projectContext": {
+        "projectKey": "akp-1-semantic-synthetic",
+        "accessScopes": ["owner"],
+        "locale": "en-US",
+        "timezone": "UTC"
+      },
+      "sensitivity": "public",
+      "dataClassification": "SYNTHETIC",
+      "expectedClaims": [
+        {
+          "goldenClaimId": "r-release-claim",
+          "claimText": "Release trains ship weekly.",
+          "evidence": {
+            "exact": "Release trains ship weekly.",
+            "position": { "start": 0, "end": 27, "unit": "unicode-code-point" }
+          },
+          "expectedDisposition": "EXTRACT",
+          "semanticResourceType": "CLAIM",
+          "semanticAuthority": "CANONICAL",
+          "semanticResourceRevision": 1,
+          "semanticSourceVersionId": "source-release-claim",
+          "semanticAccessScope": ["owner"],
+          "semanticSensitivity": "public"
+        },
+        {
+          "goldenClaimId": "r-release-policy",
+          "claimText": "The release policy requires signed approval.",
+          "evidence": {
+            "exact": "The release policy requires signed approval.",
+            "position": { "start": 28, "end": 72, "unit": "unicode-code-point" }
+          },
+          "expectedDisposition": "EXTRACT",
+          "semanticResourceType": "DECISION",
+          "semanticAuthority": "APPROVED_KNOWLEDGE",
+          "semanticResourceRevision": 1,
+          "semanticSourceVersionId": "source-release-policy",
+          "semanticAccessScope": ["owner"],
+          "semanticSensitivity": "public"
+        },
+        {
+          "goldenClaimId": "r-atlas-entity",
+          "claimText": "Atlas is the project codename.",
+          "evidence": {
+            "exact": "Atlas is the project codename.",
+            "position": { "start": 73, "end": 103, "unit": "unicode-code-point" }
+          },
+          "expectedDisposition": "EXTRACT",
+          "semanticResourceType": "ENTITY",
+          "semanticAuthority": "APPROVED_KNOWLEDGE",
+          "semanticResourceRevision": 1,
+          "semanticSourceVersionId": "source-atlas-entity",
+          "semanticAccessScope": ["owner"],
+          "semanticSensitivity": "public"
+        },
+        {
+          "goldenClaimId": "r-atlas-retrieval-relation",
+          "claimText": "Atlas links to the retrieval index.",
+          "evidence": {
+            "exact": "Atlas links to the retrieval index.",
+            "position": { "start": 104, "end": 139, "unit": "unicode-code-point" }
+          },
+          "expectedDisposition": "EXTRACT",
+          "semanticResourceType": "RELATION",
+          "semanticAuthority": "APPROVED_KNOWLEDGE",
+          "semanticResourceRevision": 1,
+          "semanticSourceVersionId": "source-atlas-relation",
+          "semanticAccessScope": ["owner"],
+          "semanticSensitivity": "public"
+        },
+        {
+          "goldenClaimId": "r-migration-event",
+          "claimText": "The migration started on 2026-08-20.",
+          "evidence": {
+            "exact": "The migration started on 2026-08-20.",
+            "position": { "start": 140, "end": 176, "unit": "unicode-code-point" }
+          },
+          "expectedDisposition": "EXTRACT",
+          "semanticResourceType": "EVENT",
+          "semanticAuthority": "APPROVED_KNOWLEDGE",
+          "semanticResourceRevision": 1,
+          "semanticSourceVersionId": "source-migration-event",
+          "semanticAccessScope": ["owner"],
+          "semanticSensitivity": "public"
+        },
+        {
+          "goldenClaimId": "r-transfer-policy",
+          "claimText": "External provider transfer requires project approval.",
+          "evidence": {
+            "exact": "External provider transfer requires project approval.",
+            "position": { "start": 177, "end": 230, "unit": "unicode-code-point" }
+          },
+          "expectedDisposition": "EXTRACT",
+          "semanticResourceType": "DECISION",
+          "semanticAuthority": "APPROVED_KNOWLEDGE",
+          "semanticResourceRevision": 1,
+          "semanticSourceVersionId": "source-transfer-policy",
+          "semanticAccessScope": ["owner"],
+          "semanticSensitivity": "public"
+        },
+        {
+          "goldenClaimId": "r-credential-safety",
+          "claimText": "Credential material stays inside the vault.",
+          "evidence": {
+            "exact": "Credential material stays inside the vault.",
+            "position": { "start": 231, "end": 274, "unit": "unicode-code-point" }
+          },
+          "expectedDisposition": "EXTRACT",
+          "semanticResourceType": "CLAIM",
+          "semanticAuthority": "CANONICAL",
+          "semanticResourceRevision": 1,
+          "semanticSourceVersionId": "source-credential-safety",
+          "semanticAccessScope": ["finance"],
+          "semanticSensitivity": "private"
+        },
+        {
+          "goldenClaimId": "r-private-key-warning",
+          "claimText": "A private key never belongs in search results.",
+          "evidence": {
+            "exact": "A private key never belongs in search results.",
+            "position": { "start": 275, "end": 321, "unit": "unicode-code-point" }
+          },
+          "expectedDisposition": "EXTRACT",
+          "semanticResourceType": "CLAIM",
+          "semanticAuthority": "CANONICAL",
+          "semanticResourceRevision": 1,
+          "semanticSourceVersionId": "source-private-key-warning",
+          "semanticAccessScope": ["finance"],
+          "semanticSensitivity": "restricted"
+        }
+      ],
+      "queries": [
+        {
+          "queryId": "q-release-exact",
+          "queryText": "Release trains ship weekly",
+          "language": "en",
+          "queryType": "exact-keyword",
+          "kValues": [1, 3],
+          "expectedNoResult": false,
+          "judgments": [
+            { "goldenClaimId": "r-release-claim", "relevance": 2 },
+            { "goldenClaimId": "r-release-policy", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-entity", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-retrieval-relation", "relevance": 0 },
+            { "goldenClaimId": "r-migration-event", "relevance": 0 },
+            { "goldenClaimId": "r-transfer-policy", "relevance": 0 },
+            { "goldenClaimId": "r-credential-safety", "relevance": 0 },
+            { "goldenClaimId": "r-private-key-warning", "relevance": 0 }
+          ]
+        },
+        {
+          "queryId": "q-release-typo",
+          "queryText": "Releas trains shipp wekly",
+          "language": "en",
+          "queryType": "notation-variation",
+          "kValues": [1, 3],
+          "expectedNoResult": false,
+          "judgments": [
+            { "goldenClaimId": "r-release-claim", "relevance": 2 },
+            { "goldenClaimId": "r-release-policy", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-entity", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-retrieval-relation", "relevance": 0 },
+            { "goldenClaimId": "r-migration-event", "relevance": 0 },
+            { "goldenClaimId": "r-transfer-policy", "relevance": 0 },
+            { "goldenClaimId": "r-credential-safety", "relevance": 0 },
+            { "goldenClaimId": "r-private-key-warning", "relevance": 0 }
+          ]
+        },
+        {
+          "queryId": "q-release-synonym",
+          "queryText": "deployment cadence",
+          "language": "en",
+          "queryType": "synonym",
+          "kValues": [1, 3],
+          "expectedNoResult": false,
+          "judgments": [
+            { "goldenClaimId": "r-release-claim", "relevance": 2 },
+            { "goldenClaimId": "r-release-policy", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-entity", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-retrieval-relation", "relevance": 0 },
+            { "goldenClaimId": "r-migration-event", "relevance": 0 },
+            { "goldenClaimId": "r-transfer-policy", "relevance": 0 },
+            { "goldenClaimId": "r-credential-safety", "relevance": 0 },
+            { "goldenClaimId": "r-private-key-warning", "relevance": 0 }
+          ]
+        },
+        {
+          "queryId": "q-release-paraphrase",
+          "queryText": "How often are releases shipped?",
+          "language": "en",
+          "queryType": "natural-language",
+          "kValues": [1, 3],
+          "expectedNoResult": false,
+          "judgments": [
+            { "goldenClaimId": "r-release-claim", "relevance": 2 },
+            { "goldenClaimId": "r-release-policy", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-entity", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-retrieval-relation", "relevance": 0 },
+            { "goldenClaimId": "r-migration-event", "relevance": 0 },
+            { "goldenClaimId": "r-transfer-policy", "relevance": 0 },
+            { "goldenClaimId": "r-credential-safety", "relevance": 0 },
+            { "goldenClaimId": "r-private-key-warning", "relevance": 0 }
+          ]
+        },
+        {
+          "queryId": "q-atlas-korean-alias",
+          "queryText": "프로젝트 코드명 Atlas",
+          "language": "ko-en-mixed",
+          "queryType": "ko-inflection",
+          "kValues": [1, 3],
+          "expectedNoResult": false,
+          "judgments": [
+            { "goldenClaimId": "r-release-claim", "relevance": 0 },
+            { "goldenClaimId": "r-release-policy", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-entity", "relevance": 2 },
+            { "goldenClaimId": "r-atlas-retrieval-relation", "relevance": 1 },
+            { "goldenClaimId": "r-migration-event", "relevance": 0 },
+            { "goldenClaimId": "r-transfer-policy", "relevance": 0 },
+            { "goldenClaimId": "r-credential-safety", "relevance": 0 },
+            { "goldenClaimId": "r-private-key-warning", "relevance": 0 }
+          ]
+        },
+        {
+          "queryId": "q-migration-temporal",
+          "queryText": "When did the migration start?",
+          "language": "en",
+          "queryType": "natural-language",
+          "kValues": [1, 3],
+          "expectedNoResult": false,
+          "judgments": [
+            { "goldenClaimId": "r-release-claim", "relevance": 0 },
+            { "goldenClaimId": "r-release-policy", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-entity", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-retrieval-relation", "relevance": 0 },
+            { "goldenClaimId": "r-migration-event", "relevance": 2 },
+            { "goldenClaimId": "r-transfer-policy", "relevance": 0 },
+            { "goldenClaimId": "r-credential-safety", "relevance": 0 },
+            { "goldenClaimId": "r-private-key-warning", "relevance": 0 }
+          ]
+        },
+        {
+          "queryId": "q-release-ambiguous-neighbor",
+          "queryText": "release approval policy",
+          "language": "en",
+          "queryType": "notation-variation",
+          "kValues": [1, 3],
+          "expectedNoResult": false,
+          "judgments": [
+            { "goldenClaimId": "r-release-claim", "relevance": 1 },
+            { "goldenClaimId": "r-release-policy", "relevance": 2 },
+            { "goldenClaimId": "r-atlas-entity", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-retrieval-relation", "relevance": 0 },
+            { "goldenClaimId": "r-migration-event", "relevance": 0 },
+            { "goldenClaimId": "r-transfer-policy", "relevance": 0 },
+            { "goldenClaimId": "r-credential-safety", "relevance": 0 },
+            { "goldenClaimId": "r-private-key-warning", "relevance": 0 }
+          ]
+        },
+        {
+          "queryId": "q-transfer-negative-control",
+          "queryText": "external provider transfer approval",
+          "language": "en",
+          "queryType": "notation-variation",
+          "kValues": [1, 3],
+          "expectedNoResult": false,
+          "judgments": [
+            { "goldenClaimId": "r-release-claim", "relevance": 0 },
+            { "goldenClaimId": "r-release-policy", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-entity", "relevance": 0 },
+            { "goldenClaimId": "r-atlas-retrieval-relation", "relevance": 0 },
+            { "goldenClaimId": "r-migration-event", "relevance": 0 },
+            { "goldenClaimId": "r-transfer-policy", "relevance": 2 },
+            { "goldenClaimId": "r-credential-safety", "relevance": 0 },
+            { "goldenClaimId": "r-private-key-warning", "relevance": 0 }
+          ]
+        }
+      ],
+      "tags": ["semantic", "hybrid", "competing-resources", "security", "citation"],
+      "difficulty": "adversarial",
+      "riskCategory": "normal",
+      "labelAuthor": "codex-implementation-agent",
+      "labelReviewStatus": "APPROVED",
+      "labelReviewedAt": "2026-08-28T00:00:00.000Z",
+      "labelRevision": 1,
+      "provenance": {
+        "origin": "SHOTGUN_SYNTHETIC",
+        "license": "repository",
+        "createdBy": "codex-implementation-agent"
+      }
+    }
+  ]
+}

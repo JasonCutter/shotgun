@@ -2,7 +2,13 @@ import {
   type SemanticCandidateQuery,
   type SemanticCandidateResult,
   type SemanticIndexRepositoryPort,
+  type SemanticGenerationActivationResult,
+  type SemanticGenerationLifecycleRepositoryPort,
+  type SemanticGenerationMembershipSummary,
+  type SemanticGenerationPointer,
+  type SemanticGenerationPointerExpectation,
   type SemanticProjectionGeneration,
+  type SemanticProjectionGenerationStatus,
   type SemanticProjectionItem,
   type SemanticResourceType,
   SemanticEmbeddingError,
@@ -10,7 +16,9 @@ import {
   validatePersistedItem,
   validateSecurityInput,
   validateUnitLength,
+  isSemanticGenerationResourceType,
 } from '../../../packages/contracts/src/index.js';
+import { semanticMembershipDigest } from '../../../packages/contracts/src/index.js';
 
 const genKey = (projectId: string, generationId: string): string =>
   `${projectId.trim()}::${generationId.trim()}`;
@@ -71,10 +79,15 @@ const computeEuclideanDistance = (a: readonly number[], b: readonly number[]): n
   return Math.sqrt(sumSq);
 };
 
-export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryPort {
+export class InMemorySemanticIndexRepository
+  implements SemanticIndexRepositoryPort, SemanticGenerationLifecycleRepositoryPort
+{
   private readonly generations = new Map<string, SemanticProjectionGeneration>();
   private readonly items = new Map<string, SemanticProjectionItem>();
   private readonly semanticKeyToItemKey = new Map<string, string>();
+  private readonly pointers = new Map<string, SemanticGenerationPointer>();
+  private activationTail: Promise<void> = Promise.resolve();
+  private mutationTail: Promise<void> = Promise.resolve();
 
   async saveGeneration(
     generation: SemanticProjectionGeneration,
@@ -142,6 +155,13 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
   }
 
   async upsertItem(item: SemanticProjectionItem): Promise<void> {
+    if (item.resourceType === 'FACT') {
+      throw new SemanticEmbeddingError({
+        code: 'VALIDATION_FAILURE',
+        safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
+        operation: 'upsert-item',
+      });
+    }
     const gen = await this.getGeneration(item.projectId, item.generationId);
     if (!gen) {
       throw new SemanticEmbeddingError({
@@ -151,11 +171,20 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
       });
     }
     validatePersistedItem(item, 'upsert-item');
+    const hasR3Identity =
+      item.providerId !== undefined ||
+      item.embeddingModelId !== undefined ||
+      item.authority !== undefined;
     if (
       item.dimension !== gen.dimension ||
       item.embeddingProfileId !== gen.embeddingProfileId ||
       item.embeddingProfileRevision !== gen.embeddingProfileRevision ||
-      item.representationVersion !== gen.representationVersion
+      item.representationVersion !== gen.representationVersion ||
+      (hasR3Identity &&
+        (item.sourceProjectionDigest !== gen.sourceProjectionDigest ||
+          item.providerId !== gen.providerId ||
+          item.embeddingModelId !== gen.embeddingModelId ||
+          item.normalizationPolicy !== gen.normalizationPolicy))
     ) {
       throw new SemanticEmbeddingError({
         code: 'VALIDATION_FAILURE',
@@ -200,6 +229,10 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
   }
 
   async upsertItems(items: readonly SemanticProjectionItem[]): Promise<void> {
+    return this.withMutationLock(() => this.upsertItemsUnsafe(items));
+  }
+
+  private async upsertItemsUnsafe(items: readonly SemanticProjectionItem[]): Promise<void> {
     if (items.length === 0) return;
 
     // Atomic batch execution: stage mutations and commit only after all items pass validation
@@ -207,6 +240,13 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
     const stagedSemanticKeys = new Map(this.semanticKeyToItemKey);
 
     for (const item of items) {
+      if (item.resourceType === 'FACT') {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
+          operation: 'upsert-items',
+        });
+      }
       const gen = await this.getGeneration(item.projectId, item.generationId);
       if (!gen) {
         throw new SemanticEmbeddingError({
@@ -216,11 +256,20 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
         });
       }
       validatePersistedItem(item, 'upsert-items');
+      const hasR3Identity =
+        item.providerId !== undefined ||
+        item.embeddingModelId !== undefined ||
+        item.authority !== undefined;
       if (
         item.dimension !== gen.dimension ||
         item.embeddingProfileId !== gen.embeddingProfileId ||
         item.embeddingProfileRevision !== gen.embeddingProfileRevision ||
-        item.representationVersion !== gen.representationVersion
+        item.representationVersion !== gen.representationVersion ||
+        (hasR3Identity &&
+          (item.sourceProjectionDigest !== gen.sourceProjectionDigest ||
+            item.providerId !== gen.providerId ||
+            item.embeddingModelId !== gen.embeddingModelId ||
+            item.normalizationPolicy !== gen.normalizationPolicy))
       ) {
         throw new SemanticEmbeddingError({
           code: 'VALIDATION_FAILURE',
@@ -430,9 +479,141 @@ export class InMemorySemanticIndexRepository implements SemanticIndexRepositoryP
       evidenceIds: [...item.evidenceIds],
       accessScope: [...item.accessScope],
       sensitivity: item.sensitivity,
+      ...(item.authority === undefined ? {} : { authority: item.authority }),
+      ...(item.provenance === undefined ? {} : { provenance: item.provenance }),
       indexedAt: item.indexedAt,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     }));
+  }
+
+  async upsertGenerationItems(items: readonly SemanticProjectionItem[]): Promise<void> {
+    for (const item of items) {
+      if (!isSemanticGenerationResourceType(item.resourceType)) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
+          operation: 'upsert-generation-items',
+        });
+      }
+      const generation = await this.getGeneration(item.projectId, item.generationId);
+      if (!generation) {
+        throw new SemanticEmbeddingError({
+          code: 'CONFIGURATION_REQUIRED',
+          safeMessage: 'Referenced projection generation does not exist.',
+          operation: 'upsert-generation-items',
+        });
+      }
+      if (
+        item.sourceProjectionDigest !== generation.sourceProjectionDigest ||
+        item.providerId !== generation.providerId ||
+        item.embeddingModelId !== generation.embeddingModelId ||
+        item.normalizationPolicy !== generation.normalizationPolicy
+      ) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: 'R3 item execution identity does not match the generation.',
+          operation: 'upsert-generation-items',
+        });
+      }
+    }
+    await this.upsertItems(items);
+  }
+
+  async transitionGenerationStatus(input: {
+    readonly projectId: string;
+    readonly generationId: string;
+    readonly expectedStatus: SemanticProjectionGenerationStatus;
+    readonly nextStatus: Exclude<SemanticProjectionGenerationStatus, 'BUILDING'>;
+  }): Promise<'UPDATED' | 'NOT_FOUND' | 'CONFLICT'> {
+    const key = genKey(input.projectId, input.generationId);
+    const generation = this.generations.get(key);
+    if (!generation) return 'NOT_FOUND';
+    if (generation.buildStatus !== input.expectedStatus) return 'CONFLICT';
+    if (input.expectedStatus !== 'BUILDING') return 'CONFLICT';
+    this.generations.set(key, { ...generation, buildStatus: input.nextStatus });
+    return 'UPDATED';
+  }
+
+  async readGenerationMembershipSummary(
+    projectId: string,
+    generationId: string,
+  ): Promise<SemanticGenerationMembershipSummary | undefined> {
+    if (!(await this.getGeneration(projectId, generationId))) return undefined;
+    const generationItems = [...this.items.values()].filter(
+      (item) => item.projectId === projectId && item.generationId === generationId,
+    );
+    return {
+      projectId,
+      generationId,
+      itemCount: generationItems.length,
+      membershipDigest: semanticMembershipDigest(generationItems),
+    };
+  }
+
+  async getActiveGenerationPointer(
+    projectId: string,
+  ): Promise<SemanticGenerationPointer | undefined> {
+    const pointer = this.pointers.get(projectId.trim());
+    return pointer ? { ...pointer } : undefined;
+  }
+
+  async activateGeneration(input: {
+    readonly projectId: string;
+    readonly generationId: string;
+    readonly expectedPointer: SemanticGenerationPointerExpectation;
+    readonly sourceProjectionDigest: string;
+    readonly canonicalBaseVersion: number;
+    readonly updatedAt: string;
+  }): Promise<SemanticGenerationActivationResult> {
+    return this.withActivationLock(async () => {
+      const generation = await this.getGeneration(input.projectId, input.generationId);
+      if (!generation || generation.buildStatus !== 'READY') {
+        return { status: 'CONFLICT' };
+      }
+      if (
+        generation.sourceProjectionDigest !== input.sourceProjectionDigest ||
+        generation.canonicalBaseVersion !== input.canonicalBaseVersion
+      ) {
+        return { status: 'CONFLICT' };
+      }
+      const current = this.pointers.get(input.projectId.trim());
+      const expectationMatches =
+        input.expectedPointer.kind === 'NONE'
+          ? current === undefined
+          : current?.activeGenerationId === input.expectedPointer.activeGenerationId &&
+            current.pointerRevision === input.expectedPointer.pointerRevision;
+      if (!expectationMatches)
+        return { status: 'CONFLICT', ...(current ? { pointer: { ...current } } : {}) };
+
+      const pointer: SemanticGenerationPointer = {
+        projectId: input.projectId.trim(),
+        activeGenerationId: input.generationId,
+        pointerRevision: (current?.pointerRevision ?? 0) + 1,
+        sourceProjectionDigest: input.sourceProjectionDigest,
+        canonicalBaseVersion: input.canonicalBaseVersion,
+        updatedAt: input.updatedAt,
+      };
+      this.pointers.set(pointer.projectId, pointer);
+      return { status: 'ACTIVATED', pointer: { ...pointer } };
+    });
+  }
+
+  private async withActivationLock<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.activationTail.then(operation);
+    this.activationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  private async withMutationLock<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.mutationTail.then(operation);
+    this.mutationTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 }

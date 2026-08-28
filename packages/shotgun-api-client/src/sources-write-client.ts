@@ -13,6 +13,9 @@ import type {
   FrontendCommandSubmission,
   RequestOptions,
 } from './contracts.js';
+import { getSharedCsrfMutationManager } from './csrf-manager.js';
+import { decodeProductApiErrorBody } from './decode.js';
+import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
 
 export type SourcesWriteFetch = typeof fetch;
 
@@ -94,12 +97,9 @@ const commandRequest = (input: {
 const readJson = async (response: Response): Promise<Record<string, unknown>> => {
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
-    const failure = body['failure'];
-    const message =
-      typeof failure === 'object' && failure !== null && 'message' in failure
-        ? String((failure as { message: unknown }).message)
-        : `Sources request failed with HTTP ${response.status}.`;
-    throw new Error(message);
+    const failure = decodeProductApiErrorBody(body);
+    if (!failure) throw remoteUnclassifiedProductApiFailure(response.status);
+    throw productFailureApiError(response.status, failure);
   }
   return body;
 };
@@ -108,46 +108,26 @@ export const createSourcesWriteClient = (
   fetchImpl: SourcesWriteFetch = fetch,
   productBase = '/product-api/frontend',
 ): SourcesWriteClient => {
-  let csrfToken: string | undefined;
-  const csrf = async (signal?: AbortSignal): Promise<string> => {
-    if (csrfToken) return csrfToken;
-    const response = await fetchImpl('/api/v1/security/csrf', {
-      credentials: 'same-origin',
-      signal,
-    });
-    const body = await readJson(response);
-    const token = body['csrfToken'];
-    if (typeof token !== 'string' || token.length === 0) {
-      throw new Error('The CSRF token response is invalid.');
-    }
-    csrfToken = token;
-    return token;
-  };
+  const csrf = getSharedCsrfMutationManager(fetchImpl);
 
   const mutateJson = async (
     path: string,
     body: unknown,
     signal?: AbortSignal,
   ): Promise<Record<string, unknown>> => {
-    const token = await csrf(signal);
-    let response = await fetchImpl(`${productBase}${path}`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'content-type': 'application/json', 'x-csrf-token': token },
-      body: JSON.stringify(body),
-      signal,
-    });
-    if (response.status === 403) {
-      csrfToken = undefined;
-      response = await fetchImpl(`${productBase}${path}`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json', 'x-csrf-token': await csrf(signal) },
-        body: JSON.stringify(body),
-        signal,
-      });
-    }
-    return readJson(response);
+    return csrf.run(
+      async (token) => {
+        const response = await fetchImpl(`${productBase}${path}`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': token },
+          body: JSON.stringify(body),
+          signal,
+        });
+        return readJson(response);
+      },
+      { signal },
+    );
   };
 
   const mutation = async (
@@ -172,23 +152,27 @@ export const createSourcesWriteClient = (
         mediaType: input.mediaType,
       });
       if (input.fileName !== undefined) parameters.set('fileName', input.fileName);
-      const token = await csrf(options?.signal);
       const bodyBytes = new Uint8Array(input.bytes.byteLength);
       bodyBytes.set(input.bytes);
-      const response = await fetchImpl(
-        `${productBase}/sources/staging/bytes?${parameters.toString()}`,
-        {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: {
-            'content-type': 'application/octet-stream',
-            'x-csrf-token': token,
-          },
-          body: bodyBytes.buffer,
-          signal: options?.signal,
+      const body = await csrf.run(
+        async (token) => {
+          const response = await fetchImpl(
+            `${productBase}/sources/staging/bytes?${parameters.toString()}`,
+            {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: {
+                'content-type': 'application/octet-stream',
+                'x-csrf-token': token,
+              },
+              body: bodyBytes.buffer,
+              signal: options?.signal,
+            },
+          );
+          return readJson(response);
         },
+        { signal: options?.signal },
       );
-      const body = await readJson(response);
       return decodeSourcesStagingReceipt(body['receipt']);
     },
 

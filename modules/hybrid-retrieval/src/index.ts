@@ -6,6 +6,7 @@ import {
   type CanonicalSearchResult,
   type CanonicalSnapshot,
   type CompiledTruthProjection,
+  compiledTruthItemAuthority,
   deriveAuthorizedSensitivities,
   type EvidenceSpan,
   HYBRID_FUSION_DEFAULT_RRF_K,
@@ -29,13 +30,20 @@ import {
   type ProjectionReadiness,
   type ProjectionWatermark,
   type SemanticActiveGenerationReaderPort,
+  type SemanticCorpusAuthority,
   type SemanticCandidateResult,
   SemanticEmbeddingError,
   type SemanticEmbeddingExecutionPort,
   type SemanticEmbeddingProfilePort,
   type SemanticEmbeddingResolverPort,
+  type SemanticEmbeddingRouterPort,
   type SemanticIndexRepositoryPort,
+  type SemanticCorpusSourceSnapshotReaderPort,
+  type SemanticQueryClassificationPort,
+  type SemanticQueryClassificationInput,
   type SemanticReadiness,
+  isSemanticProductResourceType,
+  type SemanticProductResourceType,
   type SemanticResourceType,
   type SemanticRetrieverInput,
   type SemanticRetrieverPort,
@@ -91,8 +99,27 @@ const areStringSetsEqual = (a: readonly string[], b: readonly string[]): boolean
   return true;
 };
 
-export const AKP1_PRODUCT_ELIGIBLE_SEMANTIC_RESOURCE_TYPES: readonly SemanticResourceType[] =
+export const AKP1_PRODUCT_ELIGIBLE_SEMANTIC_RESOURCE_TYPES: readonly SemanticProductResourceType[] =
   Object.freeze(['CLAIM', 'ENTITY', 'RELATION', 'EVENT', 'DECISION']);
+
+/**
+ * R4 server-owned, deterministic egress policy. Browser/user query text is
+ * private by default. Only an explicit, server-recognized restricted marker
+ * may escalate that conservative default; caller clearance and lower
+ * sensitivity markers never downgrade provider egress classification.
+ */
+export class DeterministicSemanticQueryClassificationPolicy implements SemanticQueryClassificationPort {
+  classify(_input: SemanticQueryClassificationInput) {
+    const query = _input.query.trim().toLowerCase();
+    const classification = query.includes('[restricted]')
+      ? ('restricted' as const)
+      : ('private' as const);
+    return {
+      classification,
+      policyRevision: 'semantic-query-classification:v1' as const,
+    };
+  }
+}
 
 const compareOrdinal = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
@@ -108,15 +135,19 @@ export class ProductKnowledgeResourceResolver implements KnowledgeResourceResolv
     projectId: string,
     resourceType: SemanticResourceType,
     resourceId: string,
+    expectedAuthority?: SemanticCorpusAuthority,
   ): Promise<KnowledgeResourceContent | undefined> {
     switch (resourceType) {
       case 'CLAIM': {
         const claim = await this.canonicalKnowledge.findClaim(projectId, resourceId);
-        if (!claim) {
+        if (!claim || (expectedAuthority && expectedAuthority !== 'CANONICAL')) {
           return undefined;
         }
         return {
           text: claim.claimText,
+          authority: 'CANONICAL',
+          authorityRevision: claim.revisionNumber,
+          resourceRevision: claim.revisionNumber,
           evidenceIds: claim.evidenceIds,
           sourceVersionId: claim.sourceVersionId,
           accessScope: claim.accessScope,
@@ -128,7 +159,10 @@ export class ProductKnowledgeResourceResolver implements KnowledgeResourceResolv
       case 'RELATION':
       case 'EVENT':
       case 'DECISION': {
-        if (this.knowledgeModel) {
+        if (
+          this.knowledgeModel &&
+          (!expectedAuthority || expectedAuthority === 'APPROVED_KNOWLEDGE')
+        ) {
           const groups = await this.knowledgeModel.listGroups(projectId);
           for (const group of groups) {
             if (group.status === 'APPROVED') {
@@ -152,6 +186,9 @@ export class ProductKnowledgeResourceResolver implements KnowledgeResourceResolv
                 if (text) {
                   return {
                     text,
+                    authority: 'APPROVED_KNOWLEDGE',
+                    authorityRevision: candidate.revisionNumber,
+                    resourceRevision: candidate.revisionNumber,
                     sourceVersionId: candidate.sourceVersionId,
                     evidenceIds: candidate.evidenceIds,
                     accessScope: group.accessScope,
@@ -170,17 +207,66 @@ export class ProductKnowledgeResourceResolver implements KnowledgeResourceResolv
       }
     }
 
+    if (expectedAuthority && expectedAuthority !== 'COMPILED_TRUTH') return undefined;
+
     if (this.compiledTruth) {
       const projection = await this.compiledTruth.findProjection(projectId);
       if (projection) {
         const item = projection.items.find((i) => i.id === resourceId && i.type === resourceType);
-        if (item) {
+        const baseAuthority = item ? compiledTruthItemAuthority(item) : undefined;
+        let base:
+          | {
+              readonly sourceVersionId: string;
+              readonly evidenceIds: readonly string[];
+              readonly accessScope: readonly string[];
+              readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+              readonly resourceRevision: number;
+            }
+          | undefined;
+        if (item && baseAuthority === 'CANONICAL') {
+          const claim = await this.canonicalKnowledge.findClaim(projectId, resourceId);
+          if (claim) {
+            base = {
+              sourceVersionId: claim.sourceVersionId,
+              evidenceIds: claim.evidenceIds,
+              accessScope: claim.accessScope,
+              sensitivity: claim.sensitivity,
+              resourceRevision: claim.revisionNumber,
+            };
+          }
+        } else if (item && baseAuthority === 'APPROVED_KNOWLEDGE' && this.knowledgeModel) {
+          const groups = await this.knowledgeModel.listGroups(projectId);
+          for (const group of groups) {
+            if (group.status !== 'APPROVED') continue;
+            const candidate = group.items.find(
+              (entry) => entry.candidateId === resourceId && entry.candidateType === resourceType,
+            );
+            if (candidate) {
+              base = {
+                sourceVersionId: candidate.sourceVersionId,
+                evidenceIds: candidate.evidenceIds,
+                accessScope: group.accessScope,
+                sensitivity: group.sensitivity,
+                resourceRevision: candidate.revisionNumber,
+              };
+              break;
+            }
+          }
+        }
+
+        if (item && base) {
           return {
             text: item.label,
-            canonicalVersion: projection.canonicalVersion,
-            evidenceIds: item.evidenceIds,
-            accessScope: item.accessScope,
-            sensitivity: item.sensitivity,
+            authority: 'COMPILED_TRUTH',
+            authorityRevision: projection.canonicalVersion,
+            resourceRevision: base.resourceRevision,
+            baseCanonicalVersion: projection.canonicalVersion,
+            sourceSnapshotDigest: projection.sourceSnapshotDigest,
+            sourceProjectionDigest: projection.sourceSnapshotDigest,
+            sourceVersionId: base.sourceVersionId,
+            evidenceIds: base.evidenceIds,
+            accessScope: base.accessScope,
+            sensitivity: base.sensitivity,
           };
         }
       }
@@ -194,8 +280,12 @@ export class SemanticRetriever implements SemanticRetrieverPort {
   constructor(
     private readonly repository: SemanticIndexRepositoryPort,
     private readonly resolver: SemanticEmbeddingResolverPort,
-    private readonly executionPort: SemanticEmbeddingExecutionPort,
+    private readonly executionPort: SemanticEmbeddingExecutionPort | SemanticEmbeddingRouterPort,
     private readonly activeGenerationReader: SemanticActiveGenerationReaderPort,
+    private readonly options: {
+      readonly sourceWatermarkReader?: SemanticCorpusSourceSnapshotReaderPort;
+      readonly queryClassifier?: SemanticQueryClassificationPort;
+    } = {},
   ) {}
 
   async retrieve(input: SemanticRetrieverInput): Promise<readonly SemanticCandidateResult[]> {
@@ -242,94 +332,205 @@ export class SemanticRetriever implements SemanticRetrieverPort {
       });
     }
 
-    // 1. Resolve execution authority using highest sensitivity requested
-    const highestSens = getHighestSensitivity(input.allowedSensitivities);
-    const resolved = await this.resolver.resolveExecution({
+    // The legacy execution port remains a bounded test adapter for the
+    // pre-R4 unit/database invariants. Normal Product startup supplies the
+    // router branch below and never uses this authority path.
+    if ('identity' in this.executionPort) {
+      const highestSens = getHighestSensitivity(input.allowedSensitivities);
+      const resolved = await this.resolver.resolveExecution({
+        projectId,
+        sensitivity: highestSens,
+      });
+      const gen = await this.activeGenerationReader.getActiveGeneration(projectId);
+      if (!gen || gen.buildStatus !== 'READY') {
+        throw new SemanticEmbeddingError({
+          code: 'CAPABILITY_UNAVAILABLE',
+          safeMessage: `No ready active semantic projection generation was found for project '${projectId}'.`,
+          operation: 'semantic-retriever:retrieve',
+        });
+      }
+      if (
+        gen.projectId !== projectId ||
+        gen.embeddingProfileId !== resolved.pin.embeddingProfileId ||
+        gen.embeddingProfileRevision !== resolved.pin.embeddingProfileRevision ||
+        gen.providerId !== resolved.pin.providerId ||
+        gen.embeddingModelId !== resolved.pin.embeddingModelId ||
+        gen.credentialId !== resolved.pin.credentialId ||
+        gen.credentialRevision !== resolved.pin.credentialRevision ||
+        gen.providerRegistryRevision !== resolved.pin.providerRegistryRevision ||
+        gen.capabilityCatalogRevision !== resolved.pin.capabilityCatalogRevision ||
+        gen.providerPolicyFingerprint !== resolved.pin.providerPolicyFingerprint ||
+        gen.representationVersion !== resolved.pin.representationVersion ||
+        gen.dimension !== resolved.profile.dimension ||
+        gen.distanceMetric !== resolved.profile.distanceMetric ||
+        gen.normalizationPolicy !== resolved.profile.normalizationPolicy
+      ) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage:
+            'Active semantic projection generation is incompatible with the resolved embedding profile or execution pin.',
+          operation: 'semantic-retriever:retrieve',
+        });
+      }
+      if (
+        this.executionPort.identity.providerId !== gen.providerId ||
+        this.executionPort.identity.embeddingModelId !== gen.embeddingModelId ||
+        this.executionPort.identity.dimension !== gen.dimension
+      ) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage: 'Embedding execution port identity does not match generation execution pin.',
+          operation: 'semantic-retriever:retrieve',
+        });
+      }
+      const embedRes = await this.executionPort.embed({ text: query, resourceType: 'QUERY' });
+      if (
+        embedRes.providerId !== gen.providerId ||
+        embedRes.modelId !== gen.embeddingModelId ||
+        embedRes.dimension !== gen.dimension ||
+        embedRes.vector.length !== gen.dimension
+      ) {
+        throw new SemanticEmbeddingError({
+          code: 'VALIDATION_FAILURE',
+          safeMessage:
+            'Query vector execution identity or dimension does not match generation execution pin.',
+          operation: 'semantic-retriever:retrieve',
+        });
+      }
+      if (gen.normalizationPolicy === 'unit_length') {
+        validateUnitLength(embedRes.vector, 'semantic-retriever:retrieve');
+      } else {
+        validateFiniteVector(embedRes.vector, 'semantic-retriever:retrieve');
+      }
+      return this.repository.findNearestNeighbors({
+        projectId,
+        generationId: gen.generationId,
+        queryVector: embedRes.vector,
+        dimension: gen.dimension,
+        accessScopes: input.accessScopes,
+        allowedSensitivities: input.allowedSensitivities,
+        limit,
+      });
+    }
+
+    // R4 Product authority: the active pointer and generation are read before
+    // any mutable profile, policy, vault, provider, or vector work.
+    const generation = await this.activeGenerationReader.getActiveGeneration(projectId);
+    if (!generation || generation.buildStatus !== 'READY') {
+      throw new SemanticEmbeddingError({
+        code: 'CONFIGURATION_REQUIRED',
+        safeMessage: 'No active semantic projection is configured for this project.',
+        operation: 'semantic-retriever:read-active-generation',
+      });
+    }
+
+    if (this.options.sourceWatermarkReader) {
+      const watermark = await this.options.sourceWatermarkReader.readWatermark(projectId);
+      if (
+        watermark.projectId !== projectId ||
+        generation.sourceProjectionDigest !== watermark.sourceSnapshotDigest ||
+        generation.canonicalBaseVersion !== watermark.canonicalVersion
+      ) {
+        throw new SemanticEmbeddingError({
+          code: 'STALE',
+          safeMessage: 'Semantic projection is stale relative to current Product knowledge.',
+          operation: 'semantic-retriever:check-watermark',
+        });
+      }
+    }
+
+    const classifier =
+      this.options.queryClassifier ?? new DeterministicSemanticQueryClassificationPolicy();
+    const classification = classifier.classify({
       projectId,
-      sensitivity: highestSens,
+      actor: input.actor ?? { type: 'system', id: 'semantic-query' },
+      security: input.security ?? {
+        accessScope: input.accessScopes,
+        sensitivity: 'internal',
+        dataClassification: 'query',
+      },
+      query,
+      searchSurface: 'HYBRID_SEARCH',
     });
 
-    // 2. Resolve active generation for this project
-    const gen = await this.activeGenerationReader.getActiveGeneration(projectId);
-    if (!gen || gen.buildStatus !== 'READY') {
+    // Compatibility is current capability validation only. Historical build
+    // audit fields on the generation are intentionally not compared here.
+    const compatibility = await this.resolver.resolveCompatibility({
+      projectId,
+      providerId: generation.providerId,
+      embeddingModelId: generation.embeddingModelId,
+      embeddingProfileId: generation.embeddingProfileId,
+      embeddingProfileRevision: generation.embeddingProfileRevision,
+      credentialId: generation.credentialId,
+      credentialRevision: generation.credentialRevision,
+      representationVersion: generation.representationVersion,
+      dimension: generation.dimension,
+      distanceMetric: generation.distanceMetric,
+      normalizationPolicy: generation.normalizationPolicy,
+    });
+    if (
+      compatibility.projectId !== generation.projectId ||
+      compatibility.providerId !== generation.providerId ||
+      compatibility.embeddingModelId !== generation.embeddingModelId ||
+      compatibility.embeddingProfileId !== generation.embeddingProfileId ||
+      compatibility.embeddingProfileRevision !== generation.embeddingProfileRevision ||
+      compatibility.credentialId !== generation.credentialId ||
+      compatibility.credentialRevision !== generation.credentialRevision ||
+      compatibility.representationVersion !== generation.representationVersion ||
+      compatibility.dimension !== generation.dimension ||
+      compatibility.distanceMetric !== generation.distanceMetric ||
+      compatibility.normalizationPolicy !== generation.normalizationPolicy
+    ) {
       throw new SemanticEmbeddingError({
         code: 'CAPABILITY_UNAVAILABLE',
-        safeMessage: `No ready active semantic projection generation was found for project '${projectId}'.`,
-        operation: 'semantic-retriever:retrieve',
+        safeMessage: 'Active semantic execution capability is unavailable.',
+        operation: 'semantic-retriever:validate-compatibility',
       });
     }
 
-    // 3. Complete execution pin compatibility validation
+    const pin = {
+      projectId: generation.projectId,
+      providerId: generation.providerId,
+      embeddingModelId: generation.embeddingModelId,
+      embeddingProfileId: generation.embeddingProfileId,
+      embeddingProfileRevision: generation.embeddingProfileRevision,
+      credentialId: generation.credentialId,
+      credentialRevision: generation.credentialRevision,
+      providerRegistryRevision: generation.providerRegistryRevision,
+      capabilityCatalogRevision: generation.capabilityCatalogRevision,
+      providerPolicyFingerprint: generation.providerPolicyFingerprint,
+      representationVersion: generation.representationVersion,
+      dimension: generation.dimension,
+      createdAt: generation.createdAt,
+    } as const;
+    const embedRes = await this.executionPort.embed(
+      pin,
+      { text: query, resourceType: 'QUERY' },
+      classification.classification,
+    );
     if (
-      gen.projectId !== projectId ||
-      gen.embeddingProfileId !== resolved.pin.embeddingProfileId ||
-      gen.embeddingProfileRevision !== resolved.pin.embeddingProfileRevision ||
-      gen.providerId !== resolved.pin.providerId ||
-      gen.embeddingModelId !== resolved.pin.embeddingModelId ||
-      gen.credentialId !== resolved.pin.credentialId ||
-      gen.credentialRevision !== resolved.pin.credentialRevision ||
-      gen.providerRegistryRevision !== resolved.pin.providerRegistryRevision ||
-      gen.capabilityCatalogRevision !== resolved.pin.capabilityCatalogRevision ||
-      gen.providerPolicyFingerprint !== resolved.pin.providerPolicyFingerprint ||
-      gen.representationVersion !== resolved.pin.representationVersion ||
-      gen.dimension !== resolved.profile.dimension ||
-      gen.distanceMetric !== resolved.profile.distanceMetric ||
-      gen.normalizationPolicy !== resolved.profile.normalizationPolicy
+      embedRes.providerId !== generation.providerId ||
+      embedRes.modelId !== generation.embeddingModelId ||
+      embedRes.dimension !== generation.dimension ||
+      embedRes.vector.length !== generation.dimension
     ) {
       throw new SemanticEmbeddingError({
         code: 'VALIDATION_FAILURE',
         safeMessage:
-          'Active semantic projection generation is incompatible with the resolved embedding profile or execution pin.',
-        operation: 'semantic-retriever:retrieve',
+          'Query vector execution identity or dimension does not match the active projection.',
+        operation: 'semantic-retriever:validate-vector',
       });
     }
-
-    // 4. Validate injected execution Port identity against generation execution pin
-    if (
-      this.executionPort.identity.providerId !== gen.providerId ||
-      this.executionPort.identity.embeddingModelId !== gen.embeddingModelId ||
-      this.executionPort.identity.dimension !== gen.dimension
-    ) {
-      throw new SemanticEmbeddingError({
-        code: 'VALIDATION_FAILURE',
-        safeMessage: 'Embedding execution port identity does not match generation execution pin.',
-        operation: 'semantic-retriever:retrieve',
-      });
-    }
-
-    // 5. Generate query vector using WP1 semantic embedding authority
-    const embedRes = await this.executionPort.embed({
-      text: query,
-      resourceType: 'QUERY',
-    });
-
-    // 6. Verify returned execution result identity against generation pin
-    if (
-      embedRes.providerId !== gen.providerId ||
-      embedRes.modelId !== gen.embeddingModelId ||
-      embedRes.dimension !== gen.dimension ||
-      embedRes.vector.length !== gen.dimension
-    ) {
-      throw new SemanticEmbeddingError({
-        code: 'VALIDATION_FAILURE',
-        safeMessage:
-          'Query vector execution identity or dimension does not match generation execution pin.',
-        operation: 'semantic-retriever:retrieve',
-      });
-    }
-
-    if (gen.normalizationPolicy === 'unit_length') {
-      validateUnitLength(embedRes.vector, 'semantic-retriever:retrieve');
+    if (generation.normalizationPolicy === 'unit_length') {
+      validateUnitLength(embedRes.vector, 'semantic-retriever:validate-vector');
     } else {
-      validateFiniteVector(embedRes.vector, 'semantic-retriever:retrieve');
+      validateFiniteVector(embedRes.vector, 'semantic-retriever:validate-vector');
     }
-
-    // 7. Query nearest neighbors with Security-before-Top-K filtering
     return this.repository.findNearestNeighbors({
       projectId,
-      generationId: gen.generationId,
+      generationId: generation.generationId,
       queryVector: embedRes.vector,
-      dimension: gen.dimension,
+      dimension: generation.dimension,
       accessScopes: input.accessScopes,
       allowedSensitivities: input.allowedSensitivities,
       limit,
@@ -547,6 +748,8 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
     let semanticItems: readonly SemanticCandidateResult[] = [];
     let semanticReadiness: SemanticReadiness = {
       status: 'NOT_CONFIGURED',
+      data: 'NO_ACTIVE_GENERATION',
+      execution: 'NOT_CONFIGURED',
       reason: 'Semantic retrieval is not configured.',
     };
     let semanticDegradedReason: string | undefined;
@@ -554,6 +757,8 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
     if (!this.semanticRetriever) {
       semanticReadiness = {
         status: 'UNAVAILABLE',
+        data: 'NO_ACTIVE_GENERATION',
+        execution: 'NOT_CONFIGURED',
         reason: 'Semantic retrieval is not configured.',
       };
       semanticDegradedReason = 'Semantic retrieval is not configured.';
@@ -564,17 +769,17 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           query,
           accessScopes: input.accessScopes,
           allowedSensitivities: input.allowedSensitivities,
+          ...(input.actor === undefined ? {} : { actor: input.actor }),
+          ...(input.security === undefined ? {} : { security: input.security }),
           limit,
         });
 
-        if (
-          semanticItems.some(
-            (item) => !AKP1_PRODUCT_ELIGIBLE_SEMANTIC_RESOURCE_TYPES.includes(item.resourceType),
-          )
-        ) {
+        if (semanticItems.some((item) => !isSemanticProductResourceType(item.resourceType))) {
           semanticItems = [];
           semanticReadiness = {
             status: 'DEGRADED',
+            data: 'READY',
+            execution: 'TEMPORARILY_UNAVAILABLE',
             reason: 'Semantic retrieval is temporarily unavailable.',
           };
           semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
@@ -583,6 +788,8 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           if (activeGen) {
             semanticReadiness = {
               status: 'READY',
+              data: 'READY',
+              execution: 'AVAILABLE',
               activeGenerationId: activeGen.generationId,
               embeddingProfileId: activeGen.embeddingProfileId,
               dimension: activeGen.dimension,
@@ -594,22 +801,67 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
         if (err instanceof SemanticEmbeddingError) {
           switch (err.embeddingErrorCode) {
             case 'CONFIGURATION_REQUIRED':
+              if (
+                err.operation === 'semantic-retriever:read-active-generation' ||
+                err.operation === 'resolve-active-profile'
+              ) {
+                semanticReadiness = {
+                  status: 'NOT_CONFIGURED',
+                  data: 'NO_ACTIVE_GENERATION',
+                  execution: 'NOT_CONFIGURED',
+                  reason:
+                    err.operation === 'resolve-active-profile'
+                      ? 'Active semantic embedding profile is not configured.'
+                      : 'Active semantic projection is not configured.',
+                };
+                semanticDegradedReason =
+                  err.operation === 'resolve-active-profile'
+                    ? 'Active semantic embedding profile is not configured.'
+                    : 'Active semantic projection is not configured.';
+              } else {
+                semanticReadiness = {
+                  status: 'UNAVAILABLE',
+                  data: 'READY',
+                  execution: 'CREDENTIAL_UNAVAILABLE',
+                  reason: 'Current semantic execution capability is unavailable.',
+                };
+                semanticDegradedReason = 'Current semantic execution capability is unavailable.';
+              }
+              break;
+            case 'STALE':
               semanticReadiness = {
-                status: 'NOT_CONFIGURED',
-                reason: 'Active semantic embedding profile is not configured.',
+                status: 'STALE',
+                data: 'STALE',
+                execution: 'NOT_EVALUATED',
+                reason: 'Semantic projection is stale relative to current Product knowledge.',
               };
-              semanticDegradedReason = 'Active semantic embedding profile is not configured.';
+              semanticDegradedReason =
+                'Semantic projection is stale relative to current Product knowledge.';
               break;
             case 'CAPABILITY_UNAVAILABLE':
-              semanticReadiness = {
-                status: 'UNAVAILABLE',
-                reason: 'Active semantic projection generation is unavailable.',
-              };
-              semanticDegradedReason = 'Active semantic projection generation is unavailable.';
+              {
+                const credentialUnavailable =
+                  err.operation.includes('credential') || err.operation.includes('vault');
+                semanticReadiness = {
+                  status: 'UNAVAILABLE',
+                  data: 'READY',
+                  execution: credentialUnavailable
+                    ? 'CREDENTIAL_UNAVAILABLE'
+                    : 'PROVIDER_UNAVAILABLE',
+                  reason: credentialUnavailable
+                    ? 'Pinned semantic credential revision is unavailable.'
+                    : 'Active semantic projection generation is unavailable.',
+                };
+                semanticDegradedReason = credentialUnavailable
+                  ? 'Pinned semantic credential revision is unavailable.'
+                  : 'Active semantic projection generation is unavailable.';
+              }
               break;
             case 'POLICY_DENIED':
               semanticReadiness = {
                 status: 'DEGRADED',
+                data: 'READY',
+                execution: 'POLICY_DENIED',
                 reason: 'Semantic embedding policy denied for requested sensitivity.',
               };
               semanticDegradedReason =
@@ -618,6 +870,8 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
             case 'TIMEOUT':
               semanticReadiness = {
                 status: 'DEGRADED',
+                data: 'READY',
+                execution: 'TEMPORARILY_UNAVAILABLE',
                 reason: 'Semantic embedding service timed out.',
               };
               semanticDegradedReason = 'Semantic embedding service timed out.';
@@ -625,6 +879,8 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
             default:
               semanticReadiness = {
                 status: 'DEGRADED',
+                data: 'READY',
+                execution: 'TEMPORARILY_UNAVAILABLE',
                 reason: 'Semantic retrieval is temporarily unavailable.',
               };
               semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
@@ -633,6 +889,8 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
         } else {
           semanticReadiness = {
             status: 'DEGRADED',
+            data: 'READY',
+            execution: 'TEMPORARILY_UNAVAILABLE',
             reason: 'Semantic retrieval is temporarily unavailable.',
           };
           semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
@@ -647,10 +905,17 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
     const callerHighestSens = getHighestSensitivity(input.allowedSensitivities);
 
     type CandidateAccumulator = {
-      resourceType: SemanticResourceType;
+      resourceType: SemanticProductResourceType;
       resourceId: string;
       text?: string;
+      authority: SemanticCorpusAuthority;
+      authorityRevision: number;
+      resourceRevision?: number;
+      legacyCanonicalVersion?: number;
       canonicalVersion?: number;
+      baseCanonicalVersion?: number;
+      sourceSnapshotDigest?: string;
+      sourceProjectionDigest?: string;
       evidenceIds: string[];
       accessScope: string[];
       sensitivity: 'public' | 'internal' | 'private' | 'restricted';
@@ -674,6 +939,9 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           resourceType: 'CLAIM',
           resourceId: lex.claimId,
           text: lex.claimText,
+          authority: 'CANONICAL',
+          authorityRevision: lex.canonicalVersion,
+          resourceRevision: lex.canonicalVersion,
           canonicalVersion: lex.canonicalVersion,
           evidenceIds: [...lex.evidenceIds],
           accessScope: [...lex.accessScope],
@@ -687,16 +955,46 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
 
       for (let index = 0; index < semItems.length; index++) {
         const sem = semItems[index]!;
+        if (!isSemanticProductResourceType(sem.resourceType)) {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage: 'FACT is not eligible for the Product semantic result.',
+            module: 'hybrid-retrieval',
+            operation: 'fuse-candidates',
+          });
+        }
         const semRank = index + 1;
         const key = `${sem.resourceType}:${sem.resourceId}`;
         const semRrfScore = semanticWeight / (rrfK + semRank);
+        const authority =
+          sem.authority ??
+          sem.provenance?.authority ??
+          (sem.resourceType === 'CLAIM' ? 'CANONICAL' : 'APPROVED_KNOWLEDGE');
+        const hasExplicitAuthority =
+          sem.authority !== undefined || sem.provenance?.authority !== undefined;
+        const canonicalVersion =
+          authority === 'CANONICAL' && hasExplicitAuthority ? sem.canonicalVersion : undefined;
+        const legacyCanonicalVersion = hasExplicitAuthority ? undefined : sem.canonicalVersion;
+        const baseCanonicalVersion =
+          sem.provenance?.authority === 'CANONICAL' ||
+          sem.provenance?.authority === 'COMPILED_TRUTH'
+            ? sem.provenance.baseCanonicalVersion
+            : undefined;
+        const sourceProjectionDigest =
+          sem.provenance?.authority === 'COMPILED_TRUTH'
+            ? sem.provenance.sourceProjectionDigest
+            : undefined;
+        const authorityRevision =
+          sem.provenance?.authority === 'COMPILED_TRUTH'
+            ? sem.provenance.projectionCanonicalVersion
+            : (sem.provenance?.resourceRevision ?? sem.canonicalVersion);
 
         const existing = candidateMap.get(key);
         if (existing) {
           if (
             existing.canonicalVersion !== undefined &&
-            sem.canonicalVersion !== undefined &&
-            existing.canonicalVersion !== sem.canonicalVersion
+            (canonicalVersion ?? legacyCanonicalVersion) !== undefined &&
+            existing.canonicalVersion !== (canonicalVersion ?? legacyCanonicalVersion)
           ) {
             throw new ShotgunError({
               code: 'VALIDATION_ERROR',
@@ -739,7 +1037,18 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           candidateMap.set(key, {
             resourceType: sem.resourceType,
             resourceId: sem.resourceId,
-            canonicalVersion: sem.canonicalVersion,
+            authority,
+            authorityRevision,
+            ...(sem.provenance?.resourceRevision === undefined
+              ? {}
+              : { resourceRevision: sem.provenance.resourceRevision }),
+            ...(legacyCanonicalVersion === undefined ? {} : { legacyCanonicalVersion }),
+            ...(canonicalVersion === undefined ? {} : { canonicalVersion }),
+            ...(baseCanonicalVersion === undefined ? {} : { baseCanonicalVersion }),
+            ...(authority === 'COMPILED_TRUTH'
+              ? { sourceSnapshotDigest: sem.sourceProjectionDigest }
+              : {}),
+            ...(sourceProjectionDigest === undefined ? {} : { sourceProjectionDigest }),
             evidenceIds: [...sem.evidenceIds],
             accessScope: [...sem.accessScope],
             sensitivity: sem.sensitivity,
@@ -775,7 +1084,7 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
         }
 
         let text = cand.text;
-        let canonicalVersion = cand.canonicalVersion ?? 0;
+        let canonicalVersion = cand.canonicalVersion;
         let evidenceIds = cand.evidenceIds;
 
         if (!text) {
@@ -792,6 +1101,7 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
             projectId,
             cand.resourceType,
             cand.resourceId,
+            cand.authority,
           );
 
           if (!resolved || !resolved.text || resolved.text.trim().length === 0) {
@@ -803,14 +1113,39 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
             });
           }
 
+          if (resolved.authority !== undefined && resolved.authority !== cand.authority) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: `Authority mismatch for ${cand.resourceType}:${cand.resourceId}.`,
+              module: 'hybrid-retrieval',
+              operation: 'resolve-content',
+            });
+          }
+
           if (
-            resolved.canonicalVersion !== undefined &&
-            cand.canonicalVersion !== undefined &&
-            resolved.canonicalVersion !== cand.canonicalVersion
+            resolved.authorityRevision !== undefined &&
+            resolved.authorityRevision !== cand.authorityRevision
           ) {
             throw new ShotgunError({
               code: 'VALIDATION_ERROR',
-              safeMessage: `Version mismatch for ${cand.resourceType}:${cand.resourceId}: resolved canonical version ${resolved.canonicalVersion} !== candidate version ${cand.canonicalVersion}.`,
+              safeMessage: `Authority revision mismatch for ${cand.resourceType}:${cand.resourceId}.`,
+              module: 'hybrid-retrieval',
+              operation: 'resolve-content',
+            });
+          }
+
+          // Compatibility for bounded legacy adapters that predate the
+          // explicit authority contract. New Product resolvers return typed
+          // authority and revision fields instead.
+          if (
+            resolved.authority === undefined &&
+            resolved.canonicalVersion !== undefined &&
+            cand.legacyCanonicalVersion !== undefined &&
+            resolved.canonicalVersion !== cand.legacyCanonicalVersion
+          ) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: `resolved canonical version ${resolved.canonicalVersion} !== candidate version ${cand.legacyCanonicalVersion}`,
               module: 'hybrid-retrieval',
               operation: 'resolve-content',
             });
@@ -878,7 +1213,24 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           }
 
           text = resolved.text;
-          if (resolved.canonicalVersion !== undefined) {
+          const resolvedAuthority = resolved.authority ?? cand.authority;
+          cand.authority = resolvedAuthority;
+          if (resolved.authorityRevision !== undefined) {
+            cand.authorityRevision = resolved.authorityRevision;
+          }
+          if (resolved.resourceRevision !== undefined) {
+            cand.resourceRevision = resolved.resourceRevision;
+          }
+          if (resolved.baseCanonicalVersion !== undefined) {
+            cand.baseCanonicalVersion = resolved.baseCanonicalVersion;
+          }
+          if (resolved.sourceSnapshotDigest !== undefined) {
+            cand.sourceSnapshotDigest = resolved.sourceSnapshotDigest;
+          }
+          if (resolved.sourceProjectionDigest !== undefined) {
+            cand.sourceProjectionDigest = resolved.sourceProjectionDigest;
+          }
+          if (resolved.canonicalVersion !== undefined && resolvedAuthority === 'CANONICAL') {
             canonicalVersion = resolved.canonicalVersion;
           }
           if (
@@ -889,6 +1241,9 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
             evidenceIds = [...resolved.evidenceIds];
           }
         }
+
+        const authority = cand.authority;
+        const authorityRevision = cand.authorityRevision;
 
         if (!evidenceIds || evidenceIds.length === 0) {
           throw new ShotgunError({
@@ -971,7 +1326,21 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           resourceType: cand.resourceType,
           resourceId: cand.resourceId,
           text,
-          canonicalVersion,
+          authority,
+          authorityRevision,
+          ...(cand.resourceRevision === undefined
+            ? {}
+            : { resourceRevision: cand.resourceRevision }),
+          ...(canonicalVersion === undefined ? {} : { canonicalVersion }),
+          ...(cand.baseCanonicalVersion === undefined
+            ? {}
+            : { baseCanonicalVersion: cand.baseCanonicalVersion }),
+          ...(cand.sourceSnapshotDigest === undefined
+            ? {}
+            : { sourceSnapshotDigest: cand.sourceSnapshotDigest }),
+          ...(cand.sourceProjectionDigest === undefined
+            ? {}
+            : { sourceProjectionDigest: cand.sourceProjectionDigest }),
           evidenceIds,
           citations,
           accessScope: cand.accessScope,
@@ -997,6 +1366,8 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
         if (lexicalResult.readiness.status === 'READY') {
           semanticReadiness = {
             status: 'DEGRADED',
+            data: 'READY',
+            execution: 'TEMPORARILY_UNAVAILABLE',
             reason: 'Semantic retrieval is temporarily unavailable.',
           };
           semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
@@ -1110,6 +1481,8 @@ export const createHybridRetrievalModule = (
             query: payload.query,
             accessScopes: security.accessScope,
             allowedSensitivities,
+            actor: envelope.actor,
+            security,
             limit: payload.limit,
           });
         },

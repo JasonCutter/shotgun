@@ -4,7 +4,8 @@ import type { SemanticResourceType } from './semantic-representation.js';
 export const SEMANTIC_EMBEDDING_PROFILE_REVISION = 1;
 export const SEMANTIC_EMBEDDING_CATALOG_REVISION = 'semantic-embedding-catalog:v1' as const;
 
-export type SemanticEmbeddingProfileStatus = 'BUILDING' | 'ACTIVE' | 'RETIRED' | 'FAILED';
+export type SemanticEmbeddingProfileStatus =
+  'PREPARED' | 'BUILDING' | 'ACTIVE' | 'RETIRED' | 'FAILED';
 export type SemanticDistanceMetric = 'cosine' | 'dot_product' | 'euclidean';
 export type SemanticNormalizationPolicy = 'unit_length' | 'none';
 
@@ -22,6 +23,7 @@ export type SemanticEmbeddingProfile = {
   readonly normalizationPolicy: SemanticNormalizationPolicy;
   readonly status: SemanticEmbeddingProfileStatus;
   readonly createdAt: string;
+  readonly createdBy?: string;
   readonly activatedAt?: string;
   readonly updatedBy: string;
   readonly updatedAt: string;
@@ -91,6 +93,7 @@ export type SemanticEmbeddingProfilePort = {
     readonly dimension?: number;
     readonly distanceMetric?: SemanticDistanceMetric;
     readonly normalizationPolicy?: SemanticNormalizationPolicy;
+    readonly status?: SemanticEmbeddingProfileStatus;
     readonly updatedBy: string;
     readonly now?: string;
   }): Promise<SemanticEmbeddingProfile>;
@@ -171,6 +174,7 @@ export type SemanticEmbeddingExecutionPin = {
   readonly capabilityCatalogRevision: string;
   readonly providerPolicyFingerprint: string;
   readonly representationVersion: string;
+  readonly dimension: number;
   readonly createdAt: string;
 };
 
@@ -180,7 +184,33 @@ export type ResolvedSemanticEmbeddingExecution = {
   readonly model: SemanticEmbeddingModelDescriptor;
 };
 
-export type SemanticEmbeddingResolverPort = {
+export type SemanticEmbeddingCompatibilityInput = {
+  readonly projectId: string;
+  readonly providerId: string;
+  readonly embeddingModelId: string;
+  readonly embeddingProfileId: string;
+  readonly embeddingProfileRevision: number;
+  readonly credentialId: string;
+  readonly credentialRevision: number;
+  readonly representationVersion: string;
+  readonly dimension: number;
+  readonly distanceMetric: SemanticDistanceMetric;
+  readonly normalizationPolicy: SemanticNormalizationPolicy;
+};
+
+/**
+ * Current execution capability only. Build-time audit revisions and policy
+ * fingerprints intentionally do not cross this boundary.
+ */
+export type SemanticEmbeddingCompatibility = SemanticEmbeddingCompatibilityInput;
+
+export type SemanticEmbeddingCompatibilityPort = {
+  resolveCompatibility(
+    input: SemanticEmbeddingCompatibilityInput,
+  ): Promise<SemanticEmbeddingCompatibility>;
+};
+
+export type SemanticEmbeddingResolverPort = SemanticEmbeddingCompatibilityPort & {
   resolveExecution(input: {
     readonly projectId: string;
     readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
@@ -190,8 +220,22 @@ export type SemanticEmbeddingResolverPort = {
   }): Promise<ResolvedSemanticEmbeddingExecution>;
 };
 
+export type SemanticEmbeddingRouterPort = {
+  embed(
+    pin: SemanticEmbeddingExecutionPin,
+    payload: SemanticEmbeddingPayload,
+    sensitivity?: 'public' | 'internal' | 'private' | 'restricted',
+  ): Promise<SemanticEmbeddingResult>;
+  embedBatch(
+    pin: SemanticEmbeddingExecutionPin,
+    payloads: readonly SemanticEmbeddingPayload[],
+    sensitivity?: 'public' | 'internal' | 'private' | 'restricted',
+  ): Promise<readonly SemanticEmbeddingResult[]>;
+};
+
 export type SemanticEmbeddingErrorCode =
   | 'CONFIGURATION_REQUIRED'
+  | 'STALE'
   | 'CAPABILITY_UNAVAILABLE'
   | 'POLICY_DENIED'
   | 'PROVIDER_FAILURE'
@@ -204,6 +248,8 @@ const mapErrorCode = (code: SemanticEmbeddingErrorCode): ErrorCode => {
   switch (code) {
     case 'CONFIGURATION_REQUIRED':
       return 'CONFIGURATION_REQUIRED';
+    case 'STALE':
+      return 'STALE';
     case 'CAPABILITY_UNAVAILABLE':
       return 'AI_CAPABILITY_UNAVAILABLE';
     case 'POLICY_DENIED':

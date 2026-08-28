@@ -27,15 +27,16 @@ This directory and the registered consolidated ADR documents form the global ADR
 | ADR-095         | Reserved Legacy Gap                                                            |
 | ADR-096–ADR-099 | Individual files in this directory                                             |
 | ADR-100–ADR-113 | [Frontend consolidated record](../frontend/adr-100-113-consolidated-record.md) |
-| ADR-114–ADR-147 | Individual files in this directory                                             |
+| ADR-114–ADR-148 | Individual files in this directory                                             |
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
-ADR-131 through ADR-147 are authoritative accepted individual files. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately unauthorized. ADR-143 is the accepted finite implementation/completion contract for ADR-133 Runtime-selectable AI Settings and authorizes Product work only through its frozen A4–A9 Section boundaries. ADR-147 is the accepted implementation-discovered refinement of ADR-135 that records the deferral of FACT Product eligibility while keeping ADR-135's projection, retrieval, citation, and security architecture fully accepted.
+ADR-131 through ADR-148 are authoritative accepted individual files. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately authorized by subsequent implementation records. ADR-143 is the accepted finite implementation/completion contract for ADR-133 Runtime-selectable AI Settings. ADR-147 records the FACT Product-eligibility deferral. ADR-148 is the accepted AKP-1 implementation-mechanics refinement that unifies durable semantic profile, exact embedding execution, coherent corpus, generation lifecycle, query readiness and Product composition while preserving ADR-135's core semantic-projection architecture.
 
 ADR-145 remains an accepted historical individual decision. ADR-146 supersedes ADR-145 as the governing owner-facing Product interaction architecture; both identifiers retain explicit relationship metadata.
+
 The current latest accepted individual decision is
-[ADR-147 — AKP-1 FACT Authority Deferral and Semantic Product Eligibility](ADR-147-akp-1-fact-authority-deferral-and-semantic-product-eligibility.md), accepted on 2026-08-18.
+[ADR-148 — AKP-1 Semantic Runtime Authority Unification](ADR-148-akp-1-semantic-runtime-authority-unification.md), accepted on 2026-08-19.
 
 The accepted AKP v1 whole-design state remains recorded in
 [`../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md`](../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md).
@@ -51,8 +52,10 @@ The accepted AKP v1 whole-design state remains recorded in
 - ADR-140 — Discovery Workspace, Graph Overlay and Activity Product Boundary
 - ADR-141 — Explicit Feedback Separation, Suppression and Non-Epistemic Adaptive Ranking
 - ADR-142 — Finite End-to-End Acceptance Gate and AKP v1 Closure Boundary
+- ADR-147 — AKP-1 FACT Authority Deferral and Semantic Product Eligibility
+- ADR-148 — AKP-1 Semantic Runtime Authority Unification
 
-The range is one accepted architecture system. Acceptance freezes its architecture boundary but does not authorize Product implementation, migrations, dependencies, Ready, Merge, Deployment or Production Verification.
+ADR-148 refines implementation mechanics for ADR-135; it does not create a new AKP Section or change Canonical authority.
 
 ## Accepted Runtime-selectable AI Settings completion contract
 

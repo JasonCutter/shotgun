@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { ASK_FIXTURE } from './fixtures/ask-workspace-fixture.js';
 import { switchProject } from './helpers/hfm-commands.js';
 import { expectTechnicalInformation } from './hfm-technical.js';
+import { waitForAskProjectSourceContextReady } from './helpers/ask-readiness.js';
 
 test('Ask navigation enables question submission and clears draft on success', async ({ page }) => {
   await page.goto('/ask');
@@ -27,7 +28,9 @@ test('Ask Source Exploration pins a selected SourceVersion into the browser subm
   page,
 }) => {
   await page.goto('/ask');
+  const sourceContextResponse = waitForAskProjectSourceContextReady(page);
   await page.getByRole('combobox', { name: 'Ask mode' }).selectOption('SOURCE_EXPLORATION');
+  await sourceContextResponse;
 
   const source = page.getByRole('checkbox', { name: /ask-exploration-source\.txt/ });
   await expect(source).toBeVisible();

@@ -89,7 +89,7 @@ describe('shotgun-api-client', () => {
     }
   });
 
-  it('serializes project switch and logout through distinct CSRF rotations', async () => {
+  it('serializes project switch and logout through the shared CSRF authority', async () => {
     const calls: string[] = [];
     let csrfIndex = 0;
     let releaseFirst = (): void => undefined;
@@ -117,7 +117,7 @@ describe('shotgun-api-client', () => {
     await vi.waitFor(() => expect(calls).toEqual(['csrf-1', 'switch']));
     releaseFirst();
     await Promise.all([switching, logout]);
-    expect(calls).toEqual(['csrf-1', 'switch', 'csrf-2', 'logout']);
+    expect(calls).toEqual(['csrf-1', 'switch', 'logout']);
   });
 
   it('releases the mutation lock after a network failure', async () => {
@@ -139,20 +139,25 @@ describe('shotgun-api-client', () => {
     expect(csrfIndex).toBe(2);
   });
 
-  it('does not retry a CSRF denial', async () => {
+  it('recovers exactly once from a typed CSRF denial', async () => {
     let mutationCalls = 0;
+    let csrfIndex = 0;
     const fetch = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
-      if (url.endsWith('/security/csrf')) return json({ csrfToken: 'csrf-1' });
+      if (url.endsWith('/security/csrf')) return json({ csrfToken: `csrf-${++csrfIndex}` });
       mutationCalls += 1;
-      return json(
-        { code: 'REQUEST_ORIGIN_DENIED', message: 'A valid CSRF token is required.' },
-        403,
-      );
+      if (mutationCalls === 1) {
+        return json(
+          { code: 'REQUEST_ORIGIN_DENIED', message: 'A valid CSRF token is required.' },
+          403,
+        );
+      }
+      return json({ session: session('project-b') });
     });
     const client = createShotgunApiClient({ fetch });
-    await expect(client.switchActiveProject('project-b')).rejects.toBeInstanceOf(ShotgunApiError);
-    expect(mutationCalls).toBe(1);
+    await expect(client.switchActiveProject('project-b')).resolves.toEqual(session('project-b'));
+    expect(mutationCalls).toBe(2);
+    expect(csrfIndex).toBe(2);
   });
 
   it('classifies an unreceived Section 2 command response as outcome indeterminate', async () => {

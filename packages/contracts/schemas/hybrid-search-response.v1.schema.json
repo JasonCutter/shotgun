@@ -26,9 +26,21 @@
     "semanticReadiness": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status"],
+      "required": ["status", "data", "execution"],
       "properties": {
         "status": { "enum": ["READY", "STALE", "DEGRADED", "UNAVAILABLE", "NOT_CONFIGURED"] },
+        "data": { "enum": ["NO_ACTIVE_GENERATION", "READY", "STALE"] },
+        "execution": {
+          "enum": [
+            "NOT_EVALUATED",
+            "NOT_CONFIGURED",
+            "AVAILABLE",
+            "CREDENTIAL_UNAVAILABLE",
+            "PROVIDER_UNAVAILABLE",
+            "POLICY_DENIED",
+            "TEMPORARILY_UNAVAILABLE"
+          ]
+        },
         "activeGenerationId": { "type": "string" },
         "embeddingProfileId": { "type": "string" },
         "dimension": { "type": "integer", "minimum": 1 },
@@ -86,7 +98,8 @@
           "resourceType",
           "resourceId",
           "text",
-          "canonicalVersion",
+          "authority",
+          "authorityRevision",
           "evidenceIds",
           "citations",
           "accessScope",
@@ -97,11 +110,17 @@
         ],
         "properties": {
           "resourceType": {
-            "enum": ["CLAIM", "FACT", "ENTITY", "RELATION", "EVENT", "DECISION"]
+            "enum": ["CLAIM", "ENTITY", "RELATION", "EVENT", "DECISION"]
           },
           "resourceId": { "type": "string" },
           "text": { "type": "string" },
+          "authority": { "enum": ["CANONICAL", "APPROVED_KNOWLEDGE", "COMPILED_TRUTH"] },
+          "authorityRevision": { "type": "integer", "minimum": 0 },
+          "resourceRevision": { "type": "integer", "minimum": 0 },
           "canonicalVersion": { "type": "integer", "minimum": 0 },
+          "baseCanonicalVersion": { "type": "integer", "minimum": 0 },
+          "sourceSnapshotDigest": { "type": "string" },
+          "sourceProjectionDigest": { "type": "string" },
           "evidenceIds": { "type": "array", "items": { "type": "string" } },
           "citations": {
             "type": "array",

@@ -215,6 +215,7 @@ import {
   type HybridRetrievalCoordinatorPort,
   type KnowledgeResourceResolverPort,
   type SemanticActiveGenerationReaderPort,
+  type SemanticProjectionRefreshPort,
   type SemanticRetrieverPort,
 } from '../../../packages/contracts/src/index.js';
 import {
@@ -288,6 +289,8 @@ import {
   createCompiledTruthModule,
   type CompiledTruthRepositoryPort,
 } from '../../../modules/compiled-truth/src/index.js';
+import { RepositorySemanticCorpusSourceSnapshotReader } from '../../../adapters/semantic-corpus-repository/src/index.js';
+import type { SemanticCorpusSourceSnapshotReaderPort } from '../../../packages/contracts/src/index.js';
 import {
   type ActionConnectorPort,
   type ActionCandidateRepositoryPort,
@@ -510,6 +513,7 @@ export type ApplicationOptions = {
   readonly searchProjectionRepository?: SearchProjectionRepositoryPort;
   readonly knowledgeModelRepository?: KnowledgeModelRepositoryPort;
   readonly compiledTruthRepository?: CompiledTruthRepositoryPort;
+  readonly semanticCorpusSourceSnapshotReader?: SemanticCorpusSourceSnapshotReaderPort;
   readonly actionCandidateRepository?: ActionCandidateRepositoryPort;
   readonly actionExecutionRepository?: ActionExecutionRepositoryPort;
   readonly actionConnector?: ActionConnectorPort;
@@ -568,6 +572,7 @@ export type ApplicationOptions = {
   readonly canonicalProjectionRecoveryReporter?: CanonicalProjectionRecoveryReporterPort;
   readonly semanticRetriever?: SemanticRetrieverPort;
   readonly semanticActiveGenerationReader?: SemanticActiveGenerationReaderPort;
+  readonly semanticProjectionRefresh?: SemanticProjectionRefreshPort;
   readonly hybridRetrievalCoordinator?: HybridRetrievalCoordinatorPort;
   /** LPA-WP5 (D12 recovery harness / R3-1): when `false`, the startup AI
    *  Durable Materialization Recovery is NOT run (no expired-attempt mutation,
@@ -1026,6 +1031,19 @@ const requestPrincipalContext = (headers: SecurityHeaders): TrustedPrincipalCont
   return context;
 };
 
+const requireSemanticProjectionRefreshRequest = (body: unknown): Record<string, never> => {
+  if (body === undefined || body === null) return {};
+  if (typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 0) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'Semantic projection refresh accepts only an empty server-owned request.',
+      module: 'product-api',
+      operation: 'semantic-projection-refresh-request',
+    });
+  }
+  return {};
+};
+
 const requireActionPreviewRequest = (
   body: unknown,
 ): {
@@ -1261,6 +1279,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.knowledgeModelRepository ?? new InMemoryKnowledgeModelRepository();
   const compiledTruthRepository =
     options.compiledTruthRepository ?? new InMemoryCompiledTruthRepository();
+  const semanticCorpusSourceSnapshotReader =
+    options.semanticCorpusSourceSnapshotReader ??
+    new RepositorySemanticCorpusSourceSnapshotReader(
+      canonicalKnowledgeRepository,
+      knowledgeModelRepository,
+      compiledTruthRepository,
+    );
   const actionExecutionRepository =
     options.actionExecutionRepository ?? new InMemoryActionExecutionRepository();
   const canonicalProjectionRecoveryReporter =
@@ -1539,7 +1564,11 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const projectionSearch = createProjectionSearchModule(searchProjectionRepository);
   const citedAnswer = createCitedAnswerModule();
   const knowledgeModel = createKnowledgeModelModule(knowledgeModelRepository);
-  const compiledTruth = createCompiledTruthModule(compiledTruthRepository);
+  const compiledTruth = createCompiledTruthModule(
+    compiledTruthRepository,
+    undefined,
+    semanticCorpusSourceSnapshotReader,
+  );
   const actionExecution = createActionExecutionModule(
     actionExecutionRepository,
     actionCandidateRepository,
@@ -2802,6 +2831,28 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       });
       const delivery = await kernel.connector.sendCommand(command);
       return { commandStatus: delivery.status, result: delivery.result };
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/projection/semantic/refresh',
+    async (request) => {
+      const context = requestContext(request.headers);
+      requireSemanticProjectionRefreshRequest(request.body);
+      if (!options.semanticProjectionRefresh) {
+        throw new ShotgunError({
+          code: 'CONFIGURATION_REQUIRED',
+          safeMessage: 'Semantic projection refresh is not configured.',
+          module: 'product-api',
+          operation: 'semantic-projection-refresh',
+        });
+      }
+      const result = await options.semanticProjectionRefresh.refresh({
+        projectId: context.projectId,
+        actor: context.actor,
+        security: context.security,
+      });
+      return { refresh: result };
     },
   );
 

@@ -76,6 +76,7 @@ describe('AKP-1 WP3: Hybrid Retrieval Database Integration Tests', () => {
         capabilityCatalogRevision: sampleGeneration.capabilityCatalogRevision,
         providerPolicyFingerprint: sampleGeneration.providerPolicyFingerprint,
         representationVersion: sampleGeneration.representationVersion,
+        dimension: sampleGeneration.dimension,
         createdAt: '2026-08-18T10:00:00.000Z',
       },
       profile: {
@@ -110,6 +111,7 @@ describe('AKP-1 WP3: Hybrid Retrieval Database Integration Tests', () => {
         defaultNormalizationPolicy: 'unit_length',
       },
     }),
+    resolveCompatibility: async (input) => input,
   };
 
   beforeEach(async () => {

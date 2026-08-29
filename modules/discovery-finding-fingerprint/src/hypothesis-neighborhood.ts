@@ -1491,22 +1491,28 @@ export class DiscoveryNeighborhoodSignalFacade {
     let truncated = anchors.length > boundedAnchors.length;
     const semanticNeighborhoods: DiscoveryAnchoredSemanticNeighborhoodV1[] = [];
     const neighborLimit = effectiveMaxNeighborsPerAnchor(input.context, input.strategy);
+    let remainingNeighborCapacity = Math.max(
+      0,
+      input.context.bounds.maxResourcesRead - boundedAnchors.length,
+    );
     for (const anchor of boundedAnchors) {
-      if (
-        semanticNeighborhoods.length > 0 &&
-        signalResourceMap(semanticNeighborhoods).size >= input.context.bounds.maxResourcesRead
-      ) {
+      if (remainingNeighborCapacity < 1) {
         truncated = true;
         break;
       }
+      const readLimit = Math.min(neighborLimit, remainingNeighborCapacity);
       const result = await this.ports.semanticNeighborhood.read({
         context: input.context,
         anchor,
-        limit: neighborLimit,
+        limit: readLimit,
       });
-      const normalized = normalizeNeighborhood(input.context, anchor, result, neighborLimit);
+      const normalized = normalizeNeighborhood(input.context, anchor, result, readLimit);
       semanticNeighborhoods.push(normalized.neighborhood);
       truncated ||= normalized.truncated;
+      remainingNeighborCapacity = Math.max(
+        0,
+        remainingNeighborCapacity - normalized.neighborhood.neighbors.length,
+      );
     }
     const boundedSemantic = normalizeSemanticNeighborhoodsForSelection(
       input.context,

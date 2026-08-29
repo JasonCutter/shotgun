@@ -698,7 +698,8 @@ describe('AKP-3 WP2 bounded hypothesis neighborhoods', () => {
     );
     expect(exposed.size).toBeLessThanOrEqual(3);
     expect(result.completeness).toBe('TRUNCATED');
-    expect(port.read).toHaveBeenCalledTimes(2);
+    expect(port.read).toHaveBeenCalledTimes(1);
+    expect(port.read).toHaveBeenCalledWith(expect.objectContaining({ limit: 1 }));
   });
 
   it('uses the smaller context anchor and semantic-neighbor limits', async () => {
@@ -720,8 +721,7 @@ describe('AKP-3 WP2 bounded hypothesis neighborhoods', () => {
     });
 
     expect(result.anchors).toHaveLength(2);
-    expect(port.read).toHaveBeenCalledTimes(2);
-    expect(port.read).toHaveBeenCalledTimes(2);
+    expect(port.read).not.toHaveBeenCalled();
     expect(result.completeness).toBe('TRUNCATED');
 
     const neighborPort = semanticPort((anchor) => neighborhood(anchor, [neighbor(b), neighbor(c)]));

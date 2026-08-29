@@ -1,0 +1,93 @@
+{
+  "schemaVersion": "1.0.0",
+  "findingId": "finding-wp4-golden-001",
+  "findingRevision": 1,
+  "projectId": "project-wp4-golden",
+  "findingType": "EVIDENCE_GAP",
+  "status": "DERIVED_INFERENCE",
+  "generationMethod": "HYBRID",
+  "lifecycleState": "RESOLVED",
+  "payload": {
+    "schemaVersion": "1.0.0",
+    "payloadType": "EVIDENCE_GAP",
+    "coverageKind": "INSUFFICIENT",
+    "affectedResourceRef": {
+      "schemaVersion": "1.0.0",
+      "resourceKind": "CANONICAL_DECISION",
+      "resourceId": "decision-wp4-001",
+      "projectId": "project-wp4-golden",
+      "resourceState": "APPROVED",
+      "resourceRevision": "4"
+    },
+    "coverageGap": "The approved decision has an incomplete evidence trail.",
+    "requiredEvidence": "A source version confirming the decision rationale is required."
+  },
+  "relatedResourceRefs": [
+    {
+      "schemaVersion": "1.0.0",
+      "resourceKind": "CANONICAL_DECISION",
+      "resourceId": "decision-wp4-001",
+      "projectId": "project-wp4-golden",
+      "resourceState": "APPROVED",
+      "resourceRevision": "4"
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "resourceKind": "SOURCE_VERSION",
+      "resourceId": "source-version-wp4-001",
+      "projectId": "project-wp4-golden",
+      "resourceState": "CURRENT",
+      "resourceRevision": "9"
+    }
+  ],
+  "evidenceIds": ["evidence-wp4-001"],
+  "sourceProjectionDigest": "sha256:wp4-source-projection",
+  "canonicalBase": {
+    "schemaVersion": "1.0.0",
+    "canonicalVersion": 12,
+    "snapshotDigest": "sha256:wp4-canonical-snapshot"
+  },
+  "discoveryBase": {
+    "schemaVersion": "1.0.0",
+    "projectionRevision": "projection-wp4-12",
+    "projectionDigest": "sha256:wp4-discovery-projection"
+  },
+  "runId": "run-wp4-golden-001",
+  "signalSummary": {
+    "semanticSimilarity": 0.91,
+    "semanticRank": 1,
+    "evidenceCoverage": 0.3,
+    "conflictState": "NONE",
+    "rankingCostMicros": 2400
+  },
+  "rationale": "The bounded signal identifies missing evidence without changing Canonical authority.",
+  "derivationSummary": "Derived from the approved decision and the current discovery projection.",
+  "provenance": {
+    "schemaVersion": "1.0.0",
+    "kind": "HYBRID",
+    "deterministic": {
+      "ruleId": "discovery.wp4.golden",
+      "ruleVersion": "2",
+      "inputDigest": "sha256:wp4-input"
+    },
+    "aiExecution": {
+      "providerId": "provider-wp4",
+      "modelId": "model-wp4",
+      "modelVersion": "2026-08",
+      "aiConfigurationRevision": "ai-config-7",
+      "credentialId": "credential-wp4",
+      "credentialRevision": "credential-revision-3",
+      "providerPolicyFingerprint": "sha256:wp4-provider-policy",
+      "privacyPolicyRevision": "privacy-5",
+      "dataPolicyRevision": "data-6",
+      "promptVersion": "prompt-4",
+      "outputSchemaVersion": "output-2"
+    }
+  },
+  "accessScope": ["owner", "reviewer"],
+  "sensitivity": "internal",
+  "fingerprint": "sha256:wp4-fingerprint",
+  "fingerprintVersion": "discovery-fingerprint:v1",
+  "retentionClass": "DURABLE_DERIVED_RECORD",
+  "createdAt": "2026-08-29T00:00:00.000Z"
+}

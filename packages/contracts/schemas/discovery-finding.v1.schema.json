@@ -1,0 +1,570 @@
+{
+  "$id": "https://shotgun.local/contracts/discovery-finding.v1.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Shotgun Discovery Finding Envelope v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "findingId",
+    "findingRevision",
+    "projectId",
+    "findingType",
+    "status",
+    "generationMethod",
+    "lifecycleState",
+    "payload",
+    "relatedResourceRefs",
+    "evidenceIds",
+    "sourceProjectionDigest",
+    "canonicalBase",
+    "discoveryBase",
+    "runId",
+    "signalSummary",
+    "rationale",
+    "derivationSummary",
+    "provenance",
+    "accessScope",
+    "sensitivity",
+    "fingerprint",
+    "fingerprintVersion",
+    "retentionClass",
+    "createdAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "findingId": { "type": "string", "minLength": 1 },
+    "findingRevision": { "type": "integer", "minimum": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "findingType": {
+      "enum": [
+        "KNOWLEDGE_GAP",
+        "EVIDENCE_GAP",
+        "RELATION_HYPOTHESIS",
+        "PATTERN_HYPOTHESIS",
+        "CONFLICT_HYPOTHESIS",
+        "CLARIFICATION_QUESTION",
+        "ACTION_SUGGESTION"
+      ]
+    },
+    "status": { "const": "DERIVED_INFERENCE" },
+    "generationMethod": { "enum": ["DETERMINISTIC", "AI_ASSISTED", "HYBRID"] },
+    "lifecycleState": {
+      "enum": [
+        "NEW",
+        "VALIDATING",
+        "REVIEW_READY",
+        "REENTERED",
+        "DISMISSED",
+        "SUPPRESSED",
+        "RESOLVED",
+        "STALE",
+        "SUPERSEDED"
+      ]
+    },
+    "payload": {},
+    "relatedResourceRefs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/resourceRef" }
+    },
+    "evidenceIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "sourceProjectionDigest": { "type": "string", "minLength": 1 },
+    "canonicalBase": { "$ref": "#/definitions/canonicalBase" },
+    "discoveryBase": { "$ref": "#/definitions/discoveryBase" },
+    "runId": { "type": "string", "minLength": 1 },
+    "signalSummary": { "$ref": "#/definitions/signalSummary" },
+    "rationale": { "type": "string", "minLength": 1 },
+    "derivationSummary": { "type": "string", "minLength": 1 },
+    "provenance": { "$ref": "#/definitions/provenance" },
+    "accessScope": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "sensitivity": { "enum": ["public", "internal", "private", "restricted"] },
+    "fingerprint": { "type": "string", "minLength": 1 },
+    "fingerprintVersion": { "type": "string", "minLength": 1 },
+    "retentionClass": { "const": "DURABLE_DERIVED_RECORD" },
+    "createdAt": { "type": "string", "minLength": 1 },
+    "supersedesFindingId": { "type": "string", "minLength": 1 }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "findingType": { "const": "KNOWLEDGE_GAP" },
+        "payload": { "$ref": "#/definitions/knowledgeGapPayload" }
+      },
+      "required": ["findingType", "payload"]
+    },
+    {
+      "properties": {
+        "findingType": { "const": "EVIDENCE_GAP" },
+        "payload": { "$ref": "#/definitions/evidenceGapPayload" }
+      },
+      "required": ["findingType", "payload"]
+    },
+    {
+      "properties": {
+        "findingType": { "const": "RELATION_HYPOTHESIS" },
+        "payload": { "$ref": "#/definitions/relationHypothesisPayload" }
+      },
+      "required": ["findingType", "payload"]
+    },
+    {
+      "properties": {
+        "findingType": { "const": "PATTERN_HYPOTHESIS" },
+        "payload": { "$ref": "#/definitions/patternHypothesisPayload" }
+      },
+      "required": ["findingType", "payload"]
+    },
+    {
+      "properties": {
+        "findingType": { "const": "CONFLICT_HYPOTHESIS" },
+        "payload": { "$ref": "#/definitions/conflictHypothesisPayload" }
+      },
+      "required": ["findingType", "payload"]
+    },
+    {
+      "properties": {
+        "findingType": { "const": "CLARIFICATION_QUESTION" },
+        "payload": { "$ref": "#/definitions/clarificationQuestionPayload" }
+      },
+      "required": ["findingType", "payload"]
+    },
+    {
+      "properties": {
+        "findingType": { "const": "ACTION_SUGGESTION" },
+        "payload": { "$ref": "#/definitions/actionSuggestionPayload" }
+      },
+      "required": ["findingType", "payload"]
+    }
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "resourceRef": {
+      "type": "object",
+      "required": ["schemaVersion", "resourceKind", "resourceId", "projectId", "resourceState"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "resourceKind": {
+          "enum": [
+            "CANONICAL_CLAIM",
+            "CANONICAL_ENTITY",
+            "CANONICAL_EVENT",
+            "CANONICAL_RELATION",
+            "CANONICAL_CONFLICT",
+            "CANONICAL_DECISION",
+            "SOURCE",
+            "SOURCE_VERSION",
+            "COMPILED_TRUTH_ITEM"
+          ]
+        },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "projectId": { "type": "string", "minLength": 1 },
+        "resourceState": { "enum": ["CURRENT", "APPROVED"] },
+        "resourceRevision": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "canonicalBase": {
+      "type": "object",
+      "required": ["schemaVersion", "canonicalVersion", "snapshotDigest"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "canonicalVersion": { "type": "integer", "minimum": 0 },
+        "snapshotDigest": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "discoveryBase": {
+      "type": "object",
+      "required": ["schemaVersion", "projectionRevision", "projectionDigest"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "projectionRevision": { "type": "string", "minLength": 1 },
+        "projectionDigest": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "temporalQualification": {
+      "type": "object",
+      "required": ["schemaVersion", "description"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "validFrom": { "type": "string", "minLength": 1 },
+        "validTo": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "payloadBase": {
+      "type": "object",
+      "required": ["schemaVersion", "payloadType"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "payloadType": { "type": "string", "minLength": 1 }
+      }
+    },
+    "knowledgeGapPayload": {
+      "oneOf": [
+        {
+          "allOf": [
+            { "$ref": "#/definitions/payloadBase" },
+            {
+              "type": "object",
+              "required": ["gapKind", "subject", "missingFact", "question"],
+              "properties": {
+                "schemaVersion": { "const": "1.0.0" },
+                "payloadType": { "const": "KNOWLEDGE_GAP" },
+                "gapKind": { "const": "MISSING_FACT" },
+                "subject": { "type": "string", "minLength": 1 },
+                "missingFact": { "type": "string", "minLength": 1 },
+                "question": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/definitions/payloadBase" },
+            {
+              "type": "object",
+              "required": ["gapKind", "subject", "missingTimeDescription", "question"],
+              "properties": {
+                "schemaVersion": { "const": "1.0.0" },
+                "payloadType": { "const": "KNOWLEDGE_GAP" },
+                "gapKind": { "const": "TEMPORAL_GAP" },
+                "subject": { "type": "string", "minLength": 1 },
+                "missingTimeDescription": { "type": "string", "minLength": 1 },
+                "question": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/definitions/payloadBase" },
+            {
+              "type": "object",
+              "required": ["gapKind", "term", "context", "question"],
+              "properties": {
+                "schemaVersion": { "const": "1.0.0" },
+                "payloadType": { "const": "KNOWLEDGE_GAP" },
+                "gapKind": { "const": "UNDEFINED_TERM" },
+                "term": { "type": "string", "minLength": 1 },
+                "context": { "type": "string", "minLength": 1 },
+                "question": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/definitions/payloadBase" },
+            {
+              "type": "object",
+              "required": ["gapKind", "knownConflictRef", "missingResolutionInput", "question"],
+              "properties": {
+                "schemaVersion": { "const": "1.0.0" },
+                "payloadType": { "const": "KNOWLEDGE_GAP" },
+                "gapKind": { "const": "KNOWN_CONFLICT_QUESTION" },
+                "knownConflictRef": { "$ref": "#/definitions/resourceRef" },
+                "missingResolutionInput": { "type": "string", "minLength": 1 },
+                "question": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      ]
+    },
+    "evidenceGapPayload": {
+      "allOf": [
+        { "$ref": "#/definitions/payloadBase" },
+        {
+          "type": "object",
+          "required": [
+            "payloadType",
+            "coverageKind",
+            "affectedResourceRef",
+            "coverageGap",
+            "requiredEvidence"
+          ],
+          "properties": {
+            "schemaVersion": { "const": "1.0.0" },
+            "payloadType": { "const": "EVIDENCE_GAP" },
+            "coverageKind": { "enum": ["ABSENT", "WEAK", "INSUFFICIENT"] },
+            "affectedResourceRef": { "$ref": "#/definitions/resourceRef" },
+            "coverageGap": { "type": "string", "minLength": 1 },
+            "requiredEvidence": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "relationHypothesisPayload": {
+      "allOf": [
+        { "$ref": "#/definitions/payloadBase" },
+        {
+          "type": "object",
+          "required": [
+            "payloadType",
+            "sourceEndpoint",
+            "targetEndpoint",
+            "proposedRelationType",
+            "direction"
+          ],
+          "properties": {
+            "schemaVersion": { "const": "1.0.0" },
+            "payloadType": { "const": "RELATION_HYPOTHESIS" },
+            "sourceEndpoint": { "$ref": "#/definitions/resourceRef" },
+            "targetEndpoint": { "$ref": "#/definitions/resourceRef" },
+            "proposedRelationType": { "type": "string", "minLength": 1 },
+            "direction": { "enum": ["DIRECTED", "UNDIRECTED"] },
+            "temporalQualification": { "$ref": "#/definitions/temporalQualification" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "patternHypothesisPayload": {
+      "allOf": [
+        { "$ref": "#/definitions/payloadBase" },
+        {
+          "type": "object",
+          "required": [
+            "payloadType",
+            "patternKind",
+            "memberResourceRefs",
+            "patternIdentity",
+            "patternStatement"
+          ],
+          "properties": {
+            "schemaVersion": { "const": "1.0.0" },
+            "payloadType": { "const": "PATTERN_HYPOTHESIS" },
+            "patternKind": {
+              "enum": ["CLUSTER", "TREND", "RECURRING_ASSOCIATION", "TEMPORAL_CHANGE"]
+            },
+            "memberResourceRefs": {
+              "type": "array",
+              "minItems": 2,
+              "items": { "$ref": "#/definitions/resourceRef" }
+            },
+            "patternIdentity": { "type": "string", "minLength": 1 },
+            "patternStatement": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "conflictHypothesisPayload": {
+      "allOf": [
+        { "$ref": "#/definitions/payloadBase" },
+        {
+          "type": "object",
+          "required": [
+            "payloadType",
+            "participatingResourceRefs",
+            "contradictionKind",
+            "possibleContradiction"
+          ],
+          "properties": {
+            "schemaVersion": { "const": "1.0.0" },
+            "payloadType": { "const": "CONFLICT_HYPOTHESIS" },
+            "participatingResourceRefs": {
+              "type": "array",
+              "minItems": 2,
+              "items": { "$ref": "#/definitions/resourceRef" }
+            },
+            "contradictionKind": {
+              "enum": ["FACTUAL", "TEMPORAL", "IDENTITY", "MODEL_DISAGREEMENT"]
+            },
+            "possibleContradiction": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "clarificationQuestionPayload": {
+      "allOf": [
+        { "$ref": "#/definitions/payloadBase" },
+        {
+          "type": "object",
+          "required": [
+            "payloadType",
+            "investigationTargetRefs",
+            "question",
+            "context",
+            "proposedNextStep"
+          ],
+          "properties": {
+            "schemaVersion": { "const": "1.0.0" },
+            "payloadType": { "const": "CLARIFICATION_QUESTION" },
+            "investigationTargetRefs": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/definitions/resourceRef" }
+            },
+            "question": { "type": "string", "minLength": 1 },
+            "context": { "type": "string", "minLength": 1 },
+            "proposedNextStep": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "actionSuggestionPayload": {
+      "allOf": [
+        { "$ref": "#/definitions/payloadBase" },
+        {
+          "type": "object",
+          "required": [
+            "payloadType",
+            "suggestedAction",
+            "rationale",
+            "affectedResourceRefs",
+            "executionStatus"
+          ],
+          "properties": {
+            "schemaVersion": { "const": "1.0.0" },
+            "payloadType": { "const": "ACTION_SUGGESTION" },
+            "suggestedAction": { "type": "string", "minLength": 1 },
+            "rationale": { "type": "string", "minLength": 1 },
+            "affectedResourceRefs": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/resourceRef" }
+            },
+            "riskContext": { "type": "string", "minLength": 1 },
+            "executionStatus": { "const": "CANDIDATE_ONLY" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "deterministicProvenance": {
+      "type": "object",
+      "required": ["schemaVersion", "kind", "ruleId", "ruleVersion", "inputDigest"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "kind": { "const": "DETERMINISTIC" },
+        "ruleId": { "type": "string", "minLength": 1 },
+        "ruleVersion": { "type": "string", "minLength": 1 },
+        "inputDigest": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "aiProvenance": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "kind",
+        "providerId",
+        "modelId",
+        "modelVersion",
+        "aiConfigurationRevision",
+        "credentialId",
+        "credentialRevision",
+        "providerPolicyFingerprint",
+        "privacyPolicyRevision",
+        "dataPolicyRevision",
+        "promptVersion",
+        "outputSchemaVersion"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "kind": { "const": "AI_ASSISTED" },
+        "providerId": { "type": "string", "minLength": 1 },
+        "modelId": { "type": "string", "minLength": 1 },
+        "modelVersion": { "type": "string", "minLength": 1 },
+        "aiConfigurationRevision": { "type": "string", "minLength": 1 },
+        "credentialId": { "type": "string", "minLength": 1 },
+        "credentialRevision": { "type": "string", "minLength": 1 },
+        "providerPolicyFingerprint": { "type": "string", "minLength": 1 },
+        "privacyPolicyRevision": { "type": "string", "minLength": 1 },
+        "dataPolicyRevision": { "type": "string", "minLength": 1 },
+        "promptVersion": { "type": "string", "minLength": 1 },
+        "outputSchemaVersion": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "hybridProvenance": {
+      "type": "object",
+      "required": ["schemaVersion", "kind", "deterministic", "aiExecution"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "kind": { "const": "HYBRID" },
+        "deterministic": {
+          "type": "object",
+          "required": ["ruleId", "ruleVersion", "inputDigest"],
+          "properties": {
+            "ruleId": { "type": "string", "minLength": 1 },
+            "ruleVersion": { "type": "string", "minLength": 1 },
+            "inputDigest": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "aiExecution": {
+          "type": "object",
+          "required": [
+            "providerId",
+            "modelId",
+            "modelVersion",
+            "aiConfigurationRevision",
+            "credentialId",
+            "credentialRevision",
+            "providerPolicyFingerprint",
+            "privacyPolicyRevision",
+            "dataPolicyRevision",
+            "promptVersion",
+            "outputSchemaVersion"
+          ],
+          "properties": {
+            "providerId": { "type": "string", "minLength": 1 },
+            "modelId": { "type": "string", "minLength": 1 },
+            "modelVersion": { "type": "string", "minLength": 1 },
+            "aiConfigurationRevision": { "type": "string", "minLength": 1 },
+            "credentialId": { "type": "string", "minLength": 1 },
+            "credentialRevision": { "type": "string", "minLength": 1 },
+            "providerPolicyFingerprint": { "type": "string", "minLength": 1 },
+            "privacyPolicyRevision": { "type": "string", "minLength": 1 },
+            "dataPolicyRevision": { "type": "string", "minLength": 1 },
+            "promptVersion": { "type": "string", "minLength": 1 },
+            "outputSchemaVersion": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "oneOf": [
+        { "$ref": "#/definitions/deterministicProvenance" },
+        { "$ref": "#/definitions/aiProvenance" },
+        { "$ref": "#/definitions/hybridProvenance" }
+      ]
+    },
+    "signalSummary": {
+      "type": "object",
+      "properties": {
+        "semanticSimilarity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "semanticRank": { "type": "integer", "minimum": 0 },
+        "lexicalRank": { "type": "integer", "minimum": 0 },
+        "graphDistance": { "type": "integer", "minimum": 0 },
+        "graphTopology": { "enum": ["ISOLATED", "CONNECTED", "HUB", "COMMUNITY"] },
+        "temporalOverlap": { "type": "number", "minimum": 0, "maximum": 1 },
+        "temporalChange": { "enum": ["NONE", "EMERGING", "SHIFTING", "ENDED"] },
+        "evidenceCoverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "conflictState": { "enum": ["NONE", "KNOWN_CONFLICT", "POSSIBLE_CONFLICT"] },
+        "novelty": { "type": "number", "minimum": 0, "maximum": 1 },
+        "rankingCostMicros": { "type": "number" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

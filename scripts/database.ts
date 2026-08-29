@@ -67,6 +67,7 @@ const managedSchemas = [
   'review',
   'comparison',
   'runtime',
+  'discovery',
 ] as const;
 
 const dropManagedSchemas = async (client: Client): Promise<void> => {
@@ -153,6 +154,7 @@ const requiredTables = [
   'knowledge.entity_vault_imports',
   'projection.compiled_truth',
   'projection.discovery_inferences',
+  'discovery.findings',
   'action.executions',
   'action.approvals',
   'action.audit_events',

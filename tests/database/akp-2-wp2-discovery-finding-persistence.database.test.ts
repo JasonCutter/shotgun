@@ -379,7 +379,14 @@ describe.runIf(databaseUrl)('AKP-2 WP2 Discovery finding PostgreSQL persistence'
         findingId: otherProject.findingId,
         findingRevision: otherProject.findingRevision,
       }),
-    ).toBeUndefined();
+    ).toMatchObject({ projectId: projectA, findingId: otherProject.findingId });
+    expect(
+      await repository.findRevision({
+        projectId: projectB,
+        findingId: otherProject.findingId,
+        findingRevision: otherProject.findingRevision,
+      }),
+    ).toEqual(otherProject);
     expect(await repository.listByProject(projectA)).toHaveLength(2);
     expect(await repository.listByProject(projectB)).toHaveLength(1);
     const legacyRows = await pool.query(

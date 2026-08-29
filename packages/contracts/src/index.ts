@@ -43,3 +43,4 @@ export * from './semantic-index.js';
 export * from './semantic-generation.js';
 export * from './hybrid-retrieval.js';
 export * from './semantic-query.js';
+export * from './discovery-runtime.js';

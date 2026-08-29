@@ -46,3 +46,4 @@ export const computeDiscoveryFingerprintV1 = (
   });
 
 export * from './active-discovery.js';
+export * from './hypothesis-neighborhood.js';

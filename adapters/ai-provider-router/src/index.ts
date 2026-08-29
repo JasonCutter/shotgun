@@ -18,6 +18,7 @@ import type {
   AskAnswerProviderRouterPort,
   AskExecutionScope,
 } from '../../../modules/frontend-ask-execution/src/index.js';
+import type { DiscoveryAIExecutionPinV1 } from '../../../packages/contracts/src/index.js';
 import type { ProviderRegistryPort } from '../../../modules/ai-configuration/src/index.js';
 import { StructuredAskAnswerProviderAdapter } from '../../ai-provider-ask/src/index.js';
 
@@ -34,7 +35,7 @@ const routerError = (message: string, operation: string): ShotgunError =>
     operation,
   });
 
-class CredentialBackedAIProviderAdapter implements AIProviderAdapterPort {
+export class CredentialBackedAIProviderAdapter implements AIProviderAdapterPort {
   readonly identity: AIProviderAdapterPort['identity'];
 
   constructor(
@@ -124,6 +125,34 @@ class CredentialBackedAIProviderAdapter implements AIProviderAdapterPort {
   }
 }
 
+/**
+ * Shared secret-safe provider adapter factory. Ask and Discovery supply their
+ * own domain adapter/prompt boundary while Vault callback and exact credential
+ * validation remain one implementation.
+ */
+export const createCredentialBackedAIProviderAdapter = (input: {
+  readonly connectivity: AIProviderConnectivityAdapter;
+  readonly vault?: CredentialVaultPort;
+  readonly projectId: string;
+  readonly providerId: string;
+  readonly credentialId: string;
+  readonly credentialRevision: number;
+  readonly modelId: string;
+  readonly legacyCredential?: () => string | undefined;
+}): AIProviderAdapterPort =>
+  new CredentialBackedAIProviderAdapter(
+    input.connectivity,
+    input.vault,
+    {
+      projectId: input.projectId,
+      providerId: input.providerId,
+      credentialId: input.credentialId,
+      credentialRevision: input.credentialRevision,
+    },
+    input.modelId,
+    input.legacyCredential,
+  );
+
 export class AIProviderRouter implements AskAnswerProviderRouterPort {
   private readonly legacyCredentialId: string;
 
@@ -155,22 +184,57 @@ export class AIProviderRouter implements AskAnswerProviderRouterPort {
     const legacy =
       input.executionPin.providerId === 'google-gemini' &&
       input.executionPin.credentialId === this.legacyCredentialId;
-    const adapter = new CredentialBackedAIProviderAdapter(
+    const adapter = createCredentialBackedAIProviderAdapter({
       connectivity,
-      legacy ? undefined : this.vault,
-      {
-        projectId: input.executionPin.projectId,
-        providerId: input.executionPin.providerId,
-        credentialId: input.executionPin.credentialId,
-        credentialRevision: input.executionPin.credentialRevision,
-      },
-      model.modelId,
-      legacy ? this.options.legacyCredential : undefined,
-    );
+      vault: legacy ? undefined : this.vault,
+      projectId: input.executionPin.projectId,
+      providerId: input.executionPin.providerId,
+      credentialId: input.executionPin.credentialId,
+      credentialRevision: input.executionPin.credentialRevision,
+      modelId: model.modelId,
+      legacyCredential: legacy ? this.options.legacyCredential : undefined,
+    });
     return new StructuredAskAnswerProviderAdapter(adapter, {
       allowPrivate: true,
       allowRestricted: false,
       dataPolicyVersion: `a8-provider-policy:${provider.providerId}`,
+    });
+  }
+
+  /** Discovery receives the neutral structured adapter, never the Ask answer adapter. */
+  async resolveDiscovery(input: {
+    readonly projectId: string;
+    readonly executionPin: DiscoveryAIExecutionPinV1;
+  }): Promise<AIProviderAdapterPort> {
+    if (input.projectId !== input.executionPin.projectId) {
+      throw routerError(
+        'The Discovery provider route is bound to another Project.',
+        'validate-project-route',
+      );
+    }
+    const provider = this.registry.getProvider(input.executionPin.providerId);
+    const model = this.registry.getModel(input.executionPin.providerId, input.executionPin.modelId);
+    const connectivity = this.connectivity.get(input.executionPin.providerId);
+    if (!provider || provider.status !== 'active' || !model || !connectivity) {
+      throw routerError(
+        'The pinned Discovery provider route is unavailable.',
+        'resolve-provider-route',
+      );
+    }
+    if (input.executionPin.modelCapabilityRevision !== model.capabilityRevision) {
+      throw routerError(
+        'The pinned Discovery model capability revision is unavailable.',
+        'resolve-capability-revision',
+      );
+    }
+    return createCredentialBackedAIProviderAdapter({
+      connectivity,
+      vault: this.vault,
+      projectId: input.projectId,
+      providerId: input.executionPin.providerId,
+      credentialId: input.executionPin.credentialId,
+      credentialRevision: input.executionPin.credentialRevision,
+      modelId: model.modelId,
     });
   }
 }

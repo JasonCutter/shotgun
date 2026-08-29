@@ -11,6 +11,11 @@ import {
   type ProjectAIConfigurationPort,
   type ProviderRegistryPort,
 } from '../../../modules/ai-configuration/src/index.js';
+import type {
+  DiscoveryAIExecutionResolutionV1,
+  DiscoveryAIExecutionResolverPort,
+  DiscoveryModelProfileV1,
+} from '../../../packages/contracts/src/index.js';
 import type { CredentialVaultPort } from '../../../modules/credential-vault/src/index.js';
 import type {
   AIProviderAdapterPort,
@@ -197,6 +202,127 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
     );
   }
 
+  /**
+   * Discovery uses the same ADR-133 configuration, Vault and provider-policy
+   * authority as Ask, while pinning its own revisioned Discovery profile.
+   * This method intentionally has no latest-config or latest-credential path.
+   */
+  async resolveDiscoveryAIExecution(input: {
+    readonly projectId: string;
+    readonly profile: DiscoveryModelProfileV1;
+    readonly sensitivity: AskContextSensitivity;
+  }): Promise<DiscoveryAIExecutionResolutionV1> {
+    if (
+      input.profile.schemaVersion !== '1.0.0' ||
+      input.profile.projectId !== input.projectId ||
+      input.profile.status !== 'ACTIVE'
+    ) {
+      throw resolutionError(
+        'CONFIGURATION_REQUIRED',
+        'The Discovery model profile is not active for this Project.',
+        'resolve-discovery-profile',
+      );
+    }
+
+    const configuration = await this.configuration.getRevision(
+      input.projectId,
+      input.profile.aiConfigurationRevision,
+    );
+    if (
+      !configuration ||
+      configuration.projectId !== input.projectId ||
+      configuration.aiConfigurationRevision !== input.profile.aiConfigurationRevision ||
+      configuration.activeProviderId !== input.profile.providerId ||
+      configuration.activeModelId !== input.profile.modelId
+    ) {
+      throw resolutionError(
+        'CONFIGURATION_REQUIRED',
+        'The exact Project AI configuration revision is unavailable for Discovery.',
+        'resolve-discovery-configuration',
+      );
+    }
+
+    const { provider, model } = assertProviderAndModel(
+      this.registry,
+      input.profile.providerId,
+      input.profile.modelId,
+    );
+    if (
+      provider.registryRevision !== input.profile.providerRegistryRevision ||
+      model.capabilityRevision !== input.profile.modelCapabilityRevision
+    ) {
+      throw resolutionError(
+        'AI_CAPABILITY_UNAVAILABLE',
+        'The pinned Discovery provider capability revision is unavailable.',
+        'resolve-discovery-capability-revision',
+      );
+    }
+
+    const metadata = await this.vault.getMetadata({
+      projectId: input.projectId,
+      providerId: input.profile.providerId,
+      credentialId: configuration.credentialId,
+      credentialRevision: configuration.credentialRevision,
+    });
+    if (
+      !sameMetadata(metadata, {
+        projectId: input.projectId,
+        providerId: input.profile.providerId,
+        credentialId: configuration.credentialId,
+        credentialRevision: configuration.credentialRevision,
+      })
+    ) {
+      throw resolutionError(
+        'AI_CAPABILITY_UNAVAILABLE',
+        'The exact Discovery credential revision is unavailable.',
+        'resolve-discovery-credential',
+      );
+    }
+
+    if (!this.options.policy) {
+      throw resolutionError(
+        'POLICY_DENIED',
+        'Discovery provider policy authority is unavailable.',
+        'resolve-discovery-policy',
+      );
+    }
+    const policy = await this.options.policy.evaluateContext({
+      projectId: input.projectId,
+      sensitivities: [input.sensitivity],
+      providerId: input.profile.providerId,
+      modelId: input.profile.modelId,
+    });
+    if (!policy.eligible) {
+      throw resolutionError(
+        'POLICY_DENIED',
+        'The Discovery provider is not permitted for this context.',
+        'resolve-discovery-policy',
+      );
+    }
+
+    return {
+      pin: {
+        projectId: input.projectId,
+        profileId: input.profile.profileId,
+        profileRevision: input.profile.profileRevision,
+        providerId: input.profile.providerId,
+        modelId: input.profile.modelId,
+        modelCapabilityRevision: input.profile.modelCapabilityRevision,
+        aiConfigurationRevision: input.profile.aiConfigurationRevision,
+        credentialId: configuration.credentialId,
+        credentialRevision: configuration.credentialRevision,
+        providerPolicyFingerprint: policy.policyFingerprint,
+        // ADR-133 exposes the policy-context revision as the immutable
+        // privacy-policy revision available at this boundary.
+        privacyPolicyRevision: policy.policyContextRevision,
+        dataPolicyRevision: provider.providerPolicyRevision,
+        promptVersion: input.profile.promptVersion,
+        outputSchemaVersion: input.profile.outputSchemaVersion,
+      },
+      modelVersion: `catalog:${model.modelId}@${model.capabilityRevision}`,
+    };
+  }
+
   private async resolveManaged(
     projectId: string,
     current: ProjectAIConfiguration,
@@ -316,6 +442,19 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
       provider.models.some((model) => model.modelId === modelId) &&
       nonEmpty(this.options.legacyCredential?.()),
     );
+  }
+}
+
+/** Adapter-shaped facade for the Discovery domain Port. */
+export class DiscoveryAIExecutionResolver implements DiscoveryAIExecutionResolverPort {
+  constructor(private readonly authority: EffectiveAIConfigurationResolver) {}
+
+  resolve(input: {
+    readonly projectId: string;
+    readonly profile: DiscoveryModelProfileV1;
+    readonly sensitivity: AskContextSensitivity;
+  }): Promise<DiscoveryAIExecutionResolutionV1> {
+    return this.authority.resolveDiscoveryAIExecution(input);
   }
 }
 

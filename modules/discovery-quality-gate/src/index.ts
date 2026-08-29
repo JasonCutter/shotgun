@@ -22,6 +22,7 @@ import type {
   DiscoveryServerSecurityInputV1,
   DiscoveryStructuredGenerationRequestV1,
   DiscoveryStructuredGenerationResponseV1,
+  DiscoveryWorkBudgetExhaustedV1,
   DiscoveryWorkBudgetPortV1,
 } from '../../../packages/contracts/src/index.js';
 
@@ -999,6 +1000,15 @@ const budgetExhausted = (reason: DiscoveryBudgetReasonCodeV1): DiscoveryBudgetEx
   },
 });
 
+const workBudgetExhausted = (
+  reason: DiscoveryWorkBudgetExhaustedV1['reason'],
+): DiscoveryWorkBudgetExhaustedV1 => ({
+  status: 'BUDGET_EXHAUSTED',
+  reason,
+  completion: 'PARTIAL',
+  truncation: { truncated: true, reason },
+});
+
 const budgetDimension = (
   budget: DiscoveryWorkBudgetV1,
   dimension: DiscoveryBudgetDimensionV1,
@@ -1056,6 +1066,8 @@ const validateBudget = (budget: DiscoveryWorkBudgetV1): void => {
 };
 
 export class DiscoveryWorkBudgetLedgerV1 {
+  private readonly admittedResourceKeys = new Set<string>();
+
   private readonly used: {
     -readonly [K in keyof DiscoveryWorkBudgetSnapshotV1]: DiscoveryWorkBudgetSnapshotV1[K];
   } = {
@@ -1094,6 +1106,13 @@ export class DiscoveryWorkBudgetLedgerV1 {
     return this.budget.maxOutputTokensPerCall;
   }
 
+  public remainingWork(dimension: DiscoveryBudgetDimensionV1): number {
+    if (dimension === 'concurrency') {
+      return Math.max(0, this.budget.maxConcurrentProviderCalls - this.used.activeProviderCalls);
+    }
+    return Math.max(0, budgetDimension(this.budget, dimension) - this.used[dimension]);
+  }
+
   public consume(
     dimension: Exclude<
       DiscoveryBudgetDimensionV1,
@@ -1113,7 +1132,7 @@ export class DiscoveryWorkBudgetLedgerV1 {
     dimension:
       'resources' | 'semanticNeighbors' | 'candidatePairs' | 'candidateGroups' | 'findings',
     amount = 1,
-  ): { readonly status: 'ADMITTED' } | DiscoveryBudgetExhaustedV1 {
+  ): ReturnType<DiscoveryWorkBudgetPortV1['admitWork']> {
     positiveFiniteInteger(amount, `${dimension} amount`);
     const reasonByDimension = {
       resources: 'RESOURCE_LIMIT',
@@ -1122,13 +1141,50 @@ export class DiscoveryWorkBudgetLedgerV1 {
       candidateGroups: 'CANDIDATE_GROUP_LIMIT',
       findings: 'FINDING_LIMIT',
     } as const;
-    if (this.isExpired()) return budgetExhausted('DEADLINE_EXPIRED');
+    if (this.isExpired()) return workBudgetExhausted('DEADLINE_EXPIRED');
     const current = this.used[dimension];
     if (current + amount > budgetDimension(this.budget, dimension)) {
-      return budgetExhausted(reasonByDimension[dimension]);
+      return workBudgetExhausted(reasonByDimension[dimension]);
     }
     this.used[dimension] = current + amount;
     return { status: 'ADMITTED' };
+  }
+
+  public admitResources(
+    resources: readonly DiscoveryResourceRefV1[],
+  ): ReturnType<DiscoveryWorkBudgetPortV1['admitResources']> {
+    const ordered = [
+      ...new Map(resources.map((resource) => [resourceKey(resource), resource])).keys(),
+    ].sort(utf16OrdinalCompare);
+    if (this.isExpired()) {
+      return {
+        ...workBudgetExhausted('DEADLINE_EXPIRED'),
+        admittedResourceKeys: [],
+      };
+    }
+
+    const admittedResourceKeys: string[] = [];
+    let exhausted = false;
+    for (const key of ordered) {
+      if (this.admittedResourceKeys.has(key)) {
+        admittedResourceKeys.push(key);
+        continue;
+      }
+      if (this.used.resources >= this.budget.maxResources) {
+        exhausted = true;
+        continue;
+      }
+      this.admittedResourceKeys.add(key);
+      this.used.resources += 1;
+      admittedResourceKeys.push(key);
+    }
+    if (exhausted) {
+      return {
+        ...workBudgetExhausted('RESOURCE_LIMIT'),
+        admittedResourceKeys,
+      };
+    }
+    return { status: 'ADMITTED', admittedResourceKeys };
   }
 
   public admitProviderCall(input: {

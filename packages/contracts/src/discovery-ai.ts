@@ -54,12 +54,18 @@ export type DiscoveryWorkBudgetExhaustedV1 = {
 export type DiscoveryWorkBudgetAdmissionV1 =
   { readonly status: 'ADMITTED' } | DiscoveryWorkBudgetExhaustedV1;
 
+export type DiscoveryResourceBudgetAdmissionV1 =
+  | { readonly status: 'ADMITTED'; readonly admittedResourceKeys: readonly string[] }
+  | (DiscoveryWorkBudgetExhaustedV1 & { readonly admittedResourceKeys: readonly string[] });
+
 /** Structural Port shared by WP1/WP2/WP4 without a module-to-module import. */
 export type DiscoveryWorkBudgetPortV1 = {
   admitWork(
     dimension: DiscoveryWorkBudgetDimensionV1,
     amount?: number,
   ): DiscoveryWorkBudgetAdmissionV1;
+  admitResources(resources: readonly DiscoveryResourceRefV1[]): DiscoveryResourceBudgetAdmissionV1;
+  readonly remainingWork?: (dimension: DiscoveryWorkBudgetDimensionV1) => number;
 };
 
 export const DISCOVERY_RELATION_ORIENTATIONS_V1 = [

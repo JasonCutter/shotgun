@@ -14,6 +14,7 @@ import type {
   DiscoverySecurityCompositionSuccessV1,
   DiscoveryServerSecurityInputV1,
   DiscoveryWorkBudgetPortV1,
+  DiscoveryWorkBudgetExhaustedV1,
 } from '../../../packages/contracts/src/index.js';
 import type {
   DiscoverySignalReadContextV1,
@@ -239,6 +240,7 @@ export type DiscoveryNeighborhoodSignalBundleV1 = {
   readonly competingResource?: DiscoveryCompetingResourceSignalV1;
   readonly existingCanonicalConflict?: DiscoveryExistingCanonicalConflictSignalV1;
   readonly completeness: DiscoveryNeighborhoodCompletenessV1;
+  readonly budget?: DiscoveryWorkBudgetExhaustedV1;
 };
 
 export type DiscoveryNeighborhoodSelectionSignalV1 =
@@ -296,6 +298,7 @@ export type DiscoveryNeighborhoodSelectionResultV1 = {
   readonly selectorVersion: string;
   readonly candidates: readonly DiscoveryHypothesisCandidateV1[];
   readonly completeness: DiscoveryNeighborhoodCompletenessV1;
+  readonly budget?: DiscoveryWorkBudgetExhaustedV1;
 };
 
 export type DiscoveryNeighborhoodSelectionInputV1 = {
@@ -1090,6 +1093,7 @@ const normalizeSelectionBundle = (
       semanticNeighborhoods: semantic.neighborhoods,
       ...normalized,
       completeness: locallyTruncated ? 'TRUNCATED' : 'COMPLETE',
+      ...(signals.budget === undefined ? {} : { budget: signals.budget }),
     };
   } catch {
     return undefined;
@@ -1179,36 +1183,44 @@ const makeCandidate = (input: {
 const admitCandidateWork = (
   input: DiscoveryNeighborhoodSelectionInputV1,
   dimension: 'candidatePairs' | 'candidateGroups',
-): boolean => input.budget?.admitWork(dimension).status !== 'BUDGET_EXHAUSTED';
+): DiscoveryWorkBudgetExhaustedV1 | undefined => {
+  const admission = input.budget?.admitWork(dimension);
+  return admission?.status === 'BUDGET_EXHAUSTED' ? admission : undefined;
+};
 
 const baseSelectionResult = (
   input: DiscoveryNeighborhoodSelectionInputV1,
   candidates: readonly DiscoveryHypothesisCandidateV1[],
   resultCompleteness: DiscoveryNeighborhoodCompletenessV1,
-): DiscoveryNeighborhoodSelectionResultV1 => ({
-  retentionClass: DISCOVERY_NEIGHBORHOOD_RETENTION_CLASS_V1,
-  selectorId: input.strategyId,
-  selectorVersion: input.strategyVersion,
-  candidates: [...candidates].sort((left, right) =>
-    utf16OrdinalCompare(
-      [
-        left.targetFindingType,
-        resourceKey(left.anchor),
-        memberSetKey(left.memberResourceRefs),
-        input.strategyId,
-        input.strategyVersion,
-      ].join('\u0000'),
-      [
-        right.targetFindingType,
-        resourceKey(right.anchor),
-        memberSetKey(right.memberResourceRefs),
-        input.strategyId,
-        input.strategyVersion,
-      ].join('\u0000'),
+  budget?: DiscoveryWorkBudgetExhaustedV1,
+): DiscoveryNeighborhoodSelectionResultV1 => {
+  const effectiveBudget = input.signals.budget ?? budget;
+  return {
+    retentionClass: DISCOVERY_NEIGHBORHOOD_RETENTION_CLASS_V1,
+    selectorId: input.strategyId,
+    selectorVersion: input.strategyVersion,
+    candidates: [...candidates].sort((left, right) =>
+      utf16OrdinalCompare(
+        [
+          left.targetFindingType,
+          resourceKey(left.anchor),
+          memberSetKey(left.memberResourceRefs),
+          input.strategyId,
+          input.strategyVersion,
+        ].join('\u0000'),
+        [
+          right.targetFindingType,
+          resourceKey(right.anchor),
+          memberSetKey(right.memberResourceRefs),
+          input.strategyId,
+          input.strategyVersion,
+        ].join('\u0000'),
+      ),
     ),
-  ),
-  completeness: resultCompleteness,
-});
+    completeness: resultCompleteness,
+    ...(effectiveBudget === undefined ? {} : { budget: effectiveBudget }),
+  };
+};
 
 const relationSelection = (
   input: DiscoveryNeighborhoodSelectionInputV1,
@@ -1271,8 +1283,9 @@ const relationSelection = (
         { kind: 'GRAPH_ABSENCE', graphCompleteness: 'COMPLETE' },
         { kind: 'TEMPORAL_COMPATIBILITY', temporalEvidenceId: temporalEntry.temporalEvidenceId },
       ];
-      if (!admitCandidateWork(input, 'candidatePairs'))
-        return baseSelectionResult(input, candidates, 'TRUNCATED');
+      const pairAdmission = admitCandidateWork(input, 'candidatePairs');
+      if (pairAdmission !== undefined)
+        return baseSelectionResult(input, candidates, 'TRUNCATED', pairAdmission);
       const candidate = makeCandidate({
         selectorId: input.strategyId,
         selectorVersion: input.strategyVersion,
@@ -1312,6 +1325,7 @@ const patternSelection = (
   const candidates: DiscoveryHypothesisCandidateV1[] = [];
   const seenGroups = new Set<string>();
   let truncated = signals.completeness === 'TRUNCATED';
+  let budgetExhaustion: DiscoveryWorkBudgetExhaustedV1 | undefined;
   for (const neighborhood of orderedNeighborhoods(signals.semanticNeighborhoods)) {
     const anchor = resources.get(resourceKey(neighborhood.anchor.resource));
     if (!anchor || !compatibleRef(signals.context, anchor.resource)) continue;
@@ -1340,8 +1354,10 @@ const patternSelection = (
       truncated = true;
       break;
     }
-    if (!admitCandidateWork(input, 'candidateGroups')) {
+    const groupAdmission = admitCandidateWork(input, 'candidateGroups');
+    if (groupAdmission !== undefined) {
       truncated = true;
+      budgetExhaustion = groupAdmission;
       break;
     }
     const selectionSignals: DiscoveryNeighborhoodSelectionSignalV1[] = [
@@ -1365,7 +1381,12 @@ const patternSelection = (
     seenGroups.add(groupKey);
     candidates.push(candidate);
   }
-  return baseSelectionResult(input, candidates, truncated ? 'TRUNCATED' : 'COMPLETE');
+  return baseSelectionResult(
+    input,
+    candidates,
+    truncated ? 'TRUNCATED' : 'COMPLETE',
+    budgetExhaustion,
+  );
 };
 
 const conflictSelection = (
@@ -1404,6 +1425,7 @@ const conflictSelection = (
   const candidates: DiscoveryHypothesisCandidateV1[] = [];
   const seenPairs = new Set<string>();
   const existingConflictIsIncomplete = existingConflict.completeness === 'TRUNCATED';
+  let budgetExhaustion: DiscoveryWorkBudgetExhaustedV1 | undefined;
   let truncated =
     signals.completeness === 'TRUNCATED' ||
     competition.completeness === 'TRUNCATED' ||
@@ -1453,11 +1475,12 @@ const conflictSelection = (
       truncated = true;
       break;
     }
-    if (
-      !admitCandidateWork(input, 'candidatePairs') ||
-      !admitCandidateWork(input, 'candidateGroups')
-    ) {
+    const pairAdmission = admitCandidateWork(input, 'candidatePairs');
+    const groupAdmission =
+      pairAdmission === undefined ? admitCandidateWork(input, 'candidateGroups') : undefined;
+    if (pairAdmission !== undefined || groupAdmission !== undefined) {
       truncated = true;
+      budgetExhaustion = pairAdmission ?? groupAdmission;
       break;
     }
     const anchor = resourceKey(left.resource) === resourceKey(signal.left) ? left : right;
@@ -1485,7 +1508,12 @@ const conflictSelection = (
   }
   if (signals.semanticNeighborhoods.some((entry) => entry.completeness === 'TRUNCATED'))
     truncated = true;
-  return baseSelectionResult(input, candidates, truncated ? 'TRUNCATED' : 'COMPLETE');
+  return baseSelectionResult(
+    input,
+    candidates,
+    truncated ? 'TRUNCATED' : 'COMPLETE',
+    budgetExhaustion,
+  );
 };
 
 const validateStrategy = (strategy: DiscoveryNeighborhoodStrategyV1): void => {
@@ -1514,14 +1542,21 @@ export class DiscoveryNeighborhoodSignalFacade {
     const anchors = normalizeUniqueResources(input.context, input.anchors, 'anchors');
     const boundedAnchors = anchors.slice(0, effectiveMaxAnchors(input.context, input.strategy));
     let truncated = anchors.length > boundedAnchors.length;
-    const admittedAnchors = boundedAnchors.filter(() => {
-      const admission = input.context.budget?.admitWork('resources');
-      if (admission?.status === 'BUDGET_EXHAUSTED') {
-        truncated = true;
-        return false;
-      }
-      return true;
-    });
+    let budgetExhaustion: DiscoveryWorkBudgetExhaustedV1 | undefined;
+    const noteBudget = (budget: DiscoveryWorkBudgetExhaustedV1 | undefined): void => {
+      if (budgetExhaustion === undefined && budget !== undefined) budgetExhaustion = budget;
+    };
+    const anchorAdmission = input.context.budget?.admitResources(
+      boundedAnchors.map((anchor) => anchor.resource),
+    );
+    noteBudget(anchorAdmission?.status === 'BUDGET_EXHAUSTED' ? anchorAdmission : undefined);
+    const admittedAnchorKeys = anchorAdmission
+      ? new Set(anchorAdmission.admittedResourceKeys)
+      : undefined;
+    const admittedAnchors = admittedAnchorKeys
+      ? boundedAnchors.filter((anchor) => admittedAnchorKeys.has(resourceKey(anchor.resource)))
+      : boundedAnchors;
+    if (admittedAnchors.length < boundedAnchors.length) truncated = true;
     const semanticNeighborhoods: DiscoveryAnchoredSemanticNeighborhoodV1[] = [];
     const neighborLimit = effectiveMaxNeighborsPerAnchor(input.context, input.strategy);
     const exposedResourceKeys = new Set(
@@ -1534,6 +1569,13 @@ export class DiscoveryNeighborhoodSignalFacade {
     let remainingObservationCapacity = input.context.bounds.maxObservationsReturned;
     for (const anchor of admittedAnchors) {
       if (remainingResourceCapacity < 1 || remainingObservationCapacity < 1) {
+        if (
+          remainingResourceCapacity > 0 &&
+          input.context.budget?.remainingWork?.('resources') === 0
+        ) {
+          const admission = input.context.budget.admitWork('resources');
+          noteBudget(admission.status === 'BUDGET_EXHAUSTED' ? admission : undefined);
+        }
         truncated = true;
         break;
       }
@@ -1541,9 +1583,11 @@ export class DiscoveryNeighborhoodSignalFacade {
         neighborLimit,
         remainingResourceCapacity,
         remainingObservationCapacity,
+        input.context.budget?.remainingWork?.('semanticNeighbors') ?? Number.MAX_SAFE_INTEGER,
       );
-      const neighborAdmission = input.context.budget?.admitWork('semanticNeighbors', readLimit);
-      if (neighborAdmission?.status === 'BUDGET_EXHAUSTED') {
+      if (readLimit < 1) {
+        const admission = input.context.budget?.admitWork('semanticNeighbors');
+        noteBudget(admission?.status === 'BUDGET_EXHAUSTED' ? admission : undefined);
         truncated = true;
         break;
       }
@@ -1553,9 +1597,44 @@ export class DiscoveryNeighborhoodSignalFacade {
         limit: readLimit,
       });
       const normalized = normalizeNeighborhood(input.context, anchor, result, readLimit);
-      semanticNeighborhoods.push(normalized.neighborhood);
       truncated ||= normalized.truncated;
-      for (const neighbor of normalized.neighborhood.neighbors) {
+      const neighborResourceAdmission = input.context.budget?.admitResources(
+        normalized.neighborhood.neighbors.map((neighbor) => neighbor.resource.resource),
+      );
+      noteBudget(
+        neighborResourceAdmission?.status === 'BUDGET_EXHAUSTED'
+          ? neighborResourceAdmission
+          : undefined,
+      );
+      const admittedNeighborKeys = neighborResourceAdmission
+        ? new Set(neighborResourceAdmission.admittedResourceKeys)
+        : undefined;
+      const resourceAdmittedNeighbors = admittedNeighborKeys
+        ? normalized.neighborhood.neighbors.filter((neighbor) =>
+            admittedNeighborKeys.has(resourceKey(neighbor.resource.resource)),
+          )
+        : normalized.neighborhood.neighbors;
+      const acceptedNeighbors: DiscoveryAnchoredSemanticNeighborV1[] = [];
+      for (const neighbor of resourceAdmittedNeighbors) {
+        const semanticAdmission = input.context.budget?.admitWork('semanticNeighbors');
+        if (semanticAdmission?.status === 'BUDGET_EXHAUSTED') {
+          noteBudget(semanticAdmission);
+          truncated = true;
+          break;
+        }
+        acceptedNeighbors.push(neighbor);
+      }
+      if (acceptedNeighbors.length < normalized.neighborhood.neighbors.length) truncated = true;
+      semanticNeighborhoods.push({
+        ...normalized.neighborhood,
+        neighbors: acceptedNeighbors,
+        completeness:
+          normalized.neighborhood.completeness === 'TRUNCATED' ||
+          acceptedNeighbors.length < normalized.neighborhood.neighbors.length
+            ? 'TRUNCATED'
+            : 'COMPLETE',
+      });
+      for (const neighbor of acceptedNeighbors) {
         exposedResourceKeys.add(resourceKey(neighbor.resource.resource));
       }
       remainingResourceCapacity = Math.max(
@@ -1564,8 +1643,9 @@ export class DiscoveryNeighborhoodSignalFacade {
       );
       remainingObservationCapacity = Math.max(
         0,
-        remainingObservationCapacity - normalized.neighborhood.neighbors.length,
+        remainingObservationCapacity - acceptedNeighbors.length,
       );
+      if (neighborResourceAdmission?.status === 'BUDGET_EXHAUSTED') break;
     }
     const boundedSemantic = normalizeSemanticNeighborhoodsForSelection(
       input.context,
@@ -1594,6 +1674,7 @@ export class DiscoveryNeighborhoodSignalFacade {
               anchors: admittedAnchors,
               semanticNeighborhoods,
               completeness: 'TRUNCATED',
+              ...(budgetExhaustion === undefined ? {} : { budget: budgetExhaustion }),
             };
           {
             const result = await this.ports.graphRelation.read({
@@ -1626,6 +1707,7 @@ export class DiscoveryNeighborhoodSignalFacade {
               anchors: admittedAnchors,
               semanticNeighborhoods,
               completeness: 'TRUNCATED',
+              ...(budgetExhaustion === undefined ? {} : { budget: budgetExhaustion }),
             };
           {
             const result = await this.ports.temporalCompatibility.read({
@@ -1658,6 +1740,7 @@ export class DiscoveryNeighborhoodSignalFacade {
               anchors: admittedAnchors,
               semanticNeighborhoods,
               completeness: 'TRUNCATED',
+              ...(budgetExhaustion === undefined ? {} : { budget: budgetExhaustion }),
             };
           {
             const result = await this.ports.competingResource.read({
@@ -1690,6 +1773,7 @@ export class DiscoveryNeighborhoodSignalFacade {
               anchors: admittedAnchors,
               semanticNeighborhoods,
               completeness: 'TRUNCATED',
+              ...(budgetExhaustion === undefined ? {} : { budget: budgetExhaustion }),
             };
           {
             const result = await this.ports.existingCanonicalConflict.read({
@@ -1736,6 +1820,7 @@ export class DiscoveryNeighborhoodSignalFacade {
               ? [optional.existingCanonicalConflict.completeness]
               : []),
           ]),
+      ...(budgetExhaustion === undefined ? {} : { budget: budgetExhaustion }),
     };
   }
 }

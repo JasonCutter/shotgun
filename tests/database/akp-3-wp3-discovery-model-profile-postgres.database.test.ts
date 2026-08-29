@@ -102,10 +102,22 @@ describe.runIf(pool)('AKP-3 WP3 Discovery model profile PostgreSQL authority', (
       profileId: second.profileId,
       status: 'ACTIVE',
     });
-    expect(await repository.findRevision(projectA, 1)).toMatchObject({
+    const retiredFirst = await repository.findRevision(projectA, 1);
+    expect(retiredFirst).toMatchObject({
       profileId: first.profileId,
       status: 'RETIRED',
     });
+    expect(
+      await repository.updateStatus({
+        projectId: projectA,
+        profileId: first.profileId,
+        profileRevision: 1,
+        expectedStatus: 'RETIRED',
+        status: 'ACTIVE',
+        updatedAt: '2026-08-30T00:03:00.000Z',
+      }),
+    ).toBe('CONFLICT');
+    expect(await repository.findRevision(projectA, 1)).toEqual(retiredFirst);
   });
 
   it('rejects a stale concurrent revision without overwriting the accepted revision', async () => {

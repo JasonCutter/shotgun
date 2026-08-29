@@ -176,6 +176,10 @@ export class PostgresDiscoveryModelProfileRepository implements DiscoveryModelPr
         await client.query('ROLLBACK');
         return 'CONFLICT';
       }
+      if (input.status === 'ACTIVE' && row.status !== 'PREPARED') {
+        await client.query('ROLLBACK');
+        return 'CONFLICT';
+      }
 
       if (input.status === 'ACTIVE') {
         await client.query(

@@ -1,4 +1,8 @@
 import {
+  DISCOVERY_QUALIFIED_FOLLOW_UP_ORIGIN_TYPES_V1,
+  DISCOVERY_RELATION_ORIENTATIONS_V1,
+  DISCOVERY_RESOURCE_KINDS,
+  DISCOVERY_RESOURCE_STATES,
   composeDiscoveryFindingSecurityV1,
   sha256Text,
   stableJson,
@@ -12,6 +16,7 @@ import {
   type DiscoveryModelProfileV1,
   type DiscoveryQualifiedAIGenerationContextV1,
   type DiscoveryResourceRefV1,
+  type DiscoveryRelationOrientationV1,
   type DiscoverySecurityCompositionSuccessV1,
   type DiscoveryStructuredGenerationRequestV1,
   type DiscoveryStructuredProviderPort,
@@ -34,6 +39,34 @@ export const DISCOVERY_AI_SYSTEM_INSTRUCTION_V1 = [
   'Return exactly one JSON object matching the supplied response schema and no surrounding prose.',
 ].join(' ');
 
+/**
+ * Exact structural adapter for the WP2 candidate contract. A direct module
+ * import is forbidden by the architecture gate, so this boundary mirrors the
+ * frozen WP2 discriminated signal union instead of inventing a weaker one.
+ */
+export type DiscoveryAcceptedWP2SelectionSignalV1 =
+  | {
+      readonly kind: 'SEMANTIC_NEIGHBOR';
+      readonly semanticRank: number;
+      readonly semanticDistance?: number;
+      readonly semanticSimilarity?: number;
+      readonly lexicalRank?: number;
+      readonly fusionRank?: number;
+    }
+  | { readonly kind: 'GRAPH_ABSENCE'; readonly graphCompleteness: 'COMPLETE' }
+  | { readonly kind: 'TEMPORAL_COMPATIBILITY'; readonly temporalEvidenceId: string }
+  | { readonly kind: 'ANCHOR_MEMBERSHIP'; readonly memberCount: number }
+  | {
+      readonly kind: 'EXPLICIT_INCOMPATIBILITY';
+      readonly incompatibilityKind: 'FACTUAL' | 'TEMPORAL' | 'IDENTITY' | 'MODEL_DISAGREEMENT';
+      readonly source:
+        | 'TYPED_PROPOSITION'
+        | 'TEMPORAL_QUALIFICATION'
+        | 'IDENTITY_ASSIGNMENT'
+        | 'EXPLICIT_CONFLICT_SIGNAL';
+      readonly signalId: string;
+    };
+
 export type DiscoveryHypothesisCandidateV1 = {
   readonly retentionClass: typeof DISCOVERY_AI_RETENTION_CLASS_V1;
   readonly targetFindingType: 'RELATION_HYPOTHESIS' | 'PATTERN_HYPOTHESIS' | 'CONFLICT_HYPOTHESIS';
@@ -48,13 +81,13 @@ export type DiscoveryHypothesisCandidateV1 = {
   readonly canonicalBase: DiscoveryQualifiedAIGenerationContextV1['canonicalBase'];
   readonly discoveryBase: DiscoveryQualifiedAIGenerationContextV1['discoveryBase'];
   readonly semanticGenerationId: string;
-  readonly selectionSignals: readonly unknown[];
+  readonly selectionSignals: readonly DiscoveryAcceptedWP2SelectionSignalV1[];
   readonly provenance: {
     readonly selectorId: string;
     readonly selectorVersion: string;
     readonly inputDigest: string;
     readonly anchorResourceKey: string;
-    readonly selectionSignals: readonly unknown[];
+    readonly selectionSignals: readonly DiscoveryAcceptedWP2SelectionSignalV1[];
   };
 };
 
@@ -98,7 +131,7 @@ export type DiscoveryAIGenerationProposalV1 = {
           readonly selectorVersion: string;
           readonly inputDigest: string;
           readonly anchorResourceKey: string;
-          readonly selectionSignals: readonly unknown[];
+          readonly selectionSignals: readonly DiscoveryAcceptedWP2SelectionSignalV1[];
         };
         readonly aiExecution: Omit<
           Extract<DiscoveryAIGenerationProposalV1['provenance'], { readonly kind: 'AI_ASSISTED' }>,
@@ -169,6 +202,339 @@ const resourceKey = (resource: DiscoveryResourceRefV1): string =>
     resource.resourceRevision ?? '',
   ].join('\u0000');
 
+const inputObjectValue = (value: unknown, field: string): Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field} must be an object.`);
+  }
+  return value as Record<string, unknown>;
+};
+
+const strictInputKeys = (
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  field: string,
+): void => {
+  if (Object.keys(value).some((key) => !keys.includes(key))) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      `${field} contains fields outside the accepted WP2 contract.`,
+    );
+  }
+};
+
+const inputText = (value: unknown, field: string, maxLength = 20_000): string => {
+  if (typeof value !== 'string' || value.trim().length === 0 || value.length > maxLength) {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field} is invalid.`);
+  }
+  return value.trim();
+};
+
+const inputFiniteNumber = (value: unknown, field: string): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field} is invalid.`);
+  }
+  return value;
+};
+
+const assertTypedResourceRef = (value: unknown, field: string): void => {
+  const resource = inputObjectValue(value, field);
+  strictInputKeys(
+    resource,
+    [
+      'schemaVersion',
+      'resourceKind',
+      'resourceId',
+      'projectId',
+      'resourceState',
+      'resourceRevision',
+    ],
+    field,
+  );
+  if (resource.schemaVersion !== '1.0.0') {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field}.schemaVersion is invalid.`);
+  }
+  if (
+    typeof resource.resourceKind !== 'string' ||
+    !DISCOVERY_RESOURCE_KINDS.includes(
+      resource.resourceKind as (typeof DISCOVERY_RESOURCE_KINDS)[number],
+    )
+  ) {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field}.resourceKind is invalid.`);
+  }
+  inputText(resource.resourceId, `${field}.resourceId`, 256);
+  inputText(resource.projectId, `${field}.projectId`, 256);
+  if (
+    typeof resource.resourceState !== 'string' ||
+    !DISCOVERY_RESOURCE_STATES.includes(
+      resource.resourceState as (typeof DISCOVERY_RESOURCE_STATES)[number],
+    )
+  ) {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field}.resourceState is invalid.`);
+  }
+  if (resource.resourceRevision !== undefined)
+    inputText(resource.resourceRevision, `${field}.resourceRevision`, 256);
+};
+
+const assertCanonicalBase = (value: unknown, field: string): void => {
+  const base = inputObjectValue(value, field);
+  strictInputKeys(base, ['schemaVersion', 'canonicalVersion', 'snapshotDigest'], field);
+  if (base.schemaVersion !== '1.0.0') {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field}.schemaVersion is invalid.`);
+  }
+  if (
+    typeof base.canonicalVersion !== 'number' ||
+    !Number.isSafeInteger(base.canonicalVersion) ||
+    base.canonicalVersion < 0
+  ) {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field}.canonicalVersion is invalid.`);
+  }
+  inputText(base.snapshotDigest, `${field}.snapshotDigest`, 512);
+};
+
+const assertDiscoveryBase = (value: unknown, field: string): void => {
+  const base = inputObjectValue(value, field);
+  strictInputKeys(base, ['schemaVersion', 'projectionRevision', 'projectionDigest'], field);
+  if (base.schemaVersion !== '1.0.0') {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field}.schemaVersion is invalid.`);
+  }
+  inputText(base.projectionRevision, `${field}.projectionRevision`, 256);
+  inputText(base.projectionDigest, `${field}.projectionDigest`, 512);
+};
+
+const assertAcceptedSelectionSignal = (value: unknown, field: string): void => {
+  const signal = inputObjectValue(value, field);
+  if (typeof signal.kind !== 'string') {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field}.kind is invalid.`);
+  }
+  switch (signal.kind) {
+    case 'SEMANTIC_NEIGHBOR':
+      strictInputKeys(
+        signal,
+        [
+          'kind',
+          'semanticRank',
+          'semanticDistance',
+          'semanticSimilarity',
+          'lexicalRank',
+          'fusionRank',
+        ],
+        field,
+      );
+      inputFiniteNumber(signal.semanticRank, `${field}.semanticRank`);
+      for (const optional of [
+        'semanticDistance',
+        'semanticSimilarity',
+        'lexicalRank',
+        'fusionRank',
+      ]) {
+        if (signal[optional] !== undefined)
+          inputFiniteNumber(signal[optional], `${field}.${optional}`);
+      }
+      return;
+    case 'GRAPH_ABSENCE':
+      strictInputKeys(signal, ['kind', 'graphCompleteness'], field);
+      if (signal.graphCompleteness !== 'COMPLETE')
+        throw new DiscoveryAIGenerationError(
+          'INVALID_INPUT',
+          `${field}.graphCompleteness is invalid.`,
+        );
+      return;
+    case 'TEMPORAL_COMPATIBILITY':
+      strictInputKeys(signal, ['kind', 'temporalEvidenceId'], field);
+      inputText(signal.temporalEvidenceId, `${field}.temporalEvidenceId`, 256);
+      return;
+    case 'ANCHOR_MEMBERSHIP':
+      strictInputKeys(signal, ['kind', 'memberCount'], field);
+      if (
+        typeof signal.memberCount !== 'number' ||
+        !Number.isSafeInteger(signal.memberCount) ||
+        signal.memberCount < 2
+      ) {
+        throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field}.memberCount is invalid.`);
+      }
+      return;
+    case 'EXPLICIT_INCOMPATIBILITY': {
+      strictInputKeys(signal, ['kind', 'incompatibilityKind', 'source', 'signalId'], field);
+      const sourceForKind = {
+        FACTUAL: 'TYPED_PROPOSITION',
+        TEMPORAL: 'TEMPORAL_QUALIFICATION',
+        IDENTITY: 'IDENTITY_ASSIGNMENT',
+        MODEL_DISAGREEMENT: 'EXPLICIT_CONFLICT_SIGNAL',
+      } as const;
+      if (
+        typeof signal.incompatibilityKind !== 'string' ||
+        !(signal.incompatibilityKind in sourceForKind) ||
+        signal.source !== sourceForKind[signal.incompatibilityKind as keyof typeof sourceForKind]
+      ) {
+        throw new DiscoveryAIGenerationError(
+          'INVALID_INPUT',
+          `${field} does not match the frozen WP2 incompatibility mapping.`,
+        );
+      }
+      inputText(signal.signalId, `${field}.signalId`, 256);
+      return;
+    }
+    default:
+      throw new DiscoveryAIGenerationError('INVALID_INPUT', `${field}.kind is unsupported.`);
+  }
+};
+
+const assertAcceptedWP2Candidate = (candidate: DiscoveryHypothesisCandidateV1): void => {
+  const value = inputObjectValue(candidate, 'candidate');
+  strictInputKeys(
+    value,
+    [
+      'retentionClass',
+      'targetFindingType',
+      'anchor',
+      'memberResourceRefs',
+      'security',
+      'sourceProjectionDigest',
+      'canonicalBase',
+      'discoveryBase',
+      'semanticGenerationId',
+      'selectionSignals',
+      'provenance',
+    ],
+    'candidate',
+  );
+  if (candidate.retentionClass !== DISCOVERY_AI_RETENTION_CLASS_V1) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The bounded candidate retention class is invalid.',
+    );
+  }
+  if (
+    candidate.targetFindingType !== 'RELATION_HYPOTHESIS' &&
+    candidate.targetFindingType !== 'PATTERN_HYPOTHESIS' &&
+    candidate.targetFindingType !== 'CONFLICT_HYPOTHESIS'
+  ) {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', 'The bounded candidate type is invalid.');
+  }
+  if (
+    !Array.isArray(candidate.memberResourceRefs) ||
+    candidate.memberResourceRefs.length < 2 ||
+    (candidate.targetFindingType === 'RELATION_HYPOTHESIS' &&
+      candidate.memberResourceRefs.length !== 2)
+  ) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The bounded candidate member set is invalid.',
+    );
+  }
+  for (const [index, resource] of candidate.memberResourceRefs.entries()) {
+    assertTypedResourceRef(resource, `candidate.memberResourceRefs[${index}]`);
+  }
+  const memberKeys = candidate.memberResourceRefs.map(resourceKey);
+  if (new Set(memberKeys).size !== memberKeys.length) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The bounded candidate has duplicate members.',
+    );
+  }
+  const orderedKeys = [...memberKeys].sort(utf16OrdinalCompare);
+  if (stableJson(memberKeys) !== stableJson(orderedKeys)) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The bounded candidate member set is not in the deterministic WP2 order.',
+    );
+  }
+  assertTypedResourceRef(candidate.anchor, 'candidate.anchor');
+  const anchorKey = resourceKey(candidate.anchor);
+  if (!memberKeys.includes(anchorKey)) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The candidate anchor is outside its member set.',
+    );
+  }
+  const projectId = candidate.memberResourceRefs[0]!.projectId;
+  if (candidate.memberResourceRefs.some((resource) => resource.projectId !== projectId)) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The bounded candidate crosses Projects.',
+    );
+  }
+  const security = inputObjectValue(candidate.security, 'candidate.security');
+  strictInputKeys(
+    security,
+    ['materializable', 'projectId', 'accessScope', 'sensitivity'],
+    'candidate.security',
+  );
+  if (security.materializable !== true || security.projectId !== projectId) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The bounded candidate security is invalid.',
+    );
+  }
+  if (!Array.isArray(security.accessScope) || security.accessScope.length === 0) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The bounded candidate access scope is invalid.',
+    );
+  }
+  security.accessScope.forEach((scope, index) =>
+    inputText(scope, `candidate.accessScope[${index}]`, 256),
+  );
+  if (!['public', 'internal', 'private', 'restricted'].includes(String(security.sensitivity))) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The bounded candidate sensitivity is invalid.',
+    );
+  }
+  inputText(candidate.sourceProjectionDigest, 'candidate.sourceProjectionDigest', 512);
+  assertCanonicalBase(candidate.canonicalBase, 'candidate.canonicalBase');
+  assertDiscoveryBase(candidate.discoveryBase, 'candidate.discoveryBase');
+  inputText(candidate.semanticGenerationId, 'candidate.semanticGenerationId', 256);
+  if (!Array.isArray(candidate.selectionSignals) || candidate.selectionSignals.length === 0) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The bounded candidate selection signals are invalid.',
+    );
+  }
+  candidate.selectionSignals.forEach((signal, index) =>
+    assertAcceptedSelectionSignal(signal, `candidate.selectionSignals[${index}]`),
+  );
+  if (
+    candidate.targetFindingType === 'CONFLICT_HYPOTHESIS' &&
+    !candidate.selectionSignals.some((signal) => signal.kind === 'EXPLICIT_INCOMPATIBILITY')
+  ) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The bounded conflict candidate has no explicit deterministic contradiction signal.',
+    );
+  }
+  const provenance = inputObjectValue(candidate.provenance, 'candidate.provenance');
+  strictInputKeys(
+    provenance,
+    ['selectorId', 'selectorVersion', 'inputDigest', 'anchorResourceKey', 'selectionSignals'],
+    'candidate.provenance',
+  );
+  inputText(provenance.selectorId, 'candidate.provenance.selectorId', 256);
+  inputText(provenance.selectorVersion, 'candidate.provenance.selectorVersion', 128);
+  inputText(provenance.inputDigest, 'candidate.provenance.inputDigest', 512);
+  if (provenance.anchorResourceKey !== anchorKey) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The candidate provenance anchor identity is invalid.',
+    );
+  }
+  if (!Array.isArray(provenance.selectionSignals)) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'The candidate provenance signals are invalid.',
+    );
+  }
+  provenance.selectionSignals.forEach((signal, index) =>
+    assertAcceptedSelectionSignal(signal, `candidate.provenance.selectionSignals[${index}]`),
+  );
+  if (stableJson(provenance.selectionSignals) !== stableJson(candidate.selectionSignals)) {
+    throw new DiscoveryAIGenerationError(
+      'INVALID_INPUT',
+      'Candidate provenance signals contradict the accepted WP2 selection signals.',
+    );
+  }
+};
+
 const sameResourceSet = (
   left: readonly DiscoveryResourceRefV1[],
   right: readonly DiscoveryResourceRefV1[],
@@ -206,7 +572,56 @@ const assertQualifiedContext = (
   expectedRefs: readonly DiscoveryResourceRefV1[],
   expectedSecurity?: DiscoverySecurityCompositionSuccessV1,
 ): DiscoverySecurityCompositionSuccessV1 => {
+  const contextValue = inputObjectValue(context, 'context');
+  strictInputKeys(
+    contextValue,
+    [
+      'projectId',
+      'accessScope',
+      'sensitivity',
+      'sourceProjectionDigest',
+      'canonicalBase',
+      'discoveryBase',
+      'originatingFindingType',
+      'boundedRationale',
+      'items',
+    ],
+    'context',
+  );
   const projectId = identifier(context.projectId, 'Project ID');
+  if (!Array.isArray(context.accessScope) || context.accessScope.length === 0) {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', 'The qualified access scope is invalid.');
+  }
+  context.accessScope.forEach((scope, index) =>
+    inputText(scope, `context.accessScope[${index}]`, 256),
+  );
+  if (!['public', 'internal', 'private', 'restricted'].includes(context.sensitivity)) {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', 'The qualified sensitivity is invalid.');
+  }
+  inputText(context.sourceProjectionDigest, 'sourceProjectionDigest', 512);
+  assertCanonicalBase(context.canonicalBase, 'context.canonicalBase');
+  assertDiscoveryBase(context.discoveryBase, 'context.discoveryBase');
+  if (!Array.isArray(context.items) || context.items.length === 0) {
+    throw new DiscoveryAIGenerationError('INVALID_INPUT', 'The qualified AI context is empty.');
+  }
+  for (const [index, itemValue] of context.items.entries()) {
+    const item = inputObjectValue(itemValue, `context.items[${index}]`);
+    strictInputKeys(
+      item,
+      ['resourceRef', 'deterministicRepresentation', 'evidenceIds'],
+      `context.items[${index}]`,
+    );
+    assertTypedResourceRef(item.resourceRef, `context.items[${index}].resourceRef`);
+    if (!Array.isArray(item.evidenceIds)) {
+      throw new DiscoveryAIGenerationError(
+        'INVALID_INPUT',
+        `context.items[${index}].evidenceIds is invalid.`,
+      );
+    }
+    item.evidenceIds.forEach((evidenceId, evidenceIndex) =>
+      inputText(evidenceId, `context.items[${index}].evidenceIds[${evidenceIndex}]`, 256),
+    );
+  }
   if (
     !sameResourceSet(
       context.items.map((item) => item.resourceRef),
@@ -229,7 +644,12 @@ const assertQualifiedContext = (
     }
     seen.add(key);
     text(item.deterministicRepresentation, `context.items[${index}].deterministicRepresentation`);
-    for (const evidenceId of item.evidenceIds) text(evidenceId, 'context evidenceId', 256);
+    if (item.resourceRef.projectId !== projectId) {
+      throw new DiscoveryAIGenerationError(
+        'INVALID_INPUT',
+        `The AI context resource at index ${index} is outside the qualified Project.`,
+      );
+    }
   }
   const security = composeDiscoveryFindingSecurityV1({
     findingProjectId: projectId,
@@ -263,10 +683,6 @@ const assertQualifiedContext = (
       'The candidate security classification does not match the qualified context.',
     );
   }
-  text(context.sourceProjectionDigest, 'sourceProjectionDigest', 512);
-  text(context.canonicalBase.snapshotDigest, 'canonicalBase.snapshotDigest', 512);
-  text(context.discoveryBase.projectionRevision, 'discoveryBase.projectionRevision', 256);
-  text(context.discoveryBase.projectionDigest, 'discoveryBase.projectionDigest', 512);
   text(context.boundedRationale, 'boundedRationale');
   return security;
 };
@@ -330,10 +746,10 @@ const relationSchema = (
 ): Record<string, unknown> => ({
   type: 'object',
   additionalProperties: false,
-  required: ['proposedRelationType', 'direction'],
+  required: ['proposedRelationType', 'orientation'],
   properties: {
     proposedRelationType: { type: 'string', minLength: 1, maxLength: 256 },
-    direction: { type: 'string', enum: ['DIRECTED', 'UNDIRECTED'] },
+    orientation: { type: 'string', enum: DISCOVERY_RELATION_ORIENTATIONS_V1 },
     temporalQualification: {
       type: 'object',
       additionalProperties: false,
@@ -508,12 +924,17 @@ const relationOutput = (
   value: Record<string, unknown>,
   temporalMaterial?: DiscoveryTemporalQualificationV1,
 ) => {
-  strictKeys(value, ['proposedRelationType', 'direction', 'temporalQualification']);
+  strictKeys(value, ['proposedRelationType', 'orientation', 'temporalQualification']);
   const proposedRelationType = outputText(value.proposedRelationType, 'proposedRelationType', 256);
-  if (value.direction !== 'DIRECTED' && value.direction !== 'UNDIRECTED') {
+  if (
+    typeof value.orientation !== 'string' ||
+    !DISCOVERY_RELATION_ORIENTATIONS_V1.includes(
+      value.orientation as DiscoveryRelationOrientationV1,
+    )
+  ) {
     throw new DiscoveryAIGenerationError(
       'AI_OUTPUT_INVALID',
-      'The Discovery relation direction is invalid.',
+      'The Discovery relation orientation is invalid.',
     );
   }
   let temporalQualification: DiscoveryTemporalQualificationV1 | undefined;
@@ -546,7 +967,7 @@ const relationOutput = (
   }
   return {
     proposedRelationType,
-    direction: value.direction,
+    orientation: value.orientation as DiscoveryRelationOrientationV1,
     ...(temporalQualification === undefined ? {} : { temporalQualification }),
   } as const;
 };
@@ -603,13 +1024,10 @@ const contradictionKindFor = (
   const signal = candidate.selectionSignals.find(
     (
       entry,
-    ): entry is {
-      readonly kind: 'EXPLICIT_INCOMPATIBILITY';
-      readonly incompatibilityKind: string;
-    } =>
-      typeof entry === 'object' &&
-      entry !== null &&
-      (entry as { readonly kind?: unknown }).kind === 'EXPLICIT_INCOMPATIBILITY',
+    ): entry is Extract<
+      DiscoveryAcceptedWP2SelectionSignalV1,
+      { readonly kind: 'EXPLICIT_INCOMPATIBILITY' }
+    > => entry.kind === 'EXPLICIT_INCOMPATIBILITY',
   );
   if (
     !signal ||
@@ -667,19 +1085,17 @@ export class DiscoveryAIGenerationService {
   async interpretHypothesis(input: HypothesisInput): Promise<DiscoveryAIGenerationProposalV1> {
     const projectId = identifier(input.projectId, 'Project ID');
     const runId = identifier(input.runId, 'Run ID');
-    if (input.candidate.retentionClass !== DISCOVERY_AI_RETENTION_CLASS_V1) {
+    assertAcceptedWP2Candidate(input.candidate);
+    if (input.candidate.memberResourceRefs.some((resource) => resource.projectId !== projectId)) {
       throw new DiscoveryAIGenerationError(
         'INVALID_INPUT',
-        'The bounded candidate retention class is invalid.',
+        'The bounded candidate is outside the Project.',
       );
     }
-    if (
-      input.candidate.targetFindingType === 'RELATION_HYPOTHESIS' &&
-      input.candidate.memberResourceRefs.length !== 2
-    ) {
+    if (input.context.originatingFindingType !== input.candidate.targetFindingType) {
       throw new DiscoveryAIGenerationError(
         'INVALID_INPUT',
-        'A relation candidate must contain exactly two resources.',
+        'The qualified context origin does not match the accepted WP2 candidate type.',
       );
     }
     assertBase(input.context, input.candidate);
@@ -688,12 +1104,6 @@ export class DiscoveryAIGenerationService {
       input.candidate.memberResourceRefs,
       input.candidate.security,
     );
-    if (input.candidate.anchor.projectId !== projectId) {
-      throw new DiscoveryAIGenerationError(
-        'INVALID_INPUT',
-        'The bounded candidate is outside the Project.',
-      );
-    }
     const profile = await this.activeProfile(projectId);
     if (
       profile.promptVersion !== DISCOVERY_AI_PROMPT_VERSION_V1 ||
@@ -726,27 +1136,36 @@ export class DiscoveryAIGenerationService {
     );
     const parsed = parseOutput(response.rawText);
     const modelResponse = responseMetadata(resolution, response);
-    const relatedResourceRefs = input.candidate.memberResourceRefs;
+    const relatedResourceRefs = [...input.candidate.memberResourceRefs];
 
     switch (input.candidate.targetFindingType) {
       case 'RELATION_HYPOTHESIS': {
         const decoded = relationOutput(parsed, input.temporalMaterial);
-        const sourceEndpoint = input.candidate.anchor;
-        const targetEndpoint = input.candidate.memberResourceRefs.find(
-          (entry) => resourceKey(entry) !== resourceKey(sourceEndpoint),
-        );
-        if (!targetEndpoint)
-          throw new DiscoveryAIGenerationError(
-            'INVALID_INPUT',
-            'The relation candidate endpoint set is invalid.',
-          );
+        const otherEndpoint = input.candidate.memberResourceRefs.find(
+          (entry) => resourceKey(entry) !== resourceKey(input.candidate.anchor),
+        )!;
+        const [firstEndpoint, secondEndpoint] = input.candidate.memberResourceRefs;
+        const sourceEndpoint =
+          decoded.orientation === 'UNDIRECTED'
+            ? firstEndpoint!
+            : decoded.orientation === 'ANCHOR_TO_OTHER'
+              ? input.candidate.anchor
+              : otherEndpoint;
+        const targetEndpoint =
+          decoded.orientation === 'UNDIRECTED'
+            ? secondEndpoint!
+            : decoded.orientation === 'ANCHOR_TO_OTHER'
+              ? otherEndpoint
+              : input.candidate.anchor;
+        const direction: 'DIRECTED' | 'UNDIRECTED' =
+          decoded.orientation === 'UNDIRECTED' ? 'UNDIRECTED' : 'DIRECTED';
         const payload = {
           schemaVersion: '1.0.0' as const,
           payloadType: 'RELATION_HYPOTHESIS' as const,
           sourceEndpoint,
           targetEndpoint,
           proposedRelationType: decoded.proposedRelationType,
-          direction: decoded.direction,
+          direction,
           ...(decoded.temporalQualification === undefined
             ? {}
             : { temporalQualification: decoded.temporalQualification }),
@@ -869,6 +1288,14 @@ export class DiscoveryAIGenerationService {
       throw new DiscoveryAIGenerationError(
         'INVALID_INPUT',
         'The qualified context is outside the Project.',
+      );
+    }
+    if (
+      !DISCOVERY_QUALIFIED_FOLLOW_UP_ORIGIN_TYPES_V1.includes(input.context.originatingFindingType)
+    ) {
+      throw new DiscoveryAIGenerationError(
+        'INVALID_INPUT',
+        'Clarification and Action generation cannot recursively originate from a follow-up finding.',
       );
     }
     const refs = input.context.items.map((item) => item.resourceRef) as [

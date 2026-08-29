@@ -201,7 +201,7 @@ export class DiscoveryModelProfileService implements DiscoveryModelProfileServic
       input.profileRevision,
     );
     if (profile.status === 'ACTIVE') return profile;
-    if (profile.status !== 'PREPARED' && profile.status !== 'RETIRED') {
+    if (profile.status !== 'PREPARED') {
       throw new DiscoveryModelProfileError(
         'CONFLICT',
         'The Discovery profile cannot be activated.',

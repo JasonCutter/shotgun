@@ -1,10 +1,27 @@
-import type { DiscoveryFindingType, DiscoveryResourceRefV1 } from './discovery-finding.js';
+import type { DiscoveryResourceRefV1 } from './discovery-finding.js';
 
 export const DISCOVERY_MODEL_PROFILE_SCHEMA_VERSION = '1.0.0' as const;
 export type DiscoveryModelProfileSchemaVersion = typeof DISCOVERY_MODEL_PROFILE_SCHEMA_VERSION;
 
 export const DISCOVERY_MODEL_PROFILE_STATUSES = ['PREPARED', 'ACTIVE', 'RETIRED'] as const;
 export type DiscoveryModelProfileStatus = (typeof DISCOVERY_MODEL_PROFILE_STATUSES)[number];
+
+export const DISCOVERY_QUALIFIED_FOLLOW_UP_ORIGIN_TYPES_V1 = [
+  'KNOWLEDGE_GAP',
+  'EVIDENCE_GAP',
+  'RELATION_HYPOTHESIS',
+  'PATTERN_HYPOTHESIS',
+  'CONFLICT_HYPOTHESIS',
+] as const;
+export type DiscoveryQualifiedFollowUpOriginTypeV1 =
+  (typeof DISCOVERY_QUALIFIED_FOLLOW_UP_ORIGIN_TYPES_V1)[number];
+
+export const DISCOVERY_RELATION_ORIENTATIONS_V1 = [
+  'UNDIRECTED',
+  'ANCHOR_TO_OTHER',
+  'OTHER_TO_ANCHOR',
+] as const;
+export type DiscoveryRelationOrientationV1 = (typeof DISCOVERY_RELATION_ORIENTATIONS_V1)[number];
 
 /**
  * A Discovery-specific, revisioned selection of an ADR-133 provider/model
@@ -224,7 +241,7 @@ export type DiscoveryQualifiedAIGenerationContextV1 = {
     readonly projectionRevision: string;
     readonly projectionDigest: string;
   };
-  readonly originatingFindingType: DiscoveryFindingType;
+  readonly originatingFindingType: DiscoveryQualifiedFollowUpOriginTypeV1;
   readonly boundedRationale: string;
   readonly items: readonly DiscoveryAIContextItemV1[];
 };

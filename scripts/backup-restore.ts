@@ -17,7 +17,7 @@ const DATABASE_DUMP_FILE = 'database.dump';
 const MANIFEST_FILE = 'manifest.json';
 const rootDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const authoritativeTables = [
+const baseAuthoritativeTables = [
   'runtime.schema_migrations',
   'intake.submissions',
   'asset.original_assets',
@@ -57,10 +57,28 @@ const authoritativeTables = [
   'action.executions',
   'action.approvals',
   'action.audit_events',
-  'discovery.findings',
-  'discovery.finding_lifecycle_current',
-  'discovery.finding_lifecycle_history',
 ] as const;
+
+const DISCOVERY_FINDING_MIGRATION = '045_akp_2_wp2_discovery_finding_persistence.sql';
+const DISCOVERY_LIFECYCLE_MIGRATION = '046_akp_2_wp3_discovery_finding_lifecycle.sql';
+
+export const authoritativeIntegrityTablesForMigrations = (
+  migrations: readonly string[],
+): readonly string[] => {
+  const applied = new Set(migrations);
+  if (applied.has(DISCOVERY_LIFECYCLE_MIGRATION) && !applied.has(DISCOVERY_FINDING_MIGRATION)) {
+    throw new Error(
+      `Backup migration identity is invalid: ${DISCOVERY_LIFECYCLE_MIGRATION} requires ${DISCOVERY_FINDING_MIGRATION}.`,
+    );
+  }
+  return [
+    ...baseAuthoritativeTables,
+    ...(applied.has(DISCOVERY_FINDING_MIGRATION) ? ['discovery.findings'] : []),
+    ...(applied.has(DISCOVERY_LIFECYCLE_MIGRATION)
+      ? ['discovery.finding_lifecycle_current', 'discovery.finding_lifecycle_history']
+      : []),
+  ];
+};
 
 export type BackupToolMode = 'local' | 'docker-compose';
 
@@ -278,10 +296,12 @@ const withClient = async <T>(databaseUrl: string, action: (client: Client) => Pr
 
 export const snapshotAuthoritativeIntegrity = async (
   databaseUrl: string,
+  migrations?: readonly string[],
 ): Promise<Readonly<Record<string, BackupIntegrityEntry>>> =>
   withClient(databaseUrl, async (client) => {
+    const appliedMigrations = migrations ?? (await listMigrations(databaseUrl));
     const entries: Record<string, BackupIntegrityEntry> = {};
-    for (const table of authoritativeTables) {
+    for (const table of authoritativeIntegrityTablesForMigrations(appliedMigrations)) {
       const result = await client.query<{ value: unknown }>(
         `SELECT to_jsonb(row_value) AS value FROM ${table} AS row_value`,
       );
@@ -300,6 +320,18 @@ const listMigrations = async (databaseUrl: string): Promise<readonly string[]> =
     );
     return result.rows.map((row) => row.name);
   });
+
+const assertManifestIntegrityTableSet = (manifest: BackupManifest): void => {
+  const expected = [
+    ...authoritativeIntegrityTablesForMigrations(manifest.database.migrations),
+  ].sort();
+  const actual = Object.keys(manifest.integrity.tables).sort();
+  if (stableJson(actual) !== stableJson(expected)) {
+    throw new Error(
+      'Backup Manifest integrity tables do not match its recorded migration identity.',
+    );
+  }
+};
 
 const assertPostgresMajorVersion = async (databaseUrl: string, expected = 16): Promise<void> =>
   withClient(databaseUrl, async (client) => {
@@ -409,7 +441,8 @@ export const createBackup = async (options: CreateBackupOptions): Promise<Backup
   const outputDirectory = path.resolve(options.outputDirectory);
   await ensureEmptyDirectory(outputDirectory, 'Backup output directory');
   await assertPostgresMajorVersion(options.databaseUrl);
-  const before = await snapshotAuthoritativeIntegrity(options.databaseUrl);
+  const migrations = await listMigrations(options.databaseUrl);
+  const before = await snapshotAuthoritativeIntegrity(options.databaseUrl, migrations);
   const dumpFile = path.join(outputDirectory, DATABASE_DUMP_FILE);
   await runPostgresTool({
     tool: 'pg_dump',
@@ -419,7 +452,7 @@ export const createBackup = async (options: CreateBackupOptions): Promise<Backup
     postgresService: options.postgresService ?? 'db',
     outputFile: dumpFile,
   });
-  const after = await snapshotAuthoritativeIntegrity(options.databaseUrl);
+  const after = await snapshotAuthoritativeIntegrity(options.databaseUrl, migrations);
   if (stableJson(before) !== stableJson(after)) {
     throw new Error('Authoritative data changed while the backup was being created.');
   }
@@ -429,7 +462,7 @@ export const createBackup = async (options: CreateBackupOptions): Promise<Backup
     outputDirectory,
   );
   const contracts = await copyContracts(outputDirectory);
-  const final = await snapshotAuthoritativeIntegrity(options.databaseUrl);
+  const final = await snapshotAuthoritativeIntegrity(options.databaseUrl, migrations);
   if (stableJson(after) !== stableJson(final)) {
     throw new Error('Authoritative data changed while Backup assets were being copied.');
   }
@@ -443,7 +476,7 @@ export const createBackup = async (options: CreateBackupOptions): Promise<Backup
       dumpFormat: 'custom',
       dumpFile: DATABASE_DUMP_FILE,
       dumpSha256: await sha256File(dumpFile),
-      migrations: await listMigrations(options.databaseUrl),
+      migrations,
     },
     assets: { storage: 'local-content-addressed', files: assets },
     contracts: { files: contracts },
@@ -530,6 +563,7 @@ export const restoreBackup = async (options: RestoreBackupOptions): Promise<Back
   }
   const backupDirectory = path.resolve(options.backupDirectory);
   const manifest = await verifyBackup(backupDirectory);
+  assertManifestIntegrityTableSet(manifest);
   await assertPostgresMajorVersion(options.targetDatabaseUrl, manifest.database.majorVersion);
   await assertEmptyTargetDatabase(options.targetDatabaseUrl);
   await ensureEmptyDirectory(path.resolve(options.targetAssetRoot), 'Restore Asset root');
@@ -542,7 +576,10 @@ export const restoreBackup = async (options: RestoreBackupOptions): Promise<Back
     inputFile: resolveWithin(backupDirectory, manifest.database.dumpFile),
   });
   await copyRestoredAssets(manifest, backupDirectory, path.resolve(options.targetAssetRoot));
-  const restored = await snapshotAuthoritativeIntegrity(options.targetDatabaseUrl);
+  const restored = await snapshotAuthoritativeIntegrity(
+    options.targetDatabaseUrl,
+    manifest.database.migrations,
+  );
   if (stableJson(restored) !== stableJson(manifest.integrity.tables)) {
     throw new Error('Restored authoritative data does not match the Backup Manifest.');
   }

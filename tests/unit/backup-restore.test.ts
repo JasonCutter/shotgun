@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   BACKUP_FORMAT_VERSION,
+  authoritativeIntegrityTablesForMigrations,
   type BackupManifest,
   readManifest,
   restoreBackup,
@@ -95,6 +96,35 @@ describe('Backup Bundle verification', () => {
     expect(manifest.integrity.tables).not.toHaveProperty('discovery.findings');
     await expect(readManifest(directory)).resolves.toEqual(manifest);
     await expect(verifyBackup(directory)).resolves.toEqual(manifest);
+  });
+
+  it('selects Discovery integrity tables from migration identity and fails closed', () => {
+    const discoveryTables = (migrations: readonly string[]) =>
+      authoritativeIntegrityTablesForMigrations(migrations).filter((table) =>
+        table.startsWith('discovery.'),
+      );
+
+    expect(discoveryTables(['044_akp_1r_semantic_generation_lifecycle.sql'])).toEqual([]);
+    expect(
+      discoveryTables([
+        '044_akp_1r_semantic_generation_lifecycle.sql',
+        '045_akp_2_wp2_discovery_finding_persistence.sql',
+      ]),
+    ).toEqual(['discovery.findings']);
+    expect(
+      discoveryTables([
+        '044_akp_1r_semantic_generation_lifecycle.sql',
+        '045_akp_2_wp2_discovery_finding_persistence.sql',
+        '046_akp_2_wp3_discovery_finding_lifecycle.sql',
+      ]),
+    ).toEqual([
+      'discovery.findings',
+      'discovery.finding_lifecycle_current',
+      'discovery.finding_lifecycle_history',
+    ]);
+    expect(() =>
+      authoritativeIntegrityTablesForMigrations(['046_akp_2_wp3_discovery_finding_lifecycle.sql']),
+    ).toThrow('requires 045_akp_2_wp2_discovery_finding_persistence.sql');
   });
 
   it('fails closed when a referenced Original Asset is corrupt or missing', async () => {

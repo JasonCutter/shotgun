@@ -260,4 +260,68 @@ describe.runIf(databaseUrl)('AKP-2 WP4 Discovery backup and isolated restore', (
       await rm(temporaryRoot, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it('restores a pre-Discovery shotgun-backup-v1 bundle without Discovery integrity tables', async () => {
+    const source = await createIsolatedRestoreDatabase(databaseUrl!);
+    const target = await createIsolatedRestoreDatabase(databaseUrl!);
+    databaseNameOf(source);
+    databaseNameOf(target);
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'shotgun-wp4-historical-backup-'));
+    const backupDirectory = path.join(temporaryRoot, 'backup');
+    const sourceAssetRoot = path.join(temporaryRoot, 'source-assets');
+    const targetAssetRoot = path.join(temporaryRoot, 'target-assets');
+
+    try {
+      await migrateUpTo('044_akp_1r_semantic_generation_lifecycle.sql', source.databaseUrl);
+      const manifest = await createBackup({
+        databaseUrl: source.databaseUrl,
+        assetRoot: sourceAssetRoot,
+        outputDirectory: backupDirectory,
+        toolMode,
+      });
+
+      expect(manifest.formatVersion).toBe('shotgun-backup-v1');
+      expect(manifest.database.migrations).toContain(
+        '044_akp_1r_semantic_generation_lifecycle.sql',
+      );
+      expect(manifest.database.migrations).not.toContain(
+        '045_akp_2_wp2_discovery_finding_persistence.sql',
+      );
+      expect(manifest.database.migrations).not.toContain(
+        '046_akp_2_wp3_discovery_finding_lifecycle.sql',
+      );
+      expect(
+        Object.keys(manifest.integrity.tables).some((table) => table.startsWith('discovery.')),
+      ).toBe(false);
+
+      await expect(
+        restoreBackup({
+          sourceDatabaseUrl: source.databaseUrl,
+          targetDatabaseUrl: target.databaseUrl,
+          targetAssetRoot,
+          backupDirectory,
+          toolMode,
+        }),
+      ).resolves.toEqual(manifest);
+
+      const targetPool = createPostgresPool(target.databaseUrl);
+      pools.push(targetPool);
+      const migrations = await targetPool.query<{ name: string }>(
+        'SELECT name FROM runtime.schema_migrations ORDER BY name',
+      );
+      expect(migrations.rows.map((row) => row.name)).toEqual(manifest.database.migrations);
+      expect(migrations.rows.map((row) => row.name)).not.toContain(
+        '045_akp_2_wp2_discovery_finding_persistence.sql',
+      );
+      expect(migrations.rows.map((row) => row.name)).not.toContain(
+        '046_akp_2_wp3_discovery_finding_lifecycle.sql',
+      );
+      const discoveryTable = await targetPool.query<{ tableName: string | null }>(
+        'SELECT to_regclass(\'discovery.findings\')::text AS "tableName"',
+      );
+      expect(discoveryTable.rows).toEqual([{ tableName: null }]);
+    } finally {
+      await rm(temporaryRoot, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

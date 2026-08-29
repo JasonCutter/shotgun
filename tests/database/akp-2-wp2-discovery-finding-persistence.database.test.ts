@@ -254,6 +254,31 @@ describe.runIf(databaseUrl)('AKP-2 WP2 Discovery finding PostgreSQL persistence'
     expect(action?.payload).toMatchObject({ executionStatus: 'CANDIDATE_ONLY' });
 
     const decision = ref(project, 'decision-1', 'CANONICAL_DECISION');
+    const decisionFinding = makeFinding({
+      projectId: project,
+      findingId: 'decision-lineage-finding',
+      findingType: 'CLARIFICATION_QUESTION',
+      payload: {
+        schemaVersion: '1.0.0',
+        payloadType: 'CLARIFICATION_QUESTION',
+        investigationTargetRefs: [decision],
+        question: 'Which evidence resolves the known decision?',
+        context: 'The decision is already registered as a current resource.',
+        proposedNextStep: 'Ask the owner to identify the authoritative evidence.',
+      },
+      relatedResourceRefs: [decision],
+    });
+    expect(await repository.save(decisionFinding)).toBe('CREATED');
+    const restoredDecisionFinding = await repository.findRevision({
+      projectId: project,
+      findingId: decisionFinding.findingId,
+      findingRevision: decisionFinding.findingRevision,
+    });
+    expect(restoredDecisionFinding).toEqual(decisionFinding);
+    expect(restoredDecisionFinding?.relatedResourceRefs[0]?.resourceKind).toBe(
+      'CANONICAL_DECISION',
+    );
+
     const normalized = normalizeDiscoveryFingerprintInputV1({
       findingType: 'CLARIFICATION_QUESTION',
       relatedResourceRefs: [decision],

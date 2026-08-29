@@ -26,10 +26,33 @@ export type DiscoveryRuntimeJobTransitionInputV1 = DiscoveryRuntimeJobLookupV1 &
   readonly updatedAt: string;
 };
 
+export type DiscoveryRuntimeRunLookupV1 = DiscoveryRuntimeJobLookupV1 & {
+  readonly runId: string;
+};
+
+export type DiscoveryRuntimeRunTransitionInputV1 = DiscoveryRuntimeRunLookupV1 & {
+  readonly expectedLifecycleRevision: number;
+  readonly targetState: DiscoveryRuntimeLifecycleStateV1;
+  readonly projectionWait?: DiscoveryProjectionWaitBindingV1;
+  readonly updatedAt: string;
+  readonly completedAt?: string;
+};
+
 export type DiscoveryRuntimeStageLookupV1 = {
   readonly projectId: string;
   readonly runId: string;
   readonly attemptId: string;
+};
+
+export type DiscoveryRuntimeAttemptLookupV1 = DiscoveryRuntimeRunLookupV1 & {
+  readonly attemptId: string;
+};
+
+export type DiscoveryRuntimeAttemptTransitionInputV1 = DiscoveryRuntimeAttemptLookupV1 & {
+  readonly expectedLifecycleRevision: number;
+  readonly targetState: DiscoveryRuntimeLifecycleStateV1;
+  readonly updatedAt: string;
+  readonly completedAt?: string;
 };
 
 export type DiscoveryRuntimeStageTransitionInputV1 = DiscoveryRuntimeStageLookupV1 & {
@@ -51,14 +74,16 @@ export type DiscoveryRuntimeRepositoryPort = {
   ): Promise<DiscoveryJobV1 | 'NOT_FOUND' | 'CONFLICT'>;
 
   saveRun(run: DiscoveryRunV1): Promise<'CREATED' | 'CONFLICT'>;
-  findRun(
-    lookup: DiscoveryRuntimeJobLookupV1 & { readonly runId: string },
-  ): Promise<DiscoveryRunV1 | undefined>;
+  findRun(lookup: DiscoveryRuntimeRunLookupV1): Promise<DiscoveryRunV1 | undefined>;
+  transitionRun(
+    input: DiscoveryRuntimeRunTransitionInputV1,
+  ): Promise<DiscoveryRunV1 | 'NOT_FOUND' | 'CONFLICT'>;
 
   saveAttempt(attempt: DiscoveryAttemptV1): Promise<'CREATED' | 'CONFLICT'>;
-  listAttempts(
-    lookup: DiscoveryRuntimeJobLookupV1 & { readonly runId: string },
-  ): Promise<readonly DiscoveryAttemptV1[]>;
+  listAttempts(lookup: DiscoveryRuntimeRunLookupV1): Promise<readonly DiscoveryAttemptV1[]>;
+  transitionAttempt(
+    input: DiscoveryRuntimeAttemptTransitionInputV1,
+  ): Promise<DiscoveryAttemptV1 | 'NOT_FOUND' | 'CONFLICT'>;
 
   saveStage(stage: DiscoveryStageV1): Promise<'CREATED' | 'CONFLICT'>;
   listStages(lookup: DiscoveryRuntimeStageLookupV1): Promise<readonly DiscoveryStageV1[]>;

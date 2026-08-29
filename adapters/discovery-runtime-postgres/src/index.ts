@@ -8,6 +8,7 @@ import {
   decodeDiscoveryLogicalJobIdentityV1,
   decodeDiscoveryRunV1,
   decodeDiscoveryStageV1,
+  semanticStableJson,
   type DiscoveryAttemptV1,
   type DiscoveryJobV1,
   type DiscoveryProjectionWaitBindingV1,
@@ -19,6 +20,9 @@ import type {
   DiscoveryRuntimeJobLookupV1,
   DiscoveryRuntimeJobTransitionInputV1,
   DiscoveryRuntimeLogicalJobLookupV1,
+  DiscoveryRuntimeAttemptTransitionInputV1,
+  DiscoveryRuntimeRunTransitionInputV1,
+  DiscoveryRuntimeRunLookupV1,
   DiscoveryRuntimeRepositoryPort,
   DiscoveryRuntimeStageLookupV1,
   DiscoveryRuntimeStageTransitionInputV1,
@@ -33,6 +37,8 @@ type RuntimeJobRow = QueryResultRow & {
   trigger_id: string;
   trigger_class: string;
   trigger: unknown;
+  requested_scan_mode: string;
+  effective_scan_mode: string;
   requested_mode: string;
   effective_mode: string;
   canonical_base_version: number;
@@ -63,6 +69,8 @@ type RuntimeRunRow = QueryResultRow & {
   job_id: string;
   run_revision: number;
   schema_version: string;
+  requested_scan_mode: string;
+  effective_scan_mode: string;
   requested_mode: string;
   effective_mode: string;
   canonical_base_version: number;
@@ -85,6 +93,7 @@ type RuntimeRunRow = QueryResultRow & {
   wait_fallback_policy_revision: string | null;
   created_at: Date;
   updated_at: Date;
+  completed_at: Date | null;
 };
 
 type RuntimeAttemptRow = QueryResultRow & {
@@ -93,7 +102,7 @@ type RuntimeAttemptRow = QueryResultRow & {
   run_id: string;
   job_id: string;
   attempt_number: number;
-  attempt_revision: number;
+  lifecycle_revision: number;
   attempt_kind: string;
   lifecycle_state: string;
   previous_attempt_id: string | null;
@@ -122,7 +131,7 @@ type RuntimeStageRow = QueryResultRow & {
 const jobColumns = `
   project_id, job_id, logical_job_identity, logical_job_identity_version,
   schema_version, trigger_id, trigger_class, trigger, requested_mode,
-  effective_mode, canonical_base_version, canonical_snapshot_digest,
+  requested_scan_mode, effective_scan_mode, effective_mode, canonical_base_version, canonical_snapshot_digest,
   required_projection_revision, required_projection_digest, policy_revision,
   strategy_revision, profile_id, profile_revision, budget_version, budget_id,
   budget_revision, budget, lifecycle_state, lifecycle_revision,
@@ -131,15 +140,15 @@ const jobColumns = `
 
 const runColumns = `
   project_id, run_id, job_id, run_revision, schema_version, requested_mode,
-  effective_mode, canonical_base_version, canonical_snapshot_digest,
+  requested_scan_mode, effective_scan_mode, effective_mode, canonical_base_version, canonical_snapshot_digest,
   required_projection_revision, required_projection_digest, policy_revision,
   strategy_revision, profile_id, profile_revision, budget_version, budget_id,
   budget_revision, budget, lifecycle_state, lifecycle_revision,
   wait_projection_revision, wait_projection_digest, wait_deadline_at,
-  wait_fallback_policy_revision, created_at, updated_at`;
+  wait_fallback_policy_revision, created_at, updated_at, completed_at`;
 
 const attemptColumns = `
-  project_id, attempt_id, run_id, job_id, attempt_number, attempt_revision,
+  project_id, attempt_id, run_id, job_id, attempt_number, lifecycle_revision,
   attempt_kind, lifecycle_state, previous_attempt_id, schema_version,
   created_at, updated_at, completed_at`;
 
@@ -200,6 +209,8 @@ const mapJob = (row: RuntimeJobRow): DiscoveryJobV1 =>
     },
     projectId: row.project_id,
     trigger: row.trigger,
+    requestedScanMode: row.requested_scan_mode,
+    effectiveScanMode: row.effective_scan_mode,
     requestedMode: row.requested_mode,
     effectiveMode: row.effective_mode,
     canonicalBase: {
@@ -241,6 +252,8 @@ const mapRun = (row: RuntimeRunRow): DiscoveryRunV1 =>
     runId: row.run_id,
     jobId: row.job_id,
     projectId: row.project_id,
+    requestedScanMode: row.requested_scan_mode,
+    effectiveScanMode: row.effective_scan_mode,
     runRevision: row.run_revision,
     requestedMode: row.requested_mode,
     effectiveMode: row.effective_mode,
@@ -275,6 +288,7 @@ const mapRun = (row: RuntimeRunRow): DiscoveryRunV1 =>
     ...(waitFromRow(row) === undefined ? {} : { projectionWait: waitFromRow(row) }),
     createdAt: dateValue(row.created_at),
     updatedAt: dateValue(row.updated_at),
+    ...(row.completed_at === null ? {} : { completedAt: dateValue(row.completed_at) }),
   });
 
 const mapAttempt = (row: RuntimeAttemptRow): DiscoveryAttemptV1 =>
@@ -285,7 +299,7 @@ const mapAttempt = (row: RuntimeAttemptRow): DiscoveryAttemptV1 =>
     runId: row.run_id,
     projectId: row.project_id,
     attemptNumber: row.attempt_number,
-    attemptRevision: row.attempt_revision,
+    lifecycleRevision: row.lifecycle_revision,
     attemptKind: row.attempt_kind,
     lifecycleState: row.lifecycle_state,
     ...(row.previous_attempt_id === null ? {} : { previousAttemptId: row.previous_attempt_id }),
@@ -324,6 +338,8 @@ const jobInsertValues = (job: DiscoveryJobV1): unknown[] => {
     job.trigger.triggerId,
     job.trigger.triggerClass,
     JSON.stringify(job.trigger),
+    job.requestedScanMode,
+    job.effectiveScanMode,
     job.requestedMode,
     job.effectiveMode,
     job.canonicalBase.canonicalVersion,
@@ -359,6 +375,8 @@ const runInsertValues = (run: DiscoveryRunV1): unknown[] => {
     run.jobId,
     run.runRevision,
     run.schemaVersion,
+    run.requestedScanMode,
+    run.effectiveScanMode,
     run.requestedMode,
     run.effectiveMode,
     run.canonicalBase.canonicalVersion,
@@ -381,10 +399,41 @@ const runInsertValues = (run: DiscoveryRunV1): unknown[] => {
     waitFallbackPolicyRevision,
     run.createdAt,
     run.updatedAt,
+    run.completedAt ?? null,
   ];
 };
 
 const isConflict = (error: unknown): boolean => (error as { code?: string }).code === '23505';
+
+const assertRunJobBinding = (run: DiscoveryRunV1, job: DiscoveryJobV1): void => {
+  const fields = [
+    ['projectId', run.projectId, job.projectId],
+    ['requestedScanMode', run.requestedScanMode, job.requestedScanMode],
+    ['effectiveScanMode', run.effectiveScanMode, job.effectiveScanMode],
+    ['requestedMode', run.requestedMode, job.requestedMode],
+    ['effectiveMode', run.effectiveMode, job.effectiveMode],
+    ['canonicalBase', run.canonicalBase, job.canonicalBase],
+    ['requiredDiscoveryBase', run.requiredDiscoveryBase, job.requiredDiscoveryBase],
+    ['policyRevision', run.policyRevision, job.policyRevision],
+    ['strategyRevision', run.strategyRevision, job.strategyRevision],
+    ['profileBinding', run.profileBinding, job.profileBinding],
+    ['budget', run.budget, job.budget],
+  ] as const;
+  for (const [field, actual, expected] of fields) {
+    if (semanticStableJson(actual) !== semanticStableJson(expected)) {
+      throw new TypeError(`run.${field}: must match its parent Job binding`);
+    }
+  }
+};
+
+const completedAtForState = (
+  targetState: string,
+  updatedAt: string,
+  completedAt: string | undefined,
+): string | null =>
+  ['SUCCEEDED', 'FAILED_RETRYABLE', 'FAILED_TERMINAL', 'CANCELLED'].includes(targetState)
+    ? (completedAt ?? updatedAt)
+    : null;
 
 export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepositoryPort {
   constructor(private readonly pool: Pool) {}
@@ -398,8 +447,8 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
           await client.query(
             `INSERT INTO discovery.jobs (
               project_id, job_id, logical_job_identity, logical_job_identity_version,
-              schema_version, trigger_id, trigger_class, trigger, requested_mode,
-              effective_mode, canonical_base_version, canonical_snapshot_digest,
+              schema_version, trigger_id, trigger_class, trigger, requested_scan_mode,
+              effective_scan_mode, requested_mode, effective_mode, canonical_base_version, canonical_snapshot_digest,
               required_projection_revision, required_projection_digest, policy_revision,
               strategy_revision, profile_id, profile_revision, budget_version, budget_id,
               budget_revision, budget, lifecycle_state, lifecycle_revision,
@@ -407,8 +456,8 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
               wait_fallback_policy_revision, created_at, updated_at
             ) VALUES (
               $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12,
-              $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::jsonb,
-              $23, $24, $25, $26, $27, $28, $29, $30
+              $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
+              $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32
             )`,
             jobInsertValues(decoded),
           );
@@ -542,22 +591,46 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
       await withSafePostgresTransaction(
         this.pool,
         async (client) => {
+          const parentResult = await client.query<RuntimeJobRow>(
+            `SELECT ${jobColumns}
+             FROM discovery.jobs WHERE project_id = $1 AND job_id = $2 FOR KEY SHARE`,
+            [decoded.projectId, decoded.jobId],
+          );
+          const parent = parentResult.rows[0];
+          if (!parent) throw new TypeError('run: parent Job was not found');
+          assertRunJobBinding(decoded, mapJob(parent));
           await client.query(
             `INSERT INTO discovery.runs (
               project_id, run_id, job_id, run_revision, schema_version,
-              requested_mode, effective_mode, canonical_base_version,
+              requested_scan_mode, effective_scan_mode, requested_mode, effective_mode, canonical_base_version,
               canonical_snapshot_digest, required_projection_revision,
               required_projection_digest, policy_revision, strategy_revision,
               profile_id, profile_revision, budget_version, budget_id,
               budget_revision, budget, lifecycle_state, lifecycle_revision,
               wait_projection_revision, wait_projection_digest, wait_deadline_at,
-              wait_fallback_policy_revision, created_at, updated_at
+              wait_fallback_policy_revision, created_at, updated_at, completed_at
             ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-              $14, $15, $16, $17, $18, $19::jsonb, $20, $21, $22, $23,
-              $24, $25, $26, $27
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+              $15, $16, $17, $18, $19, $20, $21::jsonb, $22, $23, $24, $25,
+              $26, $27, $28, $29, $30
             )`,
             runInsertValues(decoded),
+          );
+          await client.query(
+            `INSERT INTO discovery.run_lifecycle_history (
+              project_id, run_id, job_id, lifecycle_revision, from_state, to_state,
+              wait_projection_revision, wait_projection_digest, wait_deadline_at,
+              wait_fallback_policy_revision, occurred_at
+            ) VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, $10)`,
+            [
+              decoded.projectId,
+              decoded.runId,
+              decoded.jobId,
+              decoded.lifecycleRevision,
+              decoded.lifecycleState,
+              ...waitValues(decoded.projectionWait),
+              decoded.createdAt,
+            ],
           );
         },
         { module: 'discovery-runtime', operation: 'run-save' },
@@ -569,9 +642,7 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
     }
   }
 
-  async findRun(
-    lookup: DiscoveryRuntimeJobLookupV1 & { readonly runId: string },
-  ): Promise<DiscoveryRunV1 | undefined> {
+  async findRun(lookup: DiscoveryRuntimeRunLookupV1): Promise<DiscoveryRunV1 | undefined> {
     const result = await this.pool.query<RuntimeRunRow>(
       `SELECT ${runColumns}
        FROM discovery.runs WHERE project_id = $1 AND job_id = $2 AND run_id = $3`,
@@ -580,16 +651,142 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
     return result.rows[0] ? mapRun(result.rows[0]) : undefined;
   }
 
+  async transitionRun(
+    input: DiscoveryRuntimeRunTransitionInputV1,
+  ): Promise<DiscoveryRunV1 | 'NOT_FOUND' | 'CONFLICT'> {
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const result = await client.query<RuntimeRunRow>(
+          `SELECT ${runColumns}
+           FROM discovery.runs
+           WHERE project_id = $1 AND job_id = $2 AND run_id = $3
+           FOR UPDATE`,
+          [input.projectId, input.jobId, input.runId],
+        );
+        const currentRow = result.rows[0];
+        if (!currentRow) return 'NOT_FOUND';
+        const current = mapRun(currentRow);
+        if (current.lifecycleRevision !== input.expectedLifecycleRevision) return 'CONFLICT';
+        assertDiscoveryRuntimeLifecycleTransitionV1(current.lifecycleState, input.targetState);
+        const nextWait =
+          input.targetState === 'WAITING_FOR_PROJECTION'
+            ? (input.projectionWait ?? current.projectionWait)
+            : undefined;
+        if (input.targetState === 'WAITING_FOR_PROJECTION' && nextWait === undefined) {
+          throw new TypeError('projectionWait is required while waiting for projection');
+        }
+        if (
+          nextWait !== undefined &&
+          semanticStableJson(nextWait.requiredDiscoveryBase) !==
+            semanticStableJson(current.requiredDiscoveryBase)
+        ) {
+          throw new TypeError('projectionWait.requiredDiscoveryBase: must match Run binding');
+        }
+        const [
+          waitProjectionRevision,
+          waitProjectionDigest,
+          waitDeadlineAt,
+          waitFallbackPolicyRevision,
+        ] = waitValues(nextWait);
+        const completedAt = completedAtForState(
+          input.targetState,
+          input.updatedAt,
+          input.completedAt,
+        );
+        const updated = await client.query<RuntimeRunRow>(
+          `UPDATE discovery.runs
+           SET lifecycle_state = $4, lifecycle_revision = $5,
+               wait_projection_revision = $6, wait_projection_digest = $7,
+               wait_deadline_at = $8, wait_fallback_policy_revision = $9,
+               updated_at = $10, completed_at = $11
+           WHERE project_id = $1 AND job_id = $2 AND run_id = $3
+             AND lifecycle_revision = $12
+           RETURNING ${runColumns}`,
+          [
+            input.projectId,
+            input.jobId,
+            input.runId,
+            input.targetState,
+            input.expectedLifecycleRevision + 1,
+            waitProjectionRevision,
+            waitProjectionDigest,
+            waitDeadlineAt,
+            waitFallbackPolicyRevision,
+            input.updatedAt,
+            completedAt,
+            input.expectedLifecycleRevision,
+          ],
+        );
+        const updatedRow = updated.rows[0];
+        if (!updatedRow) return 'CONFLICT';
+        await client.query(
+          `INSERT INTO discovery.run_lifecycle_history (
+            project_id, run_id, job_id, lifecycle_revision, from_state, to_state,
+            wait_projection_revision, wait_projection_digest, wait_deadline_at,
+            wait_fallback_policy_revision, occurred_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [
+            input.projectId,
+            input.runId,
+            input.jobId,
+            input.expectedLifecycleRevision + 1,
+            current.lifecycleState,
+            input.targetState,
+            waitProjectionRevision,
+            waitProjectionDigest,
+            waitDeadlineAt,
+            waitFallbackPolicyRevision,
+            input.updatedAt,
+          ],
+        );
+        return mapRun(updatedRow);
+      },
+      { module: 'discovery-runtime', operation: 'run-transition' },
+    );
+  }
+
   async saveAttempt(attempt: DiscoveryAttemptV1): Promise<'CREATED' | 'CONFLICT'> {
     const decoded = decodeDiscoveryAttemptV1(attempt);
     try {
       await withSafePostgresTransaction(
         this.pool,
         async (client) => {
+          const parentRun = await client.query(
+            `SELECT 1 FROM discovery.runs
+             WHERE project_id = $1 AND job_id = $2 AND run_id = $3 FOR UPDATE`,
+            [decoded.projectId, decoded.jobId, decoded.runId],
+          );
+          if (parentRun.rowCount !== 1) throw new TypeError('attempt: parent Run was not found');
+          if (decoded.attemptKind === 'DOMAIN_RETRY') {
+            const previousResult = await client.query<RuntimeAttemptRow>(
+              `SELECT ${attemptColumns}
+               FROM discovery.attempts
+               WHERE project_id = $1 AND run_id = $2 AND job_id = $3 AND attempt_id = $4
+               FOR UPDATE`,
+              [decoded.projectId, decoded.runId, decoded.jobId, decoded.previousAttemptId],
+            );
+            const previous = previousResult.rows[0]
+              ? mapAttempt(previousResult.rows[0])
+              : undefined;
+            if (!previous) {
+              throw new TypeError('attempt.previousAttemptId: must belong to the same Run');
+            }
+            if (previous.lifecycleState !== 'FAILED_RETRYABLE') {
+              throw new TypeError(
+                'attempt.previousAttemptId: predecessor must be FAILED_RETRYABLE',
+              );
+            }
+            if (decoded.attemptNumber !== previous.attemptNumber + 1) {
+              throw new TypeError(
+                'attempt.attemptNumber: must be the immediate predecessor number plus one',
+              );
+            }
+          }
           await client.query(
             `INSERT INTO discovery.attempts (
               project_id, attempt_id, run_id, job_id, attempt_number,
-              attempt_revision, attempt_kind, lifecycle_state, previous_attempt_id,
+              lifecycle_revision, attempt_kind, lifecycle_state, previous_attempt_id,
               schema_version, created_at, updated_at, completed_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
             [
@@ -598,7 +795,7 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
               decoded.runId,
               decoded.jobId,
               decoded.attemptNumber,
-              decoded.attemptRevision,
+              decoded.lifecycleRevision,
               decoded.attemptKind,
               decoded.lifecycleState,
               decoded.previousAttemptId ?? null,
@@ -606,6 +803,21 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
               decoded.createdAt,
               decoded.updatedAt,
               decoded.completedAt ?? null,
+            ],
+          );
+          await client.query(
+            `INSERT INTO discovery.attempt_lifecycle_history (
+              project_id, attempt_id, run_id, job_id, lifecycle_revision,
+              from_state, to_state, occurred_at
+            ) VALUES ($1, $2, $3, $4, $5, NULL, $6, $7)`,
+            [
+              decoded.projectId,
+              decoded.attemptId,
+              decoded.runId,
+              decoded.jobId,
+              decoded.lifecycleRevision,
+              decoded.lifecycleState,
+              decoded.createdAt,
             ],
           );
         },
@@ -618,9 +830,7 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
     }
   }
 
-  async listAttempts(
-    lookup: DiscoveryRuntimeJobLookupV1 & { readonly runId: string },
-  ): Promise<readonly DiscoveryAttemptV1[]> {
+  async listAttempts(lookup: DiscoveryRuntimeRunLookupV1): Promise<readonly DiscoveryAttemptV1[]> {
     const result = await this.pool.query<RuntimeAttemptRow>(
       `SELECT ${attemptColumns}
        FROM discovery.attempts
@@ -629,6 +839,72 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
       [lookup.projectId, lookup.jobId, lookup.runId],
     );
     return result.rows.map(mapAttempt);
+  }
+
+  async transitionAttempt(
+    input: DiscoveryRuntimeAttemptTransitionInputV1,
+  ): Promise<DiscoveryAttemptV1 | 'NOT_FOUND' | 'CONFLICT'> {
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const result = await client.query<RuntimeAttemptRow>(
+          `SELECT ${attemptColumns}
+           FROM discovery.attempts
+           WHERE project_id = $1 AND job_id = $2 AND run_id = $3 AND attempt_id = $4
+           FOR UPDATE`,
+          [input.projectId, input.jobId, input.runId, input.attemptId],
+        );
+        const currentRow = result.rows[0];
+        if (!currentRow) return 'NOT_FOUND';
+        const current = mapAttempt(currentRow);
+        if (current.lifecycleRevision !== input.expectedLifecycleRevision) return 'CONFLICT';
+        assertDiscoveryRuntimeLifecycleTransitionV1(current.lifecycleState, input.targetState);
+        const completedAt = completedAtForState(
+          input.targetState,
+          input.updatedAt,
+          input.completedAt,
+        );
+        const updated = await client.query<RuntimeAttemptRow>(
+          `UPDATE discovery.attempts
+           SET lifecycle_state = $5, lifecycle_revision = $6,
+               updated_at = $7, completed_at = $8
+           WHERE project_id = $1 AND job_id = $2 AND run_id = $3 AND attempt_id = $4
+             AND lifecycle_revision = $9
+           RETURNING ${attemptColumns}`,
+          [
+            input.projectId,
+            input.jobId,
+            input.runId,
+            input.attemptId,
+            input.targetState,
+            input.expectedLifecycleRevision + 1,
+            input.updatedAt,
+            completedAt,
+            input.expectedLifecycleRevision,
+          ],
+        );
+        const updatedRow = updated.rows[0];
+        if (!updatedRow) return 'CONFLICT';
+        await client.query(
+          `INSERT INTO discovery.attempt_lifecycle_history (
+            project_id, attempt_id, run_id, job_id, lifecycle_revision,
+            from_state, to_state, occurred_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            input.projectId,
+            input.attemptId,
+            input.runId,
+            input.jobId,
+            input.expectedLifecycleRevision + 1,
+            current.lifecycleState,
+            input.targetState,
+            input.updatedAt,
+          ],
+        );
+        return mapAttempt(updatedRow);
+      },
+      { module: 'discovery-runtime', operation: 'attempt-transition' },
+    );
   }
 
   async saveStage(stage: DiscoveryStageV1): Promise<'CREATED' | 'CONFLICT'> {

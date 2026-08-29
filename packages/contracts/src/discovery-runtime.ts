@@ -9,6 +9,9 @@ export const DISCOVERY_RUNTIME_SCHEMA_VERSION_V1 = '1.0.0' as const;
 export const DISCOVERY_LOGICAL_JOB_IDENTITY_VERSION_V1 = 'discovery-job-logical:v1' as const;
 export const DISCOVERY_WORK_BUDGET_VERSION_V1 = 'discovery-work-budget:v1' as const;
 
+export const DISCOVERY_RUNTIME_SCAN_MODES_V1 = ['INCREMENTAL', 'FULL_SCAN'] as const;
+export type DiscoveryRuntimeScanModeV1 = (typeof DISCOVERY_RUNTIME_SCAN_MODES_V1)[number];
+
 export const DISCOVERY_TRIGGER_CLASSES_V1 = [
   'CANONICAL_COMMITTED',
   'SCHEDULED_FULL_SCAN',
@@ -124,6 +127,10 @@ type DiscoveryTriggerCommonV1 = {
   /** Physical observation identity. It is not the logical Job dedupe key. */
   readonly triggerId: string;
   readonly projectId: string;
+  /** Discovery scan scope; distinct from the AKP-3 strategy set below. */
+  readonly requestedScanMode: DiscoveryRuntimeScanModeV1;
+  readonly effectiveScanMode: DiscoveryRuntimeScanModeV1;
+  /** Existing AKP-3 strategy-set disposition. */
   readonly requestedMode: 'FULL' | 'DEGRADED';
   readonly effectiveMode: 'FULL' | 'DEGRADED';
   readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
@@ -176,6 +183,8 @@ export type DiscoveryJobV1 = {
   readonly logicalIdentity: DiscoveryLogicalJobIdentityV1;
   readonly projectId: string;
   readonly trigger: DiscoveryTriggerV1;
+  readonly requestedScanMode: DiscoveryRuntimeScanModeV1;
+  readonly effectiveScanMode: DiscoveryRuntimeScanModeV1;
   readonly requestedMode: 'FULL' | 'DEGRADED';
   readonly effectiveMode: 'FULL' | 'DEGRADED';
   readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
@@ -196,6 +205,8 @@ export type DiscoveryRunV1 = {
   readonly runId: string;
   readonly jobId: string;
   readonly projectId: string;
+  readonly requestedScanMode: DiscoveryRuntimeScanModeV1;
+  readonly effectiveScanMode: DiscoveryRuntimeScanModeV1;
   readonly runRevision: number;
   readonly requestedMode: 'FULL' | 'DEGRADED';
   readonly effectiveMode: 'FULL' | 'DEGRADED';
@@ -210,6 +221,7 @@ export type DiscoveryRunV1 = {
   readonly projectionWait?: DiscoveryProjectionWaitBindingV1;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly completedAt?: string;
 };
 
 export type DiscoveryAttemptV1 = {
@@ -219,7 +231,7 @@ export type DiscoveryAttemptV1 = {
   readonly runId: string;
   readonly projectId: string;
   readonly attemptNumber: number;
-  readonly attemptRevision: number;
+  readonly lifecycleRevision: number;
   readonly attemptKind: DiscoveryRuntimeAttemptKindV1;
   readonly lifecycleState: DiscoveryRuntimeLifecycleStateV1;
   readonly previousAttemptId?: string;
@@ -470,6 +482,8 @@ export const decodeDiscoveryTriggerV1 = (value: unknown, path = 'trigger'): Disc
       'triggerClass',
       'triggerIdentity',
       'projectId',
+      'requestedScanMode',
+      'effectiveScanMode',
       'requestedMode',
       'effectiveMode',
       'canonicalBase',
@@ -502,10 +516,34 @@ export const decodeDiscoveryTriggerV1 = (value: unknown, path = 'trigger'): Disc
   if (triggerClass === 'MANUAL' && object.actor === undefined) {
     return fail(`${path}.actor`, 'is required for MANUAL triggers');
   }
+  const requestedScanMode = enumValue(
+    required(object, 'requestedScanMode', path),
+    DISCOVERY_RUNTIME_SCAN_MODES_V1,
+    `${path}.requestedScanMode`,
+  );
+  const effectiveScanMode = enumValue(
+    required(object, 'effectiveScanMode', path),
+    DISCOVERY_RUNTIME_SCAN_MODES_V1,
+    `${path}.effectiveScanMode`,
+  );
+  const fixedScanMode =
+    triggerClass === 'CANONICAL_COMMITTED'
+      ? 'INCREMENTAL'
+      : triggerClass === 'SCHEDULED_FULL_SCAN'
+        ? 'FULL_SCAN'
+        : undefined;
+  if (
+    fixedScanMode !== undefined &&
+    (requestedScanMode !== fixedScanMode || effectiveScanMode !== fixedScanMode)
+  ) {
+    return fail(`${path}.requestedScanMode`, `${triggerClass} must use ${fixedScanMode} scan mode`);
+  }
   const common = {
     schemaVersion: schemaVersion(required(object, 'schemaVersion', path), `${path}.schemaVersion`),
     triggerId: text(required(object, 'triggerId', path), `${path}.triggerId`),
     projectId: text(required(object, 'projectId', path), `${path}.projectId`),
+    requestedScanMode,
+    effectiveScanMode,
     requestedMode: enumValue(
       required(object, 'requestedMode', path),
       ['FULL', 'DEGRADED'] as const,
@@ -599,6 +637,8 @@ const projectionWait = (value: unknown, path: string): DiscoveryProjectionWaitBi
 const baseRuntimeKeys = [
   'schemaVersion',
   'projectId',
+  'requestedScanMode',
+  'effectiveScanMode',
   'requestedMode',
   'effectiveMode',
   'canonicalBase',
@@ -627,9 +667,34 @@ const decodeRuntimeBinding = (object: Record<string, unknown>, path: string) => 
   if (lifecycleState === 'WAITING_FOR_PROJECTION' && projectionWaitValue === undefined) {
     return fail(`${path}.projectionWait`, 'is required while waiting for projection');
   }
+  if (lifecycleState !== 'WAITING_FOR_PROJECTION' && projectionWaitValue !== undefined) {
+    return fail(`${path}.projectionWait`, 'is allowed only while waiting for projection');
+  }
+  const requiredDiscoveryBase =
+    object.requiredDiscoveryBase === undefined
+      ? undefined
+      : decodeDiscoveryBase(object.requiredDiscoveryBase, `${path}.requiredDiscoveryBase`);
+  if (
+    projectionWaitValue !== undefined &&
+    (requiredDiscoveryBase === undefined ||
+      semanticStableJson(projectionWaitValue.requiredDiscoveryBase) !==
+        semanticStableJson(requiredDiscoveryBase))
+  ) {
+    return fail(`${path}.projectionWait.requiredDiscoveryBase`, 'must match requiredDiscoveryBase');
+  }
   return {
     schemaVersion: schemaVersion(required(object, 'schemaVersion', path), `${path}.schemaVersion`),
     projectId: text(required(object, 'projectId', path), `${path}.projectId`),
+    requestedScanMode: enumValue(
+      required(object, 'requestedScanMode', path),
+      DISCOVERY_RUNTIME_SCAN_MODES_V1,
+      `${path}.requestedScanMode`,
+    ),
+    effectiveScanMode: enumValue(
+      required(object, 'effectiveScanMode', path),
+      DISCOVERY_RUNTIME_SCAN_MODES_V1,
+      `${path}.effectiveScanMode`,
+    ),
     requestedMode: enumValue(
       required(object, 'requestedMode', path),
       ['FULL', 'DEGRADED'] as const,
@@ -644,14 +709,9 @@ const decodeRuntimeBinding = (object: Record<string, unknown>, path: string) => 
       required(object, 'canonicalBase', path),
       `${path}.canonicalBase`,
     ),
-    ...(object.requiredDiscoveryBase === undefined
+    ...(requiredDiscoveryBase === undefined
       ? {}
-      : {
-          requiredDiscoveryBase: decodeDiscoveryBase(
-            object.requiredDiscoveryBase,
-            `${path}.requiredDiscoveryBase`,
-          ),
-        }),
+      : { requiredDiscoveryBase: requiredDiscoveryBase }),
     policyRevision: text(required(object, 'policyRevision', path), `${path}.policyRevision`),
     strategyRevision: text(required(object, 'strategyRevision', path), `${path}.strategyRevision`),
     ...(object.profileBinding === undefined
@@ -696,12 +756,34 @@ export const decodeDiscoveryJobV1 = (value: unknown, path = 'job'): DiscoveryJob
   );
   const binding = decodeRuntimeBinding(object, path);
   const trigger = decodeDiscoveryTriggerV1(required(object, 'trigger', path), `${path}.trigger`);
-  if (binding.projectId !== trigger.projectId)
-    return fail(`${path}.projectId`, 'must match trigger.projectId');
+  const bindingFields = [
+    ['projectId', binding.projectId, trigger.projectId],
+    ['requestedScanMode', binding.requestedScanMode, trigger.requestedScanMode],
+    ['effectiveScanMode', binding.effectiveScanMode, trigger.effectiveScanMode],
+    ['requestedMode', binding.requestedMode, trigger.requestedMode],
+    ['effectiveMode', binding.effectiveMode, trigger.effectiveMode],
+    ['canonicalBase', binding.canonicalBase, trigger.canonicalBase],
+    ['requiredDiscoveryBase', binding.requiredDiscoveryBase, trigger.requiredDiscoveryBase],
+    ['policyRevision', binding.policyRevision, trigger.policyRevision],
+    ['strategyRevision', binding.strategyRevision, trigger.strategyRevision],
+    ['profileBinding', binding.profileBinding, trigger.profileBinding],
+  ] as const;
+  for (const [field, actual, expected] of bindingFields) {
+    if (semanticStableJson(actual) !== semanticStableJson(expected)) {
+      return fail(`${path}.${field}`, 'must match trigger binding');
+    }
+  }
   const logicalIdentity = decodeDiscoveryLogicalJobIdentityV1(
     required(object, 'logicalIdentity', path),
     `${path}.logicalIdentity`,
   );
+  const expectedIdentity = createDiscoveryLogicalJobIdentityV1(trigger);
+  if (
+    logicalIdentity.identityVersion !== expectedIdentity.identityVersion ||
+    logicalIdentity.value !== expectedIdentity.value
+  ) {
+    return fail(`${path}.logicalIdentity`, 'must be recomputed from the trigger binding');
+  }
   return {
     ...binding,
     jobId: text(required(object, 'jobId', path), `${path}.jobId`),
@@ -711,13 +793,19 @@ export const decodeDiscoveryJobV1 = (value: unknown, path = 'job'): DiscoveryJob
 };
 
 export const decodeDiscoveryRunV1 = (value: unknown, path = 'run'): DiscoveryRunV1 => {
-  const object = strictObject(value, ['runId', 'jobId', 'runRevision', ...baseRuntimeKeys], path);
+  const object = strictObject(
+    value,
+    ['runId', 'jobId', 'runRevision', 'completedAt', ...baseRuntimeKeys],
+    path,
+  );
   const binding = decodeRuntimeBinding(object, path);
+  const completedAt = completionShape(object, path);
   return {
     ...binding,
     runId: text(required(object, 'runId', path), `${path}.runId`),
     jobId: text(required(object, 'jobId', path), `${path}.jobId`),
     runRevision: integer(required(object, 'runRevision', path), `${path}.runRevision`, 1),
+    ...(completedAt === undefined ? {} : { completedAt }),
   };
 };
 
@@ -737,6 +825,12 @@ const completionShape = (object: Record<string, unknown>, path: string): string 
   ) {
     return fail(`${path}.completedAt`, 'is required for a completed attempt');
   }
+  if (
+    completedAt !== undefined &&
+    !['SUCCEEDED', 'FAILED_RETRYABLE', 'FAILED_TERMINAL', 'CANCELLED'].includes(state)
+  ) {
+    return fail(`${path}.completedAt`, 'is allowed only for a completed lifecycle state');
+  }
   return completedAt;
 };
 
@@ -750,7 +844,7 @@ export const decodeDiscoveryAttemptV1 = (value: unknown, path = 'attempt'): Disc
       'runId',
       'projectId',
       'attemptNumber',
-      'attemptRevision',
+      'lifecycleRevision',
       'attemptKind',
       'lifecycleState',
       'previousAttemptId',
@@ -769,8 +863,18 @@ export const decodeDiscoveryAttemptV1 = (value: unknown, path = 'attempt'): Disc
   if (attemptKind === 'INITIAL' && object.previousAttemptId !== undefined) {
     return fail(`${path}.previousAttemptId`, 'is allowed only for DOMAIN_RETRY');
   }
+  if (attemptKind === 'INITIAL' && object.attemptNumber !== 1) {
+    return fail(`${path}.attemptNumber`, 'INITIAL attempts must be numbered 1');
+  }
   if (attemptKind === 'DOMAIN_RETRY' && object.previousAttemptId === undefined) {
     return fail(`${path}.previousAttemptId`, 'is required for DOMAIN_RETRY');
+  }
+  if (
+    attemptKind === 'DOMAIN_RETRY' &&
+    typeof object.attemptNumber === 'number' &&
+    object.attemptNumber < 2
+  ) {
+    return fail(`${path}.attemptNumber`, 'DOMAIN_RETRY attempts must be numbered from 2');
   }
   return {
     schemaVersion: schemaVersion(required(object, 'schemaVersion', path), `${path}.schemaVersion`),
@@ -779,9 +883,9 @@ export const decodeDiscoveryAttemptV1 = (value: unknown, path = 'attempt'): Disc
     runId: text(required(object, 'runId', path), `${path}.runId`),
     projectId: text(required(object, 'projectId', path), `${path}.projectId`),
     attemptNumber: integer(required(object, 'attemptNumber', path), `${path}.attemptNumber`, 1),
-    attemptRevision: integer(
-      required(object, 'attemptRevision', path),
-      `${path}.attemptRevision`,
+    lifecycleRevision: integer(
+      required(object, 'lifecycleRevision', path),
+      `${path}.lifecycleRevision`,
       1,
     ),
     attemptKind,
@@ -870,6 +974,8 @@ export const createDiscoveryLogicalJobIdentityV1 = (
     projectId: trigger.projectId,
     triggerClass: trigger.triggerClass,
     triggerIdentity: trigger.triggerIdentity,
+    requestedScanMode: trigger.requestedScanMode,
+    effectiveScanMode: trigger.effectiveScanMode,
     requestedMode: trigger.requestedMode,
     effectiveMode: trigger.effectiveMode,
     canonicalBase: trigger.canonicalBase,

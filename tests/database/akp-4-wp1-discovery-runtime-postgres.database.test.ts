@@ -52,6 +52,8 @@ const trigger = (projectId: string, eventId: string): DiscoveryTriggerV1 => ({
     eventRevision: 'event-revision-1',
   },
   projectId,
+  requestedScanMode: 'INCREMENTAL',
+  effectiveScanMode: 'INCREMENTAL',
   requestedMode: 'FULL',
   effectiveMode: 'FULL',
   canonicalBase: {
@@ -80,6 +82,8 @@ const job = (projectId: string, jobId: string, eventId = `${projectId}-event`): 
     logicalIdentity: createDiscoveryLogicalJobIdentityV1(nextTrigger),
     projectId,
     trigger: nextTrigger,
+    requestedScanMode: nextTrigger.requestedScanMode,
+    effectiveScanMode: nextTrigger.effectiveScanMode,
     requestedMode: nextTrigger.requestedMode,
     effectiveMode: nextTrigger.effectiveMode,
     canonicalBase: nextTrigger.canonicalBase,
@@ -95,6 +99,53 @@ const job = (projectId: string, jobId: string, eventId = `${projectId}-event`): 
   };
 };
 
+const runForJob = (
+  parent: DiscoveryJobV1,
+  runId: string,
+  overrides: Partial<DiscoveryRunV1> = {},
+): DiscoveryRunV1 => ({
+  schemaVersion: '1.0.0',
+  runId,
+  jobId: parent.jobId,
+  projectId: parent.projectId,
+  requestedScanMode: parent.requestedScanMode,
+  effectiveScanMode: parent.effectiveScanMode,
+  runRevision: 1,
+  requestedMode: parent.requestedMode,
+  effectiveMode: parent.effectiveMode,
+  canonicalBase: parent.canonicalBase,
+  requiredDiscoveryBase: parent.requiredDiscoveryBase,
+  policyRevision: parent.policyRevision,
+  strategyRevision: parent.strategyRevision,
+  profileBinding: parent.profileBinding,
+  budget: parent.budget,
+  lifecycleState: 'RUNNING',
+  lifecycleRevision: 1,
+  createdAt: '2026-08-30T00:00:03.000Z',
+  updatedAt: '2026-08-30T00:00:03.000Z',
+  ...overrides,
+});
+
+const attemptForRun = (
+  parent: DiscoveryRunV1,
+  attemptId: string,
+  overrides: Partial<DiscoveryAttemptV1> = {},
+): DiscoveryAttemptV1 => ({
+  schemaVersion: '1.0.0',
+  attemptId,
+  jobId: parent.jobId,
+  runId: parent.runId,
+  projectId: parent.projectId,
+  attemptNumber: 1,
+  lifecycleRevision: 1,
+  attemptKind: 'INITIAL',
+  lifecycleState: 'FAILED_RETRYABLE',
+  createdAt: '2026-08-30T00:00:04.000Z',
+  updatedAt: '2026-08-30T00:00:05.000Z',
+  completedAt: '2026-08-30T00:00:05.000Z',
+  ...overrides,
+});
+
 describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', () => {
   beforeAll(async () => {
     await migrateUpTo(undefined, databaseUrl!);
@@ -107,6 +158,10 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
   });
 
   beforeEach(async () => {
+    await poolA!.query(
+      'DELETE FROM discovery.attempt_lifecycle_history WHERE project_id IN ($1, $2)',
+      [projectA, projectB],
+    );
     await poolA!.query('DELETE FROM discovery.stage_history WHERE project_id IN ($1, $2)', [
       projectA,
       projectB,
@@ -116,6 +171,10 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
       projectB,
     ]);
     await poolA!.query('DELETE FROM discovery.attempts WHERE project_id IN ($1, $2)', [
+      projectA,
+      projectB,
+    ]);
+    await poolA!.query('DELETE FROM discovery.run_lifecycle_history WHERE project_id IN ($1, $2)', [
       projectA,
       projectB,
     ]);
@@ -134,6 +193,10 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
   });
 
   afterAll(async () => {
+    await poolA!.query(
+      'DELETE FROM discovery.attempt_lifecycle_history WHERE project_id IN ($1, $2)',
+      [projectA, projectB],
+    );
     await poolA!.query('DELETE FROM discovery.stage_history WHERE project_id IN ($1, $2)', [
       projectA,
       projectB,
@@ -143,6 +206,10 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
       projectB,
     ]);
     await poolA!.query('DELETE FROM discovery.attempts WHERE project_id IN ($1, $2)', [
+      projectA,
+      projectB,
+    ]);
+    await poolA!.query('DELETE FROM discovery.run_lifecycle_history WHERE project_id IN ($1, $2)', [
       projectA,
       projectB,
     ]);
@@ -182,6 +249,26 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
     expect(await repositoryB.saveJob({ ...first, jobId: 'job-duplicate-physical' })).toBe(
       'CONFLICT',
     );
+    await expect(
+      repositoryA.saveJob({
+        ...first,
+        jobId: 'job-arbitrary-identity',
+        logicalIdentity: { ...first.logicalIdentity, value: 'arbitrary' },
+      }),
+    ).rejects.toThrow(/recomputed/);
+    await expect(
+      repositoryA.saveJob({
+        ...first,
+        jobId: 'job-mismatched-policy',
+        policyRevision: 'policy-tampered',
+      }),
+    ).rejects.toThrow(/must match trigger binding/);
+    const identityIndex = await poolA!.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes
+       WHERE schemaname = 'discovery' AND tablename = 'jobs'
+         AND indexdef LIKE '%logical_job_identity_version%'`,
+    );
+    expect(identityIndex.rows.length).toBeGreaterThan(0);
   });
 
   it('persists projection waiting, clears it on transition, and retains run/attempt history', async () => {
@@ -228,6 +315,8 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
       runId: 'run-1',
       jobId: first.jobId,
       projectId: projectA,
+      requestedScanMode: first.requestedScanMode,
+      effectiveScanMode: first.effectiveScanMode,
       runRevision: 1,
       requestedMode: first.requestedMode,
       effectiveMode: first.effectiveMode,
@@ -246,6 +335,34 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
     expect(
       await repositoryB.findRun({ projectId: projectA, jobId: first.jobId, runId: run.runId }),
     ).toEqual(run);
+    const completedRun = await repositoryA.transitionRun({
+      projectId: projectA,
+      jobId: first.jobId,
+      runId: run.runId,
+      expectedLifecycleRevision: 1,
+      targetState: 'SUCCEEDED',
+      updatedAt: '2026-08-30T00:00:07.000Z',
+    });
+    expect(completedRun).toMatchObject({
+      lifecycleState: 'SUCCEEDED',
+      lifecycleRevision: 2,
+      completedAt: '2026-08-30T00:00:07.000Z',
+    });
+    expect(
+      await repositoryB.transitionRun({
+        projectId: projectA,
+        jobId: first.jobId,
+        runId: run.runId,
+        expectedLifecycleRevision: 1,
+        targetState: 'RUNNING',
+        updatedAt: '2026-08-30T00:00:08.000Z',
+      }),
+    ).toBe('CONFLICT');
+    const runHistory = await poolA!.query<{ count: string }>(
+      'SELECT count(*)::text AS count FROM discovery.run_lifecycle_history WHERE project_id = $1 AND run_id = $2',
+      [projectA, run.runId],
+    );
+    expect(runHistory.rows[0]?.count).toBe('2');
 
     const failedAttempt: DiscoveryAttemptV1 = {
       schemaVersion: '1.0.0',
@@ -254,7 +371,7 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
       runId: run.runId,
       projectId: projectA,
       attemptNumber: 1,
-      attemptRevision: 1,
+      lifecycleRevision: 1,
       attemptKind: 'INITIAL',
       lifecycleState: 'FAILED_RETRYABLE',
       createdAt: '2026-08-30T00:00:04.000Z',
@@ -265,7 +382,7 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
       ...failedAttempt,
       attemptId: 'attempt-2',
       attemptNumber: 2,
-      attemptRevision: 2,
+      lifecycleRevision: 1,
       attemptKind: 'DOMAIN_RETRY',
       lifecycleState: 'RUNNING',
       previousAttemptId: failedAttempt.attemptId,
@@ -278,19 +395,69 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
     expect(
       await repositoryB.listAttempts({ projectId: projectA, jobId: first.jobId, runId: run.runId }),
     ).toEqual([failedAttempt, retryAttempt]);
+    const completedAttempt = await repositoryA.transitionAttempt({
+      projectId: projectA,
+      jobId: first.jobId,
+      runId: run.runId,
+      attemptId: retryAttempt.attemptId,
+      expectedLifecycleRevision: 1,
+      targetState: 'SUCCEEDED',
+      updatedAt: '2026-08-30T00:00:07.000Z',
+    });
+    expect(completedAttempt).toMatchObject({
+      lifecycleState: 'SUCCEEDED',
+      lifecycleRevision: 2,
+      completedAt: '2026-08-30T00:00:07.000Z',
+    });
+    expect(
+      await repositoryB.transitionAttempt({
+        projectId: projectA,
+        jobId: first.jobId,
+        runId: run.runId,
+        attemptId: retryAttempt.attemptId,
+        expectedLifecycleRevision: 1,
+        targetState: 'RUNNING',
+        updatedAt: '2026-08-30T00:00:08.000Z',
+      }),
+    ).toBe('CONFLICT');
+    expect(
+      await repositoryB.listAttempts({ projectId: projectA, jobId: first.jobId, runId: run.runId }),
+    ).toEqual([failedAttempt, completedAttempt]);
+    const attemptHistory = await poolA!.query<{ count: string }>(
+      'SELECT count(*)::text AS count FROM discovery.attempt_lifecycle_history WHERE project_id = $1 AND run_id = $2',
+      [projectA, run.runId],
+    );
+    expect(attemptHistory.rows[0]?.count).toBe('3');
   });
 
   it('retains typed stage history and rejects cross-project job/run/attempt attachment', async () => {
     const repositoryA = new PostgresDiscoveryRuntimeRepository(poolA!);
+    const repositoryB = new PostgresDiscoveryRuntimeRepository(poolB!);
     const first = job(projectA, 'job-stage');
     const other = job(projectB, 'job-other');
     await repositoryA.saveJob(first);
     await repositoryA.saveJob(other);
+    await expect(
+      repositoryA.saveRun(
+        runForJob(first, 'run-mismatched-canonical', {
+          canonicalBase: { ...first.canonicalBase, canonicalVersion: 99 },
+        }),
+      ),
+    ).rejects.toThrow(/must match its parent Job binding/);
+    await expect(
+      repositoryA.saveRun(
+        runForJob(first, 'run-mismatched-budget', {
+          budget: { ...first.budget, budgetRevision: 'budget-tampered' },
+        }),
+      ),
+    ).rejects.toThrow(/must match its parent Job binding/);
     const run: DiscoveryRunV1 = {
       schemaVersion: '1.0.0',
       runId: 'run-stage',
       jobId: first.jobId,
       projectId: projectA,
+      requestedScanMode: first.requestedScanMode,
+      effectiveScanMode: first.effectiveScanMode,
       runRevision: 1,
       requestedMode: 'FULL',
       effectiveMode: 'FULL',
@@ -313,7 +480,7 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
       runId: run.runId,
       projectId: projectA,
       attemptNumber: 1,
-      attemptRevision: 1,
+      lifecycleRevision: 1,
       attemptKind: 'INITIAL',
       lifecycleState: 'RUNNING',
       createdAt: '2026-08-30T00:00:00.000Z',
@@ -381,16 +548,103 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
 
     await expect(
       repositoryA.saveRun({ ...run, runId: 'run-cross-project', projectId: projectB }),
-    ).rejects.toMatchObject({ code: '23503' });
+    ).rejects.toThrow(/parent Job was not found/);
     await expect(
       repositoryA.saveAttempt({
         ...attempt,
         attemptId: 'attempt-cross-project',
         projectId: projectB,
       }),
-    ).rejects.toMatchObject({ code: '23503' });
+    ).rejects.toThrow(/parent Run was not found/);
     await expect(
       repositoryA.saveStage({ ...stage, stageId: 'stage-cross-project', projectId: projectB }),
     ).rejects.toMatchObject({ code: '23503' });
+
+    await repositoryA.transitionAttempt({
+      projectId: projectA,
+      jobId: first.jobId,
+      runId: run.runId,
+      attemptId: attempt.attemptId,
+      expectedLifecycleRevision: 1,
+      targetState: 'FAILED_RETRYABLE',
+      updatedAt: '2026-08-30T00:00:02.000Z',
+    });
+    const retryRun = runForJob(first, 'run-retry');
+    const otherRun = runForJob(first, 'run-other');
+    await repositoryA.saveRun(retryRun);
+    await repositoryA.saveRun(otherRun);
+    const retryBase = attemptForRun(retryRun, 'attempt-retry-base');
+    await repositoryA.saveAttempt(retryBase);
+    await repositoryA.saveAttempt(attemptForRun(otherRun, 'attempt-other-base'));
+    await expect(
+      repositoryA.saveAttempt(
+        attemptForRun(otherRun, 'attempt-cross-run-retry', {
+          attemptNumber: 2,
+          attemptKind: 'DOMAIN_RETRY',
+          lifecycleState: 'RUNNING',
+          previousAttemptId: retryBase.attemptId,
+          completedAt: undefined,
+        }),
+      ),
+    ).rejects.toThrow(/same Run/);
+    const duplicateRetry = (attemptId: string): DiscoveryAttemptV1 =>
+      attemptForRun(retryRun, attemptId, {
+        attemptNumber: 2,
+        attemptKind: 'DOMAIN_RETRY',
+        lifecycleState: 'RUNNING',
+        previousAttemptId: retryBase.attemptId,
+        updatedAt: '2026-08-30T00:00:06.000Z',
+        completedAt: undefined,
+      });
+    const concurrentResults = await Promise.all([
+      repositoryA.saveAttempt(duplicateRetry('attempt-retry-a')),
+      repositoryB.saveAttempt(duplicateRetry('attempt-retry-b')),
+    ]);
+    expect(concurrentResults.sort()).toEqual(['CONFLICT', 'CREATED']);
+    expect(
+      (
+        await repositoryB.listAttempts({
+          projectId: projectA,
+          jobId: first.jobId,
+          runId: retryRun.runId,
+        })
+      )[0],
+    ).toEqual(retryBase);
+    await expect(
+      repositoryA.saveAttempt(
+        attemptForRun(retryRun, 'attempt-skipped-number', {
+          attemptNumber: 3,
+          attemptKind: 'DOMAIN_RETRY',
+          lifecycleState: 'RUNNING',
+          previousAttemptId: retryBase.attemptId,
+          completedAt: undefined,
+        }),
+      ),
+    ).rejects.toThrow(/immediate predecessor/);
+
+    for (const [runId, state] of [
+      ['run-succeeded', 'SUCCEEDED'],
+      ['run-terminal', 'FAILED_TERMINAL'],
+      ['run-cancelled', 'CANCELLED'],
+    ] as const) {
+      const terminalRun = runForJob(first, runId);
+      await repositoryA.saveRun(terminalRun);
+      const terminalAttempt = attemptForRun(terminalRun, `${runId}-attempt`, {
+        lifecycleState: state,
+        completedAt: '2026-08-30T00:00:05.000Z',
+      });
+      await repositoryA.saveAttempt(terminalAttempt);
+      await expect(
+        repositoryA.saveAttempt(
+          attemptForRun(terminalRun, `${runId}-retry`, {
+            attemptNumber: 2,
+            attemptKind: 'DOMAIN_RETRY',
+            lifecycleState: 'RUNNING',
+            previousAttemptId: terminalAttempt.attemptId,
+            completedAt: undefined,
+          }),
+        ),
+      ).rejects.toThrow(/predecessor must be FAILED_RETRYABLE/);
+    }
   });
 });

@@ -4,11 +4,14 @@ import {
   assertDiscoveryRuntimeLifecycleTransitionV1,
   assertDiscoveryRuntimeStageTransitionV1,
   createDiscoveryLogicalJobIdentityV1,
+  decodeDiscoveryAttemptV1,
+  decodeDiscoveryJobV1,
   decodeDiscoveryRuntimeBudgetBindingV1,
   decodeDiscoveryTriggerV1,
   discoveryStageOrdinalV1,
   type DiscoveryRuntimeBudgetBindingV1,
   type DiscoveryCanonicalCommittedTriggerV1,
+  type DiscoveryJobV1,
 } from '../../packages/contracts/src/index.js';
 
 const budget = (): DiscoveryRuntimeBudgetBindingV1 => ({
@@ -42,6 +45,8 @@ const trigger = (
     eventRevision: 'event-revision-4',
   },
   projectId: 'project-1',
+  requestedScanMode: 'INCREMENTAL',
+  effectiveScanMode: 'INCREMENTAL',
   requestedMode: 'FULL',
   effectiveMode: 'FULL',
   canonicalBase: {
@@ -64,6 +69,28 @@ const trigger = (
   ...overrides,
 });
 
+const runtimeJob = (nextTrigger = trigger()): DiscoveryJobV1 => ({
+  schemaVersion: '1.0.0',
+  jobId: 'job-1',
+  logicalIdentity: createDiscoveryLogicalJobIdentityV1(nextTrigger),
+  projectId: nextTrigger.projectId,
+  trigger: nextTrigger,
+  requestedScanMode: nextTrigger.requestedScanMode,
+  effectiveScanMode: nextTrigger.effectiveScanMode,
+  requestedMode: nextTrigger.requestedMode,
+  effectiveMode: nextTrigger.effectiveMode,
+  canonicalBase: nextTrigger.canonicalBase,
+  requiredDiscoveryBase: nextTrigger.requiredDiscoveryBase,
+  policyRevision: nextTrigger.policyRevision,
+  strategyRevision: nextTrigger.strategyRevision,
+  profileBinding: nextTrigger.profileBinding,
+  budget: budget(),
+  lifecycleState: 'QUEUED',
+  lifecycleRevision: 1,
+  createdAt: '2026-08-30T00:00:00.000Z',
+  updatedAt: '2026-08-30T00:00:00.000Z',
+});
+
 describe('AKP-4 WP1 Discovery runtime contracts', () => {
   it('decodes all server-owned trigger classes and keeps manual actor identity scoped', () => {
     expect(decodeDiscoveryTriggerV1(trigger()).triggerClass).toBe('CANONICAL_COMMITTED');
@@ -71,6 +98,8 @@ describe('AKP-4 WP1 Discovery runtime contracts', () => {
       decodeDiscoveryTriggerV1({
         ...trigger(),
         triggerClass: 'SCHEDULED_FULL_SCAN',
+        requestedScanMode: 'FULL_SCAN',
+        effectiveScanMode: 'FULL_SCAN',
         triggerIdentity: {
           kind: 'SCHEDULED_FULL_SCAN',
           scheduleId: 'weekly-scan',
@@ -97,6 +126,33 @@ describe('AKP-4 WP1 Discovery runtime contracts', () => {
         actor: { actorId: 'actor-1', principalId: 'principal-1' },
       }),
     ).toThrow(/only for MANUAL/);
+    expect(() =>
+      decodeDiscoveryTriggerV1({ ...trigger(), requestedScanMode: 'FULL_SCAN' }),
+    ).toThrow(/must use INCREMENTAL/);
+    expect(() =>
+      decodeDiscoveryTriggerV1({
+        ...trigger(),
+        triggerClass: 'SCHEDULED_FULL_SCAN',
+        requestedScanMode: 'INCREMENTAL',
+        effectiveScanMode: 'INCREMENTAL',
+        triggerIdentity: {
+          kind: 'SCHEDULED_FULL_SCAN',
+          scheduleId: 'weekly-scan',
+          scheduleRevision: 'schedule-2',
+          occurrenceKey: '2026-W35',
+        },
+      }),
+    ).toThrow(/must use FULL_SCAN/);
+    expect(
+      decodeDiscoveryTriggerV1({
+        ...trigger(),
+        triggerClass: 'MANUAL',
+        triggerIdentity: { kind: 'MANUAL', commandId: 'command-2', requestId: 'request-2' },
+        requestedScanMode: 'FULL_SCAN',
+        effectiveScanMode: 'FULL_SCAN',
+        actor: { actorId: 'actor-1', principalId: 'principal-1' },
+      }).effectiveScanMode,
+    ).toBe('FULL_SCAN');
   });
 
   it('derives a deterministic, versioned logical identity without physical timestamps', () => {
@@ -119,6 +175,66 @@ describe('AKP-4 WP1 Discovery runtime contracts', () => {
         },
       }),
     ).not.toEqual(first);
+  });
+
+  it('recomputes Job identity and rejects top-level binding or projection-wait tampering', () => {
+    const base = runtimeJob();
+    expect(() =>
+      decodeDiscoveryJobV1({
+        ...base,
+        logicalIdentity: { ...base.logicalIdentity, value: 'arbitrary-identity' },
+      }),
+    ).toThrow(/recomputed/);
+    expect(() => decodeDiscoveryJobV1({ ...base, policyRevision: 'policy-tampered' })).toThrow(
+      /must match trigger binding/,
+    );
+    expect(() =>
+      decodeDiscoveryJobV1({
+        ...base,
+        lifecycleState: 'WAITING_FOR_PROJECTION',
+        projectionWait: {
+          requiredDiscoveryBase: {
+            ...base.requiredDiscoveryBase!,
+            projectionRevision: 'other-projection',
+          },
+          waitDeadlineAt: '2026-08-30T00:10:00.000Z',
+          fallbackPolicyRevision: 'fallback-1',
+        },
+      }),
+    ).toThrow(/must match requiredDiscoveryBase/);
+  });
+
+  it('separates Attempt sequence from lifecycle revision and freezes initial shape', () => {
+    const initial = {
+      schemaVersion: '1.0.0' as const,
+      attemptId: 'attempt-1',
+      jobId: 'job-1',
+      runId: 'run-1',
+      projectId: 'project-1',
+      attemptNumber: 1,
+      lifecycleRevision: 1,
+      attemptKind: 'INITIAL' as const,
+      lifecycleState: 'FAILED_RETRYABLE' as const,
+      createdAt: '2026-08-30T00:00:00.000Z',
+      updatedAt: '2026-08-30T00:00:01.000Z',
+      completedAt: '2026-08-30T00:00:01.000Z',
+    };
+    expect(decodeDiscoveryAttemptV1(initial)).toEqual(initial);
+    expect(() => decodeDiscoveryAttemptV1({ ...initial, attemptNumber: 2 })).toThrow(
+      /INITIAL attempts must be numbered 1/,
+    );
+    expect(() =>
+      decodeDiscoveryAttemptV1({
+        ...initial,
+        attemptId: 'attempt-2',
+        attemptKind: 'DOMAIN_RETRY',
+        attemptNumber: 3,
+        previousAttemptId: 'attempt-1',
+        lifecycleState: 'RUNNING',
+        updatedAt: '2026-08-30T00:00:02.000Z',
+        completedAt: undefined,
+      }),
+    ).not.toThrow();
   });
 
   it('preserves the existing AKP-3 work-budget binding and bounded dimensions', () => {

@@ -189,6 +189,8 @@ export type DiscoveryStructuredGenerationRequestV1 = {
   readonly systemInstruction: string;
   readonly prompt: string;
   readonly responseSchema: Record<string, unknown>;
+  /** Server-owned bounded Discovery output cap when supplied. */
+  readonly maxOutputTokens?: number;
 };
 
 export type DiscoveryStructuredGenerationResponseV1 = {
@@ -206,9 +208,15 @@ export type DiscoveryStructuredProviderPort = {
     readonly model: string;
     readonly adapterVersion: string;
     readonly dataPolicyVersion: string;
+    readonly supportsOutputTokenLimit?: boolean;
+    readonly supportsCancellation?: boolean;
   };
   generateStructured(
     request: DiscoveryStructuredGenerationRequestV1,
+  ): Promise<DiscoveryStructuredGenerationResponseV1>;
+  generateStructuredWithSignal?(
+    request: DiscoveryStructuredGenerationRequestV1,
+    signal?: AbortSignal,
   ): Promise<DiscoveryStructuredGenerationResponseV1>;
 };
 

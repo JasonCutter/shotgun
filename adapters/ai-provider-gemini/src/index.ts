@@ -73,22 +73,39 @@ export class GeminiAIProviderAdapter implements AIProviderAdapterPort {
     this.client = new GoogleGenAI({ apiKey: options.apiKey });
   }
 
+  /** Gemini Interactions maps the neutral cap to generation_config.max_output_tokens. */
+  readonly supportsOutputTokenLimit = true;
+  readonly supportsCancellation = true;
+
   async generateStructured(
     request: StructuredGenerationRequest,
   ): Promise<StructuredGenerationResponse> {
+    return this.generateStructuredWithSignal(request);
+  }
+
+  async generateStructuredWithSignal(
+    request: StructuredGenerationRequest,
+    signal?: AbortSignal,
+  ): Promise<StructuredGenerationResponse> {
     try {
-      const response = await this.client.interactions.create({
-        model: this.identity.model,
-        input: request.prompt,
-        stream: false,
-        store: false,
-        system_instruction: request.systemInstruction,
-        response_format: {
-          type: 'text',
-          mime_type: 'application/json',
-          schema: request.responseSchema,
+      const response = await this.client.interactions.create(
+        {
+          model: this.identity.model,
+          input: request.prompt,
+          stream: false,
+          store: false,
+          system_instruction: request.systemInstruction,
+          response_format: {
+            type: 'text',
+            mime_type: 'application/json',
+            schema: request.responseSchema,
+          },
+          ...(request.maxOutputTokens === undefined
+            ? {}
+            : { generation_config: { max_output_tokens: request.maxOutputTokens } }),
         },
-      });
+        signal === undefined ? undefined : { signal },
+      );
       if (!response.output_text) {
         throw new ShotgunError({
           code: 'VALIDATION_ERROR',
@@ -132,6 +149,9 @@ export class GeminiAIProviderAdapter implements AIProviderAdapterPort {
             mime_type: 'application/json',
             schema: request.responseSchema,
           },
+          ...(request.maxOutputTokens === undefined
+            ? {}
+            : { generation_config: { max_output_tokens: request.maxOutputTokens } }),
         },
         { signal },
       );

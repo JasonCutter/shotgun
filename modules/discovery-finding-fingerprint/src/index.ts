@@ -44,3 +44,5 @@ export const computeDiscoveryFingerprintV1 = (
     ...input,
     fingerprintVersion: DISCOVERY_FINGERPRINT_VERSION_V1,
   });
+
+export * from './active-discovery.js';

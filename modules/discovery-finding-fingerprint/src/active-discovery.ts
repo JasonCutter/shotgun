@@ -15,6 +15,7 @@ import type {
   DiscoverySecurityCompositionSuccessV1,
   DiscoveryServerSecurityInputV1,
   DiscoverySignalSummaryV1,
+  DiscoveryWorkBudgetPortV1,
   EvidenceGapPayloadV1,
   KnowledgeGapPayloadV1,
 } from '../../../packages/contracts/src/index.js';
@@ -59,6 +60,7 @@ export type DiscoverySignalReadContextV1 = {
   readonly discoveryBase: DiscoveryProjectionBaseIdentityV1;
   readonly sourceProjectionDigest: string;
   readonly bounds: DiscoveryReadBoundsV1;
+  readonly budget?: DiscoveryWorkBudgetPortV1;
 };
 
 export type DiscoverySignalResourceV1 = {
@@ -344,9 +346,21 @@ export class DiscoverySignalFacade {
       temporalConflict?: DiscoveryTemporalConflictSignalV1;
       evidenceCoverage?: DiscoveryEvidenceCoverageSignalV1;
     } = {};
+    const admit = (
+      dimension: Parameters<DiscoveryWorkBudgetPortV1['admitWork']>[0],
+      amount = 1,
+    ): boolean => context.budget?.admitWork(dimension, amount).status !== 'BUDGET_EXHAUSTED';
     for (const kind of strategy.requiredSignalKinds) {
       switch (kind) {
         case 'COMPILED_TRUTH': {
+          if (!admit('resources')) {
+            bundle.compiledTruth = {
+              sourceProjectionDigest: context.sourceProjectionDigest,
+              resources: [],
+              completeness: 'TRUNCATED',
+            };
+            break;
+          }
           const result = await this.ports.compiledTruth.read(context);
           if (result.sourceProjectionDigest !== context.sourceProjectionDigest) {
             bundle.compiledTruth = {
@@ -370,6 +384,14 @@ export class DiscoverySignalFacade {
           break;
         }
         case 'HYBRID_RETRIEVAL': {
+          const readLimit = Math.min(
+            context.bounds.maxResourcesRead,
+            strategy.work.maxResourcesRead,
+          );
+          if (!admit('semanticNeighbors', readLimit)) {
+            bundle.hybridRetrieval = { resources: [], ranks: {}, completeness: 'TRUNCATED' };
+            break;
+          }
           const result = await this.ports.hybridRetrieval.read(context);
           const bounded = boundedResources(
             context,
@@ -392,6 +414,10 @@ export class DiscoverySignalFacade {
           break;
         }
         case 'GRAPH': {
+          if (!admit('resources')) {
+            bundle.graph = { edges: [], completeness: 'TRUNCATED' };
+            break;
+          }
           const result = await this.ports.graph.read(context);
           const maxResources = Math.min(
             context.bounds.maxResourcesRead,
@@ -447,6 +473,10 @@ export class DiscoverySignalFacade {
           break;
         }
         case 'TEMPORAL_CONFLICT': {
+          if (!admit('resources')) {
+            bundle.temporalConflict = { observations: [], completeness: 'TRUNCATED' };
+            break;
+          }
           const result = await this.ports.temporalConflict.read(context);
           const bounded = boundedResources(
             context,
@@ -483,6 +513,10 @@ export class DiscoverySignalFacade {
           break;
         }
         case 'EVIDENCE_COVERAGE': {
+          if (!admit('resources')) {
+            bundle.evidenceCoverage = { resources: [], completeness: 'TRUNCATED' };
+            break;
+          }
           const result = await this.ports.evidenceCoverage.read(context);
           const bounded = boundedResources(
             context,
@@ -627,6 +661,7 @@ export type DiscoveryGenerationRequestV1 = {
   readonly context: DiscoverySignalReadContextV1;
   readonly dependencies: DiscoveryGenerationDependenciesV1;
   readonly strategyIds?: readonly string[];
+  readonly budget?: DiscoveryWorkBudgetPortV1;
 };
 
 const resourceKindsForEvidence = new Set<DiscoveryResourceKind>([
@@ -846,8 +881,10 @@ export const createDiscoveryEngine = (input: {
   readonly facade: DiscoverySignalFacade;
   readonly registry: DiscoveryStrategyRegistry;
 }): DiscoveryEngineV1 => ({
-  generate: async ({ context, dependencies, strategyIds }) => {
-    assertContext(context);
+  generate: async ({ context, dependencies, strategyIds, budget }) => {
+    const effectiveContext =
+      context.budget === undefined && budget !== undefined ? { ...context, budget } : context;
+    assertContext(effectiveContext);
     text(dependencies.runId, 'runId');
     const requested = strategyIds === undefined ? undefined : new Set(strategyIds);
     const strategies = input.registry
@@ -855,17 +892,23 @@ export const createDiscoveryEngine = (input: {
       .filter((strategy) => requested === undefined || requested.has(strategy.strategyId));
     const findings: DiscoveryFindingEnvelopeV1[] = [];
     for (const strategy of strategies) {
-      const signals = await input.facade.readForStrategy(context, strategy);
+      const signals = await input.facade.readForStrategy(effectiveContext, strategy);
       const maxFindings = Math.min(
-        context.bounds.maxFindingsEmitted,
+        effectiveContext.bounds.maxFindingsEmitted,
         strategy.work.maxFindingsEmitted,
       );
-      const candidates = await strategy.generate({ context, signals, maxFindings });
+      const candidates = await strategy.generate({
+        context: effectiveContext,
+        signals,
+        maxFindings,
+      });
       for (const [candidateIndex, candidate] of candidates.slice(0, maxFindings).entries()) {
+        const findingAdmission = effectiveContext.budget?.admitWork('findings');
+        if (findingAdmission?.status === 'BUDGET_EXHAUSTED') break;
         const finding = materializeCandidate(
           strategy,
           candidate,
-          context,
+          effectiveContext,
           dependencies,
           candidateIndex,
         );

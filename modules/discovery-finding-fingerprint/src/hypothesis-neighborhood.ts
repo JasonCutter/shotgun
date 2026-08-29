@@ -13,6 +13,7 @@ import type {
   DiscoveryResourceRefV1,
   DiscoverySecurityCompositionSuccessV1,
   DiscoveryServerSecurityInputV1,
+  DiscoveryWorkBudgetPortV1,
 } from '../../../packages/contracts/src/index.js';
 import type {
   DiscoverySignalReadContextV1,
@@ -302,6 +303,7 @@ export type DiscoveryNeighborhoodSelectionInputV1 = {
   readonly strategyId: string;
   readonly strategyVersion: string;
   readonly bounds: DiscoveryNeighborhoodBoundsV1;
+  readonly budget?: DiscoveryWorkBudgetPortV1;
 };
 
 export type DiscoveryNeighborhoodStrategyDeclarationV1 = {
@@ -1174,6 +1176,11 @@ const makeCandidate = (input: {
   };
 };
 
+const admitCandidateWork = (
+  input: DiscoveryNeighborhoodSelectionInputV1,
+  dimension: 'candidatePairs' | 'candidateGroups',
+): boolean => input.budget?.admitWork(dimension).status !== 'BUDGET_EXHAUSTED';
+
 const baseSelectionResult = (
   input: DiscoveryNeighborhoodSelectionInputV1,
   candidates: readonly DiscoveryHypothesisCandidateV1[],
@@ -1264,6 +1271,8 @@ const relationSelection = (
         { kind: 'GRAPH_ABSENCE', graphCompleteness: 'COMPLETE' },
         { kind: 'TEMPORAL_COMPATIBILITY', temporalEvidenceId: temporalEntry.temporalEvidenceId },
       ];
+      if (!admitCandidateWork(input, 'candidatePairs'))
+        return baseSelectionResult(input, candidates, 'TRUNCATED');
       const candidate = makeCandidate({
         selectorId: input.strategyId,
         selectorVersion: input.strategyVersion,
@@ -1328,6 +1337,10 @@ const patternSelection = (
     const groupKey = memberSetKey(members.map((entry) => entry.resource));
     if (seenGroups.has(groupKey)) continue;
     if (candidates.length >= groupLimit) {
+      truncated = true;
+      break;
+    }
+    if (!admitCandidateWork(input, 'candidateGroups')) {
       truncated = true;
       break;
     }
@@ -1440,6 +1453,13 @@ const conflictSelection = (
       truncated = true;
       break;
     }
+    if (
+      !admitCandidateWork(input, 'candidatePairs') ||
+      !admitCandidateWork(input, 'candidateGroups')
+    ) {
+      truncated = true;
+      break;
+    }
     const anchor = resourceKey(left.resource) === resourceKey(signal.left) ? left : right;
     const selectionSignals: DiscoveryNeighborhoodSelectionSignalV1[] = [
       {
@@ -1494,17 +1514,25 @@ export class DiscoveryNeighborhoodSignalFacade {
     const anchors = normalizeUniqueResources(input.context, input.anchors, 'anchors');
     const boundedAnchors = anchors.slice(0, effectiveMaxAnchors(input.context, input.strategy));
     let truncated = anchors.length > boundedAnchors.length;
+    const admittedAnchors = boundedAnchors.filter(() => {
+      const admission = input.context.budget?.admitWork('resources');
+      if (admission?.status === 'BUDGET_EXHAUSTED') {
+        truncated = true;
+        return false;
+      }
+      return true;
+    });
     const semanticNeighborhoods: DiscoveryAnchoredSemanticNeighborhoodV1[] = [];
     const neighborLimit = effectiveMaxNeighborsPerAnchor(input.context, input.strategy);
     const exposedResourceKeys = new Set(
-      boundedAnchors.map((anchor) => resourceKey(anchor.resource)),
+      admittedAnchors.map((anchor) => resourceKey(anchor.resource)),
     );
     let remainingResourceCapacity = Math.max(
       0,
       input.context.bounds.maxResourcesRead - exposedResourceKeys.size,
     );
     let remainingObservationCapacity = input.context.bounds.maxObservationsReturned;
-    for (const anchor of boundedAnchors) {
+    for (const anchor of admittedAnchors) {
       if (remainingResourceCapacity < 1 || remainingObservationCapacity < 1) {
         truncated = true;
         break;
@@ -1514,6 +1542,11 @@ export class DiscoveryNeighborhoodSignalFacade {
         remainingResourceCapacity,
         remainingObservationCapacity,
       );
+      const neighborAdmission = input.context.budget?.admitWork('semanticNeighbors', readLimit);
+      if (neighborAdmission?.status === 'BUDGET_EXHAUSTED') {
+        truncated = true;
+        break;
+      }
       const result = await this.ports.semanticNeighborhood.read({
         context: input.context,
         anchor,
@@ -1537,7 +1570,7 @@ export class DiscoveryNeighborhoodSignalFacade {
     const boundedSemantic = normalizeSemanticNeighborhoodsForSelection(
       input.context,
       input.strategy,
-      boundedAnchors,
+      admittedAnchors,
       semanticNeighborhoods,
     );
     truncated ||= boundedSemantic.truncated;
@@ -1558,7 +1591,7 @@ export class DiscoveryNeighborhoodSignalFacade {
           if (!this.ports.graphRelation)
             return {
               context: input.context,
-              anchors: boundedAnchors,
+              anchors: admittedAnchors,
               semanticNeighborhoods,
               completeness: 'TRUNCATED',
             };
@@ -1590,7 +1623,7 @@ export class DiscoveryNeighborhoodSignalFacade {
           if (!this.ports.temporalCompatibility)
             return {
               context: input.context,
-              anchors: boundedAnchors,
+              anchors: admittedAnchors,
               semanticNeighborhoods,
               completeness: 'TRUNCATED',
             };
@@ -1622,7 +1655,7 @@ export class DiscoveryNeighborhoodSignalFacade {
           if (!this.ports.competingResource)
             return {
               context: input.context,
-              anchors: boundedAnchors,
+              anchors: admittedAnchors,
               semanticNeighborhoods,
               completeness: 'TRUNCATED',
             };
@@ -1654,7 +1687,7 @@ export class DiscoveryNeighborhoodSignalFacade {
           if (!this.ports.existingCanonicalConflict)
             return {
               context: input.context,
-              anchors: boundedAnchors,
+              anchors: admittedAnchors,
               semanticNeighborhoods,
               completeness: 'TRUNCATED',
             };
@@ -1819,6 +1852,7 @@ export const selectDiscoveryNeighborhood = (
     strategyId: strategy.strategyId,
     strategyVersion: strategy.strategyVersion,
     bounds: strategy.work,
+    budget: signals.context.budget,
   };
   const normalized = normalizeSelectionBundle(strategy, signals);
   if (!normalized) return baseSelectionResult(input, [], 'TRUNCATED');

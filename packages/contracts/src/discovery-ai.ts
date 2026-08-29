@@ -1,4 +1,9 @@
-import type { DiscoveryResourceRefV1 } from './discovery-finding.js';
+import type {
+  DiscoveryCanonicalBaseIdentityV1,
+  DiscoveryFollowUpOriginIdentityV1,
+  DiscoveryProjectionBaseIdentityV1,
+  DiscoveryResourceRefV1,
+} from './discovery-finding.js';
 
 export const DISCOVERY_MODEL_PROFILE_SCHEMA_VERSION = '1.0.0' as const;
 export type DiscoveryModelProfileSchemaVersion = typeof DISCOVERY_MODEL_PROFILE_SCHEMA_VERSION;
@@ -15,6 +20,47 @@ export const DISCOVERY_QUALIFIED_FOLLOW_UP_ORIGIN_TYPES_V1 = [
 ] as const;
 export type DiscoveryQualifiedFollowUpOriginTypeV1 =
   (typeof DISCOVERY_QUALIFIED_FOLLOW_UP_ORIGIN_TYPES_V1)[number];
+
+export type DiscoveryFollowUpQualificationProofV1 = {
+  readonly originIdentity: DiscoveryFollowUpOriginIdentityV1;
+  readonly projectId: string;
+  readonly sourceProjectionDigest: string;
+  readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
+  readonly discoveryBase: DiscoveryProjectionBaseIdentityV1;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  readonly relatedResourceRefs: readonly DiscoveryResourceRefV1[];
+};
+
+export type DiscoveryWorkBudgetDimensionV1 =
+  'resources' | 'semanticNeighbors' | 'candidatePairs' | 'candidateGroups' | 'findings';
+
+export type DiscoveryWorkBudgetExhaustedV1 = {
+  readonly status: 'BUDGET_EXHAUSTED';
+  readonly reason:
+    | 'RESOURCE_LIMIT'
+    | 'SEMANTIC_NEIGHBOR_LIMIT'
+    | 'CANDIDATE_PAIR_LIMIT'
+    | 'CANDIDATE_GROUP_LIMIT'
+    | 'FINDING_LIMIT'
+    | 'DEADLINE_EXPIRED';
+  readonly completion: 'PARTIAL';
+  readonly truncation: {
+    readonly truncated: true;
+    readonly reason: DiscoveryWorkBudgetExhaustedV1['reason'];
+  };
+};
+
+export type DiscoveryWorkBudgetAdmissionV1 =
+  { readonly status: 'ADMITTED' } | DiscoveryWorkBudgetExhaustedV1;
+
+/** Structural Port shared by WP1/WP2/WP4 without a module-to-module import. */
+export type DiscoveryWorkBudgetPortV1 = {
+  admitWork(
+    dimension: DiscoveryWorkBudgetDimensionV1,
+    amount?: number,
+  ): DiscoveryWorkBudgetAdmissionV1;
+};
 
 export const DISCOVERY_RELATION_ORIENTATIONS_V1 = [
   'UNDIRECTED',
@@ -202,6 +248,31 @@ export type DiscoveryStructuredGenerationResponseV1 = {
   readonly totalTokens?: number;
 };
 
+export type DiscoveryProviderBudgetExecutionResultV1 =
+  | {
+      readonly status: 'SUCCEEDED';
+      readonly response: DiscoveryStructuredGenerationResponseV1;
+      readonly completion: 'COMPLETE';
+      readonly truncation: { readonly truncated: false };
+      readonly tokenEstimatorRevision: string;
+      readonly costEstimatorRevision: string;
+    }
+  | {
+      readonly status: 'BUDGET_EXHAUSTED';
+      readonly reason: string;
+      readonly completion: 'PARTIAL';
+      readonly truncation: { readonly truncated: true; readonly reason: string };
+    };
+
+export type DiscoveryProviderBudgetControllerPortV1 = {
+  executeProviderCall(input: {
+    readonly provider: DiscoveryStructuredProviderPort;
+    readonly request: DiscoveryStructuredGenerationRequestV1;
+    readonly signal?: AbortSignal;
+    readonly maxOutputTokens?: number;
+  }): Promise<DiscoveryProviderBudgetExecutionResultV1>;
+};
+
 export type DiscoveryStructuredProviderPort = {
   readonly identity: {
     readonly provider: string;
@@ -250,6 +321,8 @@ export type DiscoveryQualifiedAIGenerationContextV1 = {
     readonly projectionDigest: string;
   };
   readonly originatingFindingType: DiscoveryQualifiedFollowUpOriginTypeV1;
+  /** Server-owned proof; required for Clarification/Action publication. */
+  readonly originIdentity?: DiscoveryFollowUpOriginIdentityV1;
   readonly boundedRationale: string;
   readonly items: readonly DiscoveryAIContextItemV1[];
 };

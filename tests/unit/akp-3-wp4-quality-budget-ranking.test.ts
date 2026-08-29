@@ -9,7 +9,8 @@ import {
   DiscoveryQualityGateV1,
   DiscoveryWorkBudgetLedgerV1,
   createDiscoveryQualityGateV1,
-  createUtf16TokenUpperBoundEstimatorV1,
+  createDiscoveryQualityGateInputFromAIGenerationProposalV1,
+  materializeDiscoveryAIGenerationProposalV1,
   rankAcceptedDiscoveryCandidatesV1,
   type DiscoveryAuthoritativeResourceV1,
   type DiscoveryExistingFindingV1,
@@ -24,11 +25,19 @@ import { DeepSeekConnectivityAdapter } from '../../adapters/ai-provider-deepseek
 import { GeminiConnectivityAdapter } from '../../adapters/ai-provider-gemini/src/connectivity.js';
 import {
   decodeDiscoveryFindingEnvelopeV1,
+  deriveDiscoverySemanticEssenceV1,
   type DiscoveryFingerprintLogicalInputV1,
+  type DiscoveryFollowUpOriginIdentityV1,
+  type DiscoveryFollowUpQualificationProofV1,
   type DiscoveryFindingEnvelopeV1,
   type DiscoveryFindingPayloadV1,
   type DiscoveryResourceRefV1,
 } from '../../packages/contracts/src/index.js';
+
+const testTokenEstimator = {
+  revision: DISCOVERY_TOKEN_ESTIMATOR_VERSION_V1,
+  estimateUpperBound: () => 1_000,
+};
 
 const context = (projectId = 'project-1'): DiscoveryQualityGateContextV1 => ({
   projectId,
@@ -75,11 +84,26 @@ const envelope = (
 ): {
   readonly candidate: DiscoveryFindingEnvelopeV1;
   readonly fingerprintInput: DiscoveryFingerprintLogicalInputV1;
+  readonly qualifiedFollowUp?: DiscoveryFollowUpQualificationProofV1;
 } => {
   const projectId = options.projectId ?? 'project-1';
-  const semanticEssence = `${findingType}:semantic-identity:${relatedResourceRefs
-    .map((entry) => entry.resourceId)
-    .join('|')}`;
+  const originIdentity: DiscoveryFollowUpOriginIdentityV1 = {
+    schemaVersion: '1.0.0',
+    originFindingType: 'RELATION_HYPOTHESIS',
+    fingerprintVersion: 'discovery-fingerprint:v1',
+    fingerprint: 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+  };
+  const semanticEssence =
+    findingType === 'KNOWLEDGE_GAP' || findingType === 'EVIDENCE_GAP'
+      ? `${findingType}:semantic-identity:${relatedResourceRefs.map((entry) => entry.resourceId).join('|')}`
+      : deriveDiscoverySemanticEssenceV1({
+          findingType,
+          payload,
+          originIdentity:
+            findingType === 'CLARIFICATION_QUESTION' || findingType === 'ACTION_SUGGESTION'
+              ? originIdentity
+              : undefined,
+        });
   const fingerprintInput: DiscoveryFingerprintLogicalInputV1 = {
     fingerprintVersion: 'discovery-fingerprint:v1',
     findingType,
@@ -124,7 +148,20 @@ const envelope = (
     retentionClass: 'DURABLE_DERIVED_RECORD',
     createdAt: '2026-08-30T00:00:00.000Z',
   });
-  return { candidate, fingerprintInput };
+  const qualifiedFollowUp: DiscoveryFollowUpQualificationProofV1 | undefined =
+    findingType === 'CLARIFICATION_QUESTION' || findingType === 'ACTION_SUGGESTION'
+      ? {
+          originIdentity,
+          projectId,
+          sourceProjectionDigest: 'sources-1',
+          canonicalBase: context(projectId).canonicalBase,
+          discoveryBase: context(projectId).discoveryBase,
+          accessScope: ['project:read'],
+          sensitivity: 'internal',
+          relatedResourceRefs,
+        }
+      : undefined;
+  return { candidate, fingerprintInput, ...(qualifiedFollowUp ? { qualifiedFollowUp } : {}) };
 };
 
 const authority = (
@@ -143,6 +180,12 @@ const authority = (
         }
       : undefined,
   ),
+  revalidateEvidence: vi.fn(async ({ projectId }) => ({
+    exists: true,
+    eligible: true,
+    projectId,
+    identityValid: true,
+  })),
   findByFingerprint: vi.fn(async () => [] as readonly DiscoveryExistingFindingV1[]),
   findAuthoritativeEquivalent: vi.fn(async () => false),
 });
@@ -288,22 +331,21 @@ describe('AKP-3 WP4 deterministic quality gate', () => {
       const result = await createDiscoveryQualityGateV1(
         authority(item.candidate.relatedResourceRefs),
       ).evaluate(
-        gateInput(
-          item.candidate,
-          item.fingerprintInput,
-          item.candidate.findingType === 'CONFLICT_HYPOTHESIS'
+        gateInput(item.candidate, item.fingerprintInput, {
+          ...(item.candidate.findingType === 'CONFLICT_HYPOTHESIS'
             ? {
                 selectionSignals: [
                   {
-                    kind: 'EXPLICIT_INCOMPATIBILITY',
-                    incompatibilityKind: 'FACTUAL',
-                    source: 'TYPED_PROPOSITION',
+                    kind: 'EXPLICIT_INCOMPATIBILITY' as const,
+                    incompatibilityKind: 'FACTUAL' as const,
+                    source: 'TYPED_PROPOSITION' as const,
                     signalId: 'signal-1',
                   },
                 ],
               }
-            : {},
-        ),
+            : {}),
+          ...(item.qualifiedFollowUp ? { qualifiedFollowUp: item.qualifiedFollowUp } : {}),
+        }),
       );
       expect(result.disposition).toBe('ACCEPTED');
     }
@@ -533,6 +575,130 @@ describe('AKP-3 WP4 deterministic quality gate', () => {
       ),
     ).resolves.toMatchObject({ disposition: 'REJECTED', reasonCode: 'SCHEMA_INVALID' });
   });
+
+  it('derives semantic essence server-side and bridges one AI proposal into the quality gate', async () => {
+    const entityA = ref('entity-a');
+    const entityB = ref('entity-b');
+    const item = envelope(
+      'RELATION_HYPOTHESIS',
+      {
+        schemaVersion: '1.0.0',
+        payloadType: 'RELATION_HYPOTHESIS',
+        sourceEndpoint: entityA,
+        targetEndpoint: entityB,
+        proposedRelationType: 'MODEL_WORDING_MUST_NOT_DEFINE_IDENTITY',
+        direction: 'DIRECTED',
+      },
+      [entityA, entityB],
+      { evidenceIds: ['evidence-a'] },
+    );
+    const fingerprintAuthority = {
+      compute: vi.fn((input: DiscoveryFingerprintLogicalInputV1) =>
+        computeDiscoveryFingerprintV1(input),
+      ),
+    };
+    const proposal = {
+      retentionClass: 'EPHEMERAL_PRE_MATERIALIZATION' as const,
+      projectId: item.candidate.projectId,
+      findingType: item.candidate.findingType,
+      generationMethod: 'AI_ASSISTED' as const,
+      payload: item.candidate.payload,
+      relatedResourceRefs: item.candidate.relatedResourceRefs,
+      evidenceIds: item.candidate.evidenceIds,
+      sourceProjectionDigest: item.candidate.sourceProjectionDigest,
+      canonicalBase: item.candidate.canonicalBase,
+      discoveryBase: item.candidate.discoveryBase,
+      runId: item.candidate.runId,
+      signalSummary: item.candidate.signalSummary,
+      rationale: item.candidate.rationale,
+      derivationSummary: item.candidate.derivationSummary,
+      security: {
+        materializable: true as const,
+        projectId: item.candidate.projectId,
+        accessScope: item.candidate.accessScope,
+        sensitivity: item.candidate.sensitivity,
+      },
+      provenance: {
+        schemaVersion: '1.0.0' as const,
+        kind: 'AI_ASSISTED' as const,
+        providerId: 'openai',
+        modelId: 'gpt-discovery',
+        modelVersion: 'gpt-discovery-1',
+        aiConfigurationRevision: '4',
+        credentialId: 'credential-7',
+        credentialRevision: '2',
+        providerPolicyFingerprint: 'policy-7',
+        privacyPolicyRevision: 'privacy-5',
+        dataPolicyRevision: 'provider-3',
+        promptVersion: 'discovery-ai-prompt:v1',
+        outputSchemaVersion: 'discovery-ai-output:v1',
+      },
+      modelResponse: { rawText: 'model prose is not durable identity' },
+    };
+    const dependencies = {
+      findingIdFactory: vi.fn(
+        ({ fingerprint }: { readonly fingerprint: string }) =>
+          `materialized-${fingerprint.slice(-8)}`,
+      ),
+      clock: { now: () => '2026-08-30T00:00:00.000Z' },
+      fingerprintAuthority,
+    };
+    const materialized = materializeDiscoveryAIGenerationProposalV1(proposal, dependencies);
+    expect(fingerprintAuthority.compute).toHaveBeenCalledTimes(1);
+    expect(materialized).toMatchObject({
+      retentionClass: 'DURABLE_DERIVED_RECORD',
+      findingRevision: 1,
+      lifecycleState: 'NEW',
+      fingerprintVersion: 'discovery-fingerprint:v1',
+    });
+    expect(materialized).not.toHaveProperty('modelResponse');
+
+    const bridged = createDiscoveryQualityGateInputFromAIGenerationProposalV1(
+      proposal,
+      dependencies,
+    );
+    const result = await createDiscoveryQualityGateV1(
+      authority(materialized.relatedResourceRefs),
+    ).evaluate(bridged);
+    expect(result.disposition).toBe('ACCEPTED');
+  });
+
+  it('keeps follow-up semantic identity tied to the server-owned origin fingerprint', () => {
+    const origin = {
+      schemaVersion: '1.0.0' as const,
+      originFindingType: 'EVIDENCE_GAP' as const,
+      fingerprintVersion: 'discovery-fingerprint:v1' as const,
+      fingerprint:
+        'sha256:1111111111111111111111111111111111111111111111111111111111111111' as const,
+    };
+    const first = deriveDiscoverySemanticEssenceV1({
+      findingType: 'CLARIFICATION_QUESTION',
+      originIdentity: origin,
+      payload: {
+        schemaVersion: '1.0.0',
+        payloadType: 'CLARIFICATION_QUESTION',
+        investigationTargetRefs: [ref('entity-a')],
+        question: 'first wording',
+        context: 'first context',
+        proposedNextStep: 'first step',
+      },
+    });
+    const second = deriveDiscoverySemanticEssenceV1({
+      findingType: 'CLARIFICATION_QUESTION',
+      originIdentity: origin,
+      payload: {
+        schemaVersion: '1.0.0',
+        payloadType: 'CLARIFICATION_QUESTION',
+        investigationTargetRefs: [ref('entity-a')],
+        question: 'different wording',
+        context: 'different context',
+        proposedNextStep: 'different step',
+      },
+    });
+    expect(first).toBe(second);
+    expect(first).toContain('EVIDENCE_GAP');
+    expect(first).toContain(origin.fingerprint);
+  });
 });
 
 describe('AKP-3 WP4 cumulative work budget and provider admission', () => {
@@ -573,11 +739,10 @@ describe('AKP-3 WP4 cumulative work budget and provider admission', () => {
       ),
       generateStructured: vi.fn(async () => ({ rawText: '{}' })),
     };
-    const controller = new DiscoveryBudgetControllerV1(
-      ledger,
-      createUtf16TokenUpperBoundEstimatorV1(),
-      { revision: 'fixed-cost:test-v1', estimate: () => 5 },
-    );
+    const controller = new DiscoveryBudgetControllerV1(ledger, testTokenEstimator, {
+      revision: 'fixed-cost:test-v1',
+      estimate: () => 5,
+    });
     const result = await controller.executeProviderCall({
       provider,
       request: {
@@ -592,7 +757,7 @@ describe('AKP-3 WP4 cumulative work budget and provider admission', () => {
       completion: 'COMPLETE',
       truncation: { truncated: false },
       budgetVersion: DISCOVERY_WORK_BUDGET_VERSION_V1,
-      tokenEstimatorRevision: 'utf16-code-unit-upper-bound:v1',
+      tokenEstimatorRevision: DISCOVERY_TOKEN_ESTIMATOR_VERSION_V1,
       costEstimatorRevision: 'fixed-cost:test-v1',
     });
     expect(provider.generateStructuredWithSignal).toHaveBeenCalledWith(
@@ -617,7 +782,7 @@ describe('AKP-3 WP4 cumulative work budget and provider admission', () => {
     };
     const unsupported = await new DiscoveryBudgetControllerV1(
       new DiscoveryWorkBudgetLedgerV1(budget()),
-      createUtf16TokenUpperBoundEstimatorV1(),
+      testTokenEstimator,
       { revision: 'fixed-cost:test-v1', estimate: () => 5 },
     ).executeProviderCall({
       provider: unsupportedProvider,
@@ -656,11 +821,10 @@ describe('AKP-3 WP4 cumulative work budget and provider admission', () => {
       ),
       generateStructured: vi.fn(async () => ({ rawText: '{}' })),
     };
-    const controller = new DiscoveryBudgetControllerV1(
-      ledger,
-      createUtf16TokenUpperBoundEstimatorV1(),
-      { revision: 'fixed-cost:test-v1', estimate: () => 5 },
-    );
+    const controller = new DiscoveryBudgetControllerV1(ledger, testTokenEstimator, {
+      revision: 'fixed-cost:test-v1',
+      estimate: () => 5,
+    });
     const first = controller.executeProviderCall({
       provider,
       request: {
@@ -691,7 +855,7 @@ describe('AKP-3 WP4 cumulative work budget and provider admission', () => {
     const noCostProvider = { ...provider, generateStructuredWithSignal: vi.fn() };
     const noCost = await new DiscoveryBudgetControllerV1(
       new DiscoveryWorkBudgetLedgerV1(budget()),
-      createUtf16TokenUpperBoundEstimatorV1(),
+      testTokenEstimator,
       { revision: 'missing', estimate: () => undefined },
     ).executeProviderCall({
       provider: noCostProvider,
@@ -722,7 +886,7 @@ describe('AKP-3 WP4 cumulative work budget and provider admission', () => {
     };
     const result = await new DiscoveryBudgetControllerV1(
       new DiscoveryWorkBudgetLedgerV1(budget({ deadlineAt: '2000-01-01T00:00:00.000Z' })),
-      createUtf16TokenUpperBoundEstimatorV1(),
+      testTokenEstimator,
       { revision: 'fixed-cost:test-v1', estimate: () => 5 },
     ).executeProviderCall({
       provider,
@@ -739,6 +903,66 @@ describe('AKP-3 WP4 cumulative work budget and provider admission', () => {
       truncation: { truncated: true, reason: 'DEADLINE_EXPIRED' },
     });
     expect(provider.generateStructured).not.toHaveBeenCalled();
+  });
+
+  it('releases a reserved call on pre-dispatch cancellation and fails closed when token estimation is unavailable', async () => {
+    const ledger = new DiscoveryWorkBudgetLedgerV1(budget());
+    const provider = {
+      identity: {
+        provider: 'openai',
+        model: 'gpt-discovery',
+        supportsOutputTokenLimit: true,
+        supportsCancellation: true,
+      },
+      generateStructuredWithSignal: vi.fn(async () => ({ rawText: '{}' })),
+      generateStructured: vi.fn(async () => ({ rawText: '{}' })),
+    };
+    const controller = new DiscoveryBudgetControllerV1(ledger, testTokenEstimator, {
+      revision: 'fixed-cost:test-v1',
+      estimate: () => 5,
+    });
+    const abortController = new AbortController();
+    abortController.abort('caller-cancelled');
+    const cancelled = await controller.executeProviderCall({
+      provider,
+      signal: abortController.signal,
+      request: {
+        systemInstruction: 'system',
+        prompt: 'prompt',
+        responseSchema: { type: 'object' },
+      },
+    });
+    expect(cancelled).toMatchObject({
+      status: 'BUDGET_EXHAUSTED',
+      reason: 'CANCELLED_OR_DEADLINE_EXPIRED',
+      completion: 'PARTIAL',
+    });
+    expect(provider.generateStructuredWithSignal).not.toHaveBeenCalled();
+    expect(ledger.snapshot()).toMatchObject({
+      providerCalls: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      estimatedCostMicros: 0,
+      activeProviderCalls: 0,
+    });
+
+    const unavailable = await new DiscoveryBudgetControllerV1(
+      new DiscoveryWorkBudgetLedgerV1(budget()),
+      { revision: DISCOVERY_TOKEN_ESTIMATOR_VERSION_V1, estimateUpperBound: () => undefined },
+      { revision: 'fixed-cost:test-v1', estimate: () => 5 },
+    ).executeProviderCall({
+      provider,
+      request: {
+        systemInstruction: 'system',
+        prompt: 'prompt',
+        responseSchema: { type: 'object' },
+      },
+    });
+    expect(unavailable).toMatchObject({
+      status: 'BUDGET_EXHAUSTED',
+      reason: 'TOKEN_ESTIMATE_UNAVAILABLE',
+      completion: 'PARTIAL',
+    });
   });
 });
 
@@ -872,6 +1096,6 @@ describe('AKP-3 WP4 explainable deterministic ranking and provider cap adapters'
       },
     });
     expect(geminiRequest).toMatchObject({ generation_config: { max_output_tokens: 6 } });
-    expect(DISCOVERY_TOKEN_ESTIMATOR_VERSION_V1).toBe('utf16-code-unit-upper-bound:v1');
+    expect(DISCOVERY_TOKEN_ESTIMATOR_VERSION_V1).toBe('discovery-token-estimator:v1');
   });
 });

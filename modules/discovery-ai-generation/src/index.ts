@@ -12,6 +12,8 @@ import {
   type DiscoveryAIExecutionResolverPort,
   type DiscoveryFindingPayloadV1,
   type DiscoveryFindingType,
+  type DiscoveryFollowUpOriginIdentityV1,
+  type DiscoveryFollowUpQualificationProofV1,
   type DiscoveryModelProfileServicePort,
   type DiscoveryModelProfileV1,
   type DiscoveryQualifiedAIGenerationContextV1,
@@ -19,6 +21,7 @@ import {
   type DiscoveryRelationOrientationV1,
   type DiscoverySecurityCompositionSuccessV1,
   type DiscoveryStructuredGenerationRequestV1,
+  type DiscoveryProviderBudgetControllerPortV1,
   type DiscoveryStructuredProviderPort,
   type DiscoveryStructuredProviderRouterPort,
   type DiscoveryTemporalQualificationV1,
@@ -107,6 +110,12 @@ export type DiscoveryAIGenerationProposalV1 = {
   readonly rationale: string;
   readonly derivationSummary: string;
   readonly security: DiscoverySecurityCompositionSuccessV1;
+  /** Server-owned WP2 signals retained for the WP4 conflict-basis check. */
+  readonly selectionSignals?: readonly DiscoveryAcceptedWP2SelectionSignalV1[];
+  /** Server-owned identity used only for qualified follow-up lineage. */
+  readonly originIdentity?: DiscoveryFollowUpOriginIdentityV1;
+  /** Server-owned qualification proof carried to the WP4 gate. */
+  readonly qualifiedFollowUp?: DiscoveryFollowUpQualificationProofV1;
   readonly provenance:
     | {
         readonly schemaVersion: '1.0.0';
@@ -152,16 +161,29 @@ export type DiscoveryAIGenerationErrorCode =
   | 'PROFILE_UNAVAILABLE'
   | 'POLICY_DENIED'
   | 'AI_OUTPUT_INVALID'
-  | 'AI_CAPABILITY_UNAVAILABLE';
+  | 'AI_CAPABILITY_UNAVAILABLE'
+  | 'BUDGET_EXHAUSTED';
 
 export class DiscoveryAIGenerationError extends Error {
   constructor(
     readonly code: DiscoveryAIGenerationErrorCode,
     message: string,
+    details?: {
+      readonly reason: string;
+      readonly completion: 'PARTIAL';
+      readonly truncation: { readonly truncated: true; readonly reason: string };
+    },
   ) {
     super(message);
     this.name = 'DiscoveryAIGenerationError';
+    this.reason = details?.reason;
+    this.completion = details?.completion;
+    this.truncation = details?.truncation;
   }
+
+  readonly reason?: string;
+  readonly completion?: 'PARTIAL';
+  readonly truncation?: { readonly truncated: true; readonly reason: string };
 }
 
 type ProviderResponse = Awaited<ReturnType<DiscoveryStructuredProviderPort['generateStructured']>>;
@@ -172,6 +194,8 @@ type HypothesisInput = {
   readonly candidate: DiscoveryHypothesisCandidateV1;
   readonly context: DiscoveryQualifiedAIGenerationContextV1;
   readonly temporalMaterial?: DiscoveryTemporalQualificationV1;
+  readonly signal?: AbortSignal;
+  readonly maxOutputTokens?: number;
 };
 
 type AIRequestInput = {
@@ -583,6 +607,7 @@ const assertQualifiedContext = (
       'canonicalBase',
       'discoveryBase',
       'originatingFindingType',
+      'originIdentity',
       'boundedRationale',
       'items',
     ],
@@ -603,6 +628,26 @@ const assertQualifiedContext = (
   assertDiscoveryBase(context.discoveryBase, 'context.discoveryBase');
   if (!Array.isArray(context.items) || context.items.length === 0) {
     throw new DiscoveryAIGenerationError('INVALID_INPUT', 'The qualified AI context is empty.');
+  }
+  if (context.originIdentity !== undefined) {
+    const originIdentity = inputObjectValue(context.originIdentity, 'context.originIdentity');
+    strictInputKeys(
+      originIdentity,
+      ['schemaVersion', 'originFindingType', 'fingerprintVersion', 'fingerprint'],
+      'context.originIdentity',
+    );
+    if (
+      originIdentity.schemaVersion !== '1.0.0' ||
+      originIdentity.originFindingType !== context.originatingFindingType ||
+      originIdentity.fingerprintVersion !== 'discovery-fingerprint:v1' ||
+      typeof originIdentity.fingerprint !== 'string' ||
+      !/^sha256:[0-9a-f]{64}$/.test(originIdentity.fingerprint)
+    ) {
+      throw new DiscoveryAIGenerationError(
+        'INVALID_INPUT',
+        'The qualified follow-up origin identity is invalid.',
+      );
+    }
   }
   for (const [index, itemValue] of context.items.entries()) {
     const item = inputObjectValue(itemValue, `context.items[${index}]`);
@@ -1055,6 +1100,9 @@ const proposalBase = (input: {
   readonly derivationSummary: string;
   readonly provenance: DiscoveryAIGenerationProposalV1['provenance'];
   readonly modelResponse: DiscoveryAIGenerationProposalV1['modelResponse'];
+  readonly originIdentity?: DiscoveryFollowUpOriginIdentityV1;
+  readonly qualifiedFollowUp?: DiscoveryFollowUpQualificationProofV1;
+  readonly selectionSignals?: readonly DiscoveryAcceptedWP2SelectionSignalV1[];
 }): DiscoveryAIGenerationProposalV1 => ({
   retentionClass: DISCOVERY_AI_RETENTION_CLASS_V1,
   projectId: input.projectId,
@@ -1071,6 +1119,9 @@ const proposalBase = (input: {
   rationale: input.rationale,
   derivationSummary: input.derivationSummary,
   security: input.security,
+  ...(input.originIdentity === undefined ? {} : { originIdentity: input.originIdentity }),
+  ...(input.qualifiedFollowUp === undefined ? {} : { qualifiedFollowUp: input.qualifiedFollowUp }),
+  ...(input.selectionSignals === undefined ? {} : { selectionSignals: input.selectionSignals }),
   provenance: input.provenance,
   modelResponse: input.modelResponse,
 });
@@ -1080,7 +1131,25 @@ export class DiscoveryAIGenerationService {
     private readonly profiles: DiscoveryModelProfileServicePort,
     private readonly executionResolver: DiscoveryAIExecutionResolverPort,
     private readonly providerRouter: DiscoveryStructuredProviderRouterPort,
+    private readonly budgetController: DiscoveryProviderBudgetControllerPortV1,
   ) {}
+
+  private async executeProviderCall(input: {
+    readonly provider: DiscoveryStructuredProviderPort;
+    readonly request: DiscoveryStructuredGenerationRequestV1;
+    readonly signal?: AbortSignal;
+    readonly maxOutputTokens?: number;
+  }): Promise<ProviderResponse> {
+    const result = await this.budgetController.executeProviderCall(input);
+    if (result.status === 'BUDGET_EXHAUSTED') {
+      throw new DiscoveryAIGenerationError(
+        'BUDGET_EXHAUSTED',
+        `Discovery provider execution stopped: ${result.reason}.`,
+        result,
+      );
+    }
+    return result.response;
+  }
 
   async interpretHypothesis(input: HypothesisInput): Promise<DiscoveryAIGenerationProposalV1> {
     const projectId = identifier(input.projectId, 'Project ID');
@@ -1123,8 +1192,9 @@ export class DiscoveryAIGenerationService {
       projectId,
       executionPin: resolution.pin,
     });
-    const response = await provider.generateStructured(
-      requestFor({
+    const response = await this.executeProviderCall({
+      provider,
+      request: requestFor({
         projectId,
         runId,
         findingType: input.candidate.targetFindingType,
@@ -1133,7 +1203,9 @@ export class DiscoveryAIGenerationService {
         temporalMaterial: input.temporalMaterial,
         outputSchema: outputSchemaFor(input.candidate.targetFindingType, input.temporalMaterial),
       }),
-    );
+      signal: input.signal,
+      maxOutputTokens: input.maxOutputTokens,
+    });
     const parsed = parseOutput(response.rawText);
     const modelResponse = responseMetadata(resolution, response);
     const relatedResourceRefs = [...input.candidate.memberResourceRefs];
@@ -1190,6 +1262,7 @@ export class DiscoveryAIGenerationService {
             aiExecution: aiExecutionDetails(resolution, response),
           },
           modelResponse,
+          selectionSignals: input.candidate.selectionSignals,
         });
       }
       case 'PATTERN_HYPOTHESIS': {
@@ -1222,6 +1295,7 @@ export class DiscoveryAIGenerationService {
             aiExecution: aiExecutionDetails(resolution, response),
           },
           modelResponse,
+          selectionSignals: input.candidate.selectionSignals,
         });
       }
       case 'CONFLICT_HYPOTHESIS': {
@@ -1253,6 +1327,7 @@ export class DiscoveryAIGenerationService {
             aiExecution: aiExecutionDetails(resolution, response),
           },
           modelResponse,
+          selectionSignals: input.candidate.selectionSignals,
         });
       }
     }
@@ -1262,6 +1337,8 @@ export class DiscoveryAIGenerationService {
     readonly projectId: string;
     readonly runId: string;
     readonly context: DiscoveryQualifiedAIGenerationContextV1;
+    readonly signal?: AbortSignal;
+    readonly maxOutputTokens?: number;
   }): Promise<DiscoveryAIGenerationProposalV1> {
     return this.generateQualified(input, 'CLARIFICATION_QUESTION');
   }
@@ -1270,6 +1347,8 @@ export class DiscoveryAIGenerationService {
     readonly projectId: string;
     readonly runId: string;
     readonly context: DiscoveryQualifiedAIGenerationContextV1;
+    readonly signal?: AbortSignal;
+    readonly maxOutputTokens?: number;
   }): Promise<DiscoveryAIGenerationProposalV1> {
     return this.generateQualified(input, 'ACTION_SUGGESTION');
   }
@@ -1279,6 +1358,8 @@ export class DiscoveryAIGenerationService {
       readonly projectId: string;
       readonly runId: string;
       readonly context: DiscoveryQualifiedAIGenerationContextV1;
+      readonly signal?: AbortSignal;
+      readonly maxOutputTokens?: number;
     },
     findingType: 'CLARIFICATION_QUESTION' | 'ACTION_SUGGESTION',
   ): Promise<DiscoveryAIGenerationProposalV1> {
@@ -1296,6 +1377,12 @@ export class DiscoveryAIGenerationService {
       throw new DiscoveryAIGenerationError(
         'INVALID_INPUT',
         'Clarification and Action generation cannot recursively originate from a follow-up finding.',
+      );
+    }
+    if (input.context.originIdentity === undefined) {
+      throw new DiscoveryAIGenerationError(
+        'INVALID_INPUT',
+        'Qualified follow-up generation requires a server-owned origin identity.',
       );
     }
     const refs = input.context.items.map((item) => item.resourceRef) as [
@@ -1324,15 +1411,18 @@ export class DiscoveryAIGenerationService {
       sensitivity: security.sensitivity,
     });
     const provider = await this.providerRouter.resolve({ projectId, executionPin: resolution.pin });
-    const response = await provider.generateStructured(
-      requestFor({
+    const response = await this.executeProviderCall({
+      provider,
+      request: requestFor({
         projectId,
         runId,
         findingType,
         context: input.context,
         outputSchema: outputSchemaFor(findingType),
       }),
-    );
+      signal: input.signal,
+      maxOutputTokens: input.maxOutputTokens,
+    });
     const parsed = parseOutput(response.rawText);
     const ai = aiExecutionProvenance(resolution, response);
     const modelResponse = responseMetadata(resolution, response);
@@ -1374,6 +1464,17 @@ export class DiscoveryAIGenerationService {
           : 'AI generated one non-executable action suggestion from the qualified context; affected resources and CANDIDATE_ONLY status were copied by the server.',
       provenance: ai,
       modelResponse,
+      originIdentity: input.context.originIdentity,
+      qualifiedFollowUp: {
+        originIdentity: input.context.originIdentity,
+        projectId,
+        sourceProjectionDigest: input.context.sourceProjectionDigest,
+        canonicalBase: input.context.canonicalBase,
+        discoveryBase: input.context.discoveryBase,
+        accessScope: security.accessScope,
+        sensitivity: security.sensitivity,
+        relatedResourceRefs: refs,
+      },
     });
   }
 
@@ -1393,8 +1494,14 @@ export const createDiscoveryAIGenerationService = (input: {
   readonly profiles: DiscoveryModelProfileServicePort;
   readonly executionResolver: DiscoveryAIExecutionResolverPort;
   readonly providerRouter: DiscoveryStructuredProviderRouterPort;
+  readonly budgetController: DiscoveryProviderBudgetControllerPortV1;
 }): DiscoveryAIGenerationService =>
-  new DiscoveryAIGenerationService(input.profiles, input.executionResolver, input.providerRouter);
+  new DiscoveryAIGenerationService(
+    input.profiles,
+    input.executionResolver,
+    input.providerRouter,
+    input.budgetController,
+  );
 
 export const discoveryAIInputDigest = (context: DiscoveryQualifiedAIGenerationContextV1): string =>
   sha256Text(

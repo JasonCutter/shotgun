@@ -1,21 +1,28 @@
 import {
+  computeDiscoveryFingerprintV1,
   composeDiscoveryFindingSecurityV1,
+  createDiscoveryFindingEnvelopeV1,
   decodeDiscoveryFindingEnvelopeV1,
-  normalizeDiscoveryFingerprintInputV1,
+  deriveDiscoverySemanticEssenceV1,
   semanticStableJson,
-  sha256Text,
   utf16OrdinalCompare,
 } from '../../../packages/contracts/src/index.js';
 import type {
   DiscoveryCanonicalBaseIdentityV1,
+  DiscoveryFindingEnvelopeInputV1,
+  DiscoveryFollowUpQualificationProofV1,
+  DiscoveryFollowUpOriginIdentityV1,
   DiscoveryFindingEnvelopeV1,
   DiscoveryFindingType,
+  DiscoveryFindingProvenanceV1,
   DiscoveryProjectionBaseIdentityV1,
   DiscoveryResourceRefV1,
+  DiscoverySignalSummaryV1,
   DiscoverySecurityCompositionSuccessV1,
   DiscoveryServerSecurityInputV1,
   DiscoveryStructuredGenerationRequestV1,
   DiscoveryStructuredGenerationResponseV1,
+  DiscoveryWorkBudgetPortV1,
 } from '../../../packages/contracts/src/index.js';
 
 /**
@@ -25,7 +32,7 @@ import type {
 export const DISCOVERY_QUALITY_GATE_VERSION_V1 = 'discovery-quality-gate:v1' as const;
 export const DISCOVERY_WORK_BUDGET_VERSION_V1 = 'discovery-work-budget:v1' as const;
 export const DISCOVERY_RANKING_POLICY_VERSION_V1 = 'discovery-ranking-policy:v1' as const;
-export const DISCOVERY_TOKEN_ESTIMATOR_VERSION_V1 = 'utf16-code-unit-upper-bound:v1' as const;
+export const DISCOVERY_TOKEN_ESTIMATOR_VERSION_V1 = 'discovery-token-estimator:v1' as const;
 
 export const DISCOVERY_QUALITY_GATE_DISPOSITIONS = [
   'ACCEPTED',
@@ -59,6 +66,10 @@ export const DISCOVERY_QUALITY_GATE_REASON_CODES = [
   'SUPPRESSED_FINGERPRINT',
   'FINGERPRINT_INVALID',
   'AI_PROVENANCE_INVALID',
+  'EVIDENCE_LINEAGE_INVALID',
+  'CONFLICT_BASIS_INVALID',
+  'FOLLOW_UP_QUALIFICATION_MISSING',
+  'FOLLOW_UP_QUALIFICATION_INVALID',
 ] as const;
 export type DiscoveryQualityGateReasonCodeV1 = (typeof DISCOVERY_QUALITY_GATE_REASON_CODES)[number];
 
@@ -91,6 +102,20 @@ export type DiscoveryQualityRevalidationPortV1 = {
     readonly projectId: string;
     readonly resource: DiscoveryResourceRefV1;
   }): Promise<DiscoveryAuthoritativeResourceV1 | undefined>;
+  revalidateEvidence?(input: {
+    readonly projectId: string;
+    readonly evidenceId: string;
+    readonly candidate: DiscoveryFindingEnvelopeV1;
+    readonly context: DiscoveryQualityGateContextV1;
+  }): Promise<
+    | {
+        readonly exists: boolean;
+        readonly eligible: boolean;
+        readonly projectId: string;
+        readonly identityValid: boolean;
+      }
+    | undefined
+  >;
   findByFingerprint(input: {
     readonly projectId: string;
     readonly fingerprintVersion: string;
@@ -125,6 +150,8 @@ export type DiscoveryQualityGateInputV1 = {
   };
   readonly context: DiscoveryQualityGateContextV1;
   readonly selectionSignals?: readonly DiscoveryQualitySelectionSignalV1[];
+  readonly qualifiedFollowUp?: DiscoveryFollowUpQualificationProofV1;
+  readonly budget?: DiscoveryWorkBudgetPortV1;
 };
 
 export type DiscoveryQualityAcceptedV1 = {
@@ -150,7 +177,23 @@ export type DiscoveryQualitySuppressedV1 = {
 };
 
 export type DiscoveryQualityGateResultV1 =
-  DiscoveryQualityAcceptedV1 | DiscoveryQualityRejectedV1 | DiscoveryQualitySuppressedV1;
+  | DiscoveryQualityAcceptedV1
+  | DiscoveryQualityRejectedV1
+  | DiscoveryQualitySuppressedV1
+  | DiscoveryQualityBudgetExhaustedV1;
+
+export type DiscoveryQualityBudgetExhaustedV1 = {
+  readonly disposition: 'BUDGET_EXHAUSTED';
+  readonly status: 'BUDGET_EXHAUSTED';
+  readonly reason: 'FINDING_LIMIT' | 'DEADLINE_EXPIRED';
+  readonly completion: 'PARTIAL';
+  readonly truncation: {
+    readonly schemaVersion: '1.0.0';
+    readonly budgetVersion: typeof DISCOVERY_WORK_BUDGET_VERSION_V1;
+    readonly truncated: true;
+    readonly reason: 'FINDING_LIMIT' | 'DEADLINE_EXPIRED';
+  };
+};
 
 const sameJson = (left: unknown, right: unknown): boolean =>
   semanticStableJson(left) === semanticStableJson(right);
@@ -246,15 +289,10 @@ const computedFingerprint = (
   readonly fingerprint: string;
   readonly fingerprintVersion: string;
 } => {
-  const normalized = normalizeDiscoveryFingerprintInputV1({
-    fingerprintVersion: 'discovery-fingerprint:v1',
-    findingType: input.findingType,
-    relatedResourceRefs: input.relatedResourceRefs,
-    semanticEssence: input.semanticEssence,
-  });
+  const fingerprint = computeDiscoveryFingerprintV1(input);
   return {
-    fingerprint: sha256Text(semanticStableJson(normalized)),
-    fingerprintVersion: normalized.fingerprintVersion,
+    fingerprint: fingerprint.fingerprint,
+    fingerprintVersion: fingerprint.fingerprintVersion,
   };
 };
 
@@ -262,6 +300,98 @@ const actionLooksExecutable = (value: string): boolean =>
   /(?:^|\s)(?:run|execute|launch|invoke)\s+(?:this\s+)?(?:command|script|tool)|\b(?:curl|wget|powershell|bash|sh)\b|\b(?:api[- ]key|authorization\s*:|bearer\s+|private\s+key)\b/i.test(
     value,
   );
+
+const conflictSourceFor = {
+  FACTUAL: 'TYPED_PROPOSITION',
+  TEMPORAL: 'TEMPORAL_QUALIFICATION',
+  IDENTITY: 'IDENTITY_ASSIGNMENT',
+  MODEL_DISAGREEMENT: 'EXPLICIT_CONFLICT_SIGNAL',
+} as const;
+
+const validateConflictBasis = (
+  candidate: DiscoveryFindingEnvelopeV1,
+  selectionSignals: readonly DiscoveryQualitySelectionSignalV1[] | undefined,
+): DiscoveryQualityGateReasonCodeV1 | undefined => {
+  if (candidate.findingType !== 'CONFLICT_HYPOTHESIS') return undefined;
+  const payload = candidate.payload;
+  if (payload.payloadType !== 'CONFLICT_HYPOTHESIS') return 'CONFLICT_PARTICIPANTS_INVALID';
+  const signal = selectionSignals?.find((entry) => entry.kind === 'EXPLICIT_INCOMPATIBILITY');
+  if (!signal) return 'CONFLICT_BASIS_MISSING';
+  if (
+    signal.source !== conflictSourceFor[signal.incompatibilityKind] ||
+    signal.incompatibilityKind !== payload.contradictionKind ||
+    signal.signalId.trim().length === 0
+  ) {
+    return 'CONFLICT_BASIS_INVALID';
+  }
+  return undefined;
+};
+
+const isValidFollowUpIdentity = (
+  identity: DiscoveryFollowUpQualificationProofV1['originIdentity'],
+): boolean =>
+  identity.schemaVersion === '1.0.0' &&
+  identity.fingerprintVersion === 'discovery-fingerprint:v1' &&
+  /^sha256:[0-9a-f]{64}$/.test(identity.fingerprint) &&
+  [
+    'KNOWLEDGE_GAP',
+    'EVIDENCE_GAP',
+    'RELATION_HYPOTHESIS',
+    'PATTERN_HYPOTHESIS',
+    'CONFLICT_HYPOTHESIS',
+  ].includes(identity.originFindingType);
+
+const validateFollowUpQualification = (
+  candidate: DiscoveryFindingEnvelopeV1,
+  context: DiscoveryQualityGateContextV1,
+  qualification: DiscoveryFollowUpQualificationProofV1 | undefined,
+): DiscoveryQualityGateReasonCodeV1 | undefined => {
+  if (
+    candidate.findingType !== 'CLARIFICATION_QUESTION' &&
+    candidate.findingType !== 'ACTION_SUGGESTION'
+  ) {
+    return undefined;
+  }
+  if (!qualification) return 'FOLLOW_UP_QUALIFICATION_MISSING';
+  if (!isValidFollowUpIdentity(qualification.originIdentity)) {
+    return 'FOLLOW_UP_QUALIFICATION_INVALID';
+  }
+  try {
+    if (
+      qualification.projectId !== context.projectId ||
+      qualification.sourceProjectionDigest !== context.sourceProjectionDigest ||
+      !sameJson(qualification.canonicalBase, context.canonicalBase) ||
+      !sameJson(qualification.discoveryBase, context.discoveryBase) ||
+      !sameJson(
+        uniqueResources(qualification.relatedResourceRefs),
+        uniqueResources(candidate.relatedResourceRefs),
+      )
+    ) {
+      return 'FOLLOW_UP_QUALIFICATION_INVALID';
+    }
+  } catch {
+    return 'FOLLOW_UP_QUALIFICATION_INVALID';
+  }
+  return undefined;
+};
+
+const budgetFindingExhausted = (
+  result: ReturnType<DiscoveryWorkBudgetPortV1['admitWork']>,
+): DiscoveryQualityBudgetExhaustedV1 | undefined =>
+  result.status === 'BUDGET_EXHAUSTED'
+    ? {
+        disposition: 'BUDGET_EXHAUSTED',
+        status: 'BUDGET_EXHAUSTED',
+        reason: result.reason === 'DEADLINE_EXPIRED' ? 'DEADLINE_EXPIRED' : 'FINDING_LIMIT',
+        completion: 'PARTIAL',
+        truncation: {
+          schemaVersion: '1.0.0',
+          budgetVersion: DISCOVERY_WORK_BUDGET_VERSION_V1,
+          truncated: true,
+          reason: result.reason === 'DEADLINE_EXPIRED' ? 'DEADLINE_EXPIRED' : 'FINDING_LIMIT',
+        },
+      }
+    : undefined;
 
 const validateStructure = (
   candidate: DiscoveryFindingEnvelopeV1,
@@ -378,6 +508,20 @@ export class DiscoveryQualityGateV1 {
       return reject(structuralReason, 'The candidate has an invalid or unsafe structure.');
     }
 
+    const conflictReason = validateConflictBasis(candidate, input.selectionSignals);
+    if (conflictReason) {
+      return reject(conflictReason, 'The candidate does not carry the frozen Conflict basis.');
+    }
+
+    const qualificationReason = validateFollowUpQualification(
+      candidate,
+      input.context,
+      input.qualifiedFollowUp,
+    );
+    if (qualificationReason) {
+      return reject(qualificationReason, 'The follow-up qualification proof is invalid.');
+    }
+
     if (
       candidate.findingType !== 'KNOWLEDGE_GAP' &&
       candidate.findingType !== 'EVIDENCE_GAP' &&
@@ -385,9 +529,49 @@ export class DiscoveryQualityGateV1 {
     ) {
       return reject('EVIDENCE_LINEAGE_MISSING', 'Non-gap findings require evidence lineage.');
     }
+    if (candidate.findingType !== 'KNOWLEDGE_GAP' && candidate.findingType !== 'EVIDENCE_GAP') {
+      if (!this.revalidation.revalidateEvidence) {
+        return reject(
+          'EVIDENCE_LINEAGE_INVALID',
+          'Evidence lineage cannot be revalidated through a server-owned Port.',
+        );
+      }
+      for (const evidenceId of candidate.evidenceIds) {
+        const evidence = await this.revalidation.revalidateEvidence({
+          projectId: input.context.projectId,
+          evidenceId,
+          candidate,
+          context: input.context,
+        });
+        if (
+          !evidence ||
+          !evidence.exists ||
+          !evidence.eligible ||
+          !evidence.identityValid ||
+          evidence.projectId !== input.context.projectId
+        ) {
+          return reject('EVIDENCE_LINEAGE_INVALID', 'Evidence lineage is not authoritative.');
+        }
+      }
+    }
 
     let fingerprint: ReturnType<typeof computedFingerprint>;
     try {
+      if (
+        candidate.findingType !== 'KNOWLEDGE_GAP' &&
+        candidate.findingType !== 'EVIDENCE_GAP' &&
+        input.fingerprintInput.semanticEssence !==
+          deriveDiscoverySemanticEssenceV1({
+            findingType: candidate.findingType,
+            payload: candidate.payload,
+            originIdentity: input.qualifiedFollowUp?.originIdentity,
+          })
+      ) {
+        return reject(
+          'FINGERPRINT_INVALID',
+          'The candidate semantic essence is not the server-owned ADR-149 projection.',
+        );
+      }
       fingerprint = computedFingerprint(input.fingerprintInput);
     } catch {
       return reject('FINGERPRINT_INVALID', 'The candidate fingerprint input is invalid.');
@@ -463,6 +647,19 @@ export class DiscoveryQualityGateV1 {
         'The candidate security classification is not server-composed.',
       );
     }
+    if (
+      input.qualifiedFollowUp &&
+      (!sameJson(
+        [...input.qualifiedFollowUp.accessScope].sort(utf16OrdinalCompare),
+        [...security.accessScope].sort(utf16OrdinalCompare),
+      ) ||
+        input.qualifiedFollowUp.sensitivity !== security.sensitivity)
+    ) {
+      return reject(
+        'FOLLOW_UP_QUALIFICATION_INVALID',
+        'The follow-up qualification security does not match the server composition.',
+      );
+    }
 
     if (
       await this.revalidation.findAuthoritativeEquivalent({
@@ -477,18 +674,29 @@ export class DiscoveryQualityGateV1 {
       fingerprintVersion: fingerprint.fingerprintVersion,
       fingerprint: fingerprint.fingerprint,
     });
-    const duplicate = existing[0];
-    if (duplicate) {
-      if (duplicate.lifecycleState === 'SUPPRESSED') {
-        return {
-          disposition: 'SUPPRESSED',
-          reasonCode: 'SUPPRESSED_FINGERPRINT',
-          candidate,
-          fingerprint: fingerprint.fingerprint,
-          existing: duplicate,
-        };
-      }
+    const suppressed = existing
+      .filter((entry) => entry.lifecycleState === 'SUPPRESSED')
+      .sort(
+        (left, right) =>
+          utf16OrdinalCompare(left.findingId, right.findingId) ||
+          left.findingRevision - right.findingRevision,
+      )[0];
+    if (suppressed) {
+      return {
+        disposition: 'SUPPRESSED',
+        reasonCode: 'SUPPRESSED_FINGERPRINT',
+        candidate,
+        fingerprint: fingerprint.fingerprint,
+        existing: suppressed,
+      };
+    }
+    if (existing.length > 0) {
       return reject('FINGERPRINT_DUPLICATE', 'An exact fingerprint duplicate already exists.');
+    }
+    if (input.budget) {
+      const admission = input.budget.admitWork('findings');
+      const exhausted = budgetFindingExhausted(admission);
+      if (exhausted) return exhausted;
     }
     return {
       disposition: 'ACCEPTED',
@@ -499,6 +707,184 @@ export class DiscoveryQualityGateV1 {
     };
   }
 }
+
+export type DiscoveryAIGenerationMaterializationInputV1 = {
+  readonly retentionClass: 'EPHEMERAL_PRE_MATERIALIZATION';
+  readonly projectId: string;
+  readonly findingType: DiscoveryFindingType;
+  readonly generationMethod: 'AI_ASSISTED' | 'HYBRID';
+  readonly payload: DiscoveryFindingEnvelopeV1['payload'];
+  readonly relatedResourceRefs: readonly DiscoveryResourceRefV1[];
+  readonly evidenceIds: readonly string[];
+  readonly sourceProjectionDigest: string;
+  readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
+  readonly discoveryBase: DiscoveryProjectionBaseIdentityV1;
+  readonly runId: string;
+  readonly signalSummary: DiscoverySignalSummaryV1;
+  readonly rationale: string;
+  readonly derivationSummary: string;
+  readonly security: DiscoverySecurityCompositionSuccessV1;
+  readonly provenance: DiscoveryFindingProvenanceV1;
+  readonly selectionSignals?: readonly {
+    readonly kind: string;
+    readonly incompatibilityKind?: 'FACTUAL' | 'TEMPORAL' | 'IDENTITY' | 'MODEL_DISAGREEMENT';
+    readonly source?:
+      | 'TYPED_PROPOSITION'
+      | 'TEMPORAL_QUALIFICATION'
+      | 'IDENTITY_ASSIGNMENT'
+      | 'EXPLICIT_CONFLICT_SIGNAL';
+    readonly signalId?: string;
+  }[];
+  readonly modelResponse?: Record<string, unknown>;
+  readonly originIdentity?: DiscoveryFollowUpOriginIdentityV1;
+  readonly qualifiedFollowUp?: DiscoveryFollowUpQualificationProofV1;
+};
+
+export type DiscoveryFingerprintAuthorityPortV1 = {
+  compute(input: {
+    readonly findingType: DiscoveryFindingType;
+    readonly relatedResourceRefs: readonly DiscoveryResourceRefV1[];
+    readonly semanticEssence: string;
+  }): {
+    readonly fingerprintVersion: string;
+    readonly fingerprint: string;
+    readonly normalizedInput?: unknown;
+  };
+};
+
+export type DiscoveryAIGenerationMaterializationDependenciesV1 = {
+  readonly findingIdFactory: (input: {
+    readonly projectId: string;
+    readonly findingType: DiscoveryFindingType;
+    readonly fingerprint: string;
+  }) => string;
+  readonly clock: { now(): string };
+  readonly fingerprintAuthority: DiscoveryFingerprintAuthorityPortV1;
+};
+
+/**
+ * Converts one server-owned ephemeral AI proposal into the durable envelope
+ * consumed by WP4. Model response text is intentionally not part of the
+ * persisted envelope; semantic identity is derived and fingerprinted here.
+ */
+export const materializeDiscoveryAIGenerationProposalV1 = (
+  input: DiscoveryAIGenerationMaterializationInputV1,
+  dependencies: DiscoveryAIGenerationMaterializationDependenciesV1,
+): DiscoveryFindingEnvelopeV1 => {
+  if (input.retentionClass !== 'EPHEMERAL_PRE_MATERIALIZATION') {
+    throw new TypeError('Only ephemeral Discovery AI proposals may be materialized');
+  }
+  if (input.findingType === 'KNOWLEDGE_GAP' || input.findingType === 'EVIDENCE_GAP') {
+    throw new TypeError('WP1 gap findings are not materialized through the WP3 AI bridge');
+  }
+  const semanticEssence = deriveDiscoverySemanticEssenceV1({
+    findingType: input.findingType,
+    payload: input.payload,
+    originIdentity: input.originIdentity,
+  });
+  const fingerprint = dependencies.fingerprintAuthority.compute({
+    findingType: input.findingType,
+    relatedResourceRefs: input.relatedResourceRefs,
+    semanticEssence,
+  });
+  if (!fingerprint.fingerprintVersion || !fingerprint.fingerprint) {
+    throw new TypeError('The fingerprint authority returned an invalid identity');
+  }
+  const findingId = dependencies.findingIdFactory({
+    projectId: input.projectId,
+    findingType: input.findingType,
+    fingerprint: fingerprint.fingerprint,
+  });
+  const common = {
+    schemaVersion: '1.0.0' as const,
+    findingId,
+    findingRevision: 1,
+    projectId: input.projectId,
+    generationMethod: input.generationMethod,
+    lifecycleState: 'NEW' as const,
+    relatedResourceRefs: input.relatedResourceRefs,
+    evidenceIds: input.evidenceIds,
+    sourceProjectionDigest: input.sourceProjectionDigest,
+    canonicalBase: input.canonicalBase,
+    discoveryBase: input.discoveryBase,
+    runId: input.runId,
+    signalSummary: input.signalSummary,
+    rationale: input.rationale,
+    derivationSummary: input.derivationSummary,
+    provenance: input.provenance,
+    accessScope: input.security.accessScope,
+    sensitivity: input.security.sensitivity,
+    fingerprint: fingerprint.fingerprint,
+    fingerprintVersion: fingerprint.fingerprintVersion,
+    retentionClass: 'DURABLE_DERIVED_RECORD' as const,
+    createdAt: dependencies.clock.now(),
+  };
+  return createDiscoveryFindingEnvelopeV1({
+    ...common,
+    findingType: input.findingType,
+    payload: input.payload,
+  } as DiscoveryFindingEnvelopeInputV1);
+};
+
+export type DiscoveryMaterializedAIGenerationForQualityGateV1 = {
+  readonly candidate: DiscoveryFindingEnvelopeV1;
+  readonly fingerprintInput: DiscoveryQualityGateInputV1['fingerprintInput'];
+  readonly context: DiscoveryQualityGateContextV1;
+  readonly selectionSignals?: readonly DiscoveryQualitySelectionSignalV1[];
+  readonly qualifiedFollowUp?: DiscoveryFollowUpQualificationProofV1;
+};
+
+/**
+ * The explicit WP3 → WP4 bridge. It materializes once, preserves the exact
+ * server-derived logical input, and supplies the same server proof to the
+ * quality gate without importing the WP3 module.
+ */
+export const createDiscoveryQualityGateInputFromAIGenerationProposalV1 = (
+  proposal: DiscoveryAIGenerationMaterializationInputV1,
+  dependencies: DiscoveryAIGenerationMaterializationDependenciesV1,
+): DiscoveryMaterializedAIGenerationForQualityGateV1 => {
+  const candidate = materializeDiscoveryAIGenerationProposalV1(proposal, dependencies);
+  const semanticEssence = deriveDiscoverySemanticEssenceV1({
+    findingType: proposal.findingType,
+    payload: proposal.payload,
+    originIdentity: proposal.originIdentity,
+  });
+  const selectionSignals = proposal.selectionSignals?.flatMap((signal) =>
+    signal.kind === 'EXPLICIT_INCOMPATIBILITY' &&
+    signal.incompatibilityKind !== undefined &&
+    signal.source !== undefined &&
+    signal.signalId !== undefined
+      ? [
+          {
+            kind: 'EXPLICIT_INCOMPATIBILITY' as const,
+            incompatibilityKind: signal.incompatibilityKind,
+            source: signal.source,
+            signalId: signal.signalId,
+          },
+        ]
+      : [],
+  );
+  return {
+    candidate,
+    fingerprintInput: {
+      findingType: proposal.findingType,
+      relatedResourceRefs: proposal.relatedResourceRefs,
+      semanticEssence,
+    },
+    context: {
+      projectId: proposal.projectId,
+      accessScope: proposal.security.accessScope,
+      sensitivity: proposal.security.sensitivity,
+      sourceProjectionDigest: proposal.sourceProjectionDigest,
+      canonicalBase: proposal.canonicalBase,
+      discoveryBase: proposal.discoveryBase,
+    },
+    ...(selectionSignals === undefined ? {} : { selectionSignals }),
+    ...(proposal.qualifiedFollowUp === undefined
+      ? {}
+      : { qualifiedFollowUp: proposal.qualifiedFollowUp }),
+  };
+};
 
 export type DiscoveryWorkBudgetV1 = {
   readonly schemaVersion: '1.0.0';
@@ -530,6 +916,11 @@ export type DiscoveryBudgetDimensionV1 =
   | 'concurrency';
 
 export const DISCOVERY_BUDGET_REASON_CODES = [
+  'RESOURCE_LIMIT',
+  'SEMANTIC_NEIGHBOR_LIMIT',
+  'CANDIDATE_PAIR_LIMIT',
+  'CANDIDATE_GROUP_LIMIT',
+  'FINDING_LIMIT',
   'DEADLINE_EXPIRED',
   'OUTPUT_LIMIT_UNSUPPORTED',
   'CANCELLATION_UNSUPPORTED',
@@ -538,6 +929,7 @@ export const DISCOVERY_BUDGET_REASON_CODES = [
   'INPUT_TOKEN_LIMIT',
   'OUTPUT_TOKEN_LIMIT',
   'COST_LIMIT',
+  'TOKEN_ESTIMATE_UNAVAILABLE',
   'OUTPUT_LIMIT_INVALID',
   'COST_ESTIMATE_UNAVAILABLE',
   'CANCELLED_OR_DEADLINE_EXPIRED',
@@ -561,6 +953,9 @@ export type DiscoveryProviderReservationV1 = {
   readonly maxOutputTokens: number;
   readonly inputTokenUpperBound: number;
   readonly estimatedCostMicros: number;
+  readonly state: 'RESERVED' | 'DISPATCHED' | 'FINALIZED' | 'CANCELLED_BEFORE_DISPATCH';
+  readonly dispatch: () => void;
+  readonly cancelBeforeDispatch: () => void;
   readonly finalize: (input?: {
     readonly inputTokens?: number;
     readonly outputTokens?: number;
@@ -714,6 +1109,28 @@ export class DiscoveryWorkBudgetLedgerV1 {
     return true;
   }
 
+  public admitWork(
+    dimension:
+      'resources' | 'semanticNeighbors' | 'candidatePairs' | 'candidateGroups' | 'findings',
+    amount = 1,
+  ): { readonly status: 'ADMITTED' } | DiscoveryBudgetExhaustedV1 {
+    positiveFiniteInteger(amount, `${dimension} amount`);
+    const reasonByDimension = {
+      resources: 'RESOURCE_LIMIT',
+      semanticNeighbors: 'SEMANTIC_NEIGHBOR_LIMIT',
+      candidatePairs: 'CANDIDATE_PAIR_LIMIT',
+      candidateGroups: 'CANDIDATE_GROUP_LIMIT',
+      findings: 'FINDING_LIMIT',
+    } as const;
+    if (this.isExpired()) return budgetExhausted('DEADLINE_EXPIRED');
+    const current = this.used[dimension];
+    if (current + amount > budgetDimension(this.budget, dimension)) {
+      return budgetExhausted(reasonByDimension[dimension]);
+    }
+    this.used[dimension] = current + amount;
+    return { status: 'ADMITTED' };
+  }
+
   public admitProviderCall(input: {
     readonly inputTokenUpperBound: number;
     readonly estimatedCostMicros: number;
@@ -754,19 +1171,44 @@ export class DiscoveryWorkBudgetLedgerV1 {
       return budgetExhausted('COST_LIMIT');
     }
     this.used.activeProviderCalls += 1;
-    this.used.providerCalls += 1;
     this.used.inputTokens += input.inputTokenUpperBound;
     this.used.outputTokens += maxOutputTokens;
     this.used.estimatedCostMicros += input.estimatedCostMicros;
-    let finalized = false;
+    let state: DiscoveryProviderReservationV1['state'] = 'RESERVED';
+    const releaseReservation = (): void => {
+      this.used.activeProviderCalls = Math.max(0, this.used.activeProviderCalls - 1);
+      this.used.inputTokens = Math.max(0, this.used.inputTokens - input.inputTokenUpperBound);
+      this.used.outputTokens = Math.max(0, this.used.outputTokens - maxOutputTokens);
+      this.used.estimatedCostMicros = Math.max(
+        0,
+        this.used.estimatedCostMicros - input.estimatedCostMicros,
+      );
+    };
     const reservation: DiscoveryProviderReservationV1 = {
       maxOutputTokens,
       inputTokenUpperBound: input.inputTokenUpperBound,
       estimatedCostMicros: input.estimatedCostMicros,
+      get state() {
+        return state;
+      },
+      dispatch: () => {
+        if (state === 'RESERVED') {
+          state = 'DISPATCHED';
+          this.used.providerCalls += 1;
+        }
+      },
+      cancelBeforeDispatch: () => {
+        if (state === 'RESERVED') {
+          state = 'CANCELLED_BEFORE_DISPATCH';
+          releaseReservation();
+        }
+      },
       finalize: (usage) => {
-        if (finalized) throw new Error('Provider budget reservation already finalized');
-        finalized = true;
-        this.used.activeProviderCalls -= 1;
+        if (state === 'FINALIZED' || state === 'CANCELLED_BEFORE_DISPATCH') return;
+        if (state === 'RESERVED') {
+          reservation.cancelBeforeDispatch();
+          return;
+        }
         const actualInput = usage?.inputTokens ?? input.inputTokenUpperBound;
         const actualOutput = usage?.outputTokens ?? maxOutputTokens;
         const actualCost = usage?.estimatedCostMicros ?? input.estimatedCostMicros;
@@ -791,6 +1233,8 @@ export class DiscoveryWorkBudgetLedgerV1 {
         ) {
           throw new TypeError('Provider cost usage exceeds its admitted estimate');
         }
+        state = 'FINALIZED';
+        this.used.activeProviderCalls = Math.max(0, this.used.activeProviderCalls - 1);
         this.used.inputTokens = this.used.inputTokens - input.inputTokenUpperBound + actualInput;
         this.used.outputTokens = this.used.outputTokens - maxOutputTokens + actualOutput;
         this.used.estimatedCostMicros =
@@ -802,29 +1246,13 @@ export class DiscoveryWorkBudgetLedgerV1 {
 }
 
 export type DiscoveryTokenEstimatorPortV1 = {
-  readonly revision: typeof DISCOVERY_TOKEN_ESTIMATOR_VERSION_V1;
-  estimate(input: {
+  readonly revision: string;
+  estimateUpperBound(input: {
     readonly providerId: string;
     readonly modelId: string;
     readonly request: DiscoveryStructuredGenerationRequestV1;
-  }): number;
+  }): number | undefined;
 };
-
-export const createUtf16TokenUpperBoundEstimatorV1 = (): DiscoveryTokenEstimatorPortV1 => ({
-  revision: DISCOVERY_TOKEN_ESTIMATOR_VERSION_V1,
-  estimate: ({ providerId, modelId, request }) => {
-    nonEmpty(providerId, 'providerId');
-    nonEmpty(modelId, 'modelId');
-    const completeRequestMaterial = JSON.stringify({
-      providerId,
-      modelId,
-      systemInstruction: request.systemInstruction,
-      prompt: request.prompt,
-      responseSchema: request.responseSchema,
-    });
-    return Math.max(1, completeRequestMaterial.length);
-  },
-});
 
 export type DiscoveryCostEstimatorPortV1 = {
   readonly revision: string;
@@ -882,11 +1310,24 @@ export class DiscoveryBudgetControllerV1 {
     if (!provider.generateStructuredWithSignal) {
       return budgetExhausted('CANCELLATION_UNSUPPORTED');
     }
-    const inputTokenUpperBound = this.tokenEstimator.estimate({
-      providerId: provider.identity.provider,
-      modelId: provider.identity.model,
-      request,
-    });
+    let estimatedInputTokenUpperBound: number | undefined;
+    try {
+      estimatedInputTokenUpperBound = this.tokenEstimator.estimateUpperBound({
+        providerId: provider.identity.provider,
+        modelId: provider.identity.model,
+        request,
+      });
+    } catch {
+      return budgetExhausted('TOKEN_ESTIMATE_UNAVAILABLE');
+    }
+    if (
+      typeof estimatedInputTokenUpperBound !== 'number' ||
+      !Number.isSafeInteger(estimatedInputTokenUpperBound) ||
+      estimatedInputTokenUpperBound <= 0
+    ) {
+      return budgetExhausted('TOKEN_ESTIMATE_UNAVAILABLE');
+    }
+    const inputTokenUpperBound = estimatedInputTokenUpperBound;
     const maxOutputTokens = Math.min(
       input.maxOutputTokens ?? this.ledger.maxOutputTokensPerCall(),
       this.ledger.maxOutputTokensPerCall(),
@@ -931,18 +1372,29 @@ export class DiscoveryBudgetControllerV1 {
       usage?: Parameters<DiscoveryProviderReservationV1['finalize']>[0],
     ): void => {
       if (reservationFinalized) return;
-      reservationFinalized = true;
       admission.reservation.finalize(usage);
+      reservationFinalized = true;
     };
     try {
       if (controller.signal.aborted) {
-        return budgetExhausted('DEADLINE_EXPIRED');
+        admission.reservation.cancelBeforeDispatch();
+        return budgetExhausted(
+          input.signal?.aborted ? 'CANCELLED_OR_DEADLINE_EXPIRED' : 'DEADLINE_EXPIRED',
+        );
       }
+      admission.reservation.dispatch();
       const requestWithCap = { ...request, maxOutputTokens: admission.reservation.maxOutputTokens };
       const response = await provider.generateStructuredWithSignal(
         requestWithCap,
         controller.signal,
       );
+      if (controller.signal.aborted) {
+        finalizeReservation({
+          inputTokens: response.inputTokens,
+          outputTokens: response.outputTokens,
+        });
+        return budgetExhausted('CANCELLED_OR_DEADLINE_EXPIRED');
+      }
       finalizeReservation({
         inputTokens: response.inputTokens,
         outputTokens: response.outputTokens,

@@ -725,7 +725,7 @@ export type DiscoveryAIGenerationMaterializationInputV1 = {
   readonly rationale: string;
   readonly derivationSummary: string;
   readonly security: DiscoverySecurityCompositionSuccessV1;
-  readonly provenance: DiscoveryFindingProvenanceV1;
+  readonly provenance: DiscoveryAIGenerationMaterializationProvenanceV1;
   readonly selectionSignals?: readonly {
     readonly kind: string;
     readonly incompatibilityKind?: 'FACTUAL' | 'TEMPORAL' | 'IDENTITY' | 'MODEL_DISAGREEMENT';
@@ -739,6 +739,66 @@ export type DiscoveryAIGenerationMaterializationInputV1 = {
   readonly modelResponse?: Record<string, unknown>;
   readonly originIdentity?: DiscoveryFollowUpOriginIdentityV1;
   readonly qualifiedFollowUp?: DiscoveryFollowUpQualificationProofV1;
+};
+
+type DiscoveryAIGenerationSelectorProvenanceV1 = {
+  readonly selectorId: string;
+  readonly selectorVersion: string;
+  readonly inputDigest: string;
+  readonly anchorResourceKey: string;
+  readonly selectionSignals: readonly {
+    readonly kind: string;
+    readonly incompatibilityKind?: 'FACTUAL' | 'TEMPORAL' | 'IDENTITY' | 'MODEL_DISAGREEMENT';
+    readonly source?:
+      | 'TYPED_PROPOSITION'
+      | 'TEMPORAL_QUALIFICATION'
+      | 'IDENTITY_ASSIGNMENT'
+      | 'EXPLICIT_CONFLICT_SIGNAL';
+    readonly signalId?: string;
+  }[];
+};
+
+type DiscoveryAIGenerationMaterializationProvenanceV1 =
+  | Extract<DiscoveryFindingProvenanceV1, { readonly kind: 'AI_ASSISTED' }>
+  | Extract<DiscoveryFindingProvenanceV1, { readonly kind: 'HYBRID' }>
+  | {
+      readonly schemaVersion: '1.0.0';
+      readonly kind: 'HYBRID';
+      readonly deterministic: DiscoveryAIGenerationSelectorProvenanceV1;
+      readonly aiExecution: Extract<
+        DiscoveryFindingProvenanceV1,
+        { readonly kind: 'AI_ASSISTED' }
+      > extends infer AiProvenance
+        ? Omit<AiProvenance, 'schemaVersion' | 'kind'>
+        : never;
+    };
+
+const toDurableAIGenerationProvenance = (
+  provenance: DiscoveryAIGenerationMaterializationProvenanceV1,
+): DiscoveryFindingProvenanceV1 => {
+  if (provenance.kind === 'AI_ASSISTED') return provenance;
+  if ('ruleId' in provenance.deterministic) {
+    return {
+      schemaVersion: '1.0.0',
+      kind: 'HYBRID',
+      deterministic: {
+        ruleId: provenance.deterministic.ruleId,
+        ruleVersion: provenance.deterministic.ruleVersion,
+        inputDigest: provenance.deterministic.inputDigest,
+      },
+      aiExecution: provenance.aiExecution,
+    };
+  }
+  return {
+    schemaVersion: '1.0.0',
+    kind: 'HYBRID',
+    deterministic: {
+      ruleId: provenance.deterministic.selectorId,
+      ruleVersion: provenance.deterministic.selectorVersion,
+      inputDigest: provenance.deterministic.inputDigest,
+    },
+    aiExecution: provenance.aiExecution,
+  };
 };
 
 export type DiscoveryFingerprintAuthorityPortV1 = {
@@ -812,7 +872,7 @@ export const materializeDiscoveryAIGenerationProposalV1 = (
     signalSummary: input.signalSummary,
     rationale: input.rationale,
     derivationSummary: input.derivationSummary,
-    provenance: input.provenance,
+    provenance: toDurableAIGenerationProvenance(input.provenance),
     accessScope: input.security.accessScope,
     sensitivity: input.security.sensitivity,
     fingerprint: fingerprint.fingerprint,

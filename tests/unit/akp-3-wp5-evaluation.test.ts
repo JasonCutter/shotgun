@@ -13,6 +13,12 @@ import {
   type DiscoveryFindingType,
   type DiscoveryResourceKind,
   type DiscoveryResourceRefV1,
+  type DiscoveryAIExecutionResolutionV1,
+  type DiscoveryQualifiedAIGenerationContextV1,
+  type DiscoveryStructuredGenerationRequestV1,
+  type DiscoveryStructuredGenerationResponseV1,
+  type DiscoveryProviderBudgetControllerPortV1,
+  type DiscoveryModelProfileV1,
 } from '../../packages/contracts/src/index.js';
 import {
   createDiscoveryEngine,
@@ -20,13 +26,32 @@ import {
   createWp1DiscoveryStrategyRegistry,
   type DiscoverySignalPortsV1,
   type DiscoverySignalReadContextV1,
+  type DiscoverySignalResourceV1,
 } from '../../modules/discovery-finding-fingerprint/src/index.js';
 import {
+  createDiscoveryNeighborhoodSignalFacade,
+  createWp2DiscoveryNeighborhoodStrategyRegistry,
+  selectDiscoveryNeighborhood,
+  type DiscoveryAnchoredSemanticNeighborhoodV1,
+  type DiscoveryCompetingResourceSignalV1,
+  type DiscoveryCompetingResourceV1,
+  type DiscoveryExistingCanonicalConflictSignalV1,
+  type DiscoveryHypothesisCandidateV1 as Wp2HypothesisCandidateV1,
+  type DiscoveryNeighborhoodSignalPortsV1,
+  type DiscoveryTemporalCompatibilitySignalV1,
+} from '../../modules/discovery-finding-fingerprint/src/index.js';
+import {
+  DISCOVERY_AI_OUTPUT_SCHEMA_VERSION_V1,
+  DISCOVERY_AI_PROMPT_VERSION_V1,
   DiscoveryAIGenerationError,
+  DiscoveryAIGenerationService,
   executeDiscoveryStrategiesV1,
 } from '../../modules/discovery-ai-generation/src/index.js';
 import {
   createDiscoveryQualityGateV1,
+  createDiscoveryQualityGateInputFromAIGenerationProposalV1,
+  DiscoveryBudgetControllerV1,
+  DiscoveryWorkBudgetLedgerV1,
   DISCOVERY_RANKING_POLICY_VERSION_V1,
   rankAcceptedDiscoveryCandidatesV1,
   type DiscoveryQualityRevalidationPortV1,
@@ -205,19 +230,22 @@ type FixtureEntry = {
   };
 };
 
-const authority = (overrides: Partial<DiscoveryQualityRevalidationPortV1> = {}) =>
+const authority = (
+  overrides: Partial<DiscoveryQualityRevalidationPortV1> = {},
+  authorizedProjectId = projectId,
+) =>
   ({
-    revalidateResource: vi.fn(async ({ resource }) => ({
+    revalidateResource: vi.fn(async () => ({
       exists: true,
       eligible: true,
-      projectId: resource.projectId,
+      projectId: authorizedProjectId,
       accessScope: ['project:read'],
       sensitivity: 'internal' as const,
     })),
     revalidateEvidence: vi.fn(async () => ({
       exists: true,
       eligible: true,
-      projectId,
+      projectId: authorizedProjectId,
       identityValid: true,
     })),
     findByFingerprint: vi.fn(async () => []),
@@ -447,8 +475,425 @@ const conflictSignal = (
   signalId: `wp5-${incompatibilityKind.toLowerCase()}-signal`,
 });
 
+const productPathProjectId = 'project-1';
+const testTokenEstimator = {
+  revision: 'discovery-token-estimator:v1',
+  estimateUpperBound: () => 1_000,
+};
+
+const profile = (): DiscoveryModelProfileV1 => ({
+  schemaVersion: '1.0.0',
+  profileId: 'discovery-profile-1',
+  projectId: productPathProjectId,
+  profileRevision: 1,
+  aiConfigurationRevision: 4,
+  providerId: 'openai',
+  modelId: 'gpt-discovery',
+  providerRegistryRevision: 'provider-registry:v1',
+  modelCapabilityRevision: 'model-capability:v4',
+  promptVersion: DISCOVERY_AI_PROMPT_VERSION_V1,
+  outputSchemaVersion: DISCOVERY_AI_OUTPUT_SCHEMA_VERSION_V1,
+  status: 'ACTIVE',
+  createdBy: 'owner-1',
+  createdAt: '2026-08-30T00:00:00.000Z',
+  activatedAt: '2026-08-30T00:01:00.000Z',
+});
+
+const resolution = (): DiscoveryAIExecutionResolutionV1 => ({
+  pin: {
+    projectId: productPathProjectId,
+    profileId: 'discovery-profile-1',
+    profileRevision: 1,
+    providerId: 'openai',
+    modelId: 'gpt-discovery',
+    modelCapabilityRevision: 'model-capability:v4',
+    aiConfigurationRevision: 4,
+    credentialId: 'credential-7',
+    credentialRevision: 2,
+    providerPolicyFingerprint: 'policy-fingerprint-7',
+    privacyPolicyRevision: 'privacy-policy-5',
+    dataPolicyRevision: 'provider-policy-3',
+    promptVersion: DISCOVERY_AI_PROMPT_VERSION_V1,
+    outputSchemaVersion: DISCOVERY_AI_OUTPUT_SCHEMA_VERSION_V1,
+  },
+  modelVersion: 'catalog:gpt-discovery@model-capability:v4',
+});
+
+const productPathResource = (
+  resourceId: string,
+  resourceKind: DiscoveryResourceKind = 'CANONICAL_CLAIM',
+): DiscoveryResourceRefV1 => ({
+  schemaVersion: '1.0.0',
+  resourceKind,
+  resourceId,
+  projectId: productPathProjectId,
+  resourceState: 'CURRENT',
+  resourceRevision: '1',
+});
+
+const productPathSignalResource = (
+  resource: DiscoveryResourceRefV1,
+  evidenceIds: readonly string[] = [`evidence-${resource.resourceId}`],
+): DiscoverySignalResourceV1 => ({
+  resource,
+  label: resource.resourceId,
+  evidenceIds,
+  security: {
+    projectId: productPathProjectId,
+    accessScope: ['project:read'],
+    sensitivity: 'internal',
+  },
+});
+
+const productPathResourceKey = (resource: DiscoveryResourceRefV1): string =>
+  [
+    resource.projectId,
+    resource.resourceKind,
+    resource.resourceId,
+    resource.resourceState,
+    resource.resourceRevision ?? '',
+  ].join('\u0000');
+
+const productPathWp1Context: DiscoverySignalReadContextV1 = {
+  ...wp1Context,
+  projectId: productPathProjectId,
+  sourceProjectionDigest,
+  canonicalBase,
+  discoveryBase,
+};
+
+const productPathQualityContext = {
+  projectId: productPathProjectId,
+  accessScope: productPathWp1Context.accessScope,
+  sensitivity: productPathWp1Context.sensitivity,
+  sourceProjectionDigest: productPathWp1Context.sourceProjectionDigest,
+  canonicalBase: productPathWp1Context.canonicalBase,
+  discoveryBase: productPathWp1Context.discoveryBase,
+};
+
+const runProductWp1Strategy = async (
+  strategyId: 'akp-3.knowledge-gap.isolated-entity' | 'akp-3.evidence-gap.absent-lineage',
+): Promise<ReturnType<typeof createDiscoveryFindingEnvelopeV1>> => {
+  const ports = emptySignalPorts();
+  if (strategyId === 'akp-3.knowledge-gap.isolated-entity') {
+    const entity = productPathSignalResource(
+      productPathResource('product-path-entity', 'CANONICAL_ENTITY'),
+      [],
+    );
+    ports.compiledTruth.read = vi.fn(async () => ({
+      resources: [entity],
+      sourceProjectionDigest,
+      completeness: 'COMPLETE' as const,
+    }));
+  } else {
+    const claim = productPathSignalResource(productPathResource('product-path-evidence'), []);
+    ports.evidenceCoverage.read = vi.fn(async () => ({
+      resources: [claim],
+      completeness: 'COMPLETE' as const,
+    }));
+  }
+  const result = await createDiscoveryEngine({
+    facade: createDiscoverySignalFacade(ports),
+    registry: createWp1DiscoveryStrategyRegistry(),
+  }).generateBudgeted({
+    context: productPathWp1Context,
+    dependencies: {
+      runId: `wp5-real-${strategyId}`,
+      clock: { now: () => '2026-08-30T00:00:00.000Z' },
+      findingIdFactory: ({ fingerprint }) => `wp5-real-${fingerprint.slice(-12)}`,
+    },
+    strategyIds: [strategyId],
+  });
+  expect(result.completion).toBe('COMPLETE');
+  expect(result.findings).toHaveLength(1);
+  return result.findings[0]!;
+};
+
+const acceptProductWp1Finding = async (
+  candidate: ReturnType<typeof createDiscoveryFindingEnvelopeV1>,
+  semanticEssence: string,
+) => {
+  const result = await createDiscoveryQualityGateV1(authority({}, productPathProjectId)).evaluate({
+    candidate,
+    fingerprintInput: {
+      findingType: candidate.findingType,
+      relatedResourceRefs: candidate.relatedResourceRefs,
+      semanticEssence,
+    },
+    context: productPathQualityContext,
+  });
+  expect(result).toMatchObject({ disposition: 'ACCEPTED' });
+  return result;
+};
+
+type ProductConflictKind = 'FACTUAL' | 'TEMPORAL' | 'IDENTITY' | 'MODEL_DISAGREEMENT';
+
+const productCompetingResource = (
+  left: DiscoveryResourceRefV1,
+  right: DiscoveryResourceRefV1,
+  kind: ProductConflictKind,
+): DiscoveryCompetingResourceV1 => {
+  const signalId = `wp5-real-${kind.toLowerCase()}-signal`;
+  switch (kind) {
+    case 'FACTUAL':
+      return { left, right, kind, source: 'TYPED_PROPOSITION', signalId };
+    case 'TEMPORAL':
+      return {
+        left,
+        right,
+        kind,
+        source: 'TEMPORAL_QUALIFICATION',
+        signalId,
+        temporalOverlap: true,
+      };
+    case 'IDENTITY':
+      return { left, right, kind, source: 'IDENTITY_ASSIGNMENT', signalId };
+    case 'MODEL_DISAGREEMENT':
+      return { left, right, kind, source: 'EXPLICIT_CONFLICT_SIGNAL', signalId };
+  }
+};
+
+const productPathWp2Context: DiscoverySignalReadContextV1 = {
+  ...productPathWp1Context,
+  bounds: { maxResourcesRead: 10, maxObservationsReturned: 10, maxFindingsEmitted: 10 },
+};
+
+const productPathSemanticNeighborhood = (
+  anchor: DiscoverySignalResourceV1,
+  neighbor: DiscoverySignalResourceV1,
+): DiscoveryAnchoredSemanticNeighborhoodV1 => ({
+  sourceProjectionDigest: productPathWp2Context.sourceProjectionDigest,
+  canonicalBase: productPathWp2Context.canonicalBase,
+  discoveryBase: productPathWp2Context.discoveryBase,
+  semanticGenerationId: 'wp5-real-semantic-generation',
+  anchor,
+  neighbors: [
+    {
+      sourceProjectionDigest: productPathWp2Context.sourceProjectionDigest,
+      canonicalBase: productPathWp2Context.canonicalBase,
+      discoveryBase: productPathWp2Context.discoveryBase,
+      semanticGenerationId: 'wp5-real-semantic-generation',
+      resource: neighbor,
+      semanticRank: 1,
+      semanticSimilarity: 0.9,
+    },
+  ],
+  completeness: 'COMPLETE',
+});
+
+const selectProductWp2Candidate = async (
+  targetFindingType: 'RELATION_HYPOTHESIS' | 'PATTERN_HYPOTHESIS' | 'CONFLICT_HYPOTHESIS',
+  incompatibilityKind?: ProductConflictKind,
+): Promise<Wp2HypothesisCandidateV1> => {
+  const anchor = productPathSignalResource(productPathResource('product-path-anchor'));
+  const neighbor = productPathSignalResource(productPathResource('product-path-neighbor'));
+  const semantic = productPathSemanticNeighborhood(anchor, neighbor);
+  const conflictCompetition: DiscoveryCompetingResourceSignalV1 = {
+    sourceProjectionDigest: productPathWp2Context.sourceProjectionDigest,
+    canonicalBase: productPathWp2Context.canonicalBase,
+    discoveryBase: productPathWp2Context.discoveryBase,
+    semanticGenerationId: 'wp5-real-semantic-generation',
+    competitions:
+      incompatibilityKind === undefined
+        ? []
+        : [productCompetingResource(anchor.resource, neighbor.resource, incompatibilityKind)],
+    completeness: 'COMPLETE',
+  };
+  const existingConflict: DiscoveryExistingCanonicalConflictSignalV1 = {
+    sourceProjectionDigest: productPathWp2Context.sourceProjectionDigest,
+    canonicalBase: productPathWp2Context.canonicalBase,
+    discoveryBase: productPathWp2Context.discoveryBase,
+    semanticGenerationId: 'wp5-real-semantic-generation',
+    conflicts: [],
+    completeness: 'COMPLETE',
+  };
+  const ports: DiscoveryNeighborhoodSignalPortsV1 = {
+    semanticNeighborhood: {
+      read: vi.fn(async () => semantic),
+    },
+    graphRelation: {
+      read: vi.fn(async () => ({
+        sourceProjectionDigest: productPathWp2Context.sourceProjectionDigest,
+        canonicalBase: productPathWp2Context.canonicalBase,
+        discoveryBase: productPathWp2Context.discoveryBase,
+        semanticGenerationId: 'wp5-real-semantic-generation',
+        relations: [],
+        completeness: 'COMPLETE' as const,
+      })),
+    },
+    temporalCompatibility: {
+      read: vi.fn(async () => {
+        const result: DiscoveryTemporalCompatibilitySignalV1 = {
+          sourceProjectionDigest: productPathWp2Context.sourceProjectionDigest,
+          canonicalBase: productPathWp2Context.canonicalBase,
+          discoveryBase: productPathWp2Context.discoveryBase,
+          semanticGenerationId: 'wp5-real-semantic-generation',
+          compatibilities: [
+            {
+              left: anchor.resource,
+              right: neighbor.resource,
+              compatible: true,
+              temporalEvidenceId: 'wp5-real-temporal-evidence',
+            },
+          ],
+          completeness: 'COMPLETE',
+        };
+        return result;
+      }),
+    },
+    competingResource: { read: vi.fn(async () => conflictCompetition) },
+    existingCanonicalConflict: { read: vi.fn(async () => existingConflict) },
+  };
+  const facade = createDiscoveryNeighborhoodSignalFacade(ports);
+  const registry = createWp2DiscoveryNeighborhoodStrategyRegistry();
+  const strategy = registry.list().find((entry) => entry.targetFindingType === targetFindingType)!;
+  const signals = await facade.readForStrategy({
+    context: productPathWp2Context,
+    anchors: [anchor],
+    strategy,
+  });
+  const selected = selectDiscoveryNeighborhood(strategy, signals);
+  expect(selected.completeness).toBe('COMPLETE');
+  expect(selected.candidates).toHaveLength(1);
+  return selected.candidates[0]!;
+};
+
+const productPathAiContext = (
+  candidate: Wp2HypothesisCandidateV1,
+): DiscoveryQualifiedAIGenerationContextV1 => ({
+  projectId: productPathProjectId,
+  accessScope: ['project:read'],
+  sensitivity: 'internal',
+  sourceProjectionDigest: candidate.sourceProjectionDigest,
+  canonicalBase: candidate.canonicalBase,
+  discoveryBase: candidate.discoveryBase,
+  originatingFindingType: candidate.targetFindingType,
+  boundedRationale: 'The actual WP2 selector produced this bounded synthetic context.',
+  items: candidate.memberResourceRefs.map((resourceRef) => ({
+    resourceRef,
+    deterministicRepresentation: `Bounded server representation for ${resourceRef.resourceId}.`,
+    evidenceIds: [`evidence-${resourceRef.resourceId}`],
+  })),
+});
+
+const createProductPathAiHarness = () => {
+  const responses: Record<string, string> = {
+    RELATION_HYPOTHESIS: JSON.stringify({
+      proposedRelationType: 'supports',
+      orientation: 'ANCHOR_TO_OTHER',
+    }),
+    PATTERN_HYPOTHESIS: JSON.stringify({
+      patternKind: 'CLUSTER',
+      patternIdentity: 'wp5-real-cluster',
+      patternStatement: 'The bounded selected resources form a cluster.',
+    }),
+    CONFLICT_HYPOTHESIS: JSON.stringify({
+      possibleContradiction: 'The bounded selected resources require human review.',
+    }),
+    CLARIFICATION_QUESTION: JSON.stringify({
+      question: 'Which approved evidence should be reviewed next?',
+      context: 'The bounded upstream context requires clarification.',
+      proposedNextStep: 'Confirm the evidence with the reviewer.',
+    }),
+    ACTION_SUGGESTION: JSON.stringify({
+      suggestedAction: 'Review the bounded records together.',
+      rationale: 'Human review is required and no execution authority is granted.',
+    }),
+  };
+  const calls: DiscoveryStructuredGenerationRequestV1[] = [];
+  const generate = async (
+    request: DiscoveryStructuredGenerationRequestV1,
+  ): Promise<DiscoveryStructuredGenerationResponseV1> => {
+    calls.push(request);
+    const task = (JSON.parse(request.prompt) as { readonly task: string }).task;
+    return {
+      rawText: responses[task]!,
+      providerResponseId: `wp5-real-provider-${calls.length}`,
+      modelVersion: 'fake-discovery-model-v1',
+    };
+  };
+  const provider = {
+    identity: {
+      provider: 'openai',
+      model: 'gpt-discovery',
+      adapterVersion: 'wp5-real-fake-provider-v1',
+      dataPolicyVersion: 'wp5-real-fake-policy-v1',
+      supportsOutputTokenLimit: true,
+      supportsCancellation: true,
+    },
+    generateStructuredWithSignal: vi.fn(generate),
+    generateStructured: vi.fn(generate),
+  };
+  const budgetController: DiscoveryProviderBudgetControllerPortV1 = new DiscoveryBudgetControllerV1(
+    new DiscoveryWorkBudgetLedgerV1({
+      schemaVersion: '1.0.0',
+      budgetVersion: 'discovery-work-budget:v1',
+      maxResources: 100,
+      maxSemanticNeighbors: 100,
+      maxCandidatePairs: 100,
+      maxCandidateGroups: 100,
+      maxFindings: 100,
+      maxProviderCalls: 20,
+      maxInputTokens: 100_000,
+      maxOutputTokens: 100_000,
+      maxOutputTokensPerCall: 10_000,
+      maxEstimatedCostMicros: 100_000,
+      maxConcurrentProviderCalls: 4,
+      deadlineAt: '2099-01-01T00:00:00.000Z',
+    }),
+    testTokenEstimator,
+    { revision: 'wp5-real-fixed-cost:v1', estimate: () => 1 },
+  );
+  const service = new DiscoveryAIGenerationService(
+    {
+      getActive: vi.fn(async () => profile()),
+      getCurrent: vi.fn(),
+      getRevision: vi.fn(),
+      createProfile: vi.fn(),
+      activateProfile: vi.fn(),
+      retireProfile: vi.fn(),
+    },
+    { resolve: vi.fn(async () => resolution()) },
+    { resolve: vi.fn(async () => provider) },
+    budgetController,
+  );
+  return { service, provider, calls };
+};
+
+const acceptProductPathProposal = async (
+  proposal: Awaited<ReturnType<DiscoveryAIGenerationService['interpretHypothesis']>>,
+) => {
+  const bridged = createDiscoveryQualityGateInputFromAIGenerationProposalV1(proposal, {
+    findingIdFactory: ({ projectId: proposalProjectId, findingType, fingerprint }) =>
+      `wp5-real-${proposalProjectId}-${findingType.toLowerCase()}-${fingerprint.slice(-12)}`,
+    clock: { now: () => '2026-08-30T00:00:00.000Z' },
+    fingerprintAuthority: { compute: computeDiscoveryFingerprintV1 },
+  });
+  const result = await createDiscoveryQualityGateV1(authority({}, productPathProjectId)).evaluate(
+    bridged,
+  );
+  expect(result).toMatchObject({ disposition: 'ACCEPTED' });
+  return { bridged, result };
+};
+
+const acceptProductPathQualifiedProposal = async (
+  proposal: Awaited<ReturnType<DiscoveryAIGenerationService['generateClarification']>>,
+) => {
+  const bridged = createDiscoveryQualityGateInputFromAIGenerationProposalV1(proposal, {
+    findingIdFactory: ({ projectId: proposalProjectId, findingType, fingerprint }) =>
+      `wp5-real-${proposalProjectId}-${findingType.toLowerCase()}-${fingerprint.slice(-12)}`,
+    clock: { now: () => '2026-08-30T00:00:00.000Z' },
+    fingerprintAuthority: { compute: computeDiscoveryFingerprintV1 },
+  });
+  const result = await createDiscoveryQualityGateV1(authority({}, productPathProjectId)).evaluate(
+    bridged,
+  );
+  expect(result).toMatchObject({ disposition: 'ACCEPTED' });
+  return { bridged, result };
+};
+
 describe('AKP-3 WP5 Discovery evaluation, degradation and security closure', () => {
-  it('freezes a deterministic synthetic fixture identity and the seven-type positive matrix', async () => {
+  it('freezes a deterministic WP4 envelope-conformance fixture identity and gate matrix', async () => {
     const entries = fixtureEntries();
     const fixtureDigest = sha256Text(
       semanticStableJson({
@@ -475,6 +920,137 @@ describe('AKP-3 WP5 Discovery evaluation, degradation and security closure', () 
       );
       expect(result.disposition).toBe('ACCEPTED');
     }
+  });
+
+  it('accepts every frozen finding type through the actual WP1/WP2/WP3/WP4 Product paths', async () => {
+    const knowledge = await runProductWp1Strategy('akp-3.knowledge-gap.isolated-entity');
+    expect(knowledge.findingType).toBe('KNOWLEDGE_GAP');
+    await acceptProductWp1Finding(
+      knowledge,
+      `isolated-entity:${productPathResourceKey(knowledge.relatedResourceRefs[0]!)}`,
+    );
+
+    const evidence = await runProductWp1Strategy('akp-3.evidence-gap.absent-lineage');
+    expect(evidence.findingType).toBe('EVIDENCE_GAP');
+    await acceptProductWp1Finding(
+      evidence,
+      `absent-evidence:${productPathResourceKey(evidence.relatedResourceRefs[0]!)}`,
+    );
+
+    const harness = createProductPathAiHarness();
+    const generated: Awaited<ReturnType<DiscoveryAIGenerationService['interpretHypothesis']>>[] =
+      [];
+    const relationCandidate = await selectProductWp2Candidate('RELATION_HYPOTHESIS');
+    const relation = await harness.service.interpretHypothesis({
+      projectId: productPathProjectId,
+      runId: 'wp5-real-relation',
+      candidate: relationCandidate as Parameters<
+        DiscoveryAIGenerationService['interpretHypothesis']
+      >[0]['candidate'],
+      context: productPathAiContext(relationCandidate),
+    });
+    generated.push(relation);
+    expect(relation.generationMethod).toBe('HYBRID');
+    await acceptProductPathProposal(relation);
+
+    const patternCandidate = await selectProductWp2Candidate('PATTERN_HYPOTHESIS');
+    const pattern = await harness.service.interpretHypothesis({
+      projectId: productPathProjectId,
+      runId: 'wp5-real-pattern',
+      candidate: patternCandidate as Parameters<
+        DiscoveryAIGenerationService['interpretHypothesis']
+      >[0]['candidate'],
+      context: productPathAiContext(patternCandidate),
+    });
+    generated.push(pattern);
+    expect(pattern.generationMethod).toBe('HYBRID');
+    await acceptProductPathProposal(pattern);
+
+    for (const incompatibilityKind of [
+      'FACTUAL',
+      'TEMPORAL',
+      'IDENTITY',
+      'MODEL_DISAGREEMENT',
+    ] as const) {
+      const conflictCandidate = await selectProductWp2Candidate(
+        'CONFLICT_HYPOTHESIS',
+        incompatibilityKind,
+      );
+      const conflict = await harness.service.interpretHypothesis({
+        projectId: productPathProjectId,
+        runId: `wp5-real-conflict-${incompatibilityKind.toLowerCase()}`,
+        candidate: conflictCandidate as Parameters<
+          DiscoveryAIGenerationService['interpretHypothesis']
+        >[0]['candidate'],
+        context: productPathAiContext(conflictCandidate),
+      });
+      generated.push(conflict);
+      expect(conflict.payload).toMatchObject({
+        payloadType: 'CONFLICT_HYPOTHESIS',
+        contradictionKind: incompatibilityKind,
+      });
+      await acceptProductPathProposal(conflict);
+    }
+
+    const originIdentity = {
+      schemaVersion: '1.0.0' as const,
+      originFindingType: 'KNOWLEDGE_GAP' as const,
+      fingerprintVersion: 'discovery-fingerprint:v1' as const,
+      fingerprint: knowledge.fingerprint as `sha256:${string}`,
+    };
+    const qualifiedContext: DiscoveryQualifiedAIGenerationContextV1 = {
+      ...productPathQualityContext,
+      originatingFindingType: 'KNOWLEDGE_GAP',
+      originIdentity,
+      boundedRationale: 'The actual WP1 Knowledge Gap is the qualified upstream origin.',
+      items: knowledge.relatedResourceRefs.map((resourceRef) => ({
+        resourceRef,
+        deterministicRepresentation: `Qualified representation for ${resourceRef.resourceId}.`,
+        evidenceIds: ['evidence-wp5-qualified-origin'],
+      })),
+    };
+    const clarification = await harness.service.generateClarification({
+      projectId: productPathProjectId,
+      runId: 'wp5-real-clarification',
+      context: qualifiedContext,
+    });
+    expect(clarification.payload).toMatchObject({
+      payloadType: 'CLARIFICATION_QUESTION',
+      investigationTargetRefs: knowledge.relatedResourceRefs,
+    });
+    await acceptProductPathQualifiedProposal(clarification);
+
+    const action = await harness.service.generateAction({
+      projectId: productPathProjectId,
+      runId: 'wp5-real-action',
+      context: qualifiedContext,
+    });
+    expect(action.payload).toMatchObject({
+      payloadType: 'ACTION_SUGGESTION',
+      executionStatus: 'CANDIDATE_ONLY',
+    });
+    expect(action.payload).not.toHaveProperty('execute');
+    await acceptProductPathQualifiedProposal(action);
+
+    expect(harness.provider.generateStructuredWithSignal).toHaveBeenCalledTimes(8);
+    expect(harness.provider.generateStructured).not.toHaveBeenCalled();
+    expect(
+      harness.calls.map((request) => (JSON.parse(request.prompt) as { task: string }).task),
+    ).toEqual([
+      'RELATION_HYPOTHESIS',
+      'PATTERN_HYPOTHESIS',
+      'CONFLICT_HYPOTHESIS',
+      'CONFLICT_HYPOTHESIS',
+      'CONFLICT_HYPOTHESIS',
+      'CONFLICT_HYPOTHESIS',
+      'CLARIFICATION_QUESTION',
+      'ACTION_SUGGESTION',
+    ]);
+    expect(JSON.stringify({ generated, calls: harness.calls })).not.toMatch(
+      /apiKey|authorization|credentialPlaintext|secret-token/i,
+    );
+    expect(harness.provider).not.toHaveProperty('execute');
+    expect(harness.provider).not.toHaveProperty('callTool');
   });
 
   it('repeats pure evaluation with identical identities, dispositions and ranking order', async () => {

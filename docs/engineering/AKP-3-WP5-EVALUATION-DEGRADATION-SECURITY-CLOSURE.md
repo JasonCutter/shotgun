@@ -26,18 +26,18 @@ of a reusable server-owned value contract recording the effective strategy set
 when AI is unavailable. WP5 adds that additive contract and a small execution
 policy helper; it adds no persistence or runtime subsystem.
 
-| Criterion                                                           | Disposition and actual evidence                                                     |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| AC-01 versioned/bounded strategy registry                           | Existing WP1/WP2 registry; WP5 strategy-set contract and no-regression test         |
-| AC-02 authorized/version-bound signal reads                         | WP1/WP2 reads; WP2 bounds/base/security tests; WP5 cross-Project/base gate negative |
-| AC-03 DETERMINISTIC / AI_ASSISTED / HYBRID                          | WP1 deterministic path, WP3 provenance tests, WP5 seven-type fixture                |
-| AC-04 bounded Relation/Conflict/Pattern space                       | WP2 selector/bound tests and WP3 candidate/provider-boundary tests                  |
-| AC-05 all frozen V1 finding types                                   | WP5 has seven entries, each accepted by the WP4 quality gate                        |
-| AC-06 deterministic quality gate before persistence                 | WP4 gate/materialization tests and WP5 accepted/rejected bridge                     |
-| AC-07 DiscoveryModelProfile and ADR-133 authority                   | WP3 profile/provenance tests and WP5 typed-unavailability mapping                   |
-| AC-08 prompt injection cannot alter policy or execute tools/Actions | WP3 malicious-data/provider tests plus WP5 security audit assertions                |
-| AC-09 token/cost/time/concurrency budgets                           | WP4 ledger/admission/deadline tests plus WP5 budget reason preservation             |
-| AC-10 positive/negative fixtures including Conflict                 | WP5 positive/four-basis matrix plus WP2/WP4 negative matrices                       |
+| Criterion                                                           | Disposition and actual evidence                                                                    |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| AC-01 versioned/bounded strategy registry                           | Existing WP1/WP2 registry; WP5 strategy-set contract and no-regression test                        |
+| AC-02 authorized/version-bound signal reads                         | WP1/WP2 reads; WP2 bounds/base/security tests; WP5 cross-Project/base gate negative                |
+| AC-03 DETERMINISTIC / AI_ASSISTED / HYBRID                          | WP1 deterministic path, WP3 provenance tests, WP5 envelope and Product-path fixtures               |
+| AC-04 bounded Relation/Conflict/Pattern space                       | WP2 selector/bound tests and WP3 candidate/provider-boundary tests                                 |
+| AC-05 all frozen V1 finding types                                   | WP5 real Product-path acceptance fixture: seven accepted paths; manual fixture is conformance-only |
+| AC-06 deterministic quality gate before persistence                 | WP4 gate/materialization tests and WP5 accepted/rejected bridge                                    |
+| AC-07 DiscoveryModelProfile and ADR-133 authority                   | WP3 profile/provenance tests and WP5 typed-unavailability mapping                                  |
+| AC-08 prompt injection cannot alter policy or execute tools/Actions | WP3 malicious-data/provider tests plus WP5 security audit assertions                               |
+| AC-09 token/cost/time/concurrency budgets                           | WP4 ledger/admission/deadline tests plus WP5 budget reason preservation                            |
+| AC-10 positive/negative fixtures including Conflict                 | WP5 seven real positive paths and four real Conflict mappings plus reused negatives                |
 
 ## Product boundary: effective strategy set
 
@@ -66,26 +66,44 @@ identity/security/base mismatch, quality rejection, deterministic failure, or
 unexpected programming errors. Deterministic strategies continue when AI is
 skipped; no AI-dependent Finding is fabricated.
 
-## Positive evaluation
+## Positive evaluation and fixture distinction
 
-The fixed fixture contains and accepts every frozen V1 type through the WP4
-gate:
+`makeEntry()` remains a pure WP4 envelope-conformance fixture. It is used for
+the fixed identity digest, gate acceptance/rejection, deterministic ranking,
+and focused negative/suppression checks. It is not evidence that WP2 or WP3
+generated the seven final envelopes.
 
-| Finding type             | Path and expected disposition                                 |
-| ------------------------ | ------------------------------------------------------------- |
-| `KNOWLEDGE_GAP`          | deterministic WP1-compatible isolated Entity path; `ACCEPTED` |
-| `EVIDENCE_GAP`           | bounded fixture through WP4 gate; `ACCEPTED`                  |
-| `RELATION_HYPOTHESIS`    | bounded two-claim context; `ACCEPTED`                         |
-| `PATTERN_HYPOTHESIS`     | HYBRID bounded group; `ACCEPTED`                              |
-| `CONFLICT_HYPOTHESIS`    | HYBRID with server-owned explicit signal; `ACCEPTED`          |
-| `CLARIFICATION_QUESTION` | qualified upstream Conflict origin; `ACCEPTED`                |
-| `ACTION_SUGGESTION`      | qualified upstream context and `CANDIDATE_ONLY`; `ACCEPTED`   |
+The authoritative seven-type acceptance evidence is the focused test
+`accepts every frozen finding type through the actual WP1/WP2/WP3/WP4 Product paths`
+in `tests/unit/akp-3-wp5-evaluation.test.ts`. It uses fixed synthetic
+Project/base/security identities, the real WP1 deterministic engine, real WP2
+neighborhood selection, the real WP3 service and decoder, the real WP4 bridge,
+materializer and gate, a bounded fake structured provider, and deterministic
+token/cost authorities. No live provider, network, tool, external Action, or
+manual final envelope is used for these seven positive paths.
 
-Relation evidence uses the WP2 bounded candidate, fake structured AI
-provenance, server-owned endpoint/orientation, ADR-149 semantic essence and
-fingerprint input, and WP4 qualification. Existing WP2/WP3 evidence covers
-`CLUSTER`, `TREND`, `RECURRING_ASSOCIATION`, and `TEMPORAL_CHANGE` pattern
-memberships. The accepted Conflict mappings are:
+The actual Product-path matrix is:
+
+| Finding type             | Path and expected disposition                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `KNOWLEDGE_GAP`          | real WP1 isolated-entity strategy → WP1 finding → WP4 gate; `ACCEPTED`                                      |
+| `EVIDENCE_GAP`           | real WP1 absent-lineage strategy → WP1 finding → WP4 gate; `ACCEPTED`                                       |
+| `RELATION_HYPOTHESIS`    | real WP2 neighborhood selector → WP3 interpretation → WP4 materialization/gate; `ACCEPTED`                  |
+| `PATTERN_HYPOTHESIS`     | real WP2 neighborhood selector → WP3 interpretation → WP4 materialization/gate; `ACCEPTED`                  |
+| `CONFLICT_HYPOTHESIS`    | real WP2 selector → WP3 explanation with server-owned kind → WP4 materialization/gate; `ACCEPTED`           |
+| `CLARIFICATION_QUESTION` | qualified server-owned origin → WP3 generation → WP4 materialization/gate; `ACCEPTED`                       |
+| `ACTION_SUGGESTION`      | qualified server-owned origin → WP3 generation → WP4 materialization/gate with `CANDIDATE_ONLY`; `ACCEPTED` |
+
+Relation and Pattern evidence use the actual WP2 bounded candidate, the fake
+structured provider only for bounded interpretation, server-owned
+endpoint/orientation or membership, ADR-149 semantic essence and fingerprint
+input, and the actual WP4 materializer/gate. The WP3 bridge now converts its
+WP2 selector provenance into the final contract's deterministic provenance
+shape before envelope decoding; selector signals remain separately available
+to the WP4 Conflict gate. Existing WP2/WP3 evidence covers `CLUSTER`, `TREND`,
+`RECURRING_ASSOCIATION`, and `TEMPORAL_CHANGE` pattern memberships. The
+accepted Conflict mappings are exercised through the real selector and
+interpretation path:
 
 - `FACTUAL` ↔ `TYPED_PROPOSITION`
 - `TEMPORAL` ↔ `TEMPORAL_QUALIFICATION`
@@ -95,6 +113,11 @@ memberships. The accepted Conflict mappings are:
 Clarification and Action preserve server-owned origin fingerprint and bases.
 Action stays candidate-only through generation, materialization, and quality;
 there is no executor or connector.
+
+The real Product-path fixture invokes the fake provider exactly eight times:
+one Relation, one Pattern, four Conflict mappings, one Clarification, and one
+Action. It uses `generateStructuredWithSignal` only, never `generateStructured`;
+the provider exposes no execute or tool surface and receives no live credential.
 
 ## Negative quality and Conflict matrix
 
@@ -213,7 +236,7 @@ feedback adaptation, and deployment are not started.
 
 ```text
 npx vitest run tests/unit/akp-3-wp5-evaluation.test.ts
-  1 file passed, 12 tests passed
+  1 file passed, 13 tests passed
 
 npx vitest run tests/unit/akp-3-wp1-active-discovery.test.ts \
   tests/unit/akp-3-wp2-hypothesis-neighborhood.test.ts \
@@ -230,7 +253,7 @@ npx prettier --check <changed WP5 files> PASS
 git diff --check           PASS
 ```
 
-Docs/governance validation is run after adding this document. Full Frontend E2E
+Docs/governance validation is run after correcting this document. Full Frontend E2E
 and accepted exact-head CI evidence are not manually rerun.
 
 ## Final CI evidence

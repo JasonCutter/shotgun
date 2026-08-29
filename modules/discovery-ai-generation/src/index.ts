@@ -28,6 +28,7 @@ import {
 } from '../../../packages/contracts/src/index.js';
 
 export * from './profile.js';
+export * from './execution-policy.js';
 
 export const DISCOVERY_AI_PROMPT_VERSION_V1 = 'discovery-ai-prompt:v1' as const;
 export const DISCOVERY_AI_OUTPUT_SCHEMA_VERSION_V1 = 'discovery-ai-output:v1' as const;

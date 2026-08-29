@@ -5,6 +5,7 @@ export * from './canonical-knowledge.js';
 export * from './cited-search.js';
 export * from './comparison-review.js';
 export * from './compiled-truth.js';
+export * from './discovery-finding.js';
 export * from './document-evidence.js';
 export * from './knowledge-model.js';
 export * from './errors.js';

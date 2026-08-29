@@ -25,6 +25,8 @@ export type StructuredGenerationRequest = {
   readonly systemInstruction: string;
   readonly prompt: string;
   readonly responseSchema: Record<string, unknown>;
+  /** Server-owned bounded Discovery output cap when supplied. */
+  readonly maxOutputTokens?: number;
 };
 
 export type StructuredGenerationResponse = {
@@ -42,6 +44,10 @@ export type AIProviderAdapterPort = {
     readonly adapterVersion: string;
     readonly model: string;
     readonly dataPolicyVersion: string;
+    /** True only when the adapter forwards maxOutputTokens to its provider. */
+    readonly supportsOutputTokenLimit?: boolean;
+    /** True only when the adapter forwards the caller AbortSignal. */
+    readonly supportsCancellation?: boolean;
   };
   generateStructured(request: StructuredGenerationRequest): Promise<StructuredGenerationResponse>;
   /** Optional signal-aware non-streaming path used by request-scoped routing. */

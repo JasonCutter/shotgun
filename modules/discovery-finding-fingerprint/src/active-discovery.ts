@@ -15,6 +15,8 @@ import type {
   DiscoverySecurityCompositionSuccessV1,
   DiscoveryServerSecurityInputV1,
   DiscoverySignalSummaryV1,
+  DiscoveryWorkBudgetExhaustedV1,
+  DiscoveryWorkBudgetPortV1,
   EvidenceGapPayloadV1,
   KnowledgeGapPayloadV1,
 } from '../../../packages/contracts/src/index.js';
@@ -59,6 +61,7 @@ export type DiscoverySignalReadContextV1 = {
   readonly discoveryBase: DiscoveryProjectionBaseIdentityV1;
   readonly sourceProjectionDigest: string;
   readonly bounds: DiscoveryReadBoundsV1;
+  readonly budget?: DiscoveryWorkBudgetPortV1;
 };
 
 export type DiscoverySignalResourceV1 = {
@@ -121,6 +124,7 @@ export type DiscoverySignalBundleV1 = {
   readonly graph?: DiscoveryGraphSignalV1;
   readonly temporalConflict?: DiscoveryTemporalConflictSignalV1;
   readonly evidenceCoverage?: DiscoveryEvidenceCoverageSignalV1;
+  readonly budget?: DiscoveryWorkBudgetExhaustedV1;
 };
 
 export type CompiledTruthSignalPort = {
@@ -274,6 +278,7 @@ const boundedResources = (
 ): {
   readonly resources: readonly DiscoverySignalResourceV1[];
   readonly completeness: DiscoverySignalCompletenessV1;
+  readonly budget?: DiscoveryWorkBudgetExhaustedV1;
 } => {
   const limit = Math.min(context.bounds.maxResourcesRead, strategy.work.maxResourcesRead);
   const materializable = entries
@@ -282,11 +287,25 @@ const boundedResources = (
     .sort(compareSignalResourcesOrdinal);
   const unique = new Map<string, DiscoverySignalResourceV1>();
   for (const entry of materializable) unique.set(signalResourceKey(entry), entry);
-  const resources = [...unique.values()];
+  const locallyBoundedResources = [...unique.values()].slice(0, limit);
+  const admission = context.budget?.admitResources(
+    locallyBoundedResources.map((entry) => entry.resource),
+  );
+  const admittedResourceKeys = admission ? new Set(admission.admittedResourceKeys) : undefined;
+  const resources = admittedResourceKeys
+    ? locallyBoundedResources.filter((entry) => admittedResourceKeys.has(signalResourceKey(entry)))
+    : locallyBoundedResources;
+  const budget = admission?.status === 'BUDGET_EXHAUSTED' ? admission : undefined;
   return {
-    resources: resources.slice(0, limit),
+    resources,
     completeness:
-      upstreamCompleteness === 'TRUNCATED' || resources.length > limit ? 'TRUNCATED' : 'COMPLETE',
+      upstreamCompleteness === 'TRUNCATED' ||
+      locallyBoundedResources.length > resources.length ||
+      unique.size > limit ||
+      budget !== undefined
+        ? 'TRUNCATED'
+        : 'COMPLETE',
+    ...(budget === undefined ? {} : { budget }),
   };
 };
 
@@ -343,7 +362,12 @@ export class DiscoverySignalFacade {
       graph?: DiscoveryGraphSignalV1;
       temporalConflict?: DiscoveryTemporalConflictSignalV1;
       evidenceCoverage?: DiscoveryEvidenceCoverageSignalV1;
+      budget?: DiscoveryWorkBudgetExhaustedV1;
     } = {};
+    let budgetExhaustion: DiscoveryWorkBudgetExhaustedV1 | undefined;
+    const noteBudget = (budget: DiscoveryWorkBudgetExhaustedV1 | undefined): void => {
+      if (budgetExhaustion === undefined && budget !== undefined) budgetExhaustion = budget;
+    };
     for (const kind of strategy.requiredSignalKinds) {
       switch (kind) {
         case 'COMPILED_TRUTH': {
@@ -362,6 +386,7 @@ export class DiscoverySignalFacade {
             result.completeness,
             result.resources,
           );
+          noteBudget(bounded.budget);
           bundle.compiledTruth = {
             sourceProjectionDigest: result.sourceProjectionDigest,
             resources: bounded.resources,
@@ -377,6 +402,7 @@ export class DiscoverySignalFacade {
             result.completeness,
             result.resources,
           );
+          noteBudget(bounded.budget);
           const ranks = Object.fromEntries(
             Object.entries(result.ranks)
               .filter(([resourceId]) =>
@@ -424,9 +450,23 @@ export class DiscoverySignalFacade {
               },
             ];
           });
+          const graphAdmission = context.budget?.admitResources(
+            normalizedEdges.flatMap((edge) => [edge.from.resource, edge.to.resource]),
+          );
+          noteBudget(graphAdmission?.status === 'BUDGET_EXHAUSTED' ? graphAdmission : undefined);
+          const admittedGraphResourceKeys = graphAdmission
+            ? new Set(graphAdmission.admittedResourceKeys)
+            : undefined;
+          const admittedEdges = admittedGraphResourceKeys
+            ? normalizedEdges.filter(
+                (edge) =>
+                  admittedGraphResourceKeys.has(signalResourceKey(edge.from)) &&
+                  admittedGraphResourceKeys.has(signalResourceKey(edge.to)),
+              )
+            : normalizedEdges;
           const visibleResources = new Map<string, DiscoverySignalResourceV1>();
           const edges: DiscoveryGraphEdgeSignalV1[] = [];
-          for (const edge of normalizedEdges) {
+          for (const edge of admittedEdges) {
             const projectedSize = new Set([
               ...visibleResources.keys(),
               signalResourceKey(edge.from),
@@ -438,7 +478,9 @@ export class DiscoverySignalFacade {
             edges.push(edge);
           }
           const locallyTruncated =
-            normalizedEdges.length > edges.length || edges.length > maxObservations;
+            normalizedEdges.length > admittedEdges.length ||
+            admittedEdges.length > edges.length ||
+            edges.length > maxObservations;
           bundle.graph = {
             edges: edges.slice(0, maxObservations),
             completeness:
@@ -454,6 +496,7 @@ export class DiscoverySignalFacade {
             result.completeness,
             result.observations.map((entry) => entry.resource),
           );
+          noteBudget(bounded.budget);
           const resourceKeys = new Set(bounded.resources.map(signalResourceKey));
           const boundedObservationsResult = boundedObservations(
             context,
@@ -490,6 +533,7 @@ export class DiscoverySignalFacade {
             result.completeness,
             result.resources,
           );
+          noteBudget(bounded.budget);
           bundle.evidenceCoverage = {
             resources: bounded.resources,
             completeness: bounded.completeness,
@@ -498,6 +542,7 @@ export class DiscoverySignalFacade {
         }
       }
     }
+    if (budgetExhaustion !== undefined) bundle.budget = budgetExhaustion;
     return bundle;
   }
 }
@@ -627,6 +672,7 @@ export type DiscoveryGenerationRequestV1 = {
   readonly context: DiscoverySignalReadContextV1;
   readonly dependencies: DiscoveryGenerationDependenciesV1;
   readonly strategyIds?: readonly string[];
+  readonly budget?: DiscoveryWorkBudgetPortV1;
 };
 
 const resourceKindsForEvidence = new Set<DiscoveryResourceKind>([
@@ -756,8 +802,20 @@ export const WP1_DISCOVERY_STRATEGIES = [
   makeKnowledgeGapStrategy(),
 ] as const satisfies readonly DiscoveryStrategyV1[];
 
+export type DiscoveryGenerationResultV1 = {
+  readonly findings: readonly DiscoveryFindingEnvelopeV1[];
+  readonly completion: 'COMPLETE' | 'PARTIAL';
+  readonly truncation:
+    | { readonly truncated: false }
+    | {
+        readonly truncated: true;
+        readonly reason: DiscoveryWorkBudgetExhaustedV1['reason'];
+      };
+};
+
 export type DiscoveryEngineV1 = {
   generate(input: DiscoveryGenerationRequestV1): Promise<readonly DiscoveryFindingEnvelopeV1[]>;
+  generateBudgeted(input: DiscoveryGenerationRequestV1): Promise<DiscoveryGenerationResultV1>;
 };
 
 const materializeCandidate = (
@@ -845,33 +903,65 @@ const materializeCandidate = (
 export const createDiscoveryEngine = (input: {
   readonly facade: DiscoverySignalFacade;
   readonly registry: DiscoveryStrategyRegistry;
-}): DiscoveryEngineV1 => ({
-  generate: async ({ context, dependencies, strategyIds }) => {
-    assertContext(context);
+}): DiscoveryEngineV1 => {
+  const generateBudgeted = async ({
+    context,
+    dependencies,
+    strategyIds,
+    budget,
+  }: DiscoveryGenerationRequestV1): Promise<DiscoveryGenerationResultV1> => {
+    const effectiveContext =
+      context.budget === undefined && budget !== undefined ? { ...context, budget } : context;
+    assertContext(effectiveContext);
     text(dependencies.runId, 'runId');
     const requested = strategyIds === undefined ? undefined : new Set(strategyIds);
     const strategies = input.registry
       .list()
       .filter((strategy) => requested === undefined || requested.has(strategy.strategyId));
     const findings: DiscoveryFindingEnvelopeV1[] = [];
-    for (const strategy of strategies) {
-      const signals = await input.facade.readForStrategy(context, strategy);
+    let budgetExhaustion: DiscoveryWorkBudgetExhaustedV1 | undefined;
+    strategyLoop: for (const strategy of strategies) {
+      const signals = await input.facade.readForStrategy(effectiveContext, strategy);
+      if (budgetExhaustion === undefined && signals.budget !== undefined) {
+        budgetExhaustion = signals.budget;
+      }
       const maxFindings = Math.min(
-        context.bounds.maxFindingsEmitted,
+        effectiveContext.bounds.maxFindingsEmitted,
         strategy.work.maxFindingsEmitted,
       );
-      const candidates = await strategy.generate({ context, signals, maxFindings });
+      const candidates = await strategy.generate({
+        context: effectiveContext,
+        signals,
+        maxFindings,
+      });
       for (const [candidateIndex, candidate] of candidates.slice(0, maxFindings).entries()) {
+        const findingAdmission = effectiveContext.budget?.admitWork('findings');
+        if (findingAdmission?.status === 'BUDGET_EXHAUSTED') {
+          if (budgetExhaustion === undefined) budgetExhaustion = findingAdmission;
+          break strategyLoop;
+        }
         const finding = materializeCandidate(
           strategy,
           candidate,
-          context,
+          effectiveContext,
           dependencies,
           candidateIndex,
         );
         if (finding) findings.push(finding);
       }
+      if (signals.budget !== undefined) break strategyLoop;
     }
-    return findings;
-  },
-});
+    return budgetExhaustion === undefined
+      ? { findings, completion: 'COMPLETE', truncation: { truncated: false } }
+      : {
+          findings,
+          completion: 'PARTIAL',
+          truncation: { truncated: true, reason: budgetExhaustion.reason },
+        };
+  };
+
+  return {
+    generateBudgeted,
+    generate: async (request) => (await generateBudgeted(request)).findings,
+  };
+};

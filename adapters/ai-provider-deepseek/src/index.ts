@@ -67,6 +67,8 @@ export type DeepSeekConnectivityAdapterOptions = {
 
 export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapter {
   readonly providerId = 'deepseek';
+  readonly supportsOutputTokenLimit = true;
+  readonly supportsCancellation = true;
   private readonly endpoint: string;
   private readonly timeoutMs: number;
   private readonly fetch: FetchLike;
@@ -123,6 +125,9 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
         response_format: { type: 'json_object' },
         thinking: { type: 'disabled' },
         stream: false,
+        ...(input.request.maxOutputTokens === undefined
+          ? {}
+          : { max_tokens: input.request.maxOutputTokens }),
       },
       input.signal,
     );

@@ -129,6 +129,8 @@ export type StructuredGenerationRequest = {
   readonly systemInstruction: string;
   readonly prompt: string;
   readonly responseSchema: Record<string, unknown>;
+  /** Server-owned bounded Discovery output cap when supplied. */
+  readonly maxOutputTokens?: number;
 };
 export type StructuredGenerationResponse = {
   readonly rawText: string;
@@ -141,6 +143,10 @@ export type StructuredGenerationResponse = {
 
 export type AIProviderConnectivityAdapter = {
   readonly providerId: string;
+  /** True only when generateStructured forwards maxOutputTokens. */
+  readonly supportsOutputTokenLimit?: boolean;
+  /** True only when generateStructured forwards AbortSignal. */
+  readonly supportsCancellation?: boolean;
   testConnection(input: {
     readonly modelId: string;
     readonly apiKey: Uint8Array;

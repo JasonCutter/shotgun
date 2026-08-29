@@ -55,6 +55,8 @@ export class CredentialBackedAIProviderAdapter implements AIProviderAdapterPort 
       model: modelId,
       adapterVersion: 'a8-vault-routed-provider-v1',
       dataPolicyVersion: `a8-provider-policy:${scope.providerId}`,
+      supportsOutputTokenLimit: connectivity.supportsOutputTokenLimit === true,
+      supportsCancellation: connectivity.supportsCancellation === true,
     };
   }
 

@@ -67,6 +67,8 @@ export type OpenAIConnectivityAdapterOptions = {
 
 export class OpenAIConnectivityAdapter implements AIProviderConnectivityAdapter {
   readonly providerId = 'openai';
+  readonly supportsOutputTokenLimit = true;
+  readonly supportsCancellation = true;
   private readonly endpoint: string;
   private readonly timeoutMs: number;
   private readonly fetch: FetchLike;
@@ -137,6 +139,9 @@ export class OpenAIConnectivityAdapter implements AIProviderConnectivityAdapter 
             schema: input.request.responseSchema,
           },
         },
+        ...(input.request.maxOutputTokens === undefined
+          ? {}
+          : { max_output_tokens: input.request.maxOutputTokens }),
       },
       input.signal,
     );

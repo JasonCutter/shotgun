@@ -19,8 +19,18 @@ import type {
   DiscoveryQualifiedAIGenerationContextV1,
   DiscoveryStructuredGenerationRequestV1,
   DiscoveryStructuredGenerationResponseV1,
+  DiscoveryProviderBudgetControllerPortV1,
 } from '../../packages/contracts/src/index.js';
 import { utf16OrdinalCompare } from '../../packages/contracts/src/index.js';
+import {
+  DiscoveryBudgetControllerV1,
+  DiscoveryWorkBudgetLedgerV1,
+} from '../../modules/discovery-quality-gate/src/index.js';
+
+const testTokenEstimator = {
+  revision: 'discovery-token-estimator:v1',
+  estimateUpperBound: () => 100_000,
+};
 
 const ref = (resourceId: string, projectId = 'project-1') => ({
   schemaVersion: '1.0.0' as const,
@@ -48,20 +58,31 @@ const base = {
 const contextFor = (
   refs: readonly ReturnType<typeof ref>[],
   overrides: Partial<DiscoveryQualifiedAIGenerationContextV1> = {},
-): DiscoveryQualifiedAIGenerationContextV1 => ({
-  projectId: 'project-1',
-  accessScope: ['project:read'],
-  sensitivity: 'internal',
-  ...base,
-  originatingFindingType: 'RELATION_HYPOTHESIS',
-  boundedRationale: 'WP2 selected this bounded resource neighborhood.',
-  items: refs.map((resourceRef) => ({
-    resourceRef,
-    deterministicRepresentation: `Server data for ${resourceRef.resourceId}`,
-    evidenceIds: [`evidence-${resourceRef.resourceId}`],
-  })),
-  ...overrides,
-});
+): DiscoveryQualifiedAIGenerationContextV1 => {
+  const context = {
+    projectId: 'project-1',
+    accessScope: ['project:read'],
+    sensitivity: 'internal' as const,
+    ...base,
+    originatingFindingType: 'RELATION_HYPOTHESIS' as const,
+    boundedRationale: 'WP2 selected this bounded resource neighborhood.',
+    items: refs.map((resourceRef) => ({
+      resourceRef,
+      deterministicRepresentation: `Server data for ${resourceRef.resourceId}`,
+      evidenceIds: [`evidence-${resourceRef.resourceId}`],
+    })),
+    ...overrides,
+  };
+  return {
+    ...context,
+    originIdentity: context.originIdentity ?? {
+      schemaVersion: '1.0.0',
+      originFindingType: context.originatingFindingType,
+      fingerprintVersion: 'discovery-fingerprint:v1',
+      fingerprint: 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+    },
+  };
+};
 
 const resourceKeyFor = (resource: ReturnType<typeof ref>): string =>
   [
@@ -262,7 +283,11 @@ const createProfileService = () => {
   return { repository, configurations, credentials, service };
 };
 
-const createGenerationService = (response: string, executionError?: DiscoveryAIGenerationError) => {
+const createGenerationService = (
+  response: string,
+  executionError?: DiscoveryAIGenerationError,
+  budgetControllerOverride?: DiscoveryProviderBudgetControllerPortV1,
+) => {
   const calls: DiscoveryStructuredGenerationRequestV1[] = [];
   const provider = {
     identity: {
@@ -270,8 +295,10 @@ const createGenerationService = (response: string, executionError?: DiscoveryAIG
       model: 'gpt-discovery',
       adapterVersion: 'test-discovery-provider-v1',
       dataPolicyVersion: 'test-policy-v1',
+      supportsOutputTokenLimit: true,
+      supportsCancellation: true,
     },
-    generateStructured: vi.fn(
+    generateStructuredWithSignal: vi.fn(
       async (
         request: DiscoveryStructuredGenerationRequestV1,
       ): Promise<DiscoveryStructuredGenerationResponseV1> => {
@@ -279,7 +306,30 @@ const createGenerationService = (response: string, executionError?: DiscoveryAIG
         return { rawText: response, providerResponseId: 'provider-response-1' };
       },
     ),
+    generateStructured: vi.fn(async () => ({ rawText: response })),
   };
+  const budgetController =
+    budgetControllerOverride ??
+    new DiscoveryBudgetControllerV1(
+      new DiscoveryWorkBudgetLedgerV1({
+        schemaVersion: '1.0.0',
+        budgetVersion: 'discovery-work-budget:v1',
+        maxResources: 100,
+        maxSemanticNeighbors: 100,
+        maxCandidatePairs: 100,
+        maxCandidateGroups: 100,
+        maxFindings: 100,
+        maxProviderCalls: 10,
+        maxInputTokens: 100_000,
+        maxOutputTokens: 100_000,
+        maxOutputTokensPerCall: 10_000,
+        maxEstimatedCostMicros: 100_000,
+        maxConcurrentProviderCalls: 4,
+        deadlineAt: '2099-01-01T00:00:00.000Z',
+      }),
+      testTokenEstimator,
+      { revision: 'fixed-cost:test-v1', estimate: () => 1 },
+    );
   const service = new DiscoveryAIGenerationService(
     {
       getActive: vi.fn(async () => profile()),
@@ -296,6 +346,7 @@ const createGenerationService = (response: string, executionError?: DiscoveryAIG
       }),
     },
     { resolve: vi.fn(async () => provider) },
+    budgetController,
   );
   return { service, provider, calls };
 };
@@ -430,7 +481,7 @@ describe('AKP-3 WP3 Discovery AI profile and structured generation', () => {
         outputSchemaVersion: DISCOVERY_AI_OUTPUT_SCHEMA_VERSION_V1,
       },
     });
-    expect(provider.generateStructured).toHaveBeenCalledTimes(1);
+    expect(provider.generateStructuredWithSignal).toHaveBeenCalledTimes(1);
     expect(calls[0]?.systemInstruction).toBe(DISCOVERY_AI_SYSTEM_INSTRUCTION_V1);
     expect(calls[0]?.prompt).toContain('knowledgeData');
     expect(calls[0]?.responseSchema).toMatchObject({ type: 'object', additionalProperties: false });
@@ -527,7 +578,7 @@ describe('AKP-3 WP3 Discovery AI profile and structured generation', () => {
         context: contextFor([a, b, extra]),
       }),
     ).rejects.toMatchObject({ name: 'DiscoveryAIGenerationError', code: 'INVALID_INPUT' });
-    expect(provider.generateStructured).not.toHaveBeenCalled();
+    expect(provider.generateStructuredWithSignal).not.toHaveBeenCalled();
   });
 
   it('rejects an anchor outside the accepted WP2 member set before provider generation', async () => {
@@ -547,7 +598,7 @@ describe('AKP-3 WP3 Discovery AI profile and structured generation', () => {
         context: contextFor([a, b]),
       }),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
-    expect(provider.generateStructured).not.toHaveBeenCalled();
+    expect(provider.generateStructuredWithSignal).not.toHaveBeenCalled();
   });
 
   it('rejects malformed WP2 conflict signals before provider generation', async () => {
@@ -573,7 +624,7 @@ describe('AKP-3 WP3 Discovery AI profile and structured generation', () => {
         context: contextFor([a, b], { originatingFindingType: 'CONFLICT_HYPOTHESIS' }),
       }),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
-    expect(provider.generateStructured).not.toHaveBeenCalled();
+    expect(provider.generateStructuredWithSignal).not.toHaveBeenCalled();
   });
 
   it('rejects provider-controlled relation endpoint fields', async () => {
@@ -594,7 +645,7 @@ describe('AKP-3 WP3 Discovery AI profile and structured generation', () => {
         context: contextFor([a, b]),
       }),
     ).rejects.toMatchObject({ code: 'AI_OUTPUT_INVALID' });
-    expect(provider.generateStructured).toHaveBeenCalledTimes(1);
+    expect(provider.generateStructuredWithSignal).toHaveBeenCalledTimes(1);
   });
 
   it('rejects prompt-injection output fields and keeps Action suggestions candidate-only', async () => {
@@ -675,8 +726,8 @@ describe('AKP-3 WP3 Discovery AI profile and structured generation', () => {
         context: contextFor([projectTwo], { projectId: 'project-2' }),
       }),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
-    expect(recursive.provider.generateStructured).not.toHaveBeenCalled();
-    expect(crossProject.provider.generateStructured).not.toHaveBeenCalled();
+    expect(recursive.provider.generateStructuredWithSignal).not.toHaveBeenCalled();
+    expect(crossProject.provider.generateStructuredWithSignal).not.toHaveBeenCalled();
   });
 
   it.each(['restricted', 'private'] as const)(
@@ -694,7 +745,7 @@ describe('AKP-3 WP3 Discovery AI profile and structured generation', () => {
           context: contextFor([a], { sensitivity, accessScope: ['project:read', 'secret:read'] }),
         }),
       ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
-      expect(denied.provider.generateStructured).not.toHaveBeenCalled();
+      expect(denied.provider.generateStructuredWithSignal).not.toHaveBeenCalled();
     },
   );
 
@@ -758,11 +809,40 @@ describe('AKP-3 WP3 Discovery AI profile and structured generation', () => {
       proposedNextStep: 'Confirm the target revision with the reviewer.',
     });
     expect(result.payload).not.toHaveProperty('providerTargetRefs');
-    expect(provider.generateStructured).toHaveBeenCalledTimes(1);
+    expect(provider.generateStructuredWithSignal).toHaveBeenCalledTimes(1);
     expect(calls[0]?.responseSchema).toMatchObject({
       type: 'object',
       additionalProperties: false,
       required: ['question', 'context', 'proposedNextStep'],
     });
+  });
+
+  it('surfaces typed partial completion when the shared provider budget is exhausted', async () => {
+    const blocked = createGenerationService(
+      JSON.stringify({ suggestedAction: 'Review the record', rationale: 'Because' }),
+      undefined,
+      {
+        executeProviderCall: vi.fn(async () => ({
+          status: 'BUDGET_EXHAUSTED' as const,
+          reason: 'PROVIDER_CALL_LIMIT',
+          completion: 'PARTIAL' as const,
+          truncation: { truncated: true as const, reason: 'PROVIDER_CALL_LIMIT' },
+        })),
+      },
+    );
+    const a = ref('a');
+    await expect(
+      blocked.service.generateAction({
+        projectId: 'project-1',
+        runId: 'run-budget-exhausted',
+        context: contextFor([a], { originatingFindingType: 'KNOWLEDGE_GAP' }),
+      }),
+    ).rejects.toMatchObject({
+      code: 'BUDGET_EXHAUSTED',
+      reason: 'PROVIDER_CALL_LIMIT',
+      completion: 'PARTIAL',
+      truncation: { truncated: true },
+    });
+    expect(blocked.provider.generateStructuredWithSignal).not.toHaveBeenCalled();
   });
 });

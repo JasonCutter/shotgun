@@ -78,6 +78,8 @@ const parseObject = (rawText: string): Record<string, unknown> => {
 
 export class GeminiConnectivityAdapter implements AIProviderConnectivityAdapter {
   readonly providerId = 'google-gemini';
+  readonly supportsOutputTokenLimit = true;
+  readonly supportsCancellation = true;
 
   constructor(
     private readonly clientFactory: (apiKey: string) => Pick<GoogleGenAI, 'interactions'> = (
@@ -135,6 +137,9 @@ export class GeminiConnectivityAdapter implements AIProviderConnectivityAdapter 
           mime_type: 'application/json',
           schema: input.request.responseSchema,
         },
+        ...(input.request.maxOutputTokens === undefined
+          ? {}
+          : { generation_config: { max_output_tokens: input.request.maxOutputTokens } }),
       },
       input.signal,
     );

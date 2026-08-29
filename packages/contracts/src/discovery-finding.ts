@@ -1,4 +1,5 @@
-import { utf16OrdinalCompare } from './semantic-representation.js';
+import { sha256Text } from './document-evidence.js';
+import { semanticStableJson, utf16OrdinalCompare } from './semantic-representation.js';
 import type { SecurityContext } from './types.js';
 
 /**
@@ -182,6 +183,163 @@ export type DiscoveryFindingPayloadV1 =
   | ConflictHypothesisPayloadV1
   | ClarificationQuestionPayloadV1
   | ActionSuggestionPayloadV1;
+
+export const DISCOVERY_SEMANTIC_ESSENCE_VERSION_V1 = 'discovery-semantic-essence:v1' as const;
+
+export type DiscoveryFollowUpOriginFindingTypeV1 = Exclude<
+  DiscoveryFindingType,
+  'CLARIFICATION_QUESTION' | 'ACTION_SUGGESTION'
+>;
+
+export type DiscoveryFollowUpOriginIdentityV1 = {
+  readonly schemaVersion: DiscoveryFindingSchemaVersion;
+  readonly originFindingType: DiscoveryFollowUpOriginFindingTypeV1;
+  readonly fingerprintVersion: 'discovery-fingerprint:v1';
+  readonly fingerprint: `sha256:${string}`;
+};
+
+export type DiscoverySemanticEssenceProjectionV1 =
+  | {
+      readonly essenceVersion: typeof DISCOVERY_SEMANTIC_ESSENCE_VERSION_V1;
+      readonly findingType: 'RELATION_HYPOTHESIS';
+      readonly direction: 'DIRECTED';
+      readonly directedRoles: {
+        readonly sourceResourceKey: string;
+        readonly targetResourceKey: string;
+      };
+
+      readonly temporalScope?: {
+        readonly validFrom?: string;
+        readonly validTo?: string;
+      };
+    }
+  | {
+      readonly essenceVersion: typeof DISCOVERY_SEMANTIC_ESSENCE_VERSION_V1;
+      readonly findingType: 'RELATION_HYPOTHESIS';
+      readonly direction: 'UNDIRECTED';
+      readonly temporalScope?: {
+        readonly validFrom?: string;
+        readonly validTo?: string;
+      };
+    }
+  | {
+      readonly essenceVersion: typeof DISCOVERY_SEMANTIC_ESSENCE_VERSION_V1;
+      readonly findingType: 'PATTERN_HYPOTHESIS';
+      readonly patternKind: PatternHypothesisPayloadV1['patternKind'];
+    }
+  | {
+      readonly essenceVersion: typeof DISCOVERY_SEMANTIC_ESSENCE_VERSION_V1;
+      readonly findingType: 'CONFLICT_HYPOTHESIS';
+      readonly contradictionKind: ConflictHypothesisPayloadV1['contradictionKind'];
+    }
+  | {
+      readonly essenceVersion: typeof DISCOVERY_SEMANTIC_ESSENCE_VERSION_V1;
+      readonly findingType: 'CLARIFICATION_QUESTION' | 'ACTION_SUGGESTION';
+      readonly origin: {
+        readonly findingType: DiscoveryFollowUpOriginFindingTypeV1;
+        readonly fingerprintVersion: 'discovery-fingerprint:v1';
+        readonly fingerprint: `sha256:${string}`;
+      };
+    };
+
+/** Canonical serialized ADR-149 semantic identity carried into fingerprint V1. */
+export type DiscoverySemanticEssenceV1 = string;
+
+const discoverySemanticResourceKey = (resource: DiscoveryResourceRefV1): string =>
+  [
+    resource.projectId,
+    resource.resourceKind,
+    resource.resourceId,
+    resource.resourceState,
+    resource.resourceRevision ?? '',
+  ].join('\u0000');
+
+const optionalTemporalScope = (payload: RelationHypothesisPayloadV1) =>
+  payload.temporalQualification === undefined
+    ? undefined
+    : {
+        ...(payload.temporalQualification.validFrom === undefined
+          ? {}
+          : { validFrom: payload.temporalQualification.validFrom }),
+        ...(payload.temporalQualification.validTo === undefined
+          ? {}
+          : { validTo: payload.temporalQualification.validTo }),
+      };
+
+/**
+ * ADR-149 server-owned semantic projection. It deliberately excludes model
+ * prose, execution identity, evidence, ranking and all other incidental data.
+ */
+export const deriveDiscoverySemanticEssenceV1 = (input: {
+  readonly findingType: DiscoveryFindingType;
+  readonly payload: DiscoveryFindingPayloadV1;
+  readonly originIdentity?: DiscoveryFollowUpOriginIdentityV1;
+}): DiscoverySemanticEssenceV1 => {
+  let projection: DiscoverySemanticEssenceProjectionV1;
+  switch (input.findingType) {
+    case 'RELATION_HYPOTHESIS': {
+      if (input.payload.payloadType !== input.findingType)
+        throw new TypeError('payload type mismatch');
+      const temporalScope = optionalTemporalScope(input.payload);
+      projection =
+        input.payload.direction === 'DIRECTED'
+          ? {
+              essenceVersion: DISCOVERY_SEMANTIC_ESSENCE_VERSION_V1,
+              findingType: input.findingType,
+              direction: 'DIRECTED',
+              directedRoles: {
+                sourceResourceKey: discoverySemanticResourceKey(input.payload.sourceEndpoint),
+                targetResourceKey: discoverySemanticResourceKey(input.payload.targetEndpoint),
+              },
+              ...(temporalScope === undefined ? {} : { temporalScope }),
+            }
+          : {
+              essenceVersion: DISCOVERY_SEMANTIC_ESSENCE_VERSION_V1,
+              findingType: input.findingType,
+              direction: 'UNDIRECTED',
+              ...(temporalScope === undefined ? {} : { temporalScope }),
+            };
+      break;
+    }
+    case 'PATTERN_HYPOTHESIS':
+      if (input.payload.payloadType !== input.findingType)
+        throw new TypeError('payload type mismatch');
+      projection = {
+        essenceVersion: DISCOVERY_SEMANTIC_ESSENCE_VERSION_V1,
+        findingType: input.findingType,
+        patternKind: input.payload.patternKind,
+      };
+      break;
+    case 'CONFLICT_HYPOTHESIS':
+      if (input.payload.payloadType !== input.findingType)
+        throw new TypeError('payload type mismatch');
+      projection = {
+        essenceVersion: DISCOVERY_SEMANTIC_ESSENCE_VERSION_V1,
+        findingType: input.findingType,
+        contradictionKind: input.payload.contradictionKind,
+      };
+      break;
+    case 'CLARIFICATION_QUESTION':
+    case 'ACTION_SUGGESTION':
+      if (input.payload.payloadType !== input.findingType || input.originIdentity === undefined) {
+        throw new TypeError('follow-up origin identity is required');
+      }
+      projection = {
+        essenceVersion: DISCOVERY_SEMANTIC_ESSENCE_VERSION_V1,
+        findingType: input.findingType,
+        origin: {
+          findingType: input.originIdentity.originFindingType,
+          fingerprintVersion: input.originIdentity.fingerprintVersion,
+          fingerprint: input.originIdentity.fingerprint,
+        },
+      };
+      break;
+    case 'KNOWLEDGE_GAP':
+    case 'EVIDENCE_GAP':
+      throw new TypeError('ADR-149 semantic projection is not used for WP1 gap findings');
+  }
+  return semanticStableJson(projection);
+};
 
 export type DiscoveryDeterministicProvenanceV1 = {
   readonly schemaVersion: DiscoveryFindingSchemaVersion;
@@ -1254,6 +1412,12 @@ export type DiscoveryNormalizedFingerprintInputV1 = {
   readonly fingerprintVersion: string;
 };
 
+export type DiscoveryFingerprintResultV1 = {
+  readonly fingerprintVersion: string;
+  readonly fingerprint: string;
+  readonly normalizedInput: DiscoveryNormalizedFingerprintInputV1;
+};
+
 /**
  * WP1 defines the deterministic logical input only. WP3 owns the final hash,
  * duplicate detection and reconciliation engine.
@@ -1281,6 +1445,30 @@ export const normalizeDiscoveryFingerprintInputV1 = (
     .sort((left, right) => utf16OrdinalCompare(resourceKey(left), resourceKey(right)));
   return { findingType, relatedResourceRefs, semanticEssence, fingerprintVersion };
 };
+
+/** The single fingerprint implementation used by WP1, WP3 and WP4. */
+export const computeDiscoveryFingerprint = (
+  input: DiscoveryFingerprintLogicalInputV1,
+): DiscoveryFingerprintResultV1 => {
+  const normalizedInput = normalizeDiscoveryFingerprintInputV1({
+    fingerprintVersion: input.fingerprintVersion,
+    findingType: input.findingType,
+    relatedResourceRefs: input.relatedResourceRefs,
+    semanticEssence: input.semanticEssence,
+  });
+  return {
+    fingerprintVersion: normalizedInput.fingerprintVersion,
+    fingerprint: sha256Text(semanticStableJson(normalizedInput)),
+    normalizedInput,
+  };
+};
+
+export const computeDiscoveryFingerprintV1 = (input: {
+  readonly findingType: DiscoveryFindingType;
+  readonly relatedResourceRefs: readonly DiscoveryResourceRefV1[];
+  readonly semanticEssence: string;
+}): DiscoveryFingerprintResultV1 =>
+  computeDiscoveryFingerprint({ ...input, fingerprintVersion: 'discovery-fingerprint:v1' });
 
 export const DISCOVERY_REENTRY_TARGET_BY_TYPE = {
   RELATION_HYPOTHESIS: 'RELATION_GOVERNANCE',

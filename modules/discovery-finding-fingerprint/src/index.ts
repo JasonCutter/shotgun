@@ -1,20 +1,15 @@
-import {
-  normalizeDiscoveryFingerprintInputV1,
-  semanticStableJson,
-  sha256Text,
-} from '../../../packages/contracts/src/index.js';
 import type {
   DiscoveryFingerprintLogicalInputV1,
-  DiscoveryNormalizedFingerprintInputV1,
+  DiscoveryFingerprintResultV1 as ContractDiscoveryFingerprintResultV1,
+} from '../../../packages/contracts/src/index.js';
+import {
+  computeDiscoveryFingerprint as computeContractDiscoveryFingerprint,
+  computeDiscoveryFingerprintV1 as computeContractDiscoveryFingerprintV1,
 } from '../../../packages/contracts/src/index.js';
 
 export const DISCOVERY_FINGERPRINT_VERSION_V1 = 'discovery-fingerprint:v1' as const;
 
-export type DiscoveryFingerprintResultV1 = {
-  readonly fingerprintVersion: string;
-  readonly fingerprint: string;
-  readonly normalizedInput: DiscoveryNormalizedFingerprintInputV1;
-};
+export type DiscoveryFingerprintResultV1 = ContractDiscoveryFingerprintResultV1;
 
 /**
  * Computes the versioned exact identity for the caller-supplied logical
@@ -24,12 +19,7 @@ export type DiscoveryFingerprintResultV1 = {
 export const computeDiscoveryFingerprint = (
   input: DiscoveryFingerprintLogicalInputV1,
 ): DiscoveryFingerprintResultV1 => {
-  const normalizedInput = normalizeDiscoveryFingerprintInputV1(input);
-  return {
-    fingerprintVersion: normalizedInput.fingerprintVersion,
-    fingerprint: sha256Text(semanticStableJson(normalizedInput)),
-    normalizedInput,
-  };
+  return computeContractDiscoveryFingerprint(input);
 };
 
 export type DiscoveryFingerprintLogicalInputWithoutVersionV1 = Omit<
@@ -39,11 +29,7 @@ export type DiscoveryFingerprintLogicalInputWithoutVersionV1 = Omit<
 
 export const computeDiscoveryFingerprintV1 = (
   input: DiscoveryFingerprintLogicalInputWithoutVersionV1,
-): DiscoveryFingerprintResultV1 =>
-  computeDiscoveryFingerprint({
-    ...input,
-    fingerprintVersion: DISCOVERY_FINGERPRINT_VERSION_V1,
-  });
+): DiscoveryFingerprintResultV1 => computeContractDiscoveryFingerprintV1(input);
 
 export * from './active-discovery.js';
 export * from './hypothesis-neighborhood.js';

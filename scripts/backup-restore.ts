@@ -61,6 +61,7 @@ const baseAuthoritativeTables = [
 
 const DISCOVERY_FINDING_MIGRATION = '045_akp_2_wp2_discovery_finding_persistence.sql';
 const DISCOVERY_LIFECYCLE_MIGRATION = '046_akp_2_wp3_discovery_finding_lifecycle.sql';
+const DISCOVERY_MODEL_PROFILE_MIGRATION = '047_akp_3_wp3_discovery_model_profiles.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
@@ -71,12 +72,21 @@ export const authoritativeIntegrityTablesForMigrations = (
       `Backup migration identity is invalid: ${DISCOVERY_LIFECYCLE_MIGRATION} requires ${DISCOVERY_FINDING_MIGRATION}.`,
     );
   }
+  if (
+    applied.has(DISCOVERY_MODEL_PROFILE_MIGRATION) &&
+    !applied.has(DISCOVERY_LIFECYCLE_MIGRATION)
+  ) {
+    throw new Error(
+      `Backup migration identity is invalid: ${DISCOVERY_MODEL_PROFILE_MIGRATION} requires ${DISCOVERY_LIFECYCLE_MIGRATION}.`,
+    );
+  }
   return [
     ...baseAuthoritativeTables,
     ...(applied.has(DISCOVERY_FINDING_MIGRATION) ? ['discovery.findings'] : []),
     ...(applied.has(DISCOVERY_LIFECYCLE_MIGRATION)
       ? ['discovery.finding_lifecycle_current', 'discovery.finding_lifecycle_history']
       : []),
+    ...(applied.has(DISCOVERY_MODEL_PROFILE_MIGRATION) ? ['discovery.model_profiles'] : []),
   ];
 };
 

@@ -116,11 +116,13 @@ describe('Backup Bundle verification', () => {
         '044_akp_1r_semantic_generation_lifecycle.sql',
         '045_akp_2_wp2_discovery_finding_persistence.sql',
         '046_akp_2_wp3_discovery_finding_lifecycle.sql',
+        '047_akp_3_wp3_discovery_model_profiles.sql',
       ]),
     ).toEqual([
       'discovery.findings',
       'discovery.finding_lifecycle_current',
       'discovery.finding_lifecycle_history',
+      'discovery.model_profiles',
     ]);
     expect(() =>
       authoritativeIntegrityTablesForMigrations(['046_akp_2_wp3_discovery_finding_lifecycle.sql']),

@@ -7,12 +7,14 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 
 import { PostgresDiscoveryFindingRepository } from '../../adapters/discovery-finding-postgres/src/index.js';
+import { PostgresDiscoveryModelProfileRepository } from '../../adapters/discovery-model-profile-postgres/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import {
   createDiscoveryFindingEnvelopeV1,
   decodeDiscoveryFindingEnvelopeV1,
   deserializeDiscoveryFindingEnvelopeV1,
   type DiscoveryFindingEnvelopeV1,
+  type DiscoveryModelProfileV1,
 } from '../../packages/contracts/src/index.js';
 import {
   createBackup,
@@ -121,6 +123,24 @@ const findingForBackup = (): DiscoveryFindingEnvelopeV1 => {
   return createDiscoveryFindingEnvelopeV1({ ...fixture, lifecycleState: 'NEW' });
 };
 
+const modelProfileForBackup = (): DiscoveryModelProfileV1 => ({
+  schemaVersion: '1.0.0',
+  profileId: 'discovery-profile-wp4-backup-001',
+  projectId,
+  profileRevision: 1,
+  aiConfigurationRevision: 1,
+  providerId: 'openai',
+  modelId: 'gpt-discovery',
+  providerRegistryRevision: 'provider-registry:v1',
+  modelCapabilityRevision: 'model-capability:v1',
+  promptVersion: 'discovery-ai-prompt:v1',
+  outputSchemaVersion: 'discovery-ai-output:v1',
+  status: 'ACTIVE',
+  createdBy: 'owner-wp4-backup',
+  createdAt: '2026-08-29T00:00:00.000Z',
+  activatedAt: '2026-08-29T00:00:01.000Z',
+});
+
 const databaseNameOf = (database: { readonly databaseName: string }): string => {
   isolatedDatabases.push(database.databaseName);
   return database.databaseName;
@@ -149,8 +169,10 @@ describe.runIf(databaseUrl)('AKP-2 WP4 Discovery backup and isolated restore', (
       await migrateUpTo(undefined, source.databaseUrl);
       const sourcePool = createPostgresPool(source.databaseUrl);
       const sourceRepository = new PostgresDiscoveryFindingRepository(sourcePool);
+      const sourceProfileRepository = new PostgresDiscoveryModelProfileRepository(sourcePool);
       pools.push(sourcePool);
       const finding = findingForBackup();
+      const modelProfile = modelProfileForBackup();
       const identity = {
         projectId: finding.projectId,
         findingId: finding.findingId,
@@ -158,6 +180,9 @@ describe.runIf(databaseUrl)('AKP-2 WP4 Discovery backup and isolated restore', (
       };
 
       expect(await sourceRepository.save(finding)).toBe('CREATED');
+      expect(
+        await sourceProfileRepository.saveRevision({ expectedRevision: 0, next: modelProfile }),
+      ).toBe('CREATED');
       expect(
         await sourceRepository.transitionLifecycle({
           ...identity,
@@ -201,6 +226,7 @@ describe.runIf(databaseUrl)('AKP-2 WP4 Discovery backup and isolated restore', (
         'discovery.findings',
         'discovery.finding_lifecycle_current',
         'discovery.finding_lifecycle_history',
+        'discovery.model_profiles',
       ]) {
         expect(manifest.integrity.tables[table]).toMatchObject({ rows: expect.any(Number) });
         expect(manifest.integrity.tables[table]!.digest).toMatch(/^sha256:/u);
@@ -216,8 +242,10 @@ describe.runIf(databaseUrl)('AKP-2 WP4 Discovery backup and isolated restore', (
 
       const targetPool = createPostgresPool(target.databaseUrl);
       const targetRepository = new PostgresDiscoveryFindingRepository(targetPool);
+      const targetProfileRepository = new PostgresDiscoveryModelProfileRepository(targetPool);
       pools.push(targetPool);
       expect(await targetRepository.findRevision(identity)).toEqual(finding);
+      expect(await targetProfileRepository.findRevision(projectId, 1)).toEqual(modelProfile);
       expect(await targetRepository.findLifecycle(identity)).toEqual({
         ...identity,
         lifecycleState: 'RESOLVED',

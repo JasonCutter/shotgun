@@ -57,6 +57,9 @@ const authoritativeTables = [
   'action.executions',
   'action.approvals',
   'action.audit_events',
+  'discovery.findings',
+  'discovery.finding_lifecycle_current',
+  'discovery.finding_lifecycle_history',
 ] as const;
 
 export type BackupToolMode = 'local' | 'docker-compose';

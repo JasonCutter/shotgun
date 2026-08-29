@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   BACKUP_FORMAT_VERSION,
   type BackupManifest,
+  readManifest,
   restoreBackup,
   verifyBackup,
 } from '../../scripts/backup-restore.js';
@@ -86,6 +87,14 @@ describe('Backup Bundle verification', () => {
     await expect(verifyBackup(directory)).rejects.toThrow(
       'Database dump digest does not match the Backup Manifest.',
     );
+  });
+
+  it('accepts historical shotgun-backup-v1 manifests without newer Discovery tables', async () => {
+    const { directory, manifest } = await fixture();
+    expect(manifest.formatVersion).toBe('shotgun-backup-v1');
+    expect(manifest.integrity.tables).not.toHaveProperty('discovery.findings');
+    await expect(readManifest(directory)).resolves.toEqual(manifest);
+    await expect(verifyBackup(directory)).resolves.toEqual(manifest);
   });
 
   it('fails closed when a referenced Original Asset is corrupt or missing', async () => {

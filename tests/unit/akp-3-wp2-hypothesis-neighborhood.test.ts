@@ -6,6 +6,7 @@ import {
   selectDiscoveryNeighborhood,
   type DiscoveryAnchoredSemanticNeighborhoodPortV1,
   type DiscoveryAnchoredSemanticNeighborhoodV1,
+  type DiscoveryCompetingResourceV1,
   type DiscoveryCompetingResourceSignalV1,
   type DiscoveryExistingCanonicalConflictSignalV1,
   type DiscoveryExistingGraphRelationSignalV1,
@@ -661,6 +662,353 @@ describe('AKP-3 WP2 bounded hypothesis neighborhoods', () => {
 
     expect(result.anchors).toHaveLength(1);
     expect(result.semanticNeighborhoods[0]?.neighbors).toHaveLength(1);
+    expect(result.completeness).toBe('TRUNCATED');
+  });
+
+  it('uses context resource bounds as the effective anchor and global resource authority', async () => {
+    const a = signal('a');
+    const b = signal('b');
+    const c = signal('c');
+    const d = signal('d');
+    const strategy = {
+      ...patternStrategy(),
+      work: { ...patternStrategy().work, maxAnchors: 100, maxNeighborsPerAnchor: 20 },
+    };
+    const boundedContext = context({
+      bounds: { maxResourcesRead: 3, maxObservationsReturned: 100, maxFindingsEmitted: 100 },
+    });
+    const port = semanticPort((anchor) =>
+      neighborhood(
+        anchor,
+        anchor.resource.resourceId === 'a' ? [neighbor(c)] : [neighbor(c), neighbor(d)],
+      ),
+    );
+    const facade = createDiscoveryNeighborhoodSignalFacade({ semanticNeighborhood: port });
+    const result = await facade.readForStrategy({
+      context: boundedContext,
+      anchors: [a, b],
+      strategy,
+    });
+
+    const exposed = new Set(
+      result.semanticNeighborhoods.flatMap((entry) => [
+        entry.anchor.resource.resourceId,
+        ...entry.neighbors.map((neighborEntry) => neighborEntry.resource.resource.resourceId),
+      ]),
+    );
+    expect(exposed.size).toBeLessThanOrEqual(3);
+    expect(result.completeness).toBe('TRUNCATED');
+    expect(port.read).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the smaller context anchor and semantic-neighbor limits', async () => {
+    const a = signal('a');
+    const b = signal('b');
+    const c = signal('c');
+    const strategy = {
+      ...patternStrategy(),
+      work: { ...patternStrategy().work, maxAnchors: 100, maxNeighborsPerAnchor: 20 },
+    };
+    const port = semanticPort((anchor) => neighborhood(anchor, []));
+    const facade = createDiscoveryNeighborhoodSignalFacade({ semanticNeighborhood: port });
+    const result = await facade.readForStrategy({
+      context: context({
+        bounds: { maxResourcesRead: 2, maxObservationsReturned: 100, maxFindingsEmitted: 100 },
+      }),
+      anchors: [a, b, c],
+      strategy,
+    });
+
+    expect(result.anchors).toHaveLength(2);
+    expect(port.read).toHaveBeenCalledTimes(2);
+    expect(port.read).toHaveBeenCalledTimes(2);
+    expect(result.completeness).toBe('TRUNCATED');
+
+    const neighborPort = semanticPort((anchor) => neighborhood(anchor, [neighbor(b), neighbor(c)]));
+    const neighborFacade = createDiscoveryNeighborhoodSignalFacade({
+      semanticNeighborhood: neighborPort,
+    });
+    const neighborResult = await neighborFacade.readForStrategy({
+      context: context({
+        bounds: { maxResourcesRead: 100, maxObservationsReturned: 1, maxFindingsEmitted: 100 },
+      }),
+      anchors: [a],
+      strategy,
+    });
+    expect(neighborPort.read).toHaveBeenCalledWith(expect.objectContaining({ limit: 1 }));
+    expect(neighborResult.semanticNeighborhoods[0]?.neighbors).toHaveLength(1);
+    expect(neighborResult.completeness).toBe('TRUNCATED');
+  });
+
+  it('bounds graph and temporal observations by context maxObservationsReturned', async () => {
+    const a = signal('a');
+    const b = signal('b');
+    const c = signal('c');
+    const d = signal('d');
+    const semanticPortInstance = semanticPort((anchor) =>
+      neighborhood(anchor, [neighbor(b), neighbor(c)]),
+    );
+    const graphRelations = [
+      { from: a.resource, to: b.resource, relationType: 'supports' },
+      { from: a.resource, to: c.resource, relationType: 'depends-on' },
+      { from: a.resource, to: c.resource, relationType: 'supports' },
+    ];
+    const temporalObservations = [
+      { left: a.resource, right: b.resource, compatible: true, temporalEvidenceId: 't-1' },
+      { left: a.resource, right: c.resource, compatible: true, temporalEvidenceId: 't-2' },
+      { left: a.resource, right: c.resource, compatible: false, temporalEvidenceId: 't-3' },
+    ];
+    const facade = createDiscoveryNeighborhoodSignalFacade({
+      semanticNeighborhood: semanticPortInstance,
+      graphRelation: { read: vi.fn(async () => graph(graphRelations)) },
+      temporalCompatibility: { read: vi.fn(async () => temporal(temporalObservations)) },
+    });
+    const result = await facade.readForStrategy({
+      context: context({
+        bounds: { maxResourcesRead: 100, maxObservationsReturned: 2, maxFindingsEmitted: 100 },
+      }),
+      anchors: [a, d],
+      strategy: relationStrategy(),
+    });
+
+    expect(result.graphRelation?.relations).toHaveLength(2);
+    expect(result.temporalCompatibility?.compatibilities).toHaveLength(2);
+    expect(result.graphRelation?.completeness).toBe('TRUNCATED');
+    expect(result.temporalCompatibility?.completeness).toBe('TRUNCATED');
+    expect(result.completeness).toBe('TRUNCATED');
+  });
+
+  it('bounds competing-resource and existing-conflict observations by the context authority', async () => {
+    const a = signal('a');
+    const b = signal('b');
+    const c = signal('c');
+    const d = signal('d');
+    const semanticPortInstance = semanticPort((anchor) =>
+      neighborhood(anchor, [neighbor(b), neighbor(c)]),
+    );
+    const competitions: DiscoveryCompetingResourceV1[] = [
+      {
+        left: a.resource,
+        right: b.resource,
+        kind: 'FACTUAL',
+        source: 'TYPED_PROPOSITION',
+        signalId: 'c-1',
+      },
+      {
+        left: a.resource,
+        right: c.resource,
+        kind: 'IDENTITY',
+        source: 'IDENTITY_ASSIGNMENT',
+        signalId: 'c-2',
+      },
+      {
+        left: a.resource,
+        right: c.resource,
+        kind: 'MODEL_DISAGREEMENT',
+        source: 'EXPLICIT_CONFLICT_SIGNAL',
+        signalId: 'c-3',
+      },
+    ];
+    const conflicts = [
+      {
+        participantResourceRefs: [a.resource, b.resource] as [typeof a.resource, typeof b.resource],
+      },
+      {
+        participantResourceRefs: [a.resource, c.resource] as [typeof a.resource, typeof c.resource],
+      },
+      {
+        participantResourceRefs: [b.resource, c.resource] as [typeof b.resource, typeof c.resource],
+      },
+    ];
+    const facade = createDiscoveryNeighborhoodSignalFacade({
+      semanticNeighborhood: semanticPortInstance,
+      competingResource: { read: vi.fn(async () => competition(competitions)) },
+      existingCanonicalConflict: {
+        read: vi.fn(async () => existingConflict(conflicts)),
+      },
+    });
+    const result = await facade.readForStrategy({
+      context: context({
+        bounds: { maxResourcesRead: 100, maxObservationsReturned: 2, maxFindingsEmitted: 100 },
+      }),
+      anchors: [a, d],
+      strategy: conflictStrategy(),
+    });
+
+    expect(result.competingResource?.competitions).toHaveLength(2);
+    expect(result.existingCanonicalConflict?.conflicts).toHaveLength(2);
+    expect(result.competingResource?.completeness).toBe('TRUNCATED');
+    expect(result.existingCanonicalConflict?.completeness).toBe('TRUNCATED');
+    expect(result.completeness).toBe('TRUNCATED');
+  });
+
+  it('validates direct selection bundles and rejects mismatched semantic bases or generations', () => {
+    const a = signal('a');
+    const b = signal('b');
+    const semantic = neighborhood(a, [neighbor(b)]);
+    const mismatchedProjection = neighborhood(a, [neighbor(b)], {
+      sourceProjectionDigest: 'different-projection',
+    });
+    const mismatchedCanonical = neighborhood(a, [neighbor(b)], {
+      canonicalBase: { ...base().canonicalBase, canonicalVersion: 8 },
+    });
+    const mismatchedDiscovery = neighborhood(a, [neighbor(b)], {
+      discoveryBase: { ...base().discoveryBase, projectionDigest: 'different-discovery' },
+    });
+
+    expect(
+      select(patternStrategy(), bundle({ semanticNeighborhoods: [mismatchedProjection] })),
+    ).toMatchObject({
+      candidates: [],
+      completeness: 'TRUNCATED',
+    });
+    expect(
+      select(patternStrategy(), bundle({ semanticNeighborhoods: [mismatchedCanonical] }))
+        .candidates,
+    ).toEqual([]);
+    expect(
+      select(patternStrategy(), bundle({ semanticNeighborhoods: [mismatchedDiscovery] }))
+        .candidates,
+    ).toEqual([]);
+
+    const mismatchedGeneration = neighborhood(a, [neighbor(b, 1, 'generation-2')], {
+      semanticGenerationId: 'generation-2',
+    });
+    expect(
+      select(
+        relationStrategy(),
+        relationBundle([mismatchedGeneration], {
+          graphRelation: graph(),
+          temporalCompatibility: temporal([
+            { left: a.resource, right: b.resource, compatible: true, temporalEvidenceId: 't' },
+          ]),
+        }),
+      ).candidates,
+    ).toEqual([]);
+    expect(
+      select(
+        conflictStrategy(),
+        bundle({
+          semanticNeighborhoods: [mismatchedGeneration],
+          competingResource: competition([
+            {
+              left: a.resource,
+              right: b.resource,
+              kind: 'FACTUAL',
+              source: 'TYPED_PROPOSITION',
+              signalId: 'c',
+            },
+          ]),
+          existingCanonicalConflict: existingConflict(),
+        }),
+      ).candidates,
+    ).toEqual([]);
+    expect(
+      select(patternStrategy(), bundle({ semanticNeighborhoods: [semantic] })).candidates,
+    ).toHaveLength(1);
+  });
+
+  it('accepts only the four typed incompatibility kind/source pairings', () => {
+    const a = signal('a');
+    const b = signal('b');
+    const semantic = neighborhood(a, [neighbor(b)]);
+    const validMappings: readonly DiscoveryCompetingResourceV1[] = [
+      {
+        left: a.resource,
+        right: b.resource,
+        kind: 'FACTUAL',
+        source: 'TYPED_PROPOSITION',
+        signalId: 'f',
+      },
+      {
+        left: a.resource,
+        right: b.resource,
+        kind: 'TEMPORAL',
+        source: 'TEMPORAL_QUALIFICATION',
+        signalId: 't',
+        temporalOverlap: true,
+      },
+      {
+        left: a.resource,
+        right: b.resource,
+        kind: 'IDENTITY',
+        source: 'IDENTITY_ASSIGNMENT',
+        signalId: 'i',
+      },
+      {
+        left: a.resource,
+        right: b.resource,
+        kind: 'MODEL_DISAGREEMENT',
+        source: 'EXPLICIT_CONFLICT_SIGNAL',
+        signalId: 'm',
+      },
+    ];
+    for (const mapping of validMappings) {
+      expect(
+        select(
+          conflictStrategy(),
+          bundle({
+            semanticNeighborhoods: [semantic],
+            competingResource: competition([mapping]),
+            existingCanonicalConflict: existingConflict(),
+          }),
+        ).candidates,
+      ).toHaveLength(1);
+    }
+  });
+
+  it('rejects every cross-paired kind/source combination and malformed temporal signals at runtime', () => {
+    const a = signal('a');
+    const b = signal('b');
+    const semantic = neighborhood(a, [neighbor(b)]);
+    const invalidMappings = [
+      { kind: 'FACTUAL', source: 'TEMPORAL_QUALIFICATION' },
+      { kind: 'FACTUAL', source: 'IDENTITY_ASSIGNMENT' },
+      { kind: 'FACTUAL', source: 'EXPLICIT_CONFLICT_SIGNAL' },
+      { kind: 'TEMPORAL', source: 'TYPED_PROPOSITION', temporalOverlap: true },
+      { kind: 'TEMPORAL', source: 'IDENTITY_ASSIGNMENT', temporalOverlap: true },
+      { kind: 'TEMPORAL', source: 'EXPLICIT_CONFLICT_SIGNAL', temporalOverlap: true },
+      { kind: 'IDENTITY', source: 'TYPED_PROPOSITION' },
+      { kind: 'IDENTITY', source: 'TEMPORAL_QUALIFICATION' },
+      { kind: 'IDENTITY', source: 'EXPLICIT_CONFLICT_SIGNAL' },
+      { kind: 'MODEL_DISAGREEMENT', source: 'TYPED_PROPOSITION' },
+      { kind: 'MODEL_DISAGREEMENT', source: 'TEMPORAL_QUALIFICATION' },
+      { kind: 'MODEL_DISAGREEMENT', source: 'IDENTITY_ASSIGNMENT' },
+    ];
+    for (const [index, invalid] of invalidMappings.entries()) {
+      const malformed = {
+        left: a.resource,
+        right: b.resource,
+        signalId: `invalid-${index}`,
+        ...invalid,
+      } as unknown as DiscoveryCompetingResourceV1;
+      const result = select(
+        conflictStrategy(),
+        bundle({
+          semanticNeighborhoods: [semantic],
+          competingResource: competition([malformed]),
+          existingCanonicalConflict: existingConflict(),
+        }),
+      );
+      expect(result.candidates).toEqual([]);
+      expect(result.completeness).toBe('TRUNCATED');
+    }
+    const missingTemporalOverlap = {
+      left: a.resource,
+      right: b.resource,
+      kind: 'TEMPORAL',
+      source: 'TEMPORAL_QUALIFICATION',
+      signalId: 'missing-overlap',
+    } as unknown as DiscoveryCompetingResourceV1;
+    const result = select(
+      conflictStrategy(),
+      bundle({
+        semanticNeighborhoods: [semantic],
+        competingResource: competition([missingTemporalOverlap]),
+        existingCanonicalConflict: existingConflict(),
+      }),
+    );
+    expect(result.candidates).toEqual([]);
     expect(result.completeness).toBe('TRUNCATED');
   });
 });

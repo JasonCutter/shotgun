@@ -117,15 +117,37 @@ export const DISCOVERY_INCOMPATIBILITY_SOURCES_V1 = [
 export type DiscoveryIncompatibilitySourceV1 =
   (typeof DISCOVERY_INCOMPATIBILITY_SOURCES_V1)[number];
 
-export type DiscoveryCompetingResourceV1 = {
-  readonly left: DiscoveryResourceRefV1;
-  readonly right: DiscoveryResourceRefV1;
-  readonly kind: DiscoveryIncompatibilityKindV1;
-  readonly source: DiscoveryIncompatibilitySourceV1;
-  readonly signalId: string;
-  /** Required for temporal incompatibility; free-text temporal reasoning is not accepted. */
-  readonly temporalOverlap?: boolean;
-};
+export type DiscoveryCompetingResourceV1 =
+  | {
+      readonly left: DiscoveryResourceRefV1;
+      readonly right: DiscoveryResourceRefV1;
+      readonly kind: 'FACTUAL';
+      readonly source: 'TYPED_PROPOSITION';
+      readonly signalId: string;
+    }
+  | {
+      readonly left: DiscoveryResourceRefV1;
+      readonly right: DiscoveryResourceRefV1;
+      readonly kind: 'TEMPORAL';
+      readonly source: 'TEMPORAL_QUALIFICATION';
+      readonly signalId: string;
+      /** A typed temporal observation, never free-text temporal interpretation. */
+      readonly temporalOverlap: boolean;
+    }
+  | {
+      readonly left: DiscoveryResourceRefV1;
+      readonly right: DiscoveryResourceRefV1;
+      readonly kind: 'IDENTITY';
+      readonly source: 'IDENTITY_ASSIGNMENT';
+      readonly signalId: string;
+    }
+  | {
+      readonly left: DiscoveryResourceRefV1;
+      readonly right: DiscoveryResourceRefV1;
+      readonly kind: 'MODEL_DISAGREEMENT';
+      readonly source: 'EXPLICIT_CONFLICT_SIGNAL';
+      readonly signalId: string;
+    };
 
 export type DiscoveryCompetingResourceSignalV1 = DiscoveryNeighborhoodBaseIdentityV1 & {
   readonly competitions: readonly DiscoveryCompetingResourceV1[];
@@ -525,38 +547,59 @@ const normalizeNeighborhood = (
     };
   }
   const unique = new Map<string, DiscoveryAnchoredSemanticNeighborV1>();
+  let locallyTruncated = false;
   for (const [index, neighbor] of result.neighbors.entries()) {
-    assertSignalResource(context, neighbor.resource, `semantic neighbor[${index}]`);
+    try {
+      assertSignalResource(context, neighbor.resource, `semantic neighbor[${index}]`);
+    } catch {
+      locallyTruncated = true;
+      continue;
+    }
     if (
       !baseMatchesContext(context, neighbor) ||
       neighbor.semanticGenerationId !== result.semanticGenerationId
-    )
+    ) {
+      locallyTruncated = true;
       continue;
-    if (!Number.isSafeInteger(neighbor.semanticRank) || neighbor.semanticRank < 1) continue;
-    if (neighbor.semanticDistance !== undefined && !Number.isFinite(neighbor.semanticDistance))
+    }
+    if (!Number.isSafeInteger(neighbor.semanticRank) || neighbor.semanticRank < 1) {
+      locallyTruncated = true;
       continue;
+    }
+    if (neighbor.semanticDistance !== undefined && !Number.isFinite(neighbor.semanticDistance)) {
+      locallyTruncated = true;
+      continue;
+    }
     if (
       neighbor.semanticSimilarity !== undefined &&
       (!Number.isFinite(neighbor.semanticSimilarity) ||
         neighbor.semanticSimilarity < 0 ||
         neighbor.semanticSimilarity > 1)
-    )
+    ) {
+      locallyTruncated = true;
       continue;
+    }
     if (
       neighbor.lexicalRank !== undefined &&
       (!Number.isSafeInteger(neighbor.lexicalRank) || neighbor.lexicalRank < 0)
-    )
+    ) {
+      locallyTruncated = true;
       continue;
+    }
     if (
       neighbor.fusionRank !== undefined &&
       (!Number.isSafeInteger(neighbor.fusionRank) || neighbor.fusionRank < 0)
-    )
+    ) {
+      locallyTruncated = true;
       continue;
+    }
     if (
       !compatibleRef(context, neighbor.resource.resource) ||
       resourceKey(neighbor.resource.resource) === resourceKey(anchor.resource)
-    )
+    ) {
+      locallyTruncated = true;
       continue;
+    }
     unique.set(resourceKey(neighbor.resource.resource), neighbor);
   }
   const ordered = [...unique.values()].sort((left, right) =>
@@ -571,9 +614,133 @@ const normalizeNeighborhood = (
       anchor,
       neighbors: ordered.slice(0, limit),
       completeness:
-        result.completeness === 'TRUNCATED' || ordered.length > limit ? 'TRUNCATED' : 'COMPLETE',
+        result.completeness === 'TRUNCATED' || locallyTruncated || ordered.length > limit
+          ? 'TRUNCATED'
+          : 'COMPLETE',
     },
-    truncated: result.completeness === 'TRUNCATED' || ordered.length > limit,
+    truncated: result.completeness === 'TRUNCATED' || locallyTruncated || ordered.length > limit,
+  };
+};
+
+const effectiveMaxAnchors = (
+  context: DiscoverySignalReadContextV1,
+  strategy: DiscoveryNeighborhoodStrategyDeclarationV1,
+): number => Math.min(strategy.work.maxAnchors, context.bounds.maxResourcesRead);
+
+const effectiveMaxNeighborsPerAnchor = (
+  context: DiscoverySignalReadContextV1,
+  strategy: DiscoveryNeighborhoodStrategyDeclarationV1,
+): number =>
+  Math.min(
+    strategy.work.maxNeighborsPerAnchor,
+    context.bounds.maxResourcesRead,
+    context.bounds.maxObservationsReturned,
+  );
+
+const effectiveMaxPairObservations = (
+  context: DiscoverySignalReadContextV1,
+  strategy: DiscoveryNeighborhoodStrategyDeclarationV1,
+): number => Math.min(strategy.work.maxCandidatePairs, context.bounds.maxObservationsReturned);
+
+const effectiveMaxGroupObservations = (
+  context: DiscoverySignalReadContextV1,
+  strategy: DiscoveryNeighborhoodStrategyDeclarationV1,
+): number => Math.min(strategy.work.maxCandidateGroups, context.bounds.maxObservationsReturned);
+
+const boundedDistinctNeighbors = (
+  neighborhoods: readonly DiscoveryAnchoredSemanticNeighborhoodV1[],
+  maxResources: number,
+): {
+  readonly neighborhoods: readonly DiscoveryAnchoredSemanticNeighborhoodV1[];
+  readonly truncated: boolean;
+} => {
+  const exposed = new Set<string>();
+  const bounded: DiscoveryAnchoredSemanticNeighborhoodV1[] = [];
+  let truncated = false;
+  for (const neighborhood of neighborhoods) {
+    const anchorKey = resourceKey(neighborhood.anchor.resource);
+    if (!exposed.has(anchorKey)) {
+      if (exposed.size >= maxResources) {
+        truncated = true;
+        break;
+      }
+      exposed.add(anchorKey);
+    }
+    const neighbors: DiscoveryAnchoredSemanticNeighborV1[] = [];
+    for (const neighbor of orderedNeighbors(neighborhood.neighbors)) {
+      const key = resourceKey(neighbor.resource.resource);
+      if (exposed.has(key)) {
+        neighbors.push(neighbor);
+      } else if (exposed.size < maxResources) {
+        exposed.add(key);
+        neighbors.push(neighbor);
+      } else {
+        truncated = true;
+      }
+    }
+    const neighborhoodTruncated = neighborhood.completeness === 'TRUNCATED';
+    if (neighborhoodTruncated) truncated = true;
+    bounded.push({
+      ...neighborhood,
+      neighbors,
+      completeness:
+        neighborhoodTruncated || neighbors.length < neighborhood.neighbors.length
+          ? 'TRUNCATED'
+          : 'COMPLETE',
+    });
+  }
+  if (bounded.length < neighborhoods.length) truncated = true;
+  return { neighborhoods: bounded, truncated };
+};
+
+const normalizeSemanticNeighborhoodsForSelection = (
+  context: DiscoverySignalReadContextV1,
+  strategy: DiscoveryNeighborhoodStrategyDeclarationV1,
+  anchors: readonly DiscoverySignalResourceV1[],
+  entries: readonly DiscoveryAnchoredSemanticNeighborhoodV1[],
+): {
+  readonly anchors: readonly DiscoverySignalResourceV1[];
+  readonly neighborhoods: readonly DiscoveryAnchoredSemanticNeighborhoodV1[];
+  readonly truncated: boolean;
+} => {
+  const anchorLimit = effectiveMaxAnchors(context, strategy);
+  const neighborLimit = effectiveMaxNeighborsPerAnchor(context, strategy);
+  const orderedAnchors = normalizeUniqueResources(context, anchors, 'selection anchors');
+  const boundedAnchors = orderedAnchors.slice(0, anchorLimit);
+  let truncated = orderedAnchors.length > boundedAnchors.length;
+  const entriesByAnchor = new Map(
+    entries.map((entry) => [resourceKey(entry.anchor.resource), entry]),
+  );
+  const normalized: DiscoveryAnchoredSemanticNeighborhoodV1[] = [];
+  for (const anchor of boundedAnchors) {
+    const entry = entriesByAnchor.get(resourceKey(anchor.resource));
+    if (
+      !entry ||
+      !baseMatchesContext(context, entry) ||
+      resourceKey(entry.anchor.resource) !== resourceKey(anchor.resource)
+    ) {
+      truncated = true;
+      continue;
+    }
+    const result = normalizeNeighborhood(context, anchor, entry, neighborLimit);
+    if (result.truncated) truncated = true;
+    normalized.push(result.neighborhood);
+  }
+  if (
+    entries.some(
+      (entry) =>
+        !boundedAnchors.some(
+          (anchor) => resourceKey(anchor.resource) === resourceKey(entry.anchor.resource),
+        ),
+    )
+  ) {
+    truncated = true;
+  }
+  const globallyBounded = boundedDistinctNeighbors(normalized, context.bounds.maxResourcesRead);
+  return {
+    anchors: boundedAnchors,
+    neighborhoods: globallyBounded.neighborhoods,
+    truncated: truncated || globallyBounded.truncated,
   };
 };
 
@@ -582,26 +749,350 @@ const compatibleSignalBase = (
   signal: DiscoveryNeighborhoodBaseIdentityV1,
 ): boolean => baseMatchesContext(context, signal);
 
+const isCompleteness = (value: unknown): value is DiscoveryNeighborhoodCompletenessV1 =>
+  value === 'COMPLETE' || value === 'TRUNCATED';
+
 const normalizeGraphSignal = (
   context: DiscoverySignalReadContextV1,
   signal: DiscoveryExistingGraphRelationSignalV1,
-): DiscoveryExistingGraphRelationSignalV1 => ({
-  ...baseForContext(context, signal.semanticGenerationId),
-  relations: signal.relations
-    .filter((relation) => {
-      assertResourceRef(relation.from, 'graph relation.from');
-      assertResourceRef(relation.to, 'graph relation.to');
-      return (
-        compatibleRef(context, relation.from) &&
-        compatibleRef(context, relation.to) &&
-        text(relation.relationType, 'graph relationType').length > 0
-      );
-    })
-    .sort((left, right) =>
-      utf16OrdinalCompare(orderedPairKey(left.from, left.to), orderedPairKey(right.from, right.to)),
+  resourceRefs: readonly DiscoveryResourceRefV1[],
+  limit: number,
+): { readonly signal: DiscoveryExistingGraphRelationSignalV1; readonly truncated: boolean } => {
+  const allowed = new Set(resourceRefs.map(resourceKey));
+  const unique = new Map<string, DiscoveryExistingGraphRelationV1>();
+  let locallyTruncated = !isCompleteness(signal.completeness);
+  for (const relation of signal.relations as readonly unknown[]) {
+    try {
+      if (typeof relation !== 'object' || relation === null || Array.isArray(relation)) {
+        locallyTruncated = true;
+        continue;
+      }
+      const candidate = relation as DiscoveryExistingGraphRelationV1;
+      assertResourceRef(candidate.from, 'graph relation.from');
+      assertResourceRef(candidate.to, 'graph relation.to');
+      const relationType = text(candidate.relationType, 'graph relationType');
+      if (
+        !compatibleRef(context, candidate.from) ||
+        !compatibleRef(context, candidate.to) ||
+        !allowed.has(resourceKey(candidate.from)) ||
+        !allowed.has(resourceKey(candidate.to))
+      ) {
+        locallyTruncated = true;
+        continue;
+      }
+      unique.set(`${orderedPairKey(candidate.from, candidate.to)}\u0000${relationType}`, {
+        from: candidate.from,
+        to: candidate.to,
+        relationType,
+      });
+    } catch {
+      locallyTruncated = true;
+    }
+  }
+  const relations = [...unique.values()].sort((left, right) =>
+    utf16OrdinalCompare(orderedPairKey(left.from, left.to), orderedPairKey(right.from, right.to)),
+  );
+  if (relations.length > limit) locallyTruncated = true;
+  return {
+    signal: {
+      ...baseForContext(context, signal.semanticGenerationId),
+      relations: relations.slice(0, limit),
+      completeness:
+        signal.completeness === 'TRUNCATED' || locallyTruncated ? 'TRUNCATED' : 'COMPLETE',
+    },
+    truncated: signal.completeness === 'TRUNCATED' || locallyTruncated,
+  };
+};
+
+const normalizeTemporalSignal = (
+  context: DiscoverySignalReadContextV1,
+  signal: DiscoveryTemporalCompatibilitySignalV1,
+  resourceRefs: readonly DiscoveryResourceRefV1[],
+  limit: number,
+): { readonly signal: DiscoveryTemporalCompatibilitySignalV1; readonly truncated: boolean } => {
+  const allowed = new Set(resourceRefs.map(resourceKey));
+  const unique = new Map<string, DiscoveryTemporalCompatibilityV1>();
+  let locallyTruncated = !isCompleteness(signal.completeness);
+  for (const compatibility of signal.compatibilities as readonly unknown[]) {
+    try {
+      if (
+        typeof compatibility !== 'object' ||
+        compatibility === null ||
+        Array.isArray(compatibility)
+      ) {
+        locallyTruncated = true;
+        continue;
+      }
+      const candidate = compatibility as DiscoveryTemporalCompatibilityV1;
+      assertResourceRef(candidate.left, 'temporal left');
+      assertResourceRef(candidate.right, 'temporal right');
+      const temporalEvidenceId = text(candidate.temporalEvidenceId, 'temporalEvidenceId');
+      if (
+        typeof candidate.compatible !== 'boolean' ||
+        !compatibleRef(context, candidate.left) ||
+        !compatibleRef(context, candidate.right) ||
+        !allowed.has(resourceKey(candidate.left)) ||
+        !allowed.has(resourceKey(candidate.right))
+      ) {
+        locallyTruncated = true;
+        continue;
+      }
+      unique.set(`${orderedPairKey(candidate.left, candidate.right)}\u0000${temporalEvidenceId}`, {
+        left: candidate.left,
+        right: candidate.right,
+        compatible: candidate.compatible,
+        temporalEvidenceId,
+      });
+    } catch {
+      locallyTruncated = true;
+    }
+  }
+  const compatibilities = [...unique.values()].sort((left, right) =>
+    utf16OrdinalCompare(
+      `${orderedPairKey(left.left, left.right)}\u0000${left.temporalEvidenceId}`,
+      `${orderedPairKey(right.left, right.right)}\u0000${right.temporalEvidenceId}`,
     ),
-  completeness: signal.completeness,
-});
+  );
+  if (compatibilities.length > limit) locallyTruncated = true;
+  return {
+    signal: {
+      ...baseForContext(context, signal.semanticGenerationId),
+      compatibilities: compatibilities.slice(0, limit),
+      completeness:
+        signal.completeness === 'TRUNCATED' || locallyTruncated ? 'TRUNCATED' : 'COMPLETE',
+    },
+    truncated: signal.completeness === 'TRUNCATED' || locallyTruncated,
+  };
+};
+
+const validCompetingResource = (value: unknown): value is DiscoveryCompetingResourceV1 => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const candidate = value as Partial<DiscoveryCompetingResourceV1> & { temporalOverlap?: unknown };
+  if (typeof candidate.signalId !== 'string' || candidate.signalId.trim().length === 0)
+    return false;
+  if (candidate.kind === 'FACTUAL') return candidate.source === 'TYPED_PROPOSITION';
+  if (candidate.kind === 'IDENTITY') return candidate.source === 'IDENTITY_ASSIGNMENT';
+  if (candidate.kind === 'MODEL_DISAGREEMENT')
+    return candidate.source === 'EXPLICIT_CONFLICT_SIGNAL';
+  return (
+    candidate.kind === 'TEMPORAL' &&
+    candidate.source === 'TEMPORAL_QUALIFICATION' &&
+    typeof candidate.temporalOverlap === 'boolean'
+  );
+};
+
+const normalizeCompetingSignal = (
+  context: DiscoverySignalReadContextV1,
+  signal: DiscoveryCompetingResourceSignalV1,
+  resourceRefs: readonly DiscoveryResourceRefV1[],
+  limit: number,
+): { readonly signal: DiscoveryCompetingResourceSignalV1; readonly truncated: boolean } => {
+  const allowed = new Set(resourceRefs.map(resourceKey));
+  const unique = new Map<string, DiscoveryCompetingResourceV1>();
+  let locallyTruncated = !isCompleteness(signal.completeness);
+  for (const rawCompetition of signal.competitions as readonly unknown[]) {
+    try {
+      if (!validCompetingResource(rawCompetition)) {
+        locallyTruncated = true;
+        continue;
+      }
+      const candidate = rawCompetition;
+      assertResourceRef(candidate.left, 'competition.left');
+      assertResourceRef(candidate.right, 'competition.right');
+      if (
+        !compatibleRef(context, candidate.left) ||
+        !compatibleRef(context, candidate.right) ||
+        !allowed.has(resourceKey(candidate.left)) ||
+        !allowed.has(resourceKey(candidate.right))
+      ) {
+        locallyTruncated = true;
+        continue;
+      }
+      unique.set(
+        `${orderedPairKey(candidate.left, candidate.right)}\u0000${candidate.signalId}`,
+        candidate,
+      );
+    } catch {
+      locallyTruncated = true;
+    }
+  }
+  const competitions = [...unique.values()].sort((left, right) =>
+    utf16OrdinalCompare(
+      `${orderedPairKey(left.left, left.right)}\u0000${left.signalId}`,
+      `${orderedPairKey(right.left, right.right)}\u0000${right.signalId}`,
+    ),
+  );
+  if (competitions.length > limit) locallyTruncated = true;
+  return {
+    signal: {
+      ...baseForContext(context, signal.semanticGenerationId),
+      competitions: competitions.slice(0, limit),
+      completeness:
+        signal.completeness === 'TRUNCATED' || locallyTruncated ? 'TRUNCATED' : 'COMPLETE',
+    },
+    truncated: signal.completeness === 'TRUNCATED' || locallyTruncated,
+  };
+};
+
+const normalizeExistingConflictSignal = (
+  context: DiscoverySignalReadContextV1,
+  signal: DiscoveryExistingCanonicalConflictSignalV1,
+  resourceRefs: readonly DiscoveryResourceRefV1[],
+  limit: number,
+  maxMembers: number,
+): { readonly signal: DiscoveryExistingCanonicalConflictSignalV1; readonly truncated: boolean } => {
+  const allowed = new Set(resourceRefs.map(resourceKey));
+  const unique = new Map<string, DiscoveryExistingCanonicalConflictV1>();
+  let locallyTruncated = !isCompleteness(signal.completeness);
+  for (const rawConflict of signal.conflicts as readonly unknown[]) {
+    try {
+      if (typeof rawConflict !== 'object' || rawConflict === null || Array.isArray(rawConflict)) {
+        locallyTruncated = true;
+        continue;
+      }
+      const candidate = rawConflict as DiscoveryExistingCanonicalConflictV1;
+      if (
+        !Array.isArray(candidate.participantResourceRefs) ||
+        candidate.participantResourceRefs.length < 2 ||
+        candidate.participantResourceRefs.length > maxMembers
+      ) {
+        locallyTruncated = true;
+        continue;
+      }
+      for (const [index, participant] of candidate.participantResourceRefs.entries()) {
+        assertResourceRef(participant, `existing conflict participant[${index}]`);
+        if (!allowed.has(resourceKey(participant)) || !compatibleRef(context, participant)) {
+          throw new TypeError('existing conflict participant is outside the bounded resource set');
+        }
+      }
+      const participants = [
+        ...new Map(
+          candidate.participantResourceRefs.map((participant) => [
+            resourceKey(participant),
+            participant,
+          ]),
+        ).values(),
+      ].sort((left, right) => utf16OrdinalCompare(resourceKey(left), resourceKey(right)));
+      if (participants.length < 2) {
+        locallyTruncated = true;
+        continue;
+      }
+      unique.set(memberSetKey(participants), {
+        participantResourceRefs:
+          participants as unknown as DiscoveryExistingCanonicalConflictV1['participantResourceRefs'],
+      });
+    } catch {
+      locallyTruncated = true;
+    }
+  }
+  const conflicts = [...unique.values()].sort((left, right) =>
+    utf16OrdinalCompare(
+      memberSetKey(left.participantResourceRefs),
+      memberSetKey(right.participantResourceRefs),
+    ),
+  );
+  if (conflicts.length > limit) locallyTruncated = true;
+  return {
+    signal: {
+      ...baseForContext(context, signal.semanticGenerationId),
+      conflicts: conflicts.slice(0, limit),
+      completeness:
+        signal.completeness === 'TRUNCATED' || locallyTruncated ? 'TRUNCATED' : 'COMPLETE',
+    },
+    truncated: signal.completeness === 'TRUNCATED' || locallyTruncated,
+  };
+};
+
+const normalizeSelectionBundle = (
+  strategy: DiscoveryNeighborhoodStrategyDeclarationV1,
+  signals: DiscoveryNeighborhoodSignalBundleV1,
+): DiscoveryNeighborhoodSignalBundleV1 | undefined => {
+  try {
+    assertContext(signals.context);
+    if (!isCompleteness(signals.completeness)) return undefined;
+    const semantic = normalizeSemanticNeighborhoodsForSelection(
+      signals.context,
+      strategy,
+      signals.anchors,
+      signals.semanticNeighborhoods,
+    );
+    const resources = signalResourceMap(semantic.neighborhoods);
+    const resourceRefs = refsFromResources(resources);
+    let locallyTruncated = semantic.truncated || signals.completeness === 'TRUNCATED';
+    const normalized: {
+      graphRelation?: DiscoveryExistingGraphRelationSignalV1;
+      temporalCompatibility?: DiscoveryTemporalCompatibilitySignalV1;
+      competingResource?: DiscoveryCompetingResourceSignalV1;
+      existingCanonicalConflict?: DiscoveryExistingCanonicalConflictSignalV1;
+    } = {};
+    if (signals.graphRelation) {
+      if (!compatibleSignalBase(signals.context, signals.graphRelation)) {
+        locallyTruncated = true;
+      } else {
+        const result = normalizeGraphSignal(
+          signals.context,
+          signals.graphRelation,
+          resourceRefs,
+          effectiveMaxPairObservations(signals.context, strategy),
+        );
+        normalized.graphRelation = result.signal;
+        locallyTruncated ||= result.truncated;
+      }
+    }
+    if (signals.temporalCompatibility) {
+      if (!compatibleSignalBase(signals.context, signals.temporalCompatibility)) {
+        locallyTruncated = true;
+      } else {
+        const result = normalizeTemporalSignal(
+          signals.context,
+          signals.temporalCompatibility,
+          resourceRefs,
+          effectiveMaxPairObservations(signals.context, strategy),
+        );
+        normalized.temporalCompatibility = result.signal;
+        locallyTruncated ||= result.truncated;
+      }
+    }
+    if (signals.competingResource) {
+      if (!compatibleSignalBase(signals.context, signals.competingResource)) {
+        locallyTruncated = true;
+      } else {
+        const result = normalizeCompetingSignal(
+          signals.context,
+          signals.competingResource,
+          resourceRefs,
+          effectiveMaxPairObservations(signals.context, strategy),
+        );
+        normalized.competingResource = result.signal;
+        locallyTruncated ||= result.truncated;
+      }
+    }
+    if (signals.existingCanonicalConflict) {
+      if (!compatibleSignalBase(signals.context, signals.existingCanonicalConflict)) {
+        locallyTruncated = true;
+      } else {
+        const result = normalizeExistingConflictSignal(
+          signals.context,
+          signals.existingCanonicalConflict,
+          resourceRefs,
+          effectiveMaxGroupObservations(signals.context, strategy),
+          strategy.work.maxMembersPerGroup,
+        );
+        normalized.existingCanonicalConflict = result.signal;
+        locallyTruncated ||= result.truncated;
+      }
+    }
+    return {
+      context: signals.context,
+      anchors: semantic.anchors,
+      semanticNeighborhoods: semantic.neighborhoods,
+      ...normalized,
+      completeness: locallyTruncated ? 'TRUNCATED' : 'COMPLETE',
+    };
+  } catch {
+    return undefined;
+  }
+};
 
 const selectionResource = (
   resources: ReadonlyMap<string, DiscoverySignalResourceV1>,
@@ -996,25 +1487,36 @@ export class DiscoveryNeighborhoodSignalFacade {
     assertContext(input.context);
     validateBounds(input.strategy.work, `${input.strategy.strategyId}.work`);
     const anchors = normalizeUniqueResources(input.context, input.anchors, 'anchors');
-    const boundedAnchors = anchors.slice(0, input.strategy.work.maxAnchors);
+    const boundedAnchors = anchors.slice(0, effectiveMaxAnchors(input.context, input.strategy));
     let truncated = anchors.length > boundedAnchors.length;
     const semanticNeighborhoods: DiscoveryAnchoredSemanticNeighborhoodV1[] = [];
+    const neighborLimit = effectiveMaxNeighborsPerAnchor(input.context, input.strategy);
     for (const anchor of boundedAnchors) {
+      if (
+        semanticNeighborhoods.length > 0 &&
+        signalResourceMap(semanticNeighborhoods).size >= input.context.bounds.maxResourcesRead
+      ) {
+        truncated = true;
+        break;
+      }
       const result = await this.ports.semanticNeighborhood.read({
         context: input.context,
         anchor,
-        limit: input.strategy.work.maxNeighborsPerAnchor,
+        limit: neighborLimit,
       });
-      const normalized = normalizeNeighborhood(
-        input.context,
-        anchor,
-        result,
-        input.strategy.work.maxNeighborsPerAnchor,
-      );
+      const normalized = normalizeNeighborhood(input.context, anchor, result, neighborLimit);
       semanticNeighborhoods.push(normalized.neighborhood);
       truncated ||= normalized.truncated;
     }
-    const resources = signalResourceMap(semanticNeighborhoods);
+    const boundedSemantic = normalizeSemanticNeighborhoodsForSelection(
+      input.context,
+      input.strategy,
+      boundedAnchors,
+      semanticNeighborhoods,
+    );
+    truncated ||= boundedSemantic.truncated;
+    const boundedNeighborhoods = boundedSemantic.neighborhoods;
+    const resources = signalResourceMap(boundedNeighborhoods);
     const resourceRefs = refsFromResources(resources);
     const optional: {
       graphRelation?: DiscoveryExistingGraphRelationSignalV1;
@@ -1039,14 +1541,23 @@ export class DiscoveryNeighborhoodSignalFacade {
               context: input.context,
               resourceRefs,
             });
-            optional.graphRelation = compatibleSignalBase(input.context, result)
-              ? normalizeGraphSignal(input.context, result)
+            const normalized = compatibleSignalBase(input.context, result)
+              ? normalizeGraphSignal(
+                  input.context,
+                  result,
+                  resourceRefs,
+                  effectiveMaxPairObservations(input.context, input.strategy),
+                )
               : {
-                  ...baseForContext(input.context, result.semanticGenerationId),
-                  relations: [],
-                  completeness: 'TRUNCATED',
+                  signal: {
+                    ...baseForContext(input.context, result.semanticGenerationId),
+                    relations: [],
+                    completeness: 'TRUNCATED' as const,
+                  },
+                  truncated: true,
                 };
-            truncated ||= optional.graphRelation.completeness === 'TRUNCATED';
+            optional.graphRelation = normalized.signal;
+            truncated ||= normalized.truncated;
           }
           break;
         case 'TEMPORAL_COMPATIBILITY':
@@ -1062,14 +1573,23 @@ export class DiscoveryNeighborhoodSignalFacade {
               context: input.context,
               resourceRefs,
             });
-            optional.temporalCompatibility = compatibleSignalBase(input.context, result)
-              ? result
+            const normalized = compatibleSignalBase(input.context, result)
+              ? normalizeTemporalSignal(
+                  input.context,
+                  result,
+                  resourceRefs,
+                  effectiveMaxPairObservations(input.context, input.strategy),
+                )
               : {
-                  ...baseForContext(input.context, result.semanticGenerationId),
-                  compatibilities: [],
-                  completeness: 'TRUNCATED',
+                  signal: {
+                    ...baseForContext(input.context, result.semanticGenerationId),
+                    compatibilities: [],
+                    completeness: 'TRUNCATED' as const,
+                  },
+                  truncated: true,
                 };
-            truncated ||= optional.temporalCompatibility.completeness === 'TRUNCATED';
+            optional.temporalCompatibility = normalized.signal;
+            truncated ||= normalized.truncated;
           }
           break;
         case 'COMPETING_RESOURCE':
@@ -1085,14 +1605,23 @@ export class DiscoveryNeighborhoodSignalFacade {
               context: input.context,
               resourceRefs,
             });
-            optional.competingResource = compatibleSignalBase(input.context, result)
-              ? result
+            const normalized = compatibleSignalBase(input.context, result)
+              ? normalizeCompetingSignal(
+                  input.context,
+                  result,
+                  resourceRefs,
+                  effectiveMaxPairObservations(input.context, input.strategy),
+                )
               : {
-                  ...baseForContext(input.context, result.semanticGenerationId),
-                  competitions: [],
-                  completeness: 'TRUNCATED',
+                  signal: {
+                    ...baseForContext(input.context, result.semanticGenerationId),
+                    competitions: [],
+                    completeness: 'TRUNCATED' as const,
+                  },
+                  truncated: true,
                 };
-            truncated ||= optional.competingResource.completeness === 'TRUNCATED';
+            optional.competingResource = normalized.signal;
+            truncated ||= normalized.truncated;
           }
           break;
         case 'EXISTING_CANONICAL_CONFLICT':
@@ -1108,22 +1637,32 @@ export class DiscoveryNeighborhoodSignalFacade {
               context: input.context,
               resourceRefs,
             });
-            optional.existingCanonicalConflict = compatibleSignalBase(input.context, result)
-              ? result
+            const normalized = compatibleSignalBase(input.context, result)
+              ? normalizeExistingConflictSignal(
+                  input.context,
+                  result,
+                  resourceRefs,
+                  effectiveMaxGroupObservations(input.context, input.strategy),
+                  input.strategy.work.maxMembersPerGroup,
+                )
               : {
-                  ...baseForContext(input.context, result.semanticGenerationId),
-                  conflicts: [],
-                  completeness: 'TRUNCATED',
+                  signal: {
+                    ...baseForContext(input.context, result.semanticGenerationId),
+                    conflicts: [],
+                    completeness: 'TRUNCATED' as const,
+                  },
+                  truncated: true,
                 };
-            truncated ||= optional.existingCanonicalConflict.completeness === 'TRUNCATED';
+            optional.existingCanonicalConflict = normalized.signal;
+            truncated ||= normalized.truncated;
           }
           break;
       }
     }
     return {
       context: input.context,
-      anchors: boundedAnchors,
-      semanticNeighborhoods,
+      anchors: boundedSemantic.anchors,
+      semanticNeighborhoods: boundedNeighborhoods,
       ...optional,
       completeness: truncated
         ? 'TRUNCATED'
@@ -1249,12 +1788,13 @@ export const selectDiscoveryNeighborhood = (
 ): DiscoveryNeighborhoodSelectionResultV1 => {
   validateStrategy(strategy);
   validateBounds(strategy.work, `${strategy.strategyId}.work`);
-  if (signals.context.projectId.trim().length === 0)
-    throw new TypeError('selection context projectId is empty');
-  return strategy.select({
+  const input: DiscoveryNeighborhoodSelectionInputV1 = {
     signals,
     strategyId: strategy.strategyId,
     strategyVersion: strategy.strategyVersion,
     bounds: strategy.work,
-  });
+  };
+  const normalized = normalizeSelectionBundle(strategy, signals);
+  if (!normalized) return baseSelectionResult(input, [], 'TRUNCATED');
+  return strategy.select({ ...input, signals: normalized });
 };

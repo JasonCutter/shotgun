@@ -5,8 +5,8 @@ import {
   decodeDiscoveryReconciliationObservationV1,
   DiscoveryFindingLifecycleService,
 } from '../../modules/discovery-finding-lifecycle/src/index.js';
+import type { DiscoveryFindingEnvelopeV1 } from '../../packages/contracts/src/index.js';
 import type {
-  DiscoveryFindingEnvelopeV1,
   DiscoveryFindingIdentityV1,
   DiscoveryFindingLifecycleCurrentV1,
   DiscoveryFindingLifecycleHistoryV1,

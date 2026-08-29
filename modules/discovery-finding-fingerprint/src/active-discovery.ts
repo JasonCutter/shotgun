@@ -38,6 +38,9 @@ export const DISCOVERY_SIGNAL_KINDS_V1 = [
 ] as const;
 export type DiscoverySignalKindV1 = (typeof DISCOVERY_SIGNAL_KINDS_V1)[number];
 
+export const DISCOVERY_SIGNAL_COMPLETENESS_V1 = ['COMPLETE', 'TRUNCATED'] as const;
+export type DiscoverySignalCompletenessV1 = (typeof DISCOVERY_SIGNAL_COMPLETENESS_V1)[number];
+
 export const WP1_DISCOVERY_FINDING_TYPES = ['KNOWLEDGE_GAP', 'EVIDENCE_GAP'] as const;
 export type Wp1DiscoveryFindingType = (typeof WP1_DISCOVERY_FINDING_TYPES)[number];
 
@@ -68,11 +71,13 @@ export type DiscoverySignalResourceV1 = {
 export type DiscoveryCompiledTruthSignalV1 = {
   readonly resources: readonly DiscoverySignalResourceV1[];
   readonly sourceProjectionDigest: string;
+  readonly completeness: DiscoverySignalCompletenessV1;
 };
 
 export type DiscoveryHybridRetrievalSignalV1 = {
   readonly resources: readonly DiscoverySignalResourceV1[];
   readonly ranks: Readonly<Record<string, number>>;
+  readonly completeness: DiscoverySignalCompletenessV1;
 };
 
 export type DiscoveryGraphEdgeSignalV1 = {
@@ -84,6 +89,7 @@ export type DiscoveryGraphEdgeSignalV1 = {
 
 export type DiscoveryGraphSignalV1 = {
   readonly edges: readonly DiscoveryGraphEdgeSignalV1[];
+  readonly completeness: DiscoverySignalCompletenessV1;
 };
 
 export type DiscoveryTemporalConflictObservationV1 = {
@@ -93,10 +99,12 @@ export type DiscoveryTemporalConflictObservationV1 = {
 
 export type DiscoveryTemporalConflictSignalV1 = {
   readonly observations: readonly DiscoveryTemporalConflictObservationV1[];
+  readonly completeness: DiscoverySignalCompletenessV1;
 };
 
 export type DiscoveryEvidenceCoverageSignalV1 = {
   readonly resources: readonly DiscoverySignalResourceV1[];
+  readonly completeness: DiscoverySignalCompletenessV1;
 };
 
 export type DiscoverySignalResultByKindV1 = {
@@ -261,8 +269,12 @@ const materializableResource = (
 const boundedResources = (
   context: DiscoverySignalReadContextV1,
   strategy: DiscoveryStrategyDeclarationV1,
+  upstreamCompleteness: DiscoverySignalCompletenessV1,
   entries: readonly DiscoverySignalResourceV1[],
-): readonly DiscoverySignalResourceV1[] => {
+): {
+  readonly resources: readonly DiscoverySignalResourceV1[];
+  readonly completeness: DiscoverySignalCompletenessV1;
+} => {
   const limit = Math.min(context.bounds.maxResourcesRead, strategy.work.maxResourcesRead);
   const materializable = entries
     .map((entry) => materializableResource(context, entry))
@@ -270,18 +282,33 @@ const boundedResources = (
     .sort(compareSignalResourcesOrdinal);
   const unique = new Map<string, DiscoverySignalResourceV1>();
   for (const entry of materializable) unique.set(signalResourceKey(entry), entry);
-  return [...unique.values()].slice(0, limit);
+  const resources = [...unique.values()];
+  return {
+    resources: resources.slice(0, limit),
+    completeness:
+      upstreamCompleteness === 'TRUNCATED' || resources.length > limit ? 'TRUNCATED' : 'COMPLETE',
+  };
 };
 
 const boundedObservations = <T>(
   context: DiscoverySignalReadContextV1,
   strategy: DiscoveryStrategyDeclarationV1,
+  upstreamCompleteness: DiscoverySignalCompletenessV1,
   entries: readonly T[],
-): readonly T[] =>
-  entries.slice(
-    0,
-    Math.min(context.bounds.maxObservationsReturned, strategy.work.maxObservationsReturned),
+): {
+  readonly observations: readonly T[];
+  readonly completeness: DiscoverySignalCompletenessV1;
+} => {
+  const limit = Math.min(
+    context.bounds.maxObservationsReturned,
+    strategy.work.maxObservationsReturned,
   );
+  return {
+    observations: entries.slice(0, limit),
+    completeness:
+      upstreamCompleteness === 'TRUNCATED' || entries.length > limit ? 'TRUNCATED' : 'COMPLETE',
+  };
+};
 
 const assertContext = (context: DiscoverySignalReadContextV1): void => {
   if (context.schemaVersion !== '1.0.0') throw new TypeError('Unsupported signal context schema');
@@ -321,24 +348,47 @@ export class DiscoverySignalFacade {
       switch (kind) {
         case 'COMPILED_TRUTH': {
           const result = await this.ports.compiledTruth.read(context);
-          if (result.sourceProjectionDigest !== context.sourceProjectionDigest) break;
+          if (result.sourceProjectionDigest !== context.sourceProjectionDigest) {
+            bundle.compiledTruth = {
+              sourceProjectionDigest: result.sourceProjectionDigest,
+              resources: [],
+              completeness: 'TRUNCATED',
+            };
+            break;
+          }
+          const bounded = boundedResources(
+            context,
+            strategy,
+            result.completeness,
+            result.resources,
+          );
           bundle.compiledTruth = {
             sourceProjectionDigest: result.sourceProjectionDigest,
-            resources: boundedResources(context, strategy, result.resources),
+            resources: bounded.resources,
+            completeness: bounded.completeness,
           };
           break;
         }
         case 'HYBRID_RETRIEVAL': {
           const result = await this.ports.hybridRetrieval.read(context);
-          const resources = boundedResources(context, strategy, result.resources);
+          const bounded = boundedResources(
+            context,
+            strategy,
+            result.completeness,
+            result.resources,
+          );
           const ranks = Object.fromEntries(
             Object.entries(result.ranks)
               .filter(([resourceId]) =>
-                resources.some((entry) => entry.resource.resourceId === resourceId),
+                bounded.resources.some((entry) => entry.resource.resourceId === resourceId),
               )
               .sort(([left], [right]) => utf16OrdinalCompare(left, right)),
           );
-          bundle.hybridRetrieval = { resources, ranks };
+          bundle.hybridRetrieval = {
+            resources: bounded.resources,
+            ranks,
+            completeness: bounded.completeness,
+          };
           break;
         }
         case 'GRAPH': {
@@ -361,59 +411,88 @@ export class DiscoverySignalFacade {
               ),
             ),
           );
-          const visibleResources = new Map<string, DiscoverySignalResourceV1>();
-          const edges: DiscoveryGraphEdgeSignalV1[] = [];
-          for (const edge of ordered) {
+          const normalizedEdges = ordered.flatMap((edge) => {
             const from = materializableResource(context, edge.from);
             const to = materializableResource(context, edge.to);
-            if (!from || !to) continue;
+            if (!from || !to) return [];
+            return [
+              {
+                edgeId: text(edge.edgeId, 'graph edge edgeId'),
+                from,
+                to,
+                relationType: text(edge.relationType, 'graph edge relationType'),
+              },
+            ];
+          });
+          const visibleResources = new Map<string, DiscoverySignalResourceV1>();
+          const edges: DiscoveryGraphEdgeSignalV1[] = [];
+          for (const edge of normalizedEdges) {
             const projectedSize = new Set([
               ...visibleResources.keys(),
-              signalResourceKey(from),
-              signalResourceKey(to),
+              signalResourceKey(edge.from),
+              signalResourceKey(edge.to),
             ]).size;
             if (projectedSize > maxResources) continue;
-            visibleResources.set(signalResourceKey(from), from);
-            visibleResources.set(signalResourceKey(to), to);
-            edges.push({
-              edgeId: text(edge.edgeId, 'graph edge edgeId'),
-              from,
-              to,
-              relationType: text(edge.relationType, 'graph edge relationType'),
-            });
-            if (edges.length >= maxObservations) break;
+            visibleResources.set(signalResourceKey(edge.from), edge.from);
+            visibleResources.set(signalResourceKey(edge.to), edge.to);
+            edges.push(edge);
           }
-          bundle.graph = { edges };
+          const locallyTruncated =
+            normalizedEdges.length > edges.length || edges.length > maxObservations;
+          bundle.graph = {
+            edges: edges.slice(0, maxObservations),
+            completeness:
+              result.completeness === 'TRUNCATED' || locallyTruncated ? 'TRUNCATED' : 'COMPLETE',
+          };
           break;
         }
         case 'TEMPORAL_CONFLICT': {
           const result = await this.ports.temporalConflict.read(context);
-          const resources = boundedResources(
+          const bounded = boundedResources(
             context,
             strategy,
+            result.completeness,
             result.observations.map((entry) => entry.resource),
           );
-          const resourceKeys = new Set(resources.map(signalResourceKey));
-          bundle.temporalConflict = {
-            observations: boundedObservations(
-              context,
-              strategy,
-              [...result.observations]
-                .filter((entry) => resourceKeys.has(signalResourceKey(entry.resource)))
-                .sort((left, right) =>
-                  utf16OrdinalCompare(
-                    signalResourceKey(left.resource),
-                    signalResourceKey(right.resource),
-                  ),
+          const resourceKeys = new Set(bounded.resources.map(signalResourceKey));
+          const boundedObservationsResult = boundedObservations(
+            context,
+            strategy,
+            bounded.completeness,
+            [...result.observations]
+              .map((entry) => ({
+                ...entry,
+                resource: materializableResource(context, entry.resource),
+              }))
+              .filter(
+                (entry): entry is typeof entry & { resource: DiscoverySignalResourceV1 } =>
+                  entry.resource !== undefined &&
+                  resourceKeys.has(signalResourceKey(entry.resource)),
+              )
+              .sort((left, right) =>
+                utf16OrdinalCompare(
+                  signalResourceKey(left.resource),
+                  signalResourceKey(right.resource),
                 ),
-            ),
+              ),
+          );
+          bundle.temporalConflict = {
+            observations: boundedObservationsResult.observations,
+            completeness: boundedObservationsResult.completeness,
           };
           break;
         }
         case 'EVIDENCE_COVERAGE': {
           const result = await this.ports.evidenceCoverage.read(context);
+          const bounded = boundedResources(
+            context,
+            strategy,
+            result.completeness,
+            result.resources,
+          );
           bundle.evidenceCoverage = {
-            resources: boundedResources(context, strategy, result.resources),
+            resources: bounded.resources,
+            completeness: bounded.completeness,
           };
           break;
         }
@@ -573,16 +652,26 @@ const makeKnowledgeGapStrategy = (): DiscoveryStrategyV1 => ({
   async generate({ signals, maxFindings }): Promise<readonly DiscoveryStrategyCandidateV1[]> {
     const compiled = signals.compiledTruth;
     const graph = signals.graph;
-    if (!compiled || !graph) return [];
+    if (
+      !compiled ||
+      !graph ||
+      compiled.completeness !== 'COMPLETE' ||
+      graph.completeness !== 'COMPLETE'
+    ) {
+      return [];
+    }
     const connectedIds = new Set(
-      graph.edges.flatMap((edge) => [edge.from.resource.resourceId, edge.to.resource.resourceId]),
+      graph.edges.flatMap((edge) => [
+        resourceKey(edge.from.resource),
+        resourceKey(edge.to.resource),
+      ]),
     );
     const resources = compiled.resources.filter(
       (entry) =>
         entry.resource.resourceKind === 'CANONICAL_ENTITY' &&
         (entry.resource.resourceState === 'CURRENT' ||
           entry.resource.resourceState === 'APPROVED') &&
-        !connectedIds.has(entry.resource.resourceId),
+        !connectedIds.has(resourceKey(entry.resource)),
     );
     return resources.slice(0, maxFindings).map((entry) => {
       const subject = text(entry.label, 'knowledge-gap subject');
@@ -622,7 +711,7 @@ const makeEvidenceGapStrategy = (): DiscoveryStrategyV1 => ({
   work: { maxResourcesRead: 100, maxObservationsReturned: 100, maxFindingsEmitted: 100 },
   async generate({ signals, maxFindings }): Promise<readonly DiscoveryStrategyCandidateV1[]> {
     const coverage = signals.evidenceCoverage;
-    if (!coverage) return [];
+    if (!coverage || coverage.completeness !== 'COMPLETE') return [];
     return coverage.resources
       .filter(
         (entry) =>

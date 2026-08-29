@@ -61,14 +61,22 @@ const resource = (
 
 const emptyPorts = (): DiscoverySignalPortsV1 => ({
   compiledTruth: {
-    read: vi.fn(async () => ({ resources: [], sourceProjectionDigest: 'source-projection-7' })),
+    read: vi.fn(async () => ({
+      resources: [],
+      sourceProjectionDigest: 'source-projection-7',
+      completeness: 'COMPLETE' as const,
+    })),
   },
   hybridRetrieval: {
-    read: vi.fn(async () => ({ resources: [], ranks: {} })),
+    read: vi.fn(async () => ({ resources: [], ranks: {}, completeness: 'COMPLETE' as const })),
   },
-  graph: { read: vi.fn(async () => ({ edges: [] })) },
-  temporalConflict: { read: vi.fn(async () => ({ observations: [] })) },
-  evidenceCoverage: { read: vi.fn(async () => ({ resources: [] })) },
+  graph: { read: vi.fn(async () => ({ edges: [], completeness: 'COMPLETE' as const })) },
+  temporalConflict: {
+    read: vi.fn(async () => ({ observations: [], completeness: 'COMPLETE' as const })),
+  },
+  evidenceCoverage: {
+    read: vi.fn(async () => ({ resources: [], completeness: 'COMPLETE' as const })),
+  },
 });
 
 const dependencies = (runId: string, now: string, prefix: string) => ({
@@ -108,6 +116,7 @@ describe('AKP-3 WP1 signal facade and deterministic discovery', () => {
     const ports = emptyPorts();
     ports.evidenceCoverage.read = vi.fn(async () => ({
       resources: [resource('\ufffd'), resource('\ue000'), resource('a')],
+      completeness: 'COMPLETE' as const,
     }));
     const facade = new DiscoverySignalFacade(ports);
     const strategy = createWp1DiscoveryStrategyRegistry().get(
@@ -139,7 +148,10 @@ describe('AKP-3 WP1 signal facade and deterministic discovery', () => {
     const crossProject = resource('cross-project', {
       resource: { ...resource('cross-project').resource, projectId: 'project-2' },
     });
-    ports.evidenceCoverage.read = vi.fn(async () => ({ resources: [inaccessible, crossProject] }));
+    ports.evidenceCoverage.read = vi.fn(async () => ({
+      resources: [inaccessible, crossProject],
+      completeness: 'COMPLETE' as const,
+    }));
     const result = await createDiscoverySignalFacade(ports).readForStrategy(
       context(),
       createWp1DiscoveryStrategyRegistry().get('akp-3.evidence-gap.absent-lineage', '1.0.0')!,
@@ -176,6 +188,7 @@ describe('AKP-3 WP1 signal facade and deterministic discovery', () => {
     ports.compiledTruth.read = vi.fn(async () => ({
       resources: [entity],
       sourceProjectionDigest: 'source-projection-7',
+      completeness: 'COMPLETE' as const,
     }));
     const engine = createDiscoveryEngine({
       facade: createDiscoverySignalFacade(ports),
@@ -230,6 +243,7 @@ describe('AKP-3 WP1 signal facade and deterministic discovery', () => {
         }),
       ],
       sourceProjectionDigest: 'source-projection-7',
+      completeness: 'COMPLETE' as const,
     }));
     ports.graph.read = vi.fn(async () => ({
       edges: [
@@ -240,6 +254,7 @@ describe('AKP-3 WP1 signal facade and deterministic discovery', () => {
           relationType: 'RELATED_TO',
         },
       ],
+      completeness: 'COMPLETE' as const,
     }));
     const engine = createDiscoveryEngine({
       facade: createDiscoverySignalFacade(ports),
@@ -247,6 +262,150 @@ describe('AKP-3 WP1 signal facade and deterministic discovery', () => {
     });
 
     const result = await engine.generate({
+      context: context(),
+      dependencies: dependencies('run', '2026-08-29T00:00:00.000Z', 'finding'),
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it('does not infer isolated absence from an upstream-truncated graph result', async () => {
+    const ports = emptyPorts();
+    const entity = resource('entity-a');
+    ports.compiledTruth.read = vi.fn(async () => ({
+      resources: [entity],
+      sourceProjectionDigest: 'source-projection-7',
+      completeness: 'COMPLETE' as const,
+    }));
+    ports.graph.read = vi.fn(async () => ({
+      edges: [],
+      completeness: 'TRUNCATED' as const,
+    }));
+    const engine = createDiscoveryEngine({
+      facade: createDiscoverySignalFacade(ports),
+      registry: createDiscoveryStrategyRegistryFor('akp-3.knowledge-gap.isolated-entity'),
+    });
+
+    const result = await engine.generate({
+      context: context(),
+      dependencies: dependencies('run', '2026-08-29T00:00:00.000Z', 'finding'),
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it('marks facade-truncated graph reads and suppresses the isolated absence finding', async () => {
+    const ports = emptyPorts();
+    const entityA = resource('entity-a');
+    const entityB = resource('entity-b');
+    const otherA = resource('other-a');
+    const otherB = resource('other-b');
+    ports.compiledTruth.read = vi.fn(async () => ({
+      resources: [entityA, entityB],
+      sourceProjectionDigest: 'source-projection-7',
+      completeness: 'COMPLETE' as const,
+    }));
+    ports.graph.read = vi.fn(async () => ({
+      edges: [
+        { edgeId: 'edge-1', from: otherA, to: otherB, relationType: 'RELATED_TO' },
+        { edgeId: 'edge-2', from: entityA, to: entityB, relationType: 'RELATED_TO' },
+      ],
+      completeness: 'COMPLETE' as const,
+    }));
+    const boundedContext = context({
+      bounds: { maxResourcesRead: 10, maxObservationsReturned: 1, maxFindingsEmitted: 10 },
+    });
+    const facade = createDiscoverySignalFacade(ports);
+    const strategy = createWp1DiscoveryStrategyRegistry().get(
+      'akp-3.knowledge-gap.isolated-entity',
+      '1.0.0',
+    )!;
+    const signals = await facade.readForStrategy(boundedContext, strategy);
+    expect(signals.graph?.completeness).toBe('TRUNCATED');
+    expect(signals.graph?.edges).toHaveLength(1);
+
+    const result = await createDiscoveryEngine({
+      facade,
+      registry: createDiscoveryStrategyRegistryFor('akp-3.knowledge-gap.isolated-entity'),
+    }).generate({
+      context: boundedContext,
+      dependencies: dependencies('run', '2026-08-29T00:00:00.000Z', 'finding'),
+    });
+    expect(result).toEqual([]);
+  });
+
+  it('marks a facade-truncated resource read and suppresses isolated absence findings', async () => {
+    const ports = emptyPorts();
+    const entityA = resource('entity-a');
+    const entityB = resource('entity-b');
+    ports.compiledTruth.read = vi.fn(async () => ({
+      resources: [entityA, entityB],
+      sourceProjectionDigest: 'source-projection-7',
+      completeness: 'COMPLETE' as const,
+    }));
+    const boundedContext = context({
+      bounds: { maxResourcesRead: 1, maxObservationsReturned: 10, maxFindingsEmitted: 10 },
+    });
+    const facade = createDiscoverySignalFacade(ports);
+    const strategy = createWp1DiscoveryStrategyRegistry().get(
+      'akp-3.knowledge-gap.isolated-entity',
+      '1.0.0',
+    )!;
+    const signals = await facade.readForStrategy(boundedContext, strategy);
+    expect(signals.compiledTruth?.completeness).toBe('TRUNCATED');
+    expect(signals.compiledTruth?.resources).toHaveLength(1);
+
+    const result = await createDiscoveryEngine({
+      facade,
+      registry: createDiscoveryStrategyRegistryFor('akp-3.knowledge-gap.isolated-entity'),
+    }).generate({
+      context: boundedContext,
+      dependencies: dependencies('run', '2026-08-29T00:00:00.000Z', 'finding'),
+    });
+    expect(result).toEqual([]);
+  });
+
+  it('uses typed graph identity so a same-ID Claim edge does not connect an Entity', async () => {
+    const ports = emptyPorts();
+    const entity = resource('shared-id');
+    const claim = resource('shared-id', {
+      resource: { ...resource('shared-id').resource, resourceKind: 'CANONICAL_CLAIM' },
+    });
+    const otherEntity = resource('other-entity');
+    ports.compiledTruth.read = vi.fn(async () => ({
+      resources: [entity],
+      sourceProjectionDigest: 'source-projection-7',
+      completeness: 'COMPLETE' as const,
+    }));
+    ports.graph.read = vi.fn(async () => ({
+      edges: [{ edgeId: 'claim-edge', from: claim, to: otherEntity, relationType: 'MENTIONS' }],
+      completeness: 'COMPLETE' as const,
+    }));
+    const result = await createDiscoveryEngine({
+      facade: createDiscoverySignalFacade(ports),
+      registry: createDiscoveryStrategyRegistryFor('akp-3.knowledge-gap.isolated-entity'),
+    }).generate({
+      context: context(),
+      dependencies: dependencies('run', '2026-08-29T00:00:00.000Z', 'finding'),
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.relatedResourceRefs).toEqual([entity.resource]);
+  });
+
+  it('does not emit an Evidence Gap from a truncated coverage read', async () => {
+    const ports = emptyPorts();
+    const absent = resource('claim-without-evidence', {
+      resource: { ...resource('claim-without-evidence').resource, resourceKind: 'CANONICAL_CLAIM' },
+    });
+    ports.evidenceCoverage.read = vi.fn(async () => ({
+      resources: [absent],
+      completeness: 'TRUNCATED' as const,
+    }));
+    const result = await createDiscoveryEngine({
+      facade: createDiscoverySignalFacade(ports),
+      registry: createDiscoveryStrategyRegistryFor('akp-3.evidence-gap.absent-lineage'),
+    }).generate({
       context: context(),
       dependencies: dependencies('run', '2026-08-29T00:00:00.000Z', 'finding'),
     });
@@ -265,7 +424,10 @@ describe('AKP-3 WP1 signal facade and deterministic discovery', () => {
       evidenceIds: ['evidence-1'],
       label: 'Claim with evidence',
     });
-    ports.evidenceCoverage.read = vi.fn(async () => ({ resources: [supported, absent] }));
+    ports.evidenceCoverage.read = vi.fn(async () => ({
+      resources: [supported, absent],
+      completeness: 'COMPLETE' as const,
+    }));
     const engine = createDiscoveryEngine({
       facade: createDiscoverySignalFacade(ports),
       registry: createDiscoveryStrategyRegistryFor('akp-3.evidence-gap.absent-lineage'),

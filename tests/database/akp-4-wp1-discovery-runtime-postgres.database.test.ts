@@ -54,8 +54,6 @@ const trigger = (projectId: string, eventId: string): DiscoveryTriggerV1 => ({
   projectId,
   requestedScanMode: 'INCREMENTAL',
   effectiveScanMode: 'INCREMENTAL',
-  requestedMode: 'FULL',
-  effectiveMode: 'FULL',
   canonicalBase: {
     schemaVersion: '1.0.0',
     canonicalVersion: 12,
@@ -84,8 +82,6 @@ const job = (projectId: string, jobId: string, eventId = `${projectId}-event`): 
     trigger: nextTrigger,
     requestedScanMode: nextTrigger.requestedScanMode,
     effectiveScanMode: nextTrigger.effectiveScanMode,
-    requestedMode: nextTrigger.requestedMode,
-    effectiveMode: nextTrigger.effectiveMode,
     canonicalBase: nextTrigger.canonicalBase,
     requiredDiscoveryBase: nextTrigger.requiredDiscoveryBase,
     policyRevision: nextTrigger.policyRevision,
@@ -111,8 +107,6 @@ const runForJob = (
   requestedScanMode: parent.requestedScanMode,
   effectiveScanMode: parent.effectiveScanMode,
   runRevision: 1,
-  requestedMode: parent.requestedMode,
-  effectiveMode: parent.effectiveMode,
   canonicalBase: parent.canonicalBase,
   requiredDiscoveryBase: parent.requiredDiscoveryBase,
   policyRevision: parent.policyRevision,
@@ -318,8 +312,6 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
       requestedScanMode: first.requestedScanMode,
       effectiveScanMode: first.effectiveScanMode,
       runRevision: 1,
-      requestedMode: first.requestedMode,
-      effectiveMode: first.effectiveMode,
       canonicalBase: first.canonicalBase,
       requiredDiscoveryBase: first.requiredDiscoveryBase,
       policyRevision: first.policyRevision,
@@ -459,8 +451,6 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
       requestedScanMode: first.requestedScanMode,
       effectiveScanMode: first.effectiveScanMode,
       runRevision: 1,
-      requestedMode: 'FULL',
-      effectiveMode: 'FULL',
       canonicalBase: first.canonicalBase,
       requiredDiscoveryBase: first.requiredDiscoveryBase,
       policyRevision: first.policyRevision,
@@ -569,6 +559,65 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
       targetState: 'FAILED_RETRYABLE',
       updatedAt: '2026-08-30T00:00:02.000Z',
     });
+    const failedAttemptSnapshot: DiscoveryAttemptV1 = {
+      ...attempt,
+      lifecycleState: 'FAILED_RETRYABLE',
+      lifecycleRevision: 2,
+      updatedAt: '2026-08-30T00:00:02.000Z',
+      completedAt: '2026-08-30T00:00:02.000Z',
+    };
+    expect(
+      (
+        await repositoryB.listAttempts({
+          projectId: projectA,
+          jobId: first.jobId,
+          runId: run.runId,
+        })
+      )[0],
+    ).toEqual(failedAttemptSnapshot);
+    await expect(
+      repositoryA.transitionAttempt({
+        projectId: projectA,
+        jobId: first.jobId,
+        runId: run.runId,
+        attemptId: attempt.attemptId,
+        expectedLifecycleRevision: 2,
+        targetState: 'RUNNING',
+        updatedAt: '2026-08-30T00:00:03.000Z',
+      }),
+    ).rejects.toThrow(/invalid transition/);
+    await expect(
+      repositoryB.transitionAttempt({
+        projectId: projectA,
+        jobId: first.jobId,
+        runId: run.runId,
+        attemptId: attempt.attemptId,
+        expectedLifecycleRevision: 2,
+        targetState: 'QUEUED',
+        updatedAt: '2026-08-30T00:00:03.000Z',
+      }),
+    ).rejects.toThrow(/invalid transition/);
+    expect(
+      await repositoryA.saveAttempt(
+        attemptForRun(run, 'attempt-stage-retry', {
+          attemptNumber: 2,
+          attemptKind: 'DOMAIN_RETRY',
+          lifecycleState: 'RUNNING',
+          previousAttemptId: attempt.attemptId,
+          updatedAt: '2026-08-30T00:00:04.000Z',
+          completedAt: undefined,
+        }),
+      ),
+    ).toBe('CREATED');
+    expect(
+      (
+        await repositoryB.listAttempts({
+          projectId: projectA,
+          jobId: first.jobId,
+          runId: run.runId,
+        })
+      )[0],
+    ).toEqual(failedAttemptSnapshot);
     const retryRun = runForJob(first, 'run-retry');
     const otherRun = runForJob(first, 'run-other');
     await repositoryA.saveRun(retryRun);

@@ -2,6 +2,7 @@ import type { Pool, QueryResultRow } from 'pg';
 
 import {
   assertDiscoveryRuntimeLifecycleTransitionV1,
+  assertDiscoveryAttemptLifecycleTransitionV1,
   assertDiscoveryRuntimeStageTransitionV1,
   decodeDiscoveryAttemptV1,
   decodeDiscoveryJobV1,
@@ -39,8 +40,6 @@ type RuntimeJobRow = QueryResultRow & {
   trigger: unknown;
   requested_scan_mode: string;
   effective_scan_mode: string;
-  requested_mode: string;
-  effective_mode: string;
   canonical_base_version: number;
   canonical_snapshot_digest: string;
   required_projection_revision: string | null;
@@ -71,8 +70,6 @@ type RuntimeRunRow = QueryResultRow & {
   schema_version: string;
   requested_scan_mode: string;
   effective_scan_mode: string;
-  requested_mode: string;
-  effective_mode: string;
   canonical_base_version: number;
   canonical_snapshot_digest: string;
   required_projection_revision: string | null;
@@ -130,8 +127,8 @@ type RuntimeStageRow = QueryResultRow & {
 
 const jobColumns = `
   project_id, job_id, logical_job_identity, logical_job_identity_version,
-  schema_version, trigger_id, trigger_class, trigger, requested_mode,
-  requested_scan_mode, effective_scan_mode, effective_mode, canonical_base_version, canonical_snapshot_digest,
+  schema_version, trigger_id, trigger_class, trigger, requested_scan_mode,
+  effective_scan_mode, canonical_base_version, canonical_snapshot_digest,
   required_projection_revision, required_projection_digest, policy_revision,
   strategy_revision, profile_id, profile_revision, budget_version, budget_id,
   budget_revision, budget, lifecycle_state, lifecycle_revision,
@@ -139,8 +136,8 @@ const jobColumns = `
   wait_fallback_policy_revision, created_at, updated_at`;
 
 const runColumns = `
-  project_id, run_id, job_id, run_revision, schema_version, requested_mode,
-  requested_scan_mode, effective_scan_mode, effective_mode, canonical_base_version, canonical_snapshot_digest,
+  project_id, run_id, job_id, run_revision, schema_version, requested_scan_mode,
+  effective_scan_mode, canonical_base_version, canonical_snapshot_digest,
   required_projection_revision, required_projection_digest, policy_revision,
   strategy_revision, profile_id, profile_revision, budget_version, budget_id,
   budget_revision, budget, lifecycle_state, lifecycle_revision,
@@ -211,8 +208,6 @@ const mapJob = (row: RuntimeJobRow): DiscoveryJobV1 =>
     trigger: row.trigger,
     requestedScanMode: row.requested_scan_mode,
     effectiveScanMode: row.effective_scan_mode,
-    requestedMode: row.requested_mode,
-    effectiveMode: row.effective_mode,
     canonicalBase: {
       schemaVersion: row.schema_version,
       canonicalVersion: row.canonical_base_version,
@@ -255,8 +250,6 @@ const mapRun = (row: RuntimeRunRow): DiscoveryRunV1 =>
     requestedScanMode: row.requested_scan_mode,
     effectiveScanMode: row.effective_scan_mode,
     runRevision: row.run_revision,
-    requestedMode: row.requested_mode,
-    effectiveMode: row.effective_mode,
     canonicalBase: {
       schemaVersion: row.schema_version,
       canonicalVersion: row.canonical_base_version,
@@ -340,8 +333,6 @@ const jobInsertValues = (job: DiscoveryJobV1): unknown[] => {
     JSON.stringify(job.trigger),
     job.requestedScanMode,
     job.effectiveScanMode,
-    job.requestedMode,
-    job.effectiveMode,
     job.canonicalBase.canonicalVersion,
     job.canonicalBase.snapshotDigest,
     job.requiredDiscoveryBase?.projectionRevision ?? null,
@@ -377,8 +368,6 @@ const runInsertValues = (run: DiscoveryRunV1): unknown[] => {
     run.schemaVersion,
     run.requestedScanMode,
     run.effectiveScanMode,
-    run.requestedMode,
-    run.effectiveMode,
     run.canonicalBase.canonicalVersion,
     run.canonicalBase.snapshotDigest,
     run.requiredDiscoveryBase?.projectionRevision ?? null,
@@ -410,8 +399,6 @@ const assertRunJobBinding = (run: DiscoveryRunV1, job: DiscoveryJobV1): void => 
     ['projectId', run.projectId, job.projectId],
     ['requestedScanMode', run.requestedScanMode, job.requestedScanMode],
     ['effectiveScanMode', run.effectiveScanMode, job.effectiveScanMode],
-    ['requestedMode', run.requestedMode, job.requestedMode],
-    ['effectiveMode', run.effectiveMode, job.effectiveMode],
     ['canonicalBase', run.canonicalBase, job.canonicalBase],
     ['requiredDiscoveryBase', run.requiredDiscoveryBase, job.requiredDiscoveryBase],
     ['policyRevision', run.policyRevision, job.policyRevision],
@@ -448,7 +435,7 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
             `INSERT INTO discovery.jobs (
               project_id, job_id, logical_job_identity, logical_job_identity_version,
               schema_version, trigger_id, trigger_class, trigger, requested_scan_mode,
-              effective_scan_mode, requested_mode, effective_mode, canonical_base_version, canonical_snapshot_digest,
+              effective_scan_mode, canonical_base_version, canonical_snapshot_digest,
               required_projection_revision, required_projection_digest, policy_revision,
               strategy_revision, profile_id, profile_revision, budget_version, budget_id,
               budget_revision, budget, lifecycle_state, lifecycle_revision,
@@ -456,8 +443,8 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
               wait_fallback_policy_revision, created_at, updated_at
             ) VALUES (
               $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12,
-              $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
-              $24::jsonb, $25, $26, $27, $28, $29, $30, $31, $32
+              $13, $14, $15, $16, $17, $18, $19, $20, $21,
+              $22::jsonb, $23, $24, $25, $26, $27, $28, $29, $30
             )`,
             jobInsertValues(decoded),
           );
@@ -602,7 +589,7 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
           await client.query(
             `INSERT INTO discovery.runs (
               project_id, run_id, job_id, run_revision, schema_version,
-              requested_scan_mode, effective_scan_mode, requested_mode, effective_mode, canonical_base_version,
+              requested_scan_mode, effective_scan_mode, canonical_base_version,
               canonical_snapshot_digest, required_projection_revision,
               required_projection_digest, policy_revision, strategy_revision,
               profile_id, profile_revision, budget_version, budget_id,
@@ -610,9 +597,9 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
               wait_projection_revision, wait_projection_digest, wait_deadline_at,
               wait_fallback_policy_revision, created_at, updated_at, completed_at
             ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-              $15, $16, $17, $18, $19, $20, $21::jsonb, $22, $23, $24, $25,
-              $26, $27, $28, $29, $30
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+              $14, $15, $16, $17, $18, $19::jsonb, $20, $21, $22, $23,
+              $24, $25, $26, $27, $28
             )`,
             runInsertValues(decoded),
           );
@@ -858,7 +845,7 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
         if (!currentRow) return 'NOT_FOUND';
         const current = mapAttempt(currentRow);
         if (current.lifecycleRevision !== input.expectedLifecycleRevision) return 'CONFLICT';
-        assertDiscoveryRuntimeLifecycleTransitionV1(current.lifecycleState, input.targetState);
+        assertDiscoveryAttemptLifecycleTransitionV1(current.lifecycleState, input.targetState);
         const completedAt = completedAtForState(
           input.targetState,
           input.updatedAt,

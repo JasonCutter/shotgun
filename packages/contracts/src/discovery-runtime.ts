@@ -130,9 +130,6 @@ type DiscoveryTriggerCommonV1 = {
   /** Discovery scan scope; distinct from the AKP-3 strategy set below. */
   readonly requestedScanMode: DiscoveryRuntimeScanModeV1;
   readonly effectiveScanMode: DiscoveryRuntimeScanModeV1;
-  /** Existing AKP-3 strategy-set disposition. */
-  readonly requestedMode: 'FULL' | 'DEGRADED';
-  readonly effectiveMode: 'FULL' | 'DEGRADED';
   readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
   readonly requiredDiscoveryBase?: DiscoveryProjectionBaseIdentityV1;
   readonly policyRevision: string;
@@ -185,8 +182,6 @@ export type DiscoveryJobV1 = {
   readonly trigger: DiscoveryTriggerV1;
   readonly requestedScanMode: DiscoveryRuntimeScanModeV1;
   readonly effectiveScanMode: DiscoveryRuntimeScanModeV1;
-  readonly requestedMode: 'FULL' | 'DEGRADED';
-  readonly effectiveMode: 'FULL' | 'DEGRADED';
   readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
   readonly requiredDiscoveryBase?: DiscoveryProjectionBaseIdentityV1;
   readonly policyRevision: string;
@@ -208,8 +203,6 @@ export type DiscoveryRunV1 = {
   readonly requestedScanMode: DiscoveryRuntimeScanModeV1;
   readonly effectiveScanMode: DiscoveryRuntimeScanModeV1;
   readonly runRevision: number;
-  readonly requestedMode: 'FULL' | 'DEGRADED';
-  readonly effectiveMode: 'FULL' | 'DEGRADED';
   readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
   readonly requiredDiscoveryBase?: DiscoveryProjectionBaseIdentityV1;
   readonly policyRevision: string;
@@ -484,8 +477,6 @@ export const decodeDiscoveryTriggerV1 = (value: unknown, path = 'trigger'): Disc
       'projectId',
       'requestedScanMode',
       'effectiveScanMode',
-      'requestedMode',
-      'effectiveMode',
       'canonicalBase',
       'requiredDiscoveryBase',
       'policyRevision',
@@ -544,16 +535,6 @@ export const decodeDiscoveryTriggerV1 = (value: unknown, path = 'trigger'): Disc
     projectId: text(required(object, 'projectId', path), `${path}.projectId`),
     requestedScanMode,
     effectiveScanMode,
-    requestedMode: enumValue(
-      required(object, 'requestedMode', path),
-      ['FULL', 'DEGRADED'] as const,
-      `${path}.requestedMode`,
-    ),
-    effectiveMode: enumValue(
-      required(object, 'effectiveMode', path),
-      ['FULL', 'DEGRADED'] as const,
-      `${path}.effectiveMode`,
-    ),
     canonicalBase: decodeCanonicalBase(
       required(object, 'canonicalBase', path),
       `${path}.canonicalBase`,
@@ -639,8 +620,6 @@ const baseRuntimeKeys = [
   'projectId',
   'requestedScanMode',
   'effectiveScanMode',
-  'requestedMode',
-  'effectiveMode',
   'canonicalBase',
   'requiredDiscoveryBase',
   'policyRevision',
@@ -694,16 +673,6 @@ const decodeRuntimeBinding = (object: Record<string, unknown>, path: string) => 
       required(object, 'effectiveScanMode', path),
       DISCOVERY_RUNTIME_SCAN_MODES_V1,
       `${path}.effectiveScanMode`,
-    ),
-    requestedMode: enumValue(
-      required(object, 'requestedMode', path),
-      ['FULL', 'DEGRADED'] as const,
-      `${path}.requestedMode`,
-    ),
-    effectiveMode: enumValue(
-      required(object, 'effectiveMode', path),
-      ['FULL', 'DEGRADED'] as const,
-      `${path}.effectiveMode`,
     ),
     canonicalBase: decodeCanonicalBase(
       required(object, 'canonicalBase', path),
@@ -760,8 +729,6 @@ export const decodeDiscoveryJobV1 = (value: unknown, path = 'job'): DiscoveryJob
     ['projectId', binding.projectId, trigger.projectId],
     ['requestedScanMode', binding.requestedScanMode, trigger.requestedScanMode],
     ['effectiveScanMode', binding.effectiveScanMode, trigger.effectiveScanMode],
-    ['requestedMode', binding.requestedMode, trigger.requestedMode],
-    ['effectiveMode', binding.effectiveMode, trigger.effectiveMode],
     ['canonicalBase', binding.canonicalBase, trigger.canonicalBase],
     ['requiredDiscoveryBase', binding.requiredDiscoveryBase, trigger.requiredDiscoveryBase],
     ['policyRevision', binding.policyRevision, trigger.policyRevision],
@@ -976,8 +943,6 @@ export const createDiscoveryLogicalJobIdentityV1 = (
     triggerIdentity: trigger.triggerIdentity,
     requestedScanMode: trigger.requestedScanMode,
     effectiveScanMode: trigger.effectiveScanMode,
-    requestedMode: trigger.requestedMode,
-    effectiveMode: trigger.effectiveMode,
     canonicalBase: trigger.canonicalBase,
     requiredDiscoveryBase: trigger.requiredDiscoveryBase,
     policyRevision: trigger.policyRevision,
@@ -1010,6 +975,23 @@ export const assertDiscoveryRuntimeLifecycleTransitionV1 = (
 ): void => {
   if (!lifecycleTransitionTable[from].includes(to))
     return fail('lifecycleState', `invalid transition ${from} -> ${to}`);
+};
+
+const DISCOVERY_ATTEMPT_TERMINAL_STATES_V1: readonly DiscoveryRuntimeLifecycleStateV1[] = [
+  'SUCCEEDED',
+  'FAILED_RETRYABLE',
+  'FAILED_TERMINAL',
+  'CANCELLED',
+];
+
+export const assertDiscoveryAttemptLifecycleTransitionV1 = (
+  from: DiscoveryRuntimeLifecycleStateV1,
+  to: DiscoveryRuntimeLifecycleStateV1,
+): void => {
+  if (DISCOVERY_ATTEMPT_TERMINAL_STATES_V1.includes(from)) {
+    return fail('attempt.lifecycleState', `invalid transition ${from} -> ${to}`);
+  }
+  assertDiscoveryRuntimeLifecycleTransitionV1(from, to);
 };
 
 export const assertDiscoveryRuntimeStageTransitionV1 = (

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  assertDiscoveryAttemptLifecycleTransitionV1,
   assertDiscoveryRuntimeLifecycleTransitionV1,
   assertDiscoveryRuntimeStageTransitionV1,
   createDiscoveryLogicalJobIdentityV1,
+  createDiscoveryEffectiveStrategySetV1,
   decodeDiscoveryAttemptV1,
   decodeDiscoveryJobV1,
   decodeDiscoveryRuntimeBudgetBindingV1,
@@ -47,8 +49,6 @@ const trigger = (
   projectId: 'project-1',
   requestedScanMode: 'INCREMENTAL',
   effectiveScanMode: 'INCREMENTAL',
-  requestedMode: 'FULL',
-  effectiveMode: 'FULL',
   canonicalBase: {
     schemaVersion: '1.0.0',
     canonicalVersion: 12,
@@ -77,8 +77,6 @@ const runtimeJob = (nextTrigger = trigger()): DiscoveryJobV1 => ({
   trigger: nextTrigger,
   requestedScanMode: nextTrigger.requestedScanMode,
   effectiveScanMode: nextTrigger.effectiveScanMode,
-  requestedMode: nextTrigger.requestedMode,
-  effectiveMode: nextTrigger.effectiveMode,
   canonicalBase: nextTrigger.canonicalBase,
   requiredDiscoveryBase: nextTrigger.requiredDiscoveryBase,
   policyRevision: nextTrigger.policyRevision,
@@ -177,6 +175,34 @@ describe('AKP-4 WP1 Discovery runtime contracts', () => {
     ).not.toEqual(first);
   });
 
+  it('keeps execution degradation separate from pre-execution runtime identity', () => {
+    const first = createDiscoveryLogicalJobIdentityV1(trigger());
+    const second = createDiscoveryLogicalJobIdentityV1({
+      ...trigger(),
+      triggerId: 'another-physical-observation',
+      createdAt: '2031-01-01T00:00:00.000Z',
+      observedAt: '2031-01-01T00:00:01.000Z',
+    });
+    expect(second).toEqual(first);
+
+    expect(() => decodeDiscoveryTriggerV1({ ...trigger(), requestedMode: 'FULL' })).toThrow(
+      /unknown field/i,
+    );
+    expect(() => decodeDiscoveryJobV1({ ...runtimeJob(), effectiveMode: 'DEGRADED' })).toThrow(
+      /unknown field/i,
+    );
+
+    expect(
+      createDiscoveryEffectiveStrategySetV1({
+        mode: 'DEGRADED',
+        completion: 'PARTIAL',
+        requestedStrategies: ['semantic'],
+        effectiveStrategies: [],
+        skippedStrategies: [{ strategyId: 'semantic', reason: 'AI_CAPABILITY_UNAVAILABLE' }],
+      }),
+    ).toMatchObject({ mode: 'DEGRADED', completion: 'PARTIAL' });
+  });
+
   it('recomputes Job identity and rejects top-level binding or projection-wait tampering', () => {
     const base = runtimeJob();
     expect(() =>
@@ -253,6 +279,18 @@ describe('AKP-4 WP1 Discovery runtime contracts', () => {
       assertDiscoveryRuntimeStageTransitionV1('RUNNING', 'FAILED_TERMINAL'),
     ).not.toThrow();
     expect(() => assertDiscoveryRuntimeStageTransitionV1('SUCCEEDED', 'RUNNING')).toThrow(
+      /invalid transition/,
+    );
+    expect(() =>
+      assertDiscoveryRuntimeLifecycleTransitionV1('FAILED_RETRYABLE', 'RUNNING'),
+    ).not.toThrow();
+    expect(() =>
+      assertDiscoveryRuntimeLifecycleTransitionV1('FAILED_RETRYABLE', 'QUEUED'),
+    ).not.toThrow();
+    expect(() =>
+      assertDiscoveryAttemptLifecycleTransitionV1('FAILED_RETRYABLE', 'RUNNING'),
+    ).toThrow(/invalid transition/);
+    expect(() => assertDiscoveryAttemptLifecycleTransitionV1('FAILED_RETRYABLE', 'QUEUED')).toThrow(
       /invalid transition/,
     );
     expect(discoveryStageOrdinalV1('WAIT_FOR_PROJECTION')).toBe(1);

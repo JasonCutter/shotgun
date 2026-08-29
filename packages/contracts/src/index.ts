@@ -7,6 +7,7 @@ export * from './comparison-review.js';
 export * from './compiled-truth.js';
 export * from './discovery-finding.js';
 export * from './discovery-ai.js';
+export * from './discovery-execution.js';
 export * from './discovery-finding-serialization.js';
 export * from './document-evidence.js';
 export * from './knowledge-model.js';

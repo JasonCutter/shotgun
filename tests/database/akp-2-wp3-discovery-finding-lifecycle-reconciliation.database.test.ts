@@ -111,6 +111,12 @@ describe.runIf(databaseUrl)('AKP-2 WP3 Discovery lifecycle PostgreSQL persistenc
 
   afterAll(async () => {
     for (const project of projectIds) {
+      await pool.query('DELETE FROM discovery.finding_lifecycle_history WHERE project_id = $1', [
+        project,
+      ]);
+      await pool.query('DELETE FROM discovery.finding_lifecycle_current WHERE project_id = $1', [
+        project,
+      ]);
       await pool.query('DELETE FROM discovery.findings WHERE project_id = $1', [project]);
     }
     await pool.end();
@@ -213,9 +219,9 @@ describe.runIf(databaseUrl)('AKP-2 WP3 Discovery lifecycle PostgreSQL persistenc
     const stale = await service.transition({
       ...identity,
       expectedLifecycleRevision: 1,
-      targetState: 'VALIDATING',
-      cause: 'GOVERNED_WORKFLOW',
-      reasonCode: 'VALIDATION_STARTED',
+      targetState: 'RESOLVED',
+      cause: 'SYSTEM_RECONCILIATION',
+      reasonCode: 'CANONICAL_EQUIVALENT_ACCEPTED',
       occurredAt: '2026-08-29T00:04:00.000Z',
     });
     expect(stale.status).toBe('CONFLICT');
@@ -360,14 +366,32 @@ describe.runIf(databaseUrl)('AKP-2 WP3 Discovery lifecycle PostgreSQL persistenc
     });
     const terminalIdentity = identityOf(terminal);
     expect(await repository.save(terminal)).toBe('CREATED');
+    expect(
+      await service.transition({
+        ...terminalIdentity,
+        expectedLifecycleRevision: 1,
+        targetState: 'VALIDATING',
+        cause: 'GOVERNED_WORKFLOW',
+        reasonCode: 'VALIDATION_STARTED',
+        occurredAt: '2026-08-29T00:09:00.000Z',
+      }),
+    ).toMatchObject({ status: 'APPLIED' });
+    expect(
+      await service.reconcile({
+        finding: terminal,
+        expectedLifecycleRevision: 2,
+        observation: { ...terminalIdentity, disposition: 'RELEVANT_INPUT_CHANGED' },
+        occurredAt: '2026-08-29T00:10:00.000Z',
+      }),
+    ).toMatchObject({ status: 'TRANSITIONED' });
     await expect(
       service.reconcile({
         finding: terminal,
-        expectedLifecycleRevision: 1,
+        expectedLifecycleRevision: 3,
         observation: { ...terminalIdentity, disposition: 'CANONICAL_EQUIVALENT_ACCEPTED' },
-        occurredAt: '2026-08-29T00:09:00.000Z',
+        occurredAt: '2026-08-29T00:11:00.000Z',
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
-    expect(await repository.listLifecycleHistory(terminalIdentity)).toHaveLength(1);
+    expect(await repository.listLifecycleHistory(terminalIdentity)).toHaveLength(3);
   });
 });

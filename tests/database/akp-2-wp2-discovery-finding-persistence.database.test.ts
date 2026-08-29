@@ -204,6 +204,12 @@ describe.runIf(databaseUrl)('AKP-2 WP2 Discovery finding PostgreSQL persistence'
 
   afterAll(async () => {
     for (const project of projectIds) {
+      await pool.query('DELETE FROM discovery.finding_lifecycle_history WHERE project_id = $1', [
+        project,
+      ]);
+      await pool.query('DELETE FROM discovery.finding_lifecycle_current WHERE project_id = $1', [
+        project,
+      ]);
       await pool.query('DELETE FROM discovery.findings WHERE project_id = $1', [project]);
     }
     await pool.end();

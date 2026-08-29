@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS discovery.finding_lifecycle_current (
   CONSTRAINT discovery_finding_lifecycle_current_finding_fk
     FOREIGN KEY (project_id, finding_id, finding_revision)
     REFERENCES discovery.findings (project_id, finding_id, finding_revision)
-    ON DELETE CASCADE
+    ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS discovery.finding_lifecycle_history (
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS discovery.finding_lifecycle_history (
   CONSTRAINT discovery_finding_lifecycle_history_finding_fk
     FOREIGN KEY (project_id, finding_id, finding_revision)
     REFERENCES discovery.findings (project_id, finding_id, finding_revision)
-    ON DELETE CASCADE,
+    ON DELETE RESTRICT,
   CONSTRAINT discovery_finding_lifecycle_history_canonical_context_ck
     CHECK ((canonical_base_version IS NULL) = (canonical_snapshot_digest IS NULL)),
   CONSTRAINT discovery_finding_lifecycle_history_discovery_context_ck

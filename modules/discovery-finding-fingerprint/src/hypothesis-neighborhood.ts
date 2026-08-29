@@ -1390,6 +1390,7 @@ const conflictSelection = (
   );
   const candidates: DiscoveryHypothesisCandidateV1[] = [];
   const seenPairs = new Set<string>();
+  const existingConflictIsIncomplete = existingConflict.completeness === 'TRUNCATED';
   let truncated =
     signals.completeness === 'TRUNCATED' ||
     competition.completeness === 'TRUNCATED' ||
@@ -1411,6 +1412,10 @@ const conflictSelection = (
       pairKey.split('\u0000').some((entry) => entry.length === 0)
     )
       continue;
+    if (existingConflictIsIncomplete) {
+      truncated = true;
+      continue;
+    }
     const left = selectionResource(resources, signal.left);
     const right = selectionResource(resources, signal.right);
     if (
@@ -1491,16 +1496,24 @@ export class DiscoveryNeighborhoodSignalFacade {
     let truncated = anchors.length > boundedAnchors.length;
     const semanticNeighborhoods: DiscoveryAnchoredSemanticNeighborhoodV1[] = [];
     const neighborLimit = effectiveMaxNeighborsPerAnchor(input.context, input.strategy);
-    let remainingNeighborCapacity = Math.max(
-      0,
-      input.context.bounds.maxResourcesRead - boundedAnchors.length,
+    const exposedResourceKeys = new Set(
+      boundedAnchors.map((anchor) => resourceKey(anchor.resource)),
     );
+    let remainingResourceCapacity = Math.max(
+      0,
+      input.context.bounds.maxResourcesRead - exposedResourceKeys.size,
+    );
+    let remainingObservationCapacity = input.context.bounds.maxObservationsReturned;
     for (const anchor of boundedAnchors) {
-      if (remainingNeighborCapacity < 1) {
+      if (remainingResourceCapacity < 1 || remainingObservationCapacity < 1) {
         truncated = true;
         break;
       }
-      const readLimit = Math.min(neighborLimit, remainingNeighborCapacity);
+      const readLimit = Math.min(
+        neighborLimit,
+        remainingResourceCapacity,
+        remainingObservationCapacity,
+      );
       const result = await this.ports.semanticNeighborhood.read({
         context: input.context,
         anchor,
@@ -1509,9 +1522,16 @@ export class DiscoveryNeighborhoodSignalFacade {
       const normalized = normalizeNeighborhood(input.context, anchor, result, readLimit);
       semanticNeighborhoods.push(normalized.neighborhood);
       truncated ||= normalized.truncated;
-      remainingNeighborCapacity = Math.max(
+      for (const neighbor of normalized.neighborhood.neighbors) {
+        exposedResourceKeys.add(resourceKey(neighbor.resource.resource));
+      }
+      remainingResourceCapacity = Math.max(
         0,
-        remainingNeighborCapacity - normalized.neighborhood.neighbors.length,
+        input.context.bounds.maxResourcesRead - exposedResourceKeys.size,
+      );
+      remainingObservationCapacity = Math.max(
+        0,
+        remainingObservationCapacity - normalized.neighborhood.neighbors.length,
       );
     }
     const boundedSemantic = normalizeSemanticNeighborhoodsForSelection(

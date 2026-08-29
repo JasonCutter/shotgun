@@ -572,7 +572,7 @@ describe('AKP-3 WP2 bounded hypothesis neighborhoods', () => {
     expect(make(true).candidates).toHaveLength(1);
   });
 
-  it('suppresses an explicit existing Canonical Conflict pair, while a truncated signal never proves absence', () => {
+  it('suppresses an explicit existing Canonical Conflict pair and requires complete absence evidence', () => {
     const a = signal('a');
     const b = signal('b');
     const semantic = neighborhood(a, [neighbor(b)]);
@@ -616,7 +616,7 @@ describe('AKP-3 WP2 bounded hypothesis neighborhoods', () => {
         ),
       }),
     );
-    expect(truncated.candidates).toHaveLength(1);
+    expect(truncated.candidates).toEqual([]);
     expect(truncated.completeness).toBe('TRUNCATED');
   });
 
@@ -738,6 +738,79 @@ describe('AKP-3 WP2 bounded hypothesis neighborhoods', () => {
     expect(neighborPort.read).toHaveBeenCalledWith(expect.objectContaining({ limit: 1 }));
     expect(neighborResult.semanticNeighborhoods[0]?.neighbors).toHaveLength(1);
     expect(neighborResult.completeness).toBe('TRUNCATED');
+  });
+
+  it('allocates unique-resource capacity across semantic Port calls and does not charge duplicates twice', async () => {
+    const a = signal('a');
+    const b = signal('b');
+    const c = signal('c');
+    const d = signal('d');
+    const e = signal('e');
+    const strategy = {
+      ...patternStrategy(),
+      work: { ...patternStrategy().work, maxAnchors: 3, maxNeighborsPerAnchor: 20 },
+    };
+    const port = semanticPort((anchor) => {
+      if (anchor.resource.resourceId === 'a') return neighborhood(anchor, [neighbor(d)]);
+      if (anchor.resource.resourceId === 'b') return neighborhood(anchor, [neighbor(d)]);
+      return neighborhood(anchor, [neighbor(e)]);
+    });
+    const facade = createDiscoveryNeighborhoodSignalFacade({ semanticNeighborhood: port });
+    const result = await facade.readForStrategy({
+      context: context({
+        bounds: { maxResourcesRead: 5, maxObservationsReturned: 100, maxFindingsEmitted: 100 },
+      }),
+      anchors: [a, b, c],
+      strategy,
+    });
+
+    expect(port.read).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(port.read).mock.calls.map(([input]) => input.limit)).toEqual([2, 1, 1]);
+    const exposed = new Set(
+      result.semanticNeighborhoods.flatMap((entry) => [
+        entry.anchor.resource.resourceId,
+        ...entry.neighbors.map((neighborEntry) => neighborEntry.resource.resource.resourceId),
+      ]),
+    );
+    expect(exposed).toEqual(new Set(['a', 'b', 'c', 'd', 'e']));
+    expect(result.completeness).toBe('COMPLETE');
+  });
+
+  it('consumes semantic observation capacity across anchors and stops later Port calls when exhausted', async () => {
+    const a = signal('a');
+    const b = signal('b');
+    const c = signal('c');
+    const d = signal('d');
+    const e = signal('e');
+    const f = signal('f');
+    const strategy = {
+      ...patternStrategy(),
+      work: { ...patternStrategy().work, maxAnchors: 3, maxNeighborsPerAnchor: 20 },
+    };
+    const port = semanticPort((anchor) =>
+      anchor.resource.resourceId === 'a'
+        ? neighborhood(anchor, [neighbor(d), neighbor(e)])
+        : neighborhood(anchor, [neighbor(f)]),
+    );
+    const facade = createDiscoveryNeighborhoodSignalFacade({ semanticNeighborhood: port });
+    const result = await facade.readForStrategy({
+      context: context({
+        bounds: { maxResourcesRead: 100, maxObservationsReturned: 3, maxFindingsEmitted: 100 },
+      }),
+      anchors: [a, b, c],
+      strategy,
+    });
+
+    expect(port.read).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(port.read).mock.calls.map(([input]) => input.limit)).toEqual([3, 1]);
+    expect(
+      result.semanticNeighborhoods.reduce((total, entry) => total + entry.neighbors.length, 0),
+    ).toBe(3);
+    expect(result.semanticNeighborhoods.map((entry) => entry.anchor.resource.resourceId)).toEqual([
+      'a',
+      'b',
+    ]);
+    expect(result.completeness).toBe('TRUNCATED');
   });
 
   it('bounds graph and temporal observations by context maxObservationsReturned', async () => {

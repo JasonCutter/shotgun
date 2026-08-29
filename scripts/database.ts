@@ -155,6 +155,8 @@ const requiredTables = [
   'projection.compiled_truth',
   'projection.discovery_inferences',
   'discovery.findings',
+  'discovery.finding_lifecycle_current',
+  'discovery.finding_lifecycle_history',
   'action.executions',
   'action.approvals',
   'action.audit_events',

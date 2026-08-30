@@ -9,7 +9,9 @@ import {
   type DiscoveryReviewResourceV1,
 } from '../../packages/contracts/src/index.js';
 import {
+  DiscoveryReentryConsumer,
   DiscoveryReviewMaterializer,
+  PersistentDiscoveryReentryWorker,
   discoveryReviewMaterializationTargetForV1,
   DISCOVERY_REENTRY_PURPOSE_DERIVED_PROVENANCE_VALIDATION,
   normalizeDiscoveryFindingToReviewResourceV1,
@@ -402,6 +404,55 @@ describe('AKP-5 WP4 type-specific Review materialization', () => {
     expect(second.status).toBe('IDEMPOTENT');
     expect((first as { resource: DiscoveryReviewResourceV1 }).resource.contentDigest).toBe(
       (second as { resource: DiscoveryReviewResourceV1 }).resource.contentDigest,
+    );
+  });
+
+  it('recovers a materializer failure from persisted intake on the next worker poll', async () => {
+    const finding = findingFor('CLARIFICATION_QUESTION');
+    const { manifest, candidate, logicalIdentityKey } = pairFor(finding);
+    const stored: DiscoveryReentryStoredIntakeV1 = {
+      logicalIdentityKey,
+      manifest,
+      candidate,
+      lifecycle: {
+        projectId,
+        findingId: finding.findingId,
+        findingRevision: finding.findingRevision,
+        lifecycleState: 'VALIDATING',
+        lifecycleRevision: 2,
+        updatedAt: now,
+      },
+    };
+    let persisted: DiscoveryReviewResourceV1 | undefined;
+    const persistence = {
+      listPendingFindingReady: async () => [],
+      findExisting: async () => stored,
+      findFinding: async () => finding,
+      listPendingReviewMaterialization: async () => (persisted === undefined ? [stored] : []),
+    } as unknown as DiscoveryReentryPersistencePort;
+    let attempts = 0;
+    const writer: DiscoveryReviewResourceWriterPort = {
+      save: async (resource) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error('simulated writer outage');
+        persisted = resource;
+        return 'CREATED';
+      },
+    };
+    const worker = new PersistentDiscoveryReentryWorker(
+      new DiscoveryReentryConsumer(persistence, {
+        resolve: async () => ({ status: 'RESOLVED' as const, refs: [] }),
+      }),
+      {
+        batchLimit: 1,
+        reviewMaterializer: new DiscoveryReviewMaterializer(persistence, writer),
+      },
+    );
+    await expect(worker.runOnce()).resolves.toMatchObject({ fetched: 0, results: [] });
+    await expect(worker.runOnce()).resolves.toMatchObject({ fetched: 0, results: [] });
+    expect(attempts).toBe(2);
+    expect(persisted?.content.normalizedMaterial?.materializationTarget).toBe(
+      'CLARIFICATION_WORK_ITEM',
     );
   });
 

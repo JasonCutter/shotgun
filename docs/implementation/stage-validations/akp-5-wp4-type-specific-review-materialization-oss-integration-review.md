@@ -57,6 +57,11 @@ and production PostgreSQL composition.
 - The materializer accepts only a lookup identity, reloads the persisted pair,
   rechecks manifest and candidate bindings, rejects project/access/sensitivity
   widening, and writes through the existing WP3 immutable resource repository.
+- The materializer advances the existing Finding lifecycle from `VALIDATING` to
+  `REVIEW_READY` through the existing lifecycle authority before publishing the
+  Review resource. If the resource write fails, a recovery scan over existing
+  053/054 intake selects the still-unmaterialized candidate on the next worker
+  poll; no second queue or status store is introduced.
 - `discovery-review-root-identity:v1` remains based only on project,
   candidate, candidate revision and `DERIVED_DISCOVERY`. Same immutable content
   is idempotent; same identity with changed content conflicts; an intentional

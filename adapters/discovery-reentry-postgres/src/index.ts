@@ -36,6 +36,8 @@ import type {
   DiscoveryReentryLifecycleCurrentV1,
   DiscoveryReentryPersistencePort,
   DiscoveryReentryPersistenceResultV1,
+  DiscoveryReentryReviewReadyTransitionInputV1,
+  DiscoveryReentryReviewReadyTransitionResultV1,
   DiscoveryReentryStoredIntakeV1,
   DiscoveryReentryConsumptionDispositionInputV1,
   DiscoveryReentryConsumptionDispositionRecordV1,
@@ -403,6 +405,82 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
     return result.rows[0] ? mapLifecycle(result.rows[0]) : undefined;
   }
 
+  public async transitionFindingToReviewReady(
+    input: DiscoveryReentryReviewReadyTransitionInputV1,
+  ): Promise<DiscoveryReentryReviewReadyTransitionResultV1> {
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const currentResult = await client.query<LifecycleRow>(
+          `SELECT ${lifecycleColumns}
+           FROM discovery.finding_lifecycle_current
+           WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
+           FOR UPDATE`,
+          identityParams(input),
+        );
+        const currentRow = currentResult.rows[0];
+        if (!currentRow) throw new TypeError('Discovery Finding lifecycle was not found.');
+        const current = mapLifecycle(currentRow);
+        if (current.lifecycleState === 'REVIEW_READY') {
+          return { status: 'IDEMPOTENT', current };
+        }
+        if (current.lifecycleRevision !== input.expectedLifecycleRevision) {
+          return { status: 'CONFLICT', current };
+        }
+        assertDiscoveryLifecycleTransitionV1(
+          current.lifecycleState,
+          'REVIEW_READY',
+          'GOVERNED_WORKFLOW',
+          'REVIEW_READY',
+        );
+        const nextRevision = current.lifecycleRevision + 1;
+        await client.query(
+          `INSERT INTO discovery.finding_lifecycle_history (
+             project_id, finding_id, finding_revision, lifecycle_revision,
+             from_state, to_state, cause, reason_code,
+             canonical_base_version, canonical_snapshot_digest,
+             discovery_projection_revision, discovery_projection_digest,
+             occurred_at
+           ) VALUES ($1, $2, $3, $4, $5, 'REVIEW_READY',
+                     'GOVERNED_WORKFLOW', 'REVIEW_READY', $6, $7, $8, $9, $10)`,
+          [
+            input.projectId,
+            input.findingId,
+            input.findingRevision,
+            nextRevision,
+            current.lifecycleState,
+            input.canonicalBase.canonicalVersion,
+            input.canonicalBase.snapshotDigest,
+            input.discoveryBase.projectionRevision,
+            input.discoveryBase.projectionDigest,
+            input.occurredAt,
+          ],
+        );
+        const updatedResult = await client.query<LifecycleRow>(
+          `UPDATE discovery.finding_lifecycle_current
+           SET lifecycle_state = 'REVIEW_READY', lifecycle_revision = $4, updated_at = $5
+           WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
+             AND lifecycle_revision = $6
+           RETURNING ${lifecycleColumns}`,
+          [
+            input.projectId,
+            input.findingId,
+            input.findingRevision,
+            nextRevision,
+            input.occurredAt,
+            input.expectedLifecycleRevision,
+          ],
+        );
+        const updatedRow = updatedResult.rows[0];
+        if (!updatedRow) {
+          throw new TypeError('Discovery Finding lifecycle update was not persisted.');
+        }
+        return { status: 'APPLIED', current: mapLifecycle(updatedRow) };
+      },
+      { module: 'discovery-reentry-postgres', operation: 'transition-review-ready' },
+    );
+  }
+
   public async findConsumptionDisposition(
     identity: DiscoveryFindingIdentityV1,
   ): Promise<DiscoveryReentryConsumptionDispositionRecordV1 | undefined> {
@@ -496,6 +574,43 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
     });
     if (!lifecycle) throw new TypeError('Durable re-entry manifest has no Finding lifecycle.');
     return { logicalIdentityKey: manifestRow.logical_identity_key, manifest, candidate, lifecycle };
+  }
+
+  public async listPendingReviewMaterialization(
+    limit: number,
+  ): Promise<readonly DiscoveryReentryStoredIntakeV1[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new TypeError('limit must be between 1 and 100');
+    }
+    const result = await this.pool.query<{ readonly logical_identity_key: string }>(
+      `SELECT manifest.logical_identity_key
+       FROM discovery.reentry_manifests manifest
+       JOIN discovery.reentry_candidates candidate
+         ON candidate.project_id = manifest.project_id
+        AND candidate.manifest_id = manifest.manifest_id
+       JOIN discovery.finding_lifecycle_current lifecycle
+         ON lifecycle.project_id = candidate.project_id
+        AND lifecycle.finding_id = candidate.finding_id
+        AND lifecycle.finding_revision = candidate.finding_revision
+       WHERE manifest.requested_reentry_purpose = 'DERIVED_PROVENANCE_VALIDATION'
+         AND lifecycle.lifecycle_state IN ('VALIDATING', 'REVIEW_READY')
+         AND NOT EXISTS (
+           SELECT 1
+           FROM discovery.reentry_review_resources resource
+           WHERE resource.project_id = candidate.project_id
+             AND resource.candidate_id = candidate.candidate_id
+             AND resource.candidate_revision = candidate.candidate_revision
+         )
+       ORDER BY manifest.created_at, manifest.logical_identity_key
+       LIMIT $1`,
+      [limit],
+    );
+    const intakes: DiscoveryReentryStoredIntakeV1[] = [];
+    for (const row of result.rows) {
+      const intake = await this.findExisting(row.logical_identity_key);
+      if (intake !== undefined) intakes.push(intake);
+    }
+    return intakes;
   }
 
   public async persistIntake(input: {

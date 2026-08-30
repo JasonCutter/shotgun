@@ -104,6 +104,23 @@ export type DiscoveryReentryStoredIntakeV1 = {
   readonly lifecycle: DiscoveryReentryLifecycleCurrentV1;
 };
 
+export type DiscoveryReentryReviewReadyTransitionInputV1 = DiscoveryFindingIdentityV1 & {
+  readonly expectedLifecycleRevision: number;
+  readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
+  readonly discoveryBase: DiscoveryProjectionBaseIdentityV1;
+  readonly occurredAt: string;
+};
+
+export type DiscoveryReentryReviewReadyTransitionResultV1 =
+  | {
+      readonly status: 'APPLIED' | 'IDEMPOTENT';
+      readonly current: DiscoveryReentryLifecycleCurrentV1;
+    }
+  | {
+      readonly status: 'CONFLICT';
+      readonly current: DiscoveryReentryLifecycleCurrentV1;
+    };
+
 export type DiscoveryReentryConsumptionDispositionRecordV1 = DiscoveryFindingIdentityV1 & {
   readonly requestedReentryPurpose: typeof DISCOVERY_REENTRY_PURPOSE_DERIVED_PROVENANCE_VALIDATION;
   readonly publicationId: string;
@@ -150,6 +167,14 @@ export type DiscoveryReentryPersistencePort = {
     input: DiscoveryReentryConsumptionDispositionInputV1,
   ): Promise<DiscoveryReentryConsumptionDispositionRecordV1>;
   findExisting(logicalIdentityKey: string): Promise<DiscoveryReentryStoredIntakeV1 | undefined>;
+  /** Existing persisted candidates that still need the WP3 Review projection. */
+  listPendingReviewMaterialization?(
+    limit: number,
+  ): Promise<readonly DiscoveryReentryStoredIntakeV1[]>;
+  /** Existing lifecycle authority; no second lifecycle store is permitted. */
+  transitionFindingToReviewReady?(
+    input: DiscoveryReentryReviewReadyTransitionInputV1,
+  ): Promise<DiscoveryReentryReviewReadyTransitionResultV1>;
   persistIntake(input: {
     readonly logicalIdentity: DiscoveryReentryLogicalIdentityResultV1;
     readonly finding: DiscoveryFindingEnvelopeV1;
@@ -576,6 +601,17 @@ export class DiscoveryReentryConsumer {
     for (const publication of publications) results.push(await this.consume(publication));
     return { fetched: publications.length, results };
   }
+
+  public async listPendingReviewMaterialization(
+    limit: number,
+  ): Promise<readonly DiscoveryReentryStoredIntakeV1[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new TypeError('limit must be between 1 and 100');
+    }
+    return this.persistence.listPendingReviewMaterialization === undefined
+      ? []
+      : this.persistence.listPendingReviewMaterialization(limit);
+  }
 }
 
 export type PersistentDiscoveryReentryWorkerOptionsV1 = {
@@ -621,17 +657,46 @@ export class PersistentDiscoveryReentryWorker {
     this.loopPromise = undefined;
   }
 
-  public runOnce(): Promise<DiscoveryReentryBatchResultV1> {
-    return this.consumer.runOnce(this.batchLimit).then(async (batch) => {
-      if (this.reviewMaterializer === undefined) return batch;
-      for (const result of batch.results) {
-        if (result.status !== 'CREATED' && result.status !== 'IDEMPOTENT') continue;
-        await this.reviewMaterializer.materialize({
-          logicalIdentityKey: result.logicalIdentityKey,
+  public async runOnce(): Promise<DiscoveryReentryBatchResultV1> {
+    const batch = await this.consumer.runOnce(this.batchLimit);
+    if (this.reviewMaterializer === undefined) return batch;
+    const materializedKeys = new Set<string>();
+    const materialize = async (logicalIdentityKey: string): Promise<void> => {
+      try {
+        const result = await this.reviewMaterializer!.materialize({ logicalIdentityKey });
+        if (result.status === 'CREATED' || result.status === 'IDEMPOTENT') {
+          materializedKeys.add(logicalIdentityKey);
+        } else {
+          console.error('[discovery-reentry-worker] Review materialization intake not found', {
+            logicalIdentityKey,
+          });
+        }
+      } catch (error) {
+        // The persisted candidate remains discoverable by the recovery scan;
+        // a materialization failure must not turn into a permanently lost item.
+        console.error('[discovery-reentry-worker] Review materialization failed', {
+          logicalIdentityKey,
+          error: textOf(error),
         });
       }
-      return batch;
-    });
+    };
+    for (const result of batch.results) {
+      if (result.status !== 'CREATED' && result.status !== 'IDEMPOTENT') continue;
+      await materialize(result.logicalIdentityKey);
+    }
+    try {
+      const pending = await this.consumer.listPendingReviewMaterialization(this.batchLimit);
+      for (const intake of pending) {
+        if (!materializedKeys.has(intake.logicalIdentityKey)) {
+          await materialize(intake.logicalIdentityKey);
+        }
+      }
+    } catch (error) {
+      console.error('[discovery-reentry-worker] Review recovery scan failed', {
+        error: textOf(error),
+      });
+    }
+    return batch;
   }
 
   private async runLoop(): Promise<void> {
@@ -1187,6 +1252,22 @@ export class DiscoveryReviewMaterializer implements DiscoveryReviewMaterializerP
       candidate: stored.candidate,
       resourceRevision: input.resourceRevision,
     });
+    if (this.persistence.transitionFindingToReviewReady !== undefined) {
+      const transition = await this.persistence.transitionFindingToReviewReady({
+        projectId: finding.projectId,
+        findingId: finding.findingId,
+        findingRevision: finding.findingRevision,
+        expectedLifecycleRevision: stored.lifecycle.lifecycleRevision,
+        canonicalBase: finding.canonicalBase,
+        discoveryBase: finding.discoveryBase,
+        occurredAt: finding.createdAt,
+      });
+      if (transition.status === 'CONFLICT') {
+        throw new TypeError(
+          'Finding lifecycle changed before Review materialization could become Review-ready.',
+        );
+      }
+    }
     const status = await this.writer.save(resource);
     return { status, resource };
   }

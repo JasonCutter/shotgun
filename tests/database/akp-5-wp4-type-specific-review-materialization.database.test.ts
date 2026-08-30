@@ -170,10 +170,16 @@ describe.runIf(databaseUrl)('AKP-5 WP4 PostgreSQL materialization authority', ()
 
     const persisted = await pool!.query<{
       candidate_eligibility: string;
+      lifecycle_state: string;
       review_count: number;
       content: { normalizedMaterial?: { materializationTarget?: string } };
     }>(
       `SELECT candidate->>'reviewEligibility' AS candidate_eligibility,
+              (SELECT lifecycle_state
+               FROM discovery.finding_lifecycle_current
+               WHERE project_id = candidate.project_id
+                 AND finding_id = candidate.finding_id
+                 AND finding_revision = candidate.finding_revision) AS lifecycle_state,
               (SELECT count(*)::int
                FROM discovery.reentry_review_resources
                WHERE project_id = candidate.project_id
@@ -190,6 +196,7 @@ describe.runIf(databaseUrl)('AKP-5 WP4 PostgreSQL materialization authority', ()
     );
     expect(persisted.rows[0]).toMatchObject({
       candidate_eligibility: 'NOT_ELIGIBLE',
+      lifecycle_state: 'REVIEW_READY',
       review_count: 1,
       content: { normalizedMaterial: { materializationTarget: 'KNOWLEDGE_GAP_INVESTIGATION' } },
     });

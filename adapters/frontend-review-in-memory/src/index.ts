@@ -10,6 +10,9 @@ import {
   type ReviewEvidenceEntryV1,
   type ReviewImpactEntryV1,
   type ReviewItemV1,
+  type DiscoveryReviewContentV1,
+  type DiscoveryReviewEvidenceLineageRefV1,
+  type DiscoveryReviewLineageV1,
 } from '../../../packages/contracts/src/index.js';
 import type {
   ReviewRepositoryBoundaryPort,
@@ -572,7 +575,7 @@ export class DraftReviewTargetAdapter implements ReviewTargetAdapterPort {
 // Discovery Candidate target adapter
 // ---------------------------------------------------------------------------
 
-export type ReviewDiscoveryCandidateSourceV1 = {
+export type ReviewDiscoveryCandidateLegacySourceV1 = {
   readonly candidateId: string;
   readonly resourceProjectId: string;
   readonly effectiveProjectId: string;
@@ -592,6 +595,36 @@ export type ReviewDiscoveryCandidateSourceV1 = {
   readonly updatedAt: string;
 };
 
+/**
+ * Review source projection for the WP3 persistent bridge. The lineage is
+ * carried as data into ADR-128 artifacts; it is not converted into a
+ * Stage-4 direct-evidence candidate.
+ */
+export type ReviewDiscoveryCandidateDerivedSourceV1 = {
+  readonly origin: 'DERIVED_DISCOVERY';
+  readonly reviewResourceId: string;
+  readonly resourceRevision: number;
+  readonly candidateId: string;
+  readonly candidateRevision: number;
+  readonly resourceProjectId: string;
+  readonly effectiveProjectId: string;
+  readonly content: DiscoveryReviewContentV1;
+  readonly evidence: readonly DiscoveryReviewEvidenceLineageRefV1[];
+  readonly impact: readonly {
+    readonly impactId: string;
+    readonly targetKind: string;
+    readonly targetId: string;
+    readonly description: string;
+  }[];
+  readonly lineage: DiscoveryReviewLineageV1;
+  readonly contentDigest: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+export type ReviewDiscoveryCandidateSourceV1 =
+  ReviewDiscoveryCandidateLegacySourceV1 | ReviewDiscoveryCandidateDerivedSourceV1;
+
 export type ReviewDiscoveryCandidateReader = {
   list(projectId: string): Promise<readonly ReviewDiscoveryCandidateSourceV1[]>;
   find(
@@ -604,10 +637,17 @@ export const createInMemoryReviewDiscoveryCandidateReader = (
   initial: readonly ReviewDiscoveryCandidateSourceV1[] = [],
 ): ReviewDiscoveryCandidateReader => {
   const byId = new Map<string, ReviewDiscoveryCandidateSourceV1>();
-  for (const candidate of initial) byId.set(candidate.candidateId, candidate);
+  for (const candidate of initial) {
+    byId.set(candidate.candidateId, candidate);
+    if ('origin' in candidate && candidate.origin === 'DERIVED_DISCOVERY') {
+      byId.set(candidate.reviewResourceId, candidate);
+    }
+  }
   return {
     async list(projectId) {
-      return [...byId.values()].filter((candidate) => candidate.resourceProjectId === projectId);
+      return [...new Set(byId.values())].filter(
+        (candidate) => candidate.resourceProjectId === projectId,
+      );
     },
     async find(projectId, candidateId) {
       const candidate = byId.get(candidateId);
@@ -623,12 +663,59 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
 
   constructor(private readonly reader: ReviewDiscoveryCandidateReader) {}
 
-  async listSourceTargets(projectId: string): Promise<readonly ReviewSourceTargetV1[]> {
-    const candidates = await this.reader.list(projectId);
+  private isDerived(
+    candidate: ReviewDiscoveryCandidateSourceV1,
+  ): candidate is ReviewDiscoveryCandidateDerivedSourceV1 {
+    return 'origin' in candidate && candidate.origin === 'DERIVED_DISCOVERY';
+  }
+
+  private reviewResourceId(candidate: ReviewDiscoveryCandidateSourceV1): string {
+    return this.isDerived(candidate) ? candidate.reviewResourceId : candidate.candidateId;
+  }
+
+  private targetRevision(candidate: ReviewDiscoveryCandidateSourceV1): string {
+    return this.isDerived(candidate) ? String(candidate.resourceRevision) : '1';
+  }
+
+  private readable(
+    candidate: ReviewDiscoveryCandidateSourceV1,
+    projectId: string,
+    scope?: FrontendReviewScopeV1,
+  ): boolean {
+    if (candidate.resourceProjectId !== projectId) return false;
+    if (!this.isDerived(candidate) || scope === undefined) return true;
+    if (
+      candidate.effectiveProjectId !== scope.activeProjectId ||
+      candidate.lineage.projectId !== scope.activeProjectId
+    ) {
+      return false;
+    }
+    if (!candidate.lineage.accessScope.every((entry) => scope.accessScope.includes(entry))) {
+      return false;
+    }
+    const sensitivityRank: Record<string, number> = {
+      public: 0,
+      internal: 1,
+      private: 2,
+      restricted: 3,
+    };
+    const clearance = scope.sensitivityClearance ?? 'public';
+    const resourceSensitivity =
+      sensitivityRank[candidate.lineage.sensitivity] ?? Number.MAX_SAFE_INTEGER;
+    return clearance === 'ALL' || resourceSensitivity <= (sensitivityRank[clearance] ?? -1);
+  }
+
+  async listSourceTargets(
+    projectId: string,
+    scope?: FrontendReviewScopeV1,
+  ): Promise<readonly ReviewSourceTargetV1[]> {
+    const candidates = (await this.reader.list(projectId)).filter((candidate) =>
+      this.readable(candidate, projectId, scope),
+    );
     return candidates.map((candidate) => ({
-      reviewResourceId: candidate.candidateId,
+      reviewResourceId: this.reviewResourceId(candidate),
       targetId: candidate.candidateId,
-      targetRevision: '1',
+      targetRevision: this.targetRevision(candidate),
       targetDigest: this.candidateDigest(candidate),
       targetLabel: candidate.content.summary,
       resourceProjectId: candidate.resourceProjectId,
@@ -641,13 +728,98 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
   async findSourceTarget(
     projectId: string,
     reviewResourceId: string,
+    scope?: FrontendReviewScopeV1,
   ): Promise<ReviewSourceTargetV1 | undefined> {
-    const targets = await this.listSourceTargets(projectId);
+    const targets = await this.listSourceTargets(projectId, scope);
     return targets.find((target) => target.reviewResourceId === reviewResourceId);
   }
 
   private candidateDigest(candidate: ReviewDiscoveryCandidateSourceV1): string {
+    if (this.isDerived(candidate)) return candidate.contentDigest;
     return sha256Text(stableJson({ content: candidate.content, evidence: candidate.evidence }));
+  }
+
+  private evidenceArtifact(candidate: ReviewDiscoveryCandidateSourceV1):
+    | {
+        schemaVersion: '1.0.0';
+        artifactKind: 'EVIDENCE';
+        artifactId: string;
+        artifactRevision: string;
+        digest: string;
+      }
+    | undefined {
+    const evidence = candidate.evidence;
+    if (evidence.length === 0) return undefined;
+    const resolved = evidence.filter(
+      (
+        entry,
+      ): entry is DiscoveryReviewEvidenceLineageRefV1 & {
+        readonly sourceId: string;
+        readonly sourceVersionId: string;
+        readonly evidenceSpanId: string;
+      } =>
+        entry.sourceId !== undefined &&
+        entry.sourceVersionId !== undefined &&
+        entry.evidenceSpanId !== undefined,
+    );
+    if (resolved.length === 0) return undefined;
+    return {
+      schemaVersion: '1.0.0',
+      artifactKind: 'EVIDENCE',
+      artifactId: 'candidate-evidence',
+      artifactRevision: '1',
+      digest: sha256Text(stableJson(resolved)),
+    };
+  }
+
+  private artifactRefs(candidate: ReviewDiscoveryCandidateSourceV1) {
+    const evidence = this.evidenceArtifact(candidate);
+    if (!this.isDerived(candidate)) {
+      return {
+        schemaVersion: '1.0.0' as const,
+        ...(evidence === undefined ? {} : { evidence }),
+      };
+    }
+    return {
+      schemaVersion: '1.0.0' as const,
+      validation: {
+        schemaVersion: '1.0.0' as const,
+        artifactKind: 'VALIDATION' as const,
+        artifactId: candidate.lineage.validationResult.artifactId,
+        artifactRevision: candidate.lineage.validationResult.artifactRevision,
+        digest: candidate.lineage.validationResult.digest,
+      },
+      ...(evidence === undefined ? {} : { evidence }),
+      discoveryLineage: this.derivedLineage(candidate),
+    };
+  }
+
+  private derivedLineage(
+    candidate: ReviewDiscoveryCandidateDerivedSourceV1,
+  ): DiscoveryReviewLineageV1 {
+    const lineage = candidate.lineage;
+    return {
+      schemaVersion: lineage.schemaVersion,
+      origin: lineage.origin,
+      projectId: lineage.projectId,
+      candidateId: lineage.candidateId,
+      candidateRevision: lineage.candidateRevision,
+      findingId: lineage.findingId,
+      findingRevision: lineage.findingRevision,
+      findingType: lineage.findingType,
+      manifestId: lineage.manifestId,
+      governanceTarget: lineage.governanceTarget,
+      sourceProjectionDigest: lineage.sourceProjectionDigest,
+      canonicalBase: lineage.canonicalBase,
+      discoveryBase: lineage.discoveryBase,
+      relatedResourceRefs: lineage.relatedResourceRefs,
+      evidenceIds: lineage.evidenceIds,
+      derivationProvenance: lineage.derivationProvenance,
+      accessScope: lineage.accessScope,
+      sensitivity: lineage.sensitivity,
+      validationProfile: lineage.validationProfile,
+      validationResult: lineage.validationResult,
+    };
   }
 
   async materializeContext(
@@ -657,25 +829,27 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
       input.scope.activeProjectId,
       input.source.reviewResourceId,
     );
-    if (!candidate) {
+    if (!candidate || !this.readable(candidate, input.scope.activeProjectId, input.scope)) {
       throw new FrontendContractError(
         'REVIEW_CONTEXT_NOT_FOUND',
         `Discovery Candidate '${input.source.targetId}' was not found.`,
       );
     }
-    const evidenceDigest = sha256Text(stableJson(candidate.evidence));
+    const derived = this.isDerived(candidate);
+    const targetRevision = this.targetRevision(candidate);
+    const artifactRefs = this.artifactRefs(candidate);
     const item: ReviewItemV1 = {
       schemaVersion: '1.0.0',
       reviewItemId: 'item-1',
       sourceItemKind: 'DISCOVERY_CANDIDATE',
       sourceItemId: candidate.candidateId,
-      sourceItemRevision: '1',
+      sourceItemRevision: derived ? String(candidate.candidateRevision) : '1',
       sourceItemDigest: this.candidateDigest(candidate),
       targetRef: {
         schemaVersion: '1.0.0',
         targetKind: 'DISCOVERY_CANDIDATE',
         targetId: candidate.candidateId,
-        targetRevision: '1',
+        targetRevision,
       },
       label: candidate.content.summary,
       before: undefined,
@@ -685,21 +859,11 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
         summary: candidate.content.summary,
         detailText: candidate.content.detail,
       },
-      rationale: 'Discovery Candidate generated from Evidence and proposed for authoring.',
-      expectedImpact: undefined,
-      artifactRefs: {
-        schemaVersion: '1.0.0',
-        evidence:
-          candidate.evidence.length > 0
-            ? {
-                schemaVersion: '1.0.0',
-                artifactKind: 'EVIDENCE',
-                artifactId: 'candidate-evidence',
-                artifactRevision: '1',
-                digest: evidenceDigest,
-              }
-            : undefined,
-      },
+      rationale: derived
+        ? candidate.content.rationale
+        : 'Discovery Candidate generated from Evidence and proposed for authoring.',
+      expectedImpact: derived ? candidate.content.expectedImpact : undefined,
+      artifactRefs,
       allowedDecisions: ['APPROVE', 'REJECT', 'HOLD'],
       decisionState: 'PENDING',
       sensitivity: 'NORMAL',
@@ -713,26 +877,14 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
       reviewResourceId: input.source.reviewResourceId,
       targetKind: 'DISCOVERY_CANDIDATE',
       targetId: candidate.candidateId,
-      targetRevision: '1',
+      targetRevision,
       targetDigest: this.candidateDigest(candidate),
       resourceProjectId: candidate.resourceProjectId,
       effectiveProjectId: candidate.effectiveProjectId,
       accessRevision: input.scope.accessRevision,
       policyContextRevision: input.scope.policyContextRevision,
       canonicalBase: undefined,
-      artifactRefs: {
-        schemaVersion: '1.0.0',
-        evidence:
-          candidate.evidence.length > 0
-            ? {
-                schemaVersion: '1.0.0',
-                artifactKind: 'EVIDENCE',
-                artifactId: 'candidate-evidence',
-                artifactRevision: '1',
-                digest: evidenceDigest,
-              }
-            : undefined,
-      },
+      artifactRefs,
       items: [item],
       dependencies: [],
       aggregateState: 'PENDING',
@@ -751,14 +903,23 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
       input.scope.activeProjectId,
       input.source.reviewResourceId,
     );
-    if (!candidate) return [];
-    return candidate.evidence.map((entry) => ({
-      schemaVersion: '1.0.0',
-      sourceId: entry.sourceId,
-      sourceVersionId: entry.sourceVersionId,
-      evidenceSpanId: entry.evidenceSpanId,
-      snippet: `Evidence span ${entry.evidenceSpanId} in source ${entry.sourceId}.`,
-    }));
+    if (!candidate || !this.readable(candidate, input.scope.activeProjectId, input.scope))
+      return [];
+    return candidate.evidence.flatMap((entry) =>
+      entry.sourceId !== undefined &&
+      entry.sourceVersionId !== undefined &&
+      entry.evidenceSpanId !== undefined
+        ? [
+            {
+              schemaVersion: '1.0.0' as const,
+              sourceId: entry.sourceId,
+              sourceVersionId: entry.sourceVersionId,
+              evidenceSpanId: entry.evidenceSpanId,
+              snippet: `Evidence span ${entry.evidenceSpanId} in source ${entry.sourceId}.`,
+            },
+          ]
+        : [],
+    );
   }
 
   async readImpact(input: {
@@ -770,7 +931,8 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
       input.scope.activeProjectId,
       input.source.reviewResourceId,
     );
-    if (!candidate) return [];
+    if (!candidate || !this.readable(candidate, input.scope.activeProjectId, input.scope))
+      return [];
     return candidate.impact.map((entry) => ({
       schemaVersion: '1.0.0',
       impactId: entry.impactId,
@@ -788,8 +950,26 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
       input.scope.activeProjectId,
       input.source.reviewResourceId,
     );
-    if (!candidate || candidate.evidence.length === 0) return undefined;
-    return sha256Text(stableJson(candidate.evidence));
+    if (
+      !candidate ||
+      !this.readable(candidate, input.scope.activeProjectId, input.scope) ||
+      candidate.evidence.length === 0
+    )
+      return undefined;
+    const resolved = candidate.evidence.filter(
+      (
+        entry,
+      ): entry is DiscoveryReviewEvidenceLineageRefV1 & {
+        readonly sourceId: string;
+        readonly sourceVersionId: string;
+        readonly evidenceSpanId: string;
+      } =>
+        entry.sourceId !== undefined &&
+        entry.sourceVersionId !== undefined &&
+        entry.evidenceSpanId !== undefined,
+    );
+    if (resolved.length === 0) return undefined;
+    return sha256Text(stableJson(resolved));
   }
 }
 

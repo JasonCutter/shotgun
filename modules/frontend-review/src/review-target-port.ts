@@ -54,10 +54,14 @@ export type ReviewMaterializedContextV1 = {
 export type ReviewTargetAdapterPort = {
   readonly targetKind: ReviewTargetKindV1;
   readonly sourceItemKind: ReviewSourceItemKindV1;
-  listSourceTargets(projectId: string): Promise<readonly ReviewSourceTargetV1[]>;
+  listSourceTargets(
+    projectId: string,
+    scope?: FrontendReviewScopeV1,
+  ): Promise<readonly ReviewSourceTargetV1[]>;
   findSourceTarget(
     projectId: string,
     reviewResourceId: string,
+    scope?: FrontendReviewScopeV1,
   ): Promise<ReviewSourceTargetV1 | undefined>;
   materializeContext(
     input: ReviewContextMaterializationInputV1,

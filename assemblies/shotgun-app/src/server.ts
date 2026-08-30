@@ -176,6 +176,7 @@ import {
   createInMemoryReviewDraftSourceReader,
   createInMemoryReviewDiscoveryCandidateReader,
   createInMemoryReviewUserDirectiveReader,
+  type ReviewDiscoveryCandidateReader,
   type ReviewDraftSourceReader,
 } from '../../../adapters/frontend-review-in-memory/src/index.js';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
@@ -585,6 +586,8 @@ export type ApplicationOptions = {
   /** Cross-Phase: PostgreSQL-backed Review submission source for the Draft →
    *  Review queue when the Knowledge Draft repository is not in-memory. */
   readonly frontendReviewDraftSourceReader?: ReviewDraftSourceReader;
+  /** Production Review source for persisted, post-validation Discovery resources. */
+  readonly frontendReviewDiscoveryCandidateReader?: ReviewDiscoveryCandidateReader;
   readonly frontendExternalActionCoordinator?: FrontendExternalActionProductCoordinator;
   readonly graphReadDomain?: GraphReadDomain;
   readonly graphScopeResolver?: GraphScopeResolver;
@@ -1585,7 +1588,10 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
             ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
             : createEmptyReviewDraftSourceReader()),
       ),
-      new DiscoveryCandidateReviewTargetAdapter(createInMemoryReviewDiscoveryCandidateReader()),
+      new DiscoveryCandidateReviewTargetAdapter(
+        options.frontendReviewDiscoveryCandidateReader ??
+          createInMemoryReviewDiscoveryCandidateReader(),
+      ),
       new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
     ]);
   // FE-P4-S2 WP4: External Action governed commands run over the shared Frontend

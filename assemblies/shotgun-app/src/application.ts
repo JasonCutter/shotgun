@@ -98,6 +98,7 @@ import { PostgresSemanticEmbeddingProfileRepository } from '../../../adapters/se
 import { PostgresDiscoveryRuntimeRepository } from '../../../adapters/discovery-runtime-postgres/src/index.js';
 import {
   PostgresDiscoveryApprovedResourceRevisionResolver,
+  PostgresDiscoveryReentryFreshnessAuthority,
   PostgresDiscoveryReentryRepository,
 } from '../../../adapters/discovery-reentry-postgres/src/index.js';
 import { PostgresDiscoveryFindingRepository } from '../../../adapters/discovery-finding-postgres/src/index.js';
@@ -107,6 +108,7 @@ import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/inde
 import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
 import {
   DiscoveryReentryConsumer,
+  DiscoveryReentryFreshnessEvaluator,
   DiscoveryReviewMaterializer,
   PersistentDiscoveryReentryWorker,
 } from '../../../modules/discovery-reentry/src/index.js';
@@ -115,7 +117,10 @@ import {
   createDiscoveryAIGenerationService,
 } from '../../../modules/discovery-ai-generation/src/index.js';
 import { DiscoveryBudgetControllerV1 } from '../../../modules/discovery-quality-gate/src/index.js';
-import { createProductDiscoveryExecution } from '../../../adapters/discovery-runtime-product/src/index.js';
+import {
+  createProductDiscoveryExecution,
+  observeDiscoveryReconciliation,
+} from '../../../adapters/discovery-runtime-product/src/index.js';
 import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import {
@@ -515,6 +520,26 @@ export const startShotgunApplication = async (
     const discoveryFindingRepository = new PostgresDiscoveryFindingRepository(pool);
     const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
     const authRepository = new PostgresAuthRepository(pool);
+    // Discovery execution and re-entry share the same server-owned
+    // project/owner authority. Policy-context revisions carry binding
+    // identity only; they are not an authorization DTO.
+    const resolveOwnerDiscoverySecurity = async (projectId: string) => {
+      const project = await projectAdminRepository.getProjectDetails(projectId);
+      const accountId = process.env.SHOTGUN_BOOTSTRAP_ACCOUNT_ID?.trim();
+      if (!project || project.status !== 'ACTIVE' || !project.active || !accountId) {
+        return undefined;
+      }
+      const principal = await authRepository.findPrincipalByAccountId(accountId);
+      if (!principal) return undefined;
+      const membership = await authRepository.findOwnerMembership(accountId, projectId);
+      return membership
+        ? {
+            projectId,
+            accessScope: membership.scopes,
+            sensitivity: membership.sensitivityClearance,
+          }
+        : undefined;
+    };
     const discoveryModelProfileService = new DiscoveryModelProfileService(
       aiProviderRegistry,
       projectAIConfiguration,
@@ -590,19 +615,7 @@ export const startShotgunApplication = async (
                   },
                 ),
               }),
-            resolveSecurity: async ({ projectId }) => {
-              const project = await projectAdminRepository.getProjectDetails(projectId);
-              const accountId = process.env.SHOTGUN_BOOTSTRAP_ACCOUNT_ID?.trim();
-              if (!project || project.status !== 'ACTIVE' || !accountId) return undefined;
-              const membership = await authRepository.findOwnerMembership(accountId, projectId);
-              return membership
-                ? {
-                    projectId,
-                    accessScope: membership.scopes,
-                    sensitivity: membership.sensitivityClearance,
-                  }
-                : undefined;
-            },
+            resolveSecurity: async ({ projectId }) => resolveOwnerDiscoverySecurity(projectId),
             findAuthoritativeEquivalent: async ({ projectId, candidate }) => {
               const projection = await compiledTruthRepository.findProjection(projectId);
               if (!projection) return false;
@@ -638,25 +651,7 @@ export const startShotgunApplication = async (
                 );
               });
             },
-            observeReconciliation: async ({ finding, projection }) => {
-              const related = finding.relatedResourceRefs.map((resource) =>
-                projection.items.find((item) => item.id === resource.resourceId),
-              );
-              if (
-                ['KNOWLEDGE_GAP', 'EVIDENCE_GAP'].includes(finding.findingType) &&
-                related.length > 0 &&
-                finding.findingType === 'KNOWLEDGE_GAP' &&
-                related.every((item) => item?.source === 'APPROVED_KNOWLEDGE')
-              ) {
-                return 'CANONICAL_EQUIVALENT_ACCEPTED';
-              }
-              if (related.some((item) => item !== undefined && item.state === 'CONFLICT')) {
-                return 'RELEVANT_INPUT_CHANGED';
-              }
-              // A missing projection item is not proof of source supersession;
-              // Source/SourceVersion authority must make that observation.
-              return 'UNCHANGED';
-            },
+            observeReconciliation: observeDiscoveryReconciliation,
           }),
           {
             workerId: `shotgun-discovery-${process.pid}-${randomUUID()}`,
@@ -673,6 +668,17 @@ export const startShotgunApplication = async (
     const discoveryReviewResourceRepository = recoveryHarness
       ? undefined
       : new PostgresDiscoveryReviewResourceRepository(pool);
+    const discoveryReentryFreshnessAuthority = new PostgresDiscoveryReentryFreshnessAuthority(
+      pool,
+      {
+        knowledgeModelRepository,
+        compiledTruthRepository,
+        resolveSecurity: async ({ projectId }) => resolveOwnerDiscoverySecurity(projectId),
+      },
+    );
+    const discoveryReentryFreshnessEvaluator = new DiscoveryReentryFreshnessEvaluator(
+      discoveryReentryFreshnessAuthority,
+    );
     const discoveryReentryWorker =
       recoveryHarness ||
       discoveryReentryRepository === undefined ||
@@ -686,6 +692,8 @@ export const startShotgunApplication = async (
                 knowledgeModelRepository,
                 compiledTruthRepository,
               }),
+              undefined,
+              { freshnessEvaluator: discoveryReentryFreshnessEvaluator },
             ),
             {
               pollIntervalMs: Number.parseInt(
@@ -699,6 +707,8 @@ export const startShotgunApplication = async (
               reviewMaterializer: new DiscoveryReviewMaterializer(
                 discoveryReentryRepository,
                 discoveryReviewResourceRepository,
+                discoveryReentryFreshnessEvaluator,
+                discoveryReentryFreshnessAuthority,
               ),
             },
           );
@@ -718,6 +728,7 @@ export const startShotgunApplication = async (
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
       frontendReviewDiscoveryCandidateReader: createPostgresReviewDiscoveryCandidateReader(pool),
+      discoveryReentryFreshnessEvaluator,
       askCommandCoordinator,
       frontendProductReadCoordinatorFactory: (
         connector,

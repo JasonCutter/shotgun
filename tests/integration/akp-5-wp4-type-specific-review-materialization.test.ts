@@ -481,6 +481,24 @@ describe('AKP-5 WP4 type-specific Review materialization', () => {
       reviewContextId: queue.items[0]!.reviewContextId,
       contextRevision: queue.items[0]!.contextRevision,
     });
+    expect(context.context.items[0]).toMatchObject({
+      sourceItemKind: 'DISCOVERY_CANDIDATE',
+      sourceItemId: resource.candidateId,
+      sourceItemRevision: String(resource.candidateRevision),
+      artifactRefs: {
+        discoveryLineage: {
+          origin: 'DERIVED_DISCOVERY',
+          projectId,
+          candidateId: resource.candidateId,
+          candidateRevision: resource.candidateRevision,
+          findingId: finding.findingId,
+          findingRevision: finding.findingRevision,
+          manifestId: resource.manifestId,
+          evidenceIds: finding.evidenceIds,
+          validationResult: resource.validationResult,
+        },
+      },
+    });
     const result = await coordinator.recordReviewDecisions(scope, {
       schemaVersion: '1.0.0',
       clientRequestId: 'wp4-approve-request',

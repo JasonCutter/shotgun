@@ -322,7 +322,10 @@ import type {
   DiscoveryManualTriggerRequestV1,
 } from '../../../packages/contracts/src/index.js';
 import type { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
-import type { PersistentDiscoveryReentryWorker } from '../../../modules/discovery-reentry/src/index.js';
+import type {
+  DiscoveryReentryFreshnessEvaluatorPort,
+  PersistentDiscoveryReentryWorker,
+} from '../../../modules/discovery-reentry/src/index.js';
 import {
   type ActionConnectorPort,
   type ActionCandidateRepositoryPort,
@@ -554,6 +557,8 @@ export type ApplicationOptions = {
   readonly discoveryExecutionWorker?: Pick<PersistentDiscoveryWorker, 'start' | 'stop'>;
   /** AKP-5 WP2 FindingReady re-entry consumer; omitted by recovery/test compositions. */
   readonly discoveryReentryWorker?: Pick<PersistentDiscoveryReentryWorker, 'start' | 'stop'>;
+  /** AKP-5 WP5 server-owned stale/provenance/security evaluator. */
+  readonly discoveryReentryFreshnessEvaluator?: DiscoveryReentryFreshnessEvaluatorPort;
   readonly discoverySemanticIndexRepository?: {
     getActiveGenerationPointer(projectId: string): Promise<SemanticGenerationPointer | undefined>;
     getGeneration(
@@ -1591,6 +1596,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       new DiscoveryCandidateReviewTargetAdapter(
         options.frontendReviewDiscoveryCandidateReader ??
           createInMemoryReviewDiscoveryCandidateReader(),
+        options.discoveryReentryFreshnessEvaluator,
       ),
       new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
     ]);

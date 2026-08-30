@@ -7,7 +7,8 @@
     "contracts": [
       { "name": "DiscoveryFindingReadyV1", "range": ">=1.0.0 <2.0.0" },
       { "name": "DiscoveryReentryManifestV1", "range": ">=1.0.0 <2.0.0" },
-      { "name": "DerivedKnowledgeCandidateV1", "range": ">=1.0.0 <2.0.0" }
+      { "name": "DerivedKnowledgeCandidateV1", "range": ">=1.0.0 <2.0.0" },
+      { "name": "DiscoveryReentryFreshnessAssessmentV1", "range": ">=1.0.0 <2.0.0" }
     ]
   },
   "deployment": { "modes": ["in_process", "worker"] },
@@ -20,7 +21,8 @@
     "readsViaPorts": [
       "DiscoveryFindingRepositoryPort",
       "DiscoveryFindingLifecycleRepositoryPort",
-      "DiscoveryApprovedResourceRevisionResolverPort"
+      "DiscoveryApprovedResourceRevisionResolverPort",
+      "DiscoveryReentryFreshnessAuthorityPort"
     ],
     "directSchemaAccess": false
   },

@@ -10,6 +10,7 @@ import type { DiscoveryWorkBudgetLedgerV1 } from '../../modules/discovery-qualit
 import {
   DISCOVERY_PRODUCT_STRATEGY_REVISION_V1,
   createProductDiscoveryExecution,
+  observeDiscoveryReconciliation,
 } from '../../adapters/discovery-runtime-product/src/index.js';
 import type { DiscoveryProductExecutionDependenciesV1 } from '../../adapters/discovery-runtime-product/src/index.js';
 import type {
@@ -36,6 +37,7 @@ import type {
 } from '../../modules/discovery-runtime/src/index.js';
 import {
   computeDiscoveryFingerprintV1,
+  createDiscoveryFindingEnvelopeV1,
   deriveDiscoverySemanticEssenceV1,
 } from '../../packages/contracts/src/index.js';
 
@@ -508,5 +510,148 @@ describe('AKP-4 WP4 Product durable candidate path', () => {
     expect(second?.retryStage).toBeUndefined();
     expect(second?.budgetSnapshot?.resources).toBe(2);
     expect(stageOutput?.output).toMatchObject({ completed: true, processed: 2 });
+  });
+
+  it('reconciles a real Knowledge Gap through the existing authority and closes terminal replay', async () => {
+    const context = createContext();
+    const approvedResourceId = 'approved-knowledge-gap-equivalent';
+    const finding = createDiscoveryFindingEnvelopeV1({
+      schemaVersion: '1.0.0',
+      findingId: 'reconcile-knowledge-gap',
+      findingRevision: 1,
+      projectId,
+      findingType: 'KNOWLEDGE_GAP',
+      generationMethod: 'DETERMINISTIC',
+      lifecycleState: 'NEW',
+      payload: {
+        schemaVersion: '1.0.0',
+        payloadType: 'KNOWLEDGE_GAP',
+        gapKind: 'MISSING_FACT',
+        subject: 'approved-subject',
+        missingFact: 'approved fact',
+        question: 'Which approved fact resolves this gap?',
+      },
+      relatedResourceRefs: [
+        {
+          schemaVersion: '1.0.0',
+          resourceKind: 'COMPILED_TRUTH_ITEM',
+          resourceId: approvedResourceId,
+          projectId,
+          resourceState: 'CURRENT',
+        },
+      ],
+      evidenceIds: [],
+      sourceProjectionDigest: 'sha256:reconcile-source',
+      canonicalBase,
+      discoveryBase,
+      runId: 'reconcile-knowledge-gap-run',
+      signalSummary: {},
+      rationale: 'The gap is resolved by an approved knowledge item.',
+      derivationSummary: 'Existing AKP-4 reconciliation fixture.',
+      provenance: {
+        schemaVersion: '1.0.0',
+        kind: 'DETERMINISTIC',
+        ruleId: 'reconcile-knowledge-gap-rule',
+        ruleVersion: '1',
+        inputDigest: 'sha256:reconcile-input',
+      },
+      accessScope: ['project:read'],
+      sensitivity: 'internal',
+      fingerprint: 'sha256:reconcile-knowledge-gap-fingerprint',
+      fingerprintVersion: 'discovery-fingerprint:v1',
+      retentionClass: 'DURABLE_DERIVED_RECORD',
+      createdAt: '2026-08-30T00:00:00.000Z',
+    });
+    const reconciliationProjection: CompiledTruthProjection = {
+      ...projection,
+      items: [
+        ...projection.items,
+        {
+          id: approvedResourceId,
+          type: 'CLAIM',
+          label: 'Approved fact',
+          state: 'CURRENT',
+          source: 'APPROVED_KNOWLEDGE',
+          evidenceIds: [],
+          accessScope: ['project:read'],
+          sensitivity: 'internal',
+        },
+      ],
+    };
+    let lifecycleState: 'REVIEW_READY' | 'RESOLVED' = 'REVIEW_READY';
+    let lifecycleRevision = 1;
+    let stageOutput:
+      | {
+          readonly stageType: 'RECONCILE_FINDINGS';
+          readonly output: unknown;
+          readonly stageRevision: number;
+        }
+      | undefined;
+    const observeReconciliation = vi.fn(observeDiscoveryReconciliation);
+    const transitionLifecycle = vi.fn(async (input: { readonly targetState: 'RESOLVED' }) => {
+      lifecycleState = input.targetState;
+      lifecycleRevision += 1;
+      return {
+        status: 'APPLIED' as const,
+        lifecycle: {
+          projectId,
+          findingId: finding.findingId,
+          findingRevision: finding.findingRevision,
+          lifecycleState,
+          lifecycleRevision,
+          updatedAt: '2026-08-30T00:01:00.000Z',
+        },
+        history: {} as never,
+      };
+    });
+    const input = {
+      compiledTruthRepository: { findProjection: vi.fn(async () => reconciliationProjection) },
+      findingRepository: {
+        listByProject: vi.fn(async () => [finding]),
+        findLifecycle: vi.fn(async () => ({
+          projectId,
+          findingId: finding.findingId,
+          findingRevision: finding.findingRevision,
+          lifecycleState,
+          lifecycleRevision,
+          updatedAt: '2026-08-30T00:00:00.000Z',
+        })),
+        transitionLifecycle,
+      },
+      runtimeRepository: {
+        readStageOutput: vi.fn(async () => stageOutput),
+        writeStageOutput: vi.fn(async ({ output }: { readonly output: typeof stageOutput }) => {
+          stageOutput = output;
+          return 'SAVED' as const;
+        }),
+      },
+      resolveSecurity: vi.fn(async () => ({
+        projectId,
+        accessScope: ['project:read'],
+        sensitivity: 'internal' as const,
+      })),
+      findAuthoritativeEquivalent: vi.fn(async () => true),
+      evidenceRepository: { findById: vi.fn(async () => undefined) },
+      semanticRetriever: { retrieve: vi.fn(async () => []) },
+      observeReconciliation,
+    } as unknown as DiscoveryProductExecutionDependenciesV1;
+    const execution = createProductDiscoveryExecution(input);
+    const stage = {
+      stageId: 'knowledge-gap-reconcile-stage',
+      stageRevision: 1,
+      stageType: 'RECONCILE_FINDINGS' as const,
+    };
+
+    await expect(execution.reconcileFindings!({ ...context, stage })).resolves.toMatchObject({
+      budgetSnapshot: expect.any(Object),
+    });
+    expect(observeReconciliation).toHaveBeenCalledTimes(1);
+    expect(transitionLifecycle).toHaveBeenCalledTimes(1);
+    expect(lifecycleState).toBe('RESOLVED');
+    expect(stageOutput?.output).toMatchObject({ completed: true, processed: 1 });
+
+    await expect(execution.reconcileFindings!({ ...context, stage })).resolves.toBeUndefined();
+    expect(observeReconciliation).toHaveBeenCalledTimes(1);
+    expect(transitionLifecycle).toHaveBeenCalledTimes(1);
   });
 });

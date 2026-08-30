@@ -30,8 +30,19 @@ import {
   type DiscoveryReviewImpactMaterialV1,
   type DiscoveryReviewNormalizedMaterialV1,
   type DiscoveryReviewResourceV1,
+  type DiscoveryReviewLineageV1,
+  type DiscoveryReviewEvidenceLineageRefV1,
   type DiscoveryReviewTypeSpecificMaterialV1,
+  assessDiscoveryReentryFreshnessV1,
+  DISCOVERY_REENTRY_FRESHNESS_ASSESSMENT_VERSION_V1,
+  type DiscoveryReentryFreshnessAssessmentV1,
+  type DiscoveryReentryFreshnessBindingV1,
+  type DiscoveryReentryFreshnessCurrentStateV1,
+  type DiscoveryReentryFreshnessStageV1,
+  type DiscoveryReentryFreshnessReasonCodeV1,
 } from '../../../packages/contracts/src/index.js';
+
+export type { DiscoveryReentryFreshnessStageV1 } from '../../../packages/contracts/src/index.js';
 
 export const DISCOVERY_REENTRY_PURPOSE_DERIVED_PROVENANCE_VALIDATION =
   'DERIVED_PROVENANCE_VALIDATION' as const;
@@ -175,6 +186,10 @@ export type DiscoveryReentryPersistencePort = {
   transitionFindingToReviewReady?(
     input: DiscoveryReentryReviewReadyTransitionInputV1,
   ): Promise<DiscoveryReentryReviewReadyTransitionResultV1>;
+  /** Existing Finding lifecycle authority used to close a stale intake. */
+  transitionFindingToStale?(
+    input: DiscoveryReentryStaleTransitionInputV1,
+  ): Promise<DiscoveryReentryStaleTransitionResultV1>;
   persistIntake(input: {
     readonly logicalIdentity: DiscoveryReentryLogicalIdentityResultV1;
     readonly finding: DiscoveryFindingEnvelopeV1;
@@ -185,6 +200,175 @@ export type DiscoveryReentryPersistencePort = {
     readonly occurredAt: string;
   }): Promise<DiscoveryReentryPersistenceResultV1>;
 };
+
+export type DiscoveryReentryStaleTransitionInputV1 = DiscoveryFindingIdentityV1 & {
+  readonly expectedLifecycleRevision: number;
+  readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
+  readonly discoveryBase: DiscoveryProjectionBaseIdentityV1;
+  readonly occurredAt: string;
+};
+
+export type DiscoveryReentryStaleTransitionResultV1 =
+  | {
+      readonly status: 'APPLIED' | 'IDEMPOTENT';
+      readonly current: DiscoveryReentryLifecycleCurrentV1;
+    }
+  | {
+      readonly status: 'CONFLICT';
+      readonly current: DiscoveryReentryLifecycleCurrentV1;
+    };
+
+export type DiscoveryReentryFreshnessAuthorityPort = {
+  read(input: {
+    readonly binding: DiscoveryReentryFreshnessBindingV1;
+    readonly stage: DiscoveryReentryFreshnessStageV1;
+  }): Promise<DiscoveryReentryFreshnessCurrentStateV1>;
+};
+
+export type DiscoveryReentryFreshnessEvaluatorPort = {
+  assess(input: {
+    readonly binding: DiscoveryReentryFreshnessBindingV1;
+    readonly stage: DiscoveryReentryFreshnessStageV1;
+    readonly assessedAt: string;
+  }): Promise<DiscoveryReentryFreshnessAssessmentV1>;
+};
+
+/** Narrow reusable evaluator: authorities supply current server-side state. */
+export class DiscoveryReentryFreshnessEvaluator implements DiscoveryReentryFreshnessEvaluatorPort {
+  public constructor(private readonly authority: DiscoveryReentryFreshnessAuthorityPort) {}
+
+  public async assess(input: {
+    readonly binding: DiscoveryReentryFreshnessBindingV1;
+    readonly stage: DiscoveryReentryFreshnessStageV1;
+    readonly assessedAt: string;
+  }): Promise<DiscoveryReentryFreshnessAssessmentV1> {
+    try {
+      const current = await this.authority.read(input);
+      return assessDiscoveryReentryFreshnessV1({
+        binding: input.binding,
+        current,
+        assessedAt: input.assessedAt,
+      });
+    } catch (error) {
+      return {
+        schemaVersion: '1.0.0',
+        assessmentVersion: DISCOVERY_REENTRY_FRESHNESS_ASSESSMENT_VERSION_V1,
+        assessmentId: sha256Text(
+          semanticStableJson({
+            assessmentVersion: DISCOVERY_REENTRY_FRESHNESS_ASSESSMENT_VERSION_V1,
+            projectId: input.binding.projectId,
+            findingId: input.binding.findingId,
+            findingRevision: input.binding.findingRevision,
+            state: 'PERSISTENCE_FAILURE',
+            assessedAt: input.assessedAt,
+          }),
+        ),
+        assessedAt: input.assessedAt,
+        projectId: input.binding.projectId,
+        findingId: input.binding.findingId,
+        findingRevision: input.binding.findingRevision,
+        state: 'PERSISTENCE_FAILURE',
+        reasonCodes: [],
+        reasonDetail: textOf(error),
+      };
+    }
+  }
+}
+
+export const discoveryReentryFreshnessBindingFromFindingV1 = (
+  finding: DiscoveryFindingEnvelopeV1,
+  approvedRelatedResourceRefs?: readonly DiscoveryApprovedResourceRevisionRefV1[],
+): DiscoveryReentryFreshnessBindingV1 => ({
+  projectId: finding.projectId,
+  findingId: finding.findingId,
+  findingRevision: finding.findingRevision,
+  findingType: finding.findingType,
+  sourceProjectionDigest: finding.sourceProjectionDigest,
+  canonicalBase: finding.canonicalBase,
+  discoveryBase: finding.discoveryBase,
+  approvedRelatedResourceRefs:
+    approvedRelatedResourceRefs === undefined
+      ? finding.relatedResourceRefs.length === 0
+        ? []
+        : (() => {
+            throw new TypeError(
+              'Finding freshness binding requires approved resource revisions resolved at the frozen base.',
+            );
+          })()
+      : validateDiscoveryApprovedResourceRevisionResolutionV1(
+          finding.relatedResourceRefs,
+          approvedRelatedResourceRefs,
+        ),
+  evidenceIds: finding.evidenceIds,
+  derivationProvenanceDigest: sha256Text(semanticStableJson(finding.provenance)),
+  validationProfileVersion: 'discovery-derived-validation:v1',
+  accessScope: finding.accessScope,
+  sensitivity: finding.sensitivity,
+});
+
+export const discoveryReentryFreshnessBindingFromCandidateV1 = (
+  candidate: DerivedKnowledgeCandidateV1,
+  finding: DiscoveryFindingEnvelopeV1,
+): DiscoveryReentryFreshnessBindingV1 => ({
+  projectId: candidate.projectId,
+  findingId: candidate.findingId,
+  findingRevision: candidate.findingRevision,
+  findingType: candidate.findingType,
+  sourceProjectionDigest: candidate.sourceProjectionDigest,
+  canonicalBase: candidate.canonicalBase,
+  discoveryBase: candidate.discoveryBase,
+  manifestId: candidate.manifestId,
+  candidateId: candidate.candidateId,
+  candidateRevision: candidate.candidateRevision,
+  approvedRelatedResourceRefs: candidate.relatedResourceRefs,
+  evidenceIds: finding.evidenceIds,
+  derivationProvenanceDigest: sha256Text(semanticStableJson(candidate.derivationProvenance)),
+  validationProfileVersion: candidate.validationProfile.profileVersion,
+  accessScope: candidate.accessScope,
+  sensitivity: candidate.sensitivity,
+});
+
+export const discoveryReentryFreshnessBindingFromReviewResourceV1 = (
+  resource: DiscoveryReviewResourceV1,
+): DiscoveryReentryFreshnessBindingV1 => ({
+  ...discoveryReentryFreshnessBindingFromLineageV1(resource, {
+    reviewResourceId: resource.reviewResourceId,
+    resourceRevision: resource.resourceRevision,
+    resourceDigest: resource.contentDigest,
+  }),
+  evidenceLineage: resource.evidenceLineage,
+});
+
+export const discoveryReentryFreshnessBindingFromLineageV1 = (
+  lineage: DiscoveryReviewLineageV1,
+  reviewTarget?: DiscoveryReentryFreshnessBindingV1['reviewTarget'],
+): DiscoveryReentryFreshnessBindingV1 => ({
+  projectId: lineage.projectId,
+  findingId: lineage.findingId,
+  findingRevision: lineage.findingRevision,
+  findingType: lineage.findingType,
+  sourceProjectionDigest: lineage.sourceProjectionDigest,
+  canonicalBase: lineage.canonicalBase,
+  discoveryBase: lineage.discoveryBase,
+  manifestId: lineage.manifestId,
+  candidateId: lineage.candidateId,
+  candidateRevision: lineage.candidateRevision,
+  approvedRelatedResourceRefs: lineage.relatedResourceRefs,
+  evidenceIds: lineage.evidenceIds,
+  derivationProvenanceDigest: sha256Text(semanticStableJson(lineage.derivationProvenance)),
+  validationProfileVersion: lineage.validationProfile.profileVersion,
+  accessScope: lineage.accessScope,
+  sensitivity: lineage.sensitivity,
+  ...(reviewTarget === undefined ? {} : { reviewTarget }),
+});
+
+const isEpistemicFreshnessFailure = (assessment: DiscoveryReentryFreshnessAssessmentV1): boolean =>
+  assessment.state === 'INVALIDATED' ||
+  (assessment.state === 'REVALIDATION_REQUIRED' &&
+    assessment.reasonCodes.some(
+      (reason: DiscoveryReentryFreshnessReasonCodeV1) =>
+        reason !== 'ACCESS_NO_LONGER_AUTHORIZED' && reason !== 'SENSITIVITY_POLICY_CHANGED',
+    ));
 
 export type DiscoveryReentryConsumeResultV1 =
   | {
@@ -198,6 +382,7 @@ export type DiscoveryReentryConsumeResultV1 =
       readonly logicalIdentityKey?: string;
       readonly lifecycleState: DiscoveryFindingLifecycleState;
       readonly disposition: 'INELIGIBLE';
+      readonly freshnessAssessment?: DiscoveryReentryFreshnessAssessmentV1;
     }
   | {
       readonly status: 'FINDING_NOT_FOUND';
@@ -291,14 +476,19 @@ const dispositionResult = (
 
 export class DiscoveryReentryConsumer {
   private readonly retryBackoffMs: number;
+  private readonly freshnessEvaluator: DiscoveryReentryFreshnessEvaluatorPort | undefined;
 
   public constructor(
     private readonly persistence: DiscoveryReentryPersistencePort,
     private readonly resolver: DiscoveryApprovedResourceRevisionResolverPort,
     private readonly clock: () => Date = () => new Date(),
-    options: { readonly retryBackoffMs?: number } = {},
+    options: {
+      readonly retryBackoffMs?: number;
+      readonly freshnessEvaluator?: DiscoveryReentryFreshnessEvaluatorPort;
+    } = {},
   ) {
     this.retryBackoffMs = options.retryBackoffMs ?? DISCOVERY_REENTRY_DEFAULT_RETRY_BACKOFF_MS;
+    this.freshnessEvaluator = options.freshnessEvaluator;
     if (
       !Number.isSafeInteger(this.retryBackoffMs) ||
       this.retryBackoffMs < 100 ||
@@ -306,6 +496,45 @@ export class DiscoveryReentryConsumer {
     ) {
       throw new TypeError('retryBackoffMs must be between 100ms and 60000ms');
     }
+  }
+
+  private async closeStaleFinding(
+    finding: DiscoveryFindingEnvelopeV1,
+    lifecycle: DiscoveryReentryLifecycleCurrentV1,
+    assessment: DiscoveryReentryFreshnessAssessmentV1,
+  ): Promise<DiscoveryReentryLifecycleCurrentV1> {
+    let current = lifecycle;
+    if (isEpistemicFreshnessFailure(assessment) && this.freshnessEvaluator !== undefined) {
+      // The transition is delegated to the existing Finding lifecycle
+      // authority. No parallel freshness lifecycle or mutable Finding row is
+      // created by WP5.
+      if (this.persistence.transitionFindingToStale !== undefined) {
+        const transition = await this.persistence.transitionFindingToStale({
+          projectId: finding.projectId,
+          findingId: finding.findingId,
+          findingRevision: finding.findingRevision,
+          expectedLifecycleRevision: lifecycle.lifecycleRevision,
+          canonicalBase: finding.canonicalBase,
+          discoveryBase: finding.discoveryBase,
+          occurredAt: this.clock().toISOString(),
+        });
+        current = transition.current;
+      }
+    }
+    return current;
+  }
+
+  private async assessFreshness(
+    finding: DiscoveryFindingEnvelopeV1,
+    stage: DiscoveryReentryFreshnessStageV1,
+    assessedAt: string,
+    approvedRelatedResourceRefs?: readonly DiscoveryApprovedResourceRevisionRefV1[],
+  ): Promise<DiscoveryReentryFreshnessAssessmentV1 | undefined> {
+    return this.freshnessEvaluator?.assess({
+      binding: discoveryReentryFreshnessBindingFromFindingV1(finding, approvedRelatedResourceRefs),
+      stage,
+      assessedAt,
+    });
   }
 
   private async retryableResult(
@@ -483,14 +712,12 @@ export class DiscoveryReentryConsumer {
       const now = this.clock();
       if (!Number.isFinite(now.getTime())) throw new TypeError('clock must return a valid Date');
       const createdAt = now.toISOString();
-      const manifest = createDiscoveryReentryManifestV1({
-        manifestId: `discovery-reentry-manifest:${logicalIdentity.logicalIdentityKey}`,
-        finding,
-        requestedReentryPurpose: DISCOVERY_REENTRY_PURPOSE_DERIVED_PROVENANCE_VALIDATION,
-        createdAt,
-      });
+
       let resolution: Awaited<ReturnType<DiscoveryApprovedResourceRevisionResolverPort['resolve']>>;
       try {
+        // Resolve frozen approved revisions before freshness assessment. This
+        // is still pre-intake authority work: no manifest or candidate exists
+        // until the resolved refs have passed the freshness guard.
         resolution = await this.resolver.resolve({
           projectId: finding.projectId,
           finding,
@@ -533,6 +760,45 @@ export class DiscoveryReentryConsumer {
         };
       }
 
+      const freshness = await this.assessFreshness(
+        finding,
+        'REENTRY_INTAKE',
+        createdAt,
+        resolution.refs,
+      );
+      if (freshness !== undefined && freshness.state !== 'FRESH') {
+        if (freshness.state === 'PERSISTENCE_FAILURE') {
+          return this.retryableResult(
+            identity,
+            publication,
+            Object.assign(new Error(freshness.reasonDetail), { retryable: true }),
+            storedDisposition,
+          );
+        }
+        const closedLifecycle = await this.closeStaleFinding(finding, lifecycle, freshness);
+        await this.persistence.recordConsumptionDisposition({
+          ...identity,
+          requestedReentryPurpose: DISCOVERY_REENTRY_PURPOSE_DERIVED_PROVENANCE_VALIDATION,
+          publicationId: publication.publicationId,
+          disposition: 'INELIGIBLE',
+          reasonCode: 'LIFECYCLE_INELIGIBLE',
+          reasonDetail: `Freshness ${freshness.state}: ${freshness.reasonCodes.join(', ') || 'authority denied'}.`,
+          occurredAt: createdAt,
+        });
+        return {
+          status: 'INELIGIBLE',
+          logicalIdentityKey: logicalIdentity.logicalIdentityKey,
+          lifecycleState: closedLifecycle.lifecycleState,
+          disposition: 'INELIGIBLE',
+          freshnessAssessment: freshness,
+        };
+      }
+      const manifest = createDiscoveryReentryManifestV1({
+        manifestId: `discovery-reentry-manifest:${logicalIdentity.logicalIdentityKey}`,
+        finding,
+        requestedReentryPurpose: DISCOVERY_REENTRY_PURPOSE_DERIVED_PROVENANCE_VALIDATION,
+        createdAt,
+      });
       const candidate = createDerivedKnowledgeCandidateV1({
         candidateId: `discovery-reentry-candidate:${logicalIdentity.logicalIdentityKey}`,
         finding,
@@ -740,6 +1006,15 @@ export type DiscoveryReviewResourceWriterPort = {
   save(resource: DiscoveryReviewResourceV1): Promise<'CREATED' | 'IDEMPOTENT'>;
 };
 
+/** Resolves Finding evidence IDs through the existing Evidence authority.
+ * Review materialization never invents SourceVersion or Evidence identities. */
+export type DiscoveryReviewEvidenceLineageResolverPort = {
+  resolve(input: {
+    readonly projectId: string;
+    readonly evidenceIds: readonly string[];
+  }): Promise<readonly DiscoveryReviewEvidenceLineageRefV1[]>;
+};
+
 export type DiscoveryReviewMaterializerPort = {
   materialize(
     input: DiscoveryReviewMaterializationInputV1,
@@ -757,7 +1032,12 @@ export type DiscoveryReviewMaterializationResultV1 =
       readonly status: 'CREATED' | 'IDEMPOTENT';
       readonly resource: DiscoveryReviewResourceV1;
     }
-  | { readonly status: 'NOT_FOUND' };
+  | { readonly status: 'NOT_FOUND' }
+  | {
+      readonly status: 'BLOCKED';
+      readonly assessment: DiscoveryReentryFreshnessAssessmentV1;
+      readonly resource?: DiscoveryReviewResourceV1;
+    };
 
 const reviewMaterializationTargetForFindingType = (
   findingType: DiscoveryFindingEnvelopeV1['findingType'],
@@ -1074,6 +1354,7 @@ export const normalizeDiscoveryFindingToReviewResourceV1 = (input: {
   readonly finding: DiscoveryFindingEnvelopeV1;
   readonly candidate: DerivedKnowledgeCandidateV1;
   readonly resourceRevision?: number;
+  readonly evidenceLineage?: readonly DiscoveryReviewEvidenceLineageRefV1[];
 }): DiscoveryReviewResourceV1 => {
   const finding = decodeDiscoveryFindingEnvelopeV1(input.finding, 'authoritativeFinding');
   const candidate = decodeDerivedKnowledgeCandidateV1(
@@ -1167,10 +1448,12 @@ export const normalizeDiscoveryFindingToReviewResourceV1 = (input: {
       ...(impactSummary === '' ? {} : { expectedImpact: impactSummary }),
       normalizedMaterial,
     },
-    evidenceLineage: candidate.evidenceIds.map((evidenceId) => ({
-      schemaVersion: candidate.schemaVersion,
-      evidenceId,
-    })),
+    evidenceLineage:
+      input.evidenceLineage ??
+      candidate.evidenceIds.map((evidenceId) => ({
+        schemaVersion: candidate.schemaVersion,
+        evidenceId,
+      })),
   };
   const resource: DiscoveryReviewResourceV1 = {
     ...digestInput,
@@ -1186,7 +1469,40 @@ export class DiscoveryReviewMaterializer implements DiscoveryReviewMaterializerP
   public constructor(
     private readonly persistence: DiscoveryReentryPersistencePort,
     private readonly writer: DiscoveryReviewResourceWriterPort,
+    private readonly freshnessEvaluator?: DiscoveryReentryFreshnessEvaluatorPort,
+    private readonly evidenceLineageResolver?: DiscoveryReviewEvidenceLineageResolverPort,
   ) {}
+
+  private async freshness(
+    finding: DiscoveryFindingEnvelopeV1,
+    candidate: DerivedKnowledgeCandidateV1,
+    stage: DiscoveryReentryFreshnessStageV1,
+    assessedAt: string,
+  ): Promise<DiscoveryReentryFreshnessAssessmentV1 | undefined> {
+    return this.freshnessEvaluator?.assess({
+      binding: discoveryReentryFreshnessBindingFromCandidateV1(candidate, finding),
+      stage,
+      assessedAt,
+    });
+  }
+
+  private async staleClose(
+    finding: DiscoveryFindingEnvelopeV1,
+    lifecycle: DiscoveryReentryLifecycleCurrentV1,
+    assessment: DiscoveryReentryFreshnessAssessmentV1,
+  ): Promise<void> {
+    if (!isEpistemicFreshnessFailure(assessment)) return;
+    if (this.persistence.transitionFindingToStale === undefined) return;
+    await this.persistence.transitionFindingToStale({
+      projectId: finding.projectId,
+      findingId: finding.findingId,
+      findingRevision: finding.findingRevision,
+      expectedLifecycleRevision: lifecycle.lifecycleRevision,
+      canonicalBase: finding.canonicalBase,
+      discoveryBase: finding.discoveryBase,
+      occurredAt: assessment.assessedAt,
+    });
+  }
 
   public async materialize(
     input: DiscoveryReviewMaterializationInputV1,
@@ -1247,12 +1563,51 @@ export class DiscoveryReviewMaterializer implements DiscoveryReviewMaterializerP
         `Finding lifecycle ${stored.lifecycle.lifecycleState} is not eligible for Review materialization.`,
       );
     }
+    const assessedAt = new Date().toISOString();
+    const beforeSave = await this.freshness(
+      finding,
+      stored.candidate,
+      'REVIEW_RESOURCE_MATERIALIZATION',
+      assessedAt,
+    );
+    if (beforeSave !== undefined && beforeSave.state !== 'FRESH') {
+      if (beforeSave.state === 'PERSISTENCE_FAILURE') {
+        throw Object.assign(new Error(beforeSave.reasonDetail), { retryable: true });
+      }
+      await this.staleClose(finding, stored.lifecycle, beforeSave);
+      return { status: 'BLOCKED', assessment: beforeSave };
+    }
+    const evidenceLineage =
+      this.evidenceLineageResolver === undefined
+        ? undefined
+        : await this.evidenceLineageResolver.resolve({
+            projectId: finding.projectId,
+            evidenceIds: finding.evidenceIds,
+          });
     const resource = normalizeDiscoveryFindingToReviewResourceV1({
       finding,
       candidate: stored.candidate,
       resourceRevision: input.resourceRevision,
+      ...(evidenceLineage === undefined ? {} : { evidenceLineage }),
     });
     const status = await this.writer.save(resource);
+    // A save/transition crash gap is intentionally safe: if the authority
+    // changed while the immutable resource was being written, do not promote
+    // the Finding to REVIEW_READY. The existing Review reader hides it until
+    // a fresh, authoritative revision is available.
+    const afterSave = await this.freshness(
+      finding,
+      stored.candidate,
+      'REVIEW_RESOURCE_MATERIALIZATION',
+      new Date().toISOString(),
+    );
+    if (afterSave !== undefined && afterSave.state !== 'FRESH') {
+      if (afterSave.state === 'PERSISTENCE_FAILURE') {
+        throw Object.assign(new Error(afterSave.reasonDetail), { retryable: true });
+      }
+      await this.staleClose(finding, stored.lifecycle, afterSave);
+      return { status: 'BLOCKED', assessment: afterSave, resource };
+    }
     if (this.persistence.transitionFindingToReviewReady !== undefined) {
       const transition = await this.persistence.transitionFindingToReviewReady({
         projectId: finding.projectId,

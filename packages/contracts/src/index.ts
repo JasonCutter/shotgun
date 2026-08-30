@@ -45,5 +45,6 @@ export * from './hybrid-retrieval.js';
 export * from './semantic-query.js';
 export * from './discovery-runtime.js';
 export * from './discovery-reentry.js';
+export * from './discovery-freshness.js';
 export * from './discovery-schedule.js';
 export * from './discovery-trigger-coordination.js';

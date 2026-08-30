@@ -1,0 +1,42 @@
+{
+  "id": "akp-5.discovery-reentry",
+  "version": "1.0.0",
+  "owner": "Shotgun Discovery Derived Re-entry",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [
+      { "name": "DiscoveryFindingReadyV1", "range": ">=1.0.0 <2.0.0" },
+      { "name": "DiscoveryReentryManifestV1", "range": ">=1.0.0 <2.0.0" },
+      { "name": "DerivedKnowledgeCandidateV1", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": [
+      "discovery.reentry_manifests",
+      "discovery.reentry_candidates",
+      "discovery.reentry_consumption"
+    ],
+    "readsViaPorts": [
+      "DiscoveryFindingRepositoryPort",
+      "DiscoveryFindingLifecycleRepositoryPort",
+      "DiscoveryApprovedResourceRevisionResolverPort"
+    ],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": [{ "name": "DiscoveryFindingReadyV1", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": { "events": [] },
+  "provides": {
+    "queries": [],
+    "capabilities": ["DiscoveryDerivedValidationIntake"]
+  },
+  "requires": { "capabilities": [] },
+  "security": {
+    "requiredContext": ["project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": { "canWriteCanonical": false, "canExecuteExternalAction": false }
+}

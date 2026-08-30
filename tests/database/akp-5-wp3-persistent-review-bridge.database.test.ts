@@ -438,8 +438,8 @@ describe.runIf(pool)('AKP-5 WP3 persistent Review bridge (real PostgreSQL)', () 
       [
         'governance target',
         {
-          findingType: 'EVIDENCE_GAP',
-          governanceTarget: 'DERIVED_CLAIM_OR_KNOWLEDGE_CANDIDATE_GOVERNANCE',
+          findingType: resourceWithoutDigest.findingType,
+          governanceTarget: 'RELATION_GOVERNANCE',
         },
       ],
       ['access widening', { accessScope: ['owner', 'other'] }],

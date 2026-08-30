@@ -13,6 +13,7 @@ import {
   type DiscoveryReviewContentV1,
   type DiscoveryReviewEvidenceLineageRefV1,
   type DiscoveryReviewLineageV1,
+  type DiscoveryReentryFreshnessAssessmentV1,
 } from '../../../packages/contracts/src/index.js';
 import type {
   ReviewRepositoryBoundaryPort,
@@ -28,6 +29,11 @@ import type {
   ReviewTargetAdapterPort,
 } from '../../../modules/frontend-review/src/index.js';
 import { reviewCapabilitiesFor } from '../../../modules/frontend-review/src/index.js';
+import {
+  discoveryReentryFreshnessBindingFromLineageV1,
+  type DiscoveryReentryFreshnessEvaluatorPort,
+  type DiscoveryReentryFreshnessStageV1,
+} from '../../../modules/discovery-reentry/src/index.js';
 import type { InMemoryFrontendKnowledgeDraftRepository } from '../../frontend-knowledge-draft-in-memory/src/index.js';
 import type { FrontendKnowledgeDraftChangeSetV1 } from '../../../packages/contracts/src/index.js';
 import type { FrontendKnowledgeOperationV1 } from '../../../packages/contracts/src/index.js';
@@ -661,7 +667,10 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
   readonly targetKind = 'DISCOVERY_CANDIDATE' as const;
   readonly sourceItemKind = 'DISCOVERY_CANDIDATE' as const;
 
-  constructor(private readonly reader: ReviewDiscoveryCandidateReader) {}
+  constructor(
+    private readonly reader: ReviewDiscoveryCandidateReader,
+    private readonly freshnessEvaluator?: DiscoveryReentryFreshnessEvaluatorPort,
+  ) {}
 
   private isDerived(
     candidate: ReviewDiscoveryCandidateSourceV1,
@@ -712,7 +721,7 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
     const candidates = (await this.reader.list(projectId)).filter((candidate) =>
       this.readable(candidate, projectId, scope),
     );
-    return candidates.map((candidate) => ({
+    const sources = candidates.map((candidate) => ({
       reviewResourceId: this.reviewResourceId(candidate),
       targetId: candidate.candidateId,
       targetRevision: this.targetRevision(candidate),
@@ -723,6 +732,21 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
       updatedAt: candidate.updatedAt,
       source: 'DISCOVERY_CANDIDATE' as const,
     }));
+    if (scope === undefined || this.freshnessEvaluator === undefined) return sources;
+    const assessed = await Promise.all(
+      sources.map(async (source) => ({
+        source,
+        assessment: await this.assessFreshness({
+          scope,
+          source,
+          stage: 'REVIEW_CONTEXT_MATERIALIZATION',
+          assessedAt: new Date().toISOString(),
+        }),
+      })),
+    );
+    return assessed
+      .filter(({ assessment }) => assessment.state === 'FRESH')
+      .map(({ source }) => source);
   }
 
   async findSourceTarget(
@@ -732,6 +756,91 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
   ): Promise<ReviewSourceTargetV1 | undefined> {
     const targets = await this.listSourceTargets(projectId, scope);
     return targets.find((target) => target.reviewResourceId === reviewResourceId);
+  }
+
+  async assessFreshness(input: {
+    scope: FrontendReviewScopeV1;
+    source: ReviewSourceTargetV1;
+    stage: Extract<
+      DiscoveryReentryFreshnessStageV1,
+      'REVIEW_CONTEXT_MATERIALIZATION' | 'REVIEW_DECISION'
+    >;
+    assessedAt: string;
+  }): Promise<DiscoveryReentryFreshnessAssessmentV1> {
+    const candidate = await this.reader.find(
+      input.scope.activeProjectId,
+      input.source.reviewResourceId,
+    );
+    if (!candidate || !this.readable(candidate, input.scope.activeProjectId, input.scope)) {
+      return {
+        schemaVersion: '1.0.0',
+        assessmentVersion: 'discovery-reentry-freshness:v1',
+        assessmentId: sha256Text(
+          stableJson({
+            projectId: input.scope.activeProjectId,
+            reviewResourceId: input.source.reviewResourceId,
+            state: 'INVALIDATED',
+          }),
+        ),
+        assessedAt: input.assessedAt,
+        projectId: input.scope.activeProjectId,
+        findingId: input.source.targetId,
+        findingRevision: 1,
+        state: 'INVALIDATED',
+        reasonCodes: ['REVIEW_TARGET_SUPERSEDED'],
+        reasonDetail: 'Discovery Review target is no longer available.',
+      };
+    }
+    // Legacy/in-memory candidate fixtures that are not persisted derived
+    // re-entry resources do not have the WP5 lineage authority. Preserve the
+    // existing Review contract for those sources; the freshness gate applies
+    // only to the server-owned derived Discovery path.
+    if (!this.isDerived(candidate)) {
+      return {
+        schemaVersion: '1.0.0',
+        assessmentVersion: 'discovery-reentry-freshness:v1',
+        assessmentId: sha256Text(
+          stableJson({
+            projectId: input.scope.activeProjectId,
+            reviewResourceId: input.source.reviewResourceId,
+            state: 'FRESH',
+          }),
+        ),
+        assessedAt: input.assessedAt,
+        projectId: input.scope.activeProjectId,
+        findingId: input.source.targetId,
+        findingRevision: 1,
+        state: 'FRESH',
+        reasonCodes: [],
+        reasonDetail: 'Freshness authority is not applicable to this legacy candidate source.',
+      };
+    }
+    const binding = discoveryReentryFreshnessBindingFromLineageV1(candidate.lineage, {
+      reviewResourceId: candidate.reviewResourceId,
+      resourceRevision: candidate.resourceRevision,
+      resourceDigest: candidate.contentDigest,
+    });
+    if (this.freshnessEvaluator === undefined) {
+      return {
+        schemaVersion: '1.0.0',
+        assessmentVersion: 'discovery-reentry-freshness:v1',
+        assessmentId: sha256Text(
+          stableJson({ binding, state: 'FRESH', assessedAt: input.assessedAt }),
+        ),
+        assessedAt: input.assessedAt,
+        projectId: binding.projectId,
+        findingId: binding.findingId,
+        findingRevision: binding.findingRevision,
+        state: 'FRESH',
+        reasonCodes: [],
+        reasonDetail: 'No additional freshness authority is configured for this in-memory adapter.',
+      };
+    }
+    return this.freshnessEvaluator.assess({
+      binding,
+      stage: input.stage,
+      assessedAt: input.assessedAt,
+    });
   }
 
   private candidateDigest(candidate: ReviewDiscoveryCandidateSourceV1): string {

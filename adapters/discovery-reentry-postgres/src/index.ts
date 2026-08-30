@@ -13,6 +13,9 @@ import type {
   DiscoveryReentryManifestV1,
   DerivedKnowledgeCandidateV1,
   KnowledgeCandidate,
+  DiscoveryReentryFreshnessCurrentStateV1,
+  DiscoveryReentryFreshnessResourceObservationV1,
+  DiscoveryReentryFreshnessEvidenceObservationV1,
 } from '../../../packages/contracts/src/index.js';
 import {
   approvedKnowledgeDigest,
@@ -26,6 +29,7 @@ import {
   semanticCorpusSourceSnapshotDigest,
   validateDiscoveryApprovedResourceRevisionResolutionV1,
   semanticStableJson,
+  sha256Text,
 } from '../../../packages/contracts/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
@@ -38,6 +42,11 @@ import type {
   DiscoveryReentryPersistenceResultV1,
   DiscoveryReentryReviewReadyTransitionInputV1,
   DiscoveryReentryReviewReadyTransitionResultV1,
+  DiscoveryReentryStaleTransitionInputV1,
+  DiscoveryReentryStaleTransitionResultV1,
+  DiscoveryReentryFreshnessAuthorityPort,
+  DiscoveryReentryFreshnessBindingV1,
+  DiscoveryReentryFreshnessStageV1,
   DiscoveryReentryStoredIntakeV1,
   DiscoveryReentryConsumptionDispositionInputV1,
   DiscoveryReentryConsumptionDispositionRecordV1,
@@ -440,6 +449,38 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
       return { status: 'IDEMPOTENT', current: transition.current };
     }
     return { status: 'CONFLICT', current: transition.current };
+  }
+
+  public async transitionFindingToStale(
+    input: DiscoveryReentryStaleTransitionInputV1,
+  ): Promise<DiscoveryReentryStaleTransitionResultV1> {
+    const lifecycleRepository = this.options.lifecycleRepository;
+    if (lifecycleRepository === undefined) {
+      throw new TypeError('Discovery Finding lifecycle authority is required for stale closure.');
+    }
+    const current = await lifecycleRepository.findLifecycle(input);
+    if (current === undefined) throw new TypeError('Discovery Finding lifecycle was not found.');
+    if (current.lifecycleState === 'STALE') return { status: 'IDEMPOTENT', current };
+    if (['DISMISSED', 'SUPPRESSED', 'RESOLVED', 'SUPERSEDED'].includes(current.lifecycleState)) {
+      return { status: 'CONFLICT', current };
+    }
+    const transition = await lifecycleRepository.transitionLifecycle({
+      projectId: input.projectId,
+      findingId: input.findingId,
+      findingRevision: input.findingRevision,
+      expectedLifecycleRevision: input.expectedLifecycleRevision,
+      targetState: 'STALE',
+      cause: 'SYSTEM_RECONCILIATION',
+      reasonCode: 'RELEVANT_INPUT_CHANGED',
+      occurredAt: input.occurredAt,
+      context: { canonicalBase: input.canonicalBase, discoveryBase: input.discoveryBase },
+    });
+    return transition.status === 'APPLIED'
+      ? { status: 'APPLIED', current: transition.lifecycle }
+      : {
+          status: transition.current.lifecycleState === 'STALE' ? 'IDEMPOTENT' : 'CONFLICT',
+          current: transition.current,
+        };
   }
 
   public async findConsumptionDisposition(
@@ -882,6 +923,201 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
       },
       { module: 'discovery-reentry-postgres', operation: 'persist-reentry-intake' },
     );
+  }
+}
+
+type FreshnessLifecycleRow = QueryResultRow & {
+  readonly lifecycle_state: string;
+};
+
+type FreshnessRevisionRow = QueryResultRow & {
+  readonly revision_id: string;
+  readonly revision_json: unknown;
+};
+
+type FreshnessEvidenceRow = QueryResultRow & {
+  readonly evidence_id: string;
+  readonly project_id: string;
+  readonly source_id: string;
+  readonly source_version_id: string;
+  readonly revision_id: string;
+  readonly exact_hash: string;
+  readonly access_scope: string[];
+  readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+};
+
+/**
+ * Server-owned current-state reader for the WP5 evaluator. It deliberately
+ * reads only the material authorities relied on by a Finding. In particular,
+ * it never compares a current global Canonical version to the frozen version.
+ */
+export class PostgresDiscoveryReentryFreshnessAuthority implements DiscoveryReentryFreshnessAuthorityPort {
+  public constructor(
+    private readonly pool: Pick<Pool, 'query'>,
+    private readonly options: {
+      readonly knowledgeModelRepository?: Pick<KnowledgeModelRepositoryPort, 'listGroups'>;
+      readonly compiledTruthRepository?: Pick<CompiledTruthRepositoryPort, 'findProjection'>;
+    } = {},
+  ) {}
+
+  private async resource(
+    projectId: string,
+    ref: DiscoveryApprovedResourceRevisionRefV1,
+  ): Promise<DiscoveryReentryFreshnessResourceObservationV1> {
+    if (ref.projectId !== projectId) {
+      return { ...ref, availability: 'UNAVAILABLE' };
+    }
+    if (ref.resourceKind === 'CANONICAL_CLAIM') {
+      const result = await this.pool.query<FreshnessRevisionRow>(
+        `SELECT revisions.revision_id, revisions.revision_json
+         FROM canonical.revisions revisions
+         WHERE revisions.project_id = $1
+           AND revisions.revision_json->>'claimId' = $2
+         ORDER BY (revisions.revision_json->>'afterVersion')::integer DESC,
+                  revisions.created_at DESC, revisions.revision_id DESC
+         LIMIT 1`,
+        [projectId, ref.resourceId],
+      );
+      const row = result.rows[0];
+      if (!row) return { ...ref, availability: 'UNAVAILABLE' };
+      const claim = await this.pool.query<{
+        readonly access_scope: string[];
+        readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+      }>(
+        `SELECT access_scope, sensitivity FROM canonical.claims
+         WHERE project_id = $1 AND claim_id = $2`,
+        [projectId, ref.resourceId],
+      );
+      return {
+        ...ref,
+        availability: 'AVAILABLE',
+        resourceRevision: row.revision_id,
+        materialDigest: sha256Text(semanticStableJson(row.revision_json)),
+        ...(claim.rows[0] === undefined
+          ? {}
+          : {
+              accessScope: claim.rows[0].access_scope,
+              sensitivity: claim.rows[0].sensitivity,
+            }),
+      };
+    }
+    if (ref.resourceKind === 'COMPILED_TRUTH_ITEM') {
+      const projection = await this.options.compiledTruthRepository?.findProjection(projectId);
+      const item = projection?.items.find((entry) => entry.id === ref.resourceId);
+      return item === undefined || projection === undefined
+        ? { ...ref, availability: 'UNAVAILABLE' }
+        : {
+            ...ref,
+            availability: 'AVAILABLE',
+            resourceRevision: String(projection.canonicalVersion),
+            materialDigest: sha256Text(semanticStableJson(item)),
+            accessScope: item.accessScope,
+            sensitivity: item.sensitivity,
+          };
+    }
+    const groups = await this.options.knowledgeModelRepository?.listGroups(projectId);
+    const candidate = groups
+      ?.filter((group) => group.status === 'APPROVED')
+      .flatMap((group) => group.items.map((item) => ({ group, item })))
+      .find(({ item }) => item.candidateId === ref.resourceId);
+    if (candidate === undefined) return { ...ref, availability: 'UNAVAILABLE' };
+    return {
+      ...ref,
+      availability: 'AVAILABLE',
+      resourceRevision: String(candidate.item.revisionNumber),
+      materialDigest: sha256Text(semanticStableJson(candidate.item)),
+      accessScope: candidate.group.accessScope,
+      sensitivity: candidate.group.sensitivity,
+    };
+  }
+
+  private async evidence(
+    projectId: string,
+    evidenceId: string,
+  ): Promise<DiscoveryReentryFreshnessEvidenceObservationV1> {
+    const result = await this.pool.query<FreshnessEvidenceRow>(
+      `SELECT evidence_id::text, project_id, source_id::text, source_version_id::text,
+              revision_id::text, exact_hash, access_scope, sensitivity
+       FROM evidence.spans
+       WHERE evidence_id::text = $1
+       LIMIT 1`,
+      [evidenceId],
+    );
+    const row = result.rows[0];
+    if (!row || row.project_id !== projectId) {
+      return { evidenceId, projectId, availability: 'UNAVAILABLE' };
+    }
+    return {
+      evidenceId,
+      projectId,
+      availability: 'AVAILABLE',
+      sourceId: row.source_id,
+      sourceVersionId: row.source_version_id,
+      evidenceSpanId: row.evidence_id,
+      materialDigest: sha256Text(
+        semanticStableJson({
+          evidenceId: row.evidence_id,
+          revisionId: row.revision_id,
+          exactHash: row.exact_hash,
+        }),
+      ),
+      accessScope: row.access_scope,
+      sensitivity: row.sensitivity,
+    };
+  }
+
+  public async read(input: {
+    readonly binding: DiscoveryReentryFreshnessBindingV1;
+    readonly stage: DiscoveryReentryFreshnessStageV1;
+  }): Promise<DiscoveryReentryFreshnessCurrentStateV1> {
+    const { binding } = input;
+    const lifecycleResult = await this.pool.query<FreshnessLifecycleRow>(
+      `SELECT lifecycle_state
+       FROM discovery.finding_lifecycle_current
+       WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3`,
+      [binding.projectId, binding.findingId, binding.findingRevision],
+    );
+    const lifecycle = lifecycleResult.rows[0];
+    const relatedResources = await Promise.all(
+      binding.approvedRelatedResourceRefs.map((ref) => this.resource(binding.projectId, ref)),
+    );
+    const evidence = await Promise.all(
+      binding.evidenceIds.map((evidenceId) => this.evidence(binding.projectId, evidenceId)),
+    );
+    let reviewTarget: DiscoveryReentryFreshnessCurrentStateV1['reviewTarget'];
+    if (binding.reviewTarget !== undefined) {
+      const result = await this.pool.query<{
+        readonly resource_revision: number;
+        readonly content_digest: string;
+      }>(
+        `SELECT resource_revision, content_digest
+         FROM discovery.reentry_review_resources
+         WHERE project_id = $1 AND review_resource_id = $2
+         ORDER BY resource_revision DESC
+         LIMIT 1`,
+        [binding.projectId, binding.reviewTarget.reviewResourceId],
+      );
+      const row = result.rows[0];
+      reviewTarget =
+        row === undefined
+          ? { status: 'UNAVAILABLE' }
+          : {
+              status: 'CURRENT',
+              resourceRevision: row.resource_revision,
+              resourceDigest: row.content_digest,
+            };
+    }
+    return {
+      projectId: binding.projectId,
+      findingRevision: binding.findingRevision,
+      lifecycleState: (lifecycle?.lifecycle_state ??
+        'STALE') as DiscoveryReentryFreshnessCurrentStateV1['lifecycleState'],
+      relatedResources,
+      evidence,
+      authorization: 'AUTHORIZED',
+      sensitivityPolicy: 'UNCHANGED',
+      ...(reviewTarget === undefined ? {} : { reviewTarget }),
+    };
   }
 }
 

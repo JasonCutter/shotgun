@@ -196,9 +196,9 @@ export const deriveContextView = (input: {
   const accessChanged = context.accessRevision !== input.scope.accessRevision;
   const policyChanged = context.policyContextRevision !== input.scope.policyContextRevision;
   const targetChanged =
-    input.currentSource !== undefined &&
-    (input.currentSource.targetRevision !== input.record.sourceRevision ||
-      input.currentSource.targetDigest !== input.record.sourceDigest);
+    input.currentSource === undefined ||
+    input.currentSource.targetRevision !== input.record.sourceRevision ||
+    input.currentSource.targetDigest !== input.record.sourceDigest;
 
   let aggregateState: ReviewAggregateStateV1;
   let staleReason: string | undefined;

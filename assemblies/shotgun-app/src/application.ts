@@ -98,6 +98,7 @@ import { PostgresSemanticEmbeddingProfileRepository } from '../../../adapters/se
 import { PostgresDiscoveryRuntimeRepository } from '../../../adapters/discovery-runtime-postgres/src/index.js';
 import {
   PostgresDiscoveryApprovedResourceRevisionResolver,
+  PostgresDiscoveryReentryFreshnessAuthority,
   PostgresDiscoveryReentryRepository,
 } from '../../../adapters/discovery-reentry-postgres/src/index.js';
 import { PostgresDiscoveryFindingRepository } from '../../../adapters/discovery-finding-postgres/src/index.js';
@@ -107,6 +108,7 @@ import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/inde
 import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
 import {
   DiscoveryReentryConsumer,
+  DiscoveryReentryFreshnessEvaluator,
   DiscoveryReviewMaterializer,
   PersistentDiscoveryReentryWorker,
 } from '../../../modules/discovery-reentry/src/index.js';
@@ -673,6 +675,12 @@ export const startShotgunApplication = async (
     const discoveryReviewResourceRepository = recoveryHarness
       ? undefined
       : new PostgresDiscoveryReviewResourceRepository(pool);
+    const discoveryReentryFreshnessEvaluator = new DiscoveryReentryFreshnessEvaluator(
+      new PostgresDiscoveryReentryFreshnessAuthority(pool, {
+        knowledgeModelRepository,
+        compiledTruthRepository,
+      }),
+    );
     const discoveryReentryWorker =
       recoveryHarness ||
       discoveryReentryRepository === undefined ||
@@ -686,6 +694,8 @@ export const startShotgunApplication = async (
                 knowledgeModelRepository,
                 compiledTruthRepository,
               }),
+              undefined,
+              { freshnessEvaluator: discoveryReentryFreshnessEvaluator },
             ),
             {
               pollIntervalMs: Number.parseInt(
@@ -699,6 +709,7 @@ export const startShotgunApplication = async (
               reviewMaterializer: new DiscoveryReviewMaterializer(
                 discoveryReentryRepository,
                 discoveryReviewResourceRepository,
+                discoveryReentryFreshnessEvaluator,
               ),
             },
           );
@@ -718,6 +729,7 @@ export const startShotgunApplication = async (
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
       frontendReviewDiscoveryCandidateReader: createPostgresReviewDiscoveryCandidateReader(pool),
+      discoveryReentryFreshnessEvaluator,
       askCommandCoordinator,
       frontendProductReadCoordinatorFactory: (
         connector,

@@ -371,6 +371,13 @@ export class FrontendReviewProductCoordinator {
     contextRevision: number,
     generatedAt: string,
   ): Promise<ReviewContextRecordV1> {
+    await this.assertDiscoveryFreshness(
+      adapter,
+      scope,
+      source,
+      'REVIEW_CONTEXT_MATERIALIZATION',
+      generatedAt,
+    );
     const reviewContextId = reviewContextIdForSource(adapter.targetKind, source.reviewResourceId);
     const materialized = await adapter.materializeContext({
       scope,
@@ -401,6 +408,42 @@ export class FrontendReviewProductCoordinator {
       sourceUpdatedAt: source.updatedAt,
       materializedAt: generatedAt,
     };
+  }
+
+  private async assertDiscoveryFreshness(
+    adapter: ReviewTargetAdapterPort,
+    scope: FrontendReviewScopeV1,
+    source: ReviewSourceTargetV1,
+    stage: 'REVIEW_CONTEXT_MATERIALIZATION' | 'REVIEW_DECISION',
+    assessedAt: string,
+  ): Promise<void> {
+    if (adapter.targetKind !== 'DISCOVERY_CANDIDATE' || adapter.assessFreshness === undefined) {
+      return;
+    }
+    const assessment = await adapter.assessFreshness({ scope, source, stage, assessedAt });
+    if (assessment.state === 'FRESH') return;
+    if (assessment.state === 'AUTHORIZATION_DENIED') {
+      reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context was not found.');
+    }
+    if (assessment.state === 'PERSISTENCE_FAILURE') {
+      reviewFailure(
+        'REVIEW_TARGET_CHANGED',
+        'The Discovery Review target could not be revalidated.',
+      );
+    }
+    if (
+      assessment.reasonCodes.includes('EVIDENCE_LINEAGE_CHANGED') ||
+      assessment.reasonCodes.includes('EVIDENCE_UNAVAILABLE')
+    ) {
+      reviewFailure(
+        'REVIEW_EVIDENCE_CHANGED',
+        'The Discovery Evidence lineage changed since this Review Context was generated.',
+      );
+    }
+    reviewFailure(
+      'REVIEW_TARGET_CHANGED',
+      'The Discovery Review target is stale and must be revalidated before review.',
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -950,6 +993,13 @@ export class FrontendReviewProductCoordinator {
             'The reviewed target changed since this Review Context was generated.',
           );
         }
+        await this.assertDiscoveryFreshness(
+          adapter,
+          scope,
+          source,
+          'REVIEW_DECISION',
+          this.nowIso(),
+        );
         if (await this.evidenceChanged(adapter, scope, source, record.context)) {
           reviewFailure(
             'REVIEW_EVIDENCE_CHANGED',

@@ -4,6 +4,8 @@ import type {
   ReviewImpactEntryV1,
   ReviewSourceItemKindV1,
   ReviewTargetKindV1,
+  DiscoveryReentryFreshnessAssessmentV1,
+  DiscoveryReentryFreshnessStageV1,
 } from '../../../packages/contracts/src/index.js';
 
 /** Server-derived Review scope. The Browser never submits any of these values. */
@@ -87,4 +89,19 @@ export type ReviewTargetAdapterPort = {
     readonly scope: FrontendReviewScopeV1;
     readonly source: ReviewSourceTargetV1;
   }): Promise<string | undefined>;
+  /**
+   * Optional Discovery-only revalidation hook. It is intentionally optional
+   * so the existing non-Discovery Review adapters keep their contract. The
+   * adapter obtains lineage and current authority on the server; the Browser
+   * cannot provide protected freshness inputs.
+   */
+  assessFreshness?(input: {
+    readonly scope: FrontendReviewScopeV1;
+    readonly source: ReviewSourceTargetV1;
+    readonly stage: Extract<
+      DiscoveryReentryFreshnessStageV1,
+      'REVIEW_CONTEXT_MATERIALIZATION' | 'REVIEW_DECISION'
+    >;
+    readonly assessedAt: string;
+  }): Promise<DiscoveryReentryFreshnessAssessmentV1>;
 };

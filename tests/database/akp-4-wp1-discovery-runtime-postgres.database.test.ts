@@ -240,6 +240,14 @@ describe.runIf(databaseUrl)('AKP-4 WP1 Discovery runtime PostgreSQL authority', 
         logicalIdentity: first.logicalIdentity,
       }),
     ).toEqual(first);
+    expect(
+      await repositoryB.findJobByTriggerIdentity({
+        projectId: projectA,
+        triggerClass: 'CANONICAL_COMMITTED',
+        eventId: `${projectA}-event`,
+        eventRevision: 'event-revision-1',
+      }),
+    ).toEqual(first);
     expect(await repositoryB.saveJob({ ...first, jobId: 'job-duplicate-physical' })).toBe(
       'CONFLICT',
     );

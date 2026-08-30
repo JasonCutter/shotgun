@@ -44,3 +44,4 @@ export * from './semantic-generation.js';
 export * from './hybrid-retrieval.js';
 export * from './semantic-query.js';
 export * from './discovery-runtime.js';
+export * from './discovery-trigger-coordination.js';

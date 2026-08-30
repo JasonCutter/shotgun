@@ -15,7 +15,11 @@ import { createPingModule } from '../../modules/ping/src/index.js';
 import { createPongModule } from '../../modules/pong/src/index.js';
 import { createStage1Harness, securePingCommand } from '../helpers/stage-1.js';
 
-const eventConsumer = (id: string, handle: EventHandlerDefinition['handle']): ShotgunModule => ({
+const eventConsumer = (
+  id: string,
+  handle: EventHandlerDefinition['handle'],
+  requiredForPublisherAcknowledgement = false,
+): ShotgunModule => ({
   manifest: {
     id,
     version: '1.0.0',
@@ -61,6 +65,9 @@ const eventConsumer = (id: string, handle: EventHandlerDefinition['handle']): Sh
         messageType: 'PongEvent',
         version: '1.0.0',
         requiredAccessScopes: ['owner'],
+        ...(requiredForPublisherAcknowledgement
+          ? { requiredForPublisherAcknowledgement: true }
+          : {}),
         handle,
       },
     ],
@@ -172,6 +179,60 @@ describe('Connector reliability', () => {
     expect(entry.status).toBe('resolved');
     expect(entry.replays).toHaveLength(1);
     expect(entry.replays[0]?.status).toBe('succeeded');
+  });
+
+  it('propagates only opt-in required event failures to the parent publication', async () => {
+    const optionalKernel = new ShotgunKernel(new InProcessTransport());
+    optionalKernel.register(
+      createPingModule().module,
+      createPongModule().module,
+      eventConsumer('stage1.optional-failure', () => {
+        throw new ShotgunError({
+          code: 'TERMINAL_FAILURE',
+          safeMessage: 'Optional consumer failed.',
+          module: 'stage1.optional-failure',
+          operation: 'PongEvent',
+        });
+      }),
+    );
+    await optionalKernel.start();
+
+    await expect(
+      optionalKernel.connector.sendCommand(securePingCommand('optional-parent')),
+    ).resolves.toBeDefined();
+    expect(
+      optionalKernel.connector.deadLetters
+        .list()
+        .some((entry) => entry.consumerId === 'stage1.optional-failure'),
+    ).toBe(true);
+
+    const requiredKernel = new ShotgunKernel(new InProcessTransport());
+    requiredKernel.register(
+      createPingModule().module,
+      createPongModule().module,
+      eventConsumer(
+        'stage1.required-failure',
+        () => {
+          throw new ShotgunError({
+            code: 'TERMINAL_FAILURE',
+            safeMessage: 'Required consumer failed.',
+            module: 'stage1.required-failure',
+            operation: 'PongEvent',
+          });
+        },
+        true,
+      ),
+    );
+    await requiredKernel.start();
+
+    await expect(
+      requiredKernel.connector.sendCommand(securePingCommand('required-parent')),
+    ).rejects.toMatchObject({ code: 'TERMINAL_FAILURE' });
+    expect(
+      requiredKernel.connector.deadLetters
+        .list()
+        .some((entry) => entry.consumerId === 'stage1.required-failure'),
+    ).toBe(true);
   });
 
   it('does not retry a timed-out command with an unknown outcome', async () => {

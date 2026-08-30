@@ -11,6 +11,7 @@ import {
   decodeDiscoveryStageV1,
   semanticStableJson,
   type DiscoveryAttemptV1,
+  type DiscoveryCanonicalTriggerLookupV1,
   type DiscoveryJobV1,
   type DiscoveryProjectionWaitBindingV1,
   type DiscoveryRunV1,
@@ -477,6 +478,20 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
     const result = await this.pool.query<RuntimeJobRow>(
       `SELECT ${jobColumns} FROM discovery.jobs WHERE project_id = $1 AND job_id = $2`,
       [lookup.projectId, lookup.jobId],
+    );
+    return result.rows[0] ? mapJob(result.rows[0]) : undefined;
+  }
+
+  async findJobByTriggerIdentity(
+    lookup: DiscoveryCanonicalTriggerLookupV1,
+  ): Promise<DiscoveryJobV1 | undefined> {
+    const result = await this.pool.query<RuntimeJobRow>(
+      `SELECT ${jobColumns}
+       FROM discovery.jobs
+       WHERE project_id = $1 AND trigger_class = $2
+         AND trigger->'triggerIdentity'->>'eventId' = $3
+         AND trigger->'triggerIdentity'->>'eventRevision' = $4`,
+      [lookup.projectId, lookup.triggerClass, lookup.eventId, lookup.eventRevision],
     );
     return result.rows[0] ? mapJob(result.rows[0]) : undefined;
   }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 import 'dotenv/config';
@@ -89,8 +90,11 @@ import {
 } from '../../../adapters/semantic-index-postgres/src/index.js';
 import { PostgresSemanticEmbeddingProfileRepository } from '../../../adapters/semantic-embedding-postgres/src/index.js';
 import { PostgresDiscoveryRuntimeRepository } from '../../../adapters/discovery-runtime-postgres/src/index.js';
+import { PostgresDiscoveryFindingRepository } from '../../../adapters/discovery-finding-postgres/src/index.js';
 import { PostgresDiscoveryScheduleRepository } from '../../../adapters/discovery-trigger-coordinator/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
+import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
+import { createProductDiscoveryExecution } from '../../../adapters/discovery-runtime-product/src/index.js';
 import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import {
@@ -229,6 +233,7 @@ export const startShotgunApplication = async (
   // Declared outside the try so the construction-failure catch can release
   // resources that were already created before an error (R3-4 invariant).
   let stopAskAnswerWorker = async (): Promise<void> => {};
+  let stopDiscoveryExecutionWorker = async (): Promise<void> => {};
   let removeSourcesWriteRuntime = (): void => {};
   try {
     const port = options.port ?? Number.parseInt(process.env.PORT ?? '3000', 10);
@@ -482,6 +487,29 @@ export const startShotgunApplication = async (
     );
     const disableAskWorker = options.disableAskWorker ?? recoveryHarness;
 
+    const compiledTruthRepository = new PostgresCompiledTruthRepository(pool);
+    const discoveryRuntimeRepository = new PostgresDiscoveryRuntimeRepository(pool);
+    const discoveryFindingRepository = new PostgresDiscoveryFindingRepository(pool);
+    const discoveryExecutionWorker = recoveryHarness
+      ? undefined
+      : new PersistentDiscoveryWorker(
+          discoveryRuntimeRepository,
+          createProductDiscoveryExecution({
+            compiledTruthRepository,
+            findingRepository: discoveryFindingRepository,
+            runtimeRepository: discoveryRuntimeRepository,
+          }),
+          {
+            workerId: `shotgun-discovery-${process.pid}-${randomUUID()}`,
+            pollIntervalMs: Number.parseInt(process.env.DISCOVERY_WORKER_INTERVAL_MS ?? '1000', 10),
+            leaseDurationMs: Number.parseInt(process.env.DISCOVERY_WORKER_LEASE_MS ?? '30000', 10),
+            maxAttempts: Number.parseInt(process.env.DISCOVERY_WORKER_MAX_ATTEMPTS ?? '3', 10),
+          },
+        );
+    if (discoveryExecutionWorker !== undefined) {
+      stopDiscoveryExecutionWorker = () => discoveryExecutionWorker.stop();
+    }
+
     const application = await createApplication({
       projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
       projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
@@ -528,11 +556,12 @@ export const startShotgunApplication = async (
       canonicalKnowledgeRepository,
       searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
       knowledgeModelRepository: new PostgresKnowledgeModelRepository(pool),
-      compiledTruthRepository: new PostgresCompiledTruthRepository(pool),
+      compiledTruthRepository,
       semanticCorpusSourceSnapshotReader,
-      discoveryRuntimeRepository: new PostgresDiscoveryRuntimeRepository(pool),
+      discoveryRuntimeRepository,
       discoveryScheduleRepository: new PostgresDiscoveryScheduleRepository(pool),
       discoverySchedulerIntervalMs: recoveryHarness ? false : 30_000,
+      ...(discoveryExecutionWorker === undefined ? {} : { discoveryExecutionWorker }),
       discoverySemanticIndexRepository: semanticIndexRepository,
       semanticRetriever,
       semanticActiveGenerationReader,
@@ -635,6 +664,11 @@ export const startShotgunApplication = async (
     // registration survives.
     try {
       removeSourcesWriteRuntime();
+    } catch {
+      // ignore cleanup failure — the original error is preserved below.
+    }
+    try {
+      await stopDiscoveryExecutionWorker();
     } catch {
       // ignore cleanup failure — the original error is preserved below.
     }

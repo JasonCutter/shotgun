@@ -249,6 +249,79 @@ export type DiscoveryStageV1 = {
   readonly completedAt?: string;
 };
 
+/** Immutable, server-owned hand-off record for a later AKP-5 consumer. */
+export type DiscoveryFindingReadyV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly publicationId: string;
+  readonly projectId: string;
+  readonly findingId: string;
+  readonly findingRevision: number;
+  readonly fingerprint: string;
+  readonly fingerprintVersion: string;
+  readonly jobId: string;
+  readonly runId: string;
+  readonly attemptId: string;
+  readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
+  readonly requiredDiscoveryBase?: DiscoveryProjectionBaseIdentityV1;
+  readonly occurredAt: string;
+};
+
+export const decodeDiscoveryFindingReadyV1 = (
+  value: unknown,
+  path = 'findingReady',
+): DiscoveryFindingReadyV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'publicationId',
+      'projectId',
+      'findingId',
+      'findingRevision',
+      'fingerprint',
+      'fingerprintVersion',
+      'jobId',
+      'runId',
+      'attemptId',
+      'canonicalBase',
+      'requiredDiscoveryBase',
+      'occurredAt',
+    ],
+    path,
+  );
+  schemaVersion(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
+  const canonicalBase = decodeCanonicalBase(
+    required(object, 'canonicalBase', path),
+    `${path}.canonicalBase`,
+  );
+  const requiredDiscoveryBase =
+    object.requiredDiscoveryBase === undefined
+      ? undefined
+      : decodeDiscoveryBase(object.requiredDiscoveryBase, `${path}.requiredDiscoveryBase`);
+  return {
+    schemaVersion: '1.0.0',
+    publicationId: text(required(object, 'publicationId', path), `${path}.publicationId`),
+    projectId: text(required(object, 'projectId', path), `${path}.projectId`),
+    findingId: text(required(object, 'findingId', path), `${path}.findingId`),
+    findingRevision: integer(
+      required(object, 'findingRevision', path),
+      `${path}.findingRevision`,
+      1,
+    ),
+    fingerprint: text(required(object, 'fingerprint', path), `${path}.fingerprint`),
+    fingerprintVersion: text(
+      required(object, 'fingerprintVersion', path),
+      `${path}.fingerprintVersion`,
+    ),
+    jobId: text(required(object, 'jobId', path), `${path}.jobId`),
+    runId: text(required(object, 'runId', path), `${path}.runId`),
+    attemptId: text(required(object, 'attemptId', path), `${path}.attemptId`),
+    canonicalBase,
+    ...(requiredDiscoveryBase === undefined ? {} : { requiredDiscoveryBase }),
+    occurredAt: isoTimestamp(required(object, 'occurredAt', path), `${path}.occurredAt`),
+  };
+};
+
 const fail = (path: string, message: string): never => {
   throw new TypeError(`${path}: ${message}`);
 };

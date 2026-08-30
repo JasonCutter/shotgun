@@ -1125,6 +1125,30 @@ const validateBudget = (budget: DiscoveryWorkBudgetV1): void => {
   if (!Number.isFinite(deadline)) throw new TypeError('deadlineAt must be an ISO timestamp');
 };
 
+const validateSnapshot = (
+  budget: DiscoveryWorkBudgetV1,
+  snapshot: DiscoveryWorkBudgetSnapshotV1,
+): void => {
+  const limits: Record<keyof DiscoveryWorkBudgetSnapshotV1, number> = {
+    resources: budget.maxResources,
+    semanticNeighbors: budget.maxSemanticNeighbors,
+    candidatePairs: budget.maxCandidatePairs,
+    candidateGroups: budget.maxCandidateGroups,
+    findings: budget.maxFindings,
+    providerCalls: budget.maxProviderCalls,
+    inputTokens: budget.maxInputTokens,
+    outputTokens: budget.maxOutputTokens,
+    estimatedCostMicros: budget.maxEstimatedCostMicros,
+    activeProviderCalls: budget.maxConcurrentProviderCalls,
+  };
+  for (const dimension of Object.keys(limits) as Array<keyof DiscoveryWorkBudgetSnapshotV1>) {
+    const value = snapshot[dimension];
+    if (!Number.isSafeInteger(value) || value < 0 || value > limits[dimension]) {
+      throw new TypeError(`budget snapshot ${dimension} is outside the frozen budget`);
+    }
+  }
+};
+
 export class DiscoveryWorkBudgetLedgerV1 {
   private readonly admittedResourceKeys = new Set<string>();
 
@@ -1146,8 +1170,19 @@ export class DiscoveryWorkBudgetLedgerV1 {
   public constructor(
     private readonly budget: DiscoveryWorkBudgetV1,
     private readonly clock: () => number = nowMs,
+    initialSnapshot?: DiscoveryWorkBudgetSnapshotV1,
   ) {
     validateBudget(budget);
+    if (initialSnapshot !== undefined) this.restore(initialSnapshot);
+  }
+
+  /** Hydrates cumulative usage after a restart; it never extends the budget. */
+  public restore(snapshot: DiscoveryWorkBudgetSnapshotV1): void {
+    validateSnapshot(this.budget, snapshot);
+    Object.assign(this.used, snapshot);
+    // Resource identity keys are intentionally not reconstructed from a count.
+    // A replayed resource may therefore consume a slot again, conservatively.
+    this.admittedResourceKeys.clear();
   }
 
   public snapshot(): DiscoveryWorkBudgetSnapshotV1 {

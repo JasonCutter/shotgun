@@ -315,6 +315,7 @@ import type {
   DiscoveryTriggerPolicyPort,
   DiscoveryManualTriggerRequestV1,
 } from '../../../packages/contracts/src/index.js';
+import type { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
 import {
   type ActionConnectorPort,
   type ActionCandidateRepositoryPort,
@@ -542,6 +543,8 @@ export type ApplicationOptions = {
   readonly discoveryRuntimeRepository?: DiscoveryTriggerRuntimeRepositoryPort;
   readonly discoveryScheduleRepository?: DiscoveryScheduleRepositoryPort;
   readonly discoverySchedulerIntervalMs?: number | false;
+  /** WP4 durable execution worker; omitted by recovery/test compositions. */
+  readonly discoveryExecutionWorker?: Pick<PersistentDiscoveryWorker, 'start' | 'stop'>;
   readonly discoverySemanticIndexRepository?: {
     getActiveGenerationPointer(projectId: string): Promise<SemanticGenerationPointer | undefined>;
     getGeneration(
@@ -1779,6 +1782,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   );
   const schedulerIntervalMs = options.discoverySchedulerIntervalMs;
   let discoverySchedulerWorker: { stop(): Promise<void> } | undefined;
+  const discoveryExecutionWorker = options.discoveryExecutionWorker;
   const discoveryTriggerCoordinatorModule = createDiscoveryTriggerCoordinatorModule(
     discoveryTriggerCoordinator,
   );
@@ -2017,6 +2021,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       schedulerIntervalMs,
     );
   }
+  discoveryExecutionWorker?.start();
 
   const server = Fastify({ logger: false });
 
@@ -3700,6 +3705,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   );
 
   server.addHook('onClose', async () => {
+    await discoveryExecutionWorker?.stop();
     await discoverySchedulerWorker?.stop();
     await canonicalProjectionRecoveryWorker?.stop();
     await kernel.shutdown();

@@ -165,6 +165,8 @@ const requiredTables = [
   'discovery.attempt_lifecycle_history',
   'discovery.stages',
   'discovery.stage_history',
+  'discovery.work_budget_checkpoints',
+  'discovery.finding_ready',
   'action.executions',
   'action.approvals',
   'action.audit_events',

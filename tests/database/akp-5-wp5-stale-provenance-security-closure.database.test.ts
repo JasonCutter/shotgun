@@ -16,7 +16,9 @@ import {
 import {
   createPostgresPool,
   PostgresOriginalAssetRepository,
+  PostgresProjectAdministrationRepository,
 } from '../../adapters/postgres/src/index.js';
+import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
 import {
   PostgresEvidenceRepository,
   PostgresTransformationRepository,
@@ -49,6 +51,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
 const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 const projectId = `akp-5-wp5-db-${randomUUID()}`;
 const securityPrincipalId = randomUUID();
+const securityAccountId = `akp-5-wp5-account-${randomUUID()}`;
 const productionClaimId = `claim-wp5-production-${randomUUID()}`;
 const unrelatedClaimId = `claim-wp5-unrelated-${randomUUID()}`;
 const productionClaimRevision1 = `revision-wp5-production-r1-${randomUUID()}`;
@@ -65,43 +68,24 @@ const resolveDatabaseSecurity = async ({
 }: {
   projectId: string;
 }) => {
-  const result = await pool!.query<{
-    readonly project_status: string;
-    readonly project_active: boolean;
-    readonly principal_status: string | null;
-    readonly scopes: string[] | null;
-    readonly sensitivity_clearance: 'public' | 'internal' | 'private' | 'restricted' | null;
-  }>(
-    `SELECT project.status AS project_status,
-            project.active AS project_active,
-            principal.status AS principal_status,
-            membership.scopes,
-            membership.sensitivity_clearance
-     FROM project_admin.projects project
-     LEFT JOIN auth.project_memberships membership
-       ON membership.project_id = project.id
-      AND membership.principal_id = $2
-     LEFT JOIN auth.principals principal
-       ON principal.principal_id = membership.principal_id
-     WHERE project.id = $1`,
-    [requestedProjectId, securityPrincipalId],
+  const project = await new PostgresProjectAdministrationRepository(pool!).getProjectDetails(
+    requestedProjectId,
   );
-  const row = result.rows[0];
-  if (
-    !row ||
-    row.project_status !== 'ACTIVE' ||
-    row.project_active !== true ||
-    row.principal_status !== 'active' ||
-    row.scopes === null ||
-    row.sensitivity_clearance === null
-  ) {
-    return undefined;
-  }
-  return {
-    projectId: requestedProjectId,
-    accessScope: row.scopes,
-    sensitivity: row.sensitivity_clearance,
-  };
+  if (!project || project.status !== 'ACTIVE' || !project.active) return undefined;
+  const authRepository = new PostgresAuthRepository(pool!);
+  const principal = await authRepository.findPrincipalByAccountId(securityAccountId);
+  if (!principal) return undefined;
+  const membership = await authRepository.findOwnerMembership(
+    securityAccountId,
+    requestedProjectId,
+  );
+  return membership
+    ? {
+        projectId: requestedProjectId,
+        accessScope: membership.scopes,
+        sensitivity: membership.sensitivityClearance,
+      }
+    : undefined;
 };
 
 const seedRealEvidence = async (): Promise<{
@@ -515,14 +499,14 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
       [projectId],
     );
     await pool!.query(
-      `INSERT INTO auth.principals (principal_id, actor_type, status, created_at)
-       VALUES ($1, 'user', 'active', $2)`,
-      [securityPrincipalId, now],
+      `INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at)
+       VALUES ($1, 'user', 'active', $2, $3)`,
+      [securityPrincipalId, securityAccountId, now],
     );
     await pool!.query(
       `INSERT INTO auth.project_memberships
          (principal_id, project_id, scopes, sensitivity_clearance, is_owner)
-       VALUES ($1, $2, $3, $4, false)`,
+       VALUES ($1, $2, $3, $4, true)`,
       [securityPrincipalId, projectId, ['review'], 'internal'],
     );
     await pool!.query(
@@ -710,6 +694,32 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
     ).resolves.toMatchObject({ lifecycleState: 'NEW' });
   });
 
+  it('security: denies a Finding when the authoritative principal is inactive', async () => {
+    await pool!.query('UPDATE auth.principals SET status = $2 WHERE principal_id = $1', [
+      securityPrincipalId,
+      'disabled',
+    ]);
+    const finding = findingFor('finding-security-inactive-principal');
+    const findingRepository = await setupFinding(finding);
+    const result = await new DiscoveryReentryConsumer(
+      new PostgresDiscoveryReentryRepository(pool!, {
+        lifecycleRepository: findingRepository,
+      }),
+      new PostgresDiscoveryApprovedResourceRevisionResolver(pool!),
+      () => new Date(now),
+      { freshnessEvaluator: evaluator() },
+    ).consume(publicationFor(finding));
+
+    expect(result).toMatchObject({
+      status: 'INELIGIBLE',
+      lifecycleState: 'NEW',
+      freshnessAssessment: {
+        state: 'AUTHORIZATION_DENIED',
+        reasonCodes: ['ACCESS_NO_LONGER_AUTHORIZED'],
+      },
+    });
+  });
+
   it('security: denies a Finding when the project is inactive', async () => {
     await pool!.query('UPDATE project_admin.projects SET active = false WHERE id = $1', [
       projectId,
@@ -802,14 +812,14 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
     });
   });
 
-  it('security: denies a strengthened membership sensitivity without exposing a candidate', async () => {
+  it('security: denies a narrowed membership clearance without exposing a candidate', async () => {
     await pool!.query(
       `UPDATE auth.project_memberships
-       SET sensitivity_clearance = 'restricted'
+       SET sensitivity_clearance = 'public'
        WHERE principal_id = $1 AND project_id = $2`,
       [securityPrincipalId, projectId],
     );
-    const finding = findingFor('finding-security-membership-sensitivity');
+    const finding = findingFor('finding-security-membership-clearance');
     const findingRepository = await setupFinding(finding);
     const result = await new DiscoveryReentryConsumer(
       new PostgresDiscoveryReentryRepository(pool!, {

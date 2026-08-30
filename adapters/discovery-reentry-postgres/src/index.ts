@@ -1,5 +1,6 @@
 import type { Pool, QueryResultRow } from 'pg';
 
+import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
 import {
   assertDiscoveryLifecycleTransitionV1,
   decodeDiscoveryFindingLifecycleCurrentV1,
@@ -992,7 +993,10 @@ export class PostgresDiscoveryReentryFreshnessAuthority implements DiscoveryReen
     } = {},
   ) {}
 
-  private async security(projectId: string): Promise<FreshnessSecurityState> {
+  private async security(
+    projectId: string,
+    requiredSensitivity?: DiscoveryServerSecurityInputV1['sensitivity'],
+  ): Promise<FreshnessSecurityState> {
     const resolveSecurity = this.options.resolveSecurity;
     if (resolveSecurity === undefined) {
       return { authorization: 'UNKNOWN', sensitivityPolicy: 'UNKNOWN' };
@@ -1007,10 +1011,14 @@ export class PostgresDiscoveryReentryFreshnessAuthority implements DiscoveryReen
     return {
       authorization: 'AUTHORIZED',
       currentAccessScope: [...new Set(resolved.accessScope)].sort(),
-      currentSensitivity: resolved.sensitivity,
-      // The existing membership authority is the current access/sensitivity
-      // decision. There is no second synthetic sensitivity policy document.
-      sensitivityPolicy: 'UNCHANGED',
+      // Membership sensitivity is a clearance ceiling, not the observed
+      // material sensitivity. Compare it to the Finding's required bound;
+      // resource/evidence observations compare their own actual sensitivity.
+      sensitivityPolicy:
+        requiredSensitivity !== undefined &&
+        !hasSensitivityClearance(resolved.sensitivity, requiredSensitivity)
+          ? 'DENIED'
+          : 'UNCHANGED',
     };
   }
 
@@ -1184,7 +1192,7 @@ export class PostgresDiscoveryReentryFreshnessAuthority implements DiscoveryReen
     const evidence = await Promise.all(
       binding.evidenceIds.map((evidenceId) => this.evidence(binding.projectId, evidenceId)),
     );
-    const security = await this.security(binding.projectId);
+    const security = await this.security(binding.projectId, binding.sensitivity);
     let reviewTarget: DiscoveryReentryFreshnessCurrentStateV1['reviewTarget'];
     if (binding.reviewTarget !== undefined) {
       const result = await this.pool.query<{

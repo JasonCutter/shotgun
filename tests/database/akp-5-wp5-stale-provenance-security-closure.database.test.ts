@@ -300,17 +300,18 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
       context: { canonicalBase: finding.canonicalBase, discoveryBase: finding.discoveryBase },
     });
     let writes = 0;
-    const result = await new DiscoveryReviewMaterializer(
-      reentryRepository,
-      {
-        save: async () => {
-          writes += 1;
-          return 'CREATED';
+    await expect(
+      new DiscoveryReviewMaterializer(
+        reentryRepository,
+        {
+          save: async () => {
+            writes += 1;
+            return 'CREATED';
+          },
         },
-      },
-      evaluator(),
-    ).materialize({ logicalIdentityKey: consumed.logicalIdentityKey });
-    expect(result).toMatchObject({ status: 'BLOCKED', assessment: { state: 'INVALIDATED' } });
+        evaluator(),
+      ).materialize({ logicalIdentityKey: consumed.logicalIdentityKey }),
+    ).rejects.toThrow(/not eligible/);
     expect(writes).toBe(0);
     await expect(
       createPostgresReviewDiscoveryCandidateReader(pool!).list(projectId),
@@ -403,7 +404,7 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
     ).consume(publicationFor(finding));
     expect(result).toMatchObject({ status: 'INELIGIBLE', lifecycleState: 'RESOLVED' });
     expect(existsSync('db/migrations/055_akp_5_wp5.sql')).toBe(false);
-    expect(existsSync('db/migrations/053_akp_5_wp2.sql')).toBe(true);
-    expect(existsSync('db/migrations/054_akp_5_wp3.sql')).toBe(true);
+    expect(existsSync('db/migrations/053_akp_5_wp2_discovery_reentry.sql')).toBe(true);
+    expect(existsSync('db/migrations/054_akp_5_wp3_persistent_review_bridge.sql')).toBe(true);
   });
 });

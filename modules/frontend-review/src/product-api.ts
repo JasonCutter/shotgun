@@ -417,7 +417,7 @@ export class FrontendReviewProductCoordinator {
       let enumerated = 0;
       for (const adapter of this.targetAdapters) {
         if (request.targetKinds && !request.targetKinds.includes(adapter.targetKind)) continue;
-        const sources = await adapter.listSourceTargets(scope.activeProjectId);
+        const sources = await adapter.listSourceTargets(scope.activeProjectId, scope);
         for (const source of sources) {
           if (enumerated >= REVIEW_QUEUE_SOURCE_CAP) break;
           enumerated += 1;
@@ -611,6 +611,7 @@ export class FrontendReviewProductCoordinator {
       const currentSource = await adapter.findSourceTarget(
         scope.activeProjectId,
         record.reviewResourceId,
+        scope,
       );
       const view = deriveContextView({ record, currentSource, scope, decisions });
       const visible = this.visibleItemIds(view.context, scope);
@@ -684,7 +685,11 @@ export class FrontendReviewProductCoordinator {
           (candidate) => candidate.reviewItemId === request.reviewItemId,
         ) ?? item;
       const adapter = this.adapterFor(record.context.targetKind);
-      const source = await adapter.findSourceTarget(scope.activeProjectId, record.reviewResourceId);
+      const source = await adapter.findSourceTarget(
+        scope.activeProjectId,
+        record.reviewResourceId,
+        scope,
+      );
       const evidence =
         request.includeEvidence && source
           ? await adapter.readEvidence({
@@ -832,6 +837,7 @@ export class FrontendReviewProductCoordinator {
         const source = await adapter.findSourceTarget(
           scope.activeProjectId,
           record.reviewResourceId,
+          scope,
         );
         if (!source) {
           reviewFailure(
@@ -930,6 +936,7 @@ export class FrontendReviewProductCoordinator {
         const source = await adapter.findSourceTarget(
           scope.activeProjectId,
           record.reviewResourceId,
+          scope,
         );
         if (!source) {
           reviewFailure('REVIEW_TARGET_CHANGED', 'The reviewed target is no longer available.');

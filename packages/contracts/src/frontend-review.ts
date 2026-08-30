@@ -1,6 +1,10 @@
 import type { ErrorCode } from './errors.js';
 import { FrontendContractError } from './frontend-foundation.js';
 import { sha256Text, stableJson } from './document-evidence.js';
+import {
+  decodeDiscoveryReviewLineageV1,
+  type DiscoveryReviewLineageV1,
+} from './discovery-reentry.js';
 
 /**
  * FE-P4-S1 Review Center — exact V1 contracts.
@@ -267,6 +271,8 @@ export type ReviewArtifactRefsV1 = {
   evidence?: ReviewArtifactRefV1;
   conflict?: ReviewArtifactRefV1;
   impact?: ReviewArtifactRefV1;
+  /** Preserves derived Discovery lineage without converting it into direct Evidence. */
+  discoveryLineage?: DiscoveryReviewLineageV1;
 };
 
 export type ReviewActorRefV1 = {
@@ -844,7 +850,7 @@ export const decodeReviewArtifactRefsV1 = (
 ): ReviewArtifactRefsV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'validation', 'evidence', 'conflict', 'impact'],
+    ['schemaVersion', 'validation', 'evidence', 'conflict', 'impact', 'discoveryLineage'],
     path,
   );
   decodeReviewSchemaVersion(object, path);
@@ -866,6 +872,10 @@ export const decodeReviewArtifactRefsV1 = (
       object.impact === undefined
         ? undefined
         : decodeReviewArtifactRefV1(object.impact, `${path}.impact`),
+    discoveryLineage:
+      object.discoveryLineage === undefined
+        ? undefined
+        : decodeDiscoveryReviewLineageV1(object.discoveryLineage, `${path}.discoveryLineage`),
   };
 };
 

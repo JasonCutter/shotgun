@@ -199,6 +199,82 @@ export type DerivedKnowledgeCandidateV1 = {
   readonly createdAt: string;
 };
 
+/**
+ * A durable Review bridge resource produced after derived validation. This is
+ * deliberately separate from `DerivedKnowledgeCandidateV1`: WP2 candidates
+ * remain validation inputs and are never made Review-visible by row
+ * existence. WP4 owns producing the eligible resource.
+ */
+export type DiscoveryReviewEvidenceLineageRefV1 = {
+  readonly schemaVersion: DiscoveryReentrySchemaVersion;
+  readonly evidenceId: string;
+  /** Present only when this derived evidence genuinely resolves to Source data. */
+  readonly sourceId?: string;
+  readonly sourceVersionId?: string;
+  readonly evidenceSpanId?: string;
+};
+
+export type DiscoveryReviewContentV1 = {
+  readonly schemaVersion: DiscoveryReentrySchemaVersion;
+  readonly summary: string;
+  readonly detail: string;
+  readonly rationale: string;
+  readonly expectedImpact?: string;
+};
+
+export type DiscoveryReviewValidationResultV1 = {
+  readonly schemaVersion: DiscoveryReentrySchemaVersion;
+  readonly artifactKind: 'VALIDATION';
+  readonly artifactId: string;
+  readonly artifactRevision: string;
+  readonly digest: string;
+};
+
+export type DiscoveryReviewLineageV1 = {
+  readonly schemaVersion: DiscoveryReentrySchemaVersion;
+  readonly origin: 'DERIVED_DISCOVERY';
+  readonly projectId: string;
+  readonly candidateId: string;
+  readonly candidateRevision: number;
+  readonly findingId: string;
+  readonly findingRevision: number;
+  readonly findingType: DiscoveryFindingType;
+  readonly manifestId: string;
+  readonly governanceTarget: (typeof DISCOVERY_REENTRY_TARGET_BY_TYPE)[DiscoveryFindingType];
+  readonly sourceProjectionDigest: string;
+  readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
+  readonly discoveryBase: DiscoveryProjectionBaseIdentityV1;
+  readonly relatedResourceRefs: readonly DiscoveryApprovedResourceRevisionRefV1[];
+  readonly evidenceIds: readonly string[];
+  readonly derivationProvenance: DiscoveryFindingProvenanceV1;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SecurityContext['sensitivity'];
+  readonly validationProfile: DiscoveryDerivedValidationProfileV1;
+  readonly validationResult: DiscoveryReviewValidationResultV1;
+};
+
+export type DiscoveryReviewResourceV1 = DiscoveryReviewLineageV1 & {
+  readonly reviewResourceId: string;
+  readonly resourceRevision: number;
+  readonly effectiveProjectId: string;
+  readonly lifecycleState: DiscoveryFindingLifecycleState;
+  readonly reviewEligibility: 'ELIGIBLE_AFTER_VALIDATION';
+  readonly content: DiscoveryReviewContentV1;
+  readonly evidenceLineage: readonly DiscoveryReviewEvidenceLineageRefV1[];
+  readonly contentDigest: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+export type DiscoveryReviewResourceDigestInputV1 = Omit<
+  DiscoveryReviewResourceV1,
+  'contentDigest' | 'createdAt' | 'updatedAt'
+>;
+
+export const discoveryReviewResourceContentDigestV1 = (
+  input: DiscoveryReviewResourceDigestInputV1,
+): string => sha256Text(semanticStableJson(input));
+
 type ObjectValue = Record<string, unknown>;
 
 const fail = (path: string, message: string): never => {
@@ -876,6 +952,338 @@ const decodeEligibility = (value: unknown, path: string): DiscoveryReentryEligib
 
 const decodeReviewEligibility = (value: unknown, path: string): DiscoveryReviewEligibilityV1 =>
   enumValue(value, DISCOVERY_REVIEW_ELIGIBILITY_STATES, path);
+
+const decodeReviewEvidenceLineage = (
+  value: unknown,
+  path: string,
+): DiscoveryReviewEvidenceLineageRefV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'evidenceId', 'sourceId', 'sourceVersionId', 'evidenceSpanId'],
+    path,
+  );
+  enumValue(
+    required(object, 'schemaVersion', path),
+    [DISCOVERY_REENTRY_SCHEMA_VERSION],
+    `${path}.schemaVersion`,
+  );
+  const sourceId =
+    object.sourceId === undefined ? undefined : text(object.sourceId, `${path}.sourceId`);
+  const sourceVersionId =
+    object.sourceVersionId === undefined
+      ? undefined
+      : text(object.sourceVersionId, `${path}.sourceVersionId`);
+  const evidenceSpanId =
+    object.evidenceSpanId === undefined
+      ? undefined
+      : text(object.evidenceSpanId, `${path}.evidenceSpanId`);
+  const sourceFields = [sourceId, sourceVersionId, evidenceSpanId];
+  if (
+    sourceFields.some((field) => field !== undefined) &&
+    sourceFields.some((field) => field === undefined)
+  ) {
+    return fail(
+      `${path}.sourceId`,
+      'sourceId, sourceVersionId and evidenceSpanId must be supplied together',
+    );
+  }
+  return {
+    schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
+    evidenceId: text(required(object, 'evidenceId', path), `${path}.evidenceId`),
+    ...(sourceId === undefined ? {} : { sourceId, sourceVersionId, evidenceSpanId }),
+  };
+};
+
+const decodeReviewContent = (value: unknown, path: string): DiscoveryReviewContentV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'summary', 'detail', 'rationale', 'expectedImpact'],
+    path,
+  );
+  enumValue(
+    required(object, 'schemaVersion', path),
+    [DISCOVERY_REENTRY_SCHEMA_VERSION],
+    `${path}.schemaVersion`,
+  );
+  return {
+    schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
+    summary: text(required(object, 'summary', path), `${path}.summary`),
+    detail: text(required(object, 'detail', path), `${path}.detail`),
+    rationale: text(required(object, 'rationale', path), `${path}.rationale`),
+    ...(object.expectedImpact === undefined
+      ? {}
+      : { expectedImpact: text(object.expectedImpact, `${path}.expectedImpact`) }),
+  };
+};
+
+const decodeReviewValidationResult = (
+  value: unknown,
+  path: string,
+): DiscoveryReviewValidationResultV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'artifactKind', 'artifactId', 'artifactRevision', 'digest'],
+    path,
+  );
+  enumValue(
+    required(object, 'schemaVersion', path),
+    [DISCOVERY_REENTRY_SCHEMA_VERSION],
+    `${path}.schemaVersion`,
+  );
+  enumValue(
+    required(object, 'artifactKind', path),
+    ['VALIDATION'] as const,
+    `${path}.artifactKind`,
+  );
+  return {
+    schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
+    artifactKind: 'VALIDATION',
+    artifactId: text(required(object, 'artifactId', path), `${path}.artifactId`),
+    artifactRevision: text(required(object, 'artifactRevision', path), `${path}.artifactRevision`),
+    digest: text(required(object, 'digest', path), `${path}.digest`),
+  };
+};
+
+const decodeReviewLineage = (value: unknown, path: string): DiscoveryReviewLineageV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'origin',
+      'projectId',
+      'candidateId',
+      'candidateRevision',
+      'findingId',
+      'findingRevision',
+      'findingType',
+      'manifestId',
+      'governanceTarget',
+      'sourceProjectionDigest',
+      'canonicalBase',
+      'discoveryBase',
+      'relatedResourceRefs',
+      'evidenceIds',
+      'derivationProvenance',
+      'accessScope',
+      'sensitivity',
+      'validationProfile',
+      'validationResult',
+    ],
+    path,
+  );
+  enumValue(
+    required(object, 'schemaVersion', path),
+    [DISCOVERY_REENTRY_SCHEMA_VERSION],
+    `${path}.schemaVersion`,
+  );
+  enumValue(required(object, 'origin', path), ['DERIVED_DISCOVERY'] as const, `${path}.origin`);
+  const projectId = text(required(object, 'projectId', path), `${path}.projectId`);
+  const findingType = enumValue(
+    required(object, 'findingType', path),
+    DISCOVERY_FINDING_TYPES,
+    `${path}.findingType`,
+  );
+  const relatedResourceRefs = decodeApprovedResourceRefs(
+    required(object, 'relatedResourceRefs', path),
+    `${path}.relatedResourceRefs`,
+  );
+  if (relatedResourceRefs.some((ref) => ref.projectId !== projectId)) {
+    return fail(`${path}.relatedResourceRefs`, 'must remain project-scoped');
+  }
+  const governanceTarget = enumValue(
+    required(object, 'governanceTarget', path),
+    Object.values(DISCOVERY_REENTRY_TARGET_BY_TYPE),
+    `${path}.governanceTarget`,
+  );
+  if (governanceTarget !== DISCOVERY_REENTRY_TARGET_BY_TYPE[findingType]) {
+    return fail(`${path}.governanceTarget`, 'must match findingType mapping');
+  }
+  return {
+    schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
+    origin: 'DERIVED_DISCOVERY',
+    projectId,
+    candidateId: text(required(object, 'candidateId', path), `${path}.candidateId`),
+    candidateRevision: positiveInteger(
+      required(object, 'candidateRevision', path),
+      `${path}.candidateRevision`,
+    ),
+    findingId: text(required(object, 'findingId', path), `${path}.findingId`),
+    findingRevision: positiveInteger(
+      required(object, 'findingRevision', path),
+      `${path}.findingRevision`,
+    ),
+    findingType,
+    manifestId: text(required(object, 'manifestId', path), `${path}.manifestId`),
+    governanceTarget,
+    sourceProjectionDigest: text(
+      required(object, 'sourceProjectionDigest', path),
+      `${path}.sourceProjectionDigest`,
+    ),
+    canonicalBase: decodeCanonicalBase(
+      required(object, 'canonicalBase', path),
+      `${path}.canonicalBase`,
+    ),
+    discoveryBase: decodeDiscoveryBase(
+      required(object, 'discoveryBase', path),
+      `${path}.discoveryBase`,
+    ),
+    relatedResourceRefs,
+    evidenceIds: stringArray(required(object, 'evidenceIds', path), `${path}.evidenceIds`),
+    derivationProvenance: decodeProvenance(
+      required(object, 'derivationProvenance', path),
+      `${path}.derivationProvenance`,
+    ),
+    accessScope: normalizedScope(required(object, 'accessScope', path), `${path}.accessScope`),
+    sensitivity: decodeSensitivity(required(object, 'sensitivity', path), `${path}.sensitivity`),
+    validationProfile: decodeProfile(
+      required(object, 'validationProfile', path),
+      `${path}.validationProfile`,
+    ),
+    validationResult: decodeReviewValidationResult(
+      required(object, 'validationResult', path),
+      `${path}.validationResult`,
+    ),
+  };
+};
+
+export const decodeDiscoveryReviewLineageV1 = (
+  value: unknown,
+  path = 'discoveryReviewLineage',
+): DiscoveryReviewLineageV1 => decodeReviewLineage(value, path);
+
+export const decodeDiscoveryReviewResourceV1 = (
+  value: unknown,
+  path = 'discoveryReviewResource',
+): DiscoveryReviewResourceV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'origin',
+      'projectId',
+      'candidateId',
+      'candidateRevision',
+      'findingId',
+      'findingRevision',
+      'findingType',
+      'manifestId',
+      'governanceTarget',
+      'sourceProjectionDigest',
+      'canonicalBase',
+      'discoveryBase',
+      'relatedResourceRefs',
+      'evidenceIds',
+      'derivationProvenance',
+      'accessScope',
+      'sensitivity',
+      'validationProfile',
+      'validationResult',
+      'reviewResourceId',
+      'resourceRevision',
+      'effectiveProjectId',
+      'lifecycleState',
+      'reviewEligibility',
+      'content',
+      'evidenceLineage',
+      'contentDigest',
+      'createdAt',
+      'updatedAt',
+    ],
+    path,
+  );
+  const lineage = decodeReviewLineage(
+    {
+      schemaVersion: object.schemaVersion,
+      origin: object.origin,
+      projectId: object.projectId,
+      candidateId: object.candidateId,
+      candidateRevision: object.candidateRevision,
+      findingId: object.findingId,
+      findingRevision: object.findingRevision,
+      findingType: object.findingType,
+      manifestId: object.manifestId,
+      governanceTarget: object.governanceTarget,
+      sourceProjectionDigest: object.sourceProjectionDigest,
+      canonicalBase: object.canonicalBase,
+      discoveryBase: object.discoveryBase,
+      relatedResourceRefs: object.relatedResourceRefs,
+      evidenceIds: object.evidenceIds,
+      derivationProvenance: object.derivationProvenance,
+      accessScope: object.accessScope,
+      sensitivity: object.sensitivity,
+      validationProfile: object.validationProfile,
+      validationResult: object.validationResult,
+    },
+    path,
+  );
+  enumValue(
+    required(object, 'schemaVersion', path),
+    [DISCOVERY_REENTRY_SCHEMA_VERSION],
+    `${path}.schemaVersion`,
+  );
+  const lifecycleState = enumValue(
+    required(object, 'lifecycleState', path),
+    DISCOVERY_FINDING_LIFECYCLE_STATES,
+    `${path}.lifecycleState`,
+  );
+  if (lifecycleState !== 'REVIEW_READY') {
+    return fail(`${path}.lifecycleState`, 'Review resources must be in REVIEW_READY state');
+  }
+  const effectiveProjectId = text(
+    required(object, 'effectiveProjectId', path),
+    `${path}.effectiveProjectId`,
+  );
+  if (effectiveProjectId !== lineage.projectId) {
+    return fail(
+      `${path}.effectiveProjectId`,
+      'must match projectId for a project-scoped Review resource',
+    );
+  }
+  const reviewEligibility = enumValue(
+    required(object, 'reviewEligibility', path),
+    ['ELIGIBLE_AFTER_VALIDATION'] as const,
+    `${path}.reviewEligibility`,
+  );
+  const evidenceLineageValue = required(object, 'evidenceLineage', path);
+  if (!Array.isArray(evidenceLineageValue)) {
+    return fail(`${path}.evidenceLineage`, 'must be an array');
+  }
+  const evidenceLineage = evidenceLineageValue.map((entry, index) =>
+    decodeReviewEvidenceLineage(entry, `${path}.evidenceLineage[${index}]`),
+  );
+  const evidenceIds = new Set(lineage.evidenceIds);
+  if (new Set(evidenceLineage.map((entry) => entry.evidenceId)).size !== evidenceLineage.length) {
+    return fail(`${path}.evidenceLineage`, 'must not contain duplicate evidence identities');
+  }
+  if (evidenceLineage.some((entry) => !evidenceIds.has(entry.evidenceId))) {
+    return fail(`${path}.evidenceLineage`, 'must preserve evidenceIds lineage');
+  }
+  const resource: DiscoveryReviewResourceV1 = {
+    ...lineage,
+    reviewResourceId: text(required(object, 'reviewResourceId', path), `${path}.reviewResourceId`),
+    resourceRevision: positiveInteger(
+      required(object, 'resourceRevision', path),
+      `${path}.resourceRevision`,
+    ),
+    effectiveProjectId,
+    lifecycleState,
+    reviewEligibility,
+    content: decodeReviewContent(required(object, 'content', path), `${path}.content`),
+    evidenceLineage,
+    contentDigest: text(required(object, 'contentDigest', path), `${path}.contentDigest`),
+    createdAt: isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`),
+    updatedAt: isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`),
+  };
+  const digestInput = Object.fromEntries(
+    Object.entries(resource).filter(
+      ([key]) => !['contentDigest', 'createdAt', 'updatedAt'].includes(key),
+    ),
+  ) as unknown as DiscoveryReviewResourceDigestInputV1;
+  if (resource.contentDigest !== discoveryReviewResourceContentDigestV1(digestInput)) {
+    return fail(`${path}.contentDigest`, 'must match the normalized immutable resource content');
+  }
+  return resource;
+};
 
 const decodeDerivedCandidateCore = (value: unknown, path: string): DerivedKnowledgeCandidateV1 => {
   const object = strictObject(

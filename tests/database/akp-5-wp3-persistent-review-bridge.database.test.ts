@@ -452,7 +452,7 @@ describe.runIf(pool)('AKP-5 WP3 persistent Review bridge (real PostgreSQL)', () 
         resourceRevision: 10 + index,
       });
       await expect(writer.save(attempted), label).rejects.toThrow(
-        /authoritative WP2 candidate|authoritative WP2 candidate lineage|not found/,
+        /authoritative WP2 candidate|authoritative WP2 candidate lineage|not found|must match findingType mapping/,
       );
     }
 

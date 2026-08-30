@@ -1,0 +1,29 @@
+{
+  "id": "akp-4.discovery-trigger-coordinator",
+  "version": "1.0.0",
+  "owner": "Shotgun Discovery Trigger Coordination",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [{ "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": ["discovery.jobs", "discovery.job_lifecycle_history"],
+    "readsViaPorts": [
+      "CanonicalKnowledgeRepositoryPort",
+      "SemanticCorpusSourceSnapshotReaderPort",
+      "CompiledTruthRepositoryPort",
+      "SemanticGenerationLifecycleRepositoryPort"
+    ],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": [{ "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": { "events": [] },
+  "provides": { "queries": [], "capabilities": [] },
+  "requires": { "capabilities": [] },
+  "security": { "requiredContext": ["project"], "defaultOnMissingContext": "deny" },
+  "approvalPolicy": { "canWriteCanonical": false, "canExecuteExternalAction": false }
+}

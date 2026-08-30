@@ -42,6 +42,12 @@ import { InMemoryCanonicalKnowledgeRepository } from '../../../adapters/stage6-i
 import { InMemorySearchProjectionRepository } from '../../../adapters/stage7-in-memory/src/index.js';
 import { InMemoryKnowledgeModelRepository } from '../../../adapters/stage9-in-memory/src/index.js';
 import { InMemoryCompiledTruthRepository } from '../../../adapters/stage10-in-memory/src/index.js';
+import { InMemorySemanticIndexRepository } from '../../../adapters/semantic-index-in-memory/src/index.js';
+import {
+  InMemoryDiscoveryRuntimeRepository,
+  PostgresCanonicalCommittedSourceAdapter,
+  PostgresDiscoveryProjectionReadinessAdapter,
+} from '../../../adapters/discovery-trigger-coordinator/src/index.js';
 import {
   InMemoryActionCandidateRepository,
   InMemoryActionExecutionRepository,
@@ -291,6 +297,17 @@ import {
 } from '../../../modules/compiled-truth/src/index.js';
 import { RepositorySemanticCorpusSourceSnapshotReader } from '../../../adapters/semantic-corpus-repository/src/index.js';
 import type { SemanticCorpusSourceSnapshotReaderPort } from '../../../packages/contracts/src/index.js';
+import type {
+  SemanticProjectionGeneration,
+  SemanticGenerationPointer,
+} from '../../../packages/contracts/src/index.js';
+import {
+  createDiscoveryTriggerCoordinatorModule,
+  DiscoveryTriggerCoordinator,
+  StaticDiscoveryTriggerPolicy,
+  type DiscoveryTriggerRuntimeRepositoryPort,
+} from '../../../modules/discovery-trigger-coordinator/src/index.js';
+import type { DiscoveryTriggerPolicyPort } from '../../../packages/contracts/src/index.js';
 import {
   type ActionConnectorPort,
   type ActionCandidateRepositoryPort,
@@ -514,6 +531,15 @@ export type ApplicationOptions = {
   readonly knowledgeModelRepository?: KnowledgeModelRepositoryPort;
   readonly compiledTruthRepository?: CompiledTruthRepositoryPort;
   readonly semanticCorpusSourceSnapshotReader?: SemanticCorpusSourceSnapshotReaderPort;
+  readonly discoveryRuntimeRepository?: DiscoveryTriggerRuntimeRepositoryPort;
+  readonly discoverySemanticIndexRepository?: {
+    getActiveGenerationPointer(projectId: string): Promise<SemanticGenerationPointer | undefined>;
+    getGeneration(
+      projectId: string,
+      generationId: string,
+    ): Promise<SemanticProjectionGeneration | undefined>;
+  };
+  readonly discoveryTriggerPolicy?: DiscoveryTriggerPolicyPort;
   readonly actionCandidateRepository?: ActionCandidateRepositoryPort;
   readonly actionExecutionRepository?: ActionExecutionRepositoryPort;
   readonly actionConnector?: ActionConnectorPort;
@@ -1569,6 +1595,25 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     undefined,
     semanticCorpusSourceSnapshotReader,
   );
+  const discoverySemanticIndexRepository =
+    options.discoverySemanticIndexRepository ?? new InMemorySemanticIndexRepository();
+  const discoveryRuntimeRepository =
+    options.discoveryRuntimeRepository ?? new InMemoryDiscoveryRuntimeRepository();
+  const discoveryTriggerCoordinator = new DiscoveryTriggerCoordinator(
+    new PostgresCanonicalCommittedSourceAdapter(
+      canonicalKnowledgeRepository,
+      semanticCorpusSourceSnapshotReader,
+    ),
+    new PostgresDiscoveryProjectionReadinessAdapter(
+      compiledTruthRepository,
+      discoverySemanticIndexRepository,
+    ),
+    discoveryRuntimeRepository,
+    options.discoveryTriggerPolicy ?? new StaticDiscoveryTriggerPolicy(),
+  );
+  const discoveryTriggerCoordinatorModule = createDiscoveryTriggerCoordinatorModule(
+    discoveryTriggerCoordinator,
+  );
   const actionExecution = createActionExecutionModule(
     actionExecutionRepository,
     actionCandidateRepository,
@@ -1747,6 +1792,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     citedAnswer,
     knowledgeModel,
     compiledTruth,
+    discoveryTriggerCoordinatorModule,
     actionExecution,
     hybridRetrieval,
   );

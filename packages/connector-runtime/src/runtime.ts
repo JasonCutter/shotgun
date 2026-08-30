@@ -430,7 +430,17 @@ export class ConnectorRuntime {
             attemptNumber: attempt.attemptNumber,
           },
         };
-        await this.publishEvent(event);
+        const delivery = await this.publishEvent(event);
+        const deadLetter = delivery.consumers.find((consumer) => consumer.status === 'dead-letter');
+        if (deadLetter) {
+          throw new ShotgunError({
+            code: 'TERMINAL_FAILURE',
+            safeMessage: 'A child event consumer failed; the parent delivery remains retryable.',
+            module: route.module.manifest.id,
+            operation: input.messageType,
+            correlationId: parent.correlationId,
+          });
+        }
       },
       query: async <TPayload, TResult>(input: DispatchQueryInput<TPayload>) => {
         const query = createChildQuery(parent, {

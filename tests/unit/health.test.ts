@@ -28,6 +28,7 @@ describe('Shotgun application', () => {
         'stage7.cited-answer',
         'stage9.knowledge-model',
         'stage10.compiled-truth',
+        'akp-4.discovery-trigger-coordinator',
         'stage11.action-execution',
         'stage7.hybrid-retrieval',
       ],

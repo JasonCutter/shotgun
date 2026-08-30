@@ -667,7 +667,9 @@ export const startShotgunApplication = async (
         );
     const discoveryReentryRepository = recoveryHarness
       ? undefined
-      : new PostgresDiscoveryReentryRepository(pool);
+      : new PostgresDiscoveryReentryRepository(pool, {
+          lifecycleRepository: discoveryFindingRepository,
+        });
     const discoveryReviewResourceRepository = recoveryHarness
       ? undefined
       : new PostgresDiscoveryReviewResourceRepository(pool);

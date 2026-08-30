@@ -1252,6 +1252,7 @@ export class DiscoveryReviewMaterializer implements DiscoveryReviewMaterializerP
       candidate: stored.candidate,
       resourceRevision: input.resourceRevision,
     });
+    const status = await this.writer.save(resource);
     if (this.persistence.transitionFindingToReviewReady !== undefined) {
       const transition = await this.persistence.transitionFindingToReviewReady({
         projectId: finding.projectId,
@@ -1268,7 +1269,6 @@ export class DiscoveryReviewMaterializer implements DiscoveryReviewMaterializerP
         );
       }
     }
-    const status = await this.writer.save(resource);
     return { status, resource };
   }
 }

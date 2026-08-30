@@ -1,15 +1,21 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 
-import { PostgresDiscoveryReviewResourceRepository } from '../../adapters/frontend-review-postgres/src/index.js';
+import {
+  createPostgresReviewDiscoveryCandidateReader,
+  PostgresDiscoveryReviewResourceRepository,
+} from '../../adapters/frontend-review-postgres/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { PostgresDiscoveryReentryRepository } from '../../adapters/discovery-reentry-postgres/src/index.js';
 import { PostgresDiscoveryFindingRepository } from '../../adapters/discovery-finding-postgres/src/index.js';
 import {
   DiscoveryReentryConsumer,
   DiscoveryReviewMaterializer,
+  PersistentDiscoveryReentryWorker,
+  type DiscoveryReviewResourceWriterPort,
 } from '../../modules/discovery-reentry/src/index.js';
+import type { DiscoveryFindingLifecycleRepositoryPort } from '../../modules/discovery-finding-lifecycle/src/index.js';
 import {
   createDiscoveryFindingEnvelopeV1,
   type DiscoveryFindingEnvelopeV1,
@@ -126,6 +132,10 @@ const cleanup = async (): Promise<void> => {
 describe.runIf(databaseUrl)('AKP-5 WP4 PostgreSQL materialization authority', () => {
   beforeAll(async () => {
     await migrateUpTo(undefined, databaseUrl!);
+  });
+
+  beforeEach(async () => {
+    await cleanup();
     await pool!.query(
       `INSERT INTO project_admin.projects (id, name, status, active)
        VALUES ($1, 'AKP-5 WP4 database project', 'ACTIVE', true)`,
@@ -140,7 +150,10 @@ describe.runIf(databaseUrl)('AKP-5 WP4 PostgreSQL materialization authority', ()
   });
 
   it('persists the authoritative Finding-to-Candidate-to-Review path idempotently', async () => {
-    const reentryRepository = new PostgresDiscoveryReentryRepository(pool!);
+    const findingRepository = new PostgresDiscoveryFindingRepository(pool!);
+    const reentryRepository = new PostgresDiscoveryReentryRepository(pool!, {
+      lifecycleRepository: findingRepository,
+    });
     const consumer = new DiscoveryReentryConsumer(
       reentryRepository,
       { resolve: async () => ({ status: 'RESOLVED' as const, refs: [] }) },
@@ -151,7 +164,9 @@ describe.runIf(databaseUrl)('AKP-5 WP4 PostgreSQL materialization authority', ()
     if (consumed.status !== 'CREATED') return;
 
     const materializer = new DiscoveryReviewMaterializer(
-      new PostgresDiscoveryReentryRepository(pool!),
+      new PostgresDiscoveryReentryRepository(pool!, {
+        lifecycleRepository: findingRepository,
+      }),
       new PostgresDiscoveryReviewResourceRepository(pool!),
     );
     const first = await materializer.materialize({
@@ -200,5 +215,292 @@ describe.runIf(databaseUrl)('AKP-5 WP4 PostgreSQL materialization authority', ()
       review_count: 1,
       content: { normalizedMaterial: { materializationTarget: 'KNOWLEDGE_GAP_INVESTIGATION' } },
     });
+    const lifecycleHistory = await findingRepository.listLifecycleHistory({
+      projectId,
+      findingId: finding.findingId,
+      findingRevision: finding.findingRevision,
+    });
+    expect(lifecycleHistory.filter((entry) => entry.toState === 'REVIEW_READY')).toEqual([
+      expect.objectContaining({
+        fromState: 'VALIDATING',
+        toState: 'REVIEW_READY',
+        cause: 'GOVERNED_WORKFLOW',
+        reasonCode: 'REVIEW_READY',
+        canonicalBase: finding.canonicalBase,
+        discoveryBase: finding.discoveryBase,
+      }),
+    ]);
+  });
+
+  it('recovers a processed WP2 intake after repository and worker recreation', async () => {
+    const findingRepository = new PostgresDiscoveryFindingRepository(pool!);
+    const firstRepository = new PostgresDiscoveryReentryRepository(pool!, {
+      lifecycleRepository: findingRepository,
+    });
+    const consumer = new DiscoveryReentryConsumer(
+      firstRepository,
+      { resolve: async () => ({ status: 'RESOLVED' as const, refs: [] }) },
+      () => new Date(now),
+    );
+    const consumed = await consumer.consume(publication);
+    expect(consumed.status).toBe('CREATED');
+
+    const recreatedRepository = new PostgresDiscoveryReentryRepository(pool!, {
+      lifecycleRepository: findingRepository,
+    });
+    const worker = new PersistentDiscoveryReentryWorker(
+      new DiscoveryReentryConsumer(
+        recreatedRepository,
+        { resolve: async () => ({ status: 'RESOLVED' as const, refs: [] }) },
+        () => new Date(now),
+      ),
+      {
+        batchLimit: 1,
+        reviewMaterializer: new DiscoveryReviewMaterializer(
+          recreatedRepository,
+          new PostgresDiscoveryReviewResourceRepository(pool!),
+        ),
+      },
+    );
+    await expect(worker.runOnce()).resolves.toMatchObject({ fetched: 0, results: [] });
+
+    const lifecycle = await findingRepository.findLifecycle({
+      projectId,
+      findingId: finding.findingId,
+      findingRevision: finding.findingRevision,
+    });
+    expect(lifecycle?.lifecycleState).toBe('REVIEW_READY');
+    await expect(
+      createPostgresReviewDiscoveryCandidateReader(pool!).list(projectId),
+    ).resolves.toHaveLength(1);
+  });
+
+  it('retries a materializer failure from the durable pending scan', async () => {
+    const findingRepository = new PostgresDiscoveryFindingRepository(pool!);
+    const reentryRepository = new PostgresDiscoveryReentryRepository(pool!, {
+      lifecycleRepository: findingRepository,
+    });
+    const consumer = new DiscoveryReentryConsumer(
+      reentryRepository,
+      { resolve: async () => ({ status: 'RESOLVED' as const, refs: [] }) },
+      () => new Date(now),
+    );
+    await expect(consumer.consume(publication)).resolves.toMatchObject({ status: 'CREATED' });
+    const [pending] = await reentryRepository.listPendingReviewMaterialization(1);
+    expect(pending).toBeDefined();
+
+    const failingWriter: DiscoveryReviewResourceWriterPort = {
+      save: async () => {
+        throw new Error('simulated Review writer outage');
+      },
+    };
+    await expect(
+      new DiscoveryReviewMaterializer(reentryRepository, failingWriter).materialize({
+        logicalIdentityKey: pending!.logicalIdentityKey,
+      }),
+    ).rejects.toThrow('simulated Review writer outage');
+    expect(
+      (
+        await findingRepository.findLifecycle({
+          projectId,
+          findingId: finding.findingId,
+          findingRevision: finding.findingRevision,
+        })
+      )?.lifecycleState,
+    ).toBe('VALIDATING');
+
+    const worker = new PersistentDiscoveryReentryWorker(
+      new DiscoveryReentryConsumer(
+        new PostgresDiscoveryReentryRepository(pool!, {
+          lifecycleRepository: findingRepository,
+        }),
+        { resolve: async () => ({ status: 'RESOLVED' as const, refs: [] }) },
+        () => new Date(now),
+      ),
+      {
+        batchLimit: 1,
+        reviewMaterializer: new DiscoveryReviewMaterializer(
+          new PostgresDiscoveryReentryRepository(pool!, {
+            lifecycleRepository: findingRepository,
+          }),
+          new PostgresDiscoveryReviewResourceRepository(pool!),
+        ),
+      },
+    );
+    await expect(worker.runOnce()).resolves.toMatchObject({ fetched: 0, results: [] });
+    await expect(
+      createPostgresReviewDiscoveryCandidateReader(pool!).list(projectId),
+    ).resolves.toHaveLength(1);
+  });
+
+  it('keeps a saved Review resource hidden until lifecycle closure and recovers the gap', async () => {
+    const findingRepository = new PostgresDiscoveryFindingRepository(pool!);
+    const consumerRepository = new PostgresDiscoveryReentryRepository(pool!, {
+      lifecycleRepository: findingRepository,
+    });
+    const consumer = new DiscoveryReentryConsumer(
+      consumerRepository,
+      { resolve: async () => ({ status: 'RESOLVED' as const, refs: [] }) },
+      () => new Date(now),
+    );
+    await expect(consumer.consume(publication)).resolves.toMatchObject({ status: 'CREATED' });
+    const [pending] = await consumerRepository.listPendingReviewMaterialization(1);
+    expect(pending).toBeDefined();
+
+    const failingLifecycleRepository: DiscoveryFindingLifecycleRepositoryPort = {
+      findLifecycle: (identity) => findingRepository.findLifecycle(identity),
+      listLifecycleHistory: (identity) => findingRepository.listLifecycleHistory(identity),
+      transitionLifecycle: async () => {
+        throw new Error('simulated crash after Review save');
+      },
+    };
+    const preTransitionRepository = new PostgresDiscoveryReentryRepository(pool!, {
+      lifecycleRepository: failingLifecycleRepository,
+    });
+    await expect(
+      new DiscoveryReviewMaterializer(
+        preTransitionRepository,
+        new PostgresDiscoveryReviewResourceRepository(pool!),
+      ).materialize({ logicalIdentityKey: pending!.logicalIdentityKey }),
+    ).rejects.toThrow('simulated crash after Review save');
+    expect(
+      (
+        await pool!.query<{ count: number }>(
+          `SELECT count(*)::int AS count
+         FROM discovery.reentry_review_resources
+         WHERE project_id = $1`,
+          [projectId],
+        )
+      ).rows[0]?.count,
+    ).toBe(1);
+    await expect(
+      createPostgresReviewDiscoveryCandidateReader(pool!).list(projectId),
+    ).resolves.toHaveLength(0);
+
+    const worker = new PersistentDiscoveryReentryWorker(
+      new DiscoveryReentryConsumer(
+        new PostgresDiscoveryReentryRepository(pool!, {
+          lifecycleRepository: findingRepository,
+        }),
+        { resolve: async () => ({ status: 'RESOLVED' as const, refs: [] }) },
+        () => new Date(now),
+      ),
+      {
+        batchLimit: 1,
+        reviewMaterializer: new DiscoveryReviewMaterializer(
+          new PostgresDiscoveryReentryRepository(pool!, {
+            lifecycleRepository: findingRepository,
+          }),
+          new PostgresDiscoveryReviewResourceRepository(pool!),
+        ),
+      },
+    );
+    await expect(worker.runOnce()).resolves.toMatchObject({ fetched: 0, results: [] });
+    await expect(
+      createPostgresReviewDiscoveryCandidateReader(pool!).list(projectId),
+    ).resolves.toHaveLength(1);
+    expect(
+      (
+        await pool!.query<{ count: number }>(
+          `SELECT count(*)::int AS count
+         FROM discovery.reentry_review_resources
+         WHERE project_id = $1`,
+          [projectId],
+        )
+      ).rows[0]?.count,
+    ).toBe(1);
+  });
+
+  it('converges concurrent materializers to one resource and one lifecycle transition', async () => {
+    const firstFindingRepository = new PostgresDiscoveryFindingRepository(pool!);
+    const consumerRepository = new PostgresDiscoveryReentryRepository(pool!, {
+      lifecycleRepository: firstFindingRepository,
+    });
+    const consumer = new DiscoveryReentryConsumer(
+      consumerRepository,
+      { resolve: async () => ({ status: 'RESOLVED' as const, refs: [] }) },
+      () => new Date(now),
+    );
+    await expect(consumer.consume(publication)).resolves.toMatchObject({ status: 'CREATED' });
+    const [pending] = await consumerRepository.listPendingReviewMaterialization(1);
+    expect(pending).toBeDefined();
+
+    const materialize = (lifecycleRepository: PostgresDiscoveryFindingRepository) => {
+      const repository = new PostgresDiscoveryReentryRepository(pool!, { lifecycleRepository });
+      return new DiscoveryReviewMaterializer(
+        repository,
+        new PostgresDiscoveryReviewResourceRepository(pool!),
+      ).materialize({ logicalIdentityKey: pending!.logicalIdentityKey });
+    };
+    const results = await Promise.allSettled([
+      materialize(firstFindingRepository),
+      materialize(new PostgresDiscoveryFindingRepository(pool!)),
+    ]);
+    expect(results.every((result) => result.status === 'fulfilled')).toBe(true);
+    const persisted = await pool!.query<{ resources: number; ready_transitions: number }>(
+      `SELECT
+         (SELECT count(*)::int FROM discovery.reentry_review_resources WHERE project_id = $1) AS resources,
+         (SELECT count(*)::int
+          FROM discovery.finding_lifecycle_history
+          WHERE project_id = $1 AND to_state = 'REVIEW_READY') AS ready_transitions`,
+      [projectId],
+    );
+    expect(persisted.rows[0]).toEqual({ resources: 1, ready_transitions: 1 });
+  });
+
+  it('fails closed on a terminal lifecycle race and never reopens the Finding', async () => {
+    const findingRepository = new PostgresDiscoveryFindingRepository(pool!);
+    const consumerRepository = new PostgresDiscoveryReentryRepository(pool!, {
+      lifecycleRepository: findingRepository,
+    });
+    const consumer = new DiscoveryReentryConsumer(
+      consumerRepository,
+      { resolve: async () => ({ status: 'RESOLVED' as const, refs: [] }) },
+      () => new Date(now),
+    );
+    await expect(consumer.consume(publication)).resolves.toMatchObject({ status: 'CREATED' });
+    const [pending] = await consumerRepository.listPendingReviewMaterialization(1);
+    expect(pending).toBeDefined();
+    const current = await findingRepository.findLifecycle({
+      projectId,
+      findingId: finding.findingId,
+      findingRevision: finding.findingRevision,
+    });
+    expect(current?.lifecycleState).toBe('VALIDATING');
+    const terminal = await findingRepository.transitionLifecycle({
+      projectId,
+      findingId: finding.findingId,
+      findingRevision: finding.findingRevision,
+      expectedLifecycleRevision: current!.lifecycleRevision,
+      targetState: 'STALE',
+      cause: 'SYSTEM_RECONCILIATION',
+      reasonCode: 'SOURCE_MATERIALLY_SUPERSEDED',
+      occurredAt: now,
+      context: { canonicalBase: finding.canonicalBase, discoveryBase: finding.discoveryBase },
+    });
+    expect(terminal.status).toBe('APPLIED');
+
+    await expect(
+      new DiscoveryReviewMaterializer(
+        new PostgresDiscoveryReentryRepository(pool!, {
+          lifecycleRepository: findingRepository,
+        }),
+        new PostgresDiscoveryReviewResourceRepository(pool!),
+      ).materialize({
+        logicalIdentityKey: pending!.logicalIdentityKey,
+      }),
+    ).rejects.toThrow(/not eligible/);
+    await expect(
+      createPostgresReviewDiscoveryCandidateReader(pool!).list(projectId),
+    ).resolves.toHaveLength(0);
+    expect(
+      (
+        await findingRepository.findLifecycle({
+          projectId,
+          findingId: finding.findingId,
+          findingRevision: finding.findingRevision,
+        })
+      )?.lifecycleState,
+    ).toBe('STALE');
   });
 });

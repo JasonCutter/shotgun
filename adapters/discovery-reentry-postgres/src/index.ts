@@ -42,6 +42,7 @@ import type {
   DiscoveryReentryConsumptionDispositionInputV1,
   DiscoveryReentryConsumptionDispositionRecordV1,
 } from '../../../modules/discovery-reentry/src/index.js';
+import type { DiscoveryFindingLifecycleRepositoryPort } from '../../../modules/discovery-finding-lifecycle/src/index.js';
 import type { KnowledgeModelRepositoryPort } from '../../../modules/knowledge-model/src/index.js';
 import type { CompiledTruthRepositoryPort } from '../../../modules/compiled-truth/src/index.js';
 import { ProductKnowledgeResourceResolver } from '../../../modules/hybrid-retrieval/src/index.js';
@@ -345,6 +346,7 @@ const assertManifestCandidateMatch = (
 
 export type PostgresDiscoveryReentryRepositoryOptions = {
   readonly failpoint?: 'AFTER_MANIFEST';
+  readonly lifecycleRepository?: DiscoveryFindingLifecycleRepositoryPort;
 };
 
 export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersistencePort {
@@ -408,77 +410,36 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
   public async transitionFindingToReviewReady(
     input: DiscoveryReentryReviewReadyTransitionInputV1,
   ): Promise<DiscoveryReentryReviewReadyTransitionResultV1> {
-    return withSafePostgresTransaction(
-      this.pool,
-      async (client) => {
-        const currentResult = await client.query<LifecycleRow>(
-          `SELECT ${lifecycleColumns}
-           FROM discovery.finding_lifecycle_current
-           WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
-           FOR UPDATE`,
-          identityParams(input),
-        );
-        const currentRow = currentResult.rows[0];
-        if (!currentRow) throw new TypeError('Discovery Finding lifecycle was not found.');
-        const current = mapLifecycle(currentRow);
-        if (current.lifecycleState === 'REVIEW_READY') {
-          return { status: 'IDEMPOTENT', current };
-        }
-        if (current.lifecycleRevision !== input.expectedLifecycleRevision) {
-          return { status: 'CONFLICT', current };
-        }
-        assertDiscoveryLifecycleTransitionV1(
-          current.lifecycleState,
-          'REVIEW_READY',
-          'GOVERNED_WORKFLOW',
-          'REVIEW_READY',
-        );
-        const nextRevision = current.lifecycleRevision + 1;
-        await client.query(
-          `INSERT INTO discovery.finding_lifecycle_history (
-             project_id, finding_id, finding_revision, lifecycle_revision,
-             from_state, to_state, cause, reason_code,
-             canonical_base_version, canonical_snapshot_digest,
-             discovery_projection_revision, discovery_projection_digest,
-             occurred_at
-           ) VALUES ($1, $2, $3, $4, $5, 'REVIEW_READY',
-                     'GOVERNED_WORKFLOW', 'REVIEW_READY', $6, $7, $8, $9, $10)`,
-          [
-            input.projectId,
-            input.findingId,
-            input.findingRevision,
-            nextRevision,
-            current.lifecycleState,
-            input.canonicalBase.canonicalVersion,
-            input.canonicalBase.snapshotDigest,
-            input.discoveryBase.projectionRevision,
-            input.discoveryBase.projectionDigest,
-            input.occurredAt,
-          ],
-        );
-        const updatedResult = await client.query<LifecycleRow>(
-          `UPDATE discovery.finding_lifecycle_current
-           SET lifecycle_state = 'REVIEW_READY', lifecycle_revision = $4, updated_at = $5
-           WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
-             AND lifecycle_revision = $6
-           RETURNING ${lifecycleColumns}`,
-          [
-            input.projectId,
-            input.findingId,
-            input.findingRevision,
-            nextRevision,
-            input.occurredAt,
-            input.expectedLifecycleRevision,
-          ],
-        );
-        const updatedRow = updatedResult.rows[0];
-        if (!updatedRow) {
-          throw new TypeError('Discovery Finding lifecycle update was not persisted.');
-        }
-        return { status: 'APPLIED', current: mapLifecycle(updatedRow) };
+    const lifecycleRepository = this.options.lifecycleRepository;
+    if (lifecycleRepository === undefined) {
+      throw new TypeError(
+        'Discovery Finding lifecycle authority is required for Review materialization.',
+      );
+    }
+    const current = await lifecycleRepository.findLifecycle(input);
+    if (current === undefined) throw new TypeError('Discovery Finding lifecycle was not found.');
+    if (current.lifecycleState === 'REVIEW_READY') return { status: 'IDEMPOTENT', current };
+    const transition = await lifecycleRepository.transitionLifecycle({
+      projectId: input.projectId,
+      findingId: input.findingId,
+      findingRevision: input.findingRevision,
+      expectedLifecycleRevision: input.expectedLifecycleRevision,
+      targetState: 'REVIEW_READY',
+      cause: 'GOVERNED_WORKFLOW',
+      reasonCode: 'REVIEW_READY',
+      occurredAt: input.occurredAt,
+      context: {
+        canonicalBase: input.canonicalBase,
+        discoveryBase: input.discoveryBase,
       },
-      { module: 'discovery-reentry-postgres', operation: 'transition-review-ready' },
-    );
+    });
+    if (transition.status === 'APPLIED') {
+      return { status: 'APPLIED', current: transition.lifecycle };
+    }
+    if (transition.current.lifecycleState === 'REVIEW_READY') {
+      return { status: 'IDEMPOTENT', current: transition.current };
+    }
+    return { status: 'CONFLICT', current: transition.current };
   }
 
   public async findConsumptionDisposition(
@@ -593,13 +554,18 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
         AND lifecycle.finding_id = candidate.finding_id
         AND lifecycle.finding_revision = candidate.finding_revision
        WHERE manifest.requested_reentry_purpose = 'DERIVED_PROVENANCE_VALIDATION'
-         AND lifecycle.lifecycle_state IN ('VALIDATING', 'REVIEW_READY')
-         AND NOT EXISTS (
-           SELECT 1
-           FROM discovery.reentry_review_resources resource
-           WHERE resource.project_id = candidate.project_id
-             AND resource.candidate_id = candidate.candidate_id
-             AND resource.candidate_revision = candidate.candidate_revision
+         AND (
+           lifecycle.lifecycle_state = 'VALIDATING'
+           OR (
+             lifecycle.lifecycle_state = 'REVIEW_READY'
+             AND NOT EXISTS (
+               SELECT 1
+               FROM discovery.reentry_review_resources resource
+               WHERE resource.project_id = candidate.project_id
+                 AND resource.candidate_id = candidate.candidate_id
+                 AND resource.candidate_revision = candidate.candidate_revision
+             )
+           )
          )
        ORDER BY manifest.created_at, manifest.logical_identity_key
        LIMIT $1`,

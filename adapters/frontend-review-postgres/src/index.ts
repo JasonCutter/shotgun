@@ -1008,6 +1008,7 @@ const readEligibleDiscoveryResources = async (
      FROM (
        SELECT DISTINCT ON (review_resource_id)
               project_id, candidate_id, candidate_revision,
+              finding_id, finding_revision,
               resource, origin, lifecycle_state, review_eligibility
        FROM discovery.reentry_review_resources
        WHERE project_id = $1${identityClause}
@@ -1017,9 +1018,14 @@ const readEligibleDiscoveryResources = async (
        ON candidate.project_id = latest.project_id
       AND candidate.candidate_id = latest.candidate_id
       AND candidate.candidate_revision = latest.candidate_revision
+     JOIN discovery.finding_lifecycle_current finding_lifecycle
+       ON finding_lifecycle.project_id = latest.project_id
+      AND finding_lifecycle.finding_id = latest.finding_id
+      AND finding_lifecycle.finding_revision = latest.finding_revision
      WHERE latest.origin = 'DERIVED_DISCOVERY'
        AND latest.lifecycle_state = 'REVIEW_READY'
-       AND latest.review_eligibility = 'ELIGIBLE_AFTER_VALIDATION'`,
+       AND latest.review_eligibility = 'ELIGIBLE_AFTER_VALIDATION'
+       AND finding_lifecycle.lifecycle_state = 'REVIEW_READY'`,
     params,
   );
   return result.rows.flatMap((row) => {

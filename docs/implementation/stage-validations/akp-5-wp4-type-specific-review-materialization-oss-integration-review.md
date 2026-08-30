@@ -57,27 +57,33 @@ and production PostgreSQL composition.
 - The materializer accepts only a lookup identity, reloads the persisted pair,
   rechecks manifest and candidate bindings, rejects project/access/sensitivity
   widening, and writes through the existing WP3 immutable resource repository.
-- The materializer advances the existing Finding lifecycle from `VALIDATING` to
-  `REVIEW_READY` through the existing lifecycle authority before publishing the
-  Review resource. If the resource write fails, a recovery scan over existing
-  053/054 intake selects the still-unmaterialized candidate on the next worker
-  poll; no second queue or status store is introduced.
+- The materializer persists the immutable Review resource first, then advances
+  the existing Finding lifecycle from `VALIDATING` to `REVIEW_READY` through
+  the existing lifecycle authority. The PostgreSQL Review reader requires both
+  the resource and authoritative Finding to be `REVIEW_READY`, so a crash gap
+  remains invisible and a recovery scan over existing 053/054 intake retries it
+  on the next worker poll; no second queue or status store is introduced.
 - `discovery-review-root-identity:v1` remains based only on project,
   candidate, candidate revision and `DERIVED_DISCOVERY`. Same immutable content
   is idempotent; same identity with changed content conflicts; an intentional
   revision is explicit.
 - The production worker now runs the materializer after a newly created or
-  already persisted WP2 intake. The PostgreSQL reader returns normalized impact
+  already persisted WP2 intake. The PostgreSQL reader requires the exact
+  authoritative Finding lifecycle binding and returns normalized impact
   material to the existing ADR-128 adapter.
 - No fake SourceVersion or direct-evidence behavior is introduced. No new
   Review/Approval/Canonical/Action persistence authority is introduced.
 
 Focused local evidence:
 
-- WP4 integration: 5/5 passed.
-- WP1/WP2 contracts and WP3 integration: 27/27 passed.
-- Existing Review, comparison and AKP-3 regression selection: 1124/1124
-  passed across 67 files.
+- WP4 integration: 6/6 passed.
+- WP1/WP2 contracts and WP3 integration: 28/28 passed.
+- Existing Review, comparison and AKP-3 regression selection: 104/104
+  passed across 7 root test files with preserved `.worktrees` excluded.
+- Conditional PostgreSQL coverage includes normal closure, restart recovery,
+  pre-save failure recovery, crash-gap reader hiding, replay, concurrency and
+  terminal-race fail-closed behavior; all 6 tests skip locally without
+  `TEST_DATABASE_URL`.
 - Typecheck, targeted ESLint, architecture boundaries and `git diff --check`:
   passed.
 - Real PostgreSQL execution is represented by the existing WP3 database suite;

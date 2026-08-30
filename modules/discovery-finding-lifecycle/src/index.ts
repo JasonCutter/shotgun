@@ -60,6 +60,16 @@ export type DiscoveryLifecycleTransitionInputV1 = DiscoveryFindingIdentityV1 & {
   readonly context?: DiscoveryLifecycleContextV1;
 };
 
+export type DiscoveryFindingLifecycleFenceV1 = {
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly runId: string;
+  readonly attemptId: string;
+  readonly workerId: string;
+  readonly fencingToken: number;
+  readonly now: string;
+};
+
 export type DiscoveryLifecycleTransitionResultV1 =
   | {
       readonly status: 'APPLIED';
@@ -80,6 +90,7 @@ export type DiscoveryFindingLifecycleRepositoryPort = {
   ): Promise<readonly DiscoveryFindingLifecycleHistoryV1[]>;
   transitionLifecycle(
     input: DiscoveryLifecycleTransitionInputV1,
+    fence?: DiscoveryFindingLifecycleFenceV1,
   ): Promise<DiscoveryLifecycleTransitionResultV1>;
 };
 
@@ -466,6 +477,7 @@ export class DiscoveryFindingLifecycleService {
 
   async transition(
     input: DiscoveryLifecycleTransitionInputV1,
+    fence?: DiscoveryFindingLifecycleFenceV1,
   ): Promise<DiscoveryLifecycleTransitionResultV1> {
     if (
       !Number.isSafeInteger(input.expectedLifecycleRevision) ||
@@ -491,10 +503,13 @@ export class DiscoveryFindingLifecycleService {
       input.cause,
       input.reasonCode,
     );
-    return this.repository.transitionLifecycle(input);
+    return this.repository.transitionLifecycle(input, fence);
   }
 
-  async reconcile(input: DiscoveryReconciliationInputV1): Promise<DiscoveryReconciliationResultV1> {
+  async reconcile(
+    input: DiscoveryReconciliationInputV1,
+    fence?: DiscoveryFindingLifecycleFenceV1,
+  ): Promise<DiscoveryReconciliationResultV1> {
     const observation = decodeDiscoveryReconciliationObservationV1(input.observation);
     const identity: DiscoveryFindingIdentityV1 = {
       projectId: input.finding.projectId,
@@ -522,22 +537,25 @@ export class DiscoveryFindingLifecycleService {
         : observation.disposition === 'SOURCE_MATERIALLY_SUPERSEDED'
           ? 'SUPERSEDED'
           : 'STALE';
-    const transition = await this.transition({
-      ...identity,
-      expectedLifecycleRevision: input.expectedLifecycleRevision,
-      targetState,
-      cause: 'SYSTEM_RECONCILIATION',
-      reasonCode: observation.disposition,
-      occurredAt: input.occurredAt,
-      context: {
-        ...(observation.canonicalBase === undefined
-          ? {}
-          : { canonicalBase: observation.canonicalBase }),
-        ...(observation.discoveryBase === undefined
-          ? {}
-          : { discoveryBase: observation.discoveryBase }),
+    const transition = await this.transition(
+      {
+        ...identity,
+        expectedLifecycleRevision: input.expectedLifecycleRevision,
+        targetState,
+        cause: 'SYSTEM_RECONCILIATION',
+        reasonCode: observation.disposition,
+        occurredAt: input.occurredAt,
+        context: {
+          ...(observation.canonicalBase === undefined
+            ? {}
+            : { canonicalBase: observation.canonicalBase }),
+          ...(observation.discoveryBase === undefined
+            ? {}
+            : { discoveryBase: observation.discoveryBase }),
+        },
       },
-    });
+      fence,
+    );
     return transition.status === 'APPLIED'
       ? { status: 'TRANSITIONED', observation, transition }
       : { status: 'CONFLICT', observation, transition };

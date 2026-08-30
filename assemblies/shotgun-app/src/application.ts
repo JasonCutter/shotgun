@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 import 'dotenv/config';
@@ -89,8 +90,17 @@ import {
 } from '../../../adapters/semantic-index-postgres/src/index.js';
 import { PostgresSemanticEmbeddingProfileRepository } from '../../../adapters/semantic-embedding-postgres/src/index.js';
 import { PostgresDiscoveryRuntimeRepository } from '../../../adapters/discovery-runtime-postgres/src/index.js';
+import { PostgresDiscoveryFindingRepository } from '../../../adapters/discovery-finding-postgres/src/index.js';
+import { PostgresDiscoveryModelProfileRepository } from '../../../adapters/discovery-model-profile-postgres/src/index.js';
 import { PostgresDiscoveryScheduleRepository } from '../../../adapters/discovery-trigger-coordinator/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
+import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
+import {
+  DiscoveryModelProfileService,
+  createDiscoveryAIGenerationService,
+} from '../../../modules/discovery-ai-generation/src/index.js';
+import { DiscoveryBudgetControllerV1 } from '../../../modules/discovery-quality-gate/src/index.js';
+import { createProductDiscoveryExecution } from '../../../adapters/discovery-runtime-product/src/index.js';
 import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import {
@@ -115,6 +125,7 @@ import {
   initialProviderRegistry,
 } from '../../../modules/ai-configuration/src/index.js';
 import {
+  DiscoveryAIExecutionResolver,
   EffectiveAIConfigurationResolver,
   UnavailableAIProviderAdapter,
 } from '../../../adapters/ai-runtime-resolution/src/index.js';
@@ -229,6 +240,7 @@ export const startShotgunApplication = async (
   // Declared outside the try so the construction-failure catch can release
   // resources that were already created before an error (R3-4 invariant).
   let stopAskAnswerWorker = async (): Promise<void> => {};
+  let stopDiscoveryExecutionWorker = async (): Promise<void> => {};
   let removeSourcesWriteRuntime = (): void => {};
   try {
     const port = options.port ?? Number.parseInt(process.env.PORT ?? '3000', 10);
@@ -482,8 +494,167 @@ export const startShotgunApplication = async (
     );
     const disableAskWorker = options.disableAskWorker ?? recoveryHarness;
 
+    const compiledTruthRepository = new PostgresCompiledTruthRepository(pool);
+    const discoveryRuntimeRepository = new PostgresDiscoveryRuntimeRepository(pool);
+    const discoveryFindingRepository = new PostgresDiscoveryFindingRepository(pool);
+    const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
+    const authRepository = new PostgresAuthRepository(pool);
+    const discoveryModelProfileService = new DiscoveryModelProfileService(
+      aiProviderRegistry,
+      projectAIConfiguration,
+      credentialVault,
+      new PostgresDiscoveryModelProfileRepository(pool),
+    );
+    const discoveryExecutionWorker = recoveryHarness
+      ? undefined
+      : new PersistentDiscoveryWorker(
+          discoveryRuntimeRepository,
+          createProductDiscoveryExecution({
+            compiledTruthRepository,
+            findingRepository: discoveryFindingRepository,
+            runtimeRepository: discoveryRuntimeRepository,
+            evidenceRepository,
+            semanticRetriever,
+            createGenerationService: (budget, executionContext) =>
+              createDiscoveryAIGenerationService({
+                profiles: discoveryModelProfileService,
+                executionResolver: new DiscoveryAIExecutionResolver(executionIdentityResolver),
+                providerRouter: {
+                  resolve: async (route) => providerRouter.resolveDiscovery(route),
+                },
+                budgetController: new DiscoveryBudgetControllerV1(
+                  budget,
+                  {
+                    revision: 'discovery-token-estimator:v1',
+                    estimateUpperBound: ({ request }) =>
+                      Math.max(
+                        1,
+                        Math.ceil((request.systemInstruction.length + request.prompt.length) / 4),
+                      ),
+                  },
+                  {
+                    revision: 'discovery-cost-estimator:v1',
+                    estimate: ({ inputTokenUpperBound, maxOutputTokens }) =>
+                      inputTokenUpperBound + maxOutputTokens,
+                  },
+                  {
+                    reserve: async (reservation) => {
+                      if (!discoveryRuntimeRepository.reserveProviderCall) return 'NOT_FOUND';
+                      return discoveryRuntimeRepository.reserveProviderCall({
+                        ...executionContext.claim,
+                        reservation: {
+                          schemaVersion: '1.0.0',
+                          projectId: executionContext.claim.projectId,
+                          jobId: executionContext.claim.jobId,
+                          runId: executionContext.claim.runId,
+                          attemptId: executionContext.claim.attemptId,
+                          reservationId: reservation.reservationId,
+                          providerId: reservation.providerId,
+                          modelId: reservation.modelId,
+                          inputTokenUpperBound: reservation.inputTokenUpperBound,
+                          maxOutputTokens: reservation.maxOutputTokens,
+                          estimatedCostMicros: reservation.estimatedCostMicros,
+                          state: 'RESERVED',
+                          updatedAt: new Date().toISOString(),
+                        },
+                      });
+                    },
+                    finalize: async (reservation) => {
+                      if (!discoveryRuntimeRepository.finalizeProviderCall) return 'NOT_FOUND';
+                      return discoveryRuntimeRepository.finalizeProviderCall({
+                        ...executionContext.claim,
+                        reservationId: reservation.reservationId,
+                        state: reservation.state,
+                        actualInputTokens: reservation.actualInputTokens,
+                        actualOutputTokens: reservation.actualOutputTokens,
+                        actualCostMicros: reservation.actualCostMicros,
+                        updatedAt: new Date().toISOString(),
+                      });
+                    },
+                  },
+                ),
+              }),
+            resolveSecurity: async ({ projectId }) => {
+              const project = await projectAdminRepository.getProjectDetails(projectId);
+              const accountId = process.env.SHOTGUN_BOOTSTRAP_ACCOUNT_ID?.trim();
+              if (!project || project.status !== 'ACTIVE' || !accountId) return undefined;
+              const membership = await authRepository.findOwnerMembership(accountId, projectId);
+              return membership
+                ? {
+                    projectId,
+                    accessScope: membership.scopes,
+                    sensitivity: membership.sensitivityClearance,
+                  }
+                : undefined;
+            },
+            findAuthoritativeEquivalent: async ({ projectId, candidate }) => {
+              const projection = await compiledTruthRepository.findProjection(projectId);
+              if (!projection) return false;
+              const related = candidate.relatedResourceRefs.filter(
+                (resource) => resource.projectId === projectId,
+              );
+              if (
+                candidate.findingType === 'KNOWLEDGE_GAP' &&
+                related.length > 0 &&
+                related.every((resource) => {
+                  const item = projection.items.find((entry) => entry.id === resource.resourceId);
+                  return item?.source === 'APPROVED_KNOWLEDGE' && item.state !== 'CONFLICT';
+                })
+              ) {
+                return true;
+              }
+              if (candidate.findingType !== 'RELATION_HYPOTHESIS') return false;
+              const payload = candidate.payload;
+              return projection.graph.edges.some((edge) => {
+                const forward =
+                  edge.from === payload.sourceEndpoint.resourceId &&
+                  edge.to === payload.targetEndpoint.resourceId;
+                const reverse =
+                  edge.from === payload.targetEndpoint.resourceId &&
+                  edge.to === payload.sourceEndpoint.resourceId;
+                return (
+                  edge.source === 'APPROVED_TYPED_EDGE' &&
+                  edge.relationType === payload.proposedRelationType &&
+                  ((payload.direction === 'UNDIRECTED' &&
+                    edge.direction === 'UNDIRECTED' &&
+                    (forward || reverse)) ||
+                    (payload.direction === 'DIRECTED' && edge.direction === 'DIRECTED' && forward))
+                );
+              });
+            },
+            observeReconciliation: async ({ finding, projection }) => {
+              const related = finding.relatedResourceRefs.map((resource) =>
+                projection.items.find((item) => item.id === resource.resourceId),
+              );
+              if (
+                ['KNOWLEDGE_GAP', 'EVIDENCE_GAP'].includes(finding.findingType) &&
+                related.length > 0 &&
+                finding.findingType === 'KNOWLEDGE_GAP' &&
+                related.every((item) => item?.source === 'APPROVED_KNOWLEDGE')
+              ) {
+                return 'CANONICAL_EQUIVALENT_ACCEPTED';
+              }
+              if (related.some((item) => item !== undefined && item.state === 'CONFLICT')) {
+                return 'RELEVANT_INPUT_CHANGED';
+              }
+              // A missing projection item is not proof of source supersession;
+              // Source/SourceVersion authority must make that observation.
+              return 'UNCHANGED';
+            },
+          }),
+          {
+            workerId: `shotgun-discovery-${process.pid}-${randomUUID()}`,
+            pollIntervalMs: Number.parseInt(process.env.DISCOVERY_WORKER_INTERVAL_MS ?? '1000', 10),
+            leaseDurationMs: Number.parseInt(process.env.DISCOVERY_WORKER_LEASE_MS ?? '30000', 10),
+            maxAttempts: Number.parseInt(process.env.DISCOVERY_WORKER_MAX_ATTEMPTS ?? '3', 10),
+          },
+        );
+    if (discoveryExecutionWorker !== undefined) {
+      stopDiscoveryExecutionWorker = () => discoveryExecutionWorker.stop();
+    }
+
     const application = await createApplication({
-      projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
+      projectAdminRepository,
       projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
       projectTombstoneStore: new PostgresProjectTombstoneStore(pool),
       settingsRepository,
@@ -528,18 +699,19 @@ export const startShotgunApplication = async (
       canonicalKnowledgeRepository,
       searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
       knowledgeModelRepository: new PostgresKnowledgeModelRepository(pool),
-      compiledTruthRepository: new PostgresCompiledTruthRepository(pool),
+      compiledTruthRepository,
       semanticCorpusSourceSnapshotReader,
-      discoveryRuntimeRepository: new PostgresDiscoveryRuntimeRepository(pool),
+      discoveryRuntimeRepository,
       discoveryScheduleRepository: new PostgresDiscoveryScheduleRepository(pool),
       discoverySchedulerIntervalMs: recoveryHarness ? false : 30_000,
+      ...(discoveryExecutionWorker === undefined ? {} : { discoveryExecutionWorker }),
       discoverySemanticIndexRepository: semanticIndexRepository,
       semanticRetriever,
       semanticActiveGenerationReader,
       semanticProjectionRefresh,
       actionCandidateRepository: new PostgresActionCandidateRepository(pool),
       actionExecutionRepository: new PostgresActionExecutionRepository(pool),
-      authRepository: new PostgresAuthRepository(pool),
+      authRepository,
       production,
       frontendReviewStore: new PostgresFrontendReviewRepository(pool),
       activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
@@ -635,6 +807,11 @@ export const startShotgunApplication = async (
     // registration survives.
     try {
       removeSourcesWriteRuntime();
+    } catch {
+      // ignore cleanup failure — the original error is preserved below.
+    }
+    try {
+      await stopDiscoveryExecutionWorker();
     } catch {
       // ignore cleanup failure — the original error is preserved below.
     }

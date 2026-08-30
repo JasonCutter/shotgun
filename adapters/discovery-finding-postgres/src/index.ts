@@ -1,4 +1,4 @@
-import type { Pool, QueryResultRow } from 'pg';
+import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import {
   decodeDiscoveryFindingEnvelopeV1,
@@ -10,6 +10,8 @@ import type {
   DiscoveryFindingLatestLookupV1,
   DiscoveryFindingLookupV1,
   DiscoveryFindingRepositoryPort,
+  DiscoveryFindingPersistenceFenceV1,
+  DiscoveryFindingPageCursorV1,
 } from '../../../modules/discovery-finding-persistence/src/index.js';
 import {
   assertDiscoveryLifecycleTransitionV1,
@@ -22,6 +24,7 @@ import type {
   DiscoveryFindingLifecycleCurrentV1,
   DiscoveryFindingLifecycleHistoryV1,
   DiscoveryFindingLifecycleRepositoryPort,
+  DiscoveryFindingLifecycleFenceV1,
   DiscoveryLifecycleTransitionInputV1,
   DiscoveryLifecycleTransitionResultV1,
 } from '../../../modules/discovery-finding-lifecycle/src/index.js';
@@ -238,6 +241,92 @@ const lifecycleContextValues = (input: {
   input.context?.discoveryBase?.projectionDigest ?? null,
 ];
 
+const insertDecodedFinding = async (
+  client: PoolClient,
+  decoded: DiscoveryFindingEnvelopeV1,
+): Promise<void> => {
+  await client.query(
+    `INSERT INTO discovery.findings (
+      schema_version, finding_id, finding_revision, project_id,
+      finding_type, status, generation_method, lifecycle_state,
+      payload, related_resource_refs, evidence_ids,
+      source_projection_digest, canonical_base_version,
+      canonical_snapshot_digest, discovery_projection_revision,
+      discovery_projection_digest, run_id, signal_summary, rationale,
+      derivation_summary, provenance, access_scope, sensitivity,
+      fingerprint, fingerprint_version, retention_class, created_at,
+      supersedes_finding_id
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb,
+      $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20,
+      $21::jsonb, $22, $23, $24, $25, $26, $27, $28
+    )`,
+    [
+      decoded.schemaVersion,
+      decoded.findingId,
+      decoded.findingRevision,
+      decoded.projectId,
+      decoded.findingType,
+      decoded.status,
+      decoded.generationMethod,
+      decoded.lifecycleState,
+      JSON.stringify(decoded.payload),
+      JSON.stringify(decoded.relatedResourceRefs),
+      [...decoded.evidenceIds],
+      decoded.sourceProjectionDigest,
+      decoded.canonicalBase.canonicalVersion,
+      decoded.canonicalBase.snapshotDigest,
+      decoded.discoveryBase.projectionRevision,
+      decoded.discoveryBase.projectionDigest,
+      decoded.runId,
+      JSON.stringify(decoded.signalSummary),
+      decoded.rationale,
+      decoded.derivationSummary,
+      JSON.stringify(decoded.provenance),
+      [...decoded.accessScope],
+      decoded.sensitivity,
+      decoded.fingerprint,
+      decoded.fingerprintVersion,
+      decoded.retentionClass,
+      decoded.createdAt,
+      decoded.supersedesFindingId ?? null,
+    ],
+  );
+  await client.query(
+    `INSERT INTO discovery.finding_lifecycle_current (
+      project_id, finding_id, finding_revision, lifecycle_state,
+      lifecycle_revision, updated_at
+    ) VALUES ($1, $2, $3, $4, 1, $5)`,
+    [
+      decoded.projectId,
+      decoded.findingId,
+      decoded.findingRevision,
+      decoded.lifecycleState,
+      decoded.createdAt,
+    ],
+  );
+  await client.query(
+    `INSERT INTO discovery.finding_lifecycle_history (
+      project_id, finding_id, finding_revision, lifecycle_revision,
+      from_state, to_state, cause, reason_code,
+      canonical_base_version, canonical_snapshot_digest,
+      discovery_projection_revision, discovery_projection_digest, occurred_at
+    ) VALUES ($1, $2, $3, 1, NULL, $4, 'MATERIALIZATION',
+      'FINDING_MATERIALIZED', $5, $6, $7, $8, $9)`,
+    [
+      decoded.projectId,
+      decoded.findingId,
+      decoded.findingRevision,
+      decoded.lifecycleState,
+      decoded.canonicalBase.canonicalVersion,
+      decoded.canonicalBase.snapshotDigest,
+      decoded.discoveryBase.projectionRevision,
+      decoded.discoveryBase.projectionDigest,
+      decoded.createdAt,
+    ],
+  );
+};
+
 export class PostgresDiscoveryFindingRepository
   implements
     DiscoveryFindingRepositoryPort,
@@ -252,86 +341,7 @@ export class PostgresDiscoveryFindingRepository
       await withSafePostgresTransaction(
         this.pool,
         async (client) => {
-          await client.query(
-            `INSERT INTO discovery.findings (
-              schema_version, finding_id, finding_revision, project_id,
-              finding_type, status, generation_method, lifecycle_state,
-              payload, related_resource_refs, evidence_ids,
-              source_projection_digest, canonical_base_version,
-              canonical_snapshot_digest, discovery_projection_revision,
-              discovery_projection_digest, run_id, signal_summary, rationale,
-              derivation_summary, provenance, access_scope, sensitivity,
-              fingerprint, fingerprint_version, retention_class, created_at,
-              supersedes_finding_id
-            ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb,
-              $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20,
-              $21::jsonb, $22, $23, $24, $25, $26, $27, $28
-            )`,
-            [
-              decoded.schemaVersion,
-              decoded.findingId,
-              decoded.findingRevision,
-              decoded.projectId,
-              decoded.findingType,
-              decoded.status,
-              decoded.generationMethod,
-              decoded.lifecycleState,
-              JSON.stringify(decoded.payload),
-              JSON.stringify(decoded.relatedResourceRefs),
-              [...decoded.evidenceIds],
-              decoded.sourceProjectionDigest,
-              decoded.canonicalBase.canonicalVersion,
-              decoded.canonicalBase.snapshotDigest,
-              decoded.discoveryBase.projectionRevision,
-              decoded.discoveryBase.projectionDigest,
-              decoded.runId,
-              JSON.stringify(decoded.signalSummary),
-              decoded.rationale,
-              decoded.derivationSummary,
-              JSON.stringify(decoded.provenance),
-              [...decoded.accessScope],
-              decoded.sensitivity,
-              decoded.fingerprint,
-              decoded.fingerprintVersion,
-              decoded.retentionClass,
-              decoded.createdAt,
-              decoded.supersedesFindingId ?? null,
-            ],
-          );
-          await client.query(
-            `INSERT INTO discovery.finding_lifecycle_current (
-              project_id, finding_id, finding_revision, lifecycle_state,
-              lifecycle_revision, updated_at
-            ) VALUES ($1, $2, $3, $4, 1, $5)`,
-            [
-              decoded.projectId,
-              decoded.findingId,
-              decoded.findingRevision,
-              decoded.lifecycleState,
-              decoded.createdAt,
-            ],
-          );
-          await client.query(
-            `INSERT INTO discovery.finding_lifecycle_history (
-              project_id, finding_id, finding_revision, lifecycle_revision,
-              from_state, to_state, cause, reason_code,
-              canonical_base_version, canonical_snapshot_digest,
-              discovery_projection_revision, discovery_projection_digest, occurred_at
-            ) VALUES ($1, $2, $3, 1, NULL, $4, 'MATERIALIZATION',
-              'FINDING_MATERIALIZED', $5, $6, $7, $8, $9)`,
-            [
-              decoded.projectId,
-              decoded.findingId,
-              decoded.findingRevision,
-              decoded.lifecycleState,
-              decoded.canonicalBase.canonicalVersion,
-              decoded.canonicalBase.snapshotDigest,
-              decoded.discoveryBase.projectionRevision,
-              decoded.discoveryBase.projectionDigest,
-              decoded.createdAt,
-            ],
-          );
+          await insertDecodedFinding(client, decoded);
         },
         { module: 'discovery-finding-persistence', operation: 'save' },
       );
@@ -340,6 +350,52 @@ export class PostgresDiscoveryFindingRepository
       if ((error as { code?: string }).code === '23505') {
         return 'CONFLICT';
       }
+      throw error;
+    }
+  }
+
+  async saveFenced(
+    finding: DiscoveryFindingEnvelopeV1,
+    fence: DiscoveryFindingPersistenceFenceV1,
+  ): Promise<'CREATED' | 'CONFLICT' | 'STALE' | 'NOT_FOUND'> {
+    const decoded = decodeDiscoveryFindingEnvelopeV1(finding);
+    if (decoded.projectId !== fence.projectId || decoded.runId !== fence.runId) {
+      throw new TypeError('Discovery finding identity must match its leased run');
+    }
+    try {
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const active = await client.query(
+            `SELECT 1 FROM discovery.attempts
+             WHERE project_id = $1 AND job_id = $2 AND run_id = $3 AND attempt_id = $4
+               AND lease_owner = $5 AND fencing_token = $6 AND lease_expires_at > $7
+             FOR UPDATE`,
+            [
+              fence.projectId,
+              fence.jobId,
+              fence.runId,
+              fence.attemptId,
+              fence.workerId,
+              fence.fencingToken,
+              fence.now,
+            ],
+          );
+          if (active.rowCount !== 1) {
+            const exists = await client.query(
+              `SELECT 1 FROM discovery.attempts
+               WHERE project_id = $1 AND job_id = $2 AND run_id = $3 AND attempt_id = $4`,
+              [fence.projectId, fence.jobId, fence.runId, fence.attemptId],
+            );
+            return exists.rowCount === 1 ? 'STALE' : 'NOT_FOUND';
+          }
+          await insertDecodedFinding(client, decoded);
+          return 'CREATED';
+        },
+        { module: 'discovery-finding-persistence', operation: 'save-fenced' },
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') return 'CONFLICT';
       throw error;
     }
   }
@@ -389,6 +445,30 @@ export class PostgresDiscoveryFindingRepository
           utf16OrdinalCompare(left.findingId, right.findingId) ||
           left.findingRevision - right.findingRevision,
       );
+  }
+
+  async listByProjectPage(
+    projectIdInput: string,
+    after?: DiscoveryFindingPageCursorV1,
+    limit = 50,
+  ): Promise<readonly DiscoveryFindingEnvelopeV1[]> {
+    const projectId = requiredIdentifier(projectIdInput, 'projectId');
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
+      throw new TypeError('reconciliation page limit must be an integer between 1 and 1000');
+    }
+    const result = await this.pool.query<DiscoveryFindingRow>(
+      `SELECT ${selectColumns}
+       FROM discovery.findings
+       WHERE project_id = $1
+         AND (
+           $2::text IS NULL OR finding_id > $2
+           OR (finding_id = $2 AND finding_revision > $3)
+         )
+       ORDER BY finding_id ASC, finding_revision ASC
+       LIMIT $4`,
+      [projectId, after?.findingId ?? null, after?.findingRevision ?? 0, limit],
+    );
+    return result.rows.map(mapRow);
   }
 
   async findByFingerprint(
@@ -472,10 +552,41 @@ export class PostgresDiscoveryFindingRepository
 
   async transitionLifecycle(
     input: DiscoveryLifecycleTransitionInputV1,
+    fence?: DiscoveryFindingLifecycleFenceV1,
   ): Promise<DiscoveryLifecycleTransitionResultV1> {
     return withSafePostgresTransaction(
       this.pool,
       async (client) => {
+        if (fence) {
+          const lease = await client.query(
+            `SELECT 1 FROM discovery.attempts
+             WHERE project_id = $1 AND job_id = $2 AND run_id = $3 AND attempt_id = $4
+               AND lease_owner = $5 AND fencing_token = $6 AND lease_expires_at > $7
+             FOR UPDATE`,
+            [
+              fence.projectId,
+              fence.jobId,
+              fence.runId,
+              fence.attemptId,
+              fence.workerId,
+              fence.fencingToken,
+              fence.now,
+            ],
+          );
+          if (lease.rowCount !== 1) {
+            const fencedCurrent = await client.query<DiscoveryFindingLifecycleCurrentRow>(
+              `SELECT ${lifecycleCurrentColumns}
+               FROM discovery.finding_lifecycle_current
+               WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
+               FOR SHARE`,
+              identityParams(input),
+            );
+            const fencedRow = fencedCurrent.rows[0];
+            if (fencedRow) {
+              return { status: 'CONFLICT', current: mapLifecycleCurrent(fencedRow) };
+            }
+          }
+        }
         const currentResult = await client.query<DiscoveryFindingLifecycleCurrentRow>(
           `SELECT ${lifecycleCurrentColumns}
            FROM discovery.finding_lifecycle_current

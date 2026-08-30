@@ -17,6 +17,7 @@ import {
   createPostgresPool,
   PostgresOriginalAssetRepository,
   PostgresProjectAdministrationRepository,
+  PostgresProjectBootstrapUnitOfWork,
 } from '../../adapters/postgres/src/index.js';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
 import {
@@ -49,8 +50,8 @@ const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
   ? await requireTestDatabaseTarget()
   : undefined;
 const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
-const projectId = `akp-5-wp5-db-${randomUUID()}`;
-const securityPrincipalId = randomUUID();
+let projectId = `akp-5-wp5-db-${randomUUID()}`;
+let securityPrincipalId: string = randomUUID();
 const securityAccountId = `akp-5-wp5-account-${randomUUID()}`;
 const productionClaimId = `claim-wp5-production-${randomUUID()}`;
 const unrelatedClaimId = `claim-wp5-unrelated-${randomUUID()}`;
@@ -104,7 +105,7 @@ const seedRealEvidence = async (): Promise<{
     contentHash: sha256Text(evidenceSourceText),
     sizeBytes: Buffer.byteLength(evidenceSourceText, 'utf8'),
     storageKey: `akp-5-wp5/${projectId}/${randomUUID()}`,
-    accessScope: ['review'],
+    accessScope: ['owner'],
     sensitivity: 'internal',
     createdAt: now,
   });
@@ -115,7 +116,7 @@ const seedRealEvidence = async (): Promise<{
     sourceVersionId: originalAsset.sourceVersionId,
     sourceText: evidenceSourceText,
     evidenceExactText,
-    accessScope: ['review'],
+    accessScope: ['owner'],
     sensitivity: 'internal',
     createdAt: now,
   });
@@ -161,6 +162,8 @@ const findingFor = (
       readonly resourceState: 'CURRENT';
     }[];
     readonly evidenceIds?: readonly string[];
+    readonly sensitivity?: 'public' | 'internal' | 'private' | 'restricted';
+    readonly accessScope?: readonly string[];
   } = {},
 ): DiscoveryFindingEnvelopeV1 =>
   createDiscoveryFindingEnvelopeV1({
@@ -203,8 +206,8 @@ const findingFor = (
       ruleVersion: '1',
       inputDigest: 'sha256:wp5-db-input',
     },
-    accessScope: ['review'],
-    sensitivity: 'internal',
+    accessScope: options.accessScope ?? ['owner'],
+    sensitivity: options.sensitivity ?? 'internal',
     fingerprint: `sha256:${findingId}-fingerprint`,
     fingerprintVersion: 'discovery-fingerprint:v1',
     retentionClass: 'DURABLE_DERIVED_RECORD',
@@ -236,7 +239,7 @@ const seedCanonicalClaimHistory = async (
   } = {},
 ): Promise<void> => {
   const client = await pool!.connect();
-  const accessScope = options.accessScope ?? ['review'];
+  const accessScope = options.accessScope ?? ['owner'];
   const sensitivity = options.sensitivity ?? 'internal';
   try {
     const baseCommitId = randomUUID();
@@ -369,7 +372,7 @@ const seedCanonicalClaimHistory = async (
             createdFromManifestId: laterManifestId,
             authorityId: null,
             authorityDigest: null,
-            accessScope: ['review'],
+            accessScope: ['owner'],
             sensitivity: 'internal',
             createdAt: now,
           }),
@@ -410,6 +413,23 @@ const cleanup = async (): Promise<void> => {
   const client = await pool.connect();
   try {
     await client.query('SET session_replication_role = replica');
+    await client.query('DELETE FROM auth.audit_events WHERE project_id = $1', [projectId]);
+    await client.query('DELETE FROM settings.settings_audit_events WHERE project_id = $1', [
+      projectId,
+    ]);
+    await client.query(
+      `DELETE FROM project_admin.project_command_results
+       WHERE command_id IN (
+         SELECT command_id FROM project_admin.project_commands WHERE project_id = $1
+       )`,
+      [projectId],
+    );
+    await client.query('DELETE FROM project_admin.project_commands WHERE project_id = $1', [
+      projectId,
+    ]);
+    await client.query('DELETE FROM project_admin.project_revisions WHERE project_id = $1', [
+      projectId,
+    ]);
     await client.query('DELETE FROM evidence.spans WHERE project_id = $1', [projectId]);
     await client.query('DELETE FROM transformation.attempts WHERE project_id = $1', [projectId]);
     await client.query('DELETE FROM transformation.revisions WHERE project_id = $1', [projectId]);
@@ -455,7 +475,14 @@ const cleanup = async (): Promise<void> => {
     await client.query('DELETE FROM asset.original_assets WHERE storage_key LIKE $1', [
       `akp-5-wp5/${projectId}/%`,
     ]);
+    await client.query('DELETE FROM auth.sessions WHERE principal_id = $1', [securityPrincipalId]);
+    await client.query('DELETE FROM auth.api_tokens WHERE principal_id = $1', [
+      securityPrincipalId,
+    ]);
     await client.query('DELETE FROM auth.project_memberships WHERE project_id = $1', [projectId]);
+    await client.query('DELETE FROM auth.credentials WHERE principal_id = $1', [
+      securityPrincipalId,
+    ]);
     await client.query('DELETE FROM auth.principals WHERE principal_id = $1', [
       securityPrincipalId,
     ]);
@@ -493,28 +520,24 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
 
   beforeEach(async () => {
     await cleanup();
-    await pool!.query(
-      `INSERT INTO project_admin.projects (id, name, status, active)
-       VALUES ($1, 'AKP-5 WP5 database project', 'ACTIVE', true)`,
-      [projectId],
+    const auth = new PostgresAuthRepository(pool!);
+    const principal = await auth.bootstrapLocalOwnerPrincipal({ accountId: securityAccountId });
+    securityPrincipalId = principal.principalId;
+    const session = await auth.createSession(
+      principal.principalId,
+      null,
+      new Date(Date.now() + 60_000).toISOString(),
     );
-    await pool!.query(
-      `INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at)
-       VALUES ($1, 'user', 'active', $2, $3)`,
-      [securityPrincipalId, securityAccountId, now],
-    );
-    await pool!.query(
-      `INSERT INTO auth.project_memberships
-         (principal_id, project_id, scopes, sensitivity_clearance, is_owner)
-       VALUES ($1, $2, $3, $4, true)`,
-      [securityPrincipalId, projectId, ['review'], 'internal'],
-    );
-    await pool!.query(
-      `INSERT INTO settings.policy_context_revisions
-         (project_id, revision, policy_binding, created_at)
-       VALUES ($1, 1, '{}'::jsonb, $2)`,
-      [projectId, now],
-    );
+    const bootstrapped = await new PostgresProjectBootstrapUnitOfWork(pool!).bootstrap({
+      commandId: randomUUID(),
+      clientRequestId: `akp-5-wp5-db-request-${randomUUID()}`,
+      idempotencyKey: `akp-5-wp5-db-idempotency-${randomUUID()}`,
+      principalId: principal.principalId,
+      sessionId: session.sessionId,
+      observedProjectAccessRevision: '0',
+      payload: { name: 'AKP-5 WP5 database project' },
+    });
+    projectId = bootstrapped.project.id;
   });
 
   afterAll(async () => {
@@ -525,6 +548,23 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
   it('A/B: reads server-owned lifecycle and keeps a fresh Finding eligible', async () => {
     const finding = findingFor('finding-a');
     await setupFinding(finding);
+    await expect(
+      new PostgresAuthRepository(pool!).findOwnerMembership(securityAccountId, projectId),
+    ).resolves.toMatchObject({
+      projectId,
+      principalId: securityPrincipalId,
+      isOwner: true,
+      scopes: ['owner'],
+      sensitivityClearance: 'private',
+    });
+    await expect(
+      pool!.query<{ policy_binding: unknown }>(
+        `SELECT policy_binding
+         FROM settings.policy_context_revisions
+         WHERE project_id = $1 AND revision = 1`,
+        [projectId],
+      ),
+    ).resolves.toMatchObject({ rows: [{ policy_binding: {} }] });
     const currentAuthority = authority();
     const state = await currentAuthority.read({
       binding: discoveryReentryFreshnessBindingFromFindingV1(finding),
@@ -532,6 +572,7 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
     });
     expect(state.lifecycleState).toBe('NEW');
     expect(state.authorization).toBe('AUTHORIZED');
+    expect(state.currentSensitivity).toBeUndefined();
     const repository = new PostgresDiscoveryReentryRepository(pool!, {
       lifecycleRepository: new PostgresDiscoveryFindingRepository(pool!),
     });
@@ -694,6 +735,34 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
     ).resolves.toMatchObject({ lifecycleState: 'NEW' });
   });
 
+  it('security: denies an expired owner membership without transitioning a valid Finding', async () => {
+    await pool!.query(
+      `UPDATE auth.project_memberships
+       SET expires_at = now() - interval '1 second'
+       WHERE principal_id = $1 AND project_id = $2`,
+      [securityPrincipalId, projectId],
+    );
+    const finding = findingFor('finding-security-expired-membership');
+    const findingRepository = await setupFinding(finding);
+    const result = await new DiscoveryReentryConsumer(
+      new PostgresDiscoveryReentryRepository(pool!, {
+        lifecycleRepository: findingRepository,
+      }),
+      new PostgresDiscoveryApprovedResourceRevisionResolver(pool!),
+      () => new Date(now),
+      { freshnessEvaluator: evaluator() },
+    ).consume(publicationFor(finding));
+
+    expect(result).toMatchObject({
+      status: 'INELIGIBLE',
+      lifecycleState: 'NEW',
+      freshnessAssessment: {
+        state: 'AUTHORIZATION_DENIED',
+        reasonCodes: ['ACCESS_NO_LONGER_AUTHORIZED'],
+      },
+    });
+  });
+
   it('security: denies a Finding when the authoritative principal is inactive', async () => {
     await pool!.query('UPDATE auth.principals SET status = $2 WHERE principal_id = $1', [
       securityPrincipalId,
@@ -750,6 +819,34 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
         findingRevision: finding.findingRevision,
       }),
     ).resolves.toMatchObject({ lifecycleState: 'NEW' });
+  });
+
+  it('security: denies a Finding when the project is archived', async () => {
+    await pool!.query(
+      `UPDATE project_admin.projects
+       SET status = 'ARCHIVED', active = false
+       WHERE id = $1`,
+      [projectId],
+    );
+    const finding = findingFor('finding-security-archived-project');
+    const findingRepository = await setupFinding(finding);
+    const result = await new DiscoveryReentryConsumer(
+      new PostgresDiscoveryReentryRepository(pool!, {
+        lifecycleRepository: findingRepository,
+      }),
+      new PostgresDiscoveryApprovedResourceRevisionResolver(pool!),
+      () => new Date(now),
+      { freshnessEvaluator: evaluator() },
+    ).consume(publicationFor(finding));
+
+    expect(result).toMatchObject({
+      status: 'INELIGIBLE',
+      lifecycleState: 'NEW',
+      freshnessAssessment: {
+        state: 'AUTHORIZATION_DENIED',
+        reasonCodes: ['ACCESS_NO_LONGER_AUTHORIZED'],
+      },
+    });
   });
 
   it('security: blocks a sensitivity-strengthened relied-on claim without creating intake', async () => {
@@ -838,6 +935,48 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
         reasonCodes: ['SENSITIVITY_POLICY_CHANGED'],
       },
     });
+  });
+
+  it('security: enforces the clearance ceiling against actual Finding sensitivity', async () => {
+    const cases = [
+      { clearance: 'public', findingSensitivity: 'internal', expected: 'INELIGIBLE' },
+      { clearance: 'internal', findingSensitivity: 'internal', expected: 'CREATED' },
+      { clearance: 'private', findingSensitivity: 'internal', expected: 'CREATED' },
+      { clearance: 'restricted', findingSensitivity: 'internal', expected: 'CREATED' },
+      { clearance: 'private', findingSensitivity: 'restricted', expected: 'INELIGIBLE' },
+      { clearance: 'restricted', findingSensitivity: 'restricted', expected: 'CREATED' },
+    ] as const;
+    for (const testCase of cases) {
+      await pool!.query(
+        `UPDATE auth.project_memberships
+         SET sensitivity_clearance = $3
+         WHERE principal_id = $1 AND project_id = $2`,
+        [securityPrincipalId, projectId, testCase.clearance],
+      );
+      const finding = findingFor(
+        `finding-security-clearance-${testCase.clearance}-${testCase.findingSensitivity}`,
+        { sensitivity: testCase.findingSensitivity },
+      );
+      const findingRepository = await setupFinding(finding);
+      const result = await new DiscoveryReentryConsumer(
+        new PostgresDiscoveryReentryRepository(pool!, {
+          lifecycleRepository: findingRepository,
+        }),
+        new PostgresDiscoveryApprovedResourceRevisionResolver(pool!),
+        () => new Date(now),
+        { freshnessEvaluator: evaluator() },
+      ).consume(publicationFor(finding));
+      expect(result.status).toBe(testCase.expected);
+      if (testCase.expected === 'INELIGIBLE') {
+        expect(result).toMatchObject({
+          lifecycleState: 'NEW',
+          freshnessAssessment: {
+            state: 'AUTHORIZATION_DENIED',
+            reasonCodes: ['SENSITIVITY_POLICY_CHANGED'],
+          },
+        });
+      }
+    }
   });
 
   it('C: blocks intake when an approved related resource is unavailable', async () => {

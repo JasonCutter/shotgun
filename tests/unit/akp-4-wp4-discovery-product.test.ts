@@ -10,6 +10,7 @@ import type { DiscoveryWorkBudgetLedgerV1 } from '../../modules/discovery-qualit
 import {
   DISCOVERY_PRODUCT_STRATEGY_REVISION_V1,
   createProductDiscoveryExecution,
+  observeDiscoveryReconciliation,
 } from '../../adapters/discovery-runtime-product/src/index.js';
 import type { DiscoveryProductExecutionDependenciesV1 } from '../../adapters/discovery-runtime-product/src/index.js';
 import type {
@@ -586,18 +587,7 @@ describe('AKP-4 WP4 Product durable candidate path', () => {
           readonly stageRevision: number;
         }
       | undefined;
-    const observeReconciliation = vi.fn(
-      async ({ finding: observedFinding }: { readonly finding: DiscoveryFindingEnvelopeV1 }) => {
-        const related = observedFinding.relatedResourceRefs.map((resource) =>
-          reconciliationProjection.items.find((item) => item.id === resource.resourceId),
-        );
-        return observedFinding.findingType === 'KNOWLEDGE_GAP' &&
-          related.length > 0 &&
-          related.every((item) => item?.source === 'APPROVED_KNOWLEDGE')
-          ? ('CANONICAL_EQUIVALENT_ACCEPTED' as const)
-          : ('UNCHANGED' as const);
-      },
-    );
+    const observeReconciliation = vi.fn(observeDiscoveryReconciliation);
     const transitionLifecycle = vi.fn(async (input: { readonly targetState: 'RESOLVED' }) => {
       lifecycleState = input.targetState;
       lifecycleRevision += 1;

@@ -117,7 +117,10 @@ import {
   createDiscoveryAIGenerationService,
 } from '../../../modules/discovery-ai-generation/src/index.js';
 import { DiscoveryBudgetControllerV1 } from '../../../modules/discovery-quality-gate/src/index.js';
-import { createProductDiscoveryExecution } from '../../../adapters/discovery-runtime-product/src/index.js';
+import {
+  createProductDiscoveryExecution,
+  observeDiscoveryReconciliation,
+} from '../../../adapters/discovery-runtime-product/src/index.js';
 import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import {
@@ -648,25 +651,7 @@ export const startShotgunApplication = async (
                 );
               });
             },
-            observeReconciliation: async ({ finding, projection }) => {
-              const related = finding.relatedResourceRefs.map((resource) =>
-                projection.items.find((item) => item.id === resource.resourceId),
-              );
-              if (
-                ['KNOWLEDGE_GAP', 'EVIDENCE_GAP'].includes(finding.findingType) &&
-                related.length > 0 &&
-                finding.findingType === 'KNOWLEDGE_GAP' &&
-                related.every((item) => item?.source === 'APPROVED_KNOWLEDGE')
-              ) {
-                return 'CANONICAL_EQUIVALENT_ACCEPTED';
-              }
-              if (related.some((item) => item !== undefined && item.state === 'CONFLICT')) {
-                return 'RELEVANT_INPUT_CHANGED';
-              }
-              // A missing projection item is not proof of source supersession;
-              // Source/SourceVersion authority must make that observation.
-              return 'UNCHANGED';
-            },
+            observeReconciliation: observeDiscoveryReconciliation,
           }),
           {
             workerId: `shotgun-discovery-${process.pid}-${randomUUID()}`,

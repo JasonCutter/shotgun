@@ -113,6 +113,35 @@ export type DiscoveryProductExecutionDependenciesV1 = {
   }) => Promise<DiscoveryReconciliationDispositionV1>;
 };
 
+/**
+ * Production reconciliation authority shared by the application assembly and
+ * product-level regression tests. It observes only the current projection
+ * material needed for the Finding; missing items are not treated as source
+ * supersession without the Source/Evidence authority making that decision.
+ */
+export const observeDiscoveryReconciliation = async (input: {
+  readonly finding: DiscoveryFindingEnvelopeV1;
+  readonly projection: CompiledTruthProjection;
+  readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
+}): Promise<DiscoveryReconciliationDispositionV1> => {
+  const { finding, projection } = input;
+  const related = finding.relatedResourceRefs.map((resource) =>
+    projection.items.find((item) => item.id === resource.resourceId),
+  );
+  if (
+    ['KNOWLEDGE_GAP', 'EVIDENCE_GAP'].includes(finding.findingType) &&
+    related.length > 0 &&
+    finding.findingType === 'KNOWLEDGE_GAP' &&
+    related.every((item) => item?.source === 'APPROVED_KNOWLEDGE')
+  ) {
+    return 'CANONICAL_EQUIVALENT_ACCEPTED';
+  }
+  if (related.some((item) => item !== undefined && item.state === 'CONFLICT')) {
+    return 'RELEVANT_INPUT_CHANGED';
+  }
+  return 'UNCHANGED';
+};
+
 type ProductSignalsV1 = {
   readonly projection: CompiledTruthProjection;
   readonly signalContext: DiscoverySignalReadContextV1;

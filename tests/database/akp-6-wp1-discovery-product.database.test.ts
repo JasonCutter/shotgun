@@ -76,6 +76,12 @@ describe.runIf(databaseUrl)('AKP-6 WP1 Discovery Product PostgreSQL authority', 
   });
 
   afterAll(async () => {
+    await pool?.query('DELETE FROM discovery.finding_lifecycle_history WHERE project_id = $1', [
+      projectId,
+    ]);
+    await pool?.query('DELETE FROM discovery.finding_lifecycle_current WHERE project_id = $1', [
+      projectId,
+    ]);
     await pool?.query('DELETE FROM discovery.findings WHERE project_id = $1', [projectId]);
     await pool?.query('DELETE FROM project_admin.projects WHERE id = $1', [projectId]);
     await pool?.end();

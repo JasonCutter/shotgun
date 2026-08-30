@@ -14,6 +14,8 @@ import type {
   DiscoveryProductReviewBindingV1,
 } from '../../../modules/frontend-discovery-product/src/index.js';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+
 /**
  * AKP-6 WP1 PostgreSQL read adapter.
  *
@@ -96,6 +98,9 @@ export class PostgresFrontendDiscoveryProductReadSource implements DiscoveryProd
   }
 
   public findEvidence(projectId: string, evidenceId: string) {
+    // Evidence persistence uses UUID identity. Malformed or stale envelope
+    // references are a non-disclosing miss, not a database query error.
+    if (!UUID_PATTERN.test(evidenceId)) return Promise.resolve(undefined);
     return this.evidenceRepository.findById(projectId, evidenceId);
   }
 }

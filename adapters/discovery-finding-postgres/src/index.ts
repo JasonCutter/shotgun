@@ -11,6 +11,7 @@ import type {
   DiscoveryFindingLookupV1,
   DiscoveryFindingRepositoryPort,
   DiscoveryFindingPersistenceFenceV1,
+  DiscoveryFindingPageCursorV1,
 } from '../../../modules/discovery-finding-persistence/src/index.js';
 import {
   assertDiscoveryLifecycleTransitionV1,
@@ -23,6 +24,7 @@ import type {
   DiscoveryFindingLifecycleCurrentV1,
   DiscoveryFindingLifecycleHistoryV1,
   DiscoveryFindingLifecycleRepositoryPort,
+  DiscoveryFindingLifecycleFenceV1,
   DiscoveryLifecycleTransitionInputV1,
   DiscoveryLifecycleTransitionResultV1,
 } from '../../../modules/discovery-finding-lifecycle/src/index.js';
@@ -445,6 +447,30 @@ export class PostgresDiscoveryFindingRepository
       );
   }
 
+  async listByProjectPage(
+    projectIdInput: string,
+    after?: DiscoveryFindingPageCursorV1,
+    limit = 50,
+  ): Promise<readonly DiscoveryFindingEnvelopeV1[]> {
+    const projectId = requiredIdentifier(projectIdInput, 'projectId');
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
+      throw new TypeError('reconciliation page limit must be an integer between 1 and 1000');
+    }
+    const result = await this.pool.query<DiscoveryFindingRow>(
+      `SELECT ${selectColumns}
+       FROM discovery.findings
+       WHERE project_id = $1
+         AND (
+           $2::text IS NULL OR finding_id > $2
+           OR (finding_id = $2 AND finding_revision > $3)
+         )
+       ORDER BY finding_id ASC, finding_revision ASC
+       LIMIT $4`,
+      [projectId, after?.findingId ?? null, after?.findingRevision ?? 0, limit],
+    );
+    return result.rows.map(mapRow);
+  }
+
   async findByFingerprint(
     projectIdInput: string,
     fingerprintVersionInput: string,
@@ -526,10 +552,41 @@ export class PostgresDiscoveryFindingRepository
 
   async transitionLifecycle(
     input: DiscoveryLifecycleTransitionInputV1,
+    fence?: DiscoveryFindingLifecycleFenceV1,
   ): Promise<DiscoveryLifecycleTransitionResultV1> {
     return withSafePostgresTransaction(
       this.pool,
       async (client) => {
+        if (fence) {
+          const lease = await client.query(
+            `SELECT 1 FROM discovery.attempts
+             WHERE project_id = $1 AND job_id = $2 AND run_id = $3 AND attempt_id = $4
+               AND lease_owner = $5 AND fencing_token = $6 AND lease_expires_at > $7
+             FOR UPDATE`,
+            [
+              fence.projectId,
+              fence.jobId,
+              fence.runId,
+              fence.attemptId,
+              fence.workerId,
+              fence.fencingToken,
+              fence.now,
+            ],
+          );
+          if (lease.rowCount !== 1) {
+            const fencedCurrent = await client.query<DiscoveryFindingLifecycleCurrentRow>(
+              `SELECT ${lifecycleCurrentColumns}
+               FROM discovery.finding_lifecycle_current
+               WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
+               FOR SHARE`,
+              identityParams(input),
+            );
+            const fencedRow = fencedCurrent.rows[0];
+            if (fencedRow) {
+              return { status: 'CONFLICT', current: mapLifecycleCurrent(fencedRow) };
+            }
+          }
+        }
         const currentResult = await client.query<DiscoveryFindingLifecycleCurrentRow>(
           `SELECT ${lifecycleCurrentColumns}
            FROM discovery.finding_lifecycle_current

@@ -82,6 +82,63 @@ CREATE TABLE IF NOT EXISTS discovery.work_budget_checkpoints (
 CREATE INDEX IF NOT EXISTS discovery_work_budget_checkpoint_job_idx
   ON discovery.work_budget_checkpoints (project_id, job_id, revision);
 
+-- Completed stage values are a recovery checkpoint, not a second Finding
+-- authority.  The payload is intentionally bounded JSON owned by the stage
+-- adapter; prompts, credentials, headers, and arbitrary provider responses
+-- must never be written here.
+CREATE TABLE IF NOT EXISTS discovery.stage_outputs (
+  project_id text NOT NULL,
+  job_id text NOT NULL,
+  run_id text NOT NULL,
+  attempt_id text NOT NULL,
+  stage_id text NOT NULL,
+  stage_type text NOT NULL,
+  stage_revision integer NOT NULL CHECK (stage_revision >= 1),
+  output jsonb NOT NULL CHECK (jsonb_typeof(output) IN ('object', 'array')),
+  fencing_token bigint NOT NULL CHECK (fencing_token >= 0),
+  updated_at timestamptz NOT NULL,
+  PRIMARY KEY (project_id, attempt_id, stage_id),
+  UNIQUE (project_id, run_id, attempt_id, stage_type),
+  CONSTRAINT discovery_stage_output_stage_fk
+    FOREIGN KEY (project_id, stage_id)
+    REFERENCES discovery.stages (project_id, stage_id)
+    ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS discovery_stage_outputs_run_idx
+  ON discovery.stage_outputs (project_id, run_id, attempt_id, stage_type);
+
+-- Provider admission is recorded before an external call is dispatched. A
+-- RESERVED row is deliberately recoverable after a process crash; it is not a
+-- provider response or a credential store.
+CREATE TABLE IF NOT EXISTS discovery.provider_budget_reservations (
+  project_id text NOT NULL,
+  job_id text NOT NULL,
+  run_id text NOT NULL,
+  attempt_id text NOT NULL,
+  reservation_id text NOT NULL,
+  provider_id text NOT NULL,
+  model_id text NOT NULL,
+  input_token_upper_bound integer NOT NULL CHECK (input_token_upper_bound > 0),
+  max_output_tokens integer NOT NULL CHECK (max_output_tokens > 0),
+  estimated_cost_micros bigint NOT NULL CHECK (estimated_cost_micros >= 0),
+  actual_input_tokens integer CHECK (actual_input_tokens >= 0),
+  actual_output_tokens integer CHECK (actual_output_tokens >= 0),
+  actual_cost_micros bigint CHECK (actual_cost_micros >= 0),
+  state text NOT NULL CHECK (state IN ('RESERVED', 'FINALIZED', 'CANCELLED')),
+  fencing_token bigint NOT NULL CHECK (fencing_token >= 0),
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  PRIMARY KEY (project_id, reservation_id),
+  CONSTRAINT discovery_provider_budget_reservation_attempt_fk
+    FOREIGN KEY (project_id, attempt_id)
+    REFERENCES discovery.attempts (project_id, attempt_id)
+    ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS discovery_provider_budget_reservations_active_idx
+  ON discovery.provider_budget_reservations (project_id, run_id, attempt_id, state);
+
 CREATE TABLE IF NOT EXISTS discovery.finding_ready (
   publication_id text NOT NULL,
   project_id text NOT NULL,

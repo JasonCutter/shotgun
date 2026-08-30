@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import {
   PersistentDiscoveryWorker,
+  DiscoveryWorkerFailureV1,
   type DiscoveryExecutionPortV1,
   type DiscoveryRuntimeClaimV1,
   type DiscoveryRuntimeExecutionRepositoryPort,
+  type DiscoveryRuntimeStageOutputV1,
 } from '../../modules/discovery-runtime/src/index.js';
 import { DiscoveryWorkBudgetLedgerV1 } from '../../modules/discovery-quality-gate/src/index.js';
 import type {
@@ -235,6 +237,63 @@ class ContractRuntimeRepository {
   }
 }
 
+class DurableRuntimeRepository extends ContractRuntimeRepository {
+  public readonly stageOutputs = new Map<string, unknown>();
+
+  public constructor(private readonly recoveredStageTypes: readonly string[] = []) {
+    super();
+  }
+
+  async readStageOutput(
+    input: Parameters<NonNullable<DiscoveryRuntimeExecutionRepositoryPort['readStageOutput']>>[0],
+  ): Promise<DiscoveryRuntimeStageOutputV1 | undefined> {
+    const stageType =
+      [
+        'WAIT_FOR_PROJECTION',
+        'LOAD_SIGNALS',
+        'GENERATE_FINDINGS',
+        'QUALITY_GATE',
+        'PERSIST_FINDINGS',
+        'PUBLISH_REENTRY',
+        'RECONCILE_FINDINGS',
+      ][Number(input.stageId.split('-')[1]) - 1] ?? '';
+    return this.recoveredStageTypes.includes(stageType)
+      ? {
+          schemaVersion: '1.0.0',
+          projectId: claim.projectId,
+          jobId: claim.jobId,
+          runId: claim.runId,
+          attemptId: claim.attemptId,
+          stageId: input.stageId,
+          stageType: stageType as DiscoveryRuntimeStageOutputV1['stageType'],
+          stageRevision: 1,
+          output: [],
+          updatedAt: trigger.createdAt,
+        }
+      : undefined;
+  }
+
+  async writeStageOutput(
+    input: Parameters<NonNullable<DiscoveryRuntimeExecutionRepositoryPort['writeStageOutput']>>[0],
+  ) {
+    this.stageOutputs.set(input.output.stageType, input.output.output);
+    return 'SAVED' as const;
+  }
+}
+
+class AtomicFailureRuntimeRepository extends ContractRuntimeRepository {
+  public readonly failureFinalizations: string[] = [];
+
+  async finalizeFailureWithLease(
+    input: Parameters<
+      NonNullable<DiscoveryRuntimeExecutionRepositoryPort['finalizeFailureWithLease']>
+    >[0],
+  ) {
+    this.failureFinalizations.push(`${input.targetState}:${input.failure.failedStage}`);
+    return input.targetState;
+  }
+}
+
 const execution: DiscoveryExecutionPortV1 = {
   loadSignals: async () => ({ value: { loaded: true } }),
   generateFindings: async () => ({ value: [] }),
@@ -294,5 +353,73 @@ describe('AKP-4 WP4 durable execution contract', () => {
     expect(() => ledger.restore({ ...ledger.snapshot(), resources: 11 })).toThrow(
       'outside the frozen budget',
     );
+  });
+
+  it('writes normalized generation, quality, and persistence outputs before stage success', async () => {
+    const fake = new DurableRuntimeRepository();
+    const worker = new PersistentDiscoveryWorker(
+      fake as unknown as DiscoveryRuntimeExecutionRepositoryPort,
+      execution,
+      { workerId: 'worker', clock: () => new Date('2026-08-30T00:00:02.000Z') },
+    );
+
+    expect(await worker.runOnce()).toBe('COMPLETED');
+    expect([...fake.stageOutputs.keys()]).toEqual([
+      'GENERATE_FINDINGS',
+      'QUALITY_GATE',
+      'PERSIST_FINDINGS',
+    ]);
+  });
+
+  it('uses atomic failure finalization for a retryable stage error', async () => {
+    const fake = new AtomicFailureRuntimeRepository();
+    const worker = new PersistentDiscoveryWorker(
+      fake as unknown as DiscoveryRuntimeExecutionRepositoryPort,
+      {
+        ...execution,
+        loadSignals: async () => {
+          throw new DiscoveryWorkerFailureV1({
+            code: 'TEST_RETRYABLE',
+            retryable: true,
+            safeMessage: 'test retryable failure',
+          });
+        },
+      },
+      { workerId: 'worker', clock: () => new Date('2026-08-30T00:00:02.000Z') },
+    );
+
+    expect(await worker.runOnce()).toBe('FAILED_RETRYABLE');
+    expect(fake.failureFinalizations).toEqual(['FAILED_RETRYABLE:stage-2']);
+  });
+
+  it('reuses durable stage values after reclaim without rerunning completed stages', async () => {
+    const fake = new DurableRuntimeRepository([
+      'GENERATE_FINDINGS',
+      'QUALITY_GATE',
+      'PERSIST_FINDINGS',
+    ]);
+    const rerunCalls: string[] = [];
+    const worker = new PersistentDiscoveryWorker(
+      fake as unknown as DiscoveryRuntimeExecutionRepositoryPort,
+      {
+        ...execution,
+        generateFindings: async () => {
+          rerunCalls.push('generate');
+          return { value: [] };
+        },
+        qualityGate: async () => {
+          rerunCalls.push('quality');
+          return { value: [] };
+        },
+        persistFindings: async () => {
+          rerunCalls.push('persist');
+          return { value: [] };
+        },
+      },
+      { workerId: 'worker', clock: () => new Date('2026-08-30T00:00:02.000Z') },
+    );
+
+    expect(await worker.runOnce()).toBe('COMPLETED');
+    expect(rerunCalls).toEqual([]);
   });
 });

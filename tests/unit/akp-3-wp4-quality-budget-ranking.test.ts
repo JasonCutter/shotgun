@@ -964,6 +964,57 @@ describe('AKP-3 WP4 cumulative work budget and provider admission', () => {
       completion: 'PARTIAL',
     });
   });
+
+  it('durably reserves before dispatch and finalizes with provider usage', async () => {
+    const events: string[] = [];
+    const durable = {
+      reserve: vi.fn(async () => {
+        events.push('reserve');
+        return 'RESERVED' as const;
+      }),
+      finalize: vi.fn(async (input: { readonly state: 'FINALIZED' | 'CANCELLED' }) => {
+        events.push(`finalize:${input.state}`);
+        return input.state;
+      }),
+    };
+    const provider = {
+      identity: {
+        provider: 'openai',
+        model: 'gpt-discovery',
+        supportsOutputTokenLimit: true,
+        supportsCancellation: true,
+      },
+      generateStructuredWithSignal: vi.fn(async () => ({
+        rawText: '{}',
+        inputTokens: 4,
+        outputTokens: 3,
+      })),
+      generateStructured: vi.fn(async () => ({ rawText: '{}' })),
+    };
+    const result = await new DiscoveryBudgetControllerV1(
+      new DiscoveryWorkBudgetLedgerV1(budget()),
+      testTokenEstimator,
+      { revision: 'fixed-cost:test-v1', estimate: () => 5 },
+      durable,
+    ).executeProviderCall({
+      provider,
+      request: {
+        systemInstruction: 'system',
+        prompt: 'prompt',
+        responseSchema: { type: 'object' },
+      },
+    });
+
+    expect(result.status).toBe('SUCCEEDED');
+    expect(events).toEqual(['reserve', 'finalize:FINALIZED']);
+    expect(durable.finalize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        state: 'FINALIZED',
+        actualInputTokens: 4,
+        actualOutputTokens: 3,
+      }),
+    );
+  });
 });
 
 describe('AKP-3 WP4 explainable deterministic ranking and provider cap adapters', () => {

@@ -14,6 +14,11 @@ export type DiscoveryFindingLatestLookupV1 = {
   readonly findingId: string;
 };
 
+export type DiscoveryFindingPageCursorV1 = {
+  readonly findingId: string;
+  readonly findingRevision: DiscoveryFindingRevision;
+};
+
 export type DiscoveryFindingPersistenceFenceV1 = {
   readonly projectId: string;
   readonly jobId: string;
@@ -42,4 +47,10 @@ export type DiscoveryFindingRepositoryPort = {
     lookup: DiscoveryFindingLatestLookupV1,
   ): Promise<DiscoveryFindingEnvelopeV1 | undefined>;
   listByProject(projectId: string): Promise<readonly DiscoveryFindingEnvelopeV1[]>;
+  /** Bounded keyset page used by restartable reconciliation. */
+  listByProjectPage?(
+    projectId: string,
+    after?: DiscoveryFindingPageCursorV1,
+    limit?: number,
+  ): Promise<readonly DiscoveryFindingEnvelopeV1[]>;
 };

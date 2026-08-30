@@ -4,6 +4,7 @@ import {
   createDiscoveryFindingEnvelopeV1,
   decodeDiscoveryFindingEnvelopeV1,
   deriveDiscoverySemanticEssenceV1,
+  sha256Text,
   semanticStableJson,
   utf16OrdinalCompare,
 } from '../../../packages/contracts/src/index.js';
@@ -1431,6 +1432,27 @@ export type DiscoveryBudgetedProviderPortV1 = {
   ): Promise<DiscoveryStructuredGenerationResponseV1>;
 };
 
+/** Optional durable admission ledger used by the long-running Discovery
+ * provider path. A RESERVED row survives a worker crash and therefore keeps
+ * the external-cost admission from silently disappearing. */
+export type DiscoveryProviderReservationDurabilityPortV1 = {
+  reserve(input: {
+    readonly reservationId: string;
+    readonly providerId: string;
+    readonly modelId: string;
+    readonly inputTokenUpperBound: number;
+    readonly maxOutputTokens: number;
+    readonly estimatedCostMicros: number;
+  }): Promise<'RESERVED' | 'CONFLICT' | 'STALE' | 'NOT_FOUND'>;
+  finalize(input: {
+    readonly reservationId: string;
+    readonly state: 'FINALIZED' | 'CANCELLED';
+    readonly actualInputTokens?: number;
+    readonly actualOutputTokens?: number;
+    readonly actualCostMicros?: number;
+  }): Promise<'FINALIZED' | 'CANCELLED' | 'STALE' | 'NOT_FOUND'>;
+};
+
 export type DiscoveryProviderExecutionResultV1 =
   | {
       readonly status: 'SUCCEEDED';
@@ -1444,10 +1466,13 @@ export type DiscoveryProviderExecutionResultV1 =
   | DiscoveryBudgetExhaustedV1;
 
 export class DiscoveryBudgetControllerV1 {
+  private reservationSequence = 0;
+
   public constructor(
     private readonly ledger: DiscoveryWorkBudgetLedgerV1,
     private readonly tokenEstimator: DiscoveryTokenEstimatorPortV1,
     private readonly costEstimator: DiscoveryCostEstimatorPortV1,
+    private readonly durableReservations?: DiscoveryProviderReservationDurabilityPortV1,
   ) {}
 
   public async executeProviderCall(input: {
@@ -1503,6 +1528,28 @@ export class DiscoveryBudgetControllerV1 {
       maxOutputTokens,
     });
     if (admission.status !== 'ADMITTED') return admission;
+    const reservationId = `discovery-provider-reservation:${sha256Text(
+      semanticStableJson({
+        provider: provider.identity.provider,
+        model: provider.identity.model,
+        sequence: ++this.reservationSequence,
+        now: Date.now(),
+      }),
+    )}`;
+    if (this.durableReservations) {
+      const durable = await this.durableReservations.reserve({
+        reservationId,
+        providerId: provider.identity.provider,
+        modelId: provider.identity.model,
+        inputTokenUpperBound,
+        maxOutputTokens: admission.reservation.maxOutputTokens,
+        estimatedCostMicros,
+      });
+      if (durable !== 'RESERVED') {
+        admission.reservation.cancelBeforeDispatch();
+        return budgetExhausted('CONCURRENCY_LIMIT');
+      }
+    }
     const controller = new AbortController();
     const deadlineMs = Date.parse(this.deadlineAt());
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1526,9 +1573,20 @@ export class DiscoveryBudgetControllerV1 {
       admission.reservation.finalize(usage);
       reservationFinalized = true;
     };
+    const finalizeDurableReservation = async (input: {
+      readonly state: 'FINALIZED' | 'CANCELLED';
+      readonly actualInputTokens?: number;
+      readonly actualOutputTokens?: number;
+      readonly actualCostMicros?: number;
+    }): Promise<boolean> => {
+      if (!this.durableReservations) return true;
+      const result = await this.durableReservations.finalize({ reservationId, ...input });
+      return result === input.state;
+    };
     try {
       if (controller.signal.aborted) {
         admission.reservation.cancelBeforeDispatch();
+        await finalizeDurableReservation({ state: 'CANCELLED' });
         return budgetExhausted(
           input.signal?.aborted ? 'CANCELLED_OR_DEADLINE_EXPIRED' : 'DEADLINE_EXPIRED',
         );
@@ -1544,12 +1602,24 @@ export class DiscoveryBudgetControllerV1 {
           inputTokens: response.inputTokens,
           outputTokens: response.outputTokens,
         });
+        const durable = await finalizeDurableReservation({
+          state: 'FINALIZED',
+          actualInputTokens: response.inputTokens,
+          actualOutputTokens: response.outputTokens,
+        });
+        if (!durable) return budgetExhausted('CONCURRENCY_LIMIT');
         return budgetExhausted('CANCELLED_OR_DEADLINE_EXPIRED');
       }
       finalizeReservation({
         inputTokens: response.inputTokens,
         outputTokens: response.outputTokens,
       });
+      const durable = await finalizeDurableReservation({
+        state: 'FINALIZED',
+        actualInputTokens: response.inputTokens,
+        actualOutputTokens: response.outputTokens,
+      });
+      if (!durable) return budgetExhausted('CONCURRENCY_LIMIT');
       return {
         status: 'SUCCEEDED',
         response,
@@ -1565,6 +1635,7 @@ export class DiscoveryBudgetControllerV1 {
       };
     } catch (error) {
       finalizeReservation();
+      await finalizeDurableReservation({ state: 'FINALIZED' });
       if (controller.signal.aborted) {
         return budgetExhausted('CANCELLED_OR_DEADLINE_EXPIRED');
       }

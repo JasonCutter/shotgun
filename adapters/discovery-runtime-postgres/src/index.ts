@@ -20,6 +20,7 @@ import {
   type DiscoveryProjectionWaitBindingV1,
   type DiscoveryRunV1,
   type DiscoveryStageV1,
+  type DiscoveryRuntimeStageStateV1,
   type DiscoveryFindingReadyV1,
 } from '../../../packages/contracts/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
@@ -40,11 +41,14 @@ import type {
   DiscoveryRuntimeFencedRunTransitionInputV1,
   DiscoveryRuntimeFencedStageTransitionInputV1,
   DiscoveryRuntimeFailureContextV1,
+  DiscoveryRuntimeFailureFinalizationInputV1,
   DiscoveryRuntimeFinalizeInputV1,
   DiscoveryRuntimeLeaseMutationInputV1,
   DiscoveryRuntimeLeaseV1,
   DiscoveryRuntimeStageLookupV1,
   DiscoveryRuntimeStageTransitionInputV1,
+  DiscoveryRuntimeStageOutputV1,
+  DiscoveryRuntimeProviderReservationV1,
 } from '../../../modules/discovery-runtime/src/index.js';
 
 type RuntimeJobRow = QueryResultRow & {
@@ -178,6 +182,38 @@ type RuntimeStageRow = QueryResultRow & {
   completed_at: Date | null;
 };
 
+type RuntimeStageOutputRow = QueryResultRow & {
+  project_id: string;
+  job_id: string;
+  run_id: string;
+  attempt_id: string;
+  stage_id: string;
+  stage_type: string;
+  stage_revision: number;
+  output: unknown;
+  fencing_token: number | string;
+  updated_at: Date;
+};
+
+type RuntimeProviderReservationRow = QueryResultRow & {
+  project_id: string;
+  job_id: string;
+  run_id: string;
+  attempt_id: string;
+  reservation_id: string;
+  provider_id: string;
+  model_id: string;
+  input_token_upper_bound: number;
+  max_output_tokens: number;
+  estimated_cost_micros: number | string;
+  actual_input_tokens: number | null;
+  actual_output_tokens: number | null;
+  actual_cost_micros: number | string | null;
+  state: 'RESERVED' | 'FINALIZED' | 'CANCELLED';
+  fencing_token: number | string;
+  updated_at: Date;
+};
+
 const jobColumns = `
   project_id, job_id, logical_job_identity, logical_job_identity_version,
   schema_version, trigger_id, trigger_class, trigger, requested_scan_mode,
@@ -289,6 +325,24 @@ const snapshotFromRow = (row: RuntimeBudgetCheckpointRow): DiscoveryRuntimeBudge
     updatedAt: dateValue(row.updated_at),
   };
 };
+
+const cumulativeBudgetSnapshotRegressed = (
+  previous: DiscoveryRuntimeBudgetSnapshotV1,
+  next: DiscoveryRuntimeBudgetSnapshotV1,
+): boolean =>
+  (
+    [
+      'resources',
+      'semanticNeighbors',
+      'candidatePairs',
+      'candidateGroups',
+      'findings',
+      'providerCalls',
+      'inputTokens',
+      'outputTokens',
+      'estimatedCostMicros',
+    ] as const
+  ).some((dimension) => next[dimension] < previous[dimension]);
 
 const mapFindingReady = (row: RuntimeFindingReadyRow): DiscoveryFindingReadyV1 =>
   decodeDiscoveryFindingReadyV1({
@@ -487,6 +541,19 @@ const mapStage = (row: RuntimeStageRow): DiscoveryStageV1 =>
     updatedAt: dateValue(row.updated_at),
     ...(row.completed_at === null ? {} : { completedAt: dateValue(row.completed_at) }),
   });
+
+const mapStageOutput = (row: RuntimeStageOutputRow): DiscoveryRuntimeStageOutputV1 => ({
+  schemaVersion: '1.0.0',
+  projectId: row.project_id,
+  jobId: row.job_id,
+  runId: row.run_id,
+  attemptId: row.attempt_id,
+  stageId: row.stage_id,
+  stageType: row.stage_type as DiscoveryRuntimeStageOutputV1['stageType'],
+  stageRevision: numberValue(row.stage_revision, 'stage output stage_revision'),
+  output: row.output,
+  updatedAt: dateValue(row.updated_at),
+});
 
 const jobInsertValues = (job: DiscoveryJobV1): unknown[] => {
   const [profileRevision, profileId] = profileValues(job.profileBinding);
@@ -1370,6 +1437,11 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeExecu
            FOR UPDATE`,
           [job.projectId, job.jobId],
         );
+        if (runResult.rows.length > 1) {
+          throw new TypeError(
+            'DISCOVERY_RUN_LINEAGE_AMBIGUOUS: more than one Run exists for the Job',
+          );
+        }
         let run: DiscoveryRunV1;
         if (!runResult.rows[0]) {
           run = {
@@ -2183,6 +2255,242 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeExecu
     );
   }
 
+  async finalizeFailureWithLease(
+    input: DiscoveryRuntimeFailureFinalizationInputV1,
+  ): Promise<'FAILED_RETRYABLE' | 'FAILED_TERMINAL' | 'NOT_FOUND' | 'CONFLICT' | 'STALE'> {
+    const failure = input.failure;
+    if ((failure.classification === 'RETRYABLE') !== failure.retryable) {
+      throw new TypeError('failure classification and retryable flag must agree');
+    }
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const status = await leaseStatus(client, input, failure.occurredAt);
+        if (status !== 'ACTIVE') return status;
+        const attemptResult = await client.query<RuntimeAttemptRow>(
+          `SELECT ${attemptColumns} FROM discovery.attempts
+           WHERE project_id = $1 AND job_id = $2 AND run_id = $3 AND attempt_id = $4
+           FOR UPDATE`,
+          [input.projectId, input.jobId, input.runId, input.attemptId],
+        );
+        const runResult = await client.query<RuntimeRunRow>(
+          `SELECT ${runColumns} FROM discovery.runs
+           WHERE project_id = $1 AND job_id = $2 AND run_id = $3 FOR UPDATE`,
+          [input.projectId, input.jobId, input.runId],
+        );
+        const jobResult = await client.query<RuntimeJobRow>(
+          `SELECT ${jobColumns} FROM discovery.jobs
+           WHERE project_id = $1 AND job_id = $2 FOR UPDATE`,
+          [input.projectId, input.jobId],
+        );
+        const attemptRow = attemptResult.rows[0];
+        const runRow = runResult.rows[0];
+        const jobRow = jobResult.rows[0];
+        if (!attemptRow || !runRow || !jobRow) return 'NOT_FOUND';
+        if (
+          attemptRow.lifecycle_revision !== input.expectedAttemptLifecycleRevision ||
+          runRow.lifecycle_revision !== input.expectedRunLifecycleRevision ||
+          jobRow.lifecycle_revision !== input.expectedJobLifecycleRevision
+        ) {
+          return 'CONFLICT';
+        }
+        const attempt = mapAttempt(attemptRow);
+        const run = mapRun(runRow);
+        const job = mapJob(jobRow);
+        const target = input.targetState;
+        if (attempt.lifecycleState !== target) {
+          assertDiscoveryAttemptLifecycleTransitionV1(attempt.lifecycleState, target);
+        }
+        if (run.lifecycleState !== target) {
+          assertDiscoveryRuntimeLifecycleTransitionV1(run.lifecycleState, target);
+        }
+        if (job.lifecycleState !== target) {
+          assertDiscoveryRuntimeLifecycleTransitionV1(job.lifecycleState, target);
+        }
+        if (input.stageId !== undefined) {
+          const stageResult = await client.query<RuntimeStageRow>(
+            `SELECT ${stageColumns} FROM discovery.stages
+             WHERE project_id = $1 AND stage_id = $2 AND run_id = $3
+               AND attempt_id = $4 AND job_id = $5 FOR UPDATE`,
+            [input.projectId, input.stageId, input.runId, input.attemptId, input.jobId],
+          );
+          const stage = stageResult.rows[0];
+          if (!stage) return 'NOT_FOUND';
+          if (
+            input.expectedStageRevision === undefined ||
+            stage.stage_revision !== input.expectedStageRevision
+          ) {
+            return 'CONFLICT';
+          }
+          if (stage.state !== target) {
+            assertDiscoveryRuntimeStageTransitionV1(
+              stage.state as DiscoveryRuntimeStageStateV1,
+              target as DiscoveryRuntimeStageStateV1,
+            );
+            const stageUpdated = await client.query(
+              `UPDATE discovery.stages
+               SET state = $5, stage_revision = $6, updated_at = $7, completed_at = $8
+               WHERE project_id = $1 AND stage_id = $2 AND run_id = $3
+                 AND attempt_id = $4 AND stage_revision = $9`,
+              [
+                input.projectId,
+                input.stageId,
+                input.runId,
+                input.attemptId,
+                target,
+                stage.stage_revision + 1,
+                failure.occurredAt,
+                failure.occurredAt,
+                stage.stage_revision,
+              ],
+            );
+            if (stageUpdated.rowCount !== 1) return 'CONFLICT';
+            await client.query(
+              `INSERT INTO discovery.stage_history (
+                 project_id, stage_id, run_id, attempt_id, stage_revision, state, occurred_at
+               ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+              [
+                input.projectId,
+                input.stageId,
+                input.runId,
+                input.attemptId,
+                stage.stage_revision + 1,
+                target,
+                failure.occurredAt,
+              ],
+            );
+          }
+        }
+        const completedAt = completedAtForState(target, failure.occurredAt, undefined);
+        if (attempt.lifecycleState !== target) {
+          const nextRevision = attempt.lifecycleRevision + 1;
+          const updated = await client.query(
+            `UPDATE discovery.attempts
+             SET lifecycle_state = $5, lifecycle_revision = $6,
+                 failure_code = $7, failure_classification = $8,
+                 failure_retryable = $9, failure_safe_message = $10,
+                 failure_stage = $11, failure_occurred_at = $12,
+                 retry_not_before = $13, updated_at = $12, completed_at = $14
+             WHERE project_id = $1 AND job_id = $2 AND run_id = $3 AND attempt_id = $4
+               AND lifecycle_revision = $15 AND lease_owner = $16 AND fencing_token = $17`,
+            [
+              input.projectId,
+              input.jobId,
+              input.runId,
+              input.attemptId,
+              target,
+              nextRevision,
+              nonEmpty(failure.code, 'failure.code'),
+              failure.classification,
+              failure.retryable,
+              nonEmpty(failure.safeMessage, 'failure.safeMessage'),
+              nonEmpty(failure.failedStage, 'failure.failedStage'),
+              failure.occurredAt,
+              failure.retryNotBefore ?? null,
+              completedAt,
+              input.expectedAttemptLifecycleRevision,
+              input.workerId,
+              input.fencingToken,
+            ],
+          );
+          if (updated.rowCount !== 1) return 'STALE';
+          await client.query(
+            `INSERT INTO discovery.attempt_lifecycle_history (
+               project_id, attempt_id, run_id, job_id, lifecycle_revision,
+               from_state, to_state, occurred_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [
+              input.projectId,
+              input.attemptId,
+              input.runId,
+              input.jobId,
+              nextRevision,
+              attempt.lifecycleState,
+              target,
+              failure.occurredAt,
+            ],
+          );
+        }
+        if (run.lifecycleState !== target) {
+          const nextRevision = run.lifecycleRevision + 1;
+          const updated = await client.query(
+            `UPDATE discovery.runs
+             SET lifecycle_state = $4, lifecycle_revision = $5,
+                 wait_projection_revision = NULL, wait_projection_digest = NULL,
+                 wait_deadline_at = NULL, wait_fallback_policy_revision = NULL,
+                 updated_at = $6, completed_at = $7
+             WHERE project_id = $1 AND job_id = $2 AND run_id = $3
+               AND lifecycle_revision = $8`,
+            [
+              input.projectId,
+              input.jobId,
+              input.runId,
+              target,
+              nextRevision,
+              failure.occurredAt,
+              completedAt,
+              input.expectedRunLifecycleRevision,
+            ],
+          );
+          if (updated.rowCount !== 1) return 'CONFLICT';
+          await client.query(
+            `INSERT INTO discovery.run_lifecycle_history (
+               project_id, run_id, job_id, lifecycle_revision, from_state, to_state,
+               wait_projection_revision, wait_projection_digest, wait_deadline_at,
+               wait_fallback_policy_revision, occurred_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, NULL, NULL, $7)`,
+            [
+              input.projectId,
+              input.runId,
+              input.jobId,
+              nextRevision,
+              run.lifecycleState,
+              target,
+              failure.occurredAt,
+            ],
+          );
+        }
+        if (job.lifecycleState !== target) {
+          const nextRevision = job.lifecycleRevision + 1;
+          const updated = await client.query(
+            `UPDATE discovery.jobs
+             SET lifecycle_state = $3, lifecycle_revision = $4,
+                 wait_projection_revision = NULL, wait_projection_digest = NULL,
+                 wait_deadline_at = NULL, wait_fallback_policy_revision = NULL,
+                 updated_at = $5
+             WHERE project_id = $1 AND job_id = $2 AND lifecycle_revision = $6`,
+            [
+              input.projectId,
+              input.jobId,
+              target,
+              nextRevision,
+              failure.occurredAt,
+              input.expectedJobLifecycleRevision,
+            ],
+          );
+          if (updated.rowCount !== 1) return 'CONFLICT';
+          await client.query(
+            `INSERT INTO discovery.job_lifecycle_history (
+               project_id, job_id, lifecycle_revision, from_state, to_state,
+               wait_projection_revision, wait_projection_digest, wait_deadline_at,
+               wait_fallback_policy_revision, occurred_at
+             ) VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, NULL, $6)`,
+            [
+              input.projectId,
+              input.jobId,
+              nextRevision,
+              job.lifecycleState,
+              target,
+              failure.occurredAt,
+            ],
+          );
+        }
+        return target;
+      },
+      { module: 'discovery-runtime', operation: 'claim-failure-finalize-fenced' },
+    );
+  }
+
   async saveFailureContext(
     input: DiscoveryRuntimeLeaseV1 & { readonly failure: DiscoveryRuntimeFailureContextV1 },
   ): Promise<'SAVED' | 'STALE' | 'NOT_FOUND'> {
@@ -2237,6 +2545,52 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeExecu
     return result.rows[0] ? snapshotFromRow(result.rows[0]) : undefined;
   }
 
+  async readProviderReservationUsage(lookup: DiscoveryRuntimeRunLookupV1): Promise<{
+    readonly providerCalls: number;
+    readonly activeProviderCalls: number;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly estimatedCostMicros: number;
+  }> {
+    const result = await this.pool.query<{
+      provider_calls: string;
+      active_provider_calls: string;
+      input_tokens: string;
+      output_tokens: string;
+      estimated_cost_micros: string;
+    }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE state <> 'CANCELLED')::text AS provider_calls,
+         COUNT(*) FILTER (WHERE state = 'RESERVED')::text AS active_provider_calls,
+         COALESCE(SUM(CASE WHEN state <> 'CANCELLED'
+           THEN COALESCE(actual_input_tokens, input_token_upper_bound) ELSE 0 END), 0)::text
+           AS input_tokens,
+         COALESCE(SUM(CASE WHEN state <> 'CANCELLED'
+           THEN COALESCE(actual_output_tokens, max_output_tokens) ELSE 0 END), 0)::text
+           AS output_tokens,
+         COALESCE(SUM(CASE WHEN state <> 'CANCELLED'
+           THEN COALESCE(actual_cost_micros, estimated_cost_micros) ELSE 0 END), 0)::text
+           AS estimated_cost_micros
+       FROM discovery.provider_budget_reservations
+       WHERE project_id = $1 AND job_id = $2 AND run_id = $3`,
+      [lookup.projectId, lookup.jobId, lookup.runId],
+    );
+    const row = result.rows[0];
+    return {
+      providerCalls: numberValue(row?.provider_calls ?? 0, 'provider reservation providerCalls'),
+      activeProviderCalls: numberValue(
+        row?.active_provider_calls ?? 0,
+        'provider reservation activeProviderCalls',
+      ),
+      inputTokens: numberValue(row?.input_tokens ?? 0, 'provider reservation inputTokens'),
+      outputTokens: numberValue(row?.output_tokens ?? 0, 'provider reservation outputTokens'),
+      estimatedCostMicros: numberValue(
+        row?.estimated_cost_micros ?? 0,
+        'provider reservation estimatedCostMicros',
+      ),
+    };
+  }
+
   async writeBudgetCheckpoint(
     input: DiscoveryRuntimeLeaseV1 & {
       readonly checkpoint: DiscoveryRuntimeBudgetCheckpointV1;
@@ -2281,6 +2635,9 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeExecu
           return 'SAVED';
         }
         const currentSnapshot = snapshotFromRow(current);
+        if (cumulativeBudgetSnapshotRegressed(currentSnapshot.snapshot, checkpoint.snapshot)) {
+          return 'CONFLICT';
+        }
         if (
           current.revision === checkpoint.revision &&
           semanticStableJson(currentSnapshot.snapshot) === semanticStableJson(checkpoint.snapshot)
@@ -2306,6 +2663,275 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeExecu
         return updated.rowCount === 1 ? 'SAVED' : 'CONFLICT';
       },
       { module: 'discovery-runtime', operation: 'budget-checkpoint-write' },
+    );
+  }
+
+  async readStageOutput(
+    lookup: DiscoveryRuntimeStageLookupV1 & { readonly stageId: string },
+  ): Promise<DiscoveryRuntimeStageOutputV1 | undefined> {
+    const result = await this.pool.query<RuntimeStageOutputRow>(
+      `SELECT project_id, job_id, run_id, attempt_id, stage_id, stage_type,
+              stage_revision, output, fencing_token, updated_at
+       FROM discovery.stage_outputs
+       WHERE project_id = $1 AND run_id = $2 AND attempt_id = $3 AND stage_id = $4`,
+      [lookup.projectId, lookup.runId, lookup.attemptId, lookup.stageId],
+    );
+    return result.rows[0] ? mapStageOutput(result.rows[0]) : undefined;
+  }
+
+  async writeStageOutput(
+    input: DiscoveryRuntimeLeaseV1 & { readonly output: DiscoveryRuntimeStageOutputV1 },
+  ): Promise<'SAVED' | 'CONFLICT' | 'STALE' | 'NOT_FOUND'> {
+    const output = input.output;
+    if (
+      output.projectId !== input.projectId ||
+      output.jobId !== input.jobId ||
+      output.runId !== input.runId ||
+      output.attemptId !== input.attemptId ||
+      output.stageId.trim().length === 0 ||
+      !Number.isSafeInteger(output.stageRevision) ||
+      output.stageRevision < 1 ||
+      typeof output.output !== 'object' ||
+      output.output === null
+    ) {
+      throw new TypeError('stage output identity or JSON object is invalid');
+    }
+    const encoded = JSON.stringify(output.output);
+    if (encoded === undefined) throw new TypeError('stage output is not JSON serializable');
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const status = await leaseStatus(client, input, output.updatedAt);
+        if (status !== 'ACTIVE') return status;
+        const stageResult = await client.query<RuntimeStageRow>(
+          `SELECT ${stageColumns} FROM discovery.stages
+           WHERE project_id = $1 AND stage_id = $2 AND run_id = $3
+             AND attempt_id = $4 AND job_id = $5 FOR UPDATE`,
+          [input.projectId, output.stageId, input.runId, input.attemptId, input.jobId],
+        );
+        const stage = stageResult.rows[0];
+        if (!stage) return 'NOT_FOUND';
+        if (stage.stage_type !== output.stageType || stage.state !== 'RUNNING') {
+          return 'CONFLICT';
+        }
+        const existingResult = await client.query<RuntimeStageOutputRow>(
+          `SELECT project_id, job_id, run_id, attempt_id, stage_id, stage_type,
+                  stage_revision, output, fencing_token, updated_at
+           FROM discovery.stage_outputs
+           WHERE project_id = $1 AND attempt_id = $2 AND stage_id = $3
+           FOR UPDATE`,
+          [input.projectId, input.attemptId, output.stageId],
+        );
+        const existing = existingResult.rows[0];
+        if (existing) {
+          if (
+            existing.stage_revision === output.stageRevision &&
+            semanticStableJson(existing.output) === semanticStableJson(output.output)
+          ) {
+            return 'SAVED';
+          }
+          if (output.stageRevision <= existing.stage_revision) return 'CONFLICT';
+          const updated = await client.query(
+            `UPDATE discovery.stage_outputs
+             SET stage_revision = $4, output = $5::jsonb,
+                 fencing_token = $6, updated_at = $7
+             WHERE project_id = $1 AND attempt_id = $2 AND stage_id = $3
+               AND stage_revision = $8`,
+            [
+              input.projectId,
+              input.attemptId,
+              output.stageId,
+              output.stageRevision,
+              encoded,
+              input.fencingToken,
+              output.updatedAt,
+              existing.stage_revision,
+            ],
+          );
+          return updated.rowCount === 1 ? 'SAVED' : 'CONFLICT';
+        }
+        await client.query(
+          `INSERT INTO discovery.stage_outputs (
+             project_id, job_id, run_id, attempt_id, stage_id, stage_type,
+             stage_revision, output, fencing_token, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)`,
+          [
+            input.projectId,
+            input.jobId,
+            input.runId,
+            input.attemptId,
+            output.stageId,
+            output.stageType,
+            output.stageRevision,
+            encoded,
+            input.fencingToken,
+            output.updatedAt,
+          ],
+        );
+        return 'SAVED';
+      },
+      { module: 'discovery-runtime', operation: 'stage-output-write' },
+    );
+  }
+
+  async reserveProviderCall(
+    input: DiscoveryRuntimeLeaseV1 & {
+      readonly reservation: DiscoveryRuntimeProviderReservationV1;
+    },
+  ): Promise<'RESERVED' | 'CONFLICT' | 'STALE' | 'NOT_FOUND'> {
+    const reservation = input.reservation;
+    if (
+      reservation.projectId !== input.projectId ||
+      reservation.jobId !== input.jobId ||
+      reservation.runId !== input.runId ||
+      reservation.attemptId !== input.attemptId ||
+      reservation.state !== 'RESERVED'
+    ) {
+      throw new TypeError('provider reservation identity or state is invalid');
+    }
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const status = await leaseStatus(client, input, reservation.updatedAt);
+        if (status !== 'ACTIVE') return status;
+        const existingResult = await client.query<RuntimeProviderReservationRow>(
+          `SELECT project_id, job_id, run_id, attempt_id, reservation_id,
+                  provider_id, model_id, input_token_upper_bound,
+                  max_output_tokens, estimated_cost_micros,
+                  actual_input_tokens, actual_output_tokens, actual_cost_micros, state,
+                  fencing_token, updated_at
+           FROM discovery.provider_budget_reservations
+           WHERE project_id = $1 AND reservation_id = $2 FOR UPDATE`,
+          [input.projectId, reservation.reservationId],
+        );
+        const existing = existingResult.rows[0];
+        if (existing) {
+          return existing.job_id === reservation.jobId &&
+            existing.run_id === reservation.runId &&
+            existing.attempt_id === reservation.attemptId &&
+            existing.provider_id === reservation.providerId &&
+            existing.model_id === reservation.modelId &&
+            existing.input_token_upper_bound === reservation.inputTokenUpperBound &&
+            existing.max_output_tokens === reservation.maxOutputTokens &&
+            Number(existing.estimated_cost_micros) === reservation.estimatedCostMicros
+            ? 'RESERVED'
+            : 'CONFLICT';
+        }
+        await client.query(
+          `INSERT INTO discovery.provider_budget_reservations (
+             project_id, job_id, run_id, attempt_id, reservation_id,
+             provider_id, model_id, input_token_upper_bound, max_output_tokens,
+             estimated_cost_micros, state, fencing_token, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'RESERVED', $11, $12, $12)`,
+          [
+            reservation.projectId,
+            reservation.jobId,
+            reservation.runId,
+            reservation.attemptId,
+            nonEmpty(reservation.reservationId, 'reservation.reservationId'),
+            nonEmpty(reservation.providerId, 'reservation.providerId'),
+            nonEmpty(reservation.modelId, 'reservation.modelId'),
+            reservation.inputTokenUpperBound,
+            reservation.maxOutputTokens,
+            reservation.estimatedCostMicros,
+            input.fencingToken,
+            reservation.updatedAt,
+          ],
+        );
+        return 'RESERVED';
+      },
+      { module: 'discovery-runtime', operation: 'provider-reservation-reserve' },
+    );
+  }
+
+  async finalizeProviderCall(
+    input: DiscoveryRuntimeLeaseV1 & {
+      readonly reservationId: string;
+      readonly state: 'FINALIZED' | 'CANCELLED';
+      readonly actualInputTokens?: number;
+      readonly actualOutputTokens?: number;
+      readonly actualCostMicros?: number;
+      readonly updatedAt: string;
+    },
+  ): Promise<'FINALIZED' | 'CANCELLED' | 'STALE' | 'NOT_FOUND'> {
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const status = await leaseStatus(client, input, input.updatedAt);
+        if (status !== 'ACTIVE') return status;
+        const currentResult = await client.query<RuntimeProviderReservationRow>(
+          `SELECT project_id, job_id, run_id, attempt_id, reservation_id,
+                  provider_id, model_id, input_token_upper_bound,
+                  max_output_tokens, estimated_cost_micros,
+                  actual_input_tokens, actual_output_tokens, actual_cost_micros, state,
+                  fencing_token, updated_at
+           FROM discovery.provider_budget_reservations
+           WHERE project_id = $1 AND reservation_id = $2 FOR UPDATE`,
+          [input.projectId, input.reservationId],
+        );
+        const current = currentResult.rows[0];
+        if (!current) return 'NOT_FOUND';
+        if (
+          current.job_id !== input.jobId ||
+          current.run_id !== input.runId ||
+          current.attempt_id !== input.attemptId
+        ) {
+          return 'NOT_FOUND';
+        }
+        if (current.state !== 'RESERVED') return current.state;
+        if (input.state === 'CANCELLED') {
+          if (
+            input.actualInputTokens !== undefined ||
+            input.actualOutputTokens !== undefined ||
+            input.actualCostMicros !== undefined
+          ) {
+            throw new TypeError('cancelled provider reservations cannot contain actual usage');
+          }
+        } else {
+          if (
+            input.actualInputTokens !== undefined &&
+            (!Number.isSafeInteger(input.actualInputTokens) ||
+              input.actualInputTokens < 0 ||
+              input.actualInputTokens > current.input_token_upper_bound)
+          ) {
+            throw new TypeError('actual provider input usage exceeds its admitted upper bound');
+          }
+          if (
+            input.actualOutputTokens !== undefined &&
+            (!Number.isSafeInteger(input.actualOutputTokens) ||
+              input.actualOutputTokens < 0 ||
+              input.actualOutputTokens > current.max_output_tokens)
+          ) {
+            throw new TypeError('actual provider output usage exceeds its admitted cap');
+          }
+          if (
+            input.actualCostMicros !== undefined &&
+            (!Number.isSafeInteger(input.actualCostMicros) ||
+              input.actualCostMicros < 0 ||
+              input.actualCostMicros > Number(current.estimated_cost_micros))
+          ) {
+            throw new TypeError('actual provider cost usage exceeds its admitted estimate');
+          }
+        }
+        const updated = await client.query(
+          `UPDATE discovery.provider_budget_reservations
+           SET state = $3, actual_input_tokens = $4, actual_output_tokens = $5,
+               actual_cost_micros = $6, fencing_token = $7, updated_at = $8
+           WHERE project_id = $1 AND reservation_id = $2 AND state = 'RESERVED'`,
+          [
+            input.projectId,
+            input.reservationId,
+            input.state,
+            input.actualInputTokens ?? null,
+            input.actualOutputTokens ?? null,
+            input.actualCostMicros ?? null,
+            input.fencingToken,
+            input.updatedAt,
+          ],
+        );
+        return updated.rowCount === 1 ? input.state : 'STALE';
+      },
+      { module: 'discovery-runtime', operation: 'provider-reservation-finalize' },
     );
   }
 
@@ -2374,7 +3000,25 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeExecu
         );
         const existing = existingResult.rows[0];
         if (existing) {
-          if (semanticStableJson(mapFindingReady(existing)) === semanticStableJson(publication)) {
+          // FindingReady is keyed by durable Finding identity.  An attempt
+          // reclaim is allowed to replay publication with a new attemptId,
+          // publicationId, and occurredAt; those historical fields are not
+          // part of the idempotency comparison.
+          if (
+            existing.project_id === publication.projectId &&
+            existing.finding_id === publication.findingId &&
+            existing.finding_revision === publication.findingRevision &&
+            existing.fingerprint === publication.fingerprint &&
+            existing.fingerprint_version === publication.fingerprintVersion &&
+            existing.job_id === publication.jobId &&
+            existing.run_id === publication.runId &&
+            existing.canonical_base_version === publication.canonicalBase.canonicalVersion &&
+            existing.canonical_snapshot_digest === publication.canonicalBase.snapshotDigest &&
+            existing.required_projection_revision ===
+              (publication.requiredDiscoveryBase?.projectionRevision ?? null) &&
+            existing.required_projection_digest ===
+              (publication.requiredDiscoveryBase?.projectionDigest ?? null)
+          ) {
             return 'ALREADY_EXISTS';
           }
           throw new TypeError(

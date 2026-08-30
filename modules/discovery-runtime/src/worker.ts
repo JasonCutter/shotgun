@@ -1,16 +1,27 @@
-import type { DiscoveryFindingEnvelopeV1 } from '../../../packages/contracts/src/index.js';
+import type {
+  DiscoveryFindingEnvelopeV1,
+  DiscoveryStageV1,
+} from '../../../packages/contracts/src/index.js';
+import { decodeDiscoveryFindingEnvelopeV1 } from '../../../packages/contracts/src/index.js';
 import type {
   DiscoveryRuntimeBudgetCheckpointV1,
   DiscoveryRuntimeBudgetSnapshotV1,
   DiscoveryRuntimeClaimV1,
   DiscoveryRuntimeExecutionRepositoryPort,
+  DiscoveryRuntimeFailureFinalizationInputV1,
   DiscoveryRuntimeLeaseV1,
+  DiscoveryRuntimeStageOutputV1,
 } from './index.js';
 
 export type DiscoveryExecutionContextV1 = {
   readonly claim: DiscoveryRuntimeClaimV1;
   readonly budgetSnapshot: DiscoveryRuntimeBudgetSnapshotV1;
   readonly checkpointRevision: number;
+  readonly stage?: {
+    readonly stageId: string;
+    readonly stageRevision: number;
+    readonly stageType: DiscoveryStageV1['stageType'];
+  };
   readonly saveBudgetSnapshot: (
     snapshot: DiscoveryRuntimeBudgetSnapshotV1,
   ) => Promise<'SAVED' | 'CONFLICT' | 'STALE' | 'NOT_FOUND'>;
@@ -206,6 +217,37 @@ export class PersistentDiscoveryWorker {
       });
       let budgetSnapshot = checkpoint?.snapshot ?? emptySnapshot;
       let checkpointRevision = checkpoint?.revision ?? 0;
+      if (this.repository.readProviderReservationUsage) {
+        const usage = await this.repository.readProviderReservationUsage({
+          projectId: claim.projectId,
+          jobId: claim.jobId,
+          runId: claim.runId,
+        });
+        if (
+          usage.providerCalls > claim.job.budget.maxProviderCalls ||
+          usage.activeProviderCalls > claim.job.budget.maxConcurrentProviderCalls ||
+          usage.inputTokens > claim.job.budget.maxInputTokens ||
+          usage.outputTokens > claim.job.budget.maxOutputTokens ||
+          usage.estimatedCostMicros > claim.job.budget.maxEstimatedCostMicros
+        ) {
+          throw new DiscoveryWorkerFailureV1({
+            code: 'DISCOVERY_PROVIDER_RESERVATION_OVER_BUDGET',
+            retryable: false,
+            safeMessage: 'Discovery provider reservations exceeded the frozen budget.',
+          });
+        }
+        budgetSnapshot = {
+          ...budgetSnapshot,
+          providerCalls: Math.max(budgetSnapshot.providerCalls, usage.providerCalls),
+          inputTokens: Math.max(budgetSnapshot.inputTokens, usage.inputTokens),
+          outputTokens: Math.max(budgetSnapshot.outputTokens, usage.outputTokens),
+          estimatedCostMicros: Math.max(
+            budgetSnapshot.estimatedCostMicros,
+            usage.estimatedCostMicros,
+          ),
+          activeProviderCalls: usage.activeProviderCalls,
+        };
+      }
       const saveBudgetSnapshot = async (
         snapshot: DiscoveryRuntimeBudgetSnapshotV1,
       ): Promise<'SAVED' | 'CONFLICT' | 'STALE' | 'NOT_FOUND'> => {
@@ -235,10 +277,19 @@ export class PersistentDiscoveryWorker {
         }
         return result;
       };
-      const context = (): DiscoveryExecutionContextV1 => ({
+      const context = (stage?: DiscoveryStageV1): DiscoveryExecutionContextV1 => ({
         claim,
         budgetSnapshot,
         checkpointRevision,
+        ...(stage === undefined
+          ? {}
+          : {
+              stage: {
+                stageId: stage.stageId,
+                stageRevision: stage.stageRevision,
+                stageType: stage.stageType,
+              },
+            }),
         saveBudgetSnapshot,
       });
 
@@ -252,6 +303,63 @@ export class PersistentDiscoveryWorker {
       let signals: unknown;
       let candidates: readonly unknown[] = [];
       let findings: readonly DiscoveryFindingEnvelopeV1[] = [];
+      let candidatesReady = false;
+      let findingsReady = false;
+
+      const normalizedFindingOutput = (
+        value: unknown,
+        field: string,
+      ): readonly DiscoveryFindingEnvelopeV1[] => {
+        if (!Array.isArray(value)) {
+          throw new DiscoveryWorkerFailureV1({
+            code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+            retryable: false,
+            safeMessage: `${field} stage output must be a Finding array.`,
+          });
+        }
+        return value.map((entry, index) => {
+          try {
+            const finding = decodeDiscoveryFindingEnvelopeV1(entry, `${field}[${index}]`);
+            if (finding.projectId !== claim.projectId || finding.runId !== claim.runId) {
+              throw new Error('Finding identity does not match the leased run.');
+            }
+            return finding;
+          } catch {
+            throw new DiscoveryWorkerFailureV1({
+              code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+              retryable: false,
+              safeMessage: `${field} stage output contained an invalid or cross-run Finding.`,
+            });
+          }
+        });
+      };
+
+      const durableOutputs = this.repository.readStageOutput !== undefined;
+      const restoreOutput = async (stage: (typeof stages)[number]): Promise<boolean> => {
+        if (!durableOutputs) return false;
+        const stored = await this.repository.readStageOutput!({
+          projectId: claim.projectId,
+          runId: claim.runId,
+          attemptId: claim.attemptId,
+          stageId: stage.stageId,
+        });
+        if (!stored) return false;
+        if (stored.stageType !== stage.stageType) {
+          throw new DiscoveryWorkerFailureV1({
+            code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+            retryable: false,
+            safeMessage: 'Discovery stage output did not match its stage.',
+          });
+        }
+        if (stage.stageType === 'GENERATE_FINDINGS') {
+          candidates = normalizedFindingOutput(stored.output, 'generation');
+          candidatesReady = true;
+        } else if (stage.stageType === 'QUALITY_GATE' || stage.stageType === 'PERSIST_FINDINGS') {
+          findings = normalizedFindingOutput(stored.output, stage.stageType.toLowerCase());
+          findingsReady = true;
+        }
+        return true;
+      };
       let completion: 'COMPLETE' | 'PARTIAL' =
         claim.job.lifecycleState === 'PARTIAL' ||
         claim.run.lifecycleState === 'PARTIAL' ||
@@ -268,7 +376,17 @@ export class PersistentDiscoveryWorker {
         if (renewed === 'STALE' || renewed === 'NOT_FOUND') return 'STALE';
         lease = renewed;
 
-        if (stage.state === 'SUCCEEDED') continue;
+        let outputRecovered = false;
+        if (stage.state === 'SUCCEEDED') {
+          await restoreOutput(stage);
+          continue;
+        }
+        if (
+          durableOutputs &&
+          ['GENERATE_FINDINGS', 'QUALITY_GATE', 'PERSIST_FINDINGS'].includes(stage.stageType)
+        ) {
+          outputRecovered = await restoreOutput(stage);
+        }
         let currentStage = stage;
         if (currentStage.state === 'FAILED_RETRYABLE') {
           const queued = await this.repository.transitionStageWithLease({
@@ -294,6 +412,50 @@ export class PersistentDiscoveryWorker {
         }
         if (currentStage.state !== 'RUNNING') continue;
 
+        if (outputRecovered) {
+          const recovered = await this.repository.transitionStageWithLease({
+            ...lease,
+            stageId: currentStage.stageId,
+            expectedStageRevision: currentStage.stageRevision,
+            targetState: 'SUCCEEDED',
+            updatedAt: nowIso(this.clock),
+          });
+          if (typeof recovered === 'string') {
+            return recovered === 'STALE' ? 'STALE' : 'FAILED_TERMINAL';
+          }
+          continue;
+        }
+
+        let leaseLost = false;
+        let heartbeatInFlight = false;
+        const heartbeatInterval = setInterval(
+          () => {
+            if (heartbeatInFlight || leaseLost) return;
+            heartbeatInFlight = true;
+            void this.repository
+              .renewLease({
+                ...lease,
+                now: nowIso(this.clock),
+                leaseDurationMs: this.leaseDurationMs,
+              })
+              .then((renewed) => {
+                if (renewed === 'STALE' || renewed === 'NOT_FOUND') {
+                  leaseLost = true;
+                } else {
+                  lease = renewed;
+                }
+              })
+              .catch(() => {
+                // A failed heartbeat cannot authorize a provider result. The
+                // stage is discarded unless a later heartbeat recovers it.
+                leaseLost = true;
+              })
+              .finally(() => {
+                heartbeatInFlight = false;
+              });
+          },
+          Math.max(1_000, Math.floor(this.leaseDurationMs / 3)),
+        );
         try {
           if (
             findings.length === 0 &&
@@ -301,7 +463,7 @@ export class PersistentDiscoveryWorker {
               currentStage.stageType === 'RECONCILE_FINDINGS') &&
             this.execution.loadPersistedFindings
           ) {
-            findings = await this.execution.loadPersistedFindings(context());
+            findings = await this.execution.loadPersistedFindings(context(currentStage));
           }
           let result: DiscoveryExecutionStageResultV1<unknown> = {
             value: undefined,
@@ -310,34 +472,52 @@ export class PersistentDiscoveryWorker {
             case 'WAIT_FOR_PROJECTION':
               break;
             case 'LOAD_SIGNALS':
-              result = await this.execution.loadSignals(context());
+              result = await this.execution.loadSignals(context(currentStage));
               signals = result.value;
               break;
             case 'GENERATE_FINDINGS':
-              result = await this.execution.generateFindings(context(), signals);
-              candidates = result.value as readonly unknown[];
+              result = await this.execution.generateFindings(context(currentStage), signals);
+              candidates = normalizedFindingOutput(result.value, 'generation');
+              candidatesReady = true;
               break;
             case 'QUALITY_GATE':
-              result = await this.execution.qualityGate(context(), candidates);
-              findings = result.value as readonly DiscoveryFindingEnvelopeV1[];
+              if (durableOutputs && !candidatesReady) {
+                throw new DiscoveryWorkerFailureV1({
+                  code: 'DISCOVERY_CANDIDATE_CHECKPOINT_MISSING',
+                  retryable: false,
+                  safeMessage: 'Completed Discovery generation output was not recoverable.',
+                });
+              }
+              result = await this.execution.qualityGate(context(currentStage), candidates);
+              findings = normalizedFindingOutput(result.value, 'quality');
+              findingsReady = true;
               break;
             case 'PERSIST_FINDINGS':
-              result = await this.execution.persistFindings(context(), findings);
-              findings = result.value as readonly DiscoveryFindingEnvelopeV1[];
+              if (durableOutputs && !findingsReady) {
+                throw new DiscoveryWorkerFailureV1({
+                  code: 'DISCOVERY_FINDING_CHECKPOINT_MISSING',
+                  retryable: false,
+                  safeMessage: 'Completed Discovery quality output was not recoverable.',
+                });
+              }
+              result = await this.execution.persistFindings(context(currentStage), findings);
+              findings = normalizedFindingOutput(result.value, 'persistence');
+              findingsReady = true;
               break;
             case 'PUBLISH_REENTRY':
               if (this.execution.publishFindingReady) {
                 for (const finding of findings) {
-                  await this.execution.publishFindingReady(context(), finding);
+                  await this.execution.publishFindingReady(context(currentStage), finding);
                 }
               }
               break;
             case 'RECONCILE_FINDINGS':
               if (this.execution.reconcileFindings) {
-                await this.execution.reconcileFindings(context());
+                await this.execution.reconcileFindings(context(currentStage));
               }
               break;
           }
+          if (leaseLost) return 'STALE';
           if (result.completion === 'PARTIAL') completion = 'PARTIAL';
           if (result.budgetSnapshot !== undefined) {
             const saved = await saveBudgetSnapshot(result.budgetSnapshot);
@@ -347,6 +527,34 @@ export class PersistentDiscoveryWorker {
                 code: 'DISCOVERY_BUDGET_CHECKPOINT_CONFLICT',
                 retryable: false,
                 safeMessage: 'Discovery budget checkpoint conflicted during execution.',
+              });
+            }
+          }
+          if (
+            this.repository.writeStageOutput !== undefined &&
+            ['GENERATE_FINDINGS', 'QUALITY_GATE', 'PERSIST_FINDINGS'].includes(
+              currentStage.stageType,
+            )
+          ) {
+            const output: DiscoveryRuntimeStageOutputV1 = {
+              schemaVersion: '1.0.0',
+              projectId: claim.projectId,
+              jobId: claim.jobId,
+              runId: claim.runId,
+              attemptId: claim.attemptId,
+              stageId: currentStage.stageId,
+              stageType: currentStage.stageType,
+              stageRevision: currentStage.stageRevision + 1,
+              output: currentStage.stageType === 'GENERATE_FINDINGS' ? candidates : findings,
+              updatedAt: nowIso(this.clock),
+            };
+            const saved = await this.repository.writeStageOutput({ ...lease, output });
+            if (saved === 'STALE' || saved === 'NOT_FOUND') return 'STALE';
+            if (saved === 'CONFLICT') {
+              throw new DiscoveryWorkerFailureV1({
+                code: 'DISCOVERY_STAGE_OUTPUT_CONFLICT',
+                retryable: false,
+                safeMessage: 'Discovery stage output conflicted during recovery.',
               });
             }
           }
@@ -366,7 +574,10 @@ export class PersistentDiscoveryWorker {
             currentStage.stageRevision,
             error,
             claim.attempt.attemptNumber,
+            claim,
           );
+        } finally {
+          clearInterval(heartbeatInterval);
         }
       }
 
@@ -383,7 +594,14 @@ export class PersistentDiscoveryWorker {
       if (finalized === 'NOT_FOUND' || finalized === 'CONFLICT') return 'FAILED_TERMINAL';
       return completion === 'PARTIAL' ? 'PARTIAL' : 'COMPLETED';
     } catch (error) {
-      return await this.failClaim(lease, undefined, undefined, error, claim.attempt.attemptNumber);
+      return await this.failClaim(
+        lease,
+        undefined,
+        undefined,
+        error,
+        claim.attempt.attemptNumber,
+        claim,
+      );
     } finally {
       await this.repository.releaseLease({ ...lease, now: nowIso(this.clock) });
     }
@@ -395,6 +613,7 @@ export class PersistentDiscoveryWorker {
     stageRevision: number | undefined,
     error: unknown,
     attemptNumber: number,
+    claim: DiscoveryRuntimeClaimV1,
   ): Promise<'FAILED_RETRYABLE' | 'FAILED_TERMINAL' | 'STALE'> {
     const failure = failureFrom(error);
     const retryable = failure.retryable && attemptNumber < this.maxAttempts;
@@ -402,6 +621,34 @@ export class PersistentDiscoveryWorker {
     const retryNotBefore = retryable
       ? new Date(this.clock().getTime() + this.retryBackoffMs * attemptNumber).toISOString()
       : undefined;
+    const target = retryable ? 'FAILED_RETRYABLE' : 'FAILED_TERMINAL';
+    if (this.repository.finalizeFailureWithLease !== undefined) {
+      const finalized = await this.repository.finalizeFailureWithLease({
+        ...lease,
+        ...(stageId === undefined
+          ? {}
+          : {
+              stageId,
+              expectedStageRevision: stageRevision,
+            }),
+        expectedAttemptLifecycleRevision: claim.attempt.lifecycleRevision,
+        expectedRunLifecycleRevision: claim.run.lifecycleRevision,
+        expectedJobLifecycleRevision: claim.job.lifecycleRevision,
+        targetState: target,
+        failure: {
+          schemaVersion: '1.0.0',
+          code: failure.code,
+          classification: retryable ? 'RETRYABLE' : 'TERMINAL',
+          retryable,
+          safeMessage: failure.safeMessage,
+          failedStage: stageId ?? 'DISCOVERY_EXECUTION',
+          occurredAt,
+          ...(retryNotBefore === undefined ? {} : { retryNotBefore }),
+        },
+      } satisfies DiscoveryRuntimeFailureFinalizationInputV1);
+      if (finalized === 'STALE' || finalized === 'NOT_FOUND') return 'STALE';
+      return finalized === 'FAILED_RETRYABLE' ? 'FAILED_RETRYABLE' : 'FAILED_TERMINAL';
+    }
     const contextResult = await this.repository.saveFailureContext({
       ...lease,
       failure: {
@@ -416,7 +663,6 @@ export class PersistentDiscoveryWorker {
       },
     });
     if (contextResult === 'STALE' || contextResult === 'NOT_FOUND') return 'STALE';
-    const target = retryable ? 'FAILED_RETRYABLE' : 'FAILED_TERMINAL';
     if (stageId !== undefined && stageRevision !== undefined) {
       const stageResult = await this.repository.transitionStageWithLease({
         ...lease,

@@ -4,7 +4,7 @@
 - 대상: Durable Discovery execution, PostgreSQL lease/fencing, recovery, retry,
   cumulative budget checkpoint, FindingReady publication and reconciliation
 - 기준: `main@d9e70c6446f642f4274901cbd5878543be55075a`
-- 상태: WP4 implementation evidence recorded; Draft PR review remains required
+- 상태: corrective implementation evidence recorded; Draft PR review remains required
 
 ## Integration decisions
 
@@ -21,15 +21,18 @@
 
 - PostgreSQL is the existing durable authority. WP4 adds only Migration 051 objects:
   one-Run-per-Job claim serialization through the Job row lock and lookup index,
-  attempt lease/fence and failure/retry context,
-  cumulative budget checkpoints, and the immutable FindingReady ledger.
+  attempt lease/fence and atomic failure finalization, cumulative budget
+  checkpoints, normalized completed-stage outputs, durable provider reservations,
+  restartable reconciliation cursors, and the immutable FindingReady ledger.
 - The existing 048/049/050 migrations, logical identity
   `discovery-job-logical:v1`, WP2 coordinator and WP3 scheduler/manual path are
   unchanged.
-- WP1 deterministic Discovery Engine, WP3 Quality Gate, WP2 finding repository
-  and WP3 `DiscoveryFindingLifecycleService` remain the product path. Finding
-  persistence is fenced in the same PostgreSQL transaction as its immutable
-  envelope/lifecycle initialization.
+- The Product path composes the accepted AKP-1 semantic retriever, AKP-3 WP1
+  deterministic engine, AKP-3 WP2 bounded neighborhood selectors, AKP-3 WP3
+  `DiscoveryAIGenerationService`, and WP3 Quality Gate. Finding persistence is
+  fenced in the same PostgreSQL transaction as its immutable envelope/lifecycle
+  initialization; reconciliation uses a server-owned observation callback and a
+  lease-fenced lifecycle transition.
 - No OSS runtime, internal DB schema, OSS ID, provider client, Activity ledger,
   Canonical writer, second outbox, broker or new npm dependency is introduced.
 - The Open-source Role Matrix already contains these candidate decisions and was
@@ -41,9 +44,17 @@
   stage, attempt, Run, Job, budget, finding and FindingReady write checks the
   active PostgreSQL lease; an expired or stale worker receives `STALE` and cannot
   commit.
-- Attempt, Run and Job terminalization is one fenced PostgreSQL transaction, so
-  a process failure cannot leave the lineage half-finalized between those three
-  writes.
+- Attempt, Run and Job success or failure finalization is one fenced PostgreSQL
+  transaction, so a process failure cannot leave the lineage half-finalized
+  between those three writes. Completed generation, quality, and persistence
+  values are Finding-decoded and written before their stage succeeds and are
+  reused after reclaim. Provider admission is reserved before dispatch and
+  token/cost usage is reconstructed from the durable reservation ledger.
+- Canonical reconciliation processes a bounded keyset page, records a fenced
+  cursor after each Finding, and resumes after reclaim. It covers all four
+  dispositions (`UNCHANGED`, `CANONICAL_EQUIVALENT_ACCEPTED`,
+  `RELEVANT_INPUT_CHANGED`, `SOURCE_MATERIALLY_SUPERSEDED`) without mutating
+  Canonical or the original Finding envelope.
 - Unknown/programming failures fail closed. Retry is typed, bounded by the
   server-owned maximum attempt count/backoff/deadline, and never resets the
   frozen cumulative Job budget.
@@ -59,16 +70,20 @@
 
 - `npm run typecheck`: PASS.
 - `npm run test:architecture`: PASS.
-- Focused WP4 contract test: 1 test / 1 pass; seven stages and terminal lineage
-  are asserted.
-- WP1–WP3 Discovery contract regression: 21 tests / 21 pass.
-- WP1/WP3 Discovery unit regression: 24 tests / 24 pass.
-- `npm run db:migrate` and `npm run db:verify`: PASS against the configured
-  PostgreSQL target; the separate database contract suite was safely skipped
-  because `TEST_DATABASE_URL` is not configured.
-- The focused worker contract also proves that completed stages are not
-  re-executed during recovery and that durable findings are rehydrated before
-  FindingReady/reconciliation stages.
+- Focused WP4 contract test: 5 tests / 5 pass; seven stages, normalized stage
+  output writes, atomic retryable failure handling, and terminal lineage are
+  asserted.
+- AKP-3 WP2/WP3 focused regression: 26 WP2 tests and 18 WP3 tests pass.
+- `npm run typecheck`, `npm run lint`, `npm run test:architecture`, and
+  `git diff --check`: PASS.
+- The PostgreSQL contract suite was safely skipped because `TEST_DATABASE_URL`
+  is not configured in this environment; the 051 migration and real-Postgres
+  matrix therefore still require execution in the isolated CI/database target.
+  The direct targeted run collected 13 database tests and skipped all 13 for
+  that missing environment variable.
+- No paid provider, manual frontend E2E, #1107 rerun, historical failure rerun,
+  Ready/Merge transition, WP5/AKP-5+ work, deployment, or live-provider test
+  was performed.
 - PostgreSQL contract coverage is committed in
   `tests/database/akp-4-wp4-discovery-execution.database.test.ts` and requires
   the repository's isolated `shotgun_test*` target before execution.

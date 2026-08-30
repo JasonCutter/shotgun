@@ -10,6 +10,7 @@ import type {
   DiscoveryRuntimeStageStateV1,
   DiscoveryStageV1,
 } from '../../../packages/contracts/src/index.js';
+import type { DiscoveryRuntimeStageTypeV1 } from '../../../packages/contracts/src/index.js';
 
 export type DiscoveryRuntimeBudgetSnapshotV1 = {
   readonly resources: number;
@@ -159,6 +160,54 @@ export type DiscoveryRuntimeFinalizeInputV1 = DiscoveryRuntimeLeaseV1 & {
   readonly updatedAt: string;
 };
 
+/** A bounded, normalized checkpoint for a completed stage.  Raw prompts,
+ * credentials, provider payloads, and request headers are never accepted by
+ * the Product adapter; only JSON-safe stage results cross this boundary. */
+export type DiscoveryRuntimeStageOutputV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly runId: string;
+  readonly attemptId: string;
+  readonly stageId: string;
+  readonly stageType: DiscoveryRuntimeStageTypeV1;
+  readonly stageRevision: number;
+  readonly output: unknown;
+  readonly updatedAt: string;
+};
+
+export type DiscoveryRuntimeProviderReservationV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly runId: string;
+  readonly attemptId: string;
+  readonly reservationId: string;
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly inputTokenUpperBound: number;
+  readonly maxOutputTokens: number;
+  readonly estimatedCostMicros: number;
+  readonly actualInputTokens?: number;
+  readonly actualOutputTokens?: number;
+  readonly actualCostMicros?: number;
+  readonly state: 'RESERVED' | 'FINALIZED' | 'CANCELLED';
+  readonly updatedAt: string;
+};
+
+export type DiscoveryRuntimeFailureFinalizationInputV1 = DiscoveryRuntimeLeaseV1 & {
+  readonly stageId?: string;
+  readonly expectedStageRevision?: number;
+  readonly expectedAttemptLifecycleRevision: number;
+  readonly expectedRunLifecycleRevision: number;
+  readonly expectedJobLifecycleRevision: number;
+  readonly targetState: Extract<
+    DiscoveryRuntimeLifecycleStateV1,
+    'FAILED_RETRYABLE' | 'FAILED_TERMINAL'
+  >;
+  readonly failure: DiscoveryRuntimeFailureContextV1;
+};
+
 export type DiscoveryRuntimeExecutionRepositoryPort = DiscoveryRuntimeRepositoryPort & {
   claimNext(input: DiscoveryRuntimeClaimInputV1): Promise<DiscoveryRuntimeClaimV1 | undefined>;
   renewLease(
@@ -182,6 +231,12 @@ export type DiscoveryRuntimeExecutionRepositoryPort = DiscoveryRuntimeRepository
   finalizeClaimWithLease(
     input: DiscoveryRuntimeFinalizeInputV1,
   ): Promise<'COMPLETED' | 'PARTIAL' | 'NOT_FOUND' | 'CONFLICT' | 'STALE'>;
+  /** Atomic failure finalization.  The optional shape preserves compatibility
+   * with in-memory contract fixtures; the PostgreSQL adapter is required to
+   * implement it for production execution. */
+  finalizeFailureWithLease?(
+    input: DiscoveryRuntimeFailureFinalizationInputV1,
+  ): Promise<'FAILED_RETRYABLE' | 'FAILED_TERMINAL' | 'NOT_FOUND' | 'CONFLICT' | 'STALE'>;
   saveFailureContext(
     input: DiscoveryRuntimeLeaseV1 & {
       readonly failure: DiscoveryRuntimeFailureContextV1;
@@ -195,6 +250,34 @@ export type DiscoveryRuntimeExecutionRepositoryPort = DiscoveryRuntimeRepository
       readonly checkpoint: DiscoveryRuntimeBudgetCheckpointV1;
     },
   ): Promise<'SAVED' | 'CONFLICT' | 'STALE' | 'NOT_FOUND'>;
+  readStageOutput?(
+    lookup: DiscoveryRuntimeStageLookupV1 & { readonly stageId: string },
+  ): Promise<DiscoveryRuntimeStageOutputV1 | undefined>;
+  writeStageOutput?(
+    input: DiscoveryRuntimeLeaseV1 & { readonly output: DiscoveryRuntimeStageOutputV1 },
+  ): Promise<'SAVED' | 'CONFLICT' | 'STALE' | 'NOT_FOUND'>;
+  reserveProviderCall?(
+    input: DiscoveryRuntimeLeaseV1 & {
+      readonly reservation: DiscoveryRuntimeProviderReservationV1;
+    },
+  ): Promise<'RESERVED' | 'CONFLICT' | 'STALE' | 'NOT_FOUND'>;
+  finalizeProviderCall?(
+    input: DiscoveryRuntimeLeaseV1 & {
+      readonly reservationId: string;
+      readonly state: 'FINALIZED' | 'CANCELLED';
+      readonly actualInputTokens?: number;
+      readonly actualOutputTokens?: number;
+      readonly actualCostMicros?: number;
+      readonly updatedAt: string;
+    },
+  ): Promise<'FINALIZED' | 'CANCELLED' | 'STALE' | 'NOT_FOUND'>;
+  readProviderReservationUsage?(lookup: DiscoveryRuntimeRunLookupV1): Promise<{
+    readonly providerCalls: number;
+    readonly activeProviderCalls: number;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly estimatedCostMicros: number;
+  }>;
   publishFindingReady(
     input: DiscoveryRuntimeLeaseV1 & { readonly publication: DiscoveryFindingReadyV1 },
   ): Promise<'CREATED' | 'ALREADY_EXISTS' | 'STALE' | 'NOT_FOUND'>;

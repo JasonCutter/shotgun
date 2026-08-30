@@ -91,9 +91,15 @@ import {
 import { PostgresSemanticEmbeddingProfileRepository } from '../../../adapters/semantic-embedding-postgres/src/index.js';
 import { PostgresDiscoveryRuntimeRepository } from '../../../adapters/discovery-runtime-postgres/src/index.js';
 import { PostgresDiscoveryFindingRepository } from '../../../adapters/discovery-finding-postgres/src/index.js';
+import { PostgresDiscoveryModelProfileRepository } from '../../../adapters/discovery-model-profile-postgres/src/index.js';
 import { PostgresDiscoveryScheduleRepository } from '../../../adapters/discovery-trigger-coordinator/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
+import {
+  DiscoveryModelProfileService,
+  createDiscoveryAIGenerationService,
+} from '../../../modules/discovery-ai-generation/src/index.js';
+import { DiscoveryBudgetControllerV1 } from '../../../modules/discovery-quality-gate/src/index.js';
 import { createProductDiscoveryExecution } from '../../../adapters/discovery-runtime-product/src/index.js';
 import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
@@ -119,6 +125,7 @@ import {
   initialProviderRegistry,
 } from '../../../modules/ai-configuration/src/index.js';
 import {
+  DiscoveryAIExecutionResolver,
   EffectiveAIConfigurationResolver,
   UnavailableAIProviderAdapter,
 } from '../../../adapters/ai-runtime-resolution/src/index.js';
@@ -490,6 +497,14 @@ export const startShotgunApplication = async (
     const compiledTruthRepository = new PostgresCompiledTruthRepository(pool);
     const discoveryRuntimeRepository = new PostgresDiscoveryRuntimeRepository(pool);
     const discoveryFindingRepository = new PostgresDiscoveryFindingRepository(pool);
+    const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
+    const authRepository = new PostgresAuthRepository(pool);
+    const discoveryModelProfileService = new DiscoveryModelProfileService(
+      aiProviderRegistry,
+      projectAIConfiguration,
+      credentialVault,
+      new PostgresDiscoveryModelProfileRepository(pool),
+    );
     const discoveryExecutionWorker = recoveryHarness
       ? undefined
       : new PersistentDiscoveryWorker(
@@ -498,6 +513,116 @@ export const startShotgunApplication = async (
             compiledTruthRepository,
             findingRepository: discoveryFindingRepository,
             runtimeRepository: discoveryRuntimeRepository,
+            evidenceRepository,
+            semanticRetriever,
+            createGenerationService: (budget, executionContext) =>
+              createDiscoveryAIGenerationService({
+                profiles: discoveryModelProfileService,
+                executionResolver: new DiscoveryAIExecutionResolver(executionIdentityResolver),
+                providerRouter: {
+                  resolve: async (route) => providerRouter.resolveDiscovery(route),
+                },
+                budgetController: new DiscoveryBudgetControllerV1(
+                  budget,
+                  {
+                    revision: 'discovery-token-estimator:v1',
+                    estimateUpperBound: ({ request }) =>
+                      Math.max(
+                        1,
+                        Math.ceil((request.systemInstruction.length + request.prompt.length) / 4),
+                      ),
+                  },
+                  {
+                    revision: 'discovery-cost-estimator:v1',
+                    estimate: ({ inputTokenUpperBound, maxOutputTokens }) =>
+                      inputTokenUpperBound + maxOutputTokens,
+                  },
+                  {
+                    reserve: async (reservation) => {
+                      if (!discoveryRuntimeRepository.reserveProviderCall) return 'NOT_FOUND';
+                      return discoveryRuntimeRepository.reserveProviderCall({
+                        ...executionContext.claim,
+                        reservation: {
+                          schemaVersion: '1.0.0',
+                          projectId: executionContext.claim.projectId,
+                          jobId: executionContext.claim.jobId,
+                          runId: executionContext.claim.runId,
+                          attemptId: executionContext.claim.attemptId,
+                          reservationId: reservation.reservationId,
+                          providerId: reservation.providerId,
+                          modelId: reservation.modelId,
+                          inputTokenUpperBound: reservation.inputTokenUpperBound,
+                          maxOutputTokens: reservation.maxOutputTokens,
+                          estimatedCostMicros: reservation.estimatedCostMicros,
+                          state: 'RESERVED',
+                          updatedAt: new Date().toISOString(),
+                        },
+                      });
+                    },
+                    finalize: async (reservation) => {
+                      if (!discoveryRuntimeRepository.finalizeProviderCall) return 'NOT_FOUND';
+                      return discoveryRuntimeRepository.finalizeProviderCall({
+                        ...executionContext.claim,
+                        reservationId: reservation.reservationId,
+                        state: reservation.state,
+                        actualInputTokens: reservation.actualInputTokens,
+                        actualOutputTokens: reservation.actualOutputTokens,
+                        actualCostMicros: reservation.actualCostMicros,
+                        updatedAt: new Date().toISOString(),
+                      });
+                    },
+                  },
+                ),
+              }),
+            resolveSecurity: async ({ projectId }) => {
+              const project = await projectAdminRepository.getProjectDetails(projectId);
+              const accountId = process.env.SHOTGUN_BOOTSTRAP_ACCOUNT_ID?.trim();
+              if (!project || project.status !== 'ACTIVE' || !accountId) return undefined;
+              const membership = await authRepository.findOwnerMembership(accountId, projectId);
+              return membership
+                ? {
+                    projectId,
+                    accessScope: membership.scopes,
+                    sensitivity: membership.sensitivityClearance,
+                  }
+                : undefined;
+            },
+            findAuthoritativeEquivalent: async ({ projectId, candidate }) => {
+              const projection = await compiledTruthRepository.findProjection(projectId);
+              if (!projection) return false;
+              return projection.items.some(
+                (item) =>
+                  item.source === 'APPROVED_KNOWLEDGE' &&
+                  item.state !== 'CONFLICT' &&
+                  candidate.relatedResourceRefs.some(
+                    (resource) =>
+                      resource.projectId === projectId && resource.resourceId === item.id,
+                  ) &&
+                  candidate.findingType === 'KNOWLEDGE_GAP',
+              );
+            },
+            observeReconciliation: async ({ finding, projection, canonicalBase }) => {
+              const related = finding.relatedResourceRefs.map((resource) =>
+                projection.items.find((item) => item.id === resource.resourceId),
+              );
+              if (
+                ['KNOWLEDGE_GAP', 'EVIDENCE_GAP'].includes(finding.findingType) &&
+                related.some((item) => item?.source === 'APPROVED_KNOWLEDGE')
+              ) {
+                return 'CANONICAL_EQUIVALENT_ACCEPTED';
+              }
+              if (related.length > 0 && related.every((item) => item === undefined)) {
+                return 'SOURCE_MATERIALLY_SUPERSEDED';
+              }
+              if (
+                finding.canonicalBase.canonicalVersion !== canonicalBase.canonicalVersion ||
+                finding.canonicalBase.snapshotDigest !== canonicalBase.snapshotDigest ||
+                finding.sourceProjectionDigest !== projection.sourceSnapshotDigest
+              ) {
+                return 'RELEVANT_INPUT_CHANGED';
+              }
+              return 'UNCHANGED';
+            },
           }),
           {
             workerId: `shotgun-discovery-${process.pid}-${randomUUID()}`,
@@ -511,7 +636,7 @@ export const startShotgunApplication = async (
     }
 
     const application = await createApplication({
-      projectAdminRepository: new PostgresProjectAdministrationRepository(pool),
+      projectAdminRepository,
       projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
       projectTombstoneStore: new PostgresProjectTombstoneStore(pool),
       settingsRepository,
@@ -568,7 +693,7 @@ export const startShotgunApplication = async (
       semanticProjectionRefresh,
       actionCandidateRepository: new PostgresActionCandidateRepository(pool),
       actionExecutionRepository: new PostgresActionExecutionRepository(pool),
-      authRepository: new PostgresAuthRepository(pool),
+      authRepository,
       production,
       frontendReviewStore: new PostgresFrontendReviewRepository(pool),
       activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),

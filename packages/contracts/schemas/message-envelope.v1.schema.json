@@ -27,6 +27,7 @@
     "causationId": { "type": "string" },
     "idempotencyKey": { "type": "string" },
     "projectId": { "type": "string" },
+    "principalId": { "type": "string", "minLength": 1 },
     "payload": {},
     "createdAt": { "type": "string" },
     "traceId": { "type": "string", "minLength": 1 }

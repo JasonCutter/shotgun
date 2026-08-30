@@ -27,6 +27,7 @@ type RootContext = {
   readonly producerVersion: string;
   readonly projectId: string;
   readonly actor: Actor;
+  readonly principalId?: string;
   readonly security: SecurityContext;
   readonly provenance?: ProvenanceContext;
   readonly correlationId?: string;
@@ -59,6 +60,7 @@ export const createCommand = <TPayload>(
   idempotencyKey: input.idempotencyKey,
   projectId: input.projectId,
   actor: input.actor,
+  principalId: input.principalId,
   security: input.security,
   provenance: input.provenance,
   payload: input.payload,
@@ -85,6 +87,7 @@ export const createQuery = <TPayload>(
   correlationId: input.correlationId ?? generateUUID(),
   projectId: input.projectId,
   actor: input.actor,
+  principalId: input.principalId,
   security: input.security,
   provenance: input.provenance,
   payload: input.payload,
@@ -105,6 +108,7 @@ const inheritedContext = (parent: AnyEnvelope) => ({
   causationId: parent.messageId,
   projectId: parent.projectId,
   actor: parent.actor,
+  principalId: parent.principalId,
   security: parent.security,
   provenance: parent.provenance,
   traceId: parent.traceId,

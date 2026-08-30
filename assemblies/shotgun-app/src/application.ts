@@ -89,6 +89,7 @@ import {
 } from '../../../adapters/semantic-index-postgres/src/index.js';
 import { PostgresSemanticEmbeddingProfileRepository } from '../../../adapters/semantic-embedding-postgres/src/index.js';
 import { PostgresDiscoveryRuntimeRepository } from '../../../adapters/discovery-runtime-postgres/src/index.js';
+import { PostgresDiscoveryScheduleRepository } from '../../../adapters/discovery-trigger-coordinator/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
@@ -530,6 +531,8 @@ export const startShotgunApplication = async (
       compiledTruthRepository: new PostgresCompiledTruthRepository(pool),
       semanticCorpusSourceSnapshotReader,
       discoveryRuntimeRepository: new PostgresDiscoveryRuntimeRepository(pool),
+      discoveryScheduleRepository: new PostgresDiscoveryScheduleRepository(pool),
+      discoverySchedulerIntervalMs: recoveryHarness ? false : 30_000,
       discoverySemanticIndexRepository: semanticIndexRepository,
       semanticRetriever,
       semanticActiveGenerationReader,

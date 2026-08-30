@@ -8,7 +8,7 @@
   },
   "deployment": { "modes": ["in_process", "worker"] },
   "dataOwnership": {
-    "owns": ["discovery.jobs", "discovery.job_lifecycle_history"],
+    "owns": ["discovery.jobs", "discovery.job_lifecycle_history", "discovery.schedules"],
     "readsViaPorts": [
       "CanonicalKnowledgeRepositoryPort",
       "SemanticCorpusSourceSnapshotReaderPort",
@@ -18,12 +18,15 @@
     "directSchemaAccess": false
   },
   "consumes": {
-    "commands": [],
+    "commands": [{ "name": "RunKnowledgeDiscoveryDurable", "range": ">=1.0.0 <2.0.0" }],
     "events": [{ "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" }]
   },
   "produces": { "events": [] },
   "provides": { "queries": [], "capabilities": [] },
   "requires": { "capabilities": [] },
-  "security": { "requiredContext": ["project"], "defaultOnMissingContext": "deny" },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
   "approvalPolicy": { "canWriteCanonical": false, "canExecuteExternalAction": false }
 }

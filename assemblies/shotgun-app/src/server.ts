@@ -45,6 +45,7 @@ import { InMemoryCompiledTruthRepository } from '../../../adapters/stage10-in-me
 import { InMemorySemanticIndexRepository } from '../../../adapters/semantic-index-in-memory/src/index.js';
 import {
   InMemoryDiscoveryRuntimeRepository,
+  InMemoryDiscoveryScheduleRepository,
   PostgresCanonicalCommittedSourceAdapter,
   PostgresDiscoveryProjectionReadinessAdapter,
 } from '../../../adapters/discovery-trigger-coordinator/src/index.js';
@@ -211,7 +212,6 @@ import {
   type CompiledTruthProjectionStatus,
   type ProjectionReadiness,
   type DerivedInferenceCandidate,
-  type DiscoveryRunResult,
   type ActionAuditEvent,
   type ActionExecutionRecord,
   type HybridSearchRequest,
@@ -304,10 +304,17 @@ import type {
 import {
   createDiscoveryTriggerCoordinatorModule,
   DiscoveryTriggerCoordinator,
+  PersistentDiscoveryScheduler,
+  startPersistentDiscoverySchedulerWorker,
   StaticDiscoveryTriggerPolicy,
   type DiscoveryTriggerRuntimeRepositoryPort,
 } from '../../../modules/discovery-trigger-coordinator/src/index.js';
-import type { DiscoveryTriggerPolicyPort } from '../../../packages/contracts/src/index.js';
+import type {
+  DiscoveryScheduleRepositoryPort,
+  DiscoveryScheduleStatusV1,
+  DiscoveryTriggerPolicyPort,
+  DiscoveryManualTriggerRequestV1,
+} from '../../../packages/contracts/src/index.js';
 import {
   type ActionConnectorPort,
   type ActionCandidateRepositoryPort,
@@ -505,6 +512,7 @@ export type SecurityHeaders = {
   readonly authorization?: string;
   readonly cookie?: string;
   readonly 'x-csrf-token'?: string;
+  readonly 'x-idempotency-key'?: string;
 };
 
 export type ApplicationOptions = {
@@ -532,6 +540,8 @@ export type ApplicationOptions = {
   readonly compiledTruthRepository?: CompiledTruthRepositoryPort;
   readonly semanticCorpusSourceSnapshotReader?: SemanticCorpusSourceSnapshotReaderPort;
   readonly discoveryRuntimeRepository?: DiscoveryTriggerRuntimeRepositoryPort;
+  readonly discoveryScheduleRepository?: DiscoveryScheduleRepositoryPort;
+  readonly discoverySchedulerIntervalMs?: number | false;
   readonly discoverySemanticIndexRepository?: {
     getActiveGenerationPointer(projectId: string): Promise<SemanticGenerationPointer | undefined>;
     getGeneration(
@@ -1042,6 +1052,146 @@ const requestContext = (headers: SecurityHeaders) => {
     });
   }
   return context;
+};
+
+const requireDurableManualDiscoveryRequest = (
+  body: unknown,
+  headers: SecurityHeaders,
+): DiscoveryManualTriggerRequestV1 => {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'Discovery run requires a durable request identity.',
+      module: 'product-api',
+      operation: 'manual-discovery-request',
+    });
+  }
+  const input = body as Record<string, unknown>;
+  const unknown = Object.keys(input).filter(
+    (key) => !['requestId', 'commandId', 'requestedScanMode', 'mode'].includes(key),
+  );
+  if (unknown.length) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'Discovery run accepts only its durable request identity and scan mode.',
+      module: 'product-api',
+      operation: 'manual-discovery-request',
+    });
+  }
+  const requestId = input.requestId ?? headers['x-idempotency-key'];
+  if (typeof requestId !== 'string' || requestId.trim().length === 0 || requestId.length > 512) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'A stable requestId or x-idempotency-key is required.',
+      module: 'product-api',
+      operation: 'manual-discovery-request',
+    });
+  }
+  const legacyMode = input.mode;
+  const requestedScanMode =
+    input.requestedScanMode ??
+    (legacyMode === 'WEEKLY'
+      ? 'FULL_SCAN'
+      : legacyMode === 'INCREMENTAL'
+        ? 'INCREMENTAL'
+        : undefined);
+  if (requestedScanMode !== 'INCREMENTAL' && requestedScanMode !== 'FULL_SCAN') {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'requestedScanMode must be INCREMENTAL or FULL_SCAN.',
+      module: 'product-api',
+      operation: 'manual-discovery-request',
+    });
+  }
+  const commandId = input.commandId ?? requestId;
+  if (typeof commandId !== 'string' || commandId.trim().length === 0 || commandId.length > 512) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'commandId must be a stable non-empty string.',
+      module: 'product-api',
+      operation: 'manual-discovery-request',
+    });
+  }
+  return {
+    commandId: commandId.trim(),
+    requestId: requestId.trim(),
+    requestedScanMode,
+  };
+};
+
+type DiscoveryScheduleConfigurationRequestV1 = {
+  readonly scheduleId: string;
+  readonly status: DiscoveryScheduleStatusV1;
+  readonly timezone: string;
+  readonly dayOfWeek: number;
+  readonly localTime: string;
+};
+
+const requireDiscoveryScheduleConfigurationRequest = (
+  body: unknown,
+): DiscoveryScheduleConfigurationRequestV1 => {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'Discovery schedule configuration must be an object.',
+      module: 'product-api',
+      operation: 'discovery-schedule-request',
+    });
+  }
+  const input = body as Record<string, unknown>;
+  const allowed = ['scheduleId', 'status', 'timezone', 'dayOfWeek', 'localTime'];
+  const unknown = Object.keys(input).filter((key) => !allowed.includes(key));
+  if (unknown.length || allowed.some((key) => input[key] === undefined)) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage:
+        'Discovery schedule accepts only scheduleId, status, timezone, dayOfWeek, and localTime.',
+      module: 'product-api',
+      operation: 'discovery-schedule-request',
+    });
+  }
+  const textField = (key: string, maxLength: number): string => {
+    const value = input[key];
+    if (typeof value !== 'string' || value.trim().length === 0 || value.length > maxLength) {
+      throw new ShotgunError({
+        code: 'INVALID_REQUEST',
+        safeMessage: `Discovery schedule ${key} must be a bounded non-empty string.`,
+        module: 'product-api',
+        operation: 'discovery-schedule-request',
+      });
+    }
+    return value.trim();
+  };
+  const status = input.status;
+  const dayOfWeek = input.dayOfWeek;
+  if (status !== 'ENABLED' && status !== 'DISABLED') {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'Discovery schedule status must be ENABLED or DISABLED.',
+      module: 'product-api',
+      operation: 'discovery-schedule-request',
+    });
+  }
+  if (
+    typeof dayOfWeek !== 'number' ||
+    !Number.isInteger(dayOfWeek) ||
+    dayOfWeek < 1 ||
+    dayOfWeek > 7
+  ) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'Discovery schedule dayOfWeek must be an ISO weekday from 1 to 7.',
+      module: 'product-api',
+      operation: 'discovery-schedule-request',
+    });
+  }
+  return {
+    scheduleId: textField('scheduleId', 256),
+    status,
+    timezone: textField('timezone', 128),
+    dayOfWeek,
+    localTime: textField('localTime', 5),
+  };
 };
 
 const requestPrincipalContext = (headers: SecurityHeaders): TrustedPrincipalContext => {
@@ -1599,18 +1749,36 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.discoverySemanticIndexRepository ?? new InMemorySemanticIndexRepository();
   const discoveryRuntimeRepository =
     options.discoveryRuntimeRepository ?? new InMemoryDiscoveryRuntimeRepository();
+  const discoverySource = new PostgresCanonicalCommittedSourceAdapter(
+    canonicalKnowledgeRepository,
+    semanticCorpusSourceSnapshotReader,
+  );
   const discoveryTriggerCoordinator = new DiscoveryTriggerCoordinator(
-    new PostgresCanonicalCommittedSourceAdapter(
-      canonicalKnowledgeRepository,
-      semanticCorpusSourceSnapshotReader,
-    ),
+    discoverySource,
     new PostgresDiscoveryProjectionReadinessAdapter(
       compiledTruthRepository,
       discoverySemanticIndexRepository,
     ),
     discoveryRuntimeRepository,
     options.discoveryTriggerPolicy ?? new StaticDiscoveryTriggerPolicy(),
+    undefined,
+    {
+      currentAuthority: {
+        resolve: (projectId) => discoverySource.resolveCurrentAuthority(projectId),
+      },
+    },
   );
+  const discoveryScheduleRepository =
+    options.discoveryScheduleRepository ?? new InMemoryDiscoveryScheduleRepository();
+  // The same scheduler authority serves both the production worker and the
+  // server-owned configuration boundary. The worker remains opt-in here so
+  // tests and embedders can configure schedules without starting a timer.
+  const discoveryScheduler = new PersistentDiscoveryScheduler(
+    discoveryScheduleRepository,
+    discoveryTriggerCoordinator,
+  );
+  const schedulerIntervalMs = options.discoverySchedulerIntervalMs;
+  let discoverySchedulerWorker: { stop(): Promise<void> } | undefined;
   const discoveryTriggerCoordinatorModule = createDiscoveryTriggerCoordinatorModule(
     discoveryTriggerCoordinator,
   );
@@ -1843,6 +2011,12 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           options.canonicalProjectionRecoveryIntervalMs ?? 30_000,
           applicationCanonicalProjectionRecoveryReporter,
         );
+  if (discoveryScheduler && schedulerIntervalMs !== undefined && schedulerIntervalMs !== false) {
+    discoverySchedulerWorker = startPersistentDiscoverySchedulerWorker(
+      discoveryScheduler,
+      schedulerIntervalMs,
+    );
+  }
 
   const server = Fastify({ logger: false });
 
@@ -3296,28 +3470,67 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     },
   );
 
-  server.post<{
-    Body: {
-      readonly mode: 'INCREMENTAL' | 'WEEKLY';
-      readonly maxNodes: number;
-      readonly maxSuggestions: number;
-    };
-    Headers: SecurityHeaders;
-  }>('/knowledge/discovery/run', async (request) => {
-    const context = requestContext(request.headers);
-    const delivery = await kernel.connector.sendCommand<DiscoveryRunResult>(
-      createCommand({
-        messageType: 'RunKnowledgeDiscovery',
-        schemaVersion: '1.0.0',
-        producerModule: 'shotgun-app',
-        producerVersion: '1.0.0',
-        idempotencyKey: `knowledge-discovery:${context.projectId}:${request.body.mode}:${randomUUID()}`,
-        ...context,
-        payload: request.body,
-      }),
-    );
-    return { discovery: delivery.result };
-  });
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/knowledge/discovery/schedules',
+    async (request) => {
+      const context = requestContext(request.headers);
+      if (
+        !context.security.accessScope.includes('owner') &&
+        !context.security.accessScope.includes('admin')
+      ) {
+        throw new ShotgunError({
+          code: 'PROJECT_ACCESS_DENIED',
+          safeMessage: 'Owner or Admin authorization is required to configure Discovery schedules.',
+          module: 'product-api',
+          operation: 'configure-discovery-schedule',
+        });
+      }
+      const configuration = requireDiscoveryScheduleConfigurationRequest(request.body);
+      try {
+        const schedule = await discoveryScheduler.registerSchedule({
+          // Project authority comes only from the authenticated context; the
+          // request body has no projectId or revision field.
+          projectId: context.projectId,
+          ...configuration,
+          now: new Date().toISOString(),
+        });
+        return { schedule };
+      } catch (error) {
+        if (error instanceof ShotgunError) throw error;
+        throw new ShotgunError({
+          code: 'INVALID_REQUEST',
+          safeMessage:
+            error instanceof Error ? error.message : 'Discovery schedule configuration is invalid.',
+          module: 'product-api',
+          operation: 'configure-discovery-schedule',
+          cause: error,
+        });
+      }
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/knowledge/discovery/run',
+    async (request) => {
+      const context = requestContext(request.headers);
+      const payload = requireDurableManualDiscoveryRequest(request.body, request.headers);
+      const delivery = await kernel.connector.sendCommand(
+        createCommand({
+          messageType: 'RunKnowledgeDiscoveryDurable',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          // The connector's physical delivery deduplication is intentionally
+          // not the authority here. The coordinator resolves commandId+requestId
+          // against PostgreSQL so a new delivery returns ALREADY_EXISTS.
+          idempotencyKey: `knowledge-discovery-manual-delivery:${randomUUID()}`,
+          ...context,
+          payload,
+        }),
+      );
+      return { discovery: delivery.result };
+    },
+  );
 
   server.post<{ Body: Record<string, never>; Headers: SecurityHeaders }>(
     '/knowledge/discovery/list',
@@ -3487,6 +3700,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   );
 
   server.addHook('onClose', async () => {
+    await discoverySchedulerWorker?.stop();
     await canonicalProjectionRecoveryWorker?.stop();
     await kernel.shutdown();
     await options.closeResources?.();

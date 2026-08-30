@@ -1,9 +1,17 @@
+import type { Pool, QueryResultRow } from 'pg';
 import type {
   CanonicalCommittedPayload,
   CompiledTruthProjection,
   DiscoveryCanonicalCommittedEventEnvelopeV1,
   DiscoveryCanonicalCommittedSourceV1,
   DiscoveryCanonicalTriggerLookupV1,
+  DiscoveryCurrentAuthorityV1,
+  DiscoveryManualTriggerLookupV1,
+  DiscoveryScheduledTriggerLookupV1,
+  DiscoveryScheduleAdvanceV1,
+  DiscoveryScheduleRepositoryPort,
+  DiscoveryScheduleV1,
+  DiscoveryDueScheduleQueryV1,
   DiscoveryProjectionBaseIdentityV1,
   DiscoveryProjectionKindV1,
   DiscoveryProjectionObservationV1,
@@ -30,7 +38,8 @@ import { aggregateDiscoveryProjectionReadinessV1 } from '../../../modules/discov
 type CanonicalSourceRepository = Pick<
   CanonicalKnowledgeRepositoryPort,
   'findOutbox' | 'findCommit'
->;
+> &
+  Partial<Pick<CanonicalKnowledgeRepositoryPort, 'getSnapshot'>>;
 
 type SemanticWatermarkReader = Pick<SemanticCorpusSourceSnapshotReaderPort, 'readWatermark'>;
 
@@ -146,6 +155,43 @@ export class PostgresCanonicalCommittedSourceAdapter {
       schemaVersion: '1.0.0',
       projectionRevision: `semantic-corpus-source:v1:${sourceWatermark.canonicalVersion}`,
       projectionDigest: sourceWatermark.sourceSnapshotDigest,
+    };
+  }
+
+  async resolveCurrentAuthority(projectId: string): Promise<DiscoveryCurrentAuthorityV1> {
+    if (!this.canonical.getSnapshot) {
+      return failClosed(
+        'resolve-current-authority',
+        'Canonical snapshot authority is unavailable.',
+      );
+    }
+    const [snapshot, watermark] = await Promise.all([
+      this.canonical.getSnapshot(projectId),
+      this.watermark.readWatermark(projectId),
+    ]);
+    if (
+      snapshot.projectId !== projectId ||
+      watermark.projectId !== projectId ||
+      snapshot.version !== watermark.canonicalVersion ||
+      snapshot.digest !== watermark.canonicalSnapshotDigest
+    ) {
+      return failClosed(
+        'resolve-current-authority',
+        'Canonical and Discovery projection authorities are not at the same base.',
+      );
+    }
+    return {
+      projectId,
+      canonicalBase: {
+        schemaVersion: '1.0.0',
+        canonicalVersion: snapshot.version,
+        snapshotDigest: snapshot.digest,
+      },
+      requiredDiscoveryBase: {
+        schemaVersion: '1.0.0',
+        projectionRevision: `semantic-corpus-source:v1:${watermark.canonicalVersion}`,
+        projectionDigest: watermark.sourceSnapshotDigest,
+      },
     };
   }
 }
@@ -378,6 +424,208 @@ export class PostgresDiscoveryProjectionReadinessAdapter implements DiscoveryPro
   }
 }
 
+type DiscoveryScheduleRow = QueryResultRow & {
+  project_id: string;
+  schedule_id: string;
+  schedule_revision: number;
+  status: 'ENABLED' | 'DISABLED';
+  timezone: string;
+  day_of_week: number;
+  local_time: string;
+  next_occurrence_at: Date;
+  next_occurrence_key: string;
+  updated_at: Date;
+};
+
+const mapSchedule = (row: DiscoveryScheduleRow): DiscoveryScheduleV1 => ({
+  schemaVersion: '1.0.0',
+  projectId: row.project_id,
+  scheduleId: row.schedule_id,
+  scheduleRevision: String(row.schedule_revision),
+  status: row.status,
+  timezone: row.timezone,
+  dayOfWeek: row.day_of_week,
+  localTime: row.local_time,
+  nextOccurrenceAt: row.next_occurrence_at.toISOString(),
+  nextOccurrenceKey: row.next_occurrence_key,
+  updatedAt: row.updated_at.toISOString(),
+});
+
+const scheduleColumns = `project_id, schedule_id, schedule_revision, status, timezone,
+  day_of_week, local_time, next_occurrence_at, next_occurrence_key, updated_at`;
+
+export class PostgresDiscoveryScheduleRepository implements DiscoveryScheduleRepositoryPort {
+  constructor(private readonly pool: Pool) {}
+
+  async saveSchedule(
+    schedule: DiscoveryScheduleV1,
+    expectedScheduleRevision?: string,
+  ): Promise<'CREATED' | 'UPDATED' | 'CONFLICT'> {
+    const values = [
+      schedule.projectId,
+      schedule.scheduleId,
+      Number(schedule.scheduleRevision),
+      schedule.status,
+      schedule.timezone,
+      schedule.dayOfWeek,
+      schedule.localTime,
+      schedule.nextOccurrenceAt,
+      schedule.nextOccurrenceKey,
+      schedule.updatedAt,
+    ];
+    if (expectedScheduleRevision === undefined) {
+      const result = await this.pool.query<DiscoveryScheduleRow>(
+        `INSERT INTO discovery.schedules (${scheduleColumns})
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (project_id, schedule_id) DO NOTHING
+         RETURNING ${scheduleColumns}`,
+        values,
+      );
+      return result.rows[0] ? 'CREATED' : 'CONFLICT';
+    }
+    const result = await this.pool.query<DiscoveryScheduleRow>(
+      `UPDATE discovery.schedules
+       SET schedule_revision = $3, status = $4, timezone = $5, day_of_week = $6,
+           local_time = $7, next_occurrence_at = $8, next_occurrence_key = $9, updated_at = $10
+       WHERE project_id = $1 AND schedule_id = $2 AND schedule_revision = $11
+       RETURNING ${scheduleColumns}`,
+      [...values, Number(expectedScheduleRevision)],
+    );
+    return result.rows[0] ? 'UPDATED' : 'CONFLICT';
+  }
+
+  async findSchedule(
+    projectId: string,
+    scheduleId: string,
+  ): Promise<DiscoveryScheduleV1 | undefined> {
+    const result = await this.pool.query<DiscoveryScheduleRow>(
+      `SELECT ${scheduleColumns} FROM discovery.schedules WHERE project_id = $1 AND schedule_id = $2`,
+      [projectId, scheduleId],
+    );
+    return result.rows[0] ? mapSchedule(result.rows[0]) : undefined;
+  }
+
+  async listDueSchedules(
+    input: DiscoveryDueScheduleQueryV1,
+  ): Promise<readonly DiscoveryScheduleV1[]> {
+    const result = await this.pool.query<DiscoveryScheduleRow>(
+      `SELECT ${scheduleColumns}
+       FROM discovery.schedules
+       WHERE status = 'ENABLED' AND next_occurrence_at <= $1
+       ORDER BY next_occurrence_at, project_id, schedule_id
+       LIMIT $2`,
+      [input.now, input.limit ?? 100],
+    );
+    return result.rows.map(mapSchedule);
+  }
+
+  async advanceOccurrence(
+    input: DiscoveryScheduleAdvanceV1,
+  ): Promise<'ADVANCED' | 'CONFLICT' | 'NOT_FOUND'> {
+    const result = await this.pool.query(
+      `UPDATE discovery.schedules
+       SET next_occurrence_at = $5, next_occurrence_key = $6, updated_at = $7
+       WHERE project_id = $1 AND schedule_id = $2 AND status = 'ENABLED'
+         AND schedule_revision = $3 AND next_occurrence_key = $4`,
+      [
+        input.projectId,
+        input.scheduleId,
+        Number(input.expectedScheduleRevision),
+        input.expectedOccurrenceKey,
+        input.nextOccurrenceAt,
+        input.nextOccurrenceKey,
+        input.updatedAt,
+      ],
+    );
+    if (result.rowCount === 1) return 'ADVANCED';
+    const existing = await this.pool.query(
+      `SELECT 1 FROM discovery.schedules WHERE project_id = $1 AND schedule_id = $2`,
+      [input.projectId, input.scheduleId],
+    );
+    return existing.rowCount === 0 ? 'NOT_FOUND' : 'CONFLICT';
+  }
+}
+
+export class InMemoryDiscoveryScheduleRepository implements DiscoveryScheduleRepositoryPort {
+  private readonly schedules = new Map<string, DiscoveryScheduleV1>();
+  private mutationTail: Promise<void> = Promise.resolve();
+
+  private async mutate<T>(operation: () => T | Promise<T>): Promise<T> {
+    const previous = this.mutationTail;
+    let release!: () => void;
+    this.mutationTail = new Promise<void>((resolve) => (release = resolve));
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
+  async saveSchedule(
+    schedule: DiscoveryScheduleV1,
+    expectedScheduleRevision?: string,
+  ): Promise<'CREATED' | 'UPDATED' | 'CONFLICT'> {
+    return this.mutate(() => {
+      const key = `${schedule.projectId}:${schedule.scheduleId}`;
+      const current = this.schedules.get(key);
+      if (expectedScheduleRevision === undefined) {
+        if (current) return 'CONFLICT';
+        this.schedules.set(key, clone(schedule));
+        return 'CREATED';
+      }
+      if (!current || current.scheduleRevision !== expectedScheduleRevision) return 'CONFLICT';
+      this.schedules.set(key, clone(schedule));
+      return 'UPDATED';
+    });
+  }
+
+  async findSchedule(
+    projectId: string,
+    scheduleId: string,
+  ): Promise<DiscoveryScheduleV1 | undefined> {
+    const schedule = this.schedules.get(`${projectId}:${scheduleId}`);
+    return schedule ? clone(schedule) : undefined;
+  }
+
+  async listDueSchedules(
+    input: DiscoveryDueScheduleQueryV1,
+  ): Promise<readonly DiscoveryScheduleV1[]> {
+    const now = Date.parse(input.now);
+    return [...this.schedules.values()]
+      .filter(
+        (schedule) => schedule.status === 'ENABLED' && Date.parse(schedule.nextOccurrenceAt) <= now,
+      )
+      .sort((left, right) => left.nextOccurrenceAt.localeCompare(right.nextOccurrenceAt))
+      .slice(0, input.limit ?? 100)
+      .map(clone);
+  }
+
+  async advanceOccurrence(
+    input: DiscoveryScheduleAdvanceV1,
+  ): Promise<'ADVANCED' | 'CONFLICT' | 'NOT_FOUND'> {
+    return this.mutate(() => {
+      const key = `${input.projectId}:${input.scheduleId}`;
+      const current = this.schedules.get(key);
+      if (!current) return 'NOT_FOUND';
+      if (
+        current.status !== 'ENABLED' ||
+        current.scheduleRevision !== input.expectedScheduleRevision ||
+        current.nextOccurrenceKey !== input.expectedOccurrenceKey
+      ) {
+        return 'CONFLICT';
+      }
+      this.schedules.set(key, {
+        ...current,
+        nextOccurrenceAt: input.nextOccurrenceAt,
+        nextOccurrenceKey: input.nextOccurrenceKey,
+        updatedAt: input.updatedAt,
+      });
+      return 'ADVANCED';
+    });
+  }
+}
+
 const clone = <T>(value: T): T => structuredClone(value);
 
 export class InMemoryDiscoveryRuntimeRepository implements DiscoveryTriggerRuntimeRepositoryPort {
@@ -410,11 +658,9 @@ export class InMemoryDiscoveryRuntimeRepository implements DiscoveryTriggerRunti
       const sameTrigger = [...this.jobs.values()].find(
         (candidate) =>
           candidate.projectId === decoded.projectId &&
-          candidate.trigger.triggerClass === 'CANONICAL_COMMITTED' &&
-          decoded.trigger.triggerClass === 'CANONICAL_COMMITTED' &&
-          candidate.trigger.triggerIdentity.eventId === decoded.trigger.triggerIdentity.eventId &&
-          candidate.trigger.triggerIdentity.eventRevision ===
-            decoded.trigger.triggerIdentity.eventRevision,
+          candidate.trigger.triggerClass === decoded.trigger.triggerClass &&
+          semanticStableJson(candidate.trigger.triggerIdentity) ===
+            semanticStableJson(decoded.trigger.triggerIdentity),
       );
       if (sameJobId || sameLogical || sameTrigger) return 'CONFLICT';
       this.jobs.set(`${decoded.projectId}:${decoded.jobId}`, clone(decoded));
@@ -428,14 +674,28 @@ export class InMemoryDiscoveryRuntimeRepository implements DiscoveryTriggerRunti
   }
 
   async findJobByTriggerIdentity(
-    lookup: DiscoveryCanonicalTriggerLookupV1,
+    lookup:
+      | DiscoveryCanonicalTriggerLookupV1
+      | DiscoveryScheduledTriggerLookupV1
+      | DiscoveryManualTriggerLookupV1,
   ): Promise<DiscoveryJobV1 | undefined> {
     const job = [...this.jobs.values()].find(
       (candidate) =>
         candidate.projectId === lookup.projectId &&
         candidate.trigger.triggerClass === lookup.triggerClass &&
-        candidate.trigger.triggerIdentity.eventId === lookup.eventId &&
-        candidate.trigger.triggerIdentity.eventRevision === lookup.eventRevision,
+        ((lookup.triggerClass === 'CANONICAL_COMMITTED' &&
+          candidate.trigger.triggerIdentity.kind === 'CANONICAL_COMMITTED' &&
+          candidate.trigger.triggerIdentity.eventId === lookup.eventId &&
+          candidate.trigger.triggerIdentity.eventRevision === lookup.eventRevision) ||
+          (lookup.triggerClass === 'SCHEDULED_FULL_SCAN' &&
+            candidate.trigger.triggerIdentity.kind === 'SCHEDULED_FULL_SCAN' &&
+            candidate.trigger.triggerIdentity.scheduleId === lookup.scheduleId &&
+            candidate.trigger.triggerIdentity.scheduleRevision === lookup.scheduleRevision &&
+            candidate.trigger.triggerIdentity.occurrenceKey === lookup.occurrenceKey) ||
+          (lookup.triggerClass === 'MANUAL' &&
+            candidate.trigger.triggerIdentity.kind === 'MANUAL' &&
+            candidate.trigger.triggerIdentity.commandId === lookup.commandId &&
+            candidate.trigger.triggerIdentity.requestId === lookup.requestId)),
     );
     return job ? clone(job) : undefined;
   }

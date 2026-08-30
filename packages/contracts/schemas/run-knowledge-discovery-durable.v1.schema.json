@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://shotgun.local/schemas/run-knowledge-discovery-durable.v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["commandId", "requestId", "requestedScanMode"],
+  "properties": {
+    "commandId": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "requestId": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "requestedScanMode": { "enum": ["INCREMENTAL", "FULL_SCAN"] }
+  }
+}

@@ -90,11 +90,19 @@ import {
 } from '../../../adapters/semantic-index-postgres/src/index.js';
 import { PostgresSemanticEmbeddingProfileRepository } from '../../../adapters/semantic-embedding-postgres/src/index.js';
 import { PostgresDiscoveryRuntimeRepository } from '../../../adapters/discovery-runtime-postgres/src/index.js';
+import {
+  PostgresDiscoveryApprovedResourceRevisionResolver,
+  PostgresDiscoveryReentryRepository,
+} from '../../../adapters/discovery-reentry-postgres/src/index.js';
 import { PostgresDiscoveryFindingRepository } from '../../../adapters/discovery-finding-postgres/src/index.js';
 import { PostgresDiscoveryModelProfileRepository } from '../../../adapters/discovery-model-profile-postgres/src/index.js';
 import { PostgresDiscoveryScheduleRepository } from '../../../adapters/discovery-trigger-coordinator/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
+import {
+  DiscoveryReentryConsumer,
+  PersistentDiscoveryReentryWorker,
+} from '../../../modules/discovery-reentry/src/index.js';
 import {
   DiscoveryModelProfileService,
   createDiscoveryAIGenerationService,
@@ -495,6 +503,7 @@ export const startShotgunApplication = async (
     const disableAskWorker = options.disableAskWorker ?? recoveryHarness;
 
     const compiledTruthRepository = new PostgresCompiledTruthRepository(pool);
+    const knowledgeModelRepository = new PostgresKnowledgeModelRepository(pool);
     const discoveryRuntimeRepository = new PostgresDiscoveryRuntimeRepository(pool);
     const discoveryFindingRepository = new PostgresDiscoveryFindingRepository(pool);
     const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
@@ -649,6 +658,28 @@ export const startShotgunApplication = async (
             maxAttempts: Number.parseInt(process.env.DISCOVERY_WORKER_MAX_ATTEMPTS ?? '3', 10),
           },
         );
+    const discoveryReentryWorker = recoveryHarness
+      ? undefined
+      : new PersistentDiscoveryReentryWorker(
+          new DiscoveryReentryConsumer(
+            new PostgresDiscoveryReentryRepository(pool),
+            new PostgresDiscoveryApprovedResourceRevisionResolver(pool, {
+              canonicalKnowledgeRepository,
+              knowledgeModelRepository,
+              compiledTruthRepository,
+            }),
+          ),
+          {
+            pollIntervalMs: Number.parseInt(
+              process.env.DISCOVERY_REENTRY_WORKER_INTERVAL_MS ?? '1000',
+              10,
+            ),
+            batchLimit: Number.parseInt(
+              process.env.DISCOVERY_REENTRY_WORKER_BATCH_LIMIT ?? '25',
+              10,
+            ),
+          },
+        );
     if (discoveryExecutionWorker !== undefined) {
       stopDiscoveryExecutionWorker = () => discoveryExecutionWorker.stop();
     }
@@ -698,13 +729,14 @@ export const startShotgunApplication = async (
       canonicalSnapshot: canonicalKnowledgeRepository,
       canonicalKnowledgeRepository,
       searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
-      knowledgeModelRepository: new PostgresKnowledgeModelRepository(pool),
+      knowledgeModelRepository,
       compiledTruthRepository,
       semanticCorpusSourceSnapshotReader,
       discoveryRuntimeRepository,
       discoveryScheduleRepository: new PostgresDiscoveryScheduleRepository(pool),
       discoverySchedulerIntervalMs: recoveryHarness ? false : 30_000,
       ...(discoveryExecutionWorker === undefined ? {} : { discoveryExecutionWorker }),
+      ...(discoveryReentryWorker === undefined ? {} : { discoveryReentryWorker }),
       discoverySemanticIndexRepository: semanticIndexRepository,
       semanticRetriever,
       semanticActiveGenerationReader,

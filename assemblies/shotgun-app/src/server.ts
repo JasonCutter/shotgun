@@ -321,6 +321,7 @@ import type {
   DiscoveryManualTriggerRequestV1,
 } from '../../../packages/contracts/src/index.js';
 import type { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
+import type { PersistentDiscoveryReentryWorker } from '../../../modules/discovery-reentry/src/index.js';
 import {
   type ActionConnectorPort,
   type ActionCandidateRepositoryPort,
@@ -550,6 +551,8 @@ export type ApplicationOptions = {
   readonly discoverySchedulerIntervalMs?: number | false;
   /** WP4 durable execution worker; omitted by recovery/test compositions. */
   readonly discoveryExecutionWorker?: Pick<PersistentDiscoveryWorker, 'start' | 'stop'>;
+  /** AKP-5 WP2 FindingReady re-entry consumer; omitted by recovery/test compositions. */
+  readonly discoveryReentryWorker?: Pick<PersistentDiscoveryReentryWorker, 'start' | 'stop'>;
   readonly discoverySemanticIndexRepository?: {
     getActiveGenerationPointer(projectId: string): Promise<SemanticGenerationPointer | undefined>;
     getGeneration(
@@ -1792,6 +1795,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const schedulerIntervalMs = options.discoverySchedulerIntervalMs;
   let discoverySchedulerWorker: { stop(): Promise<void> } | undefined;
   const discoveryExecutionWorker = options.discoveryExecutionWorker;
+  const discoveryReentryWorker = options.discoveryReentryWorker;
   const discoveryTriggerCoordinatorModule = createDiscoveryTriggerCoordinatorModule(
     discoveryTriggerCoordinator,
   );
@@ -2031,6 +2035,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     );
   }
   discoveryExecutionWorker?.start();
+  discoveryReentryWorker?.start();
 
   const server = Fastify({ logger: false });
 
@@ -3715,6 +3720,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
 
   server.addHook('onClose', async () => {
     await discoveryExecutionWorker?.stop();
+    await discoveryReentryWorker?.stop();
     await discoverySchedulerWorker?.stop();
     await canonicalProjectionRecoveryWorker?.stop();
     await kernel.shutdown();

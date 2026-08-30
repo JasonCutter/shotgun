@@ -474,7 +474,7 @@ describe.runIf(databaseUrl)('AKP-5 WP4 PostgreSQL materialization authority', ()
       expectedLifecycleRevision: current!.lifecycleRevision,
       targetState: 'STALE',
       cause: 'SYSTEM_RECONCILIATION',
-      reasonCode: 'SOURCE_MATERIALLY_SUPERSEDED',
+      reasonCode: 'RELEVANT_INPUT_CHANGED',
       occurredAt: now,
       context: { canonicalBase: finding.canonicalBase, discoveryBase: finding.discoveryBase },
     });

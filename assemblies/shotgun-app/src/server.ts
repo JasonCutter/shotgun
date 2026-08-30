@@ -111,6 +111,7 @@ import {
   ActivityProjectionBuilder,
   type ActivityReadModelStorePort,
   type AskActivityReadPort,
+  type DiscoveryActivityReadPort,
   type SourcesActivityReadPort,
 } from '../../../modules/frontend-activity/src/index.js';
 import {
@@ -133,6 +134,10 @@ import { createInMemorySourcesActivityRead } from '../../../adapters/frontend-ac
 import { AskActivityAdapter } from '../../../adapters/frontend-activity-ask/src/index.js';
 import { createInMemoryAskActivityRead } from '../../../adapters/frontend-activity-ask/src/index.js';
 import { ExternalActionActivityAdapter } from '../../../adapters/frontend-activity-external-action/src/index.js';
+import {
+  DiscoveryActivityAdapter,
+  createInMemoryDiscoveryActivityRead,
+} from '../../../adapters/frontend-activity-discovery/src/index.js';
 import type { ExternalActionRepositoryBoundaryPort } from '../../../modules/frontend-external-action/src/external-action-store-port.js';
 import { CoordinatorActionCenterAttentionProjection } from './action-center-attention-projection.js';
 import {
@@ -591,6 +596,7 @@ export type ApplicationOptions = {
   readonly sourcesProjectionRepository?: SourcesProjectionRepositoryPort;
   readonly activitySourcesRead?: SourcesActivityReadPort;
   readonly activityAskRead?: AskActivityReadPort;
+  readonly activityDiscoveryRead?: DiscoveryActivityReadPort;
   readonly activityExternalActionBoundary?: ExternalActionRepositoryBoundaryPort;
   readonly activityReadModelStore?: ActivityReadModelStorePort;
   readonly activityCoordinator?: ActivityProductCoordinator;
@@ -1631,6 +1637,8 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.activityReadModelStore ?? createInMemoryActivityReadModelStore();
   const activitySourcesRead = options.activitySourcesRead ?? createInMemorySourcesActivityRead();
   const activityAskRead = options.activityAskRead ?? createInMemoryAskActivityRead();
+  const activityDiscoveryRead =
+    options.activityDiscoveryRead ?? createInMemoryDiscoveryActivityRead();
   const activityCoordinator =
     options.activityCoordinator ??
     (() => {
@@ -1638,9 +1646,10 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         adapters: [
           new SourcesActivityAdapter(activitySourcesRead),
           new AskActivityAdapter(activityAskRead),
+          new DiscoveryActivityAdapter(activityDiscoveryRead),
           new ExternalActionActivityAdapter(externalActionStore),
         ],
-        adapterFor(domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION') {
+        adapterFor(domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY') {
           return registry.adapters.find((adapter) => adapter.domainKind === domainKind);
         },
         healthSummaries() {

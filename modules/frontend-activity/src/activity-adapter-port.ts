@@ -25,7 +25,7 @@ export type {
 /**
  * FE-P5-S1 Activity adapter ports.
  *
- * Each owning Domain (Sources, Ask, External Action) exposes a read-only
+ * Each owning Domain (Sources, Ask, External Action, Discovery) exposes a read-only
  * Activity adapter. Adapters produce the federated projection views but never
  * acquire execution authority: Retry and Cancel remain owning-Domain commands
  * and the browser never authors scope/authority.
@@ -120,6 +120,11 @@ export type AskActivityAdapterPort = ActivityAdapterPort & {
 /** External Action adapter port (Job = Action aggregate, Run = Execution). */
 export type ExternalActionActivityAdapterPort = ActivityAdapterPort & {
   readonly domainKind: 'EXTERNAL_ACTION';
+};
+
+/** Discovery adapter port (Job = durable Discovery Job, Run = runtime Run). */
+export type DiscoveryActivityAdapterPort = ActivityAdapterPort & {
+  readonly domainKind: 'DISCOVERY';
 };
 
 /**

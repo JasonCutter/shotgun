@@ -27,6 +27,8 @@ export {
   decodeSourcesActivityAttemptCursor,
   decodeSourcesActivityCursor,
   encodeAskActivityCursor,
+  decodeDiscoveryActivityCursor,
+  encodeDiscoveryActivityCursor,
   encodeSourcesActivityAttemptCursor,
   encodeSourcesActivityCursor,
 } from './activity-domain-read-ports.js';
@@ -39,6 +41,13 @@ export type {
   SourcesActivityCursorV1,
   SourcesActivityReadPort,
   SourcesActivitySubmissionRow,
+  DiscoveryActivityAttemptRow,
+  DiscoveryActivityCursorV1,
+  DiscoveryActivityFailureContextV1,
+  DiscoveryActivityHistoryV1,
+  DiscoveryActivityJobRow,
+  DiscoveryActivityLifecycleEventV1,
+  DiscoveryActivityReadPort,
 } from './activity-domain-read-ports.js';
 export type {
   ActivityAdapterHealthV1,
@@ -54,6 +63,7 @@ export type {
   ActivityStageContinuationV1,
   AskActivityAdapterPort,
   ExternalActionActivityAdapterPort,
+  DiscoveryActivityAdapterPort,
   SourcesActivityAdapterPort,
 } from './activity-adapter-port.js';
 export {

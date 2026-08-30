@@ -30,6 +30,7 @@ export const ACTIVITY_INDEX_DOMAIN_KINDS = [
   'SOURCES',
   'ASK',
   'EXTERNAL_ACTION',
+  'DISCOVERY',
   'CONNECTOR_DIAGNOSTICS',
 ] as const;
 

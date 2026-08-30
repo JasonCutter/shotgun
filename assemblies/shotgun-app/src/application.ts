@@ -716,6 +716,7 @@ export const startShotgunApplication = async (
       frontendReviewStore: new PostgresFrontendReviewRepository(pool),
       activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
       activityAskRead: new PostgresAskActivityRead(pool),
+      activityDiscoveryRead: discoveryRuntimeRepository,
       activityReadModelStore: createPostgresActivityReadModelStore(pool),
       historyReadModelStore: createPostgresHistoryReadModelStore(pool),
       historyPayloadStates: {

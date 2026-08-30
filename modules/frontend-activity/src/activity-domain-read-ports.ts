@@ -2,6 +2,12 @@ import type {
   AskAnswerRunEventView,
   AskAnswerRunState,
   AskCapability,
+  DiscoveryAttemptV1,
+  DiscoveryJobV1,
+  DiscoveryRunV1,
+  DiscoveryRuntimeLifecycleStateV1,
+  DiscoveryRuntimeStageStateV1,
+  DiscoveryStageV1,
   IntakeSubmissionSnapshot,
   IntakeSubmissionState,
 } from '../../../packages/contracts/src/index.js';
@@ -215,4 +221,122 @@ export type AskActivityReadPort = {
     readonly afterOrdinal?: number;
     readonly limit: number;
   }): Promise<readonly AskAnswerRunEventView[]>;
+};
+
+// ---------------------------------------------------------------------------
+// Discovery
+// ---------------------------------------------------------------------------
+
+/** Safe attempt failure context persisted by the Discovery runtime (WP4). */
+export type DiscoveryActivityFailureContextV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly code: string;
+  readonly classification: 'RETRYABLE' | 'TERMINAL';
+  readonly retryable: boolean;
+  readonly safeMessage: string;
+  readonly failedStage: string;
+  readonly occurredAt: string;
+  readonly retryNotBefore?: string;
+};
+
+export type DiscoveryActivityAttemptRow = DiscoveryAttemptV1 & {
+  readonly failure?: DiscoveryActivityFailureContextV1;
+};
+
+export type DiscoveryActivityJobRow = {
+  readonly job: DiscoveryJobV1;
+  /** Latest durable Run, when the worker has claimed the Job. */
+  readonly run?: DiscoveryRunV1;
+};
+
+/** One durable lifecycle transition; payloads and Finding bodies are excluded. */
+export type DiscoveryActivityLifecycleEventV1 = {
+  readonly resourceKind: 'DiscoveryJob' | 'DiscoveryRun' | 'DiscoveryAttempt' | 'DiscoveryStage';
+  readonly resourceId: string;
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly runId?: string;
+  readonly attemptId?: string;
+  readonly revision: number;
+  readonly fromState?: DiscoveryRuntimeLifecycleStateV1 | DiscoveryRuntimeStageStateV1;
+  readonly toState: DiscoveryRuntimeLifecycleStateV1 | DiscoveryRuntimeStageStateV1;
+  readonly occurredAt: string;
+};
+
+export type DiscoveryActivityHistoryV1 = {
+  readonly job: readonly DiscoveryActivityLifecycleEventV1[];
+  readonly run: readonly DiscoveryActivityLifecycleEventV1[];
+  readonly attempt: readonly DiscoveryActivityLifecycleEventV1[];
+  readonly stage: readonly DiscoveryActivityLifecycleEventV1[];
+};
+
+export type DiscoveryActivityCursorV1 = {
+  readonly updatedAt: string;
+  readonly jobId: string;
+};
+
+export const encodeDiscoveryActivityCursor = (cursor: DiscoveryActivityCursorV1): string =>
+  Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+
+export const decodeDiscoveryActivityCursor = (value: string): DiscoveryActivityCursorV1 => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('DISCOVERY_ACTIVITY_INVALID_CURSOR: malformed cursor');
+  }
+  if (
+    typeof parsed !== 'object' ||
+    parsed === null ||
+    typeof (parsed as { updatedAt?: unknown }).updatedAt !== 'string' ||
+    typeof (parsed as { jobId?: unknown }).jobId !== 'string' ||
+    (parsed as { updatedAt: string }).updatedAt.trim().length === 0 ||
+    (parsed as { jobId: string }).jobId.trim().length === 0
+  ) {
+    throw new Error('DISCOVERY_ACTIVITY_INVALID_CURSOR: malformed cursor');
+  }
+  return {
+    updatedAt: (parsed as { updatedAt: string }).updatedAt,
+    jobId: (parsed as { jobId: string }).jobId,
+  };
+};
+
+/** Server-only read surface over durable Discovery runtime authority. */
+export type DiscoveryActivityReadPort = {
+  listJobs(input: {
+    readonly projectId: string;
+    readonly cursor?: string;
+    readonly limit: number;
+  }): Promise<{ readonly jobs: readonly DiscoveryActivityJobRow[]; readonly nextCursor?: string }>;
+  getJob(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+  }): Promise<DiscoveryJobV1 | undefined>;
+  getRun(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+  }): Promise<DiscoveryRunV1 | undefined>;
+  getLatestRun(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+  }): Promise<DiscoveryRunV1 | undefined>;
+  listActivityAttempts(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+  }): Promise<readonly DiscoveryActivityAttemptRow[]>;
+  listActivityStages(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+    readonly attemptId: string;
+  }): Promise<readonly DiscoveryStageV1[]>;
+  listHistory(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+    readonly attemptIds: readonly string[];
+    readonly stageIds: readonly string[];
+  }): Promise<DiscoveryActivityHistoryV1>;
 };

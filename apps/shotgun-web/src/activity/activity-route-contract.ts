@@ -29,7 +29,7 @@ export const EMPTY_ACTIVITY_DEEP_LINK: ActivityDeepLink = {
   resourceId: null,
 };
 
-const DOMAIN_KINDS: readonly string[] = ['SOURCES', 'ASK', 'EXTERNAL_ACTION'];
+const DOMAIN_KINDS: readonly string[] = ['SOURCES', 'ASK', 'EXTERNAL_ACTION', 'DISCOVERY'];
 
 /** Strict parse — only the registered query keys are read; anything else is ignored. */
 export const parseActivityDeepLink = (

@@ -12,13 +12,13 @@ export type ActivityAdapterErrorCode =
 export class ActivityAdapterError extends Error {
   readonly code: ActivityAdapterErrorCode;
   readonly adapterId: string;
-  readonly domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION';
+  readonly domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY';
   readonly safe: boolean;
 
   constructor(input: {
     readonly code: ActivityAdapterErrorCode;
     readonly adapterId: string;
-    readonly domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION';
+    readonly domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY';
     readonly message: string;
     /** True only for explicitly allow-listed safe messages (ADR-130 §7). */
     readonly safe?: boolean;
@@ -47,7 +47,7 @@ export const ACTIVITY_ADAPTER_GENERIC_FAILURE_MESSAGE =
  */
 export const asActivityAdapterError = (input: {
   readonly adapterId: string;
-  readonly domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION';
+  readonly domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY';
   readonly error: unknown;
 }): ActivityAdapterError => {
   if (input.error instanceof ActivityAdapterError) return input.error;

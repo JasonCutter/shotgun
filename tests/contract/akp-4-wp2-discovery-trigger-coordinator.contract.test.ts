@@ -165,6 +165,67 @@ describe('AKP-4 WP2 Discovery trigger coordination contracts', () => {
     expect(new Set(concurrent.map((item) => item.logicalJobIdentity.value))).toHaveLength(1);
   });
 
+  it('uses the first durable projection base on redelivery even after the source watermark changes', async () => {
+    let sourceBase = base;
+    let initialBaseReads = 0;
+    const redeliverySource: DiscoveryCanonicalCommittedSourcePort = {
+      async resolve(event) {
+        return {
+          projectId: 'project-1',
+          eventIdentity: {
+            eventId: event.payload.commitId,
+            eventRevision: String(event.payload.canonicalVersion),
+          },
+          canonicalBase: {
+            schemaVersion: '1.0.0',
+            canonicalVersion: event.payload.canonicalVersion,
+            snapshotDigest: event.payload.snapshotDigest,
+          },
+          createdAt: event.createdAt,
+        };
+      },
+      async resolveInitialProjectionBase() {
+        initialBaseReads += 1;
+        return sourceBase;
+      },
+    };
+    const runtime = new InMemoryDiscoveryRuntimeRepository();
+    const policy = new StaticDiscoveryTriggerPolicy({
+      ...createDefaultDiscoveryTriggerPolicyV1(),
+      waitTimeoutMs: 60_000,
+    });
+    const service = new DiscoveryTriggerCoordinator(
+      redeliverySource,
+      readinessPort('READY'),
+      runtime,
+      policy,
+      { now: () => '2026-08-30T00:00:00.000Z' },
+      { jobId: () => 'job-redelivery' },
+    );
+
+    const first = await service.coordinateCanonicalCommitted(envelope());
+    const storedFirst = await runtime.findJob({ projectId: 'project-1', jobId: first.jobId });
+    sourceBase = {
+      ...base,
+      projectionRevision: 'semantic-corpus-source:v1:13',
+      projectionDigest: 'sha256:source-13',
+    };
+    const replay = await service.coordinateCanonicalCommitted(
+      envelope({ messageId: 'delivery-2', idempotencyKey: 'delivery-key-2' }),
+    );
+    const storedReplay = await runtime.findJob({ projectId: 'project-1', jobId: first.jobId });
+
+    expect(replay).toMatchObject({
+      disposition: 'ALREADY_EXISTS',
+      jobId: first.jobId,
+      logicalJobIdentity: first.logicalJobIdentity,
+    });
+    expect(initialBaseReads).toBe(1);
+    expect(storedReplay?.requiredDiscoveryBase).toEqual(storedFirst?.requiredDiscoveryBase);
+    expect(storedReplay?.budget).toEqual(storedFirst?.budget);
+    expect(storedReplay?.projectionWait).toEqual(storedFirst?.projectionWait);
+  });
+
   it('keeps distinct Canonical event identities and rejects Project override', async () => {
     const { service } = coordinator('READY');
     const first = await service.coordinateCanonicalCommitted(envelope());

@@ -3,6 +3,7 @@ import type {
   CompiledTruthProjection,
   DiscoveryCanonicalCommittedEventEnvelopeV1,
   DiscoveryCanonicalCommittedSourceV1,
+  DiscoveryCanonicalTriggerLookupV1,
   DiscoveryProjectionBaseIdentityV1,
   DiscoveryProjectionKindV1,
   DiscoveryProjectionObservationV1,
@@ -114,13 +115,6 @@ export class PostgresCanonicalCommittedSourceAdapter {
         'CanonicalCommitted does not match its durable Commit authority.',
       );
     }
-    const sourceWatermark = await this.watermark.readWatermark(projectId);
-    if (sourceWatermark.projectId !== projectId) {
-      return failClosed(
-        'resolve-canonical-event',
-        'Semantic source watermark belongs to another Project.',
-      );
-    }
     return {
       projectId,
       eventIdentity: {
@@ -132,14 +126,26 @@ export class PostgresCanonicalCommittedSourceAdapter {
         canonicalVersion: commit.afterVersion,
         snapshotDigest: commit.snapshotDigest,
       },
-      requiredDiscoveryBase: {
-        schemaVersion: '1.0.0',
-        projectionRevision: `semantic-corpus-source:v1:${sourceWatermark.canonicalVersion}`,
-        projectionDigest: sourceWatermark.sourceSnapshotDigest,
-      },
       createdAt: envelope.createdAt,
       ...(envelope.causationId === undefined ? {} : { causationId: envelope.causationId }),
       ...(envelope.correlationId === undefined ? {} : { correlationId: envelope.correlationId }),
+    };
+  }
+
+  async resolveInitialProjectionBase(
+    source: DiscoveryCanonicalCommittedSourceV1,
+  ): Promise<DiscoveryProjectionBaseIdentityV1> {
+    const sourceWatermark = await this.watermark.readWatermark(source.projectId);
+    if (sourceWatermark.projectId !== source.projectId) {
+      return failClosed(
+        'resolve-initial-projection-base',
+        'Semantic source watermark belongs to another Project.',
+      );
+    }
+    return {
+      schemaVersion: '1.0.0',
+      projectionRevision: `semantic-corpus-source:v1:${sourceWatermark.canonicalVersion}`,
+      projectionDigest: sourceWatermark.sourceSnapshotDigest,
     };
   }
 }
@@ -401,7 +407,16 @@ export class InMemoryDiscoveryRuntimeRepository implements DiscoveryTriggerRunti
           candidate.projectId === decoded.projectId &&
           candidate.logicalIdentity.value === decoded.logicalIdentity.value,
       );
-      if (sameJobId || sameLogical) return 'CONFLICT';
+      const sameTrigger = [...this.jobs.values()].find(
+        (candidate) =>
+          candidate.projectId === decoded.projectId &&
+          candidate.trigger.triggerClass === 'CANONICAL_COMMITTED' &&
+          decoded.trigger.triggerClass === 'CANONICAL_COMMITTED' &&
+          candidate.trigger.triggerIdentity.eventId === decoded.trigger.triggerIdentity.eventId &&
+          candidate.trigger.triggerIdentity.eventRevision ===
+            decoded.trigger.triggerIdentity.eventRevision,
+      );
+      if (sameJobId || sameLogical || sameTrigger) return 'CONFLICT';
       this.jobs.set(`${decoded.projectId}:${decoded.jobId}`, clone(decoded));
       return 'CREATED';
     });
@@ -409,6 +424,19 @@ export class InMemoryDiscoveryRuntimeRepository implements DiscoveryTriggerRunti
 
   async findJob(lookup: DiscoveryTriggerRuntimeJobLookupV1): Promise<DiscoveryJobV1 | undefined> {
     const job = this.jobs.get(`${lookup.projectId}:${lookup.jobId}`);
+    return job ? clone(job) : undefined;
+  }
+
+  async findJobByTriggerIdentity(
+    lookup: DiscoveryCanonicalTriggerLookupV1,
+  ): Promise<DiscoveryJobV1 | undefined> {
+    const job = [...this.jobs.values()].find(
+      (candidate) =>
+        candidate.projectId === lookup.projectId &&
+        candidate.trigger.triggerClass === lookup.triggerClass &&
+        candidate.trigger.triggerIdentity.eventId === lookup.eventId &&
+        candidate.trigger.triggerIdentity.eventRevision === lookup.eventRevision,
+    );
     return job ? clone(job) : undefined;
   }
 

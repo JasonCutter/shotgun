@@ -21,6 +21,7 @@ export type EventConsumerDelivery = {
   readonly consumerId: string;
   readonly status: 'processed' | 'duplicate' | 'dead-letter';
   readonly deadLetterId?: string;
+  readonly requiredForPublisherAcknowledgement?: boolean;
 };
 
 export type EventDelivery = {

@@ -54,10 +54,17 @@ export type DiscoveryCanonicalCommittedSourceV1 = {
     readonly eventRevision: string;
   };
   readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
-  readonly requiredDiscoveryBase: DiscoveryProjectionBaseIdentityV1;
+  readonly requiredDiscoveryBase?: DiscoveryProjectionBaseIdentityV1;
   readonly createdAt: string;
   readonly causationId?: string;
   readonly correlationId?: string;
+};
+
+export type DiscoveryCanonicalTriggerLookupV1 = {
+  readonly projectId: string;
+  readonly triggerClass: 'CANONICAL_COMMITTED';
+  readonly eventId: string;
+  readonly eventRevision: string;
 };
 
 export type DiscoveryCanonicalCommittedEventEnvelopeV1 = EventEnvelope<CanonicalCommittedPayload>;
@@ -81,6 +88,9 @@ export type DiscoveryCanonicalCommittedSourcePort = {
   resolve(
     envelope: DiscoveryCanonicalCommittedEventEnvelopeV1,
   ): Promise<DiscoveryCanonicalCommittedSourceV1>;
+  resolveInitialProjectionBase?(
+    source: DiscoveryCanonicalCommittedSourceV1,
+  ): Promise<DiscoveryProjectionBaseIdentityV1>;
 };
 
 export type DiscoveryProjectionReadinessPort = {

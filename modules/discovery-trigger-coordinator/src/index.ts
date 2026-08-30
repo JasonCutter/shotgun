@@ -15,6 +15,7 @@ import {
   utf16OrdinalCompare,
   type DiscoveryCanonicalCommittedEventEnvelopeV1,
   type DiscoveryCanonicalCommittedSourcePort,
+  type DiscoveryCanonicalTriggerLookupV1,
   type DiscoveryCanonicalTriggerCoordinationResultV1,
   type DiscoveryClockPort,
   type DiscoveryJobV1,
@@ -55,6 +56,9 @@ export type DiscoveryTriggerRuntimeJobTransitionInputV1 = DiscoveryTriggerRuntim
 export type DiscoveryTriggerRuntimeRepositoryPort = {
   saveJob(job: DiscoveryJobV1): Promise<'CREATED' | 'CONFLICT'>;
   findJob(lookup: DiscoveryTriggerRuntimeJobLookupV1): Promise<DiscoveryJobV1 | undefined>;
+  findJobByTriggerIdentity(
+    lookup: DiscoveryCanonicalTriggerLookupV1,
+  ): Promise<DiscoveryJobV1 | undefined>;
   findJobByLogicalIdentity(
     lookup: DiscoveryTriggerRuntimeLogicalJobLookupV1,
   ): Promise<DiscoveryJobV1 | undefined>;
@@ -194,6 +198,35 @@ const assertExistingJob = (job: DiscoveryJobV1, projectId: string): DiscoveryJob
   return decoded;
 };
 
+const assertExistingCanonicalCommittedJob = (
+  job: DiscoveryJobV1,
+  projectId: string,
+  policy: DiscoveryTriggerPolicyV1,
+): DiscoveryJobV1 & { readonly requiredDiscoveryBase: DiscoveryProjectionBaseIdentityV1 } => {
+  const decoded = assertExistingJob(job, projectId);
+  if (
+    decoded.trigger.triggerClass !== 'CANONICAL_COMMITTED' ||
+    decoded.requiredDiscoveryBase === undefined
+  ) {
+    return failClosed(
+      'resolve-existing-job',
+      'Canonical Discovery Job is missing its durable trigger binding.',
+    );
+  }
+  if (
+    decoded.policyRevision !== policy.policyRevision ||
+    decoded.strategyRevision !== policy.strategyRevision
+  ) {
+    return failClosed(
+      'resolve-existing-job',
+      'Canonical Discovery Job policy binding cannot be replaced on redelivery.',
+    );
+  }
+  return decoded as DiscoveryJobV1 & {
+    readonly requiredDiscoveryBase: DiscoveryProjectionBaseIdentityV1;
+  };
+};
+
 const resultForExisting = (
   job: DiscoveryJobV1,
   readiness: DiscoveryProjectionReadinessV1,
@@ -270,6 +303,32 @@ export class DiscoveryTriggerCoordinator {
     const policy = await this.policyPort.resolve(source.projectId);
     assertPolicy(policy);
     const observedAt = this.clock.now();
+    const triggerLookup: DiscoveryCanonicalTriggerLookupV1 = {
+      projectId: source.projectId,
+      triggerClass: 'CANONICAL_COMMITTED',
+      eventId: source.eventIdentity.eventId,
+      eventRevision: source.eventIdentity.eventRevision,
+    };
+    const existing = await this.runtime.findJobByTriggerIdentity(triggerLookup);
+    if (existing) {
+      const job = assertExistingCanonicalCommittedJob(existing, source.projectId, policy);
+      const readiness = await this.readiness.read({
+        projectId: job.projectId,
+        requiredBase: job.requiredDiscoveryBase,
+        projectionKinds: policy.requiredProjectionKinds,
+        observedAt,
+      });
+      return resultForExisting(job, readiness);
+    }
+
+    const requiredDiscoveryBase =
+      source.requiredDiscoveryBase ??
+      (this.source.resolveInitialProjectionBase === undefined
+        ? failClosed(
+            'resolve-canonical-event',
+            'Initial Discovery projection base authority is unavailable.',
+          )
+        : await this.source.resolveInitialProjectionBase(source));
     const waitDeadlineAt = deadlineFrom(observedAt, policy.waitTimeoutMs);
     const trigger = decodeDiscoveryTriggerV1({
       schemaVersion: DISCOVERY_RUNTIME_SCHEMA_VERSION_V1,
@@ -284,7 +343,7 @@ export class DiscoveryTriggerCoordinator {
       requestedScanMode: 'INCREMENTAL',
       effectiveScanMode: 'INCREMENTAL',
       canonicalBase: source.canonicalBase,
-      requiredDiscoveryBase: source.requiredDiscoveryBase,
+      requiredDiscoveryBase,
       policyRevision: policy.policyRevision,
       strategyRevision: policy.strategyRevision,
       ...(policy.profileBinding === undefined ? {} : { profileBinding: policy.profileBinding }),
@@ -299,27 +358,15 @@ export class DiscoveryTriggerCoordinator {
     });
     const readiness = await this.readiness.read({
       projectId: source.projectId,
-      requiredBase: source.requiredDiscoveryBase,
+      requiredBase: requiredDiscoveryBase,
       projectionKinds: policy.requiredProjectionKinds,
       observedAt,
     });
     const logicalIdentity = createDiscoveryLogicalJobIdentityV1(trigger);
-    const existing = await this.runtime.findJobByLogicalIdentity({
-      projectId: source.projectId,
-      logicalIdentity,
-    });
-    if (existing) {
-      return resultForExisting(assertExistingJob(existing, source.projectId), readiness);
-    }
-
     const lifecycleState = lifecycleFor(readiness);
     const projectionWait =
       lifecycleState === 'WAITING_FOR_PROJECTION'
-        ? projectionWaitFor(
-            source.requiredDiscoveryBase,
-            waitDeadlineAt,
-            policy.fallbackPolicyRevision,
-          )
+        ? projectionWaitFor(requiredDiscoveryBase, waitDeadlineAt, policy.fallbackPolicyRevision)
         : undefined;
     const job = decodeDiscoveryJobV1({
       schemaVersion: DISCOVERY_RUNTIME_SCHEMA_VERSION_V1,
@@ -330,7 +377,7 @@ export class DiscoveryTriggerCoordinator {
       requestedScanMode: 'INCREMENTAL',
       effectiveScanMode: 'INCREMENTAL',
       canonicalBase: source.canonicalBase,
-      requiredDiscoveryBase: source.requiredDiscoveryBase,
+      requiredDiscoveryBase,
       policyRevision: policy.policyRevision,
       strategyRevision: policy.strategyRevision,
       ...(policy.profileBinding === undefined ? {} : { profileBinding: policy.profileBinding }),
@@ -352,17 +399,21 @@ export class DiscoveryTriggerCoordinator {
         lifecycleState,
       };
     }
-    const concurrent = await this.runtime.findJobByLogicalIdentity({
-      projectId: source.projectId,
-      logicalIdentity,
-    });
+    const concurrent = await this.runtime.findJobByTriggerIdentity(triggerLookup);
     if (!concurrent) {
       return failClosed(
         'coordinate-canonical-committed',
         'Concurrent Discovery Job conflict lost its durable winner.',
       );
     }
-    return resultForExisting(assertExistingJob(concurrent, source.projectId), readiness);
+    const concurrentJob = assertExistingCanonicalCommittedJob(concurrent, source.projectId, policy);
+    const concurrentReadiness = await this.readiness.read({
+      projectId: concurrentJob.projectId,
+      requiredBase: concurrentJob.requiredDiscoveryBase,
+      projectionKinds: policy.requiredProjectionKinds,
+      observedAt,
+    });
+    return resultForExisting(concurrentJob, concurrentReadiness);
   }
 
   async reEvaluateCanonicalDiscoveryProjectionReadiness(input: {
@@ -493,6 +544,7 @@ export const createDiscoveryTriggerCoordinatorModule = (
         messageType: 'CanonicalCommitted',
         version: '1.0.0',
         requiredAccessScopes: ['owner'],
+        requiredForPublisherAcknowledgement: true,
         async handle(envelope): Promise<void> {
           await coordinator.coordinateCanonicalCommitted(
             envelope as DiscoveryCanonicalCommittedEventEnvelopeV1,

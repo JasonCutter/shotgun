@@ -119,6 +119,7 @@ export type CommandHandlerDefinition<TPayload = unknown, TResult = unknown> = Ha
 export type EventHandlerDefinition<TPayload = unknown> = HandlerSecurity & {
   readonly messageType: string;
   readonly version: string;
+  readonly requiredForPublisherAcknowledgement?: boolean;
   handle(envelope: EventEnvelope<TPayload>, context: HandlerContext): Promise<void> | void;
 };
 

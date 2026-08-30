@@ -1,5 +1,6 @@
 import type {
   DiscoveryAttemptV1,
+  DiscoveryCanonicalTriggerLookupV1,
   DiscoveryJobV1,
   DiscoveryLogicalJobIdentityV1,
   DiscoveryProjectionWaitBindingV1,
@@ -66,6 +67,9 @@ export type DiscoveryRuntimeStageTransitionInputV1 = DiscoveryRuntimeStageLookup
 export type DiscoveryRuntimeRepositoryPort = {
   saveJob(job: DiscoveryJobV1): Promise<'CREATED' | 'CONFLICT'>;
   findJob(lookup: DiscoveryRuntimeJobLookupV1): Promise<DiscoveryJobV1 | undefined>;
+  findJobByTriggerIdentity(
+    lookup: DiscoveryCanonicalTriggerLookupV1,
+  ): Promise<DiscoveryJobV1 | undefined>;
   findJobByLogicalIdentity(
     lookup: DiscoveryRuntimeLogicalJobLookupV1,
   ): Promise<DiscoveryJobV1 | undefined>;

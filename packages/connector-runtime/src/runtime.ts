@@ -191,6 +191,9 @@ export class ConnectorRuntime {
         consumers.push({
           consumerId: route.module.manifest.id,
           status: delivery.duplicate ? 'duplicate' : 'processed',
+          ...(route.handler.requiredForPublisherAcknowledgement === true
+            ? { requiredForPublisherAcknowledgement: true }
+            : {}),
         });
       } catch (error) {
         const entry = this.addDeadLetter('event', envelope, route.module.manifest.id, error);
@@ -198,6 +201,9 @@ export class ConnectorRuntime {
           consumerId: route.module.manifest.id,
           status: 'dead-letter',
           deadLetterId: entry.deadLetterId,
+          ...(route.handler.requiredForPublisherAcknowledgement === true
+            ? { requiredForPublisherAcknowledgement: true }
+            : {}),
         });
       }
     }
@@ -431,11 +437,16 @@ export class ConnectorRuntime {
           },
         };
         const delivery = await this.publishEvent(event);
-        const deadLetter = delivery.consumers.find((consumer) => consumer.status === 'dead-letter');
-        if (deadLetter) {
+        const requiredDeadLetter = delivery.consumers.find(
+          (consumer) =>
+            consumer.status === 'dead-letter' &&
+            consumer.requiredForPublisherAcknowledgement === true,
+        );
+        if (requiredDeadLetter) {
           throw new ShotgunError({
             code: 'TERMINAL_FAILURE',
-            safeMessage: 'A child event consumer failed; the parent delivery remains retryable.',
+            safeMessage:
+              'A required child event consumer failed; the parent delivery remains retryable.',
             module: route.module.manifest.id,
             operation: input.messageType,
             correlationId: parent.correlationId,

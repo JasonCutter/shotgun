@@ -38,19 +38,21 @@ const poolB: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : 
 const readyProject = 'akp-4-wp2-coordinator-ready';
 const waitingProject = 'akp-4-wp2-coordinator-waiting';
 
-const canonicalDigestFor = (projectId: string): string => canonicalSnapshotDigest(projectId, 1, []);
+const canonicalDigestFor = (projectId: string, canonicalVersion = 1): string =>
+  canonicalSnapshotDigest(projectId, canonicalVersion, []);
 
-const sourceDigestFor = (projectId: string): string =>
+const sourceDigestFor = (projectId: string, canonicalVersion = 1): string =>
   semanticCorpusWatermarkFromSource({
     projectId,
-    canonicalVersion: 1,
-    canonicalSnapshotDigest: canonicalDigestFor(projectId),
+    canonicalVersion,
+    canonicalSnapshotDigest: canonicalDigestFor(projectId, canonicalVersion),
     approvedGroups: [],
   }).sourceSnapshotDigest;
 
 const seedProject = async (
   projectId: string,
   includeReadyProjections: boolean,
+  canonicalVersion = 1,
 ): Promise<{
   readonly outboxId: string;
   readonly commitId: string;
@@ -63,14 +65,14 @@ const seedProject = async (
   const historyEventId = `history:${commitId}`;
   const outboxId = `outbox:${commitId}`;
   const committedAt = '2026-08-30T00:00:00.000Z';
-  const snapshotDigest = canonicalDigestFor(projectId);
+  const snapshotDigest = canonicalDigestFor(projectId, canonicalVersion);
   const payload: CanonicalCommittedPayload = {
     commitId,
     manifestId,
     changeSetId,
     operation: 'NO_OP',
     status: 'NO_OP',
-    canonicalVersion: 1,
+    canonicalVersion,
     snapshotDigest,
     actorId: 'owner',
     accessScope: ['owner'],
@@ -86,8 +88,8 @@ const seedProject = async (
     authorityDigest: null,
     operation: 'NO_OP',
     status: 'NO_OP',
-    beforeVersion: 0,
-    afterVersion: 1,
+    beforeVersion: canonicalVersion - 1,
+    afterVersion: canonicalVersion,
     snapshotDigest,
     revisionId,
     historyEventId,
@@ -105,8 +107,12 @@ const seedProject = async (
     );
     await poolA!.query(
       `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
-       VALUES ($1, 1, $2, $3)`,
-      [projectId, snapshotDigest, committedAt],
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (project_id) DO UPDATE SET
+         version = EXCLUDED.version,
+         snapshot_digest = EXCLUDED.snapshot_digest,
+         updated_at = EXCLUDED.updated_at`,
+      [projectId, canonicalVersion, snapshotDigest, committedAt],
     );
     await poolA!.query(
       `INSERT INTO canonical.commits (
@@ -141,14 +147,14 @@ const seedProject = async (
       [outboxId, projectId, commitId, JSON.stringify(payload), committedAt],
     );
     if (includeReadyProjections) {
-      const sourceDigest = sourceDigestFor(projectId);
+      const sourceDigest = sourceDigestFor(projectId, canonicalVersion);
       const logicalDigest = sha256Text(`logical:${projectId}`);
       const projection = {
         projectId,
         projectorVersion: 'test-projector:v1',
         sourceSnapshotDigest: sourceDigest,
         logicalDigest,
-        canonicalVersion: 1,
+        canonicalVersion,
         items: [],
         graph: {
           nodes: [],
@@ -162,12 +168,13 @@ const seedProject = async (
         `INSERT INTO projection.compiled_truth (
            project_id, projector_version, source_snapshot_digest, logical_digest,
            canonical_version, build_mode, projection, status, updated_at
-         ) VALUES ($1, $2, $3, $4, 1, 'FULL_REBUILD', $5::jsonb, 'READY', $6)`,
+         ) VALUES ($1, $2, $3, $4, $5, 'FULL_REBUILD', $6::jsonb, 'READY', $7)`,
         [
           projectId,
           projection.projectorVersion,
           sourceDigest,
           logicalDigest,
+          canonicalVersion,
           JSON.stringify(projection),
           committedAt,
         ],
@@ -180,18 +187,25 @@ const seedProject = async (
            provider_id, embedding_model_id, embedding_profile_id, embedding_profile_revision,
            provider_registry_revision, capability_catalog_revision, representation_version,
            dimension, distance_metric, normalization_policy, build_status, created_at
-         ) VALUES ($1, $2, $3, 1, 'credential-test', 1, $4,
+         ) VALUES ($1, $2, $3, $4, 'credential-test', 1, $5,
            'provider-test', 'model-test', 'profile-test', 1,
            'providers:v1', 'capabilities:v1', 'representation:v1',
-           1, 'cosine', 'none', 'READY', $5)`,
-        [projectId, generationId, sourceDigest, sha256Text(`policy:${projectId}`), committedAt],
+           1, 'cosine', 'none', 'READY', $6)`,
+        [
+          projectId,
+          generationId,
+          sourceDigest,
+          canonicalVersion,
+          sha256Text(`policy:${projectId}`),
+          committedAt,
+        ],
       );
       await poolA!.query(
         `INSERT INTO projection.semantic_generation_pointers (
            project_id, active_generation_id, pointer_revision,
            source_projection_digest, canonical_base_version, updated_at
-         ) VALUES ($1, $2, 1, $3, 1, $4)`,
-        [projectId, generationId, sourceDigest, committedAt],
+         ) VALUES ($1, $2, 1, $3, $4, $5)`,
+        [projectId, generationId, sourceDigest, canonicalVersion, committedAt],
       );
     }
     await poolA!.query('COMMIT');
@@ -202,11 +216,11 @@ const seedProject = async (
   return { outboxId, commitId, payload };
 };
 
-const createCoordinator = (now: () => string) => {
-  const canonical = new PostgresCanonicalKnowledgeRepository(poolA!);
-  const sourceWatermark = new PostgresSemanticCorpusSourceSnapshotReader(poolA!);
-  const semanticIndex = new PostgresSemanticIndexRepository(poolA!);
-  const runtime = new PostgresDiscoveryRuntimeRepository(poolA!);
+const createCoordinator = (now: () => string, pool: Pool = poolA!) => {
+  const canonical = new PostgresCanonicalKnowledgeRepository(pool);
+  const sourceWatermark = new PostgresSemanticCorpusSourceSnapshotReader(pool);
+  const semanticIndex = new PostgresSemanticIndexRepository(pool);
+  const runtime = new PostgresDiscoveryRuntimeRepository(pool);
   const policy = new StaticDiscoveryTriggerPolicy({
     ...createDefaultDiscoveryTriggerPolicyV1(),
     waitTimeoutMs: 60_000,
@@ -217,7 +231,7 @@ const createCoordinator = (now: () => string) => {
     service: new DiscoveryTriggerCoordinator(
       new PostgresCanonicalCommittedSourceAdapter(canonical, sourceWatermark),
       new PostgresDiscoveryProjectionReadinessAdapter(
-        new PostgresCompiledTruthRepository(poolA!),
+        new PostgresCompiledTruthRepository(pool),
         semanticIndex,
       ),
       runtime,
@@ -309,12 +323,15 @@ describe.runIf(databaseUrl)('AKP-4 WP2 Canonical trigger coordinator PostgreSQL 
   it('consumes the real Canonical Outbox and durably creates one QUEUED Job', async () => {
     const fixture = await seedProject(readyProject, true);
     const { canonical, runtime, service } = createCoordinator(() => '2026-08-30T00:00:10.000Z');
+    let firstResult: Awaited<
+      ReturnType<DiscoveryTriggerCoordinator['coordinateCanonicalCommitted']>
+    >;
     await expect(
       dispatchCanonicalOutbox(
         canonical,
         {
           async publish() {
-            await service.coordinateCanonicalCommitted(
+            firstResult = await service.coordinateCanonicalCommitted(
               eventFor(readyProject, fixture, 'physical-delivery-crash'),
             );
             throw new Error('simulated completion loss after durable Job create');
@@ -329,15 +346,29 @@ describe.runIf(databaseUrl)('AKP-4 WP2 Canonical trigger coordinator PostgreSQL 
       status: 'pending',
       attempts: 1,
     });
+    const firstJob = await runtime.findJob({ projectId: readyProject, jobId: firstResult!.jobId });
+    expect(firstJob?.requiredDiscoveryBase).toBeDefined();
+    await poolA!.query(
+      `UPDATE canonical.project_state
+       SET version = $2, snapshot_digest = $3, updated_at = $4
+       WHERE project_id = $1`,
+      [readyProject, 2, canonicalDigestFor(readyProject, 2), '2026-08-30T00:00:20.000Z'],
+    );
+    expect(sourceDigestFor(readyProject, 2)).not.toBe(
+      firstJob!.requiredDiscoveryBase!.projectionDigest,
+    );
     const delivered: string[] = [];
+    let replayedResult: Awaited<
+      ReturnType<DiscoveryTriggerCoordinator['coordinateCanonicalCommitted']>
+    >;
     const published = await dispatchCanonicalOutbox(
       canonical,
       {
         async publish(input) {
-          const result = await service.coordinateCanonicalCommitted(
+          replayedResult = await service.coordinateCanonicalCommitted(
             eventFor(readyProject, fixture, 'physical-delivery-replay'),
           );
-          delivered.push(result.disposition);
+          delivered.push(replayedResult.disposition);
           expect(input.idempotencyKey).toBe(`canonical-outbox:${fixture.outboxId}`);
         },
       },
@@ -351,13 +382,22 @@ describe.runIf(databaseUrl)('AKP-4 WP2 Canonical trigger coordinator PostgreSQL 
       status: 'published',
       attempts: 1,
     });
+    expect(replayedResult!).toMatchObject({
+      disposition: 'ALREADY_EXISTS',
+      jobId: firstResult!.jobId,
+      logicalJobIdentity: firstResult!.logicalJobIdentity,
+    });
+    const replayedJob = await runtime.findJob({
+      projectId: readyProject,
+      jobId: firstResult!.jobId,
+    });
+    expect(replayedJob?.requiredDiscoveryBase).toEqual(firstJob?.requiredDiscoveryBase);
+    expect(replayedJob?.budget).toEqual(firstJob?.budget);
+    expect(replayedJob?.projectionWait).toEqual(firstJob?.projectionWait);
+    expect(replayedJob?.createdAt).toBe(firstJob?.createdAt);
     const job = await runtime.findJobByLogicalIdentity({
       projectId: readyProject,
-      logicalIdentity: (
-        await service.coordinateCanonicalCommitted(
-          eventFor(readyProject, fixture, 'physical-delivery-lookup'),
-        )
-      ).logicalJobIdentity,
+      logicalIdentity: firstResult!.logicalJobIdentity,
     });
     expect(job).toMatchObject({ lifecycleState: 'QUEUED', projectionWait: undefined });
     expect(
@@ -451,5 +491,66 @@ describe.runIf(databaseUrl)('AKP-4 WP2 Canonical trigger coordinator PostgreSQL 
       );
       expect(result.rows[0]?.count, table).toBe('0');
     }
+  });
+
+  it('creates a distinct Job for a distinct Canonical event identity', async () => {
+    const firstFixture = await seedProject(readyProject, true, 1);
+    const { service, runtime } = createCoordinator(() => '2026-08-30T00:00:10.000Z');
+    const first = await service.coordinateCanonicalCommitted(
+      eventFor(readyProject, firstFixture, 'canonical-c1'),
+    );
+
+    const secondFixture = await seedProject(readyProject, false, 2);
+    const second = await service.coordinateCanonicalCommitted(
+      eventFor(readyProject, secondFixture, 'canonical-c2'),
+    );
+
+    expect(first.disposition).toBe('CREATED');
+    expect(second.disposition).toBe('CREATED');
+    expect(second.jobId).not.toBe(first.jobId);
+    expect(second.logicalJobIdentity.value).not.toBe(first.logicalJobIdentity.value);
+    expect(
+      await poolA!.query<{ count: string }>(
+        'SELECT count(*)::text AS count FROM discovery.jobs WHERE project_id = $1',
+        [readyProject],
+      ),
+    ).toMatchObject({ rows: [{ count: '2' }] });
+    expect(
+      await runtime.findJobByTriggerIdentity({
+        projectId: readyProject,
+        triggerClass: 'CANONICAL_COMMITTED',
+        eventId: secondFixture.commitId,
+        eventRevision: '2',
+      }),
+    ).toMatchObject({ jobId: second.jobId });
+  });
+
+  it('serializes concurrent deliveries through PostgreSQL trigger uniqueness', async () => {
+    const fixture = await seedProject(readyProject, true, 1);
+    const first = createCoordinator(() => '2026-08-30T00:00:10.000Z', poolA!);
+    const second = createCoordinator(() => '2026-08-30T00:00:11.000Z', poolB!);
+    const [left, right] = await Promise.all([
+      first.service.coordinateCanonicalCommitted(eventFor(readyProject, fixture, 'concurrent-a')),
+      second.service.coordinateCanonicalCommitted(eventFor(readyProject, fixture, 'concurrent-b')),
+    ]);
+
+    expect(new Set([left.jobId, right.jobId])).toHaveLength(1);
+    expect(new Set([left.disposition, right.disposition])).toEqual(
+      new Set(['CREATED', 'ALREADY_EXISTS']),
+    );
+    expect(
+      await poolA!.query<{ count: string }>(
+        'SELECT count(*)::text AS count FROM discovery.jobs WHERE project_id = $1',
+        [readyProject],
+      ),
+    ).toMatchObject({ rows: [{ count: '1' }] });
+    expect(
+      await poolA!.query<{ indexname: string }>(
+        `SELECT indexname FROM pg_indexes
+         WHERE schemaname = 'discovery'
+           AND tablename = 'jobs'
+           AND indexname = 'discovery_jobs_canonical_trigger_identity_idx'`,
+      ),
+    ).toMatchObject({ rows: [{ indexname: 'discovery_jobs_canonical_trigger_identity_idx' }] });
   });
 });

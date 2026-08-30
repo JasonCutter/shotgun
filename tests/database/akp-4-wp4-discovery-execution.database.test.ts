@@ -165,35 +165,45 @@ const snapshot = {
 
 describe.runIf(databaseUrl)('AKP-4 WP4 durable execution PostgreSQL authority', () => {
   const cleanupProject = async (): Promise<void> => {
-    await poolA!.query('DELETE FROM discovery.finding_ready WHERE project_id = $1', [projectId]);
-    await poolA!.query('DELETE FROM discovery.provider_budget_reservations WHERE project_id = $1', [
-      projectId,
-    ]);
-    await poolA!.query('DELETE FROM discovery.stage_outputs WHERE project_id = $1', [projectId]);
-    await poolA!.query('DELETE FROM discovery.work_budget_checkpoints WHERE project_id = $1', [
-      projectId,
-    ]);
-    await poolA!.query('DELETE FROM discovery.stage_history WHERE project_id = $1', [projectId]);
-    await poolA!.query('DELETE FROM discovery.stages WHERE project_id = $1', [projectId]);
-    await poolA!.query('DELETE FROM discovery.attempt_lifecycle_history WHERE project_id = $1', [
-      projectId,
-    ]);
-    await poolA!.query('DELETE FROM discovery.attempts WHERE project_id = $1', [projectId]);
-    await poolA!.query('DELETE FROM discovery.run_lifecycle_history WHERE project_id = $1', [
-      projectId,
-    ]);
-    await poolA!.query('DELETE FROM discovery.runs WHERE project_id = $1', [projectId]);
-    await poolA!.query('DELETE FROM discovery.job_lifecycle_history WHERE project_id = $1', [
-      projectId,
-    ]);
-    await poolA!.query('DELETE FROM discovery.jobs WHERE project_id = $1', [projectId]);
-    await poolA!.query('DELETE FROM discovery.finding_lifecycle_history WHERE project_id = $1', [
-      projectId,
-    ]);
-    await poolA!.query('DELETE FROM discovery.finding_lifecycle_current WHERE project_id = $1', [
-      projectId,
-    ]);
-    await poolA!.query('DELETE FROM discovery.findings WHERE project_id = $1', [projectId]);
+    const client = await poolA!.connect();
+    try {
+      // The lifecycle history trigger is intentionally immutable in normal
+      // operation; test cleanup is the one controlled administrative path.
+      await client.query('SET session_replication_role = replica');
+      await client.query('DELETE FROM discovery.finding_ready WHERE project_id = $1', [projectId]);
+      await client.query(
+        'DELETE FROM discovery.provider_budget_reservations WHERE project_id = $1',
+        [projectId],
+      );
+      await client.query('DELETE FROM discovery.stage_outputs WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.work_budget_checkpoints WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.stage_history WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.stages WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.attempt_lifecycle_history WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.attempts WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.run_lifecycle_history WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.runs WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.job_lifecycle_history WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.jobs WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.finding_lifecycle_history WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.finding_lifecycle_current WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.findings WHERE project_id = $1', [projectId]);
+    } finally {
+      await client.query('SET session_replication_role = origin');
+      client.release();
+    }
   };
 
   beforeAll(async () => {
@@ -413,6 +423,15 @@ describe.runIf(databaseUrl)('AKP-4 WP4 durable execution PostgreSQL authority', 
       leaseDurationMs: 30_000,
     }))!;
     const stage = (await repository.listStages(first))[0]!;
+    expect(
+      await repository.transitionStageWithLease({
+        ...first,
+        stageId: stage.stageId,
+        expectedStageRevision: stage.stageRevision,
+        targetState: 'RUNNING',
+        updatedAt: '2026-08-30T01:00:00.500Z',
+      }),
+    ).toMatchObject({ state: 'RUNNING', stageRevision: 2 });
     const retryFailure = {
       schemaVersion: '1.0.0' as const,
       code: 'TEST_RETRYABLE',
@@ -427,7 +446,7 @@ describe.runIf(databaseUrl)('AKP-4 WP4 durable execution PostgreSQL authority', 
       await repository.finalizeFailureWithLease({
         ...first,
         stageId: stage.stageId,
-        expectedStageRevision: stage.stageRevision,
+        expectedStageRevision: 2,
         expectedAttemptLifecycleRevision: first.attempt.lifecycleRevision,
         expectedRunLifecycleRevision: first.run.lifecycleRevision,
         expectedJobLifecycleRevision: first.job.lifecycleRevision,
@@ -468,10 +487,19 @@ describe.runIf(databaseUrl)('AKP-4 WP4 durable execution PostgreSQL authority', 
 
     const secondStage = (await repository.listStages(second))[0]!;
     expect(
-      await repository.finalizeFailureWithLease({
+      await repository.transitionStageWithLease({
         ...second,
         stageId: secondStage.stageId,
         expectedStageRevision: secondStage.stageRevision,
+        targetState: 'RUNNING',
+        updatedAt: '2026-08-30T01:00:02.500Z',
+      }),
+    ).toMatchObject({ state: 'RUNNING', stageRevision: 2 });
+    expect(
+      await repository.finalizeFailureWithLease({
+        ...second,
+        stageId: secondStage.stageId,
+        expectedStageRevision: 2,
         expectedAttemptLifecycleRevision: second.attempt.lifecycleRevision,
         expectedRunLifecycleRevision: second.run.lifecycleRevision,
         expectedJobLifecycleRevision: second.job.lifecycleRevision,
@@ -838,10 +866,19 @@ describe.runIf(databaseUrl)('AKP-4 WP4 durable execution PostgreSQL authority', 
     expect(await findings.save(retryFinding)).toBe('CREATED');
     const retryStage = (await repository.listStages(retryFirst))[0]!;
     expect(
-      await repository.finalizeFailureWithLease({
+      await repository.transitionStageWithLease({
         ...retryFirst,
         stageId: retryStage.stageId,
         expectedStageRevision: retryStage.stageRevision,
+        targetState: 'RUNNING',
+        updatedAt: '2026-08-30T01:00:00.500Z',
+      }),
+    ).toMatchObject({ state: 'RUNNING', stageRevision: 2 });
+    expect(
+      await repository.finalizeFailureWithLease({
+        ...retryFirst,
+        stageId: retryStage.stageId,
+        expectedStageRevision: 2,
         expectedAttemptLifecycleRevision: retryFirst.attempt.lifecycleRevision,
         expectedRunLifecycleRevision: retryFirst.run.lifecycleRevision,
         expectedJobLifecycleRevision: retryFirst.job.lifecycleRevision,

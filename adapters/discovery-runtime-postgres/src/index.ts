@@ -2568,8 +2568,8 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeExecu
              AND active_attempt.job_id = discovery.provider_budget_reservations.job_id
              AND active_attempt.run_id = discovery.provider_budget_reservations.run_id
              AND active_attempt.attempt_id = discovery.provider_budget_reservations.attempt_id
+             AND active_attempt.fencing_token = discovery.provider_budget_reservations.fencing_token
              AND active_attempt.lifecycle_state IN ('RUNNING', 'PARTIAL', 'QUEUED')
-             AND active_attempt.lease_expires_at > CURRENT_TIMESTAMP
          ))::text AS active_provider_calls,
          COALESCE(SUM(CASE WHEN state <> 'CANCELLED'
            THEN COALESCE(actual_input_tokens, input_token_upper_bound) ELSE 0 END), 0)::text

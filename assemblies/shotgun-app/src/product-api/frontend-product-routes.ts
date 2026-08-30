@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 
 import type { FrontendProductReadCoordinator } from '../../../../modules/frontend-product-read/src/index.js';
+import type { FrontendDiscoveryProductReadCoordinator } from '../../../../modules/frontend-discovery-product/src/index.js';
 import type {
   FrontendSourcesReadCoordinator,
   ServerAuthorizedProjectSourcesReadScope,
@@ -39,6 +40,8 @@ import {
   decodeKnowledgeSearchRequest,
   decodeKnowledgeDetailRequest,
   decodeKnowledgeCompareRequest,
+  decodeListDiscoveryFindingsRequestV1,
+  decodeReadDiscoveryFindingRequestV1,
   FrontendContractError,
   buildCommandSemanticDigestInput,
   type AnyFrontendCommandRequest,
@@ -67,6 +70,7 @@ export const registerFrontendProductRoutes = (
     readonly askAnswerExecution?: AskAnswerExecutionService;
     readonly frontendCommandGateway?: FrontendCommandGatewayPort;
     readonly frontendSourcesReadCoordinator?: FrontendSourcesReadCoordinator;
+    readonly frontendDiscoveryProductReadCoordinator?: FrontendDiscoveryProductReadCoordinator;
   },
 ): void => {
   const timed = async <T>(operation: () => Promise<T>) => {
@@ -158,6 +162,41 @@ export const registerFrontendProductRoutes = (
       ...scope,
       value: scope.value as KnowledgeScope,
     };
+  };
+  const discoveryScope = async (
+    headers: SecurityHeaders,
+    operation: string,
+  ): Promise<{ readonly value: KnowledgeScope; readonly durationMs: number }> => {
+    const scope = await knowledgeScope(headers, operation);
+    const project = await projectRepository.getProjectDetails(scope.value.activeProject.id);
+    if (!project || project.status !== 'ACTIVE' || !project.active) {
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: 'Discovery reads require an active Project.',
+        module: 'frontend-discovery-product',
+        operation,
+      });
+    }
+    return scope;
+  };
+  const decodeDiscoveryRequest = <T>(
+    operation: string,
+    decode: (value: unknown) => T,
+    value: unknown,
+  ): T => {
+    try {
+      return decode(value);
+    } catch (error) {
+      if (error instanceof FrontendContractError) {
+        throw new ShotgunError({
+          code: error.code,
+          safeMessage: 'Discovery Product request is invalid.',
+          module: 'frontend-discovery-product',
+          operation,
+        });
+      }
+      throw error;
+    }
   };
   const decodeKnowledgeRequest = <T>(
     operation: string,
@@ -490,6 +529,43 @@ export const registerFrontendProductRoutes = (
       return { compare: projection.value };
     },
   );
+
+  const discoveryCoordinator = options?.frontendDiscoveryProductReadCoordinator;
+  if (discoveryCoordinator) {
+    server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+      '/product-api/frontend/knowledge/discoveries/list',
+      async (request, reply) => {
+        const scope = await discoveryScope(request.headers, 'list-discovery-findings');
+        const decoded = decodeDiscoveryRequest(
+          'decode-list-discovery-findings-request',
+          decodeListDiscoveryFindingsRequestV1,
+          request.body,
+        );
+        const projection = await timed(() =>
+          discoveryCoordinator.listFindings({ ...scope.value, request: decoded }),
+        );
+        reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+        return { result: projection.value };
+      },
+    );
+
+    server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+      '/product-api/frontend/knowledge/discoveries/read',
+      async (request, reply) => {
+        const scope = await discoveryScope(request.headers, 'read-discovery-finding');
+        const decoded = decodeDiscoveryRequest(
+          'decode-read-discovery-finding-request',
+          decodeReadDiscoveryFindingRequestV1,
+          request.body,
+        );
+        const projection = await timed(() =>
+          discoveryCoordinator.readFinding({ ...scope.value, request: decoded }),
+        );
+        reply.header('server-timing', serverTiming(scope.durationMs, projection.durationMs));
+        return { result: projection.value };
+      },
+    );
+  }
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/search/query',

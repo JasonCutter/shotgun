@@ -165,6 +165,8 @@ import {
   SemanticRetriever,
 } from '../../../modules/hybrid-retrieval/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
+import { FrontendDiscoveryProductReadCoordinator } from '../../../modules/frontend-discovery-product/src/index.js';
+import { createPostgresFrontendDiscoveryProductReadSource } from '../../../adapters/frontend-discovery-product-postgres/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
 import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
@@ -679,6 +681,9 @@ export const startShotgunApplication = async (
     const discoveryReentryFreshnessEvaluator = new DiscoveryReentryFreshnessEvaluator(
       discoveryReentryFreshnessAuthority,
     );
+    const frontendDiscoveryProductReadCoordinator = new FrontendDiscoveryProductReadCoordinator(
+      createPostgresFrontendDiscoveryProductReadSource(pool, { evidenceRepository }),
+    );
     const discoveryReentryWorker =
       recoveryHarness ||
       discoveryReentryRepository === undefined ||
@@ -728,6 +733,7 @@ export const startShotgunApplication = async (
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
       frontendReviewDiscoveryCandidateReader: createPostgresReviewDiscoveryCandidateReader(pool),
+      frontendDiscoveryProductReadCoordinator,
       discoveryReentryFreshnessEvaluator,
       askCommandCoordinator,
       frontendProductReadCoordinatorFactory: (

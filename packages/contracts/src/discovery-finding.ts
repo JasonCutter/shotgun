@@ -961,6 +961,21 @@ const decodePayload = (
   }
 };
 
+/** Shared strict decoder for Product projections that expose a finding
+ * payload without exposing the complete persistence envelope. */
+export const decodeDiscoveryFindingPayloadV1 = (
+  value: unknown,
+  findingType: DiscoveryFindingType,
+  path = 'discoveryFindingPayload',
+): DiscoveryFindingPayloadV1 => decodePayload(value, findingType, path);
+
+/** Shared strict decoder for Product projections that expose safe resource
+ * lineage without exposing the complete persistence envelope. */
+export const decodeDiscoveryResourceRefV1 = (
+  value: unknown,
+  path = 'discoveryResourceRef',
+): DiscoveryResourceRefV1 => decodeResourceRef(value, path);
+
 const decodeDeterministicDetails = (
   value: unknown,
   path: string,

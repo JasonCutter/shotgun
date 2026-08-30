@@ -259,6 +259,14 @@ export const assessDiscoveryReentryFreshnessV1 = (
       'Current access authority could not be established.',
     );
   }
+  if (current.sensitivityPolicy === 'UNKNOWN') {
+    return assessment(
+      input,
+      'PERSISTENCE_FAILURE',
+      [],
+      'Current sensitivity policy could not be established.',
+    );
+  }
   if (
     current.currentAccessScope !== undefined &&
     !scopeContains(binding.accessScope, current.currentAccessScope)

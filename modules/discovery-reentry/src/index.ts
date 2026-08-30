@@ -38,6 +38,7 @@ import {
   type DiscoveryReentryFreshnessBindingV1,
   type DiscoveryReentryFreshnessCurrentStateV1,
   type DiscoveryReentryFreshnessStageV1,
+  type DiscoveryReentryFreshnessReasonCodeV1,
 } from '../../../packages/contracts/src/index.js';
 
 export type { DiscoveryReentryFreshnessStageV1 } from '../../../packages/contracts/src/index.js';
@@ -275,6 +276,7 @@ export class DiscoveryReentryFreshnessEvaluator implements DiscoveryReentryFresh
 
 export const discoveryReentryFreshnessBindingFromFindingV1 = (
   finding: DiscoveryFindingEnvelopeV1,
+  approvedRelatedResourceRefs?: readonly DiscoveryApprovedResourceRevisionRefV1[],
 ): DiscoveryReentryFreshnessBindingV1 => ({
   projectId: finding.projectId,
   findingId: finding.findingId,
@@ -283,11 +285,19 @@ export const discoveryReentryFreshnessBindingFromFindingV1 = (
   sourceProjectionDigest: finding.sourceProjectionDigest,
   canonicalBase: finding.canonicalBase,
   discoveryBase: finding.discoveryBase,
-  approvedRelatedResourceRefs: finding.relatedResourceRefs.map((ref) => ({
-    ...ref,
-    resourceState: 'APPROVED' as const,
-    resourceRevision: ref.resourceRevision ?? 'CURRENT',
-  })),
+  approvedRelatedResourceRefs:
+    approvedRelatedResourceRefs === undefined
+      ? finding.relatedResourceRefs.length === 0
+        ? []
+        : (() => {
+            throw new TypeError(
+              'Finding freshness binding requires approved resource revisions resolved at the frozen base.',
+            );
+          })()
+      : validateDiscoveryApprovedResourceRevisionResolutionV1(
+          finding.relatedResourceRefs,
+          approvedRelatedResourceRefs,
+        ),
   evidenceIds: finding.evidenceIds,
   derivationProvenanceDigest: sha256Text(semanticStableJson(finding.provenance)),
   validationProfileVersion: 'discovery-derived-validation:v1',
@@ -319,12 +329,14 @@ export const discoveryReentryFreshnessBindingFromCandidateV1 = (
 
 export const discoveryReentryFreshnessBindingFromReviewResourceV1 = (
   resource: DiscoveryReviewResourceV1,
-): DiscoveryReentryFreshnessBindingV1 =>
-  discoveryReentryFreshnessBindingFromLineageV1(resource, {
+): DiscoveryReentryFreshnessBindingV1 => ({
+  ...discoveryReentryFreshnessBindingFromLineageV1(resource, {
     reviewResourceId: resource.reviewResourceId,
     resourceRevision: resource.resourceRevision,
     resourceDigest: resource.contentDigest,
-  });
+  }),
+  evidenceLineage: resource.evidenceLineage,
+});
 
 export const discoveryReentryFreshnessBindingFromLineageV1 = (
   lineage: DiscoveryReviewLineageV1,
@@ -348,6 +360,14 @@ export const discoveryReentryFreshnessBindingFromLineageV1 = (
   sensitivity: lineage.sensitivity,
   ...(reviewTarget === undefined ? {} : { reviewTarget }),
 });
+
+const isEpistemicFreshnessFailure = (assessment: DiscoveryReentryFreshnessAssessmentV1): boolean =>
+  assessment.state === 'INVALIDATED' ||
+  (assessment.state === 'REVALIDATION_REQUIRED' &&
+    assessment.reasonCodes.some(
+      (reason: DiscoveryReentryFreshnessReasonCodeV1) =>
+        reason !== 'ACCESS_NO_LONGER_AUTHORIZED' && reason !== 'SENSITIVITY_POLICY_CHANGED',
+    ));
 
 export type DiscoveryReentryConsumeResultV1 =
   | {
@@ -483,11 +503,7 @@ export class DiscoveryReentryConsumer {
     assessment: DiscoveryReentryFreshnessAssessmentV1,
   ): Promise<DiscoveryReentryLifecycleCurrentV1> {
     let current = lifecycle;
-    if (
-      assessment.state !== 'PERSISTENCE_FAILURE' &&
-      assessment.state !== 'FRESH' &&
-      this.freshnessEvaluator !== undefined
-    ) {
+    if (isEpistemicFreshnessFailure(assessment) && this.freshnessEvaluator !== undefined) {
       // The transition is delegated to the existing Finding lifecycle
       // authority. No parallel freshness lifecycle or mutable Finding row is
       // created by WP5.
@@ -511,9 +527,10 @@ export class DiscoveryReentryConsumer {
     finding: DiscoveryFindingEnvelopeV1,
     stage: DiscoveryReentryFreshnessStageV1,
     assessedAt: string,
+    approvedRelatedResourceRefs?: readonly DiscoveryApprovedResourceRevisionRefV1[],
   ): Promise<DiscoveryReentryFreshnessAssessmentV1 | undefined> {
     return this.freshnessEvaluator?.assess({
-      binding: discoveryReentryFreshnessBindingFromFindingV1(finding),
+      binding: discoveryReentryFreshnessBindingFromFindingV1(finding, approvedRelatedResourceRefs),
       stage,
       assessedAt,
     });
@@ -694,42 +711,12 @@ export class DiscoveryReentryConsumer {
       const now = this.clock();
       if (!Number.isFinite(now.getTime())) throw new TypeError('clock must return a valid Date');
       const createdAt = now.toISOString();
-      const freshness = await this.assessFreshness(finding, 'REENTRY_INTAKE', createdAt);
-      if (freshness !== undefined && freshness.state !== 'FRESH') {
-        if (freshness.state === 'PERSISTENCE_FAILURE') {
-          return this.retryableResult(
-            identity,
-            publication,
-            Object.assign(new Error(freshness.reasonDetail), { retryable: true }),
-            storedDisposition,
-          );
-        }
-        const closedLifecycle = await this.closeStaleFinding(finding, lifecycle, freshness);
-        await this.persistence.recordConsumptionDisposition({
-          ...identity,
-          requestedReentryPurpose: DISCOVERY_REENTRY_PURPOSE_DERIVED_PROVENANCE_VALIDATION,
-          publicationId: publication.publicationId,
-          disposition: 'INELIGIBLE',
-          reasonCode: 'LIFECYCLE_INELIGIBLE',
-          reasonDetail: `Freshness ${freshness.state}: ${freshness.reasonCodes.join(', ') || 'authority denied'}.`,
-          occurredAt: createdAt,
-        });
-        return {
-          status: 'INELIGIBLE',
-          logicalIdentityKey: logicalIdentity.logicalIdentityKey,
-          lifecycleState: closedLifecycle.lifecycleState,
-          disposition: 'INELIGIBLE',
-          freshnessAssessment: freshness,
-        };
-      }
-      const manifest = createDiscoveryReentryManifestV1({
-        manifestId: `discovery-reentry-manifest:${logicalIdentity.logicalIdentityKey}`,
-        finding,
-        requestedReentryPurpose: DISCOVERY_REENTRY_PURPOSE_DERIVED_PROVENANCE_VALIDATION,
-        createdAt,
-      });
+
       let resolution: Awaited<ReturnType<DiscoveryApprovedResourceRevisionResolverPort['resolve']>>;
       try {
+        // Resolve frozen approved revisions before freshness assessment. This
+        // is still pre-intake authority work: no manifest or candidate exists
+        // until the resolved refs have passed the freshness guard.
         resolution = await this.resolver.resolve({
           projectId: finding.projectId,
           finding,
@@ -772,6 +759,45 @@ export class DiscoveryReentryConsumer {
         };
       }
 
+      const freshness = await this.assessFreshness(
+        finding,
+        'REENTRY_INTAKE',
+        createdAt,
+        resolution.refs,
+      );
+      if (freshness !== undefined && freshness.state !== 'FRESH') {
+        if (freshness.state === 'PERSISTENCE_FAILURE') {
+          return this.retryableResult(
+            identity,
+            publication,
+            Object.assign(new Error(freshness.reasonDetail), { retryable: true }),
+            storedDisposition,
+          );
+        }
+        const closedLifecycle = await this.closeStaleFinding(finding, lifecycle, freshness);
+        await this.persistence.recordConsumptionDisposition({
+          ...identity,
+          requestedReentryPurpose: DISCOVERY_REENTRY_PURPOSE_DERIVED_PROVENANCE_VALIDATION,
+          publicationId: publication.publicationId,
+          disposition: 'INELIGIBLE',
+          reasonCode: 'LIFECYCLE_INELIGIBLE',
+          reasonDetail: `Freshness ${freshness.state}: ${freshness.reasonCodes.join(', ') || 'authority denied'}.`,
+          occurredAt: createdAt,
+        });
+        return {
+          status: 'INELIGIBLE',
+          logicalIdentityKey: logicalIdentity.logicalIdentityKey,
+          lifecycleState: closedLifecycle.lifecycleState,
+          disposition: 'INELIGIBLE',
+          freshnessAssessment: freshness,
+        };
+      }
+      const manifest = createDiscoveryReentryManifestV1({
+        manifestId: `discovery-reentry-manifest:${logicalIdentity.logicalIdentityKey}`,
+        finding,
+        requestedReentryPurpose: DISCOVERY_REENTRY_PURPOSE_DERIVED_PROVENANCE_VALIDATION,
+        createdAt,
+      });
       const candidate = createDerivedKnowledgeCandidateV1({
         candidateId: `discovery-reentry-candidate:${logicalIdentity.logicalIdentityKey}`,
         finding,
@@ -1451,6 +1477,7 @@ export class DiscoveryReviewMaterializer implements DiscoveryReviewMaterializerP
     lifecycle: DiscoveryReentryLifecycleCurrentV1,
     assessment: DiscoveryReentryFreshnessAssessmentV1,
   ): Promise<void> {
+    if (!isEpistemicFreshnessFailure(assessment)) return;
     if (this.persistence.transitionFindingToStale === undefined) return;
     await this.persistence.transitionFindingToStale({
       projectId: finding.projectId,

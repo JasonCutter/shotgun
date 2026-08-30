@@ -5,6 +5,8 @@ import {
   createDerivedKnowledgeCandidateV1,
   createDiscoveryFindingEnvelopeV1,
   createDiscoveryReentryManifestV1,
+  decodeDiscoveryReviewResourceV1,
+  discoveryReviewResourceContentDigestV1,
   type DiscoveryFindingEnvelopeV1,
   type DiscoveryFindingReadyV1,
   type DiscoveryReentryFreshnessAssessmentV1,
@@ -14,6 +16,7 @@ import {
   DiscoveryReviewMaterializer,
   DISCOVERY_REENTRY_PURPOSE_DERIVED_PROVENANCE_VALIDATION,
   discoveryReentryFreshnessBindingFromFindingV1,
+  discoveryReentryFreshnessBindingFromReviewResourceV1,
   normalizeDiscoveryFindingToReviewResourceV1,
   type DiscoveryReentryFreshnessEvaluatorPort,
   type DiscoveryReentryLifecycleCurrentV1,
@@ -261,7 +264,7 @@ const evaluatorFor = (
 };
 
 describe('AKP-5 WP5 stale provenance and security closure', () => {
-  it('Guard A closes stale intake before resolver or candidate persistence', async () => {
+  it('Guard A resolves frozen authority before closing stale intake or persisting a candidate', async () => {
     const value = finding();
     const persistence = new MemoryReentryPersistence(value);
     let resolverCalls = 0;
@@ -284,7 +287,7 @@ describe('AKP-5 WP5 stale provenance and security closure', () => {
       lifecycleState: 'STALE',
       freshnessAssessment: { state: 'INVALIDATED' },
     });
-    expect(resolverCalls).toBe(0);
+    expect(resolverCalls).toBe(1);
     expect(persistence.persisted).toBe(0);
   });
 
@@ -425,5 +428,59 @@ describe('AKP-5 WP5 stale provenance and security closure', () => {
     expect(bound.canonicalBase.canonicalVersion).toBe(7);
     expect(bound.approvedRelatedResourceRefs).toEqual([]);
     expect(bound).not.toHaveProperty('currentCanonicalVersion');
+  });
+
+  it('never invents CURRENT as an approved frozen revision', () => {
+    const rawFinding = createDiscoveryFindingEnvelopeV1({
+      ...finding(),
+      relatedResourceRefs: [
+        {
+          schemaVersion: '1.0.0',
+          resourceKind: 'CANONICAL_CLAIM',
+          resourceId: 'claim-current-only',
+          projectId,
+          resourceState: 'CURRENT',
+        },
+      ],
+    });
+    expect(() => discoveryReentryFreshnessBindingFromFindingV1(rawFinding)).toThrow(/frozen base/);
+  });
+
+  it('preserves full Evidence lineage when a Review resource becomes a freshness binding', () => {
+    const value = createDiscoveryFindingEnvelopeV1({
+      ...finding(),
+      evidenceIds: ['evidence-lineage-1'],
+    });
+    const normalized = normalizeDiscoveryFindingToReviewResourceV1({
+      finding: value,
+      candidate: intakeFor(value).candidate,
+    });
+    const evidenceLineage = [
+      {
+        schemaVersion: '1.0.0' as const,
+        evidenceId: 'evidence-lineage-1',
+        sourceId: 'source-lineage-1',
+        sourceVersionId: 'source-version-lineage-1',
+        evidenceSpanId: 'span-lineage-1',
+      },
+    ];
+    const { contentDigest, createdAt, updatedAt, ...digestInput } = normalized;
+    void contentDigest;
+    const resource = decodeDiscoveryReviewResourceV1(
+      {
+        ...digestInput,
+        evidenceLineage,
+        contentDigest: discoveryReviewResourceContentDigestV1({
+          ...digestInput,
+          evidenceLineage,
+        }),
+        createdAt,
+        updatedAt,
+      },
+      'lineageReviewResource',
+    );
+    expect(discoveryReentryFreshnessBindingFromReviewResourceV1(resource).evidenceLineage).toEqual(
+      evidenceLineage,
+    );
   });
 });

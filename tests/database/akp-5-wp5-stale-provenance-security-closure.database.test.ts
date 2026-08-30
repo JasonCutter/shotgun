@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 
 import {
+  PostgresDiscoveryApprovedResourceRevisionResolver,
   PostgresDiscoveryReentryFreshnessAuthority,
   PostgresDiscoveryReentryRepository,
 } from '../../adapters/discovery-reentry-postgres/src/index.js';
@@ -33,6 +34,11 @@ const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
   : undefined;
 const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 const projectId = `akp-5-wp5-db-${randomUUID()}`;
+const productionClaimId = `claim-wp5-production-${randomUUID()}`;
+const unrelatedClaimId = `claim-wp5-unrelated-${randomUUID()}`;
+const productionClaimRevision1 = `revision-wp5-production-r1-${randomUUID()}`;
+const productionClaimRevision2 = `revision-wp5-production-r2-${randomUUID()}`;
+const unrelatedClaimRevision = `revision-wp5-unrelated-${randomUUID()}`;
 const now = '2026-08-31T00:30:00.000Z';
 
 const findingFor = (
@@ -112,6 +118,184 @@ const publicationFor = (finding: DiscoveryFindingEnvelopeV1): DiscoveryFindingRe
   occurredAt: now,
 });
 
+const seedCanonicalClaimHistory = async (
+  options: {
+    readonly changedRelevantClaim?: boolean;
+    readonly laterUnrelatedClaim?: boolean;
+    readonly sensitivity?: 'public' | 'internal' | 'private' | 'restricted';
+    readonly accessScope?: readonly string[];
+  } = {},
+): Promise<void> => {
+  const client = await pool!.connect();
+  const accessScope = options.accessScope ?? ['review'];
+  const sensitivity = options.sensitivity ?? 'internal';
+  try {
+    const baseCommitId = randomUUID();
+    const baseManifestId = randomUUID();
+    await client.query(
+      `INSERT INTO canonical.commits (
+         commit_id, project_id, manifest_id, manifest_digest, change_set_id,
+         result_json, committed_at
+       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+      [
+        baseCommitId,
+        projectId,
+        baseManifestId,
+        `sha256:${'a'.repeat(64)}`,
+        randomUUID(),
+        JSON.stringify({ afterVersion: 9, snapshotDigest: 'sha256:wp5-db-canonical' }),
+        now,
+      ],
+    );
+    await client.query(
+      `INSERT INTO canonical.claims (
+         claim_id, project_id, source_version_id, manifest_id, claim_json, created_at
+       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+      [
+        productionClaimId,
+        projectId,
+        randomUUID(),
+        baseManifestId,
+        JSON.stringify({
+          claimId: productionClaimId,
+          projectId,
+          revisionNumber: 1,
+          claimText: 'The production-shaped Finding relies on this claim.',
+          sourceVersionId: 'wp5-production-source-version',
+          evidenceIds: [],
+          createdFromManifestId: baseManifestId,
+          authorityId: null,
+          authorityDigest: null,
+          accessScope,
+          sensitivity,
+          createdAt: now,
+        }),
+        now,
+      ],
+    );
+    await client.query(
+      `INSERT INTO canonical.revisions (
+         revision_id, project_id, commit_id, revision_json, created_at
+       ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+      [
+        productionClaimRevision1,
+        projectId,
+        baseCommitId,
+        JSON.stringify({
+          revisionId: productionClaimRevision1,
+          projectId,
+          commitId: baseCommitId,
+          manifestId: baseManifestId,
+          operation: 'ADD_CLAIM',
+          beforeVersion: 8,
+          afterVersion: 9,
+          claimId: productionClaimId,
+          reason: 'WP5 production CURRENT fixture',
+          createdAt: now,
+        }),
+        now,
+      ],
+    );
+    if (!options.changedRelevantClaim && !options.laterUnrelatedClaim) return;
+
+    const laterCommitId = randomUUID();
+    const laterManifestId = randomUUID();
+    await client.query(
+      `INSERT INTO canonical.commits (
+         commit_id, project_id, manifest_id, manifest_digest, change_set_id,
+         result_json, committed_at
+       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+      [
+        laterCommitId,
+        projectId,
+        laterManifestId,
+        `sha256:${'b'.repeat(64)}`,
+        randomUUID(),
+        JSON.stringify({ afterVersion: 10, snapshotDigest: 'sha256:wp5-db-canonical-v2' }),
+        now,
+      ],
+    );
+    if (options.changedRelevantClaim) {
+      await client.query(
+        `INSERT INTO canonical.revisions (
+           revision_id, project_id, commit_id, revision_json, created_at
+         ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+        [
+          productionClaimRevision2,
+          projectId,
+          laterCommitId,
+          JSON.stringify({
+            revisionId: productionClaimRevision2,
+            projectId,
+            commitId: laterCommitId,
+            manifestId: laterManifestId,
+            operation: 'UPDATE_CLAIM',
+            beforeVersion: 9,
+            afterVersion: 10,
+            claimId: productionClaimId,
+            reason: 'WP5 relevant claim changed',
+            createdAt: now,
+          }),
+          now,
+        ],
+      );
+    }
+    if (options.laterUnrelatedClaim) {
+      await client.query(
+        `INSERT INTO canonical.claims (
+           claim_id, project_id, source_version_id, manifest_id, claim_json, created_at
+         ) VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+        [
+          unrelatedClaimId,
+          projectId,
+          randomUUID(),
+          laterManifestId,
+          JSON.stringify({
+            claimId: unrelatedClaimId,
+            projectId,
+            revisionNumber: 1,
+            claimText: 'This later claim is unrelated to the Finding.',
+            sourceVersionId: 'wp5-unrelated-source-version',
+            evidenceIds: [],
+            createdFromManifestId: laterManifestId,
+            authorityId: null,
+            authorityDigest: null,
+            accessScope: ['review'],
+            sensitivity: 'internal',
+            createdAt: now,
+          }),
+          now,
+        ],
+      );
+      await client.query(
+        `INSERT INTO canonical.revisions (
+           revision_id, project_id, commit_id, revision_json, created_at
+         ) VALUES ($1, $2, $3, $4::jsonb, $5)`,
+        [
+          unrelatedClaimRevision,
+          projectId,
+          laterCommitId,
+          JSON.stringify({
+            revisionId: unrelatedClaimRevision,
+            projectId,
+            commitId: laterCommitId,
+            manifestId: laterManifestId,
+            operation: 'ADD_CLAIM',
+            beforeVersion: 9,
+            afterVersion: 10,
+            claimId: unrelatedClaimId,
+            reason: 'WP5 unrelated claim fixture',
+            createdAt: now,
+          }),
+          now,
+        ],
+      );
+    }
+  } finally {
+    client.release();
+  }
+};
+
 const cleanup = async (): Promise<void> => {
   if (pool === undefined) return;
   const client = await pool.connect();
@@ -139,6 +323,16 @@ const cleanup = async (): Promise<void> => {
       projectId,
     ]);
     await client.query('DELETE FROM discovery.findings WHERE project_id = $1', [projectId]);
+    await client.query('DELETE FROM canonical.revisions WHERE project_id = $1', [projectId]);
+    await client.query('DELETE FROM canonical.commits WHERE project_id = $1', [projectId]);
+    await client.query('DELETE FROM canonical.claims WHERE project_id = $1', [projectId]);
+    await client.query('DELETE FROM canonical.project_state WHERE project_id = $1', [projectId]);
+    await client.query('DELETE FROM settings.policy_context_revisions WHERE project_id = $1', [
+      projectId,
+    ]);
+    await client.query('DELETE FROM settings.settings_revisions WHERE project_id = $1', [
+      projectId,
+    ]);
     await client.query('DELETE FROM project_admin.projects WHERE id = $1', [projectId]);
   } finally {
     await client.query('SET session_replication_role = origin');
@@ -169,6 +363,16 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
        VALUES ($1, 'AKP-5 WP5 database project', 'ACTIVE', true)`,
       [projectId],
     );
+    await pool!.query(
+      `INSERT INTO settings.policy_context_revisions
+         (project_id, revision, policy_binding, created_at)
+       VALUES ($1, 1, $2::jsonb, $3)`,
+      [
+        projectId,
+        JSON.stringify({ authorization: 'AUTHORIZED', sensitivityPolicy: 'UNCHANGED' }),
+        now,
+      ],
+    );
   });
 
   afterAll(async () => {
@@ -196,6 +400,229 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
       { freshnessEvaluator: evaluator() },
     ).consume(publicationFor(finding));
     expect(result.status).toBe('CREATED');
+  });
+
+  it('A: resolves an unversioned production CURRENT ref at frozen R1 before blocking R2', async () => {
+    await seedCanonicalClaimHistory({ changedRelevantClaim: true });
+    const relatedResource = {
+      schemaVersion: '1.0.0' as const,
+      resourceKind: 'CANONICAL_CLAIM' as const,
+      resourceId: productionClaimId,
+      projectId,
+      resourceState: 'CURRENT' as const,
+    };
+    const finding = findingFor('finding-production-current-r1', {
+      relatedResourceRefs: [relatedResource],
+    });
+    const findingRepository = await setupFinding(finding);
+    const resolver = new PostgresDiscoveryApprovedResourceRevisionResolver(pool!);
+    await expect(
+      resolver.resolve({
+        projectId,
+        finding,
+        canonicalBase: finding.canonicalBase,
+        discoveryBase: finding.discoveryBase,
+        relatedResourceRefs: finding.relatedResourceRefs,
+      }),
+    ).resolves.toMatchObject({
+      status: 'RESOLVED',
+      refs: [{ resourceRevision: productionClaimRevision1 }],
+    });
+
+    const result = await new DiscoveryReentryConsumer(
+      new PostgresDiscoveryReentryRepository(pool!, {
+        lifecycleRepository: findingRepository,
+      }),
+      resolver,
+      () => new Date(now),
+      { freshnessEvaluator: evaluator() },
+    ).consume(publicationFor(finding));
+
+    expect(result).toMatchObject({
+      status: 'INELIGIBLE',
+      lifecycleState: 'STALE',
+      freshnessAssessment: {
+        state: 'REVALIDATION_REQUIRED',
+        reasonCodes: ['RELATED_RESOURCE_CHANGED'],
+      },
+    });
+    await expect(
+      pool!.query<{ count: number }>(
+        `SELECT count(*)::int AS count
+         FROM discovery.reentry_manifests
+         WHERE project_id = $1 AND finding_id = $2`,
+        [projectId, finding.findingId],
+      ),
+    ).resolves.toMatchObject({ rows: [{ count: 0 }] });
+    await expect(
+      findingRepository.findLifecycle({
+        projectId,
+        findingId: finding.findingId,
+        findingRevision: finding.findingRevision,
+      }),
+    ).resolves.toMatchObject({ lifecycleState: 'STALE' });
+  });
+
+  it('A: keeps a later unrelated Canonical commit fresh for the relied-on R1', async () => {
+    await seedCanonicalClaimHistory({ laterUnrelatedClaim: true });
+    const relatedResource = {
+      schemaVersion: '1.0.0' as const,
+      resourceKind: 'CANONICAL_CLAIM' as const,
+      resourceId: productionClaimId,
+      projectId,
+      resourceState: 'CURRENT' as const,
+    };
+    const finding = findingFor('finding-production-unrelated-canonical', {
+      relatedResourceRefs: [relatedResource],
+    });
+    const findingRepository = await setupFinding(finding);
+    const result = await new DiscoveryReentryConsumer(
+      new PostgresDiscoveryReentryRepository(pool!, {
+        lifecycleRepository: findingRepository,
+      }),
+      new PostgresDiscoveryApprovedResourceRevisionResolver(pool!),
+      () => new Date(now),
+      { freshnessEvaluator: evaluator() },
+    ).consume(publicationFor(finding));
+
+    expect(result).toMatchObject({ status: 'CREATED' });
+    if (result.status !== 'CREATED') return;
+    expect(result.candidate.relatedResourceRefs).toMatchObject([
+      { resourceId: productionClaimId, resourceRevision: productionClaimRevision1 },
+    ]);
+  });
+
+  it('security: denies no-resource intake without transitioning a valid Finding to STALE', async () => {
+    await pool!.query(
+      `INSERT INTO settings.policy_context_revisions
+         (project_id, revision, policy_binding, created_at)
+       VALUES ($1, 2, $2::jsonb, $3)`,
+      [projectId, JSON.stringify({ authorization: 'DENIED', sensitivityPolicy: 'UNCHANGED' }), now],
+    );
+    const finding = findingFor('finding-security-denied');
+    const findingRepository = await setupFinding(finding);
+    const result = await new DiscoveryReentryConsumer(
+      new PostgresDiscoveryReentryRepository(pool!, {
+        lifecycleRepository: findingRepository,
+      }),
+      new PostgresDiscoveryApprovedResourceRevisionResolver(pool!),
+      () => new Date(now),
+      { freshnessEvaluator: evaluator() },
+    ).consume(publicationFor(finding));
+
+    expect(result).toMatchObject({
+      status: 'INELIGIBLE',
+      lifecycleState: 'NEW',
+      freshnessAssessment: {
+        state: 'AUTHORIZATION_DENIED',
+        reasonCodes: ['ACCESS_NO_LONGER_AUTHORIZED'],
+      },
+    });
+    await expect(
+      findingRepository.findLifecycle({
+        projectId,
+        findingId: finding.findingId,
+        findingRevision: finding.findingRevision,
+      }),
+    ).resolves.toMatchObject({ lifecycleState: 'NEW' });
+  });
+
+  it('security: fails closed and remains retryable when policy authority is UNKNOWN', async () => {
+    await pool!.query(
+      `INSERT INTO settings.policy_context_revisions
+         (project_id, revision, policy_binding, created_at)
+       VALUES ($1, 2, $2::jsonb, $3)`,
+      [projectId, JSON.stringify({ authorization: 'UNKNOWN' }), now],
+    );
+    const finding = findingFor('finding-security-unknown');
+    const findingRepository = await setupFinding(finding);
+    const result = await new DiscoveryReentryConsumer(
+      new PostgresDiscoveryReentryRepository(pool!, {
+        lifecycleRepository: findingRepository,
+      }),
+      new PostgresDiscoveryApprovedResourceRevisionResolver(pool!),
+      () => new Date(now),
+      { freshnessEvaluator: evaluator() },
+    ).consume(publicationFor(finding));
+
+    expect(result).toMatchObject({
+      status: 'RETRYABLE',
+      reasonCode: 'RETRYABLE_INFRASTRUCTURE_FAILURE',
+    });
+    await expect(
+      findingRepository.findLifecycle({
+        projectId,
+        findingId: finding.findingId,
+        findingRevision: finding.findingRevision,
+      }),
+    ).resolves.toMatchObject({ lifecycleState: 'NEW' });
+  });
+
+  it('security: fails closed and remains retryable when sensitivity policy is UNKNOWN', async () => {
+    await pool!.query(
+      `INSERT INTO settings.policy_context_revisions
+         (project_id, revision, policy_binding, created_at)
+       VALUES ($1, 2, $2::jsonb, $3)`,
+      [
+        projectId,
+        JSON.stringify({ authorization: 'AUTHORIZED', sensitivityPolicy: 'UNKNOWN' }),
+        now,
+      ],
+    );
+    const finding = findingFor('finding-security-sensitivity-unknown');
+    const findingRepository = await setupFinding(finding);
+    const result = await new DiscoveryReentryConsumer(
+      new PostgresDiscoveryReentryRepository(pool!, {
+        lifecycleRepository: findingRepository,
+      }),
+      new PostgresDiscoveryApprovedResourceRevisionResolver(pool!),
+      () => new Date(now),
+      { freshnessEvaluator: evaluator() },
+    ).consume(publicationFor(finding));
+
+    expect(result).toMatchObject({
+      status: 'RETRYABLE',
+      reasonCode: 'RETRYABLE_INFRASTRUCTURE_FAILURE',
+    });
+    await expect(
+      findingRepository.findLifecycle({
+        projectId,
+        findingId: finding.findingId,
+        findingRevision: finding.findingRevision,
+      }),
+    ).resolves.toMatchObject({ lifecycleState: 'NEW' });
+  });
+
+  it('security: blocks a sensitivity-strengthened relied-on claim without creating intake', async () => {
+    await seedCanonicalClaimHistory({ sensitivity: 'restricted' });
+    const relatedResource = {
+      schemaVersion: '1.0.0' as const,
+      resourceKind: 'CANONICAL_CLAIM' as const,
+      resourceId: productionClaimId,
+      projectId,
+      resourceState: 'CURRENT' as const,
+    };
+    const finding = findingFor('finding-security-sensitivity', {
+      relatedResourceRefs: [relatedResource],
+    });
+    const findingRepository = await setupFinding(finding);
+    const result = await new DiscoveryReentryConsumer(
+      new PostgresDiscoveryReentryRepository(pool!, {
+        lifecycleRepository: findingRepository,
+      }),
+      new PostgresDiscoveryApprovedResourceRevisionResolver(pool!),
+      () => new Date(now),
+      { freshnessEvaluator: evaluator() },
+    ).consume(publicationFor(finding));
+
+    expect(result).toMatchObject({
+      status: 'INELIGIBLE',
+      lifecycleState: 'NEW',
+      freshnessAssessment: {
+        state: 'AUTHORIZATION_DENIED',
+        reasonCodes: ['SENSITIVITY_POLICY_CHANGED'],
+      },
+    });
   });
 
   it('C: blocks intake when an approved related resource is unavailable', async () => {
@@ -226,7 +653,7 @@ describe.runIf(databaseUrl)('AKP-5 WP5 PostgreSQL freshness authority and guards
       { freshnessEvaluator: evaluator() },
     ).consume(publicationFor(finding));
     expect(result).toMatchObject({ status: 'INELIGIBLE', lifecycleState: 'STALE' });
-    expect(resolverCalls).toBe(0);
+    expect(resolverCalls).toBe(1);
     await expect(
       new PostgresDiscoveryReentryRepository(pool!, {
         lifecycleRepository: findingRepository,

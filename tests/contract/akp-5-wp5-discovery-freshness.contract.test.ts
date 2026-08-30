@@ -140,6 +140,13 @@ describe('AKP-5 WP5 Discovery freshness contract', () => {
     });
   });
 
+  it('fails closed when the current sensitivity policy is unknown', () => {
+    expect(assess({ sensitivityPolicy: 'UNKNOWN' })).toMatchObject({
+      state: 'PERSISTENCE_FAILURE',
+      reasonCodes: [],
+    });
+  });
+
   it('detects Evidence lineage change/unavailability and Review target supersession', () => {
     expect(
       assess({

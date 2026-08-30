@@ -161,23 +161,32 @@ const seedPrerequisites = async (database: Pool): Promise<void> => {
 };
 
 const cleanup = async (database: Pool): Promise<void> => {
-  await database.query('DELETE FROM discovery.reentry_review_resources WHERE project_id = $1', [
-    projectId,
-  ]);
-  await database.query('DELETE FROM discovery.reentry_candidates WHERE project_id = $1', [
-    projectId,
-  ]);
-  await database.query('DELETE FROM discovery.reentry_manifests WHERE project_id = $1', [
-    projectId,
-  ]);
-  await database.query('DELETE FROM discovery.finding_lifecycle_history WHERE project_id = $1', [
-    projectId,
-  ]);
-  await database.query('DELETE FROM discovery.finding_lifecycle_current WHERE project_id = $1', [
-    projectId,
-  ]);
-  await database.query('DELETE FROM discovery.findings WHERE project_id = $1', [projectId]);
-  await database.query('DELETE FROM project_admin.projects WHERE id = $1', [projectId]);
+  const client = await database.connect();
+  try {
+    // The review bridge is immutable in normal operation; cleanup is the
+    // controlled administrative path for this isolated test project.
+    await client.query('SET session_replication_role = replica');
+    await client.query('DELETE FROM discovery.reentry_review_resources WHERE project_id = $1', [
+      projectId,
+    ]);
+    await client.query('DELETE FROM discovery.reentry_candidates WHERE project_id = $1', [
+      projectId,
+    ]);
+    await client.query('DELETE FROM discovery.reentry_manifests WHERE project_id = $1', [
+      projectId,
+    ]);
+    await client.query('DELETE FROM discovery.finding_lifecycle_history WHERE project_id = $1', [
+      projectId,
+    ]);
+    await client.query('DELETE FROM discovery.finding_lifecycle_current WHERE project_id = $1', [
+      projectId,
+    ]);
+    await client.query('DELETE FROM discovery.findings WHERE project_id = $1', [projectId]);
+    await client.query('DELETE FROM project_admin.projects WHERE id = $1', [projectId]);
+  } finally {
+    await client.query('SET session_replication_role = origin');
+    client.release();
+  }
 };
 
 describe.runIf(pool)('AKP-5 WP3 persistent Review bridge (real PostgreSQL)', () => {

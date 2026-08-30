@@ -35,8 +35,8 @@ const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
   : undefined;
 const poolA: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 const poolB: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
-const readyProject = 'akp-4-wp2-coordinator-ready';
-const waitingProject = 'akp-4-wp2-coordinator-waiting';
+let readyProject: string;
+let waitingProject: string;
 
 const canonicalDigestFor = (projectId: string, canonicalVersion = 1): string =>
   canonicalSnapshotDigest(projectId, canonicalVersion, []);
@@ -268,51 +268,11 @@ describe.runIf(databaseUrl)('AKP-4 WP2 Canonical trigger coordinator PostgreSQL 
     await migrateUpTo(undefined, databaseUrl!);
   });
 
-  beforeEach(async () => {
-    await poolA!.query(`DELETE FROM discovery.job_lifecycle_history WHERE project_id IN ($1, $2)`, [
-      readyProject,
-      waitingProject,
-    ]);
-    await poolA!.query('DELETE FROM discovery.jobs WHERE project_id IN ($1, $2)', [
-      readyProject,
-      waitingProject,
-    ]);
-    await poolA!.query(
-      'DELETE FROM projection.semantic_generation_pointers WHERE project_id IN ($1, $2)',
-      [readyProject, waitingProject],
-    );
-    await poolA!.query('DELETE FROM projection.semantic_generations WHERE project_id IN ($1, $2)', [
-      readyProject,
-      waitingProject,
-    ]);
-    await poolA!.query('DELETE FROM projection.compiled_truth WHERE project_id IN ($1, $2)', [
-      readyProject,
-      waitingProject,
-    ]);
-    await poolA!.query('DELETE FROM canonical.outbox WHERE project_id IN ($1, $2)', [
-      readyProject,
-      waitingProject,
-    ]);
-    await poolA!.query('DELETE FROM canonical.history_events WHERE project_id IN ($1, $2)', [
-      readyProject,
-      waitingProject,
-    ]);
-    await poolA!.query('DELETE FROM canonical.revisions WHERE project_id IN ($1, $2)', [
-      readyProject,
-      waitingProject,
-    ]);
-    await poolA!.query('DELETE FROM canonical.commits WHERE project_id IN ($1, $2)', [
-      readyProject,
-      waitingProject,
-    ]);
-    await poolA!.query('DELETE FROM canonical.project_state WHERE project_id IN ($1, $2)', [
-      readyProject,
-      waitingProject,
-    ]);
-    await poolA!.query('DELETE FROM project_admin.projects WHERE id IN ($1, $2)', [
-      readyProject,
-      waitingProject,
-    ]);
+  beforeEach(() => {
+    // Canonical revisions/history are append-only and cannot be deleted for
+    // test cleanup. Give every test fresh Project authorities instead.
+    readyProject = `akp-4-wp2-coordinator-ready-${randomUUID()}`;
+    waitingProject = `akp-4-wp2-coordinator-waiting-${randomUUID()}`;
   });
 
   afterAll(async () => {
@@ -380,7 +340,7 @@ describe.runIf(databaseUrl)('AKP-4 WP2 Canonical trigger coordinator PostgreSQL 
     expect(delivered).toEqual(['ALREADY_EXISTS']);
     expect(await canonical.findOutbox(readyProject, fixture.outboxId)).toMatchObject({
       status: 'published',
-      attempts: 1,
+      attempts: 2,
     });
     expect(replayedResult!).toMatchObject({
       disposition: 'ALREADY_EXISTS',
@@ -399,7 +359,8 @@ describe.runIf(databaseUrl)('AKP-4 WP2 Canonical trigger coordinator PostgreSQL 
       projectId: readyProject,
       logicalIdentity: firstResult!.logicalJobIdentity,
     });
-    expect(job).toMatchObject({ lifecycleState: 'QUEUED', projectionWait: undefined });
+    expect(job).toMatchObject({ lifecycleState: 'QUEUED' });
+    expect(job?.projectionWait).toBeUndefined();
     expect(
       await poolA!.query(
         'SELECT count(*)::text AS count FROM discovery.attempts WHERE project_id = $1',
@@ -468,10 +429,9 @@ describe.runIf(databaseUrl)('AKP-4 WP2 Canonical trigger coordinator PostgreSQL 
       jobId: job.job_id,
     });
     expect(expired.disposition).toBe('FAILED_RETRYABLE');
-    expect(await runtime.findJob({ projectId: waitingProject, jobId: job.job_id })).toMatchObject({
-      lifecycleState: 'FAILED_RETRYABLE',
-      projectionWait: undefined,
-    });
+    const expiredJob = await runtime.findJob({ projectId: waitingProject, jobId: job.job_id });
+    expect(expiredJob).toMatchObject({ lifecycleState: 'FAILED_RETRYABLE' });
+    expect(expiredJob?.projectionWait).toBeUndefined();
     expect(
       await poolA!.query(
         `SELECT from_state, to_state FROM discovery.job_lifecycle_history

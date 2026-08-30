@@ -517,6 +517,26 @@ export const startShotgunApplication = async (
     const discoveryFindingRepository = new PostgresDiscoveryFindingRepository(pool);
     const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
     const authRepository = new PostgresAuthRepository(pool);
+    // Discovery execution and re-entry share the same server-owned
+    // project/owner authority. Policy-context revisions carry binding
+    // identity only; they are not an authorization DTO.
+    const resolveOwnerDiscoverySecurity = async (projectId: string) => {
+      const project = await projectAdminRepository.getProjectDetails(projectId);
+      const accountId = process.env.SHOTGUN_BOOTSTRAP_ACCOUNT_ID?.trim();
+      if (!project || project.status !== 'ACTIVE' || !project.active || !accountId) {
+        return undefined;
+      }
+      const principal = await authRepository.findPrincipalByAccountId(accountId);
+      if (!principal) return undefined;
+      const membership = await authRepository.findOwnerMembership(accountId, projectId);
+      return membership
+        ? {
+            projectId,
+            accessScope: membership.scopes,
+            sensitivity: membership.sensitivityClearance,
+          }
+        : undefined;
+    };
     const discoveryModelProfileService = new DiscoveryModelProfileService(
       aiProviderRegistry,
       projectAIConfiguration,
@@ -592,19 +612,7 @@ export const startShotgunApplication = async (
                   },
                 ),
               }),
-            resolveSecurity: async ({ projectId }) => {
-              const project = await projectAdminRepository.getProjectDetails(projectId);
-              const accountId = process.env.SHOTGUN_BOOTSTRAP_ACCOUNT_ID?.trim();
-              if (!project || project.status !== 'ACTIVE' || !accountId) return undefined;
-              const membership = await authRepository.findOwnerMembership(accountId, projectId);
-              return membership
-                ? {
-                    projectId,
-                    accessScope: membership.scopes,
-                    sensitivity: membership.sensitivityClearance,
-                  }
-                : undefined;
-            },
+            resolveSecurity: async ({ projectId }) => resolveOwnerDiscoverySecurity(projectId),
             findAuthoritativeEquivalent: async ({ projectId, candidate }) => {
               const projection = await compiledTruthRepository.findProjection(projectId);
               if (!projection) return false;
@@ -675,11 +683,16 @@ export const startShotgunApplication = async (
     const discoveryReviewResourceRepository = recoveryHarness
       ? undefined
       : new PostgresDiscoveryReviewResourceRepository(pool);
-    const discoveryReentryFreshnessEvaluator = new DiscoveryReentryFreshnessEvaluator(
-      new PostgresDiscoveryReentryFreshnessAuthority(pool, {
+    const discoveryReentryFreshnessAuthority = new PostgresDiscoveryReentryFreshnessAuthority(
+      pool,
+      {
         knowledgeModelRepository,
         compiledTruthRepository,
-      }),
+        resolveSecurity: async ({ projectId }) => resolveOwnerDiscoverySecurity(projectId),
+      },
+    );
+    const discoveryReentryFreshnessEvaluator = new DiscoveryReentryFreshnessEvaluator(
+      discoveryReentryFreshnessAuthority,
     );
     const discoveryReentryWorker =
       recoveryHarness ||
@@ -710,6 +723,7 @@ export const startShotgunApplication = async (
                 discoveryReentryRepository,
                 discoveryReviewResourceRepository,
                 discoveryReentryFreshnessEvaluator,
+                discoveryReentryFreshnessAuthority,
               ),
             },
           );

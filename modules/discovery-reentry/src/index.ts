@@ -31,6 +31,7 @@ import {
   type DiscoveryReviewNormalizedMaterialV1,
   type DiscoveryReviewResourceV1,
   type DiscoveryReviewLineageV1,
+  type DiscoveryReviewEvidenceLineageRefV1,
   type DiscoveryReviewTypeSpecificMaterialV1,
   assessDiscoveryReentryFreshnessV1,
   DISCOVERY_REENTRY_FRESHNESS_ASSESSMENT_VERSION_V1,
@@ -1005,6 +1006,15 @@ export type DiscoveryReviewResourceWriterPort = {
   save(resource: DiscoveryReviewResourceV1): Promise<'CREATED' | 'IDEMPOTENT'>;
 };
 
+/** Resolves Finding evidence IDs through the existing Evidence authority.
+ * Review materialization never invents SourceVersion or Evidence identities. */
+export type DiscoveryReviewEvidenceLineageResolverPort = {
+  resolve(input: {
+    readonly projectId: string;
+    readonly evidenceIds: readonly string[];
+  }): Promise<readonly DiscoveryReviewEvidenceLineageRefV1[]>;
+};
+
 export type DiscoveryReviewMaterializerPort = {
   materialize(
     input: DiscoveryReviewMaterializationInputV1,
@@ -1344,6 +1354,7 @@ export const normalizeDiscoveryFindingToReviewResourceV1 = (input: {
   readonly finding: DiscoveryFindingEnvelopeV1;
   readonly candidate: DerivedKnowledgeCandidateV1;
   readonly resourceRevision?: number;
+  readonly evidenceLineage?: readonly DiscoveryReviewEvidenceLineageRefV1[];
 }): DiscoveryReviewResourceV1 => {
   const finding = decodeDiscoveryFindingEnvelopeV1(input.finding, 'authoritativeFinding');
   const candidate = decodeDerivedKnowledgeCandidateV1(
@@ -1437,10 +1448,12 @@ export const normalizeDiscoveryFindingToReviewResourceV1 = (input: {
       ...(impactSummary === '' ? {} : { expectedImpact: impactSummary }),
       normalizedMaterial,
     },
-    evidenceLineage: candidate.evidenceIds.map((evidenceId) => ({
-      schemaVersion: candidate.schemaVersion,
-      evidenceId,
-    })),
+    evidenceLineage:
+      input.evidenceLineage ??
+      candidate.evidenceIds.map((evidenceId) => ({
+        schemaVersion: candidate.schemaVersion,
+        evidenceId,
+      })),
   };
   const resource: DiscoveryReviewResourceV1 = {
     ...digestInput,
@@ -1457,6 +1470,7 @@ export class DiscoveryReviewMaterializer implements DiscoveryReviewMaterializerP
     private readonly persistence: DiscoveryReentryPersistencePort,
     private readonly writer: DiscoveryReviewResourceWriterPort,
     private readonly freshnessEvaluator?: DiscoveryReentryFreshnessEvaluatorPort,
+    private readonly evidenceLineageResolver?: DiscoveryReviewEvidenceLineageResolverPort,
   ) {}
 
   private async freshness(
@@ -1563,10 +1577,18 @@ export class DiscoveryReviewMaterializer implements DiscoveryReviewMaterializerP
       await this.staleClose(finding, stored.lifecycle, beforeSave);
       return { status: 'BLOCKED', assessment: beforeSave };
     }
+    const evidenceLineage =
+      this.evidenceLineageResolver === undefined
+        ? undefined
+        : await this.evidenceLineageResolver.resolve({
+            projectId: finding.projectId,
+            evidenceIds: finding.evidenceIds,
+          });
     const resource = normalizeDiscoveryFindingToReviewResourceV1({
       finding,
       candidate: stored.candidate,
       resourceRevision: input.resourceRevision,
+      ...(evidenceLineage === undefined ? {} : { evidenceLineage }),
     });
     const status = await this.writer.save(resource);
     // A save/transition crash gap is intentionally safe: if the authority

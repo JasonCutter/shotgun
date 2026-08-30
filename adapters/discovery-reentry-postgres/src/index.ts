@@ -17,6 +17,8 @@ import type {
   DiscoveryReentryFreshnessCurrentStateV1,
   DiscoveryReentryFreshnessResourceObservationV1,
   DiscoveryReentryFreshnessEvidenceObservationV1,
+  DiscoveryServerSecurityInputV1,
+  DiscoveryReviewEvidenceLineageRefV1,
 } from '../../../packages/contracts/src/index.js';
 import {
   approvedKnowledgeDigest,
@@ -950,13 +952,6 @@ type FreshnessEvidenceRow = QueryResultRow & {
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
 };
 
-type FreshnessSecurityRow = QueryResultRow & {
-  readonly project_status: string;
-  readonly project_active: boolean;
-  readonly policy_revision: number | null;
-  readonly policy_binding: unknown | null;
-};
-
 type FreshnessSecurityState = Pick<
   DiscoveryReentryFreshnessCurrentStateV1,
   'authorization' | 'currentAccessScope' | 'currentSensitivity' | 'sensitivityPolicy'
@@ -975,62 +970,9 @@ const securityScope = (value: unknown): readonly string[] | undefined => {
 const securityText = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
 
-/**
- * Reads only existing project lifecycle and append-only policy authorities.
- * The server worker has no browser principal, so resource/evidence scope and
- * sensitivity are evaluated separately from this project-level authority.
- */
-const securityStateFromRow = (row: FreshnessSecurityRow | undefined): FreshnessSecurityState => {
-  if (row === undefined || row.project_status !== 'ACTIVE' || row.project_active !== true) {
-    return { authorization: 'DENIED', sensitivityPolicy: 'DENIED' };
-  }
-  if (row.policy_revision === null || row.policy_binding === null) {
-    return { authorization: 'UNKNOWN', sensitivityPolicy: 'UNKNOWN' };
-  }
-  const binding =
-    typeof row.policy_binding === 'object' && row.policy_binding !== null
-      ? (row.policy_binding as Record<string, unknown>)
-      : undefined;
-  if (binding === undefined) {
-    return { authorization: 'UNKNOWN', sensitivityPolicy: 'UNKNOWN' };
-  }
-  const authorizationValue = securityText(binding.authorization);
-  const authorization: FreshnessSecurityState['authorization'] =
-    authorizationValue === 'AUTHORIZED'
-      ? 'AUTHORIZED'
-      : authorizationValue === 'DENIED'
-        ? 'DENIED'
-        : 'UNKNOWN';
-  const currentAccessScope = securityScope(
-    binding.currentAccessScope ?? binding.accessScope ?? binding.resourceAccessScope,
-  );
-  const currentSensitivityValue = securityText(
-    binding.currentSensitivity ?? binding.sensitivity ?? binding.sensitivityClearance,
-  );
-  const currentSensitivity = securitySensitivityValues.has(
-    currentSensitivityValue as NonNullable<
-      DiscoveryReentryFreshnessCurrentStateV1['currentSensitivity']
-    >,
-  )
-    ? (currentSensitivityValue as NonNullable<
-        DiscoveryReentryFreshnessCurrentStateV1['currentSensitivity']
-      >)
-    : undefined;
-  const policyValue = securityText(binding.sensitivityPolicy);
-  const sensitivityPolicy: FreshnessSecurityState['sensitivityPolicy'] =
-    policyValue === 'UNCHANGED' ||
-    policyValue === 'CHANGED' ||
-    policyValue === 'DENIED' ||
-    policyValue === 'UNKNOWN'
-      ? policyValue
-      : 'UNKNOWN';
-  return {
-    authorization,
-    ...(currentAccessScope === undefined ? {} : { currentAccessScope }),
-    ...(currentSensitivity === undefined ? {} : { currentSensitivity }),
-    sensitivityPolicy,
-  };
-};
+type DiscoveryReentrySecurityResolverV1 = (input: {
+  readonly projectId: string;
+}) => Promise<DiscoveryServerSecurityInputV1 | undefined>;
 
 /**
  * Server-owned current-state reader for the WP5 evaluator. It deliberately
@@ -1043,27 +985,33 @@ export class PostgresDiscoveryReentryFreshnessAuthority implements DiscoveryReen
     private readonly options: {
       readonly knowledgeModelRepository?: Pick<KnowledgeModelRepositoryPort, 'listGroups'>;
       readonly compiledTruthRepository?: Pick<CompiledTruthRepositoryPort, 'findProjection'>;
+      /** The same server-owned security authority used by Discovery intake.
+       * It is deliberately injected: policy_context_revisions only carries
+       * the CURRENT/PINNED binding identity, not authorization semantics. */
+      readonly resolveSecurity?: DiscoveryReentrySecurityResolverV1;
     } = {},
   ) {}
 
   private async security(projectId: string): Promise<FreshnessSecurityState> {
-    const result = await this.pool.query<FreshnessSecurityRow>(
-      `SELECT project.status AS project_status,
-              project.active AS project_active,
-              policy.revision AS policy_revision,
-              policy.policy_binding
-       FROM project_admin.projects project
-       LEFT JOIN LATERAL (
-         SELECT revision, policy_binding
-         FROM settings.policy_context_revisions
-         WHERE project_id = $1
-         ORDER BY revision DESC
-         LIMIT 1
-       ) policy ON true
-       WHERE project.id = $1`,
-      [projectId],
-    );
-    return securityStateFromRow(result.rows[0]);
+    const resolveSecurity = this.options.resolveSecurity;
+    if (resolveSecurity === undefined) {
+      return { authorization: 'UNKNOWN', sensitivityPolicy: 'UNKNOWN' };
+    }
+    const resolved = await resolveSecurity({ projectId });
+    if (resolved === undefined) {
+      return { authorization: 'DENIED', sensitivityPolicy: 'DENIED' };
+    }
+    if (resolved.projectId !== projectId || resolved.accessScope.length === 0) {
+      return { authorization: 'UNKNOWN', sensitivityPolicy: 'UNKNOWN' };
+    }
+    return {
+      authorization: 'AUTHORIZED',
+      currentAccessScope: [...new Set(resolved.accessScope)].sort(),
+      currentSensitivity: resolved.sensitivity,
+      // The existing membership authority is the current access/sensitivity
+      // decision. There is no second synthetic sensitivity policy document.
+      sensitivityPolicy: 'UNCHANGED',
+    };
   }
 
   private async resource(
@@ -1181,6 +1129,41 @@ export class PostgresDiscoveryReentryFreshnessAuthority implements DiscoveryReen
       accessScope: row.access_scope,
       sensitivity: row.sensitivity,
     };
+  }
+
+  /**
+   * Resolve persisted Evidence lineage for the Review bridge. The Finding
+   * stores only stable Evidence IDs; Source/SourceVersion/span references are
+   * read from the existing evidence.spans authority at materialization time.
+   */
+  public async resolve(input: {
+    readonly projectId: string;
+    readonly evidenceIds: readonly string[];
+  }): Promise<readonly DiscoveryReviewEvidenceLineageRefV1[]> {
+    if (input.evidenceIds.length === 0) return [];
+    const result = await this.pool.query<
+      Pick<FreshnessEvidenceRow, 'evidence_id' | 'project_id' | 'source_id' | 'source_version_id'>
+    >(
+      `SELECT evidence_id::text, project_id, source_id::text, source_version_id::text
+       FROM evidence.spans
+       WHERE project_id = $1
+         AND evidence_id::text = ANY($2::text[])`,
+      [input.projectId, [...input.evidenceIds]],
+    );
+    const byId = new Map(result.rows.map((row) => [row.evidence_id, row]));
+    return input.evidenceIds.map((evidenceId) => {
+      const row = byId.get(evidenceId);
+      if (!row || row.project_id !== input.projectId) {
+        throw new Error('Evidence lineage could not be resolved through the Evidence authority.');
+      }
+      return {
+        schemaVersion: '1.0.0',
+        evidenceId,
+        sourceId: row.source_id,
+        sourceVersionId: row.source_version_id,
+        evidenceSpanId: row.evidence_id,
+      };
+    });
   }
 
   public async read(input: {

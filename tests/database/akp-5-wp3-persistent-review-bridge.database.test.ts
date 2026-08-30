@@ -442,7 +442,7 @@ describe.runIf(pool)('AKP-5 WP3 persistent Review bridge (real PostgreSQL)', () 
           governanceTarget: 'RELATION_GOVERNANCE',
         },
       ],
-      ['access widening', { accessScope: ['owner', 'other'] }],
+      ['access widening', { accessScope: ['other', 'owner'] }],
       ['sensitivity weakening', { sensitivity: 'public' }],
     ];
     for (const [index, [label, overrides]] of mismatchCases.entries()) {

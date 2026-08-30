@@ -27,7 +27,8 @@ export type FrontendActivitySchemaVersion = '1.0.0';
 export const FRONTEND_ACTIVITY_API_VERSION = '1.0.0' as const;
 
 /** Federated projection domain kinds (Contract Snapshot §3). */
-export type ActivityDomainKindV1 = 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'CONNECTOR_DIAGNOSTICS';
+export type ActivityDomainKindV1 =
+  'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY' | 'CONNECTOR_DIAGNOSTICS';
 
 /** An Activity root is either a durable Job or a Run (ADR-130 §2). */
 export type ActivityRootKindV1 = 'JOB' | 'RUN';
@@ -148,7 +149,7 @@ export type ActivityAttentionStateV1 = 'NEEDS_ATTENTION' | 'RESOLVED' | 'NONE';
 
 /** Domain Attempt kinds by owning Domain (ADR-130 §2 mapping). */
 export type ActivityDomainAttemptKindV1 =
-  'SOURCES_INTAKE' | 'ASK_ANSWER' | 'EXTERNAL_ACTION_EXECUTION';
+  'SOURCES_INTAKE' | 'ASK_ANSWER' | 'EXTERNAL_ACTION_EXECUTION' | 'DISCOVERY_EXECUTION';
 
 export type ActivityStageStateV1 =
   'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'SKIPPED' | 'OUTCOME_UNKNOWN';
@@ -421,6 +422,7 @@ const ACTIVITY_DOMAIN_KINDS = [
   'SOURCES',
   'ASK',
   'EXTERNAL_ACTION',
+  'DISCOVERY',
   'CONNECTOR_DIAGNOSTICS',
 ] as const;
 const ACTIVITY_ROOT_KINDS = ['JOB', 'RUN'] as const;
@@ -444,6 +446,7 @@ const ACTIVITY_ATTEMPT_KINDS = [
   'SOURCES_INTAKE',
   'ASK_ANSWER',
   'EXTERNAL_ACTION_EXECUTION',
+  'DISCOVERY_EXECUTION',
 ] as const;
 const ACTIVITY_STAGE_STATES = [
   'PENDING',
@@ -623,8 +626,8 @@ export const decodeActivityRootReferenceV1 = (
     `${path}.rootKind`,
   );
   // ADR-130 §2 / Contract Snapshot §6: Ask has no durable Job and must use a
-  // RUN root; Sources and External Action use a JOB root (Connector Runtime
-  // keeps its internal diagnostic Job).
+  // RUN root; Sources, External Action and Discovery use a JOB root
+  // (Connector Runtime keeps its internal diagnostic Job).
   const expectedRootKind: ActivityRootKindV1 = domainKind === 'ASK' ? 'RUN' : 'JOB';
   if (rootKind !== expectedRootKind) {
     return fail(`${path}.rootKind`, `must be ${expectedRootKind} for domainKind ${domainKind}`);
@@ -1148,7 +1151,7 @@ export const decodeActivitySnapshotV1 = (value: unknown, path = 'activity'): Act
 // crosses into the domain module layer; the module re-exports them from here.
 
 /** Owning-Domain adapter kind exposed by the federated Activity projection. */
-export type ActivityAdapterKindV1 = 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION';
+export type ActivityAdapterKindV1 = 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY';
 
 /** One queue row in the federated Activity Queue. */
 export type ActivityQueueItemV1 = {

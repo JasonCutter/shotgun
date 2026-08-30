@@ -257,7 +257,7 @@ const decodeBuildResult = (value: unknown): ActivityProjectionBuildResultV1 => {
       'domainKind',
       `failures[${index}]`,
     ) as ActivityAdapterKindV1;
-    if (!['SOURCES', 'ASK', 'EXTERNAL_ACTION'].includes(domainKind)) {
+    if (!['SOURCES', 'ASK', 'EXTERNAL_ACTION', 'DISCOVERY'].includes(domainKind)) {
       return invalidActivityResponse(`Activity failure ${index} domainKind unsupported.`);
     }
     return {

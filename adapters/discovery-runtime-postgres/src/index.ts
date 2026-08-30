@@ -21,6 +21,7 @@ import {
   type DiscoveryRunV1,
   type DiscoveryStageV1,
   type DiscoveryRuntimeStageStateV1,
+  type DiscoveryRuntimeLifecycleStateV1,
   type DiscoveryFindingReadyV1,
 } from '../../../packages/contracts/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
@@ -50,6 +51,17 @@ import type {
   DiscoveryRuntimeStageOutputV1,
   DiscoveryRuntimeProviderReservationV1,
 } from '../../../modules/discovery-runtime/src/index.js';
+import type {
+  DiscoveryActivityAttemptRow,
+  DiscoveryActivityHistoryV1,
+  DiscoveryActivityJobRow,
+  DiscoveryActivityLifecycleEventV1,
+  DiscoveryActivityReadPort,
+} from '../../../modules/frontend-activity/src/index.js';
+import {
+  decodeDiscoveryActivityCursor,
+  encodeDiscoveryActivityCursor,
+} from '../../../modules/frontend-activity/src/index.js';
 
 type RuntimeJobRow = QueryResultRow & {
   project_id: string;
@@ -129,6 +141,16 @@ type RuntimeAttemptRow = QueryResultRow & {
   created_at: Date;
   updated_at: Date;
   completed_at: Date | null;
+};
+
+type RuntimeActivityAttemptRow = RuntimeAttemptRow & {
+  failure_code: string | null;
+  failure_classification: 'RETRYABLE' | 'TERMINAL' | null;
+  failure_retryable: boolean | null;
+  failure_safe_message: string | null;
+  failure_stage: string | null;
+  failure_occurred_at: Date | null;
+  retry_not_before: Date | null;
 };
 
 type RuntimeClaimAttemptRow = RuntimeAttemptRow & {
@@ -212,6 +234,20 @@ type RuntimeProviderReservationRow = QueryResultRow & {
   state: 'RESERVED' | 'FINALIZED' | 'CANCELLED';
   fencing_token: number | string;
   updated_at: Date;
+};
+
+type RuntimeLifecycleHistoryRow = QueryResultRow & {
+  project_id: string;
+  job_id: string;
+  run_id?: string;
+  attempt_id?: string;
+  stage_id?: string;
+  lifecycle_revision?: number;
+  stage_revision?: number;
+  from_state?: string | null;
+  to_state?: string;
+  state?: string;
+  occurred_at: Date;
 };
 
 const jobColumns = `
@@ -525,6 +561,75 @@ const mapAttempt = (row: RuntimeAttemptRow): DiscoveryAttemptV1 =>
     ...(row.completed_at === null ? {} : { completedAt: dateValue(row.completed_at) }),
   });
 
+const failureFromAttemptRow = (
+  row: RuntimeActivityAttemptRow,
+): DiscoveryActivityAttemptRow['failure'] => {
+  const values = [
+    row.failure_code,
+    row.failure_classification,
+    row.failure_retryable,
+    row.failure_safe_message,
+    row.failure_stage,
+    row.failure_occurred_at,
+  ];
+  if (values.every((value) => value === null)) return undefined;
+  if (values.some((value) => value === null)) {
+    throw new TypeError('Discovery Activity failure context is incomplete');
+  }
+  return {
+    schemaVersion: '1.0.0',
+    code: row.failure_code!,
+    classification: row.failure_classification!,
+    retryable: row.failure_retryable!,
+    safeMessage: row.failure_safe_message!,
+    failedStage: row.failure_stage!,
+    occurredAt: dateValue(row.failure_occurred_at!),
+    ...(row.retry_not_before === null ? {} : { retryNotBefore: dateValue(row.retry_not_before) }),
+  };
+};
+
+const maxRuntimeTimestamp = (...values: readonly (string | undefined)[]): string => {
+  const present = values.filter((value): value is string => value !== undefined);
+  return present.reduce(
+    (max, value) => (value > max ? value : max),
+    present[0] ?? '1970-01-01T00:00:00.000Z',
+  );
+};
+
+const lifecycleHistoryEvent = (
+  row: RuntimeLifecycleHistoryRow,
+  resourceKind: DiscoveryActivityLifecycleEventV1['resourceKind'],
+): DiscoveryActivityLifecycleEventV1 => {
+  const resourceId =
+    resourceKind === 'DiscoveryJob'
+      ? row.job_id
+      : resourceKind === 'DiscoveryRun'
+        ? row.run_id!
+        : resourceKind === 'DiscoveryAttempt'
+          ? row.attempt_id!
+          : row.stage_id!;
+  const revision =
+    resourceKind === 'DiscoveryStage' ? row.stage_revision! : row.lifecycle_revision!;
+  const toState = (resourceKind === 'DiscoveryStage' ? row.state : row.to_state)!;
+  return {
+    resourceKind,
+    resourceId,
+    projectId: row.project_id,
+    jobId: row.job_id,
+    ...(row.run_id === undefined ? {} : { runId: row.run_id }),
+    ...(row.attempt_id === undefined ? {} : { attemptId: row.attempt_id }),
+    revision: Number(revision),
+    ...(row.from_state === undefined || row.from_state === null
+      ? {}
+      : {
+          fromState: row.from_state as
+            DiscoveryRuntimeLifecycleStateV1 | DiscoveryRuntimeStageStateV1,
+        }),
+    toState: toState as DiscoveryRuntimeLifecycleStateV1 | DiscoveryRuntimeStageStateV1,
+    occurredAt: dateValue(row.occurred_at),
+  };
+};
+
 const mapStage = (row: RuntimeStageRow): DiscoveryStageV1 =>
   decodeDiscoveryStageV1({
     schemaVersion: row.schema_version,
@@ -698,8 +803,175 @@ const leaseStatus = async (
   return exists.rowCount === 1 ? 'STALE' : 'NOT_FOUND';
 };
 
-export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeExecutionRepositoryPort {
+export class PostgresDiscoveryRuntimeRepository
+  implements DiscoveryRuntimeExecutionRepositoryPort, DiscoveryActivityReadPort
+{
   constructor(private readonly pool: Pool) {}
+
+  /**
+   * Activity read boundary over the same durable runtime tables. These
+   * methods are intentionally read-only and expose no Finding/stage-output
+   * payloads or execution commands.
+   */
+  async listJobs(input: {
+    readonly projectId: string;
+    readonly cursor?: string;
+    readonly limit: number;
+  }): Promise<{ readonly jobs: readonly DiscoveryActivityJobRow[]; readonly nextCursor?: string }> {
+    const params: unknown[] = [input.projectId];
+    const conditions = ['j.project_id = $1'];
+    if (input.cursor !== undefined) {
+      const cursor = decodeDiscoveryActivityCursor(input.cursor);
+      params.push(cursor.updatedAt, cursor.jobId);
+      conditions.push(
+        `(GREATEST(j.updated_at, COALESCE((SELECT max(r.updated_at) FROM discovery.runs r WHERE r.project_id = j.project_id AND r.job_id = j.job_id), j.updated_at)) < $2
+          OR (GREATEST(j.updated_at, COALESCE((SELECT max(r.updated_at) FROM discovery.runs r WHERE r.project_id = j.project_id AND r.job_id = j.job_id), j.updated_at)) = $2 AND j.job_id > $3))`,
+      );
+    }
+    params.push(input.limit);
+    const result = await this.pool.query<RuntimeJobRow>(
+      `SELECT ${qualifiedJobColumns}
+       FROM discovery.jobs j
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY GREATEST(j.updated_at, COALESCE((SELECT max(r.updated_at) FROM discovery.runs r WHERE r.project_id = j.project_id AND r.job_id = j.job_id), j.updated_at)) DESC,
+                j.job_id ASC
+       LIMIT $${params.length}`,
+      params,
+    );
+    const jobs = await Promise.all(
+      result.rows.map(async (row): Promise<DiscoveryActivityJobRow> => ({
+        job: mapJob(row),
+        run: await this.getLatestRun({ projectId: row.project_id, jobId: row.job_id }),
+      })),
+    );
+    const last = jobs[jobs.length - 1];
+    return {
+      jobs,
+      ...(result.rows.length >= input.limit && last !== undefined
+        ? {
+            nextCursor: encodeDiscoveryActivityCursor({
+              updatedAt: maxRuntimeTimestamp(last.job.updatedAt, last.run?.updatedAt),
+              jobId: last.job.jobId,
+            }),
+          }
+        : {}),
+    };
+  }
+
+  async getJob(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+  }): Promise<DiscoveryJobV1 | undefined> {
+    return this.findJob(input);
+  }
+
+  async getRun(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+  }): Promise<DiscoveryRunV1 | undefined> {
+    const run = await this.findRun(input);
+    return run?.jobId === input.jobId ? run : undefined;
+  }
+
+  async getLatestRun(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+  }): Promise<DiscoveryRunV1 | undefined> {
+    const result = await this.pool.query<RuntimeRunRow>(
+      `SELECT ${runColumns}
+       FROM discovery.runs
+       WHERE project_id = $1 AND job_id = $2
+       ORDER BY run_revision DESC, run_id ASC
+       LIMIT 1`,
+      [input.projectId, input.jobId],
+    );
+    return result.rows[0] ? mapRun(result.rows[0]) : undefined;
+  }
+
+  async listActivityAttempts(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+  }): Promise<readonly DiscoveryActivityAttemptRow[]> {
+    const result = await this.pool.query<RuntimeActivityAttemptRow>(
+      `SELECT ${attemptColumns}, failure_code, failure_classification,
+              failure_retryable, failure_safe_message, failure_stage,
+              failure_occurred_at, retry_not_before
+       FROM discovery.attempts
+       WHERE project_id = $1 AND job_id = $2 AND run_id = $3
+       ORDER BY attempt_number ASC, attempt_id ASC`,
+      [input.projectId, input.jobId, input.runId],
+    );
+    return result.rows.map((row) => {
+      const failure = failureFromAttemptRow(row);
+      return {
+        ...mapAttempt(row),
+        ...(failure === undefined ? {} : { failure }),
+      };
+    });
+  }
+
+  async listActivityStages(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+    readonly attemptId: string;
+  }): Promise<readonly DiscoveryStageV1[]> {
+    const stages = await this.listStages({
+      projectId: input.projectId,
+      runId: input.runId,
+      attemptId: input.attemptId,
+    });
+    return stages.filter((stage) => stage.jobId === input.jobId);
+  }
+
+  async listHistory(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+    readonly attemptIds: readonly string[];
+    readonly stageIds: readonly string[];
+  }): Promise<DiscoveryActivityHistoryV1> {
+    const [jobResult, runResult, attemptResult, stageResult] = await Promise.all([
+      this.pool.query<RuntimeLifecycleHistoryRow>(
+        `SELECT project_id, job_id, lifecycle_revision, from_state, to_state, occurred_at
+         FROM discovery.job_lifecycle_history
+         WHERE project_id = $1 AND job_id = $2
+         ORDER BY lifecycle_revision ASC`,
+        [input.projectId, input.jobId],
+      ),
+      this.pool.query<RuntimeLifecycleHistoryRow>(
+        `SELECT project_id, job_id, run_id, lifecycle_revision, from_state, to_state, occurred_at
+         FROM discovery.run_lifecycle_history
+         WHERE project_id = $1 AND job_id = $2 AND run_id = $3
+         ORDER BY lifecycle_revision ASC`,
+        [input.projectId, input.jobId, input.runId],
+      ),
+      this.pool.query<RuntimeLifecycleHistoryRow>(
+        `SELECT project_id, job_id, run_id, attempt_id, lifecycle_revision, from_state, to_state, occurred_at
+         FROM discovery.attempt_lifecycle_history
+         WHERE project_id = $1 AND job_id = $2 AND run_id = $3 AND attempt_id = ANY($4::text[])
+         ORDER BY attempt_id ASC, lifecycle_revision ASC`,
+        [input.projectId, input.jobId, input.runId, input.attemptIds],
+      ),
+      this.pool.query<RuntimeLifecycleHistoryRow>(
+        `SELECT s.project_id, s.job_id, s.run_id, s.attempt_id, s.stage_id,
+                h.stage_revision, h.state, h.occurred_at
+         FROM discovery.stage_history h
+         JOIN discovery.stages s ON s.project_id = h.project_id AND s.stage_id = h.stage_id
+         WHERE h.project_id = $1 AND h.run_id = $2 AND h.stage_id = ANY($3::text[])
+           AND s.job_id = $4
+         ORDER BY h.stage_id ASC, h.stage_revision ASC`,
+        [input.projectId, input.runId, input.stageIds, input.jobId],
+      ),
+    ]);
+    const job = jobResult.rows.map((row) => lifecycleHistoryEvent(row, 'DiscoveryJob'));
+    const run = runResult.rows.map((row) => lifecycleHistoryEvent(row, 'DiscoveryRun'));
+    const attempt = attemptResult.rows.map((row) => lifecycleHistoryEvent(row, 'DiscoveryAttempt'));
+    const stage = stageResult.rows.map((row) => lifecycleHistoryEvent(row, 'DiscoveryStage'));
+    return { job, run, attempt, stage };
+  }
 
   async saveJob(job: DiscoveryJobV1): Promise<'CREATED' | 'CONFLICT'> {
     const decoded = decodeDiscoveryJobV1(job);

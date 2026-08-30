@@ -1444,7 +1444,8 @@ const conflictSelection = (
     if (
       seenPairs.has(pairKey) ||
       existingPairs.has(pairKey) ||
-      pairKey.split('\u0000').some((entry) => entry.length === 0)
+      signal.left.resourceId.length === 0 ||
+      signal.right.resourceId.length === 0
     )
       continue;
     if (existingConflictIsIncomplete) {

@@ -1,7 +1,7 @@
 import {
   computeDiscoveryFingerprintV1,
-  createDiscoveryFindingEnvelopeV1,
   deriveAuthorizedSensitivities,
+  deriveDiscoverySemanticEssenceV1,
   sha256Text,
   semanticStableJson,
   utf16OrdinalCompare,
@@ -10,6 +10,8 @@ import type {
   CompiledTruthProjection,
   DiscoveryCanonicalBaseIdentityV1,
   DiscoveryFindingEnvelopeV1,
+  DiscoveryFollowUpOriginIdentityV1,
+  DiscoveryFollowUpQualificationProofV1,
   DiscoveryProjectionBaseIdentityV1,
   DiscoveryResourceKind,
   DiscoveryResourceRefV1,
@@ -25,8 +27,11 @@ import {
   createWp2DiscoveryNeighborhoodStrategyRegistry,
   selectDiscoveryNeighborhood,
   type DiscoveryEngineV1,
+  type DiscoveryCompetingResourcePortV1,
+  type DiscoveryExistingCanonicalConflictPortV1,
   type DiscoverySignalReadContextV1,
   type DiscoverySignalResourceV1,
+  type DiscoveryTemporalCompatibilityPortV1,
 } from '../../../modules/discovery-finding-fingerprint/src/index.js';
 import type {
   DiscoveryAIGenerationService,
@@ -35,7 +40,9 @@ import type {
 import {
   DiscoveryQualityGateV1,
   DiscoveryWorkBudgetLedgerV1,
+  createDiscoveryQualityGateInputFromAIGenerationProposalV1,
   type DiscoveryQualityGateContextV1,
+  type DiscoveryQualitySelectionSignalV1,
   type DiscoveryWorkBudgetV1,
 } from '../../../modules/discovery-quality-gate/src/index.js';
 import type { CompiledTruthRepositoryPort } from '../../../modules/compiled-truth/src/index.js';
@@ -54,7 +61,11 @@ import type {
   DiscoveryExecutionPortV1,
   DiscoveryExecutionStageResultV1,
 } from '../../../modules/discovery-runtime/src/worker.js';
-import type { DiscoveryRuntimeExecutionRepositoryPort } from '../../../modules/discovery-runtime/src/index.js';
+import type {
+  DiscoveryRuntimeExecutionRepositoryPort,
+  DiscoveryRuntimeCandidateProofV1,
+  DiscoveryRuntimeGeneratedFindingsStageValueV1,
+} from '../../../modules/discovery-runtime/src/index.js';
 
 type ProductFindingRepository = DiscoveryFindingRepositoryPort &
   DiscoveryFindingLifecycleRepositoryPort;
@@ -85,6 +96,10 @@ export type DiscoveryProductExecutionDependenciesV1 = {
   readonly evidenceRepository: Pick<EvidenceRepositoryPort, 'findById'>;
   /** Accepted AKP-1 semantic authority; no projection-array rank fallback. */
   readonly semanticRetriever: SemanticRetrieverPort;
+  /** Optional typed WP2 authorities; absent capabilities remain degraded. */
+  readonly temporalCompatibility?: DiscoveryTemporalCompatibilityPortV1;
+  readonly competingResource?: DiscoveryCompetingResourcePortV1;
+  readonly existingCanonicalConflict?: DiscoveryExistingCanonicalConflictPortV1;
   /** Factory keeps the hydrated durable budget attached to the AI controller. */
   readonly createGenerationService: (
     budget: DiscoveryWorkBudgetLedgerV1,
@@ -103,6 +118,9 @@ type ProductSignalsV1 = {
   readonly signalContext: DiscoverySignalReadContextV1;
   readonly budget: DiscoveryWorkBudgetLedgerV1;
 };
+
+const DISCOVERY_QUALIFIED_FOLLOW_UP_SELECTOR_ID_V1 = 'akp-3.wp3.qualified-follow-up' as const;
+const DISCOVERY_QUALIFIED_FOLLOW_UP_SELECTOR_VERSION_V1 = '1.0.0' as const;
 
 const resourceKindFor = (
   type: CompiledTruthProjection['items'][number]['type'],
@@ -184,6 +202,22 @@ const gapEssence = (finding: DiscoveryFindingEnvelopeV1): string | undefined => 
   return undefined;
 };
 
+const semanticEssenceForFinding = (
+  finding: DiscoveryFindingEnvelopeV1,
+  originIdentity?: Parameters<typeof deriveDiscoverySemanticEssenceV1>[0]['originIdentity'],
+): string => {
+  if (finding.findingType === 'KNOWLEDGE_GAP' || finding.findingType === 'EVIDENCE_GAP') {
+    const essence = gapEssence(finding);
+    if (essence === undefined) throw new TypeError('Discovery gap semantic essence is invalid.');
+    return essence;
+  }
+  return deriveDiscoverySemanticEssenceV1({
+    findingType: finding.findingType,
+    payload: finding.payload,
+    originIdentity,
+  });
+};
+
 const deterministicFindingId = (input: {
   readonly runId: string;
   readonly strategyId: string;
@@ -254,46 +288,88 @@ const commonSecurity = async (
 
 const materializeAIGeneration = (
   proposal: Awaited<ReturnType<DiscoveryAIGenerationService['interpretHypothesis']>>,
-  candidate: DiscoveryHypothesisCandidateV1,
   runId: string,
-): DiscoveryFindingEnvelopeV1 => {
-  const fingerprint = computeDiscoveryFingerprintV1({
-    findingType: proposal.findingType,
-    relatedResourceRefs: proposal.relatedResourceRefs,
-    semanticEssence: semanticStableJson(proposal.payload),
+  strategyId: string,
+  strategyVersion: string,
+): {
+  readonly candidate: DiscoveryFindingEnvelopeV1;
+  readonly qualityInputs: {
+    readonly selectionSignals?: readonly DiscoveryQualitySelectionSignalV1[];
+    readonly qualifiedFollowUp?: DiscoveryFollowUpQualificationProofV1;
+  };
+} => {
+  const materialized = createDiscoveryQualityGateInputFromAIGenerationProposalV1(proposal, {
+    findingIdFactory: ({ fingerprint }) =>
+      deterministicFindingId({
+        runId,
+        strategyId,
+        strategyVersion,
+        candidateIndex: 0,
+        fingerprint,
+      }),
+    clock: { now: () => new Date().toISOString() },
+    fingerprintAuthority: { compute: computeDiscoveryFingerprintV1 },
   });
-  return createDiscoveryFindingEnvelopeV1({
+  return {
+    candidate: materialized.candidate,
+    qualityInputs: {
+      ...(materialized.selectionSignals === undefined
+        ? {}
+        : { selectionSignals: materialized.selectionSignals }),
+      ...(materialized.qualifiedFollowUp === undefined
+        ? {}
+        : { qualifiedFollowUp: materialized.qualifiedFollowUp }),
+    },
+  };
+};
+
+const qualifiedFollowUpContextFor = (
+  state: ProductSignalsV1,
+  finding: DiscoveryFindingEnvelopeV1,
+): DiscoveryQualifiedAIGenerationContextV1 | undefined => {
+  if (
+    finding.findingType === 'CLARIFICATION_QUESTION' ||
+    finding.findingType === 'ACTION_SUGGESTION'
+  ) {
+    return undefined;
+  }
+  const items = finding.relatedResourceRefs.flatMap((resource) => {
+    const item = state.projection.items.find(
+      (entry) =>
+        entry.id === resource.resourceId &&
+        resourceKey(resource) ===
+          resourceKey(resourceFor(state.projection.projectId, entry).resource),
+    );
+    return item === undefined
+      ? []
+      : [
+          {
+            resourceRef: resource,
+            deterministicRepresentation: item.label,
+            evidenceIds: item.evidenceIds,
+          },
+        ];
+  });
+  if (items.length === 0) return undefined;
+  const originIdentity: DiscoveryFollowUpOriginIdentityV1 = {
     schemaVersion: '1.0.0',
-    findingId: deterministicFindingId({
-      runId,
-      strategyId: candidate.provenance.selectorId,
-      strategyVersion: candidate.provenance.selectorVersion,
-      candidateIndex: 0,
-      fingerprint: fingerprint.fingerprint,
-    }),
-    findingRevision: 1,
-    projectId: proposal.projectId,
-    findingType: proposal.findingType,
-    generationMethod: proposal.generationMethod,
-    lifecycleState: 'NEW',
-    payload: proposal.payload,
-    relatedResourceRefs: proposal.relatedResourceRefs,
-    evidenceIds: proposal.evidenceIds,
-    sourceProjectionDigest: proposal.sourceProjectionDigest,
-    canonicalBase: proposal.canonicalBase,
-    discoveryBase: proposal.discoveryBase,
-    runId: proposal.runId,
-    signalSummary: proposal.signalSummary,
-    rationale: proposal.rationale,
-    derivationSummary: proposal.derivationSummary,
-    provenance: proposal.provenance,
-    accessScope: proposal.security.accessScope,
-    sensitivity: proposal.security.sensitivity,
-    fingerprint: fingerprint.fingerprint,
-    fingerprintVersion: fingerprint.fingerprintVersion,
-    retentionClass: 'DURABLE_DERIVED_RECORD',
-    createdAt: new Date().toISOString(),
-  } as Parameters<typeof createDiscoveryFindingEnvelopeV1>[0]);
+    originFindingType: finding.findingType,
+    fingerprintVersion: 'discovery-fingerprint:v1',
+    fingerprint: finding.fingerprint as `sha256:${string}`,
+  };
+  return {
+    projectId: finding.projectId,
+    accessScope: finding.accessScope,
+    sensitivity: finding.sensitivity,
+    sourceProjectionDigest: finding.sourceProjectionDigest,
+    canonicalBase: finding.canonicalBase,
+    discoveryBase: finding.discoveryBase,
+    originatingFindingType: finding.findingType,
+    originIdentity,
+    boundedRationale:
+      'Generate only a bounded follow-up from this server-qualified Discovery finding; do not execute or mutate it.',
+    items,
+  };
 };
 
 const qualifiedContextFor = (
@@ -330,10 +406,7 @@ const createNeighborhoodFacade = (
   });
   const refsFor = (resourceRefs: readonly DiscoveryResourceRefV1[]) =>
     resourceRefs.filter((resource) => resource.projectId === state.projection.projectId);
-  const itemsFor = (resourceRefs: readonly DiscoveryResourceRefV1[]) =>
-    refsFor(resourceRefs)
-      .map((resource) => state.projection.items.find((item) => item.id === resource.resourceId))
-      .filter((item): item is CompiledTruthProjection['items'][number] => item !== undefined);
+  let activeSemanticGenerationId = 'semantic-generation:unavailable';
   const semanticNeighborhood = {
     read: async ({
       context,
@@ -352,6 +425,7 @@ const createNeighborhoodFacade = (
         limit,
       });
       const semanticGenerationId = results[0]?.generationId ?? 'semantic-generation:unavailable';
+      activeSemanticGenerationId = semanticGenerationId;
       const neighbors = results
         .map((result, index) => {
           const item = state.projection.items.find((entry) => entry.id === result.resourceId);
@@ -404,96 +478,8 @@ const createNeighborhoodFacade = (
           : [];
       });
       return {
-        ...base('semantic-generation:compiled-truth'),
+        ...base(activeSemanticGenerationId),
         relations,
-        completeness: 'COMPLETE' as const,
-      };
-    },
-  };
-  const temporalCompatibility = {
-    read: async ({
-      resourceRefs,
-    }: {
-      readonly context: DiscoverySignalReadContextV1;
-      readonly resourceRefs: readonly DiscoveryResourceRefV1[];
-    }) => {
-      const refs = refsFor(resourceRefs);
-      const compatibilities = refs.flatMap((left, index) =>
-        refs.slice(index + 1).map((right) => ({
-          left,
-          right,
-          compatible:
-            (state.projection.items.find((item) => item.id === left.resourceId)?.state ??
-              'CURRENT') !== 'CONFLICT' &&
-            (state.projection.items.find((item) => item.id === right.resourceId)?.state ??
-              'CURRENT') !== 'CONFLICT',
-          temporalEvidenceId: `compiled-truth-temporal:${sha256Text(`${left.resourceId}:${right.resourceId}`)}`,
-        })),
-      );
-      return {
-        ...base('semantic-generation:compiled-truth'),
-        compatibilities,
-        completeness: 'COMPLETE' as const,
-      };
-    },
-  };
-  const competingResource = {
-    read: async ({
-      resourceRefs,
-    }: {
-      readonly context: DiscoverySignalReadContextV1;
-      readonly resourceRefs: readonly DiscoveryResourceRefV1[];
-    }) => {
-      const refs = refsFor(resourceRefs);
-      const conflicted = new Set(
-        itemsFor(refs)
-          .filter((item) => item.state === 'CONFLICT')
-          .map((item) => item.id),
-      );
-      const competitions = refs.flatMap((left, index) =>
-        refs.slice(index + 1).flatMap((right) =>
-          conflicted.has(left.resourceId) || conflicted.has(right.resourceId)
-            ? [
-                {
-                  left,
-                  right,
-                  kind: 'MODEL_DISAGREEMENT' as const,
-                  source: 'EXPLICIT_CONFLICT_SIGNAL' as const,
-                  signalId: `compiled-truth-conflict:${sha256Text(`${left.resourceId}:${right.resourceId}`)}`,
-                },
-              ]
-            : [],
-        ),
-      );
-      return {
-        ...base('semantic-generation:compiled-truth'),
-        competitions,
-        completeness: 'COMPLETE' as const,
-      };
-    },
-  };
-  const existingCanonicalConflict = {
-    read: async ({
-      resourceRefs,
-    }: {
-      readonly context: DiscoverySignalReadContextV1;
-      readonly resourceRefs: readonly DiscoveryResourceRefV1[];
-    }) => {
-      const refs = refsFor(resourceRefs);
-      const conflicts =
-        itemsFor(refs).some((item) => item.state === 'CONFLICT') && refs.length >= 2
-          ? [
-              {
-                participantResourceRefs: refs.slice(0, 2) as [
-                  DiscoveryResourceRefV1,
-                  DiscoveryResourceRefV1,
-                ],
-              },
-            ]
-          : [];
-      return {
-        ...base('semantic-generation:compiled-truth'),
-        conflicts,
         completeness: 'COMPLETE' as const,
       };
     },
@@ -501,9 +487,15 @@ const createNeighborhoodFacade = (
   return createDiscoveryNeighborhoodSignalFacade({
     semanticNeighborhood,
     graphRelation,
-    temporalCompatibility,
-    competingResource,
-    existingCanonicalConflict,
+    ...(input.temporalCompatibility === undefined
+      ? {}
+      : { temporalCompatibility: input.temporalCompatibility }),
+    ...(input.competingResource === undefined
+      ? {}
+      : { competingResource: input.competingResource }),
+    ...(input.existingCanonicalConflict === undefined
+      ? {}
+      : { existingCanonicalConflict: input.existingCanonicalConflict }),
   });
 };
 
@@ -652,6 +644,7 @@ export const createProductDiscoveryExecution = (
         },
       });
       const generated: DiscoveryFindingEnvelopeV1[] = [...result.findings];
+      const qualityInputs: Record<string, DiscoveryRuntimeCandidateProofV1> = {};
       const neighborhoodFacade = createNeighborhoodFacade(input, state);
       const neighborhoodRegistry = createWp2DiscoveryNeighborhoodStrategyRegistry();
       const generationService = input.createGenerationService(state.budget, context);
@@ -684,16 +677,94 @@ export const createProductDiscoveryExecution = (
             context: qualifiedContextFor(state, candidate),
             maxOutputTokens: state.budget.maxOutputTokensPerCall(),
           });
-          generated.push(materializeAIGeneration(proposal, candidate, context.claim.runId));
+          const materialized = materializeAIGeneration(
+            proposal,
+            context.claim.runId,
+            candidate.provenance.selectorId,
+            candidate.provenance.selectorVersion,
+          );
+          generated.push(materialized.candidate);
+          qualityInputs[materialized.candidate.findingId] = materialized.qualityInputs;
         }
       }
+      const qualifiedFollowUpSources = [
+        {
+          sourceFindingTypes: ['KNOWLEDGE_GAP'] as const,
+          requiresEvidence: false,
+          generate: (qualifiedContext: DiscoveryQualifiedAIGenerationContextV1) =>
+            generationService.generateClarification({
+              projectId: context.claim.projectId,
+              runId: context.claim.runId,
+              context: qualifiedContext,
+              maxOutputTokens: state.budget.maxOutputTokensPerCall(),
+            }),
+        },
+        {
+          // Evidence gaps intentionally have no evidence lineage. Prefer a
+          // qualified hypothesis for Action so the non-gap candidate can pass
+          // the existing evidence revalidation gate.
+          sourceFindingTypes: [
+            'RELATION_HYPOTHESIS',
+            'PATTERN_HYPOTHESIS',
+            'CONFLICT_HYPOTHESIS',
+            'EVIDENCE_GAP',
+          ] as const,
+          requiresEvidence: true,
+          generate: (qualifiedContext: DiscoveryQualifiedAIGenerationContextV1) =>
+            generationService.generateAction({
+              projectId: context.claim.projectId,
+              runId: context.claim.runId,
+              context: qualifiedContext,
+              maxOutputTokens: state.budget.maxOutputTokensPerCall(),
+            }),
+        },
+      ] as const;
+      for (const followUp of qualifiedFollowUpSources) {
+        if (state.budget.isExpired()) {
+          completion = 'PARTIAL';
+          break;
+        }
+        const source = generated.find(
+          (finding) =>
+            (followUp.sourceFindingTypes as readonly string[]).includes(finding.findingType) &&
+            (!followUp.requiresEvidence || finding.evidenceIds.length > 0),
+        );
+        if (source === undefined) continue;
+        const qualifiedContext = qualifiedFollowUpContextFor(state, source);
+        if (qualifiedContext === undefined) continue;
+        const findingAdmission = state.budget.admitWork('findings');
+        if (findingAdmission.status === 'BUDGET_EXHAUSTED') {
+          completion = 'PARTIAL';
+          break;
+        }
+        const proposal = await followUp.generate(qualifiedContext);
+        const materialized = materializeAIGeneration(
+          proposal,
+          context.claim.runId,
+          DISCOVERY_QUALIFIED_FOLLOW_UP_SELECTOR_ID_V1,
+          DISCOVERY_QUALIFIED_FOLLOW_UP_SELECTOR_VERSION_V1,
+        );
+        generated.push(materialized.candidate);
+        qualityInputs[materialized.candidate.findingId] = materialized.qualityInputs;
+      }
       return {
-        value: generated,
+        value: {
+          schemaVersion: '1.0.0',
+          candidates: generated.map((finding) => ({
+            schemaVersion: '1.0.0' as const,
+            finding,
+            ...(qualityInputs[finding.findingId] === undefined
+              ? {}
+              : { proof: qualityInputs[finding.findingId] }),
+          })),
+        } satisfies DiscoveryRuntimeGeneratedFindingsStageValueV1,
         completion,
         budgetSnapshot: state.budget.snapshot(),
-      } satisfies DiscoveryExecutionStageResultV1<readonly DiscoveryFindingEnvelopeV1[]>;
+      } satisfies DiscoveryExecutionStageResultV1<
+        readonly unknown[] | DiscoveryRuntimeGeneratedFindingsStageValueV1
+      >;
     },
-    qualityGate: async (context, candidates) => {
+    qualityGate: async (context, candidates, rawQualityInputs) => {
       const state = await load(context);
       const qualityGate = new DiscoveryQualityGateV1({
         revalidateResource: async ({ projectId, resource }) => {
@@ -755,18 +826,52 @@ export const createProductDiscoveryExecution = (
         },
       });
       const accepted: DiscoveryFindingEnvelopeV1[] = [];
+      const qualityInputs =
+        typeof rawQualityInputs === 'object' &&
+        rawQualityInputs !== null &&
+        !Array.isArray(rawQualityInputs)
+          ? (rawQualityInputs as Record<string, unknown>)
+          : {};
       let completion: 'COMPLETE' | 'PARTIAL' = 'COMPLETE';
       for (const candidate of candidates) {
         const finding = candidate as DiscoveryFindingEnvelopeV1;
-        const semanticEssence =
-          gapEssence(finding) ??
-          (() => {
-            try {
-              return semanticStableJson(finding.payload);
-            } catch {
-              return '';
-            }
-          })();
+        const inputForFinding = qualityInputs[finding.findingId];
+        const proof =
+          typeof inputForFinding === 'object' &&
+          inputForFinding !== null &&
+          !Array.isArray(inputForFinding)
+            ? (inputForFinding as {
+                readonly selectionSignals?: readonly DiscoveryQualitySelectionSignalV1[];
+                readonly qualifiedFollowUp?: Parameters<
+                  typeof createDiscoveryQualityGateInputFromAIGenerationProposalV1
+                >[0]['qualifiedFollowUp'];
+              })
+            : undefined;
+        if (proof?.qualifiedFollowUp !== undefined) {
+          const originIdentity = proof.qualifiedFollowUp.originIdentity;
+          const originCandidate = candidates.find((entry) => {
+            const findingEntry = entry as DiscoveryFindingEnvelopeV1;
+            return (
+              findingEntry.findingType === originIdentity.originFindingType &&
+              findingEntry.fingerprintVersion === originIdentity.fingerprintVersion &&
+              findingEntry.fingerprint === originIdentity.fingerprint
+            );
+          });
+          if (originCandidate === undefined) {
+            completion = 'PARTIAL';
+            continue;
+          }
+        }
+        let semanticEssence: string;
+        try {
+          semanticEssence = semanticEssenceForFinding(
+            finding,
+            proof?.qualifiedFollowUp?.originIdentity,
+          );
+        } catch {
+          completion = 'PARTIAL';
+          continue;
+        }
         const result = await qualityGate.evaluate({
           candidate: finding,
           fingerprintInput: {
@@ -782,6 +887,12 @@ export const createProductDiscoveryExecution = (
             canonicalBase: state.signalContext.canonicalBase,
             discoveryBase: state.signalContext.discoveryBase,
           } satisfies DiscoveryQualityGateContextV1,
+          ...(proof?.selectionSignals === undefined
+            ? {}
+            : { selectionSignals: proof.selectionSignals }),
+          ...(proof?.qualifiedFollowUp === undefined
+            ? {}
+            : { qualifiedFollowUp: proof.qualifiedFollowUp }),
         });
         if (result.disposition === 'ACCEPTED') accepted.push(result.candidate);
         if (result.disposition === 'BUDGET_EXHAUSTED') completion = 'PARTIAL';
@@ -869,10 +980,21 @@ export const createProductDiscoveryExecution = (
         ? decodeReconciliationProgress(stored.output)
         : { schemaVersion: '1.0.0' as const, completed: false, processed: 0 };
       if (progress.completed) return;
+      const reconciliationBudget = new DiscoveryWorkBudgetLedgerV1(
+        context.claim.job.budget as DiscoveryWorkBudgetV1,
+        () => Date.now(),
+        context.budgetSnapshot,
+      );
       let cursor = progress.cursor;
       let processed = progress.processed;
       let progressRevision = Math.max(stage.stageRevision, stored?.stageRevision ?? 0);
       const pageSize = 50;
+      // Reconciliation is deliberately a resumable slice.  It still consumes
+      // the hydrated frozen resource dimension, but yields after one Finding
+      // so a large active-finding set cannot monopolize a lease.  The cursor
+      // and budget checkpoint make the next claim continue the same Job/Run.
+      const reconciliationSliceSize = 1;
+      let processedInSlice = 0;
       let fallbackAll: readonly DiscoveryFindingEnvelopeV1[] | undefined;
       const afterCursor = (finding: DiscoveryFindingEnvelopeV1): boolean =>
         cursor === undefined ||
@@ -929,10 +1051,23 @@ export const createProductDiscoveryExecution = (
         const page = await readPage();
         if (page.length === 0) {
           await writeProgress(true);
-          return;
+          return {
+            value: undefined,
+            budgetSnapshot: reconciliationBudget.snapshot(),
+          } satisfies DiscoveryExecutionStageResultV1<undefined>;
         }
         for (const finding of page) {
           if (!afterCursor(finding)) continue;
+          const admission = reconciliationBudget.admitWork('resources');
+          if (admission.status === 'BUDGET_EXHAUSTED') {
+            await writeProgress(false);
+            return {
+              value: undefined,
+              completion: 'PARTIAL' as const,
+              retryStage: true,
+              budgetSnapshot: reconciliationBudget.snapshot(),
+            } satisfies DiscoveryExecutionStageResultV1<undefined>;
+          }
           const lifecycle = await input.findingRepository.findLifecycle(finding);
           if (
             lifecycle &&
@@ -979,6 +1114,23 @@ export const createProductDiscoveryExecution = (
           cursor = { findingId: finding.findingId, findingRevision: finding.findingRevision };
           processed += 1;
           await writeProgress(false);
+          processedInSlice += 1;
+          if (processedInSlice >= reconciliationSliceSize) {
+            const hasMore = (await readPage()).length > 0;
+            if (!hasMore) {
+              await writeProgress(true);
+              return {
+                value: undefined,
+                budgetSnapshot: reconciliationBudget.snapshot(),
+              } satisfies DiscoveryExecutionStageResultV1<undefined>;
+            }
+            return {
+              value: undefined,
+              completion: 'PARTIAL' as const,
+              retryStage: true,
+              budgetSnapshot: reconciliationBudget.snapshot(),
+            } satisfies DiscoveryExecutionStageResultV1<undefined>;
+          }
         }
       }
     },

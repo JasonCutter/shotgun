@@ -2561,7 +2561,16 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeExecu
     }>(
       `SELECT
          COUNT(*) FILTER (WHERE state <> 'CANCELLED')::text AS provider_calls,
-         COUNT(*) FILTER (WHERE state = 'RESERVED')::text AS active_provider_calls,
+         COUNT(*) FILTER (WHERE state = 'RESERVED' AND EXISTS (
+           SELECT 1
+           FROM discovery.attempts active_attempt
+           WHERE active_attempt.project_id = discovery.provider_budget_reservations.project_id
+             AND active_attempt.job_id = discovery.provider_budget_reservations.job_id
+             AND active_attempt.run_id = discovery.provider_budget_reservations.run_id
+             AND active_attempt.attempt_id = discovery.provider_budget_reservations.attempt_id
+             AND active_attempt.lifecycle_state IN ('RUNNING', 'PARTIAL', 'QUEUED')
+             AND active_attempt.lease_expires_at > CURRENT_TIMESTAMP
+         ))::text AS active_provider_calls,
          COALESCE(SUM(CASE WHEN state <> 'CANCELLED'
            THEN COALESCE(actual_input_tokens, input_token_upper_bound) ELSE 0 END), 0)::text
            AS input_tokens,

@@ -267,7 +267,8 @@ class DurableRuntimeRepository extends ContractRuntimeRepository {
           stageId: input.stageId,
           stageType: stageType as DiscoveryRuntimeStageOutputV1['stageType'],
           stageRevision: 1,
-          output: [],
+          output:
+            stageType === 'GENERATE_FINDINGS' ? { schemaVersion: '1.0.0', candidates: [] } : [],
           updatedAt: trigger.createdAt,
         }
       : undefined;

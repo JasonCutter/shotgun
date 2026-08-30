@@ -1,14 +1,20 @@
 import type {
   DiscoveryFindingEnvelopeV1,
+  DiscoveryFollowUpQualificationProofV1,
+  DiscoveryResourceRefV1,
   DiscoveryStageV1,
 } from '../../../packages/contracts/src/index.js';
 import { decodeDiscoveryFindingEnvelopeV1 } from '../../../packages/contracts/src/index.js';
 import type {
   DiscoveryRuntimeBudgetCheckpointV1,
+  DiscoveryRuntimeCandidateProofV1,
+  DiscoveryRuntimeCandidateV1,
+  DiscoveryRuntimeConflictSelectionSignalV1,
   DiscoveryRuntimeBudgetSnapshotV1,
   DiscoveryRuntimeClaimV1,
   DiscoveryRuntimeExecutionRepositoryPort,
   DiscoveryRuntimeFailureFinalizationInputV1,
+  DiscoveryRuntimeGeneratedFindingsStageValueV1,
   DiscoveryRuntimeLeaseV1,
   DiscoveryRuntimeStageOutputV1,
 } from './index.js';
@@ -30,6 +36,10 @@ export type DiscoveryExecutionContextV1 = {
 export type DiscoveryExecutionStageResultV1<T> = {
   readonly value: T;
   readonly completion?: 'COMPLETE' | 'PARTIAL';
+  /** Keep the stage retryable when a durable, resumable stage ran out of its
+   * frozen work budget. The worker then finalizes the Job/Run/Attempt PARTIAL
+   * without losing the stage cursor. */
+  readonly retryStage?: boolean;
   readonly budgetSnapshot?: DiscoveryRuntimeBudgetSnapshotV1;
 };
 
@@ -40,10 +50,15 @@ export type DiscoveryExecutionPortV1 = {
   generateFindings(
     context: DiscoveryExecutionContextV1,
     signals: unknown,
-  ): Promise<DiscoveryExecutionStageResultV1<readonly unknown[]>>;
+  ): Promise<
+    DiscoveryExecutionStageResultV1<
+      readonly unknown[] | DiscoveryRuntimeGeneratedFindingsStageValueV1
+    >
+  >;
   qualityGate(
     context: DiscoveryExecutionContextV1,
     candidates: readonly unknown[],
+    qualityInputs?: unknown,
   ): Promise<DiscoveryExecutionStageResultV1<readonly DiscoveryFindingEnvelopeV1[]>>;
   persistFindings(
     context: DiscoveryExecutionContextV1,
@@ -58,7 +73,9 @@ export type DiscoveryExecutionPortV1 = {
     context: DiscoveryExecutionContextV1,
     finding: DiscoveryFindingEnvelopeV1,
   ): Promise<void>;
-  reconcileFindings?(context: DiscoveryExecutionContextV1): Promise<void>;
+  reconcileFindings?(
+    context: DiscoveryExecutionContextV1,
+  ): Promise<DiscoveryExecutionStageResultV1<undefined> | void>;
 };
 
 export type PersistentDiscoveryWorkerOptionsV1 = {
@@ -123,6 +140,297 @@ const isSnapshot = (value: unknown): value is DiscoveryRuntimeBudgetSnapshotV1 =
     const dimension = (value as Record<string, unknown>)[key];
     return typeof dimension === 'number' && Number.isSafeInteger(dimension) && dimension >= 0;
   });
+};
+
+const recordValue = (value: unknown, field: string): Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new DiscoveryWorkerFailureV1({
+      code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+      retryable: false,
+      safeMessage: `${field} stage output contained invalid candidate proof.`,
+    });
+  }
+  return value as Record<string, unknown>;
+};
+
+const strictRecord = (
+  value: unknown,
+  keys: readonly string[],
+  field: string,
+): Record<string, unknown> => {
+  const record = recordValue(value, field);
+  if (Object.keys(record).some((key) => !keys.includes(key))) {
+    throw new DiscoveryWorkerFailureV1({
+      code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+      retryable: false,
+      safeMessage: `${field} stage output contained unsupported proof fields.`,
+    });
+  }
+  return record;
+};
+
+const textValue = (value: unknown, field: string): string => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new DiscoveryWorkerFailureV1({
+      code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+      retryable: false,
+      safeMessage: `${field} stage output contained invalid proof text.`,
+    });
+  }
+  return value;
+};
+
+const decodeCandidateProof = (
+  value: unknown,
+  field: string,
+): DiscoveryRuntimeCandidateProofV1 | undefined => {
+  if (value === undefined) return undefined;
+  const proof = strictRecord(value, ['selectionSignals', 'qualifiedFollowUp'], field);
+  let selectionSignals: readonly DiscoveryRuntimeConflictSelectionSignalV1[] | undefined;
+  if (proof.selectionSignals !== undefined) {
+    if (!Array.isArray(proof.selectionSignals)) {
+      throw new DiscoveryWorkerFailureV1({
+        code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+        retryable: false,
+        safeMessage: `${field}.selectionSignals is invalid.`,
+      });
+    }
+    selectionSignals = proof.selectionSignals.map((value, index) => {
+      const signal = strictRecord(
+        value,
+        ['kind', 'incompatibilityKind', 'source', 'signalId'],
+        `${field}.selectionSignals[${index}]`,
+      );
+      const kinds = ['FACTUAL', 'TEMPORAL', 'IDENTITY', 'MODEL_DISAGREEMENT'] as const;
+      const sources = [
+        'TYPED_PROPOSITION',
+        'TEMPORAL_QUALIFICATION',
+        'IDENTITY_ASSIGNMENT',
+        'EXPLICIT_CONFLICT_SIGNAL',
+      ] as const;
+      if (
+        signal.kind !== 'EXPLICIT_INCOMPATIBILITY' ||
+        !kinds.includes(signal.incompatibilityKind as (typeof kinds)[number]) ||
+        !sources.includes(signal.source as (typeof sources)[number]) ||
+        signal.source !==
+          (
+            {
+              FACTUAL: 'TYPED_PROPOSITION',
+              TEMPORAL: 'TEMPORAL_QUALIFICATION',
+              IDENTITY: 'IDENTITY_ASSIGNMENT',
+              MODEL_DISAGREEMENT: 'EXPLICIT_CONFLICT_SIGNAL',
+            } as const
+          )[signal.incompatibilityKind as (typeof kinds)[number]]
+      ) {
+        throw new DiscoveryWorkerFailureV1({
+          code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+          retryable: false,
+          safeMessage: `${field}.selectionSignals[${index}] is invalid.`,
+        });
+      }
+      return {
+        kind: 'EXPLICIT_INCOMPATIBILITY',
+        incompatibilityKind:
+          signal.incompatibilityKind as DiscoveryRuntimeConflictSelectionSignalV1['incompatibilityKind'],
+        source: signal.source as DiscoveryRuntimeConflictSelectionSignalV1['source'],
+        signalId: textValue(signal.signalId, `${field}.selectionSignals[${index}].signalId`),
+      };
+    });
+  }
+  if (proof.qualifiedFollowUp !== undefined) {
+    const qualification = strictRecord(
+      proof.qualifiedFollowUp,
+      [
+        'originIdentity',
+        'projectId',
+        'sourceProjectionDigest',
+        'canonicalBase',
+        'discoveryBase',
+        'accessScope',
+        'sensitivity',
+        'relatedResourceRefs',
+      ],
+      `${field}.qualifiedFollowUp`,
+    );
+    const origin = strictRecord(
+      qualification.originIdentity,
+      ['schemaVersion', 'originFindingType', 'fingerprintVersion', 'fingerprint'],
+      `${field}.qualifiedFollowUp.originIdentity`,
+    );
+    const originTypes = [
+      'KNOWLEDGE_GAP',
+      'EVIDENCE_GAP',
+      'RELATION_HYPOTHESIS',
+      'PATTERN_HYPOTHESIS',
+      'CONFLICT_HYPOTHESIS',
+    ] as const;
+    if (
+      origin.schemaVersion !== '1.0.0' ||
+      !originTypes.includes(origin.originFindingType as (typeof originTypes)[number]) ||
+      origin.fingerprintVersion !== 'discovery-fingerprint:v1' ||
+      !/^sha256:[0-9a-f]{64}$/.test(
+        textValue(origin.fingerprint, `${field}.originIdentity.fingerprint`),
+      )
+    ) {
+      throw new DiscoveryWorkerFailureV1({
+        code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+        retryable: false,
+        safeMessage: `${field}.qualifiedFollowUp.originIdentity is invalid.`,
+      });
+    }
+    const canonicalBase = strictRecord(
+      qualification.canonicalBase,
+      ['schemaVersion', 'canonicalVersion', 'snapshotDigest'],
+      `${field}.qualifiedFollowUp.canonicalBase`,
+    );
+    const discoveryBase = strictRecord(
+      qualification.discoveryBase,
+      ['schemaVersion', 'projectionRevision', 'projectionDigest'],
+      `${field}.qualifiedFollowUp.discoveryBase`,
+    );
+    if (
+      canonicalBase.schemaVersion !== '1.0.0' ||
+      typeof canonicalBase.canonicalVersion !== 'number' ||
+      !Number.isSafeInteger(canonicalBase.canonicalVersion) ||
+      canonicalBase.canonicalVersion < 0 ||
+      typeof canonicalBase.snapshotDigest !== 'string' ||
+      discoveryBase.schemaVersion !== '1.0.0' ||
+      typeof discoveryBase.projectionRevision !== 'string' ||
+      typeof discoveryBase.projectionDigest !== 'string'
+    ) {
+      throw new DiscoveryWorkerFailureV1({
+        code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+        retryable: false,
+        safeMessage: `${field}.qualifiedFollowUp base identity is invalid.`,
+      });
+    }
+    if (!Array.isArray(qualification.accessScope) || qualification.accessScope.length === 0) {
+      throw new DiscoveryWorkerFailureV1({
+        code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+        retryable: false,
+        safeMessage: `${field}.qualifiedFollowUp.accessScope is invalid.`,
+      });
+    }
+    const sensitivity = qualification.sensitivity;
+    if (!['public', 'internal', 'private', 'restricted'].includes(String(sensitivity))) {
+      throw new DiscoveryWorkerFailureV1({
+        code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+        retryable: false,
+        safeMessage: `${field}.qualifiedFollowUp.sensitivity is invalid.`,
+      });
+    }
+    const projectId = textValue(qualification.projectId, `${field}.qualifiedFollowUp.projectId`);
+    const sourceProjectionDigest = textValue(
+      qualification.sourceProjectionDigest,
+      `${field}.qualifiedFollowUp.sourceProjectionDigest`,
+    );
+    const accessScope = qualification.accessScope.map((scope, index) =>
+      textValue(scope, `${field}.qualifiedFollowUp.accessScope[${index}]`),
+    );
+    if (!Array.isArray(qualification.relatedResourceRefs)) {
+      throw new DiscoveryWorkerFailureV1({
+        code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+        retryable: false,
+        safeMessage: `${field}.qualifiedFollowUp.relatedResourceRefs is invalid.`,
+      });
+    }
+    const relatedResourceRefs = qualification.relatedResourceRefs.map((value, index) => {
+      const resource = strictRecord(
+        value,
+        [
+          'schemaVersion',
+          'resourceKind',
+          'resourceId',
+          'projectId',
+          'resourceState',
+          'resourceRevision',
+        ],
+        `${field}.qualifiedFollowUp.relatedResourceRefs[${index}]`,
+      );
+      const resourceKinds = [
+        'CANONICAL_CLAIM',
+        'CANONICAL_ENTITY',
+        'CANONICAL_EVENT',
+        'CANONICAL_RELATION',
+        'CANONICAL_CONFLICT',
+        'CANONICAL_DECISION',
+        'SOURCE',
+        'SOURCE_VERSION',
+        'COMPILED_TRUTH_ITEM',
+      ] as const;
+      const resourceStates = ['CURRENT', 'APPROVED'] as const;
+      if (
+        resource.schemaVersion !== '1.0.0' ||
+        !resourceKinds.includes(resource.resourceKind as (typeof resourceKinds)[number]) ||
+        !resourceStates.includes(resource.resourceState as (typeof resourceStates)[number])
+      ) {
+        throw new DiscoveryWorkerFailureV1({
+          code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+          retryable: false,
+          safeMessage: `${field}.qualifiedFollowUp.relatedResourceRefs[${index}] is invalid.`,
+        });
+      }
+      const resourceProjectId = textValue(
+        resource.projectId,
+        `${field}.qualifiedFollowUp.relatedResourceRefs[${index}].projectId`,
+      );
+      if (resourceProjectId !== projectId) {
+        throw new DiscoveryWorkerFailureV1({
+          code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+          retryable: false,
+          safeMessage: `${field}.qualifiedFollowUp.relatedResourceRefs cross the Project boundary.`,
+        });
+      }
+      const resourceId = textValue(
+        resource.resourceId,
+        `${field}.qualifiedFollowUp.relatedResourceRefs[${index}].resourceId`,
+      );
+      const resourceRevision =
+        resource.resourceRevision === undefined
+          ? undefined
+          : textValue(
+              resource.resourceRevision,
+              `${field}.qualifiedFollowUp.relatedResourceRefs[${index}].resourceRevision`,
+            );
+      return {
+        schemaVersion: '1.0.0' as const,
+        resourceKind: resource.resourceKind as DiscoveryResourceRefV1['resourceKind'],
+        resourceId,
+        projectId: resourceProjectId,
+        resourceState: resource.resourceState as DiscoveryResourceRefV1['resourceState'],
+        ...(resourceRevision === undefined ? {} : { resourceRevision }),
+      } satisfies DiscoveryResourceRefV1;
+    });
+    const qualifiedFollowUp: DiscoveryFollowUpQualificationProofV1 = {
+      originIdentity: {
+        schemaVersion: '1.0.0',
+        originFindingType:
+          origin.originFindingType as DiscoveryFollowUpQualificationProofV1['originIdentity']['originFindingType'],
+        fingerprintVersion: 'discovery-fingerprint:v1',
+        fingerprint: origin.fingerprint as `sha256:${string}`,
+      },
+      projectId,
+      sourceProjectionDigest,
+      canonicalBase: {
+        schemaVersion: '1.0.0',
+        canonicalVersion: canonicalBase.canonicalVersion,
+        snapshotDigest: canonicalBase.snapshotDigest,
+      },
+      discoveryBase: {
+        schemaVersion: '1.0.0',
+        projectionRevision: discoveryBase.projectionRevision,
+        projectionDigest: discoveryBase.projectionDigest,
+      },
+      accessScope,
+      sensitivity: sensitivity as DiscoveryFollowUpQualificationProofV1['sensitivity'],
+      relatedResourceRefs,
+    };
+    return {
+      ...(selectionSignals === undefined ? {} : { selectionSignals }),
+      qualifiedFollowUp,
+    };
+  }
+  return selectionSignals === undefined ? {} : { selectionSignals };
 };
 
 const failureFrom = (error: unknown): DiscoveryWorkerFailureV1 => {
@@ -302,6 +610,7 @@ export class PersistentDiscoveryWorker {
       ].sort((left, right) => left.stageOrdinal - right.stageOrdinal);
       let signals: unknown;
       let candidates: readonly unknown[] = [];
+      let candidateQualityInputs: Record<string, DiscoveryRuntimeCandidateProofV1> | undefined;
       let findings: readonly DiscoveryFindingEnvelopeV1[] = [];
       let candidatesReady = false;
       let findingsReady = false;
@@ -309,15 +618,83 @@ export class PersistentDiscoveryWorker {
       const normalizedFindingOutput = (
         value: unknown,
         field: string,
-      ): readonly DiscoveryFindingEnvelopeV1[] => {
-        if (!Array.isArray(value)) {
+        allowBareFindings: boolean,
+      ): {
+        readonly findings: readonly DiscoveryFindingEnvelopeV1[];
+        readonly qualityInputs?: Record<string, DiscoveryRuntimeCandidateProofV1>;
+      } => {
+        let findingValue = value;
+        let qualityInputs: Record<string, DiscoveryRuntimeCandidateProofV1> | undefined;
+        if (
+          typeof value === 'object' &&
+          value !== null &&
+          !Array.isArray(value) &&
+          (value as Record<string, unknown>).schemaVersion === '1.0.0' &&
+          Array.isArray((value as Record<string, unknown>).candidates)
+        ) {
+          const generated = strictRecord(
+            value,
+            ['schemaVersion', 'candidates'],
+            field,
+          ) as unknown as DiscoveryRuntimeGeneratedFindingsStageValueV1;
+          const candidateRecords = generated.candidates.map((entry, index) => {
+            const candidate = strictRecord(
+              entry,
+              ['schemaVersion', 'finding', 'proof'],
+              `${field}[${index}]`,
+            );
+            if (candidate.schemaVersion !== '1.0.0') {
+              throw new DiscoveryWorkerFailureV1({
+                code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+                retryable: false,
+                safeMessage: `${field}[${index}] candidate schema is invalid.`,
+              });
+            }
+            const finding = decodeDiscoveryFindingEnvelopeV1(
+              candidate.finding,
+              `${field}[${index}].finding`,
+            );
+            const proof = decodeCandidateProof(candidate.proof, `${field}[${index}].proof`);
+            if (
+              (proof?.selectionSignals !== undefined &&
+                finding.findingType !== 'CONFLICT_HYPOTHESIS') ||
+              (proof?.qualifiedFollowUp !== undefined &&
+                finding.findingType !== 'CLARIFICATION_QUESTION' &&
+                finding.findingType !== 'ACTION_SUGGESTION')
+            ) {
+              throw new DiscoveryWorkerFailureV1({
+                code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+                retryable: false,
+                safeMessage: `${field}[${index}] proof does not match the Finding type.`,
+              });
+            }
+            return {
+              schemaVersion: '1.0.0' as const,
+              finding,
+              ...(proof === undefined ? {} : { proof }),
+            };
+          });
+          findingValue = candidateRecords.map((candidate) => candidate.finding);
+          qualityInputs = Object.fromEntries(
+            candidateRecords.flatMap((candidate) =>
+              candidate.proof === undefined ? [] : [[candidate.finding.findingId, candidate.proof]],
+            ),
+          );
+        } else if (!allowBareFindings && Array.isArray(value)) {
+          throw new DiscoveryWorkerFailureV1({
+            code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
+            retryable: false,
+            safeMessage: `${field} stage output must preserve server-owned candidate proof.`,
+          });
+        }
+        if (!Array.isArray(findingValue)) {
           throw new DiscoveryWorkerFailureV1({
             code: 'DISCOVERY_STAGE_OUTPUT_INVALID',
             retryable: false,
             safeMessage: `${field} stage output must be a Finding array.`,
           });
         }
-        return value.map((entry, index) => {
+        const findings = findingValue.map((entry, index) => {
           try {
             const finding = decodeDiscoveryFindingEnvelopeV1(entry, `${field}[${index}]`);
             if (finding.projectId !== claim.projectId || finding.runId !== claim.runId) {
@@ -332,6 +709,7 @@ export class PersistentDiscoveryWorker {
             });
           }
         });
+        return qualityInputs === undefined ? { findings } : { findings, qualityInputs };
       };
 
       const durableOutputs = this.repository.readStageOutput !== undefined;
@@ -352,10 +730,16 @@ export class PersistentDiscoveryWorker {
           });
         }
         if (stage.stageType === 'GENERATE_FINDINGS') {
-          candidates = normalizedFindingOutput(stored.output, 'generation');
+          const normalized = normalizedFindingOutput(stored.output, 'generation', false);
+          candidates = normalized.findings;
+          candidateQualityInputs = normalized.qualityInputs;
           candidatesReady = true;
         } else if (stage.stageType === 'QUALITY_GATE' || stage.stageType === 'PERSIST_FINDINGS') {
-          findings = normalizedFindingOutput(stored.output, stage.stageType.toLowerCase());
+          findings = normalizedFindingOutput(
+            stored.output,
+            stage.stageType.toLowerCase(),
+            true,
+          ).findings;
           findingsReady = true;
         }
         return true;
@@ -477,7 +861,11 @@ export class PersistentDiscoveryWorker {
               break;
             case 'GENERATE_FINDINGS':
               result = await this.execution.generateFindings(context(currentStage), signals);
-              candidates = normalizedFindingOutput(result.value, 'generation');
+              {
+                const normalized = normalizedFindingOutput(result.value, 'generation', true);
+                candidates = normalized.findings;
+                candidateQualityInputs = normalized.qualityInputs;
+              }
               candidatesReady = true;
               break;
             case 'QUALITY_GATE':
@@ -488,8 +876,12 @@ export class PersistentDiscoveryWorker {
                   safeMessage: 'Completed Discovery generation output was not recoverable.',
                 });
               }
-              result = await this.execution.qualityGate(context(currentStage), candidates);
-              findings = normalizedFindingOutput(result.value, 'quality');
+              result = await this.execution.qualityGate(
+                context(currentStage),
+                candidates,
+                candidateQualityInputs,
+              );
+              findings = normalizedFindingOutput(result.value, 'quality', true).findings;
               findingsReady = true;
               break;
             case 'PERSIST_FINDINGS':
@@ -501,7 +893,7 @@ export class PersistentDiscoveryWorker {
                 });
               }
               result = await this.execution.persistFindings(context(currentStage), findings);
-              findings = normalizedFindingOutput(result.value, 'persistence');
+              findings = normalizedFindingOutput(result.value, 'persistence', true).findings;
               findingsReady = true;
               break;
             case 'PUBLISH_REENTRY':
@@ -513,7 +905,7 @@ export class PersistentDiscoveryWorker {
               break;
             case 'RECONCILE_FINDINGS':
               if (this.execution.reconcileFindings) {
-                await this.execution.reconcileFindings(context(currentStage));
+                result = (await this.execution.reconcileFindings(context(currentStage))) ?? result;
               }
               break;
           }
@@ -530,12 +922,45 @@ export class PersistentDiscoveryWorker {
               });
             }
           }
+          if (result.retryStage) {
+            if (result.completion !== 'PARTIAL') {
+              throw new DiscoveryWorkerFailureV1({
+                code: 'DISCOVERY_STAGE_RETRY_CONTRACT_INVALID',
+                retryable: false,
+                safeMessage: 'A retryable Discovery stage must return PARTIAL completion.',
+              });
+            }
+            const requeued = await this.repository.transitionStageWithLease({
+              ...lease,
+              stageId: currentStage.stageId,
+              expectedStageRevision: currentStage.stageRevision,
+              targetState: 'FAILED_RETRYABLE',
+              updatedAt: nowIso(this.clock),
+            });
+            if (typeof requeued === 'string') {
+              return requeued === 'STALE' ? 'STALE' : 'FAILED_TERMINAL';
+            }
+            break;
+          }
           if (
             this.repository.writeStageOutput !== undefined &&
             ['GENERATE_FINDINGS', 'QUALITY_GATE', 'PERSIST_FINDINGS'].includes(
               currentStage.stageType,
             )
           ) {
+            const durableCandidates =
+              currentStage.stageType === 'GENERATE_FINDINGS'
+                ? candidates.map((entry, index) => {
+                    const finding = decodeDiscoveryFindingEnvelopeV1(entry, `generation[${index}]`);
+                    return {
+                      schemaVersion: '1.0.0' as const,
+                      finding,
+                      ...(candidateQualityInputs?.[finding.findingId] === undefined
+                        ? {}
+                        : { proof: candidateQualityInputs[finding.findingId] }),
+                    } satisfies DiscoveryRuntimeCandidateV1;
+                  })
+                : undefined;
             const output: DiscoveryRuntimeStageOutputV1 = {
               schemaVersion: '1.0.0',
               projectId: claim.projectId,
@@ -545,7 +970,13 @@ export class PersistentDiscoveryWorker {
               stageId: currentStage.stageId,
               stageType: currentStage.stageType,
               stageRevision: currentStage.stageRevision + 1,
-              output: currentStage.stageType === 'GENERATE_FINDINGS' ? candidates : findings,
+              output:
+                currentStage.stageType === 'GENERATE_FINDINGS'
+                  ? {
+                      schemaVersion: '1.0.0',
+                      candidates: durableCandidates ?? [],
+                    }
+                  : findings,
               updatedAt: nowIso(this.clock),
             };
             const saved = await this.repository.writeStageOutput({ ...lease, output });

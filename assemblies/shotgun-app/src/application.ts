@@ -590,37 +590,55 @@ export const startShotgunApplication = async (
             findAuthoritativeEquivalent: async ({ projectId, candidate }) => {
               const projection = await compiledTruthRepository.findProjection(projectId);
               if (!projection) return false;
-              return projection.items.some(
-                (item) =>
-                  item.source === 'APPROVED_KNOWLEDGE' &&
-                  item.state !== 'CONFLICT' &&
-                  candidate.relatedResourceRefs.some(
-                    (resource) =>
-                      resource.projectId === projectId && resource.resourceId === item.id,
-                  ) &&
-                  candidate.findingType === 'KNOWLEDGE_GAP',
+              const related = candidate.relatedResourceRefs.filter(
+                (resource) => resource.projectId === projectId,
               );
+              if (
+                candidate.findingType === 'KNOWLEDGE_GAP' &&
+                related.length > 0 &&
+                related.every((resource) => {
+                  const item = projection.items.find((entry) => entry.id === resource.resourceId);
+                  return item?.source === 'APPROVED_KNOWLEDGE' && item.state !== 'CONFLICT';
+                })
+              ) {
+                return true;
+              }
+              if (candidate.findingType !== 'RELATION_HYPOTHESIS') return false;
+              const payload = candidate.payload;
+              return projection.graph.edges.some((edge) => {
+                const forward =
+                  edge.from === payload.sourceEndpoint.resourceId &&
+                  edge.to === payload.targetEndpoint.resourceId;
+                const reverse =
+                  edge.from === payload.targetEndpoint.resourceId &&
+                  edge.to === payload.sourceEndpoint.resourceId;
+                return (
+                  edge.source === 'APPROVED_TYPED_EDGE' &&
+                  edge.relationType === payload.proposedRelationType &&
+                  ((payload.direction === 'UNDIRECTED' &&
+                    edge.direction === 'UNDIRECTED' &&
+                    (forward || reverse)) ||
+                    (payload.direction === 'DIRECTED' && edge.direction === 'DIRECTED' && forward))
+                );
+              });
             },
-            observeReconciliation: async ({ finding, projection, canonicalBase }) => {
+            observeReconciliation: async ({ finding, projection }) => {
               const related = finding.relatedResourceRefs.map((resource) =>
                 projection.items.find((item) => item.id === resource.resourceId),
               );
               if (
                 ['KNOWLEDGE_GAP', 'EVIDENCE_GAP'].includes(finding.findingType) &&
-                related.some((item) => item?.source === 'APPROVED_KNOWLEDGE')
+                related.length > 0 &&
+                finding.findingType === 'KNOWLEDGE_GAP' &&
+                related.every((item) => item?.source === 'APPROVED_KNOWLEDGE')
               ) {
                 return 'CANONICAL_EQUIVALENT_ACCEPTED';
               }
-              if (related.length > 0 && related.every((item) => item === undefined)) {
-                return 'SOURCE_MATERIALLY_SUPERSEDED';
-              }
-              if (
-                finding.canonicalBase.canonicalVersion !== canonicalBase.canonicalVersion ||
-                finding.canonicalBase.snapshotDigest !== canonicalBase.snapshotDigest ||
-                finding.sourceProjectionDigest !== projection.sourceSnapshotDigest
-              ) {
+              if (related.some((item) => item !== undefined && item.state === 'CONFLICT')) {
                 return 'RELEVANT_INPUT_CHANGED';
               }
+              // A missing projection item is not proof of source supersession;
+              // Source/SourceVersion authority must make that observation.
               return 'UNCHANGED';
             },
           }),

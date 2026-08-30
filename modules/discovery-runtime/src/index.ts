@@ -1,4 +1,6 @@
 import type {
+  DiscoveryFindingEnvelopeV1,
+  DiscoveryFollowUpQualificationProofV1,
   DiscoveryFindingReadyV1,
   DiscoveryAttemptV1,
   DiscoveryCanonicalTriggerLookupV1,
@@ -174,6 +176,39 @@ export type DiscoveryRuntimeStageOutputV1 = {
   readonly stageRevision: number;
   readonly output: unknown;
   readonly updatedAt: string;
+};
+
+/**
+ * The Generate stage may carry a bounded, server-derived proof bundle next to
+ * its Finding envelopes. It is not a Finding extension and must never contain
+ * model response text, prompts, credentials, or provider payloads.
+ */
+export type DiscoveryRuntimeGeneratedFindingsStageValueV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly candidates: readonly DiscoveryRuntimeCandidateV1[];
+};
+
+/** The only server-owned proof fields allowed to cross the durable stage boundary. */
+export type DiscoveryRuntimeCandidateProofV1 = {
+  readonly selectionSignals?: readonly DiscoveryRuntimeConflictSelectionSignalV1[];
+  readonly qualifiedFollowUp?: DiscoveryFollowUpQualificationProofV1;
+};
+
+export type DiscoveryRuntimeConflictSelectionSignalV1 = {
+  readonly kind: 'EXPLICIT_INCOMPATIBILITY';
+  readonly incompatibilityKind: 'FACTUAL' | 'TEMPORAL' | 'IDENTITY' | 'MODEL_DISAGREEMENT';
+  readonly source:
+    | 'TYPED_PROPOSITION'
+    | 'TEMPORAL_QUALIFICATION'
+    | 'IDENTITY_ASSIGNMENT'
+    | 'EXPLICIT_CONFLICT_SIGNAL';
+  readonly signalId: string;
+};
+
+export type DiscoveryRuntimeCandidateV1 = {
+  readonly schemaVersion: '1.0.0';
+  readonly finding: DiscoveryFindingEnvelopeV1;
+  readonly proof?: DiscoveryRuntimeCandidateProofV1;
 };
 
 export type DiscoveryRuntimeProviderReservationV1 = {

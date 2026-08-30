@@ -33,6 +33,13 @@
   fenced in the same PostgreSQL transaction as its immutable envelope/lifecycle
   initialization; reconciliation uses a server-owned observation callback and a
   lease-fenced lifecycle transition.
+- Generate output is a strict durable `candidate + proof` record. The worker
+  decodes and replays the server-derived ADR-149 semantic/follow-up/conflict
+  proof bundle after restart; model prompts, raw responses, credentials and
+  provider payloads never cross that stage boundary. Reconciliation hydrates
+  the same frozen budget ledger, checkpoints its keyset cursor after each
+  Finding, yields as `PARTIAL` through a retryable stage state, and resumes the
+  same Job/Run/Attempt under a new fence.
 - No OSS runtime, internal DB schema, OSS ID, provider client, Activity ledger,
   Canonical writer, second outbox, broker or new npm dependency is introduced.
 - The Open-source Role Matrix already contains these candidate decisions and was
@@ -70,16 +77,20 @@
 
 - `npm run typecheck`: PASS.
 - `npm run test:architecture`: PASS.
-- Focused WP4 contract test: 5 tests / 5 pass; seven stages, normalized stage
+- Focused WP4 contract test: 6 tests / 6 pass; seven stages, normalized stage
   output writes, atomic retryable failure handling, and terminal lineage are
   asserted.
+- Focused Product integration test: 2 tests / 2 pass; a bounded fake provider
+  reaches WP1 gaps, qualified Clarification/Action, typed-authority Relation/
+  Pattern/Conflict, strict durable proof restart, Quality acceptance, and
+  cursor/budgeted reconciliation completion.
 - AKP-3 WP2/WP3 focused regression: 26 WP2 tests and 18 WP3 tests pass.
 - `npm run typecheck`, `npm run lint`, `npm run test:architecture`, and
   `git diff --check`: PASS.
 - The PostgreSQL contract suite was safely skipped because `TEST_DATABASE_URL`
   is not configured in this environment; the 051 migration and real-Postgres
   matrix therefore still require execution in the isolated CI/database target.
-  The direct targeted run collected 13 database tests and skipped all 13 for
+  The direct targeted run collected 11 database tests and skipped all 11 for
   that missing environment variable.
 - No paid provider, manual frontend E2E, #1107 rerun, historical failure rerun,
   Ready/Merge transition, WP5/AKP-5+ work, deployment, or live-provider test

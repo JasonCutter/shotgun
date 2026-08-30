@@ -214,12 +214,137 @@ export type DiscoveryReviewEvidenceLineageRefV1 = {
   readonly evidenceSpanId?: string;
 };
 
+/**
+ * WP4's normalized Review projection is deliberately separate from the
+ * persisted WP2 candidate. The target names describe the Review material's
+ * semantic shape; the existing `governanceTarget` remains the authoritative
+ * re-entry governance mapping.
+ */
+export const DISCOVERY_REVIEW_MATERIALIZATION_VERSION_V1 =
+  'discovery-review-materialization:v1' as const;
+
+export const DISCOVERY_REVIEW_MATERIALIZATION_TARGET_BY_TYPE = {
+  KNOWLEDGE_GAP: 'KNOWLEDGE_GAP_INVESTIGATION',
+  EVIDENCE_GAP: 'EVIDENCE_GAP_INVESTIGATION',
+  RELATION_HYPOTHESIS: 'RELATION_CANDIDATE',
+  PATTERN_HYPOTHESIS: 'DERIVED_CLAIM_CANDIDATE',
+  CONFLICT_HYPOTHESIS: 'CONFLICT_REVIEW',
+  CLARIFICATION_QUESTION: 'CLARIFICATION_WORK_ITEM',
+  ACTION_SUGGESTION: 'ACTION_CANDIDATE',
+} as const satisfies Record<DiscoveryFindingType, string>;
+
+export type DiscoveryReviewMaterializationTargetV1 =
+  (typeof DISCOVERY_REVIEW_MATERIALIZATION_TARGET_BY_TYPE)[DiscoveryFindingType];
+
+export type DiscoveryReviewComparisonV1 = {
+  readonly schemaVersion: DiscoveryReentrySchemaVersion;
+  readonly normalizationVersion: typeof DISCOVERY_REVIEW_MATERIALIZATION_VERSION_V1;
+  readonly before: {
+    readonly state: 'NOT_ESTABLISHED' | 'NOT_AVAILABLE';
+    readonly reason: 'NO_AUTHORITATIVE_PREVIOUS_CANONICAL_VALUE';
+  };
+  readonly after: {
+    readonly state: 'INVESTIGATION' | 'PROPOSED' | 'CONFLICTING' | 'CANDIDATE_ONLY';
+    readonly summary: string;
+  };
+};
+
+export type DiscoveryReviewImpactMaterialV1 = {
+  readonly schemaVersion: DiscoveryReentrySchemaVersion;
+  readonly impactId: string;
+  readonly targetKind: string;
+  readonly targetId: string;
+  readonly description: string;
+};
+
+export type DiscoveryReviewTypeSpecificMaterialV1 =
+  | {
+      readonly findingType: 'KNOWLEDGE_GAP';
+      readonly question: string;
+      readonly whyItMatters: string;
+      readonly gapKind:
+        'MISSING_FACT' | 'TEMPORAL_GAP' | 'UNDEFINED_TERM' | 'KNOWN_CONFLICT_QUESTION';
+      readonly subject?: string;
+      readonly missingFact?: string;
+      readonly missingTimeDescription?: string;
+      readonly term?: string;
+      readonly context?: string;
+      readonly knownConflictRef?: DiscoveryResourceRefV1;
+      readonly missingResolutionInput?: string;
+    }
+  | {
+      readonly findingType: 'EVIDENCE_GAP';
+      readonly coverageKind: 'ABSENT' | 'WEAK' | 'INSUFFICIENT';
+      /** The originating Finding rationale, not an asserted Canonical claim. */
+      readonly claimText: string;
+      readonly missingEvidence: string;
+      readonly coverageGap: string;
+      readonly affectedResourceRef: DiscoveryResourceRefV1;
+    }
+  | {
+      readonly findingType: 'RELATION_HYPOTHESIS';
+      readonly fromResource: DiscoveryResourceRefV1;
+      readonly toResource: DiscoveryResourceRefV1;
+      readonly relationType: string;
+      readonly direction: 'DIRECTED' | 'UNDIRECTED';
+      readonly rationale: string;
+      readonly temporalQualification?: {
+        readonly validFrom?: string;
+        readonly validTo?: string;
+        readonly description: string;
+      };
+    }
+  | {
+      readonly findingType: 'PATTERN_HYPOTHESIS';
+      readonly claim: string;
+      readonly rationale: string;
+      readonly supportingLineage: readonly DiscoveryResourceRefV1[];
+      readonly patternKind: 'CLUSTER' | 'TREND' | 'RECURRING_ASSOCIATION' | 'TEMPORAL_CHANGE';
+      readonly patternIdentity: string;
+    }
+  | {
+      readonly findingType: 'CONFLICT_HYPOTHESIS';
+      readonly statementA: DiscoveryResourceRefV1;
+      readonly statementB: DiscoveryResourceRefV1;
+      readonly rationale: string;
+      readonly contradictionKind: 'FACTUAL' | 'TEMPORAL' | 'IDENTITY' | 'MODEL_DISAGREEMENT';
+      readonly possibleContradiction: string;
+    }
+  | {
+      readonly findingType: 'CLARIFICATION_QUESTION';
+      readonly question: string;
+      readonly whyNeeded: string;
+      readonly context: string;
+      readonly proposedNextStep: string;
+      readonly lineage: readonly DiscoveryResourceRefV1[];
+    }
+  | {
+      readonly findingType: 'ACTION_SUGGESTION';
+      readonly recommendedAction: string;
+      readonly rationale: string;
+      readonly context?: string;
+      readonly affectedResourceRefs: readonly DiscoveryResourceRefV1[];
+      readonly executionStatus: 'CANDIDATE_ONLY';
+    };
+
+export type DiscoveryReviewNormalizedMaterialV1 = {
+  readonly schemaVersion: DiscoveryReentrySchemaVersion;
+  readonly normalizationVersion: typeof DISCOVERY_REVIEW_MATERIALIZATION_VERSION_V1;
+  readonly findingType: DiscoveryFindingType;
+  readonly materializationTarget: DiscoveryReviewMaterializationTargetV1;
+  readonly comparison: DiscoveryReviewComparisonV1;
+  readonly impact: readonly DiscoveryReviewImpactMaterialV1[];
+  readonly typeSpecific: DiscoveryReviewTypeSpecificMaterialV1;
+};
+
 export type DiscoveryReviewContentV1 = {
   readonly schemaVersion: DiscoveryReentrySchemaVersion;
   readonly summary: string;
   readonly detail: string;
   readonly rationale: string;
   readonly expectedImpact?: string;
+  /** Optional for backward compatibility with WP3-only resources. */
+  readonly normalizedMaterial?: DiscoveryReviewNormalizedMaterialV1;
 };
 
 export type DiscoveryReviewValidationResultV1 = {
@@ -1063,7 +1188,7 @@ const decodeReviewEvidenceLineage = (
 const decodeReviewContent = (value: unknown, path: string): DiscoveryReviewContentV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'summary', 'detail', 'rationale', 'expectedImpact'],
+    ['schemaVersion', 'summary', 'detail', 'rationale', 'expectedImpact', 'normalizedMaterial'],
     path,
   );
   enumValue(
@@ -1079,6 +1204,429 @@ const decodeReviewContent = (value: unknown, path: string): DiscoveryReviewConte
     ...(object.expectedImpact === undefined
       ? {}
       : { expectedImpact: text(object.expectedImpact, `${path}.expectedImpact`) }),
+    ...(object.normalizedMaterial === undefined
+      ? {}
+      : {
+          normalizedMaterial: decodeDiscoveryReviewNormalizedMaterialV1(
+            object.normalizedMaterial,
+            `${path}.normalizedMaterial`,
+          ),
+        }),
+  };
+};
+
+const decodeReviewComparison = (value: unknown, path: string): DiscoveryReviewComparisonV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'normalizationVersion', 'before', 'after'],
+    path,
+  );
+  enumValue(
+    required(object, 'schemaVersion', path),
+    [DISCOVERY_REENTRY_SCHEMA_VERSION],
+    `${path}.schemaVersion`,
+  );
+  enumValue(
+    required(object, 'normalizationVersion', path),
+    [DISCOVERY_REVIEW_MATERIALIZATION_VERSION_V1],
+    `${path}.normalizationVersion`,
+  );
+  const before = strictObject(
+    required(object, 'before', path),
+    ['state', 'reason'],
+    `${path}.before`,
+  );
+  const after = strictObject(
+    required(object, 'after', path),
+    ['state', 'summary'],
+    `${path}.after`,
+  );
+  return {
+    schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
+    normalizationVersion: DISCOVERY_REVIEW_MATERIALIZATION_VERSION_V1,
+    before: {
+      state: enumValue(
+        required(before, 'state', `${path}.before`),
+        ['NOT_ESTABLISHED', 'NOT_AVAILABLE'] as const,
+        `${path}.before.state`,
+      ),
+      reason: enumValue(
+        required(before, 'reason', `${path}.before`),
+        ['NO_AUTHORITATIVE_PREVIOUS_CANONICAL_VALUE'] as const,
+        `${path}.before.reason`,
+      ),
+    },
+    after: {
+      state: enumValue(
+        required(after, 'state', `${path}.after`),
+        ['INVESTIGATION', 'PROPOSED', 'CONFLICTING', 'CANDIDATE_ONLY'] as const,
+        `${path}.after.state`,
+      ),
+      summary: text(required(after, 'summary', `${path}.after`), `${path}.after.summary`),
+    },
+  };
+};
+
+const decodeReviewImpactMaterial = (
+  value: unknown,
+  path: string,
+): DiscoveryReviewImpactMaterialV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'impactId', 'targetKind', 'targetId', 'description'],
+    path,
+  );
+  enumValue(
+    required(object, 'schemaVersion', path),
+    [DISCOVERY_REENTRY_SCHEMA_VERSION],
+    `${path}.schemaVersion`,
+  );
+  return {
+    schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
+    impactId: text(required(object, 'impactId', path), `${path}.impactId`),
+    targetKind: text(required(object, 'targetKind', path), `${path}.targetKind`),
+    targetId: text(required(object, 'targetId', path), `${path}.targetId`),
+    description: text(required(object, 'description', path), `${path}.description`),
+  };
+};
+
+const decodeOptionalResourceRef = (
+  object: ObjectValue,
+  key: string,
+  path: string,
+): DiscoveryResourceRefV1 | undefined =>
+  object[key] === undefined ? undefined : decodeResourceRef(object[key], `${path}.${key}`);
+
+const decodeTypeSpecificMaterial = (
+  value: unknown,
+  findingType: DiscoveryFindingType,
+  path: string,
+): DiscoveryReviewTypeSpecificMaterialV1 => {
+  const object = objectValue(value, path);
+  switch (findingType) {
+    case 'KNOWLEDGE_GAP': {
+      const gapKind = enumValue(
+        required(object, 'gapKind', path),
+        ['MISSING_FACT', 'TEMPORAL_GAP', 'UNDEFINED_TERM', 'KNOWN_CONFLICT_QUESTION'] as const,
+        `${path}.gapKind`,
+      );
+      const strict = strictObject(
+        object,
+        [
+          'findingType',
+          'question',
+          'whyItMatters',
+          'gapKind',
+          'subject',
+          'missingFact',
+          'missingTimeDescription',
+          'term',
+          'context',
+          'knownConflictRef',
+          'missingResolutionInput',
+        ],
+        path,
+      );
+      const knownConflictRef = decodeOptionalResourceRef(strict, 'knownConflictRef', path);
+      return {
+        findingType,
+        question: text(required(strict, 'question', path), `${path}.question`),
+        whyItMatters: text(required(strict, 'whyItMatters', path), `${path}.whyItMatters`),
+        gapKind,
+        ...(strict.subject === undefined
+          ? {}
+          : { subject: text(strict.subject, `${path}.subject`) }),
+        ...(strict.missingFact === undefined
+          ? {}
+          : { missingFact: text(strict.missingFact, `${path}.missingFact`) }),
+        ...(strict.missingTimeDescription === undefined
+          ? {}
+          : {
+              missingTimeDescription: text(
+                strict.missingTimeDescription,
+                `${path}.missingTimeDescription`,
+              ),
+            }),
+        ...(strict.term === undefined ? {} : { term: text(strict.term, `${path}.term`) }),
+        ...(strict.context === undefined
+          ? {}
+          : { context: text(strict.context, `${path}.context`) }),
+        ...(knownConflictRef === undefined ? {} : { knownConflictRef }),
+        ...(strict.missingResolutionInput === undefined
+          ? {}
+          : {
+              missingResolutionInput: text(
+                strict.missingResolutionInput,
+                `${path}.missingResolutionInput`,
+              ),
+            }),
+      };
+    }
+    case 'EVIDENCE_GAP': {
+      const strict = strictObject(
+        object,
+        [
+          'findingType',
+          'coverageKind',
+          'claimText',
+          'missingEvidence',
+          'coverageGap',
+          'affectedResourceRef',
+        ],
+        path,
+      );
+      return {
+        findingType,
+        coverageKind: enumValue(
+          required(strict, 'coverageKind', path),
+          ['ABSENT', 'WEAK', 'INSUFFICIENT'] as const,
+          `${path}.coverageKind`,
+        ),
+        claimText: text(required(strict, 'claimText', path), `${path}.claimText`),
+        missingEvidence: text(required(strict, 'missingEvidence', path), `${path}.missingEvidence`),
+        coverageGap: text(required(strict, 'coverageGap', path), `${path}.coverageGap`),
+        affectedResourceRef: decodeResourceRef(
+          required(strict, 'affectedResourceRef', path),
+          `${path}.affectedResourceRef`,
+        ),
+      };
+    }
+    case 'RELATION_HYPOTHESIS': {
+      const strict = strictObject(
+        object,
+        [
+          'findingType',
+          'fromResource',
+          'toResource',
+          'relationType',
+          'direction',
+          'rationale',
+          'temporalQualification',
+        ],
+        path,
+      );
+      const temporalQualification =
+        strict.temporalQualification === undefined
+          ? undefined
+          : (() => {
+              const temporal = strictObject(
+                strict.temporalQualification,
+                ['validFrom', 'validTo', 'description'],
+                `${path}.temporalQualification`,
+              );
+              return {
+                ...(temporal.validFrom === undefined
+                  ? {}
+                  : {
+                      validFrom: isoTimestamp(
+                        temporal.validFrom,
+                        `${path}.temporalQualification.validFrom`,
+                      ),
+                    }),
+                ...(temporal.validTo === undefined
+                  ? {}
+                  : {
+                      validTo: isoTimestamp(
+                        temporal.validTo,
+                        `${path}.temporalQualification.validTo`,
+                      ),
+                    }),
+                description: text(
+                  required(temporal, 'description', `${path}.temporalQualification`),
+                  `${path}.temporalQualification.description`,
+                ),
+              };
+            })();
+      return {
+        findingType,
+        fromResource: decodeResourceRef(
+          required(strict, 'fromResource', path),
+          `${path}.fromResource`,
+        ),
+        toResource: decodeResourceRef(required(strict, 'toResource', path), `${path}.toResource`),
+        relationType: text(required(strict, 'relationType', path), `${path}.relationType`),
+        direction: enumValue(
+          required(strict, 'direction', path),
+          ['DIRECTED', 'UNDIRECTED'] as const,
+          `${path}.direction`,
+        ),
+        rationale: text(required(strict, 'rationale', path), `${path}.rationale`),
+        ...(temporalQualification === undefined ? {} : { temporalQualification }),
+      };
+    }
+    case 'PATTERN_HYPOTHESIS': {
+      const strict = strictObject(
+        object,
+        [
+          'findingType',
+          'claim',
+          'rationale',
+          'supportingLineage',
+          'patternKind',
+          'patternIdentity',
+        ],
+        path,
+      );
+      return {
+        findingType,
+        claim: text(required(strict, 'claim', path), `${path}.claim`),
+        rationale: text(required(strict, 'rationale', path), `${path}.rationale`),
+        supportingLineage: decodeResourceRefs(
+          required(strict, 'supportingLineage', path),
+          `${path}.supportingLineage`,
+        ),
+        patternKind: enumValue(
+          required(strict, 'patternKind', path),
+          ['CLUSTER', 'TREND', 'RECURRING_ASSOCIATION', 'TEMPORAL_CHANGE'] as const,
+          `${path}.patternKind`,
+        ),
+        patternIdentity: text(required(strict, 'patternIdentity', path), `${path}.patternIdentity`),
+      };
+    }
+    case 'CONFLICT_HYPOTHESIS': {
+      const strict = strictObject(
+        object,
+        [
+          'findingType',
+          'statementA',
+          'statementB',
+          'rationale',
+          'contradictionKind',
+          'possibleContradiction',
+        ],
+        path,
+      );
+      return {
+        findingType,
+        statementA: decodeResourceRef(required(strict, 'statementA', path), `${path}.statementA`),
+        statementB: decodeResourceRef(required(strict, 'statementB', path), `${path}.statementB`),
+        rationale: text(required(strict, 'rationale', path), `${path}.rationale`),
+        contradictionKind: enumValue(
+          required(strict, 'contradictionKind', path),
+          ['FACTUAL', 'TEMPORAL', 'IDENTITY', 'MODEL_DISAGREEMENT'] as const,
+          `${path}.contradictionKind`,
+        ),
+        possibleContradiction: text(
+          required(strict, 'possibleContradiction', path),
+          `${path}.possibleContradiction`,
+        ),
+      };
+    }
+    case 'CLARIFICATION_QUESTION': {
+      const strict = strictObject(
+        object,
+        ['findingType', 'question', 'whyNeeded', 'context', 'proposedNextStep', 'lineage'],
+        path,
+      );
+      return {
+        findingType,
+        question: text(required(strict, 'question', path), `${path}.question`),
+        whyNeeded: text(required(strict, 'whyNeeded', path), `${path}.whyNeeded`),
+        context: text(required(strict, 'context', path), `${path}.context`),
+        proposedNextStep: text(
+          required(strict, 'proposedNextStep', path),
+          `${path}.proposedNextStep`,
+        ),
+        lineage: decodeResourceRefs(required(strict, 'lineage', path), `${path}.lineage`),
+      };
+    }
+    case 'ACTION_SUGGESTION': {
+      const strict = strictObject(
+        object,
+        [
+          'findingType',
+          'recommendedAction',
+          'rationale',
+          'context',
+          'affectedResourceRefs',
+          'executionStatus',
+        ],
+        path,
+      );
+      return {
+        findingType,
+        recommendedAction: text(
+          required(strict, 'recommendedAction', path),
+          `${path}.recommendedAction`,
+        ),
+        rationale: text(required(strict, 'rationale', path), `${path}.rationale`),
+        ...(strict.context === undefined
+          ? {}
+          : { context: text(strict.context, `${path}.context`) }),
+        affectedResourceRefs: decodeResourceRefs(
+          required(strict, 'affectedResourceRefs', path),
+          `${path}.affectedResourceRefs`,
+        ),
+        executionStatus: enumValue(
+          required(strict, 'executionStatus', path),
+          ['CANDIDATE_ONLY'] as const,
+          `${path}.executionStatus`,
+        ),
+      };
+    }
+  }
+};
+
+export const decodeDiscoveryReviewNormalizedMaterialV1 = (
+  value: unknown,
+  path = 'discoveryReviewNormalizedMaterial',
+): DiscoveryReviewNormalizedMaterialV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'normalizationVersion',
+      'findingType',
+      'materializationTarget',
+      'comparison',
+      'impact',
+      'typeSpecific',
+    ],
+    path,
+  );
+  enumValue(
+    required(object, 'schemaVersion', path),
+    [DISCOVERY_REENTRY_SCHEMA_VERSION],
+    `${path}.schemaVersion`,
+  );
+  enumValue(
+    required(object, 'normalizationVersion', path),
+    [DISCOVERY_REVIEW_MATERIALIZATION_VERSION_V1],
+    `${path}.normalizationVersion`,
+  );
+  const findingType = enumValue(
+    required(object, 'findingType', path),
+    DISCOVERY_FINDING_TYPES,
+    `${path}.findingType`,
+  );
+  const materializationTarget = enumValue(
+    required(object, 'materializationTarget', path),
+    Object.values(DISCOVERY_REVIEW_MATERIALIZATION_TARGET_BY_TYPE),
+    `${path}.materializationTarget`,
+  );
+  if (materializationTarget !== DISCOVERY_REVIEW_MATERIALIZATION_TARGET_BY_TYPE[findingType]) {
+    return fail(`${path}.materializationTarget`, 'must match findingType mapping');
+  }
+  const impactValue = required(object, 'impact', path);
+  if (!Array.isArray(impactValue)) return fail(`${path}.impact`, 'must be an array');
+  const typeSpecific = decodeTypeSpecificMaterial(
+    required(object, 'typeSpecific', path),
+    findingType,
+    `${path}.typeSpecific`,
+  );
+  if (typeSpecific.findingType !== findingType) {
+    return fail(`${path}.typeSpecific.findingType`, 'must match findingType');
+  }
+  return {
+    schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
+    normalizationVersion: DISCOVERY_REVIEW_MATERIALIZATION_VERSION_V1,
+    findingType,
+    materializationTarget,
+    comparison: decodeReviewComparison(required(object, 'comparison', path), `${path}.comparison`),
+    impact: impactValue.map((entry, index) =>
+      decodeReviewImpactMaterial(entry, `${path}.impact[${index}]`),
+    ),
+    typeSpecific,
   };
 };
 

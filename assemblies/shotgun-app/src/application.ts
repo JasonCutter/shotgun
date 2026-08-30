@@ -48,7 +48,10 @@ import {
   createPostgresHistoryReadModelStore,
   PostgresPayloadStateStore,
 } from '../../../adapters/frontend-history-postgres/src/index.js';
-import { PostgresFrontendReviewRepository } from '../../../adapters/frontend-review-postgres/src/index.js';
+import {
+  PostgresDiscoveryReviewResourceRepository,
+  PostgresFrontendReviewRepository,
+} from '../../../adapters/frontend-review-postgres/src/index.js';
 import {
   createPostgresReviewDiscoveryCandidateReader,
   createPostgresReviewDraftSourceReader,
@@ -104,6 +107,7 @@ import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/inde
 import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
 import {
   DiscoveryReentryConsumer,
+  DiscoveryReviewMaterializer,
   PersistentDiscoveryReentryWorker,
 } from '../../../modules/discovery-reentry/src/index.js';
 import {
@@ -661,28 +665,41 @@ export const startShotgunApplication = async (
             maxAttempts: Number.parseInt(process.env.DISCOVERY_WORKER_MAX_ATTEMPTS ?? '3', 10),
           },
         );
-    const discoveryReentryWorker = recoveryHarness
+    const discoveryReentryRepository = recoveryHarness
       ? undefined
-      : new PersistentDiscoveryReentryWorker(
-          new DiscoveryReentryConsumer(
-            new PostgresDiscoveryReentryRepository(pool),
-            new PostgresDiscoveryApprovedResourceRevisionResolver(pool, {
-              canonicalKnowledgeRepository,
-              knowledgeModelRepository,
-              compiledTruthRepository,
-            }),
-          ),
-          {
-            pollIntervalMs: Number.parseInt(
-              process.env.DISCOVERY_REENTRY_WORKER_INTERVAL_MS ?? '1000',
-              10,
+      : new PostgresDiscoveryReentryRepository(pool);
+    const discoveryReviewResourceRepository = recoveryHarness
+      ? undefined
+      : new PostgresDiscoveryReviewResourceRepository(pool);
+    const discoveryReentryWorker =
+      recoveryHarness ||
+      discoveryReentryRepository === undefined ||
+      discoveryReviewResourceRepository === undefined
+        ? undefined
+        : new PersistentDiscoveryReentryWorker(
+            new DiscoveryReentryConsumer(
+              discoveryReentryRepository,
+              new PostgresDiscoveryApprovedResourceRevisionResolver(pool, {
+                canonicalKnowledgeRepository,
+                knowledgeModelRepository,
+                compiledTruthRepository,
+              }),
             ),
-            batchLimit: Number.parseInt(
-              process.env.DISCOVERY_REENTRY_WORKER_BATCH_LIMIT ?? '25',
-              10,
-            ),
-          },
-        );
+            {
+              pollIntervalMs: Number.parseInt(
+                process.env.DISCOVERY_REENTRY_WORKER_INTERVAL_MS ?? '1000',
+                10,
+              ),
+              batchLimit: Number.parseInt(
+                process.env.DISCOVERY_REENTRY_WORKER_BATCH_LIMIT ?? '25',
+                10,
+              ),
+              reviewMaterializer: new DiscoveryReviewMaterializer(
+                discoveryReentryRepository,
+                discoveryReviewResourceRepository,
+              ),
+            },
+          );
     if (discoveryExecutionWorker !== undefined) {
       stopDiscoveryExecutionWorker = () => discoveryExecutionWorker.stop();
     }

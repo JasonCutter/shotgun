@@ -16,6 +16,7 @@ import {
   type DiscoveryReviewResourceV1,
 } from '../../../packages/contracts/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
+import type { DiscoveryReviewResourceWriterPort } from '../../../modules/discovery-reentry/src/index.js';
 import type {
   ReviewRepositoryBoundaryPort,
   ReviewTransactionHandleV1,
@@ -774,7 +775,7 @@ export type DiscoveryReviewResourceWriteResultV1 = 'CREATED' | 'IDEMPOTENT';
  * resource JSON is retained as the immutable source snapshot while typed
  * columns enforce project, identity and eligibility filtering.
  */
-export class PostgresDiscoveryReviewResourceRepository {
+export class PostgresDiscoveryReviewResourceRepository implements DiscoveryReviewResourceWriterPort {
   constructor(private readonly pool: Pool) {}
 
   async save(
@@ -980,7 +981,14 @@ const toReviewDiscoveryCandidateSource = (
   effectiveProjectId: resource.effectiveProjectId,
   content: resource.content,
   evidence: resource.evidenceLineage,
-  impact: [],
+  impact:
+    resource.content.normalizedMaterial?.impact.map((entry) => ({
+      schemaVersion: entry.schemaVersion,
+      impactId: entry.impactId,
+      targetKind: entry.targetKind,
+      targetId: entry.targetId,
+      description: entry.description,
+    })) ?? [],
   lineage: resource,
   contentDigest: resource.contentDigest,
   createdAt: resource.createdAt,

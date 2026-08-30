@@ -1110,6 +1110,12 @@ export class FrontendExternalActionProductCoordinator {
       persistStarted: async (repositories) => {
         const action = await this.aggregateFor(repositories, request.actionId);
         this.assertProjectAndPolicy(action, scope);
+        if (action.actionRevision !== request.expectedActionRevision) {
+          externalActionFailure(
+            'EXTERNAL_ACTION_STALE',
+            'The External Action revision changed since execute was requested.',
+          );
+        }
         this.assertStaleNotBlocking(action);
         // A connector command is already in flight for this action: a second
         // execute must never start a parallel execution (Review 4861031725).
@@ -1117,12 +1123,6 @@ export class FrontendExternalActionProductCoordinator {
           externalActionFailure(
             'ACTION_EXECUTION_NOT_ALLOWED',
             'The External Action is already executing.',
-          );
-        }
-        if (action.actionRevision !== request.expectedActionRevision) {
-          externalActionFailure(
-            'EXTERNAL_ACTION_STALE',
-            'The External Action revision changed since execute was requested.',
           );
         }
         const manifest = await repositories.manifests.findCurrent(action.actionId);

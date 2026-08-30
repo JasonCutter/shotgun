@@ -605,7 +605,10 @@ export class DiscoveryTriggerCoordinator {
     const concurrentReadiness = await this.readiness.read({
       projectId: concurrentJob.projectId,
       requiredBase: concurrentJob.requiredDiscoveryBase,
-      projectionKinds: policy.requiredProjectionKinds,
+      // A conflict loser must observe the durable winner under the same
+      // frozen V1 contract as ordinary redelivery. The losing process's
+      // current policy cannot reinterpret or rebind the winner.
+      projectionKinds: DISCOVERY_PROJECTION_KINDS_V1,
       observedAt,
     });
     return resultForExisting(concurrentJob, concurrentReadiness);

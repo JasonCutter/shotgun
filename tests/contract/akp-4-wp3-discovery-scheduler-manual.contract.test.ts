@@ -6,7 +6,10 @@ import type {
   DiscoveryProjectionReadinessPort,
   DiscoveryScheduleV1,
   DiscoveryCanonicalCommittedSourcePort,
+  DiscoveryJobV1,
+  DiscoveryTriggerPolicyPort,
 } from '../../packages/contracts/src/index.js';
+import { DISCOVERY_PROJECTION_KINDS_V1 } from '../../packages/contracts/src/index.js';
 import {
   aggregateDiscoveryProjectionReadinessV1,
   createDefaultDiscoveryTriggerPolicyV1,
@@ -14,6 +17,7 @@ import {
   PersistentDiscoveryScheduler,
   StaticDiscoveryTriggerPolicy,
   nextDiscoveryWeeklyOccurrenceV1,
+  type DiscoveryTriggerRuntimeRepositoryPort,
 } from '../../modules/discovery-trigger-coordinator/src/index.js';
 import {
   InMemoryDiscoveryRuntimeRepository,
@@ -69,7 +73,15 @@ const manualEnvelope = (
   ...overrides,
 });
 
-const createCoordinator = (runtime = new InMemoryDiscoveryRuntimeRepository()) => {
+const createCoordinator = (
+  runtime: DiscoveryTriggerRuntimeRepositoryPort = new InMemoryDiscoveryRuntimeRepository(),
+  policyPort: DiscoveryTriggerPolicyPort = new StaticDiscoveryTriggerPolicy({
+    ...createDefaultDiscoveryTriggerPolicyV1(),
+    waitTimeoutMs: 60_000,
+  }),
+  readinessPort: DiscoveryProjectionReadinessPort = readiness,
+  jobIdFactory?: () => string,
+) => {
   let authority = { canonicalBase, requiredDiscoveryBase: requiredBase };
   let sequence = 0;
   const source: DiscoveryCanonicalCommittedSourcePort = {
@@ -79,15 +91,12 @@ const createCoordinator = (runtime = new InMemoryDiscoveryRuntimeRepository()) =
   };
   const coordinator = new DiscoveryTriggerCoordinator(
     source,
-    readiness,
+    readinessPort,
     runtime,
-    new StaticDiscoveryTriggerPolicy({
-      ...createDefaultDiscoveryTriggerPolicyV1(),
-      waitTimeoutMs: 60_000,
-    }),
+    policyPort,
     { now: () => '2026-08-30T00:00:00.000Z' },
     {
-      jobId: () => `job-${++sequence}`,
+      jobId: jobIdFactory ?? (() => `job-${++sequence}`),
       currentAuthority: {
         async resolve(requestedProjectId) {
           if (requestedProjectId !== projectId) throw new Error('wrong project');
@@ -104,6 +113,55 @@ const createCoordinator = (runtime = new InMemoryDiscoveryRuntimeRepository()) =
     },
   };
 };
+
+class FirstSaveWinsDiscoveryRuntime implements DiscoveryTriggerRuntimeRepositoryPort {
+  private readonly delegate = new InMemoryDiscoveryRuntimeRepository();
+  private initialTriggerLookups = 0;
+  private winnerSnapshot: DiscoveryJobV1 | undefined;
+  private createdJobCount = 0;
+
+  constructor(private readonly onWinnerCreated?: () => void) {}
+
+  async saveJob(job: DiscoveryJobV1): Promise<'CREATED' | 'CONFLICT'> {
+    const result = await this.delegate.saveJob(job);
+    if (result === 'CREATED') {
+      this.createdJobCount += 1;
+      this.winnerSnapshot = await this.delegate.findJob({
+        projectId: job.projectId,
+        jobId: job.jobId,
+      });
+      this.onWinnerCreated?.();
+    }
+    return result;
+  }
+
+  findJob = (lookup: Parameters<DiscoveryTriggerRuntimeRepositoryPort['findJob']>[0]) =>
+    this.delegate.findJob(lookup);
+
+  async findJobByTriggerIdentity(
+    lookup: Parameters<DiscoveryTriggerRuntimeRepositoryPort['findJobByTriggerIdentity']>[0],
+  ) {
+    this.initialTriggerLookups += 1;
+    if (this.initialTriggerLookups <= 2) return undefined;
+    return this.delegate.findJobByTriggerIdentity(lookup);
+  }
+
+  findJobByLogicalIdentity = (
+    lookup: Parameters<DiscoveryTriggerRuntimeRepositoryPort['findJobByLogicalIdentity']>[0],
+  ) => this.delegate.findJobByLogicalIdentity(lookup);
+
+  transitionJob = (input: Parameters<DiscoveryTriggerRuntimeRepositoryPort['transitionJob']>[0]) =>
+    this.delegate.transitionJob(input);
+
+  getWinnerSnapshot(): DiscoveryJobV1 {
+    if (!this.winnerSnapshot) throw new Error('The race did not persist a winner.');
+    return this.winnerSnapshot;
+  }
+
+  getCreatedJobCount(): number {
+    return this.createdJobCount;
+  }
+}
 
 const dueSchedule: DiscoveryScheduleV1 = {
   schemaVersion: '1.0.0',
@@ -275,6 +333,94 @@ describe('AKP-4 WP3 persistent scheduler and manual normalization contracts', ()
     const stored = await first.runtime.findJob({ projectId, jobId: results[0]!.jobId });
     expect(stored?.trigger.triggerClass).toBe('MANUAL');
     expect(stored?.effectiveScanMode).toBe('FULL_SCAN');
+  });
+
+  it('uses the frozen V1 readiness contract when a concurrent coordinator loses the Job race', async () => {
+    let releaseLoserPolicy: (() => void) | undefined;
+    const winnerPersisted = new Promise<void>((resolve) => {
+      releaseLoserPolicy = resolve;
+    });
+    const runtime = new FirstSaveWinsDiscoveryRuntime(() => releaseLoserPolicy?.());
+    const winnerPolicy = createDefaultDiscoveryTriggerPolicyV1();
+    const loserPolicy = {
+      ...winnerPolicy,
+      requiredProjectionKinds: [DISCOVERY_PROJECTION_KINDS_V1[0]!],
+    };
+    let policyCalls = 0;
+    const policyPort: DiscoveryTriggerPolicyPort = {
+      async resolve(requestedProjectId) {
+        expect(requestedProjectId).toBe(projectId);
+        policyCalls += 1;
+        if (policyCalls === 1) return winnerPolicy;
+        await winnerPersisted;
+        return loserPolicy;
+      },
+    };
+    const readinessInputs: Array<{
+      requiredBase: DiscoveryJobV1['requiredDiscoveryBase'];
+      projectionKinds: readonly string[];
+    }> = [];
+    const raceReadiness: DiscoveryProjectionReadinessPort = {
+      async read(input) {
+        readinessInputs.push({
+          requiredBase: input.requiredBase,
+          projectionKinds: [...input.projectionKinds],
+        });
+        return aggregateDiscoveryProjectionReadinessV1({
+          requiredBase: input.requiredBase,
+          observedAt: input.observedAt,
+          observations: input.projectionKinds.map((projectionKind) => ({
+            projectionKind,
+            requiredIdentity: input.requiredBase,
+            status: 'READY',
+            observedIdentity: input.requiredBase,
+          })),
+        });
+      },
+    };
+    let jobSequence = 0;
+    const first = createCoordinator(
+      runtime,
+      policyPort,
+      raceReadiness,
+      () => `race-job-${++jobSequence}`,
+    );
+    const second = createCoordinator(
+      runtime,
+      policyPort,
+      raceReadiness,
+      () => `race-job-${++jobSequence}`,
+    );
+    const request = {
+      commandId: 'race-command-1',
+      requestId: 'race-request-1',
+      requestedScanMode: 'FULL_SCAN' as const,
+    };
+    const results = await Promise.all([
+      first.coordinator.coordinateManual(manualEnvelope(request)),
+      second.coordinator.coordinateManual(
+        manualEnvelope(request, {
+          messageId: 'race-physical-delivery-2',
+          idempotencyKey: 'race-envelope-2',
+        }),
+      ),
+    ]);
+    expect(policyCalls).toBe(2);
+    expect(new Set(results.map((result) => result.jobId))).toHaveLength(1);
+    expect(results.filter((result) => result.disposition === 'CREATED')).toHaveLength(1);
+    expect(results.filter((result) => result.disposition === 'ALREADY_EXISTS')).toHaveLength(1);
+    expect(runtime.getCreatedJobCount()).toBe(1);
+
+    const winnerBeforeLoserResolution = runtime.getWinnerSnapshot();
+    const finalWinner = await runtime.findJob({
+      projectId,
+      jobId: winnerBeforeLoserResolution.jobId,
+    });
+    expect(finalWinner).toEqual(winnerBeforeLoserResolution);
+    const loserReadiness = readinessInputs.at(-1);
+    expect(loserReadiness?.requiredBase).toEqual(winnerBeforeLoserResolution.requiredDiscoveryBase);
+    expect(loserReadiness?.projectionKinds).toEqual([...DISCOVERY_PROJECTION_KINDS_V1]);
+    expect(await runtime.findJob({ projectId, jobId: 'race-job-2' })).toBeUndefined();
   });
 
   it('keeps the first server-owned binding on manual replay and rejects missing owner context', async () => {

@@ -12,6 +12,8 @@ import {
   semanticStableJson,
   type DiscoveryAttemptV1,
   type DiscoveryCanonicalTriggerLookupV1,
+  type DiscoveryManualTriggerLookupV1,
+  type DiscoveryScheduledTriggerLookupV1,
   type DiscoveryJobV1,
   type DiscoveryProjectionWaitBindingV1,
   type DiscoveryRunV1,
@@ -483,15 +485,36 @@ export class PostgresDiscoveryRuntimeRepository implements DiscoveryRuntimeRepos
   }
 
   async findJobByTriggerIdentity(
-    lookup: DiscoveryCanonicalTriggerLookupV1,
+    lookup:
+      | DiscoveryCanonicalTriggerLookupV1
+      | DiscoveryScheduledTriggerLookupV1
+      | DiscoveryManualTriggerLookupV1,
   ): Promise<DiscoveryJobV1 | undefined> {
+    const identityColumns =
+      lookup.triggerClass === 'CANONICAL_COMMITTED'
+        ? ["trigger->'triggerIdentity'->>'eventId'", "trigger->'triggerIdentity'->>'eventRevision'"]
+        : lookup.triggerClass === 'SCHEDULED_FULL_SCAN'
+          ? [
+              "trigger->'triggerIdentity'->>'scheduleId'",
+              "trigger->'triggerIdentity'->>'scheduleRevision'",
+              "trigger->'triggerIdentity'->>'occurrenceKey'",
+            ]
+          : [
+              "trigger->'triggerIdentity'->>'commandId'",
+              "trigger->'triggerIdentity'->>'requestId'",
+            ];
+    const identityValues =
+      lookup.triggerClass === 'CANONICAL_COMMITTED'
+        ? [lookup.eventId, lookup.eventRevision]
+        : lookup.triggerClass === 'SCHEDULED_FULL_SCAN'
+          ? [lookup.scheduleId, lookup.scheduleRevision, lookup.occurrenceKey]
+          : [lookup.commandId, lookup.requestId];
     const result = await this.pool.query<RuntimeJobRow>(
       `SELECT ${jobColumns}
        FROM discovery.jobs
        WHERE project_id = $1 AND trigger_class = $2
-         AND trigger->'triggerIdentity'->>'eventId' = $3
-         AND trigger->'triggerIdentity'->>'eventRevision' = $4`,
-      [lookup.projectId, lookup.triggerClass, lookup.eventId, lookup.eventRevision],
+         AND ${identityColumns.map((column, index) => `${column} = $${index + 3}`).join(' AND ')}`,
+      [lookup.projectId, lookup.triggerClass, ...identityValues],
     );
     return result.rows[0] ? mapJob(result.rows[0]) : undefined;
   }

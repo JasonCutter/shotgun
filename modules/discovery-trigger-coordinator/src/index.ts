@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import canonicalCommittedSchema from '../../../packages/contracts/schemas/canonical-committed.v1.schema.json';
+import durableManualDiscoverySchema from '../../../packages/contracts/schemas/run-knowledge-discovery-durable.v1.schema.json';
 import {
   createDiscoveryLogicalJobIdentityV1,
   decodeDiscoveryJobV1,
@@ -10,12 +11,18 @@ import {
   DISCOVERY_TRIGGER_COORDINATION_SCHEMA_VERSION_V1,
   DISCOVERY_TRIGGER_POLICY_REVISION_V1,
   DISCOVERY_WORK_BUDGET_VERSION_V1,
+  decodeDiscoveryManualTriggerRequestV1,
+  DISCOVERY_DURABLE_MANUAL_COMMAND_V1,
   semanticStableJson,
   ShotgunError,
   utf16OrdinalCompare,
   type DiscoveryCanonicalCommittedEventEnvelopeV1,
   type DiscoveryCanonicalCommittedSourcePort,
   type DiscoveryCanonicalTriggerLookupV1,
+  type DiscoveryCurrentAuthorityPort,
+  type DiscoveryManualTriggerCoordinationResultV1,
+  type DiscoveryManualTriggerLookupV1,
+  type DiscoveryManualTriggerRequestV1,
   type DiscoveryCanonicalTriggerCoordinationResultV1,
   type DiscoveryClockPort,
   type DiscoveryJobV1,
@@ -30,8 +37,11 @@ import {
   type DiscoveryLogicalJobIdentityV1,
   type DiscoveryTriggerPolicyPort,
   type DiscoveryTriggerPolicyV1,
+  type DiscoveryScheduledTriggerLookupV1,
+  type DiscoveryScheduleV1,
   type DiscoveryTriggerWorkBudgetTemplateV1,
   type DiscoveryWaitingReevaluationResultV1,
+  type CommandEnvelope,
 } from '../../../packages/contracts/src/index.js';
 import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 
@@ -57,7 +67,10 @@ export type DiscoveryTriggerRuntimeRepositoryPort = {
   saveJob(job: DiscoveryJobV1): Promise<'CREATED' | 'CONFLICT'>;
   findJob(lookup: DiscoveryTriggerRuntimeJobLookupV1): Promise<DiscoveryJobV1 | undefined>;
   findJobByTriggerIdentity(
-    lookup: DiscoveryCanonicalTriggerLookupV1,
+    lookup:
+      | DiscoveryCanonicalTriggerLookupV1
+      | DiscoveryScheduledTriggerLookupV1
+      | DiscoveryManualTriggerLookupV1,
   ): Promise<DiscoveryJobV1 | undefined>;
   findJobByLogicalIdentity(
     lookup: DiscoveryTriggerRuntimeLogicalJobLookupV1,
@@ -141,6 +154,13 @@ const assertPolicy = (policy: DiscoveryTriggerPolicyV1): void => {
   }
   if (policy.requiredProjectionKinds.length === 0) {
     return failClosed('resolve-policy', 'At least one Discovery projection is required.');
+  }
+  if (
+    policy.allowedManualScanModes !== undefined &&
+    (policy.allowedManualScanModes.length === 0 ||
+      policy.allowedManualScanModes.some((mode) => mode !== 'INCREMENTAL' && mode !== 'FULL_SCAN'))
+  ) {
+    return failClosed('resolve-policy', 'Manual Discovery scan modes are invalid.');
   }
   const seen = new Set<DiscoveryProjectionKindV1>();
   for (const kind of policy.requiredProjectionKinds) {
@@ -227,6 +247,26 @@ const assertExistingCanonicalCommittedJob = (
   };
 };
 
+const assertExistingServerOwnedJob = (
+  job: DiscoveryJobV1,
+  projectId: string,
+  triggerClass: 'SCHEDULED_FULL_SCAN' | 'MANUAL',
+): DiscoveryJobV1 & { readonly requiredDiscoveryBase: DiscoveryProjectionBaseIdentityV1 } => {
+  const decoded = assertExistingJob(job, projectId);
+  if (
+    decoded.trigger.triggerClass !== triggerClass ||
+    decoded.requiredDiscoveryBase === undefined
+  ) {
+    return failClosed(
+      'resolve-existing-job',
+      'Server-owned Discovery Job is missing its durable trigger binding.',
+    );
+  }
+  return decoded as DiscoveryJobV1 & {
+    readonly requiredDiscoveryBase: DiscoveryProjectionBaseIdentityV1;
+  };
+};
+
 const resultForExisting = (
   job: DiscoveryJobV1,
   readiness: DiscoveryProjectionReadinessV1,
@@ -244,6 +284,7 @@ export const createDefaultDiscoveryTriggerPolicyV1 = (): DiscoveryTriggerPolicyV
   strategyRevision: 'discovery-trigger-strategy:v1',
   fallbackPolicyRevision: DISCOVERY_TRIGGER_POLICY_REVISION_V1,
   requiredProjectionKinds: [...DISCOVERY_PROJECTION_KINDS_V1],
+  allowedManualScanModes: ['INCREMENTAL', 'FULL_SCAN'],
   waitTimeoutMs: 5 * 60 * 1000,
   budget: {
     schemaVersion: DISCOVERY_RUNTIME_SCHEMA_VERSION_V1,
@@ -278,6 +319,8 @@ export class StaticDiscoveryTriggerPolicy implements DiscoveryTriggerPolicyPort 
 
 export type DiscoveryTriggerCoordinatorOptions = {
   readonly jobId?: () => string;
+  readonly triggerId?: () => string;
+  readonly currentAuthority?: DiscoveryCurrentAuthorityPort;
 };
 
 export class DiscoveryTriggerCoordinator {
@@ -320,7 +363,6 @@ export class DiscoveryTriggerCoordinator {
       });
       return resultForExisting(job, readiness);
     }
-
     const requiredDiscoveryBase =
       source.requiredDiscoveryBase ??
       (this.source.resolveInitialProjectionBase === undefined
@@ -414,6 +456,218 @@ export class DiscoveryTriggerCoordinator {
       observedAt,
     });
     return resultForExisting(concurrentJob, concurrentReadiness);
+  }
+
+  private async coordinateServerOwnedTrigger(input: {
+    readonly projectId: string;
+    readonly triggerClass: 'SCHEDULED_FULL_SCAN' | 'MANUAL';
+    readonly triggerIdentity: DiscoveryScheduledTriggerLookupV1 | DiscoveryManualTriggerLookupV1;
+    readonly requestedScanMode: 'INCREMENTAL' | 'FULL_SCAN';
+    readonly actor?: { readonly actorId: string; readonly principalId: string };
+    readonly correlationId?: string;
+    readonly causationId?: string;
+  }): Promise<DiscoveryCanonicalTriggerCoordinationResultV1> {
+    const policy = await this.policyPort.resolve(input.projectId);
+    assertPolicy(policy);
+    const observedAt = this.clock.now();
+    const existing = await this.runtime.findJobByTriggerIdentity(input.triggerIdentity);
+    if (existing) {
+      const job = assertExistingServerOwnedJob(existing, input.projectId, input.triggerClass);
+      const readiness = await this.readiness.read({
+        projectId: job.projectId,
+        requiredBase: job.requiredDiscoveryBase,
+        projectionKinds: policy.requiredProjectionKinds,
+        observedAt,
+      });
+      return resultForExisting(job, readiness);
+    }
+    if (
+      input.triggerClass === 'MANUAL' &&
+      !(policy.allowedManualScanModes ?? ['INCREMENTAL', 'FULL_SCAN']).includes(
+        input.requestedScanMode,
+      )
+    ) {
+      return failClosed(
+        'coordinate-manual',
+        'Requested manual Discovery scan mode is not allowed.',
+      );
+    }
+    const authority = this.options.currentAuthority;
+    if (!authority) {
+      return failClosed(
+        'resolve-current-authority',
+        'Current Canonical and Discovery projection authority is unavailable.',
+      );
+    }
+    const current = await authority.resolve(input.projectId);
+    if (
+      current.projectId !== input.projectId ||
+      current.canonicalBase.schemaVersion !== '1.0.0' ||
+      current.requiredDiscoveryBase.schemaVersion !== '1.0.0'
+    ) {
+      return failClosed('resolve-current-authority', 'Current Discovery authority is invalid.');
+    }
+    const waitDeadlineAt = deadlineFrom(observedAt, policy.waitTimeoutMs);
+    const trigger = decodeDiscoveryTriggerV1({
+      schemaVersion: DISCOVERY_RUNTIME_SCHEMA_VERSION_V1,
+      triggerId: this.options.triggerId?.() ?? randomUUID(),
+      triggerClass: input.triggerClass,
+      triggerIdentity:
+        input.triggerClass === 'SCHEDULED_FULL_SCAN'
+          ? {
+              kind: 'SCHEDULED_FULL_SCAN',
+              scheduleId: (input.triggerIdentity as DiscoveryScheduledTriggerLookupV1).scheduleId,
+              scheduleRevision: (input.triggerIdentity as DiscoveryScheduledTriggerLookupV1)
+                .scheduleRevision,
+              occurrenceKey: (input.triggerIdentity as DiscoveryScheduledTriggerLookupV1)
+                .occurrenceKey,
+            }
+          : {
+              kind: 'MANUAL',
+              commandId: (input.triggerIdentity as DiscoveryManualTriggerLookupV1).commandId,
+              requestId: (input.triggerIdentity as DiscoveryManualTriggerLookupV1).requestId,
+            },
+      projectId: input.projectId,
+      requestedScanMode: input.requestedScanMode,
+      effectiveScanMode: input.requestedScanMode,
+      canonicalBase: current.canonicalBase,
+      requiredDiscoveryBase: current.requiredDiscoveryBase,
+      policyRevision: policy.policyRevision,
+      strategyRevision: policy.strategyRevision,
+      ...(policy.profileBinding === undefined ? {} : { profileBinding: policy.profileBinding }),
+      ...(input.actor === undefined ? {} : { actor: input.actor }),
+      createdAt: observedAt,
+      observedAt,
+      ...(input.causationId === undefined ? {} : { causationId: input.causationId }),
+      ...(input.correlationId === undefined ? {} : { correlationId: input.correlationId }),
+    });
+    const readiness = await this.readiness.read({
+      projectId: input.projectId,
+      requiredBase: current.requiredDiscoveryBase,
+      projectionKinds: policy.requiredProjectionKinds,
+      observedAt,
+    });
+    const logicalIdentity = createDiscoveryLogicalJobIdentityV1(trigger);
+    const lifecycleState = lifecycleFor(readiness);
+    const projectionWait =
+      lifecycleState === 'WAITING_FOR_PROJECTION'
+        ? projectionWaitFor(
+            current.requiredDiscoveryBase,
+            waitDeadlineAt,
+            policy.fallbackPolicyRevision,
+          )
+        : undefined;
+    const job = decodeDiscoveryJobV1({
+      schemaVersion: DISCOVERY_RUNTIME_SCHEMA_VERSION_V1,
+      jobId: this.options.jobId?.() ?? randomUUID(),
+      logicalIdentity,
+      projectId: input.projectId,
+      trigger,
+      requestedScanMode: input.requestedScanMode,
+      effectiveScanMode: input.requestedScanMode,
+      canonicalBase: current.canonicalBase,
+      requiredDiscoveryBase: current.requiredDiscoveryBase,
+      policyRevision: policy.policyRevision,
+      strategyRevision: policy.strategyRevision,
+      ...(policy.profileBinding === undefined ? {} : { profileBinding: policy.profileBinding }),
+      budget: budgetFor(policy.budget, waitDeadlineAt),
+      lifecycleState,
+      lifecycleRevision: 1,
+      ...(projectionWait === undefined ? {} : { projectionWait }),
+      createdAt: observedAt,
+      updatedAt: observedAt,
+    });
+    if ((await this.runtime.saveJob(job)) === 'CREATED') {
+      return {
+        schemaVersion: DISCOVERY_TRIGGER_COORDINATION_SCHEMA_VERSION_V1,
+        disposition: 'CREATED',
+        jobId: job.jobId,
+        logicalJobIdentity: job.logicalIdentity,
+        readiness,
+        lifecycleState,
+      };
+    }
+    const concurrent = await this.runtime.findJobByTriggerIdentity(input.triggerIdentity);
+    if (!concurrent) {
+      return failClosed(
+        'coordinate-server-owned-trigger',
+        'Concurrent Discovery Job conflict lost its durable winner.',
+      );
+    }
+    const concurrentJob = assertExistingServerOwnedJob(
+      concurrent,
+      input.projectId,
+      input.triggerClass,
+    );
+    const concurrentReadiness = await this.readiness.read({
+      projectId: concurrentJob.projectId,
+      requiredBase: concurrentJob.requiredDiscoveryBase,
+      projectionKinds: policy.requiredProjectionKinds,
+      observedAt,
+    });
+    return resultForExisting(concurrentJob, concurrentReadiness);
+  }
+
+  async coordinateScheduledFullScan(
+    schedule: DiscoveryScheduleV1,
+  ): Promise<DiscoveryCanonicalTriggerCoordinationResultV1> {
+    if (
+      schedule.status !== 'ENABLED' ||
+      !schedule.projectId.trim() ||
+      !schedule.scheduleId.trim() ||
+      !/^\d+$/.test(schedule.scheduleRevision) ||
+      !schedule.nextOccurrenceKey.trim()
+    ) {
+      return failClosed('coordinate-scheduled-full-scan', 'Discovery schedule is invalid.');
+    }
+    const lookup: DiscoveryScheduledTriggerLookupV1 = {
+      projectId: schedule.projectId,
+      triggerClass: 'SCHEDULED_FULL_SCAN',
+      scheduleId: schedule.scheduleId,
+      scheduleRevision: schedule.scheduleRevision,
+      occurrenceKey: schedule.nextOccurrenceKey,
+    };
+    return this.coordinateServerOwnedTrigger({
+      projectId: schedule.projectId,
+      triggerClass: 'SCHEDULED_FULL_SCAN',
+      triggerIdentity: lookup,
+      requestedScanMode: 'FULL_SCAN',
+    });
+  }
+
+  async coordinateManual(
+    envelope: CommandEnvelope<DiscoveryManualTriggerRequestV1>,
+  ): Promise<DiscoveryManualTriggerCoordinationResultV1> {
+    if (
+      envelope.messageKind !== 'command' ||
+      envelope.messageType !== DISCOVERY_DURABLE_MANUAL_COMMAND_V1 ||
+      envelope.schemaVersion !== '1.0.0' ||
+      !envelope.projectId ||
+      !envelope.actor ||
+      envelope.actor.type !== 'user' ||
+      !envelope.security?.accessScope.includes('owner')
+    ) {
+      return failClosed(
+        'coordinate-manual',
+        'Owner-authorized manual Discovery context is required.',
+      );
+    }
+    const request = decodeDiscoveryManualTriggerRequestV1(envelope.payload);
+    const lookup: DiscoveryManualTriggerLookupV1 = {
+      projectId: envelope.projectId,
+      triggerClass: 'MANUAL',
+      commandId: request.commandId,
+      requestId: request.requestId,
+    };
+    return this.coordinateServerOwnedTrigger({
+      projectId: envelope.projectId,
+      triggerClass: 'MANUAL',
+      triggerIdentity: lookup,
+      requestedScanMode: request.requestedScanMode,
+      actor: { actorId: envelope.actor.id, principalId: envelope.actor.id },
+      causationId: envelope.messageId,
+      correlationId: envelope.correlationId,
+    });
   }
 
   async reEvaluateCanonicalDiscoveryProjectionReadiness(input: {
@@ -510,7 +764,7 @@ export const createDiscoveryTriggerCoordinatorModule = (
     },
     deployment: { modes: ['in_process', 'worker'] },
     dataOwnership: {
-      owns: ['discovery.jobs', 'discovery.job_lifecycle_history'],
+      owns: ['discovery.jobs', 'discovery.job_lifecycle_history', 'discovery.schedules'],
       readsViaPorts: [
         'CanonicalKnowledgeRepositoryPort',
         'SemanticCorpusSourceSnapshotReaderPort',
@@ -520,16 +774,25 @@ export const createDiscoveryTriggerCoordinatorModule = (
       directSchemaAccess: false,
     },
     consumes: {
-      commands: [],
+      commands: [{ name: DISCOVERY_DURABLE_MANUAL_COMMAND_V1, range: '>=1.0.0 <2.0.0' }],
       events: [{ name: 'CanonicalCommitted', range: '>=1.0.0 <2.0.0' }],
     },
     produces: { events: [] },
     provides: { queries: [], capabilities: [] },
     requires: { capabilities: [] },
-    security: { requiredContext: ['project'], defaultOnMissingContext: 'deny' },
+    security: {
+      requiredContext: ['actor', 'project', 'access_scope', 'sensitivity'],
+      defaultOnMissingContext: 'deny',
+    },
     approvalPolicy: { canWriteCanonical: false, canExecuteExternalAction: false },
   },
   contracts: [
+    {
+      name: DISCOVERY_DURABLE_MANUAL_COMMAND_V1,
+      version: '1.0.0',
+      kind: 'command',
+      inputSchema: durableManualDiscoverySchema,
+    },
     {
       name: 'CanonicalCommitted',
       version: '1.0.0',
@@ -538,7 +801,18 @@ export const createDiscoveryTriggerCoordinatorModule = (
     },
   ],
   handlers: {
-    commands: [],
+    commands: [
+      {
+        messageType: DISCOVERY_DURABLE_MANUAL_COMMAND_V1,
+        version: '1.0.0',
+        requiredAccessScopes: ['owner'],
+        async handle(envelope) {
+          return coordinator.coordinateManual(
+            envelope as CommandEnvelope<DiscoveryManualTriggerRequestV1>,
+          );
+        },
+      },
+    ],
     events: [
       {
         messageType: 'CanonicalCommitted',
@@ -555,3 +829,11 @@ export const createDiscoveryTriggerCoordinatorModule = (
     queries: [],
   },
 });
+
+export {
+  nextDiscoveryWeeklyOccurrenceV1,
+  PersistentDiscoveryScheduler,
+  startPersistentDiscoverySchedulerWorker,
+  type DiscoverySchedulerTickResultV1,
+  type DiscoveryWeeklyOccurrenceV1,
+} from './scheduler.js';

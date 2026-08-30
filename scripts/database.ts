@@ -169,6 +169,7 @@ const requiredTables = [
   'discovery.finding_ready',
   'discovery.reentry_manifests',
   'discovery.reentry_candidates',
+  'discovery.reentry_review_roots',
   'discovery.reentry_review_resources',
   'discovery.reentry_consumption',
   'action.executions',

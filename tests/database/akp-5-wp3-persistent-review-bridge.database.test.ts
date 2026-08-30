@@ -8,8 +8,11 @@ import {
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { DiscoveryCandidateReviewTargetAdapter } from '../../adapters/frontend-review-in-memory/src/index.js';
 import {
+  computeDiscoveryReviewRootIdentityV1,
   DISCOVERY_DERIVED_VALIDATION_PROFILE_V1,
   discoveryReviewResourceContentDigestV1,
+  type DerivedKnowledgeCandidateV1,
+  type DiscoveryReviewResourceDigestInputV1,
   type DiscoveryReviewResourceV1,
 } from '../../packages/contracts/src/index.js';
 import { migrateUpTo } from '../../scripts/database.js';
@@ -26,8 +29,13 @@ const resourceWithoutDigest = {
   schemaVersion: '1.0.0' as const,
   origin: 'DERIVED_DISCOVERY' as const,
   projectId,
-  reviewResourceId: 'review-resource-wp3-db-1',
-  resourceRevision: 2,
+  reviewResourceId: computeDiscoveryReviewRootIdentityV1({
+    projectId,
+    candidateId: 'candidate-wp3-db-1',
+    candidateRevision: 1,
+    origin: 'DERIVED_DISCOVERY',
+  }),
+  resourceRevision: 1,
   effectiveProjectId: projectId,
   candidateId: 'candidate-wp3-db-1',
   candidateRevision: 1,
@@ -82,12 +90,44 @@ const resourceWithoutDigest = {
   ],
 } satisfies Omit<DiscoveryReviewResourceV1, 'contentDigest' | 'createdAt' | 'updatedAt'>;
 
-const resource: DiscoveryReviewResourceV1 = {
-  ...resourceWithoutDigest,
-  contentDigest: discoveryReviewResourceContentDigestV1(resourceWithoutDigest),
+const authoritativeCandidate: DerivedKnowledgeCandidateV1 = {
+  schemaVersion: '1.0.0',
+  candidateId: resourceWithoutDigest.candidateId,
+  candidateRevision: resourceWithoutDigest.candidateRevision,
+  projectId: resourceWithoutDigest.projectId,
+  origin: resourceWithoutDigest.origin,
+  manifestId: resourceWithoutDigest.manifestId,
+  findingId: resourceWithoutDigest.findingId,
+  findingRevision: resourceWithoutDigest.findingRevision,
+  findingType: resourceWithoutDigest.findingType,
+  governanceTarget: resourceWithoutDigest.governanceTarget,
+  sourceProjectionDigest: resourceWithoutDigest.sourceProjectionDigest,
+  canonicalBase: resourceWithoutDigest.canonicalBase,
+  discoveryBase: resourceWithoutDigest.discoveryBase,
+  relatedResourceRefs: resourceWithoutDigest.relatedResourceRefs,
+  evidenceIds: resourceWithoutDigest.evidenceIds,
+  derivationProvenance: resourceWithoutDigest.derivationProvenance,
+  accessScope: resourceWithoutDigest.accessScope,
+  sensitivity: resourceWithoutDigest.sensitivity,
+  validationProfile: resourceWithoutDigest.validationProfile,
+  reentryEligibility: 'ELIGIBLE_FOR_VALIDATION',
+  reviewEligibility: 'NOT_ELIGIBLE',
   createdAt: now,
-  updatedAt: now,
 };
+
+const makeResource = (
+  input: DiscoveryReviewResourceDigestInputV1,
+  timestamps = now,
+): DiscoveryReviewResourceV1 => ({
+  ...input,
+  contentDigest: discoveryReviewResourceContentDigestV1(input),
+  createdAt: timestamps,
+  updatedAt: timestamps,
+});
+
+const resource: DiscoveryReviewResourceV1 = makeResource({
+  ...resourceWithoutDigest,
+});
 
 const seedPrerequisites = async (database: Pool): Promise<void> => {
   await database.query(
@@ -147,7 +187,7 @@ const seedPrerequisites = async (database: Pool): Promise<void> => {
        'DERIVED_DISCOVERY', 'sha256:wp3-db-source', 8, 'sha256:wp3-db-canonical',
        'projection-wp3-db-8', 'sha256:wp3-db-discovery', '[]'::jsonb,
        ARRAY['evidence-wp3-db-1'], $5::jsonb, ARRAY['owner'], 'internal',
-       $6::jsonb, 'ELIGIBLE_FOR_VALIDATION', 'NOT_ELIGIBLE', '{}'::jsonb, $7)`,
+       $6::jsonb, 'ELIGIBLE_FOR_VALIDATION', 'NOT_ELIGIBLE', $7::jsonb, $8)`,
     [
       resource.candidateId,
       projectId,
@@ -155,6 +195,7 @@ const seedPrerequisites = async (database: Pool): Promise<void> => {
       resource.findingId,
       JSON.stringify(resource.derivationProvenance),
       JSON.stringify(resource.validationProfile),
+      JSON.stringify(authoritativeCandidate),
       now,
     ],
   );
@@ -167,6 +208,9 @@ const cleanup = async (database: Pool): Promise<void> => {
     // controlled administrative path for this isolated test project.
     await client.query('SET session_replication_role = replica');
     await client.query('DELETE FROM discovery.reentry_review_resources WHERE project_id = $1', [
+      projectId,
+    ]);
+    await client.query('DELETE FROM discovery.reentry_review_roots WHERE project_id = $1', [
       projectId,
     ]);
     await client.query('DELETE FROM discovery.reentry_candidates WHERE project_id = $1', [
@@ -222,6 +266,11 @@ describe.runIf(pool)('AKP-5 WP3 persistent Review bridge (real PostgreSQL)', () 
       contentDigest: resource.contentDigest,
       evidence: [{ evidenceId: 'evidence-wp3-db-1' }],
     });
+    await expect(firstReader.find(projectId, resource.reviewResourceId)).resolves.toMatchObject({
+      reviewResourceId: resource.reviewResourceId,
+      resourceRevision: resource.resourceRevision,
+      contentDigest: resource.contentDigest,
+    });
 
     const adapter = new DiscoveryCandidateReviewTargetAdapter(restartedReader);
     const target = (await adapter.listSourceTargets(projectId))[0]!;
@@ -262,8 +311,8 @@ describe.runIf(pool)('AKP-5 WP3 persistent Review bridge (real PostgreSQL)', () 
 
     const nextRevisionInput = {
       ...resourceWithoutDigest,
-      resourceRevision: 3,
-      content: { ...resource.content, summary: 'Explicit immutable resource revision 3' },
+      resourceRevision: 2,
+      content: { ...resource.content, summary: 'Explicit immutable resource revision 2' },
     } satisfies Omit<DiscoveryReviewResourceV1, 'contentDigest' | 'createdAt' | 'updatedAt'>;
     const nextRevision: DiscoveryReviewResourceV1 = {
       ...nextRevisionInput,
@@ -273,7 +322,7 @@ describe.runIf(pool)('AKP-5 WP3 persistent Review bridge (real PostgreSQL)', () 
     };
     await expect(writer.save(nextRevision)).resolves.toBe('CREATED');
     await expect(firstReader.list(projectId)).resolves.toMatchObject([
-      { resourceRevision: 3, contentDigest: nextRevision.contentDigest },
+      { resourceRevision: 2, contentDigest: nextRevision.contentDigest },
     ]);
     await expect(
       pool!.query<{ count: number }>(
@@ -283,12 +332,129 @@ describe.runIf(pool)('AKP-5 WP3 persistent Review bridge (real PostgreSQL)', () 
         [projectId, resource.reviewResourceId],
       ),
     ).resolves.toMatchObject({ rows: [{ count: 2 }] });
+    await expect(
+      pool!.query<{ review_resource_id: string; candidate_id: string; resource_count: number }>(
+        `SELECT root.review_resource_id, root.candidate_id,
+                (SELECT count(*)::int
+                 FROM discovery.reentry_review_resources resource
+                 WHERE resource.project_id = root.project_id
+                   AND resource.review_resource_id = root.review_resource_id) AS resource_count
+         FROM discovery.reentry_review_roots root
+         WHERE root.project_id = $1 AND root.candidate_id = $2`,
+        [projectId, resource.candidateId],
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          review_resource_id: resource.reviewResourceId,
+          candidate_id: resource.candidateId,
+          resource_count: 2,
+        },
+      ],
+    });
+    await expect(
+      pool!.query<{ review_eligibility: string }>(
+        `SELECT candidate->>'reviewEligibility' AS review_eligibility
+         FROM discovery.reentry_candidates
+         WHERE project_id = $1 AND candidate_id = $2 AND candidate_revision = $3`,
+        [projectId, resource.candidateId, resource.candidateRevision],
+      ),
+    ).resolves.toMatchObject({ rows: [{ review_eligibility: 'NOT_ELIGIBLE' }] });
   });
 
   it('does not leak raw WP2 candidates, foreign projects, or conflicting immutable content', async () => {
+    const writer = new PostgresDiscoveryReviewResourceRepository(pool!);
     const reader = createPostgresReviewDiscoveryCandidateReader(pool!);
     expect(await reader.list('foreign-project')).toEqual([]);
     expect(await reader.find(projectId, resource.candidateId)).toBeUndefined();
+
+    const alternateRoot = makeResource({
+      ...resourceWithoutDigest,
+      reviewResourceId: 'caller-selected-alternate-root',
+      resourceRevision: 3,
+    });
+    await expect(writer.save(alternateRoot)).rejects.toThrow(/stable Review root identity/);
+
+    const mismatchCases: readonly [string, Partial<DiscoveryReviewResourceDigestInputV1>][] = [
+      [
+        'canonical base',
+        { canonicalBase: { ...resourceWithoutDigest.canonicalBase, canonicalVersion: 9 } },
+      ],
+      [
+        'discovery base',
+        {
+          discoveryBase: {
+            ...resourceWithoutDigest.discoveryBase,
+            projectionDigest: 'sha256:wrong-discovery',
+          },
+        },
+      ],
+      ['source projection digest', { sourceProjectionDigest: 'sha256:wrong-source' }],
+      [
+        'approved resource revision',
+        {
+          relatedResourceRefs: [
+            {
+              schemaVersion: '1.0.0',
+              resourceKind: 'CANONICAL_CLAIM',
+              resourceId: 'claim-wp3-db-1',
+              projectId,
+              resourceState: 'APPROVED',
+              resourceRevision: '1',
+            },
+          ],
+        },
+      ],
+      [
+        'evidence ids',
+        {
+          evidenceIds: ['evidence-wp3-db-2'],
+          evidenceLineage: [{ schemaVersion: '1.0.0', evidenceId: 'evidence-wp3-db-2' }],
+        },
+      ],
+      [
+        'derivation provenance',
+        {
+          derivationProvenance: {
+            ...resourceWithoutDigest.derivationProvenance,
+            ruleId: 'wrong-rule',
+          },
+        },
+      ],
+      ['finding identity', { findingId: 'wrong-finding' }],
+      ['manifest identity', { manifestId: 'wrong-manifest' }],
+      [
+        'candidate identity',
+        {
+          candidateId: 'wrong-candidate',
+          reviewResourceId: computeDiscoveryReviewRootIdentityV1({
+            projectId,
+            candidateId: 'wrong-candidate',
+            candidateRevision: 1,
+            origin: 'DERIVED_DISCOVERY',
+          }),
+        },
+      ],
+      [
+        'governance target',
+        {
+          findingType: 'EVIDENCE_GAP',
+          governanceTarget: 'DERIVED_CLAIM_OR_KNOWLEDGE_CANDIDATE_GOVERNANCE',
+        },
+      ],
+      ['access widening', { accessScope: ['owner', 'other'] }],
+      ['sensitivity weakening', { sensitivity: 'public' }],
+    ];
+    for (const [index, [label, overrides]] of mismatchCases.entries()) {
+      const attempted = makeResource({
+        ...resourceWithoutDigest,
+        ...overrides,
+        resourceRevision: 10 + index,
+      });
+      await expect(writer.save(attempted), label).rejects.toThrow(
+        /authoritative WP2 candidate|authoritative WP2 candidate lineage|not found/,
+      );
+    }
 
     const conflictingInput = {
       ...resourceWithoutDigest,

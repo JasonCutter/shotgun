@@ -16,6 +16,29 @@ $$;
 
 CREATE SCHEMA IF NOT EXISTS discovery;
 
+-- A server-owned one-to-one identity authority prevents one immutable WP2
+-- candidate revision from branching into multiple ADR-128 Review roots.
+CREATE TABLE IF NOT EXISTS discovery.reentry_review_roots (
+  project_id text NOT NULL REFERENCES project_admin.projects(id) ON DELETE RESTRICT,
+  candidate_id text NOT NULL,
+  candidate_revision integer NOT NULL CHECK (candidate_revision >= 1),
+  review_resource_id text NOT NULL,
+  identity_version text NOT NULL CHECK (
+    identity_version = 'discovery-review-root-identity:v1'
+  ),
+  created_at timestamptz NOT NULL,
+  PRIMARY KEY (project_id, review_resource_id),
+  UNIQUE (project_id, candidate_id, candidate_revision),
+  UNIQUE (project_id, review_resource_id, candidate_id, candidate_revision),
+  CONSTRAINT discovery_review_root_candidate_fk
+    FOREIGN KEY (project_id, candidate_id, candidate_revision)
+    REFERENCES discovery.reentry_candidates (project_id, candidate_id, candidate_revision)
+    ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS discovery_review_roots_candidate_idx
+  ON discovery.reentry_review_roots (project_id, candidate_id, candidate_revision);
+
 -- This is a normalized, immutable Review projection. It is intentionally not
 -- a second queue or Review ledger: ADR-128 owns Contexts, Items and decisions.
 -- A new resource_revision is an explicit immutable revision; an existing
@@ -87,6 +110,12 @@ CREATE TABLE IF NOT EXISTS discovery.reentry_review_resources (
     FOREIGN KEY (project_id, candidate_id, candidate_revision)
     REFERENCES discovery.reentry_candidates (project_id, candidate_id, candidate_revision)
     ON DELETE RESTRICT,
+  CONSTRAINT discovery_review_resource_root_fk
+    FOREIGN KEY (project_id, review_resource_id, candidate_id, candidate_revision)
+    REFERENCES discovery.reentry_review_roots (
+      project_id, review_resource_id, candidate_id, candidate_revision
+    )
+    ON DELETE RESTRICT,
   CONSTRAINT discovery_review_resource_finding_fk
     FOREIGN KEY (project_id, finding_id, finding_revision)
     REFERENCES discovery.findings (project_id, finding_id, finding_revision)
@@ -102,6 +131,17 @@ BEGIN
   RAISE EXCEPTION 'discovery.reentry_review_resources is immutable';
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION discovery.block_reentry_review_root_mutation()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'discovery.reentry_review_roots is immutable';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER discovery_reentry_review_roots_immutable
+  BEFORE UPDATE OR DELETE ON discovery.reentry_review_roots
+  FOR EACH ROW EXECUTE FUNCTION discovery.block_reentry_review_root_mutation();
 
 CREATE TRIGGER discovery_reentry_review_resources_immutable
   BEFORE UPDATE OR DELETE ON discovery.reentry_review_resources

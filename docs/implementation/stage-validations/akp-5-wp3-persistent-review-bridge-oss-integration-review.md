@@ -14,7 +14,9 @@ The bridge keeps `discovery.reentry_candidates` as WP2 validation inputs with
 projection is the only Review source. The existing
 `DiscoveryCandidateReviewTargetAdapter` materializes that projection into the
 existing ADR-128 authority; it does not create a second Review ledger or
-Approval authority. The Open-source Role Matrix is unchanged.
+Approval authority. A server-owned `discovery.reentry_review_roots` mapping
+binds each authoritative candidate revision to exactly one stable Review root;
+the Open-source Role Matrix is unchanged.
 
 ## Reviewed candidates
 
@@ -49,10 +51,20 @@ and production PostgreSQL composition.
   resource identity, exact project, derived origin, Review-ready lifecycle and
   explicit eligibility. Raw Findings, WP2 candidates, malformed rows, stale or
   terminal revisions are not targets.
+- `discovery-review-root-identity:v1` derives `reviewResourceId` only from
+  project, candidate identity/revision and `DERIVED_DISCOVERY`; it excludes
+  resource revision, timestamps and presentation wording. The immutable
+  `reentry_review_roots` mapping enforces one candidate revision to one Review
+  root and one root to one candidate revision.
 - Stable `(project, review_resource_id, resource_revision)` identity is
-  immutable. Repeated equal writes are idempotent; different content at the
-  same identity fails closed; a new revision is a new row and preserves old
-  history.
+  immutable. Repeated equal immutable content is idempotent; different content
+  at the same identity fails closed; a new revision remains under the same
+  stable root and preserves old history.
+- Before persistence and again on eligible reads, the bridge strict-decodes
+  the exact WP2 candidate snapshot and compares candidate-owned lineage,
+  project, base, provenance, approved refs, evidence IDs, access scope,
+  sensitivity and validation profile. Candidate `NOT_ELIGIBLE` is intentionally
+  independent from the normalized resource's `ELIGIBLE_AFTER_VALIDATION`.
 - The adapter places derived lineage in ADR-128 `artifactRefs.discoveryLineage`
   and emits a validation artifact reference. It exposes only real
   `sourceId/sourceVersionId/evidenceSpanId` triples as Review evidence. Missing
@@ -75,10 +87,13 @@ Focused local evidence:
 ## Migration, replacement and rollback
 
 Migration `054_akp_5_wp3_persistent_review_bridge.sql` is additive and leaves
-053 unchanged. It creates the immutable normalized resource table, project and
-WP2 lineage FKs, explicit eligibility/lifecycle checks, latest-revision index
-and immutable mutation trigger. The database bootstrap verification list now
-includes the new table.
+053 unchanged. It creates the immutable candidate-to-Review-root mapping and
+normalized resource table, project and WP2 lineage FKs, explicit
+eligibility/lifecycle checks, latest-revision index and immutable mutation
+triggers. The database bootstrap verification list now includes both new
+tables. The repository loads the authoritative WP2 candidate through its
+strict decoder before inserting the root/resource; the reader repeats the
+binding check and excludes malformed or mismatched rows.
 
 The source reader is replaceable behind `ReviewDiscoveryCandidateReader`; a
 replacement must preserve exact project filtering, latest immutable revision,

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  assertDiscoveryReviewResourceMatchesCandidateV1,
+  computeDiscoveryReviewRootIdentityV1,
   DISCOVERY_DERIVED_VALIDATION_PROFILE_V1,
   discoveryReviewResourceContentDigestV1,
   decodeDiscoveryReviewResourceV1,
+  type DerivedKnowledgeCandidateV1,
   type DiscoveryReviewResourceV1,
 } from '../../packages/contracts/src/index.js';
 import { InMemoryFrontendCommandGateway } from '../../adapters/frontend-command-gateway-in-memory/src/index.js';
@@ -25,8 +28,13 @@ const resourceWithoutDigest = {
   schemaVersion: '1.0.0' as const,
   origin: 'DERIVED_DISCOVERY' as const,
   projectId: PROJECT,
-  reviewResourceId: 'review-resource-wp3-1',
-  resourceRevision: 2,
+  reviewResourceId: computeDiscoveryReviewRootIdentityV1({
+    projectId: PROJECT,
+    candidateId: 'candidate-wp3-1',
+    candidateRevision: 1,
+    origin: 'DERIVED_DISCOVERY',
+  }),
+  resourceRevision: 1,
   effectiveProjectId: PROJECT,
   candidateId: 'candidate-wp3-1',
   candidateRevision: 1,
@@ -82,6 +90,31 @@ const resourceWithoutDigest = {
   ],
 } satisfies Omit<DiscoveryReviewResourceV1, 'contentDigest' | 'createdAt' | 'updatedAt'>;
 
+const authoritativeCandidate: DerivedKnowledgeCandidateV1 = {
+  schemaVersion: '1.0.0',
+  candidateId: resourceWithoutDigest.candidateId,
+  candidateRevision: resourceWithoutDigest.candidateRevision,
+  projectId: resourceWithoutDigest.projectId,
+  origin: resourceWithoutDigest.origin,
+  manifestId: resourceWithoutDigest.manifestId,
+  findingId: resourceWithoutDigest.findingId,
+  findingRevision: resourceWithoutDigest.findingRevision,
+  findingType: resourceWithoutDigest.findingType,
+  governanceTarget: resourceWithoutDigest.governanceTarget,
+  sourceProjectionDigest: resourceWithoutDigest.sourceProjectionDigest,
+  canonicalBase: resourceWithoutDigest.canonicalBase,
+  discoveryBase: resourceWithoutDigest.discoveryBase,
+  relatedResourceRefs: resourceWithoutDigest.relatedResourceRefs,
+  evidenceIds: resourceWithoutDigest.evidenceIds,
+  derivationProvenance: resourceWithoutDigest.derivationProvenance,
+  accessScope: resourceWithoutDigest.accessScope,
+  sensitivity: resourceWithoutDigest.sensitivity,
+  validationProfile: resourceWithoutDigest.validationProfile,
+  reentryEligibility: 'ELIGIBLE_FOR_VALIDATION',
+  reviewEligibility: 'NOT_ELIGIBLE',
+  createdAt: now,
+};
+
 const resource: DiscoveryReviewResourceV1 = {
   ...resourceWithoutDigest,
   contentDigest: discoveryReviewResourceContentDigestV1(resourceWithoutDigest),
@@ -121,12 +154,52 @@ const scope: FrontendReviewScopeV1 = {
 describe('AKP-5 WP3 persistent Review bridge contract', () => {
   it('decodes only an explicit post-validation normalized resource', () => {
     expect(decodeDiscoveryReviewResourceV1(resource)).toEqual(resource);
+    const rootInput = {
+      projectId: resource.projectId,
+      candidateId: resource.candidateId,
+      candidateRevision: resource.candidateRevision,
+      origin: resource.origin,
+    } as const;
+    expect(resource.reviewResourceId).toBe(computeDiscoveryReviewRootIdentityV1(rootInput));
+    expect(resource.reviewResourceId).toBe(
+      computeDiscoveryReviewRootIdentityV1({
+        ...rootInput,
+        // Resource revision, timestamps and content wording are intentionally
+        // absent from the stable root input.
+      }),
+    );
+    expect(
+      computeDiscoveryReviewRootIdentityV1({
+        ...rootInput,
+        candidateId: 'different-candidate',
+      }),
+    ).not.toBe(resource.reviewResourceId);
+    expect(() =>
+      decodeDiscoveryReviewResourceV1({ ...resource, reviewResourceId: 'caller-selected-root' }),
+    ).toThrow(/stable Review root identity/);
     expect(() =>
       decodeDiscoveryReviewResourceV1({ ...resource, lifecycleState: 'VALIDATING' }),
     ).toThrow(/REVIEW_READY/);
     expect(() => decodeDiscoveryReviewResourceV1({ ...resource, unexpected: true })).toThrow(
       /unknown field/i,
     );
+  });
+
+  it('requires exact authoritative candidate lineage while keeping WP2 eligibility separate', () => {
+    expect(() =>
+      assertDiscoveryReviewResourceMatchesCandidateV1(resource, authoritativeCandidate),
+    ).not.toThrow();
+    expect(authoritativeCandidate.reviewEligibility).toBe('NOT_ELIGIBLE');
+    expect(resource.reviewEligibility).toBe('ELIGIBLE_AFTER_VALIDATION');
+    expect(() =>
+      assertDiscoveryReviewResourceMatchesCandidateV1(resource, {
+        ...authoritativeCandidate,
+        canonicalBase: {
+          ...authoritativeCandidate.canonicalBase,
+          snapshotDigest: 'sha256:wrong-canonical',
+        },
+      }),
+    ).toThrow(/authoritative WP2 candidate lineage/);
   });
 
   it('materializes exact revision/digest and preserves derived lineage without fake SourceVersion', async () => {
@@ -139,7 +212,7 @@ describe('AKP-5 WP3 persistent Review bridge contract', () => {
       {
         reviewResourceId: resource.reviewResourceId,
         targetId: resource.candidateId,
-        targetRevision: '2',
+        targetRevision: '1',
         targetDigest: resource.contentDigest,
         targetLabel: resource.content.summary,
         resourceProjectId: PROJECT,

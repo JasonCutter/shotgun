@@ -1,14 +1,18 @@
 import type { Pool, PoolClient } from 'pg';
 
 import {
+  assertDiscoveryReviewResourceMatchesCandidateV1,
+  computeDiscoveryReviewRootIdentityV1,
+  DISCOVERY_REVIEW_ROOT_IDENTITY_VERSION,
   FrontendContractError,
+  decodeDerivedKnowledgeCandidateV1,
   decodeDiscoveryReviewResourceV1,
-  stableJson,
   type ReviewApprovalV1,
   type ReviewCommentRecordV1,
   type ReviewContextRevisionV1,
   type ReviewDecisionRecordV1,
   type ReviewItemV1,
+  type DerivedKnowledgeCandidateV1,
   type DiscoveryReviewResourceV1,
 } from '../../../packages/contracts/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
@@ -748,6 +752,19 @@ export const createPostgresReviewDraftTargetAdapter = (pool: Pool): DraftReviewT
 
 type DiscoveryReviewResourceRow = {
   readonly resource: unknown;
+  readonly candidate?: unknown;
+};
+
+type DiscoveryReviewRootRow = {
+  readonly project_id: string;
+  readonly candidate_id: string;
+  readonly candidate_revision: number;
+  readonly review_resource_id: string;
+  readonly identity_version: string;
+};
+
+type DiscoveryReviewCandidateRow = {
+  readonly candidate: unknown;
 };
 
 export type DiscoveryReviewResourceWriteResultV1 = 'CREATED' | 'IDEMPOTENT';
@@ -764,87 +781,178 @@ export class PostgresDiscoveryReviewResourceRepository {
     resourceInput: DiscoveryReviewResourceV1,
   ): Promise<DiscoveryReviewResourceWriteResultV1> {
     const resource = decodeDiscoveryReviewResourceV1(resourceInput);
-    const inserted = await this.pool.query(
-      `INSERT INTO discovery.reentry_review_resources (
-         review_resource_id, resource_revision, project_id, effective_project_id,
-         candidate_id, candidate_revision, finding_id, finding_revision, finding_type,
-         manifest_id, origin, governance_target, source_projection_digest,
-         canonical_base_version, canonical_snapshot_digest,
-         discovery_projection_revision, discovery_projection_digest,
-         related_resource_refs, evidence_ids, evidence_lineage,
-         derivation_provenance, access_scope, sensitivity, validation_profile,
-         validation_result, lifecycle_state, review_eligibility, content,
-         content_digest, resource, created_at, updated_at
-       ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-         $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-         $27, $28, $29, $30, $31, $32
-       )
-       ON CONFLICT DO NOTHING
-       RETURNING review_resource_id`,
-      [
-        resource.reviewResourceId,
-        resource.resourceRevision,
-        resource.projectId,
-        resource.effectiveProjectId,
-        resource.candidateId,
-        resource.candidateRevision,
-        resource.findingId,
-        resource.findingRevision,
-        resource.findingType,
-        resource.manifestId,
-        resource.origin,
-        resource.governanceTarget,
-        resource.sourceProjectionDigest,
-        resource.canonicalBase.canonicalVersion,
-        resource.canonicalBase.snapshotDigest,
-        resource.discoveryBase.projectionRevision,
-        resource.discoveryBase.projectionDigest,
-        JSONB_SNAPSHOT(resource.relatedResourceRefs),
-        resource.evidenceIds,
-        JSONB_SNAPSHOT(resource.evidenceLineage),
-        JSONB_SNAPSHOT(resource.derivationProvenance),
-        resource.accessScope,
-        resource.sensitivity,
-        JSONB_SNAPSHOT(resource.validationProfile),
-        JSONB_SNAPSHOT(resource.validationResult),
-        resource.lifecycleState,
-        resource.reviewEligibility,
-        JSONB_SNAPSHOT(resource.content),
-        resource.contentDigest,
-        JSONB_SNAPSHOT(resource),
-        resource.createdAt,
-        resource.updatedAt,
-      ],
-    );
-    if ((inserted.rowCount ?? 0) > 0) return 'CREATED';
+    const expectedReviewResourceId = computeDiscoveryReviewRootIdentityV1({
+      projectId: resource.projectId,
+      candidateId: resource.candidateId,
+      candidateRevision: resource.candidateRevision,
+      origin: resource.origin,
+    });
+    if (resource.reviewResourceId !== expectedReviewResourceId) {
+      return CONFLICT('The Discovery Review resource uses an invalid stable Review root identity.');
+    }
 
-    const existing = await this.pool.query<DiscoveryReviewResourceRow>(
-      `SELECT resource
-       FROM discovery.reentry_review_resources
-       WHERE project_id = $1 AND review_resource_id = $2 AND resource_revision = $3`,
-      [resource.projectId, resource.reviewResourceId, resource.resourceRevision],
-    );
-    const row = existing.rows[0];
-    if (!row) {
-      throw new FrontendContractError(
-        'CONFLICT',
-        'The Discovery Review resource identity conflicted with another immutable key.',
-      );
-    }
-    let persisted: DiscoveryReviewResourceV1;
-    try {
-      persisted = decodeDiscoveryReviewResourceV1(row.resource);
-    } catch {
-      throw new FrontendContractError(
-        'CONFLICT',
-        'The persisted Discovery Review resource is malformed and cannot be reused.',
-      );
-    }
-    if (stableJson(persisted) === stableJson(resource)) return 'IDEMPOTENT';
-    throw new FrontendContractError(
-      'CONFLICT',
-      'The Discovery Review resource identity already exists with different immutable content.',
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const candidateResult = await client.query<DiscoveryReviewCandidateRow>(
+          `SELECT candidate
+           FROM discovery.reentry_candidates
+           WHERE project_id = $1 AND candidate_id = $2 AND candidate_revision = $3
+           FOR SHARE`,
+          [resource.projectId, resource.candidateId, resource.candidateRevision],
+        );
+        const candidateRow = candidateResult.rows[0];
+        if (!candidateRow) return CONFLICT('The authoritative WP2 candidate was not found.');
+
+        let candidate: DerivedKnowledgeCandidateV1;
+        try {
+          candidate = decodeDerivedKnowledgeCandidateV1(
+            PARSE(candidateRow.candidate),
+            'persistedDerivedKnowledgeCandidate',
+          );
+        } catch {
+          return CONFLICT('The authoritative WP2 candidate is malformed and cannot be reused.');
+        }
+        try {
+          assertDiscoveryReviewResourceMatchesCandidateV1(resource, candidate);
+        } catch {
+          return CONFLICT(
+            'The Discovery Review resource does not preserve the authoritative WP2 candidate lineage.',
+          );
+        }
+
+        const rootInsert = await client.query<DiscoveryReviewRootRow>(
+          `INSERT INTO discovery.reentry_review_roots (
+             project_id, candidate_id, candidate_revision, review_resource_id,
+             identity_version, created_at
+           ) VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT DO NOTHING
+           RETURNING project_id, candidate_id, candidate_revision,
+                     review_resource_id, identity_version`,
+          [
+            resource.projectId,
+            resource.candidateId,
+            resource.candidateRevision,
+            expectedReviewResourceId,
+            DISCOVERY_REVIEW_ROOT_IDENTITY_VERSION,
+            resource.createdAt,
+          ],
+        );
+        const root =
+          rootInsert.rows[0] ??
+          (
+            await client.query<DiscoveryReviewRootRow>(
+              `SELECT project_id, candidate_id, candidate_revision,
+                      review_resource_id, identity_version
+               FROM discovery.reentry_review_roots
+               WHERE project_id = $1
+                 AND (review_resource_id = $2
+                      OR (candidate_id = $3 AND candidate_revision = $4))
+               FOR UPDATE`,
+              [
+                resource.projectId,
+                expectedReviewResourceId,
+                resource.candidateId,
+                resource.candidateRevision,
+              ],
+            )
+          ).rows[0];
+        if (
+          !root ||
+          root.project_id !== resource.projectId ||
+          root.candidate_id !== resource.candidateId ||
+          root.candidate_revision !== resource.candidateRevision ||
+          root.review_resource_id !== expectedReviewResourceId ||
+          root.identity_version !== DISCOVERY_REVIEW_ROOT_IDENTITY_VERSION
+        ) {
+          return CONFLICT(
+            'The authoritative WP2 candidate is already bound to a different stable Review root.',
+          );
+        }
+
+        const inserted = await client.query(
+          `INSERT INTO discovery.reentry_review_resources (
+             review_resource_id, resource_revision, project_id, effective_project_id,
+             candidate_id, candidate_revision, finding_id, finding_revision, finding_type,
+             manifest_id, origin, governance_target, source_projection_digest,
+             canonical_base_version, canonical_snapshot_digest,
+             discovery_projection_revision, discovery_projection_digest,
+             related_resource_refs, evidence_ids, evidence_lineage,
+             derivation_provenance, access_scope, sensitivity, validation_profile,
+             validation_result, lifecycle_state, review_eligibility, content,
+             content_digest, resource, created_at, updated_at
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+             $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
+             $27, $28, $29, $30, $31, $32
+           )
+           ON CONFLICT DO NOTHING
+           RETURNING review_resource_id`,
+          [
+            resource.reviewResourceId,
+            resource.resourceRevision,
+            resource.projectId,
+            resource.effectiveProjectId,
+            resource.candidateId,
+            resource.candidateRevision,
+            resource.findingId,
+            resource.findingRevision,
+            resource.findingType,
+            resource.manifestId,
+            resource.origin,
+            resource.governanceTarget,
+            resource.sourceProjectionDigest,
+            resource.canonicalBase.canonicalVersion,
+            resource.canonicalBase.snapshotDigest,
+            resource.discoveryBase.projectionRevision,
+            resource.discoveryBase.projectionDigest,
+            JSONB_SNAPSHOT(resource.relatedResourceRefs),
+            resource.evidenceIds,
+            JSONB_SNAPSHOT(resource.evidenceLineage),
+            JSONB_SNAPSHOT(resource.derivationProvenance),
+            resource.accessScope,
+            resource.sensitivity,
+            JSONB_SNAPSHOT(resource.validationProfile),
+            JSONB_SNAPSHOT(resource.validationResult),
+            resource.lifecycleState,
+            resource.reviewEligibility,
+            JSONB_SNAPSHOT(resource.content),
+            resource.contentDigest,
+            JSONB_SNAPSHOT(resource),
+            resource.createdAt,
+            resource.updatedAt,
+          ],
+        );
+        if ((inserted.rowCount ?? 0) > 0) return 'CREATED';
+
+        const existing = await client.query<DiscoveryReviewResourceRow>(
+          `SELECT resource
+           FROM discovery.reentry_review_resources
+           WHERE project_id = $1 AND review_resource_id = $2 AND resource_revision = $3
+           FOR SHARE`,
+          [resource.projectId, expectedReviewResourceId, resource.resourceRevision],
+        );
+        const row = existing.rows[0];
+        if (!row) {
+          return CONFLICT(
+            'The Discovery Review resource identity conflicted with another immutable key.',
+          );
+        }
+        let persisted: DiscoveryReviewResourceV1;
+        try {
+          persisted = decodeDiscoveryReviewResourceV1(PARSE(row.resource));
+        } catch {
+          return CONFLICT(
+            'The persisted Discovery Review resource is malformed and cannot be reused.',
+          );
+        }
+        if (persisted.contentDigest === resource.contentDigest) return 'IDEMPOTENT';
+        throw new FrontendContractError(
+          'CONFLICT',
+          'The Discovery Review resource identity already exists with different immutable content.',
+        );
+      },
+      { module: 'frontend-review-postgres', operation: 'save-discovery-review-resource' },
     );
   }
 }
@@ -888,22 +996,39 @@ const readEligibleDiscoveryResources = async (
   const identityClause = reviewResourceId === undefined ? '' : ' AND review_resource_id = $2';
   if (reviewResourceId !== undefined) params.push(reviewResourceId);
   const result = await pool.query<DiscoveryReviewResourceRow>(
-    `SELECT resource
+    `SELECT latest.resource, candidate.candidate
      FROM (
        SELECT DISTINCT ON (review_resource_id)
+              project_id, candidate_id, candidate_revision,
               resource, origin, lifecycle_state, review_eligibility
        FROM discovery.reentry_review_resources
        WHERE project_id = $1${identityClause}
        ORDER BY review_resource_id, resource_revision DESC
      ) AS latest
-     WHERE origin = 'DERIVED_DISCOVERY'
-       AND lifecycle_state = 'REVIEW_READY'
-       AND review_eligibility = 'ELIGIBLE_AFTER_VALIDATION'`,
+     JOIN discovery.reentry_candidates candidate
+       ON candidate.project_id = latest.project_id
+      AND candidate.candidate_id = latest.candidate_id
+      AND candidate.candidate_revision = latest.candidate_revision
+     WHERE latest.origin = 'DERIVED_DISCOVERY'
+       AND latest.lifecycle_state = 'REVIEW_READY'
+       AND latest.review_eligibility = 'ELIGIBLE_AFTER_VALIDATION'`,
     params,
   );
   return result.rows.flatMap((row) => {
     const resource = decodePersistedDiscoveryResource(row);
-    return resource !== undefined && resource.projectId === projectId ? [resource] : [];
+    if (resource === undefined || resource.projectId !== projectId || row.candidate === undefined) {
+      return [];
+    }
+    try {
+      const candidate = decodeDerivedKnowledgeCandidateV1(
+        PARSE(row.candidate),
+        'persistedDerivedKnowledgeCandidate',
+      );
+      assertDiscoveryReviewResourceMatchesCandidateV1(resource, candidate);
+      return [resource];
+    } catch {
+      return [];
+    }
   });
 };
 

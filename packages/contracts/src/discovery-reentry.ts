@@ -271,6 +271,72 @@ export type DiscoveryReviewResourceDigestInputV1 = Omit<
   'contentDigest' | 'createdAt' | 'updatedAt'
 >;
 
+export const DISCOVERY_REVIEW_ROOT_IDENTITY_VERSION = 'discovery-review-root-identity:v1' as const;
+
+export type DiscoveryReviewRootIdentityInputV1 = {
+  readonly projectId: string;
+  readonly candidateId: string;
+  readonly candidateRevision: number;
+  readonly origin: 'DERIVED_DISCOVERY';
+};
+
+/**
+ * Stable server-owned Review root identity. Resource revisions and mutable
+ * presentation/validation wording deliberately do not participate.
+ */
+export const computeDiscoveryReviewRootIdentityV1 = (
+  input: DiscoveryReviewRootIdentityInputV1,
+): string =>
+  sha256Text(
+    semanticStableJson({
+      identityVersion: DISCOVERY_REVIEW_ROOT_IDENTITY_VERSION,
+      projectId: text(input.projectId, 'projectId'),
+      candidateId: text(input.candidateId, 'candidateId'),
+      candidateRevision: positiveInteger(input.candidateRevision, 'candidateRevision'),
+      origin: enumValue(input.origin, ['DERIVED_DISCOVERY'] as const, 'origin'),
+    }),
+  );
+
+const discoveryReviewResourceLineageFields = [
+  'projectId',
+  'candidateId',
+  'candidateRevision',
+  'origin',
+  'findingId',
+  'findingRevision',
+  'findingType',
+  'manifestId',
+  'governanceTarget',
+  'sourceProjectionDigest',
+  'canonicalBase',
+  'discoveryBase',
+  'relatedResourceRefs',
+  'evidenceIds',
+  'derivationProvenance',
+  'accessScope',
+  'sensitivity',
+  'validationProfile',
+] as const;
+
+/**
+ * Review resources are normalized projections, not a second author of WP2
+ * lineage. Review eligibility is intentionally excluded because WP2's
+ * candidate remains NOT_ELIGIBLE while the later bridge resource can be
+ * ELIGIBLE_AFTER_VALIDATION.
+ */
+export const assertDiscoveryReviewResourceMatchesCandidateV1 = (
+  resource: DiscoveryReviewResourceV1,
+  candidate: DerivedKnowledgeCandidateV1,
+): void => {
+  for (const field of discoveryReviewResourceLineageFields) {
+    if (sameJson(resource[field], candidate[field])) continue;
+    return fail(
+      `discoveryReviewResource.${field}`,
+      'must exactly preserve the authoritative WP2 candidate lineage',
+    );
+  }
+};
+
 export const discoveryReviewResourceContentDigestV1 = (
   input: DiscoveryReviewResourceDigestInputV1,
 ): string => sha256Text(semanticStableJson(input));
@@ -1274,6 +1340,18 @@ export const decodeDiscoveryReviewResourceV1 = (
     createdAt: isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`),
     updatedAt: isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`),
   };
+  const expectedReviewResourceId = computeDiscoveryReviewRootIdentityV1({
+    projectId: resource.projectId,
+    candidateId: resource.candidateId,
+    candidateRevision: resource.candidateRevision,
+    origin: resource.origin,
+  });
+  if (resource.reviewResourceId !== expectedReviewResourceId) {
+    return fail(
+      `${path}.reviewResourceId`,
+      `must equal the server-owned stable Review root identity ${expectedReviewResourceId}`,
+    );
+  }
   const digestInput = Object.fromEntries(
     Object.entries(resource).filter(
       ([key]) => !['contentDigest', 'createdAt', 'updatedAt'].includes(key),

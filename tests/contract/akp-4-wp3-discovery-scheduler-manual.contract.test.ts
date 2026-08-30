@@ -59,7 +59,8 @@ const manualEnvelope = (
   producerVersion: '1.0.0',
   correlationId: 'correlation-1',
   projectId,
-  actor: { type: 'user', id: 'principal-1' },
+  actor: { type: 'user', id: 'actor-1' },
+  principalId: 'principal-1',
   security: { accessScope: ['owner'], sensitivity: 'private', dataClassification: 'canonical' },
   payload,
   createdAt: '2026-08-30T00:00:00.000Z',
@@ -119,7 +120,7 @@ const dueSchedule: DiscoveryScheduleV1 = {
 };
 
 describe('AKP-4 WP3 persistent scheduler and manual normalization contracts', () => {
-  it('computes a strictly future weekly local occurrence and rejects a DST gap', () => {
+  it('computes exact local occurrences and skips a DST gap without fabricating a run', () => {
     expect(
       nextDiscoveryWeeklyOccurrenceV1({
         after: '2026-08-30T10:00:00.000Z',
@@ -128,14 +129,27 @@ describe('AKP-4 WP3 persistent scheduler and manual normalization contracts', ()
         localTime: '09:00',
       }),
     ).toEqual({ at: '2026-08-31T00:00:00.000Z', key: '2026-08-31T09:00@Asia/Seoul' });
-    expect(() =>
-      nextDiscoveryWeeklyOccurrenceV1({
-        after: '2026-03-08T00:00:00.000Z',
-        timezone: 'America/New_York',
-        dayOfWeek: 7,
-        localTime: '02:30',
-      }),
-    ).toThrow(/does not exist/i);
+    const springGapInput = {
+      timezone: 'America/New_York',
+      dayOfWeek: 7,
+      localTime: '02:30',
+    } as const;
+    const beforeGap = nextDiscoveryWeeklyOccurrenceV1({
+      ...springGapInput,
+      after: '2026-02-23T00:00:00.000Z',
+    });
+    expect(beforeGap).toEqual({
+      at: '2026-03-01T07:30:00.000Z',
+      key: '2026-03-01T02:30@America/New_York',
+    });
+    const afterGap = nextDiscoveryWeeklyOccurrenceV1({
+      ...springGapInput,
+      after: beforeGap.at,
+    });
+    expect(afterGap).toEqual({
+      at: '2026-03-15T06:30:00.000Z',
+      key: '2026-03-15T02:30@America/New_York',
+    });
     expect(() =>
       nextDiscoveryWeeklyOccurrenceV1({
         after: '2026-08-30T00:00:00.000Z',
@@ -144,6 +158,58 @@ describe('AKP-4 WP3 persistent scheduler and manual normalization contracts', ()
         localTime: '09:00',
       }),
     ).toThrow(/timezone/i);
+  });
+
+  it('advances past a completed occurrence whose next local week is a DST gap', async () => {
+    const first = createCoordinator();
+    const schedules = new InMemoryDiscoveryScheduleRepository();
+    const occurrence = nextDiscoveryWeeklyOccurrenceV1({
+      after: '2026-02-23T00:00:00.000Z',
+      timezone: 'America/New_York',
+      dayOfWeek: 7,
+      localTime: '02:30',
+    });
+    const schedule: DiscoveryScheduleV1 = {
+      ...dueSchedule,
+      scheduleId: 'dst-weekly',
+      timezone: 'America/New_York',
+      dayOfWeek: 7,
+      localTime: '02:30',
+      nextOccurrenceAt: occurrence.at,
+      nextOccurrenceKey: occurrence.key,
+    };
+    await schedules.saveSchedule(schedule);
+    const scheduler = new PersistentDiscoveryScheduler(schedules, first.coordinator, {
+      now: () => '2026-03-02T00:00:00.000Z',
+    });
+
+    const firstTick = await scheduler.tick();
+    expect(firstTick).toMatchObject({ jobsAccepted: 1, occurrencesAdvanced: 1 });
+    const stored = await first.runtime.findJobByTriggerIdentity({
+      projectId,
+      triggerClass: 'SCHEDULED_FULL_SCAN',
+      scheduleId: schedule.scheduleId,
+      scheduleRevision: schedule.scheduleRevision,
+      occurrenceKey: occurrence.key,
+    });
+    expect(stored?.trigger.triggerIdentity).toMatchObject({ occurrenceKey: occurrence.key });
+    expect((await schedules.findSchedule(projectId, schedule.scheduleId))?.nextOccurrenceKey).toBe(
+      '2026-03-15T02:30@America/New_York',
+    );
+
+    const laterTick = await scheduler.tick('2026-03-16T00:00:00.000Z');
+    expect(laterTick).toMatchObject({ jobsAccepted: 1, occurrencesAdvanced: 1 });
+    const next = await schedules.findSchedule(projectId, schedule.scheduleId);
+    expect(next?.nextOccurrenceKey).toBe('2026-03-22T02:30@America/New_York');
+    expect(
+      await first.runtime.findJobByTriggerIdentity({
+        projectId,
+        triggerClass: 'SCHEDULED_FULL_SCAN',
+        scheduleId: schedule.scheduleId,
+        scheduleRevision: schedule.scheduleRevision,
+        occurrenceKey: '2026-03-08T02:30@America/New_York',
+      }),
+    ).toBeUndefined();
   });
 
   it('persists and reconstructs a schedule, and advances only after a durable Job outcome', async () => {
@@ -233,9 +299,15 @@ describe('AKP-4 WP3 persistent scheduler and manual normalization contracts', ()
     expect(replay).toMatchObject({ disposition: 'ALREADY_EXISTS', jobId: created.jobId });
     const stored = await first.runtime.findJob({ projectId, jobId: created.jobId });
     expect(stored?.canonicalBase).toEqual(canonicalBase);
+    expect(stored?.trigger).toMatchObject({
+      actor: { actorId: 'actor-1', principalId: 'principal-1' },
+    });
+    await expect(
+      first.coordinator.coordinateManual(manualEnvelope(request, { principalId: undefined })),
+    ).rejects.toThrow(/owner-authorized/i);
     await expect(
       first.coordinator.coordinateManual(
-        manualEnvelope(request, { actor: undefined, security: undefined }),
+        manualEnvelope(request, { actor: undefined, principalId: undefined, security: undefined }),
       ),
     ).rejects.toThrow(/owner-authorized/i);
   });

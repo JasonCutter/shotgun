@@ -452,7 +452,7 @@ export class DiscoveryTriggerCoordinator {
     const concurrentReadiness = await this.readiness.read({
       projectId: concurrentJob.projectId,
       requiredBase: concurrentJob.requiredDiscoveryBase,
-      projectionKinds: policy.requiredProjectionKinds,
+      projectionKinds: DISCOVERY_PROJECTION_KINDS_V1,
       observedAt,
     });
     return resultForExisting(concurrentJob, concurrentReadiness);
@@ -467,20 +467,23 @@ export class DiscoveryTriggerCoordinator {
     readonly correlationId?: string;
     readonly causationId?: string;
   }): Promise<DiscoveryCanonicalTriggerCoordinationResultV1> {
-    const policy = await this.policyPort.resolve(input.projectId);
-    assertPolicy(policy);
-    const observedAt = this.clock.now();
     const existing = await this.runtime.findJobByTriggerIdentity(input.triggerIdentity);
     if (existing) {
       const job = assertExistingServerOwnedJob(existing, input.projectId, input.triggerClass);
+      const observedAt = this.clock.now();
       const readiness = await this.readiness.read({
         projectId: job.projectId,
         requiredBase: job.requiredDiscoveryBase,
-        projectionKinds: policy.requiredProjectionKinds,
+        // Redelivery observes the frozen V1 projection contract. It must not
+        // resolve current policy and accidentally rebind an existing Job.
+        projectionKinds: DISCOVERY_PROJECTION_KINDS_V1,
         observedAt,
       });
       return resultForExisting(job, readiness);
     }
+    const policy = await this.policyPort.resolve(input.projectId);
+    assertPolicy(policy);
+    const observedAt = this.clock.now();
     if (
       input.triggerClass === 'MANUAL' &&
       !(policy.allowedManualScanModes ?? ['INCREMENTAL', 'FULL_SCAN']).includes(
@@ -645,6 +648,7 @@ export class DiscoveryTriggerCoordinator {
       !envelope.projectId ||
       !envelope.actor ||
       envelope.actor.type !== 'user' ||
+      !envelope.principalId ||
       !envelope.security?.accessScope.includes('owner')
     ) {
       return failClosed(
@@ -664,7 +668,7 @@ export class DiscoveryTriggerCoordinator {
       triggerClass: 'MANUAL',
       triggerIdentity: lookup,
       requestedScanMode: request.requestedScanMode,
-      actor: { actorId: envelope.actor.id, principalId: envelope.actor.id },
+      actor: { actorId: envelope.actor.id, principalId: envelope.principalId },
       causationId: envelope.messageId,
       correlationId: envelope.correlationId,
     });

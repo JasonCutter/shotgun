@@ -311,6 +311,7 @@ import {
 } from '../../../modules/discovery-trigger-coordinator/src/index.js';
 import type {
   DiscoveryScheduleRepositoryPort,
+  DiscoveryScheduleStatusV1,
   DiscoveryTriggerPolicyPort,
   DiscoveryManualTriggerRequestV1,
 } from '../../../packages/contracts/src/index.js';
@@ -1118,6 +1119,81 @@ const requireDurableManualDiscoveryRequest = (
   };
 };
 
+type DiscoveryScheduleConfigurationRequestV1 = {
+  readonly scheduleId: string;
+  readonly status: DiscoveryScheduleStatusV1;
+  readonly timezone: string;
+  readonly dayOfWeek: number;
+  readonly localTime: string;
+};
+
+const requireDiscoveryScheduleConfigurationRequest = (
+  body: unknown,
+): DiscoveryScheduleConfigurationRequestV1 => {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'Discovery schedule configuration must be an object.',
+      module: 'product-api',
+      operation: 'discovery-schedule-request',
+    });
+  }
+  const input = body as Record<string, unknown>;
+  const allowed = ['scheduleId', 'status', 'timezone', 'dayOfWeek', 'localTime'];
+  const unknown = Object.keys(input).filter((key) => !allowed.includes(key));
+  if (unknown.length || allowed.some((key) => input[key] === undefined)) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage:
+        'Discovery schedule accepts only scheduleId, status, timezone, dayOfWeek, and localTime.',
+      module: 'product-api',
+      operation: 'discovery-schedule-request',
+    });
+  }
+  const textField = (key: string, maxLength: number): string => {
+    const value = input[key];
+    if (typeof value !== 'string' || value.trim().length === 0 || value.length > maxLength) {
+      throw new ShotgunError({
+        code: 'INVALID_REQUEST',
+        safeMessage: `Discovery schedule ${key} must be a bounded non-empty string.`,
+        module: 'product-api',
+        operation: 'discovery-schedule-request',
+      });
+    }
+    return value.trim();
+  };
+  const status = input.status;
+  const dayOfWeek = input.dayOfWeek;
+  if (status !== 'ENABLED' && status !== 'DISABLED') {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'Discovery schedule status must be ENABLED or DISABLED.',
+      module: 'product-api',
+      operation: 'discovery-schedule-request',
+    });
+  }
+  if (
+    typeof dayOfWeek !== 'number' ||
+    !Number.isInteger(dayOfWeek) ||
+    dayOfWeek < 1 ||
+    dayOfWeek > 7
+  ) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'Discovery schedule dayOfWeek must be an ISO weekday from 1 to 7.',
+      module: 'product-api',
+      operation: 'discovery-schedule-request',
+    });
+  }
+  return {
+    scheduleId: textField('scheduleId', 256),
+    status,
+    timezone: textField('timezone', 128),
+    dayOfWeek,
+    localTime: textField('localTime', 5),
+  };
+};
+
 const requestPrincipalContext = (headers: SecurityHeaders): TrustedPrincipalContext => {
   const context = trustedPrincipalContexts.get(headers as object);
   if (!context) {
@@ -1694,10 +1770,13 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   );
   const discoveryScheduleRepository =
     options.discoveryScheduleRepository ?? new InMemoryDiscoveryScheduleRepository();
-  const discoveryScheduler =
-    options.discoverySchedulerIntervalMs === undefined
-      ? undefined
-      : new PersistentDiscoveryScheduler(discoveryScheduleRepository, discoveryTriggerCoordinator);
+  // The same scheduler authority serves both the production worker and the
+  // server-owned configuration boundary. The worker remains opt-in here so
+  // tests and embedders can configure schedules without starting a timer.
+  const discoveryScheduler = new PersistentDiscoveryScheduler(
+    discoveryScheduleRepository,
+    discoveryTriggerCoordinator,
+  );
   const schedulerIntervalMs = options.discoverySchedulerIntervalMs;
   let discoverySchedulerWorker: { stop(): Promise<void> } | undefined;
   const discoveryTriggerCoordinatorModule = createDiscoveryTriggerCoordinatorModule(
@@ -3388,6 +3467,45 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         }),
       );
       return { projection: projection.result.payload, status: status.result.payload };
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/knowledge/discovery/schedules',
+    async (request) => {
+      const context = requestContext(request.headers);
+      if (
+        !context.security.accessScope.includes('owner') &&
+        !context.security.accessScope.includes('admin')
+      ) {
+        throw new ShotgunError({
+          code: 'PROJECT_ACCESS_DENIED',
+          safeMessage: 'Owner or Admin authorization is required to configure Discovery schedules.',
+          module: 'product-api',
+          operation: 'configure-discovery-schedule',
+        });
+      }
+      const configuration = requireDiscoveryScheduleConfigurationRequest(request.body);
+      try {
+        const schedule = await discoveryScheduler.registerSchedule({
+          // Project authority comes only from the authenticated context; the
+          // request body has no projectId or revision field.
+          projectId: context.projectId,
+          ...configuration,
+          now: new Date().toISOString(),
+        });
+        return { schedule };
+      } catch (error) {
+        if (error instanceof ShotgunError) throw error;
+        throw new ShotgunError({
+          code: 'INVALID_REQUEST',
+          safeMessage:
+            error instanceof Error ? error.message : 'Discovery schedule configuration is invalid.',
+          module: 'product-api',
+          operation: 'configure-discovery-schedule',
+          cause: error,
+        });
+      }
     },
   );
 

@@ -78,6 +78,7 @@ const messageFingerprint = (envelope: CommandEnvelope | EventEnvelope): string =
       schemaVersion: envelope.schemaVersion,
       projectId: envelope.projectId,
       actor: envelope.actor,
+      principalId: envelope.principalId,
       security: envelope.security,
       payload: envelope.payload,
       orderingKey: envelope.orderingKey,

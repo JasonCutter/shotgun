@@ -79,7 +79,7 @@ const localWallMatches = (date: Date, target: LocalParts, formatter: Intl.DateTi
   );
 };
 
-const wallTimeToUtc = (target: LocalParts, formatter: Intl.DateTimeFormat): Date => {
+const wallTimeToUtc = (target: LocalParts, formatter: Intl.DateTimeFormat): Date | undefined => {
   const wallMs = Date.UTC(target.year, target.month - 1, target.day, target.hour, target.minute);
   let candidateMs = wallMs;
   for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -100,7 +100,10 @@ const wallTimeToUtc = (target: LocalParts, formatter: Intl.DateTimeFormat): Date
     const candidate = candidateMs + offsetMinutes * 60_000;
     if (localWallMatches(new Date(candidate), target, formatter)) matches.push(candidate);
   }
-  if (!matches.length) return fail('Discovery schedule localTime does not exist in its timezone.');
+  // A spring-forward gap has no matching instant. The caller deliberately
+  // skips that calendar occurrence and searches for the next exact local
+  // wall-clock occurrence; it must never fabricate a shifted 03:00 run.
+  if (!matches.length) return undefined;
   return new Date(Math.min(...matches));
 };
 
@@ -125,36 +128,36 @@ export const nextDiscoveryWeeklyOccurrenceV1 = (input: {
   const current = localParts(new Date(afterMs), formatter);
   const currentDate = localDateAt(current);
   const daysUntil = (input.dayOfWeek - isoWeekday(currentDate) + 7) % 7;
-  const candidateDate = new Date(currentDate.getTime() + daysUntil * 86_400_000);
-  const target: LocalParts = {
-    year: candidateDate.getUTCFullYear(),
-    month: candidateDate.getUTCMonth() + 1,
-    day: candidateDate.getUTCDate(),
-    hour: time.hour,
-    minute: time.minute,
-  };
-  let occurrence = wallTimeToUtc(target, formatter);
-  if (occurrence.getTime() <= afterMs) {
-    const followingDate = new Date(candidateDate.getTime() + 7 * 86_400_000);
-    occurrence = wallTimeToUtc(
+  // Eight weekly candidates is a bounded search. V1 skips a nonexistent
+  // spring-forward local occurrence and continues to the next exact local
+  // wall-clock time; it never turns 02:30 into a fabricated 03:00 run.
+  for (let weekOffset = 0; weekOffset < 8; weekOffset += 1) {
+    const candidateDate = new Date(
+      currentDate.getTime() + (daysUntil + weekOffset * 7) * 86_400_000,
+    );
+    const occurrence = wallTimeToUtc(
       {
-        year: followingDate.getUTCFullYear(),
-        month: followingDate.getUTCMonth() + 1,
-        day: followingDate.getUTCDate(),
+        year: candidateDate.getUTCFullYear(),
+        month: candidateDate.getUTCMonth() + 1,
+        day: candidateDate.getUTCDate(),
         hour: time.hour,
         minute: time.minute,
       },
       formatter,
     );
+    if (occurrence === undefined || occurrence.getTime() <= afterMs) continue;
+    const date = localParts(occurrence, formatter);
+    const dateKey = `${date.year.toString().padStart(4, '0')}-${date.month
+      .toString()
+      .padStart(2, '0')}-${date.day.toString().padStart(2, '0')}`;
+    return {
+      at: occurrence.toISOString(),
+      key: `${dateKey}T${input.localTime}@${input.timezone}`,
+    };
   }
-  const date = localParts(occurrence, formatter);
-  const dateKey = `${date.year.toString().padStart(4, '0')}-${date.month
-    .toString()
-    .padStart(2, '0')}-${date.day.toString().padStart(2, '0')}`;
-  return {
-    at: occurrence.toISOString(),
-    key: `${dateKey}T${input.localTime}@${input.timezone}`,
-  };
+  return fail(
+    'Discovery schedule has no valid exact local occurrence in the bounded search window.',
+  );
 };
 
 const validateRegistration = (input: DiscoveryScheduleRegistrationV1): void => {

@@ -56,6 +56,7 @@ const manual = (
   correlationId: `correlation:${requestId}`,
   projectId,
   actor: { type: 'user', id: 'owner' },
+  principalId: 'owner-principal',
   security: { accessScope: ['owner'], sensitivity: 'private', dataClassification: 'test' },
   payload: { commandId: `command:${requestId}`, requestId, requestedScanMode: 'INCREMENTAL' },
   createdAt: '2026-08-30T00:00:00.000Z',
@@ -107,18 +108,19 @@ describe.runIf(databaseUrl)('AKP-4 WP3 PostgreSQL scheduler/manual authority pro
         });
       },
     };
+    let authorityVersion = 1;
     const authority = {
       resolve: async (requestedProjectId: string) => ({
         projectId: requestedProjectId,
         canonicalBase: {
           schemaVersion: '1.0.0' as const,
-          canonicalVersion: 1,
-          snapshotDigest: `sha256:${projectId}:canonical`,
+          canonicalVersion: authorityVersion,
+          snapshotDigest: `sha256:${projectId}:canonical:${authorityVersion}`,
         },
         requiredDiscoveryBase: {
           schemaVersion: '1.0.0' as const,
-          projectionRevision: 'semantic-corpus-source:v1:1',
-          projectionDigest: `sha256:${projectId}:source`,
+          projectionRevision: `semantic-corpus-source:v1:${authorityVersion}`,
+          projectionDigest: `sha256:${projectId}:source:${authorityVersion}`,
         },
       }),
     };
@@ -151,6 +153,55 @@ describe.runIf(databaseUrl)('AKP-4 WP3 PostgreSQL scheduler/manual authority pro
     expect((await schedules.findSchedule(projectId, due.scheduleId))?.nextOccurrenceKey).toBe(
       '2026-08-31T09:00@UTC',
     );
+
+    const originalJob = await runtimeA.findJobByTriggerIdentity({
+      projectId,
+      triggerClass: 'SCHEDULED_FULL_SCAN',
+      scheduleId: due.scheduleId,
+      scheduleRevision: due.scheduleRevision,
+      occurrenceKey: due.nextOccurrenceKey,
+    });
+    expect(originalJob).toBeDefined();
+    authorityVersion = 2;
+    const unavailablePolicyCoordinator = new DiscoveryTriggerCoordinator(
+      source,
+      readiness,
+      runtimeA,
+      {
+        resolve: async () => {
+          throw new Error('current policy must not be resolved');
+        },
+      },
+      { now: () => '2026-08-30T00:00:00.000Z' },
+      {
+        currentAuthority: {
+          resolve: async () => {
+            throw new Error('current authority must not be resolved');
+          },
+        },
+      },
+    );
+    const scheduledReplay = await unavailablePolicyCoordinator.coordinateScheduledFullScan(due);
+    const replayedJob = await runtimeA.findJob({ projectId, jobId: scheduledReplay.jobId });
+    expect(scheduledReplay).toMatchObject({
+      disposition: 'ALREADY_EXISTS',
+      jobId: originalJob!.jobId,
+      logicalJobIdentity: originalJob!.logicalIdentity,
+    });
+    expect(replayedJob).toEqual(originalJob);
+
+    const nextSchedule = await schedules.findSchedule(projectId, due.scheduleId);
+    expect(nextSchedule).toBeDefined();
+    const nextJob = await makeCoordinator(runtimeA).coordinateScheduledFullScan(nextSchedule!);
+    expect(nextJob.disposition).toBe('CREATED');
+    expect(nextJob.jobId).not.toBe(originalJob!.jobId);
+    expect(
+      await poolA!.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM discovery.jobs
+         WHERE project_id = $1 AND trigger_class = 'SCHEDULED_FULL_SCAN'`,
+        [projectId],
+      ),
+    ).toMatchObject({ rows: [{ count: '2' }] });
   });
 
   it('keeps the durable manual Job binding across mutable-base replay and concurrent delivery', async () => {
@@ -216,6 +267,7 @@ describe.runIf(databaseUrl)('AKP-4 WP3 PostgreSQL scheduler/manual authority pro
     ]);
     expect(new Set([first.jobId, duplicate.jobId])).toHaveLength(1);
     const original = await runtimeA.findJob({ projectId, jobId: first.jobId });
+    expect(original).toBeDefined();
     version = 2;
     const replay = await coordinator(runtimeA).coordinateManual({
       ...request,
@@ -223,8 +275,11 @@ describe.runIf(databaseUrl)('AKP-4 WP3 PostgreSQL scheduler/manual authority pro
     });
     const stored = await runtimeA.findJob({ projectId, jobId: first.jobId });
     expect(replay).toMatchObject({ disposition: 'ALREADY_EXISTS', jobId: first.jobId });
-    expect(stored?.canonicalBase).toEqual(original?.canonicalBase);
-    expect(stored?.requiredDiscoveryBase).toEqual(original?.requiredDiscoveryBase);
+    expect(replay.logicalJobIdentity).toEqual(original?.logicalIdentity);
+    expect(stored).toEqual(original);
+    expect(stored?.trigger).toMatchObject({
+      actor: { actorId: 'owner', principalId: 'owner-principal' },
+    });
     expect(
       await poolA!.query<{ count: string }>(
         `SELECT count(*)::text AS count FROM discovery.jobs WHERE project_id = $1`,

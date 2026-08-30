@@ -39,6 +39,8 @@ export type BaseEnvelope<TPayload = unknown> = {
   readonly causationId?: string;
   readonly projectId?: string;
   readonly actor?: Actor;
+  /** Server-bound principal identity when an actor can be distinct from its principal. */
+  readonly principalId?: string;
   readonly security?: SecurityContext;
   readonly provenance?: ProvenanceContext;
   readonly job?: JobContext;

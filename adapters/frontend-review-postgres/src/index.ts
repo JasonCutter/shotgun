@@ -16,6 +16,7 @@ import {
   type DiscoveryReviewResourceV1,
 } from '../../../packages/contracts/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
+import type { DiscoveryReviewResourceWriterPort } from '../../../modules/discovery-reentry/src/index.js';
 import type {
   ReviewRepositoryBoundaryPort,
   ReviewTransactionHandleV1,
@@ -774,7 +775,7 @@ export type DiscoveryReviewResourceWriteResultV1 = 'CREATED' | 'IDEMPOTENT';
  * resource JSON is retained as the immutable source snapshot while typed
  * columns enforce project, identity and eligibility filtering.
  */
-export class PostgresDiscoveryReviewResourceRepository {
+export class PostgresDiscoveryReviewResourceRepository implements DiscoveryReviewResourceWriterPort {
   constructor(private readonly pool: Pool) {}
 
   async save(
@@ -980,7 +981,14 @@ const toReviewDiscoveryCandidateSource = (
   effectiveProjectId: resource.effectiveProjectId,
   content: resource.content,
   evidence: resource.evidenceLineage,
-  impact: [],
+  impact:
+    resource.content.normalizedMaterial?.impact.map((entry) => ({
+      schemaVersion: entry.schemaVersion,
+      impactId: entry.impactId,
+      targetKind: entry.targetKind,
+      targetId: entry.targetId,
+      description: entry.description,
+    })) ?? [],
   lineage: resource,
   contentDigest: resource.contentDigest,
   createdAt: resource.createdAt,
@@ -1000,6 +1008,7 @@ const readEligibleDiscoveryResources = async (
      FROM (
        SELECT DISTINCT ON (review_resource_id)
               project_id, candidate_id, candidate_revision,
+              finding_id, finding_revision,
               resource, origin, lifecycle_state, review_eligibility
        FROM discovery.reentry_review_resources
        WHERE project_id = $1${identityClause}
@@ -1009,9 +1018,14 @@ const readEligibleDiscoveryResources = async (
        ON candidate.project_id = latest.project_id
       AND candidate.candidate_id = latest.candidate_id
       AND candidate.candidate_revision = latest.candidate_revision
+     JOIN discovery.finding_lifecycle_current finding_lifecycle
+       ON finding_lifecycle.project_id = latest.project_id
+      AND finding_lifecycle.finding_id = latest.finding_id
+      AND finding_lifecycle.finding_revision = latest.finding_revision
      WHERE latest.origin = 'DERIVED_DISCOVERY'
        AND latest.lifecycle_state = 'REVIEW_READY'
-       AND latest.review_eligibility = 'ELIGIBLE_AFTER_VALIDATION'`,
+       AND latest.review_eligibility = 'ELIGIBLE_AFTER_VALIDATION'
+       AND finding_lifecycle.lifecycle_state = 'REVIEW_READY'`,
     params,
   );
   return result.rows.flatMap((row) => {

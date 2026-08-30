@@ -162,6 +162,24 @@ const seedPrerequisites = async (database: Pool): Promise<void> => {
     ],
   );
   await database.query(
+    `INSERT INTO discovery.finding_lifecycle_current (
+       project_id, finding_id, finding_revision, lifecycle_state,
+       lifecycle_revision, updated_at
+     ) VALUES ($1, $2, 1, 'REVIEW_READY', 1, $3)`,
+    [projectId, resource.findingId, now],
+  );
+  await database.query(
+    `INSERT INTO discovery.finding_lifecycle_history (
+       project_id, finding_id, finding_revision, lifecycle_revision,
+       from_state, to_state, cause, reason_code,
+       canonical_base_version, canonical_snapshot_digest,
+       discovery_projection_revision, discovery_projection_digest, occurred_at
+     ) VALUES ($1, $2, 1, 1, NULL, 'REVIEW_READY', 'MATERIALIZATION',
+               'FINDING_MATERIALIZED', 8, 'sha256:wp3-db-canonical',
+               'projection-wp3-db-8', 'sha256:wp3-db-discovery', $3)`,
+    [projectId, resource.findingId, now],
+  );
+  await database.query(
     `INSERT INTO discovery.reentry_manifests (
        logical_identity_version, logical_identity_key, manifest_id, project_id,
        finding_id, finding_revision, finding_type, source_projection_digest,

@@ -36,10 +36,13 @@ import type {
   DiscoveryReentryLifecycleCurrentV1,
   DiscoveryReentryPersistencePort,
   DiscoveryReentryPersistenceResultV1,
+  DiscoveryReentryReviewReadyTransitionInputV1,
+  DiscoveryReentryReviewReadyTransitionResultV1,
   DiscoveryReentryStoredIntakeV1,
   DiscoveryReentryConsumptionDispositionInputV1,
   DiscoveryReentryConsumptionDispositionRecordV1,
 } from '../../../modules/discovery-reentry/src/index.js';
+import type { DiscoveryFindingLifecycleRepositoryPort } from '../../../modules/discovery-finding-lifecycle/src/index.js';
 import type { KnowledgeModelRepositoryPort } from '../../../modules/knowledge-model/src/index.js';
 import type { CompiledTruthRepositoryPort } from '../../../modules/compiled-truth/src/index.js';
 import { ProductKnowledgeResourceResolver } from '../../../modules/hybrid-retrieval/src/index.js';
@@ -343,6 +346,7 @@ const assertManifestCandidateMatch = (
 
 export type PostgresDiscoveryReentryRepositoryOptions = {
   readonly failpoint?: 'AFTER_MANIFEST';
+  readonly lifecycleRepository?: DiscoveryFindingLifecycleRepositoryPort;
 };
 
 export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersistencePort {
@@ -401,6 +405,41 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
       identityParams(identity),
     );
     return result.rows[0] ? mapLifecycle(result.rows[0]) : undefined;
+  }
+
+  public async transitionFindingToReviewReady(
+    input: DiscoveryReentryReviewReadyTransitionInputV1,
+  ): Promise<DiscoveryReentryReviewReadyTransitionResultV1> {
+    const lifecycleRepository = this.options.lifecycleRepository;
+    if (lifecycleRepository === undefined) {
+      throw new TypeError(
+        'Discovery Finding lifecycle authority is required for Review materialization.',
+      );
+    }
+    const current = await lifecycleRepository.findLifecycle(input);
+    if (current === undefined) throw new TypeError('Discovery Finding lifecycle was not found.');
+    if (current.lifecycleState === 'REVIEW_READY') return { status: 'IDEMPOTENT', current };
+    const transition = await lifecycleRepository.transitionLifecycle({
+      projectId: input.projectId,
+      findingId: input.findingId,
+      findingRevision: input.findingRevision,
+      expectedLifecycleRevision: input.expectedLifecycleRevision,
+      targetState: 'REVIEW_READY',
+      cause: 'GOVERNED_WORKFLOW',
+      reasonCode: 'REVIEW_READY',
+      occurredAt: input.occurredAt,
+      context: {
+        canonicalBase: input.canonicalBase,
+        discoveryBase: input.discoveryBase,
+      },
+    });
+    if (transition.status === 'APPLIED') {
+      return { status: 'APPLIED', current: transition.lifecycle };
+    }
+    if (transition.current.lifecycleState === 'REVIEW_READY') {
+      return { status: 'IDEMPOTENT', current: transition.current };
+    }
+    return { status: 'CONFLICT', current: transition.current };
   }
 
   public async findConsumptionDisposition(
@@ -496,6 +535,48 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
     });
     if (!lifecycle) throw new TypeError('Durable re-entry manifest has no Finding lifecycle.');
     return { logicalIdentityKey: manifestRow.logical_identity_key, manifest, candidate, lifecycle };
+  }
+
+  public async listPendingReviewMaterialization(
+    limit: number,
+  ): Promise<readonly DiscoveryReentryStoredIntakeV1[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new TypeError('limit must be between 1 and 100');
+    }
+    const result = await this.pool.query<{ readonly logical_identity_key: string }>(
+      `SELECT manifest.logical_identity_key
+       FROM discovery.reentry_manifests manifest
+       JOIN discovery.reentry_candidates candidate
+         ON candidate.project_id = manifest.project_id
+        AND candidate.manifest_id = manifest.manifest_id
+       JOIN discovery.finding_lifecycle_current lifecycle
+         ON lifecycle.project_id = candidate.project_id
+        AND lifecycle.finding_id = candidate.finding_id
+        AND lifecycle.finding_revision = candidate.finding_revision
+       WHERE manifest.requested_reentry_purpose = 'DERIVED_PROVENANCE_VALIDATION'
+         AND (
+           lifecycle.lifecycle_state = 'VALIDATING'
+           OR (
+             lifecycle.lifecycle_state = 'REVIEW_READY'
+             AND NOT EXISTS (
+               SELECT 1
+               FROM discovery.reentry_review_resources resource
+               WHERE resource.project_id = candidate.project_id
+                 AND resource.candidate_id = candidate.candidate_id
+                 AND resource.candidate_revision = candidate.candidate_revision
+             )
+           )
+         )
+       ORDER BY manifest.created_at, manifest.logical_identity_key
+       LIMIT $1`,
+      [limit],
+    );
+    const intakes: DiscoveryReentryStoredIntakeV1[] = [];
+    for (const row of result.rows) {
+      const intake = await this.findExisting(row.logical_identity_key);
+      if (intake !== undefined) intakes.push(intake);
+    }
+    return intakes;
   }
 
   public async persistIntake(input: {

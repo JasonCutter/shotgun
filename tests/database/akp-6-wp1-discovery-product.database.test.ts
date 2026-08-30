@@ -76,15 +76,25 @@ describe.runIf(databaseUrl)('AKP-6 WP1 Discovery Product PostgreSQL authority', 
   });
 
   afterAll(async () => {
-    await pool?.query('DELETE FROM discovery.finding_lifecycle_history WHERE project_id = $1', [
-      projectId,
-    ]);
-    await pool?.query('DELETE FROM discovery.finding_lifecycle_current WHERE project_id = $1', [
-      projectId,
-    ]);
-    await pool?.query('DELETE FROM discovery.findings WHERE project_id = $1', [projectId]);
-    await pool?.query('DELETE FROM project_admin.projects WHERE id = $1', [projectId]);
-    await pool?.end();
+    if (!pool) return;
+    const client = await pool.connect();
+    try {
+      // Teardown only: the lifecycle history trigger is intentionally
+      // immutable during normal runtime and must not be bypassed by Product.
+      await client.query('SET session_replication_role = replica');
+      await client.query('DELETE FROM discovery.finding_lifecycle_history WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.finding_lifecycle_current WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.findings WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM project_admin.projects WHERE id = $1', [projectId]);
+    } finally {
+      await client.query('SET session_replication_role = origin');
+      client.release();
+      await pool.end();
+    }
   });
 
   it('reads project-bound findings and authoritative lifecycle without fabricating evidence', async () => {

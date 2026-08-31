@@ -22,6 +22,7 @@ import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
+import { useProductLocalization } from '../localization/product-localization.js';
 import {
   knowledgePageListQueryOptions,
   knowledgeCanManuallyRetry,
@@ -56,6 +57,7 @@ const setOptionalParameter = (parameters: URLSearchParams, key: string, value: s
 export const KnowledgeWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
+  const { t } = useProductLocalization();
   const [searchParameters, setSearchParameters] = useSearchParams();
   const parameterString = searchParameters.toString();
   const urlQuery = searchParameters.get('q') ?? '';
@@ -175,7 +177,10 @@ export const KnowledgeWorkspace = () => {
           <div>
             <h2 id="knowledge-search-heading">Search and filter</h2>
           </div>
-          <Link to="/knowledge/compare">Open typed compare</Link>
+          <div className="knowledge-heading-actions">
+            <Link to="/knowledge/compare">Open typed compare</Link>
+            <Link to="/knowledge/discoveries">{t('discovery.open_inbox')}</Link>
+          </div>
         </div>
         <form className="knowledge-search-form" role="search" onSubmit={onSearch}>
           <label htmlFor="knowledge-search-query">Search Knowledge</label>

@@ -29,6 +29,7 @@ import {
   createInitialReviewWorkspaceState,
   reduceReviewWorkspaceState,
 } from '../knowledge/review-workspace-state.js';
+import { reviewContextIdForResource } from '../knowledge/review-route-identity.js';
 
 /**
  * FE-P4-S1 Review Center Workspace (`/review`, guarded).
@@ -107,8 +108,23 @@ export const ReviewWorkspace = () => {
   > | null>(null);
 
   const scope = reviewScopeFromShellOrNull(shell);
-  const deepLinkContext = searchParameters.get('context');
-  const deepLinkRevision = searchParameters.get('revision');
+  const explicitDeepLinkContext = searchParameters.get('context');
+  const explicitDeepLinkRevision = searchParameters.get('revision');
+  const deepLinkReviewResourceId = searchParameters.get('reviewResourceId')?.trim() || null;
+  const deepLinkContext =
+    explicitDeepLinkContext ??
+    (deepLinkReviewResourceId
+      ? reviewContextIdForResource('DISCOVERY_CANDIDATE', deepLinkReviewResourceId)
+      : null);
+  const parsedExplicitDeepLinkRevision = explicitDeepLinkRevision
+    ? Number(explicitDeepLinkRevision)
+    : undefined;
+  const validExplicitDeepLinkRevision =
+    parsedExplicitDeepLinkRevision !== undefined &&
+    Number.isSafeInteger(parsedExplicitDeepLinkRevision) &&
+    parsedExplicitDeepLinkRevision > 0
+      ? parsedExplicitDeepLinkRevision
+      : undefined;
 
   const queueRequest = useMemo(
     () => ({
@@ -121,6 +137,13 @@ export const ReviewWorkspace = () => {
   );
 
   const queue = useQuery(reviewQueueQueryOptions(reviewClient, scope, queueRequest));
+  const queuedDeepLinkRevision =
+    deepLinkReviewResourceId && deepLinkContext && queue.data
+      ? queue.data.items.find((item) => item.reviewContextId === deepLinkContext)?.contextRevision
+      : undefined;
+  const deepLinkRevision =
+    validExplicitDeepLinkRevision ??
+    (deepLinkReviewResourceId ? queuedDeepLinkRevision : undefined);
 
   const announce = (message: string) => {
     if (liveRegionRef.current) liveRegionRef.current.textContent = message;
@@ -129,13 +152,12 @@ export const ReviewWorkspace = () => {
   // Deep-link restore (AC-17): select the context carried in the URL.
   useEffect(() => {
     if (!deepLinkContext || !deepLinkRevision) return;
-    const revision = Number(deepLinkRevision);
-    if (!Number.isSafeInteger(revision) || revision < 1) return;
-    if (state.selectedContextId === deepLinkContext && state.contextRevision === revision) return;
+    if (state.selectedContextId === deepLinkContext && state.contextRevision === deepLinkRevision)
+      return;
     dispatch({
       type: 'SELECT_CONTEXT',
       reviewContextId: deepLinkContext,
-      contextRevision: revision,
+      contextRevision: deepLinkRevision,
     });
     dispatch({ type: 'RECOVERY_STARTED' });
   }, [deepLinkContext, deepLinkRevision, state.selectedContextId, state.contextRevision]);

@@ -7,6 +7,8 @@ import type {
   KnowledgePageListRequest,
   KnowledgeSearchRequest,
   KnowledgeWorkspaceRequest,
+  DiscoveryFindingLifecycleState,
+  DiscoveryFindingType,
 } from '@shotgun/api-client';
 
 export const productSessionQueryKey = ['product', 'session'] as const;
@@ -207,6 +209,40 @@ export const knowledgeCompareQueryKey = (
 
 export const knowledgeDisabledQueryKey = (operation: string) =>
   ['knowledge', 'disabled', operation] as const;
+
+export type DiscoveryQueryScope = KnowledgeQueryScope;
+
+const discoveryScopeKey = (scope: DiscoveryQueryScope) =>
+  [
+    'project',
+    scope.principalId,
+    scope.sessionId,
+    scope.activeProjectId,
+    scope.resourceProjectId,
+    scope.accessRevision,
+    scope.policyContextRevision,
+    scope.sensitivity,
+    'knowledge',
+    'discoveries',
+  ] as const;
+
+export const discoveryFindingsQueryKey = (
+  scope: DiscoveryQueryScope,
+  request: {
+    readonly limit: number;
+    readonly findingTypes?: readonly DiscoveryFindingType[];
+    readonly lifecycleStates?: readonly DiscoveryFindingLifecycleState[];
+  },
+) => [...discoveryScopeKey(scope), 'inbox', request] as const;
+
+export const discoveryFindingDetailQueryKey = (
+  scope: DiscoveryQueryScope,
+  findingId: string,
+  findingRevision: number,
+) => [...discoveryScopeKey(scope), 'detail', findingId, findingRevision] as const;
+
+export const discoveryDisabledQueryKey = (operation: string) =>
+  ['knowledge', 'discoveries', 'disabled', operation] as const;
 
 export type GraphQueryScope = {
   readonly principalId: string;

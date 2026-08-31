@@ -49,3 +49,4 @@ export * from './discovery-reentry.js';
 export * from './discovery-freshness.js';
 export * from './discovery-schedule.js';
 export * from './discovery-trigger-coordination.js';
+export * from './discovery-feedback.js';

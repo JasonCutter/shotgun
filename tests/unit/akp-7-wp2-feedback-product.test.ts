@@ -172,6 +172,30 @@ describe('AKP-7 WP2 Discovery feedback Product coordinator', () => {
     ).resolves.toMatchObject({ outcomeState: 'REJECTED' });
   });
 
+  it('rejects deterministic materialization failure after acceptance without stranding the command', async () => {
+    const repository = new InMemoryDiscoveryFeedbackRepository();
+    const coordinator = new DiscoveryFeedbackProductCoordinator(
+      repository,
+      () => '2026-08-31T00:00:00.000Z',
+    );
+    const gateway = new InMemoryFrontendCommandGateway();
+    const decoded = request('SUPPRESS_EXACT', 'UTILITY', {
+      clientRequestId: 'materialization-client',
+      idempotencyKey: 'materialization-key',
+    });
+    const invalidFinding = { ...finding, fingerprintVersion: '' };
+
+    await expect(
+      coordinator.submit({ scope, request: decoded, finding: invalidFinding, gateway }),
+    ).rejects.toMatchObject({ code: 'INTERNAL_UNCLASSIFIED' });
+    await expect(
+      gateway.findByClientRequestId(scope.principalId, decoded.clientRequestId),
+    ).resolves.toMatchObject({ outcomeState: 'REJECTED' });
+    const state = await coordinator.readState(scope, finding);
+    expect(state.feedbackHistory).toEqual([]);
+    expect(state.suppressionHistory).toEqual([]);
+  });
+
   it('marks completion uncertainty as OUTCOME_UNKNOWN and never replays it as a new command', async () => {
     class UnknownGateway extends InMemoryFrontendCommandGateway {
       override async completeInTransaction(): Promise<never> {

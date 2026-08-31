@@ -215,6 +215,7 @@ export class DiscoveryFeedbackProductCoordinator {
     ) {
       throw commandFailure('NOT_FOUND', 'The requested Discovery Finding was not found.');
     }
+    const suppressionKind = suppressionKindFor(request);
     const acceptedAt = this.now();
     const commandRequest: AnyFrontendCommandRequest = {
       envelopeVersion: '1.0.0',
@@ -267,7 +268,7 @@ export class DiscoveryFeedbackProductCoordinator {
         return {
           outcome: accepted.outcome,
           feedbackId: `feedback:${accepted.outcome.commandId}`,
-          ...(suppressionKindFor(request)
+          ...(suppressionKind
             ? { suppressionId: `suppression:${accepted.outcome.commandId}` }
             : {}),
         };
@@ -287,73 +288,73 @@ export class DiscoveryFeedbackProductCoordinator {
     }
 
     const feedbackId = `feedback:${accepted.outcome.commandId}`;
-    const suppressionKind = suppressionKindFor(request);
     const suppressionId = suppressionKind ? `suppression:${accepted.outcome.commandId}` : undefined;
-    const event = decodeDiscoveryFeedbackEventV1({
-      schemaVersion: '1.0.0',
-      feedbackId,
-      projectId: scope.projectId,
-      findingId: finding.findingId,
-      findingRevision: finding.findingRevision,
-      actor: { type: 'user', id: scope.principalId },
-      principalId: scope.principalId,
-      feedbackClass: request.feedbackClass,
-      feedbackKind: request.feedbackKind,
-      ...(request.reason === undefined ? {} : { reason: request.reason }),
-      scope: request.scope ?? 'FINDING',
-      createdAt: acceptedAt,
-    });
-    const directive =
-      suppressionId === undefined
-        ? undefined
-        : decodeDiscoverySuppressionDirectiveV1({
-            schemaVersion: '1.0.0',
-            suppressionId,
-            projectId: scope.projectId,
-            actor: { type: 'user', id: scope.principalId },
-            principalId: scope.principalId,
-            sourceFindingId: finding.findingId,
-            sourceFindingRevision: finding.findingRevision,
-            suppressionKind,
-            scope: request.scope ?? 'FINDING',
-            ...(suppressionKind === 'SNOOZE'
-              ? { matcherKind: 'NONE', expiresAt: request.snoozeUntil }
-              : suppressionKind === 'SUPPRESS_EXACT'
-                ? {
-                    matcherKind: 'EXACT_FINGERPRINT',
-                    matcherVersion: finding.fingerprintVersion,
-                    fingerprint: finding.fingerprint,
-                    fingerprintVersion: finding.fingerprintVersion,
-                  }
-                : {
-                    matcherKind: 'SEMANTIC_FAMILY',
-                    matcherVersion: 'semantic-family:v1',
-                  }),
-            createdAt: acceptedAt,
-          });
-    const producedResources: ProducedResourceRef[] = [
-      { resourceKind: 'DISCOVERY_FEEDBACK_EVENT', resourceId: feedbackId },
-      ...(suppressionId === undefined
-        ? []
-        : [{ resourceKind: 'DISCOVERY_SUPPRESSION_DIRECTIVE', resourceId: suppressionId }]),
-    ];
-
-    const execute = async (handle: DiscoveryFeedbackTransactionHandleV1) => {
-      const locked = await gateway.lockAcceptedForExecution(handle.raw, accepted.outcome.commandId);
-      if (locked.outcomeState === 'COMPLETED') return locked;
-      if (locked.outcomeState !== 'ACCEPTED') {
-        throw commandFailure('CONFLICT', 'The Discovery feedback command is not executable.');
-      }
-      await handle.repository.appendFeedback(event);
-      if (directive !== undefined) await handle.repository.appendSuppression(directive);
-      return gateway.completeInTransaction(handle.raw, {
-        commandId: accepted.outcome.commandId,
-        producedResources,
-        completedAt: this.now(),
-      });
-    };
-
     try {
+      const event = decodeDiscoveryFeedbackEventV1({
+        schemaVersion: '1.0.0',
+        feedbackId,
+        projectId: scope.projectId,
+        findingId: finding.findingId,
+        findingRevision: finding.findingRevision,
+        actor: { type: 'user', id: scope.principalId },
+        principalId: scope.principalId,
+        feedbackClass: request.feedbackClass,
+        feedbackKind: request.feedbackKind,
+        ...(request.reason === undefined ? {} : { reason: request.reason }),
+        scope: request.scope ?? 'FINDING',
+        createdAt: acceptedAt,
+      });
+      const directive =
+        suppressionId === undefined
+          ? undefined
+          : decodeDiscoverySuppressionDirectiveV1({
+              schemaVersion: '1.0.0',
+              suppressionId,
+              projectId: scope.projectId,
+              actor: { type: 'user', id: scope.principalId },
+              principalId: scope.principalId,
+              sourceFindingId: finding.findingId,
+              sourceFindingRevision: finding.findingRevision,
+              suppressionKind,
+              scope: request.scope ?? 'FINDING',
+              ...(suppressionKind === 'SNOOZE'
+                ? { matcherKind: 'NONE', expiresAt: request.snoozeUntil }
+                : suppressionKind === 'SUPPRESS_EXACT'
+                  ? {
+                      matcherKind: 'EXACT_FINGERPRINT',
+                      matcherVersion: finding.fingerprintVersion,
+                      fingerprint: finding.fingerprint,
+                      fingerprintVersion: finding.fingerprintVersion,
+                    }
+                  : {
+                      matcherKind: 'SEMANTIC_FAMILY',
+                      matcherVersion: 'semantic-family:v1',
+                    }),
+              createdAt: acceptedAt,
+            });
+      const producedResources: ProducedResourceRef[] = [
+        { resourceKind: 'DISCOVERY_FEEDBACK_EVENT', resourceId: feedbackId },
+        ...(suppressionId === undefined
+          ? []
+          : [{ resourceKind: 'DISCOVERY_SUPPRESSION_DIRECTIVE', resourceId: suppressionId }]),
+      ];
+      const execute = async (handle: DiscoveryFeedbackTransactionHandleV1) => {
+        const locked = await gateway.lockAcceptedForExecution(
+          handle.raw,
+          accepted.outcome.commandId,
+        );
+        if (locked.outcomeState === 'COMPLETED') return locked;
+        if (locked.outcomeState !== 'ACCEPTED') {
+          throw commandFailure('CONFLICT', 'The Discovery feedback command is not executable.');
+        }
+        await handle.repository.appendFeedback(event);
+        if (directive !== undefined) await handle.repository.appendSuppression(directive);
+        return gateway.completeInTransaction(handle.raw, {
+          commandId: accepted.outcome.commandId,
+          producedResources,
+          completedAt: this.now(),
+        });
+      };
       const outcome = this.repository.transaction
         ? await this.repository.transaction(execute)
         : await execute({ repository: this.repository, raw: undefined });

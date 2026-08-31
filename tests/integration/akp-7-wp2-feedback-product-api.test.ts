@@ -229,6 +229,26 @@ describe('AKP-7 WP2 Discovery feedback Product API', () => {
     ).toEqual([]);
   });
 
+  it('rejects an oversized reason before Command Gateway acceptance', async () => {
+    const fixture = await createFixture();
+    const response = await post(fixture, payload('USEFUL', { reason: 'r'.repeat(501) }));
+    expect(response.statusCode).toBe(400);
+    expect(
+      await fixture.gateway.findByClientRequestId(fixture.principalId, 'wp2-client-USEFUL'),
+    ).toBeNull();
+    expect(
+      await fixture.repository.listFeedbackForFinding({ projectId, findingId, findingRevision: 2 }),
+    ).toEqual([]);
+    expect(
+      await fixture.repository.listSuppressionHistoryForFinding({
+        projectId,
+        findingId,
+        findingRevision: 2,
+        principalId: fixture.principalId,
+      }),
+    ).toEqual([]);
+  });
+
   it('preserves non-disclosure for a cross-project Finding response', async () => {
     const fixture = await createFixture(finding({ projectId: 'other-project' }));
     const response = await post(fixture, payload('USEFUL'));

@@ -58,6 +58,16 @@ describe('AKP-7 WP2 Discovery feedback Product contract', () => {
     ).toThrow(/future/);
   });
 
+  it('keeps the Product reason bound identical to the durable feedback contract', () => {
+    const accepted = decodeDiscoveryFeedbackProductCommandRequestV1(
+      base({ reason: 'r'.repeat(500) }),
+    );
+    expect(accepted.reason).toHaveLength(500);
+    expect(() =>
+      decodeDiscoveryFeedbackProductCommandRequestV1(base({ reason: 'r'.repeat(501) })),
+    ).toThrow(/at most 500 characters/);
+  });
+
   it('keeps the state request principal/project-free and strict', () => {
     expect(
       decodeDiscoveryFeedbackProductStateRequestV1({

@@ -262,8 +262,14 @@ const text = (value: unknown, path: string): string => {
   return value;
 };
 
-const optionalText = (value: unknown, path: string): string | undefined =>
-  value === undefined ? undefined : text(value, path);
+const optionalText = (value: unknown, path: string, maxLength?: number): string | undefined => {
+  if (value === undefined) return undefined;
+  const result = text(value, path);
+  if (maxLength !== undefined && result.trim().length > maxLength) {
+    return fail(path, `must be at most ${maxLength} characters`);
+  }
+  return result;
+};
 
 const integer = (value: unknown, path: string): number => {
   if (typeof value !== 'number' || !Number.isSafeInteger(value))
@@ -660,7 +666,7 @@ export const decodeDiscoveryFeedbackProductCommandRequestV1 = (
     object.scope === undefined
       ? undefined
       : enumValue(object.scope, DISCOVERY_FEEDBACK_SCOPE_KINDS, `${path}.scope`);
-  const reason = optionalText(object.reason, `${path}.reason`);
+  const reason = optionalText(object.reason, `${path}.reason`, 500);
   return {
     schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
     clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),

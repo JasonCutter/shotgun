@@ -613,10 +613,16 @@ export class FrontendDiscoveryProductReadCoordinator {
       graphEligibleFinding(finding) &&
       authorizedResources.length > 0 &&
       authorizedResources.every((resource) => resource.graphEligible);
-    const canReadGraph =
-      eligibleForGraph &&
-      (this.graphReadiness === undefined ||
-        (await this.graphReadiness.canReadGraph(finding.projectId)));
+    let canReadGraph = false;
+    if (eligibleForGraph && this.graphReadiness !== undefined) {
+      try {
+        canReadGraph = await this.graphReadiness.canReadGraph(finding.projectId);
+      } catch {
+        // A Product capability is an authority statement; an unavailable
+        // readiness authority cannot grant Graph navigation.
+        canReadGraph = false;
+      }
+    }
     const capabilities: DiscoveryProductCapabilitiesV1 = {
       schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
       canOpenReview: context.reviewBinding !== undefined,

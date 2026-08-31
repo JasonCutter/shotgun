@@ -531,7 +531,7 @@ export const startShotgunApplication = async (
     const compiledTruthRepository = new PostgresCompiledTruthRepository(pool);
     const graphReadAdapter = new PostgresCompiledTruthGraphReadAdapter(
       compiledTruthRepository,
-      canonicalKnowledgeRepository,
+      semanticCorpusSourceSnapshotReader,
     );
     const knowledgeModelRepository = new PostgresKnowledgeModelRepository(pool);
     const discoveryProductResourceResolver = new ProductKnowledgeResourceResolver(

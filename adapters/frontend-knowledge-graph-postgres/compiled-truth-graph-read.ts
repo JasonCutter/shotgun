@@ -9,8 +9,11 @@ import type {
   GraphSnapshotResultV1,
 } from '../../packages/contracts/src/index.js';
 import { hasSensitivityClearance } from '../../packages/authentication/src/index.js';
-import type { CanonicalKnowledgeRepositoryPort } from '../../modules/canonical-knowledge/src/index.js';
-import type { CompiledTruthRepositoryPort } from '../../modules/compiled-truth/src/index.js';
+import {
+  assessCompiledTruthProjectionReadiness,
+  type CompiledTruthRepositoryPort,
+} from '../../modules/compiled-truth/src/index.js';
+import type { SemanticCorpusSourceSnapshotReaderPort } from '../../packages/contracts/src/index.js';
 import type {
   GraphImpactPort,
   GraphReadPort,
@@ -201,23 +204,50 @@ export class PostgresCompiledTruthGraphReadAdapter implements GraphReadPort, Gra
 
   public constructor(
     private readonly compiledTruth: CompiledTruthRepositoryPort,
-    private readonly canonical?: Pick<CanonicalKnowledgeRepositoryPort, 'getSnapshot'>,
+    private readonly sourceWatermark: Pick<SemanticCorpusSourceSnapshotReaderPort, 'readWatermark'>,
     private readonly maxCachedScopes = 32,
   ) {}
 
   private async projectionState(projectId: string): Promise<GraphProjectionState> {
-    const projection = await this.compiledTruth.findProjection(projectId);
-    const degraded = await this.compiledTruth.degradedState(projectId);
-    const projectionRevision = graphRevisionFor(projection, projectId);
-    if (!projection || projection.projectId !== projectId || degraded) {
-      return { projectionRevision, health: 'UNAVAILABLE', projection };
+    try {
+      const source = await this.sourceWatermark.readWatermark(projectId);
+      if (source.projectId !== projectId) {
+        return {
+          projectionRevision: graphRevisionFor(undefined, projectId),
+          health: 'UNAVAILABLE',
+        };
+      }
+      const readiness = await assessCompiledTruthProjectionReadiness(
+        this.compiledTruth,
+        projectId,
+        source,
+      );
+      const projection = readiness.projection;
+      if (projection !== undefined && projection.projectId !== projectId) {
+        return {
+          projectionRevision: graphRevisionFor(undefined, projectId),
+          health: 'UNAVAILABLE',
+        };
+      }
+      const projectionRevision = graphRevisionFor(projection, projectId);
+      return {
+        projectionRevision,
+        health:
+          readiness.status.status === 'READY'
+            ? 'COMPLETE'
+            : readiness.status.status === 'STALE'
+              ? 'STALE'
+              : 'UNAVAILABLE',
+        ...(projection === undefined ? {} : { projection }),
+      };
+    } catch {
+      // Readiness is a server authority. If the source watermark cannot be
+      // read, the Graph must not fall back to a weaker Canonical-only check.
+      return {
+        projectionRevision: graphRevisionFor(undefined, projectId),
+        health: 'UNAVAILABLE',
+      };
     }
-    const canonical = this.canonical ? await this.canonical.getSnapshot(projectId) : undefined;
-    return {
-      projectionRevision,
-      health: canonical && canonical.version !== projection.canonicalVersion ? 'STALE' : 'COMPLETE',
-      projection,
-    };
   }
 
   public async canReadGraph(projectId: string): Promise<boolean> {
@@ -234,7 +264,7 @@ export class PostgresCompiledTruthGraphReadAdapter implements GraphReadPort, Gra
       scope.accessRevision,
       scope.policyContextRevision,
       accessScope,
-      scope.discoveryContext?.activeProject.sensitivityClearance ?? 'restricted',
+      scope.discoveryContext?.activeProject.sensitivityClearance ?? 'public',
       state.projectionRevision,
       state.projection?.logicalDigest ?? state.projection?.sourceSnapshotDigest ?? 'none',
       state.health,

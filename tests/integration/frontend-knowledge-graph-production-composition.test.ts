@@ -167,15 +167,25 @@ const build = (
   currentProjection = projection(),
   currentFinding = finding(),
   canonicalVersion = 1,
+  currentSourceDigest: string | (() => string) = currentProjection.sourceSnapshotDigest,
 ) => {
   const repository = {
     findProjection: async () => currentProjection,
     degradedState: async () => undefined,
   } as unknown as CompiledTruthRepositoryPort;
-  const canonical = {
-    getSnapshot: async () => ({ version: canonicalVersion }),
-  } as never;
-  const readPort = new PostgresCompiledTruthGraphReadAdapter(repository, canonical);
+  const sourceWatermark = {
+    readWatermark: async () => ({
+      projectId: 'project-1',
+      canonicalVersion,
+      canonicalSnapshotDigest:
+        'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+      approvedKnowledgeDigest:
+        'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+      sourceSnapshotDigest:
+        typeof currentSourceDigest === 'function' ? currentSourceDigest() : currentSourceDigest,
+    }),
+  };
+  const readPort = new PostgresCompiledTruthGraphReadAdapter(repository, sourceWatermark);
   const overlayPort = createGraphDiscoveryOverlayPort({
     readFinding: async () => currentFinding,
   });
@@ -304,6 +314,59 @@ describe('AKP-6 WP3 production Graph composition', () => {
       schemaVersion: '1.0.0',
       baseSnapshotId: base.identity.snapshotId,
       projectionRevision: base.identity.projectionRevision,
+      overlayKind: 'DISCOVERY',
+      findingId: 'finding-1',
+      findingRevision: 4,
+    });
+    expect(overlay.health).toBe('UNAVAILABLE');
+  });
+
+  it('reports approved Knowledge changes as stale without advancing Canonical', async () => {
+    const currentProjection = projection();
+    let currentSourceDigest = currentProjection.sourceSnapshotDigest;
+    const { domain, readPort } = build(
+      currentProjection,
+      finding(),
+      currentProjection.canonicalVersion,
+      () => currentSourceDigest,
+    );
+
+    expect(await readPort.canReadGraph('project-1')).toBe(true);
+    currentSourceDigest = 'sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+    expect(await readPort.canReadGraph('project-1')).toBe(false);
+
+    const stale = await domain.snapshot(scope, {
+      schemaVersion: '1.0.0',
+      viewKind: 'KNOWLEDGE_SEMANTIC',
+      overlayKinds: [],
+    });
+    expect(stale.health).toBe('STALE');
+    const overlay = await domain.discoveryOverlay(scope, {
+      schemaVersion: '1.0.0',
+      baseSnapshotId: stale.identity.snapshotId,
+      projectionRevision: stale.identity.projectionRevision,
+      overlayKind: 'DISCOVERY',
+      findingId: 'finding-1',
+      findingRevision: 4,
+    });
+    expect(overlay.health).toBe('UNAVAILABLE');
+  });
+
+  it('reports an old Compiled Truth projector as stale even when source and Canonical match', async () => {
+    const currentProjection = { ...projection(), projectorVersion: '0.9.0' };
+    const { domain, readPort } = build(currentProjection);
+
+    expect(await readPort.canReadGraph('project-1')).toBe(false);
+    const stale = await domain.snapshot(scope, {
+      schemaVersion: '1.0.0',
+      viewKind: 'KNOWLEDGE_SEMANTIC',
+      overlayKinds: [],
+    });
+    expect(stale.health).toBe('STALE');
+    const overlay = await domain.discoveryOverlay(scope, {
+      schemaVersion: '1.0.0',
+      baseSnapshotId: stale.identity.snapshotId,
+      projectionRevision: stale.identity.projectionRevision,
       overlayKind: 'DISCOVERY',
       findingId: 'finding-1',
       findingRevision: 4,

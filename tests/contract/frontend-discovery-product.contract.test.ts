@@ -333,6 +333,64 @@ describe('AKP-6 WP1 Discovery Product coordinator', () => {
     expect(result.finding.capabilities.canOpenGraph).toBe(false);
   });
 
+  it('requires an explicit Graph readiness authority before granting Graph capability', async () => {
+    const resource: DiscoveryResourceRefV1 = {
+      schemaVersion: '1.0.0',
+      resourceKind: 'CANONICAL_CLAIM',
+      resourceId: 'claim-1',
+      projectId: 'project-1',
+      resourceState: 'CURRENT',
+    };
+    const relation = finding({
+      findingId: 'relation-readiness',
+      findingType: 'RELATION_HYPOTHESIS',
+      relatedResourceRefs: [resource, resource],
+      payload: {
+        schemaVersion: '1.0.0',
+        payloadType: 'RELATION_HYPOTHESIS',
+        sourceEndpoint: resource,
+        targetEndpoint: resource,
+        proposedRelationType: 'RELATED_TO',
+        direction: 'DIRECTED',
+      },
+    });
+    const source = new FakeDiscoverySource(
+      [relation],
+      {
+        projectId: 'project-1',
+        findingId: 'relation-readiness',
+        findingRevision: 1,
+        lifecycleState: 'NEW',
+        lifecycleRevision: 1,
+        updatedAt: '2026-08-31T00:00:00.000Z',
+      },
+      undefined,
+    );
+    const request = {
+      ...scope,
+      request: {
+        schemaVersion: '1.0.0' as const,
+        findingId: 'relation-readiness',
+        findingRevision: 1,
+      },
+    };
+
+    const withoutAuthority = await new FrontendDiscoveryProductReadCoordinator(source).readFinding(
+      request,
+    );
+    expect(withoutAuthority.finding.capabilities.canOpenGraph).toBe(false);
+
+    const ready = await new FrontendDiscoveryProductReadCoordinator(source, {
+      graphReadiness: { canReadGraph: async () => true },
+    }).readFinding(request);
+    expect(ready.finding.capabilities.canOpenGraph).toBe(true);
+
+    const notReady = await new FrontendDiscoveryProductReadCoordinator(source, {
+      graphReadiness: { canReadGraph: async () => false },
+    }).readFinding(request);
+    expect(notReady.finding.capabilities.canOpenGraph).toBe(false);
+  });
+
   it('fails closed for a foreign-project finding and does not fabricate evidence', async () => {
     const foreign = finding({
       findingId: 'foreign',

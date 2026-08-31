@@ -14,6 +14,7 @@ import type {
   CommandEnvelope,
   QueryEnvelope,
   SemanticCorpusSourceSnapshotReaderPort,
+  SemanticCorpusSourceWatermark,
 } from '../../../packages/contracts/src/index.js';
 import {
   approvedKnowledgeDigest,
@@ -281,21 +282,38 @@ const visibleProjection = (
   };
 };
 
-const statusFor = async (
+export type CompiledTruthReadinessSource = Pick<
+  SemanticCorpusSourceWatermark,
+  'canonicalVersion' | 'sourceSnapshotDigest'
+>;
+
+export type CompiledTruthProjectionReadiness = {
+  readonly status: CompiledTruthProjectionStatus;
+  readonly projection?: CompiledTruthProjection;
+};
+
+/**
+ * The single readiness decision used by the Compiled Truth Product and its
+ * read-only consumers. The source watermark is server-owned and includes
+ * Canonical plus approved Knowledge identity; Canonical version equality alone
+ * is not sufficient to call a projection current.
+ */
+export const assessCompiledTruthProjectionReadiness = async (
   repository: CompiledTruthRepositoryPort,
   projectId: string,
-  canonical: CanonicalSnapshot,
-  currentSourceDigest: string,
-): Promise<CompiledTruthProjectionStatus> => {
-  const projection = await repository.findProjection(projectId);
-  const degraded = await repository.degradedState(projectId);
+  source: CompiledTruthReadinessSource,
+): Promise<CompiledTruthProjectionReadiness> => {
+  const [projection, degraded] = await Promise.all([
+    repository.findProjection(projectId),
+    repository.degradedState(projectId),
+  ]);
   if (degraded) {
-    return {
+    const status: CompiledTruthProjectionStatus = {
       status: 'DEGRADED',
       projectorVersion: COMPILED_TRUTH_PROJECTOR_VERSION,
-      canonicalVersion: canonical.version,
+      canonicalVersion: source.canonicalVersion,
       projectedCanonicalVersion: projection?.canonicalVersion ?? 0,
-      lag: Math.max(0, canonical.version - (projection?.canonicalVersion ?? 0)),
+      lag: Math.max(0, source.canonicalVersion - (projection?.canonicalVersion ?? 0)),
       lastError: degraded.error,
       updatedAt: degraded.updatedAt,
       ...(projection === undefined
@@ -306,19 +324,22 @@ const statusFor = async (
             lastBuildMode: projection.buildMode,
           }),
     };
+    return { status, ...(projection === undefined ? {} : { projection }) };
   }
   if (!projection) {
     return {
-      status: 'NOT_BUILT',
-      projectorVersion: COMPILED_TRUTH_PROJECTOR_VERSION,
-      canonicalVersion: canonical.version,
-      projectedCanonicalVersion: 0,
-      lag: canonical.version,
+      status: {
+        status: 'NOT_BUILT',
+        projectorVersion: COMPILED_TRUTH_PROJECTOR_VERSION,
+        canonicalVersion: source.canonicalVersion,
+        projectedCanonicalVersion: 0,
+        lag: source.canonicalVersion,
+      },
     };
   }
-  const lag = Math.max(0, canonical.version - projection.canonicalVersion);
-  const sourceChanged = projection.sourceSnapshotDigest !== currentSourceDigest;
-  return {
+  const lag = Math.max(0, source.canonicalVersion - projection.canonicalVersion);
+  const sourceChanged = projection.sourceSnapshotDigest !== source.sourceSnapshotDigest;
+  const status: CompiledTruthProjectionStatus = {
     status:
       lag === 0 &&
       !sourceChanged &&
@@ -326,7 +347,7 @@ const statusFor = async (
         ? 'READY'
         : 'STALE',
     projectorVersion: projection.projectorVersion,
-    canonicalVersion: canonical.version,
+    canonicalVersion: source.canonicalVersion,
     projectedCanonicalVersion: projection.canonicalVersion,
     lag,
     sourceSnapshotDigest: projection.sourceSnapshotDigest,
@@ -334,6 +355,21 @@ const statusFor = async (
     lastBuildMode: projection.buildMode,
     updatedAt: projection.projectedAt,
   };
+  return { status, projection };
+};
+
+const statusFor = async (
+  repository: CompiledTruthRepositoryPort,
+  projectId: string,
+  canonical: CanonicalSnapshot,
+  currentSourceDigest: string,
+): Promise<CompiledTruthProjectionStatus> => {
+  return (
+    await assessCompiledTruthProjectionReadiness(repository, projectId, {
+      canonicalVersion: canonical.version,
+      sourceSnapshotDigest: currentSourceDigest,
+    })
+  ).status;
 };
 
 export const createCompiledTruthModule = (

@@ -554,12 +554,14 @@ export const startShotgunApplication = async (
         readonly sensitivityClearance?: string;
         readonly limit: number;
       }) {
-        const findings = await discoveryFindingRepository.listByJobAndRun(
-          input.projectId,
-          input.jobId,
-          input.runId,
-          input.limit,
-        );
+        const findings = await discoveryFindingRepository.listByJobAndRun({
+          projectId: input.projectId,
+          jobId: input.jobId,
+          runId: input.runId,
+          accessScope: input.accessScope,
+          sensitivityClearance: input.sensitivityClearance,
+          limit: input.limit,
+        });
         const visible = findings.filter((finding: DiscoveryFindingEnvelopeV1) => {
           const clearance = input.sensitivityClearance;
           return (
@@ -617,6 +619,15 @@ export const startShotgunApplication = async (
           }),
         );
         return rows.filter((row): row is NonNullable<typeof row> => row !== undefined);
+      },
+      async hasReviewEligibleActivityFinding(input: {
+        readonly projectId: string;
+        readonly jobId: string;
+        readonly runId: string;
+        readonly accessScope?: readonly string[];
+        readonly sensitivityClearance?: string;
+      }) {
+        return discoveryFindingRepository.hasReviewEligibleByJobAndRun(input);
       },
     };
     const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);

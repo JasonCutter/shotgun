@@ -170,13 +170,13 @@ const isTerminal = (state: DiscoveryRuntimeLifecycleStateV1): boolean =>
 
 const attentionFor = (
   state: DiscoveryRuntimeLifecycleStateV1,
-  findings: readonly DiscoveryActivityFindingRow[],
+  hasReviewEligibleFinding: boolean,
 ): {
   readonly state: 'NEEDS_ATTENTION' | 'RESOLVED' | 'NONE';
   readonly reason?: ActivityDomainPresentationV1['attentionReason'];
 } => {
   if (state === 'FAILED_TERMINAL') return { state: 'NEEDS_ATTENTION', reason: 'FAILED_TERMINAL' };
-  if (findings.some((finding) => finding.reviewEligible)) {
+  if (hasReviewEligibleFinding) {
     return { state: 'NEEDS_ATTENTION', reason: 'REVIEW_ELIGIBLE_FINDING' };
   }
   return { state: 'NONE' };
@@ -353,6 +353,32 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
     }
   }
 
+  private async hasReviewEligibleFindingFor(
+    scope: ActivityAdapterScopeV1,
+    job: DiscoveryJobV1,
+    run: DiscoveryRunV1 | undefined,
+    fallbackFindings: readonly DiscoveryActivityFindingRow[],
+  ): Promise<boolean> {
+    if (!run || this.findingRead === undefined) return false;
+    if (this.findingRead.hasReviewEligibleActivityFinding === undefined) {
+      // Test and in-memory adapters may only expose the bounded row surface.
+      // Production wiring supplies the separate authoritative existence read.
+      return fallbackFindings.some((finding) => finding.reviewEligible);
+    }
+    try {
+      return await this.findingRead.hasReviewEligibleActivityFinding({
+        projectId: scope.activeProjectId,
+        jobId: job.jobId,
+        runId: run.runId,
+        accessScope: scope.accessScope,
+        sensitivityClearance: scope.sensitivityClearance,
+      });
+    } catch {
+      // An unavailable authority must never grant Attention.
+      return false;
+    }
+  }
+
   private presentationFor(
     job: DiscoveryJobV1,
     run: DiscoveryRunV1 | undefined,
@@ -421,7 +447,13 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
     const runtimeState = row.job.lifecycleState;
     const state = commonState(runtimeState);
     const findings = await this.findingsFor(scope, row.job, row.run);
-    const attention = attentionFor(runtimeState, findings);
+    const hasReviewEligibleFinding = await this.hasReviewEligibleFindingFor(
+      scope,
+      row.job,
+      row.run,
+      findings,
+    );
+    const attention = attentionFor(runtimeState, hasReviewEligibleFinding);
     return {
       root: jobRoot(row),
       summary: `${triggerLabel(row.job)} · ${scanModeLabel(row.job)} · ${lifecycleLabel(row.job.lifecycleState)}`,
@@ -616,7 +648,13 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
     });
     const currentState = run?.lifecycleState ?? job.lifecycleState;
     const findings = await this.findingsFor(scope, job, run);
-    const attention = attentionFor(currentState, findings);
+    const hasReviewEligibleFinding = await this.hasReviewEligibleFindingFor(
+      scope,
+      job,
+      run,
+      findings,
+    );
+    const attention = attentionFor(currentState, hasReviewEligibleFinding);
     const runId = run?.runId ?? root.runId;
     const attemptRefs = attempts.map((attempt) => ({
       schemaVersion: '1.0.0' as const,

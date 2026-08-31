@@ -473,6 +473,12 @@ describe('AKP-4 WP5 Discovery Activity adapter', () => {
           },
         ];
       },
+      hasReviewEligibleActivityFinding: async (input) => {
+        expect(input.projectId).toBe(job.projectId);
+        expect(input.jobId).toBe(job.jobId);
+        expect(input.runId).toBe(run.runId);
+        return true;
+      },
     };
     const adapter = new DiscoveryActivityAdapter(readWithFixture(), findingRead);
     const item = (await adapter.readQueue(scope, { limit: 10 })).items[0]!;
@@ -505,6 +511,80 @@ describe('AKP-4 WP5 Discovery Activity adapter', () => {
     expect(detail.attempts[0]?.retryKind).toBe('INITIAL');
     expect(detail.attempts[1]?.retryKind).toBe('DOMAIN_RETRY');
     expect(detail.stages.find((entry) => entry.label === 'Finding 생성')).toBeDefined();
+  });
+
+  it('keeps authoritative Attention independent from the bounded backlink window', async () => {
+    const visibleFindings = Array.from({ length: 21 }, (_, index) => ({
+      projectId: job.projectId,
+      findingId: `finding-${index + 1}`,
+      findingRevision: 1,
+      runId: run.runId,
+      findingType: 'KNOWLEDGE_GAP',
+      lifecycleState: 'NEW',
+      title: `Finding ${index + 1}`,
+      reviewEligible: false,
+      resourceHref: `/knowledge/discoveries/finding-${index + 1}?revision=1`,
+    }));
+    const findingRead: DiscoveryActivityFindingReadPort = {
+      listActivityFindings: async (input) => {
+        expect(input.limit).toBe(21);
+        return visibleFindings;
+      },
+      hasReviewEligibleActivityFinding: async () => true,
+    };
+    const adapter = new DiscoveryActivityAdapter(readWithFixture(), findingRead);
+    const item = (await adapter.readQueue(scope, { limit: 10 })).items[0]!;
+    expect(item.dimensions.attention).toBe('NEEDS_ATTENTION');
+
+    const detail = await adapter.readDetail(scope, item.root);
+    expect(detail.dimensions.attention).toBe('NEEDS_ATTENTION');
+    expect(detail.presentation?.attentionReason).toBe('REVIEW_ELIGIBLE_FINDING');
+    expect(detail.presentation?.relatedResources).toHaveLength(20);
+    expect(detail.presentation?.relatedResourcesTruncated).toBe(true);
+    expect(
+      detail.presentation?.relatedResources?.some(
+        (resource) => resource.resourceId === 'finding-21',
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps hidden review-eligible Findings out of both Attention and backlinks', async () => {
+    let authorized = false;
+    const findingRead: DiscoveryActivityFindingReadPort = {
+      listActivityFindings: async (input) => {
+        expect(input.accessScope).toEqual(scope.accessScope);
+        expect(input.sensitivityClearance).toBe(scope.sensitivityClearance);
+        return authorized
+          ? [
+              {
+                projectId: job.projectId,
+                findingId: 'finding-visible',
+                findingRevision: 1,
+                runId: run.runId,
+                findingType: 'KNOWLEDGE_GAP',
+                lifecycleState: 'REVIEW_READY',
+                title: 'Visible Finding',
+                reviewEligible: true,
+                resourceHref: '/knowledge/discoveries/finding-visible?revision=1',
+              },
+            ]
+          : [];
+      },
+      hasReviewEligibleActivityFinding: async () => authorized,
+    };
+    const adapter = new DiscoveryActivityAdapter(readWithFixture(), findingRead);
+    const hiddenScope = { ...scope, accessScope: ['different-scope'] };
+    const hiddenItem = (await adapter.readQueue(hiddenScope, { limit: 10 })).items[0]!;
+    expect(hiddenItem.dimensions.attention).toBe('NONE');
+    const hiddenDetail = await adapter.readDetail(hiddenScope, hiddenItem.root);
+    expect(hiddenDetail.presentation?.relatedResources).toBeUndefined();
+    expect(hiddenDetail.presentation?.attentionReason).toBeUndefined();
+
+    authorized = true;
+    const visibleItem = (await adapter.readQueue(scope, { limit: 10 })).items[0]!;
+    expect(visibleItem.dimensions.attention).toBe('NEEDS_ATTENTION');
+    const visibleDetail = await adapter.readDetail(scope, visibleItem.root);
+    expect(visibleDetail.presentation?.relatedResources?.[0]?.resourceId).toBe('finding-visible');
   });
 
   it('keeps projection wait owner-readable and does not convert it into user action or Attention', async () => {

@@ -3,9 +3,12 @@ import type {
   DiscoveryFindingEnvelopeV1,
   DiscoveryFindingLifecycleState,
   DiscoveryProjectionBaseIdentityV1,
+  DiscoveryLifecycleCauseV1 as ContractDiscoveryLifecycleCauseV1,
+  DiscoveryLifecycleReasonCodeV1 as ContractDiscoveryLifecycleReasonCodeV1,
 } from '../../../packages/contracts/src/index.js';
 import {
   DISCOVERY_FINDING_LIFECYCLE_STATES,
+  getDiscoveryLifecycleTransitionErrorV1,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
 
@@ -21,19 +24,9 @@ export type DiscoveryFindingLifecycleCurrentV1 = DiscoveryFindingIdentityV1 & {
   readonly updatedAt: string;
 };
 
-export type DiscoveryLifecycleCauseV1 =
-  'MATERIALIZATION' | 'GOVERNED_WORKFLOW' | 'SYSTEM_RECONCILIATION';
+export type DiscoveryLifecycleCauseV1 = ContractDiscoveryLifecycleCauseV1;
 
-export type DiscoveryLifecycleReasonCodeV1 =
-  | 'FINDING_MATERIALIZED'
-  | 'VALIDATION_STARTED'
-  | 'REVIEW_READY'
-  | 'REENTERED'
-  | 'DISMISSED'
-  | 'SUPPRESSED'
-  | 'CANONICAL_EQUIVALENT_ACCEPTED'
-  | 'SOURCE_MATERIALLY_SUPERSEDED'
-  | 'RELEVANT_INPUT_CHANGED';
+export type DiscoveryLifecycleReasonCodeV1 = ContractDiscoveryLifecycleReasonCodeV1;
 
 export type DiscoveryLifecycleContextV1 = {
   readonly canonicalBase?: DiscoveryCanonicalBaseIdentityV1;
@@ -316,67 +309,27 @@ export const decodeDiscoveryReconciliationObservationV1 = (
 
 const transitionError = (message: string): never => fail('transition', 'VALIDATION_ERROR', message);
 
-const workflowTargetByState: Readonly<
-  Partial<Record<DiscoveryFindingLifecycleState, readonly DiscoveryFindingLifecycleState[]>>
-> = {
-  NEW: ['VALIDATING'],
-  VALIDATING: ['REVIEW_READY', 'DISMISSED', 'SUPPRESSED'],
-  REVIEW_READY: ['REENTERED', 'DISMISSED', 'SUPPRESSED'],
-};
-
-const reconciliationReasonByTarget: Readonly<
-  Record<'RESOLVED' | 'STALE' | 'SUPERSEDED', DiscoveryLifecycleReasonCodeV1>
-> = {
-  RESOLVED: 'CANONICAL_EQUIVALENT_ACCEPTED',
-  STALE: 'RELEVANT_INPUT_CHANGED',
-  SUPERSEDED: 'SOURCE_MATERIALLY_SUPERSEDED',
-};
-
 export const assertDiscoveryLifecycleTransitionV1 = (
   fromState: DiscoveryFindingLifecycleState,
   targetState: DiscoveryFindingLifecycleState,
   cause: DiscoveryLifecycleCauseV1,
   reasonCode: DiscoveryLifecycleReasonCodeV1,
 ): void => {
-  if (!DISCOVERY_FINDING_LIFECYCLE_STATES.includes(fromState)) {
-    return transitionError(`Unsupported current lifecycle state: ${fromState}`);
-  }
-  if (!DISCOVERY_FINDING_LIFECYCLE_STATES.includes(targetState)) {
-    return transitionError(`Unsupported target lifecycle state: ${targetState}`);
-  }
-  if (fromState === targetState) return transitionError('Lifecycle transition must change state.');
+  const error = getDiscoveryLifecycleTransitionErrorV1(fromState, targetState, cause, reasonCode);
+  if (error) return transitionError(error);
+};
 
-  if (targetState === 'RESOLVED' || targetState === 'STALE' || targetState === 'SUPERSEDED') {
-    if (cause !== 'SYSTEM_RECONCILIATION') {
-      return transitionError('Terminal reconciliation states require system reconciliation.');
-    }
-    if (reconciliationReasonByTarget[targetState] !== reasonCode) {
-      return transitionError('Reconciliation reason does not match the target lifecycle state.');
-    }
-    if (!['NEW', 'VALIDATING', 'REVIEW_READY', 'REENTERED'].includes(fromState)) {
-      return transitionError('Terminal lifecycle states cannot be reopened or reconciled again.');
-    }
-    return;
-  }
-
-  if (cause !== 'GOVERNED_WORKFLOW') {
-    return transitionError('Non-terminal lifecycle transitions require a governed workflow.');
-  }
-  if (!workflowTargetByState[fromState]?.includes(targetState)) {
-    return transitionError(`Lifecycle transition ${fromState} -> ${targetState} is not allowed.`);
-  }
-  const expectedReason: Partial<
-    Record<DiscoveryFindingLifecycleState, DiscoveryLifecycleReasonCodeV1>
-  > = {
-    VALIDATING: 'VALIDATION_STARTED',
-    REVIEW_READY: 'REVIEW_READY',
-    REENTERED: 'REENTERED',
-    DISMISSED: 'DISMISSED',
-    SUPPRESSED: 'SUPPRESSED',
-  };
-  if (expectedReason[targetState] !== reasonCode) {
-    return transitionError('Workflow reason does not match the target lifecycle state.');
-  }
+/** Capability projection helper. The Product layer must derive owner actions
+ * from the same transition matrix used by the lifecycle authority. */
+export const canDiscoveryFindingTransitionV1 = (
+  fromState: DiscoveryFindingLifecycleState,
+  targetState: DiscoveryFindingLifecycleState,
+  cause: DiscoveryLifecycleCauseV1,
+  reasonCode: DiscoveryLifecycleReasonCodeV1,
+): boolean => {
+  return (
+    getDiscoveryLifecycleTransitionErrorV1(fromState, targetState, cause, reasonCode) === undefined
+  );
 };
 
 export const decodeDiscoveryFindingLifecycleCurrentV1 = (
@@ -474,6 +427,25 @@ export const decodeDiscoveryFindingLifecycleHistoryV1 = (
 
 export class DiscoveryFindingLifecycleService {
   constructor(private readonly repository: DiscoveryFindingLifecycleRepositoryPort) {}
+
+  async transitionCurrent(
+    input: Omit<DiscoveryLifecycleTransitionInputV1, 'expectedLifecycleRevision'>,
+    fence?: DiscoveryFindingLifecycleFenceV1,
+  ): Promise<DiscoveryLifecycleTransitionResultV1> {
+    const current = await this.repository.findLifecycle(input);
+    if (!current) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: 'The Discovery finding lifecycle was not found.',
+        module: 'discovery-finding-lifecycle',
+        operation: 'transition-current',
+      });
+    }
+    return this.transition(
+      { ...input, expectedLifecycleRevision: current.lifecycleRevision },
+      fence,
+    );
+  }
 
   async transition(
     input: DiscoveryLifecycleTransitionInputV1,

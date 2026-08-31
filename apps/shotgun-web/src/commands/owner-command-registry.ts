@@ -2,6 +2,7 @@ import type { GlobalShellView, ProjectListItemView, TargetRouteView } from '@sho
 import type { ProductMessageKey } from '../localization/product-localization.js';
 
 import type { AnswerCommandContext } from './answer-command-context.js';
+import type { DiscoveryDismissCommandContext } from './discovery-command-context.js';
 
 export type OwnerCommandCategory =
   | 'HELP'
@@ -53,6 +54,7 @@ export type OwnerCommandAction =
   | { readonly kind: 'OPEN_PRIVACY_FLOW'; readonly commandId: PrivacyCommandId }
   | { readonly kind: 'OPEN_ANSWER_FLOW'; readonly commandId: AnswerCommandId }
   | { readonly kind: 'OPEN_TECHNICAL_FLOW'; readonly commandId: 'technical.current' }
+  | { readonly kind: 'DISMISS_DISCOVERY' }
   | { readonly kind: 'SWITCH_PROJECT'; readonly projectId: string };
 
 export type OwnerCommandDefinition = {
@@ -79,6 +81,8 @@ export type OwnerCommandRegistryOptions = {
   readonly hasTechnicalInspection?: boolean;
   readonly answerContext?: AnswerCommandContext;
   readonly answerCommandPending?: boolean;
+  readonly discoveryContext?: DiscoveryDismissCommandContext;
+  readonly discoveryCommandPending?: boolean;
   readonly projects?: readonly ProjectListItemView[];
 };
 
@@ -624,6 +628,8 @@ export const createOwnerCommandRegistry = ({
   hasTechnicalInspection = false,
   answerContext,
   answerCommandPending = false,
+  discoveryContext,
+  discoveryCommandPending = false,
   projects,
 }: OwnerCommandRegistryOptions): readonly OwnerCommandDefinition[] => {
   const templateCommands = HFM_COMMAND_TEMPLATES.filter(
@@ -673,7 +679,34 @@ export const createOwnerCommandRegistry = ({
     ),
   }));
 
-  return [...templateCommands, ...answerCommands, ...projectCommands].sort(
+  const discoveryCommands = discoveryContext
+    ? [
+        {
+          id: 'discovery.dismiss',
+          category: 'INSPECTION' as const,
+          label: 'Dismiss Discovery finding',
+          description: 'Move the current derived finding to the governed dismissed state',
+          aliases: ['dismiss finding', 'dismiss discovery', 'discovery dismiss'],
+          keywords: ['discovery', 'finding', 'dismissed', 'owner'],
+          availability:
+            isOffline || discoveryCommandPending
+              ? ('UNAVAILABLE_WITH_REASON' as const)
+              : discoveryContext.canDismiss
+                ? ('AVAILABLE' as const)
+                : ('HIDDEN' as const),
+          ...(isOffline ? { reasonKey: 'commands.unavailable.discovery_offline' as const } : {}),
+          ...(discoveryCommandPending
+            ? { reasonKey: 'commands.unavailable.discovery_pending' as const }
+            : {}),
+          risk: 'WRITE' as const,
+          presentation: 'EXECUTE' as const,
+          context: { projectId: discoveryContext.projectId },
+          action: { kind: 'DISMISS_DISCOVERY' as const },
+        },
+      ]
+    : [];
+
+  return [...templateCommands, ...answerCommands, ...discoveryCommands, ...projectCommands].sort(
     (left, right) =>
       categoryOrder[left.category] - categoryOrder[right.category] ||
       left.label.localeCompare(right.label) ||

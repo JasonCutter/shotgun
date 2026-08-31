@@ -100,6 +100,9 @@ const enUS = {
   'commands.unavailable.search_offline': 'Search is unavailable while offline.',
   'commands.unavailable.project_offline': 'Project controls are unavailable while offline.',
   'commands.unavailable.project_switch_offline': 'Project switching is unavailable while offline.',
+  'commands.unavailable.discovery_offline':
+    'Discovery owner actions are unavailable while offline.',
+  'commands.unavailable.discovery_pending': 'The Discovery finding action is still processing.',
   'commands.unavailable.preferences_offline': 'Preferences are unavailable while offline.',
   'commands.unavailable.preferences_project_required':
     'Preferences are unavailable until a Project is active.',
@@ -487,6 +490,12 @@ const enUS = {
   'discovery.candidate_only': 'Candidate only · no execution is available',
   'discovery.risk_context': 'Risk context',
   'discovery.no_review_action': 'Review is not available for this lifecycle state.',
+  'discovery.dismiss': 'Dismiss finding',
+  'discovery.dismissed': 'This derived finding was dismissed by the Project owner.',
+  'discovery.dismiss_failed': 'The Discovery finding could not be dismissed.',
+  'discovery.dismiss_outcome_unknown':
+    'The dismiss result is uncertain. Resolve the existing command before retrying.',
+  'discovery.dismiss_not_available': 'Dismissal is unavailable for this lifecycle state.',
   'discovery.freshness_current': 'Current under the server-provided Discovery projection.',
   'discovery.freshness_revalidation':
     'The server requires revalidation before relying on this finding.',
@@ -715,6 +724,9 @@ const koKR: Record<ProductMessageKey, string> = {
     '프로젝트가 활성화될 때까지 환경설정을 사용할 수 없습니다.',
   'commands.unavailable.project_switch_offline':
     '오프라인 상태에서는 프로젝트 전환을 사용할 수 없습니다.',
+  'commands.unavailable.discovery_offline':
+    '오프라인 상태에서는 발견 항목 소유자 작업을 사용할 수 없습니다.',
+  'commands.unavailable.discovery_pending': '발견 항목 작업이 아직 처리 중입니다.',
   'preferences.japanese_fallback': '영어 기본값',
   'preferences.reduced_motion': '동작 줄이기 / 애니메이션',
   'project.error.active_project_required_for_creation':
@@ -1094,6 +1106,12 @@ const koKR: Record<ProductMessageKey, string> = {
   'discovery.candidate_only': '후보 전용 · 실행할 수 없음',
   'discovery.risk_context': '위험 맥락',
   'discovery.no_review_action': '이 라이프사이클 상태에서는 Review를 사용할 수 없습니다.',
+  'discovery.dismiss': '발견 항목 해제',
+  'discovery.dismissed': '이 파생 발견 항목은 프로젝트 소유자가 해제했습니다.',
+  'discovery.dismiss_failed': '발견 항목을 해제하지 못했습니다.',
+  'discovery.dismiss_outcome_unknown':
+    '해제 결과가 불확실합니다. 재시도하기 전에 기존 명령 결과를 확인하세요.',
+  'discovery.dismiss_not_available': '이 라이프사이클 상태에서는 해제할 수 없습니다.',
   'discovery.freshness_current': '서버가 제공한 Discovery projection 기준 최신 상태입니다.',
   'discovery.freshness_revalidation': '이 발견 항목을 사용하려면 서버 재검증이 필요합니다.',
   'discovery.freshness_unknown': '서버에서 최신성을 확인할 수 없습니다.',

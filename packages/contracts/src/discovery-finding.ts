@@ -38,6 +38,92 @@ export const DISCOVERY_FINDING_LIFECYCLE_STATES = [
 ] as const;
 export type DiscoveryFindingLifecycleState = (typeof DISCOVERY_FINDING_LIFECYCLE_STATES)[number];
 
+export type DiscoveryLifecycleCauseV1 =
+  'MATERIALIZATION' | 'GOVERNED_WORKFLOW' | 'SYSTEM_RECONCILIATION';
+
+export type DiscoveryLifecycleReasonCodeV1 =
+  | 'FINDING_MATERIALIZED'
+  | 'VALIDATION_STARTED'
+  | 'REVIEW_READY'
+  | 'REENTERED'
+  | 'DISMISSED'
+  | 'SUPPRESSED'
+  | 'CANONICAL_EQUIVALENT_ACCEPTED'
+  | 'SOURCE_MATERIALLY_SUPERSEDED'
+  | 'RELEVANT_INPUT_CHANGED';
+
+const discoveryLifecycleWorkflowTargets: Readonly<
+  Partial<Record<DiscoveryFindingLifecycleState, readonly DiscoveryFindingLifecycleState[]>>
+> = {
+  NEW: ['VALIDATING'],
+  VALIDATING: ['REVIEW_READY', 'DISMISSED', 'SUPPRESSED'],
+  REVIEW_READY: ['REENTERED', 'DISMISSED', 'SUPPRESSED'],
+};
+
+const discoveryLifecycleReconciliationReasons: Readonly<
+  Record<'RESOLVED' | 'STALE' | 'SUPERSEDED', DiscoveryLifecycleReasonCodeV1>
+> = {
+  RESOLVED: 'CANONICAL_EQUIVALENT_ACCEPTED',
+  STALE: 'RELEVANT_INPUT_CHANGED',
+  SUPERSEDED: 'SOURCE_MATERIALLY_SUPERSEDED',
+};
+
+export const getDiscoveryLifecycleTransitionErrorV1 = (
+  fromState: DiscoveryFindingLifecycleState,
+  targetState: DiscoveryFindingLifecycleState,
+  cause: DiscoveryLifecycleCauseV1,
+  reasonCode: DiscoveryLifecycleReasonCodeV1,
+): string | undefined => {
+  if (!DISCOVERY_FINDING_LIFECYCLE_STATES.includes(fromState)) {
+    return `Unsupported current lifecycle state: ${fromState}`;
+  }
+  if (!DISCOVERY_FINDING_LIFECYCLE_STATES.includes(targetState)) {
+    return `Unsupported target lifecycle state: ${targetState}`;
+  }
+  if (fromState === targetState) return 'Lifecycle transition must change state.';
+
+  if (targetState === 'RESOLVED' || targetState === 'STALE' || targetState === 'SUPERSEDED') {
+    if (cause !== 'SYSTEM_RECONCILIATION') {
+      return 'Terminal reconciliation states require system reconciliation.';
+    }
+    if (discoveryLifecycleReconciliationReasons[targetState] !== reasonCode) {
+      return 'Reconciliation reason does not match the target lifecycle state.';
+    }
+    if (!['NEW', 'VALIDATING', 'REVIEW_READY', 'REENTERED'].includes(fromState)) {
+      return 'Terminal lifecycle states cannot be reopened or reconciled again.';
+    }
+    return undefined;
+  }
+
+  if (cause !== 'GOVERNED_WORKFLOW') {
+    return 'Non-terminal lifecycle transitions require a governed workflow.';
+  }
+  if (!discoveryLifecycleWorkflowTargets[fromState]?.includes(targetState)) {
+    return `Lifecycle transition ${fromState} -> ${targetState} is not allowed.`;
+  }
+  const expectedReason: Partial<
+    Record<DiscoveryFindingLifecycleState, DiscoveryLifecycleReasonCodeV1>
+  > = {
+    VALIDATING: 'VALIDATION_STARTED',
+    REVIEW_READY: 'REVIEW_READY',
+    REENTERED: 'REENTERED',
+    DISMISSED: 'DISMISSED',
+    SUPPRESSED: 'SUPPRESSED',
+  };
+  if (expectedReason[targetState] !== reasonCode) {
+    return 'Workflow reason does not match the target lifecycle state.';
+  }
+  return undefined;
+};
+
+export const canDiscoveryFindingTransitionV1 = (
+  fromState: DiscoveryFindingLifecycleState,
+  targetState: DiscoveryFindingLifecycleState,
+  cause: DiscoveryLifecycleCauseV1,
+  reasonCode: DiscoveryLifecycleReasonCodeV1,
+): boolean =>
+  getDiscoveryLifecycleTransitionErrorV1(fromState, targetState, cause, reasonCode) === undefined;
+
 export type DiscoveryFindingStatus = 'DERIVED_INFERENCE';
 
 /** This is identity for a finding record, not a Canonical or SourceVersion revision. */

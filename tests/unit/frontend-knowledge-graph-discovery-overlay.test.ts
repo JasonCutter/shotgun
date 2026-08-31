@@ -119,6 +119,7 @@ const detail = (lifecycleState: 'NEW' | 'DISMISSED' = 'NEW') =>
       canOpenGraph: true,
       canOpenActivity: false,
       canInvestigate: false,
+      canDismiss: false,
     },
     createdAt: '2026-08-31T00:00:00.000Z',
     payload: {

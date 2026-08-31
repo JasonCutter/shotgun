@@ -1,3 +1,5 @@
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+
 import {
   FrontendContractError,
   ShotgunError,
@@ -15,6 +17,9 @@ import {
   type DiscoveryProductReentryStateV1,
   type DiscoveryProductSafeSignalsV1,
   type DiscoveryProductValidationStateV1,
+  type DiscoveryProductSensitivityV1,
+  type DiscoveryResourceKind,
+  type DiscoveryResourceRefV1,
   type ListDiscoveryFindingsRequestV1,
   type ListDiscoveryFindingsResultV1,
   type ReadDiscoveryFindingRequestV1,
@@ -52,12 +57,26 @@ export type DiscoveryProductReadSource = {
     readonly findingId: string;
     readonly findingRevision: number;
   }): Promise<DiscoveryProductReviewBindingV1 | undefined>;
+  findResourceAuthorization(
+    resource: DiscoveryResourceRefV1,
+  ): Promise<DiscoveryProductResourceAuthorizationV1 | undefined>;
   findEvidence(projectId: string, evidenceId: string): Promise<EvidenceSpan | undefined>;
 };
 
 export type DiscoveryProductPageCursorV1 = {
   readonly findingId: string;
   readonly findingRevision: number;
+};
+
+export type DiscoveryProductResourceAuthorizationV1 = {
+  readonly projectId: string;
+  readonly resourceKind: DiscoveryResourceKind;
+  readonly resourceId: string;
+  readonly resourceState: 'CURRENT' | 'APPROVED';
+  readonly resourceRevision?: string;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: DiscoveryProductSensitivityV1;
+  readonly graphEligible: boolean;
 };
 
 export type DiscoveryProductFindingIdentityV1 = {
@@ -78,6 +97,7 @@ export const createEmptyDiscoveryProductReadSource = (): DiscoveryProductReadSou
   findLifecycle: async () => undefined,
   findReentryDisposition: async () => undefined,
   findReviewBinding: async () => undefined,
+  findResourceAuthorization: async () => undefined,
   findEvidence: async () => undefined,
 });
 
@@ -112,7 +132,134 @@ export type DiscoveryProductReadInput = {
 };
 
 const DEFAULT_PAGE_LIMIT = 25;
-const CURSOR_VERSION = 'frontend-discovery-cursor:v1';
+const CURSOR_VERSION = 'frontend-discovery-cursor:v2';
+const CURSOR_PREFIX = 'fdc2';
+const CURSOR_IV_BYTES = 12;
+const CURSOR_TAG_BYTES = 16;
+
+export type DiscoveryProductCursorCodec = {
+  encode(input: {
+    readonly projectId: string;
+    readonly cursor: DiscoveryProductPageCursorV1;
+  }): string;
+  decode(value: string): {
+    readonly projectId: string;
+    readonly cursor: DiscoveryProductPageCursorV1;
+  };
+};
+
+const validCursorIdentity = (value: unknown): value is DiscoveryProductPageCursorV1 => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const object = value as Record<string, unknown>;
+  return (
+    Object.keys(object).every((key) => ['findingId', 'findingRevision'].includes(key)) &&
+    typeof object.findingId === 'string' &&
+    object.findingId.trim().length > 0 &&
+    typeof object.findingRevision === 'number' &&
+    Number.isSafeInteger(object.findingRevision) &&
+    object.findingRevision > 0
+  );
+};
+
+const cursorKey = (secret: string): Buffer => createHash('sha256').update(secret).digest();
+
+/** AES-GCM makes the keyset continuation opaque and tamper-evident. The
+ * plaintext Finding identity remains server-owned and is never sent to the
+ * browser in reversible JSON/base64 form. */
+export const createEncryptedDiscoveryProductCursorCodec = (
+  secret: string,
+): DiscoveryProductCursorCodec => {
+  if (secret.trim().length < 16) throw new Error('Discovery cursor secret is too short.');
+  const key = cursorKey(secret);
+  return {
+    encode({ projectId, cursor }) {
+      if (!projectId.trim() || !validCursorIdentity(cursor)) {
+        throw new Error('Discovery cursor identity is invalid.');
+      }
+      const iv = randomBytes(CURSOR_IV_BYTES);
+      const cipher = createCipheriv('aes-256-gcm', key, iv);
+      cipher.setAAD(Buffer.from(CURSOR_VERSION, 'utf8'));
+      const ciphertext = Buffer.concat([
+        cipher.update(
+          JSON.stringify({
+            projectId,
+            findingId: cursor.findingId,
+            findingRevision: cursor.findingRevision,
+          }),
+          'utf8',
+        ),
+        cipher.final(),
+      ]);
+      return [
+        CURSOR_PREFIX,
+        iv.toString('base64url'),
+        ciphertext.toString('base64url'),
+        cipher.getAuthTag().toString('base64url'),
+      ].join('.');
+    },
+    decode(value) {
+      try {
+        if (value.length > 1024) throw new Error('cursor is too long');
+        const [prefix, ivText, ciphertextText, tagText] = value.split('.');
+        if (prefix !== CURSOR_PREFIX || !ivText || !ciphertextText || !tagText) {
+          throw new Error('cursor envelope is invalid');
+        }
+        const iv = Buffer.from(ivText, 'base64url');
+        const ciphertext = Buffer.from(ciphertextText, 'base64url');
+        const tag = Buffer.from(tagText, 'base64url');
+        if (iv.length !== CURSOR_IV_BYTES || tag.length !== CURSOR_TAG_BYTES) {
+          throw new Error('cursor envelope lengths are invalid');
+        }
+        const decipher = createDecipheriv('aes-256-gcm', key, iv);
+        decipher.setAAD(Buffer.from(CURSOR_VERSION, 'utf8'));
+        decipher.setAuthTag(tag);
+        const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+        const parsed: unknown = JSON.parse(plaintext.toString('utf8'));
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          throw new Error('cursor payload is invalid');
+        }
+        const object = parsed as Record<string, unknown>;
+        if (
+          Object.keys(object).some(
+            (key) => !['projectId', 'findingId', 'findingRevision'].includes(key),
+          ) ||
+          typeof object.projectId !== 'string' ||
+          !object.projectId.trim() ||
+          !validCursorIdentity({
+            findingId: object.findingId,
+            findingRevision: object.findingRevision,
+          })
+        ) {
+          throw new Error('cursor payload is invalid');
+        }
+        return {
+          projectId: object.projectId,
+          cursor: {
+            findingId: object.findingId as string,
+            findingRevision: object.findingRevision as number,
+          },
+        };
+      } catch {
+        throw new FrontendContractError('INVALID_REQUEST', 'Discovery cursor is invalid.');
+      }
+    },
+  };
+};
+
+const defaultCursorCodec = (): DiscoveryProductCursorCodec => ({
+  encode(input) {
+    const secret =
+      process.env.SHOTGUN_DISCOVERY_CURSOR_SECRET ?? process.env.SOURCES_STAGING_SECRET;
+    if (!secret) throw new Error('Discovery cursor secret is not configured.');
+    return createEncryptedDiscoveryProductCursorCodec(secret).encode(input);
+  },
+  decode(value) {
+    const secret =
+      process.env.SHOTGUN_DISCOVERY_CURSOR_SECRET ?? process.env.SOURCES_STAGING_SECRET;
+    if (!secret) throw new FrontendContractError('INVALID_REQUEST', 'Discovery cursor is invalid.');
+    return createEncryptedDiscoveryProductCursorCodec(secret).decode(value);
+  },
+});
 
 const failure = (
   code: ConstructorParameters<typeof ShotgunError>[0]['code'],
@@ -137,9 +284,7 @@ const normalizeText = (value: string, maximum: number): string => {
     : `${normalized.slice(0, maximum - 1).trimEnd()}…`;
 };
 
-const payloadRefs = (
-  payload: DiscoveryFindingPayloadV1,
-): readonly { readonly projectId: string }[] => {
+const payloadRefs = (payload: DiscoveryFindingPayloadV1): readonly DiscoveryResourceRefV1[] => {
   switch (payload.payloadType) {
     case 'KNOWLEDGE_GAP':
       return payload.gapKind === 'KNOWN_CONFLICT_QUESTION' ? [payload.knownConflictRef] : [];
@@ -221,11 +366,6 @@ const safeProvenanceFrom = (source: DiscoveryFindingEnvelopeV1): DiscoveryProduc
     return {
       schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
       kind: provenance.kind,
-      providerId: provenance.providerId,
-      modelId: provenance.modelId,
-      modelVersion: provenance.modelVersion,
-      promptVersion: provenance.promptVersion,
-      outputSchemaVersion: provenance.outputSchemaVersion,
     };
   }
   return {
@@ -234,11 +374,6 @@ const safeProvenanceFrom = (source: DiscoveryFindingEnvelopeV1): DiscoveryProduc
     ruleId: provenance.deterministic.ruleId,
     ruleVersion: provenance.deterministic.ruleVersion,
     inputDigest: provenance.deterministic.inputDigest,
-    providerId: provenance.aiExecution.providerId,
-    modelId: provenance.aiExecution.modelId,
-    modelVersion: provenance.aiExecution.modelVersion,
-    promptVersion: provenance.aiExecution.promptVersion,
-    outputSchemaVersion: provenance.aiExecution.outputSchemaVersion,
   };
 };
 
@@ -262,45 +397,14 @@ const freshnessState = (
     ? 'REVALIDATION_REQUIRED'
     : 'UNKNOWN';
 
-const encodeCursor = (cursor: DiscoveryProductPageCursorV1): string =>
-  Buffer.from(
-    JSON.stringify({
-      version: CURSOR_VERSION,
-      findingId: cursor.findingId,
-      findingRevision: cursor.findingRevision,
-    }),
-    'utf8',
-  ).toString('base64url');
-
 export const decodeDiscoveryProductCursor = (
   value: string | undefined,
 ): DiscoveryProductPageCursorV1 | undefined => {
   if (value === undefined) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
-      throw new Error('cursor must be an object');
-    const object = parsed as Record<string, unknown>;
-    if (
-      Object.keys(object).some((key) => !['version', 'findingId', 'findingRevision'].includes(key))
-    )
-      throw new Error('cursor contains unsupported fields');
-    if (
-      object.version !== CURSOR_VERSION ||
-      typeof object.findingId !== 'string' ||
-      object.findingId.trim().length === 0 ||
-      typeof object.findingRevision !== 'number' ||
-      !Number.isSafeInteger(object.findingRevision) ||
-      object.findingRevision <= 0
-    )
-      throw new Error('cursor identity is invalid');
-    return { findingId: object.findingId, findingRevision: object.findingRevision };
-  } catch {
-    throw new FrontendContractError('INVALID_REQUEST', 'Discovery cursor is invalid.');
-  }
+  return defaultCursorCodec().decode(value).cursor;
 };
 
-const isVisibleTo = (
+const isFindingVisibleTo = (
   finding: DiscoveryFindingEnvelopeV1,
   scope: DiscoveryProductReadInput,
 ): boolean =>
@@ -314,15 +418,67 @@ const isVisibleTo = (
 const evidenceReference = (span: EvidenceSpan): DiscoveryProductEvidenceReferenceV1 => ({
   schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
   evidenceId: span.evidenceId,
-  // EvidenceSpan.revisionId is the persisted source-map/evidence revision
-  // identity; no synthetic SourceVersion or Evidence ID is fabricated here.
-  evidenceSpanId: span.revisionId,
+  evidenceRevisionId: span.revisionId,
   sourceId: span.sourceId,
   sourceVersionId: span.sourceVersionId,
 });
 
 export class FrontendDiscoveryProductReadCoordinator {
-  constructor(private readonly source: DiscoveryProductReadSource) {}
+  private readonly cursorCodec: DiscoveryProductCursorCodec;
+
+  constructor(
+    private readonly source: DiscoveryProductReadSource,
+    options: { readonly cursorCodec?: DiscoveryProductCursorCodec } = {},
+  ) {
+    this.cursorCodec = options.cursorCodec ?? defaultCursorCodec();
+  }
+
+  private async authorizeResources(
+    finding: DiscoveryFindingEnvelopeV1,
+    scope: DiscoveryProductReadInput,
+  ): Promise<readonly DiscoveryProductResourceAuthorizationV1[] | undefined> {
+    if (!isFindingVisibleTo(finding, scope)) return undefined;
+    const refs = [...finding.relatedResourceRefs, ...payloadRefs(finding.payload)].filter(
+      (resource, index, all) => {
+        const key = `${resource.projectId}:${resource.resourceKind}:${resource.resourceId}:${resource.resourceRevision ?? ''}`;
+        return (
+          all.findIndex(
+            (candidate) =>
+              `${candidate.projectId}:${candidate.resourceKind}:${candidate.resourceId}:${candidate.resourceRevision ?? ''}` ===
+              key,
+          ) === index
+        );
+      },
+    );
+    const authorized = await Promise.all(
+      refs.map(async (resource) => {
+        try {
+          return await this.source.findResourceAuthorization(resource);
+        } catch {
+          // An authority failure is a non-disclosing miss for this Finding,
+          // not a reason to expose a partial projection.
+          return undefined;
+        }
+      }),
+    );
+    if (
+      authorized.some(
+        (resolved, index) =>
+          resolved === undefined ||
+          resolved.projectId !== scope.activeProject.id ||
+          resolved.resourceKind !== refs[index]!.resourceKind ||
+          resolved.resourceId !== refs[index]!.resourceId ||
+          resolved.resourceState !== refs[index]!.resourceState ||
+          (refs[index]!.resourceRevision !== undefined &&
+            resolved.resourceRevision !== refs[index]!.resourceRevision) ||
+          resolved.accessScope.some((required) => !(scope.accessScope ?? []).includes(required)) ||
+          !hasSensitivityClearance(scope.activeProject.sensitivityClearance, resolved.sensitivity),
+      )
+    ) {
+      return undefined;
+    }
+    return authorized as readonly DiscoveryProductResourceAuthorizationV1[];
+  }
 
   private async contextFor(
     finding: DiscoveryFindingEnvelopeV1,
@@ -401,7 +557,8 @@ export class FrontendDiscoveryProductReadCoordinator {
     readonly summary: DiscoveryProductFindingSummaryV1;
     readonly lineage: DiscoveryProductLineageV1;
   }> {
-    if (!isVisibleTo(finding, scope)) return notFound();
+    const authorizedResources = await this.authorizeResources(finding, scope);
+    if (authorizedResources === undefined) return notFound();
     const context = await this.contextFor(finding, scope);
     const titleAndSummary = payloadTitleAndSummary(finding.payload);
     const relatedResourceRefs = finding.relatedResourceRefs.filter(
@@ -434,13 +591,11 @@ export class FrontendDiscoveryProductReadCoordinator {
       schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
       canOpenReview: context.reviewBinding !== undefined,
       canInspectEvidence: context.evidence.length > 0,
-      canOpenGraph: relatedResourceRefs.length > 0,
-      canOpenActivity: finding.runId.trim().length > 0,
-      canInvestigate:
-        context.reviewBinding !== undefined ||
-        relatedResourceRefs.length > 0 ||
-        context.evidence.length > 0 ||
-        finding.runId.trim().length > 0,
+      canOpenGraph: authorizedResources.some((resource) => resource.graphEligible),
+      // WP1 has no server-authoritative Activity or Investigation navigation
+      // identity. A persisted runId is not sufficient capability evidence.
+      canOpenActivity: false,
+      canInvestigate: false,
     };
     const summary = decodeDiscoveryProductFindingSummaryV1({
       schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
@@ -478,7 +633,14 @@ export class FrontendDiscoveryProductReadCoordinator {
     scope: DiscoveryProductReadInput & { readonly request: ListDiscoveryFindingsRequestV1 },
   ): Promise<ListDiscoveryFindingsResultV1> {
     const limit = scope.request.limit ?? DEFAULT_PAGE_LIMIT;
-    const after = decodeDiscoveryProductCursor(scope.request.cursor);
+    const decodedCursor =
+      scope.request.cursor === undefined
+        ? undefined
+        : this.cursorCodec.decode(scope.request.cursor);
+    if (decodedCursor && decodedCursor.projectId !== scope.activeProject.id) {
+      throw new FrontendContractError('INVALID_REQUEST', 'Discovery cursor is invalid.');
+    }
+    const after = decodedCursor?.cursor;
     const raw = await this.source.listFindings(scope.activeProject.id, after, limit + 1);
     const consumed = raw.slice(0, limit);
     const selected = consumed.filter(
@@ -504,9 +666,12 @@ export class FrontendDiscoveryProductReadCoordinator {
     }
     const nextCursor =
       raw.length > limit && consumed.at(-1)
-        ? encodeCursor({
-            findingId: consumed.at(-1)!.findingId,
-            findingRevision: consumed.at(-1)!.findingRevision,
+        ? this.cursorCodec.encode({
+            projectId: scope.activeProject.id,
+            cursor: {
+              findingId: consumed.at(-1)!.findingId,
+              findingRevision: consumed.at(-1)!.findingRevision,
+            },
           })
         : undefined;
     return {

@@ -55,6 +55,7 @@ import type {
 } from '../../../modules/intake/src/index.js';
 import type {
   OriginalAssetRepositoryPort,
+  SourceSecurityRecord,
   SourceVersionSecurityRecord,
   StoredIntakeResult,
   StoreOriginalAssetInput,
@@ -266,6 +267,41 @@ export class PostgresOriginalAssetRepository
     }
   }
 
+  async findSourceSecurity(
+    projectId: string,
+    sourceId: string,
+  ): Promise<SourceSecurityRecord | undefined> {
+    const result = await this.pool.query<{
+      project_id: string;
+      source_id: string;
+      version_number: number;
+      access_scope: string[];
+      sensitivity: SourceSecurityRecord['sensitivity'];
+    }>(
+      `SELECT source.project_id,
+              source.source_id::text,
+              version.version_number,
+              version.access_scope,
+              version.sensitivity
+       FROM asset.sources AS source
+       JOIN asset.source_versions AS version ON version.source_id = source.source_id
+       WHERE source.project_id = $1 AND source.source_id = $2
+       ORDER BY version.version_number DESC
+       LIMIT 1`,
+      [projectId, sourceId],
+    );
+    const row = result.rows[0];
+    return row
+      ? {
+          projectId: row.project_id,
+          sourceId: row.source_id,
+          versionNumber: row.version_number,
+          accessScope: row.access_scope,
+          sensitivity: row.sensitivity,
+        }
+      : undefined;
+  }
+
   async store(input: StoreOriginalAssetInput): Promise<StoredIntakeResult> {
     const client = await this.pool.connect();
     try {
@@ -432,6 +468,7 @@ export class PostgresOriginalAssetRepository
       project_id: string;
       source_id: string;
       source_version_id: string;
+      version_number: number;
       original_asset_id: string;
       content_hash: string;
       access_scope: string[];
@@ -440,6 +477,7 @@ export class PostgresOriginalAssetRepository
       `SELECT source.project_id,
               source.source_id::text,
               version.source_version_id::text,
+              version.version_number,
               version.original_asset_id::text,
               original.content_hash,
               version.access_scope,
@@ -456,6 +494,7 @@ export class PostgresOriginalAssetRepository
           projectId: row.project_id,
           sourceId: row.source_id,
           sourceVersionId: row.source_version_id,
+          versionNumber: row.version_number,
           originalAssetId: row.original_asset_id,
           contentHash: row.content_hash,
           accessScope: row.access_scope,

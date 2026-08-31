@@ -45,17 +45,12 @@ export type DiscoveryProductProvenanceV1 = {
   readonly ruleId?: string;
   readonly ruleVersion?: string;
   readonly inputDigest?: string;
-  readonly providerId?: string;
-  readonly modelId?: string;
-  readonly modelVersion?: string;
-  readonly promptVersion?: string;
-  readonly outputSchemaVersion?: string;
 };
 
 export type DiscoveryProductEvidenceReferenceV1 = {
   readonly schemaVersion: FrontendDiscoverySchemaVersion;
   readonly evidenceId: string;
-  readonly evidenceSpanId: string;
+  readonly evidenceRevisionId: string;
   readonly sourceId: string;
   readonly sourceVersionId: string;
 };
@@ -305,18 +300,7 @@ const safeSignals = (value: unknown, path: string): DiscoveryProductSafeSignalsV
 const decodeProvenance = (value: unknown, path: string): DiscoveryProductProvenanceV1 => {
   const object = strictObject(
     value,
-    [
-      'schemaVersion',
-      'kind',
-      'ruleId',
-      'ruleVersion',
-      'inputDigest',
-      'providerId',
-      'modelId',
-      'modelVersion',
-      'promptVersion',
-      'outputSchemaVersion',
-    ],
+    ['schemaVersion', 'kind', 'ruleId', 'ruleVersion', 'inputDigest'],
     path,
   );
   schemaVersion(object, path);
@@ -330,19 +314,6 @@ const decodeProvenance = (value: unknown, path: string): DiscoveryProductProvena
     ...(object.inputDigest === undefined
       ? {}
       : { inputDigest: text(object.inputDigest, `${path}.inputDigest`) }),
-    ...(object.providerId === undefined
-      ? {}
-      : { providerId: text(object.providerId, `${path}.providerId`) }),
-    ...(object.modelId === undefined ? {} : { modelId: text(object.modelId, `${path}.modelId`) }),
-    ...(object.modelVersion === undefined
-      ? {}
-      : { modelVersion: text(object.modelVersion, `${path}.modelVersion`) }),
-    ...(object.promptVersion === undefined
-      ? {}
-      : { promptVersion: text(object.promptVersion, `${path}.promptVersion`) }),
-    ...(object.outputSchemaVersion === undefined
-      ? {}
-      : { outputSchemaVersion: text(object.outputSchemaVersion, `${path}.outputSchemaVersion`) }),
   };
 };
 
@@ -379,14 +350,17 @@ const decodeDiscoveryBase = (value: unknown, path: string) => {
 const decodeEvidence = (value: unknown, path: string): DiscoveryProductEvidenceReferenceV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'evidenceId', 'evidenceSpanId', 'sourceId', 'sourceVersionId'],
+    ['schemaVersion', 'evidenceId', 'evidenceRevisionId', 'sourceId', 'sourceVersionId'],
     path,
   );
   schemaVersion(object, path);
   return {
     schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
     evidenceId: text(required(object, 'evidenceId', path), `${path}.evidenceId`),
-    evidenceSpanId: text(required(object, 'evidenceSpanId', path), `${path}.evidenceSpanId`),
+    evidenceRevisionId: text(
+      required(object, 'evidenceRevisionId', path),
+      `${path}.evidenceRevisionId`,
+    ),
     sourceId: text(required(object, 'sourceId', path), `${path}.sourceId`),
     sourceVersionId: text(required(object, 'sourceVersionId', path), `${path}.sourceVersionId`),
   };

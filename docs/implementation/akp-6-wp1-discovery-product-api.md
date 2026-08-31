@@ -14,6 +14,13 @@ request, or exact `findingId` + `findingRevision`. Principal, effective
 Project, membership/access scope, sensitivity clearance, policy revision,
 lifecycle, freshness, and capabilities are server-derived.
 
+Every related-resource and typed-payload reference is re-authorized against
+the current resource authority before a Finding is returned. Missing,
+revoked, cross-Project, stale-revision, or over-clearance resources fail
+closed for the whole Finding. The PostgreSQL adapter reuses the existing
+Canonical/Approved/Compiled Truth resolver and SourceVersion security reader;
+it does not create a second authorization store.
+
 ## Integration decision
 
 No new dependency is introduced. Existing Shotgun repositories and ports are
@@ -51,7 +58,19 @@ the WP1 evidence and the existing registry reviews are the OSS evidence.
   `REVIEW_READY`.
 - Evidence is emitted only from an accessible persisted `EvidenceSpan`, with
   its real Evidence, Source, SourceVersion, and revision identities. No
-  SourceVersion or Evidence identity is synthesized.
+  SourceVersion or Evidence identity is synthesized; the Product field is
+  explicitly named `evidenceRevisionId`.
+- Pagination remains deterministic keyset pagination, but the client-visible
+  continuation is an authenticated AES-GCM envelope. The plaintext cursor
+  contains only server-owned Project/Finding keyset state, so Finding IDs are
+  not reversible from the browser token and tampering fails closed.
+- `canOpenGraph` is true only when an authorized graph-capable resource was
+  resolved. Activity and Investigation capabilities remain false in WP1
+  because no server-authoritative navigation identity exists yet; a `runId`
+  alone is not a capability grant.
+- Product provenance is narrowed to safe derivation metadata (kind and, where
+  meaningful, deterministic rule/input fields). Provider, model, prompt,
+  credential, execution, and private configuration identities are excluded.
 - Foreign projects, inaccessible sensitivity/access scopes, malformed
   lineage, disabled/expired principals, and inactive/archived projects fail
   closed or are omitted without disclosure.
@@ -63,10 +82,14 @@ the WP1 evidence and the existing registry reviews are the OSS evidence.
 
 ## Verification
 
-The focused contract and client tests cover strict unknown-field rejection,
-current lifecycle override, non-Canonical classification, persistent Review
-eligibility, project isolation, real Evidence lineage, safe signal filtering,
-same-origin CSRF, malformed responses, and AbortSignal forwarding. The
-PostgreSQL integration test is expected to run when `TEST_DATABASE_URL` is
-available and otherwise skip safely; no WP2 UI, WP3 Graph binding, WP4
-Activity/Attention, WP5 actions/E2E, or AKP-7+ work belongs to this document.
+The focused contract, adapter, route-security, and client tests cover strict
+unknown-field rejection, current lifecycle override, revoked/sensitive typed
+resource fail-closed behavior, opaque pagination across hidden windows,
+non-Canonical classification, exact persistent Review lookup, real Evidence
+and SourceVersion lineage, safe signal/capability/provenance filtering,
+same-origin CSRF, failure-envelope translation, malformed responses, and
+AbortSignal forwarding. The PostgreSQL integration test runs when
+`TEST_DATABASE_URL` is available and otherwise skips safely; it exercises a
+real lifecycle transition and persisted SourceVersion/Evidence authority.
+No WP2 UI, WP3 Graph binding, WP4 Activity/Attention, WP5 actions/E2E, or
+AKP-7+ work belongs to this document.

@@ -637,6 +637,11 @@ export type ReviewDiscoveryCandidateReader = {
     projectId: string,
     candidateId: string,
   ): Promise<ReviewDiscoveryCandidateSourceV1 | undefined>;
+  findByFinding?(
+    projectId: string,
+    findingId: string,
+    findingRevision: number,
+  ): Promise<ReviewDiscoveryCandidateSourceV1 | undefined>;
 };
 
 export const createInMemoryReviewDiscoveryCandidateReader = (
@@ -659,6 +664,17 @@ export const createInMemoryReviewDiscoveryCandidateReader = (
       const candidate = byId.get(candidateId);
       if (!candidate || candidate.resourceProjectId !== projectId) return undefined;
       return candidate;
+    },
+    async findByFinding(projectId, findingId, findingRevision) {
+      return [...byId.values()].find(
+        (candidate) =>
+          candidate.resourceProjectId === projectId &&
+          'origin' in candidate &&
+          candidate.origin === 'DERIVED_DISCOVERY' &&
+          candidate.lineage.projectId === projectId &&
+          candidate.lineage.findingId === findingId &&
+          candidate.lineage.findingRevision === findingRevision,
+      );
     },
   };
 };

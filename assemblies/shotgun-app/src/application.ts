@@ -162,10 +162,14 @@ import {
 } from '../../../modules/semantic-generation/src/index.js';
 import {
   DeterministicSemanticQueryClassificationPolicy,
+  ProductKnowledgeResourceResolver,
   SemanticRetriever,
 } from '../../../modules/hybrid-retrieval/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
-import { FrontendDiscoveryProductReadCoordinator } from '../../../modules/frontend-discovery-product/src/index.js';
+import {
+  createEncryptedDiscoveryProductCursorCodec,
+  FrontendDiscoveryProductReadCoordinator,
+} from '../../../modules/frontend-discovery-product/src/index.js';
 import { createPostgresFrontendDiscoveryProductReadSource } from '../../../adapters/frontend-discovery-product-postgres/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
@@ -518,6 +522,13 @@ export const startShotgunApplication = async (
 
     const compiledTruthRepository = new PostgresCompiledTruthRepository(pool);
     const knowledgeModelRepository = new PostgresKnowledgeModelRepository(pool);
+    const discoveryProductResourceResolver = new ProductKnowledgeResourceResolver(
+      canonicalKnowledgeRepository,
+      knowledgeModelRepository,
+      compiledTruthRepository,
+    );
+    const frontendReviewDiscoveryCandidateReader =
+      createPostgresReviewDiscoveryCandidateReader(pool);
     const discoveryRuntimeRepository = new PostgresDiscoveryRuntimeRepository(pool);
     const discoveryFindingRepository = new PostgresDiscoveryFindingRepository(pool);
     const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
@@ -682,7 +693,13 @@ export const startShotgunApplication = async (
       discoveryReentryFreshnessAuthority,
     );
     const frontendDiscoveryProductReadCoordinator = new FrontendDiscoveryProductReadCoordinator(
-      createPostgresFrontendDiscoveryProductReadSource(pool, { evidenceRepository }),
+      createPostgresFrontendDiscoveryProductReadSource(pool, {
+        evidenceRepository,
+        resourceResolver: discoveryProductResourceResolver,
+        sourceSecurityReader: originalAssetRepository,
+        reviewReader: frontendReviewDiscoveryCandidateReader,
+      }),
+      { cursorCodec: createEncryptedDiscoveryProductCursorCodec(stagingSecret) },
     );
     const discoveryReentryWorker =
       recoveryHarness ||
@@ -732,7 +749,7 @@ export const startShotgunApplication = async (
       frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
-      frontendReviewDiscoveryCandidateReader: createPostgresReviewDiscoveryCandidateReader(pool),
+      frontendReviewDiscoveryCandidateReader,
       frontendDiscoveryProductReadCoordinator,
       discoveryReentryFreshnessEvaluator,
       askCommandCoordinator,

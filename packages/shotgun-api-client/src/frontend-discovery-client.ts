@@ -5,10 +5,16 @@ import {
   decodeReadDiscoveryFindingRequestV1,
   decodeReadDiscoveryFindingResultV1,
   decodeDiscoveryDismissFindingCommandRequestV1,
+  decodeDiscoveryFeedbackProductCommandRequestV1,
+  decodeDiscoveryFeedbackProductStateRequestV1,
+  decodeDiscoveryFeedbackProductStateV1,
   decodeAnyFrontendCommandOutcomeView,
   FRONTEND_DISCOVERY_COMMAND_TYPES,
   type AnyFrontendCommandOutcomeView,
   type DiscoveryDismissFindingCommandRequestV1,
+  type DiscoveryFeedbackProductCommandRequestV1,
+  type DiscoveryFeedbackProductStateRequestV1,
+  type DiscoveryFeedbackProductStateV1,
   type DiscoveryProductFindingDetailV1,
   type DiscoveryProductFindingSummaryV1,
   type ListDiscoveryFindingsRequestV1,
@@ -39,6 +45,21 @@ export type FrontendDiscoveryClient = {
     request: DiscoveryDismissFindingCommandRequestV1,
     options?: { readonly signal?: AbortSignal },
   ): Promise<ReadDiscoveryFindingResultV1>;
+  submitDiscoveryFeedback(
+    request: DiscoveryFeedbackProductCommandRequestV1,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<{
+    readonly state: DiscoveryFeedbackProductStateV1;
+    readonly outcome: AnyFrontendCommandOutcomeView;
+  }>;
+  readDiscoveryFeedbackState(
+    request: DiscoveryFeedbackProductStateRequestV1,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<DiscoveryFeedbackProductStateV1>;
+  resolveDiscoveryFeedbackCommand(
+    clientRequestId: string,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<AnyFrontendCommandOutcomeView>;
   resolveDiscoveryDismissCommand(
     clientRequestId: string,
     options?: { readonly signal?: AbortSignal },
@@ -95,6 +116,32 @@ export const createFrontendDiscoveryClient = (
     });
     return resultBody(await assertOk(response));
   };
+  const postEnvelope = async (
+    path: string,
+    params: unknown,
+    signal?: AbortSignal,
+  ): Promise<Record<string, unknown>> => {
+    const send = async (token: string): Promise<Response> =>
+      request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-csrf-token': token },
+        credentials: 'same-origin',
+        body: JSON.stringify(params),
+        signal,
+      });
+    const response = await csrf.run((token) => send(token), {
+      signal,
+      recoverOnResponse: isCsrfFailureResponse,
+    });
+    const body = await assertOk(response);
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      throw new FrontendContractError(
+        'UNSUPPORTED_SCHEMA',
+        'Discovery Product response is invalid.',
+      );
+    }
+    return body as Record<string, unknown>;
+  };
 
   return {
     async listDiscoveryFindings(params, requestOptions) {
@@ -150,6 +197,66 @@ export const createFrontendDiscoveryClient = (
         throw outcomeIndeterminateApiError(decodedRequest.clientRequestId);
       }
     },
+    async submitDiscoveryFeedback(params, requestOptions) {
+      const decodedRequest = decodeDiscoveryFeedbackProductCommandRequestV1(params);
+      try {
+        const body = await postEnvelope(
+          '/product-api/frontend/knowledge/discoveries/feedback',
+          decodedRequest,
+          requestOptions?.signal,
+        );
+        const state = decodeDiscoveryFeedbackProductStateV1(body.result);
+        const outcome = decodeAnyFrontendCommandOutcomeView(body.outcome);
+        if (
+          outcome.clientRequestId !== decodedRequest.clientRequestId ||
+          outcome.commandType !== FRONTEND_DISCOVERY_COMMAND_TYPES.feedback ||
+          state.findingId !== decodedRequest.findingId ||
+          state.findingRevision !== decodedRequest.findingRevision ||
+          state.projectId.length === 0
+        ) {
+          identityMismatch('Discovery feedback result does not match the requested identity.');
+        }
+        return { state, outcome };
+      } catch (error) {
+        if (error instanceof ShotgunApiError || error instanceof FrontendContractError) {
+          throw error;
+        }
+        throw outcomeIndeterminateApiError(decodedRequest.clientRequestId);
+      }
+    },
+    async readDiscoveryFeedbackState(params, requestOptions) {
+      const decodedRequest = decodeDiscoveryFeedbackProductStateRequestV1(params);
+      const state = decodeDiscoveryFeedbackProductStateV1(
+        await post(
+          '/product-api/frontend/knowledge/discoveries/feedback/state',
+          decodedRequest,
+          requestOptions?.signal,
+        ),
+      );
+      if (
+        state.findingId !== decodedRequest.findingId ||
+        state.findingRevision !== decodedRequest.findingRevision ||
+        state.projectId.length === 0
+      ) {
+        identityMismatch('Discovery feedback state does not match the requested identity.');
+      }
+      return state;
+    },
+    async resolveDiscoveryFeedbackCommand(clientRequestId, requestOptions) {
+      const response = await request(
+        `/api/v1/frontend-commands/by-client-request/${encodeURIComponent(clientRequestId)}`,
+        { credentials: 'same-origin', signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { outcome?: unknown };
+      const outcome = decodeAnyFrontendCommandOutcomeView(body.outcome);
+      if (
+        outcome.clientRequestId !== clientRequestId ||
+        outcome.commandType !== FRONTEND_DISCOVERY_COMMAND_TYPES.feedback
+      ) {
+        identityMismatch('Discovery feedback command outcome identity does not match the request.');
+      }
+      return outcome;
+    },
     async resolveDiscoveryDismissCommand(clientRequestId, requestOptions) {
       const response = await request(
         `/api/v1/frontend-commands/by-client-request/${encodeURIComponent(clientRequestId)}`,
@@ -176,4 +283,7 @@ export type {
   ReadDiscoveryFindingRequestV1,
   ReadDiscoveryFindingResultV1,
   DiscoveryDismissFindingCommandRequestV1,
+  DiscoveryFeedbackProductCommandRequestV1,
+  DiscoveryFeedbackProductStateRequestV1,
+  DiscoveryFeedbackProductStateV1,
 };

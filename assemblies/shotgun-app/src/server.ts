@@ -60,6 +60,7 @@ import {
   InMemorySettingsRepository,
 } from '../../../adapters/settings-project-admin-in-memory/src/index.js';
 import { InMemoryFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-in-memory/src/index.js';
+import { InMemoryDiscoveryFeedbackRepository } from '../../../adapters/discovery-feedback-in-memory/src/index.js';
 import {
   InMemoryActionCenterProjection,
   InMemoryAskWorkspaceProjection,
@@ -78,6 +79,10 @@ import {
   createEmptyDiscoveryProductReadSource,
 } from '../../../modules/frontend-discovery-product/src/index.js';
 import type { DiscoveryFindingLifecycleService } from '../../../modules/discovery-finding-lifecycle/src/index.js';
+import {
+  DiscoveryFeedbackProductCoordinator,
+  type DiscoveryFeedbackRepositoryPort,
+} from '../../../modules/discovery-feedback/src/index.js';
 import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
 import type { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
 import {
@@ -589,6 +594,9 @@ export type ApplicationOptions = {
   /** Existing A4 authority exposed only through provider-scoped review routes. */
   readonly providerExternalTransferApprovals?: ProviderExternalTransferApprovalPort;
   readonly frontendCommandGateway?: FrontendCommandGatewayPort;
+  /** AKP-7 WP1 feedback/suppression authority reused by the WP2 Product API. */
+  readonly discoveryFeedbackRepository?: DiscoveryFeedbackRepositoryPort;
+  readonly discoveryFeedbackProductCoordinator?: DiscoveryFeedbackProductCoordinator;
   readonly frontendKnowledgeDraftRepository?: FrontendKnowledgeDraftRepositoryBoundaryPort;
   readonly frontendKnowledgeDraftTargetResolver?: FrontendKnowledgeDraftTargetResolverPort;
   readonly frontendKnowledgeDraftCoordinator?: FrontendKnowledgeDraftProductCoordinator;
@@ -1531,6 +1539,8 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const settingsRepository = options.settingsRepository ?? new InMemorySettingsRepository();
   const frontendCommandGateway =
     options.frontendCommandGateway ?? new InMemoryFrontendCommandGateway();
+  const discoveryFeedbackRepository =
+    options.discoveryFeedbackRepository ?? new InMemoryDiscoveryFeedbackRepository();
   const frontendKnowledgeDraftRepository =
     options.frontendKnowledgeDraftRepository ?? new InMemoryFrontendKnowledgeDraftRepository();
   const frontendKnowledgeDraftTargetResolver =
@@ -2061,6 +2071,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const frontendDiscoveryProductReadCoordinator =
     options.frontendDiscoveryProductReadCoordinator ??
     new FrontendDiscoveryProductReadCoordinator(createEmptyDiscoveryProductReadSource());
+  const discoveryFeedbackProductCoordinator =
+    options.discoveryFeedbackProductCoordinator ??
+    new DiscoveryFeedbackProductCoordinator(discoveryFeedbackRepository);
   // R3-1: the AI Durable Materialization Recovery mutates restored Product AI
   // durable execution state (markExpiredRunningAttemptsOutcomeUnknown / resume
   // commands), so the recovery harness must disable it and run ONLY the
@@ -2555,6 +2568,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       askCommandCoordinator: options.askCommandCoordinator,
       askAnswerExecution: options.askAnswerExecution,
       frontendCommandGateway,
+      discoveryFeedbackProductCoordinator,
       frontendSourcesReadCoordinator,
       frontendDiscoveryProductReadCoordinator,
       frontendDiscoveryFindingLifecycleService: options.frontendDiscoveryFindingLifecycleService,

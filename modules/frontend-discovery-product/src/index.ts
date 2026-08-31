@@ -801,4 +801,30 @@ export class FrontendDiscoveryProductReadCoordinator {
       finding: detail,
     };
   }
+
+  /**
+   * Internal server-only authority bridge for Product commands. The raw
+   * Finding never crosses the browser boundary; the normal Product
+   * projection path is still executed first so project, resource, scope and
+   * sensitivity checks remain identical to a user read.
+   */
+  async findAuthoritativeFinding(
+    scope: DiscoveryProductReadInput & {
+      readonly request: ReadDiscoveryFindingRequestV1;
+    },
+  ): Promise<DiscoveryFindingEnvelopeV1 | undefined> {
+    const finding = await this.source.findFinding({
+      projectId: scope.activeProject.id,
+      findingId: scope.request.findingId,
+      findingRevision: scope.request.findingRevision,
+    });
+    if (!finding) return undefined;
+    try {
+      await this.toSummary(finding, scope);
+    } catch (error) {
+      if (error instanceof ShotgunError && error.code === 'NOT_FOUND') return undefined;
+      throw error;
+    }
+    return finding;
+  }
 }

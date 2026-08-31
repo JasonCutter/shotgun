@@ -213,6 +213,98 @@ describe('AKP-6 WP1 typed Discovery client', () => {
     expect(calls[2]?.input).toBe(`/api/v1/frontend-commands/by-client-request/${clientRequestId}`);
   });
 
+  it('posts only feedback intent and decodes the principal-scoped Product state', async () => {
+    const calls: { input: string; init?: RequestInit }[] = [];
+    const clientRequestId = 'feedback-client-1';
+    const idempotencyKey = 'feedback-key-1';
+    const outcome = {
+      commandId: 'feedback-command-1',
+      commandRevision: '2',
+      clientRequestId,
+      idempotencyKey,
+      commandType: FRONTEND_DISCOVERY_COMMAND_TYPES.feedback,
+      commandSchemaVersion: '1.0.0',
+      commandSemanticDigest: 'digest-feedback-1',
+      outcomeState: 'COMPLETED',
+      completionDisposition: 'SUCCEEDED',
+      acceptedPrincipalContext: {
+        principalId: 'principal-1',
+        actor: { type: 'user', id: 'principal-1' },
+      },
+      acceptedProjectContext: { targetProjectId: 'project-1' },
+      acceptedPolicyContext: {
+        policyContextId: 'project-policy-context/project-1',
+        policyContextRevision: '7',
+        acceptedAt: '2026-08-31T00:00:00.000Z',
+      },
+      correlationId: 'correlation-feedback-1',
+      traceId: 'trace-feedback-1',
+      producedResources: [
+        { resourceKind: 'DISCOVERY_FEEDBACK_EVENT', resourceId: 'feedback:feedback-command-1' },
+      ],
+      receivedAt: '2026-08-31T00:00:00.000Z',
+      acceptedAt: '2026-08-31T00:00:00.000Z',
+      completedAt: '2026-08-31T00:00:01.000Z',
+      lastUpdatedAt: '2026-08-31T00:00:01.000Z',
+    };
+    const event = {
+      schemaVersion: '1.0.0',
+      feedbackId: 'feedback:feedback-command-1',
+      projectId: 'project-1',
+      findingId: 'finding-1',
+      findingRevision: 1,
+      actor: { type: 'user', id: 'principal-1' },
+      principalId: 'principal-1',
+      feedbackClass: 'UTILITY',
+      feedbackKind: 'USEFUL',
+      scope: 'FINDING',
+      createdAt: '2026-08-31T00:00:00.000Z',
+    };
+    const state = {
+      schemaVersion: '1.0.0',
+      projectId: 'project-1',
+      findingId: 'finding-1',
+      findingRevision: 1,
+      feedbackHistory: [event],
+      suppressionHistory: [],
+    };
+    const fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      calls.push({ input: String(input), init });
+      if (String(input) === '/api/v1/security/csrf') {
+        return Response.json({ csrfToken: 'csrf-feedback' });
+      }
+      if (String(input).endsWith('/discoveries/feedback')) {
+        return Response.json({ result: state, outcome });
+      }
+      if (String(input).startsWith('/api/v1/frontend-commands/by-client-request/')) {
+        return Response.json({ outcome });
+      }
+      throw new Error(`Unexpected fetch path: ${String(input)}`);
+    };
+    const client = createFrontendDiscoveryClient({ fetch });
+    const submitted = await client.submitDiscoveryFeedback({
+      schemaVersion: '1.0.0',
+      clientRequestId,
+      idempotencyKey,
+      findingId: 'finding-1',
+      findingRevision: 1,
+      feedbackClass: 'UTILITY',
+      feedbackKind: 'USEFUL',
+    });
+    expect(submitted).toMatchObject({ state: { feedbackHistory: [{ feedbackKind: 'USEFUL' }] } });
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
+      schemaVersion: '1.0.0',
+      clientRequestId,
+      idempotencyKey,
+      findingId: 'finding-1',
+      findingRevision: 1,
+      feedbackClass: 'UTILITY',
+      feedbackKind: 'USEFUL',
+    });
+    const resolved = await client.resolveDiscoveryFeedbackCommand(clientRequestId);
+    expect(resolved.commandType).toBe(FRONTEND_DISCOVERY_COMMAND_TYPES.feedback);
+  });
+
   it('rejects exact finding identity and project mismatches from the server', async () => {
     const mismatchedIdentityFetch = async (input: string | URL | Request): Promise<Response> =>
       String(input) === '/api/v1/security/csrf'

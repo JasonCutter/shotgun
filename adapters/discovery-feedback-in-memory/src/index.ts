@@ -16,6 +16,8 @@ import type {
   DiscoveryFeedbackRepositoryPort,
   DiscoveryRankingPolicyLookupV1,
   DiscoverySuppressionLookupV1,
+  DiscoverySuppressionHistoryLookupV1,
+  DiscoveryFeedbackTransactionHandleV1,
 } from '../../../modules/discovery-feedback/src/index.js';
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -62,12 +64,43 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
     lookup: DiscoveryFeedbackFindingLookupV1,
   ): Promise<readonly DiscoveryFeedbackEventV1[]> {
     const projectId = assertProjectId(lookup.projectId);
+    const principalId =
+      lookup.principalId === undefined ? undefined : assertPrincipalId(lookup.principalId);
     return [...this.feedback.values()]
-      .filter((event) => sameFinding(event, { ...lookup, projectId }))
+      .filter(
+        (event) =>
+          sameFinding(event, { ...lookup, projectId }) &&
+          (principalId === undefined || subjectId(event) === principalId),
+      )
       .sort(
         (left, right) =>
           timestamp(left.createdAt) - timestamp(right.createdAt) ||
           left.feedbackId.localeCompare(right.feedbackId),
+      )
+      .map(clone);
+  }
+
+  async listSuppressionHistoryForFinding(
+    lookup: DiscoverySuppressionHistoryLookupV1,
+  ): Promise<readonly DiscoverySuppressionDirectiveV1[]> {
+    const projectId = assertProjectId(lookup.projectId);
+    const principalId = assertPrincipalId(lookup.principalId);
+    return [...this.suppressions.values()]
+      .filter(
+        (directive) =>
+          sameFinding(
+            {
+              projectId: directive.projectId,
+              findingId: directive.sourceFindingId,
+              findingRevision: directive.sourceFindingRevision,
+            },
+            { ...lookup, projectId },
+          ) && subjectId(directive) === principalId,
+      )
+      .sort(
+        (left, right) =>
+          timestamp(left.createdAt) - timestamp(right.createdAt) ||
+          left.suppressionId.localeCompare(right.suppressionId),
       )
       .map(clone);
   }
@@ -155,5 +188,21 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
     lookup: DiscoveryRankingPolicyLookupV1,
   ): Promise<DiscoveryRankingPolicyRevisionV1 | undefined> {
     return (await this.listRankingPolicyRevisions(lookup))[0];
+  }
+
+  async transaction<T>(
+    action: (handle: DiscoveryFeedbackTransactionHandleV1) => Promise<T>,
+  ): Promise<T> {
+    const feedbackSnapshot = new Map(this.feedback);
+    const suppressionSnapshot = new Map(this.suppressions);
+    try {
+      return await action({ repository: this, raw: undefined });
+    } catch (error) {
+      this.feedback.clear();
+      this.suppressions.clear();
+      for (const [key, value] of feedbackSnapshot) this.feedback.set(key, value);
+      for (const [key, value] of suppressionSnapshot) this.suppressions.set(key, value);
+      throw error;
+    }
   }
 }

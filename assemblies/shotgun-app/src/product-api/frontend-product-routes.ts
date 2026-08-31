@@ -4,6 +4,10 @@ import type { FastifyInstance } from 'fastify';
 
 import type { FrontendProductReadCoordinator } from '../../../../modules/frontend-product-read/src/index.js';
 import type { FrontendDiscoveryProductReadCoordinator } from '../../../../modules/frontend-discovery-product/src/index.js';
+import type {
+  DiscoveryFeedbackProductCoordinator,
+  DiscoveryFeedbackAuthoritativeFindingV1,
+} from '../../../../modules/discovery-feedback/src/index.js';
 import type { DiscoveryFindingLifecycleService } from '../../../../modules/discovery-finding-lifecycle/src/index.js';
 import type {
   FrontendSourcesReadCoordinator,
@@ -44,6 +48,8 @@ import {
   decodeListDiscoveryFindingsRequestV1,
   decodeReadDiscoveryFindingRequestV1,
   decodeDiscoveryDismissFindingCommandRequestV1,
+  decodeDiscoveryFeedbackProductCommandRequestV1,
+  decodeDiscoveryFeedbackProductStateRequestV1,
   FRONTEND_DISCOVERY_COMMAND_TYPES,
   FrontendContractError,
   buildCommandSemanticDigestInput,
@@ -73,6 +79,7 @@ export const registerFrontendProductRoutes = (
     readonly askCommandCoordinator?: AskCommandCoordinator;
     readonly askAnswerExecution?: AskAnswerExecutionService;
     readonly frontendCommandGateway?: FrontendCommandGatewayPort;
+    readonly discoveryFeedbackProductCoordinator?: DiscoveryFeedbackProductCoordinator;
     readonly frontendSourcesReadCoordinator?: FrontendSourcesReadCoordinator;
     readonly frontendDiscoveryProductReadCoordinator?: FrontendDiscoveryProductReadCoordinator;
     readonly frontendDiscoveryFindingLifecycleService?: DiscoveryFindingLifecycleService;
@@ -757,6 +764,135 @@ export const registerFrontendProductRoutes = (
             });
             throw error;
           }
+        },
+      );
+    }
+
+    const discoveryFeedback = options?.discoveryFeedbackProductCoordinator;
+    if (discoveryFeedback && discoveryGateway) {
+      const feedbackFinding = async (
+        scope: Awaited<ReturnType<typeof buildScope>> & {
+          readonly activeProject: NonNullable<
+            Awaited<ReturnType<typeof buildScope>>['activeProject']
+          >;
+        },
+        findingId: string,
+        findingRevision: number,
+        operation: string,
+      ): Promise<DiscoveryFeedbackAuthoritativeFindingV1> => {
+        const finding = await discoveryCoordinator.findAuthoritativeFinding({
+          ...scope,
+          request: { schemaVersion: '1.0.0', findingId, findingRevision },
+        });
+        if (!finding) {
+          throw new ShotgunError({
+            code: 'NOT_FOUND',
+            safeMessage: 'The requested Discovery Finding was not found.',
+            module: 'frontend-discovery-product',
+            operation,
+          });
+        }
+        if (
+          typeof finding.fingerprint !== 'string' ||
+          typeof finding.fingerprintVersion !== 'string' ||
+          finding.projectId !== scope.activeProject.id ||
+          finding.findingId !== findingId ||
+          finding.findingRevision !== findingRevision
+        ) {
+          throw new ShotgunError({
+            code: 'FORMAT_CORRUPT',
+            safeMessage: 'The Discovery Finding authority is invalid.',
+            module: 'frontend-discovery-product',
+            operation,
+          });
+        }
+        return {
+          projectId: finding.projectId,
+          findingId: finding.findingId,
+          findingRevision: finding.findingRevision,
+          fingerprint: finding.fingerprint,
+          fingerprintVersion: finding.fingerprintVersion,
+        };
+      };
+
+      server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+        '/product-api/frontend/knowledge/discoveries/feedback',
+        async (request) => {
+          const scope = await discoveryScope(request.headers, 'submit-discovery-feedback');
+          const decoded = decodeDiscoveryRequest(
+            'decode-discovery-feedback-command',
+            decodeDiscoveryFeedbackProductCommandRequestV1,
+            request.body,
+          );
+          const finding = await feedbackFinding(
+            scope.value,
+            decoded.findingId,
+            decoded.findingRevision,
+            'resolve-discovery-feedback-finding',
+          );
+          try {
+            const command = await discoveryFeedback.submit({
+              scope: {
+                principalId: scope.value.principalId,
+                projectId: scope.value.activeProject.id,
+                accessRevision: scope.value.accessRevision,
+                policyContextRevision: scope.value.policyContextRevision,
+              },
+              request: decoded,
+              finding,
+              gateway: discoveryGateway,
+              correlationId: request.headers['x-correlation-id']?.toString(),
+            });
+            const state = await discoveryFeedback.readState(
+              {
+                principalId: scope.value.principalId,
+                projectId: scope.value.activeProject.id,
+                accessRevision: scope.value.accessRevision,
+                policyContextRevision: scope.value.policyContextRevision,
+              },
+              finding,
+            );
+            return { result: state, outcome: command.outcome };
+          } catch (error) {
+            if (error instanceof FrontendContractError) {
+              throw new ShotgunError({
+                code: error.code,
+                safeMessage: 'The Discovery feedback command is invalid.',
+                module: 'frontend-discovery-product',
+                operation: 'submit-discovery-feedback',
+                cause: error,
+              });
+            }
+            throw error;
+          }
+        },
+      );
+
+      server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+        '/product-api/frontend/knowledge/discoveries/feedback/state',
+        async (request) => {
+          const scope = await discoveryScope(request.headers, 'read-discovery-feedback-state');
+          const decoded = decodeDiscoveryRequest(
+            'decode-discovery-feedback-state-request',
+            decodeDiscoveryFeedbackProductStateRequestV1,
+            request.body,
+          );
+          const finding = await feedbackFinding(
+            scope.value,
+            decoded.findingId,
+            decoded.findingRevision,
+            'resolve-discovery-feedback-state-finding',
+          );
+          const state = await discoveryFeedback.readState(
+            {
+              principalId: scope.value.principalId,
+              projectId: scope.value.activeProject.id,
+              accessRevision: scope.value.accessRevision,
+              policyContextRevision: scope.value.policyContextRevision,
+            },
+            finding,
+          );
+          return { result: state };
         },
       );
     }

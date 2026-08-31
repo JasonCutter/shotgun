@@ -42,6 +42,13 @@ const discoveryDetailHref = (node: GraphNodeV1): string | null =>
     ? `${node.payload.detailPath}?revision=${encodeURIComponent(String(node.payload.findingRevision))}`
     : null;
 
+const discoveryEdgeDetailHref = (edge: GraphEdgeV1): string | null => {
+  const finding = edge.provenance?.discoveryFindingRef;
+  return finding
+    ? `/knowledge/discoveries/${encodeURIComponent(finding.findingId)}?revision=${encodeURIComponent(String(finding.findingRevision))}`
+    : null;
+};
+
 export const GraphListView = ({
   nodes,
   edges,
@@ -72,7 +79,15 @@ export const GraphListView = ({
             tuple.kind === 'node'
               ? nodes.find((candidate) => candidate.nodeId === tuple.nodeId)
               : undefined;
-          const detailHref = node ? discoveryDetailHref(node) : null;
+          const edge =
+            tuple.kind === 'edge'
+              ? edges.find((candidate) => candidate.edgeId === tuple.edgeId)
+              : undefined;
+          const detailHref = node
+            ? discoveryDetailHref(node)
+            : edge
+              ? discoveryEdgeDetailHref(edge)
+              : null;
           return (
             <li
               key={key}
@@ -96,14 +111,14 @@ export const GraphListView = ({
               <span className="graph-item-overlays">
                 {tuple.overlayMemberships.map(graphOverlayLabel).join(', ')}
               </span>
-              {node ? (
+              {node || edge ? (
                 <span className="graph-item-evidence">
-                  Evidence: {node.evidence?.evidenceCount ?? 0}
+                  Evidence: {node?.evidence?.evidenceCount ?? edge?.evidence?.evidenceCount ?? 0}
                 </span>
               ) : null}
               {detailHref ? (
                 <a href={detailHref} className="graph-item-detail-link">
-                  Discovery detail
+                  {node ? 'Discovery detail' : 'Discovery candidate detail'}
                 </a>
               ) : null}
               {nodeRef ? (

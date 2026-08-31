@@ -106,6 +106,12 @@ export type GraphReadDomain = {
     scope: GraphReadScopeV1,
     request: GraphSnapshotRequestV1,
   ): Promise<GraphSnapshotResultV1>;
+  discoverySnapshot(
+    scope: GraphReadScopeV1,
+    request: GraphSnapshotRequestV1,
+    findingId: string,
+    findingRevision: number,
+  ): Promise<GraphSnapshotResultV1>;
   neighborhood(
     scope: GraphReadScopeV1,
     request: GraphNeighborhoodRequestV1,
@@ -416,36 +422,61 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
     };
   };
 
-  return {
-    async snapshot(scope, request) {
-      const { limits, applied } = clampLimits(request.limits, caps);
-      const result = await readPort.snapshot(scope, { ...request, limits });
-      const snapshotResult: GraphSnapshotResultV1 = {
-        ...result,
-        appliedLimits: applied,
-        capabilities: capabilities(request.overlayKinds),
-      };
-      await writeSnapshotContext(scope, result.identity, request, limits);
-      await writeProjectionHealth(
+  const snapshot = async (
+    scope: GraphReadScopeV1,
+    request: GraphSnapshotRequestV1,
+  ): Promise<GraphSnapshotResultV1> => {
+    const { limits, applied } = clampLimits(request.limits, caps);
+    const result = await readPort.snapshot(scope, { ...request, limits });
+    const snapshotResult: GraphSnapshotResultV1 = {
+      ...result,
+      appliedLimits: applied,
+      capabilities: capabilities(request.overlayKinds),
+    };
+    await writeSnapshotContext(scope, result.identity, request, limits);
+    await writeProjectionHealth(
+      scope,
+      result.identity.viewKind,
+      result.identity.projectionRevision,
+      result.health,
+      result.identity.generatedAt,
+    );
+    if (result.completeness === 'PARTIAL') {
+      const rootRef = request.rootRefs?.[0];
+      snapshotResult.continuation = await nextContinuation(
         scope,
-        result.identity.viewKind,
-        result.identity.projectionRevision,
-        result.health,
-        result.identity.generatedAt,
+        result.identity.snapshotId,
+        rootRef,
+        request.filters,
+        request.viewKind,
+        request.overlayKinds,
+        limits,
       );
-      if (result.completeness === 'PARTIAL') {
-        const rootRef = request.rootRefs?.[0];
-        snapshotResult.continuation = await nextContinuation(
-          scope,
-          result.identity.snapshotId,
-          rootRef,
-          request.filters,
-          request.viewKind,
-          request.overlayKinds,
-          limits,
+    }
+    return snapshotResult;
+  };
+
+  return {
+    snapshot,
+
+    async discoverySnapshot(scope, request, findingId, findingRevision) {
+      if (!discoveryOverlayPort?.resolveDiscoveryRoots) {
+        throw new FrontendContractError(
+          'NOT_FOUND',
+          'server-authorized Discovery graph roots are unavailable',
         );
       }
-      return snapshotResult;
+      const rootRefs = await discoveryOverlayPort.resolveDiscoveryRoots(scope, {
+        findingId,
+        findingRevision,
+      });
+      if (!rootRefs || rootRefs.length === 0) {
+        throw new FrontendContractError(
+          'PRECONDITION_ACCESS_DENIED',
+          'Discovery Finding has no authorized graph roots',
+        );
+      }
+      return snapshot(scope, { ...request, rootRefs });
     },
 
     async neighborhood(scope, request) {

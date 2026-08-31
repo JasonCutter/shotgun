@@ -9,6 +9,7 @@ import type {
   GraphPathDescribeRequestV1,
   GraphPathRequestV1,
   GraphPathResultV1,
+  GraphNodeReferenceV1,
   GraphRecursiveImpactOverlayRequestV1,
   GraphRestoreRequestV1,
   GraphRestoreResultV1,
@@ -88,6 +89,15 @@ export type GraphImpactPort = {
  * only binds its result to the exact base snapshot and projection revision.
  */
 export type GraphDiscoveryOverlayPort = {
+  /**
+   * Resolve the server-authorized resource roots for the exact Finding
+   * revision before a focused base snapshot is materialized. Browser-supplied
+   * resource refs are never used for this operation.
+   */
+  resolveDiscoveryRoots?(
+    scope: GraphReadScopeV1,
+    request: Pick<GraphDiscoveryOverlayRequestV1, 'findingId' | 'findingRevision'>,
+  ): Promise<readonly GraphNodeReferenceV1[] | undefined>;
   discoveryOverlay(
     scope: GraphReadScopeV1,
     request: GraphDiscoveryOverlayRequestV1,

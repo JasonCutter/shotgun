@@ -66,6 +66,26 @@ export const graphSnapshotQueryOptions = (
   });
 };
 
+export const graphDiscoverySnapshotQueryOptions = (
+  client: FrontendKnowledgeGraphClient,
+  shell: GlobalShellView | null,
+  request: GraphSnapshotRequestV1,
+  findingId: string,
+  findingRevision: number,
+) => {
+  const scope = graphScopeFromShell(shell);
+  return queryOptions({
+    queryKey: scope
+      ? [...graphScopeQueryKey(scope, request), 'discovery', findingId, findingRevision]
+      : graphDisabledQueryKey('discovery-snapshot'),
+    queryFn: ({ signal }) =>
+      client.getDiscoveryGraphSnapshot(request, findingId, findingRevision, { signal }),
+    enabled: scope !== null && findingId.trim().length > 0 && findingRevision > 0,
+    retry: graphQueryRetry,
+    staleTime: 15_000,
+  });
+};
+
 export const graphNeighborhoodQueryOptions = (
   client: FrontendKnowledgeGraphClient,
   scope: GraphQueryScope | null,

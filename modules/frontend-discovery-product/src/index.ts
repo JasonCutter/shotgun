@@ -63,6 +63,10 @@ export type DiscoveryProductReadSource = {
   findEvidence(projectId: string, evidenceId: string): Promise<EvidenceSpan | undefined>;
 };
 
+export type DiscoveryProductGraphReadiness = {
+  canReadGraph(projectId: string): Promise<boolean>;
+};
+
 export type DiscoveryProductPageCursorV1 = {
   readonly findingId: string;
   readonly findingRevision: number;
@@ -438,12 +442,17 @@ const evidenceReference = (span: EvidenceSpan): DiscoveryProductEvidenceReferenc
 
 export class FrontendDiscoveryProductReadCoordinator {
   private readonly cursorCodec: DiscoveryProductCursorCodec;
+  private readonly graphReadiness?: DiscoveryProductGraphReadiness;
 
   constructor(
     private readonly source: DiscoveryProductReadSource,
-    options: { readonly cursorCodec?: DiscoveryProductCursorCodec } = {},
+    options: {
+      readonly cursorCodec?: DiscoveryProductCursorCodec;
+      readonly graphReadiness?: DiscoveryProductGraphReadiness;
+    } = {},
   ) {
     this.cursorCodec = options.cursorCodec ?? defaultCursorCodec();
+    this.graphReadiness = options.graphReadiness;
   }
 
   private async authorizeResources(
@@ -600,14 +609,19 @@ export class FrontendDiscoveryProductReadCoordinator {
         projectionDigest: finding.discoveryBase.projectionDigest,
       },
     };
+    const eligibleForGraph =
+      graphEligibleFinding(finding) &&
+      authorizedResources.length > 0 &&
+      authorizedResources.every((resource) => resource.graphEligible);
+    const canReadGraph =
+      eligibleForGraph &&
+      (this.graphReadiness === undefined ||
+        (await this.graphReadiness.canReadGraph(finding.projectId)));
     const capabilities: DiscoveryProductCapabilitiesV1 = {
       schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
       canOpenReview: context.reviewBinding !== undefined,
       canInspectEvidence: context.evidence.length > 0,
-      canOpenGraph:
-        graphEligibleFinding(finding) &&
-        authorizedResources.length > 0 &&
-        authorizedResources.every((resource) => resource.graphEligible),
+      canOpenGraph: canReadGraph,
       // WP1 has no server-authoritative Activity or Investigation navigation
       // identity. A persisted runId is not sufficient capability evidence.
       canOpenActivity: false,

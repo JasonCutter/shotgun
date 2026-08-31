@@ -46,6 +46,12 @@ export type FrontendKnowledgeGraphClient = {
     params: GraphSnapshotRequestV1,
     options?: { readonly signal?: AbortSignal },
   ): Promise<GraphSnapshotResultV1>;
+  getDiscoveryGraphSnapshot(
+    params: GraphSnapshotRequestV1,
+    findingId: string,
+    findingRevision: number,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<GraphSnapshotResultV1>;
   expandGraphNeighborhood(
     params: GraphNeighborhoodRequestV1,
     options?: { readonly signal?: AbortSignal },
@@ -140,6 +146,19 @@ export const createFrontendKnowledgeGraphClient = (
       return decodeGraphSnapshotResultV1(
         await post(
           '/product-api/frontend/knowledge/graph/snapshot',
+          decodeGraphSnapshotRequestV1(params),
+          requestOptions?.signal,
+        ),
+        'result',
+      );
+    },
+    async getDiscoveryGraphSnapshot(params, findingId, findingRevision, requestOptions) {
+      if (!findingId.trim() || !Number.isSafeInteger(findingRevision) || findingRevision < 1) {
+        throw new FrontendContractError('INVALID_REQUEST', 'Discovery Finding identity is invalid');
+      }
+      return decodeGraphSnapshotResultV1(
+        await post(
+          `/product-api/frontend/knowledge/graph/snapshot/discovery/${encodeURIComponent(findingId)}/${findingRevision}`,
           decodeGraphSnapshotRequestV1(params),
           requestOptions?.signal,
         ),

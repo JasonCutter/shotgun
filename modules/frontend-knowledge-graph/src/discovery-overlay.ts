@@ -58,6 +58,39 @@ const refsFor = (finding: DiscoveryProductFindingDetailV1): readonly DiscoveryRe
   }
 };
 
+const graphRootsFor = (
+  finding: DiscoveryProductFindingDetailV1,
+  activeProjectId: string,
+  expectedProjectionRevision?: string,
+): readonly GraphNodeReferenceV1[] | undefined => {
+  if (
+    finding.projectId !== activeProjectId ||
+    !ACTIVE_LIFECYCLES.has(finding.lifecycleState) ||
+    !finding.capabilities.canOpenGraph
+  ) {
+    return undefined;
+  }
+  if (
+    expectedProjectionRevision !== undefined &&
+    finding.freshness.discoveryBase.projectionRevision !== expectedProjectionRevision
+  ) {
+    return undefined;
+  }
+  const refs = refsFor(finding);
+  if (
+    (finding.findingType === 'RELATION_HYPOTHESIS' && refs.length !== 2) ||
+    ((finding.findingType === 'PATTERN_HYPOTHESIS' ||
+      finding.findingType === 'CONFLICT_HYPOTHESIS') &&
+      refs.length < 2) ||
+    !refs.every((ref) => ref.projectId === activeProjectId)
+  ) {
+    return undefined;
+  }
+  const roots = refs.map(toGraphRef);
+  if (roots.some((ref) => ref === null)) return undefined;
+  return roots as readonly GraphNodeReferenceV1[];
+};
+
 const evidenceFor = (finding: DiscoveryProductFindingDetailV1) => {
   const evidenceIds = finding.lineage.evidence.map((evidence) => evidence.evidenceId);
   const sourceIds = finding.lineage.evidence.map((evidence) => evidence.sourceId);
@@ -223,6 +256,7 @@ export const createGraphDiscoveryOverlayPort = (
       if (baseSnapshot.identity.projectionRevision !== request.projectionRevision) {
         return unavailableResult();
       }
+      if (baseSnapshot.health !== 'COMPLETE') return unavailableResult();
       const finding = await reader.readFinding(scope, request);
       if (
         !finding ||
@@ -235,13 +269,7 @@ export const createGraphDiscoveryOverlayPort = (
         return unavailableResult();
       }
       const refs = refsFor(finding);
-      if (
-        (finding.findingType === 'RELATION_HYPOTHESIS' && refs.length !== 2) ||
-        ((finding.findingType === 'PATTERN_HYPOTHESIS' ||
-          finding.findingType === 'CONFLICT_HYPOTHESIS') &&
-          refs.length < 2) ||
-        !refs.every((ref) => ref.projectId === scope.activeProjectId)
-      ) {
+      if (!graphRootsFor(finding, scope.activeProjectId, request.projectionRevision)) {
         return unavailableResult();
       }
       const resources = refs.map((ref) => resourceNode(baseSnapshot, ref));
@@ -354,6 +382,17 @@ export const createGraphDiscoveryOverlayPort = (
         edges: truncatedEdges,
         appliedLimits: baseSnapshot.appliedLimits,
       };
+    },
+    async resolveDiscoveryRoots(scope, request) {
+      const context = await reader.readFinding(scope, {
+        schemaVersion: '1.0.0',
+        baseSnapshotId: 'discovery-root-resolution',
+        projectionRevision: 'discovery-root-resolution',
+        overlayKind: 'DISCOVERY',
+        findingId: request.findingId,
+        findingRevision: request.findingRevision,
+      });
+      return context ? graphRootsFor(context, scope.activeProjectId) : undefined;
     },
   };
 };

@@ -44,6 +44,11 @@ type SnapshotContextCache = {
   viewKind: GraphBaseViewKindV1;
 };
 
+export type Stage9GraphReadAdapterOptions = {
+  readonly health?: GraphProjectionHealthV1;
+  readonly maxSnapshots?: number;
+};
+
 const freshId = (prefix: string): string =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -102,6 +107,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     private readonly edges: readonly GraphEdgeV1[],
     private readonly projectionRevision: () => string = () => 'proj-1',
     private readonly evidenceEntries: readonly GraphEvidenceEntryV1[] = [],
+    private readonly options: Stage9GraphReadAdapterOptions = {},
   ) {
     for (const node of nodes) this.resourceMap.set(node.resourceRef.resourceId, node);
     for (const edge of edges) this.edgeMap.set(edge.edgeId, edge);
@@ -115,7 +121,10 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
   private boundedSnapshot(
     scope: GraphReadScopeV1,
     request: {
-      rootRefs?: readonly { resourceId: string }[];
+      rootRefs?: readonly {
+        resourceKind: GraphNodeReferenceV1['resourceKind'];
+        resourceId: string;
+      }[];
       viewKind: GraphBaseViewKindV1;
       overlayKinds?: readonly GraphOverlayKindV1[];
       filters?: GraphFilterSetV1;
@@ -125,15 +134,21 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     snapshotId: string,
     health: GraphProjectionHealthV1,
   ): GraphSnapshotResultV1 {
-    const rootIds = (request.rootRefs ?? []).map((ref) => ref.resourceId);
+    const rootRefs = request.rootRefs ?? [];
     const allowed =
-      rootIds.length === 0
+      rootRefs.length === 0
         ? this.nodes
-        : this.nodes.filter((node) => rootIds.includes(node.resourceRef.resourceId));
+        : this.nodes.filter((node) =>
+            rootRefs.some(
+              (ref) =>
+                ref.resourceKind === node.resourceRef.resourceKind &&
+                ref.resourceId === node.resourceRef.resourceId,
+            ),
+          );
     // Cross-Project deep-link denial: a requested root that does not exist in
     // the active Project's dataset is never silently switched to another
     // Project; it returns a typed access failure instead.
-    if (rootIds.length > 0 && allowed.length === 0) {
+    if (rootRefs.length > 0 && allowed.length === 0) {
       throw new FrontendContractError(
         'PRECONDITION_ACCESS_DENIED',
         'root resource is outside the active project',
@@ -183,7 +198,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     const result: GraphSnapshotResultV1 = {
       schemaVersion: '1.0.0',
       identity,
-      health,
+      health: this.options.health ?? health,
       completeness,
       nodes,
       edges,
@@ -193,7 +208,21 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
       capabilities: { schemaVersion: '1.0.0', capabilities: [] },
     };
     this.snapshots.set(snapshotId, result);
+    this.retainSnapshot();
     return result;
+  }
+
+  private retainSnapshot(): void {
+    const maximum = Math.max(1, this.options.maxSnapshots ?? 128);
+    while (this.snapshots.size > maximum) {
+      const oldest = this.snapshots.keys().next().value;
+      if (oldest === undefined) break;
+      this.snapshots.delete(oldest);
+      this.contexts.delete(oldest);
+      for (const key of this.paths.keys()) {
+        if (key.startsWith(`${oldest}:`)) this.paths.delete(key);
+      }
+    }
   }
 
   private applied(limits: GraphTraversalLimitsV1): GraphAppliedLimitsV1 {
@@ -521,7 +550,6 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     baseSnapshotId: string,
   ): Promise<GraphOverlayResultV1> {
     void request;
-    const context = this.contexts.get(baseSnapshotId);
     const impactNodes = this.nodes.filter(
       (node) =>
         node.authority === 'DERIVED_INFERENCE' ||
@@ -533,7 +561,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     return {
       schemaVersion: '1.0.0',
       baseSnapshotId,
-      projectionRevision: context?.limits ? 'proj-1' : 'proj-1',
+      projectionRevision: this.projectionRevision(),
       identity: {
         schemaVersion: '1.0.0',
         overlayKind: 'RECURSIVE_IMPACT',

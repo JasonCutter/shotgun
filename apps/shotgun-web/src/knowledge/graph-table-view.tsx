@@ -18,6 +18,13 @@ const discoveryDetailHref = (node: GraphNodeV1): string | null =>
     ? `${node.payload.detailPath}?revision=${encodeURIComponent(String(node.payload.findingRevision))}`
     : null;
 
+const discoveryEdgeDetailHref = (edge: GraphEdgeV1): string | null => {
+  const finding = edge.provenance?.discoveryFindingRef;
+  return finding
+    ? `/knowledge/discoveries/${encodeURIComponent(finding.findingId)}?revision=${encodeURIComponent(String(finding.findingRevision))}`
+    : null;
+};
+
 /**
  * Table fallback view (AC-19/AC-21). Exposes the identical accessible
  * `(nodeId, edgeId, label, authority, baseViewMembership,
@@ -68,7 +75,15 @@ export const GraphTableView = ({
               tuple.kind === 'node'
                 ? nodes.find((candidate) => candidate.nodeId === tuple.nodeId)
                 : undefined;
-            const detailHref = node ? discoveryDetailHref(node) : null;
+            const edge =
+              tuple.kind === 'edge'
+                ? edges.find((candidate) => candidate.edgeId === tuple.edgeId)
+                : undefined;
+            const detailHref = node
+              ? discoveryDetailHref(node)
+              : edge
+                ? discoveryEdgeDetailHref(edge)
+                : null;
             return (
               <tr
                 key={key}
@@ -87,11 +102,15 @@ export const GraphTableView = ({
                 <td>{graphBaseViewLabel(tuple.baseViewMembership)}</td>
                 <td>
                   {tuple.overlayMemberships.map(graphOverlayLabel).join(', ')}
-                  {node ? ` · Evidence: ${node.evidence?.evidenceCount ?? 0}` : ''}
+                  {node || edge
+                    ? ` · Evidence: ${node?.evidence?.evidenceCount ?? edge?.evidence?.evidenceCount ?? 0}`
+                    : ''}
                   {detailHref ? (
                     <>
                       {' '}
-                      <a href={detailHref}>Discovery detail</a>
+                      <a href={detailHref}>
+                        {node ? 'Discovery detail' : 'Discovery candidate detail'}
+                      </a>
                     </>
                   ) : null}
                 </td>

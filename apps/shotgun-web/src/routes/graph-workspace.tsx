@@ -25,10 +25,11 @@ import {
 } from '../knowledge/graph-correction.js';
 import {
   graphDiscoveryOverlayQueryOptions,
+  graphQueryRetry,
   graphScopeFromShell,
   graphSnapshotIsReady,
-  graphSnapshotQueryOptions,
 } from '../knowledge/graph-queries.js';
+import { graphDisabledQueryKey, graphScopeQueryKey } from '../app/query-keys.js';
 import { GraphListView } from '../knowledge/graph-list-view.js';
 import { GraphPathView } from '../knowledge/graph-path-view.js';
 import { GraphTableView } from '../knowledge/graph-table-view.js';
@@ -153,7 +154,32 @@ export const GraphWorkspace = () => {
     [state.baseView, state.overlayKinds, deepLinkSnapshotId],
   );
 
-  const snapshot = useQuery(graphSnapshotQueryOptions(graphClient, shell, snapshotRequest));
+  const graphScope = graphScopeFromShell(shell);
+  const hasDiscoveryRoot = discoveryFindingId && discoveryFindingRevision !== null;
+  const snapshot = useQuery<GraphSnapshotResultV1, unknown>({
+    queryKey: graphScope
+      ? hasDiscoveryRoot
+        ? [
+            ...graphScopeQueryKey(graphScope, snapshotRequest),
+            'discovery',
+            discoveryFindingId,
+            discoveryFindingRevision,
+          ]
+        : graphScopeQueryKey(graphScope, snapshotRequest)
+      : graphDisabledQueryKey(hasDiscoveryRoot ? 'discovery-snapshot' : 'snapshot'),
+    queryFn: ({ signal }) =>
+      hasDiscoveryRoot
+        ? graphClient.getDiscoveryGraphSnapshot(
+            snapshotRequest,
+            discoveryFindingId,
+            discoveryFindingRevision,
+            { signal },
+          )
+        : graphClient.getGraphSnapshot(snapshotRequest, { signal }),
+    enabled: graphScope !== null && (!hasDiscoveryRoot || discoveryFindingRevision > 0),
+    retry: graphQueryRetry,
+    staleTime: 15_000,
+  });
   const currentSnapshot = manualSnapshot ?? snapshot.data;
   const discoveryOverlayRequest = useMemo(
     () => ({
@@ -169,7 +195,7 @@ export const GraphWorkspace = () => {
   const discoveryOverlay = useQuery(
     graphDiscoveryOverlayQueryOptions(
       graphClient,
-      graphSnapshotIsReady(currentSnapshot) ? graphScopeFromShell(shell) : null,
+      graphSnapshotIsReady(currentSnapshot) ? graphScope : null,
       discoveryOverlayRequest,
     ),
   );

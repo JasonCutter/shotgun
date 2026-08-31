@@ -38,3 +38,17 @@ Contract, identity-mismatch, terminal-lifecycle, cross-project, current
 resource, Evidence, and base-Graph health tests are required before the WP3
 Draft PR is considered for review. Stage 12 remains the final OSS and
 replacement gate.
+
+## Production composition correction
+
+The production correction keeps the existing `projection.compiled_truth`
+projection and `PostgresCompiledTruthRepository` as the Graph read authority.
+`PostgresCompiledTruthGraphReadAdapter` is an `AUGMENT` adapter behind
+`GraphReadPort`; it adds no schema, migration, Canonical owner, or second
+truth store. Existing `PostgresFrontendKnowledgeGraphStores` from migration
+026 remains limited to snapshot context, health, and continuation state.
+
+The in-memory Stage 9 adapter remains a fixture/test implementation and is not
+used by the normal `startShotgunApplication()` production composition. The
+replacement boundary is the GraphReadPort adapter: rollback is a code revert
+of the correction wiring, with no Canonical data migration or rebuild.

@@ -63,6 +63,38 @@ export function registerFrontendKnowledgeGraphRoutes(
     },
   );
 
+  // Discovery deep links carry only the Finding identity. The server resolves
+  // the exact Finding revision and derives authorized graph roots before the
+  // ordinary snapshot contract is evaluated; browser-supplied endpoint refs
+  // never select the focused base graph.
+  server.post<{
+    Body: unknown;
+    Headers: SecurityHeaders;
+    Params: { readonly findingId: string; readonly findingRevision: string };
+  }>(
+    '/product-api/frontend/knowledge/graph/snapshot/discovery/:findingId/:findingRevision',
+    async (request) => {
+      const scope = await resolveScope(request.headers);
+      const findingId = request.params.findingId.trim();
+      const revisionText = request.params.findingRevision;
+      if (!findingId || !/^[1-9]\d*$/u.test(revisionText)) {
+        throw new FrontendContractError(
+          'INVALID_REQUEST',
+          'Discovery snapshot Finding identity is invalid',
+        );
+      }
+      const findingRevision = Number(revisionText);
+      if (!Number.isSafeInteger(findingRevision) || findingRevision < 1) {
+        throw new FrontendContractError(
+          'INVALID_REQUEST',
+          'Discovery snapshot Finding revision is invalid',
+        );
+      }
+      const decoded = decodeGraphSnapshotRequestV1(request.body);
+      return reply(() => domain.discoverySnapshot(scope, decoded, findingId, findingRevision));
+    },
+  );
+
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/neighborhood',
     async (request) => {

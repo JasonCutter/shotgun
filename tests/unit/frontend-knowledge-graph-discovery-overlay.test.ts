@@ -152,6 +152,36 @@ const detail = (lifecycleState: 'NEW' | 'DISMISSED' = 'NEW') =>
     },
   }) as DiscoveryProductFindingDetailV1;
 
+const typedHypothesis = (
+  findingType: 'PATTERN_HYPOTHESIS' | 'CONFLICT_HYPOTHESIS',
+): DiscoveryProductFindingDetailV1 => {
+  const base = detail();
+  const refs = [relationRef('entity-a'), relationRef('entity-b')] as const;
+  return {
+    ...base,
+    findingId: `finding-${findingType.toLowerCase()}`,
+    findingType,
+    payload:
+      findingType === 'PATTERN_HYPOTHESIS'
+        ? {
+            schemaVersion: '1.0.0',
+            payloadType: 'PATTERN_HYPOTHESIS',
+            patternKind: 'CLUSTER',
+            memberResourceRefs: refs,
+            patternIdentity: 'pattern-1',
+            patternStatement: 'The two resources form a cluster.',
+          }
+        : {
+            schemaVersion: '1.0.0',
+            payloadType: 'CONFLICT_HYPOTHESIS',
+            participatingResourceRefs: refs,
+            contradictionKind: 'FACTUAL',
+            possibleContradiction: 'The two resources disagree.',
+          },
+    lineage: { ...base.lineage, relatedResourceRefs: refs },
+  } as DiscoveryProductFindingDetailV1;
+};
+
 const request = {
   schemaVersion: '1.0.0' as const,
   baseSnapshotId: 'snapshot-1',
@@ -208,5 +238,29 @@ describe('AKP-6 WP3 Discovery graph overlay binding', () => {
     });
     expect(missing.health).toBe('UNAVAILABLE');
     expect(missing.identity.unavailableReason).toBe('DEEP_LINK_TARGET_UNAVAILABLE');
+  });
+
+  it('keeps pattern and conflict hypotheses available through the graph fallback shape', async () => {
+    for (const findingType of ['PATTERN_HYPOTHESIS', 'CONFLICT_HYPOTHESIS'] as const) {
+      const finding = typedHypothesis(findingType);
+      const port = createGraphDiscoveryOverlayPort({
+        readFinding: async () => finding,
+      });
+      const result = await port.discoveryOverlay(
+        scope,
+        { ...request, findingId: finding.findingId },
+        baseSnapshot,
+      );
+
+      expect(result.health).toBe('COMPLETE');
+      expect(result.nodes[0]).toMatchObject({
+        nodeKind: 'DISCOVERY_FINDING',
+        authority: 'DERIVED_INFERENCE',
+      });
+      expect(result.edges).toHaveLength(2);
+      expect(result.edges.every((edge) => edge.edgeSemanticKind === 'DISCOVERY_CANDIDATE')).toBe(
+        true,
+      );
+    }
   });
 });

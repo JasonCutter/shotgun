@@ -944,6 +944,9 @@ export class DiscoveryCandidateReviewTargetAdapter implements ReviewTargetAdapte
       sensitivity: lineage.sensitivity,
       validationProfile: lineage.validationProfile,
       validationResult: lineage.validationResult,
+      ...(lineage.epistemicContext === undefined
+        ? {}
+        : { epistemicContext: lineage.epistemicContext }),
     };
   }
 

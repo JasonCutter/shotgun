@@ -176,6 +176,7 @@ const requiredTables = [
   'discovery.reentry_review_roots',
   'discovery.reentry_review_resources',
   'discovery.reentry_consumption',
+  'discovery.epistemic_reentry_triggers',
   'action.executions',
   'action.approvals',
   'action.audit_events',

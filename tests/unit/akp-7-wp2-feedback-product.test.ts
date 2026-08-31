@@ -74,6 +74,16 @@ describe('AKP-7 WP2 Discovery feedback Product coordinator', () => {
       state.feedbackHistory.find((entry) => entry.feedbackKind === 'INSUFFICIENT_EVIDENCE')
         ?.feedbackClass,
     ).toBe('EPISTEMIC');
+    expect(repository.getEpistemicReentryTriggers()).toHaveLength(1);
+    expect(repository.getEpistemicReentryTriggers()[0]).toMatchObject({
+      feedbackId: expect.stringContaining('feedback:'),
+      projectId: scope.projectId,
+      findingId: finding.findingId,
+      findingRevision: finding.findingRevision,
+      feedbackClass: 'EPISTEMIC',
+      feedbackKind: 'INSUFFICIENT_EVIDENCE',
+    });
+    expect('reason' in repository.getEpistemicReentryTriggers()[0]!).toBe(false);
   });
 
   it('constructs server-owned exact, semantic-family, and snooze directives', async () => {
@@ -123,6 +133,37 @@ describe('AKP-7 WP2 Discovery feedback Product coordinator', () => {
         }),
       ]),
     );
+  });
+
+  it('keeps every utility feedback kind out of EPISTEMIC re-entry', async () => {
+    const repository = new InMemoryDiscoveryFeedbackRepository();
+    const coordinator = new DiscoveryFeedbackProductCoordinator(
+      repository,
+      () => '2026-08-31T00:00:00.000Z',
+    );
+    const gateway = new InMemoryFrontendCommandGateway();
+    const cases = [
+      ['USEFUL', {}],
+      ['NOT_RELEVANT', {}],
+      ['ALREADY_KNOWN', {}],
+      ['TOO_FREQUENT', {}],
+      ['SNOOZE', { snoozeUntil: '2026-09-02T00:00:00.000Z' }],
+      ['SUPPRESS_EXACT', {}],
+      ['SUPPRESS_SIMILAR', {}],
+    ] as const;
+    for (const [index, [feedbackKind, overrides]] of cases.entries()) {
+      await coordinator.submit({
+        scope,
+        request: request(feedbackKind, 'UTILITY', {
+          ...overrides,
+          clientRequestId: `utility-${index}`,
+          idempotencyKey: `utility-key-${index}`,
+        }),
+        finding,
+        gateway,
+      });
+    }
+    expect(repository.getEpistemicReentryTriggers()).toEqual([]);
   });
 
   it('replays a completed command without appending duplicate records', async () => {

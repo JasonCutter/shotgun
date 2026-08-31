@@ -26,6 +26,9 @@ import {
   approvedKnowledgeSourceIdentity,
   assertDiscoveryReentryManifestMatchesFindingV1,
   computeDiscoveryReentryLogicalIdentityV1,
+  computeDiscoveryEpistemicReentryIdentityV1,
+  decodeDiscoveryEpistemicReentryTriggerV1,
+  decodeDiscoveryFeedbackEventV1,
   decodeDerivedKnowledgeCandidateV1,
   decodeDiscoveryFindingEnvelopeV1,
   decodeDiscoveryFindingReadyV1,
@@ -53,7 +56,13 @@ import type {
   DiscoveryReentryStoredIntakeV1,
   DiscoveryReentryConsumptionDispositionInputV1,
   DiscoveryReentryConsumptionDispositionRecordV1,
+  DiscoveryEpistemicReentryTriggerRecordV1,
+  DiscoveryEpistemicReentryDispositionInputV1,
 } from '../../../modules/discovery-reentry/src/index.js';
+import type {
+  DiscoveryEpistemicReentryIdentityResultV1,
+  DiscoveryFeedbackEventV1,
+} from '../../../packages/contracts/src/index.js';
 import type { DiscoveryFindingLifecycleRepositoryPort } from '../../../modules/discovery-finding-lifecycle/src/index.js';
 import type { KnowledgeModelRepositoryPort } from '../../../modules/knowledge-model/src/index.js';
 import type { CompiledTruthRepositoryPort } from '../../../modules/compiled-truth/src/index.js';
@@ -89,6 +98,22 @@ type FindingRow = QueryResultRow & {
   readonly retention_class: string;
   readonly created_at: Date;
   readonly supersedes_finding_id: string | null;
+};
+
+type FeedbackRow = QueryResultRow & {
+  readonly schema_version: string;
+  readonly feedback_id: string;
+  readonly project_id: string;
+  readonly finding_id: string;
+  readonly finding_revision: number;
+  readonly actor_type: 'user' | 'service' | 'system';
+  readonly actor_id: string;
+  readonly principal_id: string | null;
+  readonly feedback_class: 'EPISTEMIC' | 'UTILITY';
+  readonly feedback_kind: string;
+  readonly reason: string | null;
+  readonly scope_kind: 'FINDING' | 'PROJECT' | null;
+  readonly created_at: Date | string;
 };
 
 type FindingReadyRow = QueryResultRow & {
@@ -139,6 +164,34 @@ type ConsumptionRow = QueryResultRow & {
   readonly created_at: Date;
   readonly updated_at: Date;
 };
+
+type EpistemicTriggerRow = QueryResultRow & {
+  readonly schema_version: string;
+  readonly identity_version: string;
+  readonly logical_identity_key: string;
+  readonly feedback_id: string;
+  readonly project_id: string;
+  readonly finding_id: string;
+  readonly finding_revision: number;
+  readonly feedback_class: string;
+  readonly feedback_kind: string;
+  readonly occurred_at: Date;
+  readonly status: 'PENDING' | 'PROCESSED' | 'INELIGIBLE' | 'BLOCKED_NON_RETRYABLE' | 'RETRYABLE';
+  readonly attempts: number;
+  readonly next_eligible_at: Date | null;
+  readonly reason_code: DiscoveryReentryConsumptionDispositionRecordV1['reasonCode'] | null;
+  readonly reason_detail: string | null;
+};
+
+const epistemicTriggerColumns = `
+  schema_version, identity_version, logical_identity_key, feedback_id,
+  project_id, finding_id, finding_revision, feedback_class, feedback_kind,
+  occurred_at, status, attempts, next_eligible_at, reason_code, reason_detail`;
+
+const feedbackColumns = `
+  schema_version, feedback_id, project_id, finding_id, finding_revision,
+  actor_type, actor_id, principal_id, feedback_class, feedback_kind,
+  reason, scope_kind, created_at`;
 
 const findingColumns = `
   schema_version, finding_id, finding_revision, project_id, finding_type,
@@ -238,6 +291,22 @@ const mapFinding = (row: FindingRow): DiscoveryFindingEnvelopeV1 =>
       : { supersedesFindingId: row.supersedes_finding_id }),
   });
 
+const mapFeedbackRow = (row: FeedbackRow): DiscoveryFeedbackEventV1 =>
+  decodeDiscoveryFeedbackEventV1({
+    schemaVersion: row.schema_version,
+    feedbackId: row.feedback_id,
+    projectId: row.project_id,
+    findingId: row.finding_id,
+    findingRevision: Number(row.finding_revision),
+    actor: { type: row.actor_type, id: row.actor_id },
+    ...(row.principal_id === null ? {} : { principalId: row.principal_id }),
+    feedbackClass: row.feedback_class,
+    feedbackKind: row.feedback_kind,
+    ...(row.reason === null ? {} : { reason: row.reason }),
+    ...(row.scope_kind === null ? {} : { scope: row.scope_kind }),
+    createdAt: new Date(row.created_at).toISOString(),
+  });
+
 const mapFindingReady = (row: FindingReadyRow): DiscoveryFindingReadyV1 =>
   decodeDiscoveryFindingReadyV1({
     schemaVersion: '1.0.0',
@@ -291,6 +360,34 @@ const mapConsumption = (row: ConsumptionRow): DiscoveryReentryConsumptionDisposi
   updatedAt: dateIso(row.updated_at),
 });
 
+const mapEpistemicTrigger = (
+  row: EpistemicTriggerRow,
+): DiscoveryEpistemicReentryTriggerRecordV1 => {
+  const trigger = decodeDiscoveryEpistemicReentryTriggerV1({
+    schemaVersion: row.schema_version,
+    feedbackId: row.feedback_id,
+    projectId: row.project_id,
+    findingId: row.finding_id,
+    findingRevision: row.finding_revision,
+    feedbackClass: row.feedback_class,
+    feedbackKind: row.feedback_kind,
+    occurredAt: dateIso(row.occurred_at),
+  });
+  const identity = computeDiscoveryEpistemicReentryIdentityV1(trigger);
+  if (identity.logicalIdentityKey !== row.logical_identity_key) {
+    throw new TypeError('Durable EPISTEMIC trigger identity is not server-derived.');
+  }
+  return {
+    ...trigger,
+    identity,
+    status: row.status,
+    attempts: row.attempts,
+    ...(row.next_eligible_at === null ? {} : { nextEligibleAt: dateIso(row.next_eligible_at) }),
+    ...(row.reason_code === null ? {} : { reasonCode: row.reason_code }),
+    ...(row.reason_detail === null ? {} : { reasonDetail: row.reason_detail }),
+  };
+};
+
 const writeConsumptionOn = async (
   client: Pick<Pool, 'query'>,
   input: DiscoveryReentryConsumptionDispositionInputV1,
@@ -333,6 +430,36 @@ const writeConsumptionOn = async (
   );
   if (!result.rows[0]) throw new TypeError('Re-entry consumption disposition was not persisted.');
   return mapConsumption(result.rows[0]);
+};
+
+const writeEpistemicDispositionOn = async (
+  client: Pick<Pool, 'query'>,
+  input: DiscoveryEpistemicReentryDispositionInputV1,
+): Promise<DiscoveryEpistemicReentryTriggerRecordV1> => {
+  const occurredAt = dateIso(input.occurredAt);
+  const result = await client.query<EpistemicTriggerRow>(
+    `UPDATE discovery.epistemic_reentry_triggers
+     SET status = $3,
+         attempts = attempts + 1,
+         next_eligible_at = $4::timestamptz,
+         reason_code = $5,
+         reason_detail = $6,
+         processed_at = CASE WHEN $3 IN ('PENDING', 'RETRYABLE') THEN NULL ELSE $7::timestamptz END,
+         updated_at = $7::timestamptz
+     WHERE project_id = $1 AND logical_identity_key = $2
+     RETURNING ${epistemicTriggerColumns}`,
+    [
+      input.identity.normalizedInput.projectId,
+      input.identity.logicalIdentityKey,
+      input.disposition,
+      input.nextEligibleAt ?? null,
+      input.reasonCode,
+      input.reasonDetail,
+      occurredAt,
+    ],
+  );
+  if (!result.rows[0]) throw new TypeError('EPISTEMIC trigger disposition was not persisted.');
+  return mapEpistemicTrigger(result.rows[0]);
 };
 
 const identityParams = (identity: DiscoveryFindingIdentityV1): [string, string, number] => [
@@ -395,6 +522,151 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
       [limit],
     );
     return result.rows.map(mapFindingReady);
+  }
+
+  public async listPendingEpistemicReentryTriggers(
+    limit: number,
+    now = new Date().toISOString(),
+  ): Promise<readonly DiscoveryEpistemicReentryTriggerRecordV1[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new TypeError('limit must be between 1 and 100');
+    }
+    const result = await this.pool.query<EpistemicTriggerRow>(
+      `SELECT ${epistemicTriggerColumns}
+       FROM discovery.epistemic_reentry_triggers
+       WHERE status = 'PENDING'
+          OR (status = 'RETRYABLE' AND next_eligible_at <= $2::timestamptz)
+       ORDER BY occurred_at, logical_identity_key
+       LIMIT $1`,
+      [limit, now],
+    );
+    return result.rows.map(mapEpistemicTrigger);
+  }
+
+  public async findEpistemicFeedback(input: {
+    readonly projectId: string;
+    readonly feedbackId: string;
+  }): Promise<DiscoveryFeedbackEventV1 | undefined> {
+    const result = await this.pool.query<FeedbackRow>(
+      `SELECT schema_version, feedback_id, project_id, finding_id, finding_revision,
+              actor_type, actor_id, principal_id, feedback_class, feedback_kind,
+              reason, scope_kind, created_at
+       FROM discovery.feedback_events
+       WHERE project_id = $1 AND feedback_id = $2`,
+      [input.projectId, input.feedbackId],
+    );
+    return result.rows[0]
+      ? decodeDiscoveryFeedbackEventV1(mapFeedbackRow(result.rows[0]))
+      : undefined;
+  }
+
+  public async recordEpistemicReentryDisposition(
+    input: DiscoveryEpistemicReentryDispositionInputV1,
+  ): Promise<DiscoveryEpistemicReentryTriggerRecordV1> {
+    const occurredAt = dateIso(input.occurredAt);
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const currentResult = await client.query<EpistemicTriggerRow>(
+          `SELECT ${epistemicTriggerColumns}
+           FROM discovery.epistemic_reentry_triggers
+           WHERE project_id = $1 AND logical_identity_key = $2
+           FOR UPDATE`,
+          [input.identity.normalizedInput.projectId, input.identity.logicalIdentityKey],
+        );
+        const current = currentResult.rows[0];
+        if (!current) throw new TypeError('EPISTEMIC re-entry trigger was not found.');
+        if (
+          current.status !== 'PENDING' &&
+          current.status !== 'RETRYABLE' &&
+          current.status !== input.disposition
+        ) {
+          return mapEpistemicTrigger(current);
+        }
+        const updatedResult = await client.query<EpistemicTriggerRow>(
+          `UPDATE discovery.epistemic_reentry_triggers
+           SET status = $3,
+               attempts = attempts + 1,
+               next_eligible_at = $4::timestamptz,
+               reason_code = $5,
+               reason_detail = $6,
+               processed_at = CASE WHEN $3 IN ('PENDING', 'RETRYABLE') THEN NULL ELSE $7::timestamptz END,
+               updated_at = $7::timestamptz
+           WHERE project_id = $1 AND logical_identity_key = $2
+           RETURNING ${epistemicTriggerColumns}`,
+          [
+            input.identity.normalizedInput.projectId,
+            input.identity.logicalIdentityKey,
+            input.disposition,
+            input.nextEligibleAt ?? null,
+            input.reasonCode,
+            input.reasonDetail,
+            occurredAt,
+          ],
+        );
+        const updated = updatedResult.rows[0];
+        if (!updated) throw new TypeError('EPISTEMIC trigger disposition was not persisted.');
+        return mapEpistemicTrigger(updated);
+      },
+      { module: 'discovery-reentry-postgres', operation: 'record-epistemic-trigger-disposition' },
+    );
+  }
+
+  public async reconcileEpistemicFeedback(limit: number): Promise<number> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      throw new TypeError('limit must be between 1 and 100');
+    }
+    const feedbackResult = await this.pool.query<FeedbackRow>(
+      `SELECT ${feedbackColumns}
+       FROM discovery.feedback_events feedback
+       WHERE feedback.feedback_class = 'EPISTEMIC'
+         AND NOT EXISTS (
+           SELECT 1 FROM discovery.epistemic_reentry_triggers trigger
+           WHERE trigger.project_id = feedback.project_id
+             AND trigger.feedback_id = feedback.feedback_id
+         )
+       ORDER BY feedback.created_at, feedback.feedback_id
+       LIMIT $1`,
+      [limit],
+    );
+    let created = 0;
+    for (const row of feedbackResult.rows) {
+      const feedback = decodeDiscoveryFeedbackEventV1(mapFeedbackRow(row));
+      const trigger = decodeDiscoveryEpistemicReentryTriggerV1({
+        schemaVersion: '1.0.0',
+        feedbackId: feedback.feedbackId,
+        projectId: feedback.projectId,
+        findingId: feedback.findingId,
+        findingRevision: feedback.findingRevision,
+        feedbackClass: 'EPISTEMIC',
+        feedbackKind: feedback.feedbackKind,
+        occurredAt: feedback.createdAt,
+      });
+      const identity = computeDiscoveryEpistemicReentryIdentityV1(trigger);
+      const inserted = await this.pool.query(
+        `INSERT INTO discovery.epistemic_reentry_triggers (
+           schema_version, identity_version, logical_identity_key,
+           feedback_id, project_id, finding_id, finding_revision,
+           feedback_class, feedback_kind, occurred_at,
+           status, attempts, next_eligible_at, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'EPISTEMIC', $8, $9,
+                   'PENDING', 0, NULL, $9, $9)
+         ON CONFLICT (project_id, feedback_id) DO NOTHING`,
+        [
+          trigger.schemaVersion,
+          identity.identityVersion,
+          identity.logicalIdentityKey,
+          trigger.feedbackId,
+          trigger.projectId,
+          trigger.findingId,
+          trigger.findingRevision,
+          trigger.feedbackKind,
+          trigger.occurredAt,
+        ],
+      );
+      created += inserted.rowCount === 1 ? 1 : 0;
+    }
+    return created;
   }
 
   public async findFinding(
@@ -543,19 +815,30 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
       findingRevision: manifest.findingRevision,
     });
     if (!finding) throw new TypeError('Durable re-entry manifest has no Finding.');
-    const logicalIdentity = computeDiscoveryReentryLogicalIdentityV1({
-      projectId: finding.projectId,
-      findingId: finding.findingId,
-      findingRevision: finding.findingRevision,
-      findingType: finding.findingType,
-      sourceProjectionDigest: finding.sourceProjectionDigest,
-      canonicalBase: finding.canonicalBase,
-      requestedReentryPurpose: manifest.requestedReentryPurpose,
-    });
+    const logicalIdentity =
+      manifest.epistemicContext === undefined
+        ? computeDiscoveryReentryLogicalIdentityV1({
+            projectId: finding.projectId,
+            findingId: finding.findingId,
+            findingRevision: finding.findingRevision,
+            findingType: finding.findingType,
+            sourceProjectionDigest: finding.sourceProjectionDigest,
+            canonicalBase: finding.canonicalBase,
+            requestedReentryPurpose: manifest.requestedReentryPurpose,
+          })
+        : computeDiscoveryEpistemicReentryIdentityV1({
+            projectId: finding.projectId,
+            findingId: finding.findingId,
+            findingRevision: finding.findingRevision,
+            feedbackId: manifest.epistemicContext.feedbackId,
+          });
+    const expectedCandidateId =
+      manifest.epistemicContext === undefined
+        ? `discovery-reentry-candidate:${logicalIdentity.logicalIdentityKey}`
+        : `discovery-epistemic-reentry-candidate:${logicalIdentity.logicalIdentityKey}`;
     if (
       logicalIdentity.logicalIdentityKey !== manifestRow.logical_identity_key ||
-      candidate.candidateId !==
-        `discovery-reentry-candidate:${logicalIdentity.logicalIdentityKey}` ||
+      candidate.candidateId !== expectedCandidateId ||
       candidate.manifestId !== manifest.manifestId ||
       candidate.projectId !== manifest.projectId ||
       candidate.findingId !== manifest.findingId ||
@@ -597,7 +880,8 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
          ON lifecycle.project_id = candidate.project_id
         AND lifecycle.finding_id = candidate.finding_id
         AND lifecycle.finding_revision = candidate.finding_revision
-       WHERE manifest.requested_reentry_purpose = 'DERIVED_PROVENANCE_VALIDATION'
+       WHERE (
+         manifest.requested_reentry_purpose = 'DERIVED_PROVENANCE_VALIDATION'
          AND (
            lifecycle.lifecycle_state = 'VALIDATING'
            OR (
@@ -611,6 +895,21 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
              )
            )
          )
+       )
+       OR (
+         manifest.requested_reentry_purpose = 'EPISTEMIC_FEEDBACK_CORRECTION'
+         AND candidate.candidate->'epistemicValidationResult'->>'outcome' = 'SUPPORTED'
+         AND lifecycle.lifecycle_state IN (
+           'VALIDATING', 'REVIEW_READY', 'REENTERED', 'DISMISSED', 'SUPPRESSED'
+         )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM discovery.reentry_review_resources resource
+           WHERE resource.project_id = candidate.project_id
+             AND resource.candidate_id = candidate.candidate_id
+             AND resource.candidate_revision = candidate.candidate_revision
+         )
+       )
        ORDER BY manifest.created_at, manifest.logical_identity_key
        LIMIT $1`,
       [limit],
@@ -639,15 +938,27 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
     const finding = decodeDiscoveryFindingEnvelopeV1(input.finding);
     const manifest = decodeDiscoveryReentryManifestV1(input.manifest);
     const candidate = decodeDerivedKnowledgeCandidateV1(input.candidate);
-    const expectedLogicalIdentity = computeDiscoveryReentryLogicalIdentityV1({
-      projectId: finding.projectId,
-      findingId: finding.findingId,
-      findingRevision: finding.findingRevision,
-      findingType: finding.findingType,
-      sourceProjectionDigest: finding.sourceProjectionDigest,
-      canonicalBase: finding.canonicalBase,
-      requestedReentryPurpose: manifest.requestedReentryPurpose,
-    });
+    const expectedLogicalIdentity =
+      manifest.epistemicContext === undefined
+        ? computeDiscoveryReentryLogicalIdentityV1({
+            projectId: finding.projectId,
+            findingId: finding.findingId,
+            findingRevision: finding.findingRevision,
+            findingType: finding.findingType,
+            sourceProjectionDigest: finding.sourceProjectionDigest,
+            canonicalBase: finding.canonicalBase,
+            requestedReentryPurpose: manifest.requestedReentryPurpose,
+          })
+        : computeDiscoveryEpistemicReentryIdentityV1({
+            projectId: finding.projectId,
+            findingId: finding.findingId,
+            findingRevision: finding.findingRevision,
+            feedbackId: manifest.epistemicContext.feedbackId,
+          });
+    const expectedCandidateId =
+      manifest.epistemicContext === undefined
+        ? `discovery-reentry-candidate:${expectedLogicalIdentity.logicalIdentityKey}`
+        : `discovery-epistemic-reentry-candidate:${expectedLogicalIdentity.logicalIdentityKey}`;
     if (
       input.logicalIdentity.identityVersion !== expectedLogicalIdentity.identityVersion ||
       input.logicalIdentity.logicalIdentityKey !== expectedLogicalIdentity.logicalIdentityKey ||
@@ -657,8 +968,7 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
     }
     assertDiscoveryReentryManifestMatchesFindingV1(manifest, finding);
     if (
-      candidate.candidateId !==
-        `discovery-reentry-candidate:${expectedLogicalIdentity.logicalIdentityKey}` ||
+      candidate.candidateId !== expectedCandidateId ||
       candidate.manifestId !== manifest.manifestId ||
       candidate.projectId !== finding.projectId ||
       candidate.findingId !== finding.findingId ||
@@ -702,17 +1012,54 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
         if (!lifecycleRow) throw new TypeError('Discovery Finding lifecycle was not found.');
         const lifecycle = mapLifecycle(lifecycleRow);
 
-        const consumptionResult = await client.query<ConsumptionRow>(
-          `SELECT ${consumptionColumns}
-           FROM discovery.reentry_consumption
-           WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
-             AND requested_reentry_purpose = 'DERIVED_PROVENANCE_VALIDATION'
-           FOR UPDATE`,
-          identityParams(finding),
-        );
-        const consumption = consumptionResult.rows[0]
-          ? mapConsumption(consumptionResult.rows[0])
+        const epistemic = manifest.epistemicContext !== undefined;
+        let consumption: DiscoveryReentryConsumptionDispositionRecordV1 | undefined;
+        if (!epistemic) {
+          const consumptionResult = await client.query<ConsumptionRow>(
+            `SELECT ${consumptionColumns}
+             FROM discovery.reentry_consumption
+             WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
+               AND requested_reentry_purpose = 'DERIVED_PROVENANCE_VALIDATION'
+             FOR UPDATE`,
+            identityParams(finding),
+          );
+          consumption = consumptionResult.rows[0]
+            ? mapConsumption(consumptionResult.rows[0])
+            : undefined;
+        }
+        const trigger = epistemic
+          ? (
+              await client.query<EpistemicTriggerRow>(
+                `SELECT ${epistemicTriggerColumns}
+                 FROM discovery.epistemic_reentry_triggers
+                 WHERE project_id = $1 AND logical_identity_key = $2
+                 FOR UPDATE`,
+                [finding.projectId, input.logicalIdentity.logicalIdentityKey],
+              )
+            ).rows[0]
           : undefined;
+        if (epistemic && !trigger) {
+          throw new TypeError('EPISTEMIC re-entry intake has no durable trigger.');
+        }
+        if (
+          epistemic &&
+          trigger &&
+          (trigger.feedback_id !== manifest.epistemicContext!.feedbackId ||
+            trigger.project_id !== finding.projectId ||
+            trigger.finding_id !== finding.findingId ||
+            trigger.finding_revision !== finding.findingRevision ||
+            trigger.feedback_kind !== manifest.epistemicContext!.feedbackKind)
+        ) {
+          throw new TypeError('EPISTEMIC re-entry trigger does not match its correction context.');
+        }
+        if (trigger && trigger.status !== 'PENDING' && trigger.status !== 'RETRYABLE') {
+          return {
+            status: 'DISPOSITIONED',
+            disposition: 'BLOCKED_NON_RETRYABLE',
+            reasonCode: trigger.reason_code ?? 'IDENTITY_MISMATCH',
+            lifecycle,
+          };
+        }
 
         const existingResult = await client.query<ManifestRow>(
           `SELECT logical_identity_key, manifest
@@ -754,8 +1101,9 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
         }
 
         if (
-          consumption?.disposition === 'INELIGIBLE' ||
-          consumption?.disposition === 'BLOCKED_NON_RETRYABLE'
+          !epistemic &&
+          (consumption?.disposition === 'INELIGIBLE' ||
+            consumption?.disposition === 'BLOCKED_NON_RETRYABLE')
         ) {
           return {
             status: 'DISPOSITIONED',
@@ -765,7 +1113,23 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
           };
         }
 
-        if (lifecycle.lifecycleState !== 'NEW') {
+        if (
+          (!epistemic && lifecycle.lifecycleState !== 'NEW') ||
+          (epistemic &&
+            !['NEW', 'VALIDATING', 'REVIEW_READY', 'REENTERED', 'DISMISSED', 'SUPPRESSED'].includes(
+              lifecycle.lifecycleState,
+            ))
+        ) {
+          if (epistemic) {
+            await writeEpistemicDispositionOn(client, {
+              identity: input.logicalIdentity as DiscoveryEpistemicReentryIdentityResultV1,
+              disposition: 'INELIGIBLE',
+              reasonCode: 'LIFECYCLE_INELIGIBLE',
+              reasonDetail: `Finding lifecycle is ${lifecycle.lifecycleState}.`,
+              occurredAt: input.occurredAt,
+            });
+            return { status: 'INELIGIBLE', lifecycle };
+          }
           await writeConsumptionOn(client, {
             projectId: finding.projectId,
             findingId: finding.findingId,
@@ -780,6 +1144,16 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
           return { status: 'INELIGIBLE', lifecycle };
         }
         if (lifecycle.lifecycleRevision !== input.expectedLifecycleRevision) {
+          if (epistemic) {
+            await writeEpistemicDispositionOn(client, {
+              identity: input.logicalIdentity as DiscoveryEpistemicReentryIdentityResultV1,
+              disposition: 'INELIGIBLE',
+              reasonCode: 'LIFECYCLE_INELIGIBLE',
+              reasonDetail: 'Finding lifecycle revision changed before persistence.',
+              occurredAt: input.occurredAt,
+            });
+            return { status: 'INELIGIBLE', lifecycle };
+          }
           await writeConsumptionOn(client, {
             projectId: finding.projectId,
             findingId: finding.findingId,
@@ -793,12 +1167,14 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
           });
           return { status: 'INELIGIBLE', lifecycle };
         }
-        assertDiscoveryLifecycleTransitionV1(
-          lifecycle.lifecycleState,
-          'VALIDATING',
-          'GOVERNED_WORKFLOW',
-          'VALIDATION_STARTED',
-        );
+        if (lifecycle.lifecycleState === 'NEW') {
+          assertDiscoveryLifecycleTransitionV1(
+            lifecycle.lifecycleState,
+            'VALIDATING',
+            'GOVERNED_WORKFLOW',
+            'VALIDATION_STARTED',
+          );
+        }
 
         await client.query(
           `INSERT INTO discovery.reentry_manifests (
@@ -806,8 +1182,8 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
              project_id, finding_id, finding_revision, finding_type,
              source_projection_digest, canonical_base_version,
              canonical_snapshot_digest, requested_reentry_purpose,
-             manifest, created_at
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)`,
+             feedback_id, manifest, created_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14)`,
           [
             input.logicalIdentity.identityVersion,
             input.logicalIdentity.logicalIdentityKey,
@@ -820,6 +1196,7 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
             manifest.canonicalBase.canonicalVersion,
             manifest.canonicalBase.snapshotDigest,
             manifest.requestedReentryPurpose,
+            manifest.epistemicContext?.feedbackId ?? null,
             JSON.stringify(manifest),
             manifest.createdAt,
           ],
@@ -867,61 +1244,76 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
             candidate.createdAt,
           ],
         );
-        const nextRevision = lifecycle.lifecycleRevision + 1;
-        await client.query(
-          `INSERT INTO discovery.finding_lifecycle_history (
-             project_id, finding_id, finding_revision, lifecycle_revision,
-             from_state, to_state, cause, reason_code,
-             canonical_base_version, canonical_snapshot_digest,
-             discovery_projection_revision, discovery_projection_digest,
-             occurred_at
-           ) VALUES ($1, $2, $3, $4, $5, 'VALIDATING',
-                     'GOVERNED_WORKFLOW', 'VALIDATION_STARTED', $6, $7, $8, $9, $10)`,
-          [
-            lifecycle.projectId,
-            lifecycle.findingId,
-            lifecycle.findingRevision,
-            nextRevision,
-            lifecycle.lifecycleState,
-            finding.canonicalBase.canonicalVersion,
-            finding.canonicalBase.snapshotDigest,
-            finding.discoveryBase.projectionRevision,
-            finding.discoveryBase.projectionDigest,
-            input.occurredAt,
-          ],
-        );
-        const updatedResult = await client.query<LifecycleRow>(
-          `UPDATE discovery.finding_lifecycle_current
-           SET lifecycle_state = 'VALIDATING', lifecycle_revision = $4, updated_at = $5
-           WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
-           RETURNING ${lifecycleColumns}`,
-          [
-            lifecycle.projectId,
-            lifecycle.findingId,
-            lifecycle.findingRevision,
-            nextRevision,
-            input.occurredAt,
-          ],
-        );
-        const updated = updatedResult.rows[0];
-        if (!updated) throw new TypeError('Discovery Finding lifecycle update was not persisted.');
-        await writeConsumptionOn(client, {
-          projectId: finding.projectId,
-          findingId: finding.findingId,
-          findingRevision: finding.findingRevision,
-          requestedReentryPurpose: 'DERIVED_PROVENANCE_VALIDATION',
-          publicationId: input.publicationId,
-          disposition: 'PROCESSED',
-          reasonCode: 'SUCCESS',
-          reasonDetail: 'FindingReady was processed into durable re-entry intake.',
-          occurredAt: input.occurredAt,
-        });
+        let resultingLifecycle = lifecycle;
+        if (lifecycle.lifecycleState === 'NEW') {
+          const nextRevision = lifecycle.lifecycleRevision + 1;
+          await client.query(
+            `INSERT INTO discovery.finding_lifecycle_history (
+               project_id, finding_id, finding_revision, lifecycle_revision,
+               from_state, to_state, cause, reason_code,
+               canonical_base_version, canonical_snapshot_digest,
+               discovery_projection_revision, discovery_projection_digest,
+               occurred_at
+             ) VALUES ($1, $2, $3, $4, $5, 'VALIDATING',
+                       'GOVERNED_WORKFLOW', 'VALIDATION_STARTED', $6, $7, $8, $9, $10)`,
+            [
+              lifecycle.projectId,
+              lifecycle.findingId,
+              lifecycle.findingRevision,
+              nextRevision,
+              lifecycle.lifecycleState,
+              finding.canonicalBase.canonicalVersion,
+              finding.canonicalBase.snapshotDigest,
+              finding.discoveryBase.projectionRevision,
+              finding.discoveryBase.projectionDigest,
+              input.occurredAt,
+            ],
+          );
+          const updatedResult = await client.query<LifecycleRow>(
+            `UPDATE discovery.finding_lifecycle_current
+             SET lifecycle_state = 'VALIDATING', lifecycle_revision = $4, updated_at = $5
+             WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
+             RETURNING ${lifecycleColumns}`,
+            [
+              lifecycle.projectId,
+              lifecycle.findingId,
+              lifecycle.findingRevision,
+              nextRevision,
+              input.occurredAt,
+            ],
+          );
+          const updated = updatedResult.rows[0];
+          if (!updated)
+            throw new TypeError('Discovery Finding lifecycle update was not persisted.');
+          resultingLifecycle = mapLifecycle(updated);
+        }
+        if (epistemic) {
+          await writeEpistemicDispositionOn(client, {
+            identity: input.logicalIdentity as DiscoveryEpistemicReentryIdentityResultV1,
+            disposition: 'PROCESSED',
+            reasonCode: 'SUCCESS',
+            reasonDetail: 'EPISTEMIC feedback was processed into durable correction intake.',
+            occurredAt: input.occurredAt,
+          });
+        } else {
+          await writeConsumptionOn(client, {
+            projectId: finding.projectId,
+            findingId: finding.findingId,
+            findingRevision: finding.findingRevision,
+            requestedReentryPurpose: 'DERIVED_PROVENANCE_VALIDATION',
+            publicationId: input.publicationId,
+            disposition: 'PROCESSED',
+            reasonCode: 'SUCCESS',
+            reasonDetail: 'FindingReady was processed into durable re-entry intake.',
+            occurredAt: input.occurredAt,
+          });
+        }
         return {
           status: 'CREATED',
           logicalIdentityKey: input.logicalIdentity.logicalIdentityKey,
           manifest,
           candidate,
-          lifecycle: mapLifecycle(updated),
+          lifecycle: resultingLifecycle,
         };
       },
       { module: 'discovery-reentry-postgres', operation: 'persist-reentry-intake' },

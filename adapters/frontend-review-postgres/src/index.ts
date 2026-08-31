@@ -787,6 +787,11 @@ export class PostgresDiscoveryReviewResourceRepository implements DiscoveryRevie
       candidateId: resource.candidateId,
       candidateRevision: resource.candidateRevision,
       origin: resource.origin,
+      ...(resource.validationResult.epistemicValidationResult === undefined
+        ? {}
+        : {
+            validationResultDigest: resource.validationResult.epistemicValidationResult.digest,
+          }),
     });
     if (resource.reviewResourceId !== expectedReviewResourceId) {
       return CONFLICT('The Discovery Review resource uses an invalid stable Review root identity.');
@@ -1035,7 +1040,16 @@ const readEligibleDiscoveryResources = async (
      WHERE latest.origin = 'DERIVED_DISCOVERY'
        AND latest.lifecycle_state = 'REVIEW_READY'
        AND latest.review_eligibility = 'ELIGIBLE_AFTER_VALIDATION'
-       AND finding_lifecycle.lifecycle_state = 'REVIEW_READY'
+       AND (
+         finding_lifecycle.lifecycle_state = 'REVIEW_READY'
+         OR (
+           latest.resource->'epistemicContext' IS NOT NULL
+           AND latest.resource->'validationResult'->'epistemicValidationResult'->>'outcome' = 'SUPPORTED'
+           AND finding_lifecycle.lifecycle_state IN (
+             'REENTERED', 'DISMISSED', 'SUPPRESSED'
+           )
+         )
+       )
      ORDER BY latest.review_resource_id${limitClause}`,
     params,
   );

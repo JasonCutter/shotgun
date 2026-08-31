@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   decodeDiscoveryFeedbackEventV1,
+  decodeDiscoveryEpistemicReentryTriggerV1,
   decodeDiscoveryRankingPolicyRevisionV1,
   decodeDiscoverySuppressionDirectiveV1,
   buildPrincipalScopedCommandSemanticDigestInput,
@@ -14,6 +15,7 @@ import {
   type DiscoveryFeedbackProductStateV1,
   type ProducedResourceRef,
   type ErrorCode,
+  type DiscoveryEpistemicReentryTriggerV1,
 } from '../../../packages/contracts/src/index.js';
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
 import type {
@@ -55,6 +57,10 @@ export type DiscoveryRankingPolicyLookupV1 = {
  */
 export type DiscoveryFeedbackRepositoryPort = {
   appendFeedback(event: DiscoveryFeedbackEventV1): Promise<'CREATED' | 'CONFLICT'>;
+  /** Shares the Product command transaction with the accepted EPISTEMIC event. */
+  appendEpistemicReentryTrigger?(
+    trigger: DiscoveryEpistemicReentryTriggerV1,
+  ): Promise<'CREATED' | 'CONFLICT'>;
   listFeedbackForFinding(
     lookup: DiscoveryFeedbackFindingLookupV1,
   ): Promise<readonly DiscoveryFeedbackEventV1[]>;
@@ -140,7 +146,8 @@ export type DiscoveryPresentationSuppressionLookupV1 = {
 export type DiscoveryFeedbackWriteRepositoryPort = Pick<
   DiscoveryFeedbackRepositoryPort,
   'appendFeedback' | 'appendSuppression'
->;
+> &
+  Pick<DiscoveryFeedbackRepositoryPort, 'appendEpistemicReentryTrigger'>;
 
 export type DiscoveryFeedbackTransactionHandleV1 = {
   readonly repository: DiscoveryFeedbackWriteRepositoryPort;
@@ -230,6 +237,22 @@ const suppressionKindFor = (
   request.feedbackKind === 'SUPPRESS_EXACT' ||
   request.feedbackKind === 'SUPPRESS_SIMILAR'
     ? request.feedbackKind
+    : undefined;
+
+const epistemicReentryTriggerFor = (
+  event: DiscoveryFeedbackEventV1,
+): DiscoveryEpistemicReentryTriggerV1 | undefined =>
+  event.feedbackClass === 'EPISTEMIC'
+    ? decodeDiscoveryEpistemicReentryTriggerV1({
+        schemaVersion: '1.0.0',
+        feedbackId: event.feedbackId,
+        projectId: event.projectId,
+        findingId: event.findingId,
+        findingRevision: event.findingRevision,
+        feedbackClass: 'EPISTEMIC',
+        feedbackKind: event.feedbackKind,
+        occurredAt: event.createdAt,
+      })
     : undefined;
 
 export type DiscoveryFeedbackProductCommandResultV1 = {
@@ -397,6 +420,16 @@ export class DiscoveryFeedbackProductCoordinator {
           throw commandFailure('CONFLICT', 'The Discovery feedback command is not executable.');
         }
         await handle.repository.appendFeedback(event);
+        const trigger = epistemicReentryTriggerFor(event);
+        if (trigger !== undefined) {
+          if (handle.repository.appendEpistemicReentryTrigger === undefined) {
+            throw commandFailure(
+              'INTERNAL_UNCLASSIFIED',
+              'EPISTEMIC feedback requires durable re-entry publication.',
+            );
+          }
+          await handle.repository.appendEpistemicReentryTrigger(trigger);
+        }
         if (directive !== undefined) await handle.repository.appendSuppression(directive);
         return gateway.completeInTransaction(handle.raw, {
           commandId: accepted.outcome.commandId,

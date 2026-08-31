@@ -3,6 +3,7 @@ import {
   composeDiscoveryFindingSecurityV1,
   createDiscoveryFindingEnvelopeV1,
   decodeDiscoveryFindingEnvelopeV1,
+  DISCOVERY_RANKING_POLICY_VERSION_V1,
   deriveDiscoverySemanticEssenceV1,
   sha256Text,
   semanticStableJson,
@@ -15,6 +16,8 @@ import type {
   DiscoveryFollowUpOriginIdentityV1,
   DiscoveryFindingEnvelopeV1,
   DiscoveryFindingType,
+  DiscoveryRankingDimensionsV1,
+  DiscoveryRankingPolicyV1,
   DiscoveryFindingProvenanceV1,
   DiscoveryProjectionBaseIdentityV1,
   DiscoveryResourceRefV1,
@@ -33,7 +36,6 @@ import type {
  */
 export const DISCOVERY_QUALITY_GATE_VERSION_V1 = 'discovery-quality-gate:v1' as const;
 export const DISCOVERY_WORK_BUDGET_VERSION_V1 = 'discovery-work-budget:v1' as const;
-export const DISCOVERY_RANKING_POLICY_VERSION_V1 = 'discovery-ranking-policy:v1' as const;
 export const DISCOVERY_TOKEN_ESTIMATOR_VERSION_V1 = 'discovery-token-estimator:v1' as const;
 
 export const DISCOVERY_QUALITY_GATE_DISPOSITIONS = [
@@ -1651,20 +1653,8 @@ export class DiscoveryBudgetControllerV1 {
   }
 }
 
-export type DiscoveryRankingDimensionsV1 = {
-  readonly novelty: number;
-  readonly projectRelevance: number;
-  readonly evidenceCoverage: number;
-  readonly impactReach: number;
-  readonly temporalUrgency: number;
-  readonly redundancyPenalty: number;
-  readonly costRiskPenalty: number;
-};
-
-export type DiscoveryRankingPolicyV1 = {
-  readonly version: typeof DISCOVERY_RANKING_POLICY_VERSION_V1;
-  readonly weights: DiscoveryRankingDimensionsV1;
-};
+export { DISCOVERY_RANKING_POLICY_VERSION_V1 };
+export type { DiscoveryRankingDimensionsV1, DiscoveryRankingPolicyV1 };
 
 export type DiscoveryRankingInputV1 = {
   readonly candidate: DiscoveryFindingEnvelopeV1;

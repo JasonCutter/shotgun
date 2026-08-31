@@ -124,8 +124,25 @@ describe('Backup Bundle verification', () => {
       'discovery.finding_lifecycle_history',
       'discovery.model_profiles',
     ]);
+    expect(
+      discoveryTables([
+        '044_akp_1r_semantic_generation_lifecycle.sql',
+        '045_akp_2_wp2_discovery_finding_persistence.sql',
+        '055_akp_7_wp1_feedback_suppression_ranking_storage.sql',
+      ]),
+    ).toEqual([
+      'discovery.findings',
+      'discovery.feedback_events',
+      'discovery.suppression_directives',
+      'discovery.ranking_policy_revisions',
+    ]);
     expect(() =>
       authoritativeIntegrityTablesForMigrations(['046_akp_2_wp3_discovery_finding_lifecycle.sql']),
+    ).toThrow('requires 045_akp_2_wp2_discovery_finding_persistence.sql');
+    expect(() =>
+      authoritativeIntegrityTablesForMigrations([
+        '055_akp_7_wp1_feedback_suppression_ranking_storage.sql',
+      ]),
     ).toThrow('requires 045_akp_2_wp2_discovery_finding_persistence.sql');
   });
 

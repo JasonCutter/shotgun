@@ -62,6 +62,7 @@ const baseAuthoritativeTables = [
 const DISCOVERY_FINDING_MIGRATION = '045_akp_2_wp2_discovery_finding_persistence.sql';
 const DISCOVERY_LIFECYCLE_MIGRATION = '046_akp_2_wp3_discovery_finding_lifecycle.sql';
 const DISCOVERY_MODEL_PROFILE_MIGRATION = '047_akp_3_wp3_discovery_model_profiles.sql';
+const DISCOVERY_FEEDBACK_MIGRATION = '055_akp_7_wp1_feedback_suppression_ranking_storage.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
@@ -80,6 +81,11 @@ export const authoritativeIntegrityTablesForMigrations = (
       `Backup migration identity is invalid: ${DISCOVERY_MODEL_PROFILE_MIGRATION} requires ${DISCOVERY_LIFECYCLE_MIGRATION}.`,
     );
   }
+  if (applied.has(DISCOVERY_FEEDBACK_MIGRATION) && !applied.has(DISCOVERY_FINDING_MIGRATION)) {
+    throw new Error(
+      `Backup migration identity is invalid: ${DISCOVERY_FEEDBACK_MIGRATION} requires ${DISCOVERY_FINDING_MIGRATION}.`,
+    );
+  }
   return [
     ...baseAuthoritativeTables,
     ...(applied.has(DISCOVERY_FINDING_MIGRATION) ? ['discovery.findings'] : []),
@@ -87,6 +93,13 @@ export const authoritativeIntegrityTablesForMigrations = (
       ? ['discovery.finding_lifecycle_current', 'discovery.finding_lifecycle_history']
       : []),
     ...(applied.has(DISCOVERY_MODEL_PROFILE_MIGRATION) ? ['discovery.model_profiles'] : []),
+    ...(applied.has(DISCOVERY_FEEDBACK_MIGRATION)
+      ? [
+          'discovery.feedback_events',
+          'discovery.suppression_directives',
+          'discovery.ranking_policy_revisions',
+        ]
+      : []),
   ];
 };
 

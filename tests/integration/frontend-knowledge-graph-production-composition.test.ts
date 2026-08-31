@@ -311,6 +311,17 @@ describe('AKP-6 WP3 production Graph composition', () => {
     expect(overlay.health).toBe('UNAVAILABLE');
   });
 
+  it('fails closed for restricted projection items when Project sensitivity context is absent', async () => {
+    const { readPort } = build();
+    const result = await readPort.snapshot(
+      { ...scope, discoveryContext: undefined },
+      { schemaVersion: '1.0.0', viewKind: 'KNOWLEDGE_SEMANTIC', overlayKinds: [] },
+    );
+
+    expect(result.nodes).toEqual([]);
+    expect(result.edges).toEqual([]);
+  });
+
   it('rejects a Finding whose endpoint belongs to another project before graph materialization', async () => {
     const { domain } = build(projection(), finding('project-foreign'));
     await expect(

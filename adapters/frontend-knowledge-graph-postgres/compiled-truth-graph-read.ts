@@ -59,7 +59,10 @@ const graphRevisionFor = (projection: CompiledTruthProjection | undefined, proje
 
 const visibleToScope = (item: CompiledTruthItem, scope: GraphReadScopeV1): boolean => {
   const accessScope = scope.accessScope ?? [];
-  const clearance = scope.discoveryContext?.activeProject.sensitivityClearance ?? 'restricted';
+  // A Graph scope without the server-derived Project context is not allowed
+  // to inherit the highest clearance. Public is the fail-closed baseline for
+  // embedded callers and prevents restricted projection items from leaking.
+  const clearance = scope.discoveryContext?.activeProject.sensitivityClearance ?? 'public';
   return (
     item.accessScope.length > 0 &&
     item.accessScope.every((required) => accessScope.includes(required)) &&

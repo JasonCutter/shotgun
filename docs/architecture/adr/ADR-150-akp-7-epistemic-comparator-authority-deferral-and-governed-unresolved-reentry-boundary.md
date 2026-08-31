@@ -1,15 +1,15 @@
 # ADR-150 — AKP-7 Epistemic Comparator Authority Deferral and Governed Unresolved Re-entry Boundary
 
-- Status: **PROPOSED**
+- Status: **ACCEPTED**
 - Proposed at: 2026-09-01
-- Decision date: **PENDING USER APPROVAL**
-- Accepted at: **NONE**
-- Accepted by: **NONE**
+- Decision date: 2026-09-01
+- Accepted at: 2026-09-01
+- Accepted by: `USER`
 - Decision owner: `USER`
 - Work item: `AKP-7 WP4 — Epistemic Feedback Re-entry`
 - Subject base: `main@06fe75fb2175fb37748d456a3d8c4af910a41101`
 - Related ADRs: ADR-121, ADR-136, ADR-138, ADR-139, ADR-141, ADR-147, ADR-149
-- Product implementation: **BOUNDED REFINEMENT ONLY; USER APPROVAL PENDING**
+- Product implementation: **AUTHORIZED FOR THE BOUNDED WP4 REFINEMENT DEFINED BY THIS ADR**
 
 ## Context
 
@@ -130,7 +130,8 @@ result, or identity. WP4 does not implement future re-evaluation.
 
 ## Implementation status
 
-This ADR is **PROPOSED** and is not accepted. Its bounded implementation-discovered
-refinement is recorded in the WP4 implementation document. User approval remains a
-separate governance decision, and this proposal does not update the whole-design
-Acceptance Record.
+This ADR is **ACCEPTED** by the user on 2026-09-01. Its bounded
+implementation-discovered refinement is recorded in the WP4 implementation
+document. It does not create a new AKP Section or update the whole-design
+Acceptance Record as a new section; future semantic comparator activation and
+re-evaluation remain subject to separate user-approved architecture decisions.

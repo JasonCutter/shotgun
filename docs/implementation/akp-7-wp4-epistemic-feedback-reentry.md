@@ -1,6 +1,6 @@
 # AKP-7 WP4 — Epistemic Feedback Re-entry
 
-> 상태: 구현 기록 (Draft PR 범위, ADR-150 제안 포함)
+> 상태: 구현 기록 (Draft PR 범위, ADR-150 승인 반영)
 > 기준일: 2026-09-01
 > Canonical base: `main@06fe75fb2175fb37748d456a3d8c4af910a41101`
 > Branch: `codex/akp-7-wp4-epistemic-feedback-reentry`
@@ -148,9 +148,9 @@ retryable infrastructure failure는 동일 logical identity를 유지한 `RETRYA
 
 ## 7. ADR-150 제안 경계
 
-ADR-150은 구현 중 확인된 bounded refinement를 기록한다. 상태는 `PROPOSED`이며
-사용자 승인 전에는 ACCEPTED로 표시하지 않는다. 이 제안은 새 AKP Section이나
-AKP-0~AKP-8을 변경하지 않고, semantic truth authority를 추가하지 않는다. 향후
+ADR-150은 구현 중 확인된 bounded refinement를 기록한다. 상태는 `ACCEPTED`이며
+사용자가 2026-09-01 승인했다. 이 결정은 새 AKP Section이나 AKP-0~AKP-8을
+변경하지 않고, semantic truth authority를 추가하지 않는다. 향후
 comparator 활성화는 Evidence·entity·temporal·pattern·conflict·relation authority,
 Port/Adapter, versioning, security, migration/replacement와 rollback을 명시하는
 별도 사용자 승인 결정이 필요하다. 이미 저장된 unresolved 결과는 보존하며 미래

@@ -31,14 +31,17 @@ This directory and the registered consolidated ADR documents form the global ADR
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
-ADR-131 through ADR-148 are authoritative accepted individual files. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately authorized by subsequent implementation records. ADR-143 is the accepted finite implementation/completion contract for ADR-133 Runtime-selectable AI Settings. ADR-147 records the FACT Product-eligibility deferral. ADR-148 is the accepted AKP-1 implementation-mechanics refinement that unifies durable semantic profile, exact embedding execution, coherent corpus, generation lifecycle, query readiness and Product composition while preserving ADR-135's core semantic-projection architecture.
+ADR-131 through ADR-150 are authoritative accepted individual files. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately authorized by subsequent implementation records. ADR-143 is the accepted finite implementation/completion contract for ADR-133 Runtime-selectable AI Settings. ADR-147 records the FACT Product-eligibility deferral. ADR-148 is the accepted AKP-1 implementation-mechanics refinement that unifies durable semantic profile, exact embedding execution, coherent corpus, generation lifecycle, query readiness and Product composition while preserving ADR-135's core semantic-projection architecture.
 
 ADR-145 remains an accepted historical individual decision. ADR-146 supersedes ADR-145 as the governing owner-facing Product interaction architecture; both identifiers retain explicit relationship metadata.
 
 The current latest accepted individual decision is
-[ADR-149 — Discovery Semantic Essence and Pre-persistence Fingerprint Identity Boundary](ADR-149-discovery-semantic-essence-and-pre-persistence-fingerprint-identity-boundary.md), accepted on 2026-08-30.
+[ADR-150 — AKP-7 Epistemic Comparator Authority Deferral and Governed Unresolved Re-entry Boundary](ADR-150-akp-7-epistemic-comparator-authority-deferral-and-governed-unresolved-reentry-boundary.md), accepted on 2026-09-01.
 
-[ADR-150 — AKP-7 Epistemic Comparator Authority Deferral and Governed Unresolved Re-entry Boundary](ADR-150-akp-7-epistemic-comparator-authority-deferral-and-governed-unresolved-reentry-boundary.md) is **PROPOSED** and remains pending user approval. It is not part of the accepted AKP v1 range and does not amend the whole-design Acceptance Record.
+ADR-150 is an accepted implementation-discovered refinement for the bounded AKP-7
+WP4 implementation. It does not create a new AKP Section, expand the accepted AKP
+v1 range, or amend the whole-design Acceptance Record. Future semantic comparator
+activation remains separately governed.
 
 The accepted AKP v1 whole-design state remains recorded in
 [`../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md`](../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md).

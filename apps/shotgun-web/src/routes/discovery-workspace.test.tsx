@@ -77,6 +77,7 @@ const baseFinding = {
     canOpenGraph: false,
     canOpenActivity: false,
     canInvestigate: false,
+    canDismiss: false,
   },
   createdAt: now,
 };
@@ -152,6 +153,17 @@ const detailFinding = {
       ruleVersion: '1',
     },
   },
+};
+
+const dismissibleDetailFinding = {
+  ...detailFinding,
+  capabilities: { ...detailFinding.capabilities, canDismiss: true },
+};
+
+const dismissedDetailFinding = {
+  ...dismissibleDetailFinding,
+  lifecycleState: 'DISMISSED' as const,
+  capabilities: { ...dismissibleDetailFinding.capabilities, canDismiss: false },
 };
 
 const actionDetailFinding = {
@@ -236,8 +248,14 @@ const listResult = (findings: readonly unknown[], nextCursor?: string) => ({
   ...(nextCursor ? { nextCursor } : {}),
 });
 
-const createFetchMock = (options?: { readonly failList?: boolean }) => {
+const createFetchMock = (options?: {
+  readonly failList?: boolean;
+  readonly dismissResponse?: (request: unknown) => Response | Promise<Response>;
+  readonly detailCanDismiss?: boolean;
+}) => {
   const requests: unknown[] = [];
+  const dismissCalls: unknown[] = [];
+  let dismissed = false;
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const path = String(input);
@@ -253,6 +271,19 @@ const createFetchMock = (options?: { readonly failList?: boolean }) => {
           ),
         );
       }
+      if (path.endsWith('/discoveries/dismiss')) {
+        dismissCalls.push(request);
+        dismissed = true;
+        return options?.dismissResponse
+          ? options.dismissResponse(request)
+          : responseFor({
+              schemaVersion: '1.0.0',
+              projectId: 'project-1',
+              accessRevision: 'access-1',
+              policyContextRevision: 'policy-1',
+              finding: dismissedDetailFinding,
+            });
+      }
       if (path.endsWith('/discoveries/read')) {
         return responseFor({
           schemaVersion: '1.0.0',
@@ -264,13 +295,17 @@ const createFetchMock = (options?: { readonly failList?: boolean }) => {
               ? actionDetailFinding
               : request?.findingId === 'finding-relation'
                 ? graphDetailFinding
-                : detailFinding,
+                : dismissed
+                  ? dismissedDetailFinding
+                  : options?.detailCanDismiss
+                    ? dismissibleDetailFinding
+                    : detailFinding,
         });
       }
       throw new Error(`Unexpected fetch path: ${path}`);
     },
   );
-  return { fetchMock, requests };
+  return { dismissCalls, fetchMock, requests };
 };
 
 const createRuntime = (): AppRuntime =>
@@ -406,6 +441,66 @@ describe('Discovery Inbox and Detail Workspace', () => {
         }),
       ]),
     );
+  });
+
+  it('shows only server-authorized dismiss, prevents duplicate submit, and restores focus', async () => {
+    let resolveDismiss!: (response: Response) => void;
+    const dismissPending = new Promise<Response>((resolve) => {
+      resolveDismiss = resolve;
+    });
+    const { dismissCalls, fetchMock } = createFetchMock({
+      detailCanDismiss: true,
+      dismissResponse: () => dismissPending,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+    renderRoute(
+      createRuntime(),
+      [{ path: 'knowledge/discoveries/:findingId', element: <DiscoveryDetailWorkspace /> }],
+      ['/knowledge/discoveries/finding-review-ready?revision=3'],
+    );
+
+    const heading = await screen.findByRole('heading', { name: 'Review-ready gap', level: 1 });
+    const dismissButton = screen.getByRole('button', { name: 'Dismiss finding' });
+    await user.click(dismissButton);
+    expect((dismissButton as HTMLButtonElement).disabled).toBe(true);
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        'The Discovery finding action is still processing.',
+      ),
+    );
+    await user.click(dismissButton);
+    expect(dismissCalls).toHaveLength(1);
+
+    resolveDismiss(
+      responseFor({
+        schemaVersion: '1.0.0',
+        projectId: 'project-1',
+        accessRevision: 'access-1',
+        policyContextRevision: 'policy-1',
+        finding: dismissedDetailFinding,
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        'This derived finding was dismissed by the Project owner.',
+      ),
+    );
+    expect(screen.queryByRole('button', { name: 'Dismiss finding' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('does not render a dismiss control when the server capability is false', async () => {
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute(
+      createRuntime(),
+      [{ path: 'knowledge/discoveries/:findingId', element: <DiscoveryDetailWorkspace /> }],
+      ['/knowledge/discoveries/finding-review-ready?revision=3'],
+    );
+
+    await screen.findByRole('heading', { name: 'Review-ready gap', level: 1 });
+    expect(screen.queryByRole('button', { name: 'Dismiss finding' })).toBeNull();
   });
 
   it('does not create a Review or execution action for non-ready findings and preserves exact-revision safety', async () => {

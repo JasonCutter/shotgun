@@ -28,6 +28,7 @@ import {
   decodeDiscoveryProductFindingDetailV1,
   decodeDiscoveryProductFindingSummaryV1,
   FRONTEND_DISCOVERY_SCHEMA_VERSION,
+  canDiscoveryFindingTransitionV1,
 } from '../../../packages/contracts/src/index.js';
 import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
 
@@ -647,6 +648,14 @@ export class FrontendDiscoveryProductReadCoordinator {
       canOpenGraph: canReadGraph,
       canOpenActivity: false,
       canInvestigate: false,
+      canDismiss:
+        scope.activeProject.isOwner &&
+        canDiscoveryFindingTransitionV1(
+          context.lifecycle.lifecycleState,
+          'DISMISSED',
+          'GOVERNED_WORKFLOW',
+          'DISMISSED',
+        ),
     } as const;
     let activity: DiscoveryProductActivityBindingV1 | undefined;
     if (this.activityRead !== undefined) {

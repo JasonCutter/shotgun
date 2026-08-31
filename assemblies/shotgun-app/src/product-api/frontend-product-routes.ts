@@ -1,9 +1,10 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import type { FastifyInstance } from 'fastify';
 
 import type { FrontendProductReadCoordinator } from '../../../../modules/frontend-product-read/src/index.js';
 import type { FrontendDiscoveryProductReadCoordinator } from '../../../../modules/frontend-discovery-product/src/index.js';
+import type { DiscoveryFindingLifecycleService } from '../../../../modules/discovery-finding-lifecycle/src/index.js';
 import type {
   FrontendSourcesReadCoordinator,
   ServerAuthorizedProjectSourcesReadScope,
@@ -42,8 +43,11 @@ import {
   decodeKnowledgeCompareRequest,
   decodeListDiscoveryFindingsRequestV1,
   decodeReadDiscoveryFindingRequestV1,
+  decodeDiscoveryDismissFindingCommandRequestV1,
+  FRONTEND_DISCOVERY_COMMAND_TYPES,
   FrontendContractError,
   buildCommandSemanticDigestInput,
+  buildPrincipalScopedCommandSemanticDigestInput,
   type AnyFrontendCommandRequest,
   type ErrorCode,
   type ProducedResourceRef,
@@ -71,6 +75,7 @@ export const registerFrontendProductRoutes = (
     readonly frontendCommandGateway?: FrontendCommandGatewayPort;
     readonly frontendSourcesReadCoordinator?: FrontendSourcesReadCoordinator;
     readonly frontendDiscoveryProductReadCoordinator?: FrontendDiscoveryProductReadCoordinator;
+    readonly frontendDiscoveryFindingLifecycleService?: DiscoveryFindingLifecycleService;
   },
 ): void => {
   const timed = async <T>(operation: () => Promise<T>) => {
@@ -565,6 +570,196 @@ export const registerFrontendProductRoutes = (
         return { result: projection.value };
       },
     );
+
+    const discoveryLifecycle = options?.frontendDiscoveryFindingLifecycleService;
+    const discoveryGateway = options?.frontendCommandGateway;
+    if (discoveryLifecycle && discoveryGateway) {
+      server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+        '/product-api/frontend/knowledge/discoveries/dismiss',
+        async (request) => {
+          const scope = await discoveryScope(request.headers, 'dismiss-discovery-finding');
+          if (!scope.value.activeProject.isOwner) {
+            throw new ShotgunError({
+              code: 'PROJECT_ACCESS_DENIED',
+              safeMessage: 'Discovery Finding owner actions are not available.',
+              module: 'frontend-discovery-product',
+              operation: 'dismiss-discovery-finding-owner',
+            });
+          }
+          const decoded = decodeDiscoveryRequest(
+            'decode-dismiss-discovery-finding-command',
+            decodeDiscoveryDismissFindingCommandRequestV1,
+            request.body,
+          );
+          const identity = {
+            projectId: scope.value.activeProject.id,
+            findingId: decoded.findingId,
+            findingRevision: decoded.findingRevision,
+          };
+          const current = await discoveryCoordinator.readFinding({
+            ...scope.value,
+            request: {
+              schemaVersion: '1.0.0',
+              findingId: identity.findingId,
+              findingRevision: identity.findingRevision,
+            },
+          });
+          const now = new Date().toISOString();
+          const commandRequest: AnyFrontendCommandRequest = {
+            envelopeVersion: '1.0.0',
+            commandType: FRONTEND_DISCOVERY_COMMAND_TYPES.dismiss,
+            commandSchemaVersion: '1.0.0',
+            clientRequestId: decoded.clientRequestId,
+            idempotencyKey: decoded.idempotencyKey,
+            projectContext: {
+              activeProjectId: scope.value.activeProject.id,
+              targetProjectId: scope.value.activeProject.id,
+              resourceProjectId: scope.value.activeProject.id,
+              observedProjectAccessRevision: scope.value.accessRevision,
+            },
+            policyBinding: {
+              mode: 'CURRENT',
+              observedPolicyContextRevision: scope.value.policyContextRevision,
+            },
+            preconditions: [
+              {
+                purpose: 'TARGET',
+                subject: { resourceKind: 'DISCOVERY_FINDING', resourceId: identity.findingId },
+                expectedRevision: String(identity.findingRevision),
+                digestKind: 'discovery-finding-identity-v1',
+              },
+            ],
+            clientIssuedAt: now,
+            payload: decoded,
+          };
+          const accepted = await discoveryGateway.accept({
+            commandId: `cmd-${randomUUID()}`,
+            commandRevision: '1',
+            principalId: scope.value.principalId,
+            request: commandRequest,
+            commandSemanticDigest: createHash('sha256')
+              .update(
+                buildPrincipalScopedCommandSemanticDigestInput(
+                  commandRequest,
+                  scope.value.principalId,
+                ),
+              )
+              .digest('hex'),
+            acceptedPolicyContext: {
+              policyContextId: `project-policy-context/${scope.value.activeProject.id}`,
+              policyContextRevision: scope.value.policyContextRevision,
+              acceptedAt: now,
+            },
+            correlationId: request.headers['x-correlation-id']?.toString() ?? randomUUID(),
+            traceId: randomUUID(),
+            receivedAt: now,
+            acceptedAt: now,
+          });
+          if (accepted.replayed) {
+            if (accepted.outcome.outcomeState === 'COMPLETED') {
+              return { result: current, outcome: accepted.outcome };
+            }
+            if (accepted.outcome.outcomeState === 'REJECTED') {
+              throw new ShotgunError({
+                code: accepted.outcome.rejection?.code ?? 'CONFLICT',
+                safeMessage:
+                  accepted.outcome.rejection?.message ??
+                  'The Discovery Finding command was previously rejected.',
+                module: 'frontend-discovery-product',
+                operation: 'replay-dismiss-discovery-finding',
+              });
+            }
+            if (accepted.outcome.outcomeState === 'OUTCOME_UNKNOWN') {
+              throw new ShotgunError({
+                code: 'OUTCOME_UNKNOWN',
+                safeMessage:
+                  'The Discovery Finding command outcome must be resolved before retrying.',
+                module: 'frontend-discovery-product',
+                operation: 'replay-dismiss-discovery-finding',
+                retryable: false,
+              });
+            }
+          }
+          let lifecycleApplied = false;
+          let commandCompleted = false;
+          try {
+            const transition = await discoveryLifecycle.transitionCurrent({
+              ...identity,
+              targetState: 'DISMISSED',
+              cause: 'GOVERNED_WORKFLOW',
+              reasonCode: 'DISMISSED',
+              occurredAt: now,
+              context: {
+                canonicalBase: current.finding.freshness.canonicalBase,
+                discoveryBase: current.finding.freshness.discoveryBase,
+              },
+            });
+            if (transition.status === 'CONFLICT') {
+              throw new ShotgunError({
+                code: 'REVISION_CONFLICT',
+                safeMessage: 'The Discovery Finding changed before it could be dismissed.',
+                module: 'frontend-discovery-product',
+                operation: 'dismiss-discovery-finding-revision',
+                retryable: true,
+              });
+            }
+            lifecycleApplied = transition.status === 'APPLIED';
+            const outcome = await discoveryGateway.complete({
+              commandId: accepted.outcome.commandId,
+              producedResources: [
+                {
+                  resourceKind: 'DISCOVERY_FINDING',
+                  resourceId: identity.findingId,
+                  resourceRevision: String(identity.findingRevision),
+                },
+              ],
+              completedAt: new Date().toISOString(),
+            });
+            commandCompleted = outcome.outcomeState === 'COMPLETED';
+            const result = await discoveryCoordinator.readFinding({
+              ...scope.value,
+              request: {
+                schemaVersion: '1.0.0',
+                findingId: identity.findingId,
+                findingRevision: identity.findingRevision,
+              },
+            });
+            return { result, outcome };
+          } catch (error) {
+            if (commandCompleted) {
+              // The command is durably complete. A subsequent Product read
+              // failure must not downgrade the command outcome.
+              throw error;
+            }
+            if (
+              (error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN') ||
+              lifecycleApplied
+            ) {
+              try {
+                await discoveryGateway.markOutcomeUnknown({
+                  commandId: accepted.outcome.commandId,
+                  message:
+                    error instanceof Error
+                      ? error.message
+                      : 'Discovery Finding command outcome is unresolved.',
+                  completedAt: new Date().toISOString(),
+                });
+              } catch {
+                // Preserve the existing unknown outcome when resolution is unavailable.
+              }
+              throw error;
+            }
+            await discoveryGateway.reject({
+              commandId: accepted.outcome.commandId,
+              code: error instanceof ShotgunError ? error.code : 'INTERNAL_UNCLASSIFIED',
+              message: error instanceof Error ? error.message : 'Discovery Finding command failed.',
+              completedAt: new Date().toISOString(),
+            });
+            throw error;
+          }
+        },
+      );
+    }
   }
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(

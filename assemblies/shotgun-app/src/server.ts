@@ -77,6 +77,7 @@ import {
   FrontendDiscoveryProductReadCoordinator,
   createEmptyDiscoveryProductReadSource,
 } from '../../../modules/frontend-discovery-product/src/index.js';
+import type { DiscoveryFindingLifecycleService } from '../../../modules/discovery-finding-lifecycle/src/index.js';
 import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
 import type { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
 import {
@@ -609,6 +610,8 @@ export type ApplicationOptions = {
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
   /** AKP-6 WP1 server-authoritative Discovery Product read boundary. */
   readonly frontendDiscoveryProductReadCoordinator?: FrontendDiscoveryProductReadCoordinator;
+  /** AKP-6 WP5 governed Discovery Finding owner actions. */
+  readonly frontendDiscoveryFindingLifecycleService?: DiscoveryFindingLifecycleService;
   readonly frontendProductReadCoordinatorFactory?: (
     connector: ShotgunKernel['connector'],
     actionCenterProjection: ActionCenterProjectionPort,
@@ -2554,6 +2557,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       frontendCommandGateway,
       frontendSourcesReadCoordinator,
       frontendDiscoveryProductReadCoordinator,
+      frontendDiscoveryFindingLifecycleService: options.frontendDiscoveryFindingLifecycleService,
     },
   );
   registerSourcesRoutes(

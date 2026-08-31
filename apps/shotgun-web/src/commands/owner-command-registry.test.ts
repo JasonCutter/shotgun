@@ -434,6 +434,36 @@ describe('owner command registry', () => {
     );
   });
 
+  it('exposes only the server-authorized Discovery dismiss action in the existing palette', () => {
+    const command = createOwnerCommandRegistry({
+      shell,
+      projects,
+      discoveryContext: {
+        projectId: 'project-1',
+        findingId: 'finding-1',
+        findingRevision: 1,
+        canDismiss: true,
+      },
+    }).find((candidate) => candidate.id === 'discovery.dismiss');
+    expect(command).toMatchObject({
+      availability: 'AVAILABLE',
+      risk: 'WRITE',
+      action: { kind: 'DISMISS_DISCOVERY' },
+    });
+    expect(
+      createOwnerCommandRegistry({
+        shell,
+        projects,
+        discoveryContext: {
+          projectId: 'project-1',
+          findingId: 'finding-1',
+          findingRevision: 1,
+          canDismiss: false,
+        },
+      }).find((candidate) => candidate.id === 'discovery.dismiss'),
+    ).toMatchObject({ availability: 'HIDDEN' });
+  });
+
   it('exposes Project controls through focused flows and hides invalid lifecycle actions', () => {
     const commands = createOwnerCommandRegistry({ shell, projects });
 

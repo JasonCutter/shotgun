@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FrontendContractError,
   createDiscoveryFindingEnvelopeV1,
+  decodeDiscoveryDismissFindingCommandRequestV1,
   decodeListDiscoveryFindingsRequestV1,
   decodeListDiscoveryFindingsResultV1,
   decodeReadDiscoveryFindingRequestV1,
@@ -38,6 +39,28 @@ describe('AKP-6 WP1 Discovery Product contracts', () => {
         findingId: 'finding-1',
         findingRevision: 1,
         lifecycleState: 'REVIEW_READY',
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('strictly decodes the governed dismiss identity without browser authority fields', () => {
+    expect(
+      decodeDiscoveryDismissFindingCommandRequestV1({
+        schemaVersion: '1.0.0',
+        clientRequestId: 'client-dismiss-1',
+        idempotencyKey: 'idem-dismiss-1',
+        findingId: 'finding-1',
+        findingRevision: 2,
+      }),
+    ).toMatchObject({ findingId: 'finding-1', findingRevision: 2 });
+    expect(() =>
+      decodeDiscoveryDismissFindingCommandRequestV1({
+        schemaVersion: '1.0.0',
+        clientRequestId: 'client-dismiss-1',
+        idempotencyKey: 'idem-dismiss-1',
+        findingId: 'finding-1',
+        findingRevision: 2,
+        projectId: 'attacker-project',
       }),
     ).toThrow(FrontendContractError);
   });
@@ -271,6 +294,7 @@ describe('AKP-6 WP1 Discovery Product coordinator', () => {
     expect(result.finding.capabilities.canOpenGraph).toBe(false);
     expect(result.finding.capabilities.canOpenActivity).toBe(false);
     expect(result.finding.capabilities.canInvestigate).toBe(false);
+    expect(result.finding.capabilities.canDismiss).toBe(true);
     expect(result.finding.lineage.evidence[0]).toMatchObject({
       evidenceId: 'evidence-1',
       sourceId: 'source-1',

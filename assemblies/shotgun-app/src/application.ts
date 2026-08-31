@@ -108,6 +108,7 @@ import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/inde
 import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
 import type { DiscoveryFindingEnvelopeV1 } from '../../../packages/contracts/src/index.js';
 import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
+import { DiscoveryFindingLifecycleService } from '../../../modules/discovery-finding-lifecycle/src/index.js';
 import {
   DiscoveryReentryConsumer,
   DiscoveryReentryFreshnessEvaluator,
@@ -545,6 +546,9 @@ export const startShotgunApplication = async (
       createPostgresReviewDiscoveryCandidateReader(pool);
     const discoveryRuntimeRepository = new PostgresDiscoveryRuntimeRepository(pool);
     const discoveryFindingRepository = new PostgresDiscoveryFindingRepository(pool);
+    const discoveryFindingLifecycleService = new DiscoveryFindingLifecycleService(
+      discoveryFindingRepository,
+    );
     const discoveryActivityFindingRead = {
       async listActivityFindings(input: {
         readonly projectId: string;
@@ -883,6 +887,7 @@ export const startShotgunApplication = async (
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
       frontendReviewDiscoveryCandidateReader,
       frontendDiscoveryProductReadCoordinator,
+      frontendDiscoveryFindingLifecycleService: discoveryFindingLifecycleService,
       graphReadDomain,
       discoveryReentryFreshnessEvaluator,
       askCommandCoordinator,

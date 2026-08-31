@@ -97,6 +97,16 @@ export type DiscoveryProductCapabilitiesV1 = {
   readonly canInvestigate: boolean;
 };
 
+/** Server-derived bridge to the federated Activity root. */
+export type DiscoveryProductActivityBindingV1 = {
+  readonly schemaVersion: FrontendDiscoverySchemaVersion;
+  readonly activityId: string;
+  readonly jobId: string;
+  readonly runId: string;
+  readonly resourceKind: 'DiscoveryJob';
+  readonly resourceHref: string;
+};
+
 export type DiscoveryProductFindingSummaryV1 = {
   readonly schemaVersion: FrontendDiscoverySchemaVersion;
   readonly findingId: string;
@@ -116,6 +126,7 @@ export type DiscoveryProductFindingSummaryV1 = {
   readonly freshness: DiscoveryProductFreshnessV1;
   readonly runId: string;
   readonly capabilities: DiscoveryProductCapabilitiesV1;
+  readonly activity?: DiscoveryProductActivityBindingV1;
   readonly createdAt: string;
 };
 
@@ -496,6 +507,27 @@ const decodeCapabilities = (value: unknown, path: string): DiscoveryProductCapab
   };
 };
 
+const decodeActivityBinding = (value: unknown, path: string): DiscoveryProductActivityBindingV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'activityId', 'jobId', 'runId', 'resourceKind', 'resourceHref'],
+    path,
+  );
+  schemaVersion(object, path);
+  return {
+    schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
+    activityId: text(required(object, 'activityId', path), `${path}.activityId`),
+    jobId: text(required(object, 'jobId', path), `${path}.jobId`),
+    runId: text(required(object, 'runId', path), `${path}.runId`),
+    resourceKind: enumValue(
+      required(object, 'resourceKind', path),
+      ['DiscoveryJob'],
+      `${path}.resourceKind`,
+    ),
+    resourceHref: text(required(object, 'resourceHref', path), `${path}.resourceHref`),
+  };
+};
+
 const decodeSummary = (value: unknown, path: string): DiscoveryProductFindingSummaryV1 => {
   const object = strictObject(
     value,
@@ -517,6 +549,7 @@ const decodeSummary = (value: unknown, path: string): DiscoveryProductFindingSum
       'freshness',
       'runId',
       'capabilities',
+      'activity',
       'createdAt',
     ],
     path,
@@ -565,6 +598,9 @@ const decodeSummary = (value: unknown, path: string): DiscoveryProductFindingSum
       required(object, 'capabilities', path),
       `${path}.capabilities`,
     ),
+    ...(object.activity === undefined
+      ? {}
+      : { activity: decodeActivityBinding(object.activity, `${path}.activity`) }),
     createdAt: isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`),
   };
 };
@@ -656,6 +692,7 @@ export const decodeDiscoveryProductFindingDetailV1 = (
       'freshness',
       'runId',
       'capabilities',
+      'activity',
       'createdAt',
       'payload',
       'lineage',

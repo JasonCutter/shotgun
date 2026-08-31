@@ -115,6 +115,7 @@ import {
   ActivityProjectionBuilder,
   type ActivityReadModelStorePort,
   type AskActivityReadPort,
+  type DiscoveryActivityFindingReadPort,
   type DiscoveryActivityReadPort,
   type SourcesActivityReadPort,
 } from '../../../modules/frontend-activity/src/index.js';
@@ -619,6 +620,7 @@ export type ApplicationOptions = {
   readonly activitySourcesRead?: SourcesActivityReadPort;
   readonly activityAskRead?: AskActivityReadPort;
   readonly activityDiscoveryRead?: DiscoveryActivityReadPort;
+  readonly activityDiscoveryFindingRead?: DiscoveryActivityFindingReadPort;
   readonly activityExternalActionBoundary?: ExternalActionRepositoryBoundaryPort;
   readonly activityReadModelStore?: ActivityReadModelStorePort;
   readonly activityCoordinator?: ActivityProductCoordinator;
@@ -1689,6 +1691,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   const activityAskRead = options.activityAskRead ?? createInMemoryAskActivityRead();
   const activityDiscoveryRead =
     options.activityDiscoveryRead ?? createInMemoryDiscoveryActivityRead();
+  const activityDiscoveryFindingRead = options.activityDiscoveryFindingRead;
   const activityCoordinator =
     options.activityCoordinator ??
     (() => {
@@ -1696,7 +1699,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         adapters: [
           new SourcesActivityAdapter(activitySourcesRead),
           new AskActivityAdapter(activityAskRead),
-          new DiscoveryActivityAdapter(activityDiscoveryRead),
+          new DiscoveryActivityAdapter(activityDiscoveryRead, activityDiscoveryFindingRead),
           new ExternalActionActivityAdapter(externalActionStore),
         ],
         adapterFor(domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY') {

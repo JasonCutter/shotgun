@@ -280,6 +280,49 @@ describe('AKP-6 WP1 Discovery Product coordinator', () => {
     expect(result.finding.safeSignals).not.toHaveProperty('semanticSimilarity');
   });
 
+  it('exposes Activity only from an exact server-verified FindingReady Job/Run binding', async () => {
+    const source = new FakeDiscoverySource(
+      [finding()],
+      {
+        projectId: 'project-1',
+        findingId: 'finding-1',
+        findingRevision: 1,
+        lifecycleState: 'NEW',
+        lifecycleRevision: 1,
+        updatedAt: '2026-08-31T00:01:00.000Z',
+      },
+      undefined,
+    );
+    const request = {
+      ...scope,
+      request: { schemaVersion: '1.0.0' as const, findingId: 'finding-1', findingRevision: 1 },
+    };
+    const authorized = await new FrontendDiscoveryProductReadCoordinator(source, {
+      activityRead: {
+        findActivityBinding: async (input) =>
+          input.projectId === 'project-1' && input.runId === 'run-1'
+            ? { jobId: 'job-1', runId: 'run-1' }
+            : undefined,
+      },
+    }).readFinding(request);
+    expect(authorized.finding.capabilities.canOpenActivity).toBe(true);
+    expect(authorized.finding.activity).toEqual({
+      schemaVersion: '1.0.0',
+      activityId: 'job-1',
+      jobId: 'job-1',
+      runId: 'run-1',
+      resourceKind: 'DiscoveryJob',
+      resourceHref:
+        '/activity?domain=DISCOVERY&activity=job-1&resource=DiscoveryJob&resourceId=job-1',
+    });
+
+    const mismatched = await new FrontendDiscoveryProductReadCoordinator(source, {
+      activityRead: { findActivityBinding: async () => ({ jobId: 'job-1', runId: 'other-run' }) },
+    }).readFinding(request);
+    expect(mismatched.finding.capabilities.canOpenActivity).toBe(false);
+    expect(mismatched.finding.activity).toBeUndefined();
+  });
+
   it('reports Graph capability truthfully when the persisted projection is unavailable', async () => {
     const resource: DiscoveryResourceRefV1 = {
       schemaVersion: '1.0.0',

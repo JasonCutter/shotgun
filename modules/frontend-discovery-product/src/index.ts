@@ -8,6 +8,7 @@ import {
   type DiscoveryFindingLifecycleState,
   type DiscoveryFindingPayloadV1,
   type DiscoveryProductCapabilitiesV1,
+  type DiscoveryProductActivityBindingV1,
   type DiscoveryProductEvidenceReferenceV1,
   type DiscoveryProductFindingSummaryV1,
   type DiscoveryProductFreshnessV1,
@@ -65,6 +66,17 @@ export type DiscoveryProductReadSource = {
 
 export type DiscoveryProductGraphReadiness = {
   canReadGraph(projectId: string): Promise<boolean>;
+};
+
+/** Server-side Activity root authority. The Product module may only use this
+ * read surface to expose a verified bridge; it cannot create or control work. */
+export type DiscoveryProductActivityReadPort = {
+  findActivityBinding(input: {
+    readonly projectId: string;
+    readonly findingId: string;
+    readonly findingRevision: number;
+    readonly runId: string;
+  }): Promise<Pick<DiscoveryProductActivityBindingV1, 'jobId' | 'runId'> | undefined>;
 };
 
 export type DiscoveryProductPageCursorV1 = {
@@ -449,11 +461,15 @@ export class FrontendDiscoveryProductReadCoordinator {
     options: {
       readonly cursorCodec?: DiscoveryProductCursorCodec;
       readonly graphReadiness?: DiscoveryProductGraphReadiness;
+      readonly activityRead?: DiscoveryProductActivityReadPort;
     } = {},
   ) {
     this.cursorCodec = options.cursorCodec ?? defaultCursorCodec();
     this.graphReadiness = options.graphReadiness;
+    this.activityRead = options.activityRead;
   }
+
+  private readonly activityRead?: DiscoveryProductActivityReadPort;
 
   private async authorizeResources(
     finding: DiscoveryFindingEnvelopeV1,
@@ -623,15 +639,47 @@ export class FrontendDiscoveryProductReadCoordinator {
         canReadGraph = false;
       }
     }
-    const capabilities: DiscoveryProductCapabilitiesV1 = {
+    let canOpenActivity = false;
+    const capabilitiesBase = {
       schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
       canOpenReview: context.reviewBinding !== undefined,
       canInspectEvidence: context.evidence.length > 0,
       canOpenGraph: canReadGraph,
-      // WP1 has no server-authoritative Activity or Investigation navigation
-      // identity. A persisted runId is not sufficient capability evidence.
       canOpenActivity: false,
       canInvestigate: false,
+    } as const;
+    let activity: DiscoveryProductActivityBindingV1 | undefined;
+    if (this.activityRead !== undefined) {
+      try {
+        const binding = await this.activityRead.findActivityBinding({
+          projectId: finding.projectId,
+          findingId: finding.findingId,
+          findingRevision: finding.findingRevision,
+          runId: finding.runId,
+        });
+        if (
+          binding !== undefined &&
+          binding.jobId.trim().length > 0 &&
+          binding.runId === finding.runId
+        ) {
+          activity = {
+            schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
+            activityId: binding.jobId,
+            jobId: binding.jobId,
+            runId: binding.runId,
+            resourceKind: 'DiscoveryJob',
+            resourceHref: `/activity?domain=DISCOVERY&activity=${encodeURIComponent(binding.jobId)}&resource=DiscoveryJob&resourceId=${encodeURIComponent(binding.jobId)}`,
+          };
+          canOpenActivity = true;
+        }
+      } catch {
+        // Capability authority is fail-closed when the Activity root cannot be
+        // revalidated. The Finding remains readable without the backlink.
+      }
+    }
+    const capabilities: DiscoveryProductCapabilitiesV1 = {
+      ...capabilitiesBase,
+      canOpenActivity,
     };
     const summary = decodeDiscoveryProductFindingSummaryV1({
       schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
@@ -651,6 +699,7 @@ export class FrontendDiscoveryProductReadCoordinator {
       freshness,
       runId: finding.runId,
       capabilities,
+      ...(activity === undefined ? {} : { activity }),
       createdAt: finding.createdAt,
     });
     const lineage: DiscoveryProductLineageV1 = {

@@ -247,6 +247,8 @@ export type ActivityDomainAttemptViewV1 = {
   readonly attemptKind: ActivityDomainAttemptKindV1;
   readonly state: ActivityLifecycleStateV1;
   readonly retryability: ActivityRetryabilityV1;
+  /** Owning-domain execution attempt origin; distinct from attemptKind. */
+  readonly retryKind?: 'INITIAL' | 'DOMAIN_RETRY';
   readonly failure?: ActivitySafeFailureV1;
   readonly accessRef?: ActivityResourceRefV1;
   readonly policyContextRef?: ActivityResourceRefV1;
@@ -317,6 +319,61 @@ export type ActivityDimensionsV1 = {
   readonly retryability: ActivityRetryabilityV1;
   readonly freshness: ActivityProjectionFreshnessV1;
   readonly adapterStatus: ActivityAdapterStatusV1;
+};
+
+/** Safe, server-derived Discovery wait explanation. */
+export type ActivityProjectionWaitViewV1 = {
+  readonly schemaVersion: FrontendActivitySchemaVersion;
+  readonly state: 'WAITING_FOR_PROJECTION';
+  readonly requiredProjectionRevision: string;
+  readonly requiredProjectionDigest: string;
+  readonly deadlineAt: string;
+  readonly fallbackPolicyRevision: string;
+};
+
+/** Configured bounds only; observed usage and provider details stay private. */
+export type ActivityBoundedWorkViewV1 = {
+  readonly schemaVersion: FrontendActivitySchemaVersion;
+  readonly maxResources: number;
+  readonly maxFindings: number;
+  readonly maxProviderCalls: number;
+  readonly deadlineAt: string;
+};
+
+export type ActivityPartialReasonV1 =
+  | 'BUDGET_EXHAUSTED'
+  | 'DETERMINISTIC_FALLBACK'
+  | 'AI_STRATEGY_UNAVAILABLE'
+  | 'CANDIDATE_CAP'
+  | 'RESOURCE_CAP'
+  | 'DEADLINE';
+
+/** Bounded, non-payload Finding backlink rendered inside Activity detail. */
+export type ActivityRelatedResourceV1 = {
+  readonly schemaVersion: FrontendActivitySchemaVersion;
+  readonly resourceKind: 'DISCOVERY_FINDING';
+  readonly resourceId: string;
+  readonly resourceRevision: number;
+  readonly title: string;
+  readonly findingType: string;
+  readonly lifecycleState: string;
+  readonly authority: 'DERIVED_INFERENCE';
+  readonly resourceHref: string;
+};
+
+/** Optional product presentation context; it carries no execution authority. */
+export type ActivityDomainPresentationV1 = {
+  readonly schemaVersion: FrontendActivitySchemaVersion;
+  readonly title: string;
+  readonly triggerLabel: string;
+  readonly scanModeLabel: string;
+  readonly attentionReason?: 'REVIEW_ELIGIBLE_FINDING' | 'FAILED_TERMINAL';
+  readonly wait?: ActivityProjectionWaitViewV1;
+  readonly boundedWork?: ActivityBoundedWorkViewV1;
+  readonly partialReasons?: readonly ActivityPartialReasonV1[];
+  readonly relatedResources?: readonly ActivityRelatedResourceV1[];
+  readonly relatedResourceCount?: number;
+  readonly relatedResourcesTruncated?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -730,6 +787,7 @@ export const decodeActivityDomainAttemptViewV1 = (
       'attemptKind',
       'state',
       'retryability',
+      'retryKind',
       'failure',
       'accessRef',
       'policyContextRef',
@@ -770,6 +828,15 @@ export const decodeActivityDomainAttemptViewV1 = (
       ACTIVITY_RETRYABILITY,
       `${path}.retryability`,
     ),
+    ...(object.retryKind === undefined
+      ? {}
+      : {
+          retryKind: enumValue(
+            object.retryKind,
+            ['INITIAL', 'DOMAIN_RETRY'] as const,
+            `${path}.retryKind`,
+          ),
+        }),
     ...(object.failure === undefined
       ? {}
       : { failure: decodeActivitySafeFailureV1(object.failure, `${path}.failure`) }),
@@ -1040,6 +1107,190 @@ export const decodeActivityDimensionsV1 = (
   };
 };
 
+const decodeActivityProjectionWaitViewV1 = (
+  value: unknown,
+  path = 'wait',
+): ActivityProjectionWaitViewV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'state',
+      'requiredProjectionRevision',
+      'requiredProjectionDigest',
+      'deadlineAt',
+      'fallbackPolicyRevision',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    state: enumValue(required(object, 'state', path), ['WAITING_FOR_PROJECTION'], `${path}.state`),
+    requiredProjectionRevision: text(
+      required(object, 'requiredProjectionRevision', path),
+      `${path}.requiredProjectionRevision`,
+    ),
+    requiredProjectionDigest: text(
+      required(object, 'requiredProjectionDigest', path),
+      `${path}.requiredProjectionDigest`,
+    ),
+    deadlineAt: isoTimestamp(required(object, 'deadlineAt', path), `${path}.deadlineAt`),
+    fallbackPolicyRevision: text(
+      required(object, 'fallbackPolicyRevision', path),
+      `${path}.fallbackPolicyRevision`,
+    ),
+  };
+};
+
+const decodeActivityBoundedWorkViewV1 = (
+  value: unknown,
+  path = 'boundedWork',
+): ActivityBoundedWorkViewV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'maxResources', 'maxFindings', 'maxProviderCalls', 'deadlineAt'],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    maxResources: positiveInteger(required(object, 'maxResources', path), `${path}.maxResources`),
+    maxFindings: positiveInteger(required(object, 'maxFindings', path), `${path}.maxFindings`),
+    maxProviderCalls: positiveInteger(
+      required(object, 'maxProviderCalls', path),
+      `${path}.maxProviderCalls`,
+    ),
+    deadlineAt: isoTimestamp(required(object, 'deadlineAt', path), `${path}.deadlineAt`),
+  };
+};
+
+const decodeActivityRelatedResourceV1 = (
+  value: unknown,
+  path = 'relatedResource',
+): ActivityRelatedResourceV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'resourceKind',
+      'resourceId',
+      'resourceRevision',
+      'title',
+      'findingType',
+      'lifecycleState',
+      'authority',
+      'resourceHref',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  return {
+    schemaVersion: '1.0.0',
+    resourceKind: enumValue(
+      required(object, 'resourceKind', path),
+      ['DISCOVERY_FINDING'],
+      `${path}.resourceKind`,
+    ),
+    resourceId: text(required(object, 'resourceId', path), `${path}.resourceId`),
+    resourceRevision: positiveInteger(
+      required(object, 'resourceRevision', path),
+      `${path}.resourceRevision`,
+    ),
+    title: text(required(object, 'title', path), `${path}.title`),
+    findingType: text(required(object, 'findingType', path), `${path}.findingType`),
+    lifecycleState: text(required(object, 'lifecycleState', path), `${path}.lifecycleState`),
+    authority: enumValue(
+      required(object, 'authority', path),
+      ['DERIVED_INFERENCE'],
+      `${path}.authority`,
+    ),
+    resourceHref: text(required(object, 'resourceHref', path), `${path}.resourceHref`),
+  };
+};
+
+export const decodeActivityDomainPresentationV1 = (
+  value: unknown,
+  path = 'presentation',
+): ActivityDomainPresentationV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'title',
+      'triggerLabel',
+      'scanModeLabel',
+      'attentionReason',
+      'wait',
+      'boundedWork',
+      'partialReasons',
+      'relatedResources',
+      'relatedResourceCount',
+      'relatedResourcesTruncated',
+    ],
+    path,
+  );
+  decodeSchemaVersion(object, path);
+  const partialReasons =
+    object.partialReasons === undefined
+      ? undefined
+      : arrayValue(object.partialReasons, `${path}.partialReasons`).map((entry, index) =>
+          enumValue(
+            entry,
+            [
+              'BUDGET_EXHAUSTED',
+              'DETERMINISTIC_FALLBACK',
+              'AI_STRATEGY_UNAVAILABLE',
+              'CANDIDATE_CAP',
+              'RESOURCE_CAP',
+              'DEADLINE',
+            ] as const,
+            `${path}.partialReasons[${index}]`,
+          ),
+        );
+  const relatedResources =
+    object.relatedResources === undefined
+      ? undefined
+      : arrayValue(object.relatedResources, `${path}.relatedResources`).map((entry, index) =>
+          decodeActivityRelatedResourceV1(entry, `${path}.relatedResources[${index}]`),
+        );
+  const relatedResourceCount =
+    object.relatedResourceCount === undefined
+      ? undefined
+      : integer(object.relatedResourceCount, `${path}.relatedResourceCount`);
+  const relatedResourcesTruncated =
+    object.relatedResourcesTruncated === undefined
+      ? undefined
+      : booleanValue(object.relatedResourcesTruncated, `${path}.relatedResourcesTruncated`);
+  return {
+    schemaVersion: '1.0.0',
+    title: text(required(object, 'title', path), `${path}.title`),
+    triggerLabel: text(required(object, 'triggerLabel', path), `${path}.triggerLabel`),
+    scanModeLabel: text(required(object, 'scanModeLabel', path), `${path}.scanModeLabel`),
+    ...(object.attentionReason === undefined
+      ? {}
+      : {
+          attentionReason: enumValue(
+            object.attentionReason,
+            ['REVIEW_ELIGIBLE_FINDING', 'FAILED_TERMINAL'] as const,
+            `${path}.attentionReason`,
+          ),
+        }),
+    ...(object.wait === undefined
+      ? {}
+      : { wait: decodeActivityProjectionWaitViewV1(object.wait, `${path}.wait`) }),
+    ...(object.boundedWork === undefined
+      ? {}
+      : {
+          boundedWork: decodeActivityBoundedWorkViewV1(object.boundedWork, `${path}.boundedWork`),
+        }),
+    ...(partialReasons === undefined ? {} : { partialReasons }),
+    ...(relatedResources === undefined ? {} : { relatedResources }),
+    ...(relatedResourceCount === undefined ? {} : { relatedResourceCount }),
+    ...(relatedResourcesTruncated === undefined ? {} : { relatedResourcesTruncated }),
+  };
+};
+
 // ---------------------------------------------------------------------------
 // Composite snapshot decoder
 // ---------------------------------------------------------------------------
@@ -1054,6 +1305,7 @@ export type ActivitySnapshotV1 = {
   readonly transportAttempts: readonly ActivityTransportAttemptViewV1[];
   readonly metadata: ActivityProjectionMetadataV1;
   readonly dimensions: ActivityDimensionsV1;
+  readonly presentation?: ActivityDomainPresentationV1;
   /**
    * Server-derived available action descriptors (WP5). Empty when the owning
    * Domain does not allow Retry/Cancel for this Activity. The browser never
@@ -1080,6 +1332,7 @@ export const decodeActivitySnapshotV1 = (value: unknown, path = 'activity'): Act
       'transportAttempts',
       'metadata',
       'dimensions',
+      'presentation',
       'availableActions',
     ],
     path,
@@ -1122,6 +1375,10 @@ export const decodeActivitySnapshotV1 = (value: unknown, path = 'activity'): Act
     required(object, 'dimensions', path),
     `${path}.dimensions`,
   );
+  const presentation =
+    object.presentation === undefined
+      ? undefined
+      : decodeActivityDomainPresentationV1(object.presentation, `${path}.presentation`);
   const availableActions = arrayValue(
     required(object, 'availableActions', path),
     `${path}.availableActions`,
@@ -1138,6 +1395,7 @@ export const decodeActivitySnapshotV1 = (value: unknown, path = 'activity'): Act
     transportAttempts,
     metadata,
     dimensions,
+    ...(presentation === undefined ? {} : { presentation }),
     availableActions,
   };
 };
@@ -1159,6 +1417,7 @@ export type ActivityQueueItemV1 = {
   readonly summary: string;
   readonly state: ActivityLifecycleStateV1;
   readonly dimensions: ActivityDimensionsV1;
+  readonly presentation?: ActivityDomainPresentationV1;
   readonly updatedAt: string;
 };
 
@@ -1178,6 +1437,7 @@ export type ActivityDetailV1 = {
   readonly transportAttempts: readonly ActivityTransportAttemptViewV1[];
   readonly metadata: ActivityProjectionMetadataV1;
   readonly dimensions: ActivityDimensionsV1;
+  readonly presentation?: ActivityDomainPresentationV1;
   /**
    * Server-derived available action descriptors (WP5). Empty when the owning
    * Domain does not allow Retry/Cancel for this Activity; the client only

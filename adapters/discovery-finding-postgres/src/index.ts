@@ -142,6 +142,10 @@ const selectColumns = `
   discovery_projection_digest, run_id, signal_summary, rationale,
   derivation_summary, provenance, access_scope, sensitivity, fingerprint,
   fingerprint_version, retention_class, created_at, supersedes_finding_id`;
+const qualifiedSelectColumns = selectColumns
+  .split(',')
+  .map((column) => `f.${column.trim()}`)
+  .join(', ');
 
 const lifecycleCurrentColumns = `
   project_id, finding_id, finding_revision, lifecycle_state,
@@ -467,6 +471,35 @@ export class PostgresDiscoveryFindingRepository
        ORDER BY finding_id ASC, finding_revision ASC
        LIMIT $4`,
       [projectId, after?.findingId ?? null, after?.findingRevision ?? 0, limit],
+    );
+    return result.rows.map(mapRow);
+  }
+
+  /** Bounded, exact FindingReady lineage read for Activity backlinks. */
+  async listByJobAndRun(
+    projectIdInput: string,
+    jobIdInput: string,
+    runIdInput: string,
+    limit = 21,
+  ): Promise<readonly DiscoveryFindingEnvelopeV1[]> {
+    const projectId = requiredIdentifier(projectIdInput, 'projectId');
+    const jobId = requiredIdentifier(jobIdInput, 'jobId');
+    const runId = requiredIdentifier(runIdInput, 'runId');
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
+      throw new TypeError('activity finding limit must be an integer between 1 and 1000');
+    }
+    const result = await this.pool.query<DiscoveryFindingRow>(
+      `SELECT ${qualifiedSelectColumns}
+       FROM discovery.findings f
+       JOIN discovery.finding_ready ready
+         ON ready.project_id = f.project_id
+        AND ready.finding_id = f.finding_id
+        AND ready.finding_revision = f.finding_revision
+        AND ready.run_id = f.run_id
+       WHERE f.project_id = $1 AND ready.job_id = $2 AND f.run_id = $3
+       ORDER BY f.finding_id ASC, f.finding_revision ASC
+       LIMIT $4`,
+      [projectId, jobId, runId, limit],
     );
     return result.rows.map(mapRow);
   }

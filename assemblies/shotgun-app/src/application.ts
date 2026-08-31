@@ -105,6 +105,8 @@ import { PostgresDiscoveryFindingRepository } from '../../../adapters/discovery-
 import { PostgresDiscoveryModelProfileRepository } from '../../../adapters/discovery-model-profile-postgres/src/index.js';
 import { PostgresDiscoveryScheduleRepository } from '../../../adapters/discovery-trigger-coordinator/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
+import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
+import type { DiscoveryFindingEnvelopeV1 } from '../../../packages/contracts/src/index.js';
 import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
 import {
   DiscoveryReentryConsumer,
@@ -543,6 +545,80 @@ export const startShotgunApplication = async (
       createPostgresReviewDiscoveryCandidateReader(pool);
     const discoveryRuntimeRepository = new PostgresDiscoveryRuntimeRepository(pool);
     const discoveryFindingRepository = new PostgresDiscoveryFindingRepository(pool);
+    const discoveryActivityFindingRead = {
+      async listActivityFindings(input: {
+        readonly projectId: string;
+        readonly jobId: string;
+        readonly runId: string;
+        readonly accessScope?: readonly string[];
+        readonly sensitivityClearance?: string;
+        readonly limit: number;
+      }) {
+        const findings = await discoveryFindingRepository.listByJobAndRun(
+          input.projectId,
+          input.jobId,
+          input.runId,
+          input.limit,
+        );
+        const visible = findings.filter((finding: DiscoveryFindingEnvelopeV1) => {
+          const clearance = input.sensitivityClearance;
+          return (
+            finding.projectId === input.projectId &&
+            finding.accessScope.every((required) => (input.accessScope ?? []).includes(required)) &&
+            (clearance === 'public' ||
+              clearance === 'internal' ||
+              clearance === 'private' ||
+              clearance === 'restricted') &&
+            hasSensitivityClearance(clearance, finding.sensitivity)
+          );
+        });
+        const rows = await Promise.all(
+          visible.map(async (finding) => {
+            const current = await discoveryFindingRepository.findLifecycle({
+              projectId: finding.projectId,
+              findingId: finding.findingId,
+              findingRevision: finding.findingRevision,
+            });
+            if (!current) return undefined;
+            const review = await frontendReviewDiscoveryCandidateReader.findByFinding?.(
+              finding.projectId,
+              finding.findingId,
+              finding.findingRevision,
+            );
+            const reviewEligible =
+              current.lifecycleState === 'REVIEW_READY' &&
+              review !== undefined &&
+              'origin' in review &&
+              review.origin === 'DERIVED_DISCOVERY' &&
+              review.lineage.projectId === finding.projectId &&
+              review.lineage.findingId === finding.findingId &&
+              review.lineage.findingRevision === finding.findingRevision &&
+              review.resourceRevision > 0;
+            const payload = finding.payload as unknown as Record<string, unknown>;
+            const title =
+              typeof payload.subject === 'string'
+                ? payload.subject
+                : typeof payload.question === 'string'
+                  ? payload.question
+                  : typeof payload.suggestedAction === 'string'
+                    ? payload.suggestedAction
+                    : `Discovery ${finding.findingType.replaceAll('_', ' ').toLowerCase()}`;
+            return {
+              projectId: finding.projectId,
+              findingId: finding.findingId,
+              findingRevision: finding.findingRevision,
+              runId: finding.runId,
+              findingType: finding.findingType,
+              lifecycleState: current.lifecycleState,
+              title: title.trim().slice(0, 120) || 'Discovery Finding',
+              reviewEligible,
+              resourceHref: `/knowledge/discoveries/${encodeURIComponent(finding.findingId)}?revision=${finding.findingRevision}`,
+            };
+          }),
+        );
+        return rows.filter((row): row is NonNullable<typeof row> => row !== undefined);
+      },
+    };
     const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
     const authRepository = new PostgresAuthRepository(pool);
     // Discovery execution and re-entry share the same server-owned
@@ -714,6 +790,7 @@ export const startShotgunApplication = async (
       {
         cursorCodec: createEncryptedDiscoveryProductCursorCodec(stagingSecret),
         graphReadiness: graphReadAdapter,
+        activityRead: discoveryRuntimeRepository,
       },
     );
     const graphDiscoveryOverlayPort = createGraphDiscoveryOverlayPort({
@@ -851,6 +928,7 @@ export const startShotgunApplication = async (
       activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
       activityAskRead: new PostgresAskActivityRead(pool),
       activityDiscoveryRead: discoveryRuntimeRepository,
+      activityDiscoveryFindingRead: discoveryActivityFindingRead,
       activityReadModelStore: createPostgresActivityReadModelStore(pool),
       historyReadModelStore: createPostgresHistoryReadModelStore(pool),
       historyPayloadStates: {

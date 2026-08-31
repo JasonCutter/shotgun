@@ -5,6 +5,7 @@ import {
   type FrontendKnowledgeGraphClient,
   type GlobalShellView,
   type GraphConflictOverlayRequestV1,
+  type GraphDiscoveryOverlayRequestV1,
   type GraphEvidenceDetailRequestV1,
   type GraphKnowledgeGapOverlayRequestV1,
   type GraphNeighborhoodRequestV1,
@@ -60,6 +61,26 @@ export const graphSnapshotQueryOptions = (
     queryKey: scope ? graphScopeQueryKey(scope, request) : graphDisabledQueryKey('snapshot'),
     queryFn: ({ signal }) => client.getGraphSnapshot(request, { signal }),
     enabled: scope !== null,
+    retry: graphQueryRetry,
+    staleTime: 15_000,
+  });
+};
+
+export const graphDiscoverySnapshotQueryOptions = (
+  client: FrontendKnowledgeGraphClient,
+  shell: GlobalShellView | null,
+  request: GraphSnapshotRequestV1,
+  findingId: string,
+  findingRevision: number,
+) => {
+  const scope = graphScopeFromShell(shell);
+  return queryOptions({
+    queryKey: scope
+      ? [...graphScopeQueryKey(scope, request), 'discovery', findingId, findingRevision]
+      : graphDisabledQueryKey('discovery-snapshot'),
+    queryFn: ({ signal }) =>
+      client.getDiscoveryGraphSnapshot(request, findingId, findingRevision, { signal }),
+    enabled: scope !== null && findingId.trim().length > 0 && findingRevision > 0,
     retry: graphQueryRetry,
     staleTime: 15_000,
   });
@@ -145,6 +166,26 @@ export const graphOverlayQueryOptions = (
       return client.getRecursiveImpactOverlay(request, { signal });
     },
     enabled: scope !== null,
+    retry: graphQueryRetry,
+    staleTime: 15_000,
+  });
+
+export const graphDiscoveryOverlayQueryOptions = (
+  client: FrontendKnowledgeGraphClient,
+  scope: GraphQueryScope | null,
+  request: GraphDiscoveryOverlayRequestV1,
+) =>
+  queryOptions({
+    queryKey: scope
+      ? graphSnapshotPhaseQueryKey(scope, request.baseSnapshotId, request.projectionRevision, [
+          'overlay',
+          'DISCOVERY',
+          request.findingId,
+          request.findingRevision,
+        ])
+      : graphDisabledQueryKey('overlay-DISCOVERY'),
+    queryFn: ({ signal }) => client.getDiscoveryOverlay(request, { signal }),
+    enabled: scope !== null && request.findingId.trim().length > 0 && request.findingRevision > 0,
     retry: graphQueryRetry,
     staleTime: 15_000,
   });

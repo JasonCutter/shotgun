@@ -286,3 +286,4 @@ export class PostgresFrontendKnowledgeGraphStores
 }
 
 export { stableJson };
+export { PostgresCompiledTruthGraphReadAdapter } from '../compiled-truth-graph-read.js';

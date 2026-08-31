@@ -1,6 +1,7 @@
 import type {
   GraphEvidenceDetailRequestV1,
   GraphEvidenceDetailResultV1,
+  GraphDiscoveryOverlayRequestV1,
   GraphNeighborhoodRequestV1,
   GraphNeighborhoodResultV1,
   GraphOverlayResultV1,
@@ -8,6 +9,7 @@ import type {
   GraphPathDescribeRequestV1,
   GraphPathRequestV1,
   GraphPathResultV1,
+  GraphNodeReferenceV1,
   GraphRecursiveImpactOverlayRequestV1,
   GraphRestoreRequestV1,
   GraphRestoreResultV1,
@@ -27,9 +29,28 @@ export type GraphReadScopeV1 = {
   readonly accessRevision: string;
   readonly policyContextRevision: string;
   readonly accessScope: readonly string[];
+  readonly discoveryContext?: {
+    readonly activeProject: {
+      readonly id: string;
+      readonly label: string;
+      readonly isOwner: boolean;
+      readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
+    };
+    readonly accessibleProjects: readonly {
+      readonly id: string;
+      readonly label: string;
+      readonly isOwner: boolean;
+      readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
+    }[];
+  };
 };
 
 export type GraphReadPort = {
+  getSnapshot?(
+    scope: GraphReadScopeV1,
+    snapshotId: string,
+    projectionRevision: string,
+  ): Promise<GraphSnapshotResultV1 | undefined>;
   snapshot(
     scope: GraphReadScopeV1,
     request: GraphSnapshotRequestV1,
@@ -59,5 +80,27 @@ export type GraphImpactPort = {
     scope: GraphReadScopeV1,
     request: GraphRecursiveImpactOverlayRequestV1,
     baseSnapshotId: string,
+  ): Promise<GraphOverlayResultV1>;
+};
+
+/**
+ * Read-only binding seam for a persisted Discovery Finding. The port owns the
+ * current Finding/resource/Evidence authorization checks; the graph domain
+ * only binds its result to the exact base snapshot and projection revision.
+ */
+export type GraphDiscoveryOverlayPort = {
+  /**
+   * Resolve the server-authorized resource roots for the exact Finding
+   * revision before a focused base snapshot is materialized. Browser-supplied
+   * resource refs are never used for this operation.
+   */
+  resolveDiscoveryRoots?(
+    scope: GraphReadScopeV1,
+    request: Pick<GraphDiscoveryOverlayRequestV1, 'findingId' | 'findingRevision'>,
+  ): Promise<readonly GraphNodeReferenceV1[] | undefined>;
+  discoveryOverlay(
+    scope: GraphReadScopeV1,
+    request: GraphDiscoveryOverlayRequestV1,
+    baseSnapshot: GraphSnapshotResultV1,
   ): Promise<GraphOverlayResultV1>;
 };

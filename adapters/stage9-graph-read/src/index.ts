@@ -10,6 +10,7 @@ import {
   type GraphNodeReferenceV1,
   type GraphNodeV1,
   type GraphOverlayResultV1,
+  type GraphOverlayKindV1,
   type GraphPathDescriptionV1,
   type GraphPathResultV1,
   type GraphPathSegmentV1,
@@ -41,6 +42,11 @@ type SnapshotContextCache = {
   filters: GraphFilterSetV1;
   limits: GraphTraversalLimitsV1;
   viewKind: GraphBaseViewKindV1;
+};
+
+export type Stage9GraphReadAdapterOptions = {
+  readonly health?: GraphProjectionHealthV1;
+  readonly maxSnapshots?: number;
 };
 
 const freshId = (prefix: string): string =>
@@ -91,6 +97,7 @@ type StoredPath = {
 
 export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
   private readonly contexts = new Map<string, SnapshotContextCache>();
+  private readonly snapshots = new Map<string, GraphSnapshotResultV1>();
   private readonly resourceMap = new Map<string, GraphNodeV1>();
   private readonly edgeMap = new Map<string, GraphEdgeV1>();
   private readonly paths = new Map<string, StoredPath>();
@@ -100,6 +107,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     private readonly edges: readonly GraphEdgeV1[],
     private readonly projectionRevision: () => string = () => 'proj-1',
     private readonly evidenceEntries: readonly GraphEvidenceEntryV1[] = [],
+    private readonly options: Stage9GraphReadAdapterOptions = {},
   ) {
     for (const node of nodes) this.resourceMap.set(node.resourceRef.resourceId, node);
     for (const edge of edges) this.edgeMap.set(edge.edgeId, edge);
@@ -113,9 +121,12 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
   private boundedSnapshot(
     scope: GraphReadScopeV1,
     request: {
-      rootRefs?: readonly { resourceId: string }[];
+      rootRefs?: readonly {
+        resourceKind: GraphNodeReferenceV1['resourceKind'];
+        resourceId: string;
+      }[];
       viewKind: GraphBaseViewKindV1;
-      overlayKinds?: readonly ('CONFLICT' | 'KNOWLEDGE_GAP' | 'RECURSIVE_IMPACT')[];
+      overlayKinds?: readonly GraphOverlayKindV1[];
       filters?: GraphFilterSetV1;
       limits: GraphTraversalLimitsV1;
     },
@@ -123,15 +134,21 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     snapshotId: string,
     health: GraphProjectionHealthV1,
   ): GraphSnapshotResultV1 {
-    const rootIds = (request.rootRefs ?? []).map((ref) => ref.resourceId);
+    const rootRefs = request.rootRefs ?? [];
     const allowed =
-      rootIds.length === 0
+      rootRefs.length === 0
         ? this.nodes
-        : this.nodes.filter((node) => rootIds.includes(node.resourceRef.resourceId));
+        : this.nodes.filter((node) =>
+            rootRefs.some(
+              (ref) =>
+                ref.resourceKind === node.resourceRef.resourceKind &&
+                ref.resourceId === node.resourceRef.resourceId,
+            ),
+          );
     // Cross-Project deep-link denial: a requested root that does not exist in
     // the active Project's dataset is never silently switched to another
     // Project; it returns a typed access failure instead.
-    if (rootIds.length > 0 && allowed.length === 0) {
+    if (rootRefs.length > 0 && allowed.length === 0) {
       throw new FrontendContractError(
         'PRECONDITION_ACCESS_DENIED',
         'root resource is outside the active project',
@@ -178,10 +195,10 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
       limits: request.limits,
       viewKind: request.viewKind,
     });
-    return {
+    const result: GraphSnapshotResultV1 = {
       schemaVersion: '1.0.0',
       identity,
-      health,
+      health: this.options.health ?? health,
       completeness,
       nodes,
       edges,
@@ -190,6 +207,22 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
       overlays: [],
       capabilities: { schemaVersion: '1.0.0', capabilities: [] },
     };
+    this.snapshots.set(snapshotId, result);
+    this.retainSnapshot();
+    return result;
+  }
+
+  private retainSnapshot(): void {
+    const maximum = Math.max(1, this.options.maxSnapshots ?? 128);
+    while (this.snapshots.size > maximum) {
+      const oldest = this.snapshots.keys().next().value;
+      if (oldest === undefined) break;
+      this.snapshots.delete(oldest);
+      this.contexts.delete(oldest);
+      for (const key of this.paths.keys()) {
+        if (key.startsWith(`${oldest}:`)) this.paths.delete(key);
+      }
+    }
   }
 
   private applied(limits: GraphTraversalLimitsV1): GraphAppliedLimitsV1 {
@@ -213,6 +246,22 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
       snapshotId,
       'COMPLETE',
     );
+  }
+
+  async getSnapshot(
+    scope: GraphReadScopeV1,
+    snapshotId: string,
+    projectionRevision: string,
+  ): Promise<GraphSnapshotResultV1 | undefined> {
+    const snapshot = this.snapshots.get(snapshotId);
+    if (
+      !snapshot ||
+      snapshot.identity.projectId !== scope.activeProjectId ||
+      snapshot.identity.projectionRevision !== projectionRevision
+    ) {
+      return undefined;
+    }
+    return snapshot;
   }
 
   async neighborhood(
@@ -501,7 +550,6 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     baseSnapshotId: string,
   ): Promise<GraphOverlayResultV1> {
     void request;
-    const context = this.contexts.get(baseSnapshotId);
     const impactNodes = this.nodes.filter(
       (node) =>
         node.authority === 'DERIVED_INFERENCE' ||
@@ -513,7 +561,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     return {
       schemaVersion: '1.0.0',
       baseSnapshotId,
-      projectionRevision: context?.limits ? 'proj-1' : 'proj-1',
+      projectionRevision: this.projectionRevision(),
       identity: {
         schemaVersion: '1.0.0',
         overlayKind: 'RECURSIVE_IMPACT',

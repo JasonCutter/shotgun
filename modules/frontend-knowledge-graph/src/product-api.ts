@@ -8,6 +8,7 @@ import {
   type GraphBaseViewKindV1,
   type GraphCapabilitiesViewV1,
   type GraphConflictOverlayRequestV1,
+  type GraphDiscoveryOverlayRequestV1,
   type GraphContinuationBindingV1,
   type GraphContinuationTokenV1,
   type GraphEvidenceDetailRequestV1,
@@ -34,7 +35,12 @@ import {
   type GraphSnapshotResultV1,
   type GraphTraversalLimitsV1,
 } from '../../../packages/contracts/src/index.js';
-import type { GraphReadPort, GraphReadScopeV1, GraphImpactPort } from './graph-read-port.js';
+import type {
+  GraphDiscoveryOverlayPort,
+  GraphReadPort,
+  GraphReadScopeV1,
+  GraphImpactPort,
+} from './graph-read-port.js';
 import type { HealthStorePort, GraphOverlayHealthRecordV1 } from './health-store-port.js';
 import type {
   GraphSnapshotContextDescriptorV1,
@@ -53,6 +59,7 @@ export type GraphReadDomainInput = {
   readonly impactPort: GraphImpactPort;
   readonly snapshotContextStore: SnapshotContextStorePort;
   readonly healthStore: HealthStorePort;
+  readonly discoveryOverlayPort?: GraphDiscoveryOverlayPort;
   readonly now?: () => string;
 };
 
@@ -99,6 +106,12 @@ export type GraphReadDomain = {
     scope: GraphReadScopeV1,
     request: GraphSnapshotRequestV1,
   ): Promise<GraphSnapshotResultV1>;
+  discoverySnapshot(
+    scope: GraphReadScopeV1,
+    request: GraphSnapshotRequestV1,
+    findingId: string,
+    findingRevision: number,
+  ): Promise<GraphSnapshotResultV1>;
   neighborhood(
     scope: GraphReadScopeV1,
     request: GraphNeighborhoodRequestV1,
@@ -111,6 +124,10 @@ export type GraphReadDomain = {
   conflictOverlay(
     scope: GraphReadScopeV1,
     request: GraphConflictOverlayRequestV1,
+  ): Promise<GraphOverlayResultV1>;
+  discoveryOverlay(
+    scope: GraphReadScopeV1,
+    request: GraphDiscoveryOverlayRequestV1,
   ): Promise<GraphOverlayResultV1>;
   gapOverlay(
     scope: GraphReadScopeV1,
@@ -132,7 +149,7 @@ export type GraphReadDomain = {
 };
 
 export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDomain => {
-  const { readPort, impactPort, snapshotContextStore, healthStore } = input;
+  const { readPort, impactPort, snapshotContextStore, healthStore, discoveryOverlayPort } = input;
   const nowIso = input.now ?? (() => new Date().toISOString());
   const caps: GraphTraversalLimitsV1 = {
     schemaVersion: '1.0.0',
@@ -156,6 +173,7 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
       ...(overlayKinds.includes('CONFLICT') ? (['CONFLICT_OVERLAY'] as const) : []),
       ...(overlayKinds.includes('KNOWLEDGE_GAP') ? (['GAP_OVERLAY'] as const) : []),
       ...(overlayKinds.includes('RECURSIVE_IMPACT') ? (['IMPACT_OVERLAY'] as const) : []),
+      ...(overlayKinds.includes('DISCOVERY') ? (['DISCOVERY_OVERLAY'] as const) : []),
     ],
   });
 
@@ -404,36 +422,61 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
     };
   };
 
-  return {
-    async snapshot(scope, request) {
-      const { limits, applied } = clampLimits(request.limits, caps);
-      const result = await readPort.snapshot(scope, { ...request, limits });
-      const snapshotResult: GraphSnapshotResultV1 = {
-        ...result,
-        appliedLimits: applied,
-        capabilities: capabilities(request.overlayKinds),
-      };
-      await writeSnapshotContext(scope, result.identity, request, limits);
-      await writeProjectionHealth(
+  const snapshot = async (
+    scope: GraphReadScopeV1,
+    request: GraphSnapshotRequestV1,
+  ): Promise<GraphSnapshotResultV1> => {
+    const { limits, applied } = clampLimits(request.limits, caps);
+    const result = await readPort.snapshot(scope, { ...request, limits });
+    const snapshotResult: GraphSnapshotResultV1 = {
+      ...result,
+      appliedLimits: applied,
+      capabilities: capabilities(request.overlayKinds),
+    };
+    await writeSnapshotContext(scope, result.identity, request, limits);
+    await writeProjectionHealth(
+      scope,
+      result.identity.viewKind,
+      result.identity.projectionRevision,
+      result.health,
+      result.identity.generatedAt,
+    );
+    if (result.completeness === 'PARTIAL') {
+      const rootRef = request.rootRefs?.[0];
+      snapshotResult.continuation = await nextContinuation(
         scope,
-        result.identity.viewKind,
-        result.identity.projectionRevision,
-        result.health,
-        result.identity.generatedAt,
+        result.identity.snapshotId,
+        rootRef,
+        request.filters,
+        request.viewKind,
+        request.overlayKinds,
+        limits,
       );
-      if (result.completeness === 'PARTIAL') {
-        const rootRef = request.rootRefs?.[0];
-        snapshotResult.continuation = await nextContinuation(
-          scope,
-          result.identity.snapshotId,
-          rootRef,
-          request.filters,
-          request.viewKind,
-          request.overlayKinds,
-          limits,
+    }
+    return snapshotResult;
+  };
+
+  return {
+    snapshot,
+
+    async discoverySnapshot(scope, request, findingId, findingRevision) {
+      if (!discoveryOverlayPort?.resolveDiscoveryRoots) {
+        throw new FrontendContractError(
+          'NOT_FOUND',
+          'server-authorized Discovery graph roots are unavailable',
         );
       }
-      return snapshotResult;
+      const rootRefs = await discoveryOverlayPort.resolveDiscoveryRoots(scope, {
+        findingId,
+        findingRevision,
+      });
+      if (!rootRefs || rootRefs.length === 0) {
+        throw new FrontendContractError(
+          'PRECONDITION_ACCESS_DENIED',
+          'Discovery Finding has no authorized graph roots',
+        );
+      }
+      return snapshot(scope, { ...request, rootRefs });
     },
 
     async neighborhood(scope, request) {
@@ -551,6 +594,81 @@ export const createGraphReadDomain = (input: GraphReadDomainInput): GraphReadDom
         request.snapshotId,
       );
       return { ...result, projectionRevision: request.projectionRevision, appliedLimits: applied };
+    },
+
+    async discoveryOverlay(scope, request) {
+      const descriptor = await descriptorFor(
+        scope,
+        request.baseSnapshotId,
+        request.projectionRevision,
+      );
+      const { limits, applied } = clampLimits(request.limits ?? descriptor.limits, caps);
+      const base = readPort.getSnapshot
+        ? await readPort.getSnapshot(scope, request.baseSnapshotId, request.projectionRevision)
+        : await readPort.snapshot(scope, {
+            schemaVersion: '1.0.0',
+            viewKind: descriptor.viewKind,
+            overlayKinds: descriptor.overlayKinds,
+            rootRefs: descriptor.rootRefs,
+            limits,
+          });
+      const unavailableResult = () => {
+        const generatedAt = nowIso();
+        return {
+          schemaVersion: '1.0.0' as const,
+          baseSnapshotId: request.baseSnapshotId,
+          projectionRevision: request.projectionRevision,
+          identity: {
+            schemaVersion: '1.0.0' as const,
+            overlayKind: 'DISCOVERY' as const,
+            overlaySnapshotId: freshId('overlay-discovery'),
+            overlayRevision: freshId('overlay-rev'),
+            analyzerRevision: 'discovery-overlay-unavailable',
+            policyContextRevision: scope.policyContextRevision,
+            generatedAt,
+            completeness: 'COMPLETE' as const,
+            unavailableReason: 'OVERLAY_UNAVAILABLE' as const,
+          },
+          health: 'UNAVAILABLE' as const,
+          completeness: 'COMPLETE' as const,
+          nodes: [],
+          edges: [],
+          appliedLimits: applied,
+        } satisfies GraphOverlayResultV1;
+      };
+      if (
+        !base ||
+        base.identity.snapshotId !== request.baseSnapshotId ||
+        base.identity.projectionRevision !== request.projectionRevision
+      ) {
+        return unavailableResult();
+      }
+      if (!discoveryOverlayPort) {
+        return unavailableResult();
+      }
+      const result = await discoveryOverlayPort.discoveryOverlay(
+        scope,
+        {
+          ...request,
+          limits,
+        },
+        base,
+      );
+      if (
+        result.baseSnapshotId !== request.baseSnapshotId ||
+        result.projectionRevision !== request.projectionRevision ||
+        result.identity.overlayKind !== 'DISCOVERY' ||
+        (result.health !== 'UNAVAILABLE' &&
+          (result.identity.sourceRef?.kind !== 'DISCOVERY_FINDING' ||
+            result.identity.sourceRef.findingId !== request.findingId ||
+            result.identity.sourceRef.findingRevision !== request.findingRevision))
+      ) {
+        throw new FrontendContractError(
+          'UNSUPPORTED_SCHEMA',
+          'discovery overlay result identity does not match request',
+        );
+      }
+      return { ...result, appliedLimits: applied };
     },
 
     async evidenceDetail(scope, request) {

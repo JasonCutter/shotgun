@@ -63,6 +63,10 @@ export type DiscoveryProductReadSource = {
   findEvidence(projectId: string, evidenceId: string): Promise<EvidenceSpan | undefined>;
 };
 
+export type DiscoveryProductGraphReadiness = {
+  canReadGraph(projectId: string): Promise<boolean>;
+};
+
 export type DiscoveryProductPageCursorV1 = {
   readonly findingId: string;
   readonly findingRevision: number;
@@ -303,6 +307,19 @@ const payloadRefs = (payload: DiscoveryFindingPayloadV1): readonly DiscoveryReso
   }
 };
 
+const graphEligibleFinding = (finding: DiscoveryFindingEnvelopeV1): boolean => {
+  if (
+    finding.findingType !== 'RELATION_HYPOTHESIS' &&
+    finding.findingType !== 'PATTERN_HYPOTHESIS' &&
+    finding.findingType !== 'CONFLICT_HYPOTHESIS'
+  ) {
+    return false;
+  }
+  const refs = payloadRefs(finding.payload);
+  if (finding.findingType === 'RELATION_HYPOTHESIS') return refs.length === 2;
+  return refs.length > 0;
+};
+
 const payloadTitleAndSummary = (
   payload: DiscoveryFindingPayloadV1,
 ): { readonly title: string; readonly summary: string } => {
@@ -425,12 +442,17 @@ const evidenceReference = (span: EvidenceSpan): DiscoveryProductEvidenceReferenc
 
 export class FrontendDiscoveryProductReadCoordinator {
   private readonly cursorCodec: DiscoveryProductCursorCodec;
+  private readonly graphReadiness?: DiscoveryProductGraphReadiness;
 
   constructor(
     private readonly source: DiscoveryProductReadSource,
-    options: { readonly cursorCodec?: DiscoveryProductCursorCodec } = {},
+    options: {
+      readonly cursorCodec?: DiscoveryProductCursorCodec;
+      readonly graphReadiness?: DiscoveryProductGraphReadiness;
+    } = {},
   ) {
     this.cursorCodec = options.cursorCodec ?? defaultCursorCodec();
+    this.graphReadiness = options.graphReadiness;
   }
 
   private async authorizeResources(
@@ -587,11 +609,25 @@ export class FrontendDiscoveryProductReadCoordinator {
         projectionDigest: finding.discoveryBase.projectionDigest,
       },
     };
+    const eligibleForGraph =
+      graphEligibleFinding(finding) &&
+      authorizedResources.length > 0 &&
+      authorizedResources.every((resource) => resource.graphEligible);
+    let canReadGraph = false;
+    if (eligibleForGraph && this.graphReadiness !== undefined) {
+      try {
+        canReadGraph = await this.graphReadiness.canReadGraph(finding.projectId);
+      } catch {
+        // A Product capability is an authority statement; an unavailable
+        // readiness authority cannot grant Graph navigation.
+        canReadGraph = false;
+      }
+    }
     const capabilities: DiscoveryProductCapabilitiesV1 = {
       schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
       canOpenReview: context.reviewBinding !== undefined,
       canInspectEvidence: context.evidence.length > 0,
-      canOpenGraph: authorizedResources.some((resource) => resource.graphEligible),
+      canOpenGraph: canReadGraph,
       // WP1 has no server-authoritative Activity or Investigation navigation
       // identity. A persisted runId is not sufficient capability evidence.
       canOpenActivity: false,

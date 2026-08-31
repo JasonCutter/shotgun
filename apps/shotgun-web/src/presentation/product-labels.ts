@@ -271,6 +271,7 @@ const GRAPH_OVERLAY_LABELS = labels({
   CONFLICT: 'Conflicts',
   KNOWLEDGE_GAP: 'Knowledge gaps',
   RECURSIVE_IMPACT: 'Extended impact',
+  DISCOVERY: 'Discovery candidates',
 });
 
 const MEDIA_TYPE_LABELS: Readonly<Record<string, string>> = {

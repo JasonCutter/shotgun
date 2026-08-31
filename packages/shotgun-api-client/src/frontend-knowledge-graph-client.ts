@@ -1,6 +1,7 @@
 import { FrontendContractError } from '../../contracts/src/index.js';
 import {
   decodeGraphConflictOverlayRequestV1,
+  decodeGraphDiscoveryOverlayRequestV1,
   decodeGraphEvidenceDetailRequestV1,
   decodeGraphEvidenceDetailResultV1,
   decodeGraphKnowledgeGapOverlayRequestV1,
@@ -18,6 +19,7 @@ import {
   decodeGraphSnapshotRequestV1,
   decodeGraphSnapshotResultV1,
   type GraphConflictOverlayRequestV1,
+  type GraphDiscoveryOverlayRequestV1,
   type GraphEvidenceDetailRequestV1,
   type GraphEvidenceDetailResultV1,
   type GraphKnowledgeGapOverlayRequestV1,
@@ -44,6 +46,12 @@ export type FrontendKnowledgeGraphClient = {
     params: GraphSnapshotRequestV1,
     options?: { readonly signal?: AbortSignal },
   ): Promise<GraphSnapshotResultV1>;
+  getDiscoveryGraphSnapshot(
+    params: GraphSnapshotRequestV1,
+    findingId: string,
+    findingRevision: number,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<GraphSnapshotResultV1>;
   expandGraphNeighborhood(
     params: GraphNeighborhoodRequestV1,
     options?: { readonly signal?: AbortSignal },
@@ -58,6 +66,10 @@ export type FrontendKnowledgeGraphClient = {
   ): Promise<GraphPathDescriptionV1>;
   getConflictOverlay(
     params: GraphConflictOverlayRequestV1,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<GraphOverlayResultV1>;
+  getDiscoveryOverlay(
+    params: GraphDiscoveryOverlayRequestV1,
     options?: { readonly signal?: AbortSignal },
   ): Promise<GraphOverlayResultV1>;
   getKnowledgeGapOverlay(
@@ -140,6 +152,19 @@ export const createFrontendKnowledgeGraphClient = (
         'result',
       );
     },
+    async getDiscoveryGraphSnapshot(params, findingId, findingRevision, requestOptions) {
+      if (!findingId.trim() || !Number.isSafeInteger(findingRevision) || findingRevision < 1) {
+        throw new FrontendContractError('INVALID_REQUEST', 'Discovery Finding identity is invalid');
+      }
+      return decodeGraphSnapshotResultV1(
+        await post(
+          `/product-api/frontend/knowledge/graph/snapshot/discovery/${encodeURIComponent(findingId)}/${findingRevision}`,
+          decodeGraphSnapshotRequestV1(params),
+          requestOptions?.signal,
+        ),
+        'result',
+      );
+    },
     async expandGraphNeighborhood(params, requestOptions) {
       return decodeGraphNeighborhoodResultV1(
         await post(
@@ -179,6 +204,30 @@ export const createFrontendKnowledgeGraphClient = (
         ),
         'result',
       );
+    },
+    async getDiscoveryOverlay(params, requestOptions) {
+      const decoded = decodeGraphDiscoveryOverlayRequestV1(params);
+      const result = decodeGraphOverlayResultV1(
+        await post(
+          '/product-api/frontend/knowledge/graph/overlay/discovery',
+          decoded,
+          requestOptions?.signal,
+        ),
+        'result',
+      );
+      const sourceRef = result.identity.sourceRef;
+      if (
+        result.identity.overlayKind !== 'DISCOVERY' ||
+        result.baseSnapshotId !== decoded.baseSnapshotId ||
+        result.projectionRevision !== decoded.projectionRevision ||
+        (result.health !== 'UNAVAILABLE' &&
+          (sourceRef?.kind !== 'DISCOVERY_FINDING' ||
+            sourceRef.findingId !== decoded.findingId ||
+            sourceRef.findingRevision !== decoded.findingRevision))
+      ) {
+        identityMismatch('Discovery overlay result does not match the requested identity.');
+      }
+      return result;
     },
     async getKnowledgeGapOverlay(params, requestOptions) {
       return decodeGraphOverlayResultV1(

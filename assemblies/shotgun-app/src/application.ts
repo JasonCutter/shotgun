@@ -171,6 +171,14 @@ import {
   FrontendDiscoveryProductReadCoordinator,
 } from '../../../modules/frontend-discovery-product/src/index.js';
 import { createPostgresFrontendDiscoveryProductReadSource } from '../../../adapters/frontend-discovery-product-postgres/src/index.js';
+import {
+  PostgresCompiledTruthGraphReadAdapter,
+  PostgresFrontendKnowledgeGraphStores,
+} from '../../../adapters/frontend-knowledge-graph-postgres/src/index.js';
+import {
+  createGraphDiscoveryOverlayPort,
+  createGraphReadDomain,
+} from '../../../modules/frontend-knowledge-graph/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
 import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
@@ -521,6 +529,10 @@ export const startShotgunApplication = async (
     const disableAskWorker = options.disableAskWorker ?? recoveryHarness;
 
     const compiledTruthRepository = new PostgresCompiledTruthRepository(pool);
+    const graphReadAdapter = new PostgresCompiledTruthGraphReadAdapter(
+      compiledTruthRepository,
+      semanticCorpusSourceSnapshotReader,
+    );
     const knowledgeModelRepository = new PostgresKnowledgeModelRepository(pool);
     const discoveryProductResourceResolver = new ProductKnowledgeResourceResolver(
       canonicalKnowledgeRepository,
@@ -699,8 +711,40 @@ export const startShotgunApplication = async (
         sourceSecurityReader: originalAssetRepository,
         reviewReader: frontendReviewDiscoveryCandidateReader,
       }),
-      { cursorCodec: createEncryptedDiscoveryProductCursorCodec(stagingSecret) },
+      {
+        cursorCodec: createEncryptedDiscoveryProductCursorCodec(stagingSecret),
+        graphReadiness: graphReadAdapter,
+      },
     );
+    const graphDiscoveryOverlayPort = createGraphDiscoveryOverlayPort({
+      readFinding: async (scope, request) => {
+        const context = scope.discoveryContext;
+        if (!context || context.activeProject.id !== scope.activeProjectId) return undefined;
+        const result = await frontendDiscoveryProductReadCoordinator.readFinding({
+          principalId: scope.principalId,
+          sessionId: scope.sessionId,
+          activeProject: context.activeProject,
+          accessibleProjects: context.accessibleProjects,
+          accessRevision: scope.accessRevision,
+          policyContextRevision: scope.policyContextRevision,
+          accessScope: scope.accessScope,
+          request: {
+            schemaVersion: '1.0.0',
+            findingId: request.findingId,
+            findingRevision: request.findingRevision,
+          },
+        });
+        return result.projectId === scope.activeProjectId ? result.finding : undefined;
+      },
+    });
+    const graphStores = new PostgresFrontendKnowledgeGraphStores(pool);
+    const graphReadDomain = createGraphReadDomain({
+      readPort: graphReadAdapter,
+      impactPort: graphReadAdapter,
+      snapshotContextStore: graphStores,
+      healthStore: graphStores,
+      discoveryOverlayPort: graphDiscoveryOverlayPort,
+    });
     const discoveryReentryWorker =
       recoveryHarness ||
       discoveryReentryRepository === undefined ||
@@ -751,6 +795,7 @@ export const startShotgunApplication = async (
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
       frontendReviewDiscoveryCandidateReader,
       frontendDiscoveryProductReadCoordinator,
+      graphReadDomain,
       discoveryReentryFreshnessEvaluator,
       askCommandCoordinator,
       frontendProductReadCoordinatorFactory: (

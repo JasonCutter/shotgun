@@ -149,7 +149,11 @@ import {
   type GraphScopeResolver,
 } from './product-api/frontend-knowledge-graph-routes.js';
 import type { GraphReadDomain } from '../../../modules/frontend-knowledge-graph/src/index.js';
-import { createGraphReadDomain } from '../../../modules/frontend-knowledge-graph/src/index.js';
+import {
+  createGraphDiscoveryOverlayPort,
+  createGraphReadDomain,
+  type GraphDiscoveryOverlayPort,
+} from '../../../modules/frontend-knowledge-graph/src/index.js';
 import {
   createInMemoryHealthStore,
   createInMemorySnapshotContextStore,
@@ -599,6 +603,7 @@ export type ApplicationOptions = {
   readonly frontendReviewDiscoveryCandidateReader?: ReviewDiscoveryCandidateReader;
   readonly frontendExternalActionCoordinator?: FrontendExternalActionProductCoordinator;
   readonly graphReadDomain?: GraphReadDomain;
+  readonly graphDiscoveryOverlayPort?: GraphDiscoveryOverlayPort;
   readonly graphScopeResolver?: GraphScopeResolver;
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
   /** AKP-6 WP1 server-authoritative Discovery Product read boundary. */
@@ -1557,6 +1562,29 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
         canonical: canonicalKnowledgeRepository,
       },
     );
+  const graphDiscoveryOverlayPort =
+    options.graphDiscoveryOverlayPort ??
+    createGraphDiscoveryOverlayPort({
+      readFinding: async (scope, request) => {
+        const context = scope.discoveryContext;
+        if (!context || context.activeProject.id !== scope.activeProjectId) return undefined;
+        const result = await frontendDiscoveryProductReadCoordinator.readFinding({
+          principalId: scope.principalId,
+          sessionId: scope.sessionId,
+          activeProject: context.activeProject,
+          accessibleProjects: context.accessibleProjects,
+          accessRevision: scope.accessRevision,
+          policyContextRevision: scope.policyContextRevision,
+          accessScope: scope.accessScope,
+          request: {
+            schemaVersion: '1.0.0',
+            findingId: request.findingId,
+            findingRevision: request.findingRevision,
+          },
+        });
+        return result.projectId === scope.activeProjectId ? result.finding : undefined;
+      },
+    });
   const graphReadDomain =
     options.graphReadDomain ??
     createGraphReadDomain({
@@ -1564,6 +1592,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       impactPort: new Stage9GraphReadAdapter([], []),
       snapshotContextStore: createInMemorySnapshotContextStore(),
       healthStore: createInMemoryHealthStore(),
+      discoveryOverlayPort: graphDiscoveryOverlayPort,
     });
   // FE-P5-S2 WP3/WP5: Reversal draft creation is a change-set-review owned
   // capability (server-derived current capability + principal; the browser
@@ -2582,6 +2611,34 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
             operation: 'graph-scope',
           });
         }
+        const memberships = await authRepository.listMemberships(
+          current.principalContext.principalId,
+        );
+        const projects = await projectAdminRepository.getProjects(
+          memberships.map((candidate) => candidate.projectId),
+        );
+        const accessibleProjects = memberships.flatMap((candidate) => {
+          const project = projects.projects.find((item) => item.id === candidate.projectId);
+          return project
+            ? [
+                {
+                  id: project.id,
+                  label: project.name,
+                  isOwner: candidate.isOwner,
+                  sensitivityClearance: candidate.sensitivityClearance,
+                },
+              ]
+            : [];
+        });
+        const activeProject = accessibleProjects.find((project) => project.id === activeProjectId);
+        if (!activeProject) {
+          throw new ShotgunError({
+            code: 'PRECONDITION_ACCESS_DENIED',
+            safeMessage: 'Principal is not in the active Project scope.',
+            module: 'frontend-knowledge-graph-api',
+            operation: 'graph-scope',
+          });
+        }
         return {
           principalId: current.principalContext.principalId,
           sessionId: current.session.sessionId,
@@ -2589,6 +2646,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           accessRevision: `access:${activeProjectId}`,
           policyContextRevision: `policy:${activeProjectId}`,
           accessScope: membership.scopes,
+          discoveryContext: { activeProject, accessibleProjects },
         };
       }),
   );

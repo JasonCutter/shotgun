@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   assertDiscoveryLifecycleTransitionV1,
+  canDiscoveryFindingTransitionV1,
   decodeDiscoveryReconciliationObservationV1,
   DiscoveryFindingLifecycleService,
 } from '../../modules/discovery-finding-lifecycle/src/index.js';
@@ -130,6 +131,36 @@ describe('AKP-2 WP3 lifecycle and bounded reconciliation', () => {
         'SUPPRESSED',
       ),
     ).not.toThrow();
+    expect(
+      canDiscoveryFindingTransitionV1(
+        'REVIEW_READY',
+        'DISMISSED',
+        'GOVERNED_WORKFLOW',
+        'DISMISSED',
+      ),
+    ).toBe(true);
+    expect(
+      canDiscoveryFindingTransitionV1(
+        'DISMISSED',
+        'REVIEW_READY',
+        'GOVERNED_WORKFLOW',
+        'REVIEW_READY',
+      ),
+    ).toBe(false);
+  });
+
+  it('reads the current lifecycle revision before applying a governed transition', async () => {
+    const repository = new MemoryLifecycleRepository();
+    repository.currentState = current('VALIDATING');
+    const result = await new DiscoveryFindingLifecycleService(repository).transitionCurrent({
+      ...identity,
+      targetState: 'DISMISSED',
+      cause: 'GOVERNED_WORKFLOW',
+      reasonCode: 'DISMISSED',
+      occurredAt: timestamp,
+    });
+    expect(result).toMatchObject({ status: 'APPLIED', lifecycle: { lifecycleState: 'DISMISSED' } });
+    expect(repository.transitionCalls).toBe(1);
   });
 
   it('advances lifecycle revisions and appends exactly one event per success', async () => {

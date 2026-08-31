@@ -24,6 +24,7 @@ import {
   type PrivacyCommandId,
   type ProjectCommandId,
 } from '../commands/owner-command-registry.js';
+import { useOptionalDiscoveryCommandContext } from '../commands/discovery-command-context.js';
 import { PreferencesCommandSurface } from '../commands/preferences-command-surface.js';
 import { PrivacyCommandSurface } from '../commands/privacy-command-surface.js';
 import { ProjectCommandSurface } from '../commands/project-command-surface.js';
@@ -82,6 +83,7 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
   const { getLeaveState } = useLeaveGuard();
   const technicalInspection = useOptionalTechnicalInspection();
   const answerCommands = useOptionalAnswerCommandContext();
+  const discoveryCommands = useOptionalDiscoveryCommandContext();
   const answerRegistration = answerCommands?.registration;
   const technicalBlocks = technicalInspection?.blocks ?? [];
   const [searchOpen, setSearchOpen] = useState(false);
@@ -118,11 +120,14 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
         hasTechnicalInspection: technicalBlocks.length > 0,
         answerContext: paletteAnswerContext ?? answerRegistration?.context,
         answerCommandPending: answerRegistration?.commandPending,
+        discoveryContext: discoveryCommands?.registration?.context,
+        discoveryCommandPending: discoveryCommands?.registration?.commandPending,
         projects: projectsQuery.data,
       }),
     [
       answerRegistration,
       connectivity.isOffline,
+      discoveryCommands,
       paletteAnswerContext,
       projectsQuery.data,
       shell,
@@ -238,6 +243,11 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
         answerRegistration?.openCommand(command.action.commandId, commandInvoker);
       }
       closeCommandMode();
+      return;
+    }
+    if (command.action.kind === 'DISMISS_DISCOVERY') {
+      closeCommandMode();
+      discoveryCommands?.registration?.dismiss(commandInvoker);
       return;
     }
     if (command.action.kind === 'NAVIGATE') {

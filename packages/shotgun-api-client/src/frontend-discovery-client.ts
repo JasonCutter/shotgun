@@ -4,6 +4,11 @@ import {
   decodeListDiscoveryFindingsResultV1,
   decodeReadDiscoveryFindingRequestV1,
   decodeReadDiscoveryFindingResultV1,
+  decodeDiscoveryDismissFindingCommandRequestV1,
+  decodeAnyFrontendCommandOutcomeView,
+  FRONTEND_DISCOVERY_COMMAND_TYPES,
+  type AnyFrontendCommandOutcomeView,
+  type DiscoveryDismissFindingCommandRequestV1,
   type DiscoveryProductFindingDetailV1,
   type DiscoveryProductFindingSummaryV1,
   type ListDiscoveryFindingsRequestV1,
@@ -12,7 +17,12 @@ import {
   type ReadDiscoveryFindingResultV1,
 } from '../../contracts/src/index.js';
 import { decodeProductApiErrorBody } from './decode.js';
-import { productFailureApiError, remoteUnclassifiedProductApiFailure } from './errors.js';
+import {
+  ShotgunApiError,
+  outcomeIndeterminateApiError,
+  productFailureApiError,
+  remoteUnclassifiedProductApiFailure,
+} from './errors.js';
 import { getSharedCsrfMutationManager, isCsrfFailureResponse } from './csrf-manager.js';
 
 /** AKP-6 WP1 — strict, same-origin Discovery Product read client. */
@@ -25,6 +35,14 @@ export type FrontendDiscoveryClient = {
     request: ReadDiscoveryFindingRequestV1,
     options?: { readonly signal?: AbortSignal },
   ): Promise<ReadDiscoveryFindingResultV1>;
+  dismissDiscoveryFinding(
+    request: DiscoveryDismissFindingCommandRequestV1,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<ReadDiscoveryFindingResultV1>;
+  resolveDiscoveryDismissCommand(
+    clientRequestId: string,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<AnyFrontendCommandOutcomeView>;
 };
 
 const readJson = async (response: Response): Promise<unknown> => {
@@ -107,6 +125,46 @@ export const createFrontendDiscoveryClient = (
       }
       return result;
     },
+    async dismissDiscoveryFinding(params, requestOptions) {
+      const decodedRequest = decodeDiscoveryDismissFindingCommandRequestV1(params);
+      try {
+        const result = decodeReadDiscoveryFindingResultV1(
+          await post(
+            '/product-api/frontend/knowledge/discoveries/dismiss',
+            decodedRequest,
+            requestOptions?.signal,
+          ),
+        );
+        if (
+          result.finding.findingId !== decodedRequest.findingId ||
+          result.finding.findingRevision !== decodedRequest.findingRevision ||
+          result.finding.projectId !== result.projectId
+        ) {
+          identityMismatch('Discovery dismiss result does not match the requested identity.');
+        }
+        return result;
+      } catch (error) {
+        if (error instanceof ShotgunApiError || error instanceof FrontendContractError) {
+          throw error;
+        }
+        throw outcomeIndeterminateApiError(decodedRequest.clientRequestId);
+      }
+    },
+    async resolveDiscoveryDismissCommand(clientRequestId, requestOptions) {
+      const response = await request(
+        `/api/v1/frontend-commands/by-client-request/${encodeURIComponent(clientRequestId)}`,
+        { credentials: 'same-origin', signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { outcome?: unknown };
+      const outcome = decodeAnyFrontendCommandOutcomeView(body.outcome);
+      if (
+        outcome.clientRequestId !== clientRequestId ||
+        outcome.commandType !== FRONTEND_DISCOVERY_COMMAND_TYPES.dismiss
+      ) {
+        identityMismatch('Discovery dismiss command outcome identity does not match the request.');
+      }
+      return outcome;
+    },
   };
 };
 
@@ -117,4 +175,5 @@ export type {
   ListDiscoveryFindingsResultV1,
   ReadDiscoveryFindingRequestV1,
   ReadDiscoveryFindingResultV1,
+  DiscoveryDismissFindingCommandRequestV1,
 };

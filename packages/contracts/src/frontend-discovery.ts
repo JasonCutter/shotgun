@@ -95,6 +95,22 @@ export type DiscoveryProductCapabilitiesV1 = {
   readonly canOpenGraph: boolean;
   readonly canOpenActivity: boolean;
   readonly canInvestigate: boolean;
+  readonly canDismiss: boolean;
+};
+
+export const FRONTEND_DISCOVERY_COMMAND_TYPES = {
+  dismiss: 'frontend.discovery.dismiss.v1',
+} as const;
+
+export type FrontendDiscoveryCommandType =
+  (typeof FRONTEND_DISCOVERY_COMMAND_TYPES)[keyof typeof FRONTEND_DISCOVERY_COMMAND_TYPES];
+
+export type DiscoveryDismissFindingCommandRequestV1 = {
+  readonly schemaVersion: FrontendDiscoverySchemaVersion;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly findingId: string;
+  readonly findingRevision: number;
 };
 
 /** Server-derived bridge to the federated Activity root. */
@@ -488,6 +504,7 @@ const decodeCapabilities = (value: unknown, path: string): DiscoveryProductCapab
       'canOpenGraph',
       'canOpenActivity',
       'canInvestigate',
+      'canDismiss',
     ],
     path,
   );
@@ -504,6 +521,29 @@ const decodeCapabilities = (value: unknown, path: string): DiscoveryProductCapab
     canOpenGraph: boolean('canOpenGraph'),
     canOpenActivity: boolean('canOpenActivity'),
     canInvestigate: boolean('canInvestigate'),
+    canDismiss: boolean('canDismiss'),
+  };
+};
+
+export const decodeDiscoveryDismissFindingCommandRequestV1 = (
+  value: unknown,
+  path = 'dismissDiscoveryFindingCommand',
+): DiscoveryDismissFindingCommandRequestV1 => {
+  const object = strictObject(
+    value,
+    ['schemaVersion', 'clientRequestId', 'idempotencyKey', 'findingId', 'findingRevision'],
+    path,
+  );
+  schemaVersion(object, path);
+  return {
+    schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    findingId: text(required(object, 'findingId', path), `${path}.findingId`),
+    findingRevision: positiveInteger(
+      required(object, 'findingRevision', path),
+      `${path}.findingRevision`,
+    ),
   };
 };
 

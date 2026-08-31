@@ -1,11 +1,12 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useOutletContext, useParams, useSearchParams } from 'react-router';
 
 import {
   createFrontendDiscoveryClient,
   DISCOVERY_FINDING_LIFECYCLE_STATES,
   DISCOVERY_FINDING_TYPES,
+  ShotgunApiError,
   type DiscoveryFindingLifecycleState,
   type DiscoveryFindingPayloadV1,
   type DiscoveryFindingType,
@@ -15,9 +16,12 @@ import {
   type GlobalShellView,
 } from '@shotgun/api-client';
 
+import { useAppRuntime } from '../app/providers.js';
+import { useOptionalDiscoveryCommandContext } from '../commands/discovery-command-context.js';
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
+import { safeErrorMessage } from '../components/error-state.js';
 import { useProductLocalization } from '../localization/product-localization.js';
 import {
   discoveryCanManuallyRetry,
@@ -633,8 +637,10 @@ export const DiscoveryInboxWorkspace = () => {
 };
 
 export const DiscoveryDetailWorkspace = () => {
+  const { queryClient } = useAppRuntime();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const { t } = useProductLocalization();
+  const discoveryCommands = useOptionalDiscoveryCommandContext();
   const { findingId = '' } = useParams();
   const [searchParameters] = useSearchParams();
   const findingRevision = parsePositiveRevision(searchParameters.get('revision'));
@@ -645,6 +651,153 @@ export const DiscoveryDetailWorkspace = () => {
   const finding = detail.data?.finding;
   const exactIdentityMatches =
     finding?.findingId === findingId && finding?.findingRevision === findingRevision;
+  const [dismissError, setDismissError] = useState<unknown>();
+  const [focusAfterDismiss, setFocusAfterDismiss] = useState(false);
+  const dismissHeadingRef = useRef<HTMLHeadingElement>(null);
+  const currentDiscoveryContextRef = useRef<{
+    readonly projectId?: string;
+    readonly findingId: string;
+    readonly findingRevision?: number;
+  }>({
+    projectId: shell.activeProject?.id,
+    findingId,
+    findingRevision,
+  });
+  currentDiscoveryContextRef.current = {
+    projectId: shell.activeProject?.id,
+    findingId,
+    findingRevision,
+  };
+  const dismissMutation = useMutation({
+    mutationFn: (request: Parameters<typeof client.dismissDiscoveryFinding>[0]) =>
+      client.dismissDiscoveryFinding(request),
+  });
+  const dismissPending =
+    dismissMutation.isPending &&
+    dismissMutation.variables?.findingId === finding?.findingId &&
+    dismissMutation.variables?.findingRevision === finding?.findingRevision;
+  const invalidateDiscovery = useCallback(async () => {
+    const activeProject = shell.activeProject;
+    if (!activeProject) return;
+    await queryClient.invalidateQueries({
+      queryKey: [
+        'project',
+        shell.principalId,
+        shell.sessionId,
+        activeProject.id,
+        activeProject.id,
+        shell.accessRevision,
+        shell.policyContextRevision,
+        activeProject.sensitivityClearance,
+        'knowledge',
+        'discoveries',
+      ],
+    });
+  }, [queryClient, shell]);
+  const dismiss = useCallback(
+    (invoker: HTMLElement | null) => {
+      void invoker;
+      if (
+        !finding ||
+        !exactIdentityMatches ||
+        !shell.activeProject ||
+        !finding.capabilities.canDismiss
+      ) {
+        return;
+      }
+      const request = {
+        schemaVersion: '1.0.0' as const,
+        clientRequestId: globalThis.crypto.randomUUID(),
+        idempotencyKey: globalThis.crypto.randomUUID(),
+        findingId: finding.findingId,
+        findingRevision: finding.findingRevision,
+      };
+      const requestProjectId = shell.activeProject.id;
+      const isCurrentContext = () => {
+        const current = currentDiscoveryContextRef.current;
+        return (
+          current.projectId === requestProjectId &&
+          current.findingId === request.findingId &&
+          current.findingRevision === request.findingRevision
+        );
+      };
+      setDismissError(undefined);
+      void dismissMutation
+        .mutateAsync(request)
+        .then(async () => {
+          if (!isCurrentContext()) return;
+          await invalidateDiscovery();
+          if (!isCurrentContext()) return;
+          setFocusAfterDismiss(true);
+        })
+        .catch(async (error: unknown) => {
+          if (!isCurrentContext()) return;
+          if (
+            error instanceof ShotgunApiError &&
+            error.code === 'OUTCOME_INDETERMINATE' &&
+            error.clientRequestId === request.clientRequestId
+          ) {
+            try {
+              const outcome = await client.resolveDiscoveryDismissCommand(request.clientRequestId);
+              if (outcome.outcomeState === 'COMPLETED') {
+                if (!isCurrentContext()) return;
+                await invalidateDiscovery();
+                if (!isCurrentContext()) return;
+                return;
+              }
+            } catch {
+              // Keep the original uncertainty visible; do not retry the mutation.
+            }
+          }
+          if (!isCurrentContext()) return;
+          setDismissError(error);
+        });
+    },
+    [
+      client,
+      dismissMutation,
+      exactIdentityMatches,
+      finding,
+      invalidateDiscovery,
+      shell.activeProject,
+    ],
+  );
+  useEffect(() => {
+    setDismissError(undefined);
+    setFocusAfterDismiss(false);
+  }, [findingId, findingRevision, shell.activeProject?.id]);
+  useEffect(() => {
+    if (
+      !focusAfterDismiss ||
+      !finding ||
+      finding.lifecycleState !== 'DISMISSED' ||
+      finding.capabilities.canDismiss
+    ) {
+      return;
+    }
+    dismissHeadingRef.current?.focus();
+    setFocusAfterDismiss(false);
+  }, [finding, focusAfterDismiss]);
+  useEffect(() => {
+    if (!discoveryCommands || !shell.activeProject || !finding || !exactIdentityMatches) return;
+    return discoveryCommands.register({
+      context: {
+        projectId: shell.activeProject.id,
+        findingId: finding.findingId,
+        findingRevision: finding.findingRevision,
+        canDismiss: finding.capabilities.canDismiss,
+      },
+      commandPending: dismissPending,
+      dismiss,
+    });
+  }, [
+    dismiss,
+    dismissPending,
+    discoveryCommands,
+    exactIdentityMatches,
+    finding,
+    shell.activeProject,
+  ]);
 
   if (!shell.activeProject) {
     return (
@@ -704,7 +857,9 @@ export const DiscoveryDetailWorkspace = () => {
       <p className="eyebrow">{t('discovery.eyebrow')}</p>
       <div className="discovery-page-heading">
         <div>
-          <h1 tabIndex={-1}>{finding.title}</h1>
+          <h1 ref={dismissHeadingRef} tabIndex={-1}>
+            {finding.title}
+          </h1>
           <FindingTags finding={finding} t={t} />
         </div>
         <Link to="/knowledge/discoveries">{t('discovery.back_to_knowledge')}</Link>
@@ -747,7 +902,7 @@ export const DiscoveryDetailWorkspace = () => {
           </p>
           <p>{freshnessDescription(t, finding.freshness.state)}</p>
         </div>
-        {reviewHref || graphHref || activityHref ? (
+        {reviewHref || graphHref || activityHref || finding.capabilities.canDismiss ? (
           <p className="discovery-action-row">
             {reviewHref ? (
               <Link className="primary-link" to={reviewHref}>
@@ -764,10 +919,39 @@ export const DiscoveryDetailWorkspace = () => {
                 Activity에서 실행 보기
               </Link>
             ) : null}
+            {finding.capabilities.canDismiss ? (
+              <button
+                className="secondary-link"
+                type="button"
+                onClick={(event) => dismiss(event.currentTarget)}
+                disabled={dismissPending}
+                aria-describedby="discovery-dismiss-authority"
+              >
+                {dismissPending
+                  ? t('commands.unavailable.discovery_pending')
+                  : t('discovery.dismiss')}
+              </button>
+            ) : null}
           </p>
         ) : (
           <p className="status-message">{t('discovery.no_review_action')}</p>
         )}
+        <p id="discovery-dismiss-authority" className="discovery-authority">
+          {t('discovery.non_canonical')}
+        </p>
+        {dismissPending ? <p role="status">{t('commands.unavailable.discovery_pending')}</p> : null}
+        {dismissMutation.isSuccess && finding.lifecycleState === 'DISMISSED' ? (
+          <p role="status">{t('discovery.dismissed')}</p>
+        ) : null}
+        {dismissError ? (
+          <p role="alert">
+            {dismissError instanceof ShotgunApiError &&
+            (dismissError.code === 'OUTCOME_INDETERMINATE' ||
+              dismissError.code === 'OUTCOME_UNKNOWN')
+              ? t('discovery.dismiss_outcome_unknown')
+              : `${t('discovery.dismiss_failed')} ${safeErrorMessage(dismissError)}`}
+          </p>
+        ) : null}
       </section>
 
       <section className="discovery-section" aria-labelledby="discovery-payload-heading">

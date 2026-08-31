@@ -6,9 +6,14 @@ import type { Pool } from 'pg';
 import { PostgresDiscoveryFeedbackRepository } from '../../adapters/discovery-feedback-postgres/src/index.js';
 import { PostgresDiscoveryFindingRepository } from '../../adapters/discovery-finding-postgres/src/index.js';
 import { PostgresDiscoveryReentryRepository } from '../../adapters/discovery-reentry-postgres/src/index.js';
+import {
+  createPostgresReviewDiscoveryCandidateReader,
+  PostgresDiscoveryReviewResourceRepository,
+} from '../../adapters/frontend-review-postgres/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import {
   computeDiscoveryEpistemicReentryIdentityV1,
+  createDiscoveryEpistemicValidationResultV1,
   createDiscoveryFindingEnvelopeV1,
   decodeDiscoveryEpistemicReentryTriggerV1,
   type DiscoveryFeedbackEventV1,
@@ -16,6 +21,12 @@ import {
 } from '../../packages/contracts/src/index.js';
 import { migrateUpTo } from '../../scripts/database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import {
+  DiscoveryEpistemicReentryConsumer,
+  DiscoveryReviewMaterializer,
+  type DiscoveryDerivedValidationAuthorityPort,
+} from '../../modules/discovery-reentry/src/index.js';
+import type { DiscoveryFindingLifecycleRepositoryPort } from '../../modules/discovery-finding-lifecycle/src/index.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
   ? await requireTestDatabaseTarget()
@@ -23,6 +34,10 @@ const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
 const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 const projectA = `akp-7-wp4-a-${randomUUID()}`;
 const projectB = `akp-7-wp4-b-${randomUUID()}`;
+const projectC = `akp-7-wp4-c-${randomUUID()}`;
+const projectD = `akp-7-wp4-d-${randomUUID()}`;
+const projectE = `akp-7-wp4-e-${randomUUID()}`;
+const projectIds = [projectA, projectB, projectC, projectD, projectE];
 
 const finding = (
   projectId: string,
@@ -125,12 +140,18 @@ describe.runIf(databaseUrl)('AKP-7 WP4 EPISTEMIC feedback re-entry PostgreSQL au
     await pool!.query(
       `INSERT INTO project_admin.projects (id, name, status, active)
        VALUES ($1, 'AKP-7 WP4 A', 'ACTIVE', true),
-              ($2, 'AKP-7 WP4 B', 'ACTIVE', true)`,
-      [projectA, projectB],
+              ($2, 'AKP-7 WP4 B', 'ACTIVE', true),
+              ($3, 'AKP-7 WP4 C', 'ACTIVE', true),
+              ($4, 'AKP-7 WP4 D', 'ACTIVE', true),
+              ($5, 'AKP-7 WP4 E', 'ACTIVE', true)`,
+      projectIds,
     );
     const findings = new PostgresDiscoveryFindingRepository(pool!);
     expect(await findings.save(finding(projectA, 'finding-a'))).toBe('CREATED');
     expect(await findings.save(finding(projectB, 'finding-b'))).toBe('CREATED');
+    expect(await findings.save(finding(projectC, 'finding-c'))).toBe('CREATED');
+    expect(await findings.save(finding(projectD, 'finding-d'))).toBe('CREATED');
+    expect(await findings.save(finding(projectE, 'finding-e'))).toBe('CREATED');
   });
 
   afterAll(async () => {
@@ -141,29 +162,49 @@ describe.runIf(databaseUrl)('AKP-7 WP4 EPISTEMIC feedback re-entry PostgreSQL au
       // deletion path for these durable records.
       await client.query('SET session_replication_role = replica');
       await client.query(
-        'DELETE FROM discovery.epistemic_reentry_triggers WHERE project_id IN ($1, $2)',
-        [projectA, projectB],
-      );
-      await client.query('DELETE FROM discovery.feedback_events WHERE project_id IN ($1, $2)', [
-        projectA,
-        projectB,
-      ]);
-      await client.query(
-        'DELETE FROM discovery.finding_lifecycle_history WHERE project_id IN ($1, $2)',
-        [projectA, projectB],
+        'DELETE FROM discovery.reentry_review_resources WHERE project_id IN ($1, $2, $3, $4, $5)',
+        projectIds,
       );
       await client.query(
-        'DELETE FROM discovery.finding_lifecycle_current WHERE project_id IN ($1, $2)',
-        [projectA, projectB],
+        'DELETE FROM discovery.reentry_review_roots WHERE project_id IN ($1, $2, $3, $4, $5)',
+        projectIds,
       );
-      await client.query('DELETE FROM discovery.findings WHERE project_id IN ($1, $2)', [
-        projectA,
-        projectB,
-      ]);
-      await client.query('DELETE FROM project_admin.projects WHERE id IN ($1, $2)', [
-        projectA,
-        projectB,
-      ]);
+      await client.query(
+        'DELETE FROM discovery.reentry_consumption WHERE project_id IN ($1, $2, $3, $4, $5)',
+        projectIds,
+      );
+      await client.query(
+        'DELETE FROM discovery.reentry_candidates WHERE project_id IN ($1, $2, $3, $4, $5)',
+        projectIds,
+      );
+      await client.query(
+        'DELETE FROM discovery.reentry_manifests WHERE project_id IN ($1, $2, $3, $4, $5)',
+        projectIds,
+      );
+      await client.query(
+        'DELETE FROM discovery.epistemic_reentry_triggers WHERE project_id IN ($1, $2, $3, $4, $5)',
+        projectIds,
+      );
+      await client.query(
+        'DELETE FROM discovery.feedback_events WHERE project_id IN ($1, $2, $3, $4, $5)',
+        projectIds,
+      );
+      await client.query(
+        'DELETE FROM discovery.finding_lifecycle_history WHERE project_id IN ($1, $2, $3, $4, $5)',
+        projectIds,
+      );
+      await client.query(
+        'DELETE FROM discovery.finding_lifecycle_current WHERE project_id IN ($1, $2, $3, $4, $5)',
+        projectIds,
+      );
+      await client.query(
+        'DELETE FROM discovery.findings WHERE project_id IN ($1, $2, $3, $4, $5)',
+        projectIds,
+      );
+      await client.query(
+        'DELETE FROM project_admin.projects WHERE id IN ($1, $2, $3, $4, $5)',
+        projectIds,
+      );
     } finally {
       await client.query('SET session_replication_role = origin');
       client.release();
@@ -259,5 +300,194 @@ describe.runIf(databaseUrl)('AKP-7 WP4 EPISTEMIC feedback re-entry PostgreSQL au
         (entry) => entry.projectId,
       ),
     ).toEqual([projectA]);
+  });
+
+  it('hides a saved supported correction during VALIDATING, then exposes it after authorized closure', async () => {
+    const findingRepository = new PostgresDiscoveryFindingRepository(pool!);
+    const feedbackRepository = new PostgresDiscoveryFeedbackRepository(pool!);
+    const event = epistemicFeedback(projectA, 'finding-a', 'feedback-correction-crash-gap');
+    const trigger = triggerFor(event);
+    await feedbackRepository.transaction(async ({ repository }) => {
+      expect(await repository.appendFeedback(event)).toBe('CREATED');
+      if (repository.appendEpistemicReentryTrigger === undefined) {
+        throw new Error('EPISTEMIC trigger writer is required by this database test.');
+      }
+      expect(await repository.appendEpistemicReentryTrigger(trigger)).toBe('CREATED');
+    });
+
+    const resolver = { resolve: async () => ({ status: 'RESOLVED' as const, refs: [] }) };
+    const validationAuthority: DiscoveryDerivedValidationAuthorityPort = {
+      validateEpistemicCorrection: async ({ identity, finding, context }) =>
+        createDiscoveryEpistemicValidationResultV1({
+          logicalIdentityKey: identity.logicalIdentityKey,
+          feedbackId: context.feedbackId,
+          projectId: finding.projectId,
+          findingId: finding.findingId,
+          findingRevision: finding.findingRevision,
+          feedbackKind: context.feedbackKind,
+          outcome: 'SUPPORTED',
+          evaluatedAt: finding.createdAt,
+        }),
+    };
+    const reentryRepository = new PostgresDiscoveryReentryRepository(pool!, {
+      lifecycleRepository: findingRepository,
+    });
+    const consumed = await new DiscoveryEpistemicReentryConsumer(
+      reentryRepository,
+      resolver,
+      () => new Date('2026-08-31T05:00:00.000Z'),
+      { validationAuthority },
+    ).consume(trigger);
+    expect(consumed.status).toBe('CREATED');
+    if (consumed.status !== 'CREATED') return;
+
+    const reader = createPostgresReviewDiscoveryCandidateReader(pool!);
+    expect(
+      await findingRepository.findLifecycle({
+        projectId: projectA,
+        findingId: 'finding-a',
+        findingRevision: 2,
+      }),
+    ).toMatchObject({ lifecycleState: 'VALIDATING' });
+    await expect(reader.list(projectA)).resolves.toHaveLength(0);
+
+    const failingLifecycleRepository: DiscoveryFindingLifecycleRepositoryPort = {
+      findLifecycle: (identity) => findingRepository.findLifecycle(identity),
+      listLifecycleHistory: (identity) => findingRepository.listLifecycleHistory(identity),
+      transitionLifecycle: async () => {
+        throw new Error('simulated crash after supported correction Review save');
+      },
+    };
+    await expect(
+      new DiscoveryReviewMaterializer(
+        new PostgresDiscoveryReentryRepository(pool!, {
+          lifecycleRepository: failingLifecycleRepository,
+        }),
+        new PostgresDiscoveryReviewResourceRepository(pool!),
+      ).materialize({ logicalIdentityKey: consumed.logicalIdentityKey }),
+    ).rejects.toThrow('simulated crash after supported correction Review save');
+
+    const persisted = await pool!.query<{ review_resource_id: string }>(
+      `SELECT review_resource_id
+       FROM discovery.reentry_review_resources
+       WHERE project_id = $1
+       ORDER BY resource_revision DESC
+       LIMIT 1`,
+      [projectA],
+    );
+    const reviewResourceId = persisted.rows[0]?.review_resource_id;
+    expect(reviewResourceId).toBeDefined();
+    await expect(reader.list(projectA)).resolves.toHaveLength(0);
+
+    const identity = {
+      projectId: projectA,
+      findingId: 'finding-a',
+      findingRevision: 2,
+    };
+    const current = await findingRepository.findLifecycle(identity);
+    expect(current?.lifecycleState).toBe('VALIDATING');
+    expect(
+      await findingRepository.transitionLifecycle({
+        ...identity,
+        expectedLifecycleRevision: current!.lifecycleRevision,
+        targetState: 'REVIEW_READY',
+        cause: 'GOVERNED_WORKFLOW',
+        reasonCode: 'REVIEW_READY',
+        occurredAt: '2026-08-31T05:01:00.000Z',
+        context: {
+          canonicalBase: finding(projectA, 'finding-a').canonicalBase,
+          discoveryBase: finding(projectA, 'finding-a').discoveryBase,
+        },
+      }),
+    ).toMatchObject({ status: 'APPLIED', lifecycle: { lifecycleState: 'REVIEW_READY' } });
+    await expect(reader.list(projectA)).resolves.toEqual([
+      expect.objectContaining({
+        origin: 'DERIVED_DISCOVERY',
+        reviewResourceId,
+        lineage: expect.objectContaining({ reviewResourceId }),
+      }),
+    ]);
+
+    const materializeAndCheckClosedState = async (input: {
+      projectId: string;
+      findingId: string;
+      feedbackId: string;
+      targetState: 'REENTERED' | 'DISMISSED' | 'SUPPRESSED';
+    }) => {
+      const stateFindingRepository = new PostgresDiscoveryFindingRepository(pool!);
+      const stateFeedback = epistemicFeedback(input.projectId, input.findingId, input.feedbackId);
+      const stateTrigger = triggerFor(stateFeedback);
+      await feedbackRepository.transaction(async ({ repository }) => {
+        expect(await repository.appendFeedback(stateFeedback)).toBe('CREATED');
+        if (repository.appendEpistemicReentryTrigger === undefined) {
+          throw new Error('EPISTEMIC trigger writer is required by this database test.');
+        }
+        expect(await repository.appendEpistemicReentryTrigger(stateTrigger)).toBe('CREATED');
+      });
+      const stateConsumed = await new DiscoveryEpistemicReentryConsumer(
+        new PostgresDiscoveryReentryRepository(pool!, {
+          lifecycleRepository: stateFindingRepository,
+        }),
+        resolver,
+        () => new Date('2026-08-31T05:10:00.000Z'),
+        { validationAuthority },
+      ).consume(stateTrigger);
+      expect(stateConsumed.status).toBe('CREATED');
+      if (stateConsumed.status !== 'CREATED') throw new Error('Expected correction intake.');
+      const stateMaterialized = await new DiscoveryReviewMaterializer(
+        new PostgresDiscoveryReentryRepository(pool!, {
+          lifecycleRepository: stateFindingRepository,
+        }),
+        new PostgresDiscoveryReviewResourceRepository(pool!),
+      ).materialize({ logicalIdentityKey: stateConsumed.logicalIdentityKey });
+      expect(stateMaterialized.status).toBe('CREATED');
+      if (stateMaterialized.status !== 'CREATED') throw new Error('Expected Review resource.');
+      const stateIdentity = {
+        projectId: input.projectId,
+        findingId: input.findingId,
+        findingRevision: 2,
+      };
+      const stateLifecycle = await stateFindingRepository.findLifecycle(stateIdentity);
+      expect(
+        await stateFindingRepository.transitionLifecycle({
+          ...stateIdentity,
+          expectedLifecycleRevision: stateLifecycle!.lifecycleRevision,
+          targetState: input.targetState,
+          cause: 'GOVERNED_WORKFLOW',
+          reasonCode: input.targetState,
+          occurredAt: '2026-08-31T05:11:00.000Z',
+        }),
+      ).toMatchObject({
+        status: 'APPLIED',
+        lifecycle: { lifecycleState: input.targetState },
+      });
+      await expect(
+        createPostgresReviewDiscoveryCandidateReader(pool!).list(input.projectId),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          origin: 'DERIVED_DISCOVERY',
+          reviewResourceId: stateMaterialized.resource.reviewResourceId,
+        }),
+      ]);
+    };
+
+    await materializeAndCheckClosedState({
+      projectId: projectC,
+      findingId: 'finding-c',
+      feedbackId: 'feedback-correction-reentered',
+      targetState: 'REENTERED',
+    });
+    await materializeAndCheckClosedState({
+      projectId: projectD,
+      findingId: 'finding-d',
+      feedbackId: 'feedback-correction-dismissed',
+      targetState: 'DISMISSED',
+    });
+    await materializeAndCheckClosedState({
+      projectId: projectE,
+      findingId: 'finding-e',
+      feedbackId: 'feedback-correction-suppressed',
+      targetState: 'SUPPRESSED',
+    });
   });
 });

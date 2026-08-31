@@ -27,7 +27,7 @@ This directory and the registered consolidated ADR documents form the global ADR
 | ADR-095         | Reserved Legacy Gap                                                            |
 | ADR-096–ADR-099 | Individual files in this directory                                             |
 | ADR-100–ADR-113 | [Frontend consolidated record](../frontend/adr-100-113-consolidated-record.md) |
-| ADR-114–ADR-148 | Individual files in this directory                                             |
+| ADR-114–ADR-150 | Individual files in this directory                                             |
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
@@ -36,7 +36,9 @@ ADR-131 through ADR-148 are authoritative accepted individual files. ADR-134 thr
 ADR-145 remains an accepted historical individual decision. ADR-146 supersedes ADR-145 as the governing owner-facing Product interaction architecture; both identifiers retain explicit relationship metadata.
 
 The current latest accepted individual decision is
-[ADR-148 — AKP-1 Semantic Runtime Authority Unification](ADR-148-akp-1-semantic-runtime-authority-unification.md), accepted on 2026-08-19.
+[ADR-149 — Discovery Semantic Essence and Pre-persistence Fingerprint Identity Boundary](ADR-149-discovery-semantic-essence-and-pre-persistence-fingerprint-identity-boundary.md), accepted on 2026-08-30.
+
+[ADR-150 — AKP-7 Epistemic Comparator Authority Deferral and Governed Unresolved Re-entry Boundary](ADR-150-akp-7-epistemic-comparator-authority-deferral-and-governed-unresolved-reentry-boundary.md) is **PROPOSED** and remains pending user approval. It is not part of the accepted AKP v1 range and does not amend the whole-design Acceptance Record.
 
 The accepted AKP v1 whole-design state remains recorded in
 [`../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md`](../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md).

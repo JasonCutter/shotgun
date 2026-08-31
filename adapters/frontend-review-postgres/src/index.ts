@@ -1046,7 +1046,7 @@ const readEligibleDiscoveryResources = async (
            latest.resource->'epistemicContext' IS NOT NULL
            AND latest.resource->'validationResult'->'epistemicValidationResult'->>'outcome' = 'SUPPORTED'
            AND finding_lifecycle.lifecycle_state IN (
-             'VALIDATING', 'REENTERED', 'DISMISSED', 'SUPPRESSED'
+             'REENTERED', 'DISMISSED', 'SUPPRESSED'
            )
          )
        )

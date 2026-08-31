@@ -89,6 +89,7 @@ const finding = (): DiscoveryFindingEnvelopeV1 =>
 const feedback = (
   feedbackId: string,
   feedbackKind: DiscoveryFeedbackEventV1['feedbackKind'],
+  reason = 'bounded challenge',
 ): DiscoveryFeedbackEventV1 => ({
   schemaVersion: '1.0.0',
   feedbackId,
@@ -99,7 +100,7 @@ const feedback = (
   principalId: 'principal-1',
   feedbackClass: 'EPISTEMIC',
   feedbackKind: feedbackKind as Extract<DiscoveryFeedbackEventV1['feedbackKind'], string>,
-  reason: 'bounded challenge',
+  reason,
   scope: 'FINDING',
   createdAt: occurredAt,
 });
@@ -120,6 +121,7 @@ class MemoryPersistence implements DiscoveryReentryPersistencePort {
   constructor(
     private readonly returnNewerFinding = false,
     lifecycleState: DiscoveryFindingLifecycleState = 'NEW',
+    feedbackReason = 'bounded challenge',
   ) {
     this.currentLifecycle = { ...this.currentLifecycle, lifecycleState };
     for (const kind of [
@@ -130,7 +132,7 @@ class MemoryPersistence implements DiscoveryReentryPersistencePort {
       'MISLEADING_PATTERN',
       'MISIDENTIFIED_CONFLICT',
     ] as const) {
-      const event = feedback(`feedback:${kind}`, kind);
+      const event = feedback(`feedback:${kind}`, kind, feedbackReason);
       const trigger = decodeDiscoveryEpistemicReentryTriggerV1({
         schemaVersion: '1.0.0',
         feedbackId: event.feedbackId,
@@ -497,6 +499,54 @@ describe('AKP-7 WP4 EPISTEMIC feedback re-entry contract', () => {
       }
     },
   );
+
+  it('uses the production default fail-closed outcome and ignores raw challenge reason semantics', async () => {
+    const consumeWithReason = async (reason: string) => {
+      const persistence = new MemoryPersistence(false, 'NEW', reason);
+      const consumer = new DiscoveryEpistemicReentryConsumer(
+        persistence,
+        resolver,
+        () => new Date(occurredAt),
+      );
+      const result = await consumer.consume({
+        schemaVersion: '1.0.0',
+        feedbackId: 'feedback:INCORRECT_RELATION',
+        projectId,
+        findingId: 'finding-1',
+        findingRevision: 2,
+        feedbackClass: 'EPISTEMIC',
+        feedbackKind: 'INCORRECT_RELATION',
+        occurredAt,
+      });
+      expect(result.status).toBe('CREATED');
+      if (result.status !== 'CREATED') throw new Error('Expected correction intake to be created.');
+      return { persistence, result };
+    };
+
+    const first = await consumeWithReason('the relation is wrong');
+    const second = await consumeWithReason('a completely different challenge reason');
+    for (const { result } of [first, second]) {
+      expect(result.candidate.epistemicContext?.reasonKind).toBe('NON_EVIDENCE_USER_CHALLENGE');
+      expect(result.candidate.epistemicValidationResult?.outcome).toBe('INSUFFICIENTLY_RESOLVABLE');
+    }
+    expect(first.result.candidate.epistemicValidationResult).toEqual(
+      second.result.candidate.epistemicValidationResult,
+    );
+
+    const saved: string[] = [];
+    const materialized = await new DiscoveryReviewMaterializer(first.persistence, {
+      save: async (resource) => {
+        saved.push(resource.reviewResourceId);
+        return 'CREATED';
+      },
+    }).materialize({ logicalIdentityKey: first.result.logicalIdentityKey });
+    expect(materialized).toMatchObject({
+      status: 'BLOCKED_VALIDATION',
+      outcome: 'INSUFFICIENTLY_RESOLVABLE',
+    });
+    expect(saved).toHaveLength(0);
+    expect(first.persistence.getCurrentLifecycle().lifecycleState).toBe('VALIDATING');
+  });
 
   it.each(['REVIEW_READY', 'REENTERED', 'DISMISSED', 'SUPPRESSED'] as const)(
     'creates a distinct correction Review resource from %s without changing the original lifecycle',

@@ -112,6 +112,7 @@ import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/sr
 import { DiscoveryFindingLifecycleService } from '../../../modules/discovery-finding-lifecycle/src/index.js';
 import {
   DiscoveryReentryConsumer,
+  DiscoveryEpistemicReentryConsumer,
   DiscoveryReentryFreshnessEvaluator,
   DiscoveryReviewMaterializer,
   PersistentDiscoveryReentryWorker,
@@ -885,6 +886,16 @@ export const startShotgunApplication = async (
                 discoveryReviewResourceRepository,
                 discoveryReentryFreshnessEvaluator,
                 discoveryReentryFreshnessAuthority,
+              ),
+              epistemicConsumer: new DiscoveryEpistemicReentryConsumer(
+                discoveryReentryRepository,
+                new PostgresDiscoveryApprovedResourceRevisionResolver(pool, {
+                  canonicalKnowledgeRepository,
+                  knowledgeModelRepository,
+                  compiledTruthRepository,
+                }),
+                undefined,
+                { freshnessEvaluator: discoveryReentryFreshnessEvaluator },
               ),
             },
           );

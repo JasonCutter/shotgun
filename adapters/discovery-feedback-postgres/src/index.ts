@@ -21,10 +21,13 @@ import type {
 } from '../../../modules/discovery-feedback/src/index.js';
 import {
   decodeDiscoveryFeedbackEventV1,
+  decodeDiscoveryEpistemicReentryTriggerV1,
+  computeDiscoveryEpistemicReentryIdentityV1,
   decodeDiscoveryRankingPolicyRevisionV1,
   decodeDiscoverySuppressionDirectiveV1,
 } from '../../../packages/contracts/src/index.js';
 import type {
+  DiscoveryEpistemicReentryTriggerV1,
   DiscoveryFeedbackEventV1,
   DiscoveryRankingPolicyRevisionV1,
   DiscoverySuppressionDirectiveV1,
@@ -298,6 +301,36 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
         normalized.reason ?? null,
         normalized.scope ?? null,
         normalized.createdAt,
+      ],
+    );
+    return result.rowCount === 1 ? 'CREATED' : 'CONFLICT';
+  }
+
+  async appendEpistemicReentryTrigger(
+    trigger: DiscoveryEpistemicReentryTriggerV1,
+  ): Promise<'CREATED' | 'CONFLICT'> {
+    const normalized = decodeDiscoveryEpistemicReentryTriggerV1(trigger);
+    const identity = computeDiscoveryEpistemicReentryIdentityV1(normalized);
+    const result = await this.pool.query(
+      `INSERT INTO discovery.epistemic_reentry_triggers (
+         schema_version, identity_version, logical_identity_key,
+         feedback_id, project_id, finding_id, finding_revision,
+         feedback_class, feedback_kind, occurred_at,
+         status, attempts, next_eligible_at, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                 'PENDING', 0, NULL, $10, $10)
+       ON CONFLICT (project_id, feedback_id) DO NOTHING`,
+      [
+        normalized.schemaVersion,
+        identity.identityVersion,
+        identity.logicalIdentityKey,
+        normalized.feedbackId,
+        normalized.projectId,
+        normalized.findingId,
+        normalized.findingRevision,
+        normalized.feedbackClass,
+        normalized.feedbackKind,
+        normalized.occurredAt,
       ],
     );
     return result.rowCount === 1 ? 'CREATED' : 'CONFLICT';

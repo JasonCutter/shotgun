@@ -1,4 +1,5 @@
-import { utf16OrdinalCompare } from './semantic-representation.js';
+import { sha256Text } from './document-evidence.js';
+import { semanticStableJson, utf16OrdinalCompare } from './semantic-representation.js';
 import type { Actor } from './types.js';
 
 export const DISCOVERY_FEEDBACK_SCHEMA_VERSION = '1.0.0' as const;
@@ -15,6 +16,20 @@ export const DISCOVERY_EPISTEMIC_FEEDBACK_KINDS = [
   'MISIDENTIFIED_CONFLICT',
 ] as const;
 export type DiscoveryEpistemicFeedbackKindV1 = (typeof DISCOVERY_EPISTEMIC_FEEDBACK_KINDS)[number];
+
+export const DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_BY_KIND = {
+  INCORRECT_RELATION: 'RELATION_CORRECTNESS',
+  INSUFFICIENT_EVIDENCE: 'EVIDENCE_SUFFICIENCY',
+  WRONG_ENTITY: 'ENTITY_IDENTITY',
+  TEMPORAL_ERROR: 'TEMPORAL_VALIDITY',
+  MISLEADING_PATTERN: 'PATTERN_VALIDITY',
+  MISIDENTIFIED_CONFLICT: 'CONFLICT_CLASSIFICATION',
+} as const satisfies Record<DiscoveryEpistemicFeedbackKindV1, string>;
+export type DiscoveryEpistemicValidationFocusV1 =
+  (typeof DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_BY_KIND)[DiscoveryEpistemicFeedbackKindV1];
+export const DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_VERSION =
+  'discovery-epistemic-validation-focus:v1' as const;
+export const DISCOVERY_EPISTEMIC_CHALLENGE_REASON_KIND = 'NON_EVIDENCE_USER_CHALLENGE' as const;
 
 export const DISCOVERY_UTILITY_FEEDBACK_KINDS = [
   'USEFUL',
@@ -50,6 +65,42 @@ export type DiscoveryFeedbackEventV1 = {
   readonly reason?: string;
   readonly scope?: DiscoveryFeedbackScopeV1;
   readonly createdAt: string;
+};
+
+/**
+ * The durable, server-owned hand-off from an accepted EPISTEMIC event to the
+ * Discovery re-entry consumer. This payload deliberately excludes the raw
+ * rationale and every Evidence/Fact/Claim/Canonical field.
+ */
+export const DISCOVERY_EPISTEMIC_REENTRY_TRIGGER_SCHEMA_VERSION = '1.0.0' as const;
+export const DISCOVERY_EPISTEMIC_REENTRY_IDENTITY_VERSION =
+  'discovery-epistemic-reentry-identity:v1' as const;
+
+export type DiscoveryEpistemicReentryTriggerV1 = {
+  readonly schemaVersion: typeof DISCOVERY_EPISTEMIC_REENTRY_TRIGGER_SCHEMA_VERSION;
+  readonly feedbackId: string;
+  readonly projectId: string;
+  readonly findingId: string;
+  readonly findingRevision: number;
+  readonly feedbackClass: 'EPISTEMIC';
+  readonly feedbackKind: DiscoveryEpistemicFeedbackKindV1;
+  readonly occurredAt: string;
+};
+
+export type DiscoveryEpistemicReentryIdentityInputV1 = Pick<
+  DiscoveryEpistemicReentryTriggerV1,
+  'projectId' | 'feedbackId' | 'findingId' | 'findingRevision'
+>;
+
+export type DiscoveryEpistemicReentryIdentityV1 = DiscoveryEpistemicReentryIdentityInputV1 & {
+  readonly identityVersion: typeof DISCOVERY_EPISTEMIC_REENTRY_IDENTITY_VERSION;
+};
+
+export type DiscoveryEpistemicReentryIdentityResultV1 = {
+  readonly identityVersion: typeof DISCOVERY_EPISTEMIC_REENTRY_IDENTITY_VERSION;
+  readonly logicalIdentityKey: string;
+  readonly idempotencyKey: string;
+  readonly normalizedInput: DiscoveryEpistemicReentryIdentityV1;
 };
 
 export const DISCOVERY_SUPPRESSION_KINDS = [
@@ -310,6 +361,71 @@ export const decodeDiscoveryFeedbackEventV1 = (value: unknown): DiscoveryFeedbac
     ...(reason === undefined ? {} : { reason }),
     ...(scope === undefined ? {} : { scope }),
     createdAt: isoDate(required(object, 'createdAt', path), `${path}.createdAt`),
+  };
+};
+
+export const decodeDiscoveryEpistemicReentryTriggerV1 = (
+  value: unknown,
+): DiscoveryEpistemicReentryTriggerV1 => {
+  const path = 'discoveryEpistemicReentryTrigger';
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'feedbackId',
+      'projectId',
+      'findingId',
+      'findingRevision',
+      'feedbackClass',
+      'feedbackKind',
+      'occurredAt',
+    ],
+    path,
+  );
+  const feedbackClass = enumValue(
+    required(object, 'feedbackClass', path),
+    ['EPISTEMIC'] as const,
+    `${path}.feedbackClass`,
+  );
+  return {
+    schemaVersion: enumValue(
+      required(object, 'schemaVersion', path),
+      [DISCOVERY_EPISTEMIC_REENTRY_TRIGGER_SCHEMA_VERSION],
+      `${path}.schemaVersion`,
+    ),
+    feedbackId: text(required(object, 'feedbackId', path), `${path}.feedbackId`),
+    projectId: text(required(object, 'projectId', path), `${path}.projectId`),
+    findingId: text(required(object, 'findingId', path), `${path}.findingId`),
+    findingRevision: positiveInteger(
+      required(object, 'findingRevision', path),
+      `${path}.findingRevision`,
+    ),
+    feedbackClass,
+    feedbackKind: enumValue(
+      required(object, 'feedbackKind', path),
+      DISCOVERY_EPISTEMIC_FEEDBACK_KINDS,
+      `${path}.feedbackKind`,
+    ),
+    occurredAt: isoDate(required(object, 'occurredAt', path), `${path}.occurredAt`),
+  };
+};
+
+export const computeDiscoveryEpistemicReentryIdentityV1 = (
+  input: DiscoveryEpistemicReentryIdentityInputV1,
+): DiscoveryEpistemicReentryIdentityResultV1 => {
+  const normalizedInput: DiscoveryEpistemicReentryIdentityV1 = {
+    identityVersion: DISCOVERY_EPISTEMIC_REENTRY_IDENTITY_VERSION,
+    projectId: text(input.projectId, 'projectId'),
+    feedbackId: text(input.feedbackId, 'feedbackId'),
+    findingId: text(input.findingId, 'findingId'),
+    findingRevision: positiveInteger(input.findingRevision, 'findingRevision'),
+  };
+  const logicalIdentityKey = sha256Text(semanticStableJson(normalizedInput));
+  return {
+    identityVersion: DISCOVERY_EPISTEMIC_REENTRY_IDENTITY_VERSION,
+    logicalIdentityKey,
+    idempotencyKey: logicalIdentityKey,
+    normalizedInput,
   };
 };
 

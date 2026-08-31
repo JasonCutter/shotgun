@@ -1,5 +1,6 @@
 import type {
   DiscoveryFeedbackEventV1,
+  DiscoveryEpistemicReentryTriggerV1,
   DiscoveryRankingPolicyRevisionV1,
   DiscoverySuppressionDirectiveV1,
 } from '../../../packages/contracts/src/index.js';
@@ -11,6 +12,10 @@ import {
   assertPrincipalId,
   assertProjectId,
 } from '../../../modules/discovery-feedback/src/index.js';
+import {
+  decodeDiscoveryEpistemicReentryTriggerV1,
+  computeDiscoveryEpistemicReentryIdentityV1,
+} from '../../../packages/contracts/src/index.js';
 import type {
   DiscoveryFeedbackFindingLookupV1,
   DiscoveryFeedbackRepositoryPort,
@@ -50,6 +55,7 @@ const sameFinding = (
 
 export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRepositoryPort {
   private readonly feedback = new Map<string, DiscoveryFeedbackEventV1>();
+  private readonly epistemicTriggers = new Map<string, DiscoveryEpistemicReentryTriggerV1>();
   private readonly suppressions = new Map<string, DiscoverySuppressionDirectiveV1>();
   private readonly rankingPolicies = new Map<string, DiscoveryRankingPolicyRevisionV1>();
 
@@ -68,6 +74,22 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
     if (this.feedback.has(key)) return 'CONFLICT';
     this.feedback.set(key, clone(normalized));
     return 'CREATED';
+  }
+
+  async appendEpistemicReentryTrigger(
+    trigger: DiscoveryEpistemicReentryTriggerV1,
+  ): Promise<'CREATED' | 'CONFLICT'> {
+    const normalized = decodeDiscoveryEpistemicReentryTriggerV1(trigger);
+    const identity = computeDiscoveryEpistemicReentryIdentityV1(normalized);
+    const key = `${normalized.projectId}\u0000${identity.logicalIdentityKey}`;
+    if (this.epistemicTriggers.has(key)) return 'CONFLICT';
+    this.epistemicTriggers.set(key, clone(normalized));
+    return 'CREATED';
+  }
+
+  /** Test/diagnostic view of the durable-trigger double; Product callers use the port only. */
+  getEpistemicReentryTriggers(): readonly DiscoveryEpistemicReentryTriggerV1[] {
+    return [...this.epistemicTriggers.values()].map(clone);
   }
 
   async listFeedbackForFinding(
@@ -372,13 +394,16 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
     action: (handle: DiscoveryFeedbackTransactionHandleV1) => Promise<T>,
   ): Promise<T> {
     const feedbackSnapshot = new Map(this.feedback);
+    const epistemicTriggerSnapshot = new Map(this.epistemicTriggers);
     const suppressionSnapshot = new Map(this.suppressions);
     try {
       return await action({ repository: this, raw: undefined });
     } catch (error) {
       this.feedback.clear();
+      this.epistemicTriggers.clear();
       this.suppressions.clear();
       for (const [key, value] of feedbackSnapshot) this.feedback.set(key, value);
+      for (const [key, value] of epistemicTriggerSnapshot) this.epistemicTriggers.set(key, value);
       for (const [key, value] of suppressionSnapshot) this.suppressions.set(key, value);
       throw error;
     }

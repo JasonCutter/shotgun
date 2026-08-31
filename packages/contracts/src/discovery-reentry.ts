@@ -12,6 +12,15 @@ import {
   type DiscoveryProjectionBaseIdentityV1,
   type DiscoveryResourceRefV1,
 } from './discovery-finding.js';
+import {
+  DISCOVERY_EPISTEMIC_CHALLENGE_REASON_KIND,
+  DISCOVERY_EPISTEMIC_FEEDBACK_KINDS,
+  DISCOVERY_EPISTEMIC_REENTRY_IDENTITY_VERSION,
+  DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_BY_KIND,
+  DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_VERSION,
+  type DiscoveryEpistemicFeedbackKindV1,
+  type DiscoveryEpistemicValidationFocusV1,
+} from './discovery-feedback.js';
 import { semanticStableJson, utf16OrdinalCompare } from './semantic-representation.js';
 import type { SecurityContext } from './types.js';
 
@@ -44,6 +53,18 @@ export const DISCOVERY_REVIEW_ELIGIBILITY_STATES = [
 ] as const;
 export type DiscoveryReviewEligibilityV1 = (typeof DISCOVERY_REVIEW_ELIGIBILITY_STATES)[number];
 
+export type DiscoveryEpistemicReentryContextV1 = {
+  readonly schemaVersion: DiscoveryReentrySchemaVersion;
+  readonly identityVersion: typeof DISCOVERY_EPISTEMIC_REENTRY_IDENTITY_VERSION;
+  readonly feedbackId: string;
+  readonly feedbackKind: DiscoveryEpistemicFeedbackKindV1;
+  readonly validationFocusVersion: typeof DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_VERSION;
+  readonly validationFocus: DiscoveryEpistemicValidationFocusV1;
+  readonly reasonKind: typeof DISCOVERY_EPISTEMIC_CHALLENGE_REASON_KIND;
+  /** Optional bounded rationale; never Evidence, Fact, Claim or validation output. */
+  readonly reason?: string;
+};
+
 export type DiscoveryReentryManifestV1 = {
   readonly schemaVersion: DiscoveryReentrySchemaVersion;
   readonly manifestId: string;
@@ -59,6 +80,7 @@ export type DiscoveryReentryManifestV1 = {
   readonly accessScope: readonly string[];
   readonly sensitivity: SecurityContext['sensitivity'];
   readonly requestedReentryPurpose: string;
+  readonly epistemicContext?: DiscoveryEpistemicReentryContextV1;
   readonly createdAt: string;
 };
 
@@ -67,6 +89,7 @@ export type DiscoveryReentryManifestCreateInputV1 = {
   readonly manifestId: string;
   readonly finding: DiscoveryFindingEnvelopeV1;
   readonly requestedReentryPurpose: string;
+  readonly epistemicContext?: DiscoveryEpistemicReentryContextV1;
   readonly createdAt: string;
 };
 
@@ -194,6 +217,7 @@ export type DerivedKnowledgeCandidateV1 = {
   readonly validationProfile: DiscoveryDerivedValidationProfileV1;
   readonly reentryEligibility: DiscoveryReentryEligibilityV1;
   readonly reviewEligibility: DiscoveryReviewEligibilityV1;
+  readonly epistemicContext?: DiscoveryEpistemicReentryContextV1;
   /** Present only for ACTION_SUGGESTION and never authorizes execution. */
   readonly actionExecutionStatus?: 'CANDIDATE_ONLY';
   readonly createdAt: string;
@@ -376,6 +400,7 @@ export type DiscoveryReviewLineageV1 = {
   readonly sensitivity: SecurityContext['sensitivity'];
   readonly validationProfile: DiscoveryDerivedValidationProfileV1;
   readonly validationResult: DiscoveryReviewValidationResultV1;
+  readonly epistemicContext?: DiscoveryEpistemicReentryContextV1;
 };
 
 export type DiscoveryReviewResourceV1 = DiscoveryReviewLineageV1 & {
@@ -441,6 +466,7 @@ const discoveryReviewResourceLineageFields = [
   'accessScope',
   'sensitivity',
   'validationProfile',
+  'epistemicContext',
 ] as const;
 
 /**
@@ -499,11 +525,15 @@ const required = (object: ObjectValue, key: string, path: string): unknown => {
   return object[key];
 };
 
-const text = (value: unknown, path: string): string => {
+const text = (value: unknown, path: string, maxLength?: number): string => {
   if (typeof value !== 'string' || value.trim().length === 0) {
     return fail(path, 'must be a non-empty string');
   }
-  return value.trim();
+  const normalized = value.trim();
+  if (maxLength !== undefined && normalized.length > maxLength) {
+    return fail(path, `must be at most ${maxLength} characters`);
+  }
+  return normalized;
 };
 
 const enumValue = <T extends string>(value: unknown, values: readonly T[], path: string): T => {
@@ -551,6 +581,68 @@ const sensitivityRank: Readonly<Record<SecurityContext['sensitivity'], number>> 
   internal: 1,
   private: 2,
   restricted: 3,
+};
+
+const decodeEpistemicContext = (
+  value: unknown,
+  path: string,
+): DiscoveryEpistemicReentryContextV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'identityVersion',
+      'feedbackId',
+      'feedbackKind',
+      'validationFocusVersion',
+      'validationFocus',
+      'reasonKind',
+      'reason',
+    ],
+    path,
+  );
+  const feedbackKind = enumValue(
+    required(object, 'feedbackKind', path),
+    DISCOVERY_EPISTEMIC_FEEDBACK_KINDS,
+    `${path}.feedbackKind`,
+  );
+  const expectedFocus = DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_BY_KIND[feedbackKind];
+  const validationFocus = enumValue(
+    required(object, 'validationFocus', path),
+    Object.values(DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_BY_KIND),
+    `${path}.validationFocus`,
+  );
+  if (validationFocus !== expectedFocus) {
+    return fail(`${path}.validationFocus`, 'must match the server-owned feedback mapping');
+  }
+  const reason =
+    object.reason === undefined ? undefined : text(object.reason, `${path}.reason`, 500);
+  return {
+    schemaVersion: enumValue(
+      required(object, 'schemaVersion', path),
+      [DISCOVERY_REENTRY_SCHEMA_VERSION],
+      `${path}.schemaVersion`,
+    ),
+    identityVersion: enumValue(
+      required(object, 'identityVersion', path),
+      [DISCOVERY_EPISTEMIC_REENTRY_IDENTITY_VERSION],
+      `${path}.identityVersion`,
+    ),
+    feedbackId: text(required(object, 'feedbackId', path), `${path}.feedbackId`),
+    feedbackKind,
+    validationFocusVersion: enumValue(
+      required(object, 'validationFocusVersion', path),
+      [DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_VERSION],
+      `${path}.validationFocusVersion`,
+    ),
+    validationFocus,
+    reasonKind: enumValue(
+      required(object, 'reasonKind', path),
+      [DISCOVERY_EPISTEMIC_CHALLENGE_REASON_KIND],
+      `${path}.reasonKind`,
+    ),
+    ...(reason === undefined ? {} : { reason }),
+  };
 };
 
 const decodeCanonicalBase = (value: unknown, path: string): DiscoveryCanonicalBaseIdentityV1 => {
@@ -930,6 +1022,7 @@ const decodeManifestCore = (value: unknown, path: string): DiscoveryReentryManif
       'accessScope',
       'sensitivity',
       'requestedReentryPurpose',
+      'epistemicContext',
       'createdAt',
     ],
     path,
@@ -948,6 +1041,23 @@ const decodeManifestCore = (value: unknown, path: string): DiscoveryReentryManif
     if (resource.projectId !== projectId) {
       return fail(`${path}.relatedResourceRefs[${index}].projectId`, 'must match projectId');
     }
+  }
+  const epistemicContext =
+    object.epistemicContext === undefined
+      ? undefined
+      : decodeEpistemicContext(object.epistemicContext, `${path}.epistemicContext`);
+  const requestedReentryPurpose = text(
+    required(object, 'requestedReentryPurpose', path),
+    `${path}.requestedReentryPurpose`,
+  );
+  if (
+    (requestedReentryPurpose === 'EPISTEMIC_FEEDBACK_CORRECTION') !==
+    (epistemicContext !== undefined)
+  ) {
+    return fail(
+      `${path}.epistemicContext`,
+      'is required only for EPISTEMIC_FEEDBACK_CORRECTION manifests',
+    );
   }
   return {
     schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
@@ -979,10 +1089,8 @@ const decodeManifestCore = (value: unknown, path: string): DiscoveryReentryManif
     ),
     accessScope: normalizedScope(required(object, 'accessScope', path), `${path}.accessScope`),
     sensitivity: decodeSensitivity(required(object, 'sensitivity', path), `${path}.sensitivity`),
-    requestedReentryPurpose: text(
-      required(object, 'requestedReentryPurpose', path),
-      `${path}.requestedReentryPurpose`,
-    ),
+    requestedReentryPurpose,
+    ...(epistemicContext === undefined ? {} : { epistemicContext }),
     createdAt: isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`),
   };
 };
@@ -1055,6 +1163,7 @@ export const createDiscoveryReentryManifestV1 = (
       accessScope: finding.accessScope,
       sensitivity: finding.sensitivity,
       requestedReentryPurpose: input.requestedReentryPurpose,
+      ...(input.epistemicContext === undefined ? {} : { epistemicContext: input.epistemicContext }),
       createdAt: input.createdAt,
     },
     'discoveryReentryManifest',
@@ -1682,6 +1791,7 @@ const decodeReviewLineage = (value: unknown, path: string): DiscoveryReviewLinea
       'sensitivity',
       'validationProfile',
       'validationResult',
+      'epistemicContext',
     ],
     path,
   );
@@ -1712,6 +1822,10 @@ const decodeReviewLineage = (value: unknown, path: string): DiscoveryReviewLinea
   if (governanceTarget !== DISCOVERY_REENTRY_TARGET_BY_TYPE[findingType]) {
     return fail(`${path}.governanceTarget`, 'must match findingType mapping');
   }
+  const epistemicContext =
+    object.epistemicContext === undefined
+      ? undefined
+      : decodeEpistemicContext(object.epistemicContext, `${path}.epistemicContext`);
   return {
     schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
     origin: 'DERIVED_DISCOVERY',
@@ -1757,6 +1871,7 @@ const decodeReviewLineage = (value: unknown, path: string): DiscoveryReviewLinea
       required(object, 'validationResult', path),
       `${path}.validationResult`,
     ),
+    ...(epistemicContext === undefined ? {} : { epistemicContext }),
   };
 };
 
@@ -1792,6 +1907,7 @@ export const decodeDiscoveryReviewResourceV1 = (
       'sensitivity',
       'validationProfile',
       'validationResult',
+      'epistemicContext',
       'reviewResourceId',
       'resourceRevision',
       'effectiveProjectId',
@@ -1827,6 +1943,9 @@ export const decodeDiscoveryReviewResourceV1 = (
       sensitivity: object.sensitivity,
       validationProfile: object.validationProfile,
       validationResult: object.validationResult,
+      ...(object.epistemicContext === undefined
+        ? {}
+        : { epistemicContext: object.epistemicContext }),
     },
     path,
   );
@@ -1937,6 +2056,7 @@ const decodeDerivedCandidateCore = (value: unknown, path: string): DerivedKnowle
       'reentryEligibility',
       'reviewEligibility',
       'actionExecutionStatus',
+      'epistemicContext',
       'createdAt',
     ],
     path,
@@ -1993,6 +2113,10 @@ const decodeDerivedCandidateCore = (value: unknown, path: string): DerivedKnowle
       'raw derived validation input cannot be Review eligible',
     );
   }
+  const epistemicContext =
+    object.epistemicContext === undefined
+      ? undefined
+      : decodeEpistemicContext(object.epistemicContext, `${path}.epistemicContext`);
   return {
     schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
     candidateId: text(required(object, 'candidateId', path), `${path}.candidateId`),
@@ -2043,6 +2167,7 @@ const decodeDerivedCandidateCore = (value: unknown, path: string): DerivedKnowle
       `${path}.reentryEligibility`,
     ),
     reviewEligibility,
+    ...(epistemicContext === undefined ? {} : { epistemicContext }),
     ...(actionExecutionStatus === undefined ? {} : { actionExecutionStatus }),
     createdAt: isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`),
   };
@@ -2140,6 +2265,9 @@ export const createDerivedKnowledgeCandidateV1 = (
     validationProfile,
     reentryEligibility: eligibility,
     reviewEligibility: 'NOT_ELIGIBLE' as const,
+    ...(manifest.epistemicContext === undefined
+      ? {}
+      : { epistemicContext: manifest.epistemicContext }),
     ...(finding.findingType === 'ACTION_SUGGESTION'
       ? { actionExecutionStatus: 'CANDIDATE_ONLY' as const }
       : {}),

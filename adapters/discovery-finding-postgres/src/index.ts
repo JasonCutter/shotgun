@@ -555,14 +555,15 @@ export class PostgresDiscoveryFindingRepository
        SELECT EXISTS (
          SELECT 1
          FROM latest_review review
-         JOIN discovery.finding_ready ready
-           ON ready.project_id = review.project_id
-          AND ready.finding_id = review.finding_id
-          AND ready.finding_revision = review.finding_revision
          JOIN discovery.findings f
            ON f.project_id = review.project_id
           AND f.finding_id = review.finding_id
           AND f.finding_revision = review.finding_revision
+         JOIN discovery.finding_ready ready
+           ON ready.project_id = f.project_id
+          AND ready.finding_id = f.finding_id
+          AND ready.finding_revision = f.finding_revision
+          AND ready.run_id = f.run_id
          JOIN discovery.reentry_candidates candidate
            ON candidate.project_id = review.project_id
           AND candidate.candidate_id = review.candidate_id
@@ -574,6 +575,7 @@ export class PostgresDiscoveryFindingRepository
          WHERE review.project_id = $1
            AND ready.job_id = $2
            AND ready.run_id = $3
+           AND f.run_id = $3
            AND review.origin = 'DERIVED_DISCOVERY'
            AND review.lifecycle_state = 'REVIEW_READY'
            AND review.review_eligibility = 'ELIGIBLE_AFTER_VALIDATION'

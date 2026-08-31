@@ -11,6 +11,7 @@ import {
 import {
   discoveryDisabledQueryKey,
   discoveryFindingDetailQueryKey,
+  discoveryFeedbackStateQueryKey,
   discoveryFindingsQueryKey,
   knowledgeScopeFromShell,
   type DiscoveryQueryScope,
@@ -78,6 +79,30 @@ export const discoveryDetailQueryOptions = (
         : discoveryDisabledQueryKey('detail'),
     queryFn: ({ signal }) =>
       client.readDiscoveryFinding(
+        { schemaVersion: '1.0.0', findingId, findingRevision },
+        { signal },
+      ),
+    enabled,
+    retry: discoveryQueryRetry,
+    staleTime: 15_000,
+  });
+};
+
+export const discoveryFeedbackStateQueryOptions = (
+  client: FrontendDiscoveryClient,
+  shell: GlobalShellView | null,
+  findingId: string,
+  findingRevision: number,
+) => {
+  const scope = discoveryScopeFromShell(shell);
+  const enabled = scope !== null && findingId.trim().length > 0 && findingRevision > 0;
+  return queryOptions({
+    queryKey:
+      scope && enabled
+        ? discoveryFeedbackStateQueryKey(scope, findingId, findingRevision)
+        : discoveryDisabledQueryKey('feedback-state'),
+    queryFn: ({ signal }) =>
+      client.readDiscoveryFeedbackState(
         { schemaVersion: '1.0.0', findingId, findingRevision },
         { signal },
       ),

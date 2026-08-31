@@ -1376,6 +1376,128 @@ h2[tabindex='-1']:focus-visible,
   margin-bottom: 0;
 }
 
+.discovery-feedback-section {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.discovery-feedback-section > h2,
+.discovery-feedback-section > p {
+  margin: 0;
+}
+
+.discovery-feedback-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.discovery-feedback-quick-actions p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.discovery-feedback-boundary,
+.discovery-mandatory-visibility {
+  border-left: 0.25rem solid var(--accent);
+  color: var(--muted);
+  font-size: 0.875rem;
+  padding: 0.35rem 0.6rem;
+}
+
+.discovery-mandatory-visibility {
+  width: fit-content;
+  margin: 0;
+  background: color-mix(in srgb, var(--surface) 94%, var(--accent));
+}
+
+.discovery-feedback-surface {
+  width: min(42rem, 100%);
+}
+
+.discovery-feedback-surface fieldset {
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.discovery-feedback-surface select,
+.discovery-feedback-surface textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0.65rem;
+}
+
+.discovery-feedback-surface textarea {
+  resize: vertical;
+}
+
+.discovery-feedback-history {
+  display: grid;
+  gap: 0.75rem;
+  max-height: 45vh;
+  overflow: auto;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.discovery-feedback-history > li {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.discovery-feedback-history-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.discovery-feedback-history-heading time {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.discovery-feedback-history-details {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.35fr) minmax(0, 1fr);
+  gap: 0.35rem 0.75rem;
+  margin: 0.65rem 0 0;
+}
+
+.discovery-feedback-history-details dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.discovery-feedback-history-details dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.discovery-feedback-recovery {
+  display: grid;
+  gap: 0.5rem;
+  border-left: 0.25rem solid var(--attention);
+  padding-left: 0.75rem;
+}
+
+.discovery-feedback-recovery p {
+  margin: 0;
+}
+
 .discovery-load-more {
   margin-top: 1rem;
 }

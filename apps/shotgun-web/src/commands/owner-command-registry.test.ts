@@ -464,6 +464,45 @@ describe('owner command registry', () => {
     ).toMatchObject({ availability: 'HIDDEN' });
   });
 
+  it('exposes the focused Discovery feedback control plane and hides it without a Finding', () => {
+    const focused = createOwnerCommandRegistry({
+      shell,
+      projects,
+      discoveryContext: {
+        projectId: 'project-1',
+        findingId: 'finding-1',
+        findingRevision: 2,
+        canDismiss: false,
+      },
+    });
+    const expectedIds = [
+      'discovery.feedback.useful',
+      'discovery.feedback.not_relevant',
+      'discovery.feedback.already_known',
+      'discovery.feedback.too_frequent',
+      'discovery.snooze',
+      'discovery.suppress_exact',
+      'discovery.suppress_similar',
+      'discovery.report_issue',
+      'discovery.feedback_history',
+    ];
+    expect(focused.filter((command) => expectedIds.includes(command.id))).toHaveLength(
+      expectedIds.length,
+    );
+    for (const id of expectedIds) {
+      expect(focused.find((command) => command.id === id)).toMatchObject({
+        availability: 'AVAILABLE',
+        context: { projectId: 'project-1' },
+        action: { kind: 'OPEN_DISCOVERY_FLOW', commandId: id },
+      });
+    }
+    expect(
+      createOwnerCommandRegistry({ shell, projects }).some((command) =>
+        expectedIds.includes(command.id),
+      ),
+    ).toBe(false);
+  });
+
   it('exposes Project controls through focused flows and hides invalid lifecycle actions', () => {
     const commands = createOwnerCommandRegistry({ shell, projects });
 

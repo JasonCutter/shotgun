@@ -17,15 +17,27 @@ import {
 } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
-import { useOptionalDiscoveryCommandContext } from '../commands/discovery-command-context.js';
+import {
+  type DiscoveryFeedbackCommandId,
+  useOptionalDiscoveryCommandContext,
+} from '../commands/discovery-command-context.js';
+import {
+  type DiscoveryFeedbackMutationResult,
+  type DiscoveryFeedbackSubmission,
+  DiscoveryQuickFeedbackActions,
+  useDiscoveryFeedbackActions,
+} from '../commands/discovery-feedback.js';
+import { DiscoveryFeedbackCommandSurface } from '../commands/discovery-feedback-command-surface.js';
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { safeErrorMessage } from '../components/error-state.js';
 import { useProductLocalization } from '../localization/product-localization.js';
+import { useLeaveGuard } from '../session/leave-guard-context.js';
 import {
   discoveryCanManuallyRetry,
   discoveryDetailQueryOptions,
+  discoveryFeedbackStateQueryOptions,
   discoveryInboxQueryOptions,
 } from '../knowledge/discovery-queries.js';
 
@@ -201,6 +213,9 @@ const canOpenReview = (finding: DiscoveryProductFindingDetailV1): boolean =>
   finding.capabilities.canOpenReview &&
   finding.governance.reviewReadiness === 'ELIGIBLE_AFTER_VALIDATION' &&
   Boolean(finding.governance.reviewResourceId?.trim());
+
+const hasMandatoryVisibilityOverride = (finding: DiscoveryProductFindingSummaryV1): boolean =>
+  finding.presentation?.reasonCodes.includes('MANDATORY_VISIBILITY_OVERRIDE') ?? false;
 
 const DiscoveryTag = ({
   children,
@@ -616,6 +631,16 @@ export const DiscoveryInboxWorkspace = () => {
                 </div>
                 <p>{finding.summary}</p>
                 <p className="discovery-authority">{t('discovery.non_canonical')}</p>
+                {hasMandatoryVisibilityOverride(finding) ? (
+                  <p className="discovery-mandatory-visibility" role="note">
+                    {t('discovery.mandatory_visibility')}
+                  </p>
+                ) : null}
+                <DiscoveryQuickFeedbackActions
+                  finding={finding}
+                  shell={shell}
+                  className="discovery-feedback-quick-actions discovery-feedback-quick-actions--inbox"
+                />
               </li>
             ))}
           </ul>
@@ -650,7 +675,22 @@ export const DiscoveryDetailWorkspace = () => {
   );
   const finding = detail.data?.finding;
   const exactIdentityMatches =
-    finding?.findingId === findingId && finding?.findingRevision === findingRevision;
+    finding?.findingId === findingId &&
+    finding?.findingRevision === findingRevision &&
+    finding?.projectId === shell.activeProject?.id;
+  const feedbackState = useQuery(
+    discoveryFeedbackStateQueryOptions(client, shell, findingId, findingRevision ?? 0),
+  );
+  const feedbackActions = useDiscoveryFeedbackActions(
+    shell,
+    finding && exactIdentityMatches ? finding : undefined,
+  );
+  const { registerLeaveGuard } = useLeaveGuard();
+  const [feedbackCommand, setFeedbackCommand] = useState<DiscoveryFeedbackCommandId | null>(null);
+  const [feedbackInvoker, setFeedbackInvoker] = useState<HTMLElement | null>(null);
+  const [feedbackNotice, setFeedbackNotice] = useState<
+    'RECORDED' | 'RECHECK_REQUESTED' | 'FAILED' | 'OUTCOME_UNKNOWN'
+  >();
   const [dismissError, setDismissError] = useState<unknown>();
   const [focusAfterDismiss, setFocusAfterDismiss] = useState(false);
   const dismissHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -676,6 +716,31 @@ export const DiscoveryDetailWorkspace = () => {
     dismissMutation.isPending &&
     dismissMutation.variables?.findingId === finding?.findingId &&
     dismissMutation.variables?.findingRevision === finding?.findingRevision;
+  const openFeedbackCommand = useCallback(
+    (commandId: DiscoveryFeedbackCommandId, invoker: HTMLElement | null) => {
+      if (!finding || !exactIdentityMatches || feedbackActions.pending) return;
+      setFeedbackNotice(undefined);
+      setFeedbackInvoker(invoker);
+      setFeedbackCommand(commandId);
+    },
+    [exactIdentityMatches, feedbackActions.pending, finding],
+  );
+  const closeFeedbackCommand = useCallback(() => {
+    setFeedbackCommand(null);
+    setFeedbackInvoker(null);
+  }, []);
+  const submitFeedback = useCallback(
+    async (input: DiscoveryFeedbackSubmission): Promise<DiscoveryFeedbackMutationResult> => {
+      const result = await feedbackActions.submit(input);
+      if (result.status === 'STALE_CONTEXT') setFeedbackNotice('FAILED');
+      return result;
+    },
+    [feedbackActions],
+  );
+  const resolveFeedback = useCallback(
+    async (): Promise<DiscoveryFeedbackMutationResult> => feedbackActions.resolveLast(),
+    [feedbackActions],
+  );
   const invalidateDiscovery = useCallback(async () => {
     const activeProject = shell.activeProject;
     if (!activeProject) return;
@@ -765,7 +830,29 @@ export const DiscoveryDetailWorkspace = () => {
   useEffect(() => {
     setDismissError(undefined);
     setFocusAfterDismiss(false);
+    setFeedbackCommand(null);
+    setFeedbackInvoker(null);
+    setFeedbackNotice(undefined);
   }, [findingId, findingRevision, shell.activeProject?.id]);
+  useEffect(() => {
+    const result = feedbackActions.lastResult;
+    if (!result) return;
+    if (result.status === 'COMPLETED') {
+      setFeedbackNotice(
+        result.outcome?.commandType === 'frontend.discovery.feedback.v1' &&
+          result.state?.feedbackHistory.at(-1)?.feedbackClass === 'EPISTEMIC'
+          ? 'RECHECK_REQUESTED'
+          : 'RECORDED',
+      );
+    } else if (result.status === 'OUTCOME_UNKNOWN') {
+      setFeedbackNotice('OUTCOME_UNKNOWN');
+    } else if (result.status === 'REJECTED') {
+      setFeedbackNotice('FAILED');
+    }
+  }, [feedbackActions.lastResult]);
+  useEffect(() => {
+    if (feedbackActions.hasError) setFeedbackNotice('FAILED');
+  }, [feedbackActions.hasError]);
   useEffect(() => {
     if (
       !focusAfterDismiss ||
@@ -787,17 +874,36 @@ export const DiscoveryDetailWorkspace = () => {
         findingRevision: finding.findingRevision,
         canDismiss: finding.capabilities.canDismiss,
       },
-      commandPending: dismissPending,
+      commandPending: dismissPending || feedbackActions.pending,
       dismiss,
+      openCommand: openFeedbackCommand,
     });
   }, [
     dismiss,
     dismissPending,
     discoveryCommands,
     exactIdentityMatches,
+    feedbackActions.pending,
     finding,
     shell.activeProject,
+    openFeedbackCommand,
   ]);
+  useEffect(
+    () =>
+      registerLeaveGuard(() => ({
+        canLeaveCurrentContext: !dismissPending && !feedbackActions.pending,
+        hasUnsavedDraft: false,
+        hasBlockingDialog: feedbackCommand !== null,
+        hasOutcomeUnknownCommand: feedbackActions.lastResult?.status === 'OUTCOME_UNKNOWN',
+      })),
+    [
+      dismissPending,
+      feedbackActions.lastResult?.status,
+      feedbackActions.pending,
+      feedbackCommand,
+      registerLeaveGuard,
+    ],
+  );
 
   if (!shell.activeProject) {
     return (
@@ -870,6 +976,49 @@ export const DiscoveryDetailWorkspace = () => {
         <p>{finding.summary}</p>
       </section>
 
+      <section
+        className="discovery-section discovery-feedback-section"
+        aria-labelledby="discovery-feedback-heading"
+      >
+        <h2 id="discovery-feedback-heading">{t('discovery.feedback.heading')}</h2>
+        <p>{t('discovery.feedback.help')}</p>
+        <div className="discovery-feedback-quick-actions">
+          <button
+            className="hfm-action-selection"
+            type="button"
+            onClick={() =>
+              void submitFeedback({ feedbackClass: 'UTILITY', feedbackKind: 'USEFUL' })
+            }
+            disabled={feedbackActions.pending}
+          >
+            {t('discovery.feedback.useful')}
+          </button>
+          <button
+            className="hfm-action-selection"
+            type="button"
+            onClick={() =>
+              void submitFeedback({ feedbackClass: 'UTILITY', feedbackKind: 'NOT_RELEVANT' })
+            }
+            disabled={feedbackActions.pending}
+          >
+            {t('discovery.feedback.not_relevant')}
+          </button>
+          {feedbackActions.pending ? (
+            <span role="status">{t('commands.unavailable.discovery_pending')}</span>
+          ) : null}
+        </div>
+        {feedbackNotice === 'RECORDED' ? (
+          <p role="status">{t('discovery.feedback.recorded')}</p>
+        ) : feedbackNotice === 'RECHECK_REQUESTED' ? (
+          <p role="status">{t('discovery.feedback.recheck_requested')}</p>
+        ) : feedbackNotice === 'OUTCOME_UNKNOWN' ? (
+          <p role="alert">{t('discovery.feedback.outcome_unknown')}</p>
+        ) : feedbackNotice === 'FAILED' ? (
+          <p role="alert">{t('discovery.feedback.failed')}</p>
+        ) : null}
+        <p className="discovery-feedback-boundary">{t('discovery.feedback.utility_boundary')}</p>
+      </section>
+
       <section className="discovery-section" aria-labelledby="discovery-rationale-heading">
         <h2 id="discovery-rationale-heading">{t('discovery.rationale')}</h2>
         <p>{finding.rationale}</p>
@@ -916,7 +1065,7 @@ export const DiscoveryDetailWorkspace = () => {
             ) : null}
             {activityHref ? (
               <Link className="secondary-link" to={activityHref}>
-                Activity에서 실행 보기
+                {t('discovery.open_activity')}
               </Link>
             ) : null}
             {finding.capabilities.canDismiss ? (
@@ -975,6 +1124,24 @@ export const DiscoveryDetailWorkspace = () => {
           <p>{t('discovery.no_lineage')}</p>
         ) : null}
       </section>
+      {hasMandatoryVisibilityOverride(finding) ? (
+        <p className="discovery-mandatory-visibility" role="note">
+          {t('discovery.mandatory_visibility')}
+        </p>
+      ) : null}
+      <DiscoveryFeedbackCommandSurface
+        open={feedbackCommand !== null}
+        commandId={feedbackCommand}
+        finding={finding}
+        state={feedbackState.data}
+        statePending={feedbackState.isPending}
+        stateError={feedbackState.isError}
+        pending={feedbackActions.pending}
+        invoker={feedbackInvoker}
+        onClose={closeFeedbackCommand}
+        onSubmit={submitFeedback}
+        onResolve={resolveFeedback}
+      />
     </section>
   );
 };

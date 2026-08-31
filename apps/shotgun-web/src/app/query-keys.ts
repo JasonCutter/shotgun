@@ -235,11 +235,19 @@ export const discoveryFindingsQueryKey = (
   },
 ) => [...discoveryScopeKey(scope), 'inbox', request] as const;
 
+export const discoveryProjectQueryKey = (scope: DiscoveryQueryScope) => discoveryScopeKey(scope);
+
 export const discoveryFindingDetailQueryKey = (
   scope: DiscoveryQueryScope,
   findingId: string,
   findingRevision: number,
 ) => [...discoveryScopeKey(scope), 'detail', findingId, findingRevision] as const;
+
+export const discoveryFeedbackStateQueryKey = (
+  scope: DiscoveryQueryScope,
+  findingId: string,
+  findingRevision: number,
+) => [...discoveryScopeKey(scope), 'feedback', findingId, findingRevision] as const;
 
 export const discoveryDisabledQueryKey = (operation: string) =>
   ['knowledge', 'discoveries', 'disabled', operation] as const;

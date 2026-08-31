@@ -1,5 +1,16 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 
+export type DiscoveryFeedbackCommandId =
+  | 'discovery.feedback.useful'
+  | 'discovery.feedback.not_relevant'
+  | 'discovery.feedback.already_known'
+  | 'discovery.feedback.too_frequent'
+  | 'discovery.snooze'
+  | 'discovery.suppress_exact'
+  | 'discovery.suppress_similar'
+  | 'discovery.report_issue'
+  | 'discovery.feedback_history';
+
 export type DiscoveryDismissCommandContext = {
   readonly projectId: string;
   readonly findingId: string;
@@ -11,6 +22,10 @@ export type RegisteredDiscoveryCommandContext = {
   readonly context: DiscoveryDismissCommandContext;
   readonly commandPending: boolean;
   readonly dismiss: (invoker: HTMLElement | null) => void;
+  readonly openCommand: (
+    commandId: DiscoveryFeedbackCommandId,
+    invoker: HTMLElement | null,
+  ) => void;
 };
 
 type DiscoveryCommandContextValue = {

@@ -86,7 +86,10 @@ runtime, ORM, vector store, telemetry warehouse는 추가하지 않았다.
 Migration rollback은 새 세 테이블과 인덱스·trigger를 dependent WP가 없는 환경에서
 제거하는 별도 운영 절차로 제한한다. 정상 운영에서는 project deletion/retention
 policy가 유일한 대량 제거 경로이며, 기존 Finding lifecycle transition은 이 history를
-수정하지 않는다. Migration 055는 054 preflight 후 적용된다.
+수정하지 않는다. Migration 055는 054 preflight 후 적용되며, 기존 backup integrity
+authority는 045 Finding persistence 선행 여부를 검증한 뒤 세 durable 테이블을
+마이그레이션 identity에 따라 manifest에 포함한다. 055 이전 backup은 기존 migration
+identity와 integrity table 집합을 그대로 유지한다.
 
 ## 5. OSS Integration Decision
 
@@ -119,6 +122,13 @@ feedback/suppression 계약과 Shotgun의 Canonical·Evidence·Approval 경계�
 - Database: `tests/database/akp-7-wp1-feedback-suppression-ranking.database.test.ts`
   3 tests 작성. 현재 실행 환경에 `TEST_DATABASE_URL`이 없어 안전하게 skip되었으며,
   PostgreSQL round-trip 증거는 해당 환경변수 구성 후 실행해야 한다.
+- Effective-time regression: 기본 `resolveEffectiveRankingPolicy`는 repository/server
+  현재 시각을 평가 시각으로 사용하고, 미래 `effectiveFrom` revision을 선택하지 않으며,
+  명시적 `at`은 역사적/미래 시점 조회를 보존한다. In-memory는 주입 가능한 `now` 경계를
+  사용하고 PostgreSQL은 query 시각을 전달한다.
+- Backup integrity regression: pre-055 manifest 호환성, 055 세 테이블 등록, Finding
+  persistence 선행 dependency의 fail-closed 검증을 `tests/unit/backup-restore.test.ts`
+  에서 확인한다.
 - `npm run typecheck`: PASS
 - 기존 AKP-3 ranking focused tests: 계약 relocation 후 실행 대상이며 결과를 보고에
   기록한다.

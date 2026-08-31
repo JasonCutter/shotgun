@@ -300,17 +300,25 @@ describe.runIf(databaseUrl)('AKP-7 WP1 feedback and ranking PostgreSQL authority
       await repository.insertRankingPolicyRevision(rankingPolicy(1, '2026-08-31T00:00:00.000Z')),
     ).toBe('CREATED');
     expect(
-      await repository.insertRankingPolicyRevision(rankingPolicy(2, '2026-09-01T00:00:00.000Z')),
+      await repository.insertRankingPolicyRevision(rankingPolicy(2, '2999-01-01T00:00:00.000Z')),
     ).toBe('CREATED');
     expect(
-      await repository.insertRankingPolicyRevision(rankingPolicy(2, '2026-09-01T00:00:00.000Z')),
+      await repository.insertRankingPolicyRevision(rankingPolicy(2, '2999-01-01T00:00:00.000Z')),
     ).toBe('CONFLICT');
     expect(
       (
         await repository.resolveEffectiveRankingPolicy({
           projectId: projectA,
           policyId,
-          at: '2026-09-02T00:00:00.000Z',
+        })
+      )?.policyRevision,
+    ).toBe(1);
+    expect(
+      (
+        await repository.resolveEffectiveRankingPolicy({
+          projectId: projectA,
+          policyId,
+          at: '2999-01-02T00:00:00.000Z',
         })
       )?.policyRevision,
     ).toBe(2);
@@ -324,9 +332,13 @@ describe.runIf(databaseUrl)('AKP-7 WP1 feedback and ranking PostgreSQL authority
       )?.policyRevision,
     ).toBe(1);
     expect(
-      (await repository.listRankingPolicyRevisions({ projectId: projectA, policyId })).map(
-        (entry) => entry.policyRevision,
-      ),
+      (
+        await repository.listRankingPolicyRevisions({
+          projectId: projectA,
+          policyId,
+          at: '2999-01-02T00:00:00.000Z',
+        })
+      ).map((entry) => entry.policyRevision),
     ).toEqual([2, 1]);
   });
 });

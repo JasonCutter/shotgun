@@ -307,7 +307,7 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
   ): Promise<readonly DiscoveryRankingPolicyRevisionV1[]> {
     const projectId = assertProjectId(lookup.projectId);
     const policyId = assertPolicyId(lookup.policyId);
-    const at = lookup.at === undefined ? undefined : dateForQuery(lookup.at);
+    const at = dateForQuery(lookup.at);
     const result = await this.pool.query<RankingPolicyRow>(
       `SELECT ${rankingPolicyColumns}
        FROM discovery.ranking_policy_revisions r
@@ -315,9 +315,9 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
          AND EXISTS (
          SELECT 1 FROM project_admin.projects p WHERE p.id = $1
        )
-         AND ($3::timestamptz IS NULL OR r.effective_from <= $3::timestamptz)
+         AND r.effective_from <= $3::timestamptz
        ORDER BY r.effective_from DESC, r.policy_revision DESC`,
-      [projectId, policyId, at ?? null],
+      [projectId, policyId, at],
     );
     return result.rows.map(mapRankingPolicy);
   }

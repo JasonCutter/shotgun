@@ -48,6 +48,8 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
   private readonly suppressions = new Map<string, DiscoverySuppressionDirectiveV1>();
   private readonly rankingPolicies = new Map<string, DiscoveryRankingPolicyRevisionV1>();
 
+  constructor(private readonly now: () => string = () => new Date().toISOString()) {}
+
   async appendFeedback(event: DiscoveryFeedbackEventV1): Promise<'CREATED' | 'CONFLICT'> {
     const normalized = assertDiscoveryFeedbackEventV1(event);
     const key = `${normalized.projectId}\u0000${normalized.feedbackId}`;
@@ -135,8 +137,8 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
   ): Promise<readonly DiscoveryRankingPolicyRevisionV1[]> {
     assertProjectId(lookup.projectId);
     const policyId = assertPolicyId(lookup.policyId);
-    const at = lookup.at === undefined ? Number.POSITIVE_INFINITY : timestamp(lookup.at);
-    if (!Number.isFinite(at) && at !== Number.POSITIVE_INFINITY) {
+    const at = timestamp(lookup.at ?? this.now());
+    if (!Number.isFinite(at)) {
       throw new TypeError('at must be a valid date-time');
     }
     return [...this.rankingPolicies.values()]

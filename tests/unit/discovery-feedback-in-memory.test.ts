@@ -160,18 +160,26 @@ describe('InMemoryDiscoveryFeedbackRepository', () => {
   });
 
   it('keeps immutable ranking history and resolves the effective global revision by time', async () => {
-    const repository = new InMemoryDiscoveryFeedbackRepository();
+    const repository = new InMemoryDiscoveryFeedbackRepository(() => '2026-08-31T12:00:00.000Z');
     await repository.insertRankingPolicyRevision(policy(1, '2026-08-31T00:00:00.000Z'));
-    await repository.insertRankingPolicyRevision(policy(2, '2026-09-01T00:00:00.000Z'));
+    await repository.insertRankingPolicyRevision(policy(2, '2999-01-01T00:00:00.000Z'));
     expect(
-      await repository.insertRankingPolicyRevision(policy(2, '2026-09-01T00:00:00.000Z')),
+      await repository.insertRankingPolicyRevision(policy(2, '2999-01-01T00:00:00.000Z')),
     ).toBe('CONFLICT');
     expect(
       (
         await repository.resolveEffectiveRankingPolicy({
           projectId: 'project-a',
           policyId: 'discovery-ranking-policy',
-          at: '2026-09-02T00:00:00.000Z',
+        })
+      )?.policyRevision,
+    ).toBe(1);
+    expect(
+      (
+        await repository.resolveEffectiveRankingPolicy({
+          projectId: 'project-a',
+          policyId: 'discovery-ranking-policy',
+          at: '2999-01-02T00:00:00.000Z',
         })
       )?.policyRevision,
     ).toBe(2);
@@ -189,6 +197,7 @@ describe('InMemoryDiscoveryFeedbackRepository', () => {
         await repository.listRankingPolicyRevisions({
           projectId: 'project-a',
           policyId: 'discovery-ranking-policy',
+          at: '2999-01-02T00:00:00.000Z',
         })
       ).map((entry) => entry.policyRevision),
     ).toEqual([2, 1]);

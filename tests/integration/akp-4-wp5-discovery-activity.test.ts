@@ -548,6 +548,27 @@ describe('AKP-4 WP5 Discovery Activity adapter', () => {
     ).toBe(false);
   });
 
+  it('fails closed when the separate Attention authority is unavailable', async () => {
+    const findingRead: DiscoveryActivityFindingReadPort = {
+      listActivityFindings: async () => [
+        {
+          projectId: job.projectId,
+          findingId: 'finding-row-only',
+          findingRevision: 1,
+          runId: run.runId,
+          findingType: 'KNOWLEDGE_GAP',
+          lifecycleState: 'REVIEW_READY',
+          title: 'Row-only Finding',
+          reviewEligible: true,
+          resourceHref: '/knowledge/discoveries/finding-row-only?revision=1',
+        },
+      ],
+    };
+    const adapter = new DiscoveryActivityAdapter(readWithFixture(), findingRead);
+    const item = (await adapter.readQueue(scope, { limit: 10 })).items[0]!;
+    expect(item.dimensions.attention).toBe('NONE');
+  });
+
   it('keeps hidden review-eligible Findings out of both Attention and backlinks', async () => {
     let authorized = false;
     const findingRead: DiscoveryActivityFindingReadPort = {

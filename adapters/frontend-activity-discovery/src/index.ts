@@ -357,13 +357,12 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
     scope: ActivityAdapterScopeV1,
     job: DiscoveryJobV1,
     run: DiscoveryRunV1 | undefined,
-    fallbackFindings: readonly DiscoveryActivityFindingRow[],
   ): Promise<boolean> {
     if (!run || this.findingRead === undefined) return false;
     if (this.findingRead.hasReviewEligibleActivityFinding === undefined) {
-      // Test and in-memory adapters may only expose the bounded row surface.
-      // Production wiring supplies the separate authoritative existence read.
-      return fallbackFindings.some((finding) => finding.reviewEligible);
+      // Attention is fail-closed when its separate authority is unavailable;
+      // the bounded backlink rows are presentation data, not authority.
+      return false;
     }
     try {
       return await this.findingRead.hasReviewEligibleActivityFinding({
@@ -446,12 +445,10 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
     // the existing Activity queue contract (and can hide a later Job state).
     const runtimeState = row.job.lifecycleState;
     const state = commonState(runtimeState);
-    const findings = await this.findingsFor(scope, row.job, row.run);
     const hasReviewEligibleFinding = await this.hasReviewEligibleFindingFor(
       scope,
       row.job,
       row.run,
-      findings,
     );
     const attention = attentionFor(runtimeState, hasReviewEligibleFinding);
     return {
@@ -648,12 +645,7 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
     });
     const currentState = run?.lifecycleState ?? job.lifecycleState;
     const findings = await this.findingsFor(scope, job, run);
-    const hasReviewEligibleFinding = await this.hasReviewEligibleFindingFor(
-      scope,
-      job,
-      run,
-      findings,
-    );
+    const hasReviewEligibleFinding = await this.hasReviewEligibleFindingFor(scope, job, run);
     const attention = attentionFor(currentState, hasReviewEligibleFinding);
     const runId = run?.runId ?? root.runId;
     const attemptRefs = attempts.map((attempt) => ({

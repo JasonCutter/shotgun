@@ -632,6 +632,8 @@ describe.runIf(databaseUrl)('AKP-4 WP5 Discovery Activity PostgreSQL read bounda
       ...attempt2,
       attemptId: 'wp5-attempt-other',
       runId: otherRun.runId,
+      attemptNumber: 1,
+      attemptKind: 'INITIAL' as const,
       previousAttemptId: undefined,
       createdAt: '2026-08-30T01:01:05.000Z',
       updatedAt: '2026-08-30T01:01:09.000Z',

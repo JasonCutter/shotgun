@@ -426,50 +426,62 @@ describe.runIf(databaseUrl)('AKP-4 WP5 Discovery Activity PostgreSQL read bounda
   });
 
   beforeEach(async () => {
-    await pool!.query('DELETE FROM discovery.reentry_review_resources WHERE project_id = $1', [
-      projectId,
-    ]);
-    await pool!.query('DELETE FROM discovery.reentry_review_roots WHERE project_id = $1', [
-      projectId,
-    ]);
-    await pool!.query('DELETE FROM discovery.reentry_candidates WHERE project_id = $1', [
-      projectId,
-    ]);
-    await pool!.query('DELETE FROM discovery.reentry_manifests WHERE project_id = $1', [projectId]);
-    await pool!.query('DELETE FROM discovery.finding_ready WHERE project_id = $1', [projectId]);
-    await pool!.query('DELETE FROM discovery.finding_lifecycle_history WHERE project_id = $1', [
-      projectId,
-    ]);
-    await pool!.query('DELETE FROM discovery.finding_lifecycle_current WHERE project_id = $1', [
-      projectId,
-    ]);
-    await pool!.query('DELETE FROM discovery.findings WHERE project_id = $1', [projectId]);
-    await pool!.query('DELETE FROM discovery.provider_budget_reservations WHERE project_id = $1', [
-      projectId,
-    ]);
-    await pool!.query('DELETE FROM discovery.stage_outputs WHERE project_id = $1', [projectId]);
-    await pool!.query('DELETE FROM discovery.stage_history WHERE project_id = $1', [projectId]);
-    await pool!.query('DELETE FROM discovery.stages WHERE project_id = $1', [projectId]);
-    await pool!.query('DELETE FROM discovery.attempt_lifecycle_history WHERE project_id = $1', [
-      projectId,
-    ]);
-    await pool!.query('DELETE FROM discovery.attempts WHERE project_id = $1', [projectId]);
-    await pool!.query('DELETE FROM discovery.run_lifecycle_history WHERE project_id = $1', [
-      projectId,
-    ]);
-    await pool!.query('DELETE FROM discovery.runs WHERE project_id = $1', [projectId]);
-    await pool!.query('DELETE FROM discovery.job_lifecycle_history WHERE project_id = $1', [
-      projectId,
-    ]);
-    await pool!.query('DELETE FROM discovery.jobs WHERE project_id = $1', [projectId]);
-    await pool!.query(
-      'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1',
-      [projectId],
-    );
-    await pool!.query(
-      'DELETE FROM frontend_activity.projection_watermarks WHERE resource_project_id = $1',
-      [projectId],
-    );
+    const client = await pool!.connect();
+    try {
+      // Test-only cleanup must bypass append-only guards, matching the existing
+      // PostgreSQL integration-test cleanup convention.
+      await client.query('SET session_replication_role = replica');
+      await client.query('DELETE FROM discovery.reentry_review_resources WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.reentry_review_roots WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.reentry_candidates WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.reentry_manifests WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.finding_ready WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.finding_lifecycle_history WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.finding_lifecycle_current WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.findings WHERE project_id = $1', [projectId]);
+      await client.query(
+        'DELETE FROM discovery.provider_budget_reservations WHERE project_id = $1',
+        [projectId],
+      );
+      await client.query('DELETE FROM discovery.stage_outputs WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.stage_history WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.stages WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.attempt_lifecycle_history WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.attempts WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.run_lifecycle_history WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.runs WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM discovery.job_lifecycle_history WHERE project_id = $1', [
+        projectId,
+      ]);
+      await client.query('DELETE FROM discovery.jobs WHERE project_id = $1', [projectId]);
+      await client.query(
+        'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1',
+        [projectId],
+      );
+      await client.query(
+        'DELETE FROM frontend_activity.projection_watermarks WHERE resource_project_id = $1',
+        [projectId],
+      );
+    } finally {
+      await client.query('SET session_replication_role = origin');
+      client.release();
+    }
 
     const runtime = new PostgresDiscoveryRuntimeRepository(pool!);
     expect(await runtime.saveJob(job)).toBe('CREATED');

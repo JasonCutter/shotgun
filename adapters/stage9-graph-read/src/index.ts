@@ -10,6 +10,7 @@ import {
   type GraphNodeReferenceV1,
   type GraphNodeV1,
   type GraphOverlayResultV1,
+  type GraphOverlayKindV1,
   type GraphPathDescriptionV1,
   type GraphPathResultV1,
   type GraphPathSegmentV1,
@@ -91,6 +92,7 @@ type StoredPath = {
 
 export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
   private readonly contexts = new Map<string, SnapshotContextCache>();
+  private readonly snapshots = new Map<string, GraphSnapshotResultV1>();
   private readonly resourceMap = new Map<string, GraphNodeV1>();
   private readonly edgeMap = new Map<string, GraphEdgeV1>();
   private readonly paths = new Map<string, StoredPath>();
@@ -115,7 +117,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
     request: {
       rootRefs?: readonly { resourceId: string }[];
       viewKind: GraphBaseViewKindV1;
-      overlayKinds?: readonly ('CONFLICT' | 'KNOWLEDGE_GAP' | 'RECURSIVE_IMPACT')[];
+      overlayKinds?: readonly GraphOverlayKindV1[];
       filters?: GraphFilterSetV1;
       limits: GraphTraversalLimitsV1;
     },
@@ -178,7 +180,7 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
       limits: request.limits,
       viewKind: request.viewKind,
     });
-    return {
+    const result: GraphSnapshotResultV1 = {
       schemaVersion: '1.0.0',
       identity,
       health,
@@ -190,6 +192,8 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
       overlays: [],
       capabilities: { schemaVersion: '1.0.0', capabilities: [] },
     };
+    this.snapshots.set(snapshotId, result);
+    return result;
   }
 
   private applied(limits: GraphTraversalLimitsV1): GraphAppliedLimitsV1 {
@@ -213,6 +217,22 @@ export class Stage9GraphReadAdapter implements GraphReadPort, GraphImpactPort {
       snapshotId,
       'COMPLETE',
     );
+  }
+
+  async getSnapshot(
+    scope: GraphReadScopeV1,
+    snapshotId: string,
+    projectionRevision: string,
+  ): Promise<GraphSnapshotResultV1 | undefined> {
+    const snapshot = this.snapshots.get(snapshotId);
+    if (
+      !snapshot ||
+      snapshot.identity.projectId !== scope.activeProjectId ||
+      snapshot.identity.projectionRevision !== projectionRevision
+    ) {
+      return undefined;
+    }
+    return snapshot;
   }
 
   async neighborhood(

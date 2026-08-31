@@ -269,4 +269,50 @@ describe('FE-P3-S3 Knowledge Graph Product API', () => {
     expect(overlayBody.identity.overlayKind).toBe('CONFLICT');
     expect(overlayBody.baseSnapshotId).toBe(body.identity.snapshotId);
   });
+
+  it('serves a typed unavailable Discovery overlay without changing the healthy base Graph', async () => {
+    const cookie = await projectSession();
+    const app = await buildApplication();
+    const token = await csrf(app, cookie);
+    const headers = { cookie, 'x-csrf-token': token.csrfToken ?? '' };
+    const snapshot = await app.server.inject({
+      method: 'POST',
+      url: '/product-api/frontend/knowledge/graph/snapshot',
+      headers,
+      payload: {
+        schemaVersion: '1.0.0',
+        viewKind: 'KNOWLEDGE_SEMANTIC',
+        overlayKinds: [],
+      },
+    });
+    const body = snapshot.json<{
+      identity: { snapshotId: string; projectionRevision: string };
+      health: string;
+    }>();
+    const overlay = await app.server.inject({
+      method: 'POST',
+      url: '/product-api/frontend/knowledge/graph/overlay/discovery',
+      headers,
+      payload: {
+        schemaVersion: '1.0.0',
+        baseSnapshotId: body.identity.snapshotId,
+        projectionRevision: body.identity.projectionRevision,
+        overlayKind: 'DISCOVERY',
+        findingId: 'finding-1',
+        findingRevision: 4,
+      },
+    });
+    expect(overlay.statusCode).toBe(200);
+    expect(overlay.json()).toMatchObject({
+      baseSnapshotId: body.identity.snapshotId,
+      projectionRevision: body.identity.projectionRevision,
+      health: 'UNAVAILABLE',
+      nodes: [],
+      edges: [],
+      identity: {
+        overlayKind: 'DISCOVERY',
+      },
+    });
+    expect(body.health).toBe('COMPLETE');
+  });
 });

@@ -115,4 +115,49 @@ describe('createFrontendKnowledgeGraphClient (FE-P3-S3 Product API connection)',
     expect(result.continuation?.token).toBe('tok-1');
     expect(result.completeness).toBe('PARTIAL');
   });
+
+  it('rejects a Discovery overlay that changes the exact Finding revision', async () => {
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+      if (String(url).endsWith('/api/v1/security/csrf')) {
+        return jsonResponse(200, { csrfToken: 'csrf-graph' });
+      }
+      return jsonResponse(200, {
+        schemaVersion: '1.0.0',
+        baseSnapshotId: 'snapshot-1',
+        projectionRevision: 'proj-1',
+        identity: {
+          schemaVersion: '1.0.0',
+          overlayKind: 'DISCOVERY',
+          overlaySnapshotId: 'overlay-1',
+          overlayRevision: 'overlay-rev-1',
+          sourceRef: {
+            kind: 'DISCOVERY_FINDING',
+            findingId: 'finding-1',
+            findingRevision: 3,
+          },
+          analyzerRevision: 'discovery-finding-read:v1',
+          policyContextRevision: 'policy-1',
+          generatedAt: '2026-08-04T08:00:00.000Z',
+          completeness: 'COMPLETE',
+        },
+        health: 'COMPLETE',
+        completeness: 'COMPLETE',
+        nodes: [],
+        edges: [],
+        appliedLimits,
+      });
+    });
+
+    const client = createFrontendKnowledgeGraphClient({ fetch: fetchMock });
+    await expect(
+      client.getDiscoveryOverlay({
+        schemaVersion: '1.0.0',
+        baseSnapshotId: 'snapshot-1',
+        projectionRevision: 'proj-1',
+        overlayKind: 'DISCOVERY',
+        findingId: 'finding-1',
+        findingRevision: 4,
+      }),
+    ).rejects.toThrow();
+  });
 });

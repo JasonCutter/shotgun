@@ -694,6 +694,9 @@ export const DiscoveryDetailWorkspace = () => {
   const reviewHref = reviewAvailable
     ? `/review?reviewResourceId=${encodeURIComponent(finding.governance.reviewResourceId!.trim())}`
     : null;
+  const graphHref = finding.capabilities.canOpenGraph
+    ? `/knowledge/graph?discoveryFinding=${encodeURIComponent(finding.findingId)}&discoveryRevision=${finding.findingRevision}`
+    : null;
 
   return (
     <section className="route-page discovery-workspace">
@@ -743,11 +746,18 @@ export const DiscoveryDetailWorkspace = () => {
           </p>
           <p>{freshnessDescription(t, finding.freshness.state)}</p>
         </div>
-        {reviewHref ? (
+        {reviewHref || graphHref ? (
           <p className="discovery-action-row">
-            <Link className="primary-link" to={reviewHref}>
-              {t('discovery.open_review')}
-            </Link>
+            {reviewHref ? (
+              <Link className="primary-link" to={reviewHref}>
+                {t('discovery.open_review')}
+              </Link>
+            ) : null}
+            {graphHref ? (
+              <Link className="secondary-link" to={graphHref}>
+                {t('discovery.open_graph')}
+              </Link>
+            ) : null}
           </p>
         ) : (
           <p className="status-message">{t('discovery.no_review_action')}</p>

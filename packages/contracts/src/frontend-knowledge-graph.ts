@@ -9,6 +9,8 @@ import type {
   FactValueV1,
   KnowledgeGapProposalValueV1,
 } from './frontend-knowledge-draft.js';
+import type { DiscoveryFindingLifecycleState, DiscoveryFindingType } from './discovery-finding.js';
+import { DISCOVERY_FINDING_LIFECYCLE_STATES } from './discovery-finding.js';
 
 /**
  * FE-P3-S3 Semantic Graph and Relationship Exploration — exact V1 contracts.
@@ -32,7 +34,8 @@ export type GraphResourceKindV1 =
   | 'EVIDENCE'
   | 'SOURCE'
   | 'CONFLICT'
-  | 'KNOWLEDGE_GAP';
+  | 'KNOWLEDGE_GAP'
+  | 'DISCOVERY_FINDING';
 
 // Axis 2 — edge semantic kind
 export type GraphEdgeSemanticKindV1 =
@@ -58,7 +61,7 @@ export type GraphBaseViewKindV1 =
   'KNOWLEDGE_SEMANTIC' | 'GOVERNANCE_IMPACT' | 'OPERATIONAL_DEPENDENCY';
 
 // Axis 5 — overlay membership
-export type GraphOverlayKindV1 = 'CONFLICT' | 'KNOWLEDGE_GAP' | 'RECURSIVE_IMPACT';
+export type GraphOverlayKindV1 = 'CONFLICT' | 'KNOWLEDGE_GAP' | 'RECURSIVE_IMPACT' | 'DISCOVERY';
 
 // Axis 6 — projection health
 export type GraphProjectionHealthV1 =
@@ -115,6 +118,28 @@ export type GraphSourcePayloadV1 = {
   title: string;
 };
 
+export type GraphDiscoveryFindingReferenceV1 = {
+  kind: 'DISCOVERY_FINDING';
+  findingId: string;
+  findingRevision: number;
+};
+
+export type GraphDiscoveryFindingPayloadV1 = {
+  schemaVersion: '1.0.0';
+  nodeKind: 'DISCOVERY_FINDING';
+  findingId: string;
+  findingRevision: number;
+  findingType: Extract<
+    DiscoveryFindingType,
+    'RELATION_HYPOTHESIS' | 'PATTERN_HYPOTHESIS' | 'CONFLICT_HYPOTHESIS'
+  >;
+  title: string;
+  summary: string;
+  currentLifecycle: DiscoveryFindingLifecycleState;
+  authority: 'DERIVED_INFERENCE';
+  detailPath: string;
+};
+
 export type GraphNodePayloadV1 =
   | { schemaVersion: '1.0.0'; nodeKind: 'ENTITY'; entity: EntityValueV1 }
   | { schemaVersion: '1.0.0'; nodeKind: 'FACT'; fact: FactValueV1 }
@@ -129,13 +154,15 @@ export type GraphNodePayloadV1 =
       schemaVersion: '1.0.0';
       nodeKind: 'KNOWLEDGE_GAP';
       knowledgeGap: KnowledgeGapProposalValueV1;
-    };
+    }
+  | GraphDiscoveryFindingPayloadV1;
 
 export type GraphProvenanceSummaryV1 = {
   schemaVersion: '1.0.0';
   sourceProjectId: string;
   canonicalRevision?: string;
-  generatedBy: 'CANONICAL' | 'STAGE9_MODEL' | 'COMPILED_TRUTH' | 'IMPACT_ANALYZER';
+  generatedBy: 'CANONICAL' | 'STAGE9_MODEL' | 'COMPILED_TRUTH' | 'IMPACT_ANALYZER' | 'DISCOVERY';
+  discoveryFindingRef?: GraphDiscoveryFindingReferenceV1;
   provenanceNote?: string;
 };
 
@@ -144,6 +171,8 @@ export type GraphEvidenceSummaryV1 = {
   evidenceCount: number;
   sourceIds: readonly string[];
   evidenceSpanIds: readonly string[];
+  evidenceIds?: readonly string[];
+  sourceVersionIds?: readonly string[];
 };
 
 export type GraphTemporalValidityV1 = {
@@ -247,7 +276,8 @@ export type GraphOverlayIdentityV1 = {
   overlayRevision: string;
   sourceRef?:
     | { kind: 'RESOURCE'; resourceRef: GraphNodeReferenceV1 }
-    | { kind: 'DRAFT_CHANGE_SET'; draftId: string; revision: number };
+    | { kind: 'DRAFT_CHANGE_SET'; draftId: string; revision: number }
+    | GraphDiscoveryFindingReferenceV1;
   analyzerRevision: string;
   policyContextRevision: string;
   generatedAt: string;
@@ -340,6 +370,7 @@ export type GraphCapabilityV1 =
   | 'CONFLICT_OVERLAY'
   | 'GAP_OVERLAY'
   | 'IMPACT_OVERLAY'
+  | 'DISCOVERY_OVERLAY'
   | 'EVIDENCE_DETAIL'
   | 'SNAPSHOT_REFRESH'
   | 'DEEP_LINK_RESTORE';
@@ -470,6 +501,16 @@ export type GraphRecursiveImpactOverlayRequestV1 = {
   limits?: GraphTraversalLimitsV1;
   expectedOverlayRevision?: string;
   continuationToken?: string;
+};
+
+export type GraphDiscoveryOverlayRequestV1 = {
+  schemaVersion: '1.0.0';
+  baseSnapshotId: string;
+  projectionRevision: string;
+  overlayKind: 'DISCOVERY';
+  findingId: string;
+  findingRevision: number;
+  limits?: GraphTraversalLimitsV1;
 };
 
 export type GraphOverlayResultV1 = {
@@ -626,6 +667,7 @@ export const GRAPH_RESOURCE_KINDS: readonly GraphResourceKindV1[] = [
   'SOURCE',
   'CONFLICT',
   'KNOWLEDGE_GAP',
+  'DISCOVERY_FINDING',
 ];
 
 export const GRAPH_EDGE_SEMANTIC_KINDS: readonly GraphEdgeSemanticKindV1[] = [
@@ -658,6 +700,7 @@ export const GRAPH_OVERLAY_KINDS: readonly GraphOverlayKindV1[] = [
   'CONFLICT',
   'KNOWLEDGE_GAP',
   'RECURSIVE_IMPACT',
+  'DISCOVERY',
 ];
 
 export const GRAPH_PROJECTION_HEALTHS: readonly GraphProjectionHealthV1[] = [
@@ -696,6 +739,7 @@ export const GRAPH_CAPABILITIES: readonly GraphCapabilityV1[] = [
   'CONFLICT_OVERLAY',
   'GAP_OVERLAY',
   'IMPACT_OVERLAY',
+  'DISCOVERY_OVERLAY',
   'EVIDENCE_DETAIL',
   'SNAPSHOT_REFRESH',
   'DEEP_LINK_RESTORE',
@@ -764,22 +808,56 @@ export const decodeGraphProvenanceSummaryV1 = (
 ): GraphProvenanceSummaryV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'sourceProjectId', 'canonicalRevision', 'generatedBy', 'provenanceNote'],
+    [
+      'schemaVersion',
+      'sourceProjectId',
+      'canonicalRevision',
+      'generatedBy',
+      'provenanceNote',
+      'discoveryFindingRef',
+    ],
     path,
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
   if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
   const generatedBy = enumValue(
     required(object, 'generatedBy', path),
-    ['CANONICAL', 'STAGE9_MODEL', 'COMPILED_TRUTH', 'IMPACT_ANALYZER'],
+    ['CANONICAL', 'STAGE9_MODEL', 'COMPILED_TRUTH', 'IMPACT_ANALYZER', 'DISCOVERY'],
     `${path}.generatedBy`,
   );
+  const discoveryFindingRef =
+    object.discoveryFindingRef === undefined
+      ? undefined
+      : (() => {
+          const ref = strictObject(
+            object.discoveryFindingRef,
+            ['kind', 'findingId', 'findingRevision'],
+            `${path}.discoveryFindingRef`,
+          );
+          const kind = enumValue(
+            required(ref, 'kind', `${path}.discoveryFindingRef`),
+            ['DISCOVERY_FINDING'],
+            `${path}.discoveryFindingRef.kind`,
+          );
+          return {
+            kind,
+            findingId: text(
+              required(ref, 'findingId', `${path}.discoveryFindingRef`),
+              `${path}.discoveryFindingRef.findingId`,
+            ),
+            findingRevision: integer(
+              required(ref, 'findingRevision', `${path}.discoveryFindingRef`),
+              `${path}.discoveryFindingRef.findingRevision`,
+            ),
+          } as const;
+        })();
   return {
     schemaVersion: '1.0.0',
     sourceProjectId: text(required(object, 'sourceProjectId', path), `${path}.sourceProjectId`),
     canonicalRevision: optionalText(object.canonicalRevision, `${path}.canonicalRevision`),
     generatedBy,
     provenanceNote: optionalText(object.provenanceNote, `${path}.provenanceNote`),
+    ...(discoveryFindingRef === undefined ? {} : { discoveryFindingRef }),
   };
 };
 
@@ -789,7 +867,14 @@ export const decodeGraphEvidenceSummaryV1 = (
 ): GraphEvidenceSummaryV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'evidenceCount', 'sourceIds', 'evidenceSpanIds'],
+    [
+      'schemaVersion',
+      'evidenceCount',
+      'sourceIds',
+      'evidenceSpanIds',
+      'evidenceIds',
+      'sourceVersionIds',
+    ],
     path,
   );
   const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
@@ -801,11 +886,25 @@ export const decodeGraphEvidenceSummaryV1 = (
     required(object, 'evidenceSpanIds', path),
     `${path}.evidenceSpanIds`,
   ).map((entry) => text(entry, `${path}.evidenceSpanIds`));
+  const evidenceIds =
+    object.evidenceIds === undefined
+      ? undefined
+      : arrayValue(object.evidenceIds, `${path}.evidenceIds`).map((entry) =>
+          text(entry, `${path}.evidenceIds`),
+        );
+  const sourceVersionIds =
+    object.sourceVersionIds === undefined
+      ? undefined
+      : arrayValue(object.sourceVersionIds, `${path}.sourceVersionIds`).map((entry) =>
+          text(entry, `${path}.sourceVersionIds`),
+        );
   return {
     schemaVersion: '1.0.0',
     evidenceCount: integer(required(object, 'evidenceCount', path), `${path}.evidenceCount`),
     sourceIds,
     evidenceSpanIds,
+    ...(evidenceIds === undefined ? {} : { evidenceIds }),
+    ...(sourceVersionIds === undefined ? {} : { sourceVersionIds }),
   };
 };
 
@@ -1084,7 +1183,7 @@ export const decodeGraphOverlayIdentityV1 = (
           const so = asObject(object.sourceRef, `${path}.sourceRef`);
           const kind = enumValue(
             required(so, 'kind', `${path}.sourceRef`),
-            ['RESOURCE', 'DRAFT_CHANGE_SET'],
+            ['RESOURCE', 'DRAFT_CHANGE_SET', 'DISCOVERY_FINDING'],
             `${path}.sourceRef.kind`,
           );
           if (kind === 'RESOURCE') {
@@ -1094,6 +1193,24 @@ export const decodeGraphOverlayIdentityV1 = (
               resourceRef: decodeGraphNodeReferenceV1(
                 required(ro, 'resourceRef', `${path}.sourceRef`),
                 `${path}.sourceRef.resourceRef`,
+              ),
+            };
+          }
+          if (kind === 'DISCOVERY_FINDING') {
+            const ro = strictObject(
+              so,
+              ['kind', 'findingId', 'findingRevision'],
+              `${path}.sourceRef`,
+            );
+            return {
+              kind: 'DISCOVERY_FINDING' as const,
+              findingId: text(
+                required(ro, 'findingId', `${path}.sourceRef`),
+                `${path}.sourceRef.findingId`,
+              ),
+              findingRevision: integer(
+                required(ro, 'findingRevision', `${path}.sourceRef`),
+                `${path}.sourceRef.findingRevision`,
               ),
             };
           }
@@ -1157,6 +1274,62 @@ export const decodeGraphOverlayIdentityV1 = (
   };
 };
 
+const decodeGraphDiscoveryFindingPayloadV1 = (
+  value: unknown,
+  path: string,
+): GraphDiscoveryFindingPayloadV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'nodeKind',
+      'findingId',
+      'findingRevision',
+      'findingType',
+      'title',
+      'summary',
+      'currentLifecycle',
+      'authority',
+      'detailPath',
+    ],
+    path,
+  );
+  const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
+  if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
+  const nodeKind = enumValue(required(object, 'nodeKind', path), ['DISCOVERY_FINDING'], path);
+  const findingType = enumValue(
+    required(object, 'findingType', path),
+    ['RELATION_HYPOTHESIS', 'PATTERN_HYPOTHESIS', 'CONFLICT_HYPOTHESIS'],
+    `${path}.findingType`,
+  );
+  const currentLifecycle = enumValue(
+    required(object, 'currentLifecycle', path),
+    DISCOVERY_FINDING_LIFECYCLE_STATES,
+    `${path}.currentLifecycle`,
+  );
+  const authority = enumValue(
+    required(object, 'authority', path),
+    ['DERIVED_INFERENCE'],
+    `${path}.authority`,
+  );
+  const detailPath = text(required(object, 'detailPath', path), `${path}.detailPath`);
+  if (!detailPath.startsWith('/knowledge/discoveries/')) {
+    return fail(`${path}.detailPath`, 'must target the Discovery detail route');
+  }
+  return {
+    schemaVersion: '1.0.0',
+    nodeKind,
+    findingId: text(required(object, 'findingId', path), `${path}.findingId`),
+    findingRevision: integer(required(object, 'findingRevision', path), `${path}.findingRevision`),
+    findingType,
+    title: text(required(object, 'title', path), `${path}.title`),
+    summary: text(required(object, 'summary', path), `${path}.summary`),
+    currentLifecycle,
+    authority,
+    detailPath,
+  };
+};
+
 export const decodeGraphNodeV1 = (value: unknown, path = 'node'): GraphNodeV1 => {
   const object = strictObject(
     value,
@@ -1207,7 +1380,21 @@ export const decodeGraphNodeV1 = (value: unknown, path = 'node'): GraphNodeV1 =>
   const payload =
     object.payload === undefined
       ? undefined
-      : (asObject(object.payload, `${path}.payload`) as GraphNodePayloadV1);
+      : (() => {
+          const payloadObject = asObject(object.payload, `${path}.payload`);
+          const payloadKind = enumValue(
+            required(payloadObject, 'nodeKind', `${path}.payload`),
+            GRAPH_RESOURCE_KINDS,
+            `${path}.payload.nodeKind`,
+          );
+          if (payloadKind !== nodeKind) {
+            return fail(`${path}.payload.nodeKind`, `must match nodeKind (${nodeKind})`);
+          }
+          if (payloadKind === 'DISCOVERY_FINDING') {
+            return decodeGraphDiscoveryFindingPayloadV1(payloadObject, `${path}.payload`);
+          }
+          return payloadObject as GraphNodePayloadV1;
+        })();
   if (accessMasking === 'VISIBLE' && payload === undefined) {
     return fail(`${path}.payload`, 'required when accessMasking is VISIBLE');
   }
@@ -2160,6 +2347,52 @@ export const decodeGraphRecursiveImpactOverlayRequestV1 = (
     schemaVersion: '1.0.0',
     overlayKind,
     continuationToken: optionalText(object.continuationToken, `${path}.continuationToken`),
+  };
+};
+
+export const decodeGraphDiscoveryOverlayRequestV1 = (
+  value: unknown,
+  path = 'request',
+): GraphDiscoveryOverlayRequestV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'baseSnapshotId',
+      'projectionRevision',
+      'overlayKind',
+      'findingId',
+      'findingRevision',
+      'limits',
+    ],
+    path,
+  );
+  const schemaVersion = text(required(object, 'schemaVersion', path), `${path}.schemaVersion`);
+  if (schemaVersion !== '1.0.0') return fail(`${path}.schemaVersion`, 'must be 1.0.0');
+  const overlayKind = enumValue(
+    required(object, 'overlayKind', path),
+    ['DISCOVERY'],
+    `${path}.overlayKind`,
+  );
+  const findingRevision = integer(
+    required(object, 'findingRevision', path),
+    `${path}.findingRevision`,
+  );
+  if (findingRevision < 1) return fail(`${path}.findingRevision`, 'must be positive');
+  return {
+    schemaVersion: '1.0.0',
+    baseSnapshotId: text(required(object, 'baseSnapshotId', path), `${path}.baseSnapshotId`),
+    projectionRevision: text(
+      required(object, 'projectionRevision', path),
+      `${path}.projectionRevision`,
+    ),
+    overlayKind,
+    findingId: text(required(object, 'findingId', path), `${path}.findingId`),
+    findingRevision,
+    limits:
+      object.limits === undefined
+        ? undefined
+        : decodeGraphTraversalLimitsV1(object.limits, `${path}.limits`),
   };
 };
 

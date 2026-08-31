@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FrontendContractError,
   decodeGraphConflictOverlayRequestV1,
+  decodeGraphDiscoveryOverlayRequestV1,
   decodeGraphEdgeReferenceV1,
   decodeGraphEvidenceDetailResultV1,
   decodeGraphKnowledgeGapOverlayRequestV1,
@@ -419,6 +420,83 @@ describe('operation 7: recursive-impact overlay (request)', () => {
     });
     expect(impact.overlayKind).toBe('RECURSIVE_IMPACT');
     expect(impact.continuationToken).toBe('tok');
+  });
+});
+
+describe('operation 8: Discovery overlay (exact Finding identity)', () => {
+  it('requires the exact base snapshot, Finding revision and DISCOVERY overlay axis', () => {
+    const request = decodeGraphDiscoveryOverlayRequestV1({
+      schemaVersion: '1.0.0',
+      baseSnapshotId: 'snapshot-1',
+      projectionRevision: 'proj-1',
+      overlayKind: 'DISCOVERY',
+      findingId: 'finding-1',
+      findingRevision: 4,
+    });
+    expect(request).toMatchObject({
+      baseSnapshotId: 'snapshot-1',
+      findingId: 'finding-1',
+      findingRevision: 4,
+    });
+    expect(() => decodeGraphDiscoveryOverlayRequestV1({ ...request, findingRevision: 0 })).toThrow(
+      FrontendContractError,
+    );
+    expect(() => decodeGraphDiscoveryOverlayRequestV1({ ...request, latest: true })).toThrow(
+      FrontendContractError,
+    );
+  });
+
+  it('round-trips a typed Discovery Finding node without exposing model fields', () => {
+    const discoveryNode = {
+      schemaVersion: '1.0.0' as const,
+      nodeId: 'discovery-finding-finding-1-4',
+      resourceRef: {
+        schemaVersion: '1.0.0' as const,
+        resourceKind: 'DISCOVERY_FINDING' as const,
+        resourceId: 'finding-1',
+      },
+      label: 'Relation hypothesis',
+      nodeKind: 'DISCOVERY_FINDING' as const,
+      authority: 'DERIVED_INFERENCE' as const,
+      baseViewMembership: 'KNOWLEDGE_SEMANTIC' as const,
+      overlayMemberships: ['DISCOVERY'] as const,
+      provenance: {
+        schemaVersion: '1.0.0' as const,
+        sourceProjectId: 'project-1',
+        generatedBy: 'DISCOVERY' as const,
+        discoveryFindingRef: {
+          kind: 'DISCOVERY_FINDING' as const,
+          findingId: 'finding-1',
+          findingRevision: 4,
+        },
+      },
+      evidence: {
+        schemaVersion: '1.0.0' as const,
+        evidenceCount: 1,
+        sourceIds: ['source-1'],
+        evidenceSpanIds: [],
+        evidenceIds: ['evidence-1'],
+        sourceVersionIds: ['source-version-1'],
+      },
+      revisionBinding,
+      accessMasking: 'VISIBLE' as const,
+      payload: {
+        schemaVersion: '1.0.0' as const,
+        nodeKind: 'DISCOVERY_FINDING' as const,
+        findingId: 'finding-1',
+        findingRevision: 4,
+        findingType: 'RELATION_HYPOTHESIS' as const,
+        title: 'Relation hypothesis',
+        summary: 'A candidate relation',
+        currentLifecycle: 'REVIEW_READY' as const,
+        authority: 'DERIVED_INFERENCE' as const,
+        detailPath: '/knowledge/discoveries/finding-1',
+      },
+    };
+    const decoded = decodeGraphNodeV1(discoveryNode);
+    expect(decoded.resourceRef.resourceKind).toBe('DISCOVERY_FINDING');
+    expect(decoded.payload?.nodeKind).toBe('DISCOVERY_FINDING');
+    expect(decoded.provenance?.discoveryFindingRef?.findingRevision).toBe(4);
   });
 });
 

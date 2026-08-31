@@ -178,6 +178,43 @@ const actionDetailFinding = {
   },
 };
 
+const graphDetailFinding = {
+  ...detailFinding,
+  findingId: 'finding-relation',
+  findingRevision: 5,
+  findingType: 'RELATION_HYPOTHESIS' as const,
+  title: 'Candidate relation',
+  summary: 'A current relation candidate.',
+  capabilities: { ...detailFinding.capabilities, canOpenGraph: true },
+  payload: {
+    schemaVersion: '1.0.0' as const,
+    payloadType: 'RELATION_HYPOTHESIS' as const,
+    sourceEndpoint: detailFinding.lineage.relatedResourceRefs[0]!,
+    targetEndpoint: {
+      schemaVersion: '1.0.0' as const,
+      resourceKind: 'CANONICAL_ENTITY' as const,
+      resourceId: 'entity-1',
+      projectId: 'project-1',
+      resourceState: 'CURRENT' as const,
+    },
+    proposedRelationType: 'RELATED_TO',
+    direction: 'DIRECTED' as const,
+  },
+  lineage: {
+    ...detailFinding.lineage,
+    relatedResourceRefs: [
+      detailFinding.lineage.relatedResourceRefs[0]!,
+      {
+        schemaVersion: '1.0.0' as const,
+        resourceKind: 'CANONICAL_ENTITY' as const,
+        resourceId: 'entity-1',
+        projectId: 'project-1',
+        resourceState: 'CURRENT' as const,
+      },
+    ],
+  },
+};
+
 const responseFor = (result: unknown, status = 200) =>
   new Response(JSON.stringify({ result }), {
     status,
@@ -222,7 +259,12 @@ const createFetchMock = (options?: { readonly failList?: boolean }) => {
           projectId: 'project-1',
           accessRevision: 'access-1',
           policyContextRevision: 'policy-1',
-          finding: request?.findingId === 'finding-second' ? actionDetailFinding : detailFinding,
+          finding:
+            request?.findingId === 'finding-second'
+              ? actionDetailFinding
+              : request?.findingId === 'finding-relation'
+                ? graphDetailFinding
+                : detailFinding,
         });
       }
       throw new Error(`Unexpected fetch path: ${path}`);
@@ -380,6 +422,23 @@ describe('Discovery Inbox and Detail Workspace', () => {
     expect(
       fetchMock.mock.calls.some(([input]) => String(input).endsWith('/discoveries/read')),
     ).toBe(false);
+  });
+
+  it('shows Open in Graph only for a server-authorized graph-eligible Finding', async () => {
+    const { fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute(
+      createRuntime(),
+      [{ path: 'knowledge/discoveries/:findingId', element: <DiscoveryDetailWorkspace /> }],
+      ['/knowledge/discoveries/finding-relation?revision=5'],
+    );
+
+    expect(
+      await screen.findByRole('heading', { name: 'Candidate relation', level: 1 }),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open in Graph' }).getAttribute('href')).toBe(
+      '/knowledge/graph?discoveryFinding=finding-relation&discoveryRevision=5',
+    );
   });
 
   it('keeps ACTION_SUGGESTION informational and omits Review for a NEW finding', async () => {

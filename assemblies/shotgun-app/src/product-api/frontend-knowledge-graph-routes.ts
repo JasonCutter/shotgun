@@ -5,6 +5,7 @@ import {
   FrontendContractError,
   ShotgunError,
   decodeGraphConflictOverlayRequestV1,
+  decodeGraphDiscoveryOverlayRequestV1,
   decodeGraphEvidenceDetailRequestV1,
   decodeGraphKnowledgeGapOverlayRequestV1,
   decodeGraphNeighborhoodRequestV1,
@@ -113,6 +114,15 @@ export function registerFrontendKnowledgeGraphRoutes(
       const scope = await resolveScope(request.headers);
       const decoded = decodeGraphRecursiveImpactOverlayRequestV1(request.body);
       return reply(() => domain.impactOverlay(scope, decoded));
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/product-api/frontend/knowledge/graph/overlay/discovery',
+    async (request) => {
+      const scope = await resolveScope(request.headers);
+      const decoded = decodeGraphDiscoveryOverlayRequestV1(request.body);
+      return reply(() => domain.discoveryOverlay(scope, decoded));
     },
   );
 

@@ -1,6 +1,7 @@
 import type {
   GraphEvidenceDetailRequestV1,
   GraphEvidenceDetailResultV1,
+  GraphDiscoveryOverlayRequestV1,
   GraphNeighborhoodRequestV1,
   GraphNeighborhoodResultV1,
   GraphOverlayResultV1,
@@ -27,9 +28,28 @@ export type GraphReadScopeV1 = {
   readonly accessRevision: string;
   readonly policyContextRevision: string;
   readonly accessScope: readonly string[];
+  readonly discoveryContext?: {
+    readonly activeProject: {
+      readonly id: string;
+      readonly label: string;
+      readonly isOwner: boolean;
+      readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
+    };
+    readonly accessibleProjects: readonly {
+      readonly id: string;
+      readonly label: string;
+      readonly isOwner: boolean;
+      readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
+    }[];
+  };
 };
 
 export type GraphReadPort = {
+  getSnapshot?(
+    scope: GraphReadScopeV1,
+    snapshotId: string,
+    projectionRevision: string,
+  ): Promise<GraphSnapshotResultV1 | undefined>;
   snapshot(
     scope: GraphReadScopeV1,
     request: GraphSnapshotRequestV1,
@@ -59,5 +79,18 @@ export type GraphImpactPort = {
     scope: GraphReadScopeV1,
     request: GraphRecursiveImpactOverlayRequestV1,
     baseSnapshotId: string,
+  ): Promise<GraphOverlayResultV1>;
+};
+
+/**
+ * Read-only binding seam for a persisted Discovery Finding. The port owns the
+ * current Finding/resource/Evidence authorization checks; the graph domain
+ * only binds its result to the exact base snapshot and projection revision.
+ */
+export type GraphDiscoveryOverlayPort = {
+  discoveryOverlay(
+    scope: GraphReadScopeV1,
+    request: GraphDiscoveryOverlayRequestV1,
+    baseSnapshot: GraphSnapshotResultV1,
   ): Promise<GraphOverlayResultV1>;
 };

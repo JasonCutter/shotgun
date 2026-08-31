@@ -37,6 +37,11 @@ export const authorityVisualClass = (authority: GraphAccessibleTuple['authority'
   return 'graph-item--discovery';
 };
 
+const discoveryDetailHref = (node: GraphNodeV1): string | null =>
+  node.payload?.nodeKind === 'DISCOVERY_FINDING'
+    ? `${node.payload.detailPath}?revision=${encodeURIComponent(String(node.payload.findingRevision))}`
+    : null;
+
 export const GraphListView = ({
   nodes,
   edges,
@@ -63,6 +68,11 @@ export const GraphListView = ({
           const key = tuple.kind === 'node' ? tuple.nodeId : tuple.edgeId;
           const selected = tuple.kind === 'node' && tuple.nodeId === selectedNodeId;
           const nodeRef = tuple.kind === 'node' ? nodeRefs.get(tuple.nodeId) : undefined;
+          const node =
+            tuple.kind === 'node'
+              ? nodes.find((candidate) => candidate.nodeId === tuple.nodeId)
+              : undefined;
+          const detailHref = node ? discoveryDetailHref(node) : null;
           return (
             <li
               key={key}
@@ -75,6 +85,9 @@ export const GraphListView = ({
               data-graph-overlays={tuple.overlayMemberships.join(',')}
             >
               <span className="graph-item-kind">{graphItemKindLabel(tuple.kind)}</span>
+              {node ? (
+                <span className="graph-item-resource-kind">Type: {node.nodeKind}</span>
+              ) : null}
               <span className="graph-item-label">{tuple.label}</span>
               <span className="graph-item-authority">{authorityLabel(tuple.authority)}</span>
               <span className="graph-item-base-view">
@@ -83,14 +96,26 @@ export const GraphListView = ({
               <span className="graph-item-overlays">
                 {tuple.overlayMemberships.map(graphOverlayLabel).join(', ')}
               </span>
+              {node ? (
+                <span className="graph-item-evidence">
+                  Evidence: {node.evidence?.evidenceCount ?? 0}
+                </span>
+              ) : null}
+              {detailHref ? (
+                <a href={detailHref} className="graph-item-detail-link">
+                  Discovery detail
+                </a>
+              ) : null}
               {nodeRef ? (
                 <span className="graph-item-actions">
                   <button type="button" onClick={() => onSelect(nodeRef)}>
                     Select
                   </button>
-                  <button type="button" onClick={() => onCorrect(nodeRef)}>
-                    보정
-                  </button>
+                  {node?.resourceRef.resourceKind !== 'DISCOVERY_FINDING' ? (
+                    <button type="button" onClick={() => onCorrect(nodeRef)}>
+                      보정
+                    </button>
+                  ) : null}
                 </span>
               ) : null}
             </li>

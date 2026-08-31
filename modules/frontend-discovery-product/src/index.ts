@@ -303,6 +303,19 @@ const payloadRefs = (payload: DiscoveryFindingPayloadV1): readonly DiscoveryReso
   }
 };
 
+const graphEligibleFinding = (finding: DiscoveryFindingEnvelopeV1): boolean => {
+  if (
+    finding.findingType !== 'RELATION_HYPOTHESIS' &&
+    finding.findingType !== 'PATTERN_HYPOTHESIS' &&
+    finding.findingType !== 'CONFLICT_HYPOTHESIS'
+  ) {
+    return false;
+  }
+  const refs = payloadRefs(finding.payload);
+  if (finding.findingType === 'RELATION_HYPOTHESIS') return refs.length === 2;
+  return refs.length > 0;
+};
+
 const payloadTitleAndSummary = (
   payload: DiscoveryFindingPayloadV1,
 ): { readonly title: string; readonly summary: string } => {
@@ -591,7 +604,10 @@ export class FrontendDiscoveryProductReadCoordinator {
       schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
       canOpenReview: context.reviewBinding !== undefined,
       canInspectEvidence: context.evidence.length > 0,
-      canOpenGraph: authorizedResources.some((resource) => resource.graphEligible),
+      canOpenGraph:
+        graphEligibleFinding(finding) &&
+        authorizedResources.length > 0 &&
+        authorizedResources.every((resource) => resource.graphEligible),
       // WP1 has no server-authoritative Activity or Investigation navigation
       // identity. A persisted runId is not sufficient capability evidence.
       canOpenActivity: false,

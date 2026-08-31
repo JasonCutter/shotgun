@@ -5,6 +5,7 @@ import {
   type FrontendKnowledgeGraphClient,
   type GlobalShellView,
   type GraphConflictOverlayRequestV1,
+  type GraphDiscoveryOverlayRequestV1,
   type GraphEvidenceDetailRequestV1,
   type GraphKnowledgeGapOverlayRequestV1,
   type GraphNeighborhoodRequestV1,
@@ -145,6 +146,26 @@ export const graphOverlayQueryOptions = (
       return client.getRecursiveImpactOverlay(request, { signal });
     },
     enabled: scope !== null,
+    retry: graphQueryRetry,
+    staleTime: 15_000,
+  });
+
+export const graphDiscoveryOverlayQueryOptions = (
+  client: FrontendKnowledgeGraphClient,
+  scope: GraphQueryScope | null,
+  request: GraphDiscoveryOverlayRequestV1,
+) =>
+  queryOptions({
+    queryKey: scope
+      ? graphSnapshotPhaseQueryKey(scope, request.baseSnapshotId, request.projectionRevision, [
+          'overlay',
+          'DISCOVERY',
+          request.findingId,
+          request.findingRevision,
+        ])
+      : graphDisabledQueryKey('overlay-DISCOVERY'),
+    queryFn: ({ signal }) => client.getDiscoveryOverlay(request, { signal }),
+    enabled: scope !== null && request.findingId.trim().length > 0 && request.findingRevision > 0,
     retry: graphQueryRetry,
     staleTime: 15_000,
   });

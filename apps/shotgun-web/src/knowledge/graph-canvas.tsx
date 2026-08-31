@@ -125,6 +125,10 @@ const STYLE = [
     selector: 'edge.overlay-impact',
     style: { 'line-color': '#8a5cf6', 'line-style': 'dotted' },
   },
+  {
+    selector: 'edge.overlay-discovery',
+    style: { 'line-color': '#d99a26', 'line-style': 'dashed' },
+  },
 ] as const;
 
 const elementsFor = (nodes: readonly GraphNodeV1[], edges: readonly GraphEdgeV1[]) => {
@@ -168,7 +172,9 @@ const elementsFor = (nodes: readonly GraphNodeV1[], edges: readonly GraphEdgeV1[
               ? 'overlay-conflict'
               : kind === 'KNOWLEDGE_GAP'
                 ? 'overlay-gap'
-                : 'overlay-impact',
+                : kind === 'RECURSIVE_IMPACT'
+                  ? 'overlay-impact'
+                  : 'overlay-discovery',
           ),
         ].join(' '),
       };

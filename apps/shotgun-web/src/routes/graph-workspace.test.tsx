@@ -145,19 +145,73 @@ const snapshot: GraphSnapshotResultV1 = {
   capabilities: { schemaVersion: '1.0.0', capabilities: ['SNAPSHOT'] },
 };
 
+const discoveryOverlay = {
+  schemaVersion: '1.0.0',
+  baseSnapshotId: 'snapshot-1',
+  projectionRevision: 'proj-1',
+  identity: {
+    schemaVersion: '1.0.0',
+    overlayKind: 'DISCOVERY',
+    overlaySnapshotId: 'overlay-discovery-1',
+    overlayRevision: 'discovery-1',
+    sourceRef: { kind: 'DISCOVERY_FINDING', findingId: 'finding-1', findingRevision: 4 },
+    analyzerRevision: 'discovery-finding-read:v1',
+    policyContextRevision: 'policy-1',
+    generatedAt: now,
+    completeness: 'COMPLETE',
+  },
+  health: 'COMPLETE',
+  completeness: 'COMPLETE',
+  nodes: [
+    {
+      schemaVersion: '1.0.0',
+      nodeId: 'discovery-finding-finding-1-4',
+      resourceRef: {
+        schemaVersion: '1.0.0',
+        resourceKind: 'DISCOVERY_FINDING',
+        resourceId: 'finding-1',
+      },
+      label: 'Candidate relation',
+      nodeKind: 'DISCOVERY_FINDING',
+      authority: 'DERIVED_INFERENCE',
+      baseViewMembership: 'KNOWLEDGE_SEMANTIC',
+      overlayMemberships: ['DISCOVERY'],
+      revisionBinding,
+      accessMasking: 'VISIBLE',
+      payload: {
+        schemaVersion: '1.0.0',
+        nodeKind: 'DISCOVERY_FINDING',
+        findingId: 'finding-1',
+        findingRevision: 4,
+        findingType: 'RELATION_HYPOTHESIS',
+        title: 'Candidate relation',
+        summary: 'Candidate relation summary',
+        currentLifecycle: 'REVIEW_READY',
+        authority: 'DERIVED_INFERENCE',
+        detailPath: '/knowledge/discoveries/finding-1',
+      },
+    },
+  ],
+  edges: [],
+  appliedLimits: snapshot.appliedLimits,
+};
+
 const jsonResponse = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
   });
 
-const createRuntime = (): AppRuntime => {
+const createRuntime = (includeDiscovery = false): AppRuntime => {
   const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
     if (String(url).endsWith('/api/v1/security/csrf')) {
       return jsonResponse(200, { csrfToken: 'csrf-graph' });
     }
     if (String(url).includes('/knowledge/graph/snapshot')) {
       return jsonResponse(200, snapshot);
+    }
+    if (includeDiscovery && String(url).includes('/knowledge/graph/overlay/discovery')) {
+      return jsonResponse(200, discoveryOverlay);
     }
     return jsonResponse(404, { code: 'NOT_FOUND' });
   });
@@ -243,6 +297,23 @@ describe('Graph Workspace UI (FE-P3-S3)', () => {
     expect(tableKeys).toEqual(listKeys);
     expect(tableKeys.length).toBe(3); // two nodes + one edge
     expect(within(tableRegion).getByText('Entity One')).toBeTruthy();
+  });
+
+  it('resolves an exact Discovery deep link as a visible, non-generic overlay', async () => {
+    const runtime = createRuntime(true);
+    renderRoute(
+      runtime,
+      [{ path: 'knowledge/graph', element: <GraphWorkspace /> }],
+      ['/knowledge/graph?discoveryFinding=finding-1&discoveryRevision=4'],
+    );
+
+    expect(await screen.findByTestId('graph-canvas')).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-graph-id="discovery-finding-finding-1-4"]'),
+      ).toBeTruthy(),
+    );
+    expect(screen.getByRole('checkbox', { name: 'Discovery candidates' })).toBeTruthy();
   });
 
   it('selects a node through the list view and announces the frozen selection string', async () => {

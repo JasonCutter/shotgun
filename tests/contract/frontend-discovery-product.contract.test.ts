@@ -266,7 +266,9 @@ describe('AKP-6 WP1 Discovery Product coordinator', () => {
     expect(result.finding.governance.reentryState).toBe('PROCESSED');
     expect(result.finding.governance.reviewResourceId).toBe('review-resource-1');
     expect(result.finding.capabilities.canOpenReview).toBe(true);
-    expect(result.finding.capabilities.canOpenGraph).toBe(true);
+    // WP3 only exposes Graph navigation for the three graph-eligible
+    // hypothesis types; this Knowledge Gap remains Detail/Review-only.
+    expect(result.finding.capabilities.canOpenGraph).toBe(false);
     expect(result.finding.capabilities.canOpenActivity).toBe(false);
     expect(result.finding.capabilities.canInvestigate).toBe(false);
     expect(result.finding.lineage.evidence[0]).toMatchObject({

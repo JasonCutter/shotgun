@@ -18,4 +18,13 @@ export type {
   GraphContinuationRecordV1,
   HealthStorePort,
 } from './health-store-port.js';
-export type { GraphReadPort, GraphReadScopeV1, GraphImpactPort } from './graph-read-port.js';
+export type {
+  GraphReadPort,
+  GraphReadScopeV1,
+  GraphImpactPort,
+  GraphDiscoveryOverlayPort,
+} from './graph-read-port.js';
+export {
+  createGraphDiscoveryOverlayPort,
+  type GraphDiscoveryFindingReader,
+} from './discovery-overlay.js';

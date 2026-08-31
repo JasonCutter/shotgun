@@ -6,6 +6,7 @@ import {
   createFrontendKnowledgeGraphClient,
   type GlobalShellView,
   type GraphBaseViewKindV1,
+  type GraphOverlayResultV1,
   type GraphNodeReferenceV1,
   type GraphOverlayKindV1,
   type GraphSnapshotResultV1,
@@ -22,7 +23,12 @@ import {
   buildGraphNodeCorrectionSeed,
   graphCorrectionEditorHref,
 } from '../knowledge/graph-correction.js';
-import { graphSnapshotIsReady, graphSnapshotQueryOptions } from '../knowledge/graph-queries.js';
+import {
+  graphDiscoveryOverlayQueryOptions,
+  graphScopeFromShell,
+  graphSnapshotIsReady,
+  graphSnapshotQueryOptions,
+} from '../knowledge/graph-queries.js';
 import { GraphListView } from '../knowledge/graph-list-view.js';
 import { GraphPathView } from '../knowledge/graph-path-view.js';
 import { GraphTableView } from '../knowledge/graph-table-view.js';
@@ -73,6 +79,42 @@ const viewLabel: Record<GraphViewKind, string> = {
   path: 'Path',
 };
 
+const parsePositiveRevision = (value: string | null): number | null => {
+  if (!value || !/^[1-9]\d*$/u.test(value)) return null;
+  const revision = Number(value);
+  return Number.isSafeInteger(revision) && revision > 0 ? revision : null;
+};
+
+const mergeDiscoveryOverlay = (
+  base: GraphSnapshotResultV1,
+  overlay: GraphOverlayResultV1,
+): GraphSnapshotResultV1 => {
+  if (
+    overlay.baseSnapshotId !== base.identity.snapshotId ||
+    overlay.projectionRevision !== base.identity.projectionRevision ||
+    overlay.identity.overlayKind !== 'DISCOVERY' ||
+    overlay.health === 'UNAVAILABLE'
+  ) {
+    return base;
+  }
+  const nodes = [...base.nodes];
+  const edges = [...base.edges];
+  const nodeIds = new Set(nodes.map((node) => node.nodeId));
+  const edgeIds = new Set(edges.map((edge) => edge.edgeId));
+  for (const node of overlay.nodes) {
+    if (!nodeIds.has(node.nodeId)) nodes.push(node);
+  }
+  for (const edge of overlay.edges) {
+    if (!edgeIds.has(edge.edgeId)) edges.push(edge);
+  }
+  return {
+    ...base,
+    nodes,
+    edges,
+    overlays: [...base.overlays, overlay.identity],
+  };
+};
+
 export const GraphWorkspace = () => {
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const graphClient = useMemo(() => createFrontendKnowledgeGraphClient(), []);
@@ -88,6 +130,8 @@ export const GraphWorkspace = () => {
 
   const deepLinkSnapshotId = searchParameters.get('snapshot');
   const deepLinkFocus = searchParameters.get('focus');
+  const discoveryFindingId = searchParameters.get('discoveryFinding')?.trim() ?? '';
+  const discoveryFindingRevision = parsePositiveRevision(searchParameters.get('discoveryRevision'));
 
   const snapshotRequest = useMemo(
     () => ({
@@ -111,6 +155,31 @@ export const GraphWorkspace = () => {
 
   const snapshot = useQuery(graphSnapshotQueryOptions(graphClient, shell, snapshotRequest));
   const currentSnapshot = manualSnapshot ?? snapshot.data;
+  const discoveryOverlayRequest = useMemo(
+    () => ({
+      schemaVersion: '1.0.0' as const,
+      baseSnapshotId: currentSnapshot?.identity.snapshotId ?? '',
+      projectionRevision: currentSnapshot?.identity.projectionRevision ?? '',
+      overlayKind: 'DISCOVERY' as const,
+      findingId: discoveryFindingId,
+      findingRevision: discoveryFindingRevision ?? 0,
+    }),
+    [currentSnapshot, discoveryFindingId, discoveryFindingRevision],
+  );
+  const discoveryOverlay = useQuery(
+    graphDiscoveryOverlayQueryOptions(
+      graphClient,
+      graphSnapshotIsReady(currentSnapshot) ? graphScopeFromShell(shell) : null,
+      discoveryOverlayRequest,
+    ),
+  );
+  const renderedSnapshot = useMemo(
+    () =>
+      currentSnapshot && discoveryOverlay.data
+        ? mergeDiscoveryOverlay(currentSnapshot, discoveryOverlay.data)
+        : currentSnapshot,
+    [currentSnapshot, discoveryOverlay.data],
+  );
 
   useEffect(() => {
     if (snapshot.isPending) {
@@ -217,8 +286,8 @@ export const GraphWorkspace = () => {
 
   // Deep-link restoration: focus the selected node once the snapshot is ready.
   useEffect(() => {
-    if (deepLinkFocus && snapshot.data) {
-      const target = snapshot.data.nodes.find(
+    if (deepLinkFocus && renderedSnapshot) {
+      const target = renderedSnapshot.nodes.find(
         (node) => node.resourceRef.resourceId === deepLinkFocus,
       );
       if (target) {
@@ -228,7 +297,7 @@ export const GraphWorkspace = () => {
         announce(GRAPH_ANNOUNCEMENTS.SELECTION(target.label));
       }
     }
-  }, [deepLinkFocus, snapshot.data]);
+  }, [deepLinkFocus, renderedSnapshot]);
 
   const orderedNodeRefs = useMemo(
     () =>
@@ -325,8 +394,12 @@ export const GraphWorkspace = () => {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
-  const nodes = currentSnapshot?.nodes ?? [];
-  const edges = currentSnapshot?.edges ?? [];
+  const nodes = renderedSnapshot?.nodes ?? [];
+  const edges = renderedSnapshot?.edges ?? [];
+  const discoveryOverlayUnavailable =
+    discoveryFindingId.length > 0 &&
+    discoveryFindingRevision !== null &&
+    (discoveryOverlay.isError || discoveryOverlay.data?.health === 'UNAVAILABLE');
 
   if (!shell.activeProject) {
     return (
@@ -411,6 +484,13 @@ export const GraphWorkspace = () => {
               </span>
             </label>
           ))}
+          {discoveryOverlay.data?.identity.overlayKind === 'DISCOVERY' &&
+          discoveryOverlay.data.health !== 'UNAVAILABLE' ? (
+            <label>
+              <input type="checkbox" checked readOnly aria-label="Discovery candidates" />
+              <span>{graphOverlayLabel('DISCOVERY')}</span>
+            </label>
+          ) : null}
         </fieldset>
 
         <div className="graph-view-switcher" role="group" aria-label="View switcher">
@@ -439,6 +519,12 @@ export const GraphWorkspace = () => {
       {healthAnnouncement(result.health) ? (
         <p role="status" className="graph-health-note">
           {healthAnnouncement(result.health)}
+        </p>
+      ) : null}
+
+      {discoveryOverlayUnavailable ? (
+        <p role="status" className="graph-health-note">
+          Discovery overlay를 사용할 수 없습니다. 기본 그래프는 계속 표시됩니다.
         </p>
       ) : null}
 

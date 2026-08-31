@@ -1,6 +1,7 @@
 import { FrontendContractError } from '../../contracts/src/index.js';
 import {
   decodeGraphConflictOverlayRequestV1,
+  decodeGraphDiscoveryOverlayRequestV1,
   decodeGraphEvidenceDetailRequestV1,
   decodeGraphEvidenceDetailResultV1,
   decodeGraphKnowledgeGapOverlayRequestV1,
@@ -18,6 +19,7 @@ import {
   decodeGraphSnapshotRequestV1,
   decodeGraphSnapshotResultV1,
   type GraphConflictOverlayRequestV1,
+  type GraphDiscoveryOverlayRequestV1,
   type GraphEvidenceDetailRequestV1,
   type GraphEvidenceDetailResultV1,
   type GraphKnowledgeGapOverlayRequestV1,
@@ -58,6 +60,10 @@ export type FrontendKnowledgeGraphClient = {
   ): Promise<GraphPathDescriptionV1>;
   getConflictOverlay(
     params: GraphConflictOverlayRequestV1,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<GraphOverlayResultV1>;
+  getDiscoveryOverlay(
+    params: GraphDiscoveryOverlayRequestV1,
     options?: { readonly signal?: AbortSignal },
   ): Promise<GraphOverlayResultV1>;
   getKnowledgeGapOverlay(
@@ -179,6 +185,30 @@ export const createFrontendKnowledgeGraphClient = (
         ),
         'result',
       );
+    },
+    async getDiscoveryOverlay(params, requestOptions) {
+      const decoded = decodeGraphDiscoveryOverlayRequestV1(params);
+      const result = decodeGraphOverlayResultV1(
+        await post(
+          '/product-api/frontend/knowledge/graph/overlay/discovery',
+          decoded,
+          requestOptions?.signal,
+        ),
+        'result',
+      );
+      const sourceRef = result.identity.sourceRef;
+      if (
+        result.identity.overlayKind !== 'DISCOVERY' ||
+        result.baseSnapshotId !== decoded.baseSnapshotId ||
+        result.projectionRevision !== decoded.projectionRevision ||
+        (result.health !== 'UNAVAILABLE' &&
+          (sourceRef?.kind !== 'DISCOVERY_FINDING' ||
+            sourceRef.findingId !== decoded.findingId ||
+            sourceRef.findingRevision !== decoded.findingRevision))
+      ) {
+        identityMismatch('Discovery overlay result does not match the requested identity.');
+      }
+      return result;
     },
     async getKnowledgeGapOverlay(params, requestOptions) {
       return decodeGraphOverlayResultV1(

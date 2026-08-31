@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { InMemoryFrontendCommandGateway } from '../../adapters/frontend-command-gateway-in-memory/src/index.js';
+import type { CompleteFrontendCommandInput } from '../../modules/frontend-command-gateway/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import { InMemoryProjectAdministrationRepository } from '../../adapters/settings-project-admin-in-memory/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
@@ -159,7 +160,18 @@ type DismissFixtureOptions = {
   readonly owner?: boolean;
   readonly sourceFinding?: DiscoveryFindingEnvelopeV1;
   readonly replaceBeforeCompareAndSet?: boolean;
+  readonly gateway?: InMemoryFrontendCommandGateway;
+  readonly failReadAfter?: number;
 };
+
+class FailingCompleteGateway extends InMemoryFrontendCommandGateway {
+  failComplete = false;
+
+  override async complete(input: CompleteFrontendCommandInput) {
+    if (this.failComplete) throw new Error('simulated command completion failure');
+    return super.complete(input);
+  }
+}
 
 const applications: Awaited<ReturnType<typeof createApplication>>[] = [];
 
@@ -206,12 +218,19 @@ const createDismissFixture = async (options: DismissFixtureOptions = {}) => {
     options.lifecycleState,
     options.replaceBeforeCompareAndSet,
   );
+  let findingReads = 0;
   const source = {
     ...createEmptyDiscoveryProductReadSource(),
-    findFinding: async () => options.sourceFinding ?? finding(),
+    findFinding: async () => {
+      findingReads += 1;
+      if (options.failReadAfter !== undefined && findingReads > options.failReadAfter) {
+        throw new Error('simulated Discovery Product read failure');
+      }
+      return options.sourceFinding ?? finding();
+    },
     findLifecycle: async (request: DiscoveryFindingIdentityV1) => repository.findLifecycle(request),
   } satisfies DiscoveryProductReadSource;
-  const gateway = new InMemoryFrontendCommandGateway();
+  const gateway = options.gateway ?? new InMemoryFrontendCommandGateway();
   const application = await createApplication({
     authRepository: auth,
     projectAdminRepository: projects,
@@ -371,5 +390,40 @@ describe('AKP-6 WP5 governed Discovery dismiss', () => {
       outcomeState: 'REJECTED',
       rejection: { code: 'REVISION_CONFLICT' },
     });
+  });
+
+  it('marks APPLIED lifecycle work as outcome unknown when completion cannot be confirmed', async () => {
+    const gateway = new FailingCompleteGateway();
+    const fixture = await createDismissFixture({ gateway });
+    gateway.failComplete = true;
+    const payload = dismissPayload('completion-unknown');
+
+    const failed = await postDismiss(fixture, payload);
+    expect(failed.statusCode).toBeGreaterThanOrEqual(500);
+    expect(fixture.repository.state.lifecycleState).toBe('DISMISSED');
+    expect(fixture.repository.calls).toBe(1);
+    await expect(
+      fixture.gateway.findByClientRequestId(fixture.principalId, payload.clientRequestId),
+    ).resolves.toMatchObject({
+      outcomeState: 'OUTCOME_UNKNOWN',
+      rejection: { code: 'OUTCOME_UNKNOWN' },
+    });
+
+    const replay = await postDismiss(fixture, payload);
+    expect(replay.statusCode).toBeGreaterThanOrEqual(400);
+    expect(fixture.repository.calls).toBe(1);
+  });
+
+  it('does not reject a completed command when the final Product read fails', async () => {
+    const fixture = await createDismissFixture({ failReadAfter: 1 });
+    const payload = dismissPayload('completed-read-failure');
+
+    const failed = await postDismiss(fixture, payload);
+    expect(failed.statusCode).toBeGreaterThanOrEqual(500);
+    expect(fixture.repository.state.lifecycleState).toBe('DISMISSED');
+    expect(fixture.repository.calls).toBe(1);
+    await expect(
+      fixture.gateway.findByClientRequestId(fixture.principalId, payload.clientRequestId),
+    ).resolves.toMatchObject({ outcomeState: 'COMPLETED' });
   });
 });

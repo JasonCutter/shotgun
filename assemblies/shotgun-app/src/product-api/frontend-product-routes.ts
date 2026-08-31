@@ -680,6 +680,8 @@ export const registerFrontendProductRoutes = (
               });
             }
           }
+          let lifecycleApplied = false;
+          let commandCompleted = false;
           try {
             const transition = await discoveryLifecycle.transitionCurrent({
               ...identity,
@@ -701,6 +703,7 @@ export const registerFrontendProductRoutes = (
                 retryable: true,
               });
             }
+            lifecycleApplied = transition.status === 'APPLIED';
             const outcome = await discoveryGateway.complete({
               commandId: accepted.outcome.commandId,
               producedResources: [
@@ -712,6 +715,7 @@ export const registerFrontendProductRoutes = (
               ],
               completedAt: new Date().toISOString(),
             });
+            commandCompleted = outcome.outcomeState === 'COMPLETED';
             const result = await discoveryCoordinator.readFinding({
               ...scope.value,
               request: {
@@ -722,11 +726,22 @@ export const registerFrontendProductRoutes = (
             });
             return { result, outcome };
           } catch (error) {
-            if (error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN') {
+            if (commandCompleted) {
+              // The command is durably complete. A subsequent Product read
+              // failure must not downgrade the command outcome.
+              throw error;
+            }
+            if (
+              (error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN') ||
+              lifecycleApplied
+            ) {
               try {
                 await discoveryGateway.markOutcomeUnknown({
                   commandId: accepted.outcome.commandId,
-                  message: error.message,
+                  message:
+                    error instanceof Error
+                      ? error.message
+                      : 'Discovery Finding command outcome is unresolved.',
                   completedAt: new Date().toISOString(),
                 });
               } catch {

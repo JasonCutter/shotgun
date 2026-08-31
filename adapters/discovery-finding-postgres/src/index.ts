@@ -568,6 +568,8 @@ export class PostgresDiscoveryFindingRepository
            ON candidate.project_id = review.project_id
           AND candidate.candidate_id = review.candidate_id
           AND candidate.candidate_revision = review.candidate_revision
+          AND candidate.finding_id = f.finding_id
+          AND candidate.finding_revision = f.finding_revision
          JOIN discovery.finding_lifecycle_current current_lifecycle
            ON current_lifecycle.project_id = f.project_id
           AND current_lifecycle.finding_id = f.finding_id

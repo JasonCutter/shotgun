@@ -2,7 +2,10 @@ import type { GlobalShellView, ProjectListItemView, TargetRouteView } from '@sho
 import type { ProductMessageKey } from '../localization/product-localization.js';
 
 import type { AnswerCommandContext } from './answer-command-context.js';
-import type { DiscoveryDismissCommandContext } from './discovery-command-context.js';
+import type {
+  DiscoveryDismissCommandContext,
+  DiscoveryFeedbackCommandId,
+} from './discovery-command-context.js';
 
 export type OwnerCommandCategory =
   | 'HELP'
@@ -54,6 +57,7 @@ export type OwnerCommandAction =
   | { readonly kind: 'OPEN_PRIVACY_FLOW'; readonly commandId: PrivacyCommandId }
   | { readonly kind: 'OPEN_ANSWER_FLOW'; readonly commandId: AnswerCommandId }
   | { readonly kind: 'OPEN_TECHNICAL_FLOW'; readonly commandId: 'technical.current' }
+  | { readonly kind: 'OPEN_DISCOVERY_FLOW'; readonly commandId: DiscoveryFeedbackCommandId }
   | { readonly kind: 'DISMISS_DISCOVERY' }
   | { readonly kind: 'SWITCH_PROJECT'; readonly projectId: string };
 
@@ -681,6 +685,110 @@ export const createOwnerCommandRegistry = ({
 
   const discoveryCommands = discoveryContext
     ? [
+        ...(
+          [
+            {
+              id: 'discovery.feedback.useful',
+              label: 'Mark discovery as useful',
+              description: 'Record that this discovery was useful to you',
+              aliases: ['discovery useful', 'useful finding', 'useful'],
+              keywords: ['discovery', 'finding', 'feedback', 'utility'],
+              action: {
+                kind: 'OPEN_DISCOVERY_FLOW',
+                commandId: 'discovery.feedback.useful',
+              },
+            },
+            {
+              id: 'discovery.feedback.not_relevant',
+              label: 'Mark discovery as not relevant',
+              description: 'Record that this discovery was not useful to you',
+              aliases: ['discovery not relevant', 'not relevant finding', 'not relevant'],
+              keywords: ['discovery', 'finding', 'feedback', 'utility'],
+              action: {
+                kind: 'OPEN_DISCOVERY_FLOW',
+                commandId: 'discovery.feedback.not_relevant',
+              },
+            },
+            {
+              id: 'discovery.feedback.already_known',
+              label: 'Mark discovery as already known',
+              description: 'Record that this discovery was already known',
+              aliases: ['already known', 'known discovery'],
+              keywords: ['discovery', 'finding', 'feedback', 'utility'],
+              action: {
+                kind: 'OPEN_DISCOVERY_FLOW',
+                commandId: 'discovery.feedback.already_known',
+              },
+            },
+            {
+              id: 'discovery.feedback.too_frequent',
+              label: 'Mark discovery as too frequent',
+              description: 'Record that this discovery is shown too often',
+              aliases: ['too frequent', 'frequent discovery'],
+              keywords: ['discovery', 'finding', 'feedback', 'utility'],
+              action: {
+                kind: 'OPEN_DISCOVERY_FLOW',
+                commandId: 'discovery.feedback.too_frequent',
+              },
+            },
+            {
+              id: 'discovery.snooze',
+              label: 'Snooze discovery',
+              description: 'Temporarily defer this discovery',
+              aliases: ['snooze discovery', 'defer discovery'],
+              keywords: ['discovery', 'finding', 'feedback', 'timing'],
+              action: { kind: 'OPEN_DISCOVERY_FLOW', commandId: 'discovery.snooze' },
+            },
+            {
+              id: 'discovery.suppress_exact',
+              label: 'Hide this discovery',
+              description: 'Hide this exact discovery after confirmation',
+              aliases: ['hide this discovery', 'suppress exact'],
+              keywords: ['discovery', 'finding', 'feedback', 'hide'],
+              action: { kind: 'OPEN_DISCOVERY_FLOW', commandId: 'discovery.suppress_exact' },
+            },
+            {
+              id: 'discovery.suppress_similar',
+              label: 'Hide similar discoveries',
+              description: 'Hide similar discoveries after confirmation',
+              aliases: ['hide similar discoveries', 'suppress similar'],
+              keywords: ['discovery', 'finding', 'feedback', 'hide', 'similar'],
+              action: { kind: 'OPEN_DISCOVERY_FLOW', commandId: 'discovery.suppress_similar' },
+            },
+            {
+              id: 'discovery.report_issue',
+              label: 'Report a discovery issue',
+              description: 'Ask Shotgun to re-check this discovery',
+              aliases: ['report discovery issue', 'challenge discovery', 'discovery issue'],
+              keywords: ['discovery', 'finding', 'feedback', 're-check', 'issue'],
+              action: { kind: 'OPEN_DISCOVERY_FLOW', commandId: 'discovery.report_issue' },
+            },
+            {
+              id: 'discovery.feedback_history',
+              label: 'View discovery feedback history',
+              description: 'Review feedback recorded for this discovery revision',
+              aliases: ['feedback history', 'discovery history', 'audit feedback'],
+              keywords: ['discovery', 'finding', 'feedback', 'history', 'audit'],
+              action: { kind: 'OPEN_DISCOVERY_FLOW', commandId: 'discovery.feedback_history' },
+            },
+          ] as const
+        ).map((command) => ({
+          ...command,
+          category: 'INSPECTION' as const,
+          availability:
+            isOffline || discoveryCommandPending
+              ? ('UNAVAILABLE_WITH_REASON' as const)
+              : ('AVAILABLE' as const),
+          ...(isOffline ? { reasonKey: 'commands.unavailable.discovery_offline' as const } : {}),
+          ...(discoveryCommandPending
+            ? { reasonKey: 'commands.unavailable.discovery_pending' as const }
+            : {}),
+          risk:
+            command.id === 'discovery.feedback_history' ? ('READ' as const) : ('WRITE' as const),
+          presentation:
+            command.id === 'discovery.feedback_history' ? ('DRAWER' as const) : ('DIALOG' as const),
+          context: { projectId: discoveryContext.projectId },
+        })),
         {
           id: 'discovery.dismiss',
           category: 'INSPECTION' as const,

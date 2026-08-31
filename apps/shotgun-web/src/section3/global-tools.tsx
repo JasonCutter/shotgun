@@ -245,6 +245,11 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
       closeCommandMode();
       return;
     }
+    if (command.action.kind === 'OPEN_DISCOVERY_FLOW') {
+      closeCommandMode();
+      discoveryCommands?.registration?.openCommand(command.action.commandId, commandInvoker);
+      return;
+    }
     if (command.action.kind === 'DISMISS_DISCOVERY') {
       closeCommandMode();
       discoveryCommands?.registration?.dismiss(commandInvoker);

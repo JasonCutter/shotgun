@@ -500,6 +500,89 @@ const enUS = {
   'discovery.freshness_revalidation':
     'The server requires revalidation before relying on this finding.',
   'discovery.freshness_unknown': 'Freshness is unavailable from the server.',
+  'discovery.feedback.useful': 'Useful',
+  'discovery.feedback.not_relevant': 'Not relevant',
+  'discovery.feedback.heading': 'Feedback',
+  'discovery.feedback.help':
+    'Tell Shotgun how this discovery worked for you. Feedback does not change Canonical knowledge.',
+  'discovery.feedback.useful_title': 'Mark as useful',
+  'discovery.feedback.not_relevant_title': 'Mark as not relevant',
+  'discovery.feedback.already_known': 'Already known',
+  'discovery.feedback.too_frequent': 'Too frequent',
+  'discovery.feedback.too_frequent_description': 'Record that this discovery is shown too often.',
+  'discovery.feedback.snooze': 'Snooze discovery',
+  'discovery.feedback.suppress_exact': 'Hide this discovery',
+  'discovery.feedback.suppress_similar': 'Hide similar discoveries',
+  'discovery.feedback.report_issue': 'Report an issue',
+  'discovery.feedback.history_title': 'Feedback history',
+  'discovery.feedback.utility_description':
+    'Record how this discovery worked for you without changing Canonical knowledge.',
+  'discovery.feedback.snooze_description':
+    'Temporarily defer this discovery without deleting its history or changing Canonical knowledge.',
+  'discovery.feedback.snooze_finding_only': 'Snooze applies to this discovery only.',
+  'discovery.feedback.suppression_description':
+    'Hide the selected scope from Discovery presentation. This does not delete the Finding or change Canonical knowledge.',
+  'discovery.feedback.report_issue_description':
+    'Ask Shotgun to re-check this discovery. It does not immediately change Canonical knowledge.',
+  'discovery.feedback.history_description':
+    'Review owner feedback recorded for this exact discovery revision.',
+  'discovery.feedback.utility_boundary':
+    'This records usefulness for ordering and timing only. It does not change Canonical knowledge.',
+  'discovery.feedback.report_boundary':
+    'This asks Shotgun to re-check the discovery. It does not immediately change Canonical knowledge or approve or reject Review.',
+  'discovery.feedback.scope': 'Apply to',
+  'discovery.feedback.scope_finding': 'This discovery only',
+  'discovery.feedback.scope_project': 'This Project',
+  'discovery.feedback.snooze_until': 'Snooze for',
+  'discovery.feedback.snooze_one_hour': 'One hour',
+  'discovery.feedback.snooze_one_day': 'One day',
+  'discovery.feedback.snooze_one_week': 'One week',
+  'discovery.feedback.issue_kind': 'What should Shotgun re-check?',
+  'discovery.feedback.issue.incorrect_relation': 'The relationship is incorrect',
+  'discovery.feedback.issue.incorrect_relation_description':
+    'The proposed relationship between resources does not match the available context.',
+  'discovery.feedback.issue.insufficient_evidence': 'The evidence is insufficient',
+  'discovery.feedback.issue.insufficient_evidence_description':
+    'The discovery needs stronger or more complete supporting evidence.',
+  'discovery.feedback.issue.wrong_entity': 'The entity is wrong',
+  'discovery.feedback.issue.wrong_entity_description':
+    'The discovery appears to refer to a different person, place, thing, or record.',
+  'discovery.feedback.issue.temporal_error': 'The timing is wrong',
+  'discovery.feedback.issue.temporal_error_description':
+    'The discovery appears to place an event or state in the wrong time period.',
+  'discovery.feedback.issue.misleading_pattern': 'The pattern is misleading',
+  'discovery.feedback.issue.misleading_pattern_description':
+    'The reported pattern does not represent the available information well.',
+  'discovery.feedback.issue.misidentified_conflict': 'The conflict is misidentified',
+  'discovery.feedback.issue.misidentified_conflict_description':
+    'The discovery appears to describe a conflict that is not actually present.',
+  'discovery.feedback.reason_optional': 'Optional note',
+  'discovery.feedback.reason_count': 'Characters:',
+  'discovery.feedback.submit': 'Record feedback',
+  'discovery.feedback.hide_confirm': 'Confirm hiding',
+  'discovery.feedback.snooze_confirm': 'Confirm snooze',
+  'discovery.feedback.report_submit': 'Request re-check',
+  'discovery.feedback.recorded': 'Feedback recorded.',
+  'discovery.feedback.recheck_requested':
+    'Re-check requested. This does not mean the discovery was corrected.',
+  'discovery.feedback.failed':
+    'Feedback could not be recorded. The discovery may no longer be available in this Project.',
+  'discovery.feedback.outcome_unknown':
+    'The result is uncertain. Check the existing command result before trying again.',
+  'discovery.feedback.check_result': 'Check result',
+  'discovery.feedback.history_recorded': 'Feedback recorded',
+  'discovery.feedback.history_recheck_requested': 'Re-check requested',
+  'discovery.feedback.history_active': 'Active',
+  'discovery.feedback.history_expired': 'Expired',
+  'discovery.feedback.history_until': 'until',
+  'discovery.feedback.history_scope': 'Scope',
+  'discovery.feedback.history_effect': 'Current effect',
+  'discovery.feedback.history_reason': 'Note',
+  'discovery.feedback.history_empty': 'No owner feedback is recorded for this revision.',
+  'discovery.feedback.history_loading': 'Loading feedback history…',
+  'discovery.feedback.history_unavailable': 'Feedback history is not available for this discovery.',
+  'discovery.mandatory_visibility': 'Shown because this discovery still requires attention.',
+  'discovery.open_activity': 'View execution activity',
   'discovery.type.knowledge_gap': 'Knowledge gap',
   'discovery.type.evidence_gap': 'Evidence gap',
   'discovery.type.relation_hypothesis': 'Relationship hypothesis',
@@ -1115,6 +1198,89 @@ const koKR: Record<ProductMessageKey, string> = {
   'discovery.freshness_current': '서버가 제공한 Discovery projection 기준 최신 상태입니다.',
   'discovery.freshness_revalidation': '이 발견 항목을 사용하려면 서버 재검증이 필요합니다.',
   'discovery.freshness_unknown': '서버에서 최신성을 확인할 수 없습니다.',
+  'discovery.feedback.useful': '유용함',
+  'discovery.feedback.not_relevant': '관련 없음',
+  'discovery.feedback.heading': '피드백',
+  'discovery.feedback.help':
+    '이 발견 항목이 어떻게 도움이 되었는지 Shotgun에 알려주세요. 피드백은 Canonical 지식을 바꾸지 않습니다.',
+  'discovery.feedback.useful_title': '유용함으로 표시',
+  'discovery.feedback.not_relevant_title': '관련 없음으로 표시',
+  'discovery.feedback.already_known': '이미 알고 있음',
+  'discovery.feedback.too_frequent': '너무 자주 표시됨',
+  'discovery.feedback.too_frequent_description': '이 발견 항목이 너무 자주 표시된다고 기록합니다.',
+  'discovery.feedback.snooze': '발견 항목 잠시 보류',
+  'discovery.feedback.suppress_exact': '이 발견 항목 숨기기',
+  'discovery.feedback.suppress_similar': '비슷한 발견 항목 숨기기',
+  'discovery.feedback.report_issue': '문제 보고',
+  'discovery.feedback.history_title': '피드백 이력',
+  'discovery.feedback.utility_description':
+    'Canonical 지식을 바꾸지 않고 이 발견 항목이 나에게 어떻게 유용했는지 기록합니다.',
+  'discovery.feedback.snooze_description':
+    '이력을 삭제하거나 Canonical 지식을 바꾸지 않고 이 발견 항목을 잠시 보류합니다.',
+  'discovery.feedback.snooze_finding_only': '보류는 이 발견 항목에만 적용됩니다.',
+  'discovery.feedback.suppression_description':
+    '선택한 범위에서 Discovery 표시를 숨깁니다. Finding을 삭제하거나 Canonical 지식을 바꾸지 않습니다.',
+  'discovery.feedback.report_issue_description':
+    'Shotgun에 이 발견 항목을 다시 확인하도록 요청합니다. Canonical 지식은 즉시 바뀌지 않습니다.',
+  'discovery.feedback.history_description':
+    '이 정확한 발견 리비전에 기록된 소유자 피드백을 확인합니다.',
+  'discovery.feedback.utility_boundary':
+    '표시 순서와 시점에 대한 유용성만 기록합니다. Canonical 지식은 바꾸지 않습니다.',
+  'discovery.feedback.report_boundary':
+    '발견 항목을 다시 확인하도록 요청합니다. Canonical 지식을 즉시 바꾸거나 Review를 승인·거절하지 않습니다.',
+  'discovery.feedback.scope': '적용 범위',
+  'discovery.feedback.scope_finding': '이 발견 항목만',
+  'discovery.feedback.scope_project': '이 프로젝트',
+  'discovery.feedback.snooze_until': '보류 기간',
+  'discovery.feedback.snooze_one_hour': '1시간',
+  'discovery.feedback.snooze_one_day': '하루',
+  'discovery.feedback.snooze_one_week': '일주일',
+  'discovery.feedback.issue_kind': '무엇을 다시 확인할까요?',
+  'discovery.feedback.issue.incorrect_relation': '관계가 잘못됨',
+  'discovery.feedback.issue.incorrect_relation_description':
+    '리소스 사이에 제안된 관계가 현재 맥락과 맞지 않습니다.',
+  'discovery.feedback.issue.insufficient_evidence': '근거가 부족함',
+  'discovery.feedback.issue.insufficient_evidence_description':
+    '더 강하거나 완전한 뒷받침 근거가 필요합니다.',
+  'discovery.feedback.issue.wrong_entity': '대상이 잘못됨',
+  'discovery.feedback.issue.wrong_entity_description':
+    '다른 사람·장소·사물·기록을 가리키는 것 같습니다.',
+  'discovery.feedback.issue.temporal_error': '시점이 잘못됨',
+  'discovery.feedback.issue.temporal_error_description':
+    '사건이나 상태가 잘못된 기간에 배치된 것 같습니다.',
+  'discovery.feedback.issue.misleading_pattern': '패턴이 오해를 부름',
+  'discovery.feedback.issue.misleading_pattern_description':
+    '보고된 패턴이 현재 정보를 잘 나타내지 못합니다.',
+  'discovery.feedback.issue.misidentified_conflict': '충돌 식별이 잘못됨',
+  'discovery.feedback.issue.misidentified_conflict_description':
+    '실제로 존재하지 않는 충돌을 설명하는 것 같습니다.',
+  'discovery.feedback.reason_optional': '선택 메모',
+  'discovery.feedback.reason_count': '글자 수:',
+  'discovery.feedback.submit': '피드백 기록',
+  'discovery.feedback.hide_confirm': '숨기기 확인',
+  'discovery.feedback.snooze_confirm': '보류 확인',
+  'discovery.feedback.report_submit': '재확인 요청',
+  'discovery.feedback.recorded': '피드백을 기록했습니다.',
+  'discovery.feedback.recheck_requested':
+    '재확인을 요청했습니다. 발견 항목이 정정되었다는 뜻은 아닙니다.',
+  'discovery.feedback.failed':
+    '피드백을 기록하지 못했습니다. 이 프로젝트에서 해당 발견 항목을 더 이상 사용할 수 없을 수 있습니다.',
+  'discovery.feedback.outcome_unknown':
+    '결과가 불확실합니다. 다시 시도하기 전에 기존 명령 결과를 확인하세요.',
+  'discovery.feedback.check_result': '결과 확인',
+  'discovery.feedback.history_recorded': '피드백 기록됨',
+  'discovery.feedback.history_recheck_requested': '재확인 요청됨',
+  'discovery.feedback.history_active': '활성',
+  'discovery.feedback.history_expired': '만료됨',
+  'discovery.feedback.history_until': '만료 시각',
+  'discovery.feedback.history_scope': '범위',
+  'discovery.feedback.history_effect': '현재 효과',
+  'discovery.feedback.history_reason': '메모',
+  'discovery.feedback.history_empty': '이 리비전에 기록된 소유자 피드백이 없습니다.',
+  'discovery.feedback.history_loading': '피드백 이력을 불러오는 중…',
+  'discovery.feedback.history_unavailable': '이 발견 항목의 피드백 이력을 사용할 수 없습니다.',
+  'discovery.mandatory_visibility': '이 발견 항목에 아직 확인할 사항이 있어 표시됩니다.',
+  'discovery.open_activity': '실행 활동 보기',
   'discovery.type.knowledge_gap': '지식 공백',
   'discovery.type.evidence_gap': '근거 공백',
   'discovery.type.relation_hypothesis': '관계 가설',

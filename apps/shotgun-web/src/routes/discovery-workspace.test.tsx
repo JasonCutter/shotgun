@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import type { ReactElement } from 'react';
@@ -233,6 +233,12 @@ const responseFor = (result: unknown, status = 200) =>
     headers: { 'content-type': 'application/json' },
   });
 
+const envelopeResponseFor = (result: unknown, outcome: unknown, status = 200) =>
+  new Response(JSON.stringify({ result, outcome }), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+
 const csrfResponse = () =>
   new Response(JSON.stringify({ csrfToken: 'csrf-test-token' }), {
     status: 200,
@@ -255,7 +261,11 @@ const createFetchMock = (options?: {
 }) => {
   const requests: unknown[] = [];
   const dismissCalls: unknown[] = [];
+  const feedbackCalls: unknown[] = [];
+  const feedbackHistory: Record<string, unknown>[] = [];
+  const suppressionHistory: Record<string, unknown>[] = [];
   let dismissed = false;
+  let feedbackSequence = 0;
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const path = String(input);
@@ -284,6 +294,109 @@ const createFetchMock = (options?: {
               finding: dismissedDetailFinding,
             });
       }
+      if (path.endsWith('/discoveries/feedback/state')) {
+        return responseFor({
+          schemaVersion: '1.0.0',
+          projectId: 'project-1',
+          findingId: request?.findingId,
+          findingRevision: request?.findingRevision,
+          feedbackHistory,
+          suppressionHistory,
+        });
+      }
+      if (path.endsWith('/discoveries/feedback')) {
+        feedbackCalls.push(request);
+        feedbackSequence += 1;
+        const feedbackId = `feedback:test-${feedbackSequence}`;
+        const event = {
+          schemaVersion: '1.0.0',
+          feedbackId,
+          projectId: 'project-1',
+          findingId: request?.findingId,
+          findingRevision: request?.findingRevision,
+          actor: { type: 'user', id: 'principal-1' },
+          principalId: 'principal-1',
+          feedbackClass: request?.feedbackClass,
+          feedbackKind: request?.feedbackKind,
+          ...(request?.reason === undefined ? {} : { reason: request.reason }),
+          scope: request?.scope ?? 'FINDING',
+          createdAt: now,
+        };
+        feedbackHistory.push(event);
+        if (
+          request?.feedbackKind === 'SNOOZE' ||
+          request?.feedbackKind === 'SUPPRESS_EXACT' ||
+          request?.feedbackKind === 'SUPPRESS_SIMILAR'
+        ) {
+          suppressionHistory.push({
+            schemaVersion: '1.0.0',
+            suppressionId: `suppression:test-${feedbackSequence}`,
+            projectId: 'project-1',
+            actor: { type: 'user', id: 'principal-1' },
+            principalId: 'principal-1',
+            sourceFindingId: request.findingId,
+            sourceFindingRevision: request.findingRevision,
+            suppressionKind: request.feedbackKind,
+            scope: request.scope ?? 'FINDING',
+            matcherKind:
+              request.feedbackKind === 'SNOOZE'
+                ? 'NONE'
+                : request.feedbackKind === 'SUPPRESS_EXACT'
+                  ? 'EXACT_FINGERPRINT'
+                  : 'SEMANTIC_FAMILY',
+            ...(request.feedbackKind === 'SNOOZE'
+              ? { expiresAt: request.snoozeUntil }
+              : request.feedbackKind === 'SUPPRESS_EXACT'
+                ? {
+                    matcherVersion: 'discovery-fingerprint:v1',
+                    fingerprint: `sha256:${'a'.repeat(64)}`,
+                    fingerprintVersion: 'discovery-fingerprint:v1',
+                  }
+                : { matcherVersion: 'semantic-family:v1' }),
+            createdAt: now,
+          });
+        }
+        return envelopeResponseFor(
+          {
+            schemaVersion: '1.0.0',
+            projectId: 'project-1',
+            findingId: request.findingId,
+            findingRevision: request.findingRevision,
+            feedbackHistory,
+            suppressionHistory,
+          },
+          {
+            commandId: `command:test-${feedbackSequence}`,
+            commandRevision: '1',
+            clientRequestId: request.clientRequestId,
+            idempotencyKey: request.idempotencyKey,
+            commandType: 'frontend.discovery.feedback.v1',
+            commandSchemaVersion: '1.0.0',
+            commandSemanticDigest: `digest:test-${feedbackSequence}`,
+            outcomeState: 'COMPLETED',
+            completionDisposition: 'SUCCEEDED',
+            acceptedPrincipalContext: {
+              principalId: 'principal-1',
+              actor: { type: 'user', id: 'principal-1' },
+            },
+            acceptedProjectContext: { targetProjectId: 'project-1' },
+            acceptedPolicyContext: {
+              policyContextId: 'policy-1',
+              policyContextRevision: 'policy-1',
+              acceptedAt: now,
+            },
+            correlationId: 'correlation-test',
+            traceId: 'trace-test',
+            producedResources: [
+              { resourceKind: 'DISCOVERY_FEEDBACK_EVENT', resourceId: feedbackId },
+            ],
+            receivedAt: now,
+            acceptedAt: now,
+            completedAt: now,
+            lastUpdatedAt: now,
+          },
+        );
+      }
       if (path.endsWith('/discoveries/read')) {
         return responseFor({
           schemaVersion: '1.0.0',
@@ -305,7 +418,7 @@ const createFetchMock = (options?: {
       throw new Error(`Unexpected fetch path: ${path}`);
     },
   );
-  return { dismissCalls, fetchMock, requests };
+  return { dismissCalls, feedbackCalls, fetchMock, requests };
 };
 
 const createRuntime = (): AppRuntime =>
@@ -404,6 +517,45 @@ describe('Discovery Inbox and Detail Workspace', () => {
     );
   });
 
+  it('records Inbox Useful feedback through the existing Product command without browser authority fields', async () => {
+    const { feedbackCalls, fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute(
+      createRuntime(),
+      [{ path: 'knowledge/discoveries', element: <DiscoveryInboxWorkspace /> }],
+      ['/knowledge/discoveries'],
+    );
+
+    const card = await screen.findByText('Review-ready gap');
+    const cardContainer = card.closest('li');
+    expect(cardContainer).toBeTruthy();
+    await userEvent.click(
+      within(cardContainer as HTMLElement).getByRole('button', { name: 'Useful' }),
+    );
+
+    await waitFor(() => expect(feedbackCalls).toHaveLength(1));
+    expect(feedbackCalls[0]).toEqual(
+      expect.objectContaining({
+        schemaVersion: '1.0.0',
+        findingId: 'finding-review-ready',
+        findingRevision: 3,
+        feedbackClass: 'UTILITY',
+        feedbackKind: 'USEFUL',
+      }),
+    );
+    expect(feedbackCalls[0]).not.toEqual(
+      expect.objectContaining({
+        projectId: expect.anything(),
+        principalId: expect.anything(),
+        fingerprint: expect.anything(),
+        matcherVersion: expect.anything(),
+      }),
+    );
+    expect((await within(cardContainer as HTMLElement).findByRole('status')).textContent).toBe(
+      'Feedback recorded.',
+    );
+  });
+
   it('renders exact detail identity, governance, lineage, and only a positive Review deep link', async () => {
     const { fetchMock, requests } = createFetchMock();
     vi.stubGlobal('fetch', fetchMock);
@@ -488,6 +640,25 @@ describe('Discovery Inbox and Detail Workspace', () => {
     );
     expect(screen.queryByRole('button', { name: 'Dismiss finding' })).toBeNull();
     await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it('records Detail Not relevant feedback without invoking the separate Dismiss command', async () => {
+    const { dismissCalls, feedbackCalls, fetchMock } = createFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute(
+      createRuntime(),
+      [{ path: 'knowledge/discoveries/:findingId', element: <DiscoveryDetailWorkspace /> }],
+      ['/knowledge/discoveries/finding-review-ready?revision=3'],
+    );
+
+    await screen.findByRole('heading', { name: 'Review-ready gap', level: 1 });
+    await userEvent.click(screen.getByRole('button', { name: 'Not relevant' }));
+    await waitFor(() => expect(feedbackCalls).toHaveLength(1));
+    expect(feedbackCalls[0]).toEqual(
+      expect.objectContaining({ feedbackClass: 'UTILITY', feedbackKind: 'NOT_RELEVANT' }),
+    );
+    expect(dismissCalls).toHaveLength(0);
+    expect(await screen.findByText('Feedback recorded.')).toBeTruthy();
   });
 
   it('does not render a dismiss control when the server capability is false', async () => {

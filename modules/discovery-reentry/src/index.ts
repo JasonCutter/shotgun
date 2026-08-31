@@ -8,6 +8,8 @@ import {
   decodeDiscoveryFindingReadyV1,
   decodeDiscoveryEpistemicReentryTriggerV1,
   decodeDiscoveryFeedbackEventV1,
+  decodeDiscoveryEpistemicValidationResultV1,
+  createDiscoveryEpistemicValidationResultV1,
   DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_BY_KIND,
   deriveDiscoveryReentryEligibilityV1,
   DISCOVERY_DERIVED_VALIDATION_PROFILE_V1,
@@ -30,6 +32,9 @@ import {
   type DiscoveryReentryLogicalIdentityResultV1,
   type DiscoveryEpistemicReentryIdentityResultV1,
   type DiscoveryEpistemicReentryTriggerV1,
+  type DiscoveryEpistemicReentryContextV1,
+  type DiscoveryEpistemicValidationResultV1,
+  type DiscoveryEpistemicValidationOutcomeV1,
   type DiscoveryFeedbackEventV1,
   type DiscoveryReentryManifestV1,
   type DiscoveryApprovedResourceRevisionRefV1,
@@ -75,6 +80,7 @@ export const DISCOVERY_REENTRY_CONSUMPTION_REASON_CODES = [
   'IDENTITY_MISMATCH',
   'UNSUPPORTED_RESOURCE_KIND',
   'RETRYABLE_INFRASTRUCTURE_FAILURE',
+  'DETERMINISTIC_CORRECTION_FAILURE',
 ] as const;
 export type DiscoveryReentryConsumptionReasonCodeV1 =
   (typeof DISCOVERY_REENTRY_CONSUMPTION_REASON_CODES)[number];
@@ -479,6 +485,37 @@ const isRetryableFailure = (error: unknown): error is { readonly retryable: true
   error !== null &&
   'retryable' in error &&
   (error as { readonly retryable?: unknown }).retryable === true;
+
+/**
+ * Additive hook on the existing DERIVED_DISCOVERY validation authority. It
+ * evaluates challenge context; it does not own Finding, Evidence, Review or
+ * Canonical state. The conservative fallback is explicitly non-Reviewable
+ * until a deployment supplies the governed comparator.
+ */
+export type DiscoveryDerivedValidationAuthorityPort = {
+  validateEpistemicCorrection(input: {
+    readonly identity: DiscoveryEpistemicReentryIdentityResultV1;
+    readonly finding: DiscoveryFindingEnvelopeV1;
+    readonly candidate: DerivedKnowledgeCandidateV1;
+    readonly feedback: DiscoveryFeedbackEventV1;
+    readonly context: DiscoveryEpistemicReentryContextV1;
+  }): Promise<DiscoveryEpistemicValidationResultV1>;
+};
+
+const conservativeDiscoveryDerivedValidationAuthority: DiscoveryDerivedValidationAuthorityPort = {
+  async validateEpistemicCorrection({ identity, finding, feedback, context }) {
+    return createDiscoveryEpistemicValidationResultV1({
+      logicalIdentityKey: identity.logicalIdentityKey,
+      feedbackId: feedback.feedbackId,
+      projectId: finding.projectId,
+      findingId: finding.findingId,
+      findingRevision: finding.findingRevision,
+      feedbackKind: context.feedbackKind,
+      outcome: 'INSUFFICIENTLY_RESOLVABLE',
+      evaluatedAt: finding.createdAt,
+    });
+  },
+};
 
 const sameCanonicalBase = (
   left: DiscoveryCanonicalBaseIdentityV1,
@@ -958,6 +995,12 @@ export type DiscoveryEpistemicReentryConsumeResultV1 =
       readonly disposition: 'BLOCKED_NON_RETRYABLE';
     }
   | {
+      readonly status: 'BLOCKED_NON_RETRYABLE';
+      readonly reason: string;
+      readonly reasonCode: DiscoveryReentryConsumptionReasonCodeV1;
+      readonly disposition: 'BLOCKED_NON_RETRYABLE';
+    }
+  | {
       readonly status: 'RETRYABLE';
       readonly reason: string;
       readonly reasonCode: 'RETRYABLE_INFRASTRUCTURE_FAILURE';
@@ -998,8 +1041,34 @@ const epistemicContextFor = (
   ...(feedback.reason === undefined ? {} : { reason: feedback.reason }),
 });
 
+const assertEpistemicValidationResultMatchesInput = (
+  result: unknown,
+  identity: DiscoveryEpistemicReentryIdentityResultV1,
+  finding: DiscoveryFindingEnvelopeV1,
+  context: DiscoveryEpistemicReentryContextV1,
+  validationProfile: DerivedKnowledgeCandidateV1['validationProfile'],
+): DiscoveryEpistemicValidationResultV1 => {
+  const decoded = decodeDiscoveryEpistemicValidationResultV1(result);
+  if (
+    decoded.logicalIdentityKey !== identity.logicalIdentityKey ||
+    decoded.feedbackId !== context.feedbackId ||
+    decoded.projectId !== finding.projectId ||
+    decoded.findingId !== finding.findingId ||
+    decoded.findingRevision !== finding.findingRevision ||
+    decoded.feedbackKind !== context.feedbackKind ||
+    decoded.validationFocus !== context.validationFocus ||
+    semanticStableJson(decoded.validationProfile) !== semanticStableJson(validationProfile)
+  ) {
+    throw new TypeError(
+      'DERIVED_DISCOVERY validation returned an outcome for a different correction identity.',
+    );
+  }
+  return decoded;
+};
+
 export class DiscoveryEpistemicReentryConsumer {
   private readonly retryBackoffMs: number;
+  private readonly validationAuthority: DiscoveryDerivedValidationAuthorityPort;
 
   public constructor(
     private readonly persistence: DiscoveryReentryPersistencePort,
@@ -1008,10 +1077,13 @@ export class DiscoveryEpistemicReentryConsumer {
     options: {
       readonly retryBackoffMs?: number;
       readonly freshnessEvaluator?: DiscoveryReentryFreshnessEvaluatorPort;
+      readonly validationAuthority?: DiscoveryDerivedValidationAuthorityPort;
     } = {},
   ) {
     this.retryBackoffMs = options.retryBackoffMs ?? DISCOVERY_REENTRY_DEFAULT_RETRY_BACKOFF_MS;
     this.freshnessEvaluator = options.freshnessEvaluator;
+    this.validationAuthority =
+      options.validationAuthority ?? conservativeDiscoveryDerivedValidationAuthority;
     if (
       !Number.isSafeInteger(this.retryBackoffMs) ||
       this.retryBackoffMs < 100 ||
@@ -1031,7 +1103,9 @@ export class DiscoveryEpistemicReentryConsumer {
     occurredAt: string,
     nextEligibleAt?: string,
   ): Promise<void> {
-    if (this.persistence.recordEpistemicReentryDisposition === undefined) return;
+    if (this.persistence.recordEpistemicReentryDisposition === undefined) {
+      throw new TypeError('EPISTEMIC trigger disposition authority is unavailable.');
+    }
     await this.persistence.recordEpistemicReentryDisposition({
       identity,
       disposition,
@@ -1042,28 +1116,52 @@ export class DiscoveryEpistemicReentryConsumer {
     });
   }
 
+  private async closeStaleFinding(
+    finding: DiscoveryFindingEnvelopeV1,
+    lifecycle: DiscoveryReentryLifecycleCurrentV1,
+    assessment: DiscoveryReentryFreshnessAssessmentV1,
+  ): Promise<DiscoveryReentryLifecycleCurrentV1> {
+    if (!isEpistemicFreshnessFailure(assessment)) return lifecycle;
+    if (this.persistence.transitionFindingToStale === undefined) return lifecycle;
+    const transition = await this.persistence.transitionFindingToStale({
+      projectId: finding.projectId,
+      findingId: finding.findingId,
+      findingRevision: finding.findingRevision,
+      expectedLifecycleRevision: lifecycle.lifecycleRevision,
+      canonicalBase: finding.canonicalBase,
+      discoveryBase: finding.discoveryBase,
+      occurredAt: assessment.assessedAt,
+    });
+    return transition.current;
+  }
+
   private async retryable(
     identity: DiscoveryEpistemicReentryIdentityResultV1,
     error: unknown,
   ): Promise<DiscoveryEpistemicReentryConsumeResultV1> {
-    const now = this.clock();
-    const occurredAt = now.toISOString();
-    const nextEligibleAt = new Date(now.getTime() + this.retryBackoffMs).toISOString();
-    await this.disposition(
-      identity,
-      'RETRYABLE',
-      'RETRYABLE_INFRASTRUCTURE_FAILURE',
-      textOf(error),
-      occurredAt,
-      nextEligibleAt,
-    );
-    return {
-      status: 'RETRYABLE',
-      reason: textOf(error),
-      reasonCode: 'RETRYABLE_INFRASTRUCTURE_FAILURE',
-      disposition: 'RETRYABLE',
-      nextEligibleAt,
-    };
+    try {
+      const now = this.clock();
+      if (!Number.isFinite(now.getTime())) throw new TypeError('clock must return a valid Date');
+      const occurredAt = now.toISOString();
+      const nextEligibleAt = new Date(now.getTime() + this.retryBackoffMs).toISOString();
+      await this.disposition(
+        identity,
+        'RETRYABLE',
+        'RETRYABLE_INFRASTRUCTURE_FAILURE',
+        textOf(error),
+        occurredAt,
+        nextEligibleAt,
+      );
+      return {
+        status: 'RETRYABLE',
+        reason: textOf(error),
+        reasonCode: 'RETRYABLE_INFRASTRUCTURE_FAILURE',
+        disposition: 'RETRYABLE',
+        nextEligibleAt,
+      };
+    } catch (dispositionError) {
+      return { status: 'PERSISTENCE_FAILURE', reason: textOf(dispositionError) };
+    }
   }
 
   public async consume(
@@ -1222,6 +1320,7 @@ export class DiscoveryEpistemicReentryConsumer {
       if (assessment !== undefined && assessment.state !== 'FRESH') {
         if (assessment.state === 'PERSISTENCE_FAILURE')
           return this.retryable(identity, new Error(assessment.reasonDetail));
+        const closedLifecycle = await this.closeStaleFinding(finding, lifecycle, assessment);
         await this.disposition(
           identity,
           'INELIGIBLE',
@@ -1232,7 +1331,7 @@ export class DiscoveryEpistemicReentryConsumer {
         return {
           status: 'INELIGIBLE',
           logicalIdentityKey: identity.logicalIdentityKey,
-          lifecycleState: lifecycle.lifecycleState,
+          lifecycleState: closedLifecycle.lifecycleState,
           disposition: 'INELIGIBLE',
         };
       }
@@ -1250,11 +1349,28 @@ export class DiscoveryEpistemicReentryConsumer {
         approvedRelatedResourceRefs: resolution.refs,
         createdAt: occurredAt,
       });
+      const validationResult = assertEpistemicValidationResultMatchesInput(
+        await this.validationAuthority.validateEpistemicCorrection({
+          identity,
+          finding,
+          candidate,
+          feedback,
+          context: manifest.epistemicContext!,
+        }),
+        identity,
+        finding,
+        manifest.epistemicContext!,
+        candidate.validationProfile,
+      );
+      const validatedCandidate = decodeDerivedKnowledgeCandidateV1({
+        ...candidate,
+        epistemicValidationResult: validationResult,
+      });
       const persisted = await this.persistence.persistIntake({
         logicalIdentity: identity,
         finding,
         manifest,
-        candidate,
+        candidate: validatedCandidate,
         expectedLifecycleRevision: lifecycle.lifecycleRevision,
         publicationId: `epistemic-reentry:${identity.logicalIdentityKey}`,
         occurredAt,
@@ -1283,7 +1399,23 @@ export class DiscoveryEpistemicReentryConsumer {
       };
     } catch (error) {
       if (isRetryableFailure(error)) return this.retryable(identity, error);
-      return { status: 'PERSISTENCE_FAILURE', reason: textOf(error) };
+      try {
+        await this.disposition(
+          identity,
+          'BLOCKED_NON_RETRYABLE',
+          'DETERMINISTIC_CORRECTION_FAILURE',
+          textOf(error),
+          this.clock().toISOString(),
+        );
+        return {
+          status: 'BLOCKED_NON_RETRYABLE',
+          reason: textOf(error),
+          reasonCode: 'DETERMINISTIC_CORRECTION_FAILURE',
+          disposition: 'BLOCKED_NON_RETRYABLE',
+        };
+      } catch (dispositionError) {
+        return { status: 'PERSISTENCE_FAILURE', reason: textOf(dispositionError) };
+      }
     }
   }
 
@@ -1372,6 +1504,11 @@ export class PersistentDiscoveryReentryWorker {
         const result = await this.reviewMaterializer!.materialize({ logicalIdentityKey });
         if (result.status === 'CREATED' || result.status === 'IDEMPOTENT') {
           materializedKeys.add(logicalIdentityKey);
+        } else if (result.status === 'BLOCKED_VALIDATION') {
+          console.info('[discovery-reentry-worker] correction validation is not Review-eligible', {
+            logicalIdentityKey,
+            outcome: result.outcome,
+          });
         } else {
           console.error('[discovery-reentry-worker] Review materialization intake not found', {
             logicalIdentityKey,
@@ -1391,12 +1528,22 @@ export class PersistentDiscoveryReentryWorker {
       ...(epistemicBatch === undefined ? [] : epistemicBatch.results),
     ]) {
       if (result.status !== 'CREATED' && result.status !== 'IDEMPOTENT') continue;
+      if (
+        result.candidate.epistemicContext !== undefined &&
+        result.candidate.epistemicValidationResult?.outcome !== 'SUPPORTED'
+      ) {
+        continue;
+      }
       await materialize(result.logicalIdentityKey);
     }
     try {
       const pending = await this.consumer.listPendingReviewMaterialization(this.batchLimit);
       for (const intake of pending) {
-        if (!materializedKeys.has(intake.logicalIdentityKey)) {
+        if (
+          !materializedKeys.has(intake.logicalIdentityKey) &&
+          (intake.candidate.epistemicContext === undefined ||
+            intake.candidate.epistemicValidationResult?.outcome === 'SUPPORTED')
+        ) {
           await materialize(intake.logicalIdentityKey);
         }
       }
@@ -1482,6 +1629,12 @@ export type DiscoveryReviewMaterializationResultV1 =
       readonly status: 'BLOCKED';
       readonly assessment: DiscoveryReentryFreshnessAssessmentV1;
       readonly resource?: DiscoveryReviewResourceV1;
+    }
+  | {
+      /** A correction outcome was durably evaluated but is not Review-eligible. */
+      readonly status: 'BLOCKED_VALIDATION';
+      readonly outcome: DiscoveryEpistemicValidationOutcomeV1;
+      readonly validationResult?: DiscoveryEpistemicValidationResultV1;
     };
 
 const reviewMaterializationTargetForFindingType = (
@@ -1567,6 +1720,32 @@ const assertAuthoritativeFindingCandidatePairV1 = (
   }
   if (!sameReviewJson(candidate.validationProfile, DISCOVERY_DERIVED_VALIDATION_PROFILE_V1)) {
     throw new TypeError('Persisted candidate validationProfile is not the governed profile.');
+  }
+  if (candidate.epistemicContext !== undefined) {
+    const outcome = candidate.epistemicValidationResult;
+    const expectedIdentity = computeDiscoveryEpistemicReentryIdentityV1({
+      projectId: finding.projectId,
+      feedbackId: candidate.epistemicContext.feedbackId,
+      findingId: finding.findingId,
+      findingRevision: finding.findingRevision,
+    });
+    if (
+      outcome === undefined ||
+      outcome.logicalIdentityKey !== expectedIdentity.logicalIdentityKey ||
+      outcome.feedbackId !== candidate.epistemicContext.feedbackId ||
+      outcome.projectId !== finding.projectId ||
+      outcome.findingId !== finding.findingId ||
+      outcome.findingRevision !== finding.findingRevision ||
+      outcome.feedbackKind !== candidate.epistemicContext.feedbackKind ||
+      outcome.validationFocus !== candidate.epistemicContext.validationFocus ||
+      !sameReviewJson(outcome.validationProfile, candidate.validationProfile)
+    ) {
+      throw new TypeError(
+        'Persisted candidate correction validation outcome does not match the authoritative Finding.',
+      );
+    }
+  } else if (candidate.epistemicValidationResult !== undefined) {
+    throw new TypeError('Persisted candidate correction validation outcome lacks its context.');
   }
   if (!reviewSubset(candidate.accessScope, finding.accessScope)) {
     throw new TypeError('Persisted candidate accessScope widens Finding authority.');
@@ -1852,7 +2031,18 @@ export const normalizeDiscoveryFindingToReviewResourceV1 = (input: {
         normalizedMaterial,
       }),
     ),
+    ...(candidate.epistemicValidationResult === undefined
+      ? {}
+      : { epistemicValidationResult: candidate.epistemicValidationResult }),
   };
+  if (
+    candidate.epistemicContext !== undefined &&
+    candidate.epistemicValidationResult?.outcome !== 'SUPPORTED'
+  ) {
+    throw new TypeError(
+      'An epistemic correction must have a server-authoritative SUPPORTED outcome before Review materialization.',
+    );
+  }
   const impactSummary = normalizedMaterial.impact.map((entry) => entry.description).join(' ');
   const digestInput: DiscoveryReviewResourceDigestInputV1 = {
     schemaVersion: candidate.schemaVersion,
@@ -1883,6 +2073,9 @@ export const normalizeDiscoveryFindingToReviewResourceV1 = (input: {
       candidateId: candidate.candidateId,
       candidateRevision: candidate.candidateRevision,
       origin: candidate.origin,
+      ...(candidate.epistemicValidationResult === undefined
+        ? {}
+        : { validationResultDigest: candidate.epistemicValidationResult.digest }),
     }),
     resourceRevision,
     effectiveProjectId: candidate.projectId,
@@ -2013,11 +2206,27 @@ export class DiscoveryReviewMaterializer implements DiscoveryReviewMaterializerP
     }
     if (
       stored.lifecycle.lifecycleState !== 'VALIDATING' &&
-      stored.lifecycle.lifecycleState !== 'REVIEW_READY'
+      stored.lifecycle.lifecycleState !== 'REVIEW_READY' &&
+      !(
+        stored.manifest.epistemicContext !== undefined &&
+        ['REENTERED', 'DISMISSED', 'SUPPRESSED'].includes(stored.lifecycle.lifecycleState)
+      )
     ) {
       throw new TypeError(
         `Finding lifecycle ${stored.lifecycle.lifecycleState} is not eligible for Review materialization.`,
       );
+    }
+    const epistemicValidationResult = stored.candidate.epistemicValidationResult;
+    if (stored.manifest.epistemicContext !== undefined) {
+      if (epistemicValidationResult?.outcome !== 'SUPPORTED') {
+        return {
+          status: 'BLOCKED_VALIDATION',
+          outcome: epistemicValidationResult?.outcome ?? 'INSUFFICIENTLY_RESOLVABLE',
+          ...(epistemicValidationResult === undefined
+            ? {}
+            : { validationResult: epistemicValidationResult }),
+        };
+      }
     }
     const assessedAt = new Date().toISOString();
     const beforeSave = await this.freshness(
@@ -2064,7 +2273,11 @@ export class DiscoveryReviewMaterializer implements DiscoveryReviewMaterializerP
       await this.staleClose(finding, stored.lifecycle, afterSave);
       return { status: 'BLOCKED', assessment: afterSave, resource };
     }
-    if (this.persistence.transitionFindingToReviewReady !== undefined) {
+    if (
+      this.persistence.transitionFindingToReviewReady !== undefined &&
+      (stored.manifest.epistemicContext === undefined ||
+        stored.lifecycle.lifecycleState === 'VALIDATING')
+    ) {
       const transition = await this.persistence.transitionFindingToReviewReady({
         projectId: finding.projectId,
         findingId: finding.findingId,

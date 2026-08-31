@@ -18,6 +18,7 @@ import {
   DISCOVERY_EPISTEMIC_REENTRY_IDENTITY_VERSION,
   DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_BY_KIND,
   DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_VERSION,
+  computeDiscoveryEpistemicReentryIdentityV1,
   type DiscoveryEpistemicFeedbackKindV1,
   type DiscoveryEpistemicValidationFocusV1,
 } from './discovery-feedback.js';
@@ -63,6 +64,37 @@ export type DiscoveryEpistemicReentryContextV1 = {
   readonly reasonKind: typeof DISCOVERY_EPISTEMIC_CHALLENGE_REASON_KIND;
   /** Optional bounded rationale; never Evidence, Fact, Claim or validation output. */
   readonly reason?: string;
+};
+
+export const DISCOVERY_EPISTEMIC_VALIDATION_RESULT_VERSION_V1 =
+  'discovery-epistemic-validation-result:v1' as const;
+export const DISCOVERY_EPISTEMIC_VALIDATION_OUTCOMES = [
+  'SUPPORTED',
+  'NOT_SUPPORTED',
+  'INSUFFICIENTLY_RESOLVABLE',
+] as const;
+export type DiscoveryEpistemicValidationOutcomeV1 =
+  (typeof DISCOVERY_EPISTEMIC_VALIDATION_OUTCOMES)[number];
+
+/**
+ * Additive outcome from the existing DERIVED_DISCOVERY validation authority.
+ * It is not Evidence, a Fact, a Claim, or a user assertion.
+ */
+export type DiscoveryEpistemicValidationResultV1 = {
+  readonly schemaVersion: DiscoveryReentrySchemaVersion;
+  readonly resultVersion: typeof DISCOVERY_EPISTEMIC_VALIDATION_RESULT_VERSION_V1;
+  readonly logicalIdentityKey: string;
+  readonly feedbackId: string;
+  readonly projectId: string;
+  readonly findingId: string;
+  readonly findingRevision: number;
+  readonly feedbackKind: DiscoveryEpistemicFeedbackKindV1;
+  readonly validationFocusVersion: typeof DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_VERSION;
+  readonly validationFocus: DiscoveryEpistemicValidationFocusV1;
+  readonly validationProfile: DiscoveryDerivedValidationProfileV1;
+  readonly outcome: DiscoveryEpistemicValidationOutcomeV1;
+  readonly digest: string;
+  readonly evaluatedAt: string;
 };
 
 export type DiscoveryReentryManifestV1 = {
@@ -218,6 +250,7 @@ export type DerivedKnowledgeCandidateV1 = {
   readonly reentryEligibility: DiscoveryReentryEligibilityV1;
   readonly reviewEligibility: DiscoveryReviewEligibilityV1;
   readonly epistemicContext?: DiscoveryEpistemicReentryContextV1;
+  readonly epistemicValidationResult?: DiscoveryEpistemicValidationResultV1;
   /** Present only for ACTION_SUGGESTION and never authorizes execution. */
   readonly actionExecutionStatus?: 'CANDIDATE_ONLY';
   readonly createdAt: string;
@@ -377,6 +410,8 @@ export type DiscoveryReviewValidationResultV1 = {
   readonly artifactId: string;
   readonly artifactRevision: string;
   readonly digest: string;
+  /** Present only for a correction resource; the base artifact remains intact. */
+  readonly epistemicValidationResult?: DiscoveryEpistemicValidationResultV1;
 };
 
 export type DiscoveryReviewLineageV1 = {
@@ -428,6 +463,8 @@ export type DiscoveryReviewRootIdentityInputV1 = {
   readonly candidateId: string;
   readonly candidateRevision: number;
   readonly origin: 'DERIVED_DISCOVERY';
+  /** Correction Review roots are also bound to the immutable outcome digest. */
+  readonly validationResultDigest?: string;
 };
 
 /**
@@ -444,6 +481,11 @@ export const computeDiscoveryReviewRootIdentityV1 = (
       candidateId: text(input.candidateId, 'candidateId'),
       candidateRevision: positiveInteger(input.candidateRevision, 'candidateRevision'),
       origin: enumValue(input.origin, ['DERIVED_DISCOVERY'] as const, 'origin'),
+      ...(input.validationResultDigest === undefined
+        ? {}
+        : {
+            validationResultDigest: text(input.validationResultDigest, 'validationResultDigest'),
+          }),
     }),
   );
 
@@ -486,6 +528,13 @@ export const assertDiscoveryReviewResourceMatchesCandidateV1 = (
       'must exactly preserve the authoritative WP2 candidate lineage',
     );
   }
+  const candidateOutcome = candidate.epistemicValidationResult;
+  const resourceOutcome = resource.validationResult.epistemicValidationResult;
+  if (sameJson(candidateOutcome, resourceOutcome)) return;
+  return fail(
+    'discoveryReviewResource.validationResult.epistemicValidationResult',
+    'must exactly preserve the authoritative correction validation outcome',
+  );
 };
 
 export const discoveryReviewResourceContentDigestV1 = (
@@ -1745,7 +1794,14 @@ const decodeReviewValidationResult = (
 ): DiscoveryReviewValidationResultV1 => {
   const object = strictObject(
     value,
-    ['schemaVersion', 'artifactKind', 'artifactId', 'artifactRevision', 'digest'],
+    [
+      'schemaVersion',
+      'artifactKind',
+      'artifactId',
+      'artifactRevision',
+      'digest',
+      'epistemicValidationResult',
+    ],
     path,
   );
   enumValue(
@@ -1758,13 +1814,149 @@ const decodeReviewValidationResult = (
     ['VALIDATION'] as const,
     `${path}.artifactKind`,
   );
+  const epistemicValidationResult =
+    object.epistemicValidationResult === undefined
+      ? undefined
+      : decodeDiscoveryEpistemicValidationResultV1(
+          object.epistemicValidationResult,
+          `${path}.epistemicValidationResult`,
+        );
   return {
     schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
     artifactKind: 'VALIDATION',
     artifactId: text(required(object, 'artifactId', path), `${path}.artifactId`),
     artifactRevision: text(required(object, 'artifactRevision', path), `${path}.artifactRevision`),
     digest: text(required(object, 'digest', path), `${path}.digest`),
+    ...(epistemicValidationResult === undefined ? {} : { epistemicValidationResult }),
   };
+};
+
+const discoveryEpistemicValidationResultDigestInput = (
+  result:
+    Omit<DiscoveryEpistemicValidationResultV1, 'digest'> | DiscoveryEpistemicValidationResultV1,
+): Omit<DiscoveryEpistemicValidationResultV1, 'digest'> => {
+  const { digest: _digest, ...withoutDigest } = result as DiscoveryEpistemicValidationResultV1;
+  void _digest;
+  return withoutDigest;
+};
+
+export const computeDiscoveryEpistemicValidationResultDigestV1 = (
+  result:
+    Omit<DiscoveryEpistemicValidationResultV1, 'digest'> | DiscoveryEpistemicValidationResultV1,
+): string => sha256Text(semanticStableJson(discoveryEpistemicValidationResultDigestInput(result)));
+
+export const decodeDiscoveryEpistemicValidationResultV1 = (
+  value: unknown,
+  path = 'epistemicValidationResult',
+): DiscoveryEpistemicValidationResultV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'resultVersion',
+      'logicalIdentityKey',
+      'feedbackId',
+      'projectId',
+      'findingId',
+      'findingRevision',
+      'feedbackKind',
+      'validationFocusVersion',
+      'validationFocus',
+      'validationProfile',
+      'outcome',
+      'digest',
+      'evaluatedAt',
+    ],
+    path,
+  );
+  const result: Omit<DiscoveryEpistemicValidationResultV1, 'digest'> = {
+    schemaVersion: enumValue(
+      required(object, 'schemaVersion', path),
+      [DISCOVERY_REENTRY_SCHEMA_VERSION],
+      `${path}.schemaVersion`,
+    ),
+    resultVersion: enumValue(
+      required(object, 'resultVersion', path),
+      [DISCOVERY_EPISTEMIC_VALIDATION_RESULT_VERSION_V1],
+      `${path}.resultVersion`,
+    ),
+    logicalIdentityKey: text(
+      required(object, 'logicalIdentityKey', path),
+      `${path}.logicalIdentityKey`,
+    ),
+    feedbackId: text(required(object, 'feedbackId', path), `${path}.feedbackId`),
+    projectId: text(required(object, 'projectId', path), `${path}.projectId`),
+    findingId: text(required(object, 'findingId', path), `${path}.findingId`),
+    findingRevision: positiveInteger(
+      required(object, 'findingRevision', path),
+      `${path}.findingRevision`,
+    ),
+    feedbackKind: enumValue(
+      required(object, 'feedbackKind', path),
+      DISCOVERY_EPISTEMIC_FEEDBACK_KINDS,
+      `${path}.feedbackKind`,
+    ),
+    validationFocusVersion: enumValue(
+      required(object, 'validationFocusVersion', path),
+      [DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_VERSION],
+      `${path}.validationFocusVersion`,
+    ),
+    validationFocus: enumValue(
+      required(object, 'validationFocus', path),
+      Object.values(DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_BY_KIND),
+      `${path}.validationFocus`,
+    ),
+    validationProfile: decodeProfile(
+      required(object, 'validationProfile', path),
+      `${path}.validationProfile`,
+    ),
+    outcome: enumValue(
+      required(object, 'outcome', path),
+      DISCOVERY_EPISTEMIC_VALIDATION_OUTCOMES,
+      `${path}.outcome`,
+    ),
+    evaluatedAt: isoTimestamp(required(object, 'evaluatedAt', path), `${path}.evaluatedAt`),
+  };
+  const expectedFocus = DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_BY_KIND[result.feedbackKind];
+  if (result.validationFocus !== expectedFocus) {
+    return fail(`${path}.validationFocus`, 'must match the server-owned feedback mapping');
+  }
+  const digest = text(required(object, 'digest', path), `${path}.digest`);
+  if (digest !== computeDiscoveryEpistemicValidationResultDigestV1(result)) {
+    return fail(`${path}.digest`, 'must match the server-owned validation outcome');
+  }
+  return { ...result, digest };
+};
+
+export const createDiscoveryEpistemicValidationResultV1 = (input: {
+  readonly logicalIdentityKey: string;
+  readonly feedbackId: string;
+  readonly projectId: string;
+  readonly findingId: string;
+  readonly findingRevision: number;
+  readonly feedbackKind: DiscoveryEpistemicFeedbackKindV1;
+  readonly outcome: DiscoveryEpistemicValidationOutcomeV1;
+  readonly evaluatedAt: string;
+}): DiscoveryEpistemicValidationResultV1 => {
+  const result: Omit<DiscoveryEpistemicValidationResultV1, 'digest'> = {
+    schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
+    resultVersion: DISCOVERY_EPISTEMIC_VALIDATION_RESULT_VERSION_V1,
+    logicalIdentityKey: text(input.logicalIdentityKey, 'logicalIdentityKey'),
+    feedbackId: text(input.feedbackId, 'feedbackId'),
+    projectId: text(input.projectId, 'projectId'),
+    findingId: text(input.findingId, 'findingId'),
+    findingRevision: positiveInteger(input.findingRevision, 'findingRevision'),
+    feedbackKind: input.feedbackKind,
+    validationFocusVersion: DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_VERSION,
+    validationFocus: DISCOVERY_EPISTEMIC_VALIDATION_FOCUS_BY_KIND[input.feedbackKind],
+    validationProfile: DISCOVERY_DERIVED_VALIDATION_PROFILE_V1,
+    outcome: input.outcome,
+    evaluatedAt: isoTimestamp(input.evaluatedAt, 'evaluatedAt'),
+  };
+  return decodeDiscoveryEpistemicValidationResultV1({
+    ...result,
+    digest: computeDiscoveryEpistemicValidationResultDigestV1(result),
+  });
 };
 
 const decodeReviewLineage = (value: unknown, path: string): DiscoveryReviewLineageV1 => {
@@ -1826,6 +2018,55 @@ const decodeReviewLineage = (value: unknown, path: string): DiscoveryReviewLinea
     object.epistemicContext === undefined
       ? undefined
       : decodeEpistemicContext(object.epistemicContext, `${path}.epistemicContext`);
+  const validationResult = decodeReviewValidationResult(
+    required(object, 'validationResult', path),
+    `${path}.validationResult`,
+  );
+  const epistemicValidationResult = validationResult.epistemicValidationResult;
+  if (epistemicContext === undefined && epistemicValidationResult !== undefined) {
+    return fail(
+      `${path}.validationResult.epistemicValidationResult`,
+      'requires an epistemic challenge context',
+    );
+  }
+  if (epistemicContext !== undefined) {
+    if (epistemicValidationResult === undefined) {
+      return fail(
+        `${path}.validationResult.epistemicValidationResult`,
+        'is required for a correction Review resource',
+      );
+    }
+    if (
+      epistemicValidationResult.feedbackId !== epistemicContext.feedbackId ||
+      epistemicValidationResult.logicalIdentityKey !==
+        computeDiscoveryEpistemicReentryIdentityV1({
+          projectId,
+          feedbackId: epistemicContext.feedbackId,
+          findingId: text(required(object, 'findingId', path), `${path}.findingId`),
+          findingRevision: positiveInteger(
+            required(object, 'findingRevision', path),
+            `${path}.findingRevision`,
+          ),
+        }).logicalIdentityKey ||
+      epistemicValidationResult.feedbackKind !== epistemicContext.feedbackKind ||
+      epistemicValidationResult.validationFocus !== epistemicContext.validationFocus ||
+      epistemicValidationResult.outcome !== 'SUPPORTED' ||
+      epistemicValidationResult.projectId !== projectId ||
+      epistemicValidationResult.findingId !==
+        text(required(object, 'findingId', path), `${path}.findingId`) ||
+      epistemicValidationResult.findingRevision !==
+        positiveInteger(required(object, 'findingRevision', path), `${path}.findingRevision`) ||
+      semanticStableJson(epistemicValidationResult.validationProfile) !==
+        semanticStableJson(
+          decodeProfile(required(object, 'validationProfile', path), `${path}.validationProfile`),
+        )
+    ) {
+      return fail(
+        `${path}.validationResult.epistemicValidationResult`,
+        'must be the supported outcome for the same correction context',
+      );
+    }
+  }
   return {
     schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
     origin: 'DERIVED_DISCOVERY',
@@ -1867,10 +2108,7 @@ const decodeReviewLineage = (value: unknown, path: string): DiscoveryReviewLinea
       required(object, 'validationProfile', path),
       `${path}.validationProfile`,
     ),
-    validationResult: decodeReviewValidationResult(
-      required(object, 'validationResult', path),
-      `${path}.validationResult`,
-    ),
+    validationResult,
     ...(epistemicContext === undefined ? {} : { epistemicContext }),
   };
 };
@@ -2012,6 +2250,9 @@ export const decodeDiscoveryReviewResourceV1 = (
     candidateId: resource.candidateId,
     candidateRevision: resource.candidateRevision,
     origin: resource.origin,
+    ...(resource.validationResult.epistemicValidationResult === undefined
+      ? {}
+      : { validationResultDigest: resource.validationResult.epistemicValidationResult.digest }),
   });
   if (resource.reviewResourceId !== expectedReviewResourceId) {
     return fail(
@@ -2057,6 +2298,7 @@ const decodeDerivedCandidateCore = (value: unknown, path: string): DerivedKnowle
       'reviewEligibility',
       'actionExecutionStatus',
       'epistemicContext',
+      'epistemicValidationResult',
       'createdAt',
     ],
     path,
@@ -2117,6 +2359,25 @@ const decodeDerivedCandidateCore = (value: unknown, path: string): DerivedKnowle
     object.epistemicContext === undefined
       ? undefined
       : decodeEpistemicContext(object.epistemicContext, `${path}.epistemicContext`);
+  const epistemicValidationResult =
+    object.epistemicValidationResult === undefined
+      ? undefined
+      : decodeDiscoveryEpistemicValidationResultV1(
+          object.epistemicValidationResult,
+          `${path}.epistemicValidationResult`,
+        );
+  if (epistemicContext === undefined && epistemicValidationResult !== undefined) {
+    return fail(`${path}.epistemicValidationResult`, 'requires an epistemic challenge context');
+  }
+  if (
+    epistemicContext !== undefined &&
+    epistemicValidationResult !== undefined &&
+    (epistemicValidationResult.feedbackId !== epistemicContext.feedbackId ||
+      epistemicValidationResult.feedbackKind !== epistemicContext.feedbackKind ||
+      epistemicValidationResult.validationFocus !== epistemicContext.validationFocus)
+  ) {
+    return fail(`${path}.epistemicValidationResult`, 'must match the epistemic challenge context');
+  }
   return {
     schemaVersion: DISCOVERY_REENTRY_SCHEMA_VERSION,
     candidateId: text(required(object, 'candidateId', path), `${path}.candidateId`),
@@ -2168,6 +2429,7 @@ const decodeDerivedCandidateCore = (value: unknown, path: string): DerivedKnowle
     ),
     reviewEligibility,
     ...(epistemicContext === undefined ? {} : { epistemicContext }),
+    ...(epistemicValidationResult === undefined ? {} : { epistemicValidationResult }),
     ...(actionExecutionStatus === undefined ? {} : { actionExecutionStatus }),
     createdAt: isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`),
   };
@@ -2185,6 +2447,7 @@ export type DerivedKnowledgeCandidateCreateInputV1 = {
   /** Required server-authoritative resolution; never copied from Finding/Manifest. */
   readonly approvedRelatedResourceRefs: readonly DiscoveryApprovedResourceRevisionRefV1[];
   readonly validationProfile?: DiscoveryDerivedValidationProfileV1;
+  readonly epistemicValidationResult?: DiscoveryEpistemicValidationResultV1;
   readonly createdAt: string;
 };
 
@@ -2229,7 +2492,19 @@ export const createDerivedKnowledgeCandidateV1 = (
   const manifest = decodeDiscoveryReentryManifestV1(input.manifest, 'manifest');
   assertDiscoveryReentryManifestMatchesFindingV1(manifest, finding);
   const eligibility = deriveDiscoveryReentryEligibilityV1(finding.lifecycleState);
-  if (eligibility !== 'ELIGIBLE_FOR_VALIDATION') {
+  const isEpistemicCorrection = manifest.epistemicContext !== undefined;
+  const correctionLifecycleAllowed = [
+    'NEW',
+    'VALIDATING',
+    'REVIEW_READY',
+    'REENTERED',
+    'DISMISSED',
+    'SUPPRESSED',
+  ].includes(finding.lifecycleState);
+  if (
+    (!isEpistemicCorrection && eligibility !== 'ELIGIBLE_FOR_VALIDATION') ||
+    (isEpistemicCorrection && !correctionLifecycleAllowed)
+  ) {
     return fail(
       'finding.lifecycleState',
       `cannot enter derived validation from ${finding.lifecycleState}`,
@@ -2263,11 +2538,14 @@ export const createDerivedKnowledgeCandidateV1 = (
     accessScope: manifest.accessScope,
     sensitivity: manifest.sensitivity,
     validationProfile,
-    reentryEligibility: eligibility,
+    reentryEligibility: isEpistemicCorrection ? 'ELIGIBLE_FOR_VALIDATION' : eligibility,
     reviewEligibility: 'NOT_ELIGIBLE' as const,
     ...(manifest.epistemicContext === undefined
       ? {}
       : { epistemicContext: manifest.epistemicContext }),
+    ...(input.epistemicValidationResult === undefined
+      ? {}
+      : { epistemicValidationResult: input.epistemicValidationResult }),
     ...(finding.findingType === 'ACTION_SUGGESTION'
       ? { actionExecutionStatus: 'CANDIDATE_ONLY' as const }
       : {}),

@@ -880,9 +880,8 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
          ON lifecycle.project_id = candidate.project_id
         AND lifecycle.finding_id = candidate.finding_id
         AND lifecycle.finding_revision = candidate.finding_revision
-       WHERE manifest.requested_reentry_purpose IN (
-         'DERIVED_PROVENANCE_VALIDATION', 'EPISTEMIC_FEEDBACK_CORRECTION'
-       )
+       WHERE (
+         manifest.requested_reentry_purpose = 'DERIVED_PROVENANCE_VALIDATION'
          AND (
            lifecycle.lifecycle_state = 'VALIDATING'
            OR (
@@ -896,6 +895,21 @@ export class PostgresDiscoveryReentryRepository implements DiscoveryReentryPersi
              )
            )
          )
+       )
+       OR (
+         manifest.requested_reentry_purpose = 'EPISTEMIC_FEEDBACK_CORRECTION'
+         AND candidate.candidate->'epistemicValidationResult'->>'outcome' = 'SUPPORTED'
+         AND lifecycle.lifecycle_state IN (
+           'VALIDATING', 'REVIEW_READY', 'REENTERED', 'DISMISSED', 'SUPPRESSED'
+         )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM discovery.reentry_review_resources resource
+           WHERE resource.project_id = candidate.project_id
+             AND resource.candidate_id = candidate.candidate_id
+             AND resource.candidate_revision = candidate.candidate_revision
+         )
+       )
        ORDER BY manifest.created_at, manifest.logical_identity_key
        LIMIT $1`,
       [limit],

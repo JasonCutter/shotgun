@@ -47,7 +47,8 @@ WP2가 기록한 서버 소유 `DiscoveryFeedbackEventV1` 중 EPISTEMIC feedback
 기존 `canonical.outbox`는 `CanonicalCommitted`와 Canonical commit FK에 고정되어 있어
 feedback을 기록하면 Canonical 소유권과 outbox contract를 위반한다. 따라서 새 queue나
 두 번째 outbox를 만들지 않고, WP2 feedback transaction 안에
-`discovery.epistemic_reentry_triggers` durable hand-off ledger row를 함께 기록한다.
+`discovery.epistemic_reentry_triggers` durable epistemic re-entry trigger/disposition
+state row를 함께 기록한다.
 이 row는 processing/disposition state만 소유하고 validation·Finding·Review 의미는
 소유하지 않는다. 재시도 polling은 기존 durable worker 경계를 사용한다.
 
@@ -96,15 +97,41 @@ bounded optional reason으로 보존한다. 이 값은 validation authority가 �
   않는다.
 
 approved resource resolver와 기존 `DiscoveryReentryFreshnessAuthorityPort`,
-`DiscoveryReentryFreshnessEvaluatorPort`를 사용한다. Canonical/Discovery base,
-approved resource revision, Evidence/derivation lineage, access/sensitivity 또는 exact
-Finding revision이 stale/invalid이면 새 result를 조작하지 않고 governed disposition으로
-종료한다.
+`DiscoveryReentryFreshnessEvaluatorPort`를 사용한다. `REVALIDATION_REQUIRED` 또는
+`INVALIDATED`는 기존 reconciliation/stale authority가 허용하는 경우에만 합법적으로
+`STALE`로 전이한다. Canonical/Discovery base, approved resource revision,
+Evidence/derivation lineage, access/sensitivity 또는 exact Finding revision이
+stale/invalid이면 새 result를 조작하지 않고 governed disposition으로 종료하며,
+보안·접근권한 변경은 항상 fail-closed로 처리한다.
 
-EPISTEMIC feedback은 validation 성공 전에는 Review resource를 만들지 않는다. 성공한
-correction intake만 기존 Review materialization bridge가 처리하며, WP4가 Review를
-승인하거나 거부하지 않는다. 기존 access scope와 sensitivity를 widening/downgrade하지
-않으며 모든 조회·FK는 project-bound다.
+EPISTEMIC correction validation은 기존 `DERIVED_DISCOVERY` validation profile에
+종속된 additive result만 반환한다. 결과 상태는 다음 세 가지로 고정한다.
+
+| Outcome                     | Review bridge 동작                                                                                         |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `SUPPORTED`                 | 기존 validation artifact와 Evidence/derivation lineage 검증 후 correction Review resource를 생성할 수 있음 |
+| `NOT_SUPPORTED`             | terminal processed 결과로 보존하고 Review resource를 생성하지 않음                                         |
+| `INSUFFICIENTLY_RESOLVABLE` | 명시적 governed disposition으로 보존하고 Review resource를 생성하지 않음                                   |
+
+결과는 새 validation 저장소를 만들지 않고 기존 re-entry candidate JSON에 additive field로
+저장하며, materialized Review에는 기존 validation result artifact의 additive field로
+복사된다. raw feedback reason/kind는 여전히 NON_EVIDENCE_USER_CHALLENGE context일
+뿐이며 Evidence/Fact/Claim/Canonical을 변경하지 않는다. 배포된 비교 권위가 없을 때의
+보수적 기본값은 `INSUFFICIENTLY_RESOLVABLE`이다.
+
+`SUPPORTED` correction만 기존 Review materialization bridge가 처리한다. `NEW`는
+`NEW → VALIDATING`, `VALIDATING`은 중복 시작 없이 기존 intake를 재사용하고,
+`REVIEW_READY`·`REENTERED`·`DISMISSED`·`SUPPRESSED`는 원래 Finding lifecycle을
+변경하지 않은 채 feedbackId, exact Finding revision, epistemic logical identity,
+validation result digest에 결합된 distinct correction Review resource를 생성한다.
+기존 Review resource/root는 덮어쓰지 않는다. WP4가 Review를 승인하거나 거부하지
+않으며 기존 access scope와 sensitivity를 widening/downgrade하지 않는다. 모든
+조회·FK는 project-bound다.
+
+post-trigger deterministic failure는 `BLOCKED_NON_RETRYABLE` disposition으로 닫고,
+retryable infrastructure failure는 동일 logical identity를 유지한 `RETRYABLE`과
+`nextEligibleAt`을 기록한다. disposition 저장 자체가 실패하면
+`PERSISTENCE_FAILURE` semantics를 반환해 허위 terminal 상태를 보고하지 않는다.
 
 ## 7. OSS Integration Decision
 
@@ -138,7 +165,7 @@ Migration은 056 preflight 후 적용되며, rollback은 해당 branch/배포 mi
 
 ## 9. Verification
 
-- Focused Contract/Unit: `16 passed`
+- Focused Contract/Unit: correction-specific `19 passed`
 - DB test: `tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts` 추가
   (원자적 transaction, reconciliation, exact revision, disposition, project isolation);
   로컬 `TEST_DATABASE_URL` 미설정으로 `NOT_RUN` — PR CI Database gate에서 실행

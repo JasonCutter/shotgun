@@ -102,6 +102,7 @@ import {
   PostgresDiscoveryReentryRepository,
 } from '../../../adapters/discovery-reentry-postgres/src/index.js';
 import { PostgresDiscoveryFindingRepository } from '../../../adapters/discovery-finding-postgres/src/index.js';
+import { PostgresDiscoveryFeedbackRepository } from '../../../adapters/discovery-feedback-postgres/src/index.js';
 import { PostgresDiscoveryModelProfileRepository } from '../../../adapters/discovery-model-profile-postgres/src/index.js';
 import { PostgresDiscoveryScheduleRepository } from '../../../adapters/discovery-trigger-coordinator/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
@@ -882,6 +883,7 @@ export const startShotgunApplication = async (
       aiSettingsBackend: recoveryHarness ? undefined : aiSettingsBackend,
       providerExternalTransferApprovals: recoveryHarness ? undefined : providerApprovalService,
       frontendCommandGateway: commandGateway,
+      discoveryFeedbackRepository: new PostgresDiscoveryFeedbackRepository(pool),
       frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),

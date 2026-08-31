@@ -1,5 +1,18 @@
 import { FrontendContractError } from './frontend-foundation.js';
 import {
+  decodeDiscoveryFeedbackEventV1,
+  decodeDiscoverySuppressionDirectiveV1,
+  DISCOVERY_FEEDBACK_CLASSES,
+  DISCOVERY_EPISTEMIC_FEEDBACK_KINDS,
+  DISCOVERY_UTILITY_FEEDBACK_KINDS,
+  DISCOVERY_FEEDBACK_SCOPE_KINDS,
+  type DiscoveryFeedbackClassV1,
+  type DiscoveryFeedbackEventV1,
+  type DiscoveryFeedbackKindV1,
+  type DiscoveryFeedbackScopeV1,
+  type DiscoverySuppressionDirectiveV1,
+} from './discovery-feedback.js';
+import {
   decodeDiscoveryFindingPayloadV1,
   decodeDiscoveryResourceRefV1,
   DISCOVERY_FINDING_LIFECYCLE_STATES,
@@ -100,6 +113,7 @@ export type DiscoveryProductCapabilitiesV1 = {
 
 export const FRONTEND_DISCOVERY_COMMAND_TYPES = {
   dismiss: 'frontend.discovery.dismiss.v1',
+  feedback: 'frontend.discovery.feedback.v1',
 } as const;
 
 export type FrontendDiscoveryCommandType =
@@ -111,6 +125,36 @@ export type DiscoveryDismissFindingCommandRequestV1 = {
   readonly idempotencyKey: string;
   readonly findingId: string;
   readonly findingRevision: number;
+};
+
+/** AKP-7 WP2 — browser-owned intent only. Authority fields are server-derived. */
+export type DiscoveryFeedbackProductCommandRequestV1 = {
+  readonly schemaVersion: FrontendDiscoverySchemaVersion;
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+  readonly findingId: string;
+  readonly findingRevision: number;
+  readonly feedbackClass: DiscoveryFeedbackClassV1;
+  readonly feedbackKind: DiscoveryFeedbackKindV1;
+  readonly reason?: string;
+  readonly scope?: DiscoveryFeedbackScopeV1;
+  /** Browser intent for SNOOZE; the persisted directive calls this expiresAt. */
+  readonly snoozeUntil?: string;
+};
+
+export type DiscoveryFeedbackProductStateRequestV1 = {
+  readonly schemaVersion: FrontendDiscoverySchemaVersion;
+  readonly findingId: string;
+  readonly findingRevision: number;
+};
+
+export type DiscoveryFeedbackProductStateV1 = {
+  readonly schemaVersion: FrontendDiscoverySchemaVersion;
+  readonly projectId: string;
+  readonly findingId: string;
+  readonly findingRevision: number;
+  readonly feedbackHistory: readonly DiscoveryFeedbackEventV1[];
+  readonly suppressionHistory: readonly DiscoverySuppressionDirectiveV1[];
 };
 
 /** Server-derived bridge to the federated Activity root. */
@@ -218,8 +262,14 @@ const text = (value: unknown, path: string): string => {
   return value;
 };
 
-const optionalText = (value: unknown, path: string): string | undefined =>
-  value === undefined ? undefined : text(value, path);
+const optionalText = (value: unknown, path: string, maxLength?: number): string | undefined => {
+  if (value === undefined) return undefined;
+  const result = text(value, path);
+  if (maxLength !== undefined && result.trim().length > maxLength) {
+    return fail(path, `must be at most ${maxLength} characters`);
+  }
+  return result;
+};
 
 const integer = (value: unknown, path: string): number => {
   if (typeof value !== 'number' || !Number.isSafeInteger(value))
@@ -543,6 +593,147 @@ export const decodeDiscoveryDismissFindingCommandRequestV1 = (
     findingRevision: positiveInteger(
       required(object, 'findingRevision', path),
       `${path}.findingRevision`,
+    ),
+  };
+};
+
+const decodeFeedbackKind = (value: unknown, path: string): DiscoveryFeedbackKindV1 => {
+  const values = [
+    ...DISCOVERY_EPISTEMIC_FEEDBACK_KINDS,
+    ...DISCOVERY_UTILITY_FEEDBACK_KINDS,
+  ] as const;
+  if (typeof value !== 'string' || !values.includes(value as (typeof values)[number])) {
+    return fail(path, `must be one of ${values.join(', ')}`);
+  }
+  return value as DiscoveryFeedbackKindV1;
+};
+
+/**
+ * Decodes the intentionally smaller browser command surface. In particular,
+ * Project, principal, actor, Finding fingerprint, matcher and audit fields
+ * are not accepted from the browser.
+ */
+export const decodeDiscoveryFeedbackProductCommandRequestV1 = (
+  value: unknown,
+  path = 'discoveryFeedbackProductCommand',
+  now = Date.now(),
+): DiscoveryFeedbackProductCommandRequestV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'clientRequestId',
+      'idempotencyKey',
+      'findingId',
+      'findingRevision',
+      'feedbackClass',
+      'feedbackKind',
+      'reason',
+      'scope',
+      'snoozeUntil',
+    ],
+    path,
+  );
+  schemaVersion(object, path);
+  const feedbackClass = enumValue(
+    required(object, 'feedbackClass', path),
+    DISCOVERY_FEEDBACK_CLASSES,
+    `${path}.feedbackClass`,
+  );
+  const feedbackKind = decodeFeedbackKind(
+    required(object, 'feedbackKind', path),
+    `${path}.feedbackKind`,
+  );
+  const isEpistemic = (DISCOVERY_EPISTEMIC_FEEDBACK_KINDS as readonly string[]).includes(
+    feedbackKind,
+  );
+  if ((feedbackClass === 'EPISTEMIC') !== isEpistemic) {
+    return fail(`${path}.feedbackClass`, 'feedbackClass and feedbackKind are incompatible');
+  }
+  const snoozeUntil =
+    object.snoozeUntil === undefined
+      ? undefined
+      : isoTimestamp(object.snoozeUntil, `${path}.snoozeUntil`);
+  if (feedbackKind === 'SNOOZE') {
+    if (snoozeUntil === undefined) return fail(`${path}.snoozeUntil`, 'is required for SNOOZE');
+    if (Date.parse(snoozeUntil) <= now) {
+      return fail(`${path}.snoozeUntil`, 'must be in the future');
+    }
+  } else if (snoozeUntil !== undefined) {
+    return fail(`${path}.snoozeUntil`, 'is only allowed for SNOOZE');
+  }
+  const scope =
+    object.scope === undefined
+      ? undefined
+      : enumValue(object.scope, DISCOVERY_FEEDBACK_SCOPE_KINDS, `${path}.scope`);
+  const reason = optionalText(object.reason, `${path}.reason`, 500);
+  return {
+    schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
+    clientRequestId: text(required(object, 'clientRequestId', path), `${path}.clientRequestId`),
+    idempotencyKey: text(required(object, 'idempotencyKey', path), `${path}.idempotencyKey`),
+    findingId: text(required(object, 'findingId', path), `${path}.findingId`),
+    findingRevision: positiveInteger(
+      required(object, 'findingRevision', path),
+      `${path}.findingRevision`,
+    ),
+    feedbackClass,
+    feedbackKind,
+    ...(reason === undefined ? {} : { reason }),
+    ...(scope === undefined ? {} : { scope }),
+    ...(snoozeUntil === undefined ? {} : { snoozeUntil }),
+  };
+};
+
+export const decodeDiscoveryFeedbackProductStateRequestV1 = (
+  value: unknown,
+  path = 'discoveryFeedbackProductStateRequest',
+): DiscoveryFeedbackProductStateRequestV1 => {
+  const object = strictObject(value, ['schemaVersion', 'findingId', 'findingRevision'], path);
+  schemaVersion(object, path);
+  return {
+    schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
+    findingId: text(required(object, 'findingId', path), `${path}.findingId`),
+    findingRevision: positiveInteger(
+      required(object, 'findingRevision', path),
+      `${path}.findingRevision`,
+    ),
+  };
+};
+
+export const decodeDiscoveryFeedbackProductStateV1 = (
+  value: unknown,
+  path = 'discoveryFeedbackProductState',
+): DiscoveryFeedbackProductStateV1 => {
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'projectId',
+      'findingId',
+      'findingRevision',
+      'feedbackHistory',
+      'suppressionHistory',
+    ],
+    path,
+  );
+  schemaVersion(object, path);
+  const feedbackHistory = required(object, 'feedbackHistory', path);
+  const suppressionHistory = required(object, 'suppressionHistory', path);
+  if (!Array.isArray(feedbackHistory)) return fail(`${path}.feedbackHistory`, 'must be an array');
+  if (!Array.isArray(suppressionHistory)) {
+    return fail(`${path}.suppressionHistory`, 'must be an array');
+  }
+  return {
+    schemaVersion: FRONTEND_DISCOVERY_SCHEMA_VERSION,
+    projectId: text(required(object, 'projectId', path), `${path}.projectId`),
+    findingId: text(required(object, 'findingId', path), `${path}.findingId`),
+    findingRevision: positiveInteger(
+      required(object, 'findingRevision', path),
+      `${path}.findingRevision`,
+    ),
+    feedbackHistory: feedbackHistory.map((entry) => decodeDiscoveryFeedbackEventV1(entry)),
+    suppressionHistory: suppressionHistory.map((entry) =>
+      decodeDiscoverySuppressionDirectiveV1(entry),
     ),
   };
 };

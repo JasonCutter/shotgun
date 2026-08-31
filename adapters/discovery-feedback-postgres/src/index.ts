@@ -1,4 +1,4 @@
-import type { Pool, QueryResultRow } from 'pg';
+import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import {
   assertDiscoveryFeedbackEventV1,
@@ -13,6 +13,8 @@ import type {
   DiscoveryFeedbackRepositoryPort,
   DiscoveryRankingPolicyLookupV1,
   DiscoverySuppressionLookupV1,
+  DiscoverySuppressionHistoryLookupV1,
+  DiscoveryFeedbackTransactionHandleV1,
 } from '../../../modules/discovery-feedback/src/index.js';
 import {
   decodeDiscoveryFeedbackEventV1,
@@ -24,6 +26,9 @@ import type {
   DiscoveryRankingPolicyRevisionV1,
   DiscoverySuppressionDirectiveV1,
 } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
+
+type FeedbackQueryExecutor = Pick<Pool, 'query'> & Partial<Pick<Pool, 'connect'>>;
 
 type FeedbackRow = QueryResultRow & {
   readonly schema_version: string;
@@ -153,7 +158,7 @@ const dateForQuery = (value: string | undefined): string => {
 };
 
 export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRepositoryPort {
-  constructor(private readonly pool: Pool) {}
+  constructor(private readonly pool: FeedbackQueryExecutor) {}
 
   async appendFeedback(event: DiscoveryFeedbackEventV1): Promise<'CREATED' | 'CONFLICT'> {
     const normalized = assertDiscoveryFeedbackEventV1(event);
@@ -191,10 +196,29 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
       `SELECT ${feedbackColumns}
        FROM discovery.feedback_events
        WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
+         AND ($4::text IS NULL OR COALESCE(principal_id, actor_id) = $4)
        ORDER BY created_at ASC, feedback_id ASC`,
-      [projectId, lookup.findingId, lookup.findingRevision],
+      [projectId, lookup.findingId, lookup.findingRevision, lookup.principalId ?? null],
     );
     return result.rows.map(mapFeedback);
+  }
+
+  async listSuppressionHistoryForFinding(
+    lookup: DiscoverySuppressionHistoryLookupV1,
+  ): Promise<readonly DiscoverySuppressionDirectiveV1[]> {
+    const projectId = assertProjectId(lookup.projectId);
+    const principalId = assertPrincipalId(lookup.principalId);
+    const result = await this.pool.query<SuppressionRow>(
+      `SELECT ${suppressionColumns}
+       FROM discovery.suppression_directives
+       WHERE project_id = $1
+         AND source_finding_id = $2
+         AND source_finding_revision = $3
+         AND COALESCE(principal_id, actor_id) = $4
+       ORDER BY created_at ASC, suppression_id ASC`,
+      [projectId, lookup.findingId, lookup.findingRevision, principalId],
+    );
+    return result.rows.map(mapSuppression);
   }
 
   async appendSuppression(
@@ -326,5 +350,28 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
     lookup: DiscoveryRankingPolicyLookupV1,
   ): Promise<DiscoveryRankingPolicyRevisionV1 | undefined> {
     return (await this.listRankingPolicyRevisions(lookup))[0];
+  }
+
+  async transaction<T>(
+    action: (handle: DiscoveryFeedbackTransactionHandleV1) => Promise<T>,
+  ): Promise<T> {
+    const connect = this.pool.connect;
+    if (typeof connect !== 'function') {
+      throw new TypeError('PostgreSQL feedback transactions require a Pool.');
+    }
+    return withSafePostgresTransaction(
+      this.pool as unknown as Pick<Pool, 'connect'>,
+      async (client: PoolClient) =>
+        action({
+          repository: new PostgresDiscoveryFeedbackRepository(
+            client as unknown as Pick<Pool, 'query'>,
+          ),
+          raw: client,
+        }),
+      {
+        module: 'discovery-feedback-postgres',
+        operation: 'feedback-product-transaction',
+      },
+    );
   }
 }

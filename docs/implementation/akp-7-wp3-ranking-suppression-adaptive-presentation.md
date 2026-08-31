@@ -90,8 +90,9 @@ indexed projection으로 제한한다. Product 메모리에는 현재 요청의 
 `suppression_directives`에 연결되며 typed `semantic-family:v1` key만 저장한다. 이는
 Finding·feedback·Canonical authority가 아니고, source Finding + suppression directive의
 결정적 resolver로 startup에서 100행 keyset 단위 재생성한다. 신규 similar directive는
-동일 transaction에서 projection을 갱신한다. migration preflight, FK cascade에 의한
-project/directive 삭제 정리, backup dump 포함 및 restore 후 startup rebuild를 정의했다.
+동일 transaction에서 projection을 갱신한다. migration preflight와 directive 삭제 시 FK
+cascade 정리를 정의하며, 원본 directive가 project 삭제를 `ON DELETE RESTRICT`로 보호하는
+기존 권한 경계도 유지한다. backup dump 포함 및 restore 후 startup rebuild를 정의했다.
 백업 integrity의 authoritative table 목록에는 파생 테이블을 넣지 않는다. 따라서 rollback은
 authority 테이블을 변경하지 않고 projection migration/table만 제거한 뒤 adapter-only
 경로로 되돌릴 수 있다. adapter-only 방식은 persisted Finding payload에서 매 요청마다

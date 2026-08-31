@@ -518,6 +518,7 @@ const enUS = {
     'Record how this discovery worked for you without changing Canonical knowledge.',
   'discovery.feedback.snooze_description':
     'Temporarily defer this discovery without deleting its history or changing Canonical knowledge.',
+  'discovery.feedback.snooze_finding_only': 'Snooze applies to this discovery only.',
   'discovery.feedback.suppression_description':
     'Hide the selected scope from Discovery presentation. This does not delete the Finding or change Canonical knowledge.',
   'discovery.feedback.report_issue_description':
@@ -1214,6 +1215,7 @@ const koKR: Record<ProductMessageKey, string> = {
     'Canonical 지식을 바꾸지 않고 이 발견 항목이 나에게 어떻게 유용했는지 기록합니다.',
   'discovery.feedback.snooze_description':
     '이력을 삭제하거나 Canonical 지식을 바꾸지 않고 이 발견 항목을 잠시 보류합니다.',
+  'discovery.feedback.snooze_finding_only': '보류는 이 발견 항목에만 적용됩니다.',
   'discovery.feedback.suppression_description':
     '선택한 범위에서 Discovery 표시를 숨깁니다. Finding을 삭제하거나 Canonical 지식을 바꾸지 않습니다.',
   'discovery.feedback.report_issue_description':

@@ -311,7 +311,7 @@ export const DiscoveryFeedbackCommandSurface = ({
       return {
         feedbackClass: 'UTILITY',
         feedbackKind: 'SNOOZE',
-        scope,
+        scope: 'FINDING',
         snoozeUntil: new Date(Date.now() + durationMs).toISOString(),
       };
     }
@@ -390,7 +390,7 @@ export const DiscoveryFeedbackCommandSurface = ({
                 {t('discovery.feedback.utility_boundary')}
               </p>
             ) : null}
-            {isSnoozeCommand(commandId) || isSuppressionCommand(commandId) ? (
+            {isSuppressionCommand(commandId) ? (
               <fieldset>
                 <legend>{t('discovery.feedback.scope')}</legend>
                 <label>
@@ -416,20 +416,25 @@ export const DiscoveryFeedbackCommandSurface = ({
               </fieldset>
             ) : null}
             {isSnoozeCommand(commandId) ? (
-              <label htmlFor={`${titleId}-snooze-duration`}>
-                {t('discovery.feedback.snooze_until')}
-                <select
-                  id={`${titleId}-snooze-duration`}
-                  value={snoozeDuration}
-                  onChange={(event) =>
-                    setSnoozeDuration(event.currentTarget.value as SnoozeDuration)
-                  }
-                >
-                  <option value="HOUR">{t('discovery.feedback.snooze_one_hour')}</option>
-                  <option value="DAY">{t('discovery.feedback.snooze_one_day')}</option>
-                  <option value="WEEK">{t('discovery.feedback.snooze_one_week')}</option>
-                </select>
-              </label>
+              <>
+                <p className="discovery-supporting-copy">
+                  {t('discovery.feedback.snooze_finding_only')}
+                </p>
+                <label htmlFor={`${titleId}-snooze-duration`}>
+                  {t('discovery.feedback.snooze_until')}
+                  <select
+                    id={`${titleId}-snooze-duration`}
+                    value={snoozeDuration}
+                    onChange={(event) =>
+                      setSnoozeDuration(event.currentTarget.value as SnoozeDuration)
+                    }
+                  >
+                    <option value="HOUR">{t('discovery.feedback.snooze_one_hour')}</option>
+                    <option value="DAY">{t('discovery.feedback.snooze_one_day')}</option>
+                    <option value="WEEK">{t('discovery.feedback.snooze_one_week')}</option>
+                  </select>
+                </label>
+              </>
             ) : null}
             {isReportCommand(commandId) ? (
               <>
@@ -491,7 +496,7 @@ export const DiscoveryFeedbackCommandSurface = ({
               className="hfm-action-primary"
               type="button"
               onClick={submit}
-              disabled={pending}
+              disabled={pending || resultStatus === 'OUTCOME_UNKNOWN'}
             >
               {pending
                 ? t('commands.unavailable.discovery_pending')

@@ -43,6 +43,9 @@ Utility feedback only affects usefulness, ordering, timing, or suppression:
 | Suppress exact | `UTILITY` | `SUPPRESS_EXACT` |
 | Suppress similar | `UTILITY` | `SUPPRESS_SIMILAR` |
 
+The Snooze surface is explicitly source-Finding-only. It does not present a Project
+scope option because WP3 semantics do not broaden Snooze to the whole Project.
+
 `Report issue` is epistemic re-entry only. It supports the six frozen WP5 kinds:
 
 `INCORRECT_RELATION`, `INSUFFICIENT_EVIDENCE`, `WRONG_ENTITY`, `TEMPORAL_ERROR`, `MISLEADING_PATTERN`, and `MISIDENTIFIED_CONFLICT`.
@@ -55,7 +58,7 @@ An optional owner reason is limited to 500 characters. The UI uses “request re
 - The browser does not submit `projectId`, `principalId`, `actor`, `feedbackId`, `suppressionId`, `fingerprint`, `matcherVersion`, policy, or server timestamps.
 - Detail actions require an exact Finding id/revision and the active project id. Mismatched or stale context fails closed.
 - Snooze and suppression are server-authoritative intents. The browser does not locally override mandatory visibility or suppression state.
-- `OUTCOME_INDETERMINATE`/unknown outcomes use the existing resolver exactly once. The UI reads the scoped state after resolution and never blindly resubmits.
+- `OUTCOME_INDETERMINATE`/unknown outcomes use the existing resolver exactly once. The UI disables new submissions, keeps the exact request identity, reads the scoped state after resolution, and never blindly resubmits.
 - Pending writes block project switching and close/escape paths that would lose the exact context; unrelated navigation remains available. Retry is not implicit.
 - History is read from existing `feedbackHistory` and `suppressionHistory`, filtered to the exact principal/project/Finding revision by the existing contract. The surface renders owner-safe labels, time, reason, scope, expiry, and effect only; infrastructure identifiers are not shown.
 - Mandatory-visibility explanations remain visible even when the owner has supplied feedback.

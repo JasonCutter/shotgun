@@ -90,6 +90,38 @@ describe('Discovery feedback command surface', () => {
     expect(input).not.toHaveProperty('matcherVersion');
   });
 
+  it('keeps snooze source-Finding-only and sends an expiry without a Project scope control', async () => {
+    const onSubmit = vi.fn(async (input: DiscoveryFeedbackSubmission) => ({
+      status: 'COMPLETED' as const,
+      input,
+    }));
+    renderSurface('discovery.snooze', onSubmit);
+    const user = userEvent.setup();
+
+    expect(screen.queryByRole('radio', { name: 'This Project' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Confirm snooze' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    const input = onSubmit.mock.calls[0]?.[0];
+    expect(input?.feedbackClass).toBe('UTILITY');
+    expect(input?.feedbackKind).toBe('SNOOZE');
+    expect(input?.scope).toBe('FINDING');
+    expect(input?.snoozeUntil).toEqual(expect.any(String));
+    expect(Date.parse(input?.snoozeUntil ?? '')).toBeGreaterThan(Date.now());
+  });
+
+  it('does not allow a second submit after an unknown outcome', async () => {
+    const onSubmit = vi.fn(async () => ({ status: 'OUTCOME_UNKNOWN' as const }));
+    renderSurface('discovery.feedback.useful', onSubmit);
+    const user = userEvent.setup();
+    const submitButton = screen.getByRole('button', { name: 'Record feedback' });
+
+    await user.click(submitButton);
+    await waitFor(() => expect((submitButton as HTMLButtonElement).disabled).toBe(true));
+    await user.click(submitButton);
+    expect(onSubmit).toHaveBeenCalledOnce();
+  });
+
   it('renders principal-scoped history in owner language without infrastructure identifiers', () => {
     renderSurface('discovery.feedback_history', vi.fn(), {
       schemaVersion: '1.0.0',

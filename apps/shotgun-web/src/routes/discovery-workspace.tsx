@@ -691,6 +691,7 @@ export const DiscoveryDetailWorkspace = () => {
   const [feedbackNotice, setFeedbackNotice] = useState<
     'RECORDED' | 'RECHECK_REQUESTED' | 'FAILED' | 'OUTCOME_UNKNOWN'
   >();
+  const [feedbackResolving, setFeedbackResolving] = useState(false);
   const [dismissError, setDismissError] = useState<unknown>();
   const [focusAfterDismiss, setFocusAfterDismiss] = useState(false);
   const dismissHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -718,12 +719,19 @@ export const DiscoveryDetailWorkspace = () => {
     dismissMutation.variables?.findingRevision === finding?.findingRevision;
   const openFeedbackCommand = useCallback(
     (commandId: DiscoveryFeedbackCommandId, invoker: HTMLElement | null) => {
-      if (!finding || !exactIdentityMatches || feedbackActions.pending) return;
+      if (
+        !finding ||
+        !exactIdentityMatches ||
+        feedbackActions.pending ||
+        feedbackActions.outcomeUnknown
+      ) {
+        return;
+      }
       setFeedbackNotice(undefined);
       setFeedbackInvoker(invoker);
       setFeedbackCommand(commandId);
     },
-    [exactIdentityMatches, feedbackActions.pending, finding],
+    [exactIdentityMatches, feedbackActions.outcomeUnknown, feedbackActions.pending, finding],
   );
   const closeFeedbackCommand = useCallback(() => {
     setFeedbackCommand(null);
@@ -741,6 +749,16 @@ export const DiscoveryDetailWorkspace = () => {
     async (): Promise<DiscoveryFeedbackMutationResult> => feedbackActions.resolveLast(),
     [feedbackActions],
   );
+  const resolveFeedbackOutcome = useCallback(async () => {
+    setFeedbackResolving(true);
+    try {
+      await resolveFeedback();
+    } catch {
+      setFeedbackNotice('FAILED');
+    } finally {
+      setFeedbackResolving(false);
+    }
+  }, [resolveFeedback]);
   const invalidateDiscovery = useCallback(async () => {
     const activeProject = shell.activeProject;
     if (!activeProject) return;
@@ -833,6 +851,7 @@ export const DiscoveryDetailWorkspace = () => {
     setFeedbackCommand(null);
     setFeedbackInvoker(null);
     setFeedbackNotice(undefined);
+    setFeedbackResolving(false);
   }, [findingId, findingRevision, shell.activeProject?.id]);
   useEffect(() => {
     const result = feedbackActions.lastResult;
@@ -874,7 +893,7 @@ export const DiscoveryDetailWorkspace = () => {
         findingRevision: finding.findingRevision,
         canDismiss: finding.capabilities.canDismiss,
       },
-      commandPending: dismissPending || feedbackActions.pending,
+      commandPending: dismissPending || feedbackActions.pending || feedbackActions.outcomeUnknown,
       dismiss,
       openCommand: openFeedbackCommand,
     });
@@ -883,6 +902,7 @@ export const DiscoveryDetailWorkspace = () => {
     dismissPending,
     discoveryCommands,
     exactIdentityMatches,
+    feedbackActions.outcomeUnknown,
     feedbackActions.pending,
     finding,
     shell.activeProject,
@@ -891,7 +911,8 @@ export const DiscoveryDetailWorkspace = () => {
   useEffect(
     () =>
       registerLeaveGuard(() => ({
-        canLeaveCurrentContext: !dismissPending && !feedbackActions.pending,
+        canLeaveCurrentContext:
+          !dismissPending && !feedbackActions.pending && !feedbackActions.outcomeUnknown,
         hasUnsavedDraft: false,
         hasBlockingDialog: feedbackCommand !== null,
         hasOutcomeUnknownCommand: feedbackActions.lastResult?.status === 'OUTCOME_UNKNOWN',
@@ -899,6 +920,7 @@ export const DiscoveryDetailWorkspace = () => {
     [
       dismissPending,
       feedbackActions.lastResult?.status,
+      feedbackActions.outcomeUnknown,
       feedbackActions.pending,
       feedbackCommand,
       registerLeaveGuard,
@@ -989,7 +1011,7 @@ export const DiscoveryDetailWorkspace = () => {
             onClick={() =>
               void submitFeedback({ feedbackClass: 'UTILITY', feedbackKind: 'USEFUL' })
             }
-            disabled={feedbackActions.pending}
+            disabled={feedbackActions.pending || feedbackActions.outcomeUnknown}
           >
             {t('discovery.feedback.useful')}
           </button>
@@ -999,7 +1021,7 @@ export const DiscoveryDetailWorkspace = () => {
             onClick={() =>
               void submitFeedback({ feedbackClass: 'UTILITY', feedbackKind: 'NOT_RELEVANT' })
             }
-            disabled={feedbackActions.pending}
+            disabled={feedbackActions.pending || feedbackActions.outcomeUnknown}
           >
             {t('discovery.feedback.not_relevant')}
           </button>
@@ -1012,7 +1034,17 @@ export const DiscoveryDetailWorkspace = () => {
         ) : feedbackNotice === 'RECHECK_REQUESTED' ? (
           <p role="status">{t('discovery.feedback.recheck_requested')}</p>
         ) : feedbackNotice === 'OUTCOME_UNKNOWN' ? (
-          <p role="alert">{t('discovery.feedback.outcome_unknown')}</p>
+          <div className="discovery-feedback-recovery" role="status">
+            <p role="alert">{t('discovery.feedback.outcome_unknown')}</p>
+            <button
+              className="hfm-action-secondary"
+              type="button"
+              onClick={() => void resolveFeedbackOutcome()}
+              disabled={feedbackResolving}
+            >
+              {feedbackResolving ? t('common.checking') : t('discovery.feedback.check_result')}
+            </button>
+          </div>
         ) : feedbackNotice === 'FAILED' ? (
           <p role="alert">{t('discovery.feedback.failed')}</p>
         ) : null}

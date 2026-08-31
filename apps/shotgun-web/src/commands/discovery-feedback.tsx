@@ -16,6 +16,7 @@ import { useAppRuntime } from '../app/providers.js';
 import { discoveryFeedbackStateQueryKey, discoveryProjectQueryKey } from '../app/query-keys.js';
 import { discoveryScopeFromShell } from '../knowledge/discovery-queries.js';
 import { useProductLocalization } from '../localization/product-localization.js';
+import { useLeaveGuard } from '../session/leave-guard-context.js';
 
 export type DiscoveryFeedbackSubmission = Pick<
   DiscoveryFeedbackProductCommandRequestV1,
@@ -182,6 +183,7 @@ export const useDiscoveryFeedbackActions = (
       if (!target || !shell.activeProject || target.projectId !== shell.activeProject.id) {
         return { status: 'STALE_CONTEXT' };
       }
+      if (lastResult?.status === 'OUTCOME_UNKNOWN') return lastResult;
       const request = createDiscoveryFeedbackRequest(target, input);
       setLastRequest(request);
       setLastResult(undefined);
@@ -193,7 +195,7 @@ export const useDiscoveryFeedbackActions = (
         throw error;
       }
     },
-    [finalize, isCurrentTarget, mutation, shell.activeProject, target],
+    [finalize, isCurrentTarget, lastResult, mutation, shell.activeProject, target],
   );
 
   const resolveLast = useCallback(async (): Promise<DiscoveryFeedbackMutationResult> => {
@@ -223,6 +225,7 @@ export const useDiscoveryFeedbackActions = (
     resolveLast,
     pending,
     lastResult,
+    outcomeUnknown: lastResult?.status === 'OUTCOME_UNKNOWN',
     hasError,
   };
 };
@@ -240,8 +243,22 @@ export const DiscoveryQuickFeedbackActions = ({
 }: DiscoveryQuickFeedbackActionsProps) => {
   const { t } = useProductLocalization();
   const actions = useDiscoveryFeedbackActions(shell, finding);
+  const { registerLeaveGuard } = useLeaveGuard();
   const [announcement, setAnnouncement] = useState<string>();
   const [announcementTone, setAnnouncementTone] = useState<'status' | 'alert'>('status');
+  const [resolving, setResolving] = useState(false);
+  const outcomeUnknown = actions.outcomeUnknown;
+
+  useEffect(
+    () =>
+      registerLeaveGuard(() => ({
+        canLeaveCurrentContext: !actions.pending && !outcomeUnknown,
+        hasUnsavedDraft: false,
+        hasBlockingDialog: false,
+        hasOutcomeUnknownCommand: outcomeUnknown,
+      })),
+    [actions.pending, outcomeUnknown, registerLeaveGuard],
+  );
 
   const submitQuick = async (feedbackKind: 'USEFUL' | 'NOT_RELEVANT') => {
     setAnnouncement(undefined);
@@ -263,13 +280,36 @@ export const DiscoveryQuickFeedbackActions = ({
     }
   };
 
+  const resolveQuick = async () => {
+    setResolving(true);
+    setAnnouncement(undefined);
+    try {
+      const result = await actions.resolveLast();
+      if (result.status === 'COMPLETED') {
+        setAnnouncement(t('discovery.feedback.recorded'));
+        setAnnouncementTone('status');
+      } else if (result.status === 'OUTCOME_UNKNOWN') {
+        setAnnouncement(t('discovery.feedback.outcome_unknown'));
+        setAnnouncementTone('alert');
+      } else {
+        setAnnouncement(t('discovery.feedback.failed'));
+        setAnnouncementTone('alert');
+      }
+    } catch {
+      setAnnouncement(t('discovery.feedback.failed'));
+      setAnnouncementTone('alert');
+    } finally {
+      setResolving(false);
+    }
+  };
+
   return (
     <div className={className ?? 'discovery-feedback-quick-actions'}>
       <button
         className="hfm-action-selection"
         type="button"
         onClick={() => void submitQuick('USEFUL')}
-        disabled={actions.pending}
+        disabled={actions.pending || outcomeUnknown}
         aria-label={t('discovery.feedback.useful')}
       >
         {t('discovery.feedback.useful')}
@@ -278,13 +318,26 @@ export const DiscoveryQuickFeedbackActions = ({
         className="hfm-action-selection"
         type="button"
         onClick={() => void submitQuick('NOT_RELEVANT')}
-        disabled={actions.pending}
+        disabled={actions.pending || outcomeUnknown}
         aria-label={t('discovery.feedback.not_relevant')}
       >
         {t('discovery.feedback.not_relevant')}
       </button>
       {actions.pending ? (
         <span role="status">{t('commands.unavailable.discovery_pending')}</span>
+      ) : null}
+      {outcomeUnknown ? (
+        <div className="discovery-feedback-recovery" role="status">
+          <p>{t('discovery.feedback.outcome_unknown')}</p>
+          <button
+            className="hfm-action-secondary"
+            type="button"
+            onClick={() => void resolveQuick()}
+            disabled={resolving}
+          >
+            {resolving ? t('common.checking') : t('discovery.feedback.check_result')}
+          </button>
+        </div>
       ) : null}
       {announcement ? <p role={announcementTone}>{announcement}</p> : null}
     </div>

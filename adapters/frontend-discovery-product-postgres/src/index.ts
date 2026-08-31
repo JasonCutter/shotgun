@@ -107,6 +107,10 @@ export class PostgresFrontendDiscoveryProductReadSource implements DiscoveryProd
     return this.findingRepository.findRevision(input);
   }
 
+  public findLatestFinding(projectId: string, findingId: string) {
+    return this.findingRepository.findLatest({ projectId, findingId });
+  }
+
   public findLifecycle(input: Parameters<DiscoveryProductReadSource['findLifecycle']>[0]) {
     return this.findingRepository.findLifecycle(input);
   }

@@ -292,6 +292,22 @@ describe.runIf(databaseUrl)('AKP-7 WP1 feedback and ranking PostgreSQL authority
         findingId: 'finding-b',
       }),
     ).toEqual([]);
+    expect(
+      await repository.listSuppressionForPresentation({
+        projectId: projectA,
+        principalId: 'principal-akp-7',
+        at: '2026-08-31T12:00:00.000Z',
+      }),
+    ).toHaveLength(3);
+    expect(
+      (
+        await repository.listLatestUtilityFeedbackForPresentation({
+          projectId: projectA,
+          principalId: 'principal-akp-7',
+          at: '2026-08-31T12:00:00.000Z',
+        })
+      ).map((entry) => entry.feedbackId),
+    ).toEqual(['feedback-a']);
   });
 
   it('keeps ranking policy revisions immutable and resolves the effective global revision', async () => {

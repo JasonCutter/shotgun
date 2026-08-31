@@ -14,6 +14,8 @@ import type {
   DiscoveryRankingPolicyLookupV1,
   DiscoverySuppressionLookupV1,
   DiscoverySuppressionHistoryLookupV1,
+  DiscoveryPresentationFeedbackLookupV1,
+  DiscoveryPresentationSuppressionLookupV1,
   DiscoveryFeedbackTransactionHandleV1,
 } from '../../../modules/discovery-feedback/src/index.js';
 import {
@@ -203,6 +205,30 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
     return result.rows.map(mapFeedback);
   }
 
+  async listLatestUtilityFeedbackForPresentation(
+    lookup: DiscoveryPresentationFeedbackLookupV1,
+  ): Promise<readonly DiscoveryFeedbackEventV1[]> {
+    const projectId = assertProjectId(lookup.projectId);
+    const principalId = assertPrincipalId(lookup.principalId);
+    const at = dateForQuery(lookup.at);
+    const result = await this.pool.query<FeedbackRow>(
+      `SELECT ${feedbackColumns}
+       FROM (
+         SELECT DISTINCT ON (finding_id, finding_revision) ${feedbackColumns}
+         FROM discovery.feedback_events
+         WHERE project_id = $1
+           AND COALESCE(principal_id, actor_id) = $2
+           AND feedback_class = 'UTILITY'
+           AND feedback_kind = ANY($3::text[])
+           AND created_at <= $4::timestamptz
+         ORDER BY finding_id, finding_revision, created_at DESC, feedback_id DESC
+       ) latest
+       ORDER BY finding_id ASC, finding_revision ASC`,
+      [projectId, principalId, ['USEFUL', 'NOT_RELEVANT', 'ALREADY_KNOWN', 'TOO_FREQUENT'], at],
+    );
+    return result.rows.map(mapFeedback);
+  }
+
   async listSuppressionHistoryForFinding(
     lookup: DiscoverySuppressionHistoryLookupV1,
   ): Promise<readonly DiscoverySuppressionDirectiveV1[]> {
@@ -268,8 +294,17 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
        WHERE project_id = $1
          AND COALESCE(principal_id, actor_id) = $2
          AND (
-           scope_kind = 'PROJECT'
-           OR (source_finding_id = $3 AND source_finding_revision = $4)
+           (
+             suppression_kind = 'SNOOZE'
+             AND source_finding_id = $3 AND source_finding_revision = $4
+           )
+           OR (
+             suppression_kind <> 'SNOOZE'
+             AND (
+               scope_kind = 'PROJECT'
+               OR (source_finding_id = $3 AND source_finding_revision = $4)
+             )
+           )
          )
          AND (expires_at IS NULL OR expires_at > $5::timestamptz)
          AND (
@@ -294,6 +329,25 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
         lookup.fingerprintVersion ?? null,
         lookup.semanticMatcherVersion ?? null,
       ],
+    );
+    return result.rows.map(mapSuppression);
+  }
+
+  async listSuppressionForPresentation(
+    lookup: DiscoveryPresentationSuppressionLookupV1,
+  ): Promise<readonly DiscoverySuppressionDirectiveV1[]> {
+    const projectId = assertProjectId(lookup.projectId);
+    const principalId = assertPrincipalId(lookup.principalId);
+    const at = dateForQuery(lookup.at);
+    const result = await this.pool.query<SuppressionRow>(
+      `SELECT ${suppressionColumns}
+       FROM discovery.suppression_directives
+       WHERE project_id = $1
+         AND COALESCE(principal_id, actor_id) = $2
+         AND created_at <= $3::timestamptz
+         AND (expires_at IS NULL OR expires_at > $3::timestamptz)
+       ORDER BY created_at ASC, suppression_id ASC`,
+      [projectId, principalId, at],
     );
     return result.rows.map(mapSuppression);
   }

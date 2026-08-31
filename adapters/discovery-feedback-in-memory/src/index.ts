@@ -17,6 +17,8 @@ import type {
   DiscoveryRankingPolicyLookupV1,
   DiscoverySuppressionLookupV1,
   DiscoverySuppressionHistoryLookupV1,
+  DiscoveryPresentationFeedbackLookupV1,
+  DiscoveryPresentationSuppressionLookupV1,
   DiscoveryFeedbackTransactionHandleV1,
 } from '../../../modules/discovery-feedback/src/index.js';
 
@@ -80,6 +82,44 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
       .map(clone);
   }
 
+  async listLatestUtilityFeedbackForPresentation(
+    lookup: DiscoveryPresentationFeedbackLookupV1,
+  ): Promise<readonly DiscoveryFeedbackEventV1[]> {
+    const projectId = assertProjectId(lookup.projectId);
+    const principalId = assertPrincipalId(lookup.principalId);
+    const at = timestamp(lookup.at);
+    if (!Number.isFinite(at)) throw new TypeError('at must be a valid date-time');
+    const latest = new Map<string, DiscoveryFeedbackEventV1>();
+    for (const event of this.feedback.values()) {
+      if (
+        event.projectId !== projectId ||
+        subjectId(event) !== principalId ||
+        event.feedbackClass !== 'UTILITY' ||
+        !['USEFUL', 'NOT_RELEVANT', 'ALREADY_KNOWN', 'TOO_FREQUENT'].includes(event.feedbackKind) ||
+        timestamp(event.createdAt) > at
+      ) {
+        continue;
+      }
+      const key = `${event.findingId}\u0000${event.findingRevision}`;
+      const current = latest.get(key);
+      if (
+        current === undefined ||
+        timestamp(event.createdAt) > timestamp(current.createdAt) ||
+        (timestamp(event.createdAt) === timestamp(current.createdAt) &&
+          event.feedbackId.localeCompare(current.feedbackId) > 0)
+      ) {
+        latest.set(key, event);
+      }
+    }
+    return [...latest.values()]
+      .sort(
+        (left, right) =>
+          left.findingId.localeCompare(right.findingId) ||
+          left.findingRevision - right.findingRevision,
+      )
+      .map(clone);
+  }
+
   async listSuppressionHistoryForFinding(
     lookup: DiscoverySuppressionHistoryLookupV1,
   ): Promise<readonly DiscoverySuppressionDirectiveV1[]> {
@@ -131,7 +171,7 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
           directive.sourceFindingId === lookup.findingId &&
           directive.sourceFindingRevision === lookup.findingRevision;
         if (directive.scope === 'FINDING' && !findingMatches) return false;
-        if (directive.suppressionKind === 'SNOOZE') return true;
+        if (directive.suppressionKind === 'SNOOZE') return findingMatches;
         if (directive.suppressionKind === 'SUPPRESS_EXACT') {
           return (
             lookup.fingerprint !== undefined &&
@@ -147,6 +187,29 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
           directive.matcherVersion === lookup.semanticMatcherVersion
         );
       })
+      .sort(
+        (left, right) =>
+          timestamp(left.createdAt) - timestamp(right.createdAt) ||
+          left.suppressionId.localeCompare(right.suppressionId),
+      )
+      .map(clone);
+  }
+
+  async listSuppressionForPresentation(
+    lookup: DiscoveryPresentationSuppressionLookupV1,
+  ): Promise<readonly DiscoverySuppressionDirectiveV1[]> {
+    const projectId = assertProjectId(lookup.projectId);
+    const principalId = assertPrincipalId(lookup.principalId);
+    const at = timestamp(lookup.at);
+    if (!Number.isFinite(at)) throw new TypeError('at must be a valid date-time');
+    return [...this.suppressions.values()]
+      .filter(
+        (directive) =>
+          directive.projectId === projectId &&
+          subjectId(directive) === principalId &&
+          timestamp(directive.createdAt) <= at &&
+          (directive.expiresAt === undefined || timestamp(directive.expiresAt) > at),
+      )
       .sort(
         (left, right) =>
           timestamp(left.createdAt) - timestamp(right.createdAt) ||

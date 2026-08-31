@@ -120,7 +120,10 @@ import {
   DiscoveryModelProfileService,
   createDiscoveryAIGenerationService,
 } from '../../../modules/discovery-ai-generation/src/index.js';
-import { DiscoveryBudgetControllerV1 } from '../../../modules/discovery-quality-gate/src/index.js';
+import {
+  DiscoveryBudgetControllerV1,
+  rankAcceptedDiscoveryCandidatesV1,
+} from '../../../modules/discovery-quality-gate/src/index.js';
 import {
   createProductDiscoveryExecution,
   observeDiscoveryReconciliation,
@@ -796,6 +799,7 @@ export const startShotgunApplication = async (
     const discoveryReentryFreshnessEvaluator = new DiscoveryReentryFreshnessEvaluator(
       discoveryReentryFreshnessAuthority,
     );
+    const discoveryFeedbackRepository = new PostgresDiscoveryFeedbackRepository(pool);
     const frontendDiscoveryProductReadCoordinator = new FrontendDiscoveryProductReadCoordinator(
       createPostgresFrontendDiscoveryProductReadSource(pool, {
         evidenceRepository,
@@ -807,6 +811,8 @@ export const startShotgunApplication = async (
         cursorCodec: createEncryptedDiscoveryProductCursorCodec(stagingSecret),
         graphReadiness: graphReadAdapter,
         activityRead: discoveryRuntimeRepository,
+        feedbackRepository: discoveryFeedbackRepository,
+        rankingAuthority: rankAcceptedDiscoveryCandidatesV1,
       },
     );
     const graphDiscoveryOverlayPort = createGraphDiscoveryOverlayPort({
@@ -883,7 +889,7 @@ export const startShotgunApplication = async (
       aiSettingsBackend: recoveryHarness ? undefined : aiSettingsBackend,
       providerExternalTransferApprovals: recoveryHarness ? undefined : providerApprovalService,
       frontendCommandGateway: commandGateway,
-      discoveryFeedbackRepository: new PostgresDiscoveryFeedbackRepository(pool),
+      discoveryFeedbackRepository,
       frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),

@@ -15,7 +15,7 @@ import {
   type DiscoveryFindingEnvelopeV1,
 } from '../../packages/contracts/src/index.js';
 import type { StoredIntakeResult } from '../../modules/original-asset/src/index.js';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { migrateUpTo } from '../../scripts/database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
@@ -23,7 +23,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
   ? await requireTestDatabaseTarget()
   : undefined;
 const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
-const projectId = `akp-6-wp1-product-${Date.now()}`;
+const projectId = `akp-6-wp1-product-${randomUUID()}`;
 let storedSource: StoredIntakeResult | undefined;
 const finding: DiscoveryFindingEnvelopeV1 = createDiscoveryFindingEnvelopeV1({
   schemaVersion: '1.0.0',

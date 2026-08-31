@@ -21,6 +21,10 @@ import { AskWorkspace } from '../routes/ask-workspace.js';
 import { KnowledgeWorkspace } from '../routes/knowledge-workspace.js';
 import { KnowledgeDetailWorkspace } from '../routes/knowledge-detail-workspace.js';
 import { KnowledgeCompareWorkspace } from '../routes/knowledge-compare-workspace.js';
+import {
+  DiscoveryDetailWorkspace,
+  DiscoveryInboxWorkspace,
+} from '../routes/discovery-workspace.js';
 import { GraphWorkspace } from '../routes/graph-workspace.js';
 import { ReviewWorkspace } from '../routes/review-workspace.js';
 import { ExternalActionWorkspace } from '../routes/external-action-workspace.js';
@@ -147,6 +151,24 @@ export const createAppRouteObjects = (runtime: AppRuntime) => [
           href: '/knowledge',
         }),
         element: <GraphWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'knowledge/discoveries',
+        loader: guardedRouteLoader(runtime, {
+          routeId: 'knowledge',
+          href: '/knowledge',
+        }),
+        element: <DiscoveryInboxWorkspace />,
+        errorElement: <RouteError />,
+      },
+      {
+        path: 'knowledge/discoveries/:findingId',
+        loader: guardedRouteLoader(runtime, {
+          routeId: 'knowledge',
+          href: '/knowledge',
+        }),
+        element: <DiscoveryDetailWorkspace />,
         errorElement: <RouteError />,
       },
       {

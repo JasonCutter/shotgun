@@ -65,6 +65,10 @@ import type {
   KnowledgeSearchResultViewAny,
   KnowledgeDetailView,
   KnowledgeCompareView,
+  DiscoveryFindingLifecycleState,
+  DiscoveryFindingPayloadV1,
+  DiscoveryFindingType,
+  DiscoveryResourceRefV1,
   FrontendKnowledgeDraftChangeSetV1,
   FrontendKnowledgeDraftCommandOutcomeV1,
   FrontendKnowledgeOperationV1,
@@ -324,6 +328,10 @@ export type {
   KnowledgeSearchResultViewAny,
   KnowledgeDetailView,
   KnowledgeCompareView,
+  DiscoveryFindingLifecycleState,
+  DiscoveryFindingPayloadV1,
+  DiscoveryFindingType,
+  DiscoveryResourceRefV1,
   FrontendKnowledgeDraftChangeSetV1,
   FrontendKnowledgeDraftCommandOutcomeV1,
   FrontendKnowledgeOperationV1,
@@ -526,6 +534,14 @@ export type {
   GetHistoryEntryRequestV1,
   GetHistoryEntryResultV1,
 };
+
+export {
+  DISCOVERY_FINDING_LIFECYCLE_STATES,
+  DISCOVERY_FINDING_TYPES,
+  FRONTEND_REVIEW_DOMAIN_VERSION,
+  sha256Text,
+  stableJson,
+} from '../../contracts/src/index.js';
 
 export {
   deriveFrontendFailure,

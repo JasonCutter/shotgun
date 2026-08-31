@@ -21,6 +21,7 @@ import {
   reviewContextQueryOptions,
   reviewItemDetailQueryOptions,
   reviewQueueQueryOptions,
+  reviewResourceResolutionQueryOptions,
   reviewScopeFromShellOrNull,
 } from '../knowledge/review-queries.js';
 import {
@@ -29,6 +30,7 @@ import {
   createInitialReviewWorkspaceState,
   reduceReviewWorkspaceState,
 } from '../knowledge/review-workspace-state.js';
+import { reviewContextIdForResource } from '../knowledge/review-route-identity.js';
 
 /**
  * FE-P4-S1 Review Center Workspace (`/review`, guarded).
@@ -107,8 +109,29 @@ export const ReviewWorkspace = () => {
   > | null>(null);
 
   const scope = reviewScopeFromShellOrNull(shell);
-  const deepLinkContext = searchParameters.get('context');
-  const deepLinkRevision = searchParameters.get('revision');
+  const explicitDeepLinkContext = searchParameters.get('context');
+  const explicitDeepLinkRevision = searchParameters.get('revision');
+  const deepLinkReviewResourceId = searchParameters.get('reviewResourceId')?.trim() || null;
+  const deepLinkContext =
+    explicitDeepLinkContext ??
+    (deepLinkReviewResourceId
+      ? reviewContextIdForResource('DISCOVERY_CANDIDATE', deepLinkReviewResourceId)
+      : null);
+  const parsedExplicitDeepLinkRevision = explicitDeepLinkRevision
+    ? Number(explicitDeepLinkRevision)
+    : undefined;
+  const validExplicitDeepLinkRevision =
+    parsedExplicitDeepLinkRevision !== undefined &&
+    Number.isSafeInteger(parsedExplicitDeepLinkRevision) &&
+    parsedExplicitDeepLinkRevision > 0
+      ? parsedExplicitDeepLinkRevision
+      : undefined;
+  const deepLinkResolutionResourceId =
+    deepLinkReviewResourceId &&
+    explicitDeepLinkContext === null &&
+    explicitDeepLinkRevision === null
+      ? deepLinkReviewResourceId
+      : null;
 
   const queueRequest = useMemo(
     () => ({
@@ -121,6 +144,16 @@ export const ReviewWorkspace = () => {
   );
 
   const queue = useQuery(reviewQueueQueryOptions(reviewClient, scope, queueRequest));
+  const deepLinkResolution = useQuery(
+    reviewResourceResolutionQueryOptions(reviewClient, scope, deepLinkResolutionResourceId),
+  );
+  const queuedDeepLinkRevision =
+    deepLinkResolution.data?.status === 'FOUND'
+      ? deepLinkResolution.data.contextRevision
+      : undefined;
+  const deepLinkRevision =
+    validExplicitDeepLinkRevision ??
+    (deepLinkReviewResourceId ? queuedDeepLinkRevision : undefined);
 
   const announce = (message: string) => {
     if (liveRegionRef.current) liveRegionRef.current.textContent = message;
@@ -129,13 +162,12 @@ export const ReviewWorkspace = () => {
   // Deep-link restore (AC-17): select the context carried in the URL.
   useEffect(() => {
     if (!deepLinkContext || !deepLinkRevision) return;
-    const revision = Number(deepLinkRevision);
-    if (!Number.isSafeInteger(revision) || revision < 1) return;
-    if (state.selectedContextId === deepLinkContext && state.contextRevision === revision) return;
+    if (state.selectedContextId === deepLinkContext && state.contextRevision === deepLinkRevision)
+      return;
     dispatch({
       type: 'SELECT_CONTEXT',
       reviewContextId: deepLinkContext,
-      contextRevision: revision,
+      contextRevision: deepLinkRevision,
     });
     dispatch({ type: 'RECOVERY_STARTED' });
   }, [deepLinkContext, deepLinkRevision, state.selectedContextId, state.contextRevision]);
@@ -449,6 +481,18 @@ export const ReviewWorkspace = () => {
           error={new Error(state.phase.message)}
           onRetry={state.phase.retryable ? () => void queue.refetch() : undefined}
         />
+      ) : null}
+      {deepLinkReviewResourceId && !validExplicitDeepLinkRevision && deepLinkResolution.isError ? (
+        <p className="status-message" role="status">
+          검토 연결 대상을 확인하지 못했습니다. 대기열에서 직접 선택해 주세요.
+        </p>
+      ) : null}
+      {deepLinkReviewResourceId &&
+      !validExplicitDeepLinkRevision &&
+      deepLinkResolution.data?.status === 'EXHAUSTED' ? (
+        <p className="status-message" role="status">
+          요청한 검토 연결 대상을 찾지 못했습니다. 대기열에서 직접 선택해 주세요.
+        </p>
       ) : null}
 
       <div className="review-layout">

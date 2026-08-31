@@ -497,6 +497,9 @@ describe('owner command registry', () => {
       });
     }
     expect(
+      focused.find((command) => command.id === 'discovery.feedback.too_frequent'),
+    ).toMatchObject({ description: 'Record that this discovery is shown too often' });
+    expect(
       createOwnerCommandRegistry({ shell, projects }).some((command) =>
         expectedIds.includes(command.id),
       ),

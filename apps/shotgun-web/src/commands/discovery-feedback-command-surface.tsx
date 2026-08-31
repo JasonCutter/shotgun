@@ -103,6 +103,9 @@ const commandDescription = (
   if (isHistoryCommand(commandId)) return t('discovery.feedback.history_description');
   if (isSuppressionCommand(commandId)) return t('discovery.feedback.suppression_description');
   if (isSnoozeCommand(commandId)) return t('discovery.feedback.snooze_description');
+  if (commandId === 'discovery.feedback.too_frequent') {
+    return t('discovery.feedback.too_frequent_description');
+  }
   return t('discovery.feedback.utility_description');
 };
 

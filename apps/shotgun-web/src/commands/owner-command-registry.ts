@@ -723,7 +723,7 @@ export const createOwnerCommandRegistry = ({
             {
               id: 'discovery.feedback.too_frequent',
               label: 'Mark discovery as too frequent',
-              description: 'Record that similar discoveries appear too often',
+              description: 'Record that this discovery is shown too often',
               aliases: ['too frequent', 'frequent discovery'],
               keywords: ['discovery', 'finding', 'feedback', 'utility'],
               action: {

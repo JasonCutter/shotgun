@@ -76,6 +76,8 @@ describe('Discovery feedback command surface', () => {
     }));
     renderSurface('discovery.suppress_exact', onSubmit);
     const user = userEvent.setup();
+    expect(screen.getByRole('radio', { name: 'This discovery only' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'This Project' })).toBeTruthy();
     await user.click(screen.getByRole('radio', { name: 'This Project' }));
     await user.click(screen.getByRole('button', { name: 'Confirm hiding' }));
 
@@ -88,6 +90,27 @@ describe('Discovery feedback command surface', () => {
     });
     expect(input).not.toHaveProperty('fingerprint');
     expect(input).not.toHaveProperty('matcherVersion');
+  });
+
+  it('keeps similar suppression scoped by the server-owned Finding or Project choice', async () => {
+    const onSubmit = vi.fn(async (input: DiscoveryFeedbackSubmission) => ({
+      status: 'COMPLETED' as const,
+      input,
+    }));
+    renderSurface('discovery.suppress_similar', onSubmit);
+    const user = userEvent.setup();
+
+    expect(screen.getByRole('radio', { name: 'This discovery only' })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'This Project' })).toBeTruthy();
+    await user.click(screen.getByRole('radio', { name: 'This Project' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm hiding' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({
+      feedbackClass: 'UTILITY',
+      feedbackKind: 'SUPPRESS_SIMILAR',
+      scope: 'PROJECT',
+    });
   });
 
   it('keeps snooze source-Finding-only and sends an expiry without a Project scope control', async () => {

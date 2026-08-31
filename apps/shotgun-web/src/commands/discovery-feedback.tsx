@@ -127,9 +127,10 @@ export const submitDiscoveryFeedbackRequest = async (
 export const useDiscoveryFeedbackActions = (
   shell: GlobalShellView,
   target: DiscoveryFeedbackRequestTarget | undefined,
+  clientOverride?: FrontendDiscoveryClient,
 ) => {
   const { queryClient } = useAppRuntime();
-  const client = useMemo(() => createFrontendDiscoveryClient(), []);
+  const client = useMemo(() => clientOverride ?? createFrontendDiscoveryClient(), [clientOverride]);
   const projectRef = useRef<string | undefined>(shell.activeProject?.id);
   const scopeRef = useRef(discoveryScopeFromShell(shell));
   projectRef.current = shell.activeProject?.id;
@@ -234,15 +235,17 @@ export type DiscoveryQuickFeedbackActionsProps = {
   readonly finding: DiscoveryFeedbackRequestTarget;
   readonly shell: GlobalShellView;
   readonly className?: string;
+  readonly client?: FrontendDiscoveryClient;
 };
 
 export const DiscoveryQuickFeedbackActions = ({
   finding,
   shell,
   className,
+  client,
 }: DiscoveryQuickFeedbackActionsProps) => {
   const { t } = useProductLocalization();
-  const actions = useDiscoveryFeedbackActions(shell, finding);
+  const actions = useDiscoveryFeedbackActions(shell, finding, client);
   const { registerLeaveGuard } = useLeaveGuard();
   const [announcement, setAnnouncement] = useState<string>();
   const [announcementTone, setAnnouncementTone] = useState<'status' | 'alert'>('status');

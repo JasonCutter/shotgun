@@ -249,6 +249,43 @@ export type DiscoveryActivityJobRow = {
   readonly run?: DiscoveryRunV1;
 };
 
+/** Safe, bounded Finding summary used only as an Activity backlink. */
+export type DiscoveryActivityFindingRow = {
+  readonly projectId: string;
+  readonly findingId: string;
+  readonly findingRevision: number;
+  readonly runId: string;
+  readonly findingType: string;
+  readonly lifecycleState: string;
+  readonly title: string;
+  readonly reviewEligible: boolean;
+  readonly resourceHref: string;
+};
+
+/** Existing Finding/Review authorities may provide this narrow read surface. */
+export type DiscoveryActivityFindingReadPort = {
+  listActivityFindings(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+    readonly accessScope?: readonly string[];
+    readonly sensitivityClearance?: string;
+    readonly limit: number;
+  }): Promise<readonly DiscoveryActivityFindingRow[]>;
+  /**
+   * Authoritative existence check for Attention. This is deliberately
+   * separate from the bounded backlink list so presentation pagination
+   * cannot suppress a review-eligible Finding beyond the display cap.
+   */
+  hasReviewEligibleActivityFinding?(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+    readonly accessScope?: readonly string[];
+    readonly sensitivityClearance?: string;
+  }): Promise<boolean>;
+};
+
 /** One durable lifecycle transition; payloads and Finding bodies are excluded. */
 export type DiscoveryActivityLifecycleEventV1 = {
   readonly resourceKind: 'DiscoveryJob' | 'DiscoveryRun' | 'DiscoveryAttempt' | 'DiscoveryStage';

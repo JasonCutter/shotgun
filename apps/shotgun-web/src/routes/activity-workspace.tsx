@@ -85,7 +85,7 @@ const domainWorkspaceHref = (identity: ActivityIdentity): string => {
   if (identity.domainKind === 'EXTERNAL_ACTION') {
     return `/external-action?action=${resourceId}`;
   }
-  return '/activity';
+  return '/knowledge/discoveries';
 };
 
 const queueItemDeepLinkParams = (item: ActivityQueueItemV1): URLSearchParams => {
@@ -104,6 +104,7 @@ const queueItemDeepLinkParams = (item: ActivityQueueItemV1): URLSearchParams => 
 const activitySummaryLabel = (item: ActivityQueueItemV1): string => {
   if (item.root.domainKind === 'SOURCES') return 'Source processing';
   if (item.root.domainKind === 'ASK') return 'Answering a question';
+  if (item.root.domainKind === 'DISCOVERY') return item.summary;
   return 'External action';
 };
 
@@ -293,14 +294,16 @@ const DetailSection = ({
     <section className="activity-detail" aria-label="Activity details">
       <header className="activity-detail-header">
         <h2 ref={headingRef} tabIndex={-1}>
-          {activityDomainKindLabel[identity.domainKind]} activity
+          {detail.presentation?.title ?? `${activityDomainKindLabel[identity.domainKind]} activity`}
         </h2>
         <p className="activity-detail-domain">{activityLifecycleStateLabel[detail.run.state]}</p>
-        <p>
-          <Link to={domainWorkspaceHref(identity)} className="activity-domain-link">
-            도메인 워크스페이스에서 열기
-          </Link>
-        </p>
+        {identity.domainKind === 'DISCOVERY' ? null : (
+          <p>
+            <Link to={domainWorkspaceHref(identity)} className="activity-domain-link">
+              도메인 워크스페이스에서 열기
+            </Link>
+          </p>
+        )}
         <p className="activity-resource-href">
           <a href={resourceHref} className="activity-domain-link">
             Open related resource
@@ -369,7 +372,84 @@ const DetailSection = ({
           <dt>Attention</dt>
           <dd>{activityAttentionLabel[detail.dimensions.attention]}</dd>
         </div>
+        {detail.presentation?.triggerLabel ? (
+          <div>
+            <dt>Trigger</dt>
+            <dd>{detail.presentation.triggerLabel}</dd>
+          </div>
+        ) : null}
+        {detail.presentation?.scanModeLabel ? (
+          <div>
+            <dt>Scan mode</dt>
+            <dd>{detail.presentation.scanModeLabel}</dd>
+          </div>
+        ) : null}
       </dl>
+
+      {detail.presentation?.wait ? (
+        <section className="activity-subsection" aria-labelledby="activity-wait-heading">
+          <h3 id="activity-wait-heading">필수 지식 프로젝션 대기</h3>
+          <p>필수 지식 프로젝션이 준비될 때까지 실행이 시작되지 않습니다.</p>
+          <dl className="summary-grid">
+            <div>
+              <dt>필수 프로젝션 revision</dt>
+              <dd>{detail.presentation.wait.requiredProjectionRevision}</dd>
+            </div>
+            <div>
+              <dt>Deadline</dt>
+              <dd>{new Date(detail.presentation.wait.deadlineAt).toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt>Fallback policy</dt>
+              <dd>{detail.presentation.wait.fallbackPolicyRevision}</dd>
+            </div>
+          </dl>
+        </section>
+      ) : null}
+
+      {detail.presentation?.boundedWork ? (
+        <section className="activity-subsection" aria-labelledby="activity-bounds-heading">
+          <h3 id="activity-bounds-heading">Bounded work</h3>
+          <dl className="summary-grid">
+            <div>
+              <dt>최대 Resource</dt>
+              <dd>{detail.presentation.boundedWork.maxResources}</dd>
+            </div>
+            <div>
+              <dt>최대 Finding</dt>
+              <dd>{detail.presentation.boundedWork.maxFindings}</dd>
+            </div>
+            <div>
+              <dt>최대 provider call</dt>
+              <dd>{detail.presentation.boundedWork.maxProviderCalls}</dd>
+            </div>
+            <div>
+              <dt>Deadline</dt>
+              <dd>{new Date(detail.presentation.boundedWork.deadlineAt).toLocaleString()}</dd>
+            </div>
+          </dl>
+        </section>
+      ) : null}
+
+      {detail.presentation?.relatedResources ? (
+        <section className="activity-subsection" aria-labelledby="activity-findings-heading">
+          <h3 id="activity-findings-heading">Findings</h3>
+          <ul className="activity-related-list">
+            {detail.presentation.relatedResources.map((resource) => (
+              <li key={`${resource.resourceId}:${resource.resourceRevision}`}>
+                <Link to={resource.resourceHref}>{resource.title}</Link>
+                <span>
+                  {' '}
+                  · {resource.findingType} · {resource.lifecycleState} · Non-Canonical
+                </span>
+              </li>
+            ))}
+          </ul>
+          {detail.presentation.relatedResourcesTruncated ? (
+            <p role="status">표시 가능한 Finding 일부만 표시했습니다.</p>
+          ) : null}
+        </section>
+      ) : null}
 
       <TechnicalDetails
         items={[
@@ -457,6 +537,7 @@ const DetailSection = ({
               <tr>
                 <th scope="col">Attempt</th>
                 <th scope="col">Kind</th>
+                <th scope="col">Origin</th>
                 <th scope="col">State</th>
                 <th scope="col">Retryable</th>
               </tr>
@@ -464,8 +545,9 @@ const DetailSection = ({
             <tbody>
               {detail.attempts.map((attempt) => (
                 <tr key={attempt.attemptId}>
-                  <th scope="row">{attempt.attemptId}</th>
+                  <th scope="row">{attempt.attemptNumber}</th>
                   <td>{attempt.attemptKind}</td>
+                  <td>{attempt.retryKind === 'DOMAIN_RETRY' ? 'Domain retry' : 'Initial'}</td>
                   <td>{activityLifecycleStateLabel[attempt.state]}</td>
                   <td>{attempt.retryability === 'RETRYABLE' ? '예' : '아니오'}</td>
                 </tr>

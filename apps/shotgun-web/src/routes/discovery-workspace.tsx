@@ -697,6 +697,7 @@ export const DiscoveryDetailWorkspace = () => {
   const graphHref = finding.capabilities.canOpenGraph
     ? `/knowledge/graph?discoveryFinding=${encodeURIComponent(finding.findingId)}&discoveryRevision=${finding.findingRevision}`
     : null;
+  const activityHref = finding.capabilities.canOpenActivity ? finding.activity?.resourceHref : null;
 
   return (
     <section className="route-page discovery-workspace">
@@ -746,7 +747,7 @@ export const DiscoveryDetailWorkspace = () => {
           </p>
           <p>{freshnessDescription(t, finding.freshness.state)}</p>
         </div>
-        {reviewHref || graphHref ? (
+        {reviewHref || graphHref || activityHref ? (
           <p className="discovery-action-row">
             {reviewHref ? (
               <Link className="primary-link" to={reviewHref}>
@@ -756,6 +757,11 @@ export const DiscoveryDetailWorkspace = () => {
             {graphHref ? (
               <Link className="secondary-link" to={graphHref}>
                 {t('discovery.open_graph')}
+              </Link>
+            ) : null}
+            {activityHref ? (
+              <Link className="secondary-link" to={activityHref}>
+                Activity에서 실행 보기
               </Link>
             ) : null}
           </p>

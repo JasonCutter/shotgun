@@ -3347,4 +3347,36 @@ export class PostgresDiscoveryRuntimeRepository
     );
     return result.rows[0] ? mapFindingReady(result.rows[0]) : undefined;
   }
+
+  /** Read-only Activity root bridge for the Discovery Product capability. */
+  async findActivityBinding(input: {
+    readonly projectId: string;
+    readonly findingId: string;
+    readonly findingRevision: number;
+    readonly runId: string;
+  }): Promise<{ readonly jobId: string; readonly runId: string } | undefined> {
+    const ready = await this.findFindingReady({
+      projectId: input.projectId,
+      findingId: input.findingId,
+      findingRevision: input.findingRevision,
+    });
+    if (!ready || ready.runId !== input.runId || ready.projectId !== input.projectId) {
+      return undefined;
+    }
+    const [job, run] = await Promise.all([
+      this.getJob({ projectId: input.projectId, jobId: ready.jobId }),
+      this.getRun({ projectId: input.projectId, jobId: ready.jobId, runId: ready.runId }),
+    ]);
+    if (
+      !job ||
+      !run ||
+      job.projectId !== input.projectId ||
+      run.projectId !== input.projectId ||
+      run.jobId !== job.jobId ||
+      run.runId !== input.runId
+    ) {
+      return undefined;
+    }
+    return { jobId: job.jobId, runId: run.runId };
+  }
 }

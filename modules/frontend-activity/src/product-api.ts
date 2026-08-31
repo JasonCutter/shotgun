@@ -378,15 +378,20 @@ const dimensionsFromRecord = (
 };
 
 /** Reconstruct a queue item from an index record (scalar mirrors authoritative). */
-export const activityQueueItemFromRecord = (
-  record: ActivityIndexRecordV1,
-): ActivityQueueItemV1 => ({
-  root: activityRootFromRecord(record),
-  summary: record.summary,
-  state: record.state,
-  dimensions: dimensionsFromRecord(record, record.snapshot),
-  updatedAt: record.updatedAt,
-});
+export const activityQueueItemFromRecord = (record: ActivityIndexRecordV1): ActivityQueueItemV1 => {
+  const snapshot =
+    typeof record.snapshot === 'object' && record.snapshot !== null
+      ? (record.snapshot as Partial<ActivityQueueItemV1>)
+      : undefined;
+  return {
+    root: activityRootFromRecord(record),
+    summary: record.summary,
+    state: record.state,
+    dimensions: dimensionsFromRecord(record, record.snapshot),
+    ...(snapshot?.presentation === undefined ? {} : { presentation: snapshot.presentation }),
+    updatedAt: record.updatedAt,
+  };
+};
 
 const combineFreshness = (
   freshnesses: readonly ActivityProjectionFreshnessV1[],

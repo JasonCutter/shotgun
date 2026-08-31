@@ -1,5 +1,6 @@
 import {
   FrontendContractError,
+  decodeActivityDomainPresentationV1,
   decodeActivityDimensionsV1,
   decodeActivityEventViewV1,
   decodeActivityProjectionMetadataV1,
@@ -132,6 +133,11 @@ const decodeQueueItem = (value: unknown): ActivityQueueItemV1 => {
       objectField(value, 'dimensions', 'item'),
       'item.dimensions',
     ),
+    ...(value.presentation === undefined
+      ? {}
+      : {
+          presentation: decodeActivityDomainPresentationV1(value.presentation, 'item.presentation'),
+        }),
     updatedAt: stringField(value, 'updatedAt', 'item'),
   };
 };

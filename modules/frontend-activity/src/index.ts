@@ -44,6 +44,8 @@ export type {
   DiscoveryActivityAttemptRow,
   DiscoveryActivityCursorV1,
   DiscoveryActivityFailureContextV1,
+  DiscoveryActivityFindingReadPort,
+  DiscoveryActivityFindingRow,
   DiscoveryActivityHistoryV1,
   DiscoveryActivityJobRow,
   DiscoveryActivityLifecycleEventV1,

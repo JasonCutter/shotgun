@@ -20,6 +20,7 @@ import type {
 } from '../../packages/contracts/src/index.js';
 import type {
   DiscoveryActivityAttemptRow,
+  DiscoveryActivityFindingReadPort,
   DiscoveryActivityHistoryV1,
 } from '../../modules/frontend-activity/src/index.js';
 
@@ -450,6 +451,199 @@ describe('AKP-4 WP5 Discovery Activity adapter', () => {
           event.summary.includes('waiting for projection'),
       ),
     ).toBe(true);
+  });
+
+  it('adds owner-readable WP4 presentation, exact Finding backlinks and server Attention', async () => {
+    const findingRead: DiscoveryActivityFindingReadPort = {
+      listActivityFindings: async (input) => {
+        expect(input.projectId).toBe(job.projectId);
+        expect(input.jobId).toBe(job.jobId);
+        expect(input.runId).toBe(run.runId);
+        return [
+          {
+            projectId: job.projectId,
+            findingId: 'finding-1',
+            findingRevision: 4,
+            runId: run.runId,
+            findingType: 'KNOWLEDGE_GAP',
+            lifecycleState: 'REVIEW_READY',
+            title: 'Missing owner context',
+            reviewEligible: true,
+            resourceHref: '/knowledge/discoveries/finding-1?revision=4',
+          },
+        ];
+      },
+      hasReviewEligibleActivityFinding: async (input) => {
+        expect(input.projectId).toBe(job.projectId);
+        expect(input.jobId).toBe(job.jobId);
+        expect(input.runId).toBe(run.runId);
+        return true;
+      },
+    };
+    const adapter = new DiscoveryActivityAdapter(readWithFixture(), findingRead);
+    const item = (await adapter.readQueue(scope, { limit: 10 })).items[0]!;
+    expect(item.summary).toContain('수동 Discovery 실행');
+    expect(item.summary).not.toContain(job.jobId);
+    expect(item.dimensions.attention).toBe('NEEDS_ATTENTION');
+
+    const detail = await adapter.readDetail(scope, item.root);
+    expect(detail.presentation).toMatchObject({
+      title: '수동 Discovery 실행 · 증분 스캔',
+      triggerLabel: '수동 Discovery 실행',
+      scanModeLabel: '증분 스캔',
+      attentionReason: 'REVIEW_ELIGIBLE_FINDING',
+      boundedWork: {
+        maxResources: budget.maxResources,
+        maxFindings: budget.maxFindings,
+        maxProviderCalls: budget.maxProviderCalls,
+      },
+      relatedResourceCount: 1,
+      relatedResourcesTruncated: false,
+    });
+    expect(detail.presentation?.relatedResources?.[0]).toMatchObject({
+      resourceId: 'finding-1',
+      resourceRevision: 4,
+      title: 'Missing owner context',
+      resourceHref: '/knowledge/discoveries/finding-1?revision=4',
+      authority: 'DERIVED_INFERENCE',
+    });
+    expect(detail.dimensions.progress).toBeUndefined();
+    expect(detail.attempts[0]?.retryKind).toBe('INITIAL');
+    expect(detail.attempts[1]?.retryKind).toBe('DOMAIN_RETRY');
+    expect(detail.stages.find((entry) => entry.label === 'Finding 생성')).toBeDefined();
+  });
+
+  it('keeps authoritative Attention independent from the bounded backlink window', async () => {
+    const visibleFindings = Array.from({ length: 21 }, (_, index) => ({
+      projectId: job.projectId,
+      findingId: `finding-${index + 1}`,
+      findingRevision: 1,
+      runId: run.runId,
+      findingType: 'KNOWLEDGE_GAP',
+      lifecycleState: 'NEW',
+      title: `Finding ${index + 1}`,
+      reviewEligible: false,
+      resourceHref: `/knowledge/discoveries/finding-${index + 1}?revision=1`,
+    }));
+    const findingRead: DiscoveryActivityFindingReadPort = {
+      listActivityFindings: async (input) => {
+        expect(input.limit).toBe(21);
+        return visibleFindings;
+      },
+      hasReviewEligibleActivityFinding: async () => true,
+    };
+    const adapter = new DiscoveryActivityAdapter(readWithFixture(), findingRead);
+    const item = (await adapter.readQueue(scope, { limit: 10 })).items[0]!;
+    expect(item.dimensions.attention).toBe('NEEDS_ATTENTION');
+
+    const detail = await adapter.readDetail(scope, item.root);
+    expect(detail.dimensions.attention).toBe('NEEDS_ATTENTION');
+    expect(detail.presentation?.attentionReason).toBe('REVIEW_ELIGIBLE_FINDING');
+    expect(detail.presentation?.relatedResources).toHaveLength(20);
+    expect(detail.presentation?.relatedResourcesTruncated).toBe(true);
+    expect(
+      detail.presentation?.relatedResources?.some(
+        (resource) => resource.resourceId === 'finding-21',
+      ),
+    ).toBe(false);
+  });
+
+  it('fails closed when the separate Attention authority is unavailable', async () => {
+    const findingRead: DiscoveryActivityFindingReadPort = {
+      listActivityFindings: async () => [
+        {
+          projectId: job.projectId,
+          findingId: 'finding-row-only',
+          findingRevision: 1,
+          runId: run.runId,
+          findingType: 'KNOWLEDGE_GAP',
+          lifecycleState: 'REVIEW_READY',
+          title: 'Row-only Finding',
+          reviewEligible: true,
+          resourceHref: '/knowledge/discoveries/finding-row-only?revision=1',
+        },
+      ],
+    };
+    const adapter = new DiscoveryActivityAdapter(readWithFixture(), findingRead);
+    const item = (await adapter.readQueue(scope, { limit: 10 })).items[0]!;
+    expect(item.dimensions.attention).toBe('NONE');
+  });
+
+  it('keeps hidden review-eligible Findings out of both Attention and backlinks', async () => {
+    let authorized = false;
+    const findingRead: DiscoveryActivityFindingReadPort = {
+      listActivityFindings: async (input) => {
+        expect(input.accessScope).toEqual(scope.accessScope);
+        expect(input.sensitivityClearance).toBe(scope.sensitivityClearance);
+        return authorized
+          ? [
+              {
+                projectId: job.projectId,
+                findingId: 'finding-visible',
+                findingRevision: 1,
+                runId: run.runId,
+                findingType: 'KNOWLEDGE_GAP',
+                lifecycleState: 'REVIEW_READY',
+                title: 'Visible Finding',
+                reviewEligible: true,
+                resourceHref: '/knowledge/discoveries/finding-visible?revision=1',
+              },
+            ]
+          : [];
+      },
+      hasReviewEligibleActivityFinding: async () => authorized,
+    };
+    const adapter = new DiscoveryActivityAdapter(readWithFixture(), findingRead);
+    const hiddenScope = { ...scope, accessScope: ['different-scope'] };
+    const hiddenItem = (await adapter.readQueue(hiddenScope, { limit: 10 })).items[0]!;
+    expect(hiddenItem.dimensions.attention).toBe('NONE');
+    const hiddenDetail = await adapter.readDetail(hiddenScope, hiddenItem.root);
+    expect(hiddenDetail.presentation?.relatedResources).toBeUndefined();
+    expect(hiddenDetail.presentation?.attentionReason).toBeUndefined();
+
+    authorized = true;
+    const visibleItem = (await adapter.readQueue(scope, { limit: 10 })).items[0]!;
+    expect(visibleItem.dimensions.attention).toBe('NEEDS_ATTENTION');
+    const visibleDetail = await adapter.readDetail(scope, visibleItem.root);
+    expect(visibleDetail.presentation?.relatedResources?.[0]?.resourceId).toBe('finding-visible');
+  });
+
+  it('keeps projection wait owner-readable and does not convert it into user action or Attention', async () => {
+    const read = new InMemoryDiscoveryActivityRead();
+    const waitingJob = {
+      ...job,
+      jobId: 'job-wp4-wait',
+      logicalIdentity: { ...job.logicalIdentity, value: 'logical-job-wp4-wait' },
+      lifecycleState: 'WAITING_FOR_PROJECTION',
+      lifecycleRevision: 4,
+      projectionWait: {
+        requiredDiscoveryBase: job.requiredDiscoveryBase!,
+        waitDeadlineAt: '2026-09-01T00:00:00.000Z',
+        fallbackPolicyRevision: 'fallback-policy-1',
+      },
+      updatedAt: '2026-08-31T00:00:30.000Z',
+    } satisfies DiscoveryJobV1;
+    read.seedJob(waitingJob);
+    read.seedHistory({
+      projectId: waitingJob.projectId,
+      runId: waitingJob.jobId,
+      history: { job: [], run: [], attempt: [], stage: [] },
+    });
+    const adapter = new DiscoveryActivityAdapter(read);
+    const root = (await adapter.readQueue(scope, { limit: 10 })).items.find(
+      (entry) => entry.root.activityId === waitingJob.jobId,
+    )!.root;
+    const detail = await adapter.readDetail(scope, root);
+    expect(detail.run.state).toBe('QUEUED');
+    expect(detail.dimensions.attention).toBe('NONE');
+    expect(detail.availableActions).toEqual([]);
+    expect(detail.presentation?.wait).toMatchObject({
+      state: 'WAITING_FOR_PROJECTION',
+      requiredProjectionRevision: job.requiredDiscoveryBase?.projectionRevision,
+      deadlineAt: '2026-09-01T00:00:00.000Z',
+      fallbackPolicyRevision: 'fallback-policy-1',
+    });
+    expect(JSON.stringify(detail)).not.toContain('WAITING_FOR_USER');
   });
 
   it('preserves partial, terminal failure and cancellation distinctions at the common Activity boundary', async () => {

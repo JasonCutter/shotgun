@@ -142,6 +142,25 @@ const selectColumns = `
   discovery_projection_digest, run_id, signal_summary, rationale,
   derivation_summary, provenance, access_scope, sensitivity, fingerprint,
   fingerprint_version, retention_class, created_at, supersedes_finding_id`;
+const qualifiedSelectColumns = selectColumns
+  .split(',')
+  .map((column) => `f.${column.trim()}`)
+  .join(', ');
+
+const sensitivitiesAtOrBelow = (clearance: string | undefined): readonly string[] => {
+  switch (clearance) {
+    case 'public':
+      return ['public'];
+    case 'internal':
+      return ['public', 'internal'];
+    case 'private':
+      return ['public', 'internal', 'private'];
+    case 'restricted':
+      return ['public', 'internal', 'private', 'restricted'];
+    default:
+      return [];
+  }
+};
 
 const lifecycleCurrentColumns = `
   project_id, finding_id, finding_revision, lifecycle_state,
@@ -469,6 +488,109 @@ export class PostgresDiscoveryFindingRepository
       [projectId, after?.findingId ?? null, after?.findingRevision ?? 0, limit],
     );
     return result.rows.map(mapRow);
+  }
+
+  /** Bounded, exact FindingReady lineage read for Activity backlinks. */
+  async listByJobAndRun(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+    readonly accessScope?: readonly string[];
+    readonly sensitivityClearance?: string;
+    readonly limit?: number;
+  }): Promise<readonly DiscoveryFindingEnvelopeV1[]> {
+    const projectId = requiredIdentifier(input.projectId, 'projectId');
+    const jobId = requiredIdentifier(input.jobId, 'jobId');
+    const runId = requiredIdentifier(input.runId, 'runId');
+    const allowedSensitivities = sensitivitiesAtOrBelow(input.sensitivityClearance);
+    const accessScope = input.accessScope ?? [];
+    const limit = input.limit ?? 21;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000) {
+      throw new TypeError('activity finding limit must be an integer between 1 and 1000');
+    }
+    if (allowedSensitivities.length === 0) return [];
+    const result = await this.pool.query<DiscoveryFindingRow>(
+      `SELECT ${qualifiedSelectColumns}
+       FROM discovery.findings f
+       JOIN discovery.finding_ready ready
+         ON ready.project_id = f.project_id
+        AND ready.finding_id = f.finding_id
+        AND ready.finding_revision = f.finding_revision
+        AND ready.run_id = f.run_id
+       WHERE f.project_id = $1
+         AND ready.job_id = $2
+         AND f.run_id = $3
+         AND f.access_scope <@ $4::text[]
+         AND f.sensitivity = ANY($5::text[])
+       ORDER BY f.finding_id ASC, f.finding_revision ASC
+       LIMIT $6`,
+      [projectId, jobId, runId, accessScope, allowedSensitivities, limit],
+    );
+    return result.rows.map(mapRow);
+  }
+
+  /** Bounded server-side existence check for the existing Review authority. */
+  async hasReviewEligibleByJobAndRun(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+    readonly accessScope?: readonly string[];
+    readonly sensitivityClearance?: string;
+  }): Promise<boolean> {
+    const projectId = requiredIdentifier(input.projectId, 'projectId');
+    const jobId = requiredIdentifier(input.jobId, 'jobId');
+    const runId = requiredIdentifier(input.runId, 'runId');
+    const allowedSensitivities = sensitivitiesAtOrBelow(input.sensitivityClearance);
+    if (allowedSensitivities.length === 0) return false;
+    const result = await this.pool.query<{ readonly exists: boolean }>(
+      `WITH latest_review AS (
+         SELECT DISTINCT ON (review_resource_id)
+                project_id, review_resource_id, finding_id, finding_revision,
+                candidate_id, candidate_revision, manifest_id, finding_type,
+                lifecycle_state, review_eligibility, origin
+         FROM discovery.reentry_review_resources
+         WHERE project_id = $1
+         ORDER BY review_resource_id, resource_revision DESC
+       )
+       SELECT EXISTS (
+         SELECT 1
+         FROM latest_review review
+         JOIN discovery.reentry_candidates candidate
+           ON candidate.project_id = review.project_id
+          AND candidate.candidate_id = review.candidate_id
+          AND candidate.candidate_revision = review.candidate_revision
+          AND candidate.finding_id = review.finding_id
+          AND candidate.finding_revision = review.finding_revision
+          AND candidate.manifest_id = review.manifest_id
+          AND candidate.finding_type = review.finding_type
+         JOIN discovery.findings f
+           ON f.project_id = candidate.project_id
+          AND f.finding_id = candidate.finding_id
+          AND f.finding_revision = candidate.finding_revision
+          AND f.finding_type = candidate.finding_type
+         JOIN discovery.finding_ready ready
+           ON ready.project_id = f.project_id
+          AND ready.finding_id = f.finding_id
+          AND ready.finding_revision = f.finding_revision
+          AND ready.run_id = f.run_id
+         JOIN discovery.finding_lifecycle_current current_lifecycle
+           ON current_lifecycle.project_id = f.project_id
+          AND current_lifecycle.finding_id = f.finding_id
+          AND current_lifecycle.finding_revision = f.finding_revision
+         WHERE review.project_id = $1
+           AND ready.job_id = $2
+           AND ready.run_id = $3
+           AND f.run_id = $3
+           AND review.origin = 'DERIVED_DISCOVERY'
+           AND review.lifecycle_state = 'REVIEW_READY'
+           AND review.review_eligibility = 'ELIGIBLE_AFTER_VALIDATION'
+           AND current_lifecycle.lifecycle_state = 'REVIEW_READY'
+           AND f.access_scope <@ $4::text[]
+           AND f.sensitivity = ANY($5::text[])
+       ) AS exists`,
+      [projectId, jobId, runId, input.accessScope ?? [], allowedSensitivities],
+    );
+    return result.rows[0]?.exists === true;
   }
 
   async findByFingerprint(

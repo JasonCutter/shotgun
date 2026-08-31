@@ -1,6 +1,7 @@
 import { FrontendContractError } from '../../../packages/contracts/src/index.js';
 import type {
   ActivityDomainAttemptViewV1,
+  ActivityDomainPresentationV1,
   ActivityEventCategoryV1,
   ActivityEventViewV1,
   ActivityLifecycleStateV1,
@@ -14,7 +15,6 @@ import type {
   DiscoveryStageV1,
 } from '../../../packages/contracts/src/index.js';
 import {
-  activityAttentionFrom,
   activityFailureKindFrom,
   activityRetryabilityFrom,
   decodeDiscoveryActivityCursor,
@@ -30,6 +30,8 @@ import {
   type DiscoveryActivityAdapterPort,
   type DiscoveryActivityAttemptRow,
   type DiscoveryActivityFailureContextV1,
+  type DiscoveryActivityFindingReadPort,
+  type DiscoveryActivityFindingRow,
   type DiscoveryActivityHistoryV1,
   type DiscoveryActivityJobRow,
   type DiscoveryActivityLifecycleEventV1,
@@ -43,11 +45,58 @@ import {
  * history remain authoritative in the Discovery runtime; Activity only maps
  * those records into the existing federated projection. Finding payloads,
  * stage outputs, provider data and re-entry/governance commands are never
- * read or returned here.
+ * read or returned here; only a bounded, safe Finding backlink may be
+ * supplied by the existing Finding/Review authorities.
  */
 
 const ADAPTER_ID = 'discovery-activity-adapter';
 const PAGE_CAP = 50;
+const FINDING_PAGE_CAP = 20;
+
+const triggerLabel = (job: DiscoveryJobV1): string => {
+  switch (job.trigger.triggerClass) {
+    case 'CANONICAL_COMMITTED':
+      return 'Canonical 변경 후 Discovery';
+    case 'SCHEDULED_FULL_SCAN':
+      return '예약된 전체 스캔';
+    case 'MANUAL':
+      return '수동 Discovery 실행';
+  }
+};
+
+const scanModeLabel = (job: DiscoveryJobV1): string =>
+  job.effectiveScanMode === 'FULL_SCAN' ? '전체 스캔' : '증분 스캔';
+
+const lifecycleLabel = (state: DiscoveryRuntimeLifecycleStateV1): string => {
+  switch (state) {
+    case 'QUEUED':
+      return '대기 중';
+    case 'WAITING_FOR_PROJECTION':
+      return '필수 지식 프로젝션 대기 중';
+    case 'RUNNING':
+      return '실행 중';
+    case 'PARTIAL':
+      return '부분 완료';
+    case 'SUCCEEDED':
+      return '완료';
+    case 'FAILED_RETRYABLE':
+      return '재시도 가능한 실패';
+    case 'FAILED_TERMINAL':
+      return '복구 불가 실패';
+    case 'CANCELLED':
+      return '취소됨';
+  }
+};
+
+const stageLabels: Readonly<Record<DiscoveryStageV1['stageType'], string>> = {
+  WAIT_FOR_PROJECTION: '필수 프로젝션 대기',
+  LOAD_SIGNALS: '신호 로드',
+  GENERATE_FINDINGS: 'Finding 생성',
+  QUALITY_GATE: '품질 게이트',
+  PERSIST_FINDINGS: 'Finding 저장',
+  PUBLISH_REENTRY: '재진입 이벤트 발행',
+  RECONCILE_FINDINGS: 'Finding 정합성 확인',
+};
 
 const notFound = (): never => {
   throw new FrontendContractError('NOT_FOUND', 'The Activity resource was not found.');
@@ -118,6 +167,20 @@ const isTerminal = (state: DiscoveryRuntimeLifecycleStateV1): boolean =>
   state === 'FAILED_RETRYABLE' ||
   state === 'FAILED_TERMINAL' ||
   state === 'CANCELLED';
+
+const attentionFor = (
+  state: DiscoveryRuntimeLifecycleStateV1,
+  hasReviewEligibleFinding: boolean,
+): {
+  readonly state: 'NEEDS_ATTENTION' | 'RESOLVED' | 'NONE';
+  readonly reason?: ActivityDomainPresentationV1['attentionReason'];
+} => {
+  if (state === 'FAILED_TERMINAL') return { state: 'NEEDS_ATTENTION', reason: 'FAILED_TERMINAL' };
+  if (hasReviewEligibleFinding) {
+    return { state: 'NEEDS_ATTENTION', reason: 'REVIEW_ELIGIBLE_FINDING' };
+  }
+  return { state: 'NONE' };
+};
 
 const safeFailureFrom = (
   failure: DiscoveryActivityFailureContextV1 | undefined,
@@ -215,7 +278,10 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
   readonly domainKind = 'DISCOVERY' as const;
   readonly domainKinds = ['DISCOVERY'] as const;
 
-  constructor(private readonly read: DiscoveryActivityReadPort) {}
+  constructor(
+    private readonly read: DiscoveryActivityReadPort,
+    private readonly findingRead?: DiscoveryActivityFindingReadPort,
+  ) {}
 
   health(): ActivityAdapterHealthV1 {
     return { status: 'AVAILABLE' };
@@ -261,19 +327,141 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
     return job;
   }
 
-  private queueItemFrom(row: DiscoveryActivityJobRow): ActivityQueueItemV1 {
-    const state = commonState(row.job.lifecycleState);
+  private async findingsFor(
+    scope: ActivityAdapterScopeV1,
+    job: DiscoveryJobV1,
+    run: DiscoveryRunV1 | undefined,
+  ): Promise<readonly DiscoveryActivityFindingRow[]> {
+    if (!run || this.findingRead === undefined) return [];
+    try {
+      const findings = await this.findingRead.listActivityFindings({
+        projectId: scope.activeProjectId,
+        jobId: job.jobId,
+        runId: run.runId,
+        accessScope: scope.accessScope,
+        sensitivityClearance: scope.sensitivityClearance,
+        limit: FINDING_PAGE_CAP + 1,
+      });
+      // Retain one bounded sentinel so the presentation can distinguish an
+      // exact 20-item result from a truncated backlink list. Attention still
+      // evaluates every row returned by this bounded read.
+      return findings.slice(0, FINDING_PAGE_CAP + 1);
+    } catch {
+      // Finding/Review authority is optional to the runtime projection. A
+      // failed backlink read must never grant Attention or disclose data.
+      return [];
+    }
+  }
+
+  private async hasReviewEligibleFindingFor(
+    scope: ActivityAdapterScopeV1,
+    job: DiscoveryJobV1,
+    run: DiscoveryRunV1 | undefined,
+  ): Promise<boolean> {
+    if (!run || this.findingRead === undefined) return false;
+    if (this.findingRead.hasReviewEligibleActivityFinding === undefined) {
+      // Attention is fail-closed when its separate authority is unavailable;
+      // the bounded backlink rows are presentation data, not authority.
+      return false;
+    }
+    try {
+      return await this.findingRead.hasReviewEligibleActivityFinding({
+        projectId: scope.activeProjectId,
+        jobId: job.jobId,
+        runId: run.runId,
+        accessScope: scope.accessScope,
+        sensitivityClearance: scope.sensitivityClearance,
+      });
+    } catch {
+      // An unavailable authority must never grant Attention.
+      return false;
+    }
+  }
+
+  private presentationFor(
+    job: DiscoveryJobV1,
+    run: DiscoveryRunV1 | undefined,
+    findings: readonly DiscoveryActivityFindingRow[],
+    attention: ReturnType<typeof attentionFor>,
+  ): ActivityDomainPresentationV1 {
+    const state = run?.lifecycleState ?? job.lifecycleState;
+    const waitBinding = run?.projectionWait ?? job.projectionWait;
+    const displayedFindings = findings.slice(0, FINDING_PAGE_CAP);
+    const relatedResources = displayedFindings.map((finding) => ({
+      schemaVersion: '1.0.0' as const,
+      resourceKind: 'DISCOVERY_FINDING' as const,
+      resourceId: finding.findingId,
+      resourceRevision: finding.findingRevision,
+      title: finding.title,
+      findingType: finding.findingType,
+      lifecycleState: finding.lifecycleState,
+      authority: 'DERIVED_INFERENCE' as const,
+      resourceHref: finding.resourceHref,
+    }));
+    return {
+      schemaVersion: '1.0.0',
+      title: `${triggerLabel(job)} · ${scanModeLabel(job)}`,
+      triggerLabel: triggerLabel(job),
+      scanModeLabel: scanModeLabel(job),
+      ...(attention.reason === undefined ? {} : { attentionReason: attention.reason }),
+      ...(state === 'WAITING_FOR_PROJECTION' && waitBinding !== undefined
+        ? {
+            wait: {
+              schemaVersion: '1.0.0' as const,
+              state: 'WAITING_FOR_PROJECTION' as const,
+              requiredProjectionRevision: waitBinding.requiredDiscoveryBase.projectionRevision,
+              requiredProjectionDigest: waitBinding.requiredDiscoveryBase.projectionDigest,
+              deadlineAt: waitBinding.waitDeadlineAt,
+              fallbackPolicyRevision: waitBinding.fallbackPolicyRevision,
+            },
+          }
+        : {}),
+      boundedWork: {
+        schemaVersion: '1.0.0',
+        maxResources: job.budget.maxResources,
+        maxFindings: job.budget.maxFindings,
+        maxProviderCalls: job.budget.maxProviderCalls,
+        deadlineAt: job.budget.deadlineAt,
+      },
+      ...(relatedResources.length === 0 ? {} : { relatedResources }),
+      ...(findings.length > FINDING_PAGE_CAP
+        ? {
+            relatedResourceCount: relatedResources.length,
+            relatedResourcesTruncated: true,
+          }
+        : relatedResources.length > 0
+          ? { relatedResourceCount: relatedResources.length, relatedResourcesTruncated: false }
+          : {}),
+    };
+  }
+
+  private async queueItemFrom(
+    scope: ActivityAdapterScopeV1,
+    row: DiscoveryActivityJobRow,
+  ): Promise<ActivityQueueItemV1> {
+    // The queue has always represented the durable Job lifecycle. A Run is
+    // still the source for detail-level execution lineage, but allowing a
+    // stale/terminal Run snapshot to overwrite the Job state would regress
+    // the existing Activity queue contract (and can hide a later Job state).
+    const runtimeState = row.job.lifecycleState;
+    const state = commonState(runtimeState);
+    const hasReviewEligibleFinding = await this.hasReviewEligibleFindingFor(
+      scope,
+      row.job,
+      row.run,
+    );
+    const attention = attentionFor(runtimeState, hasReviewEligibleFinding);
     return {
       root: jobRoot(row),
-      summary: `Discovery job ${row.job.jobId}`,
+      summary: `${triggerLabel(row.job)} · ${scanModeLabel(row.job)} · ${lifecycleLabel(row.job.lifecycleState)}`,
       state,
       dimensions: {
         schemaVersion: '1.0.0',
-        attention: 'NONE',
+        attention: attention.state,
         retryability: activityRetryabilityFrom(
-          row.job.lifecycleState === 'FAILED_RETRYABLE'
+          runtimeState === 'FAILED_RETRYABLE'
             ? true
-            : row.job.lifecycleState === 'FAILED_TERMINAL' || row.job.lifecycleState === 'CANCELLED'
+            : runtimeState === 'FAILED_TERMINAL' || runtimeState === 'CANCELLED'
               ? false
               : undefined,
         ),
@@ -295,13 +483,11 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
       limit: limit + 1,
     });
     const pageRows = jobs.slice(0, limit);
-    const items = pageRows
-      .map((row) => this.queueItemFrom(row))
-      .filter(
-        (item) =>
-          (filter.states === undefined || filter.states.includes(item.state)) &&
-          (filter.attention === undefined || item.dimensions.attention === filter.attention),
-      );
+    const items = (await Promise.all(pageRows.map((row) => this.queueItemFrom(scope, row)))).filter(
+      (item) =>
+        (filter.states === undefined || filter.states.includes(item.state)) &&
+        (filter.attention === undefined || item.dimensions.attention === filter.attention),
+    );
     const last = pageRows[pageRows.length - 1];
     const hasMore = jobs.length > limit;
     const nextCursor = hasMore && last !== undefined ? activityCursorForJob(last) : undefined;
@@ -344,6 +530,7 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
       runId: attempt.runId,
       attemptNumber: attempt.attemptNumber,
       attemptKind: 'DISCOVERY_EXECUTION',
+      retryKind: attempt.attemptKind,
       state: commonState(attempt.lifecycleState),
       retryability: activityRetryabilityFrom(
         attempt.lifecycleState === 'FAILED_RETRYABLE'
@@ -377,7 +564,7 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
       schemaVersion: '1.0.0',
       stageId: stage.stageId,
       stageKey: `discovery-attempt-${stage.attemptId}-stage-${stage.stageOrdinal}-${stage.stageType.toLowerCase()}`,
-      label: stage.stageType.replaceAll('_', ' '),
+      label: stageLabels[stage.stageType],
       sequence,
       state: stageState(stage.state),
       startedAt: stage.createdAt,
@@ -457,6 +644,9 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
       stageIds: sortedStages.map((stage) => stage.stageId),
     });
     const currentState = run?.lifecycleState ?? job.lifecycleState;
+    const findings = await this.findingsFor(scope, job, run);
+    const hasReviewEligibleFinding = await this.hasReviewEligibleFindingFor(scope, job, run);
+    const attention = attentionFor(currentState, hasReviewEligibleFinding);
     const runId = run?.runId ?? root.runId;
     const attemptRefs = attempts.map((attempt) => ({
       schemaVersion: '1.0.0' as const,
@@ -488,8 +678,6 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
       .reverse()
       .map((attempt) => safeFailureFrom(attempt.failure))
       .find((failure) => failure !== undefined);
-    const totalStages = sortedStages.length;
-    const completedStages = sortedStages.filter((stage) => stage.state === 'SUCCEEDED').length;
     const activityRoot = jobRoot({ job, ...(run === undefined ? {} : { run }) }, runId);
     return {
       root: activityRoot,
@@ -536,17 +724,7 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
       metadata: metadataFor({ sourceUpdatedAt }),
       dimensions: {
         schemaVersion: '1.0.0',
-        ...(totalStages === 0
-          ? {}
-          : {
-              progress: {
-                schemaVersion: '1.0.0' as const,
-                current: completedStages,
-                total: totalStages,
-                percent: Math.floor((completedStages / totalStages) * 100),
-              },
-            }),
-        attention: activityAttentionFrom(undefined),
+        attention: attention.state,
         ...(firstFailure === undefined ? {} : { failure: firstFailure }),
         retryability: activityRetryabilityFrom(
           currentState === 'FAILED_RETRYABLE'
@@ -560,6 +738,7 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
       },
       // WP5 is observation-only. Discovery retry/cancel remain outside the
       // generic Activity command surface until a later governed work item.
+      presentation: this.presentationFor(job, run, findings, attention),
       availableActions: [],
     };
   }

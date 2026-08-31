@@ -58,9 +58,28 @@ export type DiscoveryFeedbackRepositoryPort = {
   listFeedbackForFinding(
     lookup: DiscoveryFeedbackFindingLookupV1,
   ): Promise<readonly DiscoveryFeedbackEventV1[]>;
+  /** Bounded Product read: one latest ordinary utility event per Finding
+   * revision at the server-owned evaluation time. */
+  listLatestUtilityFeedbackForPresentation?(
+    lookup: DiscoveryPresentationFeedbackLookupV1,
+  ): Promise<readonly DiscoveryFeedbackEventV1[]>;
+  /** Batch-keyed variant. Implementations must return only identities supplied
+   * by the current Product Finding batch. */
+  listLatestUtilityFeedbackForPresentationBatch?(
+    lookup: DiscoveryPresentationBatchLookupV1,
+  ): Promise<readonly DiscoveryFeedbackEventV1[]>;
   appendSuppression(directive: DiscoverySuppressionDirectiveV1): Promise<'CREATED' | 'CONFLICT'>;
   listRelevantSuppression(
     lookup: DiscoverySuppressionLookupV1,
+  ): Promise<readonly DiscoverySuppressionDirectiveV1[]>;
+  /** Bounded Product read of active principal-scoped directives. The Product
+   * matcher still enforces Finding lineage and project semantics. */
+  listSuppressionForPresentation?(
+    lookup: DiscoveryPresentationSuppressionLookupV1,
+  ): Promise<readonly DiscoverySuppressionDirectiveV1[]>;
+  /** Batch-keyed exact/snooze plus bounded semantic-family candidates. */
+  listSuppressionForPresentationBatch?(
+    lookup: DiscoveryPresentationBatchLookupV1,
   ): Promise<readonly DiscoverySuppressionDirectiveV1[]>;
   insertRankingPolicyRevision(
     policy: DiscoveryRankingPolicyRevisionV1,
@@ -86,6 +105,36 @@ export type DiscoveryFeedbackRepositoryPort = {
 
 export type DiscoverySuppressionHistoryLookupV1 = DiscoveryFeedbackFindingLookupV1 & {
   readonly principalId: string;
+};
+
+export type DiscoveryPresentationFeedbackLookupV1 = {
+  readonly projectId: string;
+  readonly principalId: string;
+  readonly at: string;
+};
+
+/** Server-derived identity used to bound Product presentation reads to the
+ * Finding revisions in the current physical batch. The semantic-family key is
+ * never accepted from a browser request. */
+export type DiscoveryPresentationFindingInputV1 = {
+  readonly findingId: string;
+  readonly findingRevision: number;
+  readonly fingerprint: string;
+  readonly fingerprintVersion: string;
+  readonly semanticFamilyKey?: string;
+};
+
+export type DiscoveryPresentationBatchLookupV1 = {
+  readonly projectId: string;
+  readonly principalId: string;
+  readonly at: string;
+  readonly findings: readonly DiscoveryPresentationFindingInputV1[];
+};
+
+export type DiscoveryPresentationSuppressionLookupV1 = {
+  readonly projectId: string;
+  readonly principalId: string;
+  readonly at: string;
 };
 
 export type DiscoveryFeedbackWriteRepositoryPort = Pick<

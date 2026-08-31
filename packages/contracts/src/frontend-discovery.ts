@@ -187,12 +187,44 @@ export type DiscoveryProductFindingSummaryV1 = {
   readonly runId: string;
   readonly capabilities: DiscoveryProductCapabilitiesV1;
   readonly activity?: DiscoveryProductActivityBindingV1;
+  readonly presentation?: DiscoveryProductFindingPresentationV1;
   readonly createdAt: string;
 };
 
 export type DiscoveryProductFindingDetailV1 = DiscoveryProductFindingSummaryV1 & {
   readonly payload: DiscoveryFindingPayloadV1;
   readonly lineage: DiscoveryProductLineageV1;
+};
+
+/** AKP-7 WP3 — safe, non-epistemic presentation metadata. */
+export const DISCOVERY_PRODUCT_PRESENTATION_REASON_CODES_V1 = [
+  'BASE_RANK',
+  'UTILITY_USEFUL',
+  'UTILITY_NOT_RELEVANT',
+  'UTILITY_ALREADY_KNOWN',
+  'UTILITY_TOO_FREQUENT',
+  'MANDATORY_VISIBILITY_OVERRIDE',
+] as const;
+export type DiscoveryProductPresentationReasonCodeV1 =
+  (typeof DISCOVERY_PRODUCT_PRESENTATION_REASON_CODES_V1)[number];
+
+export const DISCOVERY_PRODUCT_UTILITY_ADJUSTMENT_VERSION_V1 =
+  'discovery-utility-adjustment:v1' as const;
+export const DISCOVERY_PRODUCT_SEMANTIC_MATCHER_VERSION_V1 = 'semantic-family:v1' as const;
+
+export type DiscoveryProductFindingPresentationV1 = {
+  readonly rank: number;
+  readonly reasonCodes: readonly DiscoveryProductPresentationReasonCodeV1[];
+};
+
+export type DiscoveryProductPresentationMetadataV1 = {
+  readonly algorithmVersion: string;
+  readonly policyIdentity: string;
+  readonly policyRevision: number;
+  readonly policySource: 'PERSISTED' | 'BUILT_IN_FALLBACK';
+  readonly utilityAdjustmentVersion: typeof DISCOVERY_PRODUCT_UTILITY_ADJUSTMENT_VERSION_V1;
+  readonly semanticMatcherVersion: typeof DISCOVERY_PRODUCT_SEMANTIC_MATCHER_VERSION_V1;
+  readonly evaluationTime: string;
 };
 
 export type ListDiscoveryFindingsRequestV1 = {
@@ -209,6 +241,7 @@ export type ListDiscoveryFindingsResultV1 = {
   readonly accessRevision: string;
   readonly policyContextRevision: string;
   readonly findings: readonly DiscoveryProductFindingSummaryV1[];
+  readonly presentation?: DiscoveryProductPresentationMetadataV1;
   readonly nextCursor?: string;
 };
 
@@ -781,6 +814,7 @@ const decodeSummary = (value: unknown, path: string): DiscoveryProductFindingSum
       'runId',
       'capabilities',
       'activity',
+      'presentation',
       'createdAt',
     ],
     path,
@@ -832,7 +866,81 @@ const decodeSummary = (value: unknown, path: string): DiscoveryProductFindingSum
     ...(object.activity === undefined
       ? {}
       : { activity: decodeActivityBinding(object.activity, `${path}.activity`) }),
+    ...(object.presentation === undefined
+      ? {}
+      : { presentation: decodePresentation(object.presentation, `${path}.presentation`) }),
     createdAt: isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`),
+  };
+};
+
+const decodePresentation = (
+  value: unknown,
+  path: string,
+): DiscoveryProductFindingPresentationV1 => {
+  const object = strictObject(value, ['rank', 'reasonCodes'], path);
+  const rank = positiveInteger(required(object, 'rank', path), `${path}.rank`);
+  const reasonCodes = required(object, 'reasonCodes', path);
+  if (!Array.isArray(reasonCodes) || reasonCodes.length === 0) {
+    return fail(`${path}.reasonCodes`, 'must be a non-empty array');
+  }
+  const decoded = reasonCodes.map((entry, index) =>
+    enumValue(
+      entry,
+      DISCOVERY_PRODUCT_PRESENTATION_REASON_CODES_V1,
+      `${path}.reasonCodes[${index}]`,
+    ),
+  );
+  if (new Set(decoded).size !== decoded.length) {
+    return fail(`${path}.reasonCodes`, 'must not contain duplicates');
+  }
+  return { rank, reasonCodes: decoded };
+};
+
+const decodePresentationMetadata = (
+  value: unknown,
+  path: string,
+): DiscoveryProductPresentationMetadataV1 => {
+  const object = strictObject(
+    value,
+    [
+      'algorithmVersion',
+      'policyIdentity',
+      'policyRevision',
+      'policySource',
+      'utilityAdjustmentVersion',
+      'semanticMatcherVersion',
+      'evaluationTime',
+    ],
+    path,
+  );
+  const utilityAdjustmentVersion = enumValue(
+    required(object, 'utilityAdjustmentVersion', path),
+    [DISCOVERY_PRODUCT_UTILITY_ADJUSTMENT_VERSION_V1],
+    `${path}.utilityAdjustmentVersion`,
+  );
+  const semanticMatcherVersion = enumValue(
+    required(object, 'semanticMatcherVersion', path),
+    [DISCOVERY_PRODUCT_SEMANTIC_MATCHER_VERSION_V1],
+    `${path}.semanticMatcherVersion`,
+  );
+  return {
+    algorithmVersion: text(required(object, 'algorithmVersion', path), `${path}.algorithmVersion`),
+    policyIdentity: text(required(object, 'policyIdentity', path), `${path}.policyIdentity`),
+    policyRevision: positiveInteger(
+      required(object, 'policyRevision', path),
+      `${path}.policyRevision`,
+    ),
+    policySource: enumValue(
+      required(object, 'policySource', path),
+      ['PERSISTED', 'BUILT_IN_FALLBACK'],
+      `${path}.policySource`,
+    ),
+    utilityAdjustmentVersion,
+    semanticMatcherVersion,
+    evaluationTime: isoTimestamp(
+      required(object, 'evaluationTime', path),
+      `${path}.evaluationTime`,
+    ),
   };
 };
 
@@ -968,6 +1076,7 @@ export const decodeListDiscoveryFindingsResultV1 = (
       'accessRevision',
       'policyContextRevision',
       'findings',
+      'presentation',
       'nextCursor',
     ],
     path,
@@ -985,6 +1094,9 @@ export const decodeListDiscoveryFindingsResultV1 = (
       `${path}.policyContextRevision`,
     ),
     findings: findings.map((entry, index) => decodeSummary(entry, `${path}.findings[${index}]`)),
+    ...(object.presentation === undefined
+      ? {}
+      : { presentation: decodePresentationMetadata(object.presentation, `${path}.presentation`) }),
     ...(nextCursor === undefined ? {} : { nextCursor }),
   };
 };

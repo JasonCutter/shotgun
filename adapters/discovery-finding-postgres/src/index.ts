@@ -449,6 +449,24 @@ export class PostgresDiscoveryFindingRepository
     return result.rows[0] ? mapRow(result.rows[0]) : undefined;
   }
 
+  async findLatestAsOf(
+    lookup: DiscoveryFindingLatestLookupV1 & { readonly at: string },
+  ): Promise<DiscoveryFindingEnvelopeV1 | undefined> {
+    const projectId = requiredIdentifier(lookup.projectId, 'projectId');
+    const findingId = requiredIdentifier(lookup.findingId, 'findingId');
+    if (!Number.isFinite(Date.parse(lookup.at)))
+      throw new TypeError('at must be a valid date-time');
+    const result = await this.pool.query<DiscoveryFindingRow>(
+      `SELECT ${selectColumns}
+       FROM discovery.findings
+       WHERE project_id = $1 AND finding_id = $2 AND created_at <= $3::timestamptz
+       ORDER BY finding_revision DESC
+       LIMIT 1`,
+      [projectId, findingId, lookup.at],
+    );
+    return result.rows[0] ? mapRow(result.rows[0]) : undefined;
+  }
+
   async listByProject(projectIdInput: string): Promise<readonly DiscoveryFindingEnvelopeV1[]> {
     const projectId = requiredIdentifier(projectIdInput, 'projectId');
     const result = await this.pool.query<DiscoveryFindingRow>(
@@ -645,6 +663,45 @@ export class PostgresDiscoveryFindingRepository
     return lifecycleCorrupt(
       'lifecycle-read',
       'Discovery finding lifecycle authority is not initialized.',
+    );
+  }
+
+  async findLifecycleAsOf(
+    identity: DiscoveryFindingIdentityV1,
+    at: string,
+  ): Promise<DiscoveryFindingLifecycleCurrentV1 | undefined> {
+    if (!Number.isFinite(Date.parse(at))) throw new TypeError('at must be a valid date-time');
+    const result = await this.pool.query<DiscoveryFindingLifecycleHistoryRow>(
+      `SELECT ${lifecycleHistoryColumns}
+       FROM discovery.finding_lifecycle_history
+       WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
+         AND occurred_at <= $4::timestamptz
+       ORDER BY lifecycle_revision DESC
+       LIMIT 1`,
+      [...identityParams(identity), at],
+    );
+    const row = result.rows[0];
+    if (row) {
+      return decodeDiscoveryFindingLifecycleCurrentV1({
+        projectId: row.project_id,
+        findingId: row.finding_id,
+        findingRevision: Number(row.finding_revision),
+        lifecycleState: row.to_state,
+        lifecycleRevision: Number(row.lifecycle_revision),
+        updatedAt: row.occurred_at.toISOString(),
+      });
+    }
+    const finding = await this.pool.query(
+      `SELECT 1
+       FROM discovery.findings
+       WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
+         AND created_at <= $4::timestamptz`,
+      [...identityParams(identity), at],
+    );
+    if (finding.rowCount === 0) return undefined;
+    return lifecycleCorrupt(
+      'lifecycle-as-of-read',
+      'Discovery finding lifecycle history is not initialized for the requested evaluation time.',
     );
   }
 

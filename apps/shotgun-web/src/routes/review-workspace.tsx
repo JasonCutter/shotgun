@@ -21,6 +21,7 @@ import {
   reviewContextQueryOptions,
   reviewItemDetailQueryOptions,
   reviewQueueQueryOptions,
+  reviewResourceResolutionQueryOptions,
   reviewScopeFromShellOrNull,
 } from '../knowledge/review-queries.js';
 import {
@@ -125,6 +126,12 @@ export const ReviewWorkspace = () => {
     parsedExplicitDeepLinkRevision > 0
       ? parsedExplicitDeepLinkRevision
       : undefined;
+  const deepLinkResolutionResourceId =
+    deepLinkReviewResourceId &&
+    explicitDeepLinkContext === null &&
+    explicitDeepLinkRevision === null
+      ? deepLinkReviewResourceId
+      : null;
 
   const queueRequest = useMemo(
     () => ({
@@ -137,9 +144,12 @@ export const ReviewWorkspace = () => {
   );
 
   const queue = useQuery(reviewQueueQueryOptions(reviewClient, scope, queueRequest));
+  const deepLinkResolution = useQuery(
+    reviewResourceResolutionQueryOptions(reviewClient, scope, deepLinkResolutionResourceId),
+  );
   const queuedDeepLinkRevision =
-    deepLinkReviewResourceId && deepLinkContext && queue.data
-      ? queue.data.items.find((item) => item.reviewContextId === deepLinkContext)?.contextRevision
+    deepLinkResolution.data?.status === 'FOUND'
+      ? deepLinkResolution.data.contextRevision
       : undefined;
   const deepLinkRevision =
     validExplicitDeepLinkRevision ??
@@ -471,6 +481,18 @@ export const ReviewWorkspace = () => {
           error={new Error(state.phase.message)}
           onRetry={state.phase.retryable ? () => void queue.refetch() : undefined}
         />
+      ) : null}
+      {deepLinkReviewResourceId && !validExplicitDeepLinkRevision && deepLinkResolution.isError ? (
+        <p className="status-message" role="status">
+          검토 연결 대상을 확인하지 못했습니다. 대기열에서 직접 선택해 주세요.
+        </p>
+      ) : null}
+      {deepLinkReviewResourceId &&
+      !validExplicitDeepLinkRevision &&
+      deepLinkResolution.data?.status === 'EXHAUSTED' ? (
+        <p className="status-message" role="status">
+          요청한 검토 연결 대상을 찾지 못했습니다. 대기열에서 직접 선택해 주세요.
+        </p>
       ) : null}
 
       <div className="review-layout">

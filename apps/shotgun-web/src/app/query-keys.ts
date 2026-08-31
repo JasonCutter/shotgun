@@ -349,6 +349,17 @@ export const reviewQueueQueryKey = (
 ) => [...reviewScopeKey(scope), 'queue', request] as const;
 
 /**
+ * Deep-link identity resolution is independent from the visible Review queue
+ * filters. Keep the resource identity as the only request-specific input so
+ * changing visual filters can never reuse or invalidate the resolver result.
+ */
+export const reviewResourceResolutionQueryKey = (
+  scope: ReviewQueryScope,
+  targetKind: string,
+  resourceId: string,
+) => [...reviewScopeKey(scope), 'resource-resolution', targetKind, resourceId] as const;
+
+/**
  * Context-phase key: a Review Context read bound to the immutable context
  * revision identity (reviewContextId + contextRevision).
  */

@@ -13,10 +13,71 @@ import {
 import {
   reviewContextPhaseQueryKey,
   reviewDisabledQueryKey,
+  reviewResourceResolutionQueryKey,
   reviewQueueQueryKey,
   reviewScopeFromShell,
   type ReviewQueryScope,
 } from '../app/query-keys.js';
+import { reviewContextIdForResource } from './review-route-identity.js';
+
+export const REVIEW_DEEP_LINK_PAGE_SIZE = 50;
+
+export type ReviewResourceResolution =
+  | {
+      readonly status: 'FOUND';
+      readonly reviewContextId: string;
+      readonly contextRevision: number;
+    }
+  | {
+      readonly status: 'EXHAUSTED';
+      readonly reviewContextId: string;
+    };
+
+/**
+ * Resolve a resource deep link against the server-owned Review queue. The
+ * resolver deliberately omits visual queue filters and follows only the
+ * server cursor until the exact context is found or the queue is exhausted.
+ * It never derives or fabricates a context revision.
+ */
+export const resolveReviewResource = async (
+  client: FrontendReviewClient,
+  targetKind: 'DISCOVERY_CANDIDATE',
+  resourceId: string,
+  signal?: AbortSignal,
+): Promise<ReviewResourceResolution> => {
+  const reviewContextId = reviewContextIdForResource(targetKind, resourceId);
+  let cursor: string | undefined;
+  const seenCursors = new Set<string>();
+
+  while (true) {
+    const page = await client.listReviewQueue(
+      {
+        schemaVersion: '1.0.0',
+        pageSize: REVIEW_DEEP_LINK_PAGE_SIZE,
+        targetKinds: [targetKind],
+        ...(cursor ? { cursor } : {}),
+      },
+      { signal },
+    );
+    const matchedItem = page.items.find(
+      (item) => item.targetKind === targetKind && item.reviewContextId === reviewContextId,
+    );
+    if (matchedItem) {
+      return {
+        status: 'FOUND',
+        reviewContextId: matchedItem.reviewContextId,
+        contextRevision: matchedItem.contextRevision,
+      };
+    }
+
+    const nextCursor = page.nextCursor;
+    if (!nextCursor || seenCursors.has(nextCursor)) {
+      return { status: 'EXHAUSTED', reviewContextId };
+    }
+    seenCursors.add(nextCursor);
+    cursor = nextCursor;
+  }
+};
 
 export const reviewCanManuallyRetry = (error: unknown): error is ShotgunApiError =>
   error instanceof ShotgunApiError && error.retryability === 'SAFE';
@@ -37,6 +98,23 @@ export const reviewQueueQueryOptions = (
     queryKey: scope ? reviewQueueQueryKey(scope, request) : reviewDisabledQueryKey('queue'),
     queryFn: ({ signal }) => client.listReviewQueue(request, { signal }),
     enabled: scope !== null,
+    retry: reviewQueryRetry,
+    staleTime: 15_000,
+  });
+
+export const reviewResourceResolutionQueryOptions = (
+  client: FrontendReviewClient,
+  scope: ReviewQueryScope | null,
+  resourceId: string | null,
+) =>
+  queryOptions({
+    queryKey:
+      scope && resourceId
+        ? reviewResourceResolutionQueryKey(scope, 'DISCOVERY_CANDIDATE', resourceId)
+        : reviewDisabledQueryKey('resource-resolution'),
+    queryFn: ({ signal }) =>
+      resolveReviewResource(client, 'DISCOVERY_CANDIDATE', resourceId!, signal),
+    enabled: scope !== null && resourceId !== null,
     retry: reviewQueryRetry,
     staleTime: 15_000,
   });

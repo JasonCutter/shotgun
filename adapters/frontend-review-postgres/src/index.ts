@@ -999,19 +999,29 @@ const readEligibleDiscoveryResources = async (
   pool: Pool,
   projectId: string,
   reviewResourceId?: string,
+  finding?: { readonly findingId: string; readonly findingRevision: number },
+  limit?: number,
 ): Promise<readonly DiscoveryReviewResourceV1[]> => {
   const params: unknown[] = [projectId];
-  const identityClause = reviewResourceId === undefined ? '' : ' AND review_resource_id = $2';
-  if (reviewResourceId !== undefined) params.push(reviewResourceId);
+  const predicates = ['project_id = $1'];
+  if (reviewResourceId !== undefined) {
+    params.push(reviewResourceId);
+    predicates.push(`review_resource_id = $${params.length}`);
+  }
+  if (finding !== undefined) {
+    params.push(finding.findingId, finding.findingRevision);
+    predicates.push(`finding_id = $${params.length - 1}`, `finding_revision = $${params.length}`);
+  }
+  const limitClause = limit === undefined ? '' : ` LIMIT ${limit}`;
   const result = await pool.query<DiscoveryReviewResourceRow>(
     `SELECT latest.resource, candidate.candidate
      FROM (
        SELECT DISTINCT ON (review_resource_id)
-              project_id, candidate_id, candidate_revision,
+              review_resource_id, project_id, candidate_id, candidate_revision,
               finding_id, finding_revision,
               resource, origin, lifecycle_state, review_eligibility
        FROM discovery.reentry_review_resources
-       WHERE project_id = $1${identityClause}
+       WHERE ${predicates.join(' AND ')}
        ORDER BY review_resource_id, resource_revision DESC
      ) AS latest
      JOIN discovery.reentry_candidates candidate
@@ -1025,7 +1035,8 @@ const readEligibleDiscoveryResources = async (
      WHERE latest.origin = 'DERIVED_DISCOVERY'
        AND latest.lifecycle_state = 'REVIEW_READY'
        AND latest.review_eligibility = 'ELIGIBLE_AFTER_VALIDATION'
-       AND finding_lifecycle.lifecycle_state = 'REVIEW_READY'`,
+       AND finding_lifecycle.lifecycle_state = 'REVIEW_READY'
+     ORDER BY latest.review_resource_id${limitClause}`,
     params,
   );
   return result.rows.flatMap((row) => {
@@ -1056,6 +1067,17 @@ export const createPostgresReviewDiscoveryCandidateReader = (
   },
   async find(projectId, reviewResourceId) {
     const resources = await readEligibleDiscoveryResources(pool, projectId, reviewResourceId);
+    const resource = resources[0];
+    return resource === undefined ? undefined : toReviewDiscoveryCandidateSource(resource);
+  },
+  async findByFinding(projectId, findingId, findingRevision) {
+    const resources = await readEligibleDiscoveryResources(
+      pool,
+      projectId,
+      undefined,
+      { findingId, findingRevision },
+      1,
+    );
     const resource = resources[0];
     return resource === undefined ? undefined : toReviewDiscoveryCandidateSource(resource);
   },

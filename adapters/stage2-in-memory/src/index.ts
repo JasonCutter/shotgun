@@ -10,6 +10,7 @@ import type {
   AssetStoragePort,
   OriginalAssetRepositoryPort,
   SourceVersionSecurityRecord,
+  SourceSecurityRecord,
   StoredIntakeResult,
   StoreOriginalAssetInput,
 } from '../../../modules/original-asset/src/index.js';
@@ -103,6 +104,25 @@ export class InMemoryOriginalAssetRepository
         operation: 'assert-source',
       });
     }
+  }
+
+  async findSourceSecurity(
+    projectId: string,
+    sourceId: string,
+  ): Promise<SourceSecurityRecord | undefined> {
+    const source = this.sources.get(sourceId);
+    if (!source || source.projectId !== projectId) return undefined;
+    const versions = this.versionsBySource.get(sourceId) ?? [];
+    const latest = [...versions].sort((left, right) => right.versionNumber - left.versionNumber)[0];
+    return latest
+      ? {
+          projectId,
+          sourceId,
+          versionNumber: latest.versionNumber,
+          accessScope: latest.accessScope,
+          sensitivity: latest.sensitivity,
+        }
+      : undefined;
   }
 
   async store(input: StoreOriginalAssetInput): Promise<StoredIntakeResult> {
@@ -222,6 +242,7 @@ export class InMemoryOriginalAssetRepository
           projectId,
           sourceId: version.sourceId,
           sourceVersionId: version.sourceVersionId,
+          versionNumber: version.versionNumber,
           originalAssetId: version.asset.assetId,
           contentHash: version.asset.contentHash,
           accessScope: version.accessScope,

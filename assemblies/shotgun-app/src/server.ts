@@ -73,6 +73,10 @@ import {
   FrontendProductReadCoordinator,
   type ActionCenterProjectionPort,
 } from '../../../modules/frontend-product-read/src/index.js';
+import {
+  FrontendDiscoveryProductReadCoordinator,
+  createEmptyDiscoveryProductReadSource,
+} from '../../../modules/frontend-discovery-product/src/index.js';
 import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
 import type { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
 import {
@@ -597,6 +601,8 @@ export type ApplicationOptions = {
   readonly graphReadDomain?: GraphReadDomain;
   readonly graphScopeResolver?: GraphScopeResolver;
   readonly frontendProductReadCoordinator?: FrontendProductReadCoordinator;
+  /** AKP-6 WP1 server-authoritative Discovery Product read boundary. */
+  readonly frontendDiscoveryProductReadCoordinator?: FrontendDiscoveryProductReadCoordinator;
   readonly frontendProductReadCoordinatorFactory?: (
     connector: ShotgunKernel['connector'],
     actionCenterProjection: ActionCenterProjectionPort,
@@ -2017,6 +2023,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       new InMemoryRouteGuardProjection(),
       inMemoryAskWorkspace,
     );
+  const frontendDiscoveryProductReadCoordinator =
+    options.frontendDiscoveryProductReadCoordinator ??
+    new FrontendDiscoveryProductReadCoordinator(createEmptyDiscoveryProductReadSource());
   // R3-1: the AI Durable Materialization Recovery mutates restored Product AI
   // durable execution state (markExpiredRunningAttemptsOutcomeUnknown / resume
   // commands), so the recovery harness must disable it and run ONLY the
@@ -2512,6 +2521,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       askAnswerExecution: options.askAnswerExecution,
       frontendCommandGateway,
       frontendSourcesReadCoordinator,
+      frontendDiscoveryProductReadCoordinator,
     },
   );
   registerSourcesRoutes(

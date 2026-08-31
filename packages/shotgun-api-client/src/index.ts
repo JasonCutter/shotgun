@@ -16,3 +16,4 @@ export * from './frontend-review-client.js';
 export * from './frontend-external-action-client.js';
 export * from './frontend-activity-client.js';
 export * from './frontend-history-client.js';
+export * from './frontend-discovery-client.js';

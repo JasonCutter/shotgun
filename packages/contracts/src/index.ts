@@ -35,6 +35,7 @@ export * from './frontend-external-action.js';
 export * from './frontend-external-action-failures.js';
 export * from './frontend-activity.js';
 export * from './frontend-history.js';
+export * from './frontend-discovery.js';
 export * from './knowledge-workspace-query.js';
 export * from './semantic-representation.js';
 export * from './semantic-corpus.js';

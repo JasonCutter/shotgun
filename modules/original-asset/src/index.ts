@@ -58,8 +58,17 @@ export type SourceVersionSecurityRecord = {
   readonly projectId: string;
   readonly sourceId: string;
   readonly sourceVersionId: string;
+  readonly versionNumber?: number;
   readonly originalAssetId: string;
   readonly contentHash: string;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SecurityContext['sensitivity'];
+};
+
+export type SourceSecurityRecord = {
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly versionNumber?: number;
   readonly accessScope: readonly string[];
   readonly sensitivity: SecurityContext['sensitivity'];
 };
@@ -73,6 +82,11 @@ export type SourceVersionSecurityRepositoryPort = {
 
 export type OriginalAssetRepositoryPort = SourceVersionSecurityRepositoryPort & {
   assertSource(projectId: string, sourceId: string): Promise<void>;
+  /** Optional narrow source-level security read for Product resource authorization. */
+  findSourceSecurity?(
+    projectId: string,
+    sourceId: string,
+  ): Promise<SourceSecurityRecord | undefined>;
   store(input: StoreOriginalAssetInput): Promise<StoredIntakeResult>;
   findBySubmission(
     projectId: string,

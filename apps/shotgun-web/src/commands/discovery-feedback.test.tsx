@@ -190,16 +190,15 @@ describe('discovery feedback uncertainty handling', () => {
 
   it('shows a resolver and keeps Inbox feedback locked after an unknown outcome', async () => {
     const state = feedbackState();
-    const submit = vi.fn(
-      async (request: DiscoveryFeedbackProductCommandRequestV1) =>
-        (() => {
-          throw new ShotgunApiError({
-            status: 504,
-            code: 'OUTCOME_INDETERMINATE',
-            message: 'The feedback result is uncertain.',
-            clientRequestId: request.clientRequestId,
-          });
-        })(),
+    const submit = vi.fn(async (request: DiscoveryFeedbackProductCommandRequestV1) =>
+      (() => {
+        throw new ShotgunApiError({
+          status: 504,
+          code: 'OUTCOME_INDETERMINATE',
+          message: 'The feedback result is uncertain.',
+          clientRequestId: request.clientRequestId,
+        });
+      })(),
     );
     const resolveResults: ('OUTCOME_UNKNOWN' | 'COMPLETED')[] = ['OUTCOME_UNKNOWN', 'COMPLETED'];
     const resolve = vi.fn(async (clientRequestId: string) =>

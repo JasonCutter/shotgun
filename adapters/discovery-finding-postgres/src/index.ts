@@ -546,7 +546,7 @@ export class PostgresDiscoveryFindingRepository
       `WITH latest_review AS (
          SELECT DISTINCT ON (review_resource_id)
                 project_id, review_resource_id, finding_id, finding_revision,
-                candidate_id, candidate_revision,
+                candidate_id, candidate_revision, manifest_id, finding_type,
                 lifecycle_state, review_eligibility, origin
          FROM discovery.reentry_review_resources
          WHERE project_id = $1
@@ -555,21 +555,24 @@ export class PostgresDiscoveryFindingRepository
        SELECT EXISTS (
          SELECT 1
          FROM latest_review review
+         JOIN discovery.reentry_candidates candidate
+           ON candidate.project_id = review.project_id
+          AND candidate.candidate_id = review.candidate_id
+          AND candidate.candidate_revision = review.candidate_revision
+          AND candidate.finding_id = review.finding_id
+          AND candidate.finding_revision = review.finding_revision
+          AND candidate.manifest_id = review.manifest_id
+          AND candidate.finding_type = review.finding_type
          JOIN discovery.findings f
-           ON f.project_id = review.project_id
-          AND f.finding_id = review.finding_id
-          AND f.finding_revision = review.finding_revision
+           ON f.project_id = candidate.project_id
+          AND f.finding_id = candidate.finding_id
+          AND f.finding_revision = candidate.finding_revision
+          AND f.finding_type = candidate.finding_type
          JOIN discovery.finding_ready ready
            ON ready.project_id = f.project_id
           AND ready.finding_id = f.finding_id
           AND ready.finding_revision = f.finding_revision
           AND ready.run_id = f.run_id
-         JOIN discovery.reentry_candidates candidate
-           ON candidate.project_id = review.project_id
-          AND candidate.candidate_id = review.candidate_id
-          AND candidate.candidate_revision = review.candidate_revision
-          AND candidate.finding_id = f.finding_id
-          AND candidate.finding_revision = f.finding_revision
          JOIN discovery.finding_lifecycle_current current_lifecycle
            ON current_lifecycle.project_id = f.project_id
           AND current_lifecycle.finding_id = f.finding_id

@@ -274,7 +274,11 @@ const insertFinding = async (finding: DiscoveryFindingEnvelopeV1): Promise<void>
   );
 };
 
-const insertFindingReady = async (finding: DiscoveryFindingEnvelopeV1): Promise<void> => {
+const insertFindingReady = async (
+  finding: DiscoveryFindingEnvelopeV1,
+  readyRunId = run.runId,
+  readyAttemptId = attempt2.attemptId,
+): Promise<void> => {
   await pool!.query(
     `INSERT INTO discovery.finding_ready (
        publication_id, project_id, finding_id, finding_revision, fingerprint,
@@ -290,8 +294,8 @@ const insertFindingReady = async (finding: DiscoveryFindingEnvelopeV1): Promise<
       finding.fingerprint,
       finding.fingerprintVersion,
       job.jobId,
-      run.runId,
-      attempt2.attemptId,
+      readyRunId,
+      readyAttemptId,
       finding.canonicalBase.canonicalVersion,
       finding.canonicalBase.snapshotDigest,
       finding.createdAt,
@@ -299,10 +303,18 @@ const insertFindingReady = async (finding: DiscoveryFindingEnvelopeV1): Promise<
   );
 };
 
-const insertEligibleReviewResource = async (finding: DiscoveryFindingEnvelopeV1): Promise<void> => {
-  const manifestId = 'wp5-activity-manifest';
-  const candidateId = 'wp5-activity-candidate';
-  const reviewResourceId = 'wp5-activity-review-resource';
+const insertEligibleReviewResource = async (
+  finding: DiscoveryFindingEnvelopeV1,
+  options: {
+    readonly candidateFinding?: DiscoveryFindingEnvelopeV1;
+    readonly suffix?: string;
+  } = {},
+): Promise<void> => {
+  const candidateFinding = options.candidateFinding ?? finding;
+  const suffix = options.suffix ?? 'default';
+  const manifestId = `wp5-activity-manifest-${suffix}`;
+  const candidateId = `wp5-activity-candidate-${suffix}`;
+  const reviewResourceId = `wp5-activity-review-resource-${suffix}`;
   const contentDigest = `sha256:${'6'.repeat(64)}`;
   await pool!.query(
     `INSERT INTO discovery.reentry_manifests (
@@ -313,13 +325,13 @@ const insertEligibleReviewResource = async (finding: DiscoveryFindingEnvelopeV1)
      ) VALUES ('discovery-reentry-identity:v1', $1, $2, $3, $4, 1, 'KNOWLEDGE_GAP',
        $5, 12, $6, 'DERIVED_PROVENANCE_VALIDATION', '{}'::jsonb, $7)`,
     [
-      'wp5-activity-logical-identity',
+      `wp5-activity-logical-identity-${suffix}`,
       manifestId,
       projectId,
-      finding.findingId,
-      finding.sourceProjectionDigest,
-      finding.canonicalBase.snapshotDigest,
-      finding.createdAt,
+      candidateFinding.findingId,
+      candidateFinding.sourceProjectionDigest,
+      candidateFinding.canonicalBase.snapshotDigest,
+      candidateFinding.createdAt,
     ],
   );
   await pool!.query(
@@ -337,15 +349,15 @@ const insertEligibleReviewResource = async (finding: DiscoveryFindingEnvelopeV1)
        'ELIGIBLE_FOR_VALIDATION', 'NOT_ELIGIBLE', '{}'::jsonb, $10)`,
     [
       candidateId,
-      'wp5-activity-candidate-identity',
+      `wp5-activity-candidate-identity-${suffix}`,
       projectId,
       manifestId,
-      finding.findingId,
-      finding.sourceProjectionDigest,
-      finding.canonicalBase.snapshotDigest,
-      finding.evidenceIds,
-      finding.accessScope,
-      finding.createdAt,
+      candidateFinding.findingId,
+      candidateFinding.sourceProjectionDigest,
+      candidateFinding.canonicalBase.snapshotDigest,
+      candidateFinding.evidenceIds,
+      candidateFinding.accessScope,
+      candidateFinding.createdAt,
     ],
   );
   await pool!.query(
@@ -567,6 +579,66 @@ describe.runIf(databaseUrl)('AKP-4 WP5 Discovery Activity PostgreSQL read bounda
       await repository.hasReviewEligibleByJobAndRun({
         ...activityInput,
         projectId: 'different-project',
+      }),
+    ).toBe(false);
+  });
+
+  it('fails closed for cross-linked Candidate/Finding rows in the authoritative chain', async () => {
+    const candidateFinding = findingForWindow(25, ['review:read']);
+    const reviewFinding = findingForWindow(26, ['review:read']);
+    await insertFinding(candidateFinding);
+    await insertFindingReady(candidateFinding);
+    await insertFinding(reviewFinding);
+    await insertFindingReady(reviewFinding);
+    await insertEligibleReviewResource(reviewFinding, {
+      candidateFinding,
+      suffix: 'cross-linked',
+    });
+
+    const repository = new PostgresDiscoveryFindingRepository(pool!);
+    expect(
+      await repository.hasReviewEligibleByJobAndRun({
+        projectId,
+        jobId: job.jobId,
+        runId: run.runId,
+        accessScope: ['review:read'],
+        sensitivityClearance: 'internal',
+      }),
+    ).toBe(false);
+  });
+
+  it('fails closed when FindingReady belongs to a different run', async () => {
+    const finding = findingForWindow(27, ['review:read']);
+    const otherRun = {
+      ...run,
+      runId: 'wp5-run-other',
+      createdAt: '2026-08-30T01:01:01.000Z',
+      updatedAt: '2026-08-30T01:01:09.000Z',
+      completedAt: '2026-08-30T01:01:09.000Z',
+    };
+    const otherAttempt = {
+      ...attempt2,
+      attemptId: 'wp5-attempt-other',
+      runId: otherRun.runId,
+      createdAt: '2026-08-30T01:01:05.000Z',
+      updatedAt: '2026-08-30T01:01:09.000Z',
+      completedAt: '2026-08-30T01:01:09.000Z',
+    };
+    const runtime = new PostgresDiscoveryRuntimeRepository(pool!);
+    expect(await runtime.saveRun(otherRun)).toBe('CREATED');
+    expect(await runtime.saveAttempt(otherAttempt)).toBe('CREATED');
+    await insertFinding(finding);
+    await insertFindingReady(finding, otherRun.runId, otherAttempt.attemptId);
+    await insertEligibleReviewResource(finding, { suffix: 'wrong-run' });
+
+    const repository = new PostgresDiscoveryFindingRepository(pool!);
+    expect(
+      await repository.hasReviewEligibleByJobAndRun({
+        projectId,
+        jobId: job.jobId,
+        runId: run.runId,
+        accessScope: ['review:read'],
+        sensitivityClearance: 'internal',
       }),
     ).toBe(false);
   });

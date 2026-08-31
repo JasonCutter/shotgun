@@ -7,6 +7,7 @@ import {
   type DiscoveryFindingEnvelopeInputV1,
   type DiscoveryFindingEnvelopeV1,
   type DiscoveryResourceRefV1,
+  type DiscoveryFindingLifecycleState,
 } from '../../packages/contracts/src/index.js';
 import { InMemoryDiscoveryFeedbackRepository } from '../../adapters/discovery-feedback-in-memory/src/index.js';
 import {
@@ -204,6 +205,130 @@ class Source implements DiscoveryProductReadSource {
   }
 }
 
+const identityKey = (input: { readonly findingId: string; readonly findingRevision: number }) =>
+  `${input.findingId}\u0000${input.findingRevision}`;
+
+class SnapshotSource extends Source {
+  constructor(
+    findings: readonly DiscoveryFindingEnvelopeV1[],
+    private readonly initialLifecycle: ReadonlyMap<string, DiscoveryFindingLifecycleState>,
+    readonly currentLifecycle: Map<string, DiscoveryFindingLifecycleState>,
+  ) {
+    super(findings);
+  }
+
+  override async findLifecycle(input: {
+    projectId: string;
+    findingId: string;
+    findingRevision: number;
+  }): Promise<DiscoveryFindingLifecycleCurrentV1 | undefined> {
+    const candidate = await this.findFinding(input);
+    const lifecycleState = candidate
+      ? (this.currentLifecycle.get(identityKey(input)) ?? candidate.lifecycleState)
+      : undefined;
+    return candidate && lifecycleState
+      ? {
+          projectId: candidate.projectId,
+          findingId: candidate.findingId,
+          findingRevision: candidate.findingRevision,
+          lifecycleState,
+          lifecycleRevision: 2,
+          updatedAt: '2026-08-31T12:00:01.000Z',
+        }
+      : undefined;
+  }
+
+  async findLifecycleAsOf(
+    input: {
+      projectId: string;
+      findingId: string;
+      findingRevision: number;
+    },
+    at: string,
+  ): Promise<DiscoveryFindingLifecycleCurrentV1 | undefined> {
+    const candidate = await this.findFinding(input);
+    if (!candidate) return undefined;
+    const lifecycleState =
+      at === NOW
+        ? this.initialLifecycle.get(identityKey(input))
+        : (this.currentLifecycle.get(identityKey(input)) ?? candidate.lifecycleState);
+    return lifecycleState === undefined
+      ? undefined
+      : {
+          projectId: candidate.projectId,
+          findingId: candidate.findingId,
+          findingRevision: candidate.findingRevision,
+          lifecycleState,
+          lifecycleRevision: at === NOW ? 1 : 2,
+          updatedAt: at === NOW ? NOW : '2026-08-31T12:00:01.000Z',
+        };
+  }
+}
+
+class LineageCutoffSource extends Source {
+  constructor(
+    findings: readonly DiscoveryFindingEnvelopeV1[],
+    private readonly lateAncestor: DiscoveryFindingEnvelopeV1,
+  ) {
+    super(findings);
+  }
+
+  async findLatestFinding(projectId: string, findingId: string) {
+    return projectId === this.lateAncestor.projectId && findingId === this.lateAncestor.findingId
+      ? this.lateAncestor
+      : undefined;
+  }
+
+  async findLatestFindingAsOf() {
+    return undefined;
+  }
+}
+
+class InstrumentedFeedbackRepository extends InMemoryDiscoveryFeedbackRepository {
+  readonly utilityBatchSizes: number[] = [];
+  readonly suppressionBatchSizes: number[] = [];
+
+  override async listLatestUtilityFeedbackForPresentation(
+    lookup: Parameters<
+      InMemoryDiscoveryFeedbackRepository['listLatestUtilityFeedbackForPresentation']
+    >[0],
+  ): Promise<
+    Awaited<
+      ReturnType<InMemoryDiscoveryFeedbackRepository['listLatestUtilityFeedbackForPresentation']>
+    >
+  > {
+    void lookup;
+    throw new Error('project-wide utility lookup must not be used');
+  }
+
+  override async listSuppressionForPresentation(
+    lookup: Parameters<InMemoryDiscoveryFeedbackRepository['listSuppressionForPresentation']>[0],
+  ): Promise<
+    Awaited<ReturnType<InMemoryDiscoveryFeedbackRepository['listSuppressionForPresentation']>>
+  > {
+    void lookup;
+    throw new Error('project-wide suppression lookup must not be used');
+  }
+
+  override async listLatestUtilityFeedbackForPresentationBatch(
+    lookup: Parameters<
+      InMemoryDiscoveryFeedbackRepository['listLatestUtilityFeedbackForPresentationBatch']
+    >[0],
+  ) {
+    this.utilityBatchSizes.push(lookup.findings.length);
+    return super.listLatestUtilityFeedbackForPresentationBatch(lookup);
+  }
+
+  override async listSuppressionForPresentationBatch(
+    lookup: Parameters<
+      InMemoryDiscoveryFeedbackRepository['listSuppressionForPresentationBatch']
+    >[0],
+  ) {
+    this.suppressionBatchSizes.push(lookup.findings.length);
+    return super.listSuppressionForPresentationBatch(lookup);
+  }
+}
+
 const feedback = (
   principalId: string,
   findingId: string,
@@ -260,8 +385,14 @@ const coordinator = (
   findings: readonly DiscoveryFindingEnvelopeV1[],
   repository: InMemoryDiscoveryFeedbackRepository,
   now = NOW,
+) => coordinatorForSource(new Source(findings), repository, now);
+
+const coordinatorForSource = (
+  source: DiscoveryProductReadSource,
+  repository: InMemoryDiscoveryFeedbackRepository,
+  now = NOW,
 ) =>
-  new FrontendDiscoveryProductReadCoordinator(new Source(findings), {
+  new FrontendDiscoveryProductReadCoordinator(source, {
     feedbackRepository: repository,
     rankingAuthority: rankAcceptedDiscoveryCandidatesV1,
     now: () => now,
@@ -433,5 +564,96 @@ describe('AKP-7 WP3 ranked Discovery presentation contract', () => {
       request: { schemaVersion: '1.0.0', limit: 10 },
     });
     expect(projectScope.findings.map((entry) => entry.findingId)).toEqual(['finding-c']);
+  });
+
+  it('keeps global ranking across physical batches and freezes continuation boundaries', async () => {
+    const physical = Array.from({ length: 250 }, (_, index) =>
+      finding(`finding-${String(index).padStart(3, '0')}`),
+    );
+    const laterHigh = finding('finding-999', {
+      signalSummary: { novelty: 1, evidenceCoverage: 1 },
+    });
+    const repository = new InstrumentedFeedbackRepository(() => NOW);
+    const product = coordinator([...physical, laterHigh], repository);
+    const first = await product.listFindings({
+      ...scope(),
+      request: { schemaVersion: '1.0.0', limit: 1 },
+    });
+    expect(first.findings.map((entry) => entry.findingId)).toEqual(['finding-999']);
+    const second = await product.listFindings({
+      ...scope(),
+      request: { schemaVersion: '1.0.0', limit: 1, cursor: first.nextCursor },
+    });
+    expect(second.findings).toHaveLength(1);
+    expect(second.findings[0]?.findingId).not.toBe('finding-999');
+    expect(second.findings[0]?.findingId).not.toBe(first.findings[0]?.findingId);
+    expect(repository.utilityBatchSizes).toEqual([250, 1, 250, 1]);
+    expect(repository.suppressionBatchSizes).toEqual([250, 1, 250, 1]);
+    expect(repository.utilityBatchSizes.every((size) => size <= 250)).toBe(true);
+    expect(repository.suppressionBatchSizes.every((size) => size <= 250)).toBe(true);
+  });
+
+  it('uses lifecycle state as of the ranked cursor and current state for fresh requests', async () => {
+    const candidates = [finding('finding-a'), finding('finding-b'), finding('finding-c')];
+    const initial = new Map<string, DiscoveryFindingLifecycleState>([
+      [identityKey(candidates[0]!), 'NEW'],
+      [identityKey(candidates[1]!), 'NEW'],
+      [identityKey(candidates[2]!), 'DISMISSED'],
+    ]);
+    const current = new Map<string, DiscoveryFindingLifecycleState>(initial);
+    const source = new SnapshotSource(candidates, initial, current);
+    const repository = new InMemoryDiscoveryFeedbackRepository(() => NOW);
+    const product = coordinatorForSource(source, repository, NOW);
+    const first = await product.listFindings({
+      ...scope(),
+      request: { schemaVersion: '1.0.0', limit: 1, lifecycleStates: ['NEW'] },
+    });
+    expect(first.findings.map((entry) => entry.findingId)).toEqual(['finding-a']);
+
+    current.set(identityKey(candidates[1]!), 'DISMISSED');
+    current.set(identityKey(candidates[2]!), 'NEW');
+    const frozenSecond = await product.listFindings({
+      ...scope(),
+      request: {
+        schemaVersion: '1.0.0',
+        limit: 1,
+        lifecycleStates: ['NEW'],
+        cursor: first.nextCursor,
+      },
+    });
+    expect(frozenSecond.findings.map((entry) => entry.findingId)).toEqual(['finding-b']);
+
+    const fresh = coordinatorForSource(source, repository, '2026-08-31T12:00:01.000Z');
+    const freshPage = await fresh.listFindings({
+      ...scope(),
+      request: { schemaVersion: '1.0.0', limit: 10, lifecycleStates: ['NEW'] },
+    });
+    expect(freshPage.findings.map((entry) => entry.findingId)).toEqual(['finding-a', 'finding-c']);
+  });
+
+  it('does not let a post-evaluation lineage revision alter FINDING suppression', async () => {
+    const sourceFinding = finding('finding-source');
+    const candidate = finding('finding-candidate', {
+      supersedesFindingId: 'finding-ancestor',
+    });
+    const lateAncestor = finding('finding-ancestor', {
+      findingRevision: 2,
+      createdAt: '2026-08-31T12:00:01.000Z',
+      supersedesFindingId: 'finding-source',
+    });
+    const repository = new InMemoryDiscoveryFeedbackRepository(() => NOW);
+    await repository.appendSuppression(
+      suppression('principal-a', 'finding-source', 'SUPPRESS_SIMILAR', 'similar-lineage-cutoff'),
+    );
+    const product = coordinatorForSource(
+      new LineageCutoffSource([sourceFinding, candidate], lateAncestor),
+      repository,
+      NOW,
+    );
+    const page = await product.listFindings({
+      ...scope(),
+      request: { schemaVersion: '1.0.0', limit: 10 },
+    });
+    expect(page.findings.map((entry) => entry.findingId)).toEqual(['finding-candidate']);
   });
 });

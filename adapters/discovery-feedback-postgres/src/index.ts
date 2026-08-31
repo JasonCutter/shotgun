@@ -16,6 +16,7 @@ import type {
   DiscoverySuppressionHistoryLookupV1,
   DiscoveryPresentationFeedbackLookupV1,
   DiscoveryPresentationSuppressionLookupV1,
+  DiscoveryPresentationBatchLookupV1,
   DiscoveryFeedbackTransactionHandleV1,
 } from '../../../modules/discovery-feedback/src/index.js';
 import {
@@ -31,6 +32,23 @@ import type {
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 type FeedbackQueryExecutor = Pick<Pool, 'query'> & Partial<Pick<Pool, 'connect'>>;
+
+type SemanticFamilyKeyResolver = (input: {
+  readonly projectId: string;
+  readonly findingId: string;
+  readonly findingRevision: number;
+}) => Promise<string | undefined>;
+
+type SemanticFamilyProjectionRebuildRow = QueryResultRow & {
+  readonly project_id: string;
+  readonly suppression_id: string;
+  readonly source_finding_id: string;
+  readonly source_finding_revision: number;
+  readonly created_at: Date | string;
+};
+
+const MAX_PRESENTATION_SUPPRESSION_CANDIDATES = 256;
+const PRESENTATION_BATCH_SIZE = 250;
 
 type FeedbackRow = QueryResultRow & {
   readonly schema_version: string;
@@ -142,11 +160,25 @@ const feedbackColumns = `
   actor_type, actor_id, principal_id, feedback_class, feedback_kind,
   reason, scope_kind, created_at`;
 
+const qualifiedFeedbackColumns = feedbackColumns
+  .split(',')
+  .map((column) => `f.${column.trim()}`)
+  .join(', ');
+const latestFeedbackColumns = feedbackColumns
+  .split(',')
+  .map((column) => `latest.${column.trim()}`)
+  .join(', ');
+
 const suppressionColumns = `
   schema_version, suppression_id, project_id, actor_type, actor_id,
   principal_id, source_finding_id, source_finding_revision, suppression_kind,
   scope_kind, matcher_kind, matcher_version, fingerprint, fingerprint_version,
   expires_at, review_at, created_at`;
+
+const qualifiedSuppressionColumns = suppressionColumns
+  .split(',')
+  .map((column) => `d.${column.trim()}`)
+  .join(', ');
 
 const rankingPolicyColumns = `
   schema_version, policy_id, policy_revision, policy_scope, algorithm_version,
@@ -160,7 +192,88 @@ const dateForQuery = (value: string | undefined): string => {
 };
 
 export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRepositoryPort {
-  constructor(private readonly pool: FeedbackQueryExecutor) {}
+  constructor(
+    private readonly pool: FeedbackQueryExecutor,
+    private readonly options: {
+      readonly semanticFamilyKeyResolver?: SemanticFamilyKeyResolver;
+    } = {},
+  ) {}
+
+  private async populateSemanticFamilyProjection(
+    executor: Pick<Pool, 'query'>,
+    directive: DiscoverySuppressionDirectiveV1,
+  ): Promise<void> {
+    if (
+      directive.suppressionKind !== 'SUPPRESS_SIMILAR' ||
+      directive.matcherKind !== 'SEMANTIC_FAMILY' ||
+      directive.matcherVersion !== 'semantic-family:v1' ||
+      this.options.semanticFamilyKeyResolver === undefined
+    ) {
+      return;
+    }
+    const semanticFamilyKey = await this.options.semanticFamilyKeyResolver({
+      projectId: directive.projectId,
+      findingId: directive.sourceFindingId,
+      findingRevision: directive.sourceFindingRevision,
+    });
+    if (semanticFamilyKey === undefined) return;
+    await executor.query(
+      `INSERT INTO discovery.suppression_semantic_family_projection (
+         project_id, suppression_id, source_finding_id, source_finding_revision,
+         semantic_family_key, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (project_id, suppression_id) DO UPDATE SET
+         source_finding_id = EXCLUDED.source_finding_id,
+         source_finding_revision = EXCLUDED.source_finding_revision,
+         semantic_family_key = EXCLUDED.semantic_family_key,
+         created_at = EXCLUDED.created_at`,
+      [
+        directive.projectId,
+        directive.suppressionId,
+        directive.sourceFindingId,
+        directive.sourceFindingRevision,
+        semanticFamilyKey,
+        directive.createdAt,
+      ],
+    );
+  }
+
+  private async appendSuppressionWithExecutor(
+    executor: Pick<Pool, 'query'>,
+    normalized: DiscoverySuppressionDirectiveV1,
+  ): Promise<'CREATED' | 'CONFLICT'> {
+    const result = await executor.query(
+      `INSERT INTO discovery.suppression_directives (
+         schema_version, suppression_id, project_id, actor_type, actor_id,
+         principal_id, source_finding_id, source_finding_revision,
+         suppression_kind, scope_kind, matcher_kind, matcher_version,
+         fingerprint, fingerprint_version, expires_at, review_at, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+       ON CONFLICT (project_id, suppression_id) DO NOTHING`,
+      [
+        normalized.schemaVersion,
+        normalized.suppressionId,
+        normalized.projectId,
+        normalized.actor.type,
+        normalized.actor.id,
+        normalized.principalId ?? null,
+        normalized.sourceFindingId,
+        normalized.sourceFindingRevision,
+        normalized.suppressionKind,
+        normalized.scope,
+        normalized.matcherKind,
+        normalized.matcherVersion ?? null,
+        normalized.fingerprint ?? null,
+        normalized.fingerprintVersion ?? null,
+        normalized.expiresAt ?? null,
+        normalized.reviewAt ?? null,
+        normalized.createdAt,
+      ],
+    );
+    if (result.rowCount !== 1) return 'CONFLICT';
+    await this.populateSemanticFamilyProjection(executor, normalized);
+    return 'CREATED';
+  }
 
   async appendFeedback(event: DiscoveryFeedbackEventV1): Promise<'CREATED' | 'CONFLICT'> {
     const normalized = assertDiscoveryFeedbackEventV1(event);
@@ -229,6 +342,45 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
     return result.rows.map(mapFeedback);
   }
 
+  async listLatestUtilityFeedbackForPresentationBatch(
+    lookup: DiscoveryPresentationBatchLookupV1,
+  ): Promise<readonly DiscoveryFeedbackEventV1[]> {
+    const projectId = assertProjectId(lookup.projectId);
+    const principalId = assertPrincipalId(lookup.principalId);
+    const at = dateForQuery(lookup.at);
+    if (lookup.findings.length === 0) return [];
+    if (lookup.findings.length > PRESENTATION_BATCH_SIZE) {
+      throw new TypeError('presentation Finding batch exceeds the bounded read size');
+    }
+    const result = await this.pool.query<FeedbackRow>(
+      `SELECT ${latestFeedbackColumns}
+       FROM (
+         SELECT DISTINCT ON (f.finding_id, f.finding_revision)
+                ${qualifiedFeedbackColumns}
+         FROM discovery.feedback_events f
+         JOIN unnest($4::text[], $5::integer[]) AS requested(finding_id, finding_revision)
+           ON requested.finding_id = f.finding_id
+          AND requested.finding_revision = f.finding_revision
+         WHERE f.project_id = $1
+           AND COALESCE(f.principal_id, f.actor_id) = $2
+           AND f.feedback_class = 'UTILITY'
+           AND f.feedback_kind = ANY($3::text[])
+           AND f.created_at <= $6::timestamptz
+         ORDER BY f.finding_id, f.finding_revision, f.created_at DESC, f.feedback_id DESC
+       ) latest
+       ORDER BY finding_id ASC, finding_revision ASC`,
+      [
+        projectId,
+        principalId,
+        ['USEFUL', 'NOT_RELEVANT', 'ALREADY_KNOWN', 'TOO_FREQUENT'],
+        lookup.findings.map((finding) => finding.findingId),
+        lookup.findings.map((finding) => finding.findingRevision),
+        at,
+      ],
+    );
+    return result.rows.map(mapFeedback);
+  }
+
   async listSuppressionHistoryForFinding(
     lookup: DiscoverySuppressionHistoryLookupV1,
   ): Promise<readonly DiscoverySuppressionDirectiveV1[]> {
@@ -251,35 +403,14 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
     directive: DiscoverySuppressionDirectiveV1,
   ): Promise<'CREATED' | 'CONFLICT'> {
     const normalized = assertDiscoverySuppressionDirectiveV1(directive);
-    const result = await this.pool.query(
-      `INSERT INTO discovery.suppression_directives (
-         schema_version, suppression_id, project_id, actor_type, actor_id,
-         principal_id, source_finding_id, source_finding_revision,
-         suppression_kind, scope_kind, matcher_kind, matcher_version,
-         fingerprint, fingerprint_version, expires_at, review_at, created_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-       ON CONFLICT (project_id, suppression_id) DO NOTHING`,
-      [
-        normalized.schemaVersion,
-        normalized.suppressionId,
-        normalized.projectId,
-        normalized.actor.type,
-        normalized.actor.id,
-        normalized.principalId ?? null,
-        normalized.sourceFindingId,
-        normalized.sourceFindingRevision,
-        normalized.suppressionKind,
-        normalized.scope,
-        normalized.matcherKind,
-        normalized.matcherVersion ?? null,
-        normalized.fingerprint ?? null,
-        normalized.fingerprintVersion ?? null,
-        normalized.expiresAt ?? null,
-        normalized.reviewAt ?? null,
-        normalized.createdAt,
-      ],
-    );
-    return result.rowCount === 1 ? 'CREATED' : 'CONFLICT';
+    if (typeof this.pool.connect === 'function') {
+      return withSafePostgresTransaction(
+        this.pool as unknown as Pick<Pool, 'connect'>,
+        async (client) => this.appendSuppressionWithExecutor(client, normalized),
+        { module: 'discovery-feedback-postgres', operation: 'append-suppression' },
+      );
+    }
+    return this.appendSuppressionWithExecutor(this.pool, normalized);
   }
 
   async listRelevantSuppression(
@@ -352,6 +483,149 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
     return result.rows.map(mapSuppression);
   }
 
+  async listSuppressionForPresentationBatch(
+    lookup: DiscoveryPresentationBatchLookupV1,
+  ): Promise<readonly DiscoverySuppressionDirectiveV1[]> {
+    const projectId = assertProjectId(lookup.projectId);
+    const principalId = assertPrincipalId(lookup.principalId);
+    const at = dateForQuery(lookup.at);
+    if (lookup.findings.length === 0) return [];
+    if (lookup.findings.length > PRESENTATION_BATCH_SIZE) {
+      throw new TypeError('presentation Finding batch exceeds the bounded read size');
+    }
+    const result = await this.pool.query<SuppressionRow>(
+      `WITH requested AS (
+         SELECT *
+         FROM unnest(
+           $4::text[], $5::integer[], $6::text[], $7::text[], $8::text[]
+         ) AS r(finding_id, finding_revision, fingerprint, fingerprint_version, semantic_family_key)
+       ), candidate_ids AS (
+         SELECT d.project_id, d.suppression_id
+         FROM requested r
+         JOIN discovery.suppression_directives d
+           ON d.project_id = $1
+          AND d.source_finding_id = r.finding_id
+          AND d.source_finding_revision = r.finding_revision
+          AND d.suppression_kind = 'SNOOZE'
+         UNION
+         SELECT d.project_id, d.suppression_id
+         FROM requested r
+         JOIN discovery.suppression_directives d
+           ON d.project_id = $1
+          AND d.suppression_kind = 'SUPPRESS_EXACT'
+          AND d.fingerprint = r.fingerprint
+          AND d.fingerprint_version = r.fingerprint_version
+          AND (
+            d.scope_kind = 'PROJECT'
+            OR (
+              d.source_finding_id = r.finding_id
+              AND d.source_finding_revision = r.finding_revision
+            )
+          )
+         UNION
+         SELECT p.project_id, p.suppression_id
+         FROM requested r
+         JOIN discovery.suppression_semantic_family_projection p
+           ON p.project_id = $1
+          AND p.semantic_family_key = r.semantic_family_key
+       )
+       SELECT ${qualifiedSuppressionColumns}
+       FROM candidate_ids ids
+       JOIN discovery.suppression_directives d
+         ON d.project_id = ids.project_id
+        AND d.suppression_id = ids.suppression_id
+       WHERE d.project_id = $1
+         AND COALESCE(d.principal_id, d.actor_id) = $2
+         AND d.created_at <= $3::timestamptz
+         AND (d.expires_at IS NULL OR d.expires_at > $3::timestamptz)
+         AND (
+           d.suppression_kind <> 'SUPPRESS_SIMILAR'
+           OR (
+             d.matcher_kind = 'SEMANTIC_FAMILY'
+             AND d.matcher_version = 'semantic-family:v1'
+           )
+         )
+       ORDER BY d.created_at ASC, d.suppression_id ASC
+       LIMIT ${MAX_PRESENTATION_SUPPRESSION_CANDIDATES + 1}`,
+      [
+        projectId,
+        principalId,
+        at,
+        lookup.findings.map((finding) => finding.findingId),
+        lookup.findings.map((finding) => finding.findingRevision),
+        lookup.findings.map((finding) => finding.fingerprint),
+        lookup.findings.map((finding) => finding.fingerprintVersion),
+        lookup.findings.map((finding) => finding.semanticFamilyKey ?? null),
+      ],
+    );
+    if (result.rows.length > MAX_PRESENTATION_SUPPRESSION_CANDIDATES) {
+      throw new TypeError('presentation suppression candidate limit exceeded');
+    }
+    return result.rows.map(mapSuppression);
+  }
+
+  /** Rebuilds only the derived semantic-family lookup. The authority tables
+   * remain append-only and are read in keyset pages so startup memory is
+   * independent of the number of stored directives. */
+  async rebuildSemanticFamilyProjection(): Promise<number> {
+    const resolver = this.options.semanticFamilyKeyResolver;
+    if (resolver === undefined) return 0;
+    let afterProjectId = '';
+    let afterSuppressionId = '';
+    let rebuilt = 0;
+    for (;;) {
+      const page = await this.pool.query<SemanticFamilyProjectionRebuildRow>(
+        `SELECT project_id, suppression_id, source_finding_id,
+                source_finding_revision, created_at
+         FROM discovery.suppression_directives
+         WHERE suppression_kind = 'SUPPRESS_SIMILAR'
+           AND matcher_kind = 'SEMANTIC_FAMILY'
+           AND matcher_version = 'semantic-family:v1'
+           AND (
+             project_id > $1
+             OR (project_id = $1 AND suppression_id > $2)
+           )
+         ORDER BY project_id ASC, suppression_id ASC
+         LIMIT 100`,
+        [afterProjectId, afterSuppressionId],
+      );
+      if (page.rows.length === 0) break;
+      for (const row of page.rows) {
+        const semanticFamilyKey = await resolver({
+          projectId: row.project_id,
+          findingId: row.source_finding_id,
+          findingRevision: Number(row.source_finding_revision),
+        });
+        if (semanticFamilyKey !== undefined) {
+          await this.pool.query(
+            `INSERT INTO discovery.suppression_semantic_family_projection (
+               project_id, suppression_id, source_finding_id,
+               source_finding_revision, semantic_family_key, created_at
+             ) VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (project_id, suppression_id) DO UPDATE SET
+               source_finding_id = EXCLUDED.source_finding_id,
+               source_finding_revision = EXCLUDED.source_finding_revision,
+               semantic_family_key = EXCLUDED.semantic_family_key,
+               created_at = EXCLUDED.created_at`,
+            [
+              row.project_id,
+              row.suppression_id,
+              row.source_finding_id,
+              row.source_finding_revision,
+              semanticFamilyKey,
+              iso(row.created_at),
+            ],
+          );
+          rebuilt += 1;
+        }
+        afterProjectId = row.project_id;
+        afterSuppressionId = row.suppression_id;
+      }
+      if (page.rows.length < 100) break;
+    }
+    return rebuilt;
+  }
+
   async insertRankingPolicyRevision(
     policy: DiscoveryRankingPolicyRevisionV1,
   ): Promise<'CREATED' | 'CONFLICT'> {
@@ -419,6 +693,7 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
         action({
           repository: new PostgresDiscoveryFeedbackRepository(
             client as unknown as Pick<Pool, 'query'>,
+            this.options,
           ),
           raw: client,
         }),

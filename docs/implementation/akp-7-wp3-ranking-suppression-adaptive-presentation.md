@@ -15,8 +15,8 @@ Evidence·Review·Canonical 의미와 분리되고 suppression/snooze는 Finding
 Product adapter는 AKP-3의 `rankAcceptedDiscoveryCandidatesV1`와
 `DISCOVERY_RANKING_POLICY_VERSION_V1`을 그대로 호출한다. 새로운 랭커·수식·ML·feature
 store·per-user policy table은 만들지 않았다. WP1의 `DiscoveryFeedbackRepositoryPort`와
-기존 PostgreSQL Finding/feedback Adapter를 재사용하고, presentation projection은 별도
-Canonical/Finding store로 만들지 않았다.
+기존 PostgreSQL Finding/feedback Adapter를 재사용하고, 아래의 semantic-family lookup은
+별도 Canonical/Finding store가 아닌 파생·재생성 가능한 bounded index로만 추가했다.
 
 | 후보                  | 공식 Repository / 검토 pin / License                                                                                   | WP3 결정과 경계                                                                                        |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
@@ -78,31 +78,45 @@ mapping → latest utility adjustment → deterministic final sort → page slic
 사용한다. 따라서 Finding-ID 순서의 첫 page만 먼저 읽고 rank하는 우회가 없다.
 
 기존 immutable Finding persistence를 250건 keyset batch로 스트리밍한다. 각 batch에서 권한
-확인·필터·억제·차원 매핑·AKP-3 ranking을 적용하고, Product 메모리에는 현재 요청의
-`limit + 1`개 최상위 후보와 현재 batch만 유지한다. 따라서 전역 정렬의 정확성을 유지하면서
-Project 전체 Finding envelope을 매 요청 애플리케이션 배열에 적재하지 않는다. WP3는 새로운
-Finding store나 migration을 추가하지 않았고, feedback/suppression history는 기존 Port와
-PostgreSQL table을 사용한다. 현재 Port의 전역 후보 탐색은 Project 행을 keyset으로 순회하므로
-매우 큰 Project에서 필요한 DB scan 비용은 후속 bounded read/projection 최적화 대상이다.
-향후 Project 규모가 이 scan 비용을 초과하면 이 Port 뒤에 rebuildable derived presentation
-projection을 추가할 수 있지만, 그 projection은 Findings/feedback/Canonical authority가
-아니며 full rebuild equivalence, project deletion, backup/restore, retention, security
-isolation과 rollback을 먼저 검증해야 한다.
+확인·평가시점 lifecycle·필터를 계산한 뒤, 해당 batch의 Finding identity/fingerprint/family
+key만 feedback Port에 전달한다. 최신 ordinary utility는 batch identity에 대한
+`DISTINCT ON` 조회로 제한하고, exact/snooze와 semantic-family 후보도 batch key와
+indexed projection으로 제한한다. Product 메모리에는 현재 요청의 `limit + 1`개 최상위
+후보, 현재 batch, 최대 256개의 suppression 후보만 유지한다. source Finding 권한 조회는
+순차 처리하여 요청당 동시성을 1로 제한하고, 256개 초과 후보는 fail-closed 한다.
+
+`056_akp_7_wp3_semantic_family_projection.sql`은 `055` 이후에 적용되는 파생 lookup이다.
+`suppression_semantic_family_projection`은 `(project_id, suppression_id)`로 원본
+`suppression_directives`에 연결되며 typed `semantic-family:v1` key만 저장한다. 이는
+Finding·feedback·Canonical authority가 아니고, source Finding + suppression directive의
+결정적 resolver로 startup에서 100행 keyset 단위 재생성한다. 신규 similar directive는
+동일 transaction에서 projection을 갱신한다. migration preflight, FK cascade에 의한
+project/directive 삭제 정리, backup dump 포함 및 restore 후 startup rebuild를 정의했다.
+백업 integrity의 authoritative table 목록에는 파생 테이블을 넣지 않는다. 따라서 rollback은
+authority 테이블을 변경하지 않고 projection migration/table만 제거한 뒤 adapter-only
+경로로 되돌릴 수 있다. adapter-only 방식은 persisted Finding payload에서 매 요청마다
+project 전체 source를 읽어 family를 재계산해야 하므로 bounded/indexed 요구를 충족하지
+못해 채택하지 않았다.
 
 ranked cursor는 AES-GCM opaque/tamper-evident envelope이며 project, principal,
 access/policy context, evaluation time, effective policy identity/revision,
 utility/matcher version, filter digest와 마지막 `(effective priority, findingId,
 findingRevision)` sort key 및 마지막 반환 rank를 포함한다. continuation은 cursor evaluation snapshot의
-`createdAt` cutoff와 immutable policy/feedback records만 재현하고, 새 data는 새 first page에서만
-평가한다. 일반 cursor나 다른 principal/project/filter/context의 cursor는 거부한다.
+`createdAt` cutoff와 immutable policy/feedback records만 재현하고, lifecycle은
+authoritative `finding_lifecycle_history`의 `occurred_at <= evaluationTime` 상태를 읽으며,
+FINDING lineage도 `findLatestAsOf(..., evaluationTime)`으로 제한한다. 현재 authorization은
+항상 다시 확인하므로 권한 철회는 frozen snapshot으로 되살리지 않는다. 새 data는 새 first
+page에서만 평가한다. 일반 cursor나 다른 principal/project/filter/context의 cursor는 거부한다.
 
 ## 계약·검증·다음 단계
 
 List 결과는 algorithm/policy identity·revision/source, utility/matcher version,
 evaluation time과 Finding별 `rank`/bounded reason codes만 노출한다. score, confidence,
-truthProbability, raw feedback/reason과 secret은 노출하지 않는다. DB migration은 없다.
+truthProbability, raw feedback/reason과 secret은 노출하지 않는다. migration은 056 파생
+lookup 하나이며 Canonical/Finding/feedback authority schema는 변경하지 않는다.
 
 집중 Contract test는 AKP-3 deterministic ranking 회귀, utility latest/monotonicity와
 principal isolation, exact/version, snooze, semantic-family scope, mandatory override,
-global ranked pagination과 cursor replay rejection을 검증한다. WP4 re-entry, feedback UI,
-UI 변경, deployment와 WP4+ 작업은 시작하지 않았다.
+global ranked pagination과 cursor replay rejection, 250+ multi-batch global ranking,
+batch-bounded auxiliary lookup, frozen lifecycle/fresh request, lineage cutoff을 검증한다.
+WP4 re-entry, feedback UI, UI 변경, deployment와 WP4+ 작업은 시작하지 않았다.

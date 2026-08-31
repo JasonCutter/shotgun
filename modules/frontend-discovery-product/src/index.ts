@@ -65,8 +65,19 @@ export type DiscoveryProductReadSource = {
     projectId: string,
     findingId: string,
   ): Promise<DiscoveryFindingEnvelopeV1 | undefined>;
+  /** Evaluation-time lineage lookup used by frozen ranked continuations. */
+  findLatestFindingAsOf?(
+    projectId: string,
+    findingId: string,
+    at: string,
+  ): Promise<DiscoveryFindingEnvelopeV1 | undefined>;
   findLifecycle(
     input: DiscoveryProductFindingIdentityV1,
+  ): Promise<DiscoveryProductLifecycleCurrentV1 | undefined>;
+  /** Evaluation-time lifecycle state from authoritative history. */
+  findLifecycleAsOf?(
+    input: DiscoveryProductFindingIdentityV1,
+    at: string,
   ): Promise<DiscoveryProductLifecycleCurrentV1 | undefined>;
   findReentryDisposition(input: {
     readonly projectId: string;
@@ -110,6 +121,12 @@ export type DiscoveryProductFeedbackReadPort = {
     readonly principalId: string;
     readonly at: string;
   }) => Promise<readonly DiscoveryFeedbackEventV1[]>;
+  readonly listLatestUtilityFeedbackForPresentationBatch?: (lookup: {
+    readonly projectId: string;
+    readonly principalId: string;
+    readonly at: string;
+    readonly findings: readonly DiscoveryProductPresentationBatchFindingInputV1[];
+  }) => Promise<readonly DiscoveryFeedbackEventV1[]>;
   readonly listFeedbackForFinding: (lookup: {
     readonly projectId: string;
     readonly findingId: string;
@@ -120,6 +137,12 @@ export type DiscoveryProductFeedbackReadPort = {
     readonly projectId: string;
     readonly principalId: string;
     readonly at: string;
+  }) => Promise<readonly DiscoverySuppressionDirectiveV1[]>;
+  readonly listSuppressionForPresentationBatch?: (lookup: {
+    readonly projectId: string;
+    readonly principalId: string;
+    readonly at: string;
+    readonly findings: readonly DiscoveryProductPresentationBatchFindingInputV1[];
   }) => Promise<readonly DiscoverySuppressionDirectiveV1[]>;
   readonly listRelevantSuppression: (lookup: {
     readonly projectId: string;
@@ -151,6 +174,14 @@ export type DiscoveryProductActivityReadPort = {
 export type DiscoveryProductPageCursorV1 = {
   readonly findingId: string;
   readonly findingRevision: number;
+};
+
+type DiscoveryProductPresentationBatchFindingInputV1 = {
+  readonly findingId: string;
+  readonly findingRevision: number;
+  readonly fingerprint: string;
+  readonly fingerprintVersion: string;
+  readonly semanticFamilyKey?: string;
 };
 
 export type DiscoveryProductPresentationSortKeyV1 = {
@@ -968,6 +999,7 @@ export class FrontendDiscoveryProductReadCoordinator {
   private async contextFor(
     finding: DiscoveryFindingEnvelopeV1,
     scope: DiscoveryProductReadInput,
+    evaluationTime?: string,
   ): Promise<{
     readonly lifecycle: DiscoveryProductLifecycleCurrentV1;
     readonly reentryState: DiscoveryProductReentryStateV1;
@@ -979,8 +1011,12 @@ export class FrontendDiscoveryProductReadCoordinator {
       findingId: finding.findingId,
       findingRevision: finding.findingRevision,
     };
-    const [lifecycle, disposition, reviewBinding, evidenceRows] = await Promise.all([
-      this.source.findLifecycle(identity),
+    const lifecycle =
+      evaluationTime !== undefined && this.source.findLifecycleAsOf !== undefined
+        ? this.source.findLifecycleAsOf(identity, evaluationTime)
+        : this.source.findLifecycle(identity);
+    const [resolvedLifecycle, disposition, reviewBinding, evidenceRows] = await Promise.all([
+      lifecycle,
       this.source.findReentryDisposition(identity),
       this.source.findReviewBinding(identity),
       Promise.all(
@@ -990,10 +1026,10 @@ export class FrontendDiscoveryProductReadCoordinator {
       ),
     ]);
     if (
-      !lifecycle ||
-      lifecycle.projectId !== finding.projectId ||
-      lifecycle.findingId !== finding.findingId ||
-      lifecycle.findingRevision !== finding.findingRevision
+      !resolvedLifecycle ||
+      resolvedLifecycle.projectId !== finding.projectId ||
+      resolvedLifecycle.findingId !== finding.findingId ||
+      resolvedLifecycle.findingRevision !== finding.findingRevision
     ) {
       return failure(
         'FORMAT_CORRUPT',
@@ -1024,11 +1060,11 @@ export class FrontendDiscoveryProductReadCoordinator {
       reviewBinding.resourceRevision > 0 &&
       reviewBinding.lifecycleState === 'REVIEW_READY' &&
       reviewBinding.reviewEligibility === 'ELIGIBLE_AFTER_VALIDATION' &&
-      lifecycle.lifecycleState === 'REVIEW_READY'
+      resolvedLifecycle.lifecycleState === 'REVIEW_READY'
         ? reviewBinding
         : undefined;
     return {
-      lifecycle,
+      lifecycle: resolvedLifecycle,
       reentryState,
       ...(safeReview === undefined ? {} : { reviewBinding: safeReview }),
       evidence: visibleEvidence,
@@ -1038,13 +1074,14 @@ export class FrontendDiscoveryProductReadCoordinator {
   private async toSummary(
     finding: DiscoveryFindingEnvelopeV1,
     scope: DiscoveryProductReadInput,
+    evaluationTime?: string,
   ): Promise<{
     readonly summary: DiscoveryProductFindingSummaryV1;
     readonly lineage: DiscoveryProductLineageV1;
   }> {
     const authorizedResources = await this.authorizeResources(finding, scope);
     if (authorizedResources === undefined) return notFound();
-    const context = await this.contextFor(finding, scope);
+    const context = await this.contextFor(finding, scope, evaluationTime);
     const titleAndSummary = payloadTitleAndSummary(finding.payload);
     const relatedResourceRefs = finding.relatedResourceRefs.filter(
       (resource) => resource.projectId === scope.activeProject.id,
@@ -1217,28 +1254,6 @@ export class FrontendDiscoveryProductReadCoordinator {
     }
   }
 
-  private async latestPresentationFeedback(
-    scope: DiscoveryProductReadInput,
-    evaluationTime: string,
-  ): Promise<ReadonlyMap<string, DiscoveryFeedbackEventV1> | undefined> {
-    if (!this.feedbackRepository) return new Map();
-    const bulk = this.feedbackRepository.listLatestUtilityFeedbackForPresentation;
-    if (!bulk) return undefined;
-    const events = await bulk.call(this.feedbackRepository, {
-      projectId: scope.activeProject.id,
-      principalId: scope.principalId,
-      at: evaluationTime,
-    });
-    return latestUtilityByFinding(
-      events.filter(
-        (event) =>
-          event.projectId === scope.activeProject.id &&
-          subjectId(event) === scope.principalId &&
-          Date.parse(event.createdAt) <= Date.parse(evaluationTime),
-      ),
-    );
-  }
-
   private async latestUtilityForFinding(
     finding: DiscoveryFindingEnvelopeV1,
     scope: DiscoveryProductReadInput,
@@ -1261,18 +1276,82 @@ export class FrontendDiscoveryProductReadCoordinator {
     ).get(findingIdentityKey(finding));
   }
 
-  private async presentationSuppressions(
+  private presentationBatchInputs(
+    findings: readonly DiscoveryFindingEnvelopeV1[],
+  ): readonly DiscoveryProductPresentationBatchFindingInputV1[] {
+    return findings.map((finding) => ({
+      findingId: finding.findingId,
+      findingRevision: finding.findingRevision,
+      fingerprint: finding.fingerprint,
+      fingerprintVersion: finding.fingerprintVersion,
+      ...(discoverySemanticFamilyKeyV1(finding) === undefined
+        ? {}
+        : { semanticFamilyKey: discoverySemanticFamilyKeyV1(finding) }),
+    }));
+  }
+
+  private async latestUtilityForBatch(
+    findings: readonly DiscoveryFindingEnvelopeV1[],
     scope: DiscoveryProductReadInput,
     evaluationTime: string,
-  ): Promise<readonly DiscoverySuppressionDirectiveV1[] | undefined> {
-    if (!this.feedbackRepository) return [];
-    const bulk = this.feedbackRepository.listSuppressionForPresentation;
-    if (!bulk) return undefined;
-    return bulk.call(this.feedbackRepository, {
+  ): Promise<ReadonlyMap<string, DiscoveryFeedbackEventV1>> {
+    if (!this.feedbackRepository || findings.length === 0) return new Map();
+    const lookup = {
       projectId: scope.activeProject.id,
       principalId: scope.principalId,
       at: evaluationTime,
-    });
+      findings: this.presentationBatchInputs(findings),
+    };
+    const batch = this.feedbackRepository.listLatestUtilityFeedbackForPresentationBatch;
+    if (batch !== undefined) {
+      return latestUtilityByFinding(await batch.call(this.feedbackRepository, lookup));
+    }
+    // Legacy adapters are intentionally queried one Finding at a time. This
+    // fallback is bounded by the current physical batch and never preloads a
+    // Project-wide feedback collection.
+    const latest = new Map<string, DiscoveryFeedbackEventV1>();
+    for (const finding of findings) {
+      const event = await this.latestUtilityForFinding(finding, scope, evaluationTime);
+      if (event !== undefined) latest.set(findingIdentityKey(finding), event);
+    }
+    return latest;
+  }
+
+  private async suppressionsForBatch(
+    findings: readonly DiscoveryFindingEnvelopeV1[],
+    scope: DiscoveryProductReadInput,
+    evaluationTime: string,
+  ): Promise<readonly DiscoverySuppressionDirectiveV1[]> {
+    if (!this.feedbackRepository || findings.length === 0) return [];
+    const lookup = {
+      projectId: scope.activeProject.id,
+      principalId: scope.principalId,
+      at: evaluationTime,
+      findings: this.presentationBatchInputs(findings),
+    };
+    const batch = this.feedbackRepository.listSuppressionForPresentationBatch;
+    if (batch !== undefined) {
+      return batch.call(this.feedbackRepository, lookup);
+    }
+    // Compatibility fallback for pre-WP3 adapters. It still bounds the
+    // Product-side work to this batch and deduplicates directive identities.
+    const unique = new Map<string, DiscoverySuppressionDirectiveV1>();
+    for (const finding of findings) {
+      const rows = await this.relevantSuppressionForFinding(finding, scope, evaluationTime);
+      for (const directive of rows) unique.set(directive.suppressionId, directive);
+    }
+    const result = [...unique.values()].sort(
+      (left, right) =>
+        Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
+        left.suppressionId.localeCompare(right.suppressionId),
+    );
+    if (result.length > 256) {
+      throw new FrontendContractError(
+        'INTERNAL_UNCLASSIFIED',
+        'Discovery presentation suppression candidates exceed the bounded limit.',
+      );
+    }
+    return result;
   }
 
   private async relevantSuppressionForFinding(
@@ -1310,49 +1389,62 @@ export class FrontendDiscoveryProductReadCoordinator {
       });
       if (!unique.has(key)) unique.set(key, directive);
     }
-    await Promise.all(
-      [...unique.entries()].map(async ([key, directive]) => {
+    // Suppression candidates are already capped by the feedback adapter. A
+    // sequential resolver keeps source-authority concurrency at one even when
+    // a capped family has many candidate directives.
+    for (const [key, directive] of unique.entries()) {
+      if (
+        directive.projectId !== scope.activeProject.id ||
+        subjectId(directive) !== scope.principalId
+      ) {
+        continue;
+      }
+      try {
+        const source = await this.source.findFinding({
+          projectId: directive.projectId,
+          findingId: directive.sourceFindingId,
+          findingRevision: directive.sourceFindingRevision,
+        });
         if (
-          directive.projectId !== scope.activeProject.id ||
-          subjectId(directive) !== scope.principalId
+          source === undefined ||
+          Date.parse(source.createdAt) > Date.parse(evaluationTime) ||
+          !(await this.authorizeResources(source, scope))
         ) {
-          return;
+          continue;
         }
-        try {
-          const source = await this.source.findFinding({
-            projectId: directive.projectId,
-            findingId: directive.sourceFindingId,
-            findingRevision: directive.sourceFindingRevision,
-          });
-          if (
-            source === undefined ||
-            Date.parse(source.createdAt) > Date.parse(evaluationTime) ||
-            !(await this.authorizeResources(source, scope))
-          ) {
-            return;
-          }
-          sources.set(key, source);
-        } catch {
-          // An inaccessible or corrupt source is a fail-closed NO MATCH.
-        }
-      }),
-    );
+        sources.set(key, source);
+      } catch {
+        // An inaccessible or corrupt source is a fail-closed NO MATCH.
+      }
+    }
     return sources;
   }
 
   private async isSameFindingLineage(
     candidate: DiscoveryFindingEnvelopeV1,
     source: DiscoveryFindingEnvelopeV1,
+    evaluationTime: string,
   ): Promise<boolean> {
     const visited = new Set<string>();
     let current: DiscoveryFindingEnvelopeV1 | undefined = candidate;
     for (let index = 0; current !== undefined && index < 100; index += 1) {
       if (current.findingId === source.findingId) return true;
-      const parentId = current.supersedesFindingId;
+      const parentId: string | undefined = current.supersedesFindingId;
       if (!parentId || parentId === source.findingId) return parentId === source.findingId;
-      if (visited.has(parentId) || this.source.findLatestFinding === undefined) return false;
+      if (
+        visited.has(parentId) ||
+        (this.source.findLatestFindingAsOf === undefined &&
+          this.source.findLatestFinding === undefined)
+      )
+        return false;
       visited.add(parentId);
-      current = await this.source.findLatestFinding(candidate.projectId, parentId);
+      current =
+        this.source.findLatestFindingAsOf === undefined
+          ? await this.source.findLatestFinding!(candidate.projectId, parentId)
+          : await this.source.findLatestFindingAsOf(candidate.projectId, parentId, evaluationTime);
+      if (current !== undefined && Date.parse(current.createdAt) > Date.parse(evaluationTime)) {
+        return false;
+      }
     }
     return false;
   }
@@ -1427,7 +1519,7 @@ export class FrontendDiscoveryProductReadCoordinator {
     }
     return directive.scope === 'PROJECT'
       ? candidate.projectId === directive.projectId
-      : this.isSameFindingLineage(candidate, source);
+      : this.isSameFindingLineage(candidate, source, evaluationTime);
   }
 
   private async listRankedFindings(
@@ -1478,13 +1570,6 @@ export class FrontendDiscoveryProductReadCoordinator {
       );
     }
     const after = cursorContext?.lastSortKey;
-    const feedback = await this.latestPresentationFeedback(scope, evaluationTime);
-    const suppressions = await this.presentationSuppressions(scope, evaluationTime);
-    const suppressionSources = await this.authorizedSuppressionSources(
-      suppressions ?? [],
-      scope,
-      evaluationTime,
-    );
     type RankedPresentationEntry = {
       readonly finding: DiscoveryFindingEnvelopeV1;
       readonly scoreKey: DiscoveryProductPresentationSortKeyV1;
@@ -1503,10 +1588,59 @@ export class FrontendDiscoveryProductReadCoordinator {
       }[] = [];
       for (const finding of batch) {
         try {
-          views.push({ finding, summary: (await this.toSummary(finding, scope)).summary });
+          views.push({
+            finding,
+            summary: (await this.toSummary(finding, scope, evaluationTime)).summary,
+          });
         } catch (error) {
           if (error instanceof ShotgunError && error.code === 'NOT_FOUND') continue;
           throw error;
+        }
+      }
+      const feedback = await this.latestUtilityForBatch(
+        views.map(({ finding }) => finding),
+        scope,
+        evaluationTime,
+      );
+      const suppressions = await this.suppressionsForBatch(
+        views.map(({ finding }) => finding),
+        scope,
+        evaluationTime,
+      );
+      const suppressionSources = await this.authorizedSuppressionSources(
+        suppressions,
+        scope,
+        evaluationTime,
+      );
+      const suppressionsByFinding = new Map<string, DiscoverySuppressionDirectiveV1[]>();
+      const suppressionsByFingerprint = new Map<string, DiscoverySuppressionDirectiveV1[]>();
+      const suppressionsByFamily = new Map<string, DiscoverySuppressionDirectiveV1[]>();
+      const addSuppression = (
+        index: Map<string, DiscoverySuppressionDirectiveV1[]>,
+        key: string,
+        directive: DiscoverySuppressionDirectiveV1,
+      ) => {
+        const rows = index.get(key);
+        if (rows) rows.push(directive);
+        else index.set(key, [directive]);
+      };
+      for (const directive of suppressions) {
+        const sourceKey = findingIdentityKey({
+          findingId: directive.sourceFindingId,
+          findingRevision: directive.sourceFindingRevision,
+        });
+        if (directive.suppressionKind === 'SNOOZE') {
+          addSuppression(suppressionsByFinding, sourceKey, directive);
+        } else if (directive.suppressionKind === 'SUPPRESS_EXACT') {
+          addSuppression(
+            suppressionsByFingerprint,
+            `${directive.fingerprintVersion ?? ''}\u0000${directive.fingerprint ?? ''}`,
+            directive,
+          );
+        } else {
+          const source = suppressionSources.get(sourceKey);
+          const family = source === undefined ? undefined : discoverySemanticFamilyKeyV1(source);
+          if (family !== undefined) addSuppression(suppressionsByFamily, family, directive);
         }
       }
       const eligible: {
@@ -1525,12 +1659,16 @@ export class FrontendDiscoveryProductReadCoordinator {
         ) {
           continue;
         }
-        const utility = feedback
-          ? feedback.get(findingIdentityKey(view.finding))
-          : await this.latestUtilityForFinding(view.finding, scope, evaluationTime);
-        const candidateSuppressions = suppressions
-          ? suppressions
-          : await this.relevantSuppressionForFinding(view.finding, scope, evaluationTime);
+        const utility = feedback.get(findingIdentityKey(view.finding));
+        const candidateSuppressions = [
+          ...(suppressionsByFinding.get(findingIdentityKey(view.finding)) ?? []),
+          ...(suppressionsByFingerprint.get(
+            `${view.finding.fingerprintVersion}\u0000${view.finding.fingerprint}`,
+          ) ?? []),
+          ...(discoverySemanticFamilyKeyV1(view.finding) === undefined
+            ? []
+            : (suppressionsByFamily.get(discoverySemanticFamilyKeyV1(view.finding)!) ?? [])),
+        ];
         let matchingSuppression: DiscoverySuppressionDirectiveV1 | undefined;
         for (const directive of candidateSuppressions) {
           if (

@@ -144,6 +144,9 @@ describe('Backup Bundle verification', () => {
         '055_akp_7_wp1_feedback_suppression_ranking_storage.sql',
       ]),
     ).toThrow('requires 045_akp_2_wp2_discovery_finding_persistence.sql');
+    expect(() =>
+      authoritativeIntegrityTablesForMigrations(['056_akp_7_wp3_semantic_family_projection.sql']),
+    ).toThrow('requires 055_akp_7_wp1_feedback_suppression_ranking_storage.sql');
   });
 
   it('fails closed when a referenced Original Asset is corrupt or missing', async () => {

@@ -111,8 +111,19 @@ export class PostgresFrontendDiscoveryProductReadSource implements DiscoveryProd
     return this.findingRepository.findLatest({ projectId, findingId });
   }
 
+  public findLatestFindingAsOf(projectId: string, findingId: string, at: string) {
+    return this.findingRepository.findLatestAsOf({ projectId, findingId, at });
+  }
+
   public findLifecycle(input: Parameters<DiscoveryProductReadSource['findLifecycle']>[0]) {
     return this.findingRepository.findLifecycle(input);
+  }
+
+  public findLifecycleAsOf(
+    input: Parameters<NonNullable<DiscoveryProductReadSource['findLifecycleAsOf']>>[0],
+    at: string,
+  ) {
+    return this.findingRepository.findLifecycleAsOf(input, at);
   }
 
   public async findReentryDisposition(

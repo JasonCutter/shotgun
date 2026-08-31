@@ -157,6 +157,7 @@ const requiredTables = [
   'discovery.findings',
   'discovery.feedback_events',
   'discovery.suppression_directives',
+  'discovery.suppression_semantic_family_projection',
   'discovery.ranking_policy_revisions',
   'discovery.finding_lifecycle_current',
   'discovery.finding_lifecycle_history',

@@ -215,6 +215,57 @@ describe.runIf(databaseUrl)('AKP-7 WP1 feedback and ranking PostgreSQL authority
     ).toEqual([]);
   });
 
+  it('bounds Finding and lifecycle reads at the evaluation time', async () => {
+    const findings = new PostgresDiscoveryFindingRepository(pool!);
+    expect(
+      await findings.save({
+        ...finding(projectA, 'finding-a'),
+        findingRevision: 3,
+        createdAt: '2026-09-01T00:00:00.000Z',
+      }),
+    ).toBe('CREATED');
+    expect(
+      (
+        await findings.findLatestAsOf({
+          projectId: projectA,
+          findingId: 'finding-a',
+          at: '2026-08-31T12:00:00.000Z',
+        })
+      )?.findingRevision,
+    ).toBe(2);
+    expect(
+      (
+        await findings.findLatestAsOf({
+          projectId: projectA,
+          findingId: 'finding-a',
+          at: '2026-09-02T00:00:00.000Z',
+        })
+      )?.findingRevision,
+    ).toBe(3);
+    expect(
+      (
+        await findings.findLifecycleAsOf(
+          {
+            projectId: projectA,
+            findingId: 'finding-a',
+            findingRevision: 2,
+          },
+          '2026-08-31T12:00:00.000Z',
+        )
+      )?.lifecycleState,
+    ).toBe('NEW');
+    expect(
+      await findings.findLifecycleAsOf(
+        {
+          projectId: projectA,
+          findingId: 'finding-a',
+          findingRevision: 3,
+        },
+        '2026-08-31T12:00:00.000Z',
+      ),
+    ).toBeUndefined();
+  });
+
   it('separates exact suppression from similar matching and retains expired snooze history', async () => {
     const repository = new PostgresDiscoveryFeedbackRepository(pool!);
     const exact = exactSuppression(projectA, 'finding-a', 'suppression-exact');
@@ -308,6 +359,47 @@ describe.runIf(databaseUrl)('AKP-7 WP1 feedback and ranking PostgreSQL authority
         })
       ).map((entry) => entry.feedbackId),
     ).toEqual(['feedback-a']);
+
+    const batchRepository = new PostgresDiscoveryFeedbackRepository(pool!, {
+      semanticFamilyKeyResolver: async ({ findingId }) => `family:${findingId}`,
+    });
+    expect(
+      await batchRepository.appendSuppression({
+        ...exact,
+        suppressionId: 'suppression-similar-bounded',
+        suppressionKind: 'SUPPRESS_SIMILAR',
+        scope: 'PROJECT',
+        matcherKind: 'SEMANTIC_FAMILY',
+        matcherVersion: 'semantic-family:v1',
+        fingerprint: undefined,
+        fingerprintVersion: undefined,
+      }),
+    ).toBe('CREATED');
+    const batchFinding = {
+      findingId: 'finding-a',
+      findingRevision: 2,
+      fingerprint: 'sha256:finding-a',
+      fingerprintVersion: 'discovery-fingerprint:v1',
+      semanticFamilyKey: 'family:finding-a',
+    };
+    const batchFeedback = await batchRepository.listLatestUtilityFeedbackForPresentationBatch({
+      projectId: projectA,
+      principalId: 'principal-akp-7',
+      at: '2026-08-31T12:00:00.000Z',
+      findings: [batchFinding],
+    });
+    expect(batchFeedback.map((entry) => entry.feedbackId)).toEqual(['feedback-a']);
+    const batchSuppressions = await batchRepository.listSuppressionForPresentationBatch({
+      projectId: projectA,
+      principalId: 'principal-akp-7',
+      at: '2026-08-31T12:00:00.000Z',
+      findings: [batchFinding],
+    });
+    expect(batchSuppressions.map((entry) => entry.suppressionId)).toEqual([
+      'suppression-exact',
+      'suppression-similar-bounded',
+      'suppression-snooze',
+    ]);
   });
 
   it('keeps ranking policy revisions immutable and resolves the effective global revision', async () => {

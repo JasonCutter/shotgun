@@ -63,6 +63,8 @@ const DISCOVERY_FINDING_MIGRATION = '045_akp_2_wp2_discovery_finding_persistence
 const DISCOVERY_LIFECYCLE_MIGRATION = '046_akp_2_wp3_discovery_finding_lifecycle.sql';
 const DISCOVERY_MODEL_PROFILE_MIGRATION = '047_akp_3_wp3_discovery_model_profiles.sql';
 const DISCOVERY_FEEDBACK_MIGRATION = '055_akp_7_wp1_feedback_suppression_ranking_storage.sql';
+const DISCOVERY_SEMANTIC_FAMILY_PROJECTION_MIGRATION =
+  '056_akp_7_wp3_semantic_family_projection.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
@@ -84,6 +86,14 @@ export const authoritativeIntegrityTablesForMigrations = (
   if (applied.has(DISCOVERY_FEEDBACK_MIGRATION) && !applied.has(DISCOVERY_FINDING_MIGRATION)) {
     throw new Error(
       `Backup migration identity is invalid: ${DISCOVERY_FEEDBACK_MIGRATION} requires ${DISCOVERY_FINDING_MIGRATION}.`,
+    );
+  }
+  if (
+    applied.has(DISCOVERY_SEMANTIC_FAMILY_PROJECTION_MIGRATION) &&
+    !applied.has(DISCOVERY_FEEDBACK_MIGRATION)
+  ) {
+    throw new Error(
+      `Backup migration identity is invalid: ${DISCOVERY_SEMANTIC_FAMILY_PROJECTION_MIGRATION} requires ${DISCOVERY_FEEDBACK_MIGRATION}.`,
     );
   }
   return [

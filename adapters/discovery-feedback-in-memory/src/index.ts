@@ -19,6 +19,7 @@ import type {
   DiscoverySuppressionHistoryLookupV1,
   DiscoveryPresentationFeedbackLookupV1,
   DiscoveryPresentationSuppressionLookupV1,
+  DiscoveryPresentationBatchLookupV1,
   DiscoveryFeedbackTransactionHandleV1,
 } from '../../../modules/discovery-feedback/src/index.js';
 
@@ -52,7 +53,14 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
   private readonly suppressions = new Map<string, DiscoverySuppressionDirectiveV1>();
   private readonly rankingPolicies = new Map<string, DiscoveryRankingPolicyRevisionV1>();
 
-  constructor(private readonly now: () => string = () => new Date().toISOString()) {}
+  constructor(
+    private readonly now: () => string = () => new Date().toISOString(),
+    private readonly semanticFamilyKeyResolver?: (input: {
+      readonly projectId: string;
+      readonly findingId: string;
+      readonly findingRevision: number;
+    }) => string | undefined | Promise<string | undefined>,
+  ) {}
 
   async appendFeedback(event: DiscoveryFeedbackEventV1): Promise<'CREATED' | 'CONFLICT'> {
     const normalized = assertDiscoveryFeedbackEventV1(event);
@@ -118,6 +126,42 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
           left.findingRevision - right.findingRevision,
       )
       .map(clone);
+  }
+
+  async listLatestUtilityFeedbackForPresentationBatch(
+    lookup: DiscoveryPresentationBatchLookupV1,
+  ): Promise<readonly DiscoveryFeedbackEventV1[]> {
+    const projectId = assertProjectId(lookup.projectId);
+    const principalId = assertPrincipalId(lookup.principalId);
+    const at = timestamp(lookup.at);
+    if (!Number.isFinite(at)) throw new TypeError('at must be a valid date-time');
+    const requested = new Set(
+      lookup.findings.map((finding) => `${finding.findingId}\u0000${finding.findingRevision}`),
+    );
+    const latest = new Map<string, DiscoveryFeedbackEventV1>();
+    for (const event of this.feedback.values()) {
+      const key = `${event.findingId}\u0000${event.findingRevision}`;
+      if (
+        event.projectId !== projectId ||
+        subjectId(event) !== principalId ||
+        !requested.has(key) ||
+        event.feedbackClass !== 'UTILITY' ||
+        !['USEFUL', 'NOT_RELEVANT', 'ALREADY_KNOWN', 'TOO_FREQUENT'].includes(event.feedbackKind) ||
+        timestamp(event.createdAt) > at
+      ) {
+        continue;
+      }
+      const current = latest.get(key);
+      if (
+        current === undefined ||
+        timestamp(event.createdAt) > timestamp(current.createdAt) ||
+        (timestamp(event.createdAt) === timestamp(current.createdAt) &&
+          event.feedbackId.localeCompare(current.feedbackId) > 0)
+      ) {
+        latest.set(key, event);
+      }
+    }
+    return [...latest.values()].map(clone);
   }
 
   async listSuppressionHistoryForFinding(
@@ -216,6 +260,77 @@ export class InMemoryDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
           left.suppressionId.localeCompare(right.suppressionId),
       )
       .map(clone);
+  }
+
+  async listSuppressionForPresentationBatch(
+    lookup: DiscoveryPresentationBatchLookupV1,
+  ): Promise<readonly DiscoverySuppressionDirectiveV1[]> {
+    const projectId = assertProjectId(lookup.projectId);
+    const principalId = assertPrincipalId(lookup.principalId);
+    const at = timestamp(lookup.at);
+    if (!Number.isFinite(at)) throw new TypeError('at must be a valid date-time');
+    const findingKeys = new Set(
+      lookup.findings.map((finding) => `${finding.findingId}\u0000${finding.findingRevision}`),
+    );
+    const fingerprintKeys = new Set(
+      lookup.findings.map((finding) => `${finding.fingerprintVersion}\u0000${finding.fingerprint}`),
+    );
+    const familyKeys = new Set(
+      lookup.findings.flatMap((finding) =>
+        finding.semanticFamilyKey === undefined ? [] : [finding.semanticFamilyKey],
+      ),
+    );
+    const familyByFinding = new Map(
+      lookup.findings.map((finding) => [
+        `${finding.findingId}\u0000${finding.findingRevision}`,
+        finding.semanticFamilyKey,
+      ]),
+    );
+    const rows: DiscoverySuppressionDirectiveV1[] = [];
+    for (const directive of this.suppressions.values()) {
+      if (
+        directive.projectId !== projectId ||
+        subjectId(directive) !== principalId ||
+        timestamp(directive.createdAt) > at ||
+        (directive.expiresAt !== undefined && timestamp(directive.expiresAt) <= at)
+      ) {
+        continue;
+      }
+      const sourceKey = `${directive.sourceFindingId}\u0000${directive.sourceFindingRevision}`;
+      let matches = false;
+      if (directive.suppressionKind === 'SNOOZE') {
+        matches = findingKeys.has(sourceKey);
+      } else if (directive.suppressionKind === 'SUPPRESS_EXACT') {
+        matches = [...fingerprintKeys].some(
+          (key) =>
+            key === `${directive.fingerprintVersion}\u0000${directive.fingerprint}` &&
+            (directive.scope === 'PROJECT' || findingKeys.has(sourceKey)),
+        );
+      } else if (
+        directive.matcherKind === 'SEMANTIC_FAMILY' &&
+        directive.matcherVersion === 'semantic-family:v1'
+      ) {
+        const sourceKey = `${directive.sourceFindingId}\u0000${directive.sourceFindingRevision}`;
+        const sourceFamily =
+          familyByFinding.get(sourceKey) ??
+          (await this.semanticFamilyKeyResolver?.({
+            projectId: directive.projectId,
+            findingId: directive.sourceFindingId,
+            findingRevision: directive.sourceFindingRevision,
+          }));
+        matches = sourceFamily !== undefined && familyKeys.has(sourceFamily);
+      }
+      if (matches) rows.push(clone(directive));
+    }
+    rows.sort(
+      (left, right) =>
+        timestamp(left.createdAt) - timestamp(right.createdAt) ||
+        left.suppressionId.localeCompare(right.suppressionId),
+    );
+    if (rows.length > 256) {
+      throw new TypeError('presentation suppression candidate limit exceeded');
+    }
+    return rows;
   }
 
   async insertRankingPolicyRevision(

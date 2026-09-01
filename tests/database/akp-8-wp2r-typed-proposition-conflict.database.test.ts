@@ -188,18 +188,30 @@ describe('AKP-8 WP2R PostgreSQL production composition', () => {
         now: '2026-09-01T00:00:00.000Z',
       });
 
+      const transactionRule = await service.execute({
+        projectId,
+        actorId: principal.principalId,
+        payload: {
+          operation: 'CREATE',
+          leftRelationType: 'transaction-supports',
+          rightRelationType: 'transaction-contradicts',
+          directionSemantics: 'DIRECTED_SAME_ORIENTATION',
+        },
+        now: '2026-09-01T00:00:00.050Z',
+      });
+
       const rollbackRevision = {
-        ...rule,
+        ...transactionRule,
         ruleRevision: 2,
-        leftRelationType: 'supports-rollback',
+        leftRelationType: 'transaction-supports-rollback',
         semanticKey: typedPropositionConflictRuleSemanticKey({
           projectId,
-          leftRelationType: 'supports-rollback',
-          rightRelationType: rule.rightRelationType,
-          directionSemantics: rule.directionSemantics,
+          leftRelationType: 'transaction-supports-rollback',
+          rightRelationType: transactionRule.rightRelationType,
+          directionSemantics: transactionRule.directionSemantics,
         }),
         createdAt: '2026-09-01T00:00:00.100Z',
-        supersedes: { ruleId: rule.ruleId, ruleRevision: rule.ruleRevision },
+        supersedes: { ruleId: transactionRule.ruleId, ruleRevision: transactionRule.ruleRevision },
       };
       await expect(
         rules.transaction(async ({ repository }) => {
@@ -207,7 +219,9 @@ describe('AKP-8 WP2R PostgreSQL production composition', () => {
           throw new Error('injected failure after successor write');
         }),
       ).rejects.toThrow('injected failure after successor write');
-      const afterRollback = await rules.listRuleRevisions(projectId);
+      const afterRollback = (await rules.listRuleRevisions(projectId)).filter(
+        (entry) => entry.ruleId === transactionRule.ruleId,
+      );
       expect(afterRollback).toHaveLength(1);
       expect(afterRollback[0]).toMatchObject({ ruleRevision: 1, status: 'ACTIVE' });
 
@@ -218,10 +232,10 @@ describe('AKP-8 WP2R PostgreSQL production composition', () => {
             actorId: principal.principalId,
             payload: {
               operation: 'REVISE',
-              ruleId: rule.ruleId,
+              ruleId: transactionRule.ruleId,
               expectedRuleRevision: 1,
-              leftRelationType: 'supports-revised',
-              rightRelationType: 'contradicts',
+              leftRelationType: 'transaction-supports-revised',
+              rightRelationType: 'transaction-contradicts',
               directionSemantics: 'DIRECTED_SAME_ORIENTATION',
             },
             now: '2026-09-01T00:00:00.200Z',
@@ -230,7 +244,9 @@ describe('AKP-8 WP2R PostgreSQL production composition', () => {
         ),
       );
       expect(revised.ruleRevision).toBe(2);
-      const afterRevision = await rules.listRuleRevisions(projectId);
+      const afterRevision = (await rules.listRuleRevisions(projectId)).filter(
+        (entry) => entry.ruleId === transactionRule.ruleId,
+      );
       expect(afterRevision.filter((entry) => entry.status === 'ACTIVE')).toHaveLength(1);
       expect(afterRevision.find((entry) => entry.ruleRevision === 1)?.status).toBe('SUPERSEDED');
 
@@ -243,10 +259,10 @@ describe('AKP-8 WP2R PostgreSQL production composition', () => {
                 actorId: principal.principalId,
                 payload: {
                   operation: 'REVISE',
-                  ruleId: rule.ruleId,
+                  ruleId: transactionRule.ruleId,
                   expectedRuleRevision: 2,
-                  leftRelationType: `supports-concurrent-${suffix}`,
-                  rightRelationType: 'contradicts',
+                  leftRelationType: `transaction-supports-concurrent-${suffix}`,
+                  rightRelationType: 'transaction-contradicts',
                   directionSemantics: 'DIRECTED_SAME_ORIENTATION',
                 },
                 now: `2026-09-01T00:00:0${suffix}.000Z`,
@@ -259,7 +275,9 @@ describe('AKP-8 WP2R PostgreSQL production composition', () => {
       expect(concurrent.filter((entry) => entry.status === 'fulfilled')).toHaveLength(1);
       expect(concurrent.filter((entry) => entry.status === 'rejected')).toHaveLength(1);
       expect(
-        (await rules.listRuleRevisions(projectId)).filter((entry) => entry.status === 'ACTIVE'),
+        (await rules.listRuleRevisions(projectId)).filter(
+          (entry) => entry.ruleId === transactionRule.ruleId && entry.status === 'ACTIVE',
+        ),
       ).toHaveLength(1);
 
       application = await startShotgunApplication({

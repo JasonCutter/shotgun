@@ -304,6 +304,8 @@ export const createCanonicalKnowledgeModule = (
       owns: [
         'canonical.project_state',
         'canonical.claims',
+        'canonical.relations',
+        'canonical.relation_precursors',
         'canonical.revisions',
         'canonical.commits',
         'canonical.history_events',

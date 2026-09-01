@@ -160,6 +160,22 @@ const cleanup = async (): Promise<void> => {
        CASCADE`,
     );
     await client.query(
+      'DELETE FROM frontend_knowledge_draft.artifact_refs WHERE resource_project_id = $1',
+      [projectId],
+    );
+    await client.query(
+      'DELETE FROM frontend_knowledge_draft.materializations WHERE resource_project_id = $1',
+      [projectId],
+    );
+    await client.query(
+      'DELETE FROM frontend_knowledge_draft.operations WHERE resource_project_id = $1',
+      [projectId],
+    );
+    await client.query(
+      'DELETE FROM frontend_knowledge_draft.revisions WHERE resource_project_id = $1',
+      [projectId],
+    );
+    await client.query(
       'DELETE FROM frontend_knowledge_draft.drafts WHERE resource_project_id = $1',
       [projectId],
     );

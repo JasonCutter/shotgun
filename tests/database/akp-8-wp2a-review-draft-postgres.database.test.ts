@@ -19,7 +19,6 @@ import {
 } from '../../modules/discovery-reentry/src/index.js';
 import {
   FrontendReviewProductCoordinator,
-  reviewContextIdForSource,
   type FrontendReviewScopeV1,
 } from '../../modules/frontend-review/src/index.js';
 import {
@@ -49,7 +48,7 @@ const endpoint = (resourceId: string) => ({
   resourceKind: 'CANONICAL_ENTITY' as const,
   resourceId,
   projectId,
-  resourceState: 'CURRENT' as const,
+  resourceState: 'APPROVED' as const,
   resourceRevision: '1',
 });
 
@@ -144,31 +143,19 @@ const cleanup = async (): Promise<void> => {
   if (pool === undefined) return;
   const client = await pool.connect();
   try {
-    if (activeReviewResourceId !== undefined) {
-      const reviewContextId = reviewContextIdForSource(
-        'DISCOVERY_CANDIDATE',
-        activeReviewResourceId,
-      );
-      await client.query('DELETE FROM frontend_review.decision WHERE review_context_id = $1', [
-        reviewContextId,
-      ]);
-      await client.query('DELETE FROM frontend_review.comment WHERE review_context_id = $1', [
-        reviewContextId,
-      ]);
-      await client.query('DELETE FROM frontend_review.approval WHERE review_context_id = $1', [
-        reviewContextId,
-      ]);
-      await client.query('DELETE FROM frontend_review.dependency WHERE review_context_id = $1', [
-        reviewContextId,
-      ]);
-      await client.query('DELETE FROM frontend_review.item WHERE review_context_id = $1', [
-        reviewContextId,
-      ]);
-      await client.query(
-        'DELETE FROM frontend_review.context_revision WHERE review_context_id = $1',
-        [reviewContextId],
-      );
-    }
+    // Review Context/Item rows are immutable by database trigger. The
+    // database suite runs files serially after its guarded reset, so use the
+    // existing trigger-safe table cleanup rather than issuing DELETE against
+    // immutable rows.
+    await client.query(
+      `TRUNCATE frontend_review.context_revision,
+                frontend_review.item,
+                frontend_review.dependency,
+                frontend_review.decision,
+                frontend_review.comment,
+                frontend_review.approval
+       CASCADE`,
+    );
     await client.query(
       'DELETE FROM frontend_knowledge_draft.drafts WHERE resource_project_id = $1',
       [projectId],

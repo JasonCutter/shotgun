@@ -54,7 +54,11 @@ import {
   createProductDiscoveryExecution,
   observeDiscoveryReconciliation,
 } from '../../adapters/discovery-runtime-product/src/index.js';
-import { PostgresKnowledgeModelRepository } from '../../adapters/postgres-stage9/src/index.js';
+import {
+  PostgresKnowledgeModelRepository,
+  PostgresTypedPropositionConflictAssertionRepository,
+  PostgresTypedPropositionConflictRuleRepository,
+} from '../../adapters/postgres-stage9/src/index.js';
 import {
   DiscoveryReentryConsumer,
   DiscoveryReviewMaterializer,
@@ -67,7 +71,11 @@ import {
   StaticDiscoveryTriggerPolicy,
 } from '../../modules/discovery-trigger-coordinator/src/index.js';
 import { PersistentDiscoveryWorker } from '../../modules/discovery-runtime/src/index.js';
-import type { DiscoveryTemporalCompatibilityPortV1 } from '../../modules/discovery-finding-fingerprint/src/index.js';
+import type {
+  DiscoveryCompetingResourcePortV1,
+  DiscoveryTemporalCompatibilityPortV1,
+} from '../../modules/discovery-finding-fingerprint/src/index.js';
+import { DiscoveryActivityAdapter } from '../../adapters/frontend-activity-discovery/src/index.js';
 import {
   FrontendReviewProductCoordinator,
   type FrontendReviewScopeV1,
@@ -104,10 +112,18 @@ import {
   initialSemanticEmbeddingRegistry,
 } from '../../modules/semantic-embedding/src/index.js';
 import { dispatchCanonicalOutbox } from '../../modules/canonical-knowledge/src/index.js';
+import { createTypedPropositionConflictDiscoveryPort } from '../../assemblies/shotgun-app/src/application.js';
+import { TypedPropositionConflictRuleService } from '../../modules/knowledge-model/src/index.js';
 import {
+  approvalTokenDigest,
+  approvedChangeSetManifestDigest,
   canonicalSnapshotDigest,
+  changeSetContentDigest,
+  claimCandidateDigest,
+  knowledgeCandidateDigest,
   SEMANTIC_REPRESENTATION_VERSION_V2,
   sha256Text,
+  type ApprovedChangeSetManifest,
   type CanonicalCommitResult,
   type CanonicalCommittedPayload,
   type CompiledTruthProjection,
@@ -115,6 +131,7 @@ import {
   type DiscoveryModelProfileServicePort,
   type DiscoveryAIExecutionResolverPort,
   type DiscoveryStructuredProviderPort,
+  type RelationCandidate,
   type SemanticEmbeddingRouterPort,
   decodeDiscoveryFeedbackProductCommandRequestV1,
 } from '../../packages/contracts/src/index.js';
@@ -1231,6 +1248,615 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
         })
       )?.lifecycleState,
     ).toBe('RESOLVED');
+
+    // M — the production typed-conflict path is deliberately exercised after
+    // the accepted A/B/C journey.  The two approved relation groups are read
+    // by the real Postgres conflict authority; no Finding or Canonical conflict
+    // row is inserted by this fixture.
+    let causalNow = '2026-09-01T05:00:00.000Z';
+    const typedRelationCandidates: readonly RelationCandidate[] = [
+      {
+        candidateId: `akp-8-m-support:${projectId}`,
+        candidateType: 'RELATION',
+        revisionNumber: 1,
+        sourceVersionId,
+        evidenceIds: [evidenceIds[0]],
+        modelOutputs: [],
+        fromCandidateId: 'entity-alpha',
+        toCandidateId: 'entity-beta',
+        relationType: 'supports',
+        direction: 'DIRECTED',
+      },
+      {
+        candidateId: `akp-8-m-contradicts:${projectId}`,
+        candidateType: 'RELATION',
+        revisionNumber: 1,
+        sourceVersionId,
+        evidenceIds: [evidenceIds[1]],
+        modelOutputs: [],
+        fromCandidateId: 'entity-alpha',
+        toCandidateId: 'entity-beta',
+        relationType: 'contradicts',
+        direction: 'DIRECTED',
+      },
+    ];
+    const knowledgeModel = new PostgresKnowledgeModelRepository(pool!);
+    for (const [index, candidate] of typedRelationCandidates.entries()) {
+      await knowledgeModel.saveGroup({
+        groupId: `akp-8-m-approved-relation-${index + 1}:${projectId}`,
+        projectId,
+        sourceVersionId,
+        revisionNumber: 1,
+        status: 'APPROVED',
+        contentDigest: knowledgeCandidateDigest([candidate]),
+        items: [candidate],
+        decisions: [],
+        accessScope: ['owner', 'review'],
+        sensitivity: 'private',
+        createdAt: causalNow,
+        updatedAt: causalNow,
+      });
+    }
+    const typedConflictRuleRepository = new PostgresTypedPropositionConflictRuleRepository(pool!);
+    const typedConflictAssertionRepository =
+      new PostgresTypedPropositionConflictAssertionRepository(pool!);
+    await new TypedPropositionConflictRuleService(typedConflictRuleRepository).execute({
+      projectId,
+      actorId: principalId,
+      payload: {
+        operation: 'CREATE',
+        leftRelationType: 'supports',
+        rightRelationType: 'contradicts',
+        directionSemantics: 'DIRECTED_SAME_ORIENTATION',
+      },
+      now: causalNow,
+    });
+    const typedConflictPort = createTypedPropositionConflictDiscoveryPort({
+      ruleRepository: typedConflictRuleRepository,
+      assertionRepository: typedConflictAssertionRepository,
+      knowledgeModelRepository: knowledgeModel,
+    });
+    const causalProjection = async (
+      logicalDigest: string,
+      relationState: 'CURRENT' | 'CONFLICT' = 'CURRENT',
+    ): Promise<CompiledTruthProjection> => {
+      const snapshot = await canonical.getSnapshot(projectId);
+      const existingIds = new Set(refreshedProjection.items.map((item) => item.id));
+      const claimItems = snapshot.claims
+        .filter((claim) => !existingIds.has(claim.claimId))
+        .map((claim) => ({
+          id: claim.claimId,
+          type: 'CLAIM' as const,
+          revisionNumber: claim.revisionNumber,
+          sourceVersionId,
+          label: claim.text,
+          state: 'CURRENT' as const,
+          source: 'CANONICAL_CLAIM' as const,
+          evidenceIds: claim.evidenceIds,
+          accessScope: ['owner', 'review'],
+          sensitivity: 'private' as const,
+        }));
+      const relationItems = typedRelationCandidates.map((candidate) => ({
+        id: candidate.candidateId,
+        type: 'RELATION' as const,
+        revisionNumber: candidate.revisionNumber,
+        sourceVersionId: candidate.sourceVersionId,
+        label: `${candidate.relationType}: ${candidate.fromCandidateId} → ${candidate.toCandidateId}`,
+        state: candidate.relationType === 'supports' ? relationState : ('CURRENT' as const),
+        source: 'APPROVED_KNOWLEDGE' as const,
+        evidenceIds: candidate.evidenceIds,
+        accessScope: ['owner', 'review'],
+        sensitivity: 'private' as const,
+      }));
+      const items = [...refreshedProjection.items, ...claimItems, ...relationItems];
+      const watermarkForProjection = await sourceReader.readWatermark(projectId);
+      return {
+        ...refreshedProjection,
+        sourceSnapshotDigest: watermarkForProjection.sourceSnapshotDigest,
+        canonicalVersion: watermarkForProjection.canonicalVersion,
+        logicalDigest: digest(logicalDigest),
+        items,
+        graph: { ...refreshedProjection.graph, nodes: items },
+        projectedAt: causalNow,
+      };
+    };
+    const mFirstCommit = await commitCausalClaim(canonical, {
+      projectId,
+      sourceVersionId,
+      evidenceId: evidenceIds[0],
+      actorId: principalId,
+      claimText: 'The typed proposition conflict acceptance baseline is governed.',
+      committedAt: causalNow,
+      identity: 'm-first',
+    });
+    const mFirstProjection = await causalProjection('akp-8-m-projection-v1');
+    await compiledTruth.synchronize(mFirstProjection);
+    expect(
+      (
+        await semanticBuilder.build({
+          projectId,
+          targetProfileRevision: profile.profileRevision,
+          generationId: `generation:${projectId}:m-first`,
+        })
+      ).status,
+    ).toBe('ACTIVATED');
+    const causalTrigger = new DiscoveryTriggerCoordinator(
+      canonicalSource,
+      new PostgresDiscoveryProjectionReadinessAdapter(compiledTruth, semanticIndex),
+      runtime,
+      new StaticDiscoveryTriggerPolicy({
+        ...createDefaultDiscoveryTriggerPolicyV1(),
+        waitTimeoutMs: 60_000,
+      }),
+      { now: () => causalNow },
+      {
+        jobId: () => `job:${randomUUID()}`,
+        currentAuthority: {
+          resolve: (requestedProjectId: string) =>
+            canonicalSource.resolveCurrentAuthority(requestedProjectId),
+        },
+      },
+    );
+    const causalExecution = createProductExecution({
+      projectId,
+      compiledTruth,
+      findingRepository,
+      runtime,
+      evidenceRepository,
+      semanticRetriever,
+      reviewReader,
+      competingResource: typedConflictPort,
+    });
+    const causalWorker = new PersistentDiscoveryWorker(runtime, causalExecution, {
+      workerId: `akp-8-causal-worker:${projectId}`,
+      leaseDurationMs: 30_000,
+      clock: () => new Date(causalNow),
+    });
+    const runCausalWorkerToCompletion = async (): Promise<void> => {
+      for (let run = 0; run < 30; run += 1) {
+        const result = await causalWorker.runOnce();
+        if (result === 'COMPLETED') return;
+        if (result !== 'PARTIAL') {
+          throw new Error(`Causal Discovery worker did not complete: ${result}`);
+        }
+      }
+      throw new Error('Causal Discovery worker exceeded the bounded reconciliation drain.');
+    };
+    const mFirstOutbox = await canonical.findOutbox(projectId, mFirstCommit.outboxId);
+    expect(mFirstOutbox?.status).toBe('pending');
+    let mFirstJobId = '';
+    await dispatchCanonicalOutbox(
+      canonical,
+      {
+        publish: async () => {
+          const coordinated = await causalTrigger.coordinateCanonicalCommitted(
+            eventFor(projectId, mFirstOutbox!.payload, mFirstOutbox!.outboxId),
+          );
+          expect(coordinated.disposition).toBe('CREATED');
+          mFirstJobId = coordinated.jobId;
+        },
+      },
+      projectId,
+      1,
+      mFirstOutbox!.availableAt,
+    );
+    await runCausalWorkerToCompletion();
+    const mFirstJob = await runtime.findJob({ projectId, jobId: mFirstJobId });
+    expect(mFirstJob?.lifecycleState).toBe('SUCCEEDED');
+    const mFirstConflict = (await findingRepository.listByProject(projectId)).find(
+      (finding) =>
+        finding.findingType === 'CONFLICT_HYPOTHESIS' &&
+        finding.canonicalBase.canonicalVersion === mFirstCommit.afterVersion,
+    );
+    expect(mFirstConflict).toBeDefined();
+    expect(mFirstConflict?.findingType).toBe('CONFLICT_HYPOTHESIS');
+    expect(
+      (await canonical.getSnapshot(projectId)).relations?.some(
+        (relation) => relation.relationId === mFirstConflict!.findingId,
+      ),
+    ).toBe(false);
+
+    const materializeCausalFinding = async (
+      finding: NonNullable<typeof mFirstConflict>,
+    ): Promise<void> => {
+      const findingPublication = await runtime.findFindingReady({
+        projectId,
+        findingId: finding.findingId,
+        findingRevision: finding.findingRevision,
+      });
+      expect(findingPublication).toBeDefined();
+      const causalReentry = new PostgresDiscoveryReentryRepository(pool!, {
+        lifecycleRepository: findingRepository,
+      });
+      const causalResolver = new PostgresDiscoveryApprovedResourceRevisionResolver(pool!, {
+        canonicalKnowledgeRepository: canonical,
+        knowledgeModelRepository: knowledgeModel,
+        compiledTruthRepository: compiledTruth,
+      });
+      const consumedCausal = await new DiscoveryReentryConsumer(
+        causalReentry,
+        causalResolver,
+        () => new Date(causalNow),
+      ).consume(findingPublication!);
+      expect(['CREATED', 'IDEMPOTENT']).toContain(consumedCausal.status);
+      const logicalIdentityKey =
+        'logicalIdentityKey' in consumedCausal ? consumedCausal.logicalIdentityKey : undefined;
+      if (!logicalIdentityKey) throw new Error('causal re-entry did not create an intake');
+      const materializedCausal = await new DiscoveryReviewMaterializer(
+        causalReentry,
+        new PostgresDiscoveryReviewResourceRepository(pool!),
+        undefined,
+        {
+          resolve: async ({ projectId: evidenceProjectId, evidenceIds: ids }) =>
+            Promise.all(
+              ids.map(async (evidenceId) => {
+                const evidence = await evidenceRepository.findById(evidenceProjectId, evidenceId);
+                if (!evidence) throw new Error('causal fixture evidence disappeared');
+                return {
+                  schemaVersion: '1.0.0' as const,
+                  evidenceId,
+                  sourceId: evidence.sourceId,
+                  sourceVersionId: evidence.sourceVersionId,
+                  evidenceSpanId: evidence.evidenceId,
+                };
+              }),
+            ),
+        },
+      ).materialize({ logicalIdentityKey });
+      expect(['CREATED', 'IDEMPOTENT']).toContain(materializedCausal.status);
+    };
+    await materializeCausalFinding(mFirstConflict!);
+    const causalProductRead = new FrontendDiscoveryProductReadCoordinator(productSource, {
+      feedbackRepository,
+      rankingAuthority: (inputs) => inputs.map(({ candidate }) => ({ candidate, scoreMicros: 0 })),
+      now: () => causalNow,
+    });
+    const firstConflictProduct = await causalProductRead.findAuthoritativeFinding({
+      ...productScope,
+      request: {
+        schemaVersion: '1.0.0',
+        findingId: mFirstConflict!.findingId,
+        findingRevision: mFirstConflict!.findingRevision,
+      },
+    });
+    expect(firstConflictProduct).toBeDefined();
+    feedbackNow = causalNow;
+    await feedbackCoordinator.submit({
+      scope: feedbackScope,
+      request: decodeDiscoveryFeedbackProductCommandRequestV1({
+        schemaVersion: '1.0.0',
+        clientRequestId: `${projectId}:m-suppress-first`,
+        idempotencyKey: `${projectId}:m-suppress-first`,
+        findingId: mFirstConflict!.findingId,
+        findingRevision: mFirstConflict!.findingRevision,
+        feedbackClass: 'UTILITY',
+        feedbackKind: 'SUPPRESS_SIMILAR',
+        scope: 'PROJECT',
+      }),
+      finding: firstConflictProduct!,
+      gateway: feedbackGateway,
+    });
+    const firstConflictFeedback = await feedbackCoordinator.readState(
+      feedbackScope,
+      firstConflictProduct!,
+    );
+    expect(firstConflictFeedback.suppressionHistory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          suppressionKind: 'SUPPRESS_SIMILAR',
+          matcherKind: 'SEMANTIC_FAMILY',
+        }),
+      ]),
+    );
+
+    causalNow = '2026-09-01T05:02:00.000Z';
+    const mSecondCommit = await commitCausalClaim(canonical, {
+      projectId,
+      sourceVersionId,
+      evidenceId: evidenceIds[1],
+      actorId: principalId,
+      claimText: 'The materially changed typed proposition conflict remains derived.',
+      committedAt: causalNow,
+      identity: 'm-second',
+    });
+    const mSecondProjection = await causalProjection('akp-8-m-projection-v2');
+    await compiledTruth.synchronize(mSecondProjection);
+    expect(
+      (
+        await semanticBuilder.build({
+          projectId,
+          targetProfileRevision: profile.profileRevision,
+          generationId: `generation:${projectId}:m-second`,
+        })
+      ).status,
+    ).toBe('ACTIVATED');
+    const mSecondOutbox = await canonical.findOutbox(projectId, mSecondCommit.outboxId);
+    expect(mSecondOutbox?.status).toBe('pending');
+    let mSecondJobId = '';
+    await dispatchCanonicalOutbox(
+      canonical,
+      {
+        publish: async () => {
+          const coordinated = await causalTrigger.coordinateCanonicalCommitted(
+            eventFor(projectId, mSecondOutbox!.payload, mSecondOutbox!.outboxId),
+          );
+          expect(coordinated.disposition).toBe('CREATED');
+          mSecondJobId = coordinated.jobId;
+        },
+      },
+      projectId,
+      1,
+      mSecondOutbox!.availableAt,
+    );
+    await runCausalWorkerToCompletion();
+    const mSecondJob = await runtime.findJob({ projectId, jobId: mSecondJobId });
+    expect(mSecondJob?.lifecycleState).toBe('SUCCEEDED');
+    const mSecondConflict = (await findingRepository.listByProject(projectId)).find(
+      (finding) =>
+        finding.findingType === 'CONFLICT_HYPOTHESIS' &&
+        finding.canonicalBase.canonicalVersion === mSecondCommit.afterVersion,
+    );
+    expect(mSecondConflict).toBeDefined();
+    expect(mSecondConflict!.findingId).not.toBe(mFirstConflict!.findingId);
+    expect(discoverySemanticFamilyKeyV1(mSecondConflict!)).toBe(
+      discoverySemanticFamilyKeyV1(mFirstConflict!),
+    );
+    await materializeCausalFinding(mSecondConflict!);
+    const secondConflictProduct = await causalProductRead.findAuthoritativeFinding({
+      ...productScope,
+      request: {
+        schemaVersion: '1.0.0',
+        findingId: mSecondConflict!.findingId,
+        findingRevision: mSecondConflict!.findingRevision,
+      },
+    });
+    expect(secondConflictProduct).toBeDefined();
+    const mVisibleFindings = await causalProductRead.listFindings({
+      ...productScope,
+      request: { schemaVersion: '1.0.0', limit: 100 },
+    });
+    const visibleSecondConflict = mVisibleFindings.findings.find(
+      (finding) => finding.findingId === mSecondConflict!.findingId,
+    );
+    expect(visibleSecondConflict).toBeDefined();
+    expect(visibleSecondConflict?.presentation?.reasonCodes).toContain(
+      'MANDATORY_VISIBILITY_OVERRIDE',
+    );
+    const secondReviewSource = await reviewReader.findByFinding?.(
+      projectId,
+      mSecondConflict!.findingId,
+      mSecondConflict!.findingRevision,
+    );
+    expect(secondReviewSource).toBeDefined();
+    const mReviewQueue = await reviewCoordinator.listReviewQueue(reviewScope, {
+      schemaVersion: '1.0.0',
+      pageSize: 100,
+    });
+    expect(
+      mReviewQueue.items.some(
+        (item) =>
+          item.targetKind === 'DISCOVERY_CANDIDATE' &&
+          item.targetId === secondReviewSource!.candidateId,
+      ),
+    ).toBe(true);
+    const causalActivity = new DiscoveryActivityAdapter(runtime, {
+      listActivityFindings: async (activityInput) => {
+        const activityFindings = await findingRepository.listByJobAndRun(activityInput);
+        return Promise.all(
+          activityFindings.map(async (finding) => ({
+            projectId: finding.projectId,
+            findingId: finding.findingId,
+            findingRevision: finding.findingRevision,
+            runId: finding.runId,
+            findingType: finding.findingType,
+            lifecycleState:
+              (await findingRepository.findLifecycle(finding))?.lifecycleState ?? 'NEW',
+            title: finding.findingType,
+            reviewEligible: true,
+            resourceHref: `/projects/${finding.projectId}/findings/${finding.findingId}`,
+          })),
+        );
+      },
+      hasReviewEligibleActivityFinding: (activityInput) =>
+        findingRepository.hasReviewEligibleByJobAndRun(activityInput),
+    });
+    const activityScope = {
+      principalId,
+      activeProjectId: projectId,
+      accessRevision: `${projectId}:access`,
+      policyContextRevision: `${projectId}:policy`,
+      sensitivityClearance: 'private',
+      accessScope: ['owner', 'review'],
+    };
+    const mActivityQueue = await causalActivity.readQueue(activityScope, {
+      domainKinds: ['DISCOVERY'],
+      attention: 'NEEDS_ATTENTION',
+      limit: 50,
+    });
+    expect(
+      mActivityQueue.items.some(
+        (item) => item.root.domainKind === 'DISCOVERY' && item.root.activityId === mSecondJobId,
+      ),
+    ).toBe(true);
+
+    // P — the durable PostgreSQL projection wait/deadline/recovery/later-event
+    // path uses the same production Coordinator, Runtime Repository, outbox,
+    // worker and reconciliation authorities. The conflict Finding above is
+    // intentionally the old derived Finding for the later reconciliation;
+    // the refreshed compiled-truth projection records its changed relation
+    // state through the normal projection repository.
+    causalNow = '2026-09-01T06:00:00.000Z';
+    const pTrigger = new DiscoveryTriggerCoordinator(
+      canonicalSource,
+      new PostgresDiscoveryProjectionReadinessAdapter(compiledTruth, semanticIndex),
+      runtime,
+      new StaticDiscoveryTriggerPolicy({
+        ...createDefaultDiscoveryTriggerPolicyV1(),
+        waitTimeoutMs: 60_000,
+      }),
+      { now: () => causalNow },
+      {
+        jobId: () => `job:${randomUUID()}`,
+        currentAuthority: {
+          resolve: (requestedProjectId: string) =>
+            canonicalSource.resolveCurrentAuthority(requestedProjectId),
+        },
+      },
+    );
+    const pFirstCommit = await commitCausalClaim(canonical, {
+      projectId,
+      sourceVersionId,
+      evidenceId: evidenceIds[0],
+      actorId: principalId,
+      claimText: 'The PostgreSQL projection wait path has a durable trigger.',
+      committedAt: causalNow,
+      identity: 'p-wait',
+    });
+    const pFirstOutbox = await canonical.findOutbox(projectId, pFirstCommit.outboxId);
+    expect(pFirstOutbox?.status).toBe('pending');
+    let pWaitingJobId = '';
+    await dispatchCanonicalOutbox(
+      canonical,
+      {
+        publish: async () => {
+          const coordinated = await pTrigger.coordinateCanonicalCommitted(
+            eventFor(projectId, pFirstOutbox!.payload, pFirstOutbox!.outboxId),
+          );
+          expect(coordinated.disposition).toBe('CREATED');
+          expect(coordinated.lifecycleState).toBe('WAITING_FOR_PROJECTION');
+          pWaitingJobId = coordinated.jobId;
+        },
+      },
+      projectId,
+      1,
+      pFirstOutbox!.availableAt,
+    );
+    const pWaitingJob = await runtime.findJob({ projectId, jobId: pWaitingJobId });
+    expect(pWaitingJob).toMatchObject({ lifecycleState: 'WAITING_FOR_PROJECTION' });
+    expect(pWaitingJob?.projectionWait?.requiredDiscoveryBase).toBeDefined();
+    const pInitialHistory = await pool!.query<{ from_state: string | null; to_state: string }>(
+      `SELECT from_state, to_state
+         FROM discovery.job_lifecycle_history
+        WHERE project_id = $1 AND job_id = $2
+        ORDER BY lifecycle_revision`,
+      [projectId, pWaitingJobId],
+    );
+    expect(pInitialHistory.rows).toEqual([
+      { from_state: null, to_state: 'WAITING_FOR_PROJECTION' },
+    ]);
+    causalNow = pWaitingJob!.projectionWait!.waitDeadlineAt;
+    const pExpired = await pTrigger.reEvaluateCanonicalDiscoveryProjectionReadiness({
+      projectId,
+      jobId: pWaitingJobId,
+    });
+    expect(pExpired.disposition).toBe('FAILED_RETRYABLE');
+    const pFailedJob = await runtime.findJob({ projectId, jobId: pWaitingJobId });
+    expect(pFailedJob).toMatchObject({ lifecycleState: 'FAILED_RETRYABLE' });
+    expect(pFailedJob?.projectionWait).toBeUndefined();
+    const pDeadlineHistory = await pool!.query<{ from_state: string | null; to_state: string }>(
+      `SELECT from_state, to_state
+         FROM discovery.job_lifecycle_history
+        WHERE project_id = $1 AND job_id = $2
+        ORDER BY lifecycle_revision`,
+      [projectId, pWaitingJobId],
+    );
+    expect(pDeadlineHistory.rows).toEqual([
+      { from_state: null, to_state: 'WAITING_FOR_PROJECTION' },
+      { from_state: 'WAITING_FOR_PROJECTION', to_state: 'FAILED_RETRYABLE' },
+    ]);
+    const pFailedRuntimeRows = await pool!.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+         FROM discovery.runs
+        WHERE project_id = $1 AND job_id = $2`,
+      [projectId, pWaitingJobId],
+    );
+    expect(pFailedRuntimeRows.rows[0]?.count).toBe('0');
+
+    const pRecoveryProjection = await causalProjection('akp-8-p-projection-recovery');
+    await compiledTruth.synchronize(pRecoveryProjection);
+    expect(
+      (
+        await semanticBuilder.build({
+          projectId,
+          targetProfileRevision: profile.profileRevision,
+          generationId: `generation:${projectId}:p-recovery`,
+        })
+      ).status,
+    ).toBe('ACTIVATED');
+    const pReadiness = await new PostgresDiscoveryProjectionReadinessAdapter(
+      compiledTruth,
+      semanticIndex,
+    ).read({
+      projectId,
+      requiredBase: pWaitingJob!.requiredDiscoveryBase!,
+      projectionKinds: createDefaultDiscoveryTriggerPolicyV1().requiredProjectionKinds,
+      observedAt: causalNow,
+    });
+    expect(pReadiness.status).toBe('READY');
+
+    causalNow = '2026-09-01T06:02:00.000Z';
+    const pLaterCommit = await commitCausalClaim(canonical, {
+      projectId,
+      sourceVersionId,
+      evidenceId: evidenceIds[1],
+      actorId: principalId,
+      claimText: 'A later governed Canonical change reopens the causal trigger path.',
+      committedAt: causalNow,
+      identity: 'p-later',
+    });
+    const pLaterProjection = await causalProjection('akp-8-p-projection-later', 'CONFLICT');
+    await compiledTruth.synchronize(pLaterProjection);
+    expect(
+      (
+        await semanticBuilder.build({
+          projectId,
+          targetProfileRevision: profile.profileRevision,
+          generationId: `generation:${projectId}:p-later`,
+        })
+      ).status,
+    ).toBe('ACTIVATED');
+    const pLaterOutbox = await canonical.findOutbox(projectId, pLaterCommit.outboxId);
+    expect(pLaterOutbox?.status).toBe('pending');
+    let pLaterJobId = '';
+    await dispatchCanonicalOutbox(
+      canonical,
+      {
+        publish: async () => {
+          const coordinated = await pTrigger.coordinateCanonicalCommitted(
+            eventFor(projectId, pLaterOutbox!.payload, pLaterOutbox!.outboxId),
+          );
+          expect(coordinated.disposition).toBe('CREATED');
+          expect(coordinated.lifecycleState).toBe('QUEUED');
+          pLaterJobId = coordinated.jobId;
+        },
+      },
+      projectId,
+      1,
+      pLaterOutbox!.availableAt,
+    );
+    expect(pLaterCommit.commitId).not.toBe(pFirstCommit.commitId);
+    expect(pLaterOutbox!.outboxId).not.toBe(pFirstOutbox!.outboxId);
+    const pLaterJob = await runtime.findJob({ projectId, jobId: pLaterJobId });
+    expect(pLaterJob).toMatchObject({ lifecycleState: 'QUEUED' });
+    await runCausalWorkerToCompletion();
+    const pCompletedJob = await runtime.findJob({ projectId, jobId: pLaterJobId });
+    expect(pCompletedJob?.lifecycleState).toBe('SUCCEEDED');
+    const reconciledMConflict = await findingRepository.findLifecycle({
+      projectId,
+      findingId: mSecondConflict!.findingId,
+      findingRevision: mSecondConflict!.findingRevision,
+    });
+    expect(reconciledMConflict?.lifecycleState).toBe('STALE');
+    const mConflictHistory = await pool!.query<{ from_state: string; to_state: string }>(
+      `SELECT from_state, to_state
+         FROM discovery.finding_lifecycle_history
+        WHERE project_id = $1 AND finding_id = $2 AND finding_revision = $3
+        ORDER BY lifecycle_revision`,
+      [projectId, mSecondConflict!.findingId, mSecondConflict!.findingRevision],
+    );
+    expect(mConflictHistory.rows).toEqual(
+      expect.arrayContaining([expect.objectContaining({ to_state: 'STALE' })]),
+    );
   });
 
   afterAll(async () => {
@@ -1240,6 +1866,102 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
     }
   });
 });
+
+const commitCausalClaim = async (
+  repository: Pick<PostgresCanonicalKnowledgeRepository, 'getSnapshot' | 'commit'>,
+  input: {
+    readonly projectId: string;
+    readonly sourceVersionId: string;
+    readonly evidenceId: string;
+    readonly actorId: string;
+    readonly claimText: string;
+    readonly committedAt: string;
+    readonly identity: string;
+  },
+): Promise<CanonicalCommitResult> => {
+  const before = await repository.getSnapshot(input.projectId);
+  const commitId = `causal-commit:${input.identity}:${randomUUID()}`;
+  const manifestId = `causal-manifest:${input.identity}:${randomUUID()}`;
+  const changeSetId = `causal-changeset:${input.identity}:${randomUUID()}`;
+  const candidateId = `causal-candidate:${input.identity}:${randomUUID()}`;
+  const claimId = `causal-claim:${input.identity}:${randomUUID()}`;
+  const evidenceIds = [input.evidenceId];
+  const candidateDigest = claimCandidateDigest({
+    candidateId,
+    revisionNumber: 1,
+    sourceVersionId: input.sourceVersionId,
+    claimText: input.claimText,
+    evidenceIds,
+    status: 'READY',
+  });
+  const diffDigest = digest(`causal-diff:${input.identity}`);
+  const contentDigest = changeSetContentDigest({
+    operation: 'ADD_CLAIM',
+    classification: 'NEW_CLAIM',
+    candidateId,
+    candidateRevisionNumber: 1,
+    candidateDigest,
+    sourceVersionId: input.sourceVersionId,
+    evidenceIds,
+    accessScope: ['owner', 'review'],
+    sensitivity: 'private',
+    expectedCanonicalVersion: before.version,
+    snapshotDigest: before.digest,
+    diffDigest,
+  });
+  const unsignedToken = {
+    tokenId: `causal-token:${input.identity}:${randomUUID()}`,
+    changeSetId,
+    changeSetRevisionNumber: 1 as const,
+    actorId: input.actorId,
+    contentDigest,
+    expectedCanonicalVersion: before.version,
+    snapshotDigest: before.digest,
+    issuedAt: input.committedAt,
+    expiresAt: '2099-01-01T00:00:00.000Z',
+  };
+  const approvalToken = {
+    ...unsignedToken,
+    tokenDigest: approvalTokenDigest(unsignedToken),
+  };
+  const unsignedManifest: Omit<ApprovedChangeSetManifest, 'manifestDigest'> = {
+    manifestId,
+    changeSetId,
+    changeSetRevisionNumber: 1,
+    projectId: input.projectId,
+    sourceVersionId: input.sourceVersionId,
+    candidateId,
+    candidateRevisionNumber: 1,
+    claimText: input.claimText,
+    operation: 'ADD_CLAIM',
+    classification: 'NEW_CLAIM',
+    candidateDigest,
+    evidenceIds,
+    accessScope: ['owner', 'review'],
+    sensitivity: 'private',
+    expectedCanonicalVersion: before.version,
+    snapshotDigest: before.digest,
+    diffDigest,
+    contentDigest,
+    approvalToken,
+    reason: `Causal acceptance ${input.identity}.`,
+    createdAt: input.committedAt,
+  };
+  const manifest: ApprovedChangeSetManifest = {
+    ...unsignedManifest,
+    manifestDigest: approvedChangeSetManifestDigest(unsignedManifest),
+  };
+  return repository.commit({
+    commitId,
+    revisionId: `causal-revision:${input.identity}:${randomUUID()}`,
+    historyEventId: `causal-history:${input.identity}:${randomUUID()}`,
+    outboxId: `causal-outbox:${input.identity}:${randomUUID()}`,
+    claimId,
+    manifest,
+    actor: { type: 'user', id: input.actorId },
+    committedAt: input.committedAt,
+  });
+};
 
 const eventFor = (
   projectId: string,
@@ -1274,6 +1996,7 @@ const createProductExecution = (input: {
   readonly evidenceRepository: PostgresEvidenceRepository;
   readonly semanticRetriever: SemanticRetriever;
   readonly reviewReader: ReviewDiscoveryCandidateReader;
+  readonly competingResource?: DiscoveryCompetingResourcePortV1;
 }) =>
   createProductDiscoveryExecution({
     compiledTruthRepository: input.compiledTruth,
@@ -1301,6 +2024,9 @@ const createProductExecution = (input: {
     },
     evidenceRepository: input.evidenceRepository,
     semanticRetriever: input.semanticRetriever,
+    ...(input.competingResource === undefined
+      ? {}
+      : { competingResource: input.competingResource }),
     temporalCompatibility: {
       read: async ({ context, resourceRefs }) => {
         const approvedEntities = resourceRefs.filter(

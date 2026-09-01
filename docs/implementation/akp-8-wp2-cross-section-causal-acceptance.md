@@ -45,12 +45,16 @@ uses the production Product read/feedback coordinators for `E2E-C` and the real
 schedule repository/scheduler for `E2E-B`.
 
 `E2E-M` uses the production ADR-151 typed proposition conflict rule service,
-knowledge-model repositories, and `DiscoveryCompetingResourcePortV1` composition
-in the contract test; the existing PostgreSQL typed-conflict authority test
-remains the database evidence for persistence. `E2E-P` is a deterministic
-coordinator contract slice. The later `E2E-A` PostgreSQL reconciliation proves
-the real lifecycle transition after a subsequent Canonical commit; the P slice
-does not claim to replace a full end-to-end deadline/recovery database run.
+PostgreSQL rule/assertion and knowledge-model repositories, and
+`DiscoveryCompetingResourcePortV1` composition. Its acceptance path continues
+through the production worker, FindingReady/re-entry, Review resource, Product
+suppression/listing, mandatory-visibility override, and Discovery Activity
+Attention adapter. `E2E-P` uses the same PostgreSQL Canonical outbox,
+`DiscoveryTriggerCoordinator`, projection-readiness adapter, Runtime Repository,
+mutable deterministic clock, normal worker, and reconciliation path. The test
+records durable `WAITING_FOR_PROJECTION` → `FAILED_RETRYABLE`, later readiness,
+new queued Job identity, and old Finding reconciliation; it does not use the
+former in-memory/synthetic P slice as final authority.
 
 The initial PostgreSQL fixture seeds an approved baseline Canonical state and
 its projection so the production flow has an authoritative starting point. No
@@ -83,11 +87,10 @@ Local results on the candidate branch:
 - Focused regression: `5 files / 24 tests passed`, including scheduler,
   feedback Product API, typed conflict, and relation reconciliation contracts.
 - TypeScript typecheck: passed.
-- PostgreSQL cross-section acceptance: `1 passed` against the local
-  `TEST_DATABASE_URL` PostgreSQL instance. The test proves the real A/B/C
-  journey, including the server-owned Discovery Draft through final Canonical
-  commit and later reconciliation; the deterministic test composition supplies
-  only the temporal compatibility Port and external AI/embedding doubles.
+- PostgreSQL cross-section acceptance: pending automatic CI because this
+  checkout has no `TEST_DATABASE_URL` / `.env.test`. The database test now
+  includes the real PostgreSQL M/P paths described above; local execution
+  reports the test as skipped when the guarded database target is unavailable.
 - Automatic main CI for the WP2A baseline was already verified before this work:
   run `33496775546` / workflow run `#1221`, exact merge SHA
   `ba6f8e9e1fd5e2d0335bb054bde1a3d9a2d2fa01`, with Quality/DB, Frontend/E2E,
@@ -123,15 +126,15 @@ persisted application data is changed by the candidate package.
 
 ## Acceptance matrix and remaining work
 
-| Scenario    | WP2 candidate evidence                                                             | Current disposition                                             |
-| ----------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| A           | contract + real PostgreSQL production journey and later reconciliation             | local DB passed; pending PR/CI review                           |
-| B           | real PostgreSQL schedule repository, durable runtime, worker, and stage assertions | local DB passed; pending PR/CI review                           |
-| C           | real Product read, feedback coordinator, command ledger, history/truth assertions  | local DB passed; pending PR/CI review                           |
-| D/F/G/I/L   | existing accepted evidence reused                                                  | no duplicate work                                               |
-| M           | production conflict authority contract + existing PostgreSQL authority evidence    | local contract passed; pending PR/CI review                     |
-| P           | deterministic bounded wait/deadline/new-event coordinator slice                    | pending PR/CI review; full DB deadline run remains a limitation |
-| E/H/J/K/N/O | not part of WP2                                                                    | WP3 scope                                                       |
+| Scenario    | WP2 candidate evidence                                                                | Current disposition                                       |
+| ----------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| A           | contract + real PostgreSQL production journey and later reconciliation                | local DB passed; pending PR/CI review                     |
+| B           | real PostgreSQL schedule repository, durable runtime, worker, and stage assertions    | local DB passed; pending PR/CI review                     |
+| C           | real Product read, feedback coordinator, command ledger, history/truth assertions     | local DB passed; pending PR/CI review                     |
+| D/F/G/I/L   | existing accepted evidence reused                                                     | no duplicate work                                         |
+| M           | production PostgreSQL typed-conflict → Finding → Reentry → Review/Attention path      | pending automatic PostgreSQL CI and GPT exact-head review |
+| P           | production PostgreSQL outbox → WAITING/deadline → recovery → later Job/reconciliation | pending automatic PostgreSQL CI and GPT exact-head review |
+| E/H/J/K/N/O | not part of WP2                                                                       | WP3 scope                                                 |
 
 This document does not close the AKP-8 A–P or PAC/AC matrix and does not declare
 the Stage complete. Critical/High closure, exact PR CI evidence, and GPT review

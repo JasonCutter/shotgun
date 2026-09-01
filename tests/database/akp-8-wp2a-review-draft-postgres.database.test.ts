@@ -143,6 +143,9 @@ const cleanup = async (): Promise<void> => {
   if (pool === undefined) return;
   const client = await pool.connect();
   try {
+    // The review bridge is immutable in normal operation; cleanup is the
+    // controlled administrative path for this isolated test project.
+    await client.query('SET session_replication_role = replica');
     // Review Context/Item rows are immutable by database trigger. The
     // database suite runs files serially after its guarded reset, so use the
     // existing trigger-safe table cleanup rather than issuing DELETE against
@@ -193,6 +196,7 @@ const cleanup = async (): Promise<void> => {
     await client.query('DELETE FROM project_admin.projects WHERE id = $1', [projectId]);
     activeReviewResourceId = undefined;
   } finally {
+    await client.query('SET session_replication_role = origin');
     client.release();
   }
 };

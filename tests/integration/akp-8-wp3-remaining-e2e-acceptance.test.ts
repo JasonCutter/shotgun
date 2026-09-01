@@ -794,4 +794,94 @@ describe('AKP-8 WP3 K derived-vs-Canonical Graph authority', () => {
       provenance: expect.objectContaining({ generatedBy: 'COMPILED_TRUTH' }),
     });
   });
+
+  it('filters foreign, scope-denied and over-clearance resources at the actual Graph read authority', async () => {
+    const baseProjection = graphProjection();
+    const deniedItems = [
+      {
+        ...baseProjection.items[0]!,
+        id: 'scope:resource',
+        label: 'Scope-denied resource',
+        accessScope: ['admin'],
+      },
+      {
+        ...baseProjection.items[0]!,
+        id: 'restricted:resource',
+        label: 'Restricted resource',
+        sensitivity: 'restricted' as const,
+      },
+    ];
+    const projection: CompiledTruthProjection = {
+      ...baseProjection,
+      items: [...baseProjection.items, ...deniedItems],
+      graph: {
+        ...baseProjection.graph,
+        edges: [
+          ...baseProjection.graph.edges,
+          {
+            id: 'scope-edge',
+            from: 'visible:a',
+            to: 'scope:resource',
+            relationType: 'RELATED_TO',
+            direction: 'DIRECTED' as const,
+            source: 'CANONICAL_RELATION' as const,
+          },
+          {
+            id: 'restricted-edge',
+            from: 'visible:a',
+            to: 'restricted:resource',
+            relationType: 'RELATED_TO',
+            direction: 'DIRECTED' as const,
+            source: 'CANONICAL_RELATION' as const,
+          },
+        ],
+      },
+    };
+    const graphRepository = {
+      findProjection: async () => projection,
+      degradedState: async () => undefined,
+    } as unknown as CompiledTruthRepositoryPort;
+    const readPort = new PostgresCompiledTruthGraphReadAdapter(graphRepository, {
+      readWatermark: async () => ({
+        projectId,
+        canonicalVersion: 1,
+        canonicalSnapshotDigest: digest('graph-canonical'),
+        approvedKnowledgeDigest: digest('graph-approved'),
+        sourceSnapshotDigest: projection.sourceSnapshotDigest,
+      }),
+    });
+    const snapshot = await readPort.snapshot(
+      {
+        ...productScope,
+        activeProjectId: projectId,
+        accessScope: ['owner'],
+        discoveryContext: {
+          activeProject: productScope.activeProject,
+          accessibleProjects: productScope.accessibleProjects,
+        },
+      },
+      { schemaVersion: '1.0.0', viewKind: 'KNOWLEDGE_SEMANTIC', overlayKinds: [] },
+    );
+    const resourceIds = snapshot.nodes.map((node) => node.resourceRef.resourceId);
+    expect(resourceIds).toEqual(['visible:a', 'visible:b']);
+    expect(resourceIds).not.toEqual(
+      expect.arrayContaining(['scope:resource', 'restricted:resource']),
+    );
+    expect(snapshot.edges.map((edge) => edge.relationRef?.relationId)).toEqual(['canonical-edge']);
+
+    const foreignSnapshot = await readPort.snapshot(
+      {
+        ...productScope,
+        activeProjectId: 'foreign-project',
+        accessScope: ['owner'],
+        discoveryContext: {
+          activeProject: { ...productScope.activeProject, id: 'foreign-project' },
+          accessibleProjects: [],
+        },
+      },
+      { schemaVersion: '1.0.0', viewKind: 'KNOWLEDGE_SEMANTIC', overlayKinds: [] },
+    );
+    expect(foreignSnapshot.nodes).toEqual([]);
+    expect(foreignSnapshot.edges).toEqual([]);
+  });
 });

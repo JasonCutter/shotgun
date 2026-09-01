@@ -1,7 +1,7 @@
 # AKP-8 WP3 Remaining End-to-End Acceptance Evidence
 
 Status: `CANDIDATE / CORRECTION_VERIFIED_LOCALLY` — local acceptance proof is
-green after the N06 remediation and K authority-mapping repair. The final
+green after the N06 remediation and the H/J/K/O correction evidence. The final
 exact-head GPT review and automatic PR CI are still required.
 
 Repository: `JasonCutter/shotgun`
@@ -102,23 +102,31 @@ lease, and returns `IDLE` on the next run.
 
 The existing production PostgreSQL causal acceptance in
 `tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts`
-is reused as the actual H handoff. It composes the production source,
-Discovery worker, semantic Search, Product read coordinator, Review
-coordinator, Feedback coordinator, and Discovery Activity adapter. It proves
-common access scope and sensitivity are server-derived and that Feedback/
-Attention changes do not mutate Canonical.
+is reused for the actual Product/Review/Feedback/Activity handoff. It
+composes the production source, Discovery worker, semantic Search, Product
+read coordinator, Review coordinator, Feedback coordinator, and Discovery
+Activity adapter. It proves common access scope and sensitivity are
+server-derived and that Feedback/Attention changes do not mutate Canonical.
 
-The WP3 integration acceptance adds the bounded cross-project, scope,
-sensitivity, authority, and authoritative-target negatives for the Product
-read surface. No browser-provided project or authority value is promoted.
+The actual PostgreSQL Product read acceptance in
+`tests/database/frontend-knowledge-product-read-postgres.test.ts` additionally
+proves authorized Search visibility and absence of foreign-project,
+no-common-scope, and over-clearance (`restricted`) matches. The actual Graph
+adapter acceptance in
+`tests/integration/akp-8-wp3-remaining-e2e-acceptance.test.ts` proves foreign
+project, scope-denied, and over-clearance nodes and edges are absent. The WP3
+Discovery Product negative remains bounded to its actual coordinator/source
+contract. No browser-provided project or authority value is promoted.
 
 ### J — actual candidate-only Action chain
 
-The reused production PostgreSQL causal test exercises the actual chain:
+`tests/database/akp-8-wp3-final-acceptance-correction.database.test.ts`
+exercises the actual chain:
 
 `DiscoveryAIGenerationService → durable ACTION_SUGGESTION Finding/FindingReady → DiscoveryReentryConsumer → validation → persisted Derived candidate → DiscoveryReviewMaterializer → ACTION_CANDIDATE`.
 
-The final External Action authority is not called. The WP3 integration test
+The final External Action authority is not called and no Action execution
+manifest, approval, preflight, or attempt is created. The WP3 integration test
 also preserves adversarial generated text as data, keeps the governance target
 candidate-only, and verifies no provider object exposes `execute` or
 `callTool`.
@@ -137,8 +145,12 @@ now maps the persisted Compiled Truth source explicitly:
 - Discovery relations remain `DISCOVERY_CANDIDATE` overlay edges.
 
 The WP3 Graph acceptance uses the production adapter and Graph read domain for
-both mappings and proves the Workspace path cannot promote an overlay by
-score. Existing Canonical relation contract tests remain green.
+both mappings and proves foreign, scope-denied, and restricted resources are
+filtered before edges are returned. The actual PostgreSQL Product Workspace
+acceptance runs after a Discovery job and proves the Workspace/Search
+authority contains only normal Canonical/Approved/Compiled/Derived resources;
+a Discovery finding is never promoted by score. Existing Canonical relation
+contract tests remain green.
 
 ### N — semantic source change, retention, and retrieval
 
@@ -168,30 +180,36 @@ concurrent-pointer-change stop condition.
 
 ### O — exact resolver and privacy authority
 
-The WP3 AI generation acceptance now uses the actual
-`EffectiveAIConfigurationResolver → DiscoveryAIExecutionResolver` boundary
-with the registered provider/model capability revisions, exact configuration
-revision, exact credential metadata, and policy fingerprint. No live provider
-is used.
+The correction acceptance uses the actual production policy-backed Discovery
+composition: `AskProviderPolicyResolver`,
+`PostgresAskProviderPolicyAuthorityReader`,
+`ProviderExternalTransferApprovalService`, real project AI configuration and
+credential metadata, `EffectiveAIConfigurationResolver`, and
+`DiscoveryAIExecutionResolver`. A deterministic provider double is used; no
+live provider is used. An unapproved restricted/private transfer fails closed
+before provider routing/generation with zero provider calls. The allowed case
+asserts the exact project/profile/revision/provider/model/capability/config,
+credential, policy-fingerprint, privacy, data-policy, prompt, and output-schema
+bindings without exposing secrets in the prompt.
 
 The existing R5 PostgreSQL production-chain acceptance is reused for the real
 `SemanticEmbeddingAuthorityResolver` and `SemanticEmbeddingRouter` composition
 with a deterministic connectivity adapter. Restricted or unapproved private
 context is rejected before provider connectivity/credential execution. The
-WP3 negative acceptance records zero provider calls for denied Discovery
+WP3 correction acceptance records zero provider calls for denied Discovery
 generation and keeps generated content in the data-only path.
 
 ## Acceptance matrix
 
-| Scenario            | Local evidence                                                                                            | Product repair                                      | Disposition                                              |
-| ------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
-| E                   | Real PostgreSQL lease expiry → production reclaim → seven stages → durable Finding/FindingReady           | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
-| H                   | Existing production PostgreSQL causal chain plus WP3 security/product negatives                           | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
-| J                   | Production Discovery generation/reentry/materialization chain; candidate-only Action negative             | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
-| K                   | Production Graph adapter/domain source-aware authority mapping and Discovery overlay                      | Small bounded adapter mapping repair                | Candidate proof passed; exact-head CI/GPT review pending |
-| N                   | Real PostgreSQL source change, rebuild parity, prune cascade/safety, active retrieval, nonmutation        | Existing-ADR bounded Product capability remediation | Candidate proof passed; exact-head CI/GPT review pending |
-| O                   | Actual Discovery resolver; existing production semantic resolver/router; privacy-before-routing negatives | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
-| A/B/C/D/F/G/I/L/M/P | Existing accepted evidence reused                                                                         | None                                                | No duplicate testing                                     |
+| Scenario            | Local evidence                                                                                     | Product repair                                      | Disposition                                              |
+| ------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| E                   | Real PostgreSQL lease expiry → production reclaim → seven stages → durable Finding/FindingReady    | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
+| H                   | PostgreSQL causal Product/Review/Feedback/Activity plus actual Search and Graph security negatives | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
+| J                   | Actual PostgreSQL ACTION_SUGGESTION → FindingReady → re-entry → Derived → Review chain             | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
+| K                   | Production Graph adapter/domain mapping plus actual PostgreSQL Workspace non-promotion             | Small bounded adapter mapping repair                | Candidate proof passed; exact-head CI/GPT review pending |
+| N                   | Real PostgreSQL source change, rebuild parity, prune cascade/safety, active retrieval, nonmutation | Existing-ADR bounded Product capability remediation | Candidate proof passed; exact-head CI/GPT review pending |
+| O                   | Production Ask policy/config/credential resolver chain plus R5 semantic resolver/router            | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
+| A/B/C/D/F/G/I/L/M/P | Existing accepted evidence reused                                                                  | None                                                | No duplicate testing                                     |
 
 ## Verification
 
@@ -211,6 +229,20 @@ npx vitest run tests/integration/akp-8-wp3-remaining-e2e-acceptance.test.ts test
 ```
 
 Result: **3 test files passed, 20 tests passed**.
+
+Focused H/J/K/O correction commands:
+
+```text
+$env:TEST_DATABASE_URL='postgres://shotgun:shotgun@localhost:5433/shotgun_test'
+npx vitest run tests/database/akp-8-wp3-final-acceptance-correction.database.test.ts --testTimeout=30000 --reporter=verbose
+npx vitest run tests/database/frontend-knowledge-product-read-postgres.test.ts --testTimeout=30000 --reporter=verbose
+npx vitest run tests/integration/akp-8-wp3-remaining-e2e-acceptance.test.ts --reporter=verbose
+```
+
+Result: **correction DB 1 file/2 tests passed; Graph 1 file/8 tests passed;
+Workspace/PostgreSQL root test 2 tests passed**. The Workspace command also
+discovered isolated `.worktrees` copies in the local checkout; all discovered
+copies passed.
 
 The reused actual production causal handoff was also run independently with a
 bounded 30-second test timeout:
@@ -237,7 +269,9 @@ Changed scope is limited to:
 - `adapters/frontend-knowledge-graph-postgres/compiled-truth-graph-read.ts`
 - `tests/unit/semantic-generation-lifecycle.test.ts`
 - `tests/database/akp-8-wp3-remaining-e2e-acceptance.database.test.ts`
+- `tests/database/akp-8-wp3-final-acceptance-correction.database.test.ts`
 - `tests/integration/akp-8-wp3-remaining-e2e-acceptance.test.ts`
+- `tests/database/frontend-knowledge-product-read-postgres.test.ts`
 - this evidence document
 
 No database migration, dependency, lockfile, generated artifact, external

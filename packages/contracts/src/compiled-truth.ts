@@ -1,5 +1,6 @@
 import type { KnowledgeCandidateType, RelationCandidate } from './knowledge-model.js';
 import type { SecurityContext } from './types.js';
+import type { CanonicalRelationPrecursorLinkV1 } from './canonical-knowledge.js';
 import { sha256Text, stableJson } from './document-evidence.js';
 
 export type ProjectionTemporalState = 'CURRENT' | 'PAST' | 'FUTURE' | 'CONFLICT';
@@ -24,9 +25,14 @@ export type CompiledTruthEdge = {
   readonly id: string;
   readonly from: string;
   readonly to: string;
+  /** Exact approved Entity revisions for Canonical relation edges. */
+  readonly fromRevision?: number;
+  readonly toRevision?: number;
   readonly relationType: string;
   readonly direction: RelationCandidate['direction'];
-  readonly source: 'APPROVED_TYPED_EDGE';
+  readonly validFrom?: string;
+  readonly validTo?: string;
+  readonly source: 'APPROVED_TYPED_EDGE' | 'CANONICAL_RELATION';
 };
 
 export type CompiledTruthGraph = {
@@ -41,6 +47,8 @@ export type CompiledTruthProjection = {
   readonly sourceSnapshotDigest: string;
   readonly logicalDigest: string;
   readonly canonicalVersion: number;
+  /** Internal server-owned lineage used for exact Discovery reconciliation. */
+  readonly relationPrecursorLinks?: readonly CanonicalRelationPrecursorLinkV1[];
   readonly items: readonly CompiledTruthItem[];
   readonly graph: CompiledTruthGraph;
   readonly projectedAt: string;

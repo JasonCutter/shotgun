@@ -21,10 +21,13 @@
     "commitId": { "type": "string", "minLength": 1 },
     "manifestId": { "type": ["string", "null"] },
     "changeSetId": { "type": ["string", "null"] },
-    "eventType": { "enum": ["CANONICAL_CLAIM_ADDED", "CHANGESET_NO_OP"] },
+    "eventType": {
+      "enum": ["CANONICAL_CLAIM_ADDED", "CANONICAL_RELATION_ADDED", "CHANGESET_NO_OP"]
+    },
     "beforeVersion": { "type": "integer", "minimum": 0 },
     "afterVersion": { "type": "integer", "minimum": 0 },
     "claimId": { "type": "string", "minLength": 1 },
+    "relationId": { "type": "string", "minLength": 1 },
     "reason": { "type": "string", "minLength": 1 },
     "actor": {
       "type": "object",

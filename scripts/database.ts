@@ -144,6 +144,8 @@ const requiredTables = [
   'review.change_sets',
   'review.decisions',
   'canonical.project_state',
+  'canonical.relations',
+  'canonical.relation_precursors',
   'canonical.history_events',
   'canonical.outbox',
   'projection.search_documents',

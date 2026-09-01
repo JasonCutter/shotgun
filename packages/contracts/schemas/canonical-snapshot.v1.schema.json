@@ -25,6 +25,72 @@
         }
       }
     },
+    "relations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "relationId",
+          "logicalIdentityKey",
+          "revisionNumber",
+          "relationType",
+          "fromEndpoint",
+          "toEndpoint",
+          "direction",
+          "evidenceIds"
+        ],
+        "properties": {
+          "relationId": { "type": "string", "minLength": 1 },
+          "logicalIdentityKey": { "type": "string", "minLength": 1 },
+          "revisionNumber": { "type": "integer", "minimum": 1 },
+          "relationType": { "type": "string", "minLength": 1 },
+          "fromEndpoint": { "$ref": "#/definitions/approvedKnowledgeEntityRef" },
+          "toEndpoint": { "$ref": "#/definitions/approvedKnowledgeEntityRef" },
+          "direction": { "enum": ["DIRECTED", "UNDIRECTED"] },
+          "validFrom": { "type": "string" },
+          "validTo": { "type": "string" },
+          "evidenceIds": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "relationPrecursorLinks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectId",
+          "reviewResourceId",
+          "reviewResourceRevision",
+          "relationId",
+          "relationRevision",
+          "linkedAt"
+        ],
+        "properties": {
+          "projectId": { "type": "string", "minLength": 1 },
+          "reviewResourceId": { "type": "string", "minLength": 1 },
+          "reviewResourceRevision": { "type": "integer", "minimum": 1 },
+          "relationId": { "type": "string", "minLength": 1 },
+          "relationRevision": { "const": 1 },
+          "linkedAt": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "createdAt": { "type": "string", "minLength": 1 }
+  },
+  "definitions": {
+    "approvedKnowledgeEntityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "authority", "resourceType", "resourceId", "resourceRevision"],
+      "properties": {
+        "projectId": { "type": "string", "minLength": 1 },
+        "authority": { "const": "APPROVED_KNOWLEDGE" },
+        "resourceType": { "const": "ENTITY" },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "resourceRevision": { "type": "integer", "minimum": 1 }
+      }
+    }
   }
 }

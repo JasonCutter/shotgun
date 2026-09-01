@@ -107,4 +107,6 @@ export type ReviewRepositoryBoundaryPort = {
    * same transaction as the Review write (atomic Review + Ledger).
    */
   transactionWithHandle<T>(action: (handle: ReviewTransactionHandleV1) => Promise<T>): Promise<T>;
+  /** Optional adapter hook for joining an already-open PostgreSQL transaction. */
+  repositoriesOn?(transaction: unknown): ReviewTransactionRepositoriesV1;
 };

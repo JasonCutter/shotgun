@@ -50,6 +50,7 @@ import {
 } from '../../../adapters/frontend-history-postgres/src/index.js';
 import {
   PostgresDiscoveryReviewResourceRepository,
+  PostgresDiscoveryAuthoringBridge,
   PostgresFrontendReviewRepository,
 } from '../../../adapters/frontend-review-postgres/src/index.js';
 import {
@@ -608,6 +609,9 @@ export const startShotgunApplication = async (
     );
     const frontendReviewDiscoveryCandidateReader =
       createPostgresReviewDiscoveryCandidateReader(pool);
+    const discoveryReviewResourceRepository = recoveryHarness
+      ? undefined
+      : new PostgresDiscoveryReviewResourceRepository(pool);
     const discoveryRuntimeRepository = new PostgresDiscoveryRuntimeRepository(pool);
     const discoveryFindingRepository = new PostgresDiscoveryFindingRepository(pool);
     const discoveryFindingLifecycleService = new DiscoveryFindingLifecycleService(
@@ -832,6 +836,24 @@ export const startShotgunApplication = async (
                 );
               });
             },
+            findAcceptedReviewResource: async ({ projectId, candidate }) => {
+              const source = await frontendReviewDiscoveryCandidateReader.findByFinding?.(
+                projectId,
+                candidate.findingId,
+                candidate.findingRevision,
+              );
+              if (
+                source === undefined ||
+                !('origin' in source) ||
+                source.origin !== 'DERIVED_DISCOVERY'
+              ) {
+                return undefined;
+              }
+              return {
+                reviewResourceId: source.reviewResourceId,
+                reviewResourceRevision: source.resourceRevision,
+              };
+            },
             observeReconciliation: observeDiscoveryReconciliation,
           }),
           {
@@ -846,9 +868,6 @@ export const startShotgunApplication = async (
       : new PostgresDiscoveryReentryRepository(pool, {
           lifecycleRepository: discoveryFindingRepository,
         });
-    const discoveryReviewResourceRepository = recoveryHarness
-      ? undefined
-      : new PostgresDiscoveryReviewResourceRepository(pool);
     const discoveryReentryFreshnessAuthority = new PostgresDiscoveryReentryFreshnessAuthority(
       pool,
       {
@@ -962,6 +981,12 @@ export const startShotgunApplication = async (
       stopDiscoveryExecutionWorker = () => discoveryExecutionWorker.stop();
     }
 
+    const frontendKnowledgeDraftRepository = new PostgresFrontendKnowledgeDraftRepository(pool);
+    const frontendReviewStore = new PostgresFrontendReviewRepository(pool);
+    const frontendReviewAuthoringBridge = new PostgresDiscoveryAuthoringBridge(
+      frontendKnowledgeDraftRepository,
+    );
+
     const application = await createApplication({
       projectAdminRepository,
       projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
@@ -973,7 +998,8 @@ export const startShotgunApplication = async (
       typedPropositionConflictRuleRepository,
       typedPropositionConflictAssertionRepository,
       discoveryFeedbackRepository,
-      frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
+      frontendKnowledgeDraftRepository,
+      frontendReviewAuthoringBridge,
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
       frontendReviewDiscoveryCandidateReader,
@@ -1031,7 +1057,7 @@ export const startShotgunApplication = async (
       actionExecutionRepository: new PostgresActionExecutionRepository(pool),
       authRepository,
       production,
-      frontendReviewStore: new PostgresFrontendReviewRepository(pool),
+      frontendReviewStore,
       activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
       activityAskRead: new PostgresAskActivityRead(pool),
       activityDiscoveryRead: discoveryRuntimeRepository,

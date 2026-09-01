@@ -145,6 +145,7 @@ const edgeFor = (
       schemaVersion: '1.0.0',
       sourceProjectId: scope.activeProjectId,
       generatedBy: 'COMPILED_TRUTH',
+      ...(edge.source === 'CANONICAL_RELATION' ? { generatedBy: 'CANONICAL' as const } : {}),
     },
     evidence: {
       schemaVersion: '1.0.0',
@@ -160,6 +161,16 @@ const edgeFor = (
       accessRevision: scope.accessRevision,
     },
     accessMasking: 'VISIBLE',
+    ...(edge.validFrom === undefined && edge.validTo === undefined
+      ? {}
+      : {
+          temporalValidity: {
+            schemaVersion: '1.0.0' as const,
+            ...(edge.validFrom === undefined ? {} : { validFrom: edge.validFrom }),
+            ...(edge.validTo === undefined ? {} : { validTo: edge.validTo }),
+            status: 'KNOWN' as const,
+          },
+        }),
     payload: {
       schemaVersion: '1.0.0',
       relationType: edge.relationType,

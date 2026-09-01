@@ -5,10 +5,13 @@ import type {
 } from '../../../modules/canonical-knowledge/src/index.js';
 import {
   canonicalSnapshotDigest,
+  canonicalRelationLogicalIdentityV1,
   type CanonicalClaim,
   type CanonicalCommitResult,
   type CanonicalHistoryEvent,
   type CanonicalOutboxRecord,
+  type CanonicalRelationV1,
+  type CanonicalRelationPrecursorLinkV1,
   type CanonicalRevision,
   type CanonicalSnapshot,
   type FrontendCanonicalCommitWrite,
@@ -17,6 +20,12 @@ import {
 } from '../../../packages/contracts/src/index.js';
 
 const clone = <T>(value: T): T => structuredClone(value);
+
+const relationPrecursorKey = (
+  projectId: string,
+  reviewResourceId: string,
+  reviewResourceRevision: number,
+): string => `${projectId}:${reviewResourceId}:${reviewResourceRevision}`;
 
 type ProjectState = {
   readonly version: number;
@@ -29,6 +38,8 @@ export class InMemoryCanonicalKnowledgeRepository
 {
   private readonly states = new Map<string, ProjectState>();
   private readonly claims = new Map<string, CanonicalClaim>();
+  private readonly relations = new Map<string, CanonicalRelationV1>();
+  private readonly relationPrecursorLinks = new Map<string, CanonicalRelationPrecursorLinkV1>();
   private readonly commits = new Map<string, CanonicalCommitResult>();
   private readonly revisions = new Map<string, CanonicalRevision>();
   private readonly history = new Map<string, CanonicalHistoryEvent>();
@@ -60,12 +71,38 @@ export class InMemoryCanonicalKnowledgeRepository
       digest: canonicalSnapshotDigest(projectId, 0, []),
       updatedAt: '1970-01-01T00:00:00.000Z',
     };
+    const relations = [...this.relations.values()]
+      .filter((relation) => relation.projectId === projectId)
+      .sort((left, right) => left.relationId.localeCompare(right.relationId))
+      .map((relation) => ({
+        relationId: relation.relationId,
+        logicalIdentityKey: relation.logicalIdentityKey,
+        revisionNumber: relation.revisionNumber,
+        relationType: relation.relationType,
+        fromEndpoint: relation.fromEndpoint,
+        toEndpoint: relation.toEndpoint,
+        direction: relation.direction,
+        ...(relation.validFrom === undefined ? {} : { validFrom: relation.validFrom }),
+        ...(relation.validTo === undefined ? {} : { validTo: relation.validTo }),
+        evidenceIds: relation.evidenceIds,
+      }));
     return clone({
       snapshotId: `canonical:${projectId}:${state.version}`,
       projectId,
       version: state.version,
       digest: state.digest,
       claims,
+      ...(relations.length === 0 ? {} : { relations }),
+      ...(() => {
+        const links = [...this.relationPrecursorLinks.values()]
+          .filter((link) => link.projectId === projectId)
+          .sort((left, right) =>
+            `${left.reviewResourceId}:${left.reviewResourceRevision}`.localeCompare(
+              `${right.reviewResourceId}:${right.reviewResourceRevision}`,
+            ),
+          );
+        return links.length === 0 ? {} : { relationPrecursorLinks: links };
+      })(),
       createdAt: state.updatedAt,
     });
   }
@@ -298,6 +335,71 @@ export class InMemoryCanonicalKnowledgeRepository
             createdAt: write.committedAt,
           }
         : undefined;
+    const relation: CanonicalRelationV1 | undefined =
+      write.operation === 'ADD_RELATION'
+        ? {
+            relationId: write.relationId,
+            logicalIdentityKey: write.logicalIdentityKey,
+            projectId: write.projectId,
+            revisionNumber: 1,
+            relationType: write.relationType,
+            fromEndpoint: write.fromEndpoint,
+            toEndpoint: write.toEndpoint,
+            direction: write.direction,
+            ...(write.validFrom === undefined ? {} : { validFrom: write.validFrom }),
+            ...(write.validTo === undefined ? {} : { validTo: write.validTo }),
+            evidenceIds: [...write.evidenceIds],
+            accessScope: [...write.accessScope],
+            sensitivity: write.sensitivity,
+            authority: write.authority,
+            ...(write.discoveryProvenanceRef === undefined
+              ? {}
+              : { discoveryProvenanceRef: write.discoveryProvenanceRef }),
+            ...(write.discoveryProvenanceRevision === undefined
+              ? {}
+              : { discoveryProvenanceRevision: write.discoveryProvenanceRevision }),
+            createdAt: write.committedAt,
+          }
+        : undefined;
+    if (
+      relation &&
+      ((relation.discoveryProvenanceRef !== undefined &&
+        relation.discoveryProvenanceRef.trim().length === 0) ||
+        (relation.discoveryProvenanceRevision !== undefined &&
+          (relation.discoveryProvenanceRef === undefined ||
+            !Number.isSafeInteger(relation.discoveryProvenanceRevision) ||
+            relation.discoveryProvenanceRevision < 1)))
+    ) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'The Discovery authoring precursor linkage is invalid.',
+        module: 'stage6-in-memory',
+        operation: 'commit-frontend-draft',
+      });
+    }
+    const relationPrecursorLink: CanonicalRelationPrecursorLinkV1 | undefined =
+      relation?.discoveryProvenanceRef === undefined ||
+      relation.discoveryProvenanceRevision === undefined
+        ? undefined
+        : {
+            projectId: relation.projectId,
+            reviewResourceId: relation.discoveryProvenanceRef,
+            reviewResourceRevision: relation.discoveryProvenanceRevision!,
+            relationId: relation.relationId,
+            relationRevision: relation.revisionNumber,
+            linkedAt: relation.createdAt,
+          };
+    if (
+      relation !== undefined &&
+      canonicalRelationLogicalIdentityV1(relation) !== relation.logicalIdentityKey
+    ) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'The Canonical Relation logical identity is invalid.',
+        module: 'stage6-in-memory',
+        operation: 'commit-frontend-draft',
+      });
+    }
     const afterClaims = claim
       ? [
           ...before.claims,
@@ -309,8 +411,31 @@ export class InMemoryCanonicalKnowledgeRepository
           },
         ]
       : before.claims;
-    const afterVersion = claim ? before.version + 1 : before.version;
-    const afterDigest = canonicalSnapshotDigest(write.projectId, afterVersion, afterClaims);
+    const afterRelations = relation
+      ? [
+          ...(before.relations ?? []),
+          {
+            relationId: relation.relationId,
+            logicalIdentityKey: relation.logicalIdentityKey,
+            revisionNumber: relation.revisionNumber,
+            relationType: relation.relationType,
+            fromEndpoint: relation.fromEndpoint,
+            toEndpoint: relation.toEndpoint,
+            direction: relation.direction,
+            ...(relation.validFrom === undefined ? {} : { validFrom: relation.validFrom }),
+            ...(relation.validTo === undefined ? {} : { validTo: relation.validTo }),
+            evidenceIds: relation.evidenceIds,
+          },
+        ]
+      : before.relations;
+    const changed = claim !== undefined || relation !== undefined;
+    const afterVersion = changed ? before.version + 1 : before.version;
+    const afterDigest = canonicalSnapshotDigest(
+      write.projectId,
+      afterVersion,
+      afterClaims,
+      afterRelations,
+    );
     const result: CanonicalCommitResult = {
       commitId: write.commitId,
       projectId: write.projectId,
@@ -320,11 +445,14 @@ export class InMemoryCanonicalKnowledgeRepository
       authorityId: write.authority.approvalId,
       authorityDigest: write.authority.approvalBindingDigest,
       operation: write.operation,
-      status: claim ? 'COMMITTED' : 'NO_OP',
+      status: changed ? 'COMMITTED' : 'NO_OP',
       beforeVersion: before.version,
       afterVersion,
       snapshotDigest: afterDigest,
-      claimId: claim?.claimId,
+      ...(claim === undefined ? {} : { claimId: claim.claimId }),
+      ...(relation === undefined
+        ? {}
+        : { relationId: relation.relationId, logicalIdentityKey: relation.logicalIdentityKey }),
       revisionId: write.revisionId,
       historyEventId: write.historyEventId,
       outboxId: write.outboxId,
@@ -338,7 +466,8 @@ export class InMemoryCanonicalKnowledgeRepository
       operation: write.operation,
       beforeVersion: before.version,
       afterVersion,
-      claimId: claim?.claimId,
+      ...(claim === undefined ? {} : { claimId: claim.claimId }),
+      ...(relation === undefined ? {} : { relationId: relation.relationId }),
       reason: write.reason,
       actor: write.actor,
       createdAt: write.committedAt,
@@ -349,10 +478,15 @@ export class InMemoryCanonicalKnowledgeRepository
       commitId: write.commitId,
       manifestId: null,
       changeSetId: null,
-      eventType: claim ? 'CANONICAL_CLAIM_ADDED' : 'CHANGESET_NO_OP',
+      eventType: claim
+        ? 'CANONICAL_CLAIM_ADDED'
+        : relation
+          ? 'CANONICAL_RELATION_ADDED'
+          : 'CHANGESET_NO_OP',
       beforeVersion: before.version,
       afterVersion,
-      claimId: claim?.claimId,
+      ...(claim === undefined ? {} : { claimId: claim.claimId }),
+      ...(relation === undefined ? {} : { relationId: relation.relationId }),
       reason: write.reason,
       actor: write.actor,
       createdAt: write.committedAt,
@@ -370,21 +504,41 @@ export class InMemoryCanonicalKnowledgeRepository
         status: result.status,
         canonicalVersion: afterVersion,
         snapshotDigest: afterDigest,
-        claimId: claim?.claimId,
+        ...(claim === undefined ? {} : { claimId: claim.claimId }),
+        ...(relation === undefined
+          ? {}
+          : { relationId: relation.relationId, logicalIdentityKey: relation.logicalIdentityKey }),
         actorId: write.actor.id,
-        accessScope: claim ? [...claim.accessScope] : [],
-        sensitivity: claim ? claim.sensitivity : 'public',
+        accessScope: claim ? [...claim.accessScope] : relation ? [...relation.accessScope] : [],
+        sensitivity: claim ? claim.sensitivity : relation ? relation.sensitivity : 'public',
       },
       status: 'pending',
       attempts: 0,
       availableAt: write.committedAt,
     };
 
+    const duplicateRelation =
+      relation !== undefined &&
+      (this.relations.has(relation.relationId) ||
+        [...this.relations.values()].some(
+          (existing) =>
+            existing.projectId === relation.projectId &&
+            existing.logicalIdentityKey === relation.logicalIdentityKey,
+        ) ||
+        (relationPrecursorLink !== undefined &&
+          this.relationPrecursorLinks.has(
+            relationPrecursorKey(
+              relationPrecursorLink.projectId,
+              relationPrecursorLink.reviewResourceId,
+              relationPrecursorLink.reviewResourceRevision,
+            ),
+          )));
     if (
       this.revisions.has(write.revisionId) ||
       this.history.has(write.historyEventId) ||
       this.outbox.has(write.outboxId) ||
-      (claim && this.claims.has(claim.claimId))
+      (claim && this.claims.has(claim.claimId)) ||
+      duplicateRelation
     ) {
       throw new ShotgunError({
         code: 'CONFLICT',
@@ -396,6 +550,19 @@ export class InMemoryCanonicalKnowledgeRepository
 
     if (claim) {
       this.claims.set(claim.claimId, clone(claim));
+    }
+    if (relation) {
+      this.relations.set(relation.relationId, clone(relation));
+    }
+    if (relationPrecursorLink) {
+      this.relationPrecursorLinks.set(
+        relationPrecursorKey(
+          relationPrecursorLink.projectId,
+          relationPrecursorLink.reviewResourceId,
+          relationPrecursorLink.reviewResourceRevision,
+        ),
+        clone(relationPrecursorLink),
+      );
     }
     this.states.set(write.projectId, {
       version: afterVersion,
@@ -412,6 +579,18 @@ export class InMemoryCanonicalKnowledgeRepository
   async findClaim(projectId: string, claimId: string): Promise<CanonicalClaim | undefined> {
     const claim = this.claims.get(claimId);
     return claim?.projectId === projectId ? clone(claim) : undefined;
+  }
+
+  async findRelationPrecursorLink(
+    projectId: string,
+    reviewResourceId: string,
+    reviewResourceRevision: number,
+  ): Promise<CanonicalRelationPrecursorLinkV1 | undefined> {
+    return clone(
+      this.relationPrecursorLinks.get(
+        relationPrecursorKey(projectId, reviewResourceId, reviewResourceRevision),
+      ),
+    );
   }
 
   async findCommit(
@@ -547,7 +726,9 @@ export class InMemoryCanonicalKnowledgeRepository
     return stableJson({
       states: [...this.states.entries()],
       claims: [...this.claims.entries()],
+      relations: [...this.relations.entries()],
       commits: [...this.commits.entries()],
+      relationPrecursorLinks: [...this.relationPrecursorLinks.entries()],
       revisions: [...this.revisions.entries()],
       history: [...this.history.entries()],
       outbox: [...this.outbox.entries()],

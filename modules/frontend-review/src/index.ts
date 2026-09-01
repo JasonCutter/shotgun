@@ -7,6 +7,7 @@ export {
   isReviewCommandType,
   reviewCapabilitiesFor,
 } from './product-api.js';
+export type { FrontendReviewAcceptedForAuthoringBridgeV1 } from './product-api.js';
 export { ReviewCommandError, reviewFailure } from './review-error.js';
 export type {
   ReviewQueueFilterV1,

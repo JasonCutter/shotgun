@@ -67,6 +67,7 @@ const DISCOVERY_SEMANTIC_FAMILY_PROJECTION_MIGRATION =
   '056_akp_7_wp3_semantic_family_projection.sql';
 const DISCOVERY_EPISTEMIC_REENTRY_MIGRATION = '057_akp_7_wp4_epistemic_feedback_reentry.sql';
 const TYPED_PROPOSITION_CONFLICT_MIGRATION = '058_akp8_typed_proposition_conflict_authority.sql';
+const CANONICAL_RELATION_MIGRATION = '059_akp8_canonical_relation_authority.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
@@ -114,6 +115,14 @@ export const authoritativeIntegrityTablesForMigrations = (
       `Backup migration identity is invalid: ${TYPED_PROPOSITION_CONFLICT_MIGRATION} requires ${DISCOVERY_EPISTEMIC_REENTRY_MIGRATION}.`,
     );
   }
+  if (
+    applied.has(CANONICAL_RELATION_MIGRATION) &&
+    !applied.has(TYPED_PROPOSITION_CONFLICT_MIGRATION)
+  ) {
+    throw new Error(
+      `Backup migration identity is invalid: ${CANONICAL_RELATION_MIGRATION} requires ${TYPED_PROPOSITION_CONFLICT_MIGRATION}.`,
+    );
+  }
   return [
     ...baseAuthoritativeTables,
     ...(applied.has(DISCOVERY_FINDING_MIGRATION) ? ['discovery.findings'] : []),
@@ -133,6 +142,9 @@ export const authoritativeIntegrityTablesForMigrations = (
       : []),
     ...(applied.has(TYPED_PROPOSITION_CONFLICT_MIGRATION)
       ? ['knowledge.typed_proposition_conflict_rules', 'knowledge.typed_incompatibility_assertions']
+      : []),
+    ...(applied.has(CANONICAL_RELATION_MIGRATION)
+      ? ['canonical.relations', 'canonical.relation_precursors']
       : []),
   ];
 };

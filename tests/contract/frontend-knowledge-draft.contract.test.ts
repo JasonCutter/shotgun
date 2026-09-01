@@ -254,6 +254,98 @@ describe('FE-P3-S2 FrontendKnowledgeDraftChangeSet v1 contract', () => {
     expect(draft.operations[0]?.kind).toBe('FACT_ADD');
   });
 
+  it('decodes an authority-qualified relation v2 operation and rejects endpoint authority injection', () => {
+    const endpoint = {
+      projectId: 'project-1',
+      authority: 'APPROVED_KNOWLEDGE',
+      resourceType: 'ENTITY',
+      resourceId: 'entity-1',
+      resourceRevision: 4,
+    };
+    const operation = operationFor('RELATION_ADD');
+    const relationOperation = {
+      ...operation,
+      after: {
+        schemaVersion: 'relation.v2',
+        relationType: 'DEPENDS_ON',
+        fromEndpoint: endpoint,
+        toEndpoint: { ...endpoint, resourceId: 'entity-2', resourceRevision: 7 },
+        direction: 'DIRECTED',
+        validFrom: '2026-08-01T00:00:00.000Z',
+        rationale: 'The reviewed source establishes the dependency.',
+      },
+    };
+    const decoded = decodeFrontendKnowledgeOperationV1(relationOperation);
+    expect(decoded.kind).toBe('RELATION_ADD');
+    expect(decoded.after).toMatchObject({
+      schemaVersion: 'relation.v2',
+      direction: 'DIRECTED',
+      fromEndpoint: endpoint,
+    });
+
+    expectContractError(() =>
+      decodeFrontendKnowledgeOperationV1({
+        ...relationOperation,
+        after: {
+          ...relationOperation.after,
+          fromEndpoint: { ...endpoint, authority: 'CANONICAL' },
+        },
+      }),
+    );
+  });
+
+  it('validates server-owned Discovery provenance instead of treating it as an opaque client field', () => {
+    const provenance = {
+      schemaVersion: 'discovery-draft-provenance.v1',
+      finding: { projectId: 'project-1', findingId: 'finding-1', findingRevision: 2 },
+      reentry: { manifestId: 'manifest-1', candidateId: 'candidate-1', candidateRevision: 3 },
+      review: {
+        reviewContextId: 'review-context-1',
+        contextRevision: 1,
+        reviewResourceId: 'review-resource-1',
+        reviewResourceRevision: 1,
+        resourceDigest: 'sha256:review-resource',
+      },
+      validation: {
+        artifactId: 'validation-1',
+        artifactRevision: '1',
+        digest: 'sha256:validation',
+      },
+      canonicalBase: { canonicalVersion: 7, snapshotDigest: 'sha256:canonical' },
+      sourceProjectionDigest: 'sha256:source-projection',
+      evidenceLineage: [
+        {
+          evidenceId: 'evidence-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'source-version-1',
+          evidenceSpanId: 'span-1',
+        },
+      ],
+      approvedEntityRefs: [
+        {
+          projectId: 'project-1',
+          authority: 'APPROVED_KNOWLEDGE',
+          resourceType: 'ENTITY',
+          resourceId: 'entity-1',
+          resourceRevision: 4,
+        },
+      ],
+      derivationProvenance: { method: 'DISCOVERY_REENTRY' },
+      bridgeVersion: 'adr-152.wp2a.v1',
+      materializationId: 'materialization-1',
+    };
+    const decoded = decodeFrontendKnowledgeDraftChangeSetV1(
+      draftFor({ discoveryProvenance: provenance }),
+    );
+    expect(decoded.discoveryProvenance?.reentry.candidateRevision).toBe(3);
+    expectContractError(() =>
+      decodeFrontendKnowledgeDraftChangeSetV1({
+        ...draftFor({ discoveryProvenance: provenance }),
+        discoveryProvenance: { ...provenance, forgedAuthority: true },
+      }),
+    );
+  });
+
   it('covers every frozen operation discriminant', () => {
     const kinds = [
       'FACT_ADD',

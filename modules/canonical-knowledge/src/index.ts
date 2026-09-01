@@ -68,6 +68,16 @@ export type CanonicalKnowledgeRepositoryPort = {
    * UNIQUE(authority_kind='FRONTEND_REVIEW_APPROVAL', authority_id=approvalId).
    */
   commitFrontendDraft(write: FrontendCanonicalCommitWrite): Promise<CanonicalCommitResult>;
+  getSnapshotInTransaction?(transaction: unknown, projectId: string): Promise<CanonicalSnapshot>;
+  commitFrontendDraftInTransaction?(
+    transaction: unknown,
+    write: FrontendCanonicalCommitWrite,
+  ): Promise<CanonicalCommitResult>;
+  findCommitInTransaction?(
+    transaction: unknown,
+    projectId: string,
+    commitId: string,
+  ): Promise<CanonicalCommitResult | undefined>;
   findClaim(projectId: string, claimId: string): Promise<CanonicalClaim | undefined>;
   findCommit(projectId: string, commitId: string): Promise<CanonicalCommitResult | undefined>;
   findRevision(projectId: string, revisionId: string): Promise<CanonicalRevision | undefined>;
@@ -294,6 +304,8 @@ export const createCanonicalKnowledgeModule = (
       owns: [
         'canonical.project_state',
         'canonical.claims',
+        'canonical.relations',
+        'canonical.relation_precursors',
         'canonical.revisions',
         'canonical.commits',
         'canonical.history_events',

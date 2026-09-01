@@ -25,6 +25,8 @@ const operationText = (operation: FrontendKnowledgeOperationV1): string => {
       return after.displayName;
     case 'relation.v1':
       return `${after.relationType}: ${after.fromEntityRef} -> ${after.toEntityRef}`;
+    case 'relation.v2':
+      return `${after.relationType}: ${after.fromEndpoint.resourceId} -> ${after.toEndpoint.resourceId}`;
     case 'event.v1':
       return after.eventType;
     case 'decision.v1':

@@ -588,9 +588,9 @@ export class PostgresCanonicalKnowledgeRepository
       const hasDiscoveryProvenance = write.discoveryProvenanceRef !== undefined;
       const hasDiscoveryProvenanceRevision = write.discoveryProvenanceRevision !== undefined;
       if (
-        hasDiscoveryProvenance !== hasDiscoveryProvenanceRevision ||
-        (hasDiscoveryProvenance &&
-          (write.discoveryProvenanceRef!.trim().length === 0 ||
+        (hasDiscoveryProvenance && write.discoveryProvenanceRef!.trim().length === 0) ||
+        (hasDiscoveryProvenanceRevision &&
+          (!hasDiscoveryProvenance ||
             !Number.isSafeInteger(write.discoveryProvenanceRevision) ||
             write.discoveryProvenanceRevision! < 1))
       ) {

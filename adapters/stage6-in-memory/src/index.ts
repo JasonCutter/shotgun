@@ -352,12 +352,12 @@ export class InMemoryCanonicalKnowledgeRepository
         : undefined;
     if (
       relation &&
-      ((relation.discoveryProvenanceRef === undefined) !==
-        (relation.discoveryProvenanceRevision === undefined) ||
-        (relation.discoveryProvenanceRef !== undefined &&
-          (relation.discoveryProvenanceRef.trim().length === 0 ||
+      ((relation.discoveryProvenanceRef !== undefined &&
+        relation.discoveryProvenanceRef.trim().length === 0) ||
+        (relation.discoveryProvenanceRevision !== undefined &&
+          (relation.discoveryProvenanceRef === undefined ||
             !Number.isSafeInteger(relation.discoveryProvenanceRevision) ||
-            (relation.discoveryProvenanceRevision ?? 0) < 1)))
+            relation.discoveryProvenanceRevision < 1)))
     ) {
       throw new ShotgunError({
         code: 'VALIDATION_ERROR',

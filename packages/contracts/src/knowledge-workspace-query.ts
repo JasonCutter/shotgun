@@ -925,12 +925,35 @@ const compiledSourceValues: readonly CompiledTruthItem['source'][] = [
 const decodeCompiledItem = (value: unknown, path: string): CompiledTruthItem => {
   const input = strictObject(
     value,
-    ['id', 'type', 'label', 'state', 'source', 'evidenceIds', 'accessScope', 'sensitivity'],
+    [
+      'id',
+      'type',
+      'revisionNumber',
+      'sourceVersionId',
+      'label',
+      'state',
+      'source',
+      'evidenceIds',
+      'accessScope',
+      'sensitivity',
+    ],
     path,
   );
   return {
     id: text(input.id, `${path}.id`, 256),
     type: enumValue(input.type, `${path}.type`, compiledKindValues, 'Compiled Truth item type'),
+    ...(input.revisionNumber === undefined
+      ? {}
+      : {
+          revisionNumber: positiveInteger(
+            input.revisionNumber,
+            `${path}.revisionNumber`,
+            Number.MAX_SAFE_INTEGER,
+          ),
+        }),
+    ...(input.sourceVersionId === undefined
+      ? {}
+      : { sourceVersionId: text(input.sourceVersionId, `${path}.sourceVersionId`, 256) }),
     label: text(input.label, `${path}.label`, 10000),
     state: enumValue(input.state, `${path}.state`, compiledStateValues, 'temporal state'),
     source: enumValue(input.source, `${path}.source`, compiledSourceValues, 'item source'),

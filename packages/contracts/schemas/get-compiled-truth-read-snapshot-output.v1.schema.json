@@ -51,6 +51,8 @@
       ],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
+        "revisionNumber": { "type": "integer", "minimum": 1 },
+        "sourceVersionId": { "type": "string", "minLength": 1 },
         "type": {
           "enum": [
             "CLAIM",

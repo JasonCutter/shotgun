@@ -1,7 +1,7 @@
 # AKP-8 WP3 Remaining End-to-End Acceptance Evidence
 
-Status: `CANDIDATE / IN_PROGRESS` — local acceptance proof passed; Draft PR and
-automatic CI/exact-head GPT review remain required.
+Status: `CANDIDATE / CI_PASS` — local acceptance proof and automatic PR CI
+passed; Draft PR and exact-head GPT review remain required.
 
 Repository: `JasonCutter/shotgun`
 
@@ -147,16 +147,15 @@ Result: **2 test files passed, 8 tests passed** — E/N PostgreSQL acceptance
 passed and H/J/K/O integration acceptance passed. No Product or architecture
 repair was required.
 
-The following final checks and remote gates are intentionally recorded after
-the evidence commit is prepared:
+Final local and remote verification:
 
-- Typecheck, lint, format check, docs validation, and `git diff --check`:
-  pending local final run.
+- Typecheck, lint, format check, docs validation, and `git diff --check`: passed.
 - Architecture/OSS integration suites: not required for this package because
   no architecture, runtime, dependency, or OSS registry file changed; the
   repository and automatic CI gates remain authoritative.
-- Draft PR automatic Quality/Database, Frontend/E2E, and Required Gates:
-  pending on the final pushed head. No manual or no-op rerun is authorized.
+- Draft PR #159 automatic run `33524924773` passed on its pushed candidate
+  head: Quality/Database, Frontend/E2E, and Required Gates all succeeded. No
+  manual or no-op rerun was performed.
 
 ## Change, migration, rollback, and limits
 

@@ -471,6 +471,14 @@ skipped rather than substituting an in-memory database. Full PostgreSQL,
 Golden Corpus, adapter replacement, migration/rollback exercise, and complete
 E2E-A acceptance remain explicit review gates.
 
+After the fixture and provenance comparison corrections, the same suite was
+executed against the dedicated `shotgun_test` PostgreSQL container and all
+three tests passed. Automatic PR CI run `1218` at head
+`f1efd9fab346c94c5a07a7a8fbe5715cf633db20` also passed its real PostgreSQL
+database tests, Frontend checks, Quality checks, and Required Gates. The
+remaining Golden Corpus, adapter replacement, migration/rollback exercise,
+and complete E2E-A acceptance gates are still not claimed by this record.
+
 ### OSS and scope disposition
 
 No new OSS runtime or dependency was introduced by this correction. The

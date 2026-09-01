@@ -1,5 +1,53 @@
 import type { Actor, SecurityContext } from './types.js';
 import type { ApprovedKnowledgeEntityRefV1 } from './frontend-knowledge-draft.js';
+import { sha256Text, stableJson } from './document-evidence.js';
+import { utf16OrdinalCompare } from './semantic-representation.js';
+
+const canonicalRelationEndpointIdentityV1 = (endpoint: ApprovedKnowledgeEntityRefV1): string =>
+  [
+    endpoint.projectId,
+    endpoint.authority,
+    endpoint.resourceType,
+    endpoint.resourceId,
+    String(endpoint.resourceRevision),
+  ].join('\u0000');
+
+/**
+ * Server/domain-owned logical identity for a Canonical relation. Endpoint
+ * authority and exact revision are part of identity; temporal absence is
+ * deliberately distinct from an explicitly supplied value. UNDIRECTED
+ * relations use the same complete endpoint identity in either order.
+ */
+export const canonicalRelationLogicalIdentityV1 = (input: {
+  readonly projectId: string;
+  readonly relationType: string;
+  readonly fromEndpoint: ApprovedKnowledgeEntityRefV1;
+  readonly toEndpoint: ApprovedKnowledgeEntityRefV1;
+  readonly direction: 'DIRECTED' | 'UNDIRECTED';
+  readonly validFrom?: string;
+  readonly validTo?: string;
+}): string => {
+  const endpoints = [input.fromEndpoint, input.toEndpoint];
+  if (input.direction === 'UNDIRECTED') {
+    endpoints.sort((left, right) =>
+      utf16OrdinalCompare(
+        canonicalRelationEndpointIdentityV1(left),
+        canonicalRelationEndpointIdentityV1(right),
+      ),
+    );
+  }
+  return `canonical-relation:v1:${sha256Text(
+    stableJson({
+      projectId: input.projectId,
+      relationType: input.relationType,
+      fromEndpoint: endpoints[0],
+      toEndpoint: endpoints[1],
+      direction: input.direction,
+      validFrom: input.validFrom ?? null,
+      validTo: input.validTo ?? null,
+    }),
+  )}`;
+};
 
 /** Cross-Phase Correction B: frontend commit authority provenance. */
 export type FrontendCanonicalAuthorityV1 = {

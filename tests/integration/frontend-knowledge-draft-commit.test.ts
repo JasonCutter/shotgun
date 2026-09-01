@@ -10,7 +10,11 @@ import {
   FrontendKnowledgeDraftProductCoordinator,
   type FrontendKnowledgeDraftCommitDependenciesV1,
 } from '../../modules/frontend-knowledge-draft/src/product-api.js';
-import { frontendKnowledgeDraftRevisionDigest } from '../../modules/frontend-knowledge-draft/src/index.js';
+import {
+  frontendKnowledgeDraftDiscoveryRelationSemanticV1,
+  frontendKnowledgeDraftOperationDigestV1,
+  frontendKnowledgeDraftRevisionDigest,
+} from '../../modules/frontend-knowledge-draft/src/index.js';
 import {
   canonicalSnapshotDigest,
   reviewApprovalManifestDigest,
@@ -18,6 +22,7 @@ import {
   type FrontendKnowledgeDraftBaseV1,
   type FrontendKnowledgeDraftChangeSetV1,
   type FrontendKnowledgeOperationV1,
+  type RelationDraftValueV2,
   type ReviewApprovalV1,
 } from '../../packages/contracts/src/index.js';
 
@@ -93,6 +98,46 @@ const factOperation = (): FrontendKnowledgeOperationV1 => ({
     value: 'active',
   },
 });
+
+type RelationOperation = Extract<FrontendKnowledgeOperationV1, { readonly kind: 'RELATION_ADD' }>;
+
+const relationOperation = (): RelationOperation => {
+  const after = {
+    schemaVersion: 'relation.v2' as const,
+    relationType: 'RELATED_TO',
+    fromEndpoint: {
+      projectId: PROJECT_ID,
+      authority: 'APPROVED_KNOWLEDGE' as const,
+      resourceType: 'ENTITY' as const,
+      resourceId: 'entity:a',
+      resourceRevision: 1,
+    },
+    toEndpoint: {
+      projectId: PROJECT_ID,
+      authority: 'APPROVED_KNOWLEDGE' as const,
+      resourceType: 'ENTITY' as const,
+      resourceId: 'entity:b',
+      resourceRevision: 1,
+    },
+    direction: 'DIRECTED' as const,
+    rationale: 'The reviewed Discovery relation.',
+  };
+  const operation = {
+    operationId: 'operation-relation-1',
+    kind: 'RELATION_ADD' as const,
+    target: { targetType: 'RELATION' as const, resourceId: 'review-resource-1' },
+    baseRevision: 0,
+    rationale: after.rationale,
+    evidenceReferences: [
+      { sourceId: 'source-1', sourceVersionId: 'source-version-1', evidenceSpanId: 'span-1' },
+    ],
+    expectedImpact: { summary: 'One relation is added.' },
+    operationRevision: 1,
+    contentDigest: '',
+    after,
+  } satisfies RelationOperation;
+  return { ...operation, contentDigest: frontendKnowledgeDraftOperationDigestV1(operation) };
+};
 
 const submittedDraft = (
   operations: readonly FrontendKnowledgeOperationV1[],
@@ -372,6 +417,116 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
       repositories.approvals.findById('approval-1'),
     );
     expect(approval?.status).toBe('ACTIVE');
+  });
+
+  it('rejects a browser-injected relation.v2 Save without server Discovery provenance', async () => {
+    const draft = submittedDraft([]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: [] }) });
+    const operation = {
+      ...relationOperation(),
+      operationRevision: 2,
+    } satisfies RelationOperation;
+    const contentDigest = frontendKnowledgeDraftRevisionDigest({
+      draftId: draft.draftId,
+      revision: 2,
+      base: draft.base,
+      operations: [operation],
+    });
+
+    await expect(
+      coordinator.saveDraft(scope, {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'save-relation-injection',
+        idempotencyKey: 'save-relation-injection-key',
+        draftId: draft.draftId,
+        expectedDraftRevision: draft.revision,
+        expectedBaseRevision: draft.base.canonicalVersion,
+        operationRevision: 2,
+        operations: [operation],
+        contentDigest,
+      }),
+    ).rejects.toMatchObject({ apiCode: 'UNSUPPORTED_OPERATION' });
+    await expect(
+      draftRepository.transaction((repositories) =>
+        repositories.drafts.findById(PROJECT_ID, draft.draftId),
+      ),
+    ).resolves.toMatchObject({ revision: 1, operations: [] });
+  });
+
+  it('does not let a browser mutate an already materialized Discovery relation', async () => {
+    const operation = relationOperation();
+    const provenance = {
+      schemaVersion: 'discovery-draft-provenance.v1' as const,
+      finding: { projectId: PROJECT_ID, findingId: 'finding-1', findingRevision: 1 },
+      reentry: { manifestId: 'manifest-1', candidateId: 'candidate-1', candidateRevision: 1 },
+      review: {
+        reviewContextId: 'context-1',
+        contextRevision: 1,
+        reviewResourceId: 'review-resource-1',
+        reviewResourceRevision: 1,
+        resourceDigest: 'sha256:review-resource',
+      },
+      validation: {
+        artifactId: 'validation-1',
+        artifactRevision: '1',
+        digest: 'sha256:validation',
+      },
+      canonicalBase: { canonicalVersion: 0, snapshotDigest: base().canonicalSnapshotDigest },
+      sourceProjectionDigest: 'sha256:source-projection',
+      evidenceLineage: [
+        {
+          evidenceId: 'evidence-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'source-version-1',
+          evidenceSpanId: 'span-1',
+        },
+      ],
+      approvedEntityRefs: [
+        (operation.after as RelationDraftValueV2).fromEndpoint,
+        (operation.after as RelationDraftValueV2).toEndpoint,
+      ],
+      derivationProvenance: { schemaVersion: '1.0.0', kind: 'DETERMINISTIC' },
+      bridgeVersion: 'adr-152.wp2a.v1' as const,
+      materializationId: 'materialization-1',
+    };
+    const materialized = {
+      ...submittedDraft([operation]),
+      discoveryProvenance: provenance,
+    };
+    await draftRepository.transaction((repositories) => repositories.drafts.insert(materialized));
+    expect(frontendKnowledgeDraftDiscoveryRelationSemanticV1(materialized.operations[0]!)).toEqual(
+      frontendKnowledgeDraftDiscoveryRelationSemanticV1(operation),
+    );
+    const mutated = {
+      ...operation,
+      operationRevision: materialized.revision + 1,
+      after: {
+        ...(operation.after as RelationDraftValueV2),
+        toEndpoint: {
+          ...(operation.after as RelationDraftValueV2).toEndpoint,
+          resourceId: 'entity:c',
+        },
+      },
+      contentDigest: 'sha256:browser-forged',
+    };
+    await expect(
+      coordinator.saveDraft(scope, {
+        schemaVersion: '1.0.0',
+        clientRequestId: 'save-relation-mutation',
+        idempotencyKey: 'save-relation-mutation-key',
+        draftId: materialized.draftId,
+        expectedDraftRevision: materialized.revision,
+        expectedBaseRevision: materialized.base.canonicalVersion,
+        operationRevision: materialized.revision + 1,
+        operations: [mutated],
+        contentDigest: frontendKnowledgeDraftRevisionDigest({
+          draftId: materialized.draftId,
+          revision: materialized.revision + 1,
+          base: materialized.base,
+          operations: [mutated],
+        }),
+      }),
+    ).rejects.toMatchObject({ apiCode: 'VALIDATION_FAILED' });
   });
 
   it('rejects fail-closed when the Approval covers multiple CLAIM_ADD operations', async () => {

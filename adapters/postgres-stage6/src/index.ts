@@ -7,12 +7,14 @@ import type {
 } from '../../../modules/canonical-knowledge/src/index.js';
 import {
   canonicalSnapshotDigest,
+  canonicalRelationLogicalIdentityV1,
   type CanonicalClaim,
   type CanonicalCommitResult,
   type CanonicalHistoryEvent,
   type CanonicalOutboxRecord,
   type CanonicalRevision,
   type CanonicalRelationV1,
+  type CanonicalRelationPrecursorLinkV1,
   type CanonicalSnapshot,
   type CanonicalSnapshotClaim,
   type CanonicalSnapshotRelation,
@@ -32,6 +34,15 @@ type ClaimRow = QueryResultRow & {
 
 type RelationRow = QueryResultRow & {
   readonly relation_json: CanonicalRelationV1;
+};
+
+type RelationPrecursorRow = QueryResultRow & {
+  readonly project_id: string;
+  readonly review_resource_id: string;
+  readonly review_resource_revision: number;
+  readonly relation_id: string;
+  readonly relation_revision: 1;
+  readonly linked_at: Date;
 };
 
 type CommitRow = QueryResultRow & {
@@ -130,6 +141,28 @@ const loadRelations = async (
   return result.rows.map((row) => row.relation_json);
 };
 
+const loadRelationPrecursorLinks = async (
+  client: Pool | PoolClient,
+  projectId: string,
+): Promise<CanonicalRelationPrecursorLinkV1[]> => {
+  const result = await client.query<RelationPrecursorRow>(
+    `SELECT project_id, review_resource_id, review_resource_revision,
+            relation_id, relation_revision, linked_at
+       FROM canonical.relation_precursors
+      WHERE project_id = $1
+      ORDER BY review_resource_id, review_resource_revision`,
+    [projectId],
+  );
+  return result.rows.map((row) => ({
+    projectId: row.project_id,
+    reviewResourceId: row.review_resource_id,
+    reviewResourceRevision: row.review_resource_revision,
+    relationId: row.relation_id,
+    relationRevision: row.relation_revision,
+    linkedAt: row.linked_at.toISOString(),
+  }));
+};
+
 const relationAwareDigest = (
   projectId: string,
   version: number,
@@ -170,6 +203,7 @@ export class PostgresCanonicalKnowledgeRepository
     );
     const claims = snapshotClaims(await loadClaims(this.pool, projectId));
     const relations = snapshotRelations(await loadRelations(this.pool, projectId));
+    const relationPrecursorLinks = await loadRelationPrecursorLinks(this.pool, projectId);
     const row = state.rows[0];
     const version = row?.version ?? 0;
     return {
@@ -179,6 +213,7 @@ export class PostgresCanonicalKnowledgeRepository
       digest: row?.snapshot_digest ?? relationAwareDigest(projectId, 0, [], relations),
       claims,
       ...(relations.length === 0 ? {} : { relations }),
+      ...(relationPrecursorLinks.length === 0 ? {} : { relationPrecursorLinks }),
       createdAt: row?.updated_at.toISOString() ?? '1970-01-01T00:00:00.000Z',
     };
   }
@@ -199,6 +234,7 @@ export class PostgresCanonicalKnowledgeRepository
     );
     const claims = snapshotClaims(await loadClaims(client, projectId));
     const relations = snapshotRelations(await loadRelations(client, projectId));
+    const relationPrecursorLinks = await loadRelationPrecursorLinks(client, projectId);
     const row = state.rows[0];
     const version = row?.version ?? 0;
     return {
@@ -208,6 +244,7 @@ export class PostgresCanonicalKnowledgeRepository
       digest: row?.snapshot_digest ?? relationAwareDigest(projectId, 0, [], relations),
       claims,
       ...(relations.length === 0 ? {} : { relations }),
+      ...(relationPrecursorLinks.length === 0 ? {} : { relationPrecursorLinks }),
       createdAt: row?.updated_at.toISOString() ?? '1970-01-01T00:00:00.000Z',
     };
   }
@@ -264,7 +301,6 @@ export class PostgresCanonicalKnowledgeRepository
           operation: 'commit-canonical',
         });
       }
-
       let claim: CanonicalClaim | undefined;
       if (write.manifest.operation === 'ADD_CLAIM' && write.claimId) {
         claim = {
@@ -615,6 +651,24 @@ export class PostgresCanonicalKnowledgeRepository
         throw new ShotgunError({
           code: 'VALIDATION_ERROR',
           safeMessage: 'The Canonical Relation endpoint or Evidence binding is invalid.',
+          module: 'postgres-stage6',
+          operation: 'commit-frontend-draft',
+        });
+      }
+      if (
+        canonicalRelationLogicalIdentityV1({
+          projectId: write.projectId,
+          relationType: write.relationType,
+          fromEndpoint: write.fromEndpoint,
+          toEndpoint: write.toEndpoint,
+          direction: write.direction,
+          ...(write.validFrom === undefined ? {} : { validFrom: write.validFrom }),
+          ...(write.validTo === undefined ? {} : { validTo: write.validTo }),
+        }) !== write.logicalIdentityKey
+      ) {
+        throw new ShotgunError({
+          code: 'VALIDATION_ERROR',
+          safeMessage: 'The Canonical Relation logical identity is invalid.',
           module: 'postgres-stage6',
           operation: 'commit-frontend-draft',
         });

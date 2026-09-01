@@ -11,7 +11,10 @@ import type {
   KnowledgeReviewGroup,
   QueryResultEnvelope,
 } from '../../packages/contracts/src/index.js';
-import { canonicalSnapshotDigest } from '../../packages/contracts/src/index.js';
+import {
+  canonicalRelationLogicalIdentityV1,
+  canonicalSnapshotDigest,
+} from '../../packages/contracts/src/index.js';
 import { createCommand } from '../../packages/kernel/src/index.js';
 import type { DispatchQueryInput, HandlerContext } from '../../packages/module-sdk/src/index.js';
 import type { GraphReadScopeV1 } from '../../modules/frontend-knowledge-graph/src/index.js';
@@ -67,6 +70,7 @@ const group: KnowledgeReviewGroup = {
       toCandidateId: 'entity:b',
       relationType: 'RELATED_TO',
       direction: 'DIRECTED',
+      validFrom: '2026-01-01T00:00:00.000Z',
     },
   ],
   decisions: [],
@@ -164,6 +168,8 @@ describe('AKP-8 WP2A Canonical Relation projection contract', () => {
         id: 'relation:canonical:commit-1',
         from: 'entity:a',
         to: 'entity:b',
+        fromRevision: 1,
+        toRevision: 1,
         relationType: 'RELATED_TO',
         direction: 'DIRECTED',
         validFrom: '2026-01-01T00:00:00.000Z',
@@ -282,11 +288,19 @@ describe('AKP-8 WP2A Canonical Relation projection contract', () => {
       projectId,
       operation: 'ADD_RELATION',
       relationId: 'relation:replacement',
-      logicalIdentityKey: 'canonical-relation:v1:replacement',
+      logicalIdentityKey: canonicalRelationLogicalIdentityV1({
+        projectId,
+        relationType: 'RELATED_TO',
+        fromEndpoint: { projectId, ...canonical.relations![0]!.fromEndpoint },
+        toEndpoint: { projectId, ...canonical.relations![0]!.toEndpoint },
+        direction: 'DIRECTED',
+        validFrom: canonical.relations![0]!.validFrom,
+      }),
       relationType: 'RELATED_TO',
       fromEndpoint: { projectId, ...canonical.relations![0]!.fromEndpoint },
       toEndpoint: { projectId, ...canonical.relations![0]!.toEndpoint },
       direction: 'DIRECTED',
+      validFrom: canonical.relations![0]!.validFrom,
       evidenceIds: ['evidence:relation'],
       accessScope: ['owner'],
       sensitivity: 'private',

@@ -91,6 +91,8 @@
         "id": { "type": "string", "minLength": 1 },
         "from": { "type": "string", "minLength": 1 },
         "to": { "type": "string", "minLength": 1 },
+        "fromRevision": { "type": "integer", "minimum": 1 },
+        "toRevision": { "type": "integer", "minimum": 1 },
         "relationType": { "type": "string", "minLength": 1 },
         "direction": { "enum": ["DIRECTED", "UNDIRECTED"] },
         "validFrom": { "type": "string" },

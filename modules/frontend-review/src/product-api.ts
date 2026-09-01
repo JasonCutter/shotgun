@@ -1535,6 +1535,16 @@ export class FrontendReviewProductCoordinator {
           aggregateState === 'ACCEPTED_FOR_AUTHORING'
             ? true
             : undefined;
+        const draftRef = this.producedResource(outcome, FRONTEND_REVIEW_RESOURCE_KIND.draft);
+        const draft =
+          draftRef === undefined
+            ? undefined
+            : {
+                draftId: draftRef.resourceId,
+                draftRevision: Number(draftRef.resourceRevision),
+                resourceProjectId: context.resourceProjectId,
+                effectiveProjectId: context.effectiveProjectId,
+              };
         // Reconstruct the typed revision return target for REQUEST_REVISION
         // outcomes (Contract Snapshot §11 / AC-26).
         const revisionRequestReturnTarget: ReviewRevisionReturnTargetV1 | undefined =
@@ -1573,6 +1583,7 @@ export class FrontendReviewProductCoordinator {
           aggregateState,
           ...(approvals.length === 0 ? {} : { approvals }),
           ...(acceptedForAuthoring === undefined ? {} : { acceptedForAuthoring }),
+          ...(draft === undefined ? {} : { draft }),
           ...(revisionRequestReturnTarget === undefined ? {} : { revisionRequestReturnTarget }),
         } satisfies RecordReviewDecisionsResultV1;
       });

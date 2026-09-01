@@ -1,4 +1,5 @@
 import {
+  canonicalRelationLogicalIdentityV1,
   computeDiscoveryFingerprintV1,
   deriveAuthorizedSensitivities,
   deriveDiscoverySemanticEssenceV1,
@@ -9,6 +10,7 @@ import {
 import type {
   CompiledTruthProjection,
   DiscoveryCanonicalBaseIdentityV1,
+  CanonicalRelationPrecursorLinkV1,
   DiscoveryFindingEnvelopeV1,
   DiscoveryFollowUpOriginIdentityV1,
   DiscoveryFollowUpQualificationProofV1,
@@ -93,6 +95,14 @@ export type DiscoveryProductExecutionDependenciesV1 = {
     readonly projectId: string;
     readonly candidate: DiscoveryFindingEnvelopeV1;
   }) => Promise<boolean>;
+  /** Exact accepted Review Resource identity used by relation reconciliation. */
+  readonly findAcceptedReviewResource?: (input: {
+    readonly projectId: string;
+    readonly candidate: DiscoveryFindingEnvelopeV1;
+  }) => Promise<
+    | Pick<CanonicalRelationPrecursorLinkV1, 'reviewResourceId' | 'reviewResourceRevision'>
+    | undefined
+  >;
   readonly evidenceRepository: Pick<EvidenceRepositoryPort, 'findById'>;
   /** Accepted AKP-1 semantic authority; no projection-array rank fallback. */
   readonly semanticRetriever: SemanticRetrieverPort;
@@ -110,6 +120,10 @@ export type DiscoveryProductExecutionDependenciesV1 = {
     readonly finding: DiscoveryFindingEnvelopeV1;
     readonly projection: CompiledTruthProjection;
     readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
+    readonly acceptedReviewResource?: Pick<
+      CanonicalRelationPrecursorLinkV1,
+      'reviewResourceId' | 'reviewResourceRevision'
+    >;
   }) => Promise<DiscoveryReconciliationDispositionV1>;
 };
 
@@ -123,6 +137,10 @@ export const observeDiscoveryReconciliation = async (input: {
   readonly finding: DiscoveryFindingEnvelopeV1;
   readonly projection: CompiledTruthProjection;
   readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
+  readonly acceptedReviewResource?: Pick<
+    CanonicalRelationPrecursorLinkV1,
+    'reviewResourceId' | 'reviewResourceRevision'
+  >;
 }): Promise<DiscoveryReconciliationDispositionV1> => {
   const { finding, projection } = input;
   if (
@@ -140,31 +158,86 @@ export const observeDiscoveryReconciliation = async (input: {
       return (
         item?.type === 'ENTITY' &&
         item.source === 'APPROVED_KNOWLEDGE' &&
-        (revision === undefined || String(item.revisionNumber) === revision)
+        revision !== undefined &&
+        String(item.revisionNumber) === revision
       );
     };
+    const acceptedReviewResource = input.acceptedReviewResource;
     const canonicalEquivalent = projection.graph.edges.some((edge) => {
       if (
         edge.source !== 'CANONICAL_RELATION' ||
-        edge.relationType !== relation.proposedRelationType
+        edge.relationType !== relation.proposedRelationType ||
+        sourceRevision === undefined ||
+        targetRevision === undefined ||
+        edge.fromRevision === undefined ||
+        edge.toRevision === undefined ||
+        acceptedReviewResource === undefined
       ) {
         return false;
       }
-      const sameDirection =
-        edge.direction === relation.direction &&
-        ((edge.from === relation.sourceEndpoint.resourceId &&
-          edge.to === relation.targetEndpoint.resourceId) ||
-          (edge.direction === 'UNDIRECTED' &&
-            edge.from === relation.targetEndpoint.resourceId &&
-            edge.to === relation.sourceEndpoint.resourceId));
+      const precursor = projection.relationPrecursorLinks?.find(
+        (link) =>
+          link.projectId === finding.projectId &&
+          link.relationId === edge.id &&
+          link.relationRevision === 1 &&
+          link.reviewResourceId === acceptedReviewResource.reviewResourceId &&
+          link.reviewResourceRevision === acceptedReviewResource.reviewResourceRevision,
+      );
+      if (!precursor) return false;
+      if (
+        !hasExactApprovedEndpoint(relation.sourceEndpoint.resourceId, sourceRevision) ||
+        !hasExactApprovedEndpoint(relation.targetEndpoint.resourceId, targetRevision)
+      ) {
+        return false;
+      }
+      const findingFrom = {
+        projectId: finding.projectId,
+        authority: 'APPROVED_KNOWLEDGE' as const,
+        resourceType: 'ENTITY' as const,
+        resourceId: relation.sourceEndpoint.resourceId,
+        resourceRevision: Number(sourceRevision),
+      };
+      const findingTo = {
+        projectId: finding.projectId,
+        authority: 'APPROVED_KNOWLEDGE' as const,
+        resourceType: 'ENTITY' as const,
+        resourceId: relation.targetEndpoint.resourceId,
+        resourceRevision: Number(targetRevision),
+      };
+      const edgeFrom = {
+        projectId: finding.projectId,
+        authority: 'APPROVED_KNOWLEDGE' as const,
+        resourceType: 'ENTITY' as const,
+        resourceId: edge.from,
+        resourceRevision: edge.fromRevision,
+      };
+      const edgeTo = {
+        projectId: finding.projectId,
+        authority: 'APPROVED_KNOWLEDGE' as const,
+        resourceType: 'ENTITY' as const,
+        resourceId: edge.to,
+        resourceRevision: edge.toRevision,
+      };
+      const temporal = relation.temporalQualification;
       return (
-        sameDirection &&
-        hasExactApprovedEndpoint(relation.sourceEndpoint.resourceId, sourceRevision) &&
-        hasExactApprovedEndpoint(relation.targetEndpoint.resourceId, targetRevision) &&
-        (relation.temporalQualification?.validFrom === undefined ||
-          edge.validFrom === relation.temporalQualification.validFrom) &&
-        (relation.temporalQualification?.validTo === undefined ||
-          edge.validTo === relation.temporalQualification.validTo)
+        canonicalRelationLogicalIdentityV1({
+          projectId: finding.projectId,
+          relationType: relation.proposedRelationType,
+          fromEndpoint: findingFrom,
+          toEndpoint: findingTo,
+          direction: relation.direction,
+          ...(temporal?.validFrom === undefined ? {} : { validFrom: temporal.validFrom }),
+          ...(temporal?.validTo === undefined ? {} : { validTo: temporal.validTo }),
+        }) ===
+        canonicalRelationLogicalIdentityV1({
+          projectId: finding.projectId,
+          relationType: edge.relationType,
+          fromEndpoint: edgeFrom,
+          toEndpoint: edgeTo,
+          direction: edge.direction,
+          ...(edge.validFrom === undefined ? {} : { validFrom: edge.validFrom }),
+          ...(edge.validTo === undefined ? {} : { validTo: edge.validTo }),
+        })
       );
     });
     if (canonicalEquivalent) return 'CANONICAL_EQUIVALENT_ACCEPTED';
@@ -1167,6 +1240,10 @@ export const createProductDiscoveryExecution = (
               finding,
               projection,
               canonicalBase: context.claim.job.canonicalBase,
+              acceptedReviewResource: await input.findAcceptedReviewResource?.({
+                projectId: context.claim.projectId,
+                candidate: finding,
+              }),
             });
             const reconciled = await lifecycleService.reconcile(
               {

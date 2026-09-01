@@ -174,6 +174,7 @@ import {
 import { Stage9GraphReadAdapter } from '../../../adapters/stage9-graph-read/src/index.js';
 import {
   FrontendKnowledgeDraftProductCoordinator,
+  type FrontendKnowledgeDraftDiscoveryRelationAuthorityPort,
   type FrontendKnowledgeDraftTargetResolverPort,
 } from '../../../modules/frontend-knowledge-draft/src/product-api.js';
 import type { FrontendKnowledgeDraftRepositoryBoundaryPort } from '../../../modules/frontend-knowledge-draft/src/index.js';
@@ -1575,6 +1576,12 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     }
     return undefined;
   };
+  const discoveryRelationAuthority =
+    options.frontendReviewAuthoringBridge !== undefined &&
+    'revalidateRelation' in options.frontendReviewAuthoringBridge &&
+    typeof options.frontendReviewAuthoringBridge.revalidateRelation === 'function'
+      ? (options.frontendReviewAuthoringBridge as unknown as FrontendKnowledgeDraftDiscoveryRelationAuthorityPort)
+      : undefined;
   const frontendKnowledgeDraftCoordinator =
     options.frontendKnowledgeDraftCoordinator ??
     new FrontendKnowledgeDraftProductCoordinator(
@@ -1620,6 +1627,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           },
         },
         canonical: canonicalKnowledgeRepository,
+        ...(discoveryRelationAuthority === undefined ? {} : { discoveryRelationAuthority }),
       },
     );
   const graphDiscoveryOverlayPort =

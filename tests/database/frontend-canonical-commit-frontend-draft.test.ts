@@ -6,6 +6,7 @@ import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
 import { dropSchemas, migrateUpTo } from '../../scripts/database.js';
 import {
+  canonicalRelationLogicalIdentityV1,
   canonicalSnapshotDigest,
   type FrontendCanonicalCommitWrite,
 } from '../../packages/contracts/src/index.js';
@@ -102,7 +103,14 @@ const addRelationWrite = (
     outboxId: `outbox:${commitId}`,
     operation: 'ADD_RELATION',
     relationId: 'relation-1',
-    logicalIdentityKey: 'canonical-relation:v1:relation-1',
+    logicalIdentityKey: canonicalRelationLogicalIdentityV1({
+      projectId: 'project-1',
+      relationType: 'DEPENDS_ON',
+      fromEndpoint: relationEndpoint('entity-1', 4),
+      toEndpoint: relationEndpoint('entity-2', 7),
+      direction: 'DIRECTED',
+      validFrom: '2026-08-01T00:00:00.000Z',
+    }),
     relationType: 'DEPENDS_ON',
     fromEndpoint: relationEndpoint('entity-1', 4),
     toEndpoint: relationEndpoint('entity-2', 7),
@@ -253,7 +261,14 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
       status: 'COMMITTED',
       operation: 'ADD_RELATION',
       relationId: 'relation-1',
-      logicalIdentityKey: 'canonical-relation:v1:relation-1',
+      logicalIdentityKey: canonicalRelationLogicalIdentityV1({
+        projectId: 'project-1',
+        relationType: 'DEPENDS_ON',
+        fromEndpoint: relationEndpoint('entity-1', 4),
+        toEndpoint: relationEndpoint('entity-2', 7),
+        direction: 'DIRECTED',
+        validFrom: '2026-08-01T00:00:00.000Z',
+      }),
       afterVersion: 1,
       authorityId: 'approval-1',
     });
@@ -274,7 +289,14 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
     expect((await repository.findOutbox('project-1', write.outboxId))?.payload).toMatchObject({
       operation: 'ADD_RELATION',
       relationId: 'relation-1',
-      logicalIdentityKey: 'canonical-relation:v1:relation-1',
+      logicalIdentityKey: canonicalRelationLogicalIdentityV1({
+        projectId: 'project-1',
+        relationType: 'DEPENDS_ON',
+        fromEndpoint: relationEndpoint('entity-1', 4),
+        toEndpoint: relationEndpoint('entity-2', 7),
+        direction: 'DIRECTED',
+        validFrom: '2026-08-01T00:00:00.000Z',
+      }),
     });
   });
 
@@ -311,7 +333,17 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
             // value, so keep the invalid fixture outside the type boundary.
             authority: 'CANONICAL' as unknown as 'APPROVED_KNOWLEDGE',
           },
-          logicalIdentityKey: 'canonical-relation:v1:relation-3',
+          logicalIdentityKey: canonicalRelationLogicalIdentityV1({
+            projectId: 'project-1',
+            relationType: 'DEPENDS_ON',
+            fromEndpoint: {
+              ...relationEndpoint('entity-3', 1),
+              authority: 'CANONICAL' as unknown as 'APPROVED_KNOWLEDGE',
+            },
+            toEndpoint: relationEndpoint('entity-2', 7),
+            direction: 'DIRECTED',
+            validFrom: '2026-08-01T00:00:00.000Z',
+          }),
           relationId: 'relation-3',
           expectedCanonicalVersion: current.version,
           snapshotDigest: current.digest,
@@ -319,6 +351,52 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
       ),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     expect((await repository.getSnapshot('project-1')).version).toBe(1);
+  });
+
+  it('treats reversed UNDIRECTED endpoints as the same typed logical identity', async () => {
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
+    const repository = new PostgresCanonicalKnowledgeRepository(pool!);
+    const first = addRelationWrite({
+      relationId: 'relation-undirected-a',
+      direction: 'UNDIRECTED',
+      logicalIdentityKey: canonicalRelationLogicalIdentityV1({
+        projectId: 'project-1',
+        relationType: 'DEPENDS_ON',
+        fromEndpoint: relationEndpoint('entity-1', 4),
+        toEndpoint: relationEndpoint('entity-2', 7),
+        direction: 'UNDIRECTED',
+        validFrom: '2026-08-01T00:00:00.000Z',
+      }),
+    });
+    await repository.commitFrontendDraft(first);
+    const current = await repository.getSnapshot('project-1');
+    const undirectedLogicalIdentity = canonicalRelationLogicalIdentityV1({
+      projectId: 'project-1',
+      relationType: 'DEPENDS_ON',
+      fromEndpoint: relationEndpoint('entity-1', 4),
+      toEndpoint: relationEndpoint('entity-2', 7),
+      direction: 'UNDIRECTED',
+      validFrom: '2026-08-01T00:00:00.000Z',
+    });
+    await expect(
+      repository.commitFrontendDraft(
+        addRelationWrite({
+          commitId: randomUUID(),
+          revisionId: `revision:${randomUUID()}`,
+          historyEventId: `history:${randomUUID()}`,
+          outboxId: `outbox:${randomUUID()}`,
+          authority: { ...authority, approvalId: 'approval-undirected-b' },
+          relationId: 'relation-undirected-b',
+          direction: 'UNDIRECTED',
+          fromEndpoint: relationEndpoint('entity-2', 7),
+          toEndpoint: relationEndpoint('entity-1', 4),
+          logicalIdentityKey: undirectedLogicalIdentity,
+          expectedCanonicalVersion: current.version,
+          snapshotDigest: current.digest,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 
   it('preserves legacy Stage-5 commit rows with LEGACY_STAGE5_MANIFEST authority', async () => {

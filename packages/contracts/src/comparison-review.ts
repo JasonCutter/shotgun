@@ -1,5 +1,6 @@
 import type { Actor, SecurityContext } from './types.js';
 import type { ClaimCandidate } from './ai-candidate-validation.js';
+import type { CanonicalRelationPrecursorLinkV1 } from './canonical-knowledge.js';
 import { sha256Text, stableJson } from './document-evidence.js';
 
 export type CanonicalSnapshotClaim = {
@@ -39,6 +40,8 @@ export type CanonicalSnapshot = {
   readonly digest: string;
   readonly claims: readonly CanonicalSnapshotClaim[];
   readonly relations?: readonly CanonicalSnapshotRelation[];
+  /** Durable server-owned Discovery Review -> Canonical relation lineage. */
+  readonly relationPrecursorLinks?: readonly CanonicalRelationPrecursorLinkV1[];
   readonly createdAt: string;
 };
 

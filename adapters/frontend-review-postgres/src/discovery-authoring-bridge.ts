@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import {
   assertDiscoveryReviewResourceMatchesCandidateV1,
   canonicalSnapshotDigest,
+  composeDiscoveryFindingSecurityV1,
   decodeDerivedKnowledgeCandidateV1,
   decodeDiscoveryReviewResourceV1,
   sha256Text,
@@ -11,13 +12,16 @@ import {
   type DiscoveryReviewResourceV1,
   type DerivedKnowledgeCandidateV1,
   type DiscoveryResourceRefV1,
+  type DiscoveryDraftProvenanceV1,
   type FrontendKnowledgeDraftChangeSetV1,
+  type FrontendKnowledgeOperationV1,
   type ReviewContextRevisionV1,
   type RelationDraftValueV2,
 } from '../../../packages/contracts/src/index.js';
 import {
   createInitialFrontendKnowledgeDraft,
   materializeFrontendKnowledgeDraftOn,
+  frontendKnowledgeDraftOperationDigestV1,
   type DraftMaterializationRecordV1,
   type FrontendKnowledgeDraftTransactionRepositoriesV1,
 } from '../../../modules/frontend-knowledge-draft/src/index.js';
@@ -29,6 +33,7 @@ import {
   type ReviewTransactionRepositoriesV1,
 } from '../../../modules/frontend-review/src/index.js';
 import type { PostgresFrontendKnowledgeDraftRepository } from '../../frontend-knowledge-draft-postgres/src/index.js';
+import type { FrontendKnowledgeDraftDiscoveryRelationAuthorityPort } from '../../../modules/frontend-knowledge-draft/src/product-api.js';
 
 type DiscoveryResourceRow = {
   readonly resource: unknown;
@@ -170,8 +175,343 @@ const decodeSourceRow = (
   }
 };
 
-export class PostgresDiscoveryAuthoringBridge implements FrontendReviewAcceptedForAuthoringBridgeV1 {
+type ApprovedEndpointAuthority = {
+  readonly endpoint: ApprovedKnowledgeEntityRefV1;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+};
+
+const resolveApprovedEndpointAuthority = async (input: {
+  readonly transaction: PoolClient;
+  readonly ref: DiscoveryResourceRefV1;
+  readonly projectId: string;
+  readonly actorAccessScope: readonly string[];
+  readonly actorSensitivity: string;
+}): Promise<ApprovedEndpointAuthority> => {
+  const endpoint = requireApprovedEntityRef(input.ref, input.projectId, {
+    activeProjectId: input.projectId,
+  } as FrontendReviewScopeV1);
+  const result = await input.transaction.query<ApprovedReviewGroupRow>(
+    `SELECT group_id, access_scope, sensitivity, items
+       FROM knowledge.review_groups
+      WHERE project_id = $1
+        AND status = 'APPROVED'
+        AND items @> $2::jsonb
+      FOR SHARE`,
+    [
+      input.projectId,
+      JSON.stringify([
+        {
+          candidateId: endpoint.ref.resourceId,
+          candidateType: 'ENTITY',
+          revisionNumber: endpoint.revision,
+        },
+      ]),
+    ],
+  );
+  const matches = result.rows.filter((group) => {
+    const items = parseJson(group.items);
+    return (
+      sensitivityRank(group.sensitivity) !== Number.MAX_SAFE_INTEGER &&
+      Array.isArray(items) &&
+      items.some(
+        (item) =>
+          item !== null &&
+          typeof item === 'object' &&
+          (item as Record<string, unknown>).candidateId === endpoint.ref.resourceId &&
+          (item as Record<string, unknown>).candidateType === 'ENTITY' &&
+          (item as Record<string, unknown>).revisionNumber === endpoint.revision,
+      )
+    );
+  });
+  if (matches.length !== 1) failEndpoint();
+  const group = matches[0]!;
+  const actorSensitivityRank = sensitivityRank(input.actorSensitivity);
+  if (
+    actorSensitivityRank === Number.MAX_SAFE_INTEGER ||
+    !group.access_scope.every((entry) => input.actorAccessScope.includes(entry)) ||
+    sensitivityRank(group.sensitivity) > actorSensitivityRank
+  ) {
+    failEndpoint();
+  }
+  return {
+    endpoint: {
+      projectId: input.projectId,
+      authority: 'APPROVED_KNOWLEDGE',
+      resourceType: 'ENTITY',
+      resourceId: endpoint.ref.resourceId,
+      resourceRevision: endpoint.revision,
+    },
+    accessScope: group.access_scope,
+    sensitivity: group.sensitivity as ApprovedEndpointAuthority['sensitivity'],
+  };
+};
+
+export class PostgresDiscoveryAuthoringBridge
+  implements
+    FrontendReviewAcceptedForAuthoringBridgeV1,
+    FrontendKnowledgeDraftDiscoveryRelationAuthorityPort
+{
   constructor(private readonly draftRepository: PostgresFrontendKnowledgeDraftRepository) {}
+
+  async revalidateRelation(input: {
+    readonly transaction?: unknown;
+    readonly scope: {
+      readonly principalId: string;
+      readonly sessionId: string;
+      readonly activeProjectId: string;
+      readonly accessRevision: string;
+      readonly policyContextRevision: string;
+      readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
+      readonly accessScope: readonly string[];
+    };
+    readonly draft: FrontendKnowledgeDraftChangeSetV1;
+    readonly operation: Extract<FrontendKnowledgeOperationV1, { readonly kind: 'RELATION_ADD' }>;
+  }): Promise<{
+    readonly expectedOperation: Extract<
+      FrontendKnowledgeOperationV1,
+      { readonly kind: 'RELATION_ADD' }
+    >;
+    readonly provenance: DiscoveryDraftProvenanceV1;
+    readonly accessScope: readonly string[];
+    readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  }> {
+    const provenance = input.draft.discoveryProvenance;
+    if (provenance === undefined) {
+      reviewFailure(
+        'UNSUPPORTED_OPERATION',
+        'A relation commit requires server-owned Discovery provenance.',
+      );
+    }
+    const client = input.transaction;
+    if (!client || typeof client !== 'object' || !('query' in client)) {
+      reviewFailure(
+        'UNSUPPORTED_OPERATION',
+        'Final Discovery relation validation requires the PostgreSQL transaction.',
+      );
+    }
+    const transaction = client as PoolClient;
+    const reviewRevision = provenance.review.reviewResourceRevision;
+    const resourceResult = await transaction.query<DiscoveryResourceRow>(
+      `SELECT resource, candidate
+         FROM discovery.reentry_review_resources
+         JOIN discovery.reentry_candidates candidate
+           ON candidate.project_id = discovery.reentry_review_resources.project_id
+          AND candidate.candidate_id = discovery.reentry_review_resources.candidate_id
+          AND candidate.candidate_revision = discovery.reentry_review_resources.candidate_revision
+        WHERE discovery.reentry_review_resources.project_id = $1
+          AND discovery.reentry_review_resources.review_resource_id = $2
+          AND discovery.reentry_review_resources.resource_revision = $3
+          AND discovery.reentry_review_resources.origin = 'DERIVED_DISCOVERY'
+          AND discovery.reentry_review_resources.lifecycle_state = 'REVIEW_READY'
+          AND discovery.reentry_review_resources.review_eligibility = 'ELIGIBLE_AFTER_VALIDATION'
+        FOR SHARE`,
+      [input.scope.activeProjectId, provenance.review.reviewResourceId, reviewRevision],
+    );
+    const row = resourceResult.rows[0];
+    const decoded = row === undefined ? undefined : decodeSourceRow(row);
+    if (decoded === undefined) return failInvalidSource();
+    const { resource, candidate } = decoded;
+    if (
+      resource.projectId !== input.scope.activeProjectId ||
+      resource.reviewResourceId !== provenance.review.reviewResourceId ||
+      resource.resourceRevision !== reviewRevision ||
+      resource.contentDigest !== provenance.review.resourceDigest ||
+      resource.findingId !== provenance.finding.findingId ||
+      resource.findingRevision !== provenance.finding.findingRevision ||
+      resource.manifestId !== provenance.reentry.manifestId ||
+      resource.candidateId !== provenance.reentry.candidateId ||
+      resource.candidateRevision !== provenance.reentry.candidateRevision ||
+      candidate.candidateId !== provenance.reentry.candidateId ||
+      candidate.candidateRevision !== provenance.reentry.candidateRevision ||
+      resource.sourceProjectionDigest !== provenance.sourceProjectionDigest ||
+      stableJson(resource.canonicalBase) !== stableJson(provenance.canonicalBase) ||
+      stableJson(resource.evidenceLineage) !==
+        stableJson(
+          provenance.evidenceLineage.map((entry) => ({
+            schemaVersion: resource.schemaVersion,
+            evidenceId: entry.evidenceId,
+            ...(entry.sourceId === undefined ? {} : { sourceId: entry.sourceId }),
+            ...(entry.sourceVersionId === undefined
+              ? {}
+              : { sourceVersionId: entry.sourceVersionId }),
+            ...(entry.evidenceSpanId === undefined ? {} : { evidenceSpanId: entry.evidenceSpanId }),
+          })),
+        ) ||
+      stableJson(resource.validationResult) !==
+        stableJson({
+          ...resource.validationResult,
+          digest: provenance.validation.digest,
+          artifactId: provenance.validation.artifactId,
+          artifactRevision: provenance.validation.artifactRevision,
+        }) ||
+      stableJson(resource.derivationProvenance) !== stableJson(provenance.derivationProvenance)
+    ) {
+      failInvalidSource();
+    }
+    const material = readRelationMaterial(resource);
+    const from = await resolveApprovedEndpointAuthority({
+      transaction,
+      ref: material.fromResource,
+      projectId: resource.projectId,
+      actorAccessScope: input.scope.accessScope,
+      actorSensitivity: input.scope.sensitivityClearance,
+    });
+    const to = await resolveApprovedEndpointAuthority({
+      transaction,
+      ref: material.toResource,
+      projectId: resource.projectId,
+      actorAccessScope: input.scope.accessScope,
+      actorSensitivity: input.scope.sensitivityClearance,
+    });
+    if (stableJson(provenance.approvedEntityRefs) !== stableJson([from.endpoint, to.endpoint])) {
+      failEndpoint();
+    }
+    const security = composeDiscoveryFindingSecurityV1({
+      findingProjectId: resource.projectId,
+      resources: [
+        {
+          projectId: resource.projectId,
+          accessScope: resource.accessScope,
+          sensitivity: resource.sensitivity,
+        },
+        {
+          projectId: resource.projectId,
+          accessScope: from.accessScope,
+          sensitivity: from.sensitivity,
+        },
+        {
+          projectId: resource.projectId,
+          accessScope: to.accessScope,
+          sensitivity: to.sensitivity,
+        },
+      ],
+      executionContext: {
+        projectId: resource.projectId,
+        accessScope: resource.accessScope,
+        sensitivity: resource.sensitivity,
+      },
+    });
+    if (!security.materializable) return failEndpoint();
+    if (
+      !security.accessScope.every((entry) => input.scope.accessScope.includes(entry)) ||
+      sensitivityRank(security.sensitivity) > sensitivityRank(input.scope.sensitivityClearance)
+    ) {
+      failEndpoint();
+    }
+    const stateResult = await transaction.query<CanonicalStateRow>(
+      `SELECT version, snapshot_digest
+         FROM canonical.project_state
+        WHERE project_id = $1
+        FOR SHARE`,
+      [resource.projectId],
+    );
+    const state = stateResult.rows[0];
+    if (
+      state === undefined ||
+      state.version !== provenance.canonicalBase.canonicalVersion ||
+      state.snapshot_digest !== provenance.canonicalBase.snapshotDigest
+    ) {
+      reviewFailure('STALE', 'The Discovery canonical base is stale.');
+    }
+    const temporal = material.temporalQualification;
+    const relation: RelationDraftValueV2 = {
+      schemaVersion: 'relation.v2',
+      relationType: text(material.relationType, 'relationType'),
+      fromEndpoint: from.endpoint,
+      toEndpoint: to.endpoint,
+      direction: material.direction,
+      ...(temporal?.validFrom === undefined ? {} : { validFrom: temporal.validFrom }),
+      ...(temporal?.validTo === undefined ? {} : { validTo: temporal.validTo }),
+      rationale: text(material.rationale, 'relation rationale'),
+    };
+    const evidenceReferences = resource.evidenceLineage.map((entry) => {
+      if (
+        entry.sourceId === undefined ||
+        entry.sourceVersionId === undefined ||
+        entry.evidenceSpanId === undefined
+      ) {
+        reviewFailure('VALIDATION_FAILED', 'Discovery Evidence lineage is incomplete.');
+      }
+      return {
+        sourceId: entry.sourceId,
+        sourceVersionId: entry.sourceVersionId,
+        evidenceSpanId: entry.evidenceSpanId,
+      };
+    });
+    const identity = {
+      bridgeVersion: 'adr-152.wp2a.v1' as const,
+      reviewContextId: provenance.review.reviewContextId,
+      contextRevision: provenance.review.contextRevision,
+      reviewResourceId: resource.reviewResourceId,
+      reviewResourceRevision: resource.resourceRevision,
+      candidateId: candidate.candidateId,
+      candidateRevision: candidate.candidateRevision,
+      canonicalVersion: state.version,
+      canonicalSnapshotDigest: state.snapshot_digest,
+    };
+    const identityDigest = sha256Text(stableJson(identity));
+    const expectedMaterializationId = `materialization:discovery-authoring:${identityDigest}`;
+    const expectedOperation = {
+      operationId: `operation:discovery-relation:${identityDigest}`,
+      baseRevision: state.version,
+      rationale: relation.rationale,
+      evidenceReferences,
+      expectedImpact: {
+        summary: resource.content.expectedImpact ?? resource.content.summary,
+        targetIds: [from.endpoint.resourceId, to.endpoint.resourceId],
+      },
+      operationRevision: input.operation.operationRevision,
+      target: { targetType: 'RELATION' as const, resourceId: resource.reviewResourceId },
+      kind: 'RELATION_ADD' as const,
+      after: relation,
+      contentDigest: '',
+    };
+    expectedOperation.contentDigest = frontendKnowledgeDraftOperationDigestV1(expectedOperation);
+    if (provenance.materializationId !== expectedMaterializationId) failInvalidSource();
+    const expectedProvenance: DiscoveryDraftProvenanceV1 = {
+      schemaVersion: 'discovery-draft-provenance.v1',
+      finding: {
+        projectId: resource.projectId,
+        findingId: resource.findingId,
+        findingRevision: resource.findingRevision,
+      },
+      reentry: {
+        manifestId: resource.manifestId,
+        candidateId: candidate.candidateId,
+        candidateRevision: candidate.candidateRevision,
+      },
+      review: {
+        reviewContextId: provenance.review.reviewContextId,
+        contextRevision: provenance.review.contextRevision,
+        reviewResourceId: resource.reviewResourceId,
+        reviewResourceRevision: resource.resourceRevision,
+        resourceDigest: resource.contentDigest,
+      },
+      validation: {
+        artifactId: resource.validationResult.artifactId,
+        artifactRevision: resource.validationResult.artifactRevision,
+        digest: resource.validationResult.digest,
+      },
+      canonicalBase: {
+        canonicalVersion: state.version,
+        snapshotDigest: state.snapshot_digest,
+      },
+      sourceProjectionDigest: resource.sourceProjectionDigest,
+      evidenceLineage: resource.evidenceLineage,
+      approvedEntityRefs: [from.endpoint, to.endpoint],
+      derivationProvenance: resource.derivationProvenance,
+      bridgeVersion: 'adr-152.wp2a.v1',
+      materializationId: expectedMaterializationId,
+    };
+    if (!security.materializable) return failEndpoint();
+    return {
+      expectedOperation,
+      provenance: expectedProvenance,
+      accessScope: security.accessScope,
+      sensitivity: security.sensitivity,
+    };
+  }
 
   async materialize(input: {
     readonly transaction: unknown;

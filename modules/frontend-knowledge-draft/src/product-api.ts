@@ -13,6 +13,7 @@ import {
   frontendKnowledgeDraftStartSeedlessDigest,
   frontendKnowledgeDraftSubmitDraftForReviewDigest,
   frontendKnowledgeDraftValidateDigest,
+  canonicalRelationLogicalIdentityV1,
   reviewApprovalManifestDigest,
   sha256Text,
   stableJson,
@@ -35,6 +36,7 @@ import {
   type FrontendKnowledgeDraftCommandType,
   type FrontendKnowledgeOperationV1,
   type RelationDraftValueV2,
+  type DiscoveryDraftProvenanceV1,
   frontendKnowledgeDraftRevisionDigest,
   type Actor,
   type GenerateKnowledgeDraftImpactRequestV1,
@@ -63,6 +65,9 @@ import {
   persistFrontendKnowledgeDraftRevisionOn,
   persistFrontendKnowledgeDraftTransitionOn,
   transitionFrontendKnowledgeDraftStatus,
+  assertFrontendKnowledgeDraftDiscoveryRelationBinding,
+  frontendKnowledgeDraftDiscoveryRelationSemanticV1,
+  frontendKnowledgeDraftOperationDigestV1,
   type DraftMaterializationRecordV1,
   type DraftMaterializationTargetV1,
   type FrontendKnowledgeDraftRepositoryBoundaryPort,
@@ -410,6 +415,25 @@ export type FrontendKnowledgeDraftCanonicalCommitPort = {
 export type FrontendKnowledgeDraftCommitDependenciesV1 = {
   readonly approvals: FrontendKnowledgeDraftApprovalCommitPort;
   readonly canonical: FrontendKnowledgeDraftCanonicalCommitPort;
+  /** Server-only Discovery authority used for the final relation commit read. */
+  readonly discoveryRelationAuthority?: FrontendKnowledgeDraftDiscoveryRelationAuthorityPort;
+};
+
+export type FrontendKnowledgeDraftDiscoveryRelationAuthorityPort = {
+  revalidateRelation(input: {
+    readonly transaction?: unknown;
+    readonly scope: FrontendKnowledgeDraftCommandScopeV1;
+    readonly draft: FrontendKnowledgeDraftChangeSetV1;
+    readonly operation: Extract<FrontendKnowledgeOperationV1, { readonly kind: 'RELATION_ADD' }>;
+  }): Promise<{
+    readonly expectedOperation: Extract<
+      FrontendKnowledgeOperationV1,
+      { readonly kind: 'RELATION_ADD' }
+    >;
+    readonly provenance: DiscoveryDraftProvenanceV1;
+    readonly accessScope: readonly string[];
+    readonly sensitivity: FrontendKnowledgeDraftSensitivityClearance;
+  }>;
 };
 
 /**
@@ -436,6 +460,7 @@ const operationByReviewItemId = (
 const approvedClaimableOperation = (input: {
   readonly operations: readonly FrontendKnowledgeOperationV1[];
   readonly approvedItemIds: readonly string[];
+  readonly discoveryProvenance?: DiscoveryDraftProvenanceV1;
 }): { readonly claimReviewItemId?: string; readonly relationReviewItemId?: string } => {
   const resolved: { reviewItemId: string; operation: FrontendKnowledgeOperationV1 }[] = [];
   for (const reviewItemId of input.approvedItemIds) {
@@ -458,7 +483,9 @@ const approvedClaimableOperation = (input: {
     }
     if (
       operation.kind === 'RELATION_ADD' &&
-      (operation.after.schemaVersion !== 'relation.v2' || operation.before !== undefined)
+      (operation.after.schemaVersion !== 'relation.v2' ||
+        operation.before !== undefined ||
+        input.discoveryProvenance?.bridgeVersion !== 'adr-152.wp2a.v1')
     ) {
       throw new FrontendKnowledgeDraftCommandError(
         'UNSUPPORTED_OPERATION',
@@ -1050,6 +1077,9 @@ export class FrontendKnowledgeDraftProductCoordinator {
       readonly draft: FrontendKnowledgeDraftChangeSetV1;
       readonly approval: ReviewApprovalV1;
       readonly canonicalSnapshot: CanonicalSnapshot;
+      readonly relationAuthority?: Awaited<
+        ReturnType<FrontendKnowledgeDraftDiscoveryRelationAuthorityPort['revalidateRelation']>
+      >;
     }> => {
       const now = new Date().toISOString();
       const draft = input.draft;
@@ -1065,6 +1095,10 @@ export class FrontendKnowledgeDraftProductCoordinator {
           'Only a submitted Draft can be committed to Canonical.',
         );
       }
+      assertFrontendKnowledgeDraftDiscoveryRelationBinding({
+        current: draft,
+        operations: draft.operations,
+      });
       const submission = draft.reviewSubmission;
       if (!submission) {
         draftFailure('NOT_READY_FOR_REVIEW', 'The Draft review submission is incomplete.');
@@ -1157,7 +1191,61 @@ export class FrontendKnowledgeDraftProductCoordinator {
           draftFailure('STALE_APPROVAL', 'The Canonical snapshot changed after approval.');
         }
       }
-      return { draft, approval, canonicalSnapshot };
+      const relationOperation = draft.operations.find(
+        (
+          operation,
+        ): operation is Extract<FrontendKnowledgeOperationV1, { readonly kind: 'RELATION_ADD' }> =>
+          operation.kind === 'RELATION_ADD',
+      );
+      let relationAuthority:
+        | Awaited<
+            ReturnType<FrontendKnowledgeDraftDiscoveryRelationAuthorityPort['revalidateRelation']>
+          >
+        | undefined;
+      if (relationOperation?.after.schemaVersion === 'relation.v2' && input.mode !== 'RESOLVE') {
+        const provenance = draft.discoveryProvenance;
+        if (
+          provenance === undefined ||
+          provenance.bridgeVersion !== 'adr-152.wp2a.v1' ||
+          approval.reviewContextId !== provenance.review.reviewContextId ||
+          approval.contextRevision !== provenance.review.contextRevision
+        ) {
+          draftFailure(
+            'UNSUPPORTED_OPERATION',
+            'A relation.v2 Canonical commit requires the exact server Discovery materialization.',
+          );
+        }
+        const authority = dependencies.discoveryRelationAuthority;
+        if (authority === undefined) {
+          draftFailure(
+            'UNSUPPORTED_OPERATION',
+            'The Discovery relation authority is unavailable for final commit validation.',
+          );
+        }
+        relationAuthority = await authority.revalidateRelation({
+          transaction: input.transaction,
+          scope,
+          draft,
+          operation: relationOperation,
+        });
+        if (
+          stableJson(frontendKnowledgeDraftDiscoveryRelationSemanticV1(relationOperation)) !==
+            stableJson(
+              frontendKnowledgeDraftDiscoveryRelationSemanticV1(
+                relationAuthority.expectedOperation,
+              ),
+            ) ||
+          stableJson(provenance) !== stableJson(relationAuthority.provenance) ||
+          frontendKnowledgeDraftOperationDigestV1(relationOperation) !==
+            relationOperation.contentDigest
+        ) {
+          draftFailure(
+            'DIGEST_MISMATCH',
+            'The persisted Discovery relation operation no longer matches authoritative Review.',
+          );
+        }
+      }
+      return { draft, approval, canonicalSnapshot, relationAuthority };
     };
     const commitCanonical = async (
       transaction: unknown | undefined,
@@ -1191,11 +1279,15 @@ export class FrontendKnowledgeDraftProductCoordinator {
       readonly draft: FrontendKnowledgeDraftChangeSetV1;
       readonly approval: ReviewApprovalV1;
       readonly canonicalSnapshot: CanonicalSnapshot;
+      readonly relationAuthority?: Awaited<
+        ReturnType<FrontendKnowledgeDraftDiscoveryRelationAuthorityPort['revalidateRelation']>
+      >;
       readonly now: string;
     }): FrontendCanonicalCommitWrite => {
       const claimable = approvedClaimableOperation({
         operations: input.draft.operations,
         approvedItemIds: input.approval.approvedItemIds,
+        discoveryProvenance: input.draft.discoveryProvenance,
       });
       const authority: FrontendCanonicalAuthorityV1 = {
         kind: 'FRONTEND_REVIEW_APPROVAL',
@@ -1278,17 +1370,21 @@ export class FrontendKnowledgeDraftProductCoordinator {
           );
         }
         const relation = relationOperation.after as RelationDraftValueV2;
-        const logicalIdentityKey = `canonical-relation:v1:${sha256Text(
-          stableJson({
-            projectId: input.draft.resourceProjectId,
-            relationType: relation.relationType,
-            fromEndpoint: relation.fromEndpoint,
-            toEndpoint: relation.toEndpoint,
-            direction: relation.direction,
-            ...(relation.validFrom === undefined ? {} : { validFrom: relation.validFrom }),
-            ...(relation.validTo === undefined ? {} : { validTo: relation.validTo }),
-          }),
-        )}`;
+        if (input.relationAuthority === undefined) {
+          draftFailure(
+            'UNSUPPORTED_OPERATION',
+            'The Discovery relation authority is required before Canonical commit.',
+          );
+        }
+        const logicalIdentityKey = canonicalRelationLogicalIdentityV1({
+          projectId: input.draft.resourceProjectId,
+          relationType: relation.relationType,
+          fromEndpoint: relation.fromEndpoint,
+          toEndpoint: relation.toEndpoint,
+          direction: relation.direction,
+          ...(relation.validFrom === undefined ? {} : { validFrom: relation.validFrom }),
+          ...(relation.validTo === undefined ? {} : { validTo: relation.validTo }),
+        });
         return {
           ...base,
           commitId,
@@ -1305,8 +1401,8 @@ export class FrontendKnowledgeDraftProductCoordinator {
           ...(relation.validFrom === undefined ? {} : { validFrom: relation.validFrom }),
           ...(relation.validTo === undefined ? {} : { validTo: relation.validTo }),
           evidenceIds: relationOperation.evidenceReferences.map((ref) => ref.evidenceSpanId),
-          accessScope: [...scope.accessScope],
-          sensitivity: scope.sensitivityClearance,
+          accessScope: [...input.relationAuthority.accessScope],
+          sensitivity: input.relationAuthority.sensitivity,
           ...(input.draft.discoveryProvenance === undefined
             ? {}
             : {
@@ -1337,11 +1433,17 @@ export class FrontendKnowledgeDraftProductCoordinator {
         if (!current) {
           draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
         }
-        const { draft, approval, canonicalSnapshot } = await revalidated({
+        const { draft, approval, canonicalSnapshot, relationAuthority } = await revalidated({
           draft: current,
           transaction,
         });
-        const write = buildWrite({ draft, approval, canonicalSnapshot, now });
+        const write = buildWrite({
+          draft,
+          approval,
+          canonicalSnapshot,
+          relationAuthority,
+          now,
+        });
         // Order per §3.2: durable Canonical commit → Approval CONSUMED → the
         // runCommand envelope completes the ledger command afterwards.
         const result = await commitCanonical(transaction, write);
@@ -1351,14 +1453,14 @@ export class FrontendKnowledgeDraftProductCoordinator {
       onReplay: async () => {
         // Ledger says COMPLETED: resolve the same commit identity without
         // re-executing side effects (the Approval may already be CONSUMED).
-        const now = new Date().toISOString();
         const draft = await this.draftById(scope.activeProjectId, request.draftId);
         if (!draft) {
           draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
         }
-        const { approval, canonicalSnapshot } = await revalidated({ draft, mode: 'RESOLVE' });
-        const write = buildWrite({ draft, approval, canonicalSnapshot, now });
-        return commitResult({ canonicalCommitId: write.commitId });
+        const { approval } = await revalidated({ draft, mode: 'RESOLVE' });
+        return commitResult({
+          canonicalCommitId: deterministicCanonicalCommitId(approval.approvalId, draft.draftId),
+        });
       },
       onReplayRecovery: async (originalCommandId, repositories, transaction) => {
         // Crash recovery (GPT Round 2 #1, Round 3): recovery MUST first branch
@@ -1420,7 +1522,11 @@ export class FrontendKnowledgeDraftProductCoordinator {
         // No durable commit: the crash happened before the commit. Run the full
         // REVALIDATE chain (Approval ACTIVE/expiry/revision + Draft base ==
         // current Canonical + binding digests) and only then commit normally.
-        const { approval: revalidatedApproval, canonicalSnapshot } = await revalidated({
+        const {
+          approval: revalidatedApproval,
+          canonicalSnapshot,
+          relationAuthority,
+        } = await revalidated({
           draft: current,
           mode: 'REVALIDATE',
           transaction,
@@ -1429,6 +1535,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
           draft: current,
           approval: revalidatedApproval,
           canonicalSnapshot,
+          relationAuthority,
           now,
         });
         const result = await commitCanonical(transaction, write);

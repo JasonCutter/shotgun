@@ -2,6 +2,7 @@ import {
   FrontendKnowledgeDraftCommandError,
   FRONTEND_KNOWLEDGE_DRAFT_DOMAIN_VERSION,
   frontendKnowledgeDraftRevisionDigest,
+  sha256Text,
   stableJson,
   type FrontendKnowledgeDraftBaseV1,
   type FrontendKnowledgeDraftChangeSetV1,
@@ -170,6 +171,82 @@ export type AppendFrontendKnowledgeDraftRevisionInputV1 = {
   readonly updatedAt: string;
 };
 
+const isDiscoveryRelationOperation = (operation: FrontendKnowledgeOperationV1): boolean =>
+  operation.kind === 'RELATION_ADD' && operation.after.schemaVersion === 'relation.v2';
+
+/** Shared operation digest for the server-materialized relation.v2 shape. */
+export const frontendKnowledgeDraftOperationDigestV1 = (
+  operation: FrontendKnowledgeOperationV1,
+): string =>
+  sha256Text(
+    stableJson({
+      operationId: operation.operationId,
+      baseRevision: operation.baseRevision,
+      rationale: operation.rationale,
+      evidenceReferences: operation.evidenceReferences,
+      expectedImpact: operation.expectedImpact,
+      operationRevision: operation.operationRevision,
+      target: operation.target,
+      kind: operation.kind,
+      ...(operation.before === undefined ? {} : { before: operation.before }),
+      ...(operation.after === undefined ? {} : { after: operation.after }),
+    }),
+  );
+
+export const frontendKnowledgeDraftDiscoveryRelationSemanticV1 = (
+  operation: FrontendKnowledgeOperationV1,
+): unknown => ({
+  operationId: operation.operationId,
+  baseRevision: operation.baseRevision,
+  rationale: operation.rationale,
+  evidenceReferences: operation.evidenceReferences,
+  expectedImpact: operation.expectedImpact,
+  target: operation.target,
+  kind: operation.kind,
+  ...(operation.before === undefined ? {} : { before: operation.before }),
+  ...(operation.after === undefined ? {} : { after: operation.after }),
+});
+
+/**
+ * A Discovery-derived relation is an immutable server materialization. A
+ * browser may advance operation revision metadata, but cannot replace its
+ * identity, endpoints, semantics, rationale, impact, or Evidence lineage.
+ */
+export const assertFrontendKnowledgeDraftDiscoveryRelationBinding = (input: {
+  readonly current: FrontendKnowledgeDraftChangeSetV1;
+  readonly operations: readonly FrontendKnowledgeOperationV1[];
+}): void => {
+  const currentRelations = input.current.operations.filter(isDiscoveryRelationOperation);
+  const nextRelations = input.operations.filter(isDiscoveryRelationOperation);
+  if (nextRelations.length > 0 && input.current.discoveryProvenance === undefined) {
+    domainFailure(
+      'UNSUPPORTED_OPERATION',
+      'A relation.v2 operation is accepted only on a server-materialized Discovery Draft.',
+    );
+  }
+  if (input.current.discoveryProvenance === undefined) return;
+  if (
+    currentRelations.length !== 1 ||
+    nextRelations.length !== 1 ||
+    input.operations.length !== input.current.operations.length ||
+    stableJson(frontendKnowledgeDraftDiscoveryRelationSemanticV1(currentRelations[0]!)) !==
+      stableJson(frontendKnowledgeDraftDiscoveryRelationSemanticV1(nextRelations[0]!))
+  ) {
+    domainFailure(
+      'VALIDATION_FAILED',
+      'The server-materialized Discovery relation operation is immutable.',
+    );
+  }
+  if (
+    frontendKnowledgeDraftOperationDigestV1(nextRelations[0]!) !== nextRelations[0]!.contentDigest
+  ) {
+    domainFailure(
+      'VALIDATION_FAILED',
+      'The server-materialized Discovery relation operation digest is invalid.',
+    );
+  }
+};
+
 export type MaterializeFrontendKnowledgeDraftInputV1 = {
   readonly draft: FrontendKnowledgeDraftChangeSetV1;
   readonly materialization: DraftMaterializationRecordV1;
@@ -206,7 +283,8 @@ const domainFailure = (
     | 'DIGEST_MISMATCH'
     | 'PROJECT_BINDING_CONFLICT'
     | 'STALE'
-    | 'VALIDATION_FAILED',
+    | 'VALIDATION_FAILED'
+    | 'UNSUPPORTED_OPERATION',
   message: string,
 ): never => {
   throw new FrontendKnowledgeDraftCommandError(code, message);
@@ -355,6 +433,10 @@ export const appendFrontendKnowledgeDraftRevision = (
     domainFailure('DRAFT_REVISION_CONFLICT', 'Operation revision must follow Draft revision.');
   }
   assertOperationRevision(input.operations, input.expectedBaseRevision, input.operationRevision);
+  assertFrontendKnowledgeDraftDiscoveryRelationBinding({
+    current,
+    operations: input.operations,
+  });
   const expectedDigest = frontendKnowledgeDraftRevisionDigest({
     draftId: current.draftId,
     revision: nextRevision,
@@ -382,6 +464,9 @@ export const appendFrontendKnowledgeDraftRevision = (
     resourceId: current.resourceId,
     base: current.base,
     operations: input.operations,
+    ...(current.discoveryProvenance === undefined
+      ? {}
+      : { discoveryProvenance: current.discoveryProvenance }),
     contentDigest: input.contentDigest,
     createdAt: current.createdAt,
     updatedAt: input.updatedAt,

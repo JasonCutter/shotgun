@@ -5,6 +5,7 @@ import type {
 } from '../../../modules/canonical-knowledge/src/index.js';
 import {
   canonicalSnapshotDigest,
+  canonicalRelationLogicalIdentityV1,
   type CanonicalClaim,
   type CanonicalCommitResult,
   type CanonicalHistoryEvent,
@@ -92,6 +93,16 @@ export class InMemoryCanonicalKnowledgeRepository
       digest: state.digest,
       claims,
       ...(relations.length === 0 ? {} : { relations }),
+      ...(() => {
+        const links = [...this.relationPrecursorLinks.values()]
+          .filter((link) => link.projectId === projectId)
+          .sort((left, right) =>
+            `${left.reviewResourceId}:${left.reviewResourceRevision}`.localeCompare(
+              `${right.reviewResourceId}:${right.reviewResourceRevision}`,
+            ),
+          );
+        return links.length === 0 ? {} : { relationPrecursorLinks: links };
+      })(),
       createdAt: state.updatedAt,
     });
   }
@@ -378,6 +389,17 @@ export class InMemoryCanonicalKnowledgeRepository
             relationRevision: relation.revisionNumber,
             linkedAt: relation.createdAt,
           };
+    if (
+      relation !== undefined &&
+      canonicalRelationLogicalIdentityV1(relation) !== relation.logicalIdentityKey
+    ) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'The Canonical Relation logical identity is invalid.',
+        module: 'stage6-in-memory',
+        operation: 'commit-frontend-draft',
+      });
+    }
     const afterClaims = claim
       ? [
           ...before.claims,
@@ -704,6 +726,7 @@ export class InMemoryCanonicalKnowledgeRepository
     return stableJson({
       states: [...this.states.entries()],
       claims: [...this.claims.entries()],
+      relations: [...this.relations.entries()],
       commits: [...this.commits.entries()],
       relationPrecursorLinks: [...this.relationPrecursorLinks.entries()],
       revisions: [...this.revisions.entries()],

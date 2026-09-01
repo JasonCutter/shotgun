@@ -92,16 +92,16 @@ ADR.
 
 ### 2.4 Canonical and downstream audit
 
-| Repository surface                                        | Current state                                                                                                                                 | Required later boundary                                                                                   |
-| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `packages/contracts/src/canonical-knowledge.ts:4-150`     | Frontend authority, result, revision, History, and `CanonicalCommitted` payload are Claim/No-op shaped.                                       | Add versioned `ADD_RELATION` and relation identity fields only under a later approved contract change.    |
-| `modules/canonical-knowledge/src/index.ts:49-88, 225-254` | Repository Port exposes `commitFrontendDraft`, commit lookup, History and one Canonical outbox dispatcher.                                    | Extend the existing Port/outbox; do not create a second relation outbox.                                  |
-| `adapters/postgres-stage6/src/index.ts:369-633`           | Transaction locks `canonical.project_state`, checks replay and stale base, persists Claim/commit/revision/History/outbox, and advances state. | Preserve this atomic order for a future Stage 6 `ADD_RELATION` branch.                                    |
-| `modules/compiled-truth`                                  | Readiness and projection are derived from server-owned Canonical/base watermarks; it rejects a non-ready source.                              | Project Canonical Relation only after `CanonicalCommitted`; never promote a Discovery candidate to truth. |
-| semantic corpus and retrieval projection                  | Existing AKP-1/semantic contracts treat derived indexes as rebuildable projections, not Evidence/Fact/Canonical.                              | Consume the Canonical Relation identity and source watermark; keep relation provenance inspectable.       |
-| Knowledge Workspace and Graph                             | Existing Product/Graph boundaries distinguish staged/derived overlays from Canonical state.                                                   | Use Canonical `relationId/revisionNumber` as authority and projection key; no UI-only dedupe.             |
-| Discovery runtime/re-entry adapter                        | `DiscoveryReviewResourceV1` is validated, persisted and reconciled through Finding/manifest/resource lineage.                                 | Reconcile the original hypothesis to `RESOLVED`, `STALE`, or `SUPERSEDED` after the Canonical result.     |
-| backup/restore/project deletion/audit retention           | Existing governed retention and recovery policies cover durable Finding, Review, Draft, Approval, History and outbox records.                 | Include `canonical.relations`, `canonical.relation_precursors`, and their provenance under the same policies; no second framework.            |
+| Repository surface                                        | Current state                                                                                                                                 | Required later boundary                                                                                                            |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/contracts/src/canonical-knowledge.ts:4-150`     | Frontend authority, result, revision, History, and `CanonicalCommitted` payload are Claim/No-op shaped.                                       | Add versioned `ADD_RELATION` and relation identity fields only under a later approved contract change.                             |
+| `modules/canonical-knowledge/src/index.ts:49-88, 225-254` | Repository Port exposes `commitFrontendDraft`, commit lookup, History and one Canonical outbox dispatcher.                                    | Extend the existing Port/outbox; do not create a second relation outbox.                                                           |
+| `adapters/postgres-stage6/src/index.ts:369-633`           | Transaction locks `canonical.project_state`, checks replay and stale base, persists Claim/commit/revision/History/outbox, and advances state. | Preserve this atomic order for a future Stage 6 `ADD_RELATION` branch.                                                             |
+| `modules/compiled-truth`                                  | Readiness and projection are derived from server-owned Canonical/base watermarks; it rejects a non-ready source.                              | Project Canonical Relation only after `CanonicalCommitted`; never promote a Discovery candidate to truth.                          |
+| semantic corpus and retrieval projection                  | Existing AKP-1/semantic contracts treat derived indexes as rebuildable projections, not Evidence/Fact/Canonical.                              | Consume the Canonical Relation identity and source watermark; keep relation provenance inspectable.                                |
+| Knowledge Workspace and Graph                             | Existing Product/Graph boundaries distinguish staged/derived overlays from Canonical state.                                                   | Use Canonical `relationId/revisionNumber` as authority and projection key; no UI-only dedupe.                                      |
+| Discovery runtime/re-entry adapter                        | `DiscoveryReviewResourceV1` is validated, persisted and reconciled through Finding/manifest/resource lineage.                                 | Reconcile the original hypothesis to `RESOLVED`, `STALE`, or `SUPERSEDED` after the Canonical result.                              |
+| backup/restore/project deletion/audit retention           | Existing governed retention and recovery policies cover durable Finding, Review, Draft, Approval, History and outbox records.                 | Include `canonical.relations`, `canonical.relation_precursors`, and their provenance under the same policies; no second framework. |
 
 ## 3. Architecture decision recorded by ADR-152
 
@@ -426,3 +426,74 @@ request on the existing open Draft PR #157. The implementation record is:
   Golden Corpus, complete security/replay/replacement, migration/rollback
   exercise, UI, and final acceptance evidence remain review gates and are not
   claimed complete by this record.
+
+## 12. GPT correction record — 2026-09-01
+
+The pre-merge correction request was applied on the same guarded branch and PR.
+The following authority and fail-closed gaps are now covered:
+
+- ordinary Draft Save rejects a browser-injected `relation.v2` operation unless
+  the current persisted Draft contains the exact server-owned Discovery
+  provenance and one unchanged semantic relation operation;
+- final relation validation re-reads the exact Review Resource, candidate,
+  canonical base, approved Knowledge Entity group rows, and their revisions in
+  the same PostgreSQL transaction; it never resolves a latest or `MAX`
+  revision;
+- relation security is the restrictive composition of the Review Resource and
+  both approved endpoint Knowledge groups. Actor scope and sensitivity are
+  execution gates only and cannot widen persisted authority;
+- one shared logical-identity helper is used by materialization, Stage 6
+  persistence, reconciliation, and replacement tests. It preserves exact
+  temporal absence/value and full authority-qualified endpoint revisions, with
+  deterministic endpoint ordering for undirected relations;
+- accepted Review Resource lineage is persisted as the exact
+  `canonical.relation_precursors` link and is required by compiled-truth
+  suppression/reconciliation; loose tuples, wildcards, and missing endpoint
+  revisions do not suppress or reconcile a relation;
+- the in-memory Canonical fingerprint includes `relations`, matching the
+  PostgreSQL relation-aware snapshot identity.
+
+### Correction verification
+
+Focused verification passed:
+
+```text
+tests/unit/akp-8-wp2a-relation-reconciliation.test.ts                 2 passed
+tests/contract/akp-8-wp2a-canonical-relation-projection.contract.test.ts 3 passed
+tests/integration/frontend-knowledge-draft-commit.test.ts            16 passed
+```
+
+The PostgreSQL-only correction suite contains positive Review→Draft
+materialization, restrictive security, endpoint drift rejection, completion
+failure rollback, and exact replay/idempotency checks. It was not executed in
+this workspace because `TEST_DATABASE_URL` was unset; the test therefore
+skipped rather than substituting an in-memory database. Full PostgreSQL,
+Golden Corpus, adapter replacement, migration/rollback exercise, and complete
+E2E-A acceptance remain explicit review gates.
+
+### OSS and scope disposition
+
+No new OSS runtime or dependency was introduced by this correction. The
+existing reference candidates remain bounded as follows: `garrytan/gbrain`
+and `lucasastorian/llmwiki` remain reference/extraction candidates behind
+Shotgun Ports, `ddsyasas/llm-wiki` remains UX/view-model reference only, and
+Inkeep OpenKnowledge remains UI/review-pattern reference only. No candidate
+was promoted to a Shotgun Kernel, Canonical, Evidence, Approval, or Action
+boundary, and no unpinned version was adopted. The shared identity and
+authority checks are Shotgun-owned contract code because the candidate
+runtimes cannot provide these project-, revision-, evidence-, and approval-
+qualified semantics without violating the module boundary.
+
+Migration and rollback remain bounded by migration `059_akp8_canonical_relation_authority.sql`:
+the migration is preflight-gated after exact migration 058, relation writes
+are transactional, and rollback is the existing migration rollback procedure
+plus removal of the isolated relation records. No destructive reset, merge,
+Ready-for-review action, deployment, WP2 completion, or WP3 work is included.
+
+Final disposition remains:
+
+- E2E-A: `PRODUCT CAPABILITY REMEDIATED / FULL E2E ACCEPTANCE STILL PENDING WP2`;
+- WP2: `BLOCKED_PENDING_REMEDIATION` until the required PostgreSQL and full
+  acceptance evidence is reviewed;
+- this record is not `PROVEN_EXISTING` and does not declare overall AKP
+  completion.

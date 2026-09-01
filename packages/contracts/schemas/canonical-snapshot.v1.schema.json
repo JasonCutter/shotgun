@@ -54,6 +54,29 @@
         }
       }
     },
+    "relationPrecursorLinks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectId",
+          "reviewResourceId",
+          "reviewResourceRevision",
+          "relationId",
+          "relationRevision",
+          "linkedAt"
+        ],
+        "properties": {
+          "projectId": { "type": "string", "minLength": 1 },
+          "reviewResourceId": { "type": "string", "minLength": 1 },
+          "reviewResourceRevision": { "type": "integer", "minimum": 1 },
+          "relationId": { "type": "string", "minLength": 1 },
+          "relationRevision": { "const": 1 },
+          "linkedAt": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "createdAt": { "type": "string", "minLength": 1 }
   },
   "definitions": {

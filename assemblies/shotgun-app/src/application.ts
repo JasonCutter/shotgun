@@ -609,6 +609,9 @@ export const startShotgunApplication = async (
     );
     const frontendReviewDiscoveryCandidateReader =
       createPostgresReviewDiscoveryCandidateReader(pool);
+    const discoveryReviewResourceRepository = recoveryHarness
+      ? undefined
+      : new PostgresDiscoveryReviewResourceRepository(pool);
     const discoveryRuntimeRepository = new PostgresDiscoveryRuntimeRepository(pool);
     const discoveryFindingRepository = new PostgresDiscoveryFindingRepository(pool);
     const discoveryFindingLifecycleService = new DiscoveryFindingLifecycleService(
@@ -833,6 +836,24 @@ export const startShotgunApplication = async (
                 );
               });
             },
+            findAcceptedReviewResource: async ({ projectId, candidate }) => {
+              const source = await frontendReviewDiscoveryCandidateReader.findByFinding?.(
+                projectId,
+                candidate.findingId,
+                candidate.findingRevision,
+              );
+              if (
+                source === undefined ||
+                !('origin' in source) ||
+                source.origin !== 'DERIVED_DISCOVERY'
+              ) {
+                return undefined;
+              }
+              return {
+                reviewResourceId: source.reviewResourceId,
+                reviewResourceRevision: source.resourceRevision,
+              };
+            },
             observeReconciliation: observeDiscoveryReconciliation,
           }),
           {
@@ -847,9 +868,6 @@ export const startShotgunApplication = async (
       : new PostgresDiscoveryReentryRepository(pool, {
           lifecycleRepository: discoveryFindingRepository,
         });
-    const discoveryReviewResourceRepository = recoveryHarness
-      ? undefined
-      : new PostgresDiscoveryReviewResourceRepository(pool);
     const discoveryReentryFreshnessAuthority = new PostgresDiscoveryReentryFreshnessAuthority(
       pool,
       {

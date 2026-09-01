@@ -5,6 +5,7 @@ import type {
   CompiledTruthProjection,
   DiscoveryFindingEnvelopeV1,
 } from '../../packages/contracts/src/index.js';
+import { canonicalRelationLogicalIdentityV1 } from '../../packages/contracts/src/index.js';
 
 const projection: CompiledTruthProjection = {
   projectId: 'project-1',
@@ -43,6 +44,8 @@ const projection: CompiledTruthProjection = {
         id: 'relation:canonical:1',
         from: 'entity:a',
         to: 'entity:b',
+        fromRevision: 1,
+        toRevision: 1,
         relationType: 'RELATED_TO',
         direction: 'DIRECTED',
         validFrom: '2026-01-01T00:00:00.000Z',
@@ -51,6 +54,16 @@ const projection: CompiledTruthProjection = {
     ],
     fallback: { available: true, modes: ['LIST', 'TABLE'] },
   },
+  relationPrecursorLinks: [
+    {
+      projectId: 'project-1',
+      reviewResourceId: 'review-resource-1',
+      reviewResourceRevision: 1,
+      relationId: 'relation:canonical:1',
+      relationRevision: 1,
+      linkedAt: '2026-09-01T00:00:00.000Z',
+    },
+  ],
   projectedAt: '2026-09-01T00:00:00.000Z',
   buildMode: 'FULL_REBUILD',
 };
@@ -81,6 +94,68 @@ const finding = (temporalQualification?: { validFrom?: string; validTo?: string 
   }) as unknown as DiscoveryFindingEnvelopeV1;
 
 describe('AKP-8 WP2A relation reconciliation contract', () => {
+  it('uses exact authority-qualified logical identity semantics', () => {
+    const endpointA = {
+      projectId: 'project-1',
+      authority: 'APPROVED_KNOWLEDGE' as const,
+      resourceType: 'ENTITY' as const,
+      resourceId: 'entity:a',
+      resourceRevision: 1,
+    };
+    const endpointB = { ...endpointA, resourceId: 'entity:b' };
+    const directed = canonicalRelationLogicalIdentityV1({
+      projectId: 'project-1',
+      relationType: 'RELATED_TO',
+      fromEndpoint: endpointA,
+      toEndpoint: endpointB,
+      direction: 'DIRECTED',
+    });
+    expect(
+      canonicalRelationLogicalIdentityV1({
+        projectId: 'project-1',
+        relationType: 'RELATED_TO',
+        fromEndpoint: endpointB,
+        toEndpoint: endpointA,
+        direction: 'DIRECTED',
+      }),
+    ).not.toBe(directed);
+    const undirected = canonicalRelationLogicalIdentityV1({
+      projectId: 'project-1',
+      relationType: 'RELATED_TO',
+      fromEndpoint: endpointA,
+      toEndpoint: endpointB,
+      direction: 'UNDIRECTED',
+    });
+    expect(
+      canonicalRelationLogicalIdentityV1({
+        projectId: 'project-1',
+        relationType: 'RELATED_TO',
+        fromEndpoint: endpointB,
+        toEndpoint: endpointA,
+        direction: 'UNDIRECTED',
+      }),
+    ).toBe(undirected);
+    expect(
+      canonicalRelationLogicalIdentityV1({
+        projectId: 'project-1',
+        relationType: 'RELATED_TO',
+        fromEndpoint: endpointA,
+        toEndpoint: endpointB,
+        direction: 'UNDIRECTED',
+        validFrom: '2026-01-01T00:00:00.000Z',
+      }),
+    ).not.toBe(undirected);
+    expect(
+      canonicalRelationLogicalIdentityV1({
+        projectId: 'project-1',
+        relationType: 'RELATED_TO',
+        fromEndpoint: { ...endpointA, resourceRevision: 2 },
+        toEndpoint: endpointB,
+        direction: 'UNDIRECTED',
+      }),
+    ).not.toBe(undirected);
+  });
+
   it('resolves a relation hypothesis only after exact Canonical relation and endpoint checks', async () => {
     await expect(
       observeDiscoveryReconciliation({
@@ -90,6 +165,10 @@ describe('AKP-8 WP2A relation reconciliation contract', () => {
           schemaVersion: '1.0.0',
           canonicalVersion: 2,
           snapshotDigest: projection.sourceSnapshotDigest,
+        },
+        acceptedReviewResource: {
+          reviewResourceId: 'review-resource-1',
+          reviewResourceRevision: 1,
         },
       }),
     ).resolves.toBe('CANONICAL_EQUIVALENT_ACCEPTED');
@@ -102,6 +181,26 @@ describe('AKP-8 WP2A relation reconciliation contract', () => {
           schemaVersion: '1.0.0',
           canonicalVersion: 2,
           snapshotDigest: projection.sourceSnapshotDigest,
+        },
+        acceptedReviewResource: {
+          reviewResourceId: 'review-resource-1',
+          reviewResourceRevision: 1,
+        },
+      }),
+    ).resolves.toBe('UNCHANGED');
+
+    await expect(
+      observeDiscoveryReconciliation({
+        finding: finding(),
+        projection,
+        canonicalBase: {
+          schemaVersion: '1.0.0',
+          canonicalVersion: 2,
+          snapshotDigest: projection.sourceSnapshotDigest,
+        },
+        acceptedReviewResource: {
+          reviewResourceId: 'review-resource-1',
+          reviewResourceRevision: 1,
         },
       }),
     ).resolves.toBe('UNCHANGED');

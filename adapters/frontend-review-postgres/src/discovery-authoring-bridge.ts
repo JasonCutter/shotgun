@@ -325,7 +325,8 @@ export class PostgresDiscoveryAuthoringBridge
       candidate.candidateId !== provenance.reentry.candidateId ||
       candidate.candidateRevision !== provenance.reentry.candidateRevision ||
       resource.sourceProjectionDigest !== provenance.sourceProjectionDigest ||
-      stableJson(resource.canonicalBase) !== stableJson(provenance.canonicalBase) ||
+      resource.canonicalBase.canonicalVersion !== provenance.canonicalBase.canonicalVersion ||
+      resource.canonicalBase.snapshotDigest !== provenance.canonicalBase.snapshotDigest ||
       stableJson(resource.evidenceLineage) !==
         stableJson(
           provenance.evidenceLineage.map((entry) => ({

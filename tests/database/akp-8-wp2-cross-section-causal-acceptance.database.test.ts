@@ -759,7 +759,32 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       1,
       now,
     );
-    expect(await worker.runOnce()).toBe('COMPLETED');
+    const baselineResult = await worker.runOnce();
+    if (baselineResult !== 'COMPLETED') {
+      const baselineRuntimeIds = await pool!.query<{ run_id: string }>(
+        `SELECT run_id
+           FROM discovery.runs
+          WHERE project_id = $1
+          ORDER BY run_revision DESC, run_id ASC
+          LIMIT 1`,
+        [projectId],
+      );
+      const attempts = baselineRuntimeIds.rows[0]
+        ? await runtime.listActivityAttempts({
+            projectId,
+            jobId: (await runtime.findJobByTriggerIdentity({
+              projectId,
+              triggerClass: 'CANONICAL_COMMITTED',
+              eventId: commitId,
+              eventRevision: '1',
+            }))!.jobId,
+            runId: baselineRuntimeIds.rows[0].run_id,
+          })
+        : [];
+      throw new Error(
+        `Baseline Discovery run failed: ${JSON.stringify({ result: baselineResult, attempts })}`,
+      );
+    }
 
     const schedules = new PostgresDiscoveryScheduleRepository(pool!);
     const dueSchedule = {

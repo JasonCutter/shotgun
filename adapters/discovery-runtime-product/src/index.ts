@@ -971,6 +971,8 @@ export const createProductDiscoveryExecution = (
               lifecycleState:
                 (await input.findingRepository.findLifecycle(finding))?.lifecycleState ??
                 finding.lifecycleState,
+              canonicalBase: finding.canonicalBase,
+              discoveryBase: finding.discoveryBase,
             })),
           );
         },

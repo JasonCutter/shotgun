@@ -475,6 +475,57 @@ describe('AKP-3 WP4 deterministic quality gate', () => {
     expect(equivalentPort.findAuthoritativeEquivalent).toHaveBeenCalledTimes(1);
   });
 
+  it('admits a materially changed Conflict on a new Canonical and Discovery base', async () => {
+    const entityA = ref('entity-a');
+    const entityB = ref('entity-b');
+    const conflict = envelope(
+      'CONFLICT_HYPOTHESIS',
+      {
+        schemaVersion: '1.0.0',
+        payloadType: 'CONFLICT_HYPOTHESIS',
+        participatingResourceRefs: [entityA, entityB],
+        contradictionKind: 'FACTUAL',
+        possibleContradiction: 'The approved propositions disagree after a new commit.',
+      },
+      [entityA, entityB],
+      { evidenceIds: ['evidence-a'] },
+    );
+    const oldBase = context();
+    const port = authority([entityA, entityB]);
+    port.findByFingerprint = vi.fn(async () => [
+      {
+        findingId: 'old-conflict',
+        findingRevision: 1,
+        lifecycleState: 'SUPPRESSED',
+        canonicalBase: {
+          ...oldBase.canonicalBase,
+          canonicalVersion: oldBase.canonicalBase.canonicalVersion - 1,
+          snapshotDigest: 'canonical-6',
+        },
+        discoveryBase: {
+          ...oldBase.discoveryBase,
+          projectionRevision: 'discovery-6',
+          projectionDigest: 'discovery-digest-6',
+        },
+      },
+    ]);
+
+    await expect(
+      new DiscoveryQualityGateV1(port).evaluate(
+        gateInput(conflict.candidate, conflict.fingerprintInput, {
+          selectionSignals: [
+            {
+              kind: 'EXPLICIT_INCOMPATIBILITY',
+              incompatibilityKind: 'FACTUAL',
+              source: 'TYPED_PROPOSITION',
+              signalId: 'typed-conflict-1',
+            },
+          ],
+        }),
+      ),
+    ).resolves.toMatchObject({ disposition: 'ACCEPTED' });
+  });
+
   it('preserves the complete AI provenance boundary and rejects unknown secret fields', async () => {
     const entity = ref('entity-a');
     const item = envelope(

@@ -1,6 +1,6 @@
 # AKP-8 WP2 Cross-Section Causal Acceptance Evidence
 
-Status: `CANDIDATE / IN_PROGRESS` — pending Draft PR review and automatic CI.
+Status: `CANDIDATE / IN_PROGRESS` — local M/P correction verified; pending Draft PR review and automatic CI.
 
 Repository: `JasonCutter/shotgun`
 Canonical baseline: `ba6f8e9e1fd5e2d0335bb054bde1a3d9a2d2fa01`
@@ -87,10 +87,12 @@ Local results on the candidate branch:
 - Focused regression: `5 files / 24 tests passed`, including scheduler,
   feedback Product API, typed conflict, and relation reconciliation contracts.
 - TypeScript typecheck: passed.
-- PostgreSQL cross-section acceptance: pending automatic CI because this
-  checkout has no `TEST_DATABASE_URL` / `.env.test`. The database test now
-  includes the real PostgreSQL M/P paths described above; local execution
-  reports the test as skipped when the guarded database target is unavailable.
+- PostgreSQL cross-section acceptance: the real PostgreSQL M/P path passed
+  locally against `postgres://shotgun:shotgun@localhost:5433/shotgun_test`
+  after the final correction. M proves the frozen V1 fingerprint is retained
+  while a new Canonical/Projection base creates a new Conflict identity after
+  `SUPPRESS_SIMILAR`; P proves durable wait/deadline/recovery and Finding
+  reconciliation. Automatic CI remains authoritative for the pushed head.
 - Automatic main CI for the WP2A baseline was already verified before this work:
   run `33496775546` / workflow run `#1221`, exact merge SHA
   `ba6f8e9e1fd5e2d0335bb054bde1a3d9a2d2fa01`, with Quality/DB, Frontend/E2E,
@@ -118,6 +120,7 @@ Changed files:
 - `modules/frontend-knowledge-draft/src/product-api.ts`
 - `tests/contract/akp-8-wp2-cross-section-causal-acceptance.contract.test.ts`
 - `tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts`
+- `tests/unit/akp-3-wp4-quality-budget-ranking.test.ts`
 - `docs/implementation/akp-8-wp2-cross-section-causal-acceptance.md`
 
 There is no schema migration and no production dependency change. Rollback is a
@@ -126,15 +129,15 @@ persisted application data is changed by the candidate package.
 
 ## Acceptance matrix and remaining work
 
-| Scenario    | WP2 candidate evidence                                                                | Current disposition                                       |
-| ----------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| A           | contract + real PostgreSQL production journey and later reconciliation                | local DB passed; pending PR/CI review                     |
-| B           | real PostgreSQL schedule repository, durable runtime, worker, and stage assertions    | local DB passed; pending PR/CI review                     |
-| C           | real Product read, feedback coordinator, command ledger, history/truth assertions     | local DB passed; pending PR/CI review                     |
-| D/F/G/I/L   | existing accepted evidence reused                                                     | no duplicate work                                         |
-| M           | production PostgreSQL typed-conflict → Finding → Reentry → Review/Attention path      | pending automatic PostgreSQL CI and GPT exact-head review |
-| P           | production PostgreSQL outbox → WAITING/deadline → recovery → later Job/reconciliation | pending automatic PostgreSQL CI and GPT exact-head review |
-| E/H/J/K/N/O | not part of WP2                                                                       | WP3 scope                                                 |
+| Scenario    | WP2 candidate evidence                                                                | Current disposition                                                        |
+| ----------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| A           | contract + real PostgreSQL production journey and later reconciliation                | local DB passed; pending PR/CI review                                      |
+| B           | real PostgreSQL schedule repository, durable runtime, worker, and stage assertions    | local DB passed; pending PR/CI review                                      |
+| C           | real Product read, feedback coordinator, command ledger, history/truth assertions     | local DB passed; pending PR/CI review                                      |
+| D/F/G/I/L   | existing accepted evidence reused                                                     | no duplicate work                                                          |
+| M           | production PostgreSQL typed-conflict → Finding → Reentry → Review/Attention path      | local DB passed; pending automatic PostgreSQL CI and GPT exact-head review |
+| P           | production PostgreSQL outbox → WAITING/deadline → recovery → later Job/reconciliation | local DB passed; pending automatic PostgreSQL CI and GPT exact-head review |
+| E/H/J/K/N/O | not part of WP2                                                                       | WP3 scope                                                                  |
 
 This document does not close the AKP-8 A–P or PAC/AC matrix and does not declare
 the Stage complete. Critical/High closure, exact PR CI evidence, and GPT review

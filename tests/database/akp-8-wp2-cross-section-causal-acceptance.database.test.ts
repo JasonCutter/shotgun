@@ -1380,13 +1380,18 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
         })
       ).status,
     ).toBe('ACTIVATED');
+    const causalPolicy = createDefaultDiscoveryTriggerPolicyV1();
     const causalTrigger = new DiscoveryTriggerCoordinator(
       canonicalSource,
       new PostgresDiscoveryProjectionReadinessAdapter(compiledTruth, semanticIndex),
       runtime,
       new StaticDiscoveryTriggerPolicy({
-        ...createDefaultDiscoveryTriggerPolicyV1(),
+        ...causalPolicy,
         waitTimeoutMs: 60_000,
+        budget: {
+          ...causalPolicy.budget,
+          maxCandidateGroups: 100,
+        },
       }),
       { now: () => causalNow },
       {
@@ -1443,7 +1448,8 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
     await runCausalWorkerToCompletion();
     const mFirstJob = await runtime.findJob({ projectId, jobId: mFirstJobId });
     expect(mFirstJob?.lifecycleState).toBe('SUCCEEDED');
-    const mFirstConflict = (await findingRepository.listByProject(projectId)).find(
+    const mFirstFindings = await findingRepository.listByProject(projectId);
+    const mFirstConflict = mFirstFindings.find(
       (finding) =>
         finding.findingType === 'CONFLICT_HYPOTHESIS' &&
         finding.canonicalBase.canonicalVersion === mFirstCommit.afterVersion,
@@ -1591,13 +1597,17 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
     await runCausalWorkerToCompletion();
     const mSecondJob = await runtime.findJob({ projectId, jobId: mSecondJobId });
     expect(mSecondJob?.lifecycleState).toBe('SUCCEEDED');
-    const mSecondConflict = (await findingRepository.listByProject(projectId)).find(
+    const mSecondFindings = await findingRepository.listByProject(projectId);
+    const mSecondConflict = mSecondFindings.find(
       (finding) =>
         finding.findingType === 'CONFLICT_HYPOTHESIS' &&
         finding.canonicalBase.canonicalVersion === mSecondCommit.afterVersion,
     );
     expect(mSecondConflict).toBeDefined();
     expect(mSecondConflict!.findingId).not.toBe(mFirstConflict!.findingId);
+    expect(mSecondConflict!.fingerprint).toBe(mFirstConflict!.fingerprint);
+    expect(mSecondConflict!.canonicalBase).not.toEqual(mFirstConflict!.canonicalBase);
+    expect(mSecondConflict!.discoveryBase).not.toEqual(mFirstConflict!.discoveryBase);
     expect(discoverySemanticFamilyKeyV1(mSecondConflict!)).toBe(
       discoverySemanticFamilyKeyV1(mFirstConflict!),
     );

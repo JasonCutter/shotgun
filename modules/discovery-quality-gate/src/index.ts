@@ -98,6 +98,9 @@ export type DiscoveryExistingFindingV1 = {
   readonly findingId: string;
   readonly findingRevision: number;
   readonly lifecycleState: string;
+  /** Present when the persistence adapter can prove the finding's material base. */
+  readonly canonicalBase?: DiscoveryCanonicalBaseIdentityV1;
+  readonly discoveryBase?: DiscoveryProjectionBaseIdentityV1;
 };
 
 /** Server-owned lookup boundary used by the quality gate. */
@@ -201,6 +204,15 @@ export type DiscoveryQualityBudgetExhaustedV1 = {
 
 const sameJson = (left: unknown, right: unknown): boolean =>
   semanticStableJson(left) === semanticStableJson(right);
+
+const isSameFindingBase = (
+  entry: DiscoveryExistingFindingV1,
+  context: DiscoveryQualityGateContextV1,
+): boolean =>
+  entry.canonicalBase !== undefined &&
+  entry.discoveryBase !== undefined &&
+  sameJson(entry.canonicalBase, context.canonicalBase) &&
+  sameJson(entry.discoveryBase, context.discoveryBase);
 
 const nonEmpty = (value: string, field: string): string => {
   const normalized = value.trim();
@@ -678,8 +690,15 @@ export class DiscoveryQualityGateV1 {
       fingerprintVersion: fingerprint.fingerprintVersion,
       fingerprint: fingerprint.fingerprint,
     });
+    const currentBaseExisting = existing.filter((entry) => isSameFindingBase(entry, input.context));
     const suppressed = existing
-      .filter((entry) => entry.lifecycleState === 'SUPPRESSED')
+      .filter(
+        (entry) =>
+          entry.lifecycleState === 'SUPPRESSED' &&
+          (isSameFindingBase(entry, input.context) ||
+            entry.canonicalBase === undefined ||
+            entry.discoveryBase === undefined),
+      )
       .sort(
         (left, right) =>
           utf16OrdinalCompare(left.findingId, right.findingId) ||
@@ -694,7 +713,19 @@ export class DiscoveryQualityGateV1 {
         existing: suppressed,
       };
     }
-    if (existing.length > 0) {
+    const hasUnknownBase = existing.some(
+      (entry) => entry.canonicalBase === undefined || entry.discoveryBase === undefined,
+    );
+    // ADR-149 keeps discovery-fingerprint:v1 independent of execution/base
+    // versions. ADR-141 nevertheless requires a materially revised Conflict
+    // to resurface after suppression, so only an explicitly new base tuple
+    // may bypass the exact-duplicate check; unknown or current bases fail closed.
+    const isMateriallyChangedConflict =
+      candidate.findingType === 'CONFLICT_HYPOTHESIS' &&
+      existing.length > 0 &&
+      currentBaseExisting.length === 0 &&
+      !hasUnknownBase;
+    if (existing.length > 0 && !isMateriallyChangedConflict) {
       return reject('FINGERPRINT_DUPLICATE', 'An exact fingerprint duplicate already exists.');
     }
     if (input.budget) {

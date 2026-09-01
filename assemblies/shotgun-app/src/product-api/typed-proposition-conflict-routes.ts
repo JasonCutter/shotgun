@@ -19,6 +19,7 @@ import type { SecurityHeaders } from '../server.js';
 import {
   TypedPropositionConflictRuleService,
   type TypedPropositionConflictRuleRepositoryPort,
+  type TypedPropositionConflictRuleTransactionHandleV1,
 } from '../../../../modules/knowledge-model/src/typed-proposition-conflict.js';
 import { rejectAcceptedCommand, toProductApiCommandError } from './frontend-command-route.js';
 
@@ -40,6 +41,9 @@ const forbidden = (): never => {
     operation: 'authorize',
   });
 };
+
+const isOutcomeUnknown = (error: unknown): boolean =>
+  error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
 
 const acceptRuleCommand = async (input: {
   readonly rawRequest: unknown;
@@ -156,29 +160,83 @@ export const registerTypedPropositionConflictRuleRoutes = (
         };
       }
       try {
-        const rule = await service.execute({
-          projectId: context.projectId,
-          actorId: context.principalId,
-          payload: accepted.request.payload,
-          now: new Date().toISOString(),
-        });
-        const outcome = await commandGateway.complete({
-          commandId: accepted.outcome.commandId,
-          producedResources: [
+        const execute = async (handle: TypedPropositionConflictRuleTransactionHandleV1) => {
+          const locked = await commandGateway.lockAcceptedForExecution(
+            handle.rawTransaction,
+            accepted.outcome.commandId,
+          );
+          if (locked.outcomeState === 'COMPLETED') return { outcome: locked };
+          if (locked.outcomeState !== 'ACCEPTED') {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The conflict rule command is not executable.',
+              module: 'frontend-discovery-conflict-rules',
+              operation: 'lock-conflict-rule-command',
+            });
+          }
+          const rule = await service.execute(
             {
-              resourceKind: 'DISCOVERY_CONFLICT_RULE',
-              resourceId: rule.ruleId,
-              resourceRevision: String(rule.ruleRevision),
+              projectId: context.projectId,
+              actorId: context.principalId,
+              payload: accepted.request.payload,
+              now: new Date().toISOString(),
             },
-          ],
-          completedAt: new Date().toISOString(),
-        });
+            handle.repository,
+          );
+          const outcome = await commandGateway.completeInTransaction(handle.rawTransaction, {
+            commandId: accepted.outcome.commandId,
+            producedResources: [
+              {
+                resourceKind: 'DISCOVERY_CONFLICT_RULE',
+                resourceId: rule.ruleId,
+                resourceRevision: String(rule.ruleRevision),
+              },
+            ],
+            completedAt: new Date().toISOString(),
+          });
+          return { rule, outcome };
+        };
+        const executed = repository.transaction
+          ? await repository.transaction(execute)
+          : await execute({
+              repository,
+              rawTransaction: undefined,
+              afterCommit: () => undefined,
+            });
+        if (executed.rule === undefined) {
+          const views = await service.listViews(context.projectId);
+          const ruleId = executed.outcome.producedResources.find(
+            (resource) => resource.resourceKind === 'DISCOVERY_CONFLICT_RULE',
+          )?.resourceId;
+          return {
+            rule: views.find((rule) => rule.ruleId === ruleId),
+            outcome: executed.outcome,
+            replayed: false,
+          };
+        }
         const [view] = (await service.listViews(context.projectId)).filter(
-          (candidate) => candidate.ruleId === rule.ruleId,
+          (candidate) => candidate.ruleId === executed.rule.ruleId,
         );
-        return { rule: view, outcome, replayed: false };
+        return { rule: view, outcome: executed.outcome, replayed: false };
       } catch (error) {
-        await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+        if (isOutcomeUnknown(error)) {
+          try {
+            await commandGateway.markOutcomeUnknown({
+              commandId: accepted.outcome.commandId,
+              message: error instanceof Error ? error.message : 'Command outcome is unresolved.',
+              completedAt: new Date().toISOString(),
+            });
+          } catch {
+            // Preserve the unresolved failure; the original clientRequestId
+            // remains the recovery authority.
+          }
+          throw error;
+        }
+        try {
+          await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+        } catch {
+          // Preserve the original command failure if ledger rejection fails.
+        }
         throw toProductApiCommandError(error, 'execute-conflict-rule-command');
       }
     },

@@ -1,11 +1,11 @@
 # AKP-8 WP2R — Production Conflict Signal Authority Remediation
 
-- Status: **PRODUCT_IMPLEMENTATION_COMPLETE_PENDING_GPT_REVIEW**
+- Status: **PRODUCT_CORRECTION_IMPLEMENTED_PENDING_GPT_REVIEW**
 - Current WP2 status: **BLOCKED_UNTIL_WP2R_CANONICAL_CLOSURE**
 - Baseline: `main@0077ddc90efe4b3756cce66ad31bbc021c49395b`
 - Remediation branch: `codex/akp-8-wp2r-conflict-signal-authority-remediation`
 - Scope: bounded ADR-151 Product remediation on the existing WP2R branch/PR
-- Product/runtime changes: **IMPLEMENTED LOCALLY; GPT EXACT-HEAD REVIEW PENDING**
+- Product/runtime changes: **CORRECTION IMPLEMENTED LOCALLY; GPT EXACT-HEAD REVIEW PENDING**
 - Migration/table changes: **058 / TWO DURABLE STORES**
 - Runtime dependency/lockfile changes: **NONE**
 - Focused Contract/authority/selector tests: **ADDED**
@@ -242,8 +242,11 @@ Rules are the durable governed Source of Truth. Assertions are a persisted,
 rebuildable projection of the active rule revision, normalized exact
 participant revisions and pinned source/canonical/discovery base identity.
 Logical assertion identity excludes summary text, AI wording, rank,
-similarity, run ID and timestamps. A repeated scan at the same inputs resolves
-to one identity; content mutation under that identity is rejected.
+similarity, run ID, timestamps and security representation. A repeated scan at
+the same inputs resolves to one identity. Authoritative non-identity content
+changes, including effective security, append a new assertion revision with the
+same assertionId; the prior active revision becomes SUPERSEDED and the new
+revision becomes ACTIVE.
 
 ### 5.5 Mapping and causal requirement
 
@@ -322,12 +325,17 @@ knowledge.typed_incompatibility_assertions
 ```
 
 Rules are append-only governed revisions with `ACTIVE`, `RETIRED` and
-`SUPERSEDED` lifecycle. A new revision creates a new evaluation identity and
-does not rewrite historical assertions/findings. Assertions are persisted
-derived projections; historical assertions/findings that entered governance
-remain retained. Re-evaluation occurs when rules, participants, Evidence,
-bases or security change. Existing reconciliation owns `RESOLVED`, `STALE`
-and `SUPERSEDED` Discovery lifecycle states.
+`SUPERSEDED` lifecycle. Product CREATE, REVISE and RETIRE commands execute
+through a repository transaction handle. REVISE locks the expected current
+revision, inserts the immutable successor and supersedes the old revision in
+one `withSafePostgresTransaction` unit; a pre-commit failure leaves the old
+revision ACTIVE with no successor. For a same-semantic revision, the old row
+is superseded before insertion to satisfy migration 058's one-active-semantic
+unique index; this ordering remains inside the same transaction. Assertions are persisted derived
+projections; historical assertions/findings that entered governance remain
+retained. Re-evaluation occurs when rules, participants, Evidence, bases or
+security change. Existing reconciliation owns `RESOLVED`, `STALE` and
+`SUPERSEDED` Discovery lifecycle states.
 
 Migration `058_akp8_typed_proposition_conflict_authority.sql` adds exactly the
 two approved durable stores: `knowledge.typed_proposition_conflict_rules` and
@@ -349,20 +357,20 @@ completeness, provenance and replacement Contract tests.
 The local implementation follows the accepted chain without promoting any OSS
 runtime into a Shotgun authority:
 
-| Boundary                   | Implemented record                                                                                                                                                                                                                                                                                                                    |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Rule contract              | `packages/contracts/src/typed-proposition-conflict.ts`; exact type pair, deterministic semantic key, fixed FACTUAL/TYPED_PROPOSITION mapping, directed/undirected binding, lifecycle and server-owned provenance fields.                                                                                                              |
-| Assertion contract         | `TypedIncompatibilityAssertionV1` in the same contract; non-Canonical, persisted/rebuildable, exact relation revisions/resource refs, Evidence IDs, bases, security and deterministic identity.                                                                                                                                       |
-| Rule governance            | `TypedPropositionConflictRuleService` in `modules/knowledge-model`; CREATE, REVISE/SUPERSEDE, RETIRE, READ, stale revision protection and immutable semantic revisions.                                                                                                                                                               |
-| Persistence                | Postgres Stage 9 adapter with migration 058; in-memory adapter is test-only fallback. Rule and assertion history are retained and active identities are duplicate-safe.                                                                                                                                                               |
-| Current Relation authority | `KnowledgeModelTypedPropositionConflictAuthorityReader` reads approved Knowledge Model review groups, preserves candidate/revision/source/endpoints/type/direction/Evidence, allows only exact duplicate authority, and returns `TRUNCATED` on conflicting duplicate authority. It does not invent `MAX(revisionNumber)` currentness. |
-| Evaluator                  | `TypedPropositionConflictEvaluatorV1` reads only bounded Discovery `resourceRefs`, exact eligible approved/current Relation revisions, active rules, bases and security. No semantic/label/AI comparator is used.                                                                                                                     |
-| Discovery adapter          | The production evaluator emits the existing `DiscoveryCompetingResourcePortV1` shape with FACTUAL/TYPED_PROPOSITION `left`, `right`, and assertion `signalId`; no parallel selector/port was added.                                                                                                                                   |
-| Normal wiring              | `startShotgunApplication` constructs the Postgres rule/assertion repositories, authority reader and evaluator, supplies the competing-resource port to `createProductDiscoveryExecution`, and leaves `existingCanonicalConflict` unwired.                                                                                             |
-| Product command            | `frontend.discovery.conflict-rule.v1` reuses the existing command gateway/ledger, preserves clientRequestId/idempotencyKey/digest/outcome semantics, and exposes only owner intent. No direct assertion-write endpoint exists.                                                                                                        |
-| Owner UX                   | Rare `discovery.conflict_rules` command opens a focused accessible dialog for view/add/revise/retire. It exposes only Relation type A/B and direction, confirms mutations, resolves OUTCOME_UNKNOWN using the original request ID, and resets on Project switch.                                                                      |
-| Authorization              | Existing server-side Project membership owner/admin authority is checked on read and mutation; Project context must match the authenticated active Project and unauthorized requests fail closed without rule disclosure.                                                                                                             |
-| Backup/retention           | Existing `backup-restore.ts` integrity selection and `database.ts` managed-table conventions include both stores; no second backup system was created.                                                                                                                                                                                |
+| Boundary                   | Implemented record                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rule contract              | `packages/contracts/src/typed-proposition-conflict.ts`; exact type pair, deterministic semantic key, fixed FACTUAL/TYPED_PROPOSITION mapping, directed/undirected binding, lifecycle and server-owned provenance fields.                                                                                                                                                          |
+| Assertion contract         | `TypedIncompatibilityAssertionV1` in the same contract; non-Canonical, persisted/rebuildable, exact relation revisions/resource refs, Evidence IDs, bases, security and deterministic identity.                                                                                                                                                                                   |
+| Rule governance            | `TypedPropositionConflictRuleService` in `modules/knowledge-model`; CREATE, REVISE/SUPERSEDE, RETIRE, READ, stale revision protection and immutable semantic revisions.                                                                                                                                                                                                           |
+| Persistence                | Postgres Stage 9 adapter with migration 058; in-memory adapter is test-only fallback. Rule and assertion history are retained, active identities are duplicate-safe, and changed assertion content appends a same-ID revision atomically.                                                                                                                                         |
+| Current Relation authority | `KnowledgeModelTypedPropositionConflictAuthorityReader` reads approved Knowledge Model review groups, preserves candidate/revision/source/endpoints/type/direction/Evidence, allows only exact duplicate authority, and returns `TRUNCATED` on conflicting duplicate authority. It does not invent `MAX(revisionNumber)` currentness.                                             |
+| Evaluator                  | `TypedPropositionConflictEvaluatorV1` reads only bounded Discovery `resourceRefs`, exact eligible approved/current Relation revisions, active rules, bases and security. No semantic/label/AI comparator is used.                                                                                                                                                                 |
+| Discovery adapter          | The production evaluator emits the existing `DiscoveryCompetingResourcePortV1` shape with FACTUAL/TYPED_PROPOSITION `left`, `right`, and assertion `signalId`; no parallel selector/port was added.                                                                                                                                                                               |
+| Normal wiring              | `startShotgunApplication` constructs the Postgres rule/assertion repositories, authority reader and evaluator, supplies the competing-resource port to `createProductDiscoveryExecution`, and leaves `existingCanonicalConflict` unwired.                                                                                                                                         |
+| Product command            | `frontend.discovery.conflict-rule.v1` reuses the existing command gateway/ledger, preserves clientRequestId/idempotencyKey/digest/outcome semantics, and completes CREATE/REVISE/RETIRE in the same transaction as the rule mutation. Definite pre-commit failures reject; commit acknowledgement uncertainty marks `OUTCOME_UNKNOWN`. No direct assertion-write endpoint exists. |
+| Owner UX                   | Rare `discovery.conflict_rules` command opens a focused accessible dialog for view/add/revise/retire. It exposes only Relation type A/B and direction, confirms mutations, resolves OUTCOME_UNKNOWN using the original request ID, and resets on Project switch.                                                                                                                  |
+| Authorization              | Existing server-side Project membership owner/admin authority is checked on read and mutation; Project context must match the authenticated active Project and unauthorized requests fail closed without rule disclosure.                                                                                                                                                         |
+| Backup/retention           | Existing `backup-restore.ts` integrity selection and `database.ts` managed-table conventions include both stores; no second backup system was created.                                                                                                                                                                                                                            |
 
 The causal implementation target is rule first, Relation A approved, Relation B
 approved later, automatic evaluator, persisted assertion, existing Discovery
@@ -388,10 +396,11 @@ reusable authority.
 ## 10. Verification and closure limits
 
 Focused tests cover exact rule identity/binding, unsupported and client-owned
-fields, later-pair evaluation, idempotent assertion identity, retirement,
-ambiguous authority, and typed selector admission. The full required local and
-automatic CI evidence is recorded in the final GPT report after the remaining
-static/Database/PR checks.
+fields, later-pair evaluation, idempotent assertion identity, security-content
+revision append, retirement, ambiguous authority, typed selector admission,
+shared command completion/replay, transactional rollback and
+`OUTCOME_UNKNOWN`. The full required local and automatic CI evidence is
+recorded in the final GPT report after the remaining static/Database/PR checks.
 
 Operational rollback disables/removes evaluator and reader wiring while
 preserving rule/assertion data and keeping Discovery safely degraded. Normal
@@ -399,6 +408,19 @@ rollback does not drop either table; deletion requires a separately governed
 migration. Temporal, Identity and Model disagreement mappings remain
 `RESERVED / UNSUPPORTED`. `DiscoveryExistingCanonicalConflictPortV1` remains
 separate and unwired.
+
+## 11. GPT correction record
+
+The pre-merge correction closed three identified defects: rule REVISE no longer
+has a two-active window; Product command ledger completion now shares the
+Postgres transaction and uses `lockAcceptedForExecution` plus
+`completeInTransaction`; and assertion identity is limited to Project, rule
+revision, normalized exact participants and canonical/discovery bases. Security
+fields remain persisted governed content and changes create a same-ID
+append-only assertion revision. `withSafePostgresTransaction` is the only
+transaction primitive used; definite failures roll back and may be REJECTED,
+while `OUTCOME_UNKNOWN` is never converted to false REJECTED. Migration 058,
+dependency boundaries and the `OPEN/DRAFT` PR state remain unchanged.
 
 ADR-142 E2E-M is **NOT YET PROVEN_EXISTING**. WP2R supplies the missing
 production conflict signal capability, but only resumed WP2 can prove the full

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildTypedPropositionConflictAssertion,
   InMemoryTypedPropositionConflictAssertionRepository,
   InMemoryTypedPropositionConflictRuleRepository,
   KnowledgeModelTypedPropositionConflictAuthorityReader,
@@ -10,6 +11,7 @@ import {
 import { InMemoryKnowledgeModelRepository } from '../../adapters/stage9-in-memory/src/index.js';
 import {
   knowledgeCandidateDigest,
+  typedPropositionConflictAssertionIdentity,
   validateTypedPropositionConflictRuleCommandRequest,
   TYPED_PROPOSITION_CONFLICT_RULE_COMMAND_TYPE,
   typedPropositionConflictRuleMatches,
@@ -98,6 +100,50 @@ describe('AKP-8 WP2R typed proposition conflict authority', () => {
       directionSemantics: 'DIRECTED_SAME_ORIENTATION',
     });
     expect(a).toBe(b);
+  });
+
+  it('keeps assertion identity independent of security while binding revisions and bases', () => {
+    const left = {
+      candidateId: 'relation-a',
+      revisionNumber: 1,
+      sourceVersionId: 'source-a',
+    } as const;
+    const right = {
+      candidateId: 'relation-b',
+      revisionNumber: 1,
+      sourceVersionId: 'source-b',
+    } as const;
+    const identityInput = {
+      projectId,
+      ruleId: 'rule-1',
+      ruleRevision: 1,
+      left,
+      right,
+      canonicalBase: base.canonicalBase,
+      discoveryBase: base.discoveryBase,
+    };
+    const stable = typedPropositionConflictAssertionIdentity(identityInput);
+    expect(
+      typedPropositionConflictAssertionIdentity({
+        ...identityInput,
+        left: { ...left, revisionNumber: 2 },
+      }),
+    ).not.toBe(stable);
+    expect(
+      typedPropositionConflictAssertionIdentity({ ...identityInput, ruleRevision: 2 }),
+    ).not.toBe(stable);
+    expect(
+      typedPropositionConflictAssertionIdentity({
+        ...identityInput,
+        canonicalBase: { ...base.canonicalBase, canonicalVersion: 2 },
+      }),
+    ).not.toBe(stable);
+    expect(
+      typedPropositionConflictAssertionIdentity({
+        ...identityInput,
+        discoveryBase: { ...base.discoveryBase, projectionRevision: 'projection-2' },
+      }),
+    ).not.toBe(stable);
   });
 
   it('rejects unsupported mappings and browser-owned authority fields', () => {
@@ -256,6 +302,71 @@ describe('AKP-8 WP2R typed proposition conflict authority', () => {
     expect(firstRead.competitions).toHaveLength(1); // A/F/G
     expect(secondRead.competitions[0]?.signalId).toBe(firstRead.competitions[0]?.signalId);
     expect(await assertions.listActiveAssertions(projectId)).toHaveLength(1);
+  });
+
+  it('keeps the assertion id stable when governed security content changes and appends a revision', async () => {
+    const rules = new InMemoryTypedPropositionConflictRuleRepository();
+    const service = new TypedPropositionConflictRuleService(rules);
+    const rule = await service.execute({
+      projectId,
+      actorId: 'owner-1',
+      payload: {
+        operation: 'CREATE',
+        leftRelationType: 'supports',
+        rightRelationType: 'contradicts',
+        directionSemantics: 'DIRECTED_SAME_ORIENTATION',
+      },
+      now: '2026-09-01T00:00:00.000Z',
+    });
+    const left = relation({ id: 'relation-a', type: 'supports', from: 'entity-1', to: 'entity-2' });
+    const right = relation({
+      id: 'relation-b',
+      type: 'contradicts',
+      from: 'entity-1',
+      to: 'entity-2',
+    });
+    const assertions = new InMemoryTypedPropositionConflictAssertionRepository();
+    const first = buildTypedPropositionConflictAssertion({
+      projectId,
+      rule,
+      left,
+      right,
+      leftResource: resource(left),
+      rightResource: resource(right),
+      canonicalBase: base.canonicalBase,
+      discoveryBase: base.discoveryBase,
+      accessScope: ['project:read'],
+      sensitivity: 'public',
+      createdAt: '2026-09-01T00:00:00.000Z',
+    });
+    const changedSecurity = buildTypedPropositionConflictAssertion({
+      ...first,
+      projectId,
+      rule,
+      left,
+      right,
+      leftResource: resource(left),
+      rightResource: resource(right),
+      canonicalBase: base.canonicalBase,
+      discoveryBase: base.discoveryBase,
+      accessScope: ['project:write', 'project:read'],
+      sensitivity: 'private',
+      createdAt: '2026-09-01T00:00:01.000Z',
+    });
+    expect(changedSecurity.identityKey).toBe(first.identityKey);
+    await assertions.saveAssertion(first);
+    const saved = await assertions.saveAssertion(changedSecurity);
+    expect(saved.assertionId).toBe(first.assertionId);
+    expect(saved.assertionRevision).toBe(2);
+    expect(saved.security).toEqual({
+      projectId,
+      accessScope: ['project:read', 'project:write'],
+      sensitivity: 'private',
+    });
+    expect(assertions.listAssertionHistory(projectId, first.identityKey)).toEqual([
+      expect.objectContaining({ assertionRevision: 1, status: 'SUPERSEDED' }),
+      expect.objectContaining({ assertionRevision: 2, status: 'ACTIVE' }),
+    ]);
   });
 
   it('fails closed for missing active rule, retired rule, and ambiguous approved authority', async () => {

@@ -32,6 +32,7 @@ import {
 import {
   knowledgeCandidateDigest,
   sha256Text,
+  typedPropositionConflictRuleSemanticKey,
   type DiscoveryResourceRefV1,
   type RelationCandidate,
 } from '../../packages/contracts/src/index.js';
@@ -186,6 +187,80 @@ describe('AKP-8 WP2R PostgreSQL production composition', () => {
         },
         now: '2026-09-01T00:00:00.000Z',
       });
+
+      const rollbackRevision = {
+        ...rule,
+        ruleRevision: 2,
+        leftRelationType: 'supports-rollback',
+        semanticKey: typedPropositionConflictRuleSemanticKey({
+          projectId,
+          leftRelationType: 'supports-rollback',
+          rightRelationType: rule.rightRelationType,
+          directionSemantics: rule.directionSemantics,
+        }),
+        createdAt: '2026-09-01T00:00:00.100Z',
+        supersedes: { ruleId: rule.ruleId, ruleRevision: rule.ruleRevision },
+      };
+      await expect(
+        rules.transaction(async ({ repository }) => {
+          await repository.saveRule(rollbackRevision);
+          throw new Error('injected failure after successor write');
+        }),
+      ).rejects.toThrow('injected failure after successor write');
+      const afterRollback = await rules.listRuleRevisions(projectId);
+      expect(afterRollback).toHaveLength(1);
+      expect(afterRollback[0]).toMatchObject({ ruleRevision: 1, status: 'ACTIVE' });
+
+      const revised = await rules.transaction((handle) =>
+        service.execute(
+          {
+            projectId,
+            actorId: principal.principalId,
+            payload: {
+              operation: 'REVISE',
+              ruleId: rule.ruleId,
+              expectedRuleRevision: 1,
+              leftRelationType: 'supports-revised',
+              rightRelationType: 'contradicts',
+              directionSemantics: 'DIRECTED_SAME_ORIENTATION',
+            },
+            now: '2026-09-01T00:00:00.200Z',
+          },
+          handle.repository,
+        ),
+      );
+      expect(revised.ruleRevision).toBe(2);
+      const afterRevision = await rules.listRuleRevisions(projectId);
+      expect(afterRevision.filter((entry) => entry.status === 'ACTIVE')).toHaveLength(1);
+      expect(afterRevision.find((entry) => entry.ruleRevision === 1)?.status).toBe('SUPERSEDED');
+
+      const concurrent = await Promise.allSettled(
+        [3, 4].map((suffix) =>
+          rules.transaction((handle) =>
+            service.execute(
+              {
+                projectId,
+                actorId: principal.principalId,
+                payload: {
+                  operation: 'REVISE',
+                  ruleId: rule.ruleId,
+                  expectedRuleRevision: 2,
+                  leftRelationType: `supports-concurrent-${suffix}`,
+                  rightRelationType: 'contradicts',
+                  directionSemantics: 'DIRECTED_SAME_ORIENTATION',
+                },
+                now: `2026-09-01T00:00:0${suffix}.000Z`,
+              },
+              handle.repository,
+            ),
+          ),
+        ),
+      );
+      expect(concurrent.filter((entry) => entry.status === 'fulfilled')).toHaveLength(1);
+      expect(concurrent.filter((entry) => entry.status === 'rejected')).toHaveLength(1);
+      expect(
+        (await rules.listRuleRevisions(projectId)).filter((entry) => entry.status === 'ACTIVE'),
+      ).toHaveLength(1);
 
       application = await startShotgunApplication({
         databaseUrl,

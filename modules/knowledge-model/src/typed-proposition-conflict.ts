@@ -17,7 +17,10 @@ import {
   type TypedPropositionConflictRuleV1,
   type TypedPropositionConflictRuleViewV1,
 } from '../../../packages/contracts/src/index.js';
-import { utf16OrdinalCompare } from '../../../packages/contracts/src/semantic-representation.js';
+import {
+  semanticStableJson,
+  utf16OrdinalCompare,
+} from '../../../packages/contracts/src/semantic-representation.js';
 import type { KnowledgeModelRepositoryPort } from './index.js';
 
 export type TypedPropositionConflictRuleRepositoryPort = {
@@ -40,6 +43,15 @@ export type TypedPropositionConflictRuleRepositoryPort = {
     expectedRevision: number,
     retiredAt: string,
   ): Promise<void>;
+  transaction?<T>(
+    action: (handle: TypedPropositionConflictRuleTransactionHandleV1) => Promise<T>,
+  ): Promise<T>;
+};
+
+export type TypedPropositionConflictRuleTransactionHandleV1 = {
+  readonly repository: TypedPropositionConflictRuleRepositoryPort;
+  readonly rawTransaction: unknown;
+  afterCommit(action: () => void): void;
 };
 
 export type TypedPropositionConflictAssertionRepositoryPort = {
@@ -135,6 +147,18 @@ const compareRelationParticipants = (left: RelationCandidate, right: RelationCan
   left.revisionNumber - right.revisionNumber ||
   utf16OrdinalCompare(left.sourceVersionId, right.sourceVersionId);
 
+const assertionContentKey = (assertion: TypedPropositionConflictAssertionV1): string => {
+  return semanticStableJson({
+    ...assertion,
+    assertionRevision: undefined,
+    status: undefined,
+    createdAt: undefined,
+    supersededAt: undefined,
+    retiredAt: undefined,
+    provenance: { ...assertion.provenance, createdAt: undefined },
+  });
+};
+
 export class TypedPropositionConflictRuleService {
   public constructor(private readonly repository: TypedPropositionConflictRuleRepositoryPort) {}
 
@@ -173,12 +197,15 @@ export class TypedPropositionConflictRuleService {
       .sort((left, right) => left.ruleId.localeCompare(right.ruleId));
   }
 
-  public async execute(input: {
-    readonly projectId: string;
-    readonly actorId: string;
-    readonly payload: TypedPropositionConflictRuleCommandPayloadV1;
-    readonly now: string;
-  }): Promise<TypedPropositionConflictRuleV1> {
+  public async execute(
+    input: {
+      readonly projectId: string;
+      readonly actorId: string;
+      readonly payload: TypedPropositionConflictRuleCommandPayloadV1;
+      readonly now: string;
+    },
+    repository: TypedPropositionConflictRuleRepositoryPort = this.repository,
+  ): Promise<TypedPropositionConflictRuleV1> {
     requireText(input.projectId, 'projectId');
     requireText(input.actorId, 'actorId');
     if (input.payload.operation === 'CREATE') {
@@ -195,7 +222,7 @@ export class TypedPropositionConflictRuleService {
         projectId: input.projectId,
         ...definition,
       });
-      const duplicate = (await this.repository.listRuleRevisions(input.projectId)).find(
+      const duplicate = (await repository.listRuleRevisions(input.projectId)).find(
         (rule) => rule.semanticKey === semanticKey && rule.status === 'ACTIVE',
       );
       if (duplicate) return conflictError('An equivalent active conflict rule already exists.');
@@ -222,7 +249,7 @@ export class TypedPropositionConflictRuleService {
         semanticKey,
         createdAt: input.now,
       };
-      return this.repository.saveRule(rule);
+      return repository.saveRule(rule);
     }
 
     const ruleId = requireText(input.payload.ruleId, 'ruleId');
@@ -234,14 +261,14 @@ export class TypedPropositionConflictRuleService {
     ) {
       return staleError('expectedRuleRevision is required.');
     }
-    const current = await this.repository.findRule(input.projectId, ruleId);
+    const current = await repository.findRule(input.projectId, ruleId);
     if (!current || current.ruleRevision !== expectedRevision) {
       return staleError('The conflict rule changed before this command was applied.');
     }
     if (input.payload.operation === 'RETIRE') {
       if (current.status !== 'ACTIVE')
         return conflictError('Only an active conflict rule can be retired.');
-      await this.repository.retireRule(input.projectId, ruleId, expectedRevision, input.now);
+      await repository.retireRule(input.projectId, ruleId, expectedRevision, input.now);
       return { ...current, status: 'RETIRED', retiredAt: input.now };
     }
     if (current.status !== 'ACTIVE')
@@ -259,7 +286,7 @@ export class TypedPropositionConflictRuleService {
       projectId: input.projectId,
       ...definition,
     });
-    const duplicate = (await this.repository.listRuleRevisions(input.projectId)).find(
+    const duplicate = (await repository.listRuleRevisions(input.projectId)).find(
       (rule) =>
         rule.semanticKey === semanticKey && rule.status === 'ACTIVE' && rule.ruleId !== ruleId,
     );
@@ -283,8 +310,20 @@ export class TypedPropositionConflictRuleService {
       createdAt: input.now,
       supersedes: { ruleId: current.ruleId, ruleRevision: current.ruleRevision },
     };
-    const saved = await this.repository.saveRule(next);
-    await this.repository.supersedeRule(input.projectId, current.ruleId, current.ruleRevision, {
+    // Migration 058 enforces one ACTIVE row per semantic key. When a revision
+    // keeps the same semantic key, close the old row before inserting the new
+    // row; both statements still run inside the caller's transaction, so a
+    // failure cannot expose the intermediate state. A semantic change can use
+    // the ordinary successor-first order and is covered by rollback tests.
+    if (current.semanticKey === semanticKey) {
+      await repository.supersedeRule(input.projectId, current.ruleId, current.ruleRevision, {
+        ruleId: next.ruleId,
+        ruleRevision: next.ruleRevision,
+      });
+      return repository.saveRule(next);
+    }
+    const saved = await repository.saveRule(next);
+    await repository.supersedeRule(input.projectId, current.ruleId, current.ruleRevision, {
       ruleId: saved.ruleId,
       ruleRevision: saved.ruleRevision,
     });
@@ -373,8 +412,6 @@ export const buildTypedPropositionConflictAssertion = (input: {
     right: input.right,
     canonicalBase: input.canonicalBase,
     discoveryBase: input.discoveryBase,
-    accessScope: input.accessScope,
-    sensitivity: input.sensitivity,
   });
   return {
     schemaVersion: '1.0.0',
@@ -528,9 +565,7 @@ export class TypedPropositionConflictEvaluatorV1 {
           sensitivity,
           createdAt: new Date().toISOString(),
         });
-        const saved =
-          (await this.assertions.findByIdentity(input.context.projectId, assertion.identityKey)) ??
-          (await this.assertions.saveAssertion(assertion));
+        const saved = await this.assertions.saveAssertion(assertion);
         observedIdentityKeys.add(saved.identityKey);
         competitions.push({
           left: leftRef,
@@ -586,6 +621,7 @@ export class TypedPropositionConflictEvaluatorV1 {
 
 export class InMemoryTypedPropositionConflictRuleRepository implements TypedPropositionConflictRuleRepositoryPort {
   private readonly history = new Map<string, TypedPropositionConflictRuleV1[]>();
+  private transactionTail: Promise<void> = Promise.resolve();
 
   async listRuleRevisions(projectId: string): Promise<readonly TypedPropositionConflictRuleV1[]> {
     return [...this.history.values()]
@@ -602,6 +638,40 @@ export class InMemoryTypedPropositionConflictRuleRepository implements TypedProp
     return revision === undefined
       ? history.sort((left, right) => right.ruleRevision - left.ruleRevision)[0]
       : history.find((rule) => rule.ruleRevision === revision);
+  }
+
+  async transaction<T>(
+    action: (handle: TypedPropositionConflictRuleTransactionHandleV1) => Promise<T>,
+  ): Promise<T> {
+    const previous = this.transactionTail;
+    let release!: () => void;
+    this.transactionTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      const transactional = new InMemoryTypedPropositionConflictRuleRepository();
+      for (const [ruleId, history] of this.history.entries()) {
+        transactional.history.set(
+          ruleId,
+          history.map((rule) => ({ ...rule })),
+        );
+      }
+      const afterCommit: (() => void)[] = [];
+      const result = await action({
+        repository: transactional,
+        rawTransaction: undefined,
+        afterCommit: (callback) => afterCommit.push(callback),
+      });
+      this.history.clear();
+      for (const [ruleId, history] of transactional.history.entries()) {
+        this.history.set(ruleId, history);
+      }
+      for (const callback of afterCommit) callback();
+      return result;
+    } finally {
+      release();
+    }
   }
 
   async saveRule(rule: TypedPropositionConflictRuleV1) {
@@ -677,7 +747,25 @@ export class InMemoryTypedPropositionConflictAssertionRepository implements Type
     const key = `${assertion.projectId}:${assertion.identityKey}`;
     const history = this.assertions.get(key) ?? [];
     const existing = history.find((entry) => entry.status === 'ACTIVE');
-    if (existing) return existing;
+    if (existing) {
+      if (assertionContentKey(existing) === assertionContentKey(assertion)) return existing;
+      const superseded = {
+        ...existing,
+        status: 'SUPERSEDED' as const,
+        supersededAt: assertion.createdAt,
+      };
+      const next = {
+        ...assertion,
+        assertionId: existing.assertionId,
+        assertionRevision: existing.assertionRevision + 1,
+        status: 'ACTIVE' as const,
+      };
+      this.assertions.set(key, [
+        ...history.map((entry) => (entry === existing ? superseded : entry)),
+        next,
+      ]);
+      return next;
+    }
     const matchingRevision = history.find(
       (entry) => entry.assertionRevision === assertion.assertionRevision,
     );
@@ -688,6 +776,7 @@ export class InMemoryTypedPropositionConflictAssertionRepository implements Type
     );
     const stored = {
       ...assertion,
+      assertionId: history.at(-1)?.assertionId ?? assertion.assertionId,
       assertionRevision: Math.max(assertion.assertionRevision, latestRevision + 1),
       status: 'ACTIVE' as const,
     };

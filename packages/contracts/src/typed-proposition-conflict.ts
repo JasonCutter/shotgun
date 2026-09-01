@@ -206,8 +206,6 @@ export const typedPropositionConflictAssertionIdentity = (input: {
   readonly right: Pick<RelationCandidate, 'candidateId' | 'revisionNumber' | 'sourceVersionId'>;
   readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
   readonly discoveryBase: DiscoveryProjectionBaseIdentityV1;
-  readonly accessScope: readonly string[];
-  readonly sensitivity: SecurityContext['sensitivity'];
 }): string => {
   const participants = [input.left, input.right]
     .map((participant) => ({
@@ -230,8 +228,6 @@ export const typedPropositionConflictAssertionIdentity = (input: {
       participants,
       canonicalBase: input.canonicalBase,
       discoveryBase: input.discoveryBase,
-      accessScope: [...new Set(input.accessScope)].sort(utf16OrdinalCompare),
-      sensitivity: input.sensitivity,
     }),
   );
 };

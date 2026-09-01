@@ -1475,6 +1475,7 @@ export class DiscoveryBudgetControllerV1 {
     private readonly tokenEstimator: DiscoveryTokenEstimatorPortV1,
     private readonly costEstimator: DiscoveryCostEstimatorPortV1,
     private readonly durableReservations?: DiscoveryProviderReservationDurabilityPortV1,
+    private readonly clock: () => number = Date.now,
   ) {}
 
   public async executeProviderCall(input: {
@@ -1535,7 +1536,7 @@ export class DiscoveryBudgetControllerV1 {
         provider: provider.identity.provider,
         model: provider.identity.model,
         sequence: ++this.reservationSequence,
-        now: Date.now(),
+        now: this.clock(),
       }),
     )}`;
     if (this.durableReservations) {
@@ -1556,7 +1557,7 @@ export class DiscoveryBudgetControllerV1 {
     const deadlineMs = Date.parse(this.deadlineAt());
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
     const scheduleDeadline = (): void => {
-      const remainingMs = deadlineMs - Date.now();
+      const remainingMs = deadlineMs - this.clock();
       if (remainingMs <= 0) {
         controller.abort('DISCOVERY_DEADLINE');
         return;

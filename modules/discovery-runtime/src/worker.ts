@@ -23,6 +23,8 @@ export type DiscoveryExecutionContextV1 = {
   readonly claim: DiscoveryRuntimeClaimV1;
   readonly budgetSnapshot: DiscoveryRuntimeBudgetSnapshotV1;
   readonly checkpointRevision: number;
+  /** The worker clock used for all lease-fenced operational writes. */
+  readonly now?: string;
   readonly stage?: {
     readonly stageId: string;
     readonly stageRevision: number;
@@ -589,6 +591,7 @@ export class PersistentDiscoveryWorker {
         claim,
         budgetSnapshot,
         checkpointRevision,
+        now: nowIso(this.clock),
         ...(stage === undefined
           ? {}
           : {

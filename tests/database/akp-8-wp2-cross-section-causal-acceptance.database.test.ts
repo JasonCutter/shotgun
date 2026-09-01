@@ -67,6 +67,7 @@ import {
   StaticDiscoveryTriggerPolicy,
 } from '../../modules/discovery-trigger-coordinator/src/index.js';
 import { PersistentDiscoveryWorker } from '../../modules/discovery-runtime/src/index.js';
+import type { DiscoveryTemporalCompatibilityPortV1 } from '../../modules/discovery-finding-fingerprint/src/index.js';
 import {
   FrontendReviewProductCoordinator,
   type FrontendReviewScopeV1,
@@ -238,6 +239,8 @@ const createDiscoveryGenerationFactory = (projectId: string) => {
         ledger,
         { revision: 'akp-8-token-estimator:v1', estimateUpperBound: () => 100 },
         { revision: 'akp-8-cost-estimator:v1', estimate: () => 1 },
+        undefined,
+        () => Date.parse(now),
       ),
     );
 };
@@ -747,6 +750,16 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       leaseDurationMs: 30_000,
       clock: () => new Date(now),
     });
+    const runWorkerToCompletion = async (): Promise<void> => {
+      for (let run = 0; run < 20; run += 1) {
+        const result = await worker.runOnce();
+        if (result === 'COMPLETED') return;
+        if (result !== 'PARTIAL') {
+          throw new Error(`Discovery worker did not complete: ${result}`);
+        }
+      }
+      throw new Error('Discovery worker exceeded the bounded reconciliation drain.');
+    };
     const baselineEvent = eventFor(projectId, baselinePayload, `outbox:${commitId}`);
     await dispatchCanonicalOutbox(
       canonical,
@@ -759,32 +772,7 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       1,
       now,
     );
-    const baselineResult = await worker.runOnce();
-    if (baselineResult !== 'COMPLETED') {
-      const baselineRuntimeIds = await pool!.query<{ run_id: string }>(
-        `SELECT run_id
-           FROM discovery.runs
-          WHERE project_id = $1
-          ORDER BY run_revision DESC, run_id ASC
-          LIMIT 1`,
-        [projectId],
-      );
-      const attempts = baselineRuntimeIds.rows[0]
-        ? await runtime.listActivityAttempts({
-            projectId,
-            jobId: (await runtime.findJobByTriggerIdentity({
-              projectId,
-              triggerClass: 'CANONICAL_COMMITTED',
-              eventId: commitId,
-              eventRevision: '1',
-            }))!.jobId,
-            runId: baselineRuntimeIds.rows[0].run_id,
-          })
-        : [];
-      throw new Error(
-        `Baseline Discovery run failed: ${JSON.stringify({ result: baselineResult, attempts })}`,
-      );
-    }
+    await runWorkerToCompletion();
 
     const schedules = new PostgresDiscoveryScheduleRepository(pool!);
     const dueSchedule = {
@@ -796,8 +784,8 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       timezone: 'UTC',
       dayOfWeek: 2,
       localTime: '02:00',
-      nextOccurrenceAt: '2026-08-25T02:00:00.000Z',
-      nextOccurrenceKey: '2026-08-25T02:00@UTC',
+      nextOccurrenceAt: '2026-09-01T02:00:00.000Z',
+      nextOccurrenceKey: '2026-09-01T02:00@UTC',
       updatedAt: now,
     };
     expect(await schedules.saveSchedule(dueSchedule)).toBe('CREATED');
@@ -820,7 +808,7 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       requestedScanMode: 'FULL_SCAN',
       effectiveScanMode: 'FULL_SCAN',
     });
-    const scheduledResult = await worker.runOnce();
+    await runWorkerToCompletion();
     const scheduledRuntimeIds = await pool!.query<{ run_id: string; attempt_id: string }>(
       `SELECT r.run_id, a.attempt_id
          FROM discovery.runs r
@@ -832,16 +820,6 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       [projectId, scheduledJob!.jobId],
     );
     expect(scheduledRuntimeIds.rows).toHaveLength(1);
-    if (scheduledResult !== 'COMPLETED') {
-      const attempts = await runtime.listActivityAttempts({
-        projectId,
-        jobId: scheduledJob!.jobId,
-        runId: scheduledRuntimeIds.rows[0]!.run_id,
-      });
-      throw new Error(
-        `Scheduled Discovery run failed: ${JSON.stringify({ result: scheduledResult, attempts })}`,
-      );
-    }
     const scheduledRun = await runtime.findRun({
       projectId,
       jobId: scheduledJob!.jobId,
@@ -923,9 +901,10 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       },
     });
     const feedbackGateway = new PostgresFrontendCommandGateway(pool!);
+    let feedbackNow = '2026-09-01T03:00:00.000Z';
     const feedbackCoordinator = new DiscoveryFeedbackProductCoordinator(
       feedbackRepository,
-      () => now,
+      () => feedbackNow,
     );
     const productScope = {
       principalId,
@@ -1005,6 +984,7 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       finding: authoritativeFinding!,
       gateway: feedbackGateway,
     });
+    feedbackNow = '2026-09-01T03:00:01.000Z';
     await feedbackCoordinator.submit({
       scope: feedbackScope,
       request: similarRequest,
@@ -1239,9 +1219,9 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       },
       projectId,
       1,
-      now,
+      committedPayload!.availableAt,
     );
-    expect(await worker.runOnce()).toBe('COMPLETED');
+    await runWorkerToCompletion();
     expect(
       (
         await findingRepository.findLifecycle({
@@ -1321,6 +1301,30 @@ const createProductExecution = (input: {
     },
     evidenceRepository: input.evidenceRepository,
     semanticRetriever: input.semanticRetriever,
+    temporalCompatibility: {
+      read: async ({ context, resourceRefs }) => {
+        const approvedEntities = resourceRefs.filter(
+          (resource) =>
+            resource.resourceKind === 'CANONICAL_ENTITY' && resource.resourceState === 'APPROVED',
+        );
+        const pairs = approvedEntities.flatMap((left, index) =>
+          approvedEntities.slice(index + 1).map((right) => ({
+            left,
+            right,
+            compatible: true,
+            temporalEvidenceId: `akp-8-temporal-authority:${context.projectId}`,
+          })),
+        );
+        return {
+          sourceProjectionDigest: context.sourceProjectionDigest,
+          canonicalBase: context.canonicalBase,
+          discoveryBase: context.discoveryBase,
+          semanticGenerationId: `generation:${context.projectId}:v1`,
+          compatibilities: pairs,
+          completeness: 'COMPLETE',
+        } satisfies Awaited<ReturnType<NonNullable<DiscoveryTemporalCompatibilityPortV1['read']>>>;
+      },
+    } satisfies DiscoveryTemporalCompatibilityPortV1,
     createGenerationService: (budget) => createDiscoveryGenerationFactory(input.projectId)(budget),
     observeReconciliation: observeDiscoveryReconciliation,
   });

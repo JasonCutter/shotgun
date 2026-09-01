@@ -34,7 +34,9 @@ import type {
 } from '../../../packages/contracts/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
-type FeedbackQueryExecutor = Pick<Pool, 'query'> & Partial<Pick<Pool, 'connect'>>;
+type FeedbackQueryExecutor = Pick<Pool, 'query'> &
+  Partial<Pick<Pool, 'connect'>> &
+  Partial<Pick<PoolClient, 'release'>>;
 
 type SemanticFamilyKeyResolver = (input: {
   readonly projectId: string;
@@ -436,7 +438,9 @@ export class PostgresDiscoveryFeedbackRepository implements DiscoveryFeedbackRep
     directive: DiscoverySuppressionDirectiveV1,
   ): Promise<'CREATED' | 'CONFLICT'> {
     const normalized = assertDiscoverySuppressionDirectiveV1(directive);
-    if (typeof this.pool.connect === 'function') {
+    // A PoolClient also exposes connect(), but it is already inside the
+    // coordinator-owned transaction and cannot be connected a second time.
+    if (typeof this.pool.connect === 'function' && typeof this.pool.release !== 'function') {
       return withSafePostgresTransaction(
         this.pool as unknown as Pick<Pool, 'connect'>,
         async (client) => this.appendSuppressionWithExecutor(client, normalized),

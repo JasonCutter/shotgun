@@ -777,6 +777,9 @@ export const transitionFrontendKnowledgeDraftStatus = (
     resourceId: current.resourceId,
     base: current.base,
     operations: current.operations,
+    ...(current.discoveryProvenance === undefined
+      ? {}
+      : { discoveryProvenance: current.discoveryProvenance }),
     ...(current.validation === undefined ? {} : { validation: current.validation }),
     ...(current.impactPreview === undefined ? {} : { impactPreview: current.impactPreview }),
     ...(current.reviewResource === undefined ? {} : { reviewResource: current.reviewResource }),

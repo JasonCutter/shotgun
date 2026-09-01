@@ -28,9 +28,12 @@ authorized by the AKP-8 directive:
 Existing accepted scenarios `D/F/G/I/L` were reused and not duplicated. WP3
 scenarios `E/H/J/K/N/O` remain out of scope.
 
-No product capability, migration, runtime dependency, or external service was
-added. The changes are acceptance contracts, a PostgreSQL composition test, and
-this evidence record.
+No migration, runtime dependency, or external service was added. The package
+also contains production correctness fixes required for the acceptance path:
+worker-clock propagation, bound PostgreSQL runtime method calls, relation-proof
+filtering, compiled-truth re-entry base normalization, PoolClient-safe feedback
+transactions, and preservation of server-owned Discovery provenance through
+Draft lifecycle transitions.
 
 ## Production authorities exercised
 
@@ -80,15 +83,21 @@ Local results on the candidate branch:
 - Focused regression: `5 files / 24 tests passed`, including scheduler,
   feedback Product API, typed conflict, and relation reconciliation contracts.
 - TypeScript typecheck: passed.
-- PostgreSQL cross-section acceptance: `1 skipped` because this workspace has no
-  `TEST_DATABASE_URL`; the test is explicitly gated by the repository database
-  guard and is required in CI.
+- PostgreSQL cross-section acceptance: `1 passed` against the local
+  `TEST_DATABASE_URL` PostgreSQL instance. The test proves the real A/B/C
+  journey, including the server-owned Discovery Draft through final Canonical
+  commit and later reconciliation; the deterministic test composition supplies
+  only the temporal compatibility Port and external AI/embedding doubles.
 - Automatic main CI for the WP2A baseline was already verified before this work:
   run `33496775546` / workflow run `#1221`, exact merge SHA
   `ba6f8e9e1fd5e2d0335bb054bde1a3d9a2d2fa01`, with Quality/DB, Frontend/E2E,
   and Required Gates successful. This is baseline evidence, not the candidate
   branch result.
 - No manual rerun was performed; no no-op rerun was performed.
+
+The candidate PR's automatic CI must still run on the final pushed head; its
+database, frontend/E2E, and required-gate results remain the authoritative
+remote gate for this package.
 
 The candidate must remain a Draft PR until GPT review. Automatic PR CI and its
 database, frontend/E2E, and required-gate results are the authoritative final
@@ -98,23 +107,29 @@ gate for this package.
 
 Changed files:
 
+- `adapters/discovery-feedback-postgres/src/index.ts`
+- `adapters/discovery-runtime-product/src/index.ts`
+- `modules/discovery-quality-gate/src/index.ts`
+- `modules/discovery-runtime/src/worker.ts`
+- `modules/frontend-knowledge-draft/src/index.ts`
+- `modules/frontend-knowledge-draft/src/product-api.ts`
 - `tests/contract/akp-8-wp2-cross-section-causal-acceptance.contract.test.ts`
 - `tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts`
 - `docs/implementation/akp-8-wp2-cross-section-causal-acceptance.md`
 
 There is no schema migration and no production dependency change. Rollback is a
-normal branch/PR revert or deletion of the two test files and this evidence
-record; no persisted application data is changed by the candidate package.
+normal branch/PR revert. The acceptance test cleanup is project-scoped; no
+persisted application data is changed by the candidate package.
 
 ## Acceptance matrix and remaining work
 
 | Scenario    | WP2 candidate evidence                                                             | Current disposition                                             |
 | ----------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| A           | contract + real PostgreSQL production journey and later reconciliation             | pending PR/CI review                                            |
-| B           | real PostgreSQL schedule repository, durable runtime, worker, and stage assertions | pending CI database run                                         |
-| C           | real Product read, feedback coordinator, command ledger, history/truth assertions  | pending CI database run                                         |
+| A           | contract + real PostgreSQL production journey and later reconciliation             | local DB passed; pending PR/CI review                           |
+| B           | real PostgreSQL schedule repository, durable runtime, worker, and stage assertions | local DB passed; pending PR/CI review                           |
+| C           | real Product read, feedback coordinator, command ledger, history/truth assertions  | local DB passed; pending PR/CI review                           |
 | D/F/G/I/L   | existing accepted evidence reused                                                  | no duplicate work                                               |
-| M           | production conflict authority contract + existing PostgreSQL authority evidence    | pending PR/CI review                                            |
+| M           | production conflict authority contract + existing PostgreSQL authority evidence    | local contract passed; pending PR/CI review                     |
 | P           | deterministic bounded wait/deadline/new-event coordinator slice                    | pending PR/CI review; full DB deadline run remains a limitation |
 | E/H/J/K/N/O | not part of WP2                                                                    | WP3 scope                                                       |
 

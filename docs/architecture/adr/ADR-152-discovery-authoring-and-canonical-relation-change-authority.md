@@ -137,6 +137,67 @@ Review Context, or resource causes revalidation/rebuild or a fail-closed
 `STALE_AUTHORING_INPUT`; it cannot create a Draft from old text. The bridge
 does not create a Review Approval and does not call Canonical.
 
+### 2.1 Durable Review-to-Draft handoff
+
+The accepted-for-authoring handoff is an atomic same-database Product
+transaction, not an after-commit callback. The terminal Discovery Review
+decision and the initial Draft materialization commit together or roll back
+together. A bounded coordinator equivalent to
+`DiscoveryAcceptedForAuthoringTransactionV1` uses one PostgreSQL `PoolClient`
+and transaction-bound access to the Review repositories, Knowledge Draft
+repositories, Frontend Command Ledger raw transaction, authoritative
+`DiscoveryReviewResourceV1` reader, and current Canonical snapshot/base reader.
+It must not open a nested independent Draft transaction.
+
+The required order is:
+
+```text
+Frontend command accepted
+  -> lockAcceptedForExecution
+  -> BEGIN
+  -> lock Review Context
+  -> revalidate target, Evidence, freshness, access and policy
+  -> append Review decisions and compute aggregate state
+  -> if ACCEPTED_FOR_AUTHORING:
+       load authoritative DiscoveryReviewResourceV1
+       resolve exact approved Knowledge Entity endpoints
+       resolve current Canonical Draft base
+       create deterministic authoring materialization identity
+       insert/materialize Knowledge Draft
+       persist Discovery-to-Draft provenance/linkage
+  -> completeInTransaction(command ledger, produced resources)
+  -> COMMIT
+```
+
+The existing `accept`, `lockAcceptedForExecution`,
+`completeInTransaction`, `OUTCOME_UNKNOWN`, and `clientRequestId` semantics are
+reused; no parallel command ledger is introduced. A definite transaction
+failure leaves no newly persisted terminal acceptance, no newly persisted
+Draft, and no false `COMPLETED` command. If the commit acknowledgement is
+uncertain, the result is not reported as rejected; the original
+`clientRequestId` resolves the durable outcome through the existing ledger.
+The in-memory boundary must provide equivalent clone/commit/rollback parity.
+
+The materialization identity is derived from the Review Context ID/revision,
+Discovery candidate ID/revision, Discovery Review resource ID/revision, bridge
+contract version, and current Canonical base identity. UI wording, summary,
+rank, timestamp, and random run IDs are not identity inputs. The current
+Canonical snapshot, access revision, and policy context revision are resolved
+inside this transaction after freshness validation; an authority change fails
+closed or requires Review revalidation rather than silently rebasing.
+
+Successful command completion records both the Review Context and Knowledge
+Draft as produced resources. A replay returns the same Draft and never creates
+another one. Materialization does not submit, review, approve, or commit the
+Draft; the normal governed lifecycle begins after materialization. No new
+Finding lifecycle state or second Review-to-Draft outbox/queue/worker is
+introduced for this V1 boundary.
+
+If repository audit proves that these resources cannot participate in one safe
+transaction without violating module ownership, implementation must stop and
+report the boundary as blocked. It must not silently replace this decision with
+an asynchronous handoff.
+
 ### 3. Relation source and Draft contract
 
 For `RELATION_HYPOTHESIS`, the bridge reads relation semantics only from:
@@ -163,13 +224,41 @@ value, named here `RelationDraftValueV2`, rather than using a claim surrogate:
 RelationDraftValueV2
   schemaVersion: relation.v2
   relationType: string
-  fromEndpoint: { projectId, canonicalEntityId, canonicalEntityRevision }
-  toEndpoint:   { projectId, canonicalEntityId, canonicalEntityRevision }
+  fromEndpoint: ApprovedKnowledgeEntityRefV1
+  toEndpoint:   ApprovedKnowledgeEntityRefV1
   direction: DIRECTED | UNDIRECTED
   validFrom?: string
   validTo?: string
   rationale: string
 ```
+
+The endpoint contract is:
+
+```text
+ApprovedKnowledgeEntityRefV1
+  projectId
+  authority: APPROVED_KNOWLEDGE
+  resourceType: ENTITY
+  resourceId
+  resourceRevision
+```
+
+`resourceId` is the authoritative Knowledge Model
+`EntityCandidate.candidateId`; `resourceRevision` is its authoritative
+`revisionNumber`. An endpoint is eligible only when the server resolves one
+same-project, access-authorized, exact candidate ID/revision through the
+existing Knowledge Model authority, with an approved `KnowledgeReviewGroup`,
+`candidateType: ENTITY`, and the exact approved revision. The server must not
+select a newer row by `MAX`, timestamp, or last-write ordering. Display names,
+aliases, labels, Compiled Truth text, Finding IDs, Review IDs, semantic rank,
+and embedding identity are never endpoint authority. Missing, ambiguous,
+stale, hidden, cross-project, non-Entity, or wrong-revision references fail
+closed.
+
+This ADR does not create a Canonical Entity authority. A future
+`canonical.entities` store, `authority: CANONICAL` endpoint, or entity
+canonicalization/merge/split flow is outside this ADR and requires a separate
+architecture decision.
 
 The Draft operation is exactly one `RELATION_ADD` with this typed value. It is
 never converted to `CLAIM_ADD`, `ENTITY_ADD`, or `NO_OP`. `validFrom` and
@@ -178,16 +267,12 @@ validated for temporal consistency. A non-authoritative temporal description
 is retained only in rationale/provenance; the implementation must not invent a
 date.
 
-The chosen stable endpoint identity is the server-resolved, project-scoped
-Canonical Entity identity (`canonicalEntityId` plus its authoritative revision),
-not a display label, Discovery rank, Finding ID, candidate ID, Review resource
-ID, or UI address. A `DiscoveryResourceRefV1` is accepted only when the server
-can resolve its `projectId`, `resourceKind`, `resourceId`, and approved
-`resourceRevision` to exactly one accessible Canonical Entity. Ambiguous,
-unresolved, cross-project, or non-entity endpoints fail closed. This keeps
-Knowledge Draft, Workspace, Graph, Compiled Truth, Knowledge Model relation
-candidate, and Discovery resource adapters interoperable without exposing
-their internal IDs as Canonical IDs.
+The stable endpoint identity is the server-resolved, project-scoped
+`APPROVED_KNOWLEDGE` `ENTITY` exact candidate revision. The relation edge and
+its endpoints have distinct authority: the later edge is `CANONICAL`, while
+each endpoint remains `APPROVED_KNOWLEDGE`. Workspace, Graph, Compiled Truth,
+and Discovery projections must preserve that distinction and must not visually
+or semantically promote an endpoint Entity to Canonical authority.
 
 ### 4. Server-owned provenance and Evidence
 
@@ -249,18 +334,20 @@ The preferred Canonical representation is a Stage 6-owned
 `canonical.relations` append-only, current-version-addressable table. It is
 not a Discovery table, Review table, Compiled Truth cache, Graph overlay, or
 legacy Stage-5 manifest. A future migration is required after approval; WP2A
-does not allocate or implement it (a future plan may evaluate the next
-available migration, currently likely `059`, only under a separate request).
+does not allocate or implement it. The later implementation must verify the
+actual next migration number under a separate request; no migration `059` is
+allocated by this ADR.
 
 The Canonical Relation record is equivalent to:
 
 ```text
+authority: CANONICAL
 relationId
 projectId
 revisionNumber
 relationType
-fromEntityId / fromEntityRevision
-toEntityId / toEntityRevision
+fromEndpoint: ApprovedKnowledgeEntityRefV1
+toEndpoint: ApprovedKnowledgeEntityRefV1
 direction
 validFrom? / validTo?
 evidenceIds[]
@@ -270,6 +357,13 @@ frontendReviewApprovalAuthority { approvalId, authorityDigest }
 discoveryProvenanceRef
 createdAt
 ```
+
+The record's edge authority is `CANONICAL`; its endpoint authority is the
+authority-qualified `APPROVED_KNOWLEDGE` Entity reference above. There is no
+Canonical Entity reader or Canonical Entity revision repository in the current
+product. The later relation writer must revalidate both exact approved Entity
+candidate revisions and their same-project access before creating the
+Canonical edge.
 
 The record becomes Canonical only after validation, concrete Draft Review,
 active Approval, current-base revalidation, and the atomic Stage 6 commit.
@@ -328,9 +422,12 @@ original exact replay result.
 After the Canonical commit, the existing `CanonicalCommitted` delivery path
 updates or rebuilds the Compiled Truth projection, semantic corpus,
 Knowledge Workspace, Graph, and Discovery resource adapter according to their
-existing Ports. A Canonical Relation is the authoritative relation in every
-downstream projection; an approved Discovery `RELATION_CANDIDATE` is not a
-second relation.
+existing Ports. A Canonical Relation edge is the authoritative relation in
+every downstream projection; an approved Discovery `RELATION_CANDIDATE` is not
+a second relation. The projection preserves the mixed authority: the edge is
+`CANONICAL`, while both endpoint references remain
+`APPROVED_KNOWLEDGE`/`ENTITY` at their exact candidate revisions. No
+projection may present those endpoints as Canonical Entities.
 
 The projection key is the Canonical `relationId/revisionNumber`. An accepted
 authoring precursor stores a server-owned `canonicalRelationId` only after the
@@ -368,10 +465,13 @@ transition.
 ### 10. Security and failure semantics
 
 Every bridge, Draft, Review, and Canonical operation is bound to one Project.
-Endpoints are server-resolved. The effective access scope is the intersection
-of the actor's current scope, both endpoint scopes, and the Discovery lineage;
-sensitivity is the highest required value. Cross-project or ambiguous access
-fails closed without leaking hidden identities.
+Endpoints are server-resolved exact approved Knowledge Entity revisions. The
+effective access scope is the intersection of the actor's current scope, both
+endpoint authorities, the Discovery lineage, and current project policy;
+sensitivity is derived from that authoritative content lineage at commit time.
+The actor's scope is an authorization gate and must not widen source
+restrictions. Cross-project or ambiguous access fails closed without leaking
+hidden identities.
 
 The following conditions fail closed and never partially materialize or commit:
 
@@ -428,6 +528,9 @@ separate migration and approval.
 | C. Write only to Review or Compiled Truth                 | `REJECT`    | Leaves no Canonical authority, creates a projection-as-truth or Review-as-truth boundary, and cannot satisfy E2E-A.                                  |
 | D. Coerce Frontend Draft into the legacy Stage-5 manifest | `REJECT`    | Reuses the wrong authority and cannot preserve typed relation provenance; ADR-128/2026-08-09 explicitly forbid legacy coercion.                      |
 | E. Bounded Stage-6 `ADD_RELATION` extension               | `PREFERRED` | Preserves ADR-139, keeps Review/Approval/Canonical ownership explicit, supports typed relation identity, and limits scope to one additive operation. |
+| F. Introduce Canonical Entity authority inside ADR-152    | `REJECT`    | Expands scope without a current Stage 6 Canonical Entity authority; E2E-A can use exact approved Knowledge Entity revisions.                         |
+| G. Best-effort after-commit Draft materialization         | `REJECT`    | Leaves an accepted-without-Draft crash gap between the terminal Review decision and authoring handoff.                                               |
+| H. New Review-to-Draft outbox/worker                      | `DEFER`     | Not required for V1 when the same-database transaction closes the bounded handoff; another durable runtime would require a separate decision.        |
 
 ## OSS and replacement review
 
@@ -455,17 +558,20 @@ replacement/rollback exercise.
 This ADR intentionally separates decisions from implementation. A later
 bounded request must cover, in order:
 
-1. contract additions and strict decoders for the bridge, `RelationDraftValueV2`,
-   provenance, Canonical Relation, `ADD_RELATION`, History, and outbox;
-2. PostgreSQL and in-memory repositories/transaction adapters, with a governed
-   migration after approval;
-3. the server-owned bridge and idempotent Draft materialization;
+1. contract additions and strict decoders for the bridge,
+   `ApprovedKnowledgeEntityRefV1`, `RelationDraftValueV2`, provenance,
+   Canonical Relation, `ADD_RELATION`, History, and outbox;
+2. a bounded same-database transaction coordinator with PostgreSQL and
+   in-memory transaction adapters, plus a governed migration after approval;
+3. the server-owned bridge and deterministic, idempotent Draft materialization
+   from exact approved Knowledge Entity revisions;
 4. Draft validation, impact, Review submission, Approval binding, and commit
    operation mapping;
-5. Stage 6 Canonical Relation write, replay guard, history, outbox, and
-   project-state transaction;
+5. Stage 6 Canonical Relation write, replay guard, history, existing outbox,
+   and project-state transaction;
 6. Compiled Truth, semantic corpus, Workspace, Graph, and Discovery projection
-   consumers plus precursor supersession;
+   consumers plus precursor supersession while preserving edge-versus-endpoint
+   authority;
 7. backup/restore/deletion/retention and recovery behavior;
 8. Contract, Golden Corpus, replay/idempotency, security/Approval-negative,
    adapter replacement, migration, rollback, and end-to-end tests;
@@ -478,25 +584,24 @@ WP2 acceptance fixtures, WP3, deployment, and AKP v1 completion.
 
 ## Acceptance criteria for this proposal
 
-| ID         | Criterion                                                                 | WP2A disposition                                                |
-| ---------- | ------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| WP2A-AC-01 | Reproduce the two WP2 blockers from canonical repository evidence         | Satisfied by the Context section and companion audit.           |
-| WP2A-AC-02 | Preserve Discovery approval as non-Canonical/non-Approval                 | Explicit in §§1, 2, and 5.                                      |
-| WP2A-AC-03 | Select concrete server-owned Discovery→Draft materialization              | Bridge selected in §2; no user retyping required.               |
-| WP2A-AC-04 | Preserve relation endpoints, direction, and authoritative time            | `RelationDraftValueV2` selected in §3.                          |
-| WP2A-AC-05 | Define complete server-owned provenance                                   | §4 defines the mandatory lineage extension.                     |
-| WP2A-AC-06 | Keep concrete Draft Review on `KNOWLEDGE_CANONICAL_CHANGE`                | §5 retains the existing Approval purpose and binding.           |
-| WP2A-AC-07 | Reconcile ADR-139 with the old `ADD_CLAIM / NO_OP` implementation         | §§Context and 10 make the bounded refinement explicit.          |
-| WP2A-AC-08 | Select a bounded Stage 6 Canonical Relation authority                     | §6 selects `canonical.relations`; future migration is required. |
-| WP2A-AC-09 | Define ADD_RELATION identity, duplicate, replay, and reserved operations  | §6 specifies all four.                                          |
-| WP2A-AC-10 | Fail closed for unsupported operations and never coerce relation to NO_OP | §§3, 7, and 10.                                                 |
-| WP2A-AC-11 | Define transaction, History, and existing outbox behavior                 | §7.                                                             |
-| WP2A-AC-12 | Define projections, authority, dedupe, and Discovery reconciliation       | §8.                                                             |
-| WP2A-AC-13 | Define migration, backup/restore, retention, and rollback                 | §§6, 11, and 12.                                                |
-| WP2A-AC-14 | Introduce no Product/runtime/schema implementation in this work           | Authority gate and Deferred Product map.                        |
-| WP2A-AC-15 | Keep ADR-152 `PROPOSED / USER APPROVAL PENDING`                           | Frontmatter and Authority gate.                                 |
-| WP2A-AC-16 | Keep WP2 blocked and do not start WP3 or AKP completion                   | Authority gate and matrix control update.                       |
-| WP2A-AC-17 | Record OSS decisions and replacement boundary                             | OSS and replacement review.                                     |
+| ID         | Criterion                                                                | WP2A disposition                                                  |
+| ---------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| WP2A-AC-01 | Use no nonexistent Canonical Entity authority                            | Current-product audit and §§3, 6.                                 |
+| WP2A-AC-02 | Use exact `APPROVED_KNOWLEDGE` `ENTITY` endpoint revisions               | §3 defines `ApprovedKnowledgeEntityRefV1` and fail-closed lookup. |
+| WP2A-AC-03 | Keep Canonical edge authority distinct from endpoint authority           | §§3, 6, and 8 preserve `CANONICAL` edge plus approved endpoints.  |
+| WP2A-AC-04 | Use authority-qualified endpoint refs in `RelationDraftValueV2`          | §3.                                                               |
+| WP2A-AC-05 | Add no `ADD_ENTITY` or `canonical.entities` scope expansion              | §§3 and Alternatives F.                                           |
+| WP2A-AC-06 | Make Review acceptance and initial Draft materialization one transaction | §2.1.                                                             |
+| WP2A-AC-07 | Prevent accepted-without-Draft on definite transaction failure           | §2.1 atomicity invariant.                                         |
+| WP2A-AC-08 | Complete the existing command ledger in that same transaction            | §2.1.                                                             |
+| WP2A-AC-09 | Reuse `OUTCOME_UNKNOWN` and replay semantics for commit uncertainty      | §2.1.                                                             |
+| WP2A-AC-10 | Add no second Review-to-Draft outbox/queue/worker                        | §2.1 and Alternative H.                                           |
+| WP2A-AC-11 | Make Draft materialization identity deterministic and replayable         | §2.1.                                                             |
+| WP2A-AC-12 | Avoid Draft auto-approval and auto-commit                                | §§1, 2.1, and 5.                                                  |
+| WP2A-AC-13 | Keep Stage 6 `ADD_RELATION` bounded                                      | §§6 and 7.                                                        |
+| WP2A-AC-14 | Keep ADR-152 `PROPOSED / USER APPROVAL PENDING`                          | Frontmatter and Authority gate.                                   |
+| WP2A-AC-15 | Add no Product/runtime/schema/test implementation                        | Authority gate and Deferred Product map.                          |
+| WP2A-AC-16 | Keep WP2 blocked and do not start WP3 or AKP completion                  | Authority gate and matrix control update.                         |
 
 ## Status and next gate
 

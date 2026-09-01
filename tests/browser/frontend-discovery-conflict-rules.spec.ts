@@ -39,6 +39,6 @@ test('WP2R exposes a focused owner conflict-rule surface without assertion contr
   await expect(dialog.getByLabel('Relation type A')).toBeVisible();
   await expect(dialog.getByLabel('Relation type B')).toBeVisible();
   await expect(dialog.getByLabel('Direction')).toBeVisible();
-  await expect(dialog.getByText(/does not change Canonical knowledge/i)).toBeVisible();
+  await expect(dialog.getByText(/does not make .*Canonical knowledge/i)).toBeVisible();
   await expect(dialog.getByText(/assertion/i)).toHaveCount(0);
 });

@@ -328,7 +328,7 @@ describe('AKP-8 WP2R PostgreSQL production composition', () => {
         [projectId],
       );
       await pool.query('DELETE FROM knowledge.review_groups WHERE project_id = $1', [projectId]);
-      await pool.query('DELETE FROM auth.sessions WHERE project_id = $1', [projectId]);
+      await pool.query('DELETE FROM auth.sessions WHERE active_project_id = $1', [projectId]);
       await pool.query('DELETE FROM auth.project_memberships WHERE project_id = $1', [projectId]);
       await pool.query('DELETE FROM asset.storage_receipts WHERE project_id = $1', [projectId]);
       if (sourceVersionId) {

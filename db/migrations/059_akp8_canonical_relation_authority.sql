@@ -19,7 +19,7 @@ CREATE SCHEMA IF NOT EXISTS canonical;
 
 CREATE TABLE IF NOT EXISTS canonical.relations (
   relation_id text PRIMARY KEY,
-  project_id text NOT NULL REFERENCES project_admin.projects(id) ON DELETE RESTRICT,
+  project_id text NOT NULL,
   revision_number integer NOT NULL CHECK (revision_number = 1),
   logical_identity_key text NOT NULL,
   relation_type text NOT NULL CHECK (length(trim(relation_type)) > 0),

@@ -795,7 +795,7 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       requestedScanMode: 'FULL_SCAN',
       effectiveScanMode: 'FULL_SCAN',
     });
-    expect(await worker.runOnce()).toBe('COMPLETED');
+    const scheduledResult = await worker.runOnce();
     const scheduledRuntimeIds = await pool!.query<{ run_id: string; attempt_id: string }>(
       `SELECT r.run_id, a.attempt_id
          FROM discovery.runs r
@@ -807,6 +807,16 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       [projectId, scheduledJob!.jobId],
     );
     expect(scheduledRuntimeIds.rows).toHaveLength(1);
+    if (scheduledResult !== 'COMPLETED') {
+      const attempts = await runtime.listActivityAttempts({
+        projectId,
+        jobId: scheduledJob!.jobId,
+        runId: scheduledRuntimeIds.rows[0]!.run_id,
+      });
+      throw new Error(
+        `Scheduled Discovery run failed: ${JSON.stringify({ result: scheduledResult, attempts })}`,
+      );
+    }
     const scheduledRun = await runtime.findRun({
       projectId,
       jobId: scheduledJob!.jobId,

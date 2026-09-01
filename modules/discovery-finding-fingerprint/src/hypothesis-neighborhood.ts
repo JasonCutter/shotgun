@@ -1400,20 +1400,26 @@ const conflictSelection = (
   const resources = signalResourceMap(signals.semanticNeighborhoods);
   const competition = signals.competingResource;
   const existingConflict = signals.existingCanonicalConflict;
+  const typedPropositionOnly =
+    competition !== undefined &&
+    competition.competitions.length > 0 &&
+    competition.competitions.every(
+      (signal) => signal.kind === 'FACTUAL' && signal.source === 'TYPED_PROPOSITION',
+    );
   if (
     !competition ||
-    !existingConflict ||
+    (existingConflict === undefined && !typedPropositionOnly) ||
     !compatibleSignalBase(signals.context, competition) ||
-    !compatibleSignalBase(signals.context, existingConflict)
+    (existingConflict !== undefined && !compatibleSignalBase(signals.context, existingConflict))
   ) {
     return baseSelectionResult(input, [], 'TRUNCATED');
   }
   const existingPairs = new Set(
-    existingConflict.conflicts.map((conflict) =>
+    existingConflict?.conflicts.map((conflict) =>
       conflict.participantResourceRefs.length === 2
         ? orderedPairKey(conflict.participantResourceRefs[0], conflict.participantResourceRefs[1])
         : memberSetKey(conflict.participantResourceRefs),
-    ),
+    ) ?? [],
   );
   const semanticPairs = new Set(
     orderedNeighborhoods(signals.semanticNeighborhoods).flatMap((neighborhood) =>
@@ -1424,12 +1430,12 @@ const conflictSelection = (
   );
   const candidates: DiscoveryHypothesisCandidateV1[] = [];
   const seenPairs = new Set<string>();
-  const existingConflictIsIncomplete = existingConflict.completeness === 'TRUNCATED';
+  const existingConflictIsIncomplete = existingConflict?.completeness === 'TRUNCATED';
   let budgetExhaustion: DiscoveryWorkBudgetExhaustedV1 | undefined;
   let truncated =
     signals.completeness === 'TRUNCATED' ||
     competition.completeness === 'TRUNCATED' ||
-    existingConflict.completeness === 'TRUNCATED';
+    existingConflict?.completeness === 'TRUNCATED';
   for (const signal of [...competition.competitions].sort((left, right) =>
     utf16OrdinalCompare(
       `${orderedPairKey(left.left, left.right)}\u0000${left.signalId}`,
@@ -1803,6 +1809,33 @@ export class DiscoveryNeighborhoodSignalFacade {
           break;
       }
     }
+    // Existing Canonical conflict remains an optional legacy suppressor. The
+    // typed-proposition path must not require or wire this Port, but callers
+    // that still provide it retain deterministic suppression behavior.
+    if (!optional.existingCanonicalConflict && this.ports.existingCanonicalConflict) {
+      const result = await this.ports.existingCanonicalConflict.read({
+        context: input.context,
+        resourceRefs,
+      });
+      const normalized = compatibleSignalBase(input.context, result)
+        ? normalizeExistingConflictSignal(
+            input.context,
+            result,
+            resourceRefs,
+            effectiveMaxGroupObservations(input.context, input.strategy),
+            input.strategy.work.maxMembersPerGroup,
+          )
+        : {
+            signal: {
+              ...baseForContext(input.context, result.semanticGenerationId),
+              conflicts: [],
+              completeness: 'TRUNCATED' as const,
+            },
+            truncated: true,
+          };
+      optional.existingCanonicalConflict = normalized.signal;
+      truncated ||= normalized.truncated;
+    }
     return {
       context: input.context,
       anchors: boundedSemantic.anchors,
@@ -1870,11 +1903,7 @@ const conflictStrategy = (): DiscoveryNeighborhoodStrategyV1 => ({
   strategyId: 'akp-3.conflict.competing-current-resources@1.0.0',
   strategyVersion: '1.0.0',
   targetFindingType: 'CONFLICT_HYPOTHESIS',
-  requiredSignalKinds: [
-    'ANCHORED_SEMANTIC_NEIGHBORHOOD',
-    'COMPETING_RESOURCE',
-    'EXISTING_CANONICAL_CONFLICT',
-  ],
+  requiredSignalKinds: ['ANCHORED_SEMANTIC_NEIGHBORHOOD', 'COMPETING_RESOURCE'],
   aiRequirement: 'NONE',
   work: {
     maxAnchors: 100,

@@ -21,6 +21,8 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import type { HandlerContext, ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 
+export * from './typed-proposition-conflict.js';
+
 export type KnowledgeReviewWrite = {
   readonly projectId: string;
   readonly groupId: string;

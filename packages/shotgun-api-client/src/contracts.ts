@@ -69,6 +69,9 @@ import type {
   DiscoveryFindingPayloadV1,
   DiscoveryFindingType,
   DiscoveryResourceRefV1,
+  TypedPropositionConflictRuleCommandOperationV1,
+  TypedPropositionConflictDirectionSemanticsV1,
+  TypedPropositionConflictRuleViewV1,
   FrontendKnowledgeDraftChangeSetV1,
   FrontendKnowledgeDraftCommandOutcomeV1,
   FrontendKnowledgeOperationV1,
@@ -828,6 +831,25 @@ export type ShotgunApiClient = {
     commandId: string,
     options?: RequestOptions,
   ): Promise<SettingsCommandResult>;
+
+  getTypedPropositionConflictRules(
+    options?: RequestOptions,
+  ): Promise<readonly TypedPropositionConflictRuleViewV1[]>;
+  submitTypedPropositionConflictRuleCommand(
+    params: FrontendCommandSubmission & {
+      readonly operation: TypedPropositionConflictRuleCommandOperationV1;
+      readonly ruleId?: string;
+      readonly expectedRuleRevision?: number;
+      readonly leftRelationType?: string;
+      readonly rightRelationType?: string;
+      readonly directionSemantics?: TypedPropositionConflictDirectionSemanticsV1;
+    },
+    options?: RequestOptions,
+  ): Promise<FrontendCommandMutationResponse<TypedPropositionConflictRuleViewV1>>;
+  resolveTypedPropositionConflictRuleCommand(
+    clientRequestId: string,
+    options?: RequestOptions,
+  ): Promise<FrontendCommandOutcomeView>;
 
   getAISettings(targetProjectId?: string, options?: RequestOptions): Promise<AISettingsReadModel>;
   getAICredentialWriteOutcome(

@@ -1,15 +1,15 @@
 # ADR-151 — Discovery Production Conflict Signal Authority
 
-- Status: **PROPOSED / USER APPROVAL PENDING**
+- Status: **ACCEPTED**
 - Proposed at: 2026-09-01
-- Decision date: **PENDING**
-- Accepted at: **PENDING**
-- Accepted by: **PENDING**
+- Decision date: **2026-09-01**
+- Accepted at: **2026-09-01**
+- Accepted by: **USER**
 - Decision owner: `USER`
 - Work item: `AKP-8 WP2R — Production Conflict Signal Remediation`
 - Subject base: `main@0077ddc90efe4b3756cce66ad31bbc021c49395b`
 - Related ADRs: ADR-136, ADR-137, ADR-138, ADR-139, ADR-142, ADR-149, ADR-150
-- Product implementation: **NOT_AUTHORIZED**
+- Product implementation: **AUTHORIZED FOR THE BOUNDED AKP-8 WP2R REMEDIATION DEFINED BY THIS ADR**
 
 ## Context
 

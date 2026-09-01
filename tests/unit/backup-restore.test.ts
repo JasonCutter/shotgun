@@ -136,6 +136,22 @@ describe('Backup Bundle verification', () => {
       'discovery.suppression_directives',
       'discovery.ranking_policy_revisions',
     ]);
+    const allTables = authoritativeIntegrityTablesForMigrations([
+      '044_akp_1r_semantic_generation_lifecycle.sql',
+      '045_akp_2_wp2_discovery_finding_persistence.sql',
+      '046_akp_2_wp3_discovery_finding_lifecycle.sql',
+      '047_akp_3_wp3_discovery_model_profiles.sql',
+      '055_akp_7_wp1_feedback_suppression_ranking_storage.sql',
+      '056_akp_7_wp3_semantic_family_projection.sql',
+      '057_akp_7_wp4_epistemic_feedback_reentry.sql',
+      '058_akp8_typed_proposition_conflict_authority.sql',
+    ]);
+    expect(allTables).toEqual(
+      expect.arrayContaining([
+        'knowledge.typed_proposition_conflict_rules',
+        'knowledge.typed_incompatibility_assertions',
+      ]),
+    );
     expect(() =>
       authoritativeIntegrityTablesForMigrations(['046_akp_2_wp3_discovery_finding_lifecycle.sql']),
     ).toThrow('requires 045_akp_2_wp2_discovery_finding_persistence.sql');
@@ -147,6 +163,11 @@ describe('Backup Bundle verification', () => {
     expect(() =>
       authoritativeIntegrityTablesForMigrations(['056_akp_7_wp3_semantic_family_projection.sql']),
     ).toThrow('requires 055_akp_7_wp1_feedback_suppression_ranking_storage.sql');
+    expect(() =>
+      authoritativeIntegrityTablesForMigrations([
+        '058_akp8_typed_proposition_conflict_authority.sql',
+      ]),
+    ).toThrow('requires 057_akp_7_wp4_epistemic_feedback_reentry.sql');
   });
 
   it('fails closed when a referenced Original Asset is corrupt or missing', async () => {

@@ -105,6 +105,9 @@ import {
   type IntakeSubmissionSnapshot,
   type ExactDuplicateDecisionView,
   type SubmitSourcesIntakeCommandPayload,
+  FrontendContractError,
+  TYPED_PROPOSITION_CONFLICT_RULE_COMMAND_TYPE,
+  type TypedPropositionConflictRuleViewV1,
 } from '../../contracts/src/index.js';
 
 const createCommandRequest = (input: {
@@ -160,6 +163,31 @@ const assertOk = async (response: Response): Promise<unknown> => {
   const failure = decodeProductApiErrorBody(body);
   if (!failure) throw remoteUnclassifiedProductApiFailure(response.status);
   throw productFailureApiError(response.status, failure);
+};
+
+const decodeTypedPropositionConflictRuleView = (
+  value: unknown,
+): TypedPropositionConflictRuleViewV1 => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Conflict rule view is invalid.');
+  }
+  const rule = value as Record<string, unknown>;
+  if (
+    rule.schemaVersion !== '1.0.0' ||
+    typeof rule.ruleId !== 'string' ||
+    typeof rule.ruleRevision !== 'number' ||
+    typeof rule.leftRelationType !== 'string' ||
+    typeof rule.rightRelationType !== 'string' ||
+    (rule.directionSemantics !== 'DIRECTED_SAME_ORIENTATION' &&
+      rule.directionSemantics !== 'UNDIRECTED_CANONICAL_PAIR') ||
+    (rule.status !== 'ACTIVE' && rule.status !== 'RETIRED' && rule.status !== 'SUPERSEDED') ||
+    typeof rule.createdAt !== 'string' ||
+    !rule.lifecycle ||
+    typeof rule.lifecycle !== 'object'
+  ) {
+    throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Conflict rule view has invalid fields.');
+  }
+  return rule as unknown as TypedPropositionConflictRuleViewV1;
 };
 
 const decodeMeasured = <T>(metric: string, decode: () => T): T => {
@@ -872,6 +900,75 @@ export const createShotgunApiClient = (
       });
       const body = (await assertOk(response)) as { result: unknown };
       return decodeSettingsCommandResult(body.result);
+    },
+
+    async getTypedPropositionConflictRules(requestOptions?: RequestOptions) {
+      const response = await request('/discovery/conflict-rules', {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { rules?: unknown };
+      if (!Array.isArray(body.rules)) {
+        throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Conflict rule response is invalid.');
+      }
+      return body.rules.map(decodeTypedPropositionConflictRuleView);
+    },
+
+    async submitTypedPropositionConflictRuleCommand(params, requestOptions?: RequestOptions) {
+      return runCommandMutation(
+        requestOptions?.signal,
+        params.clientRequestId,
+        async (csrfToken) => {
+          const response = await request('/discovery/conflict-rules/commands', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify(
+              createCommandRequest({
+                ...params,
+                commandType: TYPED_PROPOSITION_CONFLICT_RULE_COMMAND_TYPE,
+                preconditions: [],
+                payload: {
+                  operation: params.operation,
+                  ...(params.ruleId === undefined ? {} : { ruleId: params.ruleId }),
+                  ...(params.expectedRuleRevision === undefined
+                    ? {}
+                    : { expectedRuleRevision: params.expectedRuleRevision }),
+                  ...(params.leftRelationType === undefined
+                    ? {}
+                    : { leftRelationType: params.leftRelationType }),
+                  ...(params.rightRelationType === undefined
+                    ? {}
+                    : { rightRelationType: params.rightRelationType }),
+                  ...(params.directionSemantics === undefined
+                    ? {}
+                    : { directionSemantics: params.directionSemantics }),
+                },
+              }),
+            ),
+            signal: requestOptions?.signal,
+          });
+          const body = (await assertOk(response)) as { outcome: unknown; rule: unknown };
+          return {
+            outcome: decodeAnyFrontendCommandOutcomeView(body.outcome),
+            resource: decodeTypedPropositionConflictRuleView(body.rule),
+          };
+        },
+      );
+    },
+
+    async resolveTypedPropositionConflictRuleCommand(clientRequestId, requestOptions) {
+      const response = await request(
+        `/discovery/conflict-rules/commands/${encodeURIComponent(clientRequestId)}`,
+        { signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { outcome: unknown };
+      const outcome = decodeFrontendCommandOutcomeView(body.outcome);
+      if (outcome.commandType !== TYPED_PROPOSITION_CONFLICT_RULE_COMMAND_TYPE) {
+        throw new FrontendContractError(
+          'UNSUPPORTED_SCHEMA',
+          'Conflict rule outcome identity mismatch.',
+        );
+      }
+      return outcome;
     },
 
     async getAISettings(

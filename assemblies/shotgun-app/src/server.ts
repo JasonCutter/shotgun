@@ -41,6 +41,11 @@ import {
 import { InMemoryCanonicalKnowledgeRepository } from '../../../adapters/stage6-in-memory/src/index.js';
 import { InMemorySearchProjectionRepository } from '../../../adapters/stage7-in-memory/src/index.js';
 import { InMemoryKnowledgeModelRepository } from '../../../adapters/stage9-in-memory/src/index.js';
+import {
+  InMemoryTypedPropositionConflictRuleRepository,
+  type TypedPropositionConflictAssertionRepositoryPort,
+  type TypedPropositionConflictRuleRepositoryPort,
+} from '../../../modules/knowledge-model/src/typed-proposition-conflict.js';
 import { InMemoryCompiledTruthRepository } from '../../../adapters/stage10-in-memory/src/index.js';
 import { InMemorySemanticIndexRepository } from '../../../adapters/semantic-index-in-memory/src/index.js';
 import {
@@ -109,6 +114,7 @@ import type { ProviderExternalTransferApprovalPort } from '../../../modules/prov
 import { registerProjectRoutes } from './product-api/project-routes.js';
 import { registerFrontendProductRoutes } from './product-api/frontend-product-routes.js';
 import { registerSettingsRoutes } from './product-api/settings-routes.js';
+import { registerTypedPropositionConflictRuleRoutes } from './product-api/typed-proposition-conflict-routes.js';
 import { registerAISettingsRoutes } from './product-api/ai-settings-routes.js';
 import { registerSourcesRoutes } from './product-api/sources-routes.js';
 import { registerFrontendKnowledgeDraftRoutes } from './product-api/frontend-knowledge-draft-routes.js';
@@ -563,6 +569,8 @@ export type ApplicationOptions = {
   readonly canonicalKnowledgeRepository?: CanonicalKnowledgeRepositoryPort;
   readonly searchProjectionRepository?: SearchProjectionRepositoryPort;
   readonly knowledgeModelRepository?: KnowledgeModelRepositoryPort;
+  readonly typedPropositionConflictRuleRepository?: TypedPropositionConflictRuleRepositoryPort;
+  readonly typedPropositionConflictAssertionRepository?: TypedPropositionConflictAssertionRepositoryPort;
   readonly compiledTruthRepository?: CompiledTruthRepositoryPort;
   readonly semanticCorpusSourceSnapshotReader?: SemanticCorpusSourceSnapshotReaderPort;
   readonly discoveryRuntimeRepository?: DiscoveryTriggerRuntimeRepositoryPort;
@@ -1497,6 +1505,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     options.searchProjectionRepository ?? new InMemorySearchProjectionRepository();
   const knowledgeModelRepository =
     options.knowledgeModelRepository ?? new InMemoryKnowledgeModelRepository();
+  const typedPropositionConflictRuleRepository =
+    options.typedPropositionConflictRuleRepository ??
+    new InMemoryTypedPropositionConflictRuleRepository();
   const compiledTruthRepository =
     options.compiledTruthRepository ?? new InMemoryCompiledTruthRepository();
   const semanticCorpusSourceSnapshotReader =
@@ -2587,6 +2598,14 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     frontendCommandGateway,
     authRepository,
     projectAdminRepository,
+    requireBrowserSession,
+  );
+  registerTypedPropositionConflictRuleRoutes(
+    server,
+    typedPropositionConflictRuleRepository,
+    settingsRepository,
+    frontendCommandGateway,
+    authRepository,
     requireBrowserSession,
   );
   if (options.aiSettingsBackend) {

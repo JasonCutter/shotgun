@@ -50,3 +50,4 @@ export * from './discovery-freshness.js';
 export * from './discovery-schedule.js';
 export * from './discovery-trigger-coordination.js';
 export * from './discovery-feedback.js';
+export * from './typed-proposition-conflict.js';

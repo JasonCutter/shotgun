@@ -17,3 +17,8 @@ export * from './frontend-external-action-client.js';
 export * from './frontend-activity-client.js';
 export * from './frontend-history-client.js';
 export * from './frontend-discovery-client.js';
+export type {
+  TypedPropositionConflictRuleViewV1,
+  TypedPropositionConflictRuleCommandOperationV1,
+  TypedPropositionConflictDirectionSemanticsV1,
+} from '../../contracts/src/index.js';

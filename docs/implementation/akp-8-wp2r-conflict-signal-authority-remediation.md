@@ -1,14 +1,15 @@
 # AKP-8 WP2R — Production Conflict Signal Authority Remediation
 
-- Status: **ADR_CORRECTION_READY_FOR_REVIEW**
-- Current WP2 status: **BLOCKED_BEFORE_IMPLEMENTATION / MISSING_PRODUCT_CAPABILITY**
+- Status: **PRODUCT_IMPLEMENTATION_COMPLETE_PENDING_GPT_REVIEW**
+- Current WP2 status: **BLOCKED_UNTIL_WP2R_CANONICAL_CLOSURE**
 - Baseline: `main@0077ddc90efe4b3756cce66ad31bbc021c49395b`
 - Remediation branch: `codex/akp-8-wp2r-conflict-signal-authority-remediation`
-- Scope: Phase A authority audit and ADR-151 decision completion only
-- Product/runtime changes: **NONE**
-- Migration/table/runtime dependency/lockfile changes: **NONE**
-- Tests added: **NONE**
-- ADR status: `ADR-151 PROPOSED / USER APPROVAL PENDING`
+- Scope: bounded ADR-151 Product remediation on the existing WP2R branch/PR
+- Product/runtime changes: **IMPLEMENTED LOCALLY; GPT EXACT-HEAD REVIEW PENDING**
+- Migration/table changes: **058 / TWO DURABLE STORES**
+- Runtime dependency/lockfile changes: **NONE**
+- Focused Contract/authority/selector tests: **ADDED**
+- ADR status: `ADR-151 ACCEPTED BY USER ON 2026-09-01`
 
 ## 1. Purpose and stop condition
 
@@ -24,9 +25,10 @@ remains untouched; WP2 A/B/C/M/P acceptance implementation has not resumed.
 The first ADR-151 correction selected a user-approved conflicting pair. GPT's
 review rejected that design because it repackaged a conflict already
 identified by a user and could not satisfy active Discovery's newly detected
-causal requirement. The final correction therefore defines a reusable active
-rule, an automatic server evaluator and a persisted derived assertion. It does
-not authorize implementation.
+causal requirement. The accepted correction instead defines a reusable active
+rule, an automatic server evaluator and a persisted derived assertion. The
+implementation below records the bounded Product work authorized by the user;
+the PR remains Draft pending GPT's independent exact-head review.
 
 ## 2. Sources inspected
 
@@ -130,7 +132,7 @@ and direction semantics. It never approves a resource pair.
 The versioned rule is equivalent to:
 
 ```text
-schemaVersion = typed-proposition-conflict-rule.v1
+schemaVersion = 1.0.0 (TypedPropositionConflictRuleV1)
 ruleId
 ruleRevision
 projectId
@@ -206,7 +208,7 @@ derived governed data. It is not Truth, Fact, Claim, Canonical Conflict or a
 Discovery finding. Its contract is equivalent to:
 
 ```text
-schemaVersion = typed-incompatibility-assertion.v1
+schemaVersion = 1.0.0 (TypedIncompatibilityAssertionV1)
 assertionId
 assertionRevision
 projectId
@@ -327,9 +329,13 @@ remain retained. Re-evaluation occurs when rules, participants, Evidence,
 bases or security change. Existing reconciliation owns `RESOLVED`, `STALE`
 and `SUPERSEDED` Discovery lifecycle states.
 
-Migration is **REQUIRED after user approval** and must separately define
-backup/restore, project deletion, retention, append-only revisions, rebuild
-behavior and rollback. This correction writes no migration, table or schema.
+Migration `058_akp8_typed_proposition_conflict_authority.sql` adds exactly the
+two approved durable stores: `knowledge.typed_proposition_conflict_rules` and
+`knowledge.typed_incompatibility_assertions`. It requires migration 057 as a
+preflight, registers both stores with backup integrity and project-deletion
+table awareness, and keeps assertion revisions keyed by logical identity plus
+revision so superseded history is retained. No third semantic store or lockfile
+change was introduced.
 
 Rollback disables/removes evaluator and reader wiring, preserves all rule,
 assertion, review, Evidence, Canonical and Discovery history, and returns
@@ -338,32 +344,65 @@ a separately governed migration. Replacement adapters remain behind the
 existing Port and must pass the same rule, evaluator, identity, security,
 completeness, provenance and replacement Contract tests.
 
-## 8. OSS and implementation boundary
+## 8. Implemented Product record
+
+The local implementation follows the accepted chain without promoting any OSS
+runtime into a Shotgun authority:
+
+| Boundary                   | Implemented record                                                                                                                                                                                                                                                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rule contract              | `packages/contracts/src/typed-proposition-conflict.ts`; exact type pair, deterministic semantic key, fixed FACTUAL/TYPED_PROPOSITION mapping, directed/undirected binding, lifecycle and server-owned provenance fields.                                                                                                              |
+| Assertion contract         | `TypedIncompatibilityAssertionV1` in the same contract; non-Canonical, persisted/rebuildable, exact relation revisions/resource refs, Evidence IDs, bases, security and deterministic identity.                                                                                                                                       |
+| Rule governance            | `TypedPropositionConflictRuleService` in `modules/knowledge-model`; CREATE, REVISE/SUPERSEDE, RETIRE, READ, stale revision protection and immutable semantic revisions.                                                                                                                                                               |
+| Persistence                | Postgres Stage 9 adapter with migration 058; in-memory adapter is test-only fallback. Rule and assertion history are retained and active identities are duplicate-safe.                                                                                                                                                               |
+| Current Relation authority | `KnowledgeModelTypedPropositionConflictAuthorityReader` reads approved Knowledge Model review groups, preserves candidate/revision/source/endpoints/type/direction/Evidence, allows only exact duplicate authority, and returns `TRUNCATED` on conflicting duplicate authority. It does not invent `MAX(revisionNumber)` currentness. |
+| Evaluator                  | `TypedPropositionConflictEvaluatorV1` reads only bounded Discovery `resourceRefs`, exact eligible approved/current Relation revisions, active rules, bases and security. No semantic/label/AI comparator is used.                                                                                                                     |
+| Discovery adapter          | The production evaluator emits the existing `DiscoveryCompetingResourcePortV1` shape with FACTUAL/TYPED_PROPOSITION `left`, `right`, and assertion `signalId`; no parallel selector/port was added.                                                                                                                                   |
+| Normal wiring              | `startShotgunApplication` constructs the Postgres rule/assertion repositories, authority reader and evaluator, supplies the competing-resource port to `createProductDiscoveryExecution`, and leaves `existingCanonicalConflict` unwired.                                                                                             |
+| Product command            | `frontend.discovery.conflict-rule.v1` reuses the existing command gateway/ledger, preserves clientRequestId/idempotencyKey/digest/outcome semantics, and exposes only owner intent. No direct assertion-write endpoint exists.                                                                                                        |
+| Owner UX                   | Rare `discovery.conflict_rules` command opens a focused accessible dialog for view/add/revise/retire. It exposes only Relation type A/B and direction, confirms mutations, resolves OUTCOME_UNKNOWN using the original request ID, and resets on Project switch.                                                                      |
+| Authorization              | Existing server-side Project membership owner/admin authority is checked on read and mutation; Project context must match the authenticated active Project and unauthorized requests fail closed without rule disclosure.                                                                                                             |
+| Backup/retention           | Existing `backup-restore.ts` integrity selection and `database.ts` managed-table conventions include both stores; no second backup system was created.                                                                                                                                                                                |
+
+The causal implementation target is rule first, Relation A approved, Relation B
+approved later, automatic evaluator, persisted assertion, existing Discovery
+competing-resource signal and `CONFLICT_HYPOTHESIS`. No user pair selection is
+needed. Assertions remain downstream derived evidence, never Fact, Claim,
+Canonical Conflict, Finding or Review approval.
+
+## 9. OSS and implementation boundary
 
 No relevant OSS was identified. The four verified references remain outside
 this authority boundary: gbrain, lucas, ddsyasas and Inkeep OpenKnowledge do
 not provide a safe, directly reusable typed incompatibility authority for this
 Stage. Decision: `NO_RELEVANT_OSS`.
 
-This correction is documentation/governance-only:
+The four verified references remain outside this authority boundary:
+`garrytan/gbrain`, `lucasastorian/llmwiki`, `ddsyasas/llm-wiki` and Inkeep
+OpenKnowledge were reviewed as `REFERENCE_ONLY`/`NO_RELEVANT_OSS` for this
+exact typed conflict authority. No OSS package, runtime dependency or lockfile
+change was introduced. The direct deterministic evaluator is justified by the
+exact-rule, Canonical/Evidence/security boundary and the absence of a safe
+reusable authority.
 
-- Product/runtime implementation: **NONE**
-- tests or fake adapters: **NONE**
-- migration/table/schema: **NONE**
-- dependency/lockfile: **NONE**
-- comparator heuristic: **NONE**
-- ADR-142 E2E-M: unchanged and unproven
+## 10. Verification and closure limits
 
-ADR-151 remains `PROPOSED / USER APPROVAL PENDING`; no approval is recorded.
-After user approval, GPT must issue a separate bounded implementation request
-with the migration, exact contract/schema, repositories, normal
-`startShotgunApplication` wiring, Contract/Golden Corpus/Security/Replacement
-tests and rollout/rollback steps. Until then WP2 remains blocked, WP3,
-deployment and AKP v1 completion do not start, and PR #156 remains OPEN /
-DRAFT.
+Focused tests cover exact rule identity/binding, unsupported and client-owned
+fields, later-pair evaluation, idempotent assertion identity, retirement,
+ambiguous authority, and typed selector admission. The full required local and
+automatic CI evidence is recorded in the final GPT report after the remaining
+static/Database/PR checks.
 
-## 9. Required next gate
+Operational rollback disables/removes evaluator and reader wiring while
+preserving rule/assertion data and keeping Discovery safely degraded. Normal
+rollback does not drop either table; deletion requires a separately governed
+migration. Temporal, Identity and Model disagreement mappings remain
+`RESERVED / UNSUPPORTED`. `DiscoveryExistingCanonicalConflictPortV1` remains
+separate and unwired.
 
-The correction branch may be reviewed for ADR-151 completeness only. It must
-not mark the ADR accepted, make PR #156 ready, merge, implement WP2, weaken
-E2E-M or begin WP3. User approval is the next authority gate.
+ADR-142 E2E-M is **NOT YET PROVEN_EXISTING**. WP2R supplies the missing
+production conflict signal capability, but only resumed WP2 can prove the full
+Conflict Finding → derived re-entry → Conflict Review → prior
+`SUPPRESS_SIMILAR` → mandatory visibility journey. Until WP2R exact-head review,
+Ready/merge, post-merge main CI and `COMPLETE / FINAL_AFTER_MERGE`, WP2 remains
+blocked; WP3, deployment and AKP v1 completion do not start.

@@ -88,20 +88,21 @@ const nodeFor = (
 ): GraphNodeV1 | undefined => {
   const nodeKind = graphKindFor(item.type);
   if (nodeKind === null) return undefined;
+  const isCanonical = item.source === 'CANONICAL_CLAIM';
   return {
     schemaVersion: '1.0.0',
     nodeId: `compiled-truth-node-${item.type}-${item.id}`,
     resourceRef: { schemaVersion: '1.0.0', resourceKind: nodeKind, resourceId: item.id },
     label: item.label,
     nodeKind,
-    authority: 'CANONICAL',
+    authority: isCanonical ? 'CANONICAL' : 'DERIVED_INFERENCE',
     baseViewMembership: 'KNOWLEDGE_SEMANTIC',
     overlayMemberships: [],
     provenance: {
       schemaVersion: '1.0.0',
       sourceProjectId: scope.activeProjectId,
       canonicalRevision: projectionRevision,
-      generatedBy: 'COMPILED_TRUTH',
+      generatedBy: isCanonical ? 'CANONICAL' : 'COMPILED_TRUTH',
     },
     evidence: evidenceFor(item),
     temporalValidity: {
@@ -127,7 +128,10 @@ const edgeFor = (
   const from = nodesById.get(edge.from);
   const to = nodesById.get(edge.to);
   if (!from || !to) return undefined;
-  const edgeSemanticKind: GraphEdgeSemanticKindV1 = 'CANONICAL_RELATION';
+  const isCanonical = edge.source === 'CANONICAL_RELATION';
+  const edgeSemanticKind: GraphEdgeSemanticKindV1 = isCanonical
+    ? 'CANONICAL_RELATION'
+    : 'DERIVED_INFERENCE';
   return {
     schemaVersion: '1.0.0',
     edgeId: `compiled-truth-edge-${edge.id}`,
@@ -138,14 +142,13 @@ const edgeFor = (
       relationId: edge.id,
     },
     edgeSemanticKind,
-    authority: 'CANONICAL',
+    authority: isCanonical ? 'CANONICAL' : 'DERIVED_INFERENCE',
     baseViewMembership: 'KNOWLEDGE_SEMANTIC',
     overlayMemberships: [],
     provenance: {
       schemaVersion: '1.0.0',
       sourceProjectId: scope.activeProjectId,
-      generatedBy: 'COMPILED_TRUTH',
-      ...(edge.source === 'CANONICAL_RELATION' ? { generatedBy: 'CANONICAL' as const } : {}),
+      generatedBy: isCanonical ? 'CANONICAL' : 'COMPILED_TRUTH',
     },
     evidence: {
       schemaVersion: '1.0.0',

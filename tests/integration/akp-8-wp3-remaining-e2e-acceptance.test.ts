@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { PostgresCompiledTruthGraphReadAdapter } from '../../adapters/frontend-knowledge-graph-postgres/compiled-truth-graph-read.js';
 import {
+  DiscoveryAIExecutionResolver,
+  EffectiveAIConfigurationResolver,
+} from '../../adapters/ai-runtime-resolution/src/index.js';
+import {
   createInMemoryHealthStore,
   createInMemorySnapshotContextStore,
 } from '../../adapters/frontend-knowledge-graph-in-memory/src/index.js';
@@ -23,11 +27,13 @@ import {
   type DiscoveryStructuredProviderPort,
   type DiscoveryStructuredProviderRouterPort,
 } from '../../packages/contracts/src/index.js';
+import { initialProviderRegistry } from '../../modules/ai-configuration/src/index.js';
+import type { ProjectAIConfigurationPort } from '../../modules/ai-configuration/src/index.js';
+import type { CredentialVaultPort } from '../../modules/credential-vault/src/index.js';
 import {
   DISCOVERY_AI_OUTPUT_SCHEMA_VERSION_V1,
   DISCOVERY_AI_PROMPT_VERSION_V1,
   DISCOVERY_AI_SYSTEM_INSTRUCTION_V1,
-  DiscoveryAIGenerationError,
   DiscoveryAIGenerationService,
 } from '../../modules/discovery-ai-generation/src/index.js';
 import {
@@ -268,10 +274,16 @@ const aiContext = (
 
 const createAIHarness = (deny = false) => {
   const calls: DiscoveryStructuredGenerationRequestV1[] = [];
+  const providerRegistry = initialProviderRegistry();
+  const registeredProvider = providerRegistry.getProvider('openai');
+  const registeredModel = providerRegistry.getModel('openai', 'gpt-5.6-luna');
+  if (!registeredProvider || !registeredModel) {
+    throw new Error('WP3 provider fixture is missing from the Product registry.');
+  }
   const provider: DiscoveryStructuredProviderPort = {
     identity: {
-      provider: 'wp3-provider-double',
-      model: 'wp3-discovery-model',
+      provider: 'openai',
+      model: 'gpt-5.6-luna',
       adapterVersion: 'wp3-provider-double:v1',
       dataPolicyVersion: 'wp3-data-policy:v1',
       supportsOutputTokenLimit: true,
@@ -293,30 +305,6 @@ const createAIHarness = (deny = false) => {
       };
     },
   };
-  const resolution: DiscoveryAIExecutionResolverPort = {
-    resolve: async () => {
-      if (deny) throw new DiscoveryAIGenerationError('POLICY_DENIED', 'transfer denied');
-      return {
-        pin: {
-          projectId,
-          profileId: 'profile:wp3',
-          profileRevision: 1,
-          providerId: provider.identity.provider,
-          modelId: provider.identity.model,
-          modelCapabilityRevision: 'capability:wp3',
-          aiConfigurationRevision: 1,
-          credentialId: 'credential:wp3',
-          credentialRevision: 1,
-          providerPolicyFingerprint: digest('provider-policy'),
-          privacyPolicyRevision: 'privacy:wp3',
-          dataPolicyRevision: provider.identity.dataPolicyVersion,
-          promptVersion: DISCOVERY_AI_PROMPT_VERSION_V1,
-          outputSchemaVersion: DISCOVERY_AI_OUTPUT_SCHEMA_VERSION_V1,
-        },
-        modelVersion: 'wp3-discovery-model:v1',
-      };
-    },
-  };
   const profiles = {
     getActive: async () => ({
       schemaVersion: '1.0.0' as const,
@@ -324,10 +312,10 @@ const createAIHarness = (deny = false) => {
       projectId,
       profileRevision: 1,
       aiConfigurationRevision: 1,
-      providerId: provider.identity.provider,
-      modelId: provider.identity.model,
-      providerRegistryRevision: 'providers:wp3',
-      modelCapabilityRevision: 'capability:wp3',
+      providerId: 'openai',
+      modelId: 'gpt-5.6-luna',
+      providerRegistryRevision: registeredProvider.registryRevision,
+      modelCapabilityRevision: registeredModel.capabilityRevision,
       promptVersion: DISCOVERY_AI_PROMPT_VERSION_V1,
       outputSchemaVersion: DISCOVERY_AI_OUTPUT_SCHEMA_VERSION_V1,
       status: 'ACTIVE' as const,
@@ -336,6 +324,47 @@ const createAIHarness = (deny = false) => {
       activatedAt: now,
     }),
   } as unknown as DiscoveryModelProfileServicePort;
+  const configuration = {
+    getRevision: async () => ({
+      projectId,
+      activeProviderId: 'openai',
+      activeModelId: 'gpt-5.6-luna',
+      credentialId: 'credential:wp3',
+      credentialRevision: 1,
+      aiConfigurationRevision: 1,
+      updatedBy: 'wp3-test',
+      updatedAt: now,
+    }),
+  } as unknown as ProjectAIConfigurationPort;
+  const vault = {
+    getMetadata: async () => ({
+      projectId,
+      providerId: 'openai',
+      credentialId: 'credential:wp3',
+      credentialRevision: 1,
+      lifecycleState: 'active' as const,
+    }),
+  } as unknown as CredentialVaultPort;
+  const policyReason = deny ? ('RESTRICTED_CONTEXT_BLOCKED' as const) : ('ELIGIBLE' as const);
+  const policyRequiredAction = deny ? ('REMOVE_RESTRICTED_CONTEXT' as const) : ('NONE' as const);
+  const policyDecision = () => ({
+    schemaVersion: '1.0.0' as const,
+    eligible: !deny,
+    reason: policyReason,
+    requiredAction: policyRequiredAction,
+    policyFingerprint: digest('provider-policy'),
+    policyContextRevision: 'privacy:wp3',
+    provider: { displayName: 'OpenAI', model: 'GPT-5.6 Luna' },
+    message: deny ? 'transfer denied' : 'transfer allowed',
+  });
+  const policy = {
+    evaluateSelections: async () => policyDecision(),
+    evaluateContext: async () => policyDecision(),
+  };
+  const authority = new EffectiveAIConfigurationResolver(providerRegistry, configuration, vault, {
+    policy,
+  });
+  const resolution: DiscoveryAIExecutionResolverPort = new DiscoveryAIExecutionResolver(authority);
   const router: DiscoveryStructuredProviderRouterPort = {
     resolve: async () => provider,
   };
@@ -625,7 +654,7 @@ const graphProjection = (): CompiledTruthProjection => ({
         to: 'visible:b',
         relationType: 'RELATED_TO',
         direction: 'DIRECTED' as const,
-        source: 'APPROVED_TYPED_EDGE' as const,
+        source: 'CANONICAL_RELATION' as const,
       },
     ],
     fallback: { available: true, modes: ['LIST', 'TABLE'] },
@@ -704,5 +733,65 @@ describe('AKP-8 WP3 K derived-vs-Canonical Graph authority', () => {
     });
     expect(overlay.edges[0]).toMatchObject({ edgeSemanticKind: 'DISCOVERY_CANDIDATE' });
     expect(detail.authority).toBe('DERIVED_INFERENCE');
+  });
+
+  it('maps an approved typed edge and its approved Knowledge endpoints as non-Canonical', async () => {
+    const canonicalProjection = graphProjection();
+    const approvedItems = canonicalProjection.items.map((item) => ({
+      ...item,
+      source: 'APPROVED_KNOWLEDGE' as const,
+      revisionNumber: 1,
+      sourceVersionId: 'wp3-approved-source-version',
+    }));
+    const projection: CompiledTruthProjection = {
+      ...canonicalProjection,
+      items: approvedItems,
+      graph: {
+        ...canonicalProjection.graph,
+        nodes: approvedItems,
+        edges: canonicalProjection.graph.edges.map((edge) => ({
+          ...edge,
+          source: 'APPROVED_TYPED_EDGE' as const,
+        })),
+      },
+    };
+    const graphRepository = {
+      findProjection: async () => projection,
+      degradedState: async () => undefined,
+    } as unknown as CompiledTruthRepositoryPort;
+    const readPort = new PostgresCompiledTruthGraphReadAdapter(graphRepository, {
+      readWatermark: async () => ({
+        projectId,
+        canonicalVersion: 1,
+        canonicalSnapshotDigest: digest('graph-canonical'),
+        approvedKnowledgeDigest: digest('graph-approved'),
+        sourceSnapshotDigest: projection.sourceSnapshotDigest,
+      }),
+    });
+    const snapshot = await readPort.snapshot(
+      {
+        ...productScope,
+        activeProjectId: projectId,
+        accessScope: productScope.accessScope ?? [],
+        discoveryContext: {
+          activeProject: productScope.activeProject,
+          accessibleProjects: productScope.accessibleProjects,
+        },
+      },
+      { schemaVersion: '1.0.0', viewKind: 'KNOWLEDGE_SEMANTIC', overlayKinds: [] },
+    );
+    expect(snapshot.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          authority: 'DERIVED_INFERENCE',
+          provenance: expect.objectContaining({ generatedBy: 'COMPILED_TRUTH' }),
+        }),
+      ]),
+    );
+    expect(snapshot.edges[0]).toMatchObject({
+      edgeSemanticKind: 'DERIVED_INFERENCE',
+      authority: 'DERIVED_INFERENCE',
+      provenance: expect.objectContaining({ generatedBy: 'COMPILED_TRUTH' }),
+    });
   });
 });

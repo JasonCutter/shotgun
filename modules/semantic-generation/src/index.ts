@@ -53,6 +53,37 @@ export type SemanticGenerationBuilderOptions = {
   readonly maxBatchSize?: number;
 };
 
+export type SemanticGenerationPruneSkipReason =
+  | 'ACTIVE'
+  | 'BUILDING'
+  | 'ROLLBACK_PROTECTED'
+  | 'WITHIN_ROLLBACK_WINDOW'
+  | 'INVALID_METADATA'
+  | 'NO_ACTIVE_GENERATION'
+  | 'NO_SAFE_ROLLBACK_TARGET'
+  | 'NOT_FOUND'
+  | 'CONCURRENT_POINTER_CHANGE';
+
+export type SemanticGenerationPruneInput = {
+  readonly projectId: string;
+  /** Server-owned rollback-window cutoff; never supplied by a browser Product request. */
+  readonly pruneBefore: string;
+};
+
+export type SemanticGenerationPruneSkip = {
+  readonly generationId: string;
+  readonly reason: SemanticGenerationPruneSkipReason;
+};
+
+export type SemanticGenerationPruneResult = {
+  readonly projectId: string;
+  readonly pruneBefore: string;
+  readonly activeGenerationId?: string;
+  readonly rollbackProtectedGenerationId?: string;
+  readonly deletedGenerationIds: readonly string[];
+  readonly skipped: readonly SemanticGenerationPruneSkip[];
+};
+
 const sensitivityRank: Record<SemanticSensitivity, number> = {
   public: 0,
   internal: 1,
@@ -127,6 +158,69 @@ const pointerExpectation = (
         pointerRevision: pointer.pointerRevision,
       }
     : { kind: 'NONE' };
+
+const compareGenerationRecency = (
+  left: SemanticProjectionGeneration,
+  right: SemanticProjectionGeneration,
+): number => {
+  const leftTime = Date.parse(left.createdAt);
+  const rightTime = Date.parse(right.createdAt);
+  if (leftTime !== rightTime) return rightTime - leftTime;
+  return left.generationId < right.generationId
+    ? 1
+    : left.generationId > right.generationId
+      ? -1
+      : 0;
+};
+
+const samePointer = (
+  left: Awaited<ReturnType<SemanticGenerationRepository['getActiveGenerationPointer']>>,
+  right: Awaited<ReturnType<SemanticGenerationRepository['getActiveGenerationPointer']>>,
+): boolean =>
+  left !== undefined &&
+  right !== undefined &&
+  left.activeGenerationId === right.activeGenerationId &&
+  left.pointerRevision === right.pointerRevision;
+
+const isForeignKeyViolation = (error: unknown): boolean =>
+  typeof error === 'object' &&
+  error !== null &&
+  'code' in error &&
+  (error as { readonly code?: unknown }).code === '23503';
+
+const compatibilityInputFor = (generation: SemanticProjectionGeneration) => ({
+  projectId: generation.projectId,
+  providerId: generation.providerId,
+  embeddingModelId: generation.embeddingModelId,
+  embeddingProfileId: generation.embeddingProfileId,
+  embeddingProfileRevision: generation.embeddingProfileRevision,
+  credentialId: generation.credentialId,
+  credentialRevision: generation.credentialRevision,
+  representationVersion: generation.representationVersion,
+  dimension: generation.dimension,
+  distanceMetric: generation.distanceMetric,
+  normalizationPolicy: generation.normalizationPolicy,
+});
+
+const compatibilityMatches = (
+  generation: SemanticProjectionGeneration,
+  compatibility: Awaited<ReturnType<SemanticEmbeddingCompatibilityPort['resolveCompatibility']>>,
+): boolean => {
+  const expected = compatibilityInputFor(generation);
+  return (
+    compatibility.projectId === expected.projectId &&
+    compatibility.providerId === expected.providerId &&
+    compatibility.embeddingModelId === expected.embeddingModelId &&
+    compatibility.embeddingProfileId === expected.embeddingProfileId &&
+    compatibility.embeddingProfileRevision === expected.embeddingProfileRevision &&
+    compatibility.credentialId === expected.credentialId &&
+    compatibility.credentialRevision === expected.credentialRevision &&
+    compatibility.representationVersion === expected.representationVersion &&
+    compatibility.dimension === expected.dimension &&
+    compatibility.distanceMetric === expected.distanceMetric &&
+    compatibility.normalizationPolicy === expected.normalizationPolicy
+  );
+};
 
 export class SemanticGenerationBuilder {
   constructor(
@@ -299,6 +393,185 @@ export class SemanticGenerationBuilder {
       });
       throw error;
     }
+  }
+
+  /**
+   * Prune disposable semantic generations under the existing R3 lifecycle.
+   * The cutoff is a server-owned rollback-window decision; callers must not
+   * derive it from browser input. The active pointer and the newest compatible
+   * inactive READY generation are protected before any delete is attempted.
+   */
+  async prune(input: SemanticGenerationPruneInput): Promise<SemanticGenerationPruneResult> {
+    const projectId = input.projectId.trim();
+    if (!projectId) {
+      throw new SemanticEmbeddingError({
+        code: 'INVALID_INPUT',
+        safeMessage: 'Project ID is required for semantic generation pruning.',
+        operation: 'semantic-generation:prune',
+      });
+    }
+    const pruneBefore = input.pruneBefore.trim();
+    const pruneBeforeMillis = Date.parse(pruneBefore);
+    if (!pruneBefore || !Number.isFinite(pruneBeforeMillis)) {
+      throw new SemanticEmbeddingError({
+        code: 'INVALID_INPUT',
+        safeMessage: 'A valid server-owned prune cutoff is required.',
+        operation: 'semantic-generation:prune',
+      });
+    }
+
+    const pointer = await this.repository.getActiveGenerationPointer(projectId);
+    const generations = await this.repository.listGenerations(projectId);
+    const skipped: SemanticGenerationPruneSkip[] = [];
+    const deletedGenerationIds: string[] = [];
+
+    if (!pointer) {
+      return {
+        projectId,
+        pruneBefore,
+        deletedGenerationIds,
+        skipped: generations.map((generation) => ({
+          generationId: generation.generationId,
+          reason: 'NO_ACTIVE_GENERATION' as const,
+        })),
+      };
+    }
+
+    const active = generations.find(
+      (generation) => generation.generationId === pointer.activeGenerationId,
+    );
+    if (!active) {
+      throw new SemanticEmbeddingError({
+        code: 'CONFLICT',
+        safeMessage: 'Active semantic generation pointer has no matching generation.',
+        operation: 'semantic-generation:prune:active-pointer',
+      });
+    }
+
+    const watermark = await this.source.readWatermark(projectId);
+    if (
+      watermark.projectId !== projectId ||
+      active.sourceProjectionDigest !== watermark.sourceSnapshotDigest ||
+      active.canonicalBaseVersion !== watermark.canonicalVersion
+    ) {
+      return {
+        projectId,
+        pruneBefore,
+        activeGenerationId: active.generationId,
+        deletedGenerationIds,
+        skipped: generations.map((generation) => ({
+          generationId: generation.generationId,
+          reason:
+            generation.generationId === active.generationId
+              ? ('ACTIVE' as const)
+              : ('NO_SAFE_ROLLBACK_TARGET' as const),
+        })),
+      };
+    }
+
+    const rollbackCandidates: SemanticProjectionGeneration[] = [];
+    for (const generation of generations) {
+      if (
+        generation.generationId === active.generationId ||
+        generation.buildStatus !== 'READY' ||
+        generation.sourceProjectionDigest !== active.sourceProjectionDigest ||
+        generation.canonicalBaseVersion !== active.canonicalBaseVersion
+      ) {
+        continue;
+      }
+      try {
+        const compatibility = await this.embeddingResolver.resolveCompatibility(
+          compatibilityInputFor(generation),
+        );
+        if (compatibilityMatches(generation, compatibility)) rollbackCandidates.push(generation);
+      } catch {
+        // If current execution compatibility cannot be established, retain all
+        // inactive generations rather than deleting a possible rollback target.
+      }
+    }
+    rollbackCandidates.sort(compareGenerationRecency);
+    const rollbackProtected = rollbackCandidates[0];
+
+    const eligible: SemanticProjectionGeneration[] = [];
+    for (const generation of [...generations].sort(compareGenerationRecency)) {
+      if (generation.generationId === active.generationId) {
+        skipped.push({ generationId: generation.generationId, reason: 'ACTIVE' });
+        continue;
+      }
+      if (generation.buildStatus === 'BUILDING') {
+        skipped.push({ generationId: generation.generationId, reason: 'BUILDING' });
+        continue;
+      }
+      const createdAtMillis = Date.parse(generation.createdAt);
+      if (!Number.isFinite(createdAtMillis)) {
+        skipped.push({ generationId: generation.generationId, reason: 'INVALID_METADATA' });
+        continue;
+      }
+      if (createdAtMillis >= pruneBeforeMillis) {
+        skipped.push({
+          generationId: generation.generationId,
+          reason: 'WITHIN_ROLLBACK_WINDOW',
+        });
+        continue;
+      }
+      if (generation.generationId === rollbackProtected?.generationId) {
+        skipped.push({ generationId: generation.generationId, reason: 'ROLLBACK_PROTECTED' });
+        continue;
+      }
+      if (!rollbackProtected) {
+        skipped.push({
+          generationId: generation.generationId,
+          reason: 'NO_SAFE_ROLLBACK_TARGET',
+        });
+        continue;
+      }
+      eligible.push(generation);
+    }
+
+    for (let index = 0; index < eligible.length; index += 1) {
+      const generation = eligible[index]!;
+      const currentPointer = await this.repository.getActiveGenerationPointer(projectId);
+      if (!samePointer(pointer, currentPointer)) {
+        for (const remaining of eligible.slice(index)) {
+          skipped.push({
+            generationId: remaining.generationId,
+            reason: 'CONCURRENT_POINTER_CHANGE',
+          });
+        }
+        break;
+      }
+      try {
+        const deleted = await this.repository.deleteGeneration(projectId, generation.generationId);
+        if (deleted) deletedGenerationIds.push(generation.generationId);
+        else skipped.push({ generationId: generation.generationId, reason: 'NOT_FOUND' });
+      } catch (error) {
+        // PostgreSQL's pointer FK is the second line of defense if activation
+        // wins after the application-level pointer check. Never force-delete.
+        if (!isForeignKeyViolation(error)) throw error;
+        skipped.push({
+          generationId: generation.generationId,
+          reason: 'CONCURRENT_POINTER_CHANGE',
+        });
+        for (const remaining of eligible.slice(index + 1)) {
+          skipped.push({
+            generationId: remaining.generationId,
+            reason: 'CONCURRENT_POINTER_CHANGE',
+          });
+        }
+        break;
+      }
+    }
+
+    return {
+      projectId,
+      pruneBefore,
+      activeGenerationId: active.generationId,
+      ...(rollbackProtected === undefined
+        ? {}
+        : { rollbackProtectedGenerationId: rollbackProtected.generationId }),
+      deletedGenerationIds,
+      skipped,
+    };
   }
 
   async rollback(input: {

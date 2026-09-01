@@ -1,14 +1,18 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 
 import { PostgresDiscoveryFindingRepository } from '../../adapters/discovery-finding-postgres/src/index.js';
 import { PostgresDiscoveryRuntimeRepository } from '../../adapters/discovery-runtime-postgres/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
+import { PostgresSemanticCorpusSourceSnapshotReader } from '../../adapters/semantic-corpus-postgres/src/index.js';
 import { PostgresSemanticIndexRepository } from '../../adapters/semantic-index-postgres/src/index.js';
+import { PostgresSemanticActiveGenerationReader } from '../../adapters/semantic-index-postgres/src/index.js';
+import { SemanticRetriever } from '../../modules/hybrid-retrieval/src/index.js';
 import { PersistentDiscoveryWorker } from '../../modules/discovery-runtime/src/index.js';
 import { SemanticGenerationBuilder } from '../../modules/semantic-generation/src/index.js';
 import {
-  buildSemanticRepresentationV2,
+  canonicalSnapshotDigest,
   createDiscoveryFindingEnvelopeV1,
   createDiscoveryLogicalJobIdentityV1,
   SEMANTIC_REPRESENTATION_VERSION_V2,
@@ -19,13 +23,13 @@ import {
   type DiscoveryJobV1,
   type DiscoveryResourceRefV1,
   type DiscoveryRuntimeBudgetBindingV1,
+  type CanonicalClaim,
+  type KnowledgeCandidate,
   type ResolvedSemanticEmbeddingExecution,
-  type SemanticCorpusSourceResource,
-  type SemanticCorpusSourceSnapshot,
-  type SemanticCorpusSourceWatermark,
   type SemanticEmbeddingCompatibilityPort,
   type SemanticEmbeddingResolverPort,
   type SemanticEmbeddingRouterPort,
+  knowledgeCandidateDigest,
 } from '../../packages/contracts/src/index.js';
 import { migrateUpTo } from '../../scripts/database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
@@ -229,43 +233,127 @@ const resolvedExecution: ResolvedSemanticEmbeddingExecution = {
   },
 };
 
-const semanticResource = (resourceId: string): SemanticCorpusSourceResource => {
-  const semanticInput = {
-    resourceType: 'CLAIM' as const,
-    resourceId,
-    statement: `Semantic resource ${resourceId}`,
-  };
-  return {
-    resourceType: 'CLAIM',
-    resourceId,
-    authority: 'CANONICAL',
-    provenance: {
-      authority: 'CANONICAL',
-      resourceBaseId: resourceId,
-      resourceRevision: 1,
-      baseCanonicalVersion: 1,
-      sourceVersionId: `source:${resourceId}`,
-      evidenceIds: [`evidence:${resourceId}`],
-      accessScope: ['owner'],
-      sensitivity: 'private',
-    },
-    semanticInput,
-    representation: buildSemanticRepresentationV2(semanticInput),
-  };
-};
-
-const snapshotFor = (
-  resources: readonly SemanticCorpusSourceResource[],
-  sourceProjectionDigest: `sha256:${string}`,
-): SemanticCorpusSourceSnapshot => ({
-  projectId: semanticProjectId,
-  canonicalVersion: 1,
-  canonicalSnapshotDigest: digest('semantic-canonical'),
-  approvedKnowledgeDigest: digest('semantic-approved'),
-  sourceSnapshotDigest: sourceProjectionDigest,
-  effectiveAt: now,
-  resources,
+const semanticEntity = (input: {
+  readonly candidateId: string;
+  readonly sourceVersionId: string;
+  readonly name: string;
+}): KnowledgeCandidate => ({
+  candidateId: input.candidateId,
+  candidateType: 'ENTITY',
+  revisionNumber: 1,
+  sourceVersionId: input.sourceVersionId,
+  evidenceIds: [`evidence:${input.candidateId}`],
+  modelOutputs: [],
+  name: input.name,
+  entityKind: 'CONCEPT',
+  aliases: [],
+  resolution: { status: 'NEW' },
 });
+
+const semanticCanonicalClaim = (sourceVersionId: string): CanonicalClaim => ({
+  claimId: 'canonical-sentinel-claim',
+  projectId: semanticProjectId,
+  revisionNumber: 1,
+  claimText: 'Canonical state remains immutable during semantic retention.',
+  sourceVersionId,
+  evidenceIds: ['evidence:canonical-sentinel'],
+  createdFromManifestId: null,
+  authorityId: null,
+  authorityDigest: null,
+  accessScope: ['owner'],
+  sensitivity: 'private',
+  createdAt: now,
+});
+
+const insertSemanticSource = async (
+  claim: CanonicalClaim,
+  groups: readonly {
+    readonly groupId: string;
+    readonly sourceVersionId: string;
+    readonly candidate: KnowledgeCandidate;
+  }[],
+): Promise<void> => {
+  const sourceRows = [
+    { sourceVersionId: claim.sourceVersionId, suffix: 'canonical', content: 'canonical' },
+    ...groups.map((group) => ({
+      sourceVersionId: group.sourceVersionId,
+      suffix: group.groupId,
+      content: group.candidate.candidateId,
+    })),
+  ];
+  for (const row of sourceRows) {
+    const sourceId = randomUUID();
+    const assetId = randomUUID();
+    await poolA!.query(
+      `INSERT INTO asset.original_assets
+         (asset_id, content_hash, size_bytes, storage_key, created_at)
+       VALUES ($1, $2, 1, $3, $4)`,
+      [
+        assetId,
+        digest(`semantic-asset:${row.content}`),
+        `wp3/${semanticProjectId}/${row.suffix}/${assetId}`,
+        now,
+      ],
+    );
+    await poolA!.query(
+      `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+       VALUES ($1, $2, 'wp3-semantic-test', $3)`,
+      [sourceId, semanticProjectId, now],
+    );
+    await poolA!.query(
+      `INSERT INTO asset.source_versions
+         (source_version_id, source_id, version_number, original_asset_id,
+          media_type, access_scope, sensitivity, created_at)
+       VALUES ($1, $2, 1, $3, 'text/plain', $4, 'private', $5)`,
+      [row.sourceVersionId, sourceId, assetId, ['owner'], now],
+    );
+  }
+
+  const canonicalDigest = canonicalSnapshotDigest(semanticProjectId, 1, [
+    {
+      claimId: claim.claimId,
+      text: claim.claimText,
+      revisionNumber: claim.revisionNumber,
+      evidenceIds: claim.evidenceIds,
+    },
+  ]);
+  await poolA!.query(
+    `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
+     VALUES ($1, 1, $2, $3)`,
+    [semanticProjectId, canonicalDigest, now],
+  );
+  await poolA!.query(
+    `INSERT INTO canonical.claims
+       (claim_id, project_id, source_version_id, manifest_id, claim_json, created_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+    [
+      claim.claimId,
+      semanticProjectId,
+      claim.sourceVersionId,
+      randomUUID(),
+      JSON.stringify(claim),
+      now,
+    ],
+  );
+
+  for (const group of groups) {
+    await poolA!.query(
+      `INSERT INTO knowledge.review_groups
+         (project_id, group_id, source_version_id, revision_number, status,
+          content_digest, items, decisions, access_scope, sensitivity, created_at, updated_at)
+       VALUES ($1, $2, $3, 1, 'APPROVED', $4, $5::jsonb, '[]'::jsonb, $6, 'private', $7, $7)`,
+      [
+        semanticProjectId,
+        group.groupId,
+        group.sourceVersionId,
+        knowledgeCandidateDigest([group.candidate]),
+        JSON.stringify([group.candidate]),
+        ['owner'],
+        now,
+      ],
+    );
+  }
+};
 
 const cleanupProject = async (projectId: string): Promise<void> => {
   const client = await poolA!.connect();
@@ -299,6 +387,11 @@ const cleanupProject = async (projectId: string): Promise<void> => {
       ]);
       await client.query('DELETE FROM discovery.findings WHERE project_id = $1', [projectId]);
     } else {
+      await client.query('DELETE FROM knowledge.review_groups WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM canonical.claims WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM projection.semantic_items WHERE project_id = $1', [
+        projectId,
+      ]);
       await client.query(
         'DELETE FROM projection.semantic_generation_pointers WHERE project_id = $1',
         [projectId],
@@ -309,6 +402,14 @@ const cleanupProject = async (projectId: string): Promise<void> => {
       await client.query('DELETE FROM canonical.project_state WHERE project_id = $1', [projectId]);
       await client.query('DELETE FROM project_audit.project_tombstones WHERE project_id = $1', [
         projectId,
+      ]);
+      await client.query(
+        'DELETE FROM asset.source_versions WHERE source_id IN (SELECT source_id FROM asset.sources WHERE project_id = $1)',
+        [projectId],
+      );
+      await client.query('DELETE FROM asset.sources WHERE project_id = $1', [projectId]);
+      await client.query('DELETE FROM asset.original_assets WHERE storage_key LIKE $1', [
+        `wp3/${projectId}/%`,
       ]);
     }
   } finally {
@@ -342,11 +443,29 @@ describe('AKP-8 WP3 remaining E/N PostgreSQL end-to-end acceptance', () => {
   beforeEach(async () => {
     await cleanupProject(executionProjectId);
     await cleanupProject(semanticProjectId);
-    await poolA!.query(
-      `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
-       VALUES ($1, 1, $2, $3)`,
-      [semanticProjectId, digest('canonical-sentinel'), now],
-    );
+    const canonicalClaim = semanticCanonicalClaim(randomUUID());
+    const oldCandidate = semanticEntity({
+      candidateId: 'old-resource',
+      sourceVersionId: randomUUID(),
+      name: 'Obsolete semantic resource',
+    });
+    const retainedCandidate = semanticEntity({
+      candidateId: 'retained-resource',
+      sourceVersionId: randomUUID(),
+      name: 'Retained semantic resource',
+    });
+    await insertSemanticSource(canonicalClaim, [
+      {
+        groupId: 'wp3-old-resource-group',
+        sourceVersionId: oldCandidate.sourceVersionId,
+        candidate: oldCandidate,
+      },
+      {
+        groupId: 'wp3-retained-resource-group',
+        sourceVersionId: retainedCandidate.sourceVersionId,
+        candidate: retainedCandidate,
+      },
+    ]);
     await poolA!.query(
       `INSERT INTO project_audit.project_tombstones
        (project_id, deleted_at, deleted_by, reason, retention_class, lineage_digest)
@@ -525,20 +644,9 @@ describe('AKP-8 WP3 remaining E/N PostgreSQL end-to-end acceptance', () => {
   });
 
   it('removes an obsolete resource from active semantic membership and proves incremental/full equivalence', async () => {
-    const oldResource = semanticResource('old-resource');
-    const retainedResource = semanticResource('retained-resource');
-    let snapshot = snapshotFor([oldResource, retainedResource], digest('semantic-source-v1'));
+    const sourceReader = new PostgresSemanticCorpusSourceSnapshotReader(poolA!);
+
     let embedBatchCalls = 0;
-    const source = {
-      readSnapshot: async () => snapshot,
-      readWatermark: async (): Promise<SemanticCorpusSourceWatermark> => ({
-        projectId: snapshot.projectId,
-        canonicalVersion: snapshot.canonicalVersion,
-        canonicalSnapshotDigest: snapshot.canonicalSnapshotDigest,
-        approvedKnowledgeDigest: snapshot.approvedKnowledgeDigest,
-        sourceSnapshotDigest: snapshot.sourceSnapshotDigest,
-      }),
-    };
     const resolver = {
       resolveExecution: async () => resolvedExecution,
       resolveCompatibility: async (
@@ -563,10 +671,19 @@ describe('AKP-8 WP3 remaining E/N PostgreSQL end-to-end acceptance', () => {
       },
     };
     const repository = new PostgresSemanticIndexRepository(poolA!);
-    const builder = new SemanticGenerationBuilder(repository, source, resolver, router, undefined, {
-      now: () => now,
-      maxBatchSize: 8,
-    });
+    const builder = new SemanticGenerationBuilder(
+      repository,
+      sourceReader,
+      resolver,
+      router,
+      undefined,
+      { now: () => now, maxBatchSize: 8 },
+    );
+
+    const sourceBefore = await sourceReader.readSnapshot(semanticProjectId);
+    expect(sourceBefore.resources.map((resource) => resource.resourceId)).toEqual(
+      expect.arrayContaining(['canonical-sentinel-claim', 'old-resource', 'retained-resource']),
+    );
 
     const canonicalBefore = await poolA!.query(
       `SELECT version, snapshot_digest, updated_at::text FROM canonical.project_state WHERE project_id = $1`,
@@ -585,7 +702,25 @@ describe('AKP-8 WP3 remaining E/N PostgreSQL end-to-end acceptance', () => {
     expect(first.status).toBe('ACTIVATED');
     expect(embedBatchCalls).toBe(1);
 
-    snapshot = snapshotFor([retainedResource], digest('semantic-source-v2-with-tombstone'));
+    await poolA!.query(
+      `UPDATE knowledge.review_groups
+          SET status = 'REJECTED', updated_at = $2
+        WHERE project_id = $1 AND group_id = 'wp3-old-resource-group'`,
+      [semanticProjectId, later],
+    );
+    const sourceAfterEligibilityChange = await sourceReader.readSnapshot(semanticProjectId);
+    expect(
+      sourceAfterEligibilityChange.resources.map((resource) => resource.resourceId),
+    ).not.toContain('old-resource');
+    expect(sourceAfterEligibilityChange.resources.map((resource) => resource.resourceId)).toEqual(
+      expect.arrayContaining(['canonical-sentinel-claim', 'retained-resource']),
+    );
+    expect(sourceAfterEligibilityChange.canonicalSnapshotDigest).toBe(
+      sourceBefore.canonicalSnapshotDigest,
+    );
+    expect(sourceAfterEligibilityChange.sourceSnapshotDigest).not.toBe(
+      sourceBefore.sourceSnapshotDigest,
+    );
     const incremental = await builder.build({
       projectId: semanticProjectId,
       targetProfileRevision: 1,
@@ -596,24 +731,31 @@ describe('AKP-8 WP3 remaining E/N PostgreSQL end-to-end acceptance', () => {
       await repository.getItem(
         semanticProjectId,
         incremental.generationId,
-        'CLAIM',
+        'ENTITY',
         'old-resource',
       ),
     ).toBeUndefined();
     const retainedIncremental = await repository.getItem(
       semanticProjectId,
       incremental.generationId,
-      'CLAIM',
+      'ENTITY',
       'retained-resource',
     );
+    const canonicalIncremental = await repository.getItem(
+      semanticProjectId,
+      incremental.generationId,
+      'CLAIM',
+      'canonical-sentinel-claim',
+    );
     expect(retainedIncremental).toBeDefined();
+    expect(canonicalIncremental).toBeDefined();
     expect(
       await repository.readGenerationMembershipSummary(semanticProjectId, incremental.generationId),
     ).toEqual({
       projectId: semanticProjectId,
       generationId: incremental.generationId,
-      itemCount: 1,
-      membershipDigest: semanticMembershipDigest([retainedIncremental!]),
+      itemCount: 2,
+      membershipDigest: semanticMembershipDigest([canonicalIncremental!, retainedIncremental!]),
     });
 
     const full = await builder.build({
@@ -626,22 +768,91 @@ describe('AKP-8 WP3 remaining E/N PostgreSQL end-to-end acceptance', () => {
     expect(full.itemCount).toBe(incremental.itemCount);
     expect(embedBatchCalls).toBe(1);
 
+    const activeGeneration = await repository.getGeneration(semanticProjectId, full.generationId);
+    expect(activeGeneration).toBeDefined();
+    const inWindowGeneration = {
+      ...activeGeneration!,
+      generationId: 'wp3-semantic-generation-in-window',
+      sourceProjectionDigest: digest('semantic-window-source'),
+      createdAt: later,
+    };
+    const buildingGeneration = {
+      ...activeGeneration!,
+      generationId: 'wp3-semantic-generation-building',
+      buildStatus: 'BUILDING' as const,
+    };
+    expect(await repository.saveGeneration(inWindowGeneration)).toBe('CREATED');
+    expect(await repository.saveGeneration(buildingGeneration)).toBe('CREATED');
+
     expect(
-      await repository.getItem(semanticProjectId, first.generationId, 'CLAIM', 'old-resource'),
+      await repository.getItem(semanticProjectId, first.generationId, 'ENTITY', 'old-resource'),
     ).toBeDefined();
     const pointer = await repository.getActiveGenerationPointer(semanticProjectId);
     expect(pointer?.activeGenerationId).toBe(full.generationId);
+    const canonicalBeforePrune = await poolA!.query(
+      `SELECT version, snapshot_digest, updated_at::text FROM canonical.project_state WHERE project_id = $1`,
+      [semanticProjectId],
+    );
+    const auditBeforePrune = await poolA!.query(
+      `SELECT deleted_by, retention_class, lineage_digest FROM project_audit.project_tombstones WHERE project_id = $1`,
+      [semanticProjectId],
+    );
+    const prune = await builder.prune({ projectId: semanticProjectId, pruneBefore: later });
+    expect(prune.deletedGenerationIds).toEqual([first.generationId]);
+    expect(prune.activeGenerationId).toBe(full.generationId);
+    expect(prune.rollbackProtectedGenerationId).toBe(incremental.generationId);
+    expect(prune.skipped).toEqual(
+      expect.arrayContaining([
+        { generationId: full.generationId, reason: 'ACTIVE' },
+        { generationId: incremental.generationId, reason: 'ROLLBACK_PROTECTED' },
+        { generationId: inWindowGeneration.generationId, reason: 'WITHIN_ROLLBACK_WINDOW' },
+        { generationId: buildingGeneration.generationId, reason: 'BUILDING' },
+      ]),
+    );
+    expect(await repository.getGeneration(semanticProjectId, first.generationId)).toBeUndefined();
+    expect(
+      await repository.getItem(semanticProjectId, first.generationId, 'ENTITY', 'old-resource'),
+    ).toBeUndefined();
+    expect(
+      await repository.getGeneration(semanticProjectId, incremental.generationId),
+    ).toBeDefined();
+    expect(await repository.getGeneration(semanticProjectId, full.generationId)).toBeDefined();
+    expect(
+      await repository.getGeneration(semanticProjectId, inWindowGeneration.generationId),
+    ).toBeDefined();
+    expect(
+      await repository.getGeneration(semanticProjectId, buildingGeneration.generationId),
+    ).toBeDefined();
+
+    const activeReader = new PostgresSemanticActiveGenerationReader(repository);
+    const semanticRetriever = new SemanticRetriever(repository, resolver, router, activeReader, {
+      sourceWatermarkReader: sourceReader,
+    });
+    const activeResults = await semanticRetriever.retrieve({
+      projectId: semanticProjectId,
+      query: 'retained semantic resource',
+      accessScopes: ['owner'],
+      allowedSensitivities: ['private'],
+    });
+    expect(activeResults).toEqual(
+      expect.arrayContaining([expect.objectContaining({ resourceId: 'retained-resource' })]),
+    );
+    expect((await activeReader.getActiveGeneration(semanticProjectId))?.generationId).toBe(
+      full.generationId,
+    );
     expect(
       await poolA!.query(
         `SELECT version, snapshot_digest, updated_at::text FROM canonical.project_state WHERE project_id = $1`,
         [semanticProjectId],
       ),
-    ).toEqual(canonicalBefore);
+    ).toEqual(canonicalBeforePrune);
     expect(
       await poolA!.query(
         `SELECT deleted_by, retention_class, lineage_digest FROM project_audit.project_tombstones WHERE project_id = $1`,
         [semanticProjectId],
       ),
-    ).toEqual(auditBefore);
+    ).toEqual(auditBeforePrune);
+    expect(canonicalBefore).toEqual(canonicalBeforePrune);
+    expect(auditBefore).toEqual(auditBeforePrune);
   });
 });

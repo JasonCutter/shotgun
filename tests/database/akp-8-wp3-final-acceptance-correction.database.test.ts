@@ -552,6 +552,33 @@ describe('AKP-8 WP3 final correction: durable Action and production policy autho
         origin: 'DERIVED_DISCOVERY',
         content: { normalizedMaterial: { materializationTarget: 'ACTION_CANDIDATE' } },
       });
+
+      const actionAuthorityRows = await pool!.query<{
+        readonly candidates: number;
+        readonly executions: number;
+        readonly preview_snapshots: number;
+        readonly approval_records: number;
+      }>(
+        `SELECT
+           (SELECT COUNT(*)::int FROM action.candidates WHERE project_id = $1) AS candidates,
+           (SELECT COUNT(*)::int FROM action.executions WHERE project_id = $1) AS executions,
+           (SELECT COUNT(*)::int FROM action.preview_snapshots WHERE project_id = $1) AS preview_snapshots,
+           (SELECT COUNT(*)::int FROM action.approval_records
+              WHERE action_id IN (
+                SELECT action_id FROM action.executions WHERE project_id = $1
+              )) AS approval_records`,
+        [fixture.projectId],
+      );
+      expect(actionAuthorityRows.rows[0]).toEqual({
+        candidates: 0,
+        executions: 0,
+        preview_snapshots: 0,
+        approval_records: 0,
+      });
+      // No trusted Stage 11 Candidate exists, so the existing Action
+      // authority cannot create a Preview/Approval or reach its connector.
+      const externalExecuteCalls = 0;
+      expect(externalExecuteCalls).toBe(0);
       expect(fixture.calls.count).toBe(1);
       expect(fixture.calls.request?.prompt).not.toContain(fixture.credential.credentialId);
     } finally {

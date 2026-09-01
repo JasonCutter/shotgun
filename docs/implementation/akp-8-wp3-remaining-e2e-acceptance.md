@@ -129,7 +129,11 @@ The final External Action authority is not called and no Action execution
 manifest, approval, preflight, or attempt is created. The WP3 integration test
 also preserves adversarial generated text as data, keeps the governance target
 candidate-only, and verifies no provider object exposes `execute` or
-`callTool`.
+`callTool`. Immediately after materialization, the correction test reads the
+real Stage 11 PostgreSQL boundary and records zero project-owned rows in
+`action.candidates`, `action.executions`, `action.preview_snapshots`, and
+`action.approval_records`; therefore the existing Action connector has no
+trusted candidate or approval path to execute.
 
 ### K — source-aware Graph authority
 
@@ -205,7 +209,7 @@ generation and keeps generated content in the data-only path.
 | ------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
 | E                   | Real PostgreSQL lease expiry → production reclaim → seven stages → durable Finding/FindingReady    | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
 | H                   | PostgreSQL causal Product/Review/Feedback/Activity plus actual Search and Graph security negatives | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
-| J                   | Actual PostgreSQL ACTION_SUGGESTION → FindingReady → re-entry → Derived → Review chain             | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
+| J                   | Actual PostgreSQL Action chain plus Stage 11 candidate/execution/preview/approval zero-row proof   | None                                                | Candidate proof passed; exact-head CI/GPT review pending |
 | K                   | Production Graph adapter/domain mapping plus actual PostgreSQL Workspace non-promotion             | Small bounded adapter mapping repair                | Candidate proof passed; exact-head CI/GPT review pending |
 | N                   | Real PostgreSQL source change, rebuild parity, prune cascade/safety, active retrieval, nonmutation | Existing-ADR bounded Product capability remediation | Candidate proof passed; exact-head CI/GPT review pending |
 | O                   | Production Ask policy/config/credential resolver chain plus R5 semantic resolver/router            | None                                                | Candidate proof passed; exact-head CI/GPT review pending |

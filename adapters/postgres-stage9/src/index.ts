@@ -1,5 +1,7 @@
 import type { Pool, QueryResultRow } from 'pg';
 
+export * from './typed-proposition-conflict.js';
+
 import type {
   EntityVaultReviewWrite,
   KnowledgeModelRepositoryPort,

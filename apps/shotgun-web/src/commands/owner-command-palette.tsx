@@ -43,6 +43,7 @@ const koCommandLabels: Readonly<
   'activity.open': { label: '활동 열기', alias: '활동' },
   'history.open': { label: '이력 열기', alias: '이력' },
   'technical.current': { label: '기술 정보', alias: '기술 정보' },
+  'discovery.conflict_rules': { label: '충돌 규칙', alias: '충돌 규칙' },
   'discovery.feedback.useful': { label: '발견 항목 유용함 표시', alias: '발견 유용함' },
   'discovery.feedback.not_relevant': { label: '발견 항목 관련 없음 표시', alias: '발견 관련 없음' },
   'discovery.feedback.already_known': {

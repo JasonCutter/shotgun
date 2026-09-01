@@ -88,7 +88,11 @@ import {
 } from '../../../adapters/postgres-stage5/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres-stage6/src/index.js';
 import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
-import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
+import {
+  PostgresKnowledgeModelRepository,
+  PostgresTypedPropositionConflictAssertionRepository,
+  PostgresTypedPropositionConflictRuleRepository,
+} from '../../../adapters/postgres-stage9/src/index.js';
 import { PostgresSemanticCorpusSourceSnapshotReader } from '../../../adapters/semantic-corpus-postgres/src/index.js';
 import {
   PostgresSemanticActiveGenerationReader,
@@ -108,7 +112,14 @@ import { PostgresDiscoveryScheduleRepository } from '../../../adapters/discovery
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
 import type { DiscoveryFindingEnvelopeV1 } from '../../../packages/contracts/src/index.js';
+import type { KnowledgeModelRepositoryPort } from '../../../modules/knowledge-model/src/index.js';
 import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
+import {
+  KnowledgeModelTypedPropositionConflictAuthorityReader,
+  TypedPropositionConflictEvaluatorV1,
+  type TypedPropositionConflictAssertionRepositoryPort,
+  type TypedPropositionConflictRuleRepositoryPort,
+} from '../../../modules/knowledge-model/src/typed-proposition-conflict.js';
 import { DiscoveryFindingLifecycleService } from '../../../modules/discovery-finding-lifecycle/src/index.js';
 import {
   DiscoveryReentryConsumer,
@@ -129,6 +140,7 @@ import {
   createProductDiscoveryExecution,
   observeDiscoveryReconciliation,
 } from '../../../adapters/discovery-runtime-product/src/index.js';
+import type { DiscoveryCompetingResourcePortV1 } from '../../../modules/discovery-finding-fingerprint/src/index.js';
 import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import {
@@ -252,6 +264,43 @@ export type ShotgunApplicationHandle = {
   /** Idempotent graceful shutdown: stop accepting work, server.close(),
    *  Fastify onClose, closeResources (sources runtime, ask worker, pool). */
   close(): Promise<void>;
+};
+
+/**
+ * Production composition for the existing Discovery competing-resource Port.
+ * The evaluator remains the sole typed conflict authority; this adapter only
+ * translates the existing bounded Port context and never accepts a browser
+ * supplied signal.
+ */
+export const createTypedPropositionConflictDiscoveryPort = (input: {
+  readonly ruleRepository: TypedPropositionConflictRuleRepositoryPort;
+  readonly assertionRepository: TypedPropositionConflictAssertionRepositoryPort;
+  readonly knowledgeModelRepository: Pick<KnowledgeModelRepositoryPort, 'listGroups'>;
+}): DiscoveryCompetingResourcePortV1 => {
+  const evaluator = new TypedPropositionConflictEvaluatorV1(
+    input.ruleRepository,
+    input.assertionRepository,
+    new KnowledgeModelTypedPropositionConflictAuthorityReader(input.knowledgeModelRepository),
+  );
+  return {
+    read: async ({ context, resourceRefs }) => {
+      const signal = await evaluator.read({
+        context: {
+          ...context,
+          semanticGenerationId: context.discoveryBase.projectionRevision,
+          resourceRefs,
+          maxResourcesRead: context.bounds.maxResourcesRead,
+          maxObservationsReturned: context.bounds.maxObservationsReturned,
+        },
+      });
+      return {
+        ...context,
+        semanticGenerationId: context.discoveryBase.projectionRevision,
+        competitions: signal.competitions,
+        completeness: signal.completeness,
+      };
+    },
+  };
 };
 
 /**
@@ -543,6 +592,15 @@ export const startShotgunApplication = async (
       semanticCorpusSourceSnapshotReader,
     );
     const knowledgeModelRepository = new PostgresKnowledgeModelRepository(pool);
+    const typedPropositionConflictRuleRepository =
+      new PostgresTypedPropositionConflictRuleRepository(pool);
+    const typedPropositionConflictAssertionRepository =
+      new PostgresTypedPropositionConflictAssertionRepository(pool);
+    const typedPropositionConflictDiscoveryPort = createTypedPropositionConflictDiscoveryPort({
+      ruleRepository: typedPropositionConflictRuleRepository,
+      assertionRepository: typedPropositionConflictAssertionRepository,
+      knowledgeModelRepository,
+    });
     const discoveryProductResourceResolver = new ProductKnowledgeResourceResolver(
       canonicalKnowledgeRepository,
       knowledgeModelRepository,
@@ -678,6 +736,7 @@ export const startShotgunApplication = async (
             runtimeRepository: discoveryRuntimeRepository,
             evidenceRepository,
             semanticRetriever,
+            competingResource: typedPropositionConflictDiscoveryPort,
             createGenerationService: (budget, executionContext) =>
               createDiscoveryAIGenerationService({
                 profiles: discoveryModelProfileService,
@@ -911,6 +970,8 @@ export const startShotgunApplication = async (
       aiSettingsBackend: recoveryHarness ? undefined : aiSettingsBackend,
       providerExternalTransferApprovals: recoveryHarness ? undefined : providerApprovalService,
       frontendCommandGateway: commandGateway,
+      typedPropositionConflictRuleRepository,
+      typedPropositionConflictAssertionRepository,
       discoveryFeedbackRepository,
       frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),

@@ -182,6 +182,7 @@ const resourceFor = (
     resourceId: item.id,
     projectId,
     resourceState: item.source === 'APPROVED_KNOWLEDGE' ? 'APPROVED' : 'CURRENT',
+    ...(item.revisionNumber === undefined ? {} : { resourceRevision: String(item.revisionNumber) }),
   },
   label: item.label,
   evidenceIds: item.evidenceIds,
@@ -521,7 +522,21 @@ const createNeighborhoodFacade = (
       : { temporalCompatibility: input.temporalCompatibility }),
     ...(input.competingResource === undefined
       ? {}
-      : { competingResource: input.competingResource }),
+      : {
+          competingResource: {
+            read: async (
+              readInput: Parameters<NonNullable<typeof input.competingResource>['read']>[0],
+            ) => {
+              const signal = await input.competingResource!.read(readInput);
+              return {
+                ...signal,
+                // Keep the typed signal in the same semantic generation as
+                // the neighborhood that supplied its bounded resource refs.
+                semanticGenerationId: activeSemanticGenerationId,
+              };
+            },
+          },
+        }),
     ...(input.existingCanonicalConflict === undefined
       ? {}
       : { existingCanonicalConflict: input.existingCanonicalConflict }),

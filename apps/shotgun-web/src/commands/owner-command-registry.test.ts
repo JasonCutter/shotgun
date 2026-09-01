@@ -506,6 +506,39 @@ describe('owner command registry', () => {
     ).toBe(false);
   });
 
+  it('exposes typed conflict-rule management only for an online owner project', () => {
+    const command = createOwnerCommandRegistry({ shell, projects }).find(
+      (candidate) => candidate.id === 'discovery.conflict_rules',
+    );
+    expect(command).toMatchObject({
+      availability: 'AVAILABLE',
+      risk: 'WRITE',
+      presentation: 'DIALOG',
+      action: { kind: 'OPEN_CONFLICT_RULES' },
+    });
+
+    const nonOwnerShell: GlobalShellView = {
+      ...shell,
+      accessibleProjects: shell.accessibleProjects.map((project) => ({
+        ...project,
+        isOwner: false,
+      })),
+    };
+    expect(
+      createOwnerCommandRegistry({ shell: nonOwnerShell, projects }).find(
+        (candidate) => candidate.id === 'discovery.conflict_rules',
+      )?.availability,
+    ).toBe('HIDDEN');
+    expect(
+      createOwnerCommandRegistry({ shell, projects, isOffline: true }).find(
+        (candidate) => candidate.id === 'discovery.conflict_rules',
+      ),
+    ).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reasonKey: 'commands.unavailable.conflict_rules_offline',
+    });
+  });
+
   it('exposes Project controls through focused flows and hides invalid lifecycle actions', () => {
     const commands = createOwnerCommandRegistry({ shell, projects });
 

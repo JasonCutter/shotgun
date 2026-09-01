@@ -57,6 +57,7 @@ export type OwnerCommandAction =
   | { readonly kind: 'OPEN_PRIVACY_FLOW'; readonly commandId: PrivacyCommandId }
   | { readonly kind: 'OPEN_ANSWER_FLOW'; readonly commandId: AnswerCommandId }
   | { readonly kind: 'OPEN_TECHNICAL_FLOW'; readonly commandId: 'technical.current' }
+  | { readonly kind: 'OPEN_CONFLICT_RULES' }
   | { readonly kind: 'OPEN_DISCOVERY_FLOW'; readonly commandId: DiscoveryFeedbackCommandId }
   | { readonly kind: 'DISMISS_DISCOVERY' }
   | { readonly kind: 'SWITCH_PROJECT'; readonly projectId: string };
@@ -330,6 +331,22 @@ const focusedCommandAvailability = (
       availability: 'HIDDEN',
     };
   }
+  return { availability: 'AVAILABLE' };
+};
+
+const conflictRulesAvailability = (
+  shell: GlobalShellView,
+  isOffline: boolean,
+): Pick<OwnerCommandDefinition, 'availability' | 'reason' | 'reasonKey'> => {
+  if (isOffline)
+    return {
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reasonKey: 'commands.unavailable.conflict_rules_offline',
+    };
+  const activeMembership = shell.activeProject
+    ? shell.accessibleProjects.find((project) => project.id === shell.activeProject?.id)
+    : undefined;
+  if (!activeMembership?.isOwner) return { availability: 'HIDDEN' };
   return { availability: 'AVAILABLE' };
 };
 
@@ -621,6 +638,18 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     getAvailability: (_shell, _isOffline, _projects, hasTechnicalInspection) => ({
       availability: hasTechnicalInspection ? 'AVAILABLE' : 'HIDDEN',
     }),
+  },
+  {
+    id: 'discovery.conflict_rules',
+    category: 'INSPECTION',
+    label: 'Conflict rules',
+    description: 'Manage typed proposition conflict rules for the active Project',
+    aliases: ['conflict rules', 'typed proposition rules', 'discovery conflict rules'],
+    keywords: ['discovery', 'conflict', 'relation', 'owner', 'rules'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_CONFLICT_RULES' },
+    getAvailability: (shell, isOffline) => conflictRulesAvailability(shell, isOffline),
   },
 ];
 

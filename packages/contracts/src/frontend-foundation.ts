@@ -2,6 +2,10 @@ import type { CommandEnvelope } from './types.js';
 import type { ErrorCode } from './errors.js';
 import { getFailureDescriptor } from './failure-contract.js';
 import type { FailureCategory, FailureRecovery, FailureRetryability } from './failure-contract.js';
+import {
+  TYPED_PROPOSITION_CONFLICT_RULE_COMMAND_TYPE,
+  type TypedPropositionConflictRuleCommandPayloadV1,
+} from './typed-proposition-conflict.js';
 
 // ============================================================================
 // 1. Typed Error Contract & Error Classification
@@ -423,6 +427,124 @@ export function validateSection2FrontendCommandRequest(
   return {
     ...request,
     payload: decodeSection2CommandPayload(expectedCommandType, request.payload),
+  };
+}
+
+export function validateTypedPropositionConflictRuleCommandRequest(
+  input: unknown,
+): FrontendCommandRequest<TypedPropositionConflictRuleCommandPayloadV1> {
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    const forbiddenAuthorityFields = [
+      'projectId',
+      'principalId',
+      'actor',
+      'approvalActor',
+      'createdAt',
+      'status',
+      'kind',
+      'source',
+      'participantBinding',
+      'security',
+      'provenance',
+      'assertionId',
+      'assertionStatus',
+      'canonicalBase',
+      'sourceBase',
+    ].filter((field) => field in (input as Record<string, unknown>));
+    if (forbiddenAuthorityFields.length > 0) {
+      throw new FrontendContractError(
+        'PRECONDITION_ACCESS_DENIED',
+        `Client cannot inject conflict-rule authority fields: ${forbiddenAuthorityFields.join(', ')}`,
+      );
+    }
+  }
+  const request = validateFrontendCommandRequest(input);
+  if (request.commandType !== TYPED_PROPOSITION_CONFLICT_RULE_COMMAND_TYPE) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Route requires commandType '${TYPED_PROPOSITION_CONFLICT_RULE_COMMAND_TYPE}', received '${request.commandType}'`,
+    );
+  }
+  if (request.commandSchemaVersion !== '1.0.0') {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      `Unsupported commandSchemaVersion '${request.commandSchemaVersion}' for '${TYPED_PROPOSITION_CONFLICT_RULE_COMMAND_TYPE}'`,
+    );
+  }
+  const payload = assertRecordPayload(
+    request.payload,
+    TYPED_PROPOSITION_CONFLICT_RULE_COMMAND_TYPE,
+  );
+  assertOnlyPayloadKeys(payload, TYPED_PROPOSITION_CONFLICT_RULE_COMMAND_TYPE, [
+    'operation',
+    'ruleId',
+    'expectedRuleRevision',
+    'leftRelationType',
+    'rightRelationType',
+    'directionSemantics',
+  ]);
+  const operation = payload['operation'];
+  if (operation !== 'CREATE' && operation !== 'REVISE' && operation !== 'RETIRE') {
+    throw new FrontendContractError('INVALID_REQUEST', 'payload.operation is unsupported');
+  }
+  const optionalStringFields = ['ruleId', 'leftRelationType', 'rightRelationType'] as const;
+  for (const field of optionalStringFields) {
+    if (payload[field] !== undefined) assertNonEmptyString(payload[field], `payload.${field}`);
+  }
+  if (
+    payload['directionSemantics'] !== undefined &&
+    payload['directionSemantics'] !== 'DIRECTED_SAME_ORIENTATION' &&
+    payload['directionSemantics'] !== 'UNDIRECTED_CANONICAL_PAIR'
+  ) {
+    throw new FrontendContractError('INVALID_REQUEST', 'payload.directionSemantics is unsupported');
+  }
+  if (
+    payload['expectedRuleRevision'] !== undefined &&
+    (!Number.isSafeInteger(payload['expectedRuleRevision']) ||
+      (payload['expectedRuleRevision'] as number) < 1)
+  ) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'payload.expectedRuleRevision must be a positive integer',
+    );
+  }
+  const requireField = (field: string): void => {
+    if (payload[field] === undefined) {
+      throw new FrontendContractError('INVALID_REQUEST', `payload.${field} is required`);
+    }
+  };
+  if (operation === 'CREATE' || operation === 'REVISE') {
+    requireField('leftRelationType');
+    requireField('rightRelationType');
+    requireField('directionSemantics');
+  }
+  if (operation === 'REVISE' || operation === 'RETIRE') {
+    requireField('ruleId');
+    requireField('expectedRuleRevision');
+  }
+  if (
+    operation === 'CREATE' &&
+    (payload['ruleId'] !== undefined || payload['expectedRuleRevision'] !== undefined)
+  ) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'CREATE cannot provide ruleId or expectedRuleRevision',
+    );
+  }
+  if (
+    operation === 'RETIRE' &&
+    (payload['leftRelationType'] !== undefined ||
+      payload['rightRelationType'] !== undefined ||
+      payload['directionSemantics'] !== undefined)
+  ) {
+    throw new FrontendContractError(
+      'INVALID_REQUEST',
+      'RETIRE cannot provide rule definition fields',
+    );
+  }
+  return {
+    ...request,
+    payload: payload as unknown as TypedPropositionConflictRuleCommandPayloadV1,
   };
 }
 

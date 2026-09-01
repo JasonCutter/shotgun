@@ -66,6 +66,7 @@ const DISCOVERY_FEEDBACK_MIGRATION = '055_akp_7_wp1_feedback_suppression_ranking
 const DISCOVERY_SEMANTIC_FAMILY_PROJECTION_MIGRATION =
   '056_akp_7_wp3_semantic_family_projection.sql';
 const DISCOVERY_EPISTEMIC_REENTRY_MIGRATION = '057_akp_7_wp4_epistemic_feedback_reentry.sql';
+const TYPED_PROPOSITION_CONFLICT_MIGRATION = '058_akp8_typed_proposition_conflict_authority.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
@@ -105,6 +106,14 @@ export const authoritativeIntegrityTablesForMigrations = (
       `Backup migration identity is invalid: ${DISCOVERY_EPISTEMIC_REENTRY_MIGRATION} requires ${DISCOVERY_SEMANTIC_FAMILY_PROJECTION_MIGRATION}.`,
     );
   }
+  if (
+    applied.has(TYPED_PROPOSITION_CONFLICT_MIGRATION) &&
+    !applied.has(DISCOVERY_EPISTEMIC_REENTRY_MIGRATION)
+  ) {
+    throw new Error(
+      `Backup migration identity is invalid: ${TYPED_PROPOSITION_CONFLICT_MIGRATION} requires ${DISCOVERY_EPISTEMIC_REENTRY_MIGRATION}.`,
+    );
+  }
   return [
     ...baseAuthoritativeTables,
     ...(applied.has(DISCOVERY_FINDING_MIGRATION) ? ['discovery.findings'] : []),
@@ -121,6 +130,9 @@ export const authoritativeIntegrityTablesForMigrations = (
       : []),
     ...(applied.has(DISCOVERY_EPISTEMIC_REENTRY_MIGRATION)
       ? ['discovery.epistemic_reentry_triggers']
+      : []),
+    ...(applied.has(TYPED_PROPOSITION_CONFLICT_MIGRATION)
+      ? ['knowledge.typed_proposition_conflict_rules', 'knowledge.typed_incompatibility_assertions']
       : []),
   ];
 };

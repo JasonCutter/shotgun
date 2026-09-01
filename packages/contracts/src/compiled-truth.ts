@@ -8,6 +8,10 @@ export type ProjectionBuildMode = 'FULL_REBUILD' | 'INCREMENTAL';
 export type CompiledTruthItem = {
   readonly id: string;
   readonly type: 'CLAIM' | KnowledgeCandidateType;
+  /** Present for approved Knowledge Model candidates so downstream Discovery
+   * can bind a resource to the exact approved Relation revision. */
+  readonly revisionNumber?: number;
+  readonly sourceVersionId?: string;
   readonly label: string;
   readonly state: ProjectionTemporalState;
   readonly source: 'CANONICAL_CLAIM' | 'APPROVED_KNOWLEDGE';

@@ -208,6 +208,8 @@ const compiledTruthProjectionSource = async (
     group.items.map((candidate) => ({
       id: candidate.candidateId,
       type: candidate.candidateType,
+      revisionNumber: candidate.revisionNumber,
+      sourceVersionId: candidate.sourceVersionId,
       label: candidateLabel(candidate),
       state: temporalState(candidate, effectiveAt),
       source: 'APPROVED_KNOWLEDGE' as const,

@@ -545,6 +545,33 @@ describe('AKP-3 WP2 bounded hypothesis neighborhoods', () => {
     });
   });
 
+  it('accepts the governed factual typed-proposition signal when ExistingCanonicalConflict is intentionally unwired', () => {
+    const a = signal('a');
+    const b = signal('b');
+    const result = select(
+      conflictStrategy(),
+      bundle({
+        semanticNeighborhoods: [neighborhood(a, [neighbor(b)])],
+        competingResource: competition([
+          {
+            left: a.resource,
+            right: b.resource,
+            kind: 'FACTUAL',
+            source: 'TYPED_PROPOSITION',
+            signalId: 'typed-assertion-1',
+          },
+        ]),
+      }),
+    );
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]?.selectionSignals).toContainEqual({
+      kind: 'EXPLICIT_INCOMPATIBILITY',
+      incompatibilityKind: 'FACTUAL',
+      source: 'TYPED_PROPOSITION',
+      signalId: 'typed-assertion-1',
+    });
+  });
+
   it('requires overlapping typed temporal evidence and rejects self or non-overlapping conflicts', () => {
     const a = signal('a');
     const b = signal('b');

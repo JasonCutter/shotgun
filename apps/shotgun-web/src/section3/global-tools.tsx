@@ -34,6 +34,7 @@ import { useProductLocalization } from '../localization/product-localization.js'
 import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
 import { TechnicalCommandSurface } from '../commands/technical-command-surface.js';
+import { ConflictRuleCommandSurface } from '../commands/conflict-rule-command-surface.js';
 import { GlobalSearchDialog } from './global-search-dialog.js';
 
 export type OwnerCommandController = {
@@ -105,6 +106,8 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
   const [privacyCommandInvoker, setPrivacyCommandInvoker] = useState<HTMLElement | null>(null);
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const [technicalInvoker, setTechnicalInvoker] = useState<HTMLElement | null>(null);
+  const [conflictRulesOpen, setConflictRulesOpen] = useState(false);
+  const [conflictRulesInvoker, setConflictRulesInvoker] = useState<HTMLElement | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const projectsQuery = useQuery({
     queryKey: projectAdminQueryKey(shell.principalId),
@@ -232,6 +235,12 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
       closeCommandMode();
       return;
     }
+    if (command.action.kind === 'OPEN_CONFLICT_RULES') {
+      setConflictRulesInvoker(commandInvoker);
+      setConflictRulesOpen(true);
+      closeCommandMode();
+      return;
+    }
     if (command.action.kind === 'OPEN_ANSWER_FLOW') {
       if (paletteAnswerContext && answerRegistration?.openCommandForContext) {
         answerRegistration.openCommandForContext(
@@ -347,6 +356,12 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
           blocks={technicalBlocks}
           invoker={technicalInvoker}
           onClose={() => setTechnicalOpen(false)}
+        />
+        <ConflictRuleCommandSurface
+          open={conflictRulesOpen}
+          shell={shell}
+          invoker={conflictRulesInvoker}
+          onClose={() => setConflictRulesOpen(false)}
         />
       </div>
     </>

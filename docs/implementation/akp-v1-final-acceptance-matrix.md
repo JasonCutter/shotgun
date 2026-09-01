@@ -25,6 +25,14 @@ remains unproven. Neither status alone declares the ADR-142 A-P campaign complet
 | `BLOCKED_ARCHITECTURE_GAP`          | A required architecture authority or boundary is absent                                              |
 | `NOT_APPLICABLE_BY_FROZEN_CONTRACT` | The frozen contract explicitly excludes the item                                                     |
 
+### WP2R E2E-M disposition (2026-09-01)
+
+The former `E2E-M` `MISSING_PRODUCT_CAPABILITY` gap is remediated by the
+bounded AKP-8 WP2R production conflict-signal implementation. E2E-M remains
+`NOT YET PROVEN_EXISTING`: only resumed WP2 can prove the complete Conflict
+Finding → derived re-entry → Conflict Review → prior `SUPPRESS_SIMILAR` →
+mandatory-visibility journey. WP2R does not mark E2E-M PASS or resume WP2.
+
 ## 1. Frozen PAC-01..30 matrix
 
 | PAC    | Frozen acceptance requirement                                                                                                   | Status                       | Evidence / authority                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | A-P / Section AC linkage                     | Remaining work or disposition                                                                                         |
@@ -204,16 +212,16 @@ records exist.
 
 ### AKP8 — Final acceptance and closure
 
-| AC         | Criterion                                                                       | Status                       | Evidence / remaining work                                                                                     |
-| ---------- | ------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| AKP8-AC-01 | E2E A-P is evidenced                                                            | `MISSING_ACCEPTANCE_TEST`    | ADR-142 defines the required journeys; this matrix finds no final A-P campaign                                |
-| AKP8-AC-02 | All PAC and Section AC dispositions are complete                                | `MISSING_ACCEPTANCE_TEST`    | WP1 provides the first complete row register; open/partial rows remain                                        |
-| AKP8-AC-03 | No Critical/High unresolved cross-section gap                                   | `PARTIAL_COMPONENT_EVIDENCE` | No direct Critical authority violation found; five High evidence gaps remain in the companion audit           | Close or explicitly disposition the five High acceptance-evidence gaps         |
-| AKP8-AC-04 | Security/degraded/restart/invalidation are proven beyond happy paths            | `PARTIAL_COMPONENT_EVIDENCE` | Negative/component evidence exists; final cross-surface and lifecycle fixtures remain                         |
-| AKP8-AC-05 | Representative performance/cost is bounded                                      | `PARTIAL_COMPONENT_EVIDENCE` | AKP-3 budget evidence and `tests/unit/akp-1-wp5-closure.test.ts` measured local retrieval latency are present | Final combined performance/cost acceptance record remains                      |
-| AKP8-AC-06 | Exact-head evidence reuse policy is followed                                    | `PROVEN_EXISTING`            | Baseline and AKP-7 exact-head CI linkage are recorded; this WP1 commit applies the same exact-SHA rule        | Use exact SHA/run linkage for each reused result in the final closure campaign |
-| AKP8-AC-07 | User explicitly approves completion                                             | `MISSING_ACCEPTANCE_TEST`    | No final user approval is recorded by this WP1 artifact                                                       |
-| AKP8-AC-08 | Merge/post-merge records AKP v1 COMPLETE and later features become v2/follow-up | `MISSING_ACCEPTANCE_TEST`    | WP1 is Draft-only; no Ready, merge, post-merge completion record, or v1 declaration is made                   |
+| AC         | Criterion                                                                       | Status                       | Evidence / remaining work                                                                                                                                                            |
+| ---------- | ------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AKP8-AC-01 | E2E A-P is evidenced                                                            | `MISSING_ACCEPTANCE_TEST`    | ADR-142 defines the required journeys; WP2R now supplies the formerly missing conflict-signal capability, but no final A-P campaign exists and E2E-M remains NOT YET PROVEN_EXISTING |
+| AKP8-AC-02 | All PAC and Section AC dispositions are complete                                | `MISSING_ACCEPTANCE_TEST`    | WP1 provides the first complete row register; open/partial rows remain                                                                                                               |
+| AKP8-AC-03 | No Critical/High unresolved cross-section gap                                   | `PARTIAL_COMPONENT_EVIDENCE` | No direct Critical authority violation found; five High evidence gaps remain in the companion audit                                                                                  | Close or explicitly disposition the five High acceptance-evidence gaps         |
+| AKP8-AC-04 | Security/degraded/restart/invalidation are proven beyond happy paths            | `PARTIAL_COMPONENT_EVIDENCE` | Negative/component evidence exists; final cross-surface and lifecycle fixtures remain                                                                                                |
+| AKP8-AC-05 | Representative performance/cost is bounded                                      | `PARTIAL_COMPONENT_EVIDENCE` | AKP-3 budget evidence and `tests/unit/akp-1-wp5-closure.test.ts` measured local retrieval latency are present                                                                        | Final combined performance/cost acceptance record remains                      |
+| AKP8-AC-06 | Exact-head evidence reuse policy is followed                                    | `PROVEN_EXISTING`            | Baseline and AKP-7 exact-head CI linkage are recorded; this WP1 commit applies the same exact-SHA rule                                                                               | Use exact SHA/run linkage for each reused result in the final closure campaign |
+| AKP8-AC-07 | User explicitly approves completion                                             | `MISSING_ACCEPTANCE_TEST`    | No final user approval is recorded by this WP1 artifact                                                                                                                              |
+| AKP8-AC-08 | Merge/post-merge records AKP v1 COMPLETE and later features become v2/follow-up | `MISSING_ACCEPTANCE_TEST`    | WP1 is Draft-only; no Ready, merge, post-merge completion record, or v1 declaration is made                                                                                          |
 
 ## 3. Consolidated Section AC status counts
 

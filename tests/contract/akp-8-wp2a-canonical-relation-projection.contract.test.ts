@@ -109,6 +109,16 @@ const canonical: CanonicalSnapshot = {
       evidenceIds: ['evidence:relation'],
     },
   ],
+  relationPrecursorLinks: [
+    {
+      projectId,
+      reviewResourceId: 'review-resource:relation',
+      reviewResourceRevision: 1,
+      relationId: 'relation:canonical:commit-1',
+      relationRevision: 1,
+      linkedAt: '2026-09-01T00:02:30.000Z',
+    },
+  ],
   createdAt: '2026-09-01T00:02:00.000Z',
 };
 
@@ -131,6 +141,7 @@ const context: HandlerContext = {
 const build = async (
   repository: InMemoryCompiledTruthRepository,
   mode: 'FULL_REBUILD' | 'INCREMENTAL',
+  buildContext: HandlerContext = context,
 ) => {
   const module = createCompiledTruthModule(repository);
   const handler = module.handlers.commands.find(
@@ -153,7 +164,7 @@ const build = async (
       },
       payload: { mode },
     }),
-    context,
+    buildContext,
   )) as CompiledTruthProjection;
 };
 
@@ -178,6 +189,7 @@ describe('AKP-8 WP2A Canonical Relation projection contract', () => {
     ]);
     expect(fullEdges).toHaveLength(1);
     expect(fullEdges[0]?.source).toBe('CANONICAL_RELATION');
+    expect(full.relationPrecursorLinks).toEqual(canonical.relationPrecursorLinks);
 
     const graphRead = new PostgresCompiledTruthGraphReadAdapter(repository, {
       readWatermark: async () => ({
@@ -213,6 +225,7 @@ describe('AKP-8 WP2A Canonical Relation projection contract', () => {
       },
     );
     expect(graph.edges).toHaveLength(1);
+    expect(graph).not.toHaveProperty('relationPrecursorLinks');
     expect(graph.edges[0]).toMatchObject({
       authority: 'CANONICAL',
       provenance: { generatedBy: 'CANONICAL' },
@@ -227,6 +240,63 @@ describe('AKP-8 WP2A Canonical Relation projection contract', () => {
     const incremental = await build(repository, 'INCREMENTAL');
     expect(incremental.graph.edges).toEqual(full.graph.edges);
     expect(incremental.logicalDigest).toBe(full.logicalDigest);
+  });
+
+  it('does not suppress an approved typed edge when the Canonical relation has no precursor link', async () => {
+    const repository = new InMemoryCompiledTruthRepository();
+    const unlinkedContext: HandlerContext = {
+      ...context,
+      query: async <TPayload, TResult>(input: DispatchQueryInput<TPayload>) => {
+        const payload =
+          input.messageType === 'GetCanonicalSnapshot'
+            ? { ...canonical, relationPrecursorLinks: undefined }
+            : input.messageType === 'ListKnowledgeGroups'
+              ? { items: [group] }
+              : undefined;
+        if (payload === undefined) throw new Error(`Unexpected query ${input.messageType}`);
+        return { payload } as QueryResultEnvelope<TResult>;
+      },
+    };
+
+    const projection = await build(repository, 'FULL_REBUILD', unlinkedContext);
+
+    expect(projection.graph.edges).toHaveLength(2);
+    expect(projection.graph.edges.map((edge) => edge.source).sort()).toEqual([
+      'APPROVED_TYPED_EDGE',
+      'CANONICAL_RELATION',
+    ]);
+  });
+
+  it('does not suppress an approved typed edge when the linked Canonical relation has a temporal mismatch', async () => {
+    const repository = new InMemoryCompiledTruthRepository();
+    const temporalMismatchContext: HandlerContext = {
+      ...context,
+      query: async <TPayload, TResult>(input: DispatchQueryInput<TPayload>) => {
+        const temporalMismatchCanonical = {
+          ...canonical,
+          relations: canonical.relations?.map((relation) => ({
+            ...relation,
+            validFrom: '2026-02-01T00:00:00.000Z',
+          })),
+        };
+        const payload =
+          input.messageType === 'GetCanonicalSnapshot'
+            ? temporalMismatchCanonical
+            : input.messageType === 'ListKnowledgeGroups'
+              ? { items: [group] }
+              : undefined;
+        if (payload === undefined) throw new Error(`Unexpected query ${input.messageType}`);
+        return { payload } as QueryResultEnvelope<TResult>;
+      },
+    };
+
+    const projection = await build(repository, 'FULL_REBUILD', temporalMismatchContext);
+
+    expect(projection.graph.edges).toHaveLength(2);
+    expect(projection.graph.edges.map((edge) => edge.source).sort()).toEqual([
+      'APPROVED_TYPED_EDGE',
+      'CANONICAL_RELATION',
+    ]);
   });
 
   it('fails closed when a Canonical Relation endpoint is not the exact approved Entity revision', async () => {

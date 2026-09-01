@@ -284,17 +284,26 @@ const compiledTruthProjectionSource = async (
     canonicalRelationEdge(relation, approvedEntityItems),
   );
   const canonicalRelationIdentities = new Set(
-    (canonical.relations ?? []).map((relation) =>
-      canonicalRelationLogicalIdentityV1({
-        projectId,
-        relationType: relation.relationType,
-        fromEndpoint: { projectId, ...relation.fromEndpoint },
-        toEndpoint: { projectId, ...relation.toEndpoint },
-        direction: relation.direction,
-        ...(relation.validFrom === undefined ? {} : { validFrom: relation.validFrom }),
-        ...(relation.validTo === undefined ? {} : { validTo: relation.validTo }),
-      }),
-    ),
+    (canonical.relations ?? [])
+      .filter((relation) =>
+        (canonical.relationPrecursorLinks ?? []).some(
+          (link) =>
+            link.projectId === projectId &&
+            link.relationId === relation.relationId &&
+            link.relationRevision === relation.revisionNumber,
+        ),
+      )
+      .map((relation) =>
+        canonicalRelationLogicalIdentityV1({
+          projectId,
+          relationType: relation.relationType,
+          fromEndpoint: { projectId, ...relation.fromEndpoint },
+          toEndpoint: { projectId, ...relation.toEndpoint },
+          direction: relation.direction,
+          ...(relation.validFrom === undefined ? {} : { validFrom: relation.validFrom }),
+          ...(relation.validTo === undefined ? {} : { validTo: relation.validTo }),
+        }),
+      ),
   );
   const approvedRelationIdentities = approvedEntityItems;
   const approvedEdgesWithoutCanonicalEquivalent = approvedEdges.filter((edge) => {

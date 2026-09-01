@@ -971,7 +971,7 @@ const decodeCompiledItem = (value: unknown, path: string): CompiledTruthItem => 
 const decodeCompiledEdge = (value: unknown, path: string): CompiledTruthEdge => {
   const input = strictObject(
     value,
-    ['id', 'from', 'to', 'relationType', 'direction', 'source'],
+    ['id', 'from', 'to', 'relationType', 'direction', 'validFrom', 'validTo', 'source'],
     path,
   );
   return {
@@ -985,7 +985,18 @@ const decodeCompiledEdge = (value: unknown, path: string): CompiledTruthEdge => 
       ['DIRECTED', 'UNDIRECTED'],
       'direction',
     ),
-    source: enumValue(input.source, `${path}.source`, ['APPROVED_TYPED_EDGE'], 'edge source'),
+    ...(input.validFrom === undefined
+      ? {}
+      : { validFrom: timestamp(input.validFrom, `${path}.validFrom`) }),
+    ...(input.validTo === undefined
+      ? {}
+      : { validTo: timestamp(input.validTo, `${path}.validTo`) }),
+    source: enumValue(
+      input.source,
+      `${path}.source`,
+      ['APPROVED_TYPED_EDGE', 'CANONICAL_RELATION'],
+      'edge source',
+    ),
   };
 };
 

@@ -33,9 +33,11 @@ The Phase records under `docs/architecture/add/` retain their approved 2026-07-1
 
 ADR-131 through ADR-151 are authoritative accepted individual files. ADR-151 was accepted by the user on 2026-09-01 for the bounded AKP-8 WP2R remediation; its Product implementation authorization is limited to the chain and boundaries recorded in that ADR. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately authorized by subsequent implementation records. ADR-143 is the accepted finite implementation/completion contract for ADR-133 Runtime-selectable AI Settings. ADR-147 records the FACT Product-eligibility deferral. ADR-148 is the accepted AKP-1 implementation-mechanics refinement that unifies durable semantic profile, exact embedding execution, coherent corpus, generation lifecycle, query readiness and Product composition while preserving ADR-135's core semantic-projection architecture.
 
-ADR-152 is a proposed implementation-enabling refinement for the AKP-8 WP2A
-Discovery authoring and Canonical Relation authority audit. It remains
-`PROPOSED / USER APPROVAL PENDING` and does not authorize Product implementation.
+ADR-152 is the User-accepted implementation-enabling refinement for the AKP-8
+WP2A Discovery authoring and Canonical Relation authority audit. It authorizes
+only the bounded Product remediation request recorded in ADR-152 and PR #157;
+it does not resume WP2, start WP3, authorize deployment, or declare AKP v1
+complete.
 
 ADR-145 remains an accepted historical individual decision. ADR-146 supersedes ADR-145 as the governing owner-facing Product interaction architecture; both identifiers retain explicit relationship metadata.
 

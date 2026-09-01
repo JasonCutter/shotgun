@@ -176,6 +176,17 @@ export class PostgresFrontendReviewRepository implements ReviewRepositoryBoundar
     );
   }
 
+  /**
+   * Returns Review repositories bound to an existing PoolClient so a product
+   * bridge can keep Review writes and its downstream write in one transaction.
+   */
+  repositoriesOn(transaction: unknown): ReviewTransactionRepositoriesV1 {
+    if (!transaction || typeof transaction !== 'object' || !('query' in transaction)) {
+      throw new TypeError('A PostgreSQL transaction client is required.');
+    }
+    return this.repositories(transaction as PoolClient);
+  }
+
   // -------------------------------------------------------------------------
   // Context loading
   // -------------------------------------------------------------------------
@@ -1096,3 +1107,5 @@ export const createPostgresReviewDiscoveryCandidateReader = (
     return resource === undefined ? undefined : toReviewDiscoveryCandidateSource(resource);
   },
 });
+
+export { PostgresDiscoveryAuthoringBridge } from './discovery-authoring-bridge.js';

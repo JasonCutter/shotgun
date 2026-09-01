@@ -1,14 +1,14 @@
 # AKP-8 WP2A — Discovery Authoring and Canonical Relation Authority Audit
 
-- Status: **PROPOSED ARCHITECTURE / USER APPROVAL PENDING**
+- Status: **ACCEPTED ARCHITECTURE / BOUNDED PRODUCT REMEDIATION IN REVIEW**
 - Baseline: `main@81ebe93b01fd74c13d3ace2a6c27f55333417648`
 - Target branch: `codex/akp-8-wp2a-discovery-canonical-relation-architecture`
-- Scope: documentation-only architecture and implementation-enabling audit
-- Product/runtime changes: **NONE**
-- Schema/migration changes: **NONE**
-- Tests/dependencies/lockfiles/UI/deployment: **NONE**
+- Scope: accepted architecture plus bounded AKP-8 WP2A Product remediation
+- Product/runtime changes: **PR #157 — IN REVIEW**
+- Schema/migration changes: **PR #157 — IN REVIEW**
+- Tests/dependencies/lockfiles/UI/deployment: tests required; UI/deployment out of scope
 - Governing proposal: [ADR-152](../architecture/adr/ADR-152-discovery-authoring-and-canonical-relation-change-authority.md)
-- User approval for ADR-152: **PENDING**
+- User approval for ADR-152: **ACCEPTED 2026-09-01**
 
 ## 1. Purpose and stop condition
 
@@ -18,10 +18,11 @@ does not implement the missing handoff, turn a component test into E2E proof,
 or reopen the completed WP2R conflict-signal remediation.
 
 The attached checkpoint under `scratch/` is preserved as an attachment and is
-not an instruction. The active GPT work order is WP2A: audit the Discovery
-authoring-to-Canonical Relation authority boundary, create ADR-152 as
-`PROPOSED / USER APPROVAL PENDING`, keep WP2 blocked, and do not start WP3 or
-AKP completion.
+not an instruction. GPT subsequently issued the bounded WP2A Product
+remediation request after the User accepted ADR-152. The remediation is now
+implemented on PR #157; WP2 remains blocked until it is canonical and complete
+E2E-A evidence exists; WP3 and AKP
+completion work remain out of scope.
 
 The stop condition is reproduced from the canonical repository:
 
@@ -35,14 +36,14 @@ DiscoveryReviewResourceV1
   -> [current consumer only represents ADD_CLAIM | NO_OP]
 ```
 
-Therefore the classifications are:
+Therefore the baseline classifications were:
 
-| Surface                                   | Classification                            | Evidence                                                                                                               |
-| ----------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| AKP-8 WP2                                 | `BLOCKED` / `BLOCKED_PENDING_REMEDIATION` | The required E2E-A authority chain cannot be executed by the current Product.                                          |
-| Discovery Review → Knowledge Draft        | `MISSING_PRODUCT_CAPABILITY`              | Review returns an authoring state but has no server-owned Draft materializer/link.                                     |
-| Draft `RELATION_ADD` → Canonical Relation | `BLOCKED_ARCHITECTURE_GAP`                | Draft has a relation operation, while Frontend Canonical write/result/history/outbox only support `ADD_CLAIM / NO_OP`. |
-| E2E-A                                     | `BLOCKED_ARCHITECTURE_GAP`                | Its required Canonical Relation authority is absent.                                                                   |
+| Surface                                   | Classification                                                          | Evidence                                                                                                                                        |
+| ----------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| AKP-8 WP2                                 | `BLOCKED` / `BLOCKED_PENDING_REMEDIATION`                               | The baseline gap is product-remediated on PR #157, but the remediation is not yet canonical and the complete E2E-A journey is not yet accepted. |
+| Discovery Review → Knowledge Draft        | `MISSING_PRODUCT_CAPABILITY`                                            | Baseline Review returned an authoring state but had no server-owned Draft materializer/link.                                                    |
+| Draft `RELATION_ADD` → Canonical Relation | `BLOCKED_ARCHITECTURE_GAP`                                              | Baseline Draft had a relation operation, while Frontend Canonical only supported `ADD_CLAIM / NO_OP`.                                           |
+| E2E-A                                     | `PRODUCT CAPABILITY REMEDIATED / FULL E2E ACCEPTANCE STILL PENDING WP2` | PR #157 supplies the bounded authority chain; full cross-surface acceptance remains pending.                                                    |
 
 The missing capability is not silently classified as an acceptance-test gap.
 
@@ -100,7 +101,7 @@ ADR.
 | semantic corpus and retrieval projection                  | Existing AKP-1/semantic contracts treat derived indexes as rebuildable projections, not Evidence/Fact/Canonical.                              | Consume the Canonical Relation identity and source watermark; keep relation provenance inspectable.       |
 | Knowledge Workspace and Graph                             | Existing Product/Graph boundaries distinguish staged/derived overlays from Canonical state.                                                   | Use Canonical `relationId/revisionNumber` as authority and projection key; no UI-only dedupe.             |
 | Discovery runtime/re-entry adapter                        | `DiscoveryReviewResourceV1` is validated, persisted and reconciled through Finding/manifest/resource lineage.                                 | Reconcile the original hypothesis to `RESOLVED`, `STALE`, or `SUPERSEDED` after the Canonical result.     |
-| backup/restore/project deletion/audit retention           | Existing governed retention and recovery policies cover durable Finding, Review, Draft, Approval, History and outbox records.                 | Include `canonical.relations` and its provenance under the same policies; no second framework.            |
+| backup/restore/project deletion/audit retention           | Existing governed retention and recovery policies cover durable Finding, Review, Draft, Approval, History and outbox records.                 | Include `canonical.relations`, `canonical.relation_precursors`, and their provenance under the same policies; no second framework.            |
 
 ## 3. Architecture decision recorded by ADR-152
 
@@ -209,6 +210,10 @@ identity, endpoint revisions, direction/time, Evidence IDs, restrictive access
 scope/highest sensitivity, Frontend Approval authority, Discovery provenance,
 and creation time. The first implementation supports only `ADD_RELATION` at
 revision 1. Update/remove/merge/split remain separately governed.
+The accepted Discovery Review Resource revision is linked after the relation
+insert through the append-only `canonical.relation_precursors` table to the
+resulting `relationId`/revision in the same Canonical transaction; the source
+Review Resource remains immutable and non-Canonical.
 
 ## 4. Authority and provenance invariants
 
@@ -243,6 +248,7 @@ lock project_state
 -> stale base/access/policy/Evidence/provenance validation
 -> server endpoint resolution and duplicate check
 -> insert relation revision 1
+-> insert server-owned precursor -> relation linkage
 -> write commit result and revision
 -> write History ADD_RELATION / CANONICAL_RELATION_ADDED
 -> write existing CanonicalCommitted outbox with relation identity
@@ -320,56 +326,53 @@ The alternatives are explicitly rejected or selected as follows:
 The WP2A criteria are recorded in ADR-152 as WP2A-AC-01 through WP2A-AC-16.
 The directly affected frozen acceptance rows are:
 
-- E2E-A: `BLOCKED_ARCHITECTURE_GAP` until the bounded Product remediation is
-  implemented and evidenced;
-- PAC-15: required eligible-finding-to-Review handoff is now blocked at the
-  missing Review-accepted-to-Draft materializer;
-- AKP8-AC-01: final A-P evidence cannot claim E2E-A while its authority chain is
-  absent;
-- AKP8-AC-03: an unresolved High architecture gap remains;
+- E2E-A: `PRODUCT CAPABILITY REMEDIATED / FULL E2E ACCEPTANCE STILL PENDING WP2`;
+- PAC-15: the eligible-finding-to-Review handoff is implemented through the
+  accepted-for-authoring bridge, with complete E2E-A acceptance still pending;
+- AKP8-AC-01: final A-P evidence cannot claim E2E-A until the complete journey
+  is accepted;
+- AKP8-AC-03: the former E2E-A High architecture gap is remediated, while the
+  remaining High evidence gaps still require disposition;
 - AKP8-AC-08: no AKP completion or merge declaration is made by WP2A.
 
 Unrelated PAC/AC rows, WP1 history, and the merged WP2R record are not changed.
 
 ## 9. Implementation boundary and resume condition
 
-### In scope for WP2A
+### In scope for the accepted WP2A remediation
 
-- ADR-152 proposal;
-- this architecture/audit record;
-- the live final acceptance matrix blocker disposition;
-- ADR registry/README registration as a proposed ADR;
-- documentation-only verification.
+- the approved ADR-152 contracts and authority boundaries;
+- server-owned Discovery accepted-for-authoring to Draft materialization;
+- same-transaction Review/Draft/Approval command completion;
+- bounded Stage 6 Canonical Relation persistence, projection, replay, and reconciliation;
+- required Contract, security-negative, replay/idempotency, replacement, migration,
+  rollback, and end-to-end evidence;
+- the live final acceptance matrix blocker disposition.
 
 ### Explicitly out of scope
 
-- Product/runtime code or routes;
-- contract/schema implementation;
-- database repositories, migrations, or lockfiles;
-- Draft bridge/materialization;
-- Canonical Relation persistence and commit mapping;
-- projectors, UI, tests, deployment, WP2, WP3, or AKP v1 completion.
+- WP2 resumption or completion declaration;
+- WP3 or AKP v1 completion;
+- deployment or merge without the recorded review gates;
+- UI implementation beyond the existing governed contracts.
 
 ### Resume condition
 
-Work may resume only after all of the following are true:
+The accepted remediation may proceed on PR #157. WP2 may resume only after all
+of the following are true:
 
-1. ADR-152 receives explicit User approval and is changed to the approved status
-   through a governed record;
-2. GPT issues a new bounded Product remediation request with the approved
-   contract version and implementation scope;
-3. the request includes the required Contract, Golden Corpus, replay/
+1. ADR-152 remains explicitly accepted through the governed record;
+2. the approved remediation request includes the required Contract, Golden Corpus, replay/
    idempotency, security/Approval-negative, adapter replacement, migration and
    rollback gates;
-4. WP2 remains blocked until the remediation is merged and the complete E2E-A
-   evidence is produced.
+3. WP2 remains blocked until the remediation is canonical and the complete
+   E2E-A evidence is produced.
 
 No WP3 or AKP v1 closure work begins as a substitute for this remediation.
 
 ## 10. Verification and completion record
 
-Because this change is documentation/governance only, the permitted local
-verification is:
+The Product remediation verification must include:
 
 ```text
 npm run docs:validate
@@ -380,15 +383,46 @@ changed-file Markdown formatting check
 ```
 
 Product typecheck/lint, database, integration, frontend, and E2E suites are
-not run locally for this WP2A change. Automatic PR CI may run normally; no
-manual rerun is authorized. WP2A is not a Product implementation and is not a
-stage completion declaration.
+required in proportion to the changed boundaries. Automatic PR CI may run
+normally; no manual rerun is authorized. WP2A is not a stage completion
+declaration until the full evidence is reviewed.
 
 Final disposition:
 
-- ADR-152: `PROPOSED / USER APPROVAL PENDING`;
-- E2E-A: `BLOCKED_ARCHITECTURE_GAP`;
+- ADR-152: `ACCEPTED BY USER / BOUNDED PRODUCT REMEDIATION AUTHORIZED`;
+- E2E-A: `PRODUCT CAPABILITY REMEDIATED / FULL E2E ACCEPTANCE STILL PENDING WP2`;
 - WP2: `BLOCKED_PENDING_REMEDIATION`;
 - WP2R: previously merged and complete, unchanged;
 - WP3: not started;
 - AKP v1: not complete and not declared complete.
+
+## 11. Accepted Product remediation record — 2026-09-01
+
+The User accepted ADR-152 and GPT issued the bounded Product implementation
+request on the existing open Draft PR #157. The implementation record is:
+
+- `packages/contracts` now carries authority-qualified approved Knowledge Entity
+  endpoint refs, typed relation v2 data, server-owned Discovery provenance,
+  Canonical relation fields, snapshot digest relation state, history, outbox,
+  and reconciliation payloads;
+- the Review coordinator passes its existing PostgreSQL `PoolClient` to a
+  server-owned Discovery authoring bridge; exact persisted Review resources,
+  candidate revisions, project scope, canonical base, Evidence lineage, and
+  approved Knowledge Entity revisions are revalidated before materializing a
+  Draft;
+- Review command completion, Draft materialization, and command-ledger state
+  share one transaction; there is no second Review-to-Draft queue, worker, or
+  outbox;
+- the Draft commit path consumes only one approved claim or one typed relation,
+  maps the relation to Stage 6 `ADD_RELATION`, preserves edge authority as
+  `CANONICAL`, keeps endpoint authority as `APPROVED_KNOWLEDGE`, and uses the
+  existing Approval/replay/recovery boundary;
+- Stage 6 persists the append-only relation, relation-aware snapshot digest,
+  History, existing CanonicalCommitted outbox, and project-state update in one
+  transaction. Migration `059_akp8_canonical_relation_authority.sql` is
+  preflight-gated after exact migration 058;
+- the PR remains OPEN/DRAFT. Product capability, relation projection,
+  reconciliation, and focused contract evidence are implemented; full E2E-A,
+  Golden Corpus, complete security/replay/replacement, migration/rollback
+  exercise, UI, and final acceptance evidence remain review gates and are not
+  claimed complete by this record.

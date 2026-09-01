@@ -38,6 +38,7 @@ export type DraftMaterializationRecordV1 = {
   readonly effectiveProjectId: string;
   readonly base: FrontendKnowledgeDraftBaseV1;
   readonly commandIdentity: DraftCommandIdentityV1;
+  readonly discoveryProvenance?: FrontendKnowledgeDraftChangeSetV1['discoveryProvenance'];
   readonly createdAt: string;
 };
 
@@ -154,6 +155,7 @@ export type CreateFrontendKnowledgeDraftInputV1 = {
   readonly resourceId: string;
   readonly base: FrontendKnowledgeDraftBaseV1;
   readonly operations?: readonly FrontendKnowledgeOperationV1[];
+  readonly discoveryProvenance?: FrontendKnowledgeDraftChangeSetV1['discoveryProvenance'];
   readonly createdAt: string;
   readonly updatedAt: string;
 };
@@ -319,6 +321,9 @@ export const createInitialFrontendKnowledgeDraft = (
     resourceId: input.resourceId,
     base: input.base,
     operations,
+    ...(input.discoveryProvenance === undefined
+      ? {}
+      : { discoveryProvenance: input.discoveryProvenance }),
     contentDigest: frontendKnowledgeDraftRevisionDigest({
       draftId: input.draftId,
       revision: 1,
@@ -355,6 +360,9 @@ export const appendFrontendKnowledgeDraftRevision = (
     revision: nextRevision,
     base: current.base,
     operations: input.operations,
+    ...(current.discoveryProvenance === undefined
+      ? {}
+      : { discoveryProvenance: current.discoveryProvenance }),
   });
   if (input.contentDigest !== expectedDigest) {
     domainFailure('VALIDATION_FAILED', 'Draft content digest does not match its revision.');
@@ -409,7 +417,8 @@ export const assertFrontendKnowledgeDraftMaterializationBinding = (
     draft.draftProjectId !== materialization.draftProjectId ||
     draft.effectiveProjectId !== materialization.effectiveProjectId ||
     draft.resourceId !== materialization.target.resourceId ||
-    stableJson(draft.base) !== stableJson(materialization.base)
+    stableJson(draft.base) !== stableJson(materialization.base) ||
+    stableJson(draft.discoveryProvenance) !== stableJson(materialization.discoveryProvenance)
   ) {
     domainFailure('PROJECT_BINDING_CONFLICT', 'Materialization is not bound to the Draft.');
   }

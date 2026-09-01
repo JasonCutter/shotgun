@@ -15,6 +15,7 @@ import {
   frontendKnowledgeDraftValidateDigest,
   reviewApprovalManifestDigest,
   sha256Text,
+  stableJson,
   type AbandonKnowledgeDraftRequestV1,
   type AcceptedPolicyContext,
   type AnyFrontendCommandOutcomeView,
@@ -33,6 +34,7 @@ import {
   type FrontendKnowledgeDraftCommandOutcomeV1,
   type FrontendKnowledgeDraftCommandType,
   type FrontendKnowledgeOperationV1,
+  type RelationDraftValueV2,
   frontendKnowledgeDraftRevisionDigest,
   type Actor,
   type GenerateKnowledgeDraftImpactRequestV1,
@@ -329,6 +331,7 @@ export type FrontendKnowledgeDraftRunCommandInput<T> = {
   readonly preconditions?: readonly TypedPrecondition[];
   readonly actionOnRepositories: (
     repositories: FrontendKnowledgeDraftTransactionRepositoriesV1,
+    transaction?: unknown,
   ) => Promise<T>;
   readonly onReplay?: () => Promise<T>;
   /**
@@ -342,6 +345,7 @@ export type FrontendKnowledgeDraftRunCommandInput<T> = {
   readonly onReplayRecovery?: (
     originalCommandId: string,
     repositories: FrontendKnowledgeDraftTransactionRepositoriesV1,
+    transaction?: unknown,
   ) => Promise<T>;
   readonly producedResources: (result: T) => readonly ProducedResourceRef[];
 };
@@ -367,11 +371,38 @@ export type FrontendKnowledgeDraftApprovalCommitPort = {
     consumedAt: string,
     consumedBy: string,
   ): Promise<void>;
+  findByIdWithRevisionInTransaction?(
+    transaction: unknown,
+    approvalId: string,
+  ): Promise<
+    | {
+        readonly approval: ReviewApprovalV1;
+        readonly approvalStatusRevision: number;
+      }
+    | undefined
+  >;
+  consumeApprovalInTransaction?(
+    transaction: unknown,
+    approvalId: string,
+    canonicalCommitId: string,
+    consumedAt: string,
+    consumedBy: string,
+  ): Promise<void>;
 };
 
 export type FrontendKnowledgeDraftCanonicalCommitPort = {
   getSnapshot(projectId: string): Promise<CanonicalSnapshot>;
   commitFrontendDraft(write: FrontendCanonicalCommitWrite): Promise<CanonicalCommitResult>;
+  getSnapshotInTransaction?(transaction: unknown, projectId: string): Promise<CanonicalSnapshot>;
+  commitFrontendDraftInTransaction?(
+    transaction: unknown,
+    write: FrontendCanonicalCommitWrite,
+  ): Promise<CanonicalCommitResult>;
+  findCommitInTransaction?(
+    transaction: unknown,
+    projectId: string,
+    commitId: string,
+  ): Promise<CanonicalCommitResult | undefined>;
   /** Round 3 (GPT #1): recovery branches on whether the durable commit exists. */
   findCommit(projectId: string, commitId: string): Promise<CanonicalCommitResult | undefined>;
 };
@@ -398,15 +429,14 @@ const operationByReviewItemId = (
 
 /**
  * FE-P5-XP Correction B: validates that an approved operation set maps to the
- * single-claim Canonical model. Only `CLAIM_ADD` (-> ADD_CLAIM) and `NO_OP`
- * have a Canonical mutation; any other kind is rejected fail-closed with no
- * Canonical write and the Approval left ACTIVE. Returns the review Item id of
- * the single claimable operation when exactly one exists.
+ * bounded Canonical model. Only one `CLAIM_ADD` or one typed `RELATION_ADD`
+ * mutation is accepted per Approval; `NO_OP` has no Canonical mutation.
+ * Everything else is rejected fail-closed with the Approval left ACTIVE.
  */
 const approvedClaimableOperation = (input: {
   readonly operations: readonly FrontendKnowledgeOperationV1[];
   readonly approvedItemIds: readonly string[];
-}): { readonly claimReviewItemId?: string } => {
+}): { readonly claimReviewItemId?: string; readonly relationReviewItemId?: string } => {
   const resolved: { reviewItemId: string; operation: FrontendKnowledgeOperationV1 }[] = [];
   for (const reviewItemId of input.approvedItemIds) {
     const operation = operationByReviewItemId(input.operations, reviewItemId);
@@ -416,25 +446,42 @@ const approvedClaimableOperation = (input: {
         `Approved review item '${reviewItemId}' does not map to a Draft operation.`,
       );
     }
-    if (operation.kind !== 'CLAIM_ADD' && operation.kind !== 'NO_OP') {
+    if (
+      operation.kind !== 'CLAIM_ADD' &&
+      operation.kind !== 'RELATION_ADD' &&
+      operation.kind !== 'NO_OP'
+    ) {
       throw new FrontendKnowledgeDraftCommandError(
         'UNSUPPORTED_OPERATION',
         `Approved operation '${operation.kind}' has no Canonical representation; the Approval stays ACTIVE.`,
       );
     }
+    if (
+      operation.kind === 'RELATION_ADD' &&
+      (operation.after.schemaVersion !== 'relation.v2' || operation.before !== undefined)
+    ) {
+      throw new FrontendKnowledgeDraftCommandError(
+        'UNSUPPORTED_OPERATION',
+        'Only the server-created relation.v2 ADD operation can reach Canonical.',
+      );
+    }
     resolved.push({ reviewItemId, operation });
   }
   const claimItems = resolved.filter((entry) => entry.operation.kind === 'CLAIM_ADD');
-  if (claimItems.length > 1) {
+  const relationItems = resolved.filter((entry) => entry.operation.kind === 'RELATION_ADD');
+  if (claimItems.length + relationItems.length > 1) {
     // The frozen single-claim Canonical commit contract cannot represent
     // multiple CLAIM_ADD operations under one Approval (one Approval -> at
     // most one Canonical commit). Fail closed; the Approval stays ACTIVE.
     throw new FrontendKnowledgeDraftCommandError(
       'UNSUPPORTED_OPERATION',
-      'The Approval covers multiple CLAIM_ADD operations, which exceed the single-claim Canonical commit contract.',
+      'The Approval covers multiple Canonical mutation operations, which exceed the bounded commit contract.',
     );
   }
-  return { claimReviewItemId: claimItems[0]?.reviewItemId };
+  return {
+    claimReviewItemId: claimItems[0]?.reviewItemId,
+    relationReviewItemId: relationItems[0]?.reviewItemId,
+  };
 };
 
 export class FrontendKnowledgeDraftProductCoordinator {
@@ -990,19 +1037,20 @@ export class FrontendKnowledgeDraftProductCoordinator {
       approvalId: request.approvalId,
       commitIds: [input.canonicalCommitId],
     });
+    const dependencies = this.commitDependencies;
+    if (!dependencies) {
+      draftFailure('NOT_READY_FOR_REVIEW', 'The commit consumer is not configured.');
+    }
     const revalidated = async (input: {
       readonly draft: FrontendKnowledgeDraftChangeSetV1;
       /** RESOLVE tolerates a CONSUMED approval (replay of a completed command). */
       readonly mode?: 'REVALIDATE' | 'RESOLVE';
+      readonly transaction?: unknown;
     }): Promise<{
       readonly draft: FrontendKnowledgeDraftChangeSetV1;
       readonly approval: ReviewApprovalV1;
       readonly canonicalSnapshot: CanonicalSnapshot;
     }> => {
-      const dependencies = this.commitDependencies;
-      if (!dependencies) {
-        draftFailure('NOT_READY_FOR_REVIEW', 'The commit consumer is not configured.');
-      }
       const now = new Date().toISOString();
       const draft = input.draft;
       if (!draft) {
@@ -1093,7 +1141,14 @@ export class FrontendKnowledgeDraftProductCoordinator {
       ) {
         draftFailure('DIGEST_MISMATCH', 'The Approval binding digest is inconsistent.');
       }
-      const canonicalSnapshot = await dependencies.canonical.getSnapshot(scope.activeProjectId);
+      const canonicalSnapshot =
+        input.transaction !== undefined &&
+        dependencies.canonical.getSnapshotInTransaction !== undefined
+          ? await dependencies.canonical.getSnapshotInTransaction(
+              input.transaction,
+              scope.activeProjectId,
+            )
+          : await dependencies.canonical.getSnapshot(scope.activeProjectId);
       if (input.mode !== 'RESOLVE') {
         if (
           canonicalSnapshot.version !== draft.base.canonicalVersion ||
@@ -1104,6 +1159,34 @@ export class FrontendKnowledgeDraftProductCoordinator {
       }
       return { draft, approval, canonicalSnapshot };
     };
+    const commitCanonical = async (
+      transaction: unknown | undefined,
+      write: FrontendCanonicalCommitWrite,
+    ): Promise<CanonicalCommitResult> =>
+      transaction !== undefined &&
+      dependencies.canonical.commitFrontendDraftInTransaction !== undefined
+        ? dependencies.canonical.commitFrontendDraftInTransaction(transaction, write)
+        : dependencies.canonical.commitFrontendDraft(write);
+    const consumeApproval = async (
+      transaction: unknown | undefined,
+      approvalId: string,
+      canonicalCommitId: string,
+      consumedAt: string,
+    ): Promise<void> =>
+      transaction !== undefined && dependencies.approvals.consumeApprovalInTransaction !== undefined
+        ? dependencies.approvals.consumeApprovalInTransaction(
+            transaction,
+            approvalId,
+            canonicalCommitId,
+            consumedAt,
+            scope.principalId,
+          )
+        : dependencies.approvals.consumeApproval(
+            approvalId,
+            canonicalCommitId,
+            consumedAt,
+            scope.principalId,
+          );
     const buildWrite = (input: {
       readonly draft: FrontendKnowledgeDraftChangeSetV1;
       readonly approval: ReviewApprovalV1;
@@ -1147,6 +1230,10 @@ export class FrontendKnowledgeDraftProductCoordinator {
         claimable.claimReviewItemId === undefined
           ? undefined
           : operationByReviewItemId(input.draft.operations, claimable.claimReviewItemId);
+      const relationOperation =
+        claimable.relationReviewItemId === undefined
+          ? undefined
+          : operationByReviewItemId(input.draft.operations, claimable.relationReviewItemId);
       if (claimOperation?.kind === 'CLAIM_ADD') {
         // FE-P5-XP Correction B (Round 2, GPT #3): never fabricate a source
         // version from the resource id. A CLAIM_ADD commit requires at least
@@ -1183,6 +1270,52 @@ export class FrontendKnowledgeDraftProductCoordinator {
           sensitivity: scope.sensitivityClearance,
         };
       }
+      if (relationOperation?.kind === 'RELATION_ADD') {
+        if (relationOperation.after.schemaVersion !== 'relation.v2') {
+          draftFailure(
+            'UNSUPPORTED_OPERATION',
+            'Only the server-created relation.v2 Draft operation can reach Canonical.',
+          );
+        }
+        const relation = relationOperation.after as RelationDraftValueV2;
+        const logicalIdentityKey = `canonical-relation:v1:${sha256Text(
+          stableJson({
+            projectId: input.draft.resourceProjectId,
+            relationType: relation.relationType,
+            fromEndpoint: relation.fromEndpoint,
+            toEndpoint: relation.toEndpoint,
+            direction: relation.direction,
+            ...(relation.validFrom === undefined ? {} : { validFrom: relation.validFrom }),
+            ...(relation.validTo === undefined ? {} : { validTo: relation.validTo }),
+          }),
+        )}`;
+        return {
+          ...base,
+          commitId,
+          revisionId: `revision:${commitId}`,
+          historyEventId: `history:${commitId}`,
+          outboxId: `outbox:${commitId}`,
+          operation: 'ADD_RELATION',
+          relationId: `relation:${commitId}`,
+          logicalIdentityKey,
+          relationType: relation.relationType,
+          fromEndpoint: relation.fromEndpoint,
+          toEndpoint: relation.toEndpoint,
+          direction: relation.direction,
+          ...(relation.validFrom === undefined ? {} : { validFrom: relation.validFrom }),
+          ...(relation.validTo === undefined ? {} : { validTo: relation.validTo }),
+          evidenceIds: relationOperation.evidenceReferences.map((ref) => ref.evidenceSpanId),
+          accessScope: [...scope.accessScope],
+          sensitivity: scope.sensitivityClearance,
+          ...(input.draft.discoveryProvenance === undefined
+            ? {}
+            : {
+                discoveryProvenanceRef: input.draft.discoveryProvenance.review.reviewResourceId,
+                discoveryProvenanceRevision:
+                  input.draft.discoveryProvenance.review.reviewResourceRevision,
+              }),
+        };
+      }
       return {
         ...base,
         commitId,
@@ -1198,24 +1331,21 @@ export class FrontendKnowledgeDraftProductCoordinator {
       request,
       commandSemanticDigest,
       resourceProjectId: scope.activeProjectId,
-      actionOnRepositories: async (repositories) => {
-        const dependencies = this.commitDependencies!;
+      actionOnRepositories: async (repositories, transaction) => {
         const now = new Date().toISOString();
         const current = await repositories.drafts.findById(scope.activeProjectId, request.draftId);
         if (!current) {
           draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
         }
-        const { draft, approval, canonicalSnapshot } = await revalidated({ draft: current });
+        const { draft, approval, canonicalSnapshot } = await revalidated({
+          draft: current,
+          transaction,
+        });
         const write = buildWrite({ draft, approval, canonicalSnapshot, now });
         // Order per §3.2: durable Canonical commit → Approval CONSUMED → the
         // runCommand envelope completes the ledger command afterwards.
-        const result = await dependencies.canonical.commitFrontendDraft(write);
-        await dependencies.approvals.consumeApproval(
-          approval.approvalId,
-          result.commitId,
-          now,
-          scope.principalId,
-        );
+        const result = await commitCanonical(transaction, write);
+        await consumeApproval(transaction, approval.approvalId, result.commitId, now);
         return commitResult({ canonicalCommitId: result.commitId });
       },
       onReplay: async () => {
@@ -1230,7 +1360,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
         const write = buildWrite({ draft, approval, canonicalSnapshot, now });
         return commitResult({ canonicalCommitId: write.commitId });
       },
-      onReplayRecovery: async (originalCommandId, repositories) => {
+      onReplayRecovery: async (originalCommandId, repositories, transaction) => {
         // Crash recovery (GPT Round 2 #1, Round 3): recovery MUST first branch
         // on whether the durable Canonical commit exists. Only a crash AFTER
         // the durable commit may skip the fail-closed revalidation; if no
@@ -1242,13 +1372,27 @@ export class FrontendKnowledgeDraftProductCoordinator {
         if (!current) {
           draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
         }
-        const approvalRead = await dependencies.approvals.findByIdWithRevision(request.approvalId);
+        const approvalRead =
+          transaction !== undefined &&
+          dependencies.approvals.findByIdWithRevisionInTransaction !== undefined
+            ? await dependencies.approvals.findByIdWithRevisionInTransaction(
+                transaction,
+                request.approvalId,
+              )
+            : await dependencies.approvals.findByIdWithRevision(request.approvalId);
         if (!approvalRead) {
           draftFailure('NOT_FOUND', 'The Review Approval was not found.');
         }
         const { approval } = approvalRead;
         const commitId = deterministicCanonicalCommitId(approval.approvalId, current.draftId);
-        const existing = await dependencies.canonical.findCommit(scope.activeProjectId, commitId);
+        const existing =
+          transaction !== undefined && dependencies.canonical.findCommitInTransaction !== undefined
+            ? await dependencies.canonical.findCommitInTransaction(
+                transaction,
+                scope.activeProjectId,
+                commitId,
+              )
+            : await dependencies.canonical.findCommit(scope.activeProjectId, commitId);
         if (existing) {
           // Crash after the durable commit: verify the commit's authority
           // (project + approval id + binding digest), then recover the
@@ -1270,12 +1414,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
               'The existing Canonical commit authority digest does not match the Approval binding.',
             );
           }
-          await dependencies.approvals.consumeApproval(
-            approval.approvalId,
-            existing.commitId,
-            now,
-            scope.principalId,
-          );
+          await consumeApproval(transaction, approval.approvalId, existing.commitId, now);
           return commitResult({ canonicalCommitId: existing.commitId });
         }
         // No durable commit: the crash happened before the commit. Run the full
@@ -1284,6 +1423,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
         const { approval: revalidatedApproval, canonicalSnapshot } = await revalidated({
           draft: current,
           mode: 'REVALIDATE',
+          transaction,
         });
         const write = buildWrite({
           draft: current,
@@ -1291,13 +1431,8 @@ export class FrontendKnowledgeDraftProductCoordinator {
           canonicalSnapshot,
           now,
         });
-        const result = await dependencies.canonical.commitFrontendDraft(write);
-        await dependencies.approvals.consumeApproval(
-          revalidatedApproval.approvalId,
-          result.commitId,
-          now,
-          scope.principalId,
-        );
+        const result = await commitCanonical(transaction, write);
+        await consumeApproval(transaction, revalidatedApproval.approvalId, result.commitId, now);
         return commitResult({ canonicalCommitId: result.commitId });
       },
       producedResources: (result) => [
@@ -1559,7 +1694,11 @@ export class FrontendKnowledgeDraftProductCoordinator {
       if (input.onReplayRecovery) {
         try {
           return await this.boundary.transactionWithHandle(async (handle) => {
-            const recovered = await input.onReplayRecovery!(outcome.commandId, handle.repositories);
+            const recovered = await input.onReplayRecovery!(
+              outcome.commandId,
+              handle.repositories,
+              handle.raw,
+            );
             await this.commandGateway.completeInTransaction(handle.raw, {
               commandId: outcome.commandId,
               producedResources: input.producedResources(recovered),
@@ -1602,7 +1741,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
             'The command completed concurrently but its outcome is unavailable.',
           );
         }
-        const written = await input.actionOnRepositories(handle.repositories);
+        const written = await input.actionOnRepositories(handle.repositories, handle.raw);
         await this.commandGateway.completeInTransaction(handle.raw, {
           commandId: outcome.commandId,
           producedResources: input.producedResources(written),

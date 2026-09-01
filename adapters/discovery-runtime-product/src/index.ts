@@ -125,6 +125,50 @@ export const observeDiscoveryReconciliation = async (input: {
   readonly canonicalBase: DiscoveryCanonicalBaseIdentityV1;
 }): Promise<DiscoveryReconciliationDispositionV1> => {
   const { finding, projection } = input;
+  if (
+    finding.findingType === 'RELATION_HYPOTHESIS' &&
+    finding.payload.payloadType === 'RELATION_HYPOTHESIS'
+  ) {
+    const relation = finding.payload;
+    const sourceRevision = relation.sourceEndpoint.resourceRevision;
+    const targetRevision = relation.targetEndpoint.resourceRevision;
+    const hasExactApprovedEndpoint = (
+      resourceId: string,
+      revision: string | undefined,
+    ): boolean => {
+      const item = projection.items.find((entry) => entry.id === resourceId);
+      return (
+        item?.type === 'ENTITY' &&
+        item.source === 'APPROVED_KNOWLEDGE' &&
+        (revision === undefined || String(item.revisionNumber) === revision)
+      );
+    };
+    const canonicalEquivalent = projection.graph.edges.some((edge) => {
+      if (
+        edge.source !== 'CANONICAL_RELATION' ||
+        edge.relationType !== relation.proposedRelationType
+      ) {
+        return false;
+      }
+      const sameDirection =
+        edge.direction === relation.direction &&
+        ((edge.from === relation.sourceEndpoint.resourceId &&
+          edge.to === relation.targetEndpoint.resourceId) ||
+          (edge.direction === 'UNDIRECTED' &&
+            edge.from === relation.targetEndpoint.resourceId &&
+            edge.to === relation.sourceEndpoint.resourceId));
+      return (
+        sameDirection &&
+        hasExactApprovedEndpoint(relation.sourceEndpoint.resourceId, sourceRevision) &&
+        hasExactApprovedEndpoint(relation.targetEndpoint.resourceId, targetRevision) &&
+        (relation.temporalQualification?.validFrom === undefined ||
+          edge.validFrom === relation.temporalQualification.validFrom) &&
+        (relation.temporalQualification?.validTo === undefined ||
+          edge.validTo === relation.temporalQualification.validTo)
+      );
+    });
+    if (canonicalEquivalent) return 'CANONICAL_EQUIVALENT_ACCEPTED';
+  }
   const related = finding.relatedResourceRefs.map((resource) =>
     projection.items.find((item) => item.id === resource.resourceId),
   );

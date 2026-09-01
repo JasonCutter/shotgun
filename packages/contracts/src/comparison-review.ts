@@ -9,12 +9,36 @@ export type CanonicalSnapshotClaim = {
   readonly evidenceIds: readonly string[];
 };
 
+export type CanonicalSnapshotRelation = {
+  readonly relationId: string;
+  readonly logicalIdentityKey: string;
+  readonly revisionNumber: number;
+  readonly relationType: string;
+  readonly fromEndpoint: {
+    readonly authority: 'APPROVED_KNOWLEDGE';
+    readonly resourceType: 'ENTITY';
+    readonly resourceId: string;
+    readonly resourceRevision: number;
+  };
+  readonly toEndpoint: {
+    readonly authority: 'APPROVED_KNOWLEDGE';
+    readonly resourceType: 'ENTITY';
+    readonly resourceId: string;
+    readonly resourceRevision: number;
+  };
+  readonly direction: 'DIRECTED' | 'UNDIRECTED';
+  readonly validFrom?: string;
+  readonly validTo?: string;
+  readonly evidenceIds: readonly string[];
+};
+
 export type CanonicalSnapshot = {
   readonly snapshotId: string;
   readonly projectId: string;
   readonly version: number;
   readonly digest: string;
   readonly claims: readonly CanonicalSnapshotClaim[];
+  readonly relations?: readonly CanonicalSnapshotRelation[];
   readonly createdAt: string;
 };
 
@@ -169,11 +193,19 @@ export const canonicalSnapshotDigest = (
   projectId: string,
   version: number,
   claims: readonly CanonicalSnapshotClaim[],
+  relations?: readonly CanonicalSnapshotRelation[],
 ): string =>
   sha256Text(
     stableJson({
       projectId,
       version,
       claims: [...claims].sort((left, right) => left.claimId.localeCompare(right.claimId)),
+      ...(relations === undefined
+        ? {}
+        : {
+            relations: [...relations].sort((left, right) =>
+              left.relationId.localeCompare(right.relationId),
+            ),
+          }),
     }),
   );

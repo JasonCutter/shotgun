@@ -1,4 +1,5 @@
 import type { Actor, SecurityContext } from './types.js';
+import type { ApprovedKnowledgeEntityRefV1 } from './frontend-knowledge-draft.js';
 
 /** Cross-Phase Correction B: frontend commit authority provenance. */
 export type FrontendCanonicalAuthorityV1 = {
@@ -27,6 +28,33 @@ export type FrontendCanonicalCommitWrite =
       readonly evidenceIds: readonly string[];
       readonly accessScope: readonly string[];
       readonly sensitivity: SecurityContext['sensitivity'];
+      readonly expectedCanonicalVersion: number;
+      readonly snapshotDigest: string;
+      readonly authority: FrontendCanonicalAuthorityV1;
+      readonly reason: string;
+      readonly actor: Actor;
+      readonly committedAt: string;
+    }
+  | {
+      readonly commitId: string;
+      readonly revisionId: string;
+      readonly historyEventId: string;
+      readonly outboxId: string;
+      readonly projectId: string;
+      readonly operation: 'ADD_RELATION';
+      readonly relationId: string;
+      readonly logicalIdentityKey: string;
+      readonly relationType: string;
+      readonly fromEndpoint: ApprovedKnowledgeEntityRefV1;
+      readonly toEndpoint: ApprovedKnowledgeEntityRefV1;
+      readonly direction: 'DIRECTED' | 'UNDIRECTED';
+      readonly validFrom?: string;
+      readonly validTo?: string;
+      readonly evidenceIds: readonly string[];
+      readonly accessScope: readonly string[];
+      readonly sensitivity: SecurityContext['sensitivity'];
+      readonly discoveryProvenanceRef?: string;
+      readonly discoveryProvenanceRevision?: number;
       readonly expectedCanonicalVersion: number;
       readonly snapshotDigest: string;
       readonly authority: FrontendCanonicalAuthorityV1;
@@ -76,12 +104,14 @@ export type CanonicalCommitResult = {
   /** Frontend Review Approval authority reference (null for legacy rows). */
   readonly authorityId: string | null;
   readonly authorityDigest: string | null;
-  readonly operation: 'ADD_CLAIM' | 'NO_OP';
+  readonly operation: 'ADD_CLAIM' | 'ADD_RELATION' | 'NO_OP';
   readonly status: CanonicalCommitStatus;
   readonly beforeVersion: number;
   readonly afterVersion: number;
   readonly snapshotDigest: string;
   readonly claimId?: string;
+  readonly relationId?: string;
+  readonly logicalIdentityKey?: string;
   readonly revisionId: string;
   readonly historyEventId: string;
   readonly outboxId: string;
@@ -93,10 +123,11 @@ export type CanonicalRevision = {
   readonly projectId: string;
   readonly commitId: string;
   readonly manifestId: string | null;
-  readonly operation: 'ADD_CLAIM' | 'NO_OP';
+  readonly operation: 'ADD_CLAIM' | 'ADD_RELATION' | 'NO_OP';
   readonly beforeVersion: number;
   readonly afterVersion: number;
   readonly claimId?: string;
+  readonly relationId?: string;
   readonly reason: string;
   readonly actor: Actor;
   readonly createdAt: string;
@@ -108,10 +139,11 @@ export type CanonicalHistoryEvent = {
   readonly commitId: string;
   readonly manifestId: string | null;
   readonly changeSetId: string | null;
-  readonly eventType: 'CANONICAL_CLAIM_ADDED' | 'CHANGESET_NO_OP';
+  readonly eventType: 'CANONICAL_CLAIM_ADDED' | 'CANONICAL_RELATION_ADDED' | 'CHANGESET_NO_OP';
   readonly beforeVersion: number;
   readonly afterVersion: number;
   readonly claimId?: string;
+  readonly relationId?: string;
   readonly reason: string;
   readonly actor: Actor;
   readonly createdAt: string;
@@ -121,14 +153,45 @@ export type CanonicalCommittedPayload = {
   readonly commitId: string;
   readonly manifestId: string | null;
   readonly changeSetId: string | null;
-  readonly operation: 'ADD_CLAIM' | 'NO_OP';
+  readonly operation: 'ADD_CLAIM' | 'ADD_RELATION' | 'NO_OP';
   readonly status: CanonicalCommitStatus;
   readonly canonicalVersion: number;
   readonly snapshotDigest: string;
   readonly claimId?: string;
+  readonly relationId?: string;
+  readonly logicalIdentityKey?: string;
   readonly actorId: string;
   readonly accessScope: readonly string[];
   readonly sensitivity: SecurityContext['sensitivity'];
+};
+
+export type CanonicalRelationV1 = {
+  readonly relationId: string;
+  readonly logicalIdentityKey: string;
+  readonly projectId: string;
+  readonly revisionNumber: 1;
+  readonly relationType: string;
+  readonly fromEndpoint: ApprovedKnowledgeEntityRefV1;
+  readonly toEndpoint: ApprovedKnowledgeEntityRefV1;
+  readonly direction: 'DIRECTED' | 'UNDIRECTED';
+  readonly validFrom?: string;
+  readonly validTo?: string;
+  readonly evidenceIds: readonly string[];
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SecurityContext['sensitivity'];
+  readonly authority: FrontendCanonicalAuthorityV1;
+  readonly discoveryProvenanceRef?: string;
+  readonly discoveryProvenanceRevision?: number;
+  readonly createdAt: string;
+};
+
+export type CanonicalRelationPrecursorLinkV1 = {
+  readonly projectId: string;
+  readonly reviewResourceId: string;
+  readonly reviewResourceRevision: number;
+  readonly relationId: string;
+  readonly relationRevision: 1;
+  readonly linkedAt: string;
 };
 
 export type CanonicalOutboxRecord = {

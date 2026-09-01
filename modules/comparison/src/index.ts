@@ -61,7 +61,8 @@ const assertSnapshot = (snapshot: CanonicalSnapshot, projectId: string): void =>
   if (
     snapshot.projectId !== projectId ||
     snapshot.version < 0 ||
-    snapshot.digest !== canonicalSnapshotDigest(projectId, snapshot.version, snapshot.claims)
+    snapshot.digest !==
+      canonicalSnapshotDigest(projectId, snapshot.version, snapshot.claims, snapshot.relations)
   ) {
     throw new ShotgunError({
       code: 'VALIDATION_ERROR',

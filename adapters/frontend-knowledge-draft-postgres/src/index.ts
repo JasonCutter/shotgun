@@ -69,6 +69,18 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
     );
   }
 
+  /**
+   * Exposes the repository set for an already-open PoolClient. This is only
+   * used by the Review→Draft authoring bridge; it never opens a second
+   * transaction or connection.
+   */
+  repositoriesOn(transaction: unknown): FrontendKnowledgeDraftTransactionRepositoriesV1 {
+    if (!transaction || typeof transaction !== 'object' || !('query' in transaction)) {
+      throw new TypeError('A PostgreSQL transaction client is required.');
+    }
+    return this.repositories(transaction as PoolClient);
+  }
+
   private artifactQueryValues(draft: FrontendKnowledgeDraftChangeSetV1) {
     const result: {
       artifactId: string;

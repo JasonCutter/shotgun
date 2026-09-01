@@ -145,11 +145,14 @@ describe('Backup Bundle verification', () => {
       '056_akp_7_wp3_semantic_family_projection.sql',
       '057_akp_7_wp4_epistemic_feedback_reentry.sql',
       '058_akp8_typed_proposition_conflict_authority.sql',
+      '059_akp8_canonical_relation_authority.sql',
     ]);
     expect(allTables).toEqual(
       expect.arrayContaining([
         'knowledge.typed_proposition_conflict_rules',
         'knowledge.typed_incompatibility_assertions',
+        'canonical.relations',
+        'canonical.relation_precursors',
       ]),
     );
     expect(() =>
@@ -168,6 +171,9 @@ describe('Backup Bundle verification', () => {
         '058_akp8_typed_proposition_conflict_authority.sql',
       ]),
     ).toThrow('requires 057_akp_7_wp4_epistemic_feedback_reentry.sql');
+    expect(() =>
+      authoritativeIntegrityTablesForMigrations(['059_akp8_canonical_relation_authority.sql']),
+    ).toThrow('requires 058_akp8_typed_proposition_conflict_authority.sql');
   });
 
   it('fails closed when a referenced Original Asset is corrupt or missing', async () => {

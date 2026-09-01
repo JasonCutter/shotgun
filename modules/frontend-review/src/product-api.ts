@@ -122,7 +122,25 @@ export const FRONTEND_REVIEW_RESOURCE_KIND = {
   context: 'frontend.review.context',
   approval: 'frontend.review.approval',
   comment: 'frontend.review.comment',
+  draft: 'frontend.knowledge.draft',
 } as const;
+
+export type FrontendReviewAcceptedForAuthoringBridgeV1 = {
+  materialize(input: {
+    readonly transaction: unknown;
+    readonly repositories: ReviewTransactionRepositoriesV1;
+    readonly scope: FrontendReviewScopeV1;
+    readonly context: ReviewContextRevisionV1;
+    readonly source: ReviewSourceTargetV1;
+    readonly approvedItemIds: readonly string[];
+    readonly now: string;
+  }): Promise<{
+    readonly draftId: string;
+    readonly draftRevision: number;
+    readonly resourceProjectId: string;
+    readonly effectiveProjectId: string;
+  }>;
+};
 
 /** Shape returned by the record-decisions completion action. */
 export type RecordReviewDecisionsWrittenV1 = {
@@ -132,6 +150,12 @@ export type RecordReviewDecisionsWrittenV1 = {
   readonly aggregateState: RecordReviewDecisionsResultV1['aggregateState'];
   readonly approvals: readonly ReviewApprovalV1[];
   readonly acceptedForAuthoring?: boolean;
+  readonly draft?: {
+    readonly draftId: string;
+    readonly draftRevision: number;
+    readonly resourceProjectId: string;
+    readonly effectiveProjectId: string;
+  };
   readonly revisionRequestReturnTarget?: ReviewRevisionReturnTargetV1;
   readonly comment?: ReviewCommentRecordV1;
 };
@@ -213,7 +237,10 @@ type FrontendReviewRunCommandInput<T> = {
   readonly commandSemanticDigest: string;
   readonly resourceProjectId: string;
   readonly preconditions?: readonly TypedPrecondition[];
-  readonly actionOnRepositories: (repositories: ReviewTransactionRepositoriesV1) => Promise<T>;
+  readonly actionOnRepositories: (
+    repositories: ReviewTransactionRepositoriesV1,
+    transaction?: unknown,
+  ) => Promise<T>;
   readonly onReplay?: () => Promise<T>;
   readonly producedResources: (result: T) => readonly {
     readonly resourceKind: string;
@@ -228,6 +255,7 @@ export class FrontendReviewProductCoordinator {
     private readonly commandGateway: FrontendReviewCommandGatewayPort,
     private readonly targetAdapters: readonly ReviewTargetAdapterPort[],
     private readonly now?: () => Date,
+    private readonly acceptedForAuthoringBridge?: FrontendReviewAcceptedForAuthoringBridgeV1,
   ) {}
 
   private nowIso(): string {
@@ -935,7 +963,7 @@ export class FrontendReviewProductCoordinator {
       request,
       commandSemanticDigest,
       resourceProjectId: scope.activeProjectId,
-      actionOnRepositories: async (repositories) => {
+      actionOnRepositories: async (repositories, transaction) => {
         // 1. one authoritative boundary: lock the current context revision.
         const record = await repositories.contexts.lockCurrent(request.reviewContextId);
         if (!record) {
@@ -1191,6 +1219,18 @@ export class FrontendReviewProductCoordinator {
           contextRevision: request.expectedContextRevision,
           targetKind: record.context.targetKind,
         });
+        const draft =
+          acceptedForAuthoring === true && this.acceptedForAuthoringBridge !== undefined
+            ? await this.acceptedForAuthoringBridge.materialize({
+                transaction,
+                repositories,
+                scope,
+                context: record.context,
+                source,
+                approvedItemIds: [...approvedItemIds],
+                now,
+              })
+            : undefined;
         return {
           reviewContextId: request.reviewContextId,
           contextRevision: request.expectedContextRevision,
@@ -1198,6 +1238,7 @@ export class FrontendReviewProductCoordinator {
           aggregateState,
           approvals,
           ...(acceptedForAuthoring === undefined ? {} : { acceptedForAuthoring }),
+          ...(draft === undefined ? {} : { draft }),
           ...(revisionRequestReturnTarget === undefined ? {} : { revisionRequestReturnTarget }),
           ...(comment === undefined ? {} : { comment }),
         };
@@ -1230,6 +1271,15 @@ export class FrontendReviewProductCoordinator {
                 resourceId: written.comment.commentId,
               },
             ]),
+        ...(written.draft === undefined
+          ? []
+          : [
+              {
+                resourceKind: FRONTEND_REVIEW_RESOURCE_KIND.draft,
+                resourceId: written.draft.draftId,
+                resourceRevision: String(written.draft.draftRevision),
+              },
+            ]),
       ],
     });
     return {
@@ -1246,6 +1296,7 @@ export class FrontendReviewProductCoordinator {
       ...(written.acceptedForAuthoring === undefined
         ? {}
         : { acceptedForAuthoring: written.acceptedForAuthoring }),
+      ...(written.draft === undefined ? {} : { draft: written.draft }),
       ...(written.revisionRequestReturnTarget === undefined
         ? {}
         : { revisionRequestReturnTarget: written.revisionRequestReturnTarget }),
@@ -1643,6 +1694,7 @@ export class FrontendReviewProductCoordinator {
       ...(result.acceptedForAuthoring === undefined
         ? {}
         : { acceptedForAuthoring: result.acceptedForAuthoring }),
+      ...(result.draft === undefined ? {} : { draft: result.draft }),
       ...(result.revisionRequestReturnTarget === undefined
         ? {}
         : { revisionRequestReturnTarget: result.revisionRequestReturnTarget }),
@@ -1800,7 +1852,7 @@ export class FrontendReviewProductCoordinator {
             'The command completed concurrently but its outcome is unavailable.',
           );
         }
-        const written = await input.actionOnRepositories(handle.repositories);
+        const written = await input.actionOnRepositories(handle.repositories, handle.raw);
         await this.commandGateway.completeInTransaction(handle.raw, {
           commandId: outcome.commandId,
           producedResources: input.producedResources(written),

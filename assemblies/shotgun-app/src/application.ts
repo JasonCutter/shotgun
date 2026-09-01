@@ -50,6 +50,7 @@ import {
 } from '../../../adapters/frontend-history-postgres/src/index.js';
 import {
   PostgresDiscoveryReviewResourceRepository,
+  PostgresDiscoveryAuthoringBridge,
   PostgresFrontendReviewRepository,
 } from '../../../adapters/frontend-review-postgres/src/index.js';
 import {
@@ -962,6 +963,12 @@ export const startShotgunApplication = async (
       stopDiscoveryExecutionWorker = () => discoveryExecutionWorker.stop();
     }
 
+    const frontendKnowledgeDraftRepository = new PostgresFrontendKnowledgeDraftRepository(pool);
+    const frontendReviewStore = new PostgresFrontendReviewRepository(pool);
+    const frontendReviewAuthoringBridge = new PostgresDiscoveryAuthoringBridge(
+      frontendKnowledgeDraftRepository,
+    );
+
     const application = await createApplication({
       projectAdminRepository,
       projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
@@ -973,7 +980,8 @@ export const startShotgunApplication = async (
       typedPropositionConflictRuleRepository,
       typedPropositionConflictAssertionRepository,
       discoveryFeedbackRepository,
-      frontendKnowledgeDraftRepository: new PostgresFrontendKnowledgeDraftRepository(pool),
+      frontendKnowledgeDraftRepository,
+      frontendReviewAuthoringBridge,
       frontendKnowledgeDraftTargetResolver: new PostgresFrontendKnowledgeDraftTargetResolver(pool),
       frontendReviewDraftSourceReader: createPostgresReviewDraftSourceReader(pool),
       frontendReviewDiscoveryCandidateReader,
@@ -1031,7 +1039,7 @@ export const startShotgunApplication = async (
       actionExecutionRepository: new PostgresActionExecutionRepository(pool),
       authRepository,
       production,
-      frontendReviewStore: new PostgresFrontendReviewRepository(pool),
+      frontendReviewStore,
       activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
       activityAskRead: new PostgresAskActivityRead(pool),
       activityDiscoveryRead: discoveryRuntimeRepository,

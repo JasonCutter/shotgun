@@ -1,5 +1,6 @@
 import type {
   CanonicalClaim,
+  CanonicalSnapshotRelation,
   CanonicalSnapshot,
   CompiledTruthEdge,
   CompiledTruthItem,
@@ -9,6 +10,7 @@ import type {
   DiscoveryRunResult,
   KnowledgeCandidate,
   KnowledgeReviewGroup,
+  RelationCandidate,
   ProjectionBuildMode,
   ProjectionTemporalState,
   CommandEnvelope,
@@ -154,6 +156,51 @@ const temporalState = (candidate: KnowledgeCandidate, asOf: string): ProjectionT
   return 'CURRENT';
 };
 
+const relationIdentity = (input: {
+  readonly from: string;
+  readonly to: string;
+  readonly relationType: string;
+  readonly direction: RelationCandidate['direction'];
+}): string => {
+  const endpoints =
+    input.direction === 'UNDIRECTED'
+      ? [input.from, input.to].sort(utf16OrdinalCompare)
+      : [input.from, input.to];
+  return `${input.relationType}\u0000${input.direction}\u0000${endpoints.join('\u0000')}`;
+};
+
+const canonicalRelationEdge = (
+  relation: CanonicalSnapshotRelation,
+  approvedItems: ReadonlyMap<string, CompiledTruthItem>,
+): CompiledTruthEdge => {
+  const from = approvedItems.get(relation.fromEndpoint.resourceId);
+  const to = approvedItems.get(relation.toEndpoint.resourceId);
+  if (
+    !from ||
+    !to ||
+    from.type !== 'ENTITY' ||
+    to.type !== 'ENTITY' ||
+    from.source !== 'APPROVED_KNOWLEDGE' ||
+    to.source !== 'APPROVED_KNOWLEDGE' ||
+    from.revisionNumber !== relation.fromEndpoint.resourceRevision ||
+    to.revisionNumber !== relation.toEndpoint.resourceRevision
+  ) {
+    throw new Error(
+      'Canonical Relation endpoint is not the exact approved Knowledge Entity revision.',
+    );
+  }
+  return {
+    id: relation.relationId,
+    from: relation.fromEndpoint.resourceId,
+    to: relation.toEndpoint.resourceId,
+    relationType: relation.relationType,
+    direction: relation.direction,
+    ...(relation.validFrom === undefined ? {} : { validFrom: relation.validFrom }),
+    ...(relation.validTo === undefined ? {} : { validTo: relation.validTo }),
+    source: 'CANONICAL_RELATION',
+  };
+};
+
 const compiledTruthProjectionSource = async (
   projectId: string,
   context: HandlerContext,
@@ -221,7 +268,7 @@ const compiledTruthProjectionSource = async (
   const items = [...claimItems, ...candidateItems].sort((left, right) =>
     utf16OrdinalCompare(left.id, right.id),
   );
-  const edges: CompiledTruthEdge[] = groups
+  const approvedEdges: CompiledTruthEdge[] = groups
     .flatMap((group) => group.items)
     .filter(
       (candidate): candidate is Extract<KnowledgeCandidate, { candidateType: 'RELATION' }> =>
@@ -233,9 +280,24 @@ const compiledTruthProjectionSource = async (
       to: candidate.toCandidateId,
       relationType: candidate.relationType,
       direction: candidate.direction,
+      ...(candidate.validFrom === undefined ? {} : { validFrom: candidate.validFrom }),
+      ...(candidate.validTo === undefined ? {} : { validTo: candidate.validTo }),
       source: 'APPROVED_TYPED_EDGE' as const,
     }))
     .sort((left, right) => utf16OrdinalCompare(left.id, right.id));
+  const approvedEntityItems = new Map(
+    candidateItems
+      .filter((item) => item.type === 'ENTITY' && item.source === 'APPROVED_KNOWLEDGE')
+      .map((item) => [item.id, item]),
+  );
+  const canonicalEdges = (canonical.relations ?? []).map((relation) =>
+    canonicalRelationEdge(relation, approvedEntityItems),
+  );
+  const canonicalRelationIdentities = new Set(canonicalEdges.map(relationIdentity));
+  const edges = [
+    ...canonicalEdges,
+    ...approvedEdges.filter((edge) => !canonicalRelationIdentities.has(relationIdentity(edge))),
+  ].sort((left, right) => utf16OrdinalCompare(left.id, right.id));
   const digest = semanticSourceReader
     ? (await semanticSourceReader.readWatermark(projectId)).sourceSnapshotDigest
     : semanticCorpusSourceSnapshotDigest({

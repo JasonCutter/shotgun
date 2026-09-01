@@ -26,7 +26,9 @@ export type CompiledTruthEdge = {
   readonly to: string;
   readonly relationType: string;
   readonly direction: RelationCandidate['direction'];
-  readonly source: 'APPROVED_TYPED_EDGE';
+  readonly validFrom?: string;
+  readonly validTo?: string;
+  readonly source: 'APPROVED_TYPED_EDGE' | 'CANONICAL_RELATION';
 };
 
 export type CompiledTruthGraph = {

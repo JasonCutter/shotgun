@@ -8,7 +8,10 @@ import {
   type ReviewContextRevisionV1,
 } from '../../packages/contracts/src/index.js';
 import { FrontendReviewProductCoordinator } from '../../modules/frontend-review/src/index.js';
-import type { FrontendReviewScopeV1 } from '../../modules/frontend-review/src/index.js';
+import type {
+  FrontendReviewAcceptedForAuthoringBridgeV1,
+  FrontendReviewScopeV1,
+} from '../../modules/frontend-review/src/index.js';
 import { InMemoryFrontendCommandGateway } from '../../adapters/frontend-command-gateway-in-memory/src/index.js';
 import { InMemoryFrontendKnowledgeDraftRepository } from '../../adapters/frontend-knowledge-draft-in-memory/src/index.js';
 import {
@@ -208,6 +211,7 @@ const createSubmittedDraft = (): FrontendKnowledgeDraftChangeSetV1 => {
 
 const buildCoordinator = (overrides?: {
   readonly drafts?: InMemoryFrontendKnowledgeDraftRepository;
+  readonly acceptedForAuthoringBridge?: FrontendReviewAcceptedForAuthoringBridgeV1;
 }) => {
   const draftRepository = overrides?.drafts ?? new InMemoryFrontendKnowledgeDraftRepository();
   const store = new InMemoryFrontendReviewStore();
@@ -266,6 +270,7 @@ const buildCoordinator = (overrides?: {
     gateway,
     [draftAdapter, candidateAdapter, directiveAdapter],
     fixedNow,
+    overrides?.acceptedForAuthoringBridge,
   );
   return { store, gateway, coordinator, draftRepository };
 };
@@ -453,6 +458,59 @@ describe('FE-P4-S1 Review domain — candidate and directive (AC-12, AC-13)', ()
     expect(result.acceptedForAuthoring).toBe(true);
     expect(result.approvals).toBeUndefined();
     expect(store.approvals.size).toBe(0);
+  });
+
+  it('joins the accepted Discovery decision to the server-owned Draft bridge', async () => {
+    const calls: Array<{ transaction: unknown; targetKind: string; approvedItemIds: string[] }> =
+      [];
+    const { coordinator } = buildCoordinator({
+      acceptedForAuthoringBridge: {
+        materialize: async (input) => {
+          calls.push({
+            transaction: input.transaction,
+            targetKind: input.context.targetKind,
+            approvedItemIds: [...input.approvedItemIds],
+          });
+          return {
+            draftId: 'discovery-draft-1',
+            draftRevision: 1,
+            resourceProjectId: PROJECT,
+            effectiveProjectId: PROJECT,
+          };
+        },
+      },
+    });
+    const queue = await coordinator.listReviewQueue(scope, {
+      schemaVersion: '1.0.0',
+      pageSize: 50,
+    });
+    const item = queue.items.find((candidate) => candidate.targetKind === 'DISCOVERY_CANDIDATE');
+    const read = await coordinator.getReviewContext(scope, {
+      schemaVersion: '1.0.0',
+      reviewContextId: item!.reviewContextId,
+      contextRevision: item!.contextRevision,
+    });
+    const itemId = read.context.items[0]!.reviewItemId;
+    const result = await coordinator.recordReviewDecisions(
+      scope,
+      decisionRequest(read.context, itemId, 'APPROVE', 'Accepted for authoring.'),
+    );
+
+    expect(result.acceptedForAuthoring).toBe(true);
+    expect(result.draft).toEqual({
+      draftId: 'discovery-draft-1',
+      draftRevision: 1,
+      resourceProjectId: PROJECT,
+      effectiveProjectId: PROJECT,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      targetKind: 'DISCOVERY_CANDIDATE',
+      approvedItemIds: [itemId],
+    });
+    // The in-memory boundary has no raw database handle; production supplies
+    // the PostgreSQL PoolClient through this same callback.
+    expect(calls[0]?.transaction).toBeUndefined();
   });
 
   it('issues a USER_DIRECTIVE_CHANGE approval for a directive clause', async () => {

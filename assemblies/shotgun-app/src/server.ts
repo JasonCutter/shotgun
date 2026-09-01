@@ -182,6 +182,7 @@ import { InMemoryFrontendKnowledgeDraftTargetResolver } from '../../../adapters/
 import {
   FrontendReviewProductCoordinator,
   type ReviewRepositoryBoundaryPort,
+  type FrontendReviewAcceptedForAuthoringBridgeV1,
 } from '../../../modules/frontend-review/src/index.js';
 import { InMemoryFrontendReviewStore } from '../../../adapters/frontend-review-in-memory/src/index.js';
 import { FrontendExternalActionProductCoordinator } from '../../../modules/frontend-external-action/src/index.js';
@@ -614,6 +615,8 @@ export type ApplicationOptions = {
    *  the Command Ledger transaction and Approval persistence survives
    *  restart (Cross-Phase WP-XP2 discovery). */
   readonly frontendReviewStore?: ReviewRepositoryBoundaryPort;
+  /** Production-only atomic Discovery Review → Draft bridge. */
+  readonly frontendReviewAuthoringBridge?: FrontendReviewAcceptedForAuthoringBridgeV1;
   /** Cross-Phase: PostgreSQL-backed Review submission source for the Draft →
    *  Review queue when the Knowledge Draft repository is not in-memory. */
   readonly frontendReviewDraftSourceReader?: ReviewDraftSourceReader;
@@ -1563,6 +1566,15 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   // exposes its Approval port transaction-scoped; the commit consumer reads
   // and consumes through its transaction boundary.
   const frontendReviewStore = options.frontendReviewStore ?? new InMemoryFrontendReviewStore();
+  const reviewRepositoriesOn = (transaction: unknown) => {
+    if (
+      'repositoriesOn' in frontendReviewStore &&
+      typeof frontendReviewStore.repositoriesOn === 'function'
+    ) {
+      return frontendReviewStore.repositoriesOn(transaction);
+    }
+    return undefined;
+  };
   const frontendKnowledgeDraftCoordinator =
     options.frontendKnowledgeDraftCoordinator ??
     new FrontendKnowledgeDraftProductCoordinator(
@@ -1575,6 +1587,10 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
             frontendReviewStore.transaction((repositories) =>
               repositories.approvals.findByIdWithRevision(approvalId),
             ),
+          findByIdWithRevisionInTransaction: async (transaction, approvalId) => {
+            const repositories = reviewRepositoriesOn(transaction);
+            return repositories?.approvals.findByIdWithRevision(approvalId);
+          },
           consumeApproval: async (approvalId, canonicalCommitId, consumedAt, consumedBy) =>
             frontendReviewStore.transaction((repositories) =>
               repositories.approvals.consumeApproval(
@@ -1584,6 +1600,24 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
                 consumedBy,
               ),
             ),
+          consumeApprovalInTransaction: async (
+            transaction,
+            approvalId,
+            canonicalCommitId,
+            consumedAt,
+            consumedBy,
+          ) => {
+            const repositories = reviewRepositoriesOn(transaction);
+            if (!repositories) {
+              throw new Error('Review transaction joining is unavailable.');
+            }
+            return repositories.approvals.consumeApproval(
+              approvalId,
+              canonicalCommitId,
+              consumedAt,
+              consumedBy,
+            );
+          },
         },
         canonical: canonicalKnowledgeRepository,
       },
@@ -1647,20 +1681,26 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   });
   const frontendReviewCoordinator =
     options.frontendReviewCoordinator ??
-    new FrontendReviewProductCoordinator(frontendReviewStore, frontendCommandGateway, [
-      new DraftReviewTargetAdapter(
-        options.frontendReviewDraftSourceReader ??
-          (frontendKnowledgeDraftRepository instanceof InMemoryFrontendKnowledgeDraftRepository
-            ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
-            : createEmptyReviewDraftSourceReader()),
-      ),
-      new DiscoveryCandidateReviewTargetAdapter(
-        options.frontendReviewDiscoveryCandidateReader ??
-          createInMemoryReviewDiscoveryCandidateReader(),
-        options.discoveryReentryFreshnessEvaluator,
-      ),
-      new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
-    ]);
+    new FrontendReviewProductCoordinator(
+      frontendReviewStore,
+      frontendCommandGateway,
+      [
+        new DraftReviewTargetAdapter(
+          options.frontendReviewDraftSourceReader ??
+            (frontendKnowledgeDraftRepository instanceof InMemoryFrontendKnowledgeDraftRepository
+              ? createInMemoryReviewDraftSourceReader(frontendKnowledgeDraftRepository)
+              : createEmptyReviewDraftSourceReader()),
+        ),
+        new DiscoveryCandidateReviewTargetAdapter(
+          options.frontendReviewDiscoveryCandidateReader ??
+            createInMemoryReviewDiscoveryCandidateReader(),
+          options.discoveryReentryFreshnessEvaluator,
+        ),
+        new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
+      ],
+      undefined,
+      options.frontendReviewAuthoringBridge,
+    );
   // FE-P4-S2 WP4: External Action governed commands run over the shared Frontend
   // Command Ledger; the server owns the Product Coordinator (server-derived
   // scope), the external action store and the connector engine.

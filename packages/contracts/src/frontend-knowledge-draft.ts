@@ -280,6 +280,73 @@ export type RelationValueV1 = {
   readonly toEntityRef: string;
 };
 
+/**
+ * ADR-152 relation authoring value.  The endpoint authority is deliberately
+ * explicit: an authoring Draft may point only at an exact approved Knowledge
+ * Entity revision.  It is not a Canonical Entity reference and it never
+ * authorizes Entity creation.
+ */
+export type ApprovedKnowledgeEntityRefV1 = {
+  readonly projectId: string;
+  readonly authority: 'APPROVED_KNOWLEDGE';
+  readonly resourceType: 'ENTITY';
+  readonly resourceId: string;
+  readonly resourceRevision: number;
+};
+
+export type RelationDraftValueV2 = {
+  readonly schemaVersion: 'relation.v2';
+  readonly relationType: string;
+  readonly fromEndpoint: ApprovedKnowledgeEntityRefV1;
+  readonly toEndpoint: ApprovedKnowledgeEntityRefV1;
+  readonly direction: 'DIRECTED' | 'UNDIRECTED';
+  readonly validFrom?: string;
+  readonly validTo?: string;
+  readonly rationale: string;
+};
+
+/** Server-owned lineage for a Discovery-derived authoring Draft. */
+export type DiscoveryDraftProvenanceV1 = {
+  readonly schemaVersion: 'discovery-draft-provenance.v1';
+  readonly finding: {
+    readonly projectId: string;
+    readonly findingId: string;
+    readonly findingRevision: number;
+  };
+  readonly reentry: {
+    readonly manifestId: string;
+    readonly candidateId: string;
+    readonly candidateRevision: number;
+  };
+  readonly review: {
+    readonly reviewContextId: string;
+    readonly contextRevision: number;
+    readonly reviewResourceId: string;
+    readonly reviewResourceRevision: number;
+    readonly resourceDigest: string;
+  };
+  readonly validation: {
+    readonly artifactId: string;
+    readonly artifactRevision: string;
+    readonly digest: string;
+  };
+  readonly canonicalBase: {
+    readonly canonicalVersion: number;
+    readonly snapshotDigest: string;
+  };
+  readonly sourceProjectionDigest: string;
+  readonly evidenceLineage: readonly {
+    readonly evidenceId: string;
+    readonly sourceId?: string;
+    readonly sourceVersionId?: string;
+    readonly evidenceSpanId?: string;
+  }[];
+  readonly approvedEntityRefs: readonly ApprovedKnowledgeEntityRefV1[];
+  readonly derivationProvenance: unknown;
+  readonly bridgeVersion: 'adr-152.wp2a.v1';
+  readonly materializationId: string;
+};
+
 export type EventValueV1 = {
   readonly schemaVersion: 'event.v1';
   readonly eventType: string;
@@ -389,7 +456,7 @@ export type FrontendKnowledgeOperationV1 =
   | KnowledgeAddOperationV1<'ENTITY_ADD', 'ENTITY', EntityValueV1>
   | KnowledgeUpdateOperationV1<'ENTITY_UPDATE', 'ENTITY', EntityValueV1>
   | KnowledgeAddOperationV1<'ENTITY_REFERENCE', 'ENTITY', EntityValueV1>
-  | KnowledgeAddOperationV1<'RELATION_ADD', 'RELATION', RelationValueV1>
+  | KnowledgeAddOperationV1<'RELATION_ADD', 'RELATION', RelationValueV1 | RelationDraftValueV2>
   | KnowledgeUpdateOperationV1<'RELATION_UPDATE', 'RELATION', RelationValueV1>
   | KnowledgeRemoveOperationV1<'RELATION_REMOVE', 'RELATION', RelationValueV1>
   | KnowledgeAddOperationV1<'EVENT_ADD', 'EVENT', EventValueV1>
@@ -434,6 +501,8 @@ export type FrontendKnowledgeDraftChangeSetV1 = {
   readonly impactPreview?: DraftImpactArtifactRefV1;
   readonly reviewResource?: ReviewResourceRefV1;
   readonly reviewSubmission?: ReviewSubmissionRefV1;
+  /** Present only when the server materialized this Draft from Discovery. */
+  readonly discoveryProvenance?: DiscoveryDraftProvenanceV1;
   readonly contentDigest: string;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -986,6 +1055,213 @@ const decodeEvidenceLineage = (
   };
 };
 
+const decodeApprovedKnowledgeEntityRef = (
+  value: unknown,
+  path: string,
+): ApprovedKnowledgeEntityRefV1 => {
+  const object = strictObject(
+    value,
+    ['projectId', 'authority', 'resourceType', 'resourceId', 'resourceRevision'],
+    path,
+  );
+  return {
+    projectId: text(required(object, 'projectId', path), `${path}.projectId`),
+    authority: enumValue(
+      required(object, 'authority', path),
+      ['APPROVED_KNOWLEDGE'] as const,
+      `${path}.authority`,
+    ),
+    resourceType: enumValue(
+      required(object, 'resourceType', path),
+      ['ENTITY'] as const,
+      `${path}.resourceType`,
+    ),
+    resourceId: text(required(object, 'resourceId', path), `${path}.resourceId`),
+    resourceRevision: positiveInteger(
+      required(object, 'resourceRevision', path),
+      `${path}.resourceRevision`,
+    ),
+  };
+};
+
+const decodeDiscoveryDraftProvenance = (value: unknown): DiscoveryDraftProvenanceV1 => {
+  const path = 'draft.discoveryProvenance';
+  const object = strictObject(
+    value,
+    [
+      'schemaVersion',
+      'finding',
+      'reentry',
+      'review',
+      'validation',
+      'canonicalBase',
+      'sourceProjectionDigest',
+      'evidenceLineage',
+      'approvedEntityRefs',
+      'derivationProvenance',
+      'bridgeVersion',
+      'materializationId',
+    ],
+    path,
+  );
+  const finding = strictObject(
+    required(object, 'finding', path),
+    ['projectId', 'findingId', 'findingRevision'],
+    `${path}.finding`,
+  );
+  const reentry = strictObject(
+    required(object, 'reentry', path),
+    ['manifestId', 'candidateId', 'candidateRevision'],
+    `${path}.reentry`,
+  );
+  const review = strictObject(
+    required(object, 'review', path),
+    [
+      'reviewContextId',
+      'contextRevision',
+      'reviewResourceId',
+      'reviewResourceRevision',
+      'resourceDigest',
+    ],
+    `${path}.review`,
+  );
+  const validation = strictObject(
+    required(object, 'validation', path),
+    ['artifactId', 'artifactRevision', 'digest'],
+    `${path}.validation`,
+  );
+  const canonicalBase = strictObject(
+    required(object, 'canonicalBase', path),
+    ['canonicalVersion', 'snapshotDigest'],
+    `${path}.canonicalBase`,
+  );
+  const evidenceLineage = arrayValue(
+    required(object, 'evidenceLineage', path),
+    `${path}.evidenceLineage`,
+  ).map((entry, index) => {
+    const evidencePath = `${path}.evidenceLineage[${index}]`;
+    const evidence = strictObject(
+      entry,
+      ['evidenceId', 'sourceId', 'sourceVersionId', 'evidenceSpanId'],
+      evidencePath,
+    );
+    return {
+      evidenceId: text(
+        required(evidence, 'evidenceId', evidencePath),
+        `${evidencePath}.evidenceId`,
+      ),
+      ...(evidence.sourceId === undefined
+        ? {}
+        : { sourceId: text(evidence.sourceId, `${evidencePath}.sourceId`) }),
+      ...(evidence.sourceVersionId === undefined
+        ? {}
+        : { sourceVersionId: text(evidence.sourceVersionId, `${evidencePath}.sourceVersionId`) }),
+      ...(evidence.evidenceSpanId === undefined
+        ? {}
+        : { evidenceSpanId: text(evidence.evidenceSpanId, `${evidencePath}.evidenceSpanId`) }),
+    };
+  });
+  return {
+    schemaVersion: enumValue(
+      required(object, 'schemaVersion', path),
+      ['discovery-draft-provenance.v1'] as const,
+      `${path}.schemaVersion`,
+    ),
+    finding: {
+      projectId: text(
+        required(finding, 'projectId', `${path}.finding`),
+        `${path}.finding.projectId`,
+      ),
+      findingId: text(required(finding, 'findingId', `${path}.finding`), `${path}.findingId`),
+      findingRevision: positiveInteger(
+        required(finding, 'findingRevision', `${path}.finding`),
+        `${path}.finding.findingRevision`,
+      ),
+    },
+    reentry: {
+      manifestId: text(
+        required(reentry, 'manifestId', `${path}.reentry`),
+        `${path}.reentry.manifestId`,
+      ),
+      candidateId: text(
+        required(reentry, 'candidateId', `${path}.reentry`),
+        `${path}.reentry.candidateId`,
+      ),
+      candidateRevision: positiveInteger(
+        required(reentry, 'candidateRevision', `${path}.reentry`),
+        `${path}.reentry.candidateRevision`,
+      ),
+    },
+    review: {
+      reviewContextId: text(
+        required(review, 'reviewContextId', `${path}.review`),
+        `${path}.review.reviewContextId`,
+      ),
+      contextRevision: positiveInteger(
+        required(review, 'contextRevision', `${path}.review`),
+        `${path}.review.contextRevision`,
+      ),
+      reviewResourceId: text(
+        required(review, 'reviewResourceId', `${path}.review`),
+        `${path}.review.reviewResourceId`,
+      ),
+      reviewResourceRevision: positiveInteger(
+        required(review, 'reviewResourceRevision', `${path}.review`),
+        `${path}.review.reviewResourceRevision`,
+      ),
+      resourceDigest: digest(
+        required(review, 'resourceDigest', `${path}.review`),
+        `${path}.review.resourceDigest`,
+      ),
+    },
+    validation: {
+      artifactId: text(
+        required(validation, 'artifactId', `${path}.validation`),
+        `${path}.validation.artifactId`,
+      ),
+      artifactRevision: text(
+        required(validation, 'artifactRevision', `${path}.validation`),
+        `${path}.validation.artifactRevision`,
+      ),
+      digest: digest(
+        required(validation, 'digest', `${path}.validation`),
+        `${path}.validation.digest`,
+      ),
+    },
+    canonicalBase: {
+      canonicalVersion: integer(
+        required(canonicalBase, 'canonicalVersion', `${path}.canonicalBase`),
+        `${path}.canonicalBase.canonicalVersion`,
+      ),
+      snapshotDigest: digest(
+        required(canonicalBase, 'snapshotDigest', `${path}.canonicalBase`),
+        `${path}.canonicalBase.snapshotDigest`,
+      ),
+    },
+    sourceProjectionDigest: digest(
+      required(object, 'sourceProjectionDigest', path),
+      `${path}.sourceProjectionDigest`,
+    ),
+    evidenceLineage,
+    approvedEntityRefs: arrayValue(
+      required(object, 'approvedEntityRefs', path),
+      `${path}.approvedEntityRefs`,
+    ).map((entry, index) =>
+      decodeApprovedKnowledgeEntityRef(entry, `${path}.approvedEntityRefs[${index}]`),
+    ),
+    derivationProvenance: object.derivationProvenance,
+    bridgeVersion: enumValue(
+      required(object, 'bridgeVersion', path),
+      ['adr-152.wp2a.v1'] as const,
+      `${path}.bridgeVersion`,
+    ),
+    materializationId: text(
+      required(object, 'materializationId', path),
+      `${path}.materializationId`,
+    ),
+  };
+};
+
 const decodeProjectPolicyContext = (
   value: unknown,
   path: string,
@@ -1455,6 +1731,55 @@ const decodePayload = (value: unknown, schemaVersion: string, path: string): Obj
         toEntityRef: text(required(result, 'toEntityRef', path), `${path}.toEntityRef`),
       };
     }
+    case 'relation.v2': {
+      const result = strictObject(
+        object,
+        [
+          'schemaVersion',
+          'relationType',
+          'fromEndpoint',
+          'toEndpoint',
+          'direction',
+          'validFrom',
+          'validTo',
+          'rationale',
+        ],
+        path,
+      );
+      const validFrom =
+        result.validFrom === undefined
+          ? undefined
+          : isoTimestamp(result.validFrom, `${path}.validFrom`);
+      const validTo =
+        result.validTo === undefined ? undefined : isoTimestamp(result.validTo, `${path}.validTo`);
+      if (
+        validFrom !== undefined &&
+        validTo !== undefined &&
+        Date.parse(validFrom) > Date.parse(validTo)
+      ) {
+        return fail(`${path}.validFrom`, 'must be earlier than or equal to validTo');
+      }
+      return {
+        schemaVersion,
+        relationType: text(required(result, 'relationType', path), `${path}.relationType`),
+        fromEndpoint: decodeApprovedKnowledgeEntityRef(
+          required(result, 'fromEndpoint', path),
+          `${path}.fromEndpoint`,
+        ),
+        toEndpoint: decodeApprovedKnowledgeEntityRef(
+          required(result, 'toEndpoint', path),
+          `${path}.toEndpoint`,
+        ),
+        direction: enumValue(
+          required(result, 'direction', path),
+          ['DIRECTED', 'UNDIRECTED'] as const,
+          `${path}.direction`,
+        ),
+        ...(validFrom === undefined ? {} : { validFrom }),
+        ...(validTo === undefined ? {} : { validTo }),
+        rationale: text(required(result, 'rationale', path), `${path}.rationale`),
+      };
+    }
     case 'event.v1': {
       const result = strictObject(
         object,
@@ -1589,6 +1914,12 @@ export const decodeFrontendKnowledgeOperationV1 = (
   const definition = OPERATION_DEFINITIONS[kind];
   const common = decodeOperationCommon(object, path);
   const target = decodeTarget(object.target, definition.targetType, `${path}.target`);
+  const isRelationDraftV2 =
+    kind === 'RELATION_ADD' &&
+    typeof object.after === 'object' &&
+    object.after !== null &&
+    !Array.isArray(object.after) &&
+    (object.after as Record<string, unknown>).schemaVersion === 'relation.v2';
   const before =
     object.before === undefined
       ? undefined
@@ -1596,7 +1927,14 @@ export const decodeFrontendKnowledgeOperationV1 = (
   const after =
     object.after === undefined
       ? undefined
-      : decodePayload(object.after, definition.schemaVersion, `${path}.after`);
+      : decodePayload(
+          object.after,
+          isRelationDraftV2 ? 'relation.v2' : definition.schemaVersion,
+          `${path}.after`,
+        );
+  if (isRelationDraftV2 && before !== undefined) {
+    return fail(path, 'relation.v2 add operations forbid before');
+  }
   if (definition.mode === 'ADD' && (before !== undefined || after === undefined)) {
     return fail(path, 'add operations require after and forbid before');
   }
@@ -1725,6 +2063,7 @@ export const decodeFrontendKnowledgeDraftChangeSetV1 = (
       'impactPreview',
       'reviewResource',
       'reviewSubmission',
+      'discoveryProvenance',
       'contentDigest',
       'createdAt',
       'updatedAt',
@@ -1830,6 +2169,9 @@ export const decodeFrontendKnowledgeDraftChangeSetV1 = (
     ...(impactPreview === undefined ? {} : { impactPreview }),
     ...(reviewResource === undefined ? {} : { reviewResource }),
     ...(reviewSubmission === undefined ? {} : { reviewSubmission }),
+    ...(object.discoveryProvenance === undefined
+      ? {}
+      : { discoveryProvenance: decodeDiscoveryDraftProvenance(object.discoveryProvenance) }),
     contentDigest: digest(required(object, 'contentDigest', path), `${path}.contentDigest`),
     createdAt: isoTimestamp(required(object, 'createdAt', path), `${path}.createdAt`),
     updatedAt: isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`),

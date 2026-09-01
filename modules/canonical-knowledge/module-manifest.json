@@ -21,6 +21,7 @@
     "owns": [
       "canonical.project_state",
       "canonical.claims",
+      "canonical.relations",
       "canonical.revisions",
       "canonical.commits",
       "canonical.history_events",

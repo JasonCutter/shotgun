@@ -73,6 +73,49 @@ const noOpWrite = (
   } as FrontendCanonicalCommitWrite;
 };
 
+const relationEndpoint = (
+  resourceId: string,
+  resourceRevision: number,
+): {
+  readonly projectId: string;
+  readonly authority: 'APPROVED_KNOWLEDGE';
+  readonly resourceType: 'ENTITY';
+  readonly resourceId: string;
+  readonly resourceRevision: number;
+} => ({
+  projectId: 'project-1',
+  authority: 'APPROVED_KNOWLEDGE',
+  resourceType: 'ENTITY',
+  resourceId,
+  resourceRevision,
+});
+
+const addRelationWrite = (
+  overrides: Partial<FrontendCanonicalCommitWrite> = {},
+): FrontendCanonicalCommitWrite => {
+  const commitId = randomUUID();
+  return {
+    ...baseWrite,
+    commitId,
+    revisionId: `revision:${commitId}`,
+    historyEventId: `history:${commitId}`,
+    outboxId: `outbox:${commitId}`,
+    operation: 'ADD_RELATION',
+    relationId: 'relation-1',
+    logicalIdentityKey: 'canonical-relation:v1:relation-1',
+    relationType: 'DEPENDS_ON',
+    fromEndpoint: relationEndpoint('entity-1', 4),
+    toEndpoint: relationEndpoint('entity-2', 7),
+    direction: 'DIRECTED',
+    validFrom: '2026-08-01T00:00:00.000Z',
+    evidenceIds: ['evidence-1'],
+    accessScope: ['owner'],
+    sensitivity: 'private',
+    discoveryProvenanceRef: 'review-resource-1',
+    ...overrides,
+  } as FrontendCanonicalCommitWrite;
+};
+
 describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parity)', () => {
   afterAll(async () => {
     await pool!.end();
@@ -197,6 +240,85 @@ describe.runIf(pool)('FE-P5-XP Correction B: commitFrontendDraft (Postgres parit
     expect(snapshot.claims).toHaveLength(0);
     const history = await repository.listHistory('project-1');
     expect(history[0]?.eventType).toBe('CHANGESET_NO_OP');
+  });
+
+  it('commits a bounded ADD_RELATION with separate edge and endpoint authority', async () => {
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
+    const repository = new PostgresCanonicalKnowledgeRepository(pool!);
+    const write = addRelationWrite();
+    const result = await repository.commitFrontendDraft(write);
+
+    expect(result).toMatchObject({
+      status: 'COMMITTED',
+      operation: 'ADD_RELATION',
+      relationId: 'relation-1',
+      logicalIdentityKey: 'canonical-relation:v1:relation-1',
+      afterVersion: 1,
+      authorityId: 'approval-1',
+    });
+    const snapshot = await repository.getSnapshot('project-1');
+    expect(snapshot.relations).toHaveLength(1);
+    expect(snapshot.relations?.[0]).toMatchObject({
+      relationId: 'relation-1',
+      relationType: 'DEPENDS_ON',
+      direction: 'DIRECTED',
+      fromEndpoint: relationEndpoint('entity-1', 4),
+      toEndpoint: relationEndpoint('entity-2', 7),
+    });
+    expect(snapshot.digest).toBe(result.snapshotDigest);
+    expect((await repository.listHistory('project-1'))[0]).toMatchObject({
+      eventType: 'CANONICAL_RELATION_ADDED',
+      relationId: 'relation-1',
+    });
+    expect((await repository.findOutbox('project-1', write.outboxId))?.payload).toMatchObject({
+      operation: 'ADD_RELATION',
+      relationId: 'relation-1',
+      logicalIdentityKey: 'canonical-relation:v1:relation-1',
+    });
+  });
+
+  it('rejects a second ADD_RELATION for the same logical identity and rejects Canonical endpoint authority', async () => {
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
+    const repository = new PostgresCanonicalKnowledgeRepository(pool!);
+    await repository.commitFrontendDraft(addRelationWrite());
+    const current = await repository.getSnapshot('project-1');
+    await expect(
+      repository.commitFrontendDraft(
+        addRelationWrite({
+          commitId: randomUUID(),
+          revisionId: `revision:${randomUUID()}`,
+          historyEventId: `history:${randomUUID()}`,
+          outboxId: `outbox:${randomUUID()}`,
+          authority: { ...authority, approvalId: 'approval-2' },
+          expectedCanonicalVersion: current.version,
+          snapshotDigest: current.digest,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(
+      repository.commitFrontendDraft(
+        addRelationWrite({
+          commitId: randomUUID(),
+          revisionId: `revision:${randomUUID()}`,
+          historyEventId: `history:${randomUUID()}`,
+          outboxId: `outbox:${randomUUID()}`,
+          authority: { ...authority, approvalId: 'approval-3' },
+          fromEndpoint: {
+            ...relationEndpoint('entity-3', 1),
+            // Deliberately forged at runtime; the contract type excludes this
+            // value, so keep the invalid fixture outside the type boundary.
+            authority: 'CANONICAL' as unknown as 'APPROVED_KNOWLEDGE',
+          },
+          logicalIdentityKey: 'canonical-relation:v1:relation-3',
+          relationId: 'relation-3',
+          expectedCanonicalVersion: current.version,
+          snapshotDigest: current.digest,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect((await repository.getSnapshot('project-1')).version).toBe(1);
   });
 
   it('preserves legacy Stage-5 commit rows with LEGACY_STAGE5_MANIFEST authority', async () => {

@@ -1,20 +1,22 @@
 # ADR-152 — Discovery Authoring and Canonical Relation Change Authority
 
-- Status: **PROPOSED / USER APPROVAL PENDING**
+- Status: **ACCEPTED BY USER / BOUNDED PRODUCT REMEDIATION AUTHORIZED**
 - Proposed at: 2026-09-01
+- Accepted at: 2026-09-01
+- Accepted by: `USER`
 - Decision owner: `USER`
 - Work item: `AKP-8 WP2A — Discovery Authoring and Canonical Relation Authority`
 - Subject base: `main@81ebe93b01fd74c13d3ace2a6c27f55333417648`
 - Related ADRs: ADR-128, ADR-134, ADR-136, ADR-139, ADR-140, ADR-142, ADR-151
-- Product implementation: **NOT AUTHORIZED BY THIS ADR**
+- Product implementation: **AUTHORIZED ONLY FOR THE BOUNDED AKP-8 WP2A REMEDIATION REQUEST**
 
 ## Authority gate
 
-This is an implementation-enabling architecture proposal only. It remains
-`PROPOSED / USER APPROVAL PENDING` until the User explicitly approves it. It
-must never be treated as `ACCEPTED`, and it does not authorize Product/runtime,
-schema, migration, test, dependency, UI, deployment, WP2, WP3, or AKP v1
-completion work.
+The User explicitly approved this bounded architecture decision on 2026-09-01.
+That approval authorizes only the separate AKP-8 WP2A Product remediation
+request issued by GPT, and only within the contracts, boundaries, and gates
+recorded here. It does not authorize WP2 resumption, WP3, deployment, or AKP v1
+completion.
 
 The current AKP-8 WP2 stop decision is preserved:
 
@@ -22,8 +24,8 @@ The current AKP-8 WP2 stop decision is preserved:
 - Discovery Review → Draft handoff: `MISSING_PRODUCT_CAPABILITY`
 - Draft `RELATION_ADD` → Canonical Relation: `BLOCKED_ARCHITECTURE_GAP`
 
-Only a later bounded implementation request issued after this proposal is
-approved may implement the contracts and sequence described below.
+The accepted implementation request is limited to the contracts and sequence
+described below. Any scope expansion requires a new governed request.
 
 ## Context and reproduced gap
 
@@ -308,7 +310,7 @@ accepted Finding/Review base is an input to freshness validation, not a license
 to write against an old snapshot. The Draft must carry the current canonical
 snapshot identity and the server-owned provenance of the accepted Finding.
 
-The later implementation reuses the existing lifecycle:
+The bounded implementation reuses the existing lifecycle:
 
 1. validate Draft shape, endpoint resolution, Evidence, provenance, project and
    security scope;
@@ -333,10 +335,10 @@ Draft Review remains the only source of Canonical-change Approval.
 The preferred Canonical representation is a Stage 6-owned
 `canonical.relations` append-only, current-version-addressable table. It is
 not a Discovery table, Review table, Compiled Truth cache, Graph overlay, or
-legacy Stage-5 manifest. A future migration is required after approval; WP2A
-does not allocate or implement it. The later implementation must verify the
-actual next migration number under a separate request; no migration `059` is
-allocated by this ADR.
+legacy Stage-5 manifest. The approved WP2A remediation allocates migration
+`059_akp8_canonical_relation_authority.sql`, gated after the exact base
+migration `058_akp8_typed_proposition_conflict_authority.sql`. Any later
+schema expansion remains separately governed.
 
 The Canonical Relation record is equivalent to:
 
@@ -395,6 +397,7 @@ lock project_state
 -> validate project, access, Approval, Evidence, provenance and stale base
 -> resolve endpoints and duplicate logical identity
 -> persist Canonical Relation revision 1
+-> persist append-only accepted-precursor -> relation linkage
 -> persist Canonical commit result
 -> persist revision
 -> persist History(CANONICAL_RELATION_ADDED)
@@ -488,7 +491,7 @@ The following conditions fail closed and never partially materialize or commit:
   another operation.
 
 The old 2026-08-09 Frontend Canonical commit clause is refined only for the
-future bounded relation extension to read:
+implemented bounded relation extension to read:
 
 ```text
 Frontend Canonical commit supports ADD_CLAIM | ADD_RELATION | NO_OP.
@@ -501,7 +504,7 @@ epistemic and re-entry authority; ADR-152 does not amend its meaning.
 
 ### 11. Backup, restore, deletion, and retention
 
-If `canonical.relations` is selected by the later implementation, relations,
+The implemented `canonical.relations` table, relations,
 their History, Approval authority reference, Discovery provenance reference,
 and projection watermarks are included in the existing backup/restore,
 project-deletion, and audit-retention policies. No second backup framework or
@@ -511,7 +514,7 @@ separate governed migration and is not a rollback shortcut.
 
 ### 12. Rollback and replacement
 
-Rollback of the later Product implementation disables the Discovery accepted-
+Rollback of the bounded Product implementation disables the Discovery accepted-
 authoring bridge and the `ADD_RELATION` operation mapping. It preserves already
 committed Canonical Relations, Drafts, Review decisions, Approvals, History,
 outbox records, and provenance. Existing readers must tolerate and explicitly
@@ -553,7 +556,7 @@ later request records the same boundary, exact version/commit choices for any
 new dependency, Contract tests, Golden Corpus impact, security negatives, and
 replacement/rollback exercise.
 
-## Deferred Product implementation map
+## Deferred Product implementation map (superseded by the 2026-09-01 implementation record)
 
 This ADR intentionally separates decisions from implementation. A later
 bounded request must cover, in order:
@@ -578,9 +581,11 @@ bounded request must cover, in order:
 9. UI wiring that exposes the governed flow without exposing internal
    manifests/digests/commit/outbox controls.
 
-The following are explicitly outside this WP2A proposal: Product/runtime code,
-schema or migration files, tests, dependencies/lockfiles, UI implementation,
-WP2 acceptance fixtures, WP3, deployment, and AKP v1 completion.
+The following remain explicitly outside the accepted WP2A remediation: WP2
+resumption/completion, WP2 acceptance fixtures claiming E2E-A, WP3, deployment,
+and AKP v1 completion. Product/runtime code, schema/migration files, and tests
+are in scope only where required by the bounded remediation request and its
+recorded gates; UI implementation remains outside scope.
 
 ## Acceptance criteria for this proposal
 
@@ -599,18 +604,37 @@ WP2 acceptance fixtures, WP3, deployment, and AKP v1 completion.
 | WP2A-AC-11 | Make Draft materialization identity deterministic and replayable         | §2.1.                                                             |
 | WP2A-AC-12 | Avoid Draft auto-approval and auto-commit                                | §§1, 2.1, and 5.                                                  |
 | WP2A-AC-13 | Keep Stage 6 `ADD_RELATION` bounded                                      | §§6 and 7.                                                        |
-| WP2A-AC-14 | Keep ADR-152 `PROPOSED / USER APPROVAL PENDING`                          | Frontmatter and Authority gate.                                   |
-| WP2A-AC-15 | Add no Product/runtime/schema/test implementation                        | Authority gate and Deferred Product map.                          |
+| WP2A-AC-14 | Record explicit User acceptance before bounded implementation            | Frontmatter and Authority gate.                                   |
+| WP2A-AC-15 | Keep implementation limited to the approved WP2A Product remediation     | Authority gate and implementation record.                         |
 | WP2A-AC-16 | Keep WP2 blocked and do not start WP3 or AKP completion                  | Authority gate and matrix control update.                         |
 
 ## Status and next gate
 
-ADR-152 is **PROPOSED / USER APPROVAL PENDING**. The companion WP2A audit and
-acceptance matrix record are documentation/governance artifacts only. The next
-permitted step is independent review and explicit User approval, followed by a
-new bounded Product remediation request. Until then:
+ADR-152 is **ACCEPTED BY USER / BOUNDED PRODUCT REMEDIATION AUTHORIZED**. The
+companion WP2A audit and acceptance matrix retain the delivery gates; they do
+not declare the end-to-end journey proven. The approved Product remediation is
+permitted only on the bounded branch/PR recorded by GPT. Until its complete
+evidence is reviewed:
 
 - WP2 remains `BLOCKED_PENDING_REMEDIATION`;
-- E2E-A remains `BLOCKED_ARCHITECTURE_GAP`;
+- E2E-A is `PRODUCT CAPABILITY REMEDIATED / FULL E2E ACCEPTANCE STILL PENDING WP2`;
 - WP2R remains merged and complete as previously recorded;
 - no WP2, WP3, deployment, or AKP v1 completion work is authorized.
+
+## Implementation record — 2026-09-01
+
+The approved AKP-8 WP2A Product remediation is implemented on PR #157 and
+continues to require review before any merge or deployment decision:
+
+- contract v2 adds authority-qualified approved Knowledge Entity endpoint refs,
+  server-owned Discovery provenance, and bounded typed `ADD_RELATION` data;
+- Review acceptance and initial Draft materialization use the existing command
+  ledger and one PostgreSQL `PoolClient`; no second outbox, queue, or worker is
+  introduced;
+- Stage 6 persists only authority-qualified Canonical Relation edges, keeps
+  endpoint authority separate, and includes relation state in the snapshot
+  digest, history, outbox, replay, and reconciliation surfaces;
+- migration `059_akp8_canonical_relation_authority.sql` is gated after the
+  exact canonical base migration `058_akp8_typed_proposition_conflict_authority.sql`;
+- E2E-A, Golden Corpus, full security/replay/replacement, migration/rollback,
+  and UI evidence remain required gates and are not claimed by this record.

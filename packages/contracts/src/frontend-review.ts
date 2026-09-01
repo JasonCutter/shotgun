@@ -604,6 +604,13 @@ export type RecordReviewDecisionsResultV1 = {
   aggregateState: ReviewAggregateStateV1;
   approvals?: readonly ReviewApprovalV1[];
   acceptedForAuthoring?: boolean;
+  /** Safe server-created Draft reference; never auto-submits or auto-commits. */
+  draft?: {
+    readonly draftId: string;
+    readonly draftRevision: number;
+    readonly resourceProjectId: string;
+    readonly effectiveProjectId: string;
+  };
   revisionRequestReturnTarget?: ReviewRevisionReturnTargetV1;
 };
 
@@ -1742,6 +1749,7 @@ export const decodeRecordReviewDecisionsResultV1 = (
       'aggregateState',
       'approvals',
       'acceptedForAuthoring',
+      'draft',
       'revisionRequestReturnTarget',
     ],
     path,
@@ -1777,6 +1785,31 @@ export const decodeRecordReviewDecisionsResultV1 = (
       object.acceptedForAuthoring === undefined
         ? undefined
         : booleanValue(object.acceptedForAuthoring, `${path}.acceptedForAuthoring`),
+    draft:
+      object.draft === undefined
+        ? undefined
+        : (() => {
+            const draft = strictObject(
+              object.draft,
+              ['draftId', 'draftRevision', 'resourceProjectId', 'effectiveProjectId'],
+              `${path}.draft`,
+            );
+            return {
+              draftId: text(required(draft, 'draftId', `${path}.draft`), `${path}.draft.draftId`),
+              draftRevision: integer(
+                required(draft, 'draftRevision', `${path}.draft`),
+                `${path}.draft.draftRevision`,
+              ),
+              resourceProjectId: text(
+                required(draft, 'resourceProjectId', `${path}.draft`),
+                `${path}.draft.resourceProjectId`,
+              ),
+              effectiveProjectId: text(
+                required(draft, 'effectiveProjectId', `${path}.draft`),
+                `${path}.draft.effectiveProjectId`,
+              ),
+            };
+          })(),
     revisionRequestReturnTarget:
       object.revisionRequestReturnTarget === undefined
         ? undefined

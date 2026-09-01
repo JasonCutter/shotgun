@@ -319,12 +319,16 @@ const resourcesFor = (
 const projectionBaseFor = (
   jobBase: DiscoveryProjectionBaseIdentityV1 | undefined,
   projection: CompiledTruthProjection,
-): DiscoveryProjectionBaseIdentityV1 =>
-  jobBase ?? {
+): DiscoveryProjectionBaseIdentityV1 => {
+  if (jobBase !== undefined && jobBase.projectionRevision.startsWith('compiled-truth:')) {
+    return jobBase;
+  }
+  return {
     schemaVersion: '1.0.0',
     projectionRevision: `compiled-truth:${projection.projectorVersion}:${projection.canonicalVersion}`,
     projectionDigest: projection.sourceSnapshotDigest,
   };
+};
 
 const resourceKey = (resource: DiscoveryResourceRefV1): string =>
   [
@@ -433,11 +437,15 @@ const commonSecurity = async (
   return input.resolveSecurity({ projectId, projection });
 };
 
+const executionNow = (context: DiscoveryExecutionContextV1): string =>
+  context.now ?? new Date().toISOString();
+
 const materializeAIGeneration = (
   proposal: Awaited<ReturnType<DiscoveryAIGenerationService['interpretHypothesis']>>,
   runId: string,
   strategyId: string,
   strategyVersion: string,
+  occurredAt: string,
 ): {
   readonly candidate: DiscoveryFindingEnvelopeV1;
   readonly qualityInputs: {
@@ -454,15 +462,17 @@ const materializeAIGeneration = (
         candidateIndex: 0,
         fingerprint,
       }),
-    clock: { now: () => new Date().toISOString() },
+    clock: { now: () => occurredAt },
     fingerprintAuthority: { compute: computeDiscoveryFingerprintV1 },
   });
+  const selectionSignals =
+    materialized.candidate.findingType === 'CONFLICT_HYPOTHESIS'
+      ? materialized.selectionSignals
+      : undefined;
   return {
     candidate: materialized.candidate,
     qualityInputs: {
-      ...(materialized.selectionSignals === undefined
-        ? {}
-        : { selectionSignals: materialized.selectionSignals }),
+      ...(selectionSignals === undefined ? {} : { selectionSignals }),
       ...(materialized.qualifiedFollowUp === undefined
         ? {}
         : { qualifiedFollowUp: materialized.qualifiedFollowUp }),
@@ -769,7 +779,7 @@ export const createProductDiscoveryExecution = (
     }
     const budget = new DiscoveryWorkBudgetLedgerV1(
       context.claim.job.budget as DiscoveryWorkBudgetV1,
-      () => Date.now(),
+      () => Date.parse(executionNow(context)),
       context.budgetSnapshot,
     );
     const signalContext: DiscoverySignalReadContextV1 = {
@@ -799,7 +809,7 @@ export const createProductDiscoveryExecution = (
         budget: state.budget,
         dependencies: {
           runId: context.claim.runId,
-          clock: { now: () => new Date().toISOString() },
+          clock: { now: () => executionNow(context) },
           findingIdFactory: (identity) =>
             deterministicFindingId({ runId: context.claim.runId, ...identity }),
         },
@@ -843,6 +853,7 @@ export const createProductDiscoveryExecution = (
             context.claim.runId,
             candidate.provenance.selectorId,
             candidate.provenance.selectorVersion,
+            executionNow(context),
           );
           generated.push(materialized.candidate);
           qualityInputs[materialized.candidate.findingId] = materialized.qualityInputs;
@@ -904,6 +915,7 @@ export const createProductDiscoveryExecution = (
           context.claim.runId,
           DISCOVERY_QUALIFIED_FOLLOW_UP_SELECTOR_ID_V1,
           DISCOVERY_QUALIFIED_FOLLOW_UP_SELECTOR_VERSION_V1,
+          executionNow(context),
         );
         generated.push(materialized.candidate);
         qualityInputs[materialized.candidate.findingId] = materialized.qualityInputs;
@@ -959,6 +971,8 @@ export const createProductDiscoveryExecution = (
               lifecycleState:
                 (await input.findingRepository.findLifecycle(finding))?.lifecycleState ??
                 finding.lifecycleState,
+              canonicalBase: finding.canonicalBase,
+              discoveryBase: finding.discoveryBase,
             })),
           );
         },
@@ -1068,7 +1082,7 @@ export const createProductDiscoveryExecution = (
         }
         const result = await input.findingRepository.saveFenced(finding, {
           ...context.claim,
-          now: new Date().toISOString(),
+          now: executionNow(context),
         });
         if (result === 'STALE' || result === 'NOT_FOUND') {
           throw new Error('Discovery finding persistence lease is stale.');
@@ -1104,7 +1118,7 @@ export const createProductDiscoveryExecution = (
           attemptId: context.claim.attemptId,
           canonicalBase: finding.canonicalBase,
           requiredDiscoveryBase: finding.discoveryBase,
-          occurredAt: new Date().toISOString(),
+          occurredAt: executionNow(context),
         },
       });
       if (result === 'STALE' || result === 'NOT_FOUND') {
@@ -1114,8 +1128,12 @@ export const createProductDiscoveryExecution = (
     reconcileFindings: async (context) => {
       if (context.claim.job.trigger.triggerClass !== 'CANONICAL_COMMITTED') return;
       const stage = context.stage;
-      const readStageOutput = input.runtimeRepository.readStageOutput;
-      const writeStageOutput = input.runtimeRepository.writeStageOutput;
+      const readStageOutput = input.runtimeRepository.readStageOutput?.bind(
+        input.runtimeRepository,
+      );
+      const writeStageOutput = input.runtimeRepository.writeStageOutput?.bind(
+        input.runtimeRepository,
+      );
       if (
         !stage ||
         stage.stageType !== 'RECONCILE_FINDINGS' ||
@@ -1143,7 +1161,7 @@ export const createProductDiscoveryExecution = (
       if (progress.completed) return;
       const reconciliationBudget = new DiscoveryWorkBudgetLedgerV1(
         context.claim.job.budget as DiscoveryWorkBudgetV1,
-        () => Date.now(),
+        () => Date.parse(executionNow(context)),
         context.budgetSnapshot,
       );
       let cursor = progress.cursor;
@@ -1199,7 +1217,7 @@ export const createProductDiscoveryExecution = (
               processed,
               ...(cursor === undefined ? {} : { cursor }),
             } satisfies DiscoveryReconciliationProgressV1,
-            updatedAt: new Date().toISOString(),
+            updatedAt: executionNow(context),
           },
         });
         if (result !== 'SAVED') {
@@ -1260,7 +1278,7 @@ export const createProductDiscoveryExecution = (
                     projection,
                   ),
                 },
-                occurredAt: new Date().toISOString(),
+                occurredAt: executionNow(context),
               },
               {
                 projectId: context.claim.projectId,
@@ -1269,7 +1287,7 @@ export const createProductDiscoveryExecution = (
                 attemptId: context.claim.attemptId,
                 workerId: context.claim.workerId,
                 fencingToken: context.claim.fencingToken,
-                now: new Date().toISOString(),
+                now: executionNow(context),
               },
             );
             if (reconciled.status === 'CONFLICT') {

@@ -1204,12 +1204,11 @@ export class FrontendKnowledgeDraftProductCoordinator {
         | undefined;
       if (relationOperation?.after.schemaVersion === 'relation.v2' && input.mode !== 'RESOLVE') {
         const provenance = draft.discoveryProvenance;
-        if (
-          provenance === undefined ||
-          provenance.bridgeVersion !== 'adr-152.wp2a.v1' ||
-          approval.reviewContextId !== provenance.review.reviewContextId ||
-          approval.contextRevision !== provenance.review.contextRevision
-        ) {
+        // The provenance review identifies the Discovery candidate review. The
+        // Canonical approval is issued by the later Draft review context, so
+        // its context identity is bound by the Draft target/revision/digest
+        // checks above rather than being required to equal the source review.
+        if (provenance === undefined || provenance.bridgeVersion !== 'adr-152.wp2a.v1') {
           draftFailure(
             'UNSUPPORTED_OPERATION',
             'A relation.v2 Canonical commit requires the exact server Discovery materialization.',

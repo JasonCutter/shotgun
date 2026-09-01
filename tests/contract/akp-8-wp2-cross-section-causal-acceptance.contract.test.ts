@@ -491,7 +491,7 @@ describe('AKP-8 WP2 cross-section causal acceptance contracts', () => {
     const runtime = new InMemoryDiscoveryRuntimeRepository();
     const source = {
       resolve: async (event: DiscoveryCanonicalCommittedEventEnvelopeV1) => ({
-        projectId: event.projectId,
+        projectId,
         eventIdentity: {
           eventId: event.payload.commitId,
           eventRevision: String(event.payload.canonicalVersion),

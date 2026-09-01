@@ -341,11 +341,104 @@ describe.runIf(databaseUrl)('Frontend Knowledge Product PostgreSQL adapter', () 
       ...populatedScope,
       request: { schemaVersion: '1.0.0', query: 'Milo', pageSize: 100 },
     });
+    const populatedWorkspace = await adapter.getWorkspace({
+      ...populatedScope,
+      request: { schemaVersion: '1.0.0' },
+    });
     const authorities = new Set(allPopulatedSearch.matches.map((match) => match.item.authority));
     expect(authorities).toEqual(
       new Set(['CANONICAL', 'APPROVED_KNOWLEDGE', 'COMPILED_TRUTH', 'DERIVED_INFERENCE']),
     );
+    // Discovery findings are candidate input only. The actual Workspace read
+    // authority exposes only normal Canonical/Approved/Compiled/Derived pages
+    // and never promotes a Discovery resource into the Workspace projection.
+    expect(populatedWorkspace.pages.every((page) => page.projectId === populatedProject)).toBe(
+      true,
+    );
+    expect(
+      populatedWorkspace.pages.every((page) => String(page.primaryAuthority) !== 'DISCOVERY'),
+    ).toBe(true);
+    expect(allPopulatedSearch.matches.every((match) => match.projectId === populatedProject)).toBe(
+      true,
+    );
+    expect(
+      allPopulatedSearch.matches.every((match) => String(match.item.authority) !== 'DISCOVERY'),
+    ).toBe(true);
     expect(staged.group.status).toBe('APPROVED');
+
+    const scopeDeniedDraft = await createProductDraft(
+      populatedProject,
+      `frontend-product-read-scope-denied-${randomUUID()}`,
+      'H scope-denied canonical anchor.',
+    );
+    await approveCanonical(scopeDeniedDraft);
+    const scopeDenied = await stageApprovedKnowledge(
+      scopeDeniedDraft,
+      `group:frontend-product:scope-denied:${randomUUID()}`,
+    );
+    const scopeDeniedLabel = 'H_SCOPE_DENIED_UNIQUE';
+    await pool.query(
+      `UPDATE knowledge.review_groups
+       SET items = $3::jsonb, access_scope = $4::text[]
+       WHERE project_id = $1 AND group_id = $2`,
+      [
+        populatedProject,
+        scopeDenied.group.groupId,
+        JSON.stringify([{ ...scopeDenied.group.items[0]!, name: scopeDeniedLabel }]),
+        ['admin'],
+      ],
+    );
+
+    const sensitivityDeniedDraft = await createProductDraft(
+      populatedProject,
+      `frontend-product-read-sensitivity-denied-${randomUUID()}`,
+      'H sensitivity-denied canonical anchor.',
+    );
+    await approveCanonical(sensitivityDeniedDraft);
+    const sensitivityDenied = await stageApprovedKnowledge(
+      sensitivityDeniedDraft,
+      `group:frontend-product:sensitivity-denied:${randomUUID()}`,
+    );
+    const sensitivityDeniedLabel = 'H_RESTRICTED_UNIQUE';
+    await pool.query(
+      `UPDATE knowledge.review_groups
+       SET items = $3::jsonb, sensitivity = 'restricted'
+       WHERE project_id = $1 AND group_id = $2`,
+      [
+        populatedProject,
+        sensitivityDenied.group.groupId,
+        JSON.stringify([{ ...sensitivityDenied.group.items[0]!, name: sensitivityDeniedLabel }]),
+      ],
+    );
+
+    const foreignProject = `frontend-product-read-foreign-${randomUUID()}`;
+    const foreign = await createProductDraft(
+      foreignProject,
+      `frontend-product-read-foreign-${randomUUID()}`,
+      'H_FOREIGN_UNIQUE canonical claim.',
+    );
+    await approveCanonical(foreign);
+
+    const visibleAuthorizedSearch = await adapter.search({
+      ...populatedScope,
+      request: { schemaVersion: '1.0.0', query: 'Milo', pageSize: 100 },
+    });
+    const foreignSearch = await adapter.search({
+      ...populatedScope,
+      request: { schemaVersion: '1.0.0', query: 'H_FOREIGN_UNIQUE', pageSize: 100 },
+    });
+    const scopeDeniedSearch = await adapter.search({
+      ...populatedScope,
+      request: { schemaVersion: '1.0.0', query: scopeDeniedLabel, pageSize: 100 },
+    });
+    const sensitivityDeniedSearch = await adapter.search({
+      ...populatedScope,
+      request: { schemaVersion: '1.0.0', query: sensitivityDeniedLabel, pageSize: 100 },
+    });
+    expect(visibleAuthorizedSearch.matches.some((match) => match.item.label === 'Milo')).toBe(true);
+    expect(foreignSearch.matches).toEqual([]);
+    expect(scopeDeniedSearch.matches).toEqual([]);
+    expect(sensitivityDeniedSearch.matches).toEqual([]);
 
     await expect(
       adapter.getDetail({

@@ -112,6 +112,32 @@ const makeSnapshot = (
   resources,
 });
 
+const makePrunableGeneration = (
+  generationId: string,
+  createdAt: string,
+  buildStatus: SemanticProjectionGeneration['buildStatus'] = 'READY',
+): SemanticProjectionGeneration => ({
+  projectId: profile.projectId,
+  generationId,
+  sourceProjectionDigest: digest('prune-source'),
+  canonicalBaseVersion: 1,
+  credentialId: profile.credentialId,
+  credentialRevision: profile.credentialRevision,
+  providerPolicyFingerprint: digest('policy'),
+  providerId: profile.providerId,
+  embeddingModelId: profile.embeddingModelId,
+  embeddingProfileId: profile.profileId,
+  embeddingProfileRevision: profile.profileRevision,
+  providerRegistryRevision: 'providers:r3',
+  capabilityCatalogRevision: 'catalog:r3',
+  representationVersion: profile.representationVersion,
+  dimension: profile.dimension,
+  distanceMetric: profile.distanceMetric,
+  normalizationPolicy: profile.normalizationPolicy,
+  buildStatus,
+  createdAt,
+});
+
 const makeRig = (initialSnapshot: SemanticCorpusSourceSnapshot) => {
   let snapshot = initialSnapshot;
   let watermark: SemanticCorpusSourceWatermark = {
@@ -479,5 +505,148 @@ describe('R3 semantic generation lifecycle', () => {
       ]),
     ).rejects.toMatchObject({ embeddingErrorCode: 'VALIDATION_FAILURE' });
     expect(await repo.getItem('project-r3', 'generation', 'CLAIM', 'claim')).toBeUndefined();
+  });
+
+  it('prunes only old inactive generations while protecting active, BUILDING, rollback, and window generations', async () => {
+    const rig = makeRig(makeSnapshot([makeResource('claim-prune')], digest('prune-source')));
+    const active = makePrunableGeneration('generation-active', '2026-08-26T00:00:03.000Z');
+    const rollback = makePrunableGeneration('generation-rollback', '2026-08-26T00:00:01.000Z');
+    const old = makePrunableGeneration('generation-old', '2026-08-26T00:00:00.000Z');
+    const building = makePrunableGeneration(
+      'generation-building',
+      '2026-08-26T00:00:00.000Z',
+      'BUILDING',
+    );
+    const window = {
+      ...makePrunableGeneration('generation-window', '2026-08-26T00:00:02.000Z'),
+      sourceProjectionDigest: digest('window-source'),
+    };
+
+    for (const generation of [active, rollback, old, building, window]) {
+      await rig.repository.saveGeneration(generation);
+    }
+    await rig.repository.activateGeneration({
+      projectId: active.projectId,
+      generationId: active.generationId,
+      expectedPointer: { kind: 'NONE' },
+      sourceProjectionDigest: active.sourceProjectionDigest,
+      canonicalBaseVersion: active.canonicalBaseVersion,
+      updatedAt: active.createdAt,
+    });
+
+    const result = await rig.builder('unused-builder-id').prune({
+      projectId: active.projectId,
+      pruneBefore: '2026-08-26T00:00:02.000Z',
+    });
+
+    expect(result.deletedGenerationIds).toEqual(['generation-old']);
+    expect(result.activeGenerationId).toBe(active.generationId);
+    expect(result.rollbackProtectedGenerationId).toBe(rollback.generationId);
+    expect(result.skipped).toEqual(
+      expect.arrayContaining([
+        { generationId: active.generationId, reason: 'ACTIVE' },
+        { generationId: rollback.generationId, reason: 'ROLLBACK_PROTECTED' },
+        { generationId: building.generationId, reason: 'BUILDING' },
+      ]),
+    );
+    expect(await rig.repository.getGeneration(active.projectId, old.generationId)).toBeUndefined();
+    expect(
+      await rig.repository.getGeneration(active.projectId, rollback.generationId),
+    ).toBeDefined();
+    expect(
+      await rig.repository.getGeneration(active.projectId, building.generationId),
+    ).toBeDefined();
+    expect(await rig.repository.getGeneration(active.projectId, window.generationId)).toBeDefined();
+  });
+
+  it('retains all generations when no safe active rollback target can be established', async () => {
+    const rig = makeRig(makeSnapshot([makeResource('claim-prune')], digest('prune-source')));
+    const active = makePrunableGeneration('generation-active', '2026-08-26T00:00:02.000Z');
+    const old = {
+      ...makePrunableGeneration('generation-old', '2026-08-26T00:00:00.000Z'),
+      sourceProjectionDigest: digest('old-source'),
+    };
+    const incompatible = {
+      ...makePrunableGeneration('generation-incompatible', '2026-08-26T00:00:01.000Z'),
+      sourceProjectionDigest: digest('different-source'),
+    };
+    for (const generation of [active, old, incompatible]) {
+      await rig.repository.saveGeneration(generation);
+    }
+    await rig.repository.activateGeneration({
+      projectId: active.projectId,
+      generationId: active.generationId,
+      expectedPointer: { kind: 'NONE' },
+      sourceProjectionDigest: active.sourceProjectionDigest,
+      canonicalBaseVersion: active.canonicalBaseVersion,
+      updatedAt: active.createdAt,
+    });
+
+    const result = await rig.builder('unused-builder-id').prune({
+      projectId: active.projectId,
+      pruneBefore: '2026-08-26T00:00:02.000Z',
+    });
+
+    expect(result.deletedGenerationIds).toEqual([]);
+    expect(result.rollbackProtectedGenerationId).toBeUndefined();
+    expect(result.skipped).toEqual(
+      expect.arrayContaining([
+        { generationId: old.generationId, reason: 'NO_SAFE_ROLLBACK_TARGET' },
+        { generationId: incompatible.generationId, reason: 'NO_SAFE_ROLLBACK_TARGET' },
+      ]),
+    );
+  });
+
+  it('stops pruning when the active pointer changes between validation and deletion', async () => {
+    const rig = makeRig(makeSnapshot([makeResource('claim-prune')], digest('prune-source')));
+    const active = makePrunableGeneration('generation-active', '2026-08-26T00:00:02.000Z');
+    const rollback = makePrunableGeneration('generation-rollback', '2026-08-26T00:00:01.000Z');
+    const old = makePrunableGeneration('generation-old', '2026-08-26T00:00:00.000Z');
+    for (const generation of [active, rollback, old]) {
+      await rig.repository.saveGeneration(generation);
+    }
+    await rig.repository.activateGeneration({
+      projectId: active.projectId,
+      generationId: active.generationId,
+      expectedPointer: { kind: 'NONE' },
+      sourceProjectionDigest: active.sourceProjectionDigest,
+      canonicalBaseVersion: active.canonicalBaseVersion,
+      updatedAt: active.createdAt,
+    });
+
+    const readPointer = rig.repository.getActiveGenerationPointer.bind(rig.repository);
+    let pointerReads = 0;
+    rig.repository.getActiveGenerationPointer = async (projectId) => {
+      const current = await readPointer(projectId);
+      pointerReads += 1;
+      if (pointerReads === 2 && current) {
+        await rig.repository.activateGeneration({
+          projectId,
+          generationId: rollback.generationId,
+          expectedPointer: {
+            kind: 'EXISTING',
+            activeGenerationId: current.activeGenerationId,
+            pointerRevision: current.pointerRevision,
+          },
+          sourceProjectionDigest: rollback.sourceProjectionDigest,
+          canonicalBaseVersion: rollback.canonicalBaseVersion,
+          updatedAt: rollback.createdAt,
+        });
+        return readPointer(projectId);
+      }
+      return current;
+    };
+
+    const result = await rig.builder('unused-builder-id').prune({
+      projectId: active.projectId,
+      pruneBefore: '2026-08-26T00:00:02.000Z',
+    });
+
+    expect(result.deletedGenerationIds).toEqual([]);
+    expect(result.skipped).toContainEqual({
+      generationId: old.generationId,
+      reason: 'CONCURRENT_POINTER_CHANGE',
+    });
+    expect(await rig.repository.getGeneration(active.projectId, old.generationId)).toBeDefined();
   });
 });

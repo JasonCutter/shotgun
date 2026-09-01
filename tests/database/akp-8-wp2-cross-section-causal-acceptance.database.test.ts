@@ -1880,9 +1880,9 @@ const commitCausalClaim = async (
   },
 ): Promise<CanonicalCommitResult> => {
   const before = await repository.getSnapshot(input.projectId);
-  const commitId = `causal-commit:${input.identity}:${randomUUID()}`;
-  const manifestId = `causal-manifest:${input.identity}:${randomUUID()}`;
-  const changeSetId = `causal-changeset:${input.identity}:${randomUUID()}`;
+  const commitId = randomUUID();
+  const manifestId = randomUUID();
+  const changeSetId = randomUUID();
   const candidateId = `causal-candidate:${input.identity}:${randomUUID()}`;
   const claimId = `causal-claim:${input.identity}:${randomUUID()}`;
   const evidenceIds = [input.evidenceId];

@@ -7,6 +7,35 @@ import {
 
 type FetchImplementation = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
+const abortErrorFor = (signal: AbortSignal): Error => {
+  if (signal.reason instanceof Error) return signal.reason;
+  const error = new Error('The protected request was aborted.');
+  error.name = 'AbortError';
+  return error;
+};
+
+const waitForPreceding = (preceding: Promise<void>, signal?: AbortSignal): Promise<void> => {
+  if (!signal) return preceding;
+  if (signal.aborted) return Promise.reject(abortErrorFor(signal));
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener('abort', onAbort);
+      reject(abortErrorFor(signal));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    void preceding.then(
+      () => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    );
+  });
+};
+
 export type CsrfMutationOptions<T> = {
   readonly signal?: AbortSignal;
   readonly recoverOnResponse?: (result: T) => boolean | Promise<boolean>;
@@ -71,9 +100,9 @@ export const createCsrfMutationManager = (
       tail = new Promise<void>((resolve) => {
         release = resolve;
       });
-      await preceding;
-      let recovered = false;
       try {
+        await waitForPreceding(preceding, options.signal);
+        let recovered = false;
         while (true) {
           const token = csrfToken ?? (await acquireCsrfToken(fetchImplementation, options.signal));
           try {

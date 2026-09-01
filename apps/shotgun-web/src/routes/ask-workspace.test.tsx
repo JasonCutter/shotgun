@@ -539,6 +539,46 @@ describe('AskWorkspace', () => {
     expect(mockClient.submitQuestion).not.toHaveBeenCalled();
   });
 
+  it('shows a visible provider eligibility error and leaves submission unavailable after a backend failure', async () => {
+    const runtime = createRuntime();
+    const workspace = { ...mockWorkspace, capabilities: ['SUBMIT_QUESTION'] as const };
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockRejectedValue(new Error('provider eligibility failed')),
+      getWorkspace: vi.fn().mockResolvedValue(workspace),
+      getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <LocalizedShellOutlet />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(
+      await screen.findByText(
+        '제공자 사용 가능 여부를 확인하지 못했습니다. 질문을 제출할 수 없습니다.',
+      ),
+    ).toBeTruthy();
+    expect((screen.getByRole('button', { name: '질문 제출' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(mockClient.submitQuestion).not.toHaveBeenCalled();
+  });
+
   it('renders Ask Workspace server data and conversation tree', async () => {
     const runtime = createRuntime();
     const mockClient: AskWorkspaceClient = {

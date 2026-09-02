@@ -100,6 +100,9 @@ export const createCsrfMutationManager = (
       tail = new Promise<void>((resolve) => {
         release = resolve;
       });
+      const releaseAfterPreceding = (): void => {
+        void preceding.then(release, release);
+      };
       try {
         await waitForPreceding(preceding, options.signal);
         let recovered = false;
@@ -128,7 +131,7 @@ export const createCsrfMutationManager = (
           }
         }
       } finally {
-        release();
+        releaseAfterPreceding();
       }
     },
     invalidate(): void {

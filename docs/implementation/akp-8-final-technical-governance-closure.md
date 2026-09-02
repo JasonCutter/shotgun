@@ -402,10 +402,13 @@ Validation. No Canonical write occurred.
 
 The Project Standing AI policy is provider-bound and remains subordinate to
 provider configuration, vault credential revision, deployment ceiling, access
-scope and sensitivity. Stage 4 output remains a non-Canonical
-`DERIVED_INFERENCE` Candidate; provider output cannot establish Fact, and a
+scope and sensitivity. Stage 4 output remains a non-Canonical ClaimCandidate
+with `DIRECT_EVIDENCE` / direct-only provenance and is subject to deterministic
+Validation. Provider output cannot establish Fact or write Canonical, and a
 Stage 4 failure cannot invalidate authoritative Source/Evidence. Restricted
-external transfer remains fail-closed.
+external transfer remains fail-closed. Discovery Findings retain
+`DERIVED_INFERENCE` provenance under the AKP-2/AKP-5 boundary; these provenance
+classes are not merged.
 
 The accepted Stage 4 failure-isolation evidence also shows that durable Stage 3
 Evidence is authoritative Source success: Standing Policy `OFF` leaves Source

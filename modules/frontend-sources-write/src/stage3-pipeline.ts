@@ -24,7 +24,25 @@ export type SourcesStage3PipelinePort = {
     readonly contentHash: string;
     readonly accessScope: readonly string[];
     readonly sensitivity: SourcesSensitivity;
-  }): Promise<void>;
+  }): Promise<SourcesStage3PipelineOutcome | void>;
+};
+
+/**
+ * Stage 3 is the Source product's authoritative completion boundary. A
+ * downstream Stage 4 continuation is reported separately so its failure can
+ * be recovered in the Stage 4 domain without changing the Source intake
+ * outcome.
+ */
+export type SourcesStage3PipelineOutcome = {
+  readonly stage3: {
+    readonly revisionId: string;
+    readonly evidenceCount: number;
+    readonly reusedCount: number;
+  };
+  readonly stage4:
+    | { readonly status: 'NOT_CONFIGURED' }
+    | { readonly status: 'SUCCEEDED' }
+    | { readonly status: 'FAILED' };
 };
 
 /** Stage 4 is started only after the Stage 3 Evidence transaction has

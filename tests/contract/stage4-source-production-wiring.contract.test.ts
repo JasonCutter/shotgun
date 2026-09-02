@@ -223,7 +223,7 @@ describe('Stage 3 → Stage 4 production continuation', () => {
     await kernel.shutdown();
   });
 
-  it('does not lose durable Evidence when Stage 4 continuation fails', async () => {
+  it('isolates Stage 4 continuation failure after durable Evidence', async () => {
     const storage = new InMemoryAssetStorage();
     const evidenceRepository = new InMemoryEvidenceRepository();
     const transformationRepository = new InMemoryTransformationRepository();
@@ -243,9 +243,8 @@ describe('Stage 3 → Stage 4 production continuation', () => {
       },
     });
 
-    await expect(
-      pipeline.runForSourceVersion(sourceInput(contentHash, storageKey)),
-    ).rejects.toThrow('provider policy denied');
+    const outcome = await pipeline.runForSourceVersion(sourceInput(contentHash, storageKey));
+    expect(outcome.stage4.status).toBe('FAILED');
     const evidence = await evidenceRepository.listBySourceVersion(
       'source-stage4-project',
       '22222222-2222-4222-8222-222222222222',

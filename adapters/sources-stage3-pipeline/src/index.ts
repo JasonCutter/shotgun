@@ -10,6 +10,7 @@ import type {
 } from '../../../modules/transformation/src/index.js';
 import type {
   SourcesStage3EvidenceIndexedInput,
+  SourcesStage3PipelineOutcome,
   SourcesStage3PipelinePort,
   SourcesStage4ContinuationPort,
 } from '../../../modules/frontend-sources-write/src/index.js';
@@ -39,7 +40,7 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
 
   async runForSourceVersion(
     input: Parameters<SourcesStage3PipelinePort['runForSourceVersion']>[0],
-  ): Promise<void> {
+  ): Promise<SourcesStage3PipelineOutcome> {
     const bytes = await this.deps.storage.read(input.storageKey);
     // TextDecoder's default UTF-8 mode consumes a leading BOM. The original
     // asset hash is byte-addressed, so dropping that character makes the
@@ -67,6 +68,7 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
     const indexed = await this.deps.evidenceRepository.index(
       buildEvidenceCandidates(saved.revision, this.deps.locator),
     );
+    let stage4: SourcesStage3PipelineOutcome['stage4'] = { status: 'NOT_CONFIGURED' };
     if (this.deps.stage4) {
       const continuation: SourcesStage3EvidenceIndexedInput = {
         projectId: input.projectId,
@@ -79,7 +81,23 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
         sensitivity: input.sensitivity,
         dataClassification: 'source-content',
       };
-      await this.deps.stage4.onEvidenceIndexed(continuation);
+      try {
+        await this.deps.stage4.onEvidenceIndexed(continuation);
+        stage4 = { status: 'SUCCEEDED' };
+      } catch {
+        // Evidence is already durable at this point. Keep the downstream
+        // failure in Stage 4's event/dead-letter recovery boundary; never
+        // reinterpret a completed Source/Stage 3 intake as indeterminate.
+        stage4 = { status: 'FAILED' };
+      }
     }
+    return {
+      stage3: {
+        revisionId: saved.revision.revisionId,
+        evidenceCount: indexed.items.length,
+        reusedCount: indexed.reusedCount,
+      },
+      stage4,
+    };
   }
 }

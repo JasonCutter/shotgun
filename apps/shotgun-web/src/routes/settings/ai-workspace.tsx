@@ -316,6 +316,44 @@ export const AIWorkspace = () => {
     },
   });
 
+  const standingPolicyMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      if (!settings) throw new Error('AI settings are not loaded.');
+      const configuration = settings.currentConfiguration;
+      if (!configuration || configuration.activeProviderId !== selectedProviderId) {
+        throw new Error(
+          'Save the selected provider configuration before enabling automatic AI processing.',
+        );
+      }
+      return apiClient.saveAIStandingPolicy({
+        projectId: settings.projectId,
+        expectedRevision: settings.standingPolicy?.policyRevision ?? 0,
+        enabled,
+        providerId: configuration.activeProviderId,
+        aiConfigurationRevision: configuration.aiConfigurationRevision,
+      });
+    },
+    onSuccess: async (policy) => {
+      setFeedback({
+        tone: 'success',
+        title: policy.enabled
+          ? 'AI automatic processing enabled'
+          : 'AI automatic processing disabled',
+        detail: policy.enabled
+          ? 'Public and internal material, and private material permitted by deployment policy, can now use the configured provider automatically. Restricted material remains blocked.'
+          : 'New AI-assisted processing is blocked until the Project Owner enables it again. In-flight execution pins are unchanged.',
+      });
+      await invalidateSettings();
+    },
+    onError: (error) => {
+      setFeedback({
+        tone: 'error',
+        title: 'AI automatic processing was not changed',
+        detail: safeErrorMessage(error),
+      });
+    },
+  });
+
   const runCredentialAction = (action: 'revoke' | 'remove') => {
     if (!settings || !selectedProvider || !usableCredential) return;
     const command = async () => {
@@ -385,6 +423,17 @@ export const AIWorkspace = () => {
   const currentCredentialReferenced = Boolean(
     settings.currentConfiguration?.credentialId === currentCredential?.credentialId,
   );
+  const standingPolicy = settings.standingPolicy;
+  const standingProviderMatches =
+    standingPolicy?.providerId === settings.currentConfiguration?.activeProviderId;
+  const standingEnabled = standingPolicy?.enabled === true;
+  const standingToggleDisabled =
+    standingPolicyMutation.isPending ||
+    saveMutation.isPending ||
+    testMutation.isPending ||
+    (!standingEnabled &&
+      (!settings.currentConfiguration ||
+        settings.currentConfiguration.activeProviderId !== selectedProviderId));
 
   return (
     <section className="ai-settings-workspace" aria-labelledby="ai-settings-heading">
@@ -421,6 +470,48 @@ export const AIWorkspace = () => {
       ) : null}
 
       <form onSubmit={handleSave} style={{ display: 'grid', gap: '16px', marginTop: '20px' }}>
+        <div className="settings-card" style={{ display: 'grid', gap: '12px' }}>
+          <h3 style={{ margin: 0 }}>AI Automatic Processing</h3>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 600 }}>
+            <input
+              type="checkbox"
+              aria-label="AI Automatic Processing"
+              checked={standingEnabled}
+              disabled={standingToggleDisabled}
+              onChange={(event) => standingPolicyMutation.mutate(event.currentTarget.checked)}
+            />
+            {standingEnabled ? 'ON' : 'OFF'}
+          </label>
+          <p style={{ margin: 0 }}>
+            <strong>Provider:</strong>{' '}
+            {standingPolicy?.providerId
+              ? (settings.providers.find(
+                  (provider) => provider.providerId === standingPolicy.providerId,
+                )?.displayName ?? standingPolicy.providerId)
+              : selectedProvider
+                ? providerLabel(selectedProvider)
+                : 'Not configured'}
+          </p>
+          {standingEnabled && standingProviderMatches ? (
+            <p style={{ margin: 0 }}>
+              <strong>Private project material:</strong> Automatically usable by the configured AI
+              provider when permitted by the deployment ceiling.
+            </p>
+          ) : standingEnabled ? (
+            <p role="status" style={{ margin: 0, color: 'var(--attention)' }}>
+              The configured provider changed. Save the new provider, then enable automatic
+              processing for it explicitly.
+            </p>
+          ) : (
+            <p style={{ margin: 0, color: 'var(--muted)' }}>
+              Enable this once to allow permitted AI-assisted processing across the Project.
+            </p>
+          )}
+          <p style={{ margin: 0 }}>
+            <strong>Restricted material:</strong> External AI blocked.
+          </p>
+        </div>
+
         <div className="settings-card" style={{ display: 'grid', gap: '14px' }}>
           <h3 style={{ margin: 0 }}>Provider and model</h3>
           <div>
@@ -615,7 +706,8 @@ export const AIWorkspace = () => {
             }}
           >
             <p style={{ color: 'var(--ink)', margin: '0 0 8px 0', fontWeight: 500 }}>
-              Privacy review is required before this provider can process Project data.
+              Historical provider approval records are preserved for audit. Routine automatic
+              processing is controlled by the Project-level switch above.
             </p>
             <Link
               to={`/settings/privacy?providerId=${selectedProviderId}`}

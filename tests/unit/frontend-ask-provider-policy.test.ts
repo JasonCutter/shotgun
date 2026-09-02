@@ -18,6 +18,7 @@ import {
   AskProviderPolicyResolver,
   type AskProviderPolicyAuthorityReaderPort,
 } from '../../modules/frontend-ask-provider-policy/src/index.js';
+import type { StandingAIProcessingPolicy } from '../../packages/policy/src/index.js';
 
 const request = (sensitivity: 'public' | 'private' | 'restricted'): AskAnswerProviderRequest => ({
   answerRunId: 'run-policy-1',
@@ -349,6 +350,47 @@ describe('Ask provider policy and stream boundary', () => {
       }),
     ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
     expect(policy.evaluateSelections).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the Project standing authority for Ask without requiring a new A4 approval revision', async () => {
+    const standing: StandingAIProcessingPolicy = {
+      projectId: 'project-1',
+      enabled: true,
+      providerId: 'deepseek',
+      policyRevision: 3,
+      aiConfigurationRevision: 4,
+      changedBy: 'owner-1',
+      changedAt: '2026-09-02T00:00:00.000Z',
+    };
+    const reader: AskProviderPolicyAuthorityReaderPort = {
+      readProjectPrivacyPolicy: async () => ({
+        externalTransferAllowed: false,
+        settingsRevision: 1,
+        policyContextRevision: 1,
+      }),
+      readStandingAIProcessingPolicy: async () => standing,
+      readProviderExternalTransferApproval: async () => undefined,
+      readSelectedSensitivities: async () => ['private'],
+    };
+    const policy = new AskProviderPolicyResolver(reader, {
+      providerId: 'deepseek',
+      providerPolicyIdentity: 'deepseek-policy-v1',
+      providerDisplayName: 'DeepSeek',
+      providerModel: 'deepseek-v4-flash',
+      deploymentPrivateTransferAllowed: true,
+    });
+
+    await expect(
+      policy.evaluateSelections({
+        projectId: 'project-1',
+        sourceSelections: [{ sourceId: 'source-1', sourceVersionId: 'version-1', evidenceIds: [] }],
+      }),
+    ).resolves.toMatchObject({
+      eligible: true,
+      reason: 'ELIGIBLE',
+      policyContextRevision: '3',
+      provider: { displayName: 'DeepSeek', model: 'deepseek-v4-flash' },
+    });
   });
 
   it('exposes only a meaningful current-policy retry after eligibility changes', () => {

@@ -1,4 +1,8 @@
 import { ShotgunError, type ErrorCode } from '../../../packages/contracts/src/index.js';
+import type {
+  StandingAIProcessingPolicyWriterPort,
+  StandingAIProcessingPolicy,
+} from '../../../packages/policy/src/index.js';
 
 export type CredentialLifecycleState = 'active' | 'superseded' | 'revoked' | 'removed';
 export type CredentialMetadata = {
@@ -212,6 +216,7 @@ export type AISettingsReadModel = {
   readonly providers: readonly AIProviderDescriptor[];
   readonly credentialStatuses: readonly AICredentialStatus[];
   readonly privacy: readonly AIProviderPrivacyStatus[];
+  readonly standingPolicy?: StandingAIProcessingPolicy;
   readonly vaultAvailability: ReturnType<CredentialVaultPort['getAvailability']>;
   readonly legacyGeminiCredentialConfigured: boolean;
 };
@@ -262,6 +267,15 @@ export type AISettingsBackendPort = {
   saveConfiguration(
     input: Parameters<ProjectAIConfigurationPort['save']>[0],
   ): Promise<ProjectAIConfiguration>;
+  saveStandingPolicy(input: {
+    readonly projectId: string;
+    readonly expectedRevision: number;
+    readonly enabled: boolean;
+    readonly providerId: string;
+    readonly aiConfigurationRevision: number;
+    readonly changedBy: string;
+    readonly now?: string;
+  }): Promise<StandingAIProcessingPolicy>;
   testConnection(input: {
     readonly projectId: string;
     readonly providerId: string;
@@ -355,6 +369,7 @@ export class AISettingsBackendService implements AISettingsBackendPort {
     private readonly approvals?: ProviderExternalTransferApprovalPort,
     private readonly clock: () => string = () => new Date().toISOString(),
     private readonly legacyCredential?: LegacyCredentialReaderPort,
+    private readonly standingPolicy?: StandingAIProcessingPolicyWriterPort,
   ) {}
 
   async getSettings(projectId: string): Promise<AISettingsReadModel> {
@@ -397,6 +412,9 @@ export class AISettingsBackendService implements AISettingsBackendPort {
       providers: this.registry.listProviders(),
       credentialStatuses,
       privacy,
+      ...(this.standingPolicy
+        ? { standingPolicy: await this.standingPolicy.getCurrent(normalizedProjectId) }
+        : {}),
       vaultAvailability: this.vault.getAvailability(),
       legacyGeminiCredentialConfigured:
         this.legacyCredential?.isGeminiCredentialConfigured() ?? false,
@@ -471,6 +489,50 @@ export class AISettingsBackendService implements AISettingsBackendPort {
     input: Parameters<AISettingsBackendPort['saveConfiguration']>[0],
   ): Promise<ProjectAIConfiguration> {
     return this.configuration.save(input);
+  }
+
+  async saveStandingPolicy(
+    input: Parameters<AISettingsBackendPort['saveStandingPolicy']>[0],
+  ): Promise<StandingAIProcessingPolicy> {
+    if (!this.standingPolicy) {
+      throw new ShotgunError({
+        code: 'CONFIGURATION_REQUIRED',
+        safeMessage: 'Standing AI processing policy authority is not configured.',
+        module: 'ai-settings-backend',
+        operation: 'save-standing-policy',
+      });
+    }
+    const projectId = normalize('Project ID', input.projectId);
+    const providerId = normalize('Provider ID', input.providerId, 128);
+    const currentConfiguration = await this.configuration.getCurrent(projectId);
+    const currentConfigurationRevision = currentConfiguration?.aiConfigurationRevision ?? 0;
+    if (input.aiConfigurationRevision !== currentConfigurationRevision) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage:
+          'AI configuration changed; reload settings before changing automatic processing.',
+        module: 'ai-settings-backend',
+        operation: 'save-standing-policy',
+      });
+    }
+    if (
+      input.enabled &&
+      (!currentConfiguration || currentConfiguration.activeProviderId !== providerId)
+    ) {
+      throw new AISettingsBackendError(
+        'INVALID_INPUT',
+        'Automatic AI processing must be bound to the currently configured provider.',
+      );
+    }
+    return this.standingPolicy.save({
+      projectId,
+      expectedRevision: input.expectedRevision,
+      enabled: input.enabled,
+      providerId,
+      aiConfigurationRevision: currentConfigurationRevision,
+      changedBy: normalize('Principal ID', input.changedBy),
+      ...(input.now ? { now: input.now } : {}),
+    });
   }
 
   async testConnection(

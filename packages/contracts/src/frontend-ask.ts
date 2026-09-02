@@ -189,12 +189,16 @@ export type AskQuestionSubmissionView = {
 
 export type AskProviderEligibilityReason =
   | 'ELIGIBLE'
+  | 'STANDING_POLICY_DISABLED'
+  | 'STANDING_POLICY_PROVIDER_MISMATCH'
   | 'DEPLOYMENT_POLICY_BLOCKED'
   | 'PROJECT_APPROVAL_REQUIRED'
   | 'RESTRICTED_CONTEXT_BLOCKED';
 
 export type AskProviderEligibilityRequiredAction =
   | 'NONE'
+  | 'ENABLE_STANDING_AI_PROCESSING'
+  | 'CONFIGURE_STANDING_AI_FOR_PROVIDER'
   | 'CONTACT_DEPLOYMENT_ADMINISTRATOR'
   | 'REVIEW_PROJECT_PRIVACY_SETTINGS'
   | 'REMOVE_RESTRICTED_CONTEXT';
@@ -336,12 +340,16 @@ export const decodeAskProviderEligibilityView = (value: unknown): AskProviderEli
   schema(input, 'providerEligibility');
   const reasons: readonly AskProviderEligibilityReason[] = [
     'ELIGIBLE',
+    'STANDING_POLICY_DISABLED',
+    'STANDING_POLICY_PROVIDER_MISMATCH',
     'DEPLOYMENT_POLICY_BLOCKED',
     'PROJECT_APPROVAL_REQUIRED',
     'RESTRICTED_CONTEXT_BLOCKED',
   ];
   const actions: readonly AskProviderEligibilityRequiredAction[] = [
     'NONE',
+    'ENABLE_STANDING_AI_PROCESSING',
+    'CONFIGURE_STANDING_AI_FOR_PROVIDER',
     'CONTACT_DEPLOYMENT_ADMINISTRATOR',
     'REVIEW_PROJECT_PRIVACY_SETTINGS',
     'REMOVE_RESTRICTED_CONTEXT',

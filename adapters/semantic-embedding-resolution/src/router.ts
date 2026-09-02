@@ -15,6 +15,10 @@ import {
   SemanticEmbeddingError,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
+import {
+  evaluateStandingAIProcessingPolicy,
+  type StandingAIProcessingPolicyReaderPort,
+} from '../../../packages/policy/src/index.js';
 
 export type ProviderEmbeddingRequest = {
   readonly modelId: string;
@@ -51,6 +55,7 @@ export type ProviderEmbeddingConnectivityPort = {
 
 export type SemanticEmbeddingRouterOptions = {
   readonly legacyExternalTransferAllowed?: (projectId: string) => Promise<boolean>;
+  readonly standingPolicyAuthority?: StandingAIProcessingPolicyReaderPort;
   readonly timeoutMs?: number;
 };
 
@@ -232,18 +237,33 @@ export class SemanticEmbeddingRouter implements SemanticEmbeddingRouterPort {
     }
 
     // 5. Enforce privacy & deployment eligibility before network/credential access
-    const approval = await this.approvalAuthority.getCurrent(projectId, pin.providerId);
-    const legacyAllowed = this.options.legacyExternalTransferAllowed
-      ? await this.options.legacyExternalTransferAllowed(projectId)
-      : false;
+    const standingPolicy = await this.options.standingPolicyAuthority?.getCurrent(projectId);
+    const approval = standingPolicy
+      ? undefined
+      : await this.approvalAuthority.getCurrent(projectId, pin.providerId);
+    const legacyAllowed = standingPolicy
+      ? false
+      : this.options.legacyExternalTransferAllowed
+        ? await this.options.legacyExternalTransferAllowed(projectId)
+        : false;
 
-    const privacyDecision = evaluateProviderExternalTransfer({
-      providerId: pin.providerId,
-      sensitivity,
-      deployment: this.deploymentCeiling,
-      approval,
-      legacyExternalTransferAllowed: legacyAllowed,
-    });
+    const privacyDecision = standingPolicy
+      ? {
+          ...evaluateStandingAIProcessingPolicy({
+            policy: standingPolicy,
+            providerId: pin.providerId,
+            sensitivity,
+            deploymentAllowsPrivate: this.deploymentCeiling.allows(pin.providerId),
+          }),
+          usedLegacyGeminiCompatibility: false,
+        }
+      : evaluateProviderExternalTransfer({
+          providerId: pin.providerId,
+          sensitivity,
+          deployment: this.deploymentCeiling,
+          approval,
+          legacyExternalTransferAllowed: legacyAllowed,
+        });
 
     if (!privacyDecision.eligible) {
       let safeMessage = 'External transfer policy denied embedding execution.';
@@ -254,6 +274,12 @@ export class SemanticEmbeddingRouter implements SemanticEmbeddingRouterPort {
         safeMessage = 'Deployment policy blocks private external transfer for this provider.';
       } else if (privacyDecision.reason === 'PROJECT_APPROVAL_REQUIRED') {
         safeMessage = 'Project owner approval is required for private external transfer.';
+      } else if (privacyDecision.reason === 'STANDING_POLICY_DISABLED') {
+        safeMessage = 'Project standing AI processing is disabled.';
+      } else if (privacyDecision.reason === 'STANDING_POLICY_PROVIDER_MISMATCH') {
+        safeMessage = 'Project standing AI processing is bound to a different provider.';
+      } else if (privacyDecision.reason === 'NOT_CONFIGURED') {
+        safeMessage = 'Project standing AI processing policy is not configured.';
       }
 
       throw new SemanticEmbeddingError({

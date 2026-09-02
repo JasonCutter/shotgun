@@ -15,6 +15,7 @@ import { OpenAIEmbeddingConnectivityAdapter } from '../../../adapters/ai-provide
 import { DeepSeekConnectivityAdapter } from '../../../adapters/ai-provider-deepseek/src/index.js';
 import { PostgresCredentialVaultRepository } from '../../../adapters/credential-vault-postgres/src/index.js';
 import { PostgresProjectAIConfigurationRepository } from '../../../adapters/ai-configuration-postgres/src/index.js';
+import { PostgresStandingAIProcessingPolicyRepository } from '../../../adapters/project-standing-ai-policy-postgres/src/index.js';
 import { PostgresProviderExternalTransferApprovalRepository } from '../../../adapters/provider-privacy-deployment-postgres/src/index.js';
 import { StructuredAskAnswerProviderAdapter } from '../../../adapters/ai-provider-ask/src/index.js';
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
@@ -115,6 +116,7 @@ import { hasSensitivityClearance } from '../../../packages/authentication/src/in
 import type { DiscoveryFindingEnvelopeV1 } from '../../../packages/contracts/src/index.js';
 import type { KnowledgeModelRepositoryPort } from '../../../modules/knowledge-model/src/index.js';
 import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
+import { StandingAIProcessingPolicyService } from '../../../packages/policy/src/index.js';
 import {
   KnowledgeModelTypedPropositionConflictAuthorityReader,
   TypedPropositionConflictEvaluatorV1,
@@ -400,6 +402,7 @@ export const startShotgunApplication = async (
     const deploymentCeiling = parseProviderDeploymentCeiling({
       providerAllowlist: process.env.AI_PRIVATE_EGRESS_ALLOWED_PROVIDERS,
       legacyGeminiAllowed: process.env.GEMINI_ALLOW_PRIVATE === 'true',
+      localOwnerDefault: process.env.SHOTGUN_DEPLOYMENT_MODE !== 'managed',
     });
     const deploymentAllowsPrivateExternalTransfer = deploymentCeiling.allows('google-gemini');
     const settingsRepository = new PostgresSettingsRepository(
@@ -415,6 +418,9 @@ export const startShotgunApplication = async (
       aiProviderRegistry,
       new PostgresProjectAIConfigurationRepository(pool),
       credentialVault,
+    );
+    const standingPolicy = new StandingAIProcessingPolicyService(
+      new PostgresStandingAIProcessingPolicyRepository(pool),
     );
     const connectivityRegistry = new StaticAIProviderConnectivityRegistry([
       new OpenAIConnectivityAdapter({ baseUrl: process.env.OPENAI_BASE_URL }),
@@ -447,6 +453,7 @@ export const startShotgunApplication = async (
         deploymentCeiling,
         approvalAuthority: providerApprovalService,
         legacyExternalTransferAllowed: legacyPrivacy.getLegacyExternalTransferAllowed,
+        standingPolicyAuthority: standingPolicy,
       },
     );
     const semanticEmbeddingRouter = new SemanticEmbeddingRouter(
@@ -456,7 +463,10 @@ export const startShotgunApplication = async (
       providerApprovalService,
       deploymentCeiling,
       [new OpenAIEmbeddingConnectivityAdapter({ baseUrl: process.env.OPENAI_BASE_URL })],
-      { legacyExternalTransferAllowed: legacyPrivacy.getLegacyExternalTransferAllowed },
+      {
+        legacyExternalTransferAllowed: legacyPrivacy.getLegacyExternalTransferAllowed,
+        standingPolicyAuthority: standingPolicy,
+      },
     );
     const semanticGenerationBuilder = new SemanticGenerationBuilder(
       semanticIndexRepository,
@@ -491,6 +501,7 @@ export const startShotgunApplication = async (
       {
         isGeminiCredentialConfigured: () => Boolean(process.env.GEMINI_API_KEY?.trim()),
       },
+      standingPolicy,
     );
     // The legacy Gemini adapter remains available only for the older durable
     // materialization path. Ask itself uses the A8 request-time router below.
@@ -511,7 +522,7 @@ export const startShotgunApplication = async (
       },
     );
     const askProviderPolicy = new AskProviderPolicyResolver(
-      new PostgresAskProviderPolicyAuthorityReader(pool),
+      new PostgresAskProviderPolicyAuthorityReader(pool, standingPolicy),
       {
         providerId: 'google-gemini',
         deploymentPrivateTransferAllowed: deploymentAllowsPrivateExternalTransfer,

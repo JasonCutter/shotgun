@@ -27,11 +27,11 @@ This directory and the registered consolidated ADR documents form the global ADR
 | ADR-095         | Reserved Legacy Gap                                                            |
 | ADR-096–ADR-099 | Individual files in this directory                                             |
 | ADR-100–ADR-113 | [Frontend consolidated record](../frontend/adr-100-113-consolidated-record.md) |
-| ADR-114–ADR-152 | Individual files in this directory                                             |
+| ADR-114–ADR-153 | Individual files in this directory                                             |
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
-ADR-131 through ADR-151 are authoritative accepted individual files. ADR-151 was accepted by the user on 2026-09-01 for the bounded AKP-8 WP2R remediation; its Product implementation authorization is limited to the chain and boundaries recorded in that ADR. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately authorized by subsequent implementation records. ADR-143 is the accepted finite implementation/completion contract for ADR-133 Runtime-selectable AI Settings. ADR-147 records the FACT Product-eligibility deferral. ADR-148 is the accepted AKP-1 implementation-mechanics refinement that unifies durable semantic profile, exact embedding execution, coherent corpus, generation lifecycle, query readiness and Product composition while preserving ADR-135's core semantic-projection architecture.
+ADR-131 through ADR-153 are authoritative accepted individual files. ADR-151 was accepted by the user on 2026-09-01 for the bounded AKP-8 WP2R remediation; its Product implementation authorization is limited to the chain and boundaries recorded in that ADR. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately authorized by subsequent implementation records. ADR-143 is the accepted finite implementation/completion contract for ADR-133 Runtime-selectable AI Settings. ADR-147 records the FACT Product-eligibility deferral. ADR-148 is the accepted AKP-1 implementation-mechanics refinement that unifies durable semantic profile, exact embedding execution, coherent corpus, generation lifecycle, query readiness and Product composition while preserving ADR-135's core semantic-projection architecture.
 
 ADR-152 is the User-accepted implementation-enabling refinement for the AKP-8
 WP2A Discovery authoring and Canonical Relation authority audit. It authorizes
@@ -42,12 +42,17 @@ complete.
 ADR-145 remains an accepted historical individual decision. ADR-146 supersedes ADR-145 as the governing owner-facing Product interaction architecture; both identifiers retain explicit relationship metadata.
 
 The current latest accepted individual decision is
-[ADR-151 — Discovery Production Conflict Signal Authority](ADR-151-discovery-production-conflict-signal-authority.md), accepted on 2026-09-01.
+[ADR-153 — Project Standing AI Processing Policy](ADR-153-project-standing-ai-processing-policy.md), accepted on 2026-09-02.
 
 ADR-150 is an accepted implementation-discovered refinement for the bounded AKP-7
 WP4 implementation. It does not create a new AKP Section, expand the accepted AKP
 v1 range, or amend the whole-design Acceptance Record. Future semantic comparator
 activation remains separately governed.
+
+ADR-153 defines the durable Project-level Standing AI Processing Policy. It
+supersedes the routine per-operation A4 approval interaction while preserving
+historical A4 decisions and the deployment, sensitivity, credential, and
+resource-authority safety boundaries.
 
 The accepted AKP v1 whole-design state remains recorded in
 [`../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md`](../akp/AKP-V1-ARCHITECTURE-ACCEPTANCE.md).

@@ -9,9 +9,17 @@ import type {
   AskProjectPrivacyPolicy,
   AskProviderPolicyAuthorityReaderPort,
 } from '../../../modules/frontend-ask-provider-policy/src/index.js';
+import type { StandingAIProcessingPolicyReaderPort } from '../../../packages/policy/src/index.js';
 
 export class PostgresAskProviderPolicyAuthorityReader implements AskProviderPolicyAuthorityReaderPort {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly standingPolicy?: StandingAIProcessingPolicyReaderPort,
+  ) {}
+
+  async readStandingAIProcessingPolicy(projectId: string) {
+    return (await this.standingPolicy?.getCurrent(projectId)) ?? undefined;
+  }
 
   async readProjectPrivacyPolicy(projectId: string): Promise<AskProjectPrivacyPolicy> {
     const result = await this.pool.query<{

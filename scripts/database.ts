@@ -136,6 +136,8 @@ const requiredTables = [
   'ai.provider_credentials',
   'ai.project_ai_configurations',
   'ai.project_ai_configuration_revisions',
+  'ai.project_standing_ai_processing_policies',
+  'ai.project_standing_ai_processing_policy_revisions',
   'settings.provider_external_transfer_approvals',
   'settings.provider_external_transfer_approval_revisions',
   'candidate.claim_candidates',

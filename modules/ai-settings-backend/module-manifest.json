@@ -15,7 +15,8 @@
     "readsViaPorts": [
       "CredentialVaultPort",
       "ProjectAIConfigurationPort",
-      "ProviderExternalTransferApprovalPort"
+      "ProviderExternalTransferApprovalPort",
+      "StandingAIProcessingPolicyWriterPort"
     ],
     "directSchemaAccess": false
   },

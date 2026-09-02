@@ -427,6 +427,30 @@ export function registerAISettingsRoutes(
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/api/v1/settings/ai/standing-policy',
+    async (request) => {
+      const body = objectBody(request.body);
+      const { context } = await requireBrowserSession(request.headers);
+      const projectId = projectFrom(body, context.projectId);
+      await access(request.headers, projectId, true);
+      try {
+        return {
+          standingPolicy: await backend.saveStandingPolicy({
+            projectId,
+            expectedRevision: requiredInteger(body, 'expectedRevision'),
+            enabled: requiredBoolean(body, 'enabled'),
+            providerId: requiredString(body, 'providerId'),
+            aiConfigurationRevision: requiredInteger(body, 'aiConfigurationRevision'),
+            changedBy: context.principalId,
+          }),
+        };
+      } catch (error) {
+        throw mapError(error, 'save-standing-ai-processing-policy');
+      }
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/api/v1/settings/ai/test-connection',
     async (request) => {
       const body = objectBody(request.body);

@@ -7,6 +7,10 @@ import {
   type AskProviderPolicyResolverPort,
   type AskSourceSelectionView,
 } from '../../../packages/contracts/src/index.js';
+import {
+  evaluateStandingAIProcessingPolicy,
+  type StandingAIProcessingPolicy,
+} from '../../../packages/policy/src/index.js';
 
 export type { AskContextSensitivity, AskProviderPolicyResolverPort };
 
@@ -29,6 +33,9 @@ export type AskProviderPolicyAuthorityReaderPort = {
     readonly projectId: string;
     readonly providerId: string;
   }): Promise<AskProviderExternalTransferApproval | undefined>;
+  readStandingAIProcessingPolicy?(
+    projectId: string,
+  ): Promise<StandingAIProcessingPolicy | undefined>;
   readSelectedSensitivities(input: {
     readonly projectId: string;
     readonly sourceSelections: readonly AskSourceSelectionView[];
@@ -61,6 +68,10 @@ export type AskProviderPolicyResolverOptions = {
 
 const policyMessage = (reason: AskProviderEligibilityView['reason']): string => {
   switch (reason) {
+    case 'STANDING_POLICY_DISABLED':
+      return 'Automatic AI processing is disabled for this Project.';
+    case 'STANDING_POLICY_PROVIDER_MISMATCH':
+      return 'Automatic AI processing is bound to a different configured provider.';
     case 'DEPLOYMENT_POLICY_BLOCKED':
       return 'This deployment does not permit sending private Project context to the configured AI provider.';
     case 'PROJECT_APPROVAL_REQUIRED':
@@ -95,6 +106,7 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
     readonly modelId?: string;
   }): Promise<AskProviderEligibilityView> {
     const projectPolicy = await this.reader.readProjectPrivacyPolicy(input.projectId);
+    const standingPolicy = await this.reader.readStandingAIProcessingPolicy?.(input.projectId);
     const selectedProviderId =
       input.providerId ??
       (await this.options.providerIdResolver?.(input.projectId)) ??
@@ -106,12 +118,14 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
       this.options.providerDescriptor?.(selectedProviderId)?.model ??
       this.options.providerModel;
     const descriptor = this.options.providerDescriptor?.(selectedProviderId, selectedModelId);
-    const providerApprovalRecord = this.reader.readProviderExternalTransferApproval
-      ? await this.reader.readProviderExternalTransferApproval({
-          projectId: input.projectId,
-          providerId: selectedProviderId,
-        })
-      : undefined;
+    const providerApprovalRecord = standingPolicy
+      ? undefined
+      : this.reader.readProviderExternalTransferApproval
+        ? await this.reader.readProviderExternalTransferApproval({
+            projectId: input.projectId,
+            providerId: selectedProviderId,
+          })
+        : undefined;
     const providerApproval =
       providerApprovalRecord?.providerId === selectedProviderId
         ? providerApprovalRecord
@@ -126,21 +140,37 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
       (providerApproval === undefined &&
         selectedProviderId === 'google-gemini' &&
         projectPolicy.externalTransferAllowed);
-    const reason: AskProviderEligibilityView['reason'] = restricted
-      ? 'RESTRICTED_CONTEXT_BLOCKED'
-      : privateContext && !deploymentPrivateTransferAllowed
-        ? 'DEPLOYMENT_POLICY_BLOCKED'
-        : privateContext && !projectApproval
-          ? 'PROJECT_APPROVAL_REQUIRED'
-          : 'ELIGIBLE';
+    const standingDecision = standingPolicy
+      ? evaluateStandingAIProcessingPolicy({
+          policy: standingPolicy,
+          providerId: selectedProviderId,
+          sensitivity: restricted ? 'restricted' : privateContext ? 'private' : 'internal',
+          deploymentAllowsPrivate: deploymentPrivateTransferAllowed,
+        })
+      : undefined;
+    const reason: AskProviderEligibilityView['reason'] = standingDecision
+      ? standingDecision.reason === 'NOT_CONFIGURED'
+        ? 'STANDING_POLICY_DISABLED'
+        : standingDecision.reason
+      : restricted
+        ? 'RESTRICTED_CONTEXT_BLOCKED'
+        : privateContext && !deploymentPrivateTransferAllowed
+          ? 'DEPLOYMENT_POLICY_BLOCKED'
+          : privateContext && !projectApproval
+            ? 'PROJECT_APPROVAL_REQUIRED'
+            : 'ELIGIBLE';
     const requiredAction: AskProviderEligibilityView['requiredAction'] =
-      reason === 'RESTRICTED_CONTEXT_BLOCKED'
-        ? 'REMOVE_RESTRICTED_CONTEXT'
-        : reason === 'DEPLOYMENT_POLICY_BLOCKED'
-          ? 'CONTACT_DEPLOYMENT_ADMINISTRATOR'
-          : reason === 'PROJECT_APPROVAL_REQUIRED'
-            ? 'REVIEW_PROJECT_PRIVACY_SETTINGS'
-            : 'NONE';
+      reason === 'STANDING_POLICY_DISABLED'
+        ? 'ENABLE_STANDING_AI_PROCESSING'
+        : reason === 'STANDING_POLICY_PROVIDER_MISMATCH'
+          ? 'CONFIGURE_STANDING_AI_FOR_PROVIDER'
+          : reason === 'RESTRICTED_CONTEXT_BLOCKED'
+            ? 'REMOVE_RESTRICTED_CONTEXT'
+            : reason === 'DEPLOYMENT_POLICY_BLOCKED'
+              ? 'CONTACT_DEPLOYMENT_ADMINISTRATOR'
+              : reason === 'PROJECT_APPROVAL_REQUIRED'
+                ? 'REVIEW_PROJECT_PRIVACY_SETTINGS'
+                : 'NONE';
     const policyFingerprint = sha256Text(
       stableJson({
         schema: 'ask-provider-effective-policy-v2',
@@ -151,6 +181,9 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
         providerApprovalRevision: providerApproval?.approvalRevision ?? null,
         projectSettingsRevision: projectPolicy.settingsRevision,
         projectPolicyContextRevision: projectPolicy.policyContextRevision,
+        standingPolicyRevision: standingPolicy?.policyRevision ?? null,
+        standingPolicyEnabled: standingPolicy?.enabled ?? false,
+        standingPolicyProviderId: standingPolicy?.providerId ?? null,
         restrictedExternalTransferAllowed: false,
       }),
     );
@@ -160,7 +193,9 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
       reason,
       requiredAction,
       policyFingerprint: `ask-provider-effective-policy-v2:${policyFingerprint}`,
-      policyContextRevision: String(projectPolicy.policyContextRevision),
+      policyContextRevision: String(
+        standingPolicy?.policyRevision ?? projectPolicy.policyContextRevision,
+      ),
       provider: {
         displayName: descriptor?.displayName ?? this.options.providerDisplayName,
         model: selectedModelId,

@@ -44,6 +44,7 @@ export * from './semantic-index.js';
 export * from './semantic-generation.js';
 export * from './hybrid-retrieval.js';
 export * from './semantic-query.js';
+export * from './ai-standing-policy.js';
 export * from './discovery-runtime.js';
 export * from './discovery-reentry.js';
 export * from './discovery-freshness.js';

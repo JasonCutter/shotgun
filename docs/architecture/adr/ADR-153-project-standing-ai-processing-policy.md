@@ -51,10 +51,12 @@ new executions observe revocation and provider changes immediately.
 
 The deployment ceiling remains a hard deny. Managed deployments can explicitly
 deny providers through `AI_PRIVATE_EGRESS_ALLOWED_PROVIDERS` and
-`SHOTGUN_DEPLOYMENT_MODE=managed`. A normal local-owner installation uses the
-selected registered provider as the default private-transfer ceiling when no
-explicit operator allowlist is present. This removes repeated local environment
-editing while preserving an explicit managed-deployment deny mechanism.
+`SHOTGUN_DEPLOYMENT_MODE=managed`. In local-owner mode, when no explicit
+operator allowlist is present, registered supported providers are not blocked
+by the deployment ceiling. The Project standing policy remains provider-bound,
+so only its explicitly bound provider is effectively authorized for that
+Project. Managed deployments can explicitly deny providers through the
+operator allowlist while preserving this Project binding requirement.
 
 `restricted` external transfer remains denied regardless of standing policy,
 provider approval history, or local deployment mode.

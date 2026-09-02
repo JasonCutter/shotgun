@@ -127,7 +127,7 @@ export class PostgresStandingAIProcessingPolicyRepository implements StandingAIP
       await client.query(
         `INSERT INTO settings.settings_audit_events
            (event_id, project_id, actor_id, action_name, risk_level, details, timestamp)
-         VALUES ($1, $2, $3, 'PROJECT_STANDING_AI_PROCESSING_POLICY_CHANGED', 'LOW', $4, $5)`,
+         VALUES ($1, $2, $3, 'PROJECT_STANDING_AI_PROCESSING_POLICY_CHANGED', 'HIGH', $4, $5)`,
         [
           randomUUID(),
           input.next.projectId,

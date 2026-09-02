@@ -29,6 +29,25 @@ const objectBody = (body: unknown): Record<string, unknown> => {
   return body as Record<string, unknown>;
 };
 
+const requireProjectOwner = async (
+  headers: SecurityHeaders,
+  projectId: string,
+  authRepo: AuthRepositoryPort,
+  requireBrowserSession: BrowserSession,
+): Promise<{ principalId: string; projectId: string }> => {
+  const { context } = await requireBrowserSession(headers);
+  const membership = await authRepo.findMembership(context.principalId, projectId);
+  if (!membership || !membership.isOwner) {
+    throw new ShotgunError({
+      code: 'PROJECT_ACCESS_DENIED',
+      safeMessage: 'Project Owner permission is required.',
+      module: 'ai-settings-api',
+      operation: 'authorize-project-owner',
+    });
+  }
+  return context;
+};
+
 const requiredString = (body: Record<string, unknown>, name: string): string => {
   const value = body[name];
   if (typeof value !== 'string' || !value.trim()) {
@@ -432,7 +451,7 @@ export function registerAISettingsRoutes(
       const body = objectBody(request.body);
       const { context } = await requireBrowserSession(request.headers);
       const projectId = projectFrom(body, context.projectId);
-      await access(request.headers, projectId, true);
+      await requireProjectOwner(request.headers, projectId, authRepo, requireBrowserSession);
       try {
         return {
           standingPolicy: await backend.saveStandingPolicy({

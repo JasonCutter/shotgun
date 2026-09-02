@@ -6,6 +6,7 @@ import generateStructuredOutputSchema from '../../../packages/contracts/schemas/
 import generateStructuredSchema from '../../../packages/contracts/schemas/generate-structured.v1.schema.json';
 import {
   type AIDurableState,
+  type AIExecutionIdentity,
   type AIProviderAttempt,
   type AIProviderCall,
   type AIProviderOutput,
@@ -68,6 +69,25 @@ export type AIProviderAdapterPort = {
   ): Promise<StructuredGenerationResponse>;
 };
 
+export type AIProviderExecutionResolution = {
+  readonly adapter: AIProviderAdapterPort;
+  /** The exact Project configuration, credential and policy identity used by
+   * the adapter. This is persisted with the durable provider call. */
+  readonly executionIdentity: AIExecutionIdentity;
+};
+
+export type AIProviderExecutionResolverPort = {
+  resolve(input: {
+    readonly projectId: string;
+    readonly requestId: string;
+    readonly sourceVersionId: string;
+    readonly dataClassification: string;
+    readonly accessScope: readonly string[];
+    readonly sensitivity: AIProviderExecutionRecord['sensitivity'];
+    readonly existingIdentity?: AIExecutionIdentity;
+  }): Promise<AIProviderExecutionResolution>;
+};
+
 export type AIProviderExecutionRecord = {
   readonly callId: string;
   readonly requestId: string;
@@ -84,6 +104,7 @@ export type AIProviderExecutionRecord = {
   readonly inputEvidenceIds: readonly string[];
   readonly inputSnapshotDigest: string;
   readonly requestDigest: string;
+  readonly executionIdentity?: AIExecutionIdentity;
   readonly state: AIDurableState;
   readonly status: 'succeeded' | 'failed';
   readonly maxAttempts: number;
@@ -145,6 +166,12 @@ export type AIProviderPolicy = {
   readonly allowPrivate: boolean;
   readonly allowRestricted: false;
   readonly maxAttempts: number;
+};
+
+export type AIProviderModuleOptions = {
+  /** Optional request-time Project authority. When supplied, the static
+   * adapter is only the compatibility fallback for existing harnesses. */
+  readonly executionResolver?: AIProviderExecutionResolverPort;
 };
 
 type GenerateStructuredPayload = {
@@ -334,6 +361,7 @@ export const createAIProviderModule = (
   repository: AIProviderCallRepositoryPort,
   adapter: AIProviderAdapterPort,
   policy: AIProviderPolicy = { allowPrivate: false, allowRestricted: false, maxAttempts: 2 },
+  options: AIProviderModuleOptions = {},
 ): ShotgunModule => ({
   manifest: {
     id: 'stage4.ai-provider',
@@ -451,6 +479,62 @@ export const createAIProviderModule = (
               correlationId: envelope.correlationId,
             });
           }
+          const existing = await repository.findByRequestId(projectId, payload.requestId);
+          // A completed output is already the durable authority. Replaying
+          // materialization must never re-resolve current configuration or
+          // recall an external provider.
+          if (
+            existing &&
+            (existing.state === 'OUTPUT_MATERIALIZED' ||
+              existing.state === 'MATERIALIZATION_FAILED' ||
+              existing.state === 'COMPLETED')
+          ) {
+            const parsed = parseStoredOutput(existing);
+            return {
+              call: existing.call!,
+              candidates: parsed.candidates,
+              output: outputReference(existing.output!),
+            };
+          }
+          if (existing?.state === 'OUTCOME_UNKNOWN') {
+            throw new ShotgunError({
+              code: 'OUTCOME_UNKNOWN',
+              safeMessage:
+                'The prior provider attempt has an unknown outcome and will not be called again automatically.',
+              module: 'stage4.ai-provider',
+              operation: 'claim-provider-attempt',
+              correlationId: envelope.correlationId,
+              retryable: false,
+            });
+          }
+          const resolution = options.executionResolver
+            ? await options.executionResolver.resolve({
+                projectId,
+                requestId: payload.requestId,
+                sourceVersionId: payload.sourceVersionId,
+                dataClassification: payload.dataClassification,
+                accessScope: payload.accessScope,
+                sensitivity: payload.sensitivity,
+                ...(existing?.executionIdentity === undefined
+                  ? {}
+                  : { existingIdentity: existing.executionIdentity }),
+              })
+            : undefined;
+          const activeAdapter = resolution?.adapter ?? adapter;
+          const executionIdentity = resolution?.executionIdentity;
+          if (
+            executionIdentity &&
+            (executionIdentity.providerId !== activeAdapter.identity.provider ||
+              executionIdentity.modelId !== activeAdapter.identity.model)
+          ) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The routed AI adapter does not match its execution identity.',
+              module: 'stage4.ai-provider',
+              operation: 'verify-execution-identity',
+              correlationId: envelope.correlationId,
+            });
+          }
           const inputSnapshotDigest = snapshotDigest(projectId, payload);
           const durableRequestDigest = requestDigest(payload, inputSnapshotDigest);
           let record = await repository.ensure({
@@ -458,8 +542,8 @@ export const createAIProviderModule = (
             requestId: payload.requestId,
             projectId,
             sourceVersionId: payload.sourceVersionId,
-            provider: adapter.identity.provider,
-            model: adapter.identity.model,
+            provider: activeAdapter.identity.provider,
+            model: activeAdapter.identity.model,
             promptVersion: 'direct-claim-v1',
             policyVersion: payload.policyVersion,
             schemaName: payload.schemaName,
@@ -473,6 +557,7 @@ export const createAIProviderModule = (
             status: 'failed',
             maxAttempts: Math.max(1, Math.min(policy.maxAttempts, 2)),
             attempts: [],
+            ...(executionIdentity === undefined ? {} : { executionIdentity }),
             createdAt: envelope.createdAt,
           });
           if (
@@ -488,16 +573,29 @@ export const createAIProviderModule = (
             });
           }
           if (
-            record.state === 'OUTPUT_MATERIALIZED' ||
-            record.state === 'MATERIALIZATION_FAILED' ||
-            record.state === 'COMPLETED'
+            executionIdentity &&
+            (!record.executionIdentity ||
+              stableJson(record.executionIdentity) !== stableJson(executionIdentity))
           ) {
-            const parsed = parseStoredOutput(record);
-            return {
-              call: record.call!,
-              candidates: parsed.candidates,
-              output: outputReference(record.output!),
-            };
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The durable AI execution identity does not match the routed identity.',
+              module: 'stage4.ai-provider',
+              operation: 'verify-durable-execution-identity',
+              correlationId: envelope.correlationId,
+            });
+          }
+          if (
+            record.provider !== activeAdapter.identity.provider ||
+            record.model !== activeAdapter.identity.model
+          ) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The durable AI provider route does not match the current route.',
+              module: 'stage4.ai-provider',
+              operation: 'verify-durable-provider-route',
+              correlationId: envelope.correlationId,
+            });
           }
           if (record.state === 'PROVIDER_RUNNING' || record.state === 'OUTCOME_UNKNOWN') {
             throw new ShotgunError({
@@ -518,11 +616,17 @@ export const createAIProviderModule = (
             const startedAt = Date.now();
             let response: StructuredGenerationResponse;
             try {
-              response = await adapter.generateStructured({
-                systemInstruction,
-                prompt: promptFor(payload),
-                responseSchema: candidateBatchSchema,
-              });
+              response = await (activeAdapter.generateStructuredWithSignal
+                ? activeAdapter.generateStructuredWithSignal({
+                    systemInstruction,
+                    prompt: promptFor(payload),
+                    responseSchema: candidateBatchSchema,
+                  })
+                : activeAdapter.generateStructured({
+                    systemInstruction,
+                    prompt: promptFor(payload),
+                    responseSchema: candidateBatchSchema,
+                  }));
             } catch (error) {
               lastError = toShotgunError(error, {
                 code: 'TERMINAL_FAILURE',
@@ -550,20 +654,20 @@ export const createAIProviderModule = (
               callId: record.callId,
               attemptId: claimed.attempt.attemptId,
               envelopeVersion: 'ai-provider-output-v1' as const,
-              provider: adapter.identity.provider,
-              adapterVersion: adapter.identity.adapterVersion,
-              model: adapter.identity.model,
+              provider: activeAdapter.identity.provider,
+              adapterVersion: activeAdapter.identity.adapterVersion,
+              model: activeAdapter.identity.model,
               schemaName: payload.schemaName,
               schemaVersion: '1.0.0' as const,
               promptVersion: 'direct-claim-v1' as const,
               policyVersion: payload.policyVersion,
-              dataPolicyVersion: adapter.identity
+              dataPolicyVersion: activeAdapter.identity
                 .dataPolicyVersion as AIProviderCall['dataPolicyVersion'],
               rawText: response.rawText,
               requestDigest: durableRequestDigest,
               inputSnapshotDigest,
               providerResponseId: response.providerResponseId,
-              modelVersion: response.modelVersion ?? adapter.identity.model,
+              modelVersion: response.modelVersion ?? activeAdapter.identity.model,
               usage: {
                 inputTokens,
                 outputTokens,
@@ -639,13 +743,13 @@ export const createAIProviderModule = (
               requestId: payload.requestId,
               taskProfile: payload.taskProfile,
               schemaName: payload.schemaName,
-              provider: adapter.identity.provider,
-              adapterVersion: adapter.identity.adapterVersion,
-              model: adapter.identity.model,
+              provider: activeAdapter.identity.provider,
+              adapterVersion: activeAdapter.identity.adapterVersion,
+              model: activeAdapter.identity.model,
               modelVersion: draft.modelVersion,
               promptVersion: 'direct-claim-v1',
               policyVersion: payload.policyVersion,
-              dataPolicyVersion: adapter.identity
+              dataPolicyVersion: activeAdapter.identity
                 .dataPolicyVersion as AIProviderCall['dataPolicyVersion'],
               dataClassification: payload.dataClassification,
               inputEvidenceIds: record.inputEvidenceIds,
@@ -653,6 +757,7 @@ export const createAIProviderModule = (
               cost: draft.cost,
               attempts: succeeded,
               structuredOutputValid: true,
+              ...(executionIdentity === undefined ? {} : { executionIdentity }),
               createdAt: record.createdAt,
             };
 

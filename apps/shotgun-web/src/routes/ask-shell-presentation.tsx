@@ -49,6 +49,10 @@ const askProviderEligibilityReasonMessage = (
   reason: AskProviderEligibilityView['reason'],
 ): string | null => {
   switch (reason) {
+    case 'STANDING_POLICY_DISABLED':
+      return t('ask.provider_eligibility.standing_policy_disabled');
+    case 'STANDING_POLICY_PROVIDER_MISMATCH':
+      return t('ask.provider_eligibility.standing_policy_provider_mismatch');
     case 'DEPLOYMENT_POLICY_BLOCKED':
       return t('ask.provider_eligibility.deployment_policy_blocked');
     case 'PROJECT_APPROVAL_REQUIRED':

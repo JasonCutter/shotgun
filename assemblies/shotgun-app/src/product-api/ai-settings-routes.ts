@@ -29,6 +29,25 @@ const objectBody = (body: unknown): Record<string, unknown> => {
   return body as Record<string, unknown>;
 };
 
+const requireProjectOwner = async (
+  headers: SecurityHeaders,
+  projectId: string,
+  authRepo: AuthRepositoryPort,
+  requireBrowserSession: BrowserSession,
+): Promise<{ principalId: string; projectId: string }> => {
+  const { context } = await requireBrowserSession(headers);
+  const membership = await authRepo.findMembership(context.principalId, projectId);
+  if (!membership || !membership.isOwner) {
+    throw new ShotgunError({
+      code: 'PROJECT_ACCESS_DENIED',
+      safeMessage: 'Project Owner permission is required.',
+      module: 'ai-settings-api',
+      operation: 'authorize-project-owner',
+    });
+  }
+  return context;
+};
+
 const requiredString = (body: Record<string, unknown>, name: string): string => {
   const value = body[name];
   if (typeof value !== 'string' || !value.trim()) {
@@ -422,6 +441,30 @@ export function registerAISettingsRoutes(
         };
       } catch (error) {
         throw mapError(error, 'save-ai-configuration');
+      }
+    },
+  );
+
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/api/v1/settings/ai/standing-policy',
+    async (request) => {
+      const body = objectBody(request.body);
+      const { context } = await requireBrowserSession(request.headers);
+      const projectId = projectFrom(body, context.projectId);
+      await requireProjectOwner(request.headers, projectId, authRepo, requireBrowserSession);
+      try {
+        return {
+          standingPolicy: await backend.saveStandingPolicy({
+            projectId,
+            expectedRevision: requiredInteger(body, 'expectedRevision'),
+            enabled: requiredBoolean(body, 'enabled'),
+            providerId: requiredString(body, 'providerId'),
+            aiConfigurationRevision: requiredInteger(body, 'aiConfigurationRevision'),
+            changedBy: context.principalId,
+          }),
+        };
+      } catch (error) {
+        throw mapError(error, 'save-standing-ai-processing-policy');
       }
     },
   );

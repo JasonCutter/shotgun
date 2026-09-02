@@ -150,10 +150,10 @@ test('HFM-S7-C6 Settings privacy flow: AI review required -> Privacy proposal ->
   const providerSelect = page.getByLabel('AI Provider');
   await providerSelect.selectOption('openai');
 
-  // Check that Privacy review required message and navigation link appear
-  await expect(
-    page.getByText('Privacy review is required before this provider can process Project data.'),
-  ).toBeVisible();
+  // The current Settings > AI contract uses the concise provider-scoped
+  // status label and provides the Privacy workspace link for review.
+  const privacyStatus = page.getByRole('region', { name: 'Privacy status' });
+  await expect(privacyStatus.locator('p').filter({ hasText: 'Review required' })).toBeVisible();
   const privacyLink = page.getByRole('link', { name: /Review privacy in Settings → Privacy/i });
   await expect(privacyLink).toBeVisible();
 

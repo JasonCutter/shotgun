@@ -1,6 +1,11 @@
 import type { SecurityContext } from '../../../packages/contracts/src/index.js';
 
-export type { SourcesStage3PipelinePort } from './stage3-pipeline.js';
+export type {
+  SourcesStage3EvidenceIndexedInput,
+  SourcesStage3PipelineOutcome,
+  SourcesStage3PipelinePort,
+  SourcesStage4ContinuationPort,
+} from './stage3-pipeline.js';
 export {
   assertSourcesResourceSecurityContinuation,
   resolveSourcesResourceSecurity,

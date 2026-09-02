@@ -151,6 +151,9 @@ const sensitivityRank = {
   restricted: 3,
 } as const;
 
+const AUTOMATIC_SOURCE_EVIDENCE_LIMIT = 8;
+const ASK_QUERY_PLAN_REVISION = 'ask-query-plan-v4';
+
 const notFound = (): ShotgunError =>
   new ShotgunError({
     code: 'NOT_FOUND',
@@ -409,6 +412,89 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     const selectedEvidenceIds = selections.rows.flatMap((row) =>
       row.evidence_id ? [row.evidence_id] : [],
     );
+    const allowedSensitivities = (
+      Object.keys(sensitivityRank) as (keyof typeof sensitivityRank)[]
+    ).filter(
+      (sensitivity) => sensitivityRank[sensitivity] <= sensitivityRank[scope.sensitivityClearance],
+    );
+    const automaticEvidenceBySelection = new Map<string, readonly string[]>();
+    if (snapshot.mode !== 'CANONICAL_ONLY') {
+      for (const [selectionId, selection] of selectionGroups) {
+        if (selection.evidenceIds.length > 0) continue;
+        const result = await this.pool.query<EvidenceRow>(
+          `WITH query_terms AS (
+             SELECT regexp_split_to_table(
+               trim(regexp_replace(lower($4), '[^[:alnum:]가-힣]+', ' ', 'g')),
+               '\\s+'
+             ) AS term
+           ), ranked AS (
+             SELECT
+               spans.evidence_id::text,
+               spans.source_id::text,
+               spans.source_version_id::text,
+               spans.quote ->> 'exact' AS exact_quote,
+               spans.sensitivity,
+               spans.position,
+               GREATEST(
+                 ts_rank_cd(
+                   to_tsvector('simple', spans.quote ->> 'exact'),
+                   websearch_to_tsquery('simple', $4)
+                 ),
+                 similarity(spans.quote ->> 'exact', $4),
+                 CASE
+                   WHEN spans.quote ->> 'exact' ILIKE '%' || $4 || '%' THEN 1.0
+                   ELSE 0.0
+                 END,
+                 (
+                   SELECT count(*)::double precision
+                   FROM query_terms
+                   WHERE char_length(term) >= 2
+                     AND lower(spans.quote ->> 'exact') ILIKE '%' || term || '%'
+                 )
+               )::double precision AS score
+             FROM evidence.spans AS spans
+             WHERE spans.project_id = $1
+               AND spans.source_id::text = $2
+               AND spans.source_version_id::text = $3
+               AND spans.access_scope <@ $5::text[]
+               AND spans.sensitivity = ANY($6::text[])
+               AND (
+                 to_tsvector('simple', spans.quote ->> 'exact') @@ websearch_to_tsquery('simple', $4)
+                 OR (spans.quote ->> 'exact') % $4
+                 OR spans.quote ->> 'exact' ILIKE '%' || $4 || '%'
+                 OR EXISTS (
+                   SELECT 1
+                   FROM query_terms
+                   WHERE char_length(term) >= 2
+                     AND lower(spans.quote ->> 'exact') ILIKE '%' || term || '%'
+                 )
+               )
+           )
+           SELECT evidence_id, source_id, source_version_id, exact_quote, sensitivity
+           FROM ranked
+           ORDER BY score DESC,
+                    ((position ->> 'start')::integer),
+                    evidence_id
+           LIMIT $7`,
+          [
+            scope.projectId,
+            selection.sourceId,
+            selection.sourceVersionId,
+            snapshot.question,
+            scope.accessScope ?? [],
+            allowedSensitivities,
+            AUTOMATIC_SOURCE_EVIDENCE_LIMIT,
+          ],
+        );
+        automaticEvidenceBySelection.set(
+          selectionId,
+          result.rows.map((row) => row.evidence_id),
+        );
+      }
+    }
+    const automaticallyResolvedEvidenceIds = [...automaticEvidenceBySelection.values()].flatMap(
+      (evidenceIds) => evidenceIds,
+    );
     const canonicalEvidenceIds =
       snapshot.mode === 'SOURCE_EXPLORATION'
         ? []
@@ -433,8 +519,14 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       snapshot.mode === 'CANONICAL_ONLY'
         ? canonicalEvidenceIds
         : snapshot.mode === 'HYBRID'
-          ? [...new Set([...canonicalEvidenceIds, ...selectedEvidenceIds])]
-          : selectedEvidenceIds;
+          ? [
+              ...new Set([
+                ...canonicalEvidenceIds,
+                ...selectedEvidenceIds,
+                ...automaticallyResolvedEvidenceIds,
+              ]),
+            ]
+          : [...new Set([...selectedEvidenceIds, ...automaticallyResolvedEvidenceIds])];
     const evidenceResult =
       evidenceIds.length === 0
         ? { rows: [] as EvidenceRow[] }
@@ -456,10 +548,30 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     for (const selection of selections.rows) {
       if (!selection.evidence_id) continue;
       const evidence = evidenceById.get(selection.evidence_id);
-      if (!evidence || evidence.source_version_id !== selection.source_version_id) {
+      if (
+        !evidence ||
+        evidence.source_id !== selection.source_id ||
+        evidence.source_version_id !== selection.source_version_id
+      ) {
         throw invalid(
           'An explicitly selected EvidenceSpan is no longer valid for this SourceVersion.',
         );
+      }
+    }
+    for (const [selectionId, evidenceIdsForSelection] of automaticEvidenceBySelection) {
+      const selection = selectionGroups.get(selectionId);
+      if (!selection) throw invalid('The automatic Evidence selection is no longer valid.');
+      for (const evidenceId of evidenceIdsForSelection) {
+        const evidence = evidenceById.get(evidenceId);
+        if (
+          !evidence ||
+          evidence.source_id !== selection.sourceId ||
+          evidence.source_version_id !== selection.sourceVersionId
+        ) {
+          throw invalid(
+            'Automatically resolved Evidence is not bound to the pinned SourceVersion.',
+          );
+        }
       }
     }
     const evidence = evidenceResult.rows.map((row) => {
@@ -476,9 +588,13 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     });
     const sourceVersions = (
       await Promise.all(
-        [...selectionGroups.values()]
-          .filter((selection) => selection.evidenceIds.length === 0)
-          .map((selection) =>
+        [...selectionGroups.entries()]
+          .filter(
+            ([selectionId, selection]) =>
+              selection.evidenceIds.length === 0 &&
+              (automaticEvidenceBySelection.get(selectionId)?.length ?? 0) === 0,
+          )
+          .map(([, selection]) =>
             this.sourceContextReader.resolve({
               scope,
               sourceId: selection.sourceId,
@@ -491,7 +607,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       ...evidence.map((item) => ({ kind: 'EVIDENCE' as const, ...item })),
       ...sourceVersions,
     ];
-    const queryPlanRevision = 'ask-query-plan-v3';
+    const queryPlanRevision = ASK_QUERY_PLAN_REVISION;
     return {
       evidence,
       context,
@@ -591,19 +707,28 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       sensitivity: item.sensitivity,
     }));
     const queryPlanRevision = row.query_plan_revision ?? 'ask-query-plan-v2';
+    const sourceSelectionsWithoutResolvedEvidence = snapshot.sourceSelections.filter(
+      (selection) =>
+        selection.evidenceIds.length === 0 &&
+        (queryPlanRevision === 'ask-query-plan-v3' ||
+          (queryPlanRevision === ASK_QUERY_PLAN_REVISION &&
+            !mappedEvidence.some(
+              (evidenceItem) =>
+                evidenceItem.sourceId === selection.sourceId &&
+                evidenceItem.sourceVersionId === selection.sourceVersionId,
+            ))),
+    );
     const sourceVersions =
-      queryPlanRevision === 'ask-query-plan-v3'
+      queryPlanRevision === 'ask-query-plan-v3' || queryPlanRevision === ASK_QUERY_PLAN_REVISION
         ? (
             await Promise.all(
-              snapshot.sourceSelections
-                .filter((selection) => selection.evidenceIds.length === 0)
-                .map((selection) =>
-                  this.sourceContextReader.resolve({
-                    scope,
-                    sourceId: selection.sourceId,
-                    sourceVersionId: selection.sourceVersionId,
-                  }),
-                ),
+              sourceSelectionsWithoutResolvedEvidence.map((selection) =>
+                this.sourceContextReader.resolve({
+                  scope,
+                  sourceId: selection.sourceId,
+                  sourceVersionId: selection.sourceVersionId,
+                }),
+              ),
             )
           ).filter((item) => item !== undefined)
         : [];
@@ -611,7 +736,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       ...mappedEvidence.map((item) => ({ kind: 'EVIDENCE' as const, ...item })),
       ...sourceVersions,
     ];
-    if (queryPlanRevision === 'ask-query-plan-v3') {
+    if (
+      queryPlanRevision === 'ask-query-plan-v3' ||
+      queryPlanRevision === ASK_QUERY_PLAN_REVISION
+    ) {
       const currentDigest = askExecutionContextDigest({
         queryPlanRevision,
         projectId: scope.projectId,

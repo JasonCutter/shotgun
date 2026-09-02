@@ -20,6 +20,7 @@ import type {
   ProviderStatusReaderPort,
   SemanticEmbeddingRegistryPort,
 } from '../../packages/contracts/src/index.js';
+import type { StandingAIProcessingPolicy } from '../../packages/policy/src/index.js';
 
 describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () => {
   const createTestRig = (
@@ -34,6 +35,7 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       readonly legacyGeminiAllowed?: boolean;
       readonly customProviderRegistry?: ProviderStatusReaderPort;
       readonly customEmbeddingRegistry?: SemanticEmbeddingRegistryPort;
+      readonly standingPolicy?: StandingAIProcessingPolicy;
     } = {},
   ) => {
     const embeddingRegistry = options.customEmbeddingRegistry ?? initialSemanticEmbeddingRegistry();
@@ -158,6 +160,9 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
           options.legacyGeminiAllowed !== undefined
             ? async () => options.legacyGeminiAllowed!
             : undefined,
+        standingPolicyAuthority: options.standingPolicy
+          ? { getCurrent: async () => options.standingPolicy }
+          : undefined,
         clock: () => '2026-08-18T14:00:00.000Z',
       },
     );
@@ -273,6 +278,42 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
     expect(serializedPin).not.toContain('bearer');
 
     expect(resolved.model.providerDefaultDimension).toBe(1536);
+  });
+
+  it('uses the Project standing authority for private embeddings and records its revision', async () => {
+    const { resolver, profileService } = createTestRig({
+      approvedProviders: [],
+      standingPolicy: {
+        projectId: 'project-1',
+        enabled: true,
+        providerId: 'openai',
+        policyRevision: 8,
+        aiConfigurationRevision: 3,
+        changedBy: 'principal-owner',
+        changedAt: '2026-08-18T14:00:00.000Z',
+      },
+    });
+    const profile = await profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+
+    const resolved = await resolver.resolveExecution({
+      projectId: 'project-1',
+      sensitivity: 'private',
+    });
+    expect(resolved.pin).toMatchObject({ standingPolicyRevision: 8 });
   });
 
   it('proves providerRegistryRevision is authoritatively derived from ProviderRegistryPort rather than a local fallback literal', async () => {

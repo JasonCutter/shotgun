@@ -14,6 +14,7 @@ import type {
   AISettingsProvider,
   AISettingsProviderModel,
   AISettingsReadModel,
+  AIStandingProcessingPolicy,
   AITestConnectionResult,
   ProductApiErrorBody,
   ProductSessionView,
@@ -251,6 +252,19 @@ const decodeAIPrivacy = (value: unknown): AISettingsPrivacyStatus => {
   };
 };
 
+const decodeAIStandingPolicy = (value: unknown): AIStandingProcessingPolicy => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  return {
+    projectId: aiString(value.projectId),
+    enabled: aiBoolean(value.enabled),
+    providerId: aiString(value.providerId),
+    policyRevision: aiNumber(value.policyRevision),
+    aiConfigurationRevision: aiNumber(value.aiConfigurationRevision),
+    changedBy: aiString(value.changedBy),
+    changedAt: aiString(value.changedAt),
+  };
+};
+
 export const decodeAISettingsReadModel = (value: unknown): AISettingsReadModel => {
   if (!isRecord(value) || !Array.isArray(value.providers)) throw invalidProductApiResponse();
   const mode = aiString(value.mode);
@@ -287,6 +301,9 @@ export const decodeAISettingsReadModel = (value: unknown): AISettingsReadModel =
     providers: value.providers.map(decodeAIProvider),
     credentialStatuses: value.credentialStatuses.map(decodeAICredentialStatus),
     privacy: value.privacy.map(decodeAIPrivacy),
+    ...(value.standingPolicy === undefined
+      ? {}
+      : { standingPolicy: decodeAIStandingPolicy(value.standingPolicy) }),
     vaultAvailability:
       vaultState === 'AVAILABLE'
         ? { state: 'AVAILABLE', keyVersion: aiString(value.vaultAvailability.keyVersion) }
@@ -304,6 +321,9 @@ export const decodeAICredentialMetadataEnvelope = (value: unknown): AICredential
 
 export const decodeAISettingsApprovalEnvelope = (value: unknown): AISettingsApproval =>
   decodeAIApproval(value);
+
+export const decodeAIStandingPolicyEnvelope = (value: unknown): AIStandingProcessingPolicy =>
+  decodeAIStandingPolicy(value);
 
 export const decodeAIProviderPrivacyProposalEnvelope = (
   value: unknown,

@@ -190,7 +190,11 @@ test('AC-23: interaction (select) commits within 100ms (median of 3 samples)', a
   await page.evaluate(() => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   });
-  await expect(page.getByRole('status')).toHaveText('');
+  const graphWorkspace = page.getByRole('region', { name: 'Semantic Graph', exact: true });
+  const selectionAnnouncement = graphWorkspace.locator(
+    'p.visually-hidden[role="status"][aria-live="polite"]',
+  );
+  await expect(selectionAnnouncement).toHaveText('');
 
   const samples: number[] = [];
   for (let i = 0; i < 3; i += 1) {
@@ -202,7 +206,9 @@ test('AC-23: interaction (select) commits within 100ms (median of 3 samples)', a
     // test harness latency.
     const target = `선택됨: Entity ${i + 1}`;
     const interactionMs = await page.evaluate(async (targetText) => {
-      const status = document.querySelector<HTMLElement>('[role="status"]');
+      const status = document.querySelector<HTMLElement>(
+        '.graph-workspace p.visually-hidden[role="status"][aria-live="polite"]',
+      );
       const start = performance.now();
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       while (performance.now() - start < 5000 && !status?.textContent?.includes(targetText)) {
@@ -210,7 +216,9 @@ test('AC-23: interaction (select) commits within 100ms (median of 3 samples)', a
       }
       return Math.round(performance.now() - start);
     }, target);
-    await expect(page.getByRole('status')).toContainText(target);
+    await expect(graphWorkspace.getByRole('status').filter({ hasText: target })).toContainText(
+      target,
+    );
     samples.push(interactionMs);
     if (i < 2) {
       await page.evaluate(() => {

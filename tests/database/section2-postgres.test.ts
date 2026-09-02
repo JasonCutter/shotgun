@@ -22,21 +22,38 @@ describe.runIf(pool)('Persistent PostgreSQL Section 2 Settings & Project Adminis
   let commandGateway: PostgresFrontendCommandGateway;
 
   beforeEach(async () => {
-    await pool!.query(`
-      DELETE FROM project_admin.project_command_results WHERE command_id IN (SELECT command_id FROM project_admin.project_commands WHERE project_id LIKE 'pg-proj-%');
-      DELETE FROM frontend_command.command_ledger WHERE target_project_id LIKE 'pg-proj-%';
-      DELETE FROM project_admin.project_commands WHERE project_id LIKE 'pg-proj-%';
-      DELETE FROM project_admin.project_revisions WHERE project_id LIKE 'pg-proj-%';
-      -- settings history sources are append-only and must NOT be truncated or
-      -- deleted (migration 032 immutability guard: UPDATE/DELETE/TRUNCATE all
-      -- forbidden). Each test uses a unique project prefix ('pg-proj-%'), so
-      -- historical rows are isolated and left for the full DB reset boundary.
-      DELETE FROM settings.settings_command_results WHERE command_id IN (SELECT command_id FROM settings.settings_commands WHERE project_id LIKE 'pg-proj-%');
-      DELETE FROM settings.settings_commands WHERE project_id LIKE 'pg-proj-%';
-      DELETE FROM settings.project_settings WHERE project_id LIKE 'pg-proj-%';
-      DELETE FROM auth.project_memberships WHERE project_id LIKE 'pg-proj-%';
-      DELETE FROM project_admin.projects WHERE id LIKE 'pg-proj-%';
-    `);
+    const client = await pool!.connect();
+    try {
+      // The standing-policy tables are test-owned immutable history. The
+      // current pointer is protected by a production DELETE trigger, so use
+      // the same test-only trigger bypass used by other immutable-history
+      // cleanup helpers, then restore normal trigger/FK enforcement before
+      // deleting the parent Project.
+      await client.query('SET session_replication_role = replica');
+      await client.query(`
+        DELETE FROM ai.project_standing_ai_processing_policies WHERE project_id LIKE 'pg-proj-%';
+        DELETE FROM ai.project_standing_ai_processing_policy_revisions WHERE project_id LIKE 'pg-proj-%';
+      `);
+      await client.query('SET session_replication_role = origin');
+      await client.query(`
+        DELETE FROM project_admin.project_command_results WHERE command_id IN (SELECT command_id FROM project_admin.project_commands WHERE project_id LIKE 'pg-proj-%');
+        DELETE FROM frontend_command.command_ledger WHERE target_project_id LIKE 'pg-proj-%';
+        DELETE FROM project_admin.project_commands WHERE project_id LIKE 'pg-proj-%';
+        DELETE FROM project_admin.project_revisions WHERE project_id LIKE 'pg-proj-%';
+        -- settings history sources are append-only and must NOT be truncated or
+        -- deleted (migration 032 immutability guard: UPDATE/DELETE/TRUNCATE all
+        -- forbidden). Each test uses a unique project prefix ('pg-proj-%'), so
+        -- historical rows are isolated and left for the full DB reset boundary.
+        DELETE FROM settings.settings_command_results WHERE command_id IN (SELECT command_id FROM settings.settings_commands WHERE project_id LIKE 'pg-proj-%');
+        DELETE FROM settings.settings_commands WHERE project_id LIKE 'pg-proj-%';
+        DELETE FROM settings.project_settings WHERE project_id LIKE 'pg-proj-%';
+        DELETE FROM auth.project_memberships WHERE project_id LIKE 'pg-proj-%';
+        DELETE FROM project_admin.projects WHERE id LIKE 'pg-proj-%';
+      `);
+    } finally {
+      await client.query('SET session_replication_role = origin');
+      client.release();
+    }
     projectAdminRepo = new PostgresProjectAdministrationRepository(pool!);
     settingsRepo = new PostgresSettingsRepository(pool!);
     authRepo = new PostgresAuthRepository(pool!);

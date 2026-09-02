@@ -7,6 +7,14 @@ type CrossPhaseBackend = {
   startFrontendCrossPhaseBackend(): Promise<{ close(): Promise<void> }>;
 };
 
+type AskCitation = {
+  citationId?: string;
+  sourceId?: string;
+  sourceVersionId?: string;
+  evidenceId?: string;
+  exactQuote?: string;
+};
+
 const BASE = 'http://127.0.0.1:3002';
 
 test('Direct Text SourceVersion executes SOURCE_EXPLORATION without selected Evidence', async () => {
@@ -166,7 +174,7 @@ test('Direct Text SourceVersion executes SOURCE_EXPLORATION without selected Evi
     let completed:
       | {
           state?: string;
-          statements?: { text?: string; citations?: unknown[] }[];
+          statements?: { text?: string; citations?: AskCitation[] }[];
           provider?: { provider?: string };
         }
       | undefined;
@@ -174,7 +182,7 @@ test('Direct Text SourceVersion executes SOURCE_EXPLORATION without selected Evi
       const view = await get<{
         answerRun?: {
           state?: string;
-          statements?: { text?: string; citations?: unknown[] }[];
+          statements?: { text?: string; citations?: AskCitation[] }[];
           provider?: { provider?: string };
         };
       }>(`/product-api/frontend/ask/answer-runs/${answerRunId}`);
@@ -186,7 +194,18 @@ test('Direct Text SourceVersion executes SOURCE_EXPLORATION without selected Evi
     expect(completed?.state).toBe('SUCCEEDED');
     expect(completed?.provider?.provider).toBe('fake');
     expect(completed?.statements?.[0]?.text).toContain(sourceText);
-    expect(completed?.statements?.[0]?.citations).toEqual([]);
+    const citations = completed?.statements?.[0]?.citations ?? [];
+    expect(citations.length).toBeGreaterThan(0);
+    for (const citation of citations) {
+      expect(citation).toMatchObject({
+        citationId: expect.any(String),
+        sourceId: source?.sourceId,
+        sourceVersionId: source?.selectedSourceVersionId,
+        evidenceId: expect.any(String),
+        exactQuote: expect.any(String),
+      });
+    }
+    expect(citations.some((citation) => citation.exactQuote === sourceText)).toBe(true);
   } finally {
     await backend.close();
   }

@@ -278,6 +278,7 @@ import {
   createAIProviderModule,
   type AIProviderAdapterPort,
   type AIProviderCallRepositoryPort,
+  type AIProviderExecutionResolverPort,
   type AIProviderPolicy,
 } from '../../../modules/ai-provider/src/index.js';
 import {
@@ -564,6 +565,8 @@ export type ApplicationOptions = {
   readonly validationRepository?: ValidationRepositoryPort;
   readonly aiProvider?: AIProviderAdapterPort;
   readonly aiProviderPolicy?: AIProviderPolicy;
+  /** Production Stage 4 request-time Project AI authority. */
+  readonly aiProviderExecutionResolver?: AIProviderExecutionResolverPort;
   readonly canonicalSnapshot?: CanonicalSnapshotPort;
   readonly textDiff?: TextDiffPort;
   readonly comparisonRepository?: ComparisonRepositoryPort;
@@ -1868,6 +1871,9 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       allowRestricted: false,
       maxAttempts: 2,
     },
+    options.aiProviderExecutionResolver === undefined
+      ? {}
+      : { executionResolver: options.aiProviderExecutionResolver },
   );
   const candidateGeneration = createCandidateGenerationModule(candidateRepository);
   const validation = createValidationModule(validationRepository);

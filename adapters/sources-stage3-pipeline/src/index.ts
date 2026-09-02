@@ -8,7 +8,12 @@ import type {
   DocumentTransformerPort,
   TransformationRepositoryPort,
 } from '../../../modules/transformation/src/index.js';
-import type { SourcesStage3PipelinePort } from '../../../modules/frontend-sources-write/src/index.js';
+import type {
+  SourcesStage3EvidenceIndexedInput,
+  SourcesStage3PipelineOutcome,
+  SourcesStage3PipelinePort,
+  SourcesStage4ContinuationPort,
+} from '../../../modules/frontend-sources-write/src/index.js';
 
 /**
  * FE-P5-XP Correction C — Source Intake → Stage 3 Transformation/Evidence
@@ -29,14 +34,18 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
       readonly locator: EvidenceLocatorPort;
       readonly transformationRepository: TransformationRepositoryPort;
       readonly evidenceRepository: EvidenceRepositoryPort;
+      readonly stage4?: SourcesStage4ContinuationPort;
     },
   ) {}
 
   async runForSourceVersion(
     input: Parameters<SourcesStage3PipelinePort['runForSourceVersion']>[0],
-  ): Promise<void> {
+  ): Promise<SourcesStage3PipelineOutcome> {
     const bytes = await this.deps.storage.read(input.storageKey);
-    const text = new TextDecoder().decode(bytes);
+    // TextDecoder's default UTF-8 mode consumes a leading BOM. The original
+    // asset hash is byte-addressed, so dropping that character makes the
+    // document root hash disagree with the immutable SourceVersion hash.
+    const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes);
     const sourceContentHash = input.contentHash;
     const output = await this.deps.transformer.transform({
       sourceId: input.sourceId,
@@ -56,8 +65,39 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
       sensitivity: input.sensitivity,
       createdAt: new Date().toISOString(),
     });
-    await this.deps.evidenceRepository.index(
+    const indexed = await this.deps.evidenceRepository.index(
       buildEvidenceCandidates(saved.revision, this.deps.locator),
     );
+    let stage4: SourcesStage3PipelineOutcome['stage4'] = { status: 'NOT_CONFIGURED' };
+    if (this.deps.stage4) {
+      const continuation: SourcesStage3EvidenceIndexedInput = {
+        projectId: input.projectId,
+        sourceId: input.sourceId,
+        sourceVersionId: input.sourceVersionId,
+        revisionId: saved.revision.revisionId,
+        evidenceCount: indexed.items.length,
+        reusedCount: indexed.reusedCount,
+        accessScope: [...input.accessScope],
+        sensitivity: input.sensitivity,
+        dataClassification: 'source-content',
+      };
+      try {
+        await this.deps.stage4.onEvidenceIndexed(continuation);
+        stage4 = { status: 'SUCCEEDED' };
+      } catch {
+        // Evidence is already durable at this point. Keep the downstream
+        // failure in Stage 4's event/dead-letter recovery boundary; never
+        // reinterpret a completed Source/Stage 3 intake as indeterminate.
+        stage4 = { status: 'FAILED' };
+      }
+    }
+    return {
+      stage3: {
+        revisionId: saved.revision.revisionId,
+        evidenceCount: indexed.items.length,
+        reusedCount: indexed.reusedCount,
+      },
+      stage4,
+    };
   }
 }

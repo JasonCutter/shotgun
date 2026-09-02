@@ -6,6 +6,7 @@ import { SealedSourcesStagingService } from '../../adapters/frontend-sources-sta
 import { PostgresSourcesProductService } from '../../adapters/frontend-sources-write-postgres/src/product-service.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { InMemoryAssetStorage } from '../../adapters/stage2-in-memory/src/index.js';
+import type { SourcesStage3PipelinePort } from '../../modules/frontend-sources-write/src/index.js';
 import type { SourcesProductWriteScope } from '../../modules/frontend-sources-write/src/product-service.js';
 
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
@@ -14,6 +15,16 @@ const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 const hash = (value: string): string =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`;
+
+class RecordingStage3Pipeline implements SourcesStage3PipelinePort {
+  readonly calls: Array<Parameters<SourcesStage3PipelinePort['runForSourceVersion']>[0]> = [];
+
+  async runForSourceVersion(
+    input: Parameters<SourcesStage3PipelinePort['runForSourceVersion']>[0],
+  ): Promise<void> {
+    this.calls.push(input);
+  }
+}
 
 const insertAcceptedCommand = async (input: {
   readonly commandId: string;
@@ -162,7 +173,8 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
       undefined,
       () => new Date(context.now),
     );
-    const service = new PostgresSourcesProductService(pool!, staging);
+    const stage3 = new RecordingStage3Pipeline();
+    const service = new PostgresSourcesProductService(pool!, staging, stage3);
     const bytes = new TextEncoder().encode('same immutable source bytes');
 
     const submitOneCommandId = randomUUID();
@@ -276,6 +288,11 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
       sourceId: produced?.sourceId,
       sourceVersionId: produced?.sourceVersionId,
     });
+    expect(stage3.calls).toHaveLength(2);
+    expect(stage3.calls[1]).toMatchObject({
+      sourceId: produced?.sourceId,
+      sourceVersionId: produced?.sourceVersionId,
+    });
 
     expect(
       await pool!.query(
@@ -317,7 +334,8 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
       undefined,
       () => new Date(context.now),
     );
-    const service = new PostgresSourcesProductService(pool!, staging);
+    const stage3 = new RecordingStage3Pipeline();
+    const service = new PostgresSourcesProductService(pool!, staging, stage3);
     const bytes = new TextEncoder().encode('same bytes with distinct resource security identity');
 
     const firstCommandId = randomUUID();
@@ -419,6 +437,9 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
       createdAt: context.now,
     });
     expect(resolved.state).toBe('SUCCEEDED');
+    expect(stage3.calls).toHaveLength(2);
+    expect(stage3.calls[1]?.sourceId).not.toBe(stage3.calls[0]?.sourceId);
+    expect(stage3.calls[1]?.sourceVersionId).not.toBe(stage3.calls[0]?.sourceVersionId);
     expect(
       await pool!.query(
         `SELECT

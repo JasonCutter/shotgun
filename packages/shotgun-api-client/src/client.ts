@@ -4,6 +4,7 @@ import type {
   AISettingsApproval,
   AISettingsConfiguration,
   AISettingsReadModel,
+  AIStandingProcessingPolicy,
   AITestConnectionResult,
   ProductSessionView,
   RequestOptions,
@@ -17,6 +18,7 @@ import {
   decodeAICredentialMetadataEnvelope,
   decodeAIConfigurationEnvelope,
   decodeAIProviderPrivacyProposalEnvelope,
+  decodeAIStandingPolicyEnvelope,
   decodeAISettingsApprovalEnvelope,
   decodeAISettingsReadModel,
   decodeAITestConnectionResult,
@@ -1200,6 +1202,28 @@ export const createShotgunApiClient = (
         });
         const body = (await assertOk(response)) as { configuration: unknown };
         return decodeAIConfigurationEnvelope(body.configuration);
+      });
+    },
+
+    async saveAIStandingPolicy(
+      params: {
+        readonly projectId: string;
+        readonly expectedRevision: number;
+        readonly enabled: boolean;
+        readonly providerId: string;
+        readonly aiConfigurationRevision: number;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<AIStandingProcessingPolicy> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/settings/ai/standing-policy', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(params),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { standingPolicy: unknown };
+        return decodeAIStandingPolicyEnvelope(body.standingPolicy);
       });
     },
 

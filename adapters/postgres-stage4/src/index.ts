@@ -12,6 +12,7 @@ import type {
 } from '../../../modules/candidate-generation/src/index.js';
 import type { ValidationRepositoryPort } from '../../../modules/validation/src/index.js';
 import {
+  type AIExecutionIdentity,
   type AIProviderAttempt,
   type AIProviderCall,
   type AIProviderOutput,
@@ -43,6 +44,7 @@ type ProviderCallRow = QueryResultRow & {
   readonly max_attempts: number;
   readonly status: AIProviderExecutionRecord['status'];
   readonly call_json: AIProviderCall | null;
+  readonly execution_identity: AIExecutionIdentity | null;
   readonly created_at: Date;
 };
 
@@ -68,7 +70,7 @@ type OutputRow = QueryResultRow & {
   readonly schema_version: '1.0.0';
   readonly prompt_version: 'direct-claim-v1';
   readonly policy_version: 'direct-only-v1';
-  readonly data_policy_version: 'gemini-stateless-no-sharing-v1' | 'fake-local-v1';
+  readonly data_policy_version: string;
   readonly output_text: string;
   readonly content_digest: string;
   readonly request_digest: string;
@@ -248,7 +250,7 @@ const loadProviderRecord = async (
     `SELECT call_id::text, project_id, request_id, provider, model, prompt_version, policy_version,
       schema_name, data_classification, ARRAY(SELECT value::text FROM unnest(input_evidence_ids) value) AS input_evidence_ids,
       source_version_id::text, access_scope, sensitivity, input_snapshot_digest, request_digest,
-      durable_state, max_attempts, status, call_json, created_at
+      durable_state, max_attempts, status, call_json, execution_identity, created_at
      FROM ai.provider_calls WHERE project_id = $1 AND request_id = $2 ${lock ? 'FOR UPDATE' : ''}`,
     [projectId, requestId],
   );
@@ -283,6 +285,7 @@ const loadProviderRecord = async (
     inputEvidenceIds: row.input_evidence_ids,
     inputSnapshotDigest: row.input_snapshot_digest ?? '',
     requestDigest: row.request_digest ?? '',
+    ...(row.execution_identity === null ? {} : { executionIdentity: row.execution_identity }),
     state: row.durable_state,
     status: row.status,
     maxAttempts: row.max_attempts,
@@ -303,8 +306,8 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
       await client.query(
         `INSERT INTO ai.provider_calls (call_id, project_id, request_id, provider, model, prompt_version, policy_version,
           schema_name, data_classification, input_evidence_ids, source_version_id, access_scope, sensitivity,
-          input_snapshot_digest, request_digest, durable_state, max_attempts, status, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'REQUESTED',$16,'failed',$17,$17)
+          input_snapshot_digest, request_digest, execution_identity, durable_state, max_attempts, status, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'REQUESTED',$17,'failed',$18,$18)
          ON CONFLICT (project_id, request_id) DO NOTHING`,
         [
           record.callId,
@@ -322,6 +325,7 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
           record.sensitivity,
           record.inputSnapshotDigest,
           record.requestDigest,
+          record.executionIdentity ? JSON.stringify(record.executionIdentity) : null,
           record.maxAttempts,
           record.createdAt,
         ],
@@ -504,6 +508,7 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
         call.promptVersion !== outputRow.prompt_version ||
         call.policyVersion !== outputRow.policy_version ||
         call.dataPolicyVersion !== outputRow.data_policy_version ||
+        stableJson(call.executionIdentity) !== stableJson(record.executionIdentity) ||
         !call.structuredOutputValid
       )
         throw new ShotgunError({

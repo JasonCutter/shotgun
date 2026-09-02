@@ -28,7 +28,7 @@ const createFixture = async () => {
   const repository = new InMemoryOriginalAssetRepository();
   const storage = new InMemoryAssetStorage();
   const evidence = new InMemoryEvidenceRepository();
-  const bytes = Buffer.from('Original evidence', 'utf8');
+  const bytes = Buffer.from('\uFEFFOriginal evidence', 'utf8');
   const contentHash = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
   const storageKey = await storage.put(contentHash, bytes);
   const stored = await repository.store({
@@ -128,7 +128,7 @@ describe('Frontend Sources Product API', () => {
       preview: {
         sourceId: stored.sourceId,
         sourceVersionId: stored.sourceVersionId,
-        text: 'Original evidence',
+        text: '\uFEFFOriginal evidence',
         mode: 'ORIGINAL',
       },
     });

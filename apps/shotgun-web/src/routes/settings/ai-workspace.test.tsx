@@ -144,6 +144,15 @@ const renderWorkspace = (
       updatedBy: 'principal-1',
       updatedAt: now,
     }),
+    saveAIStandingPolicy: vi.fn().mockResolvedValue({
+      projectId: 'project-1',
+      enabled: true,
+      providerId: 'deepseek',
+      policyRevision: 1,
+      aiConfigurationRevision: 1,
+      changedBy: 'principal-1',
+      changedAt: now,
+    }),
     revokeAICredential: vi.fn().mockResolvedValue({ ...credential, lifecycleState: 'revoked' }),
     removeAICredential: vi.fn().mockResolvedValue({ ...credential, lifecycleState: 'removed' }),
     ...apiClient,
@@ -408,6 +417,47 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
     expect(privacyLink.getAttribute('href')).toBe('/settings/privacy?providerId=deepseek');
     expect(screen.queryByRole('button', { name: 'Request provider approval' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Approve provider review' })).toBeNull();
+  });
+
+  it('enables Project-level automatic processing for the saved provider without a provider approval flow', async () => {
+    const { api } = renderWorkspace(
+      {},
+      makeSettings({
+        mode: 'PROJECT_MANAGED',
+        currentConfiguration: {
+          projectId: 'project-1',
+          activeProviderId: 'deepseek',
+          activeModelId: 'deepseek-v4-flash',
+          credentialId: credential.credentialId,
+          credentialRevision: credential.credentialRevision,
+          aiConfigurationRevision: 4,
+          updatedBy: 'principal-1',
+          updatedAt: now,
+        },
+        credentialStatuses: [credential],
+        standingPolicy: {
+          projectId: 'project-1',
+          enabled: false,
+          providerId: 'deepseek',
+          policyRevision: 1,
+          aiConfigurationRevision: 4,
+          changedBy: 'migration',
+          changedAt: now,
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('checkbox', { name: 'AI Automatic Processing' }));
+    await waitFor(() =>
+      expect(api.saveAIStandingPolicy).toHaveBeenCalledWith({
+        projectId: 'project-1',
+        expectedRevision: 1,
+        enabled: true,
+        providerId: 'deepseek',
+        aiConfigurationRevision: 4,
+      }),
+    );
+    expect(screen.getByText('AI automatic processing enabled')).toBeTruthy();
   });
 
   it('ignores targetProjectId URL parameter and binds strictly to the session active project', async () => {

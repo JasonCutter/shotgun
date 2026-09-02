@@ -192,6 +192,7 @@ export const createValidationModule = (repository: ValidationRepositoryPort): Sh
         messageType: 'CandidateGenerated',
         version: '1.0.0',
         requiredAccessScopes: ['owner'],
+        requiredForPublisherAcknowledgement: true,
         async handle(envelope, context) {
           const { projectId } = assertContext(envelope);
           const payload = envelope.payload as CandidateGeneratedPayload;

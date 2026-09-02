@@ -21,11 +21,16 @@ import {
   type ProviderDeploymentCeiling,
   type ProviderExternalTransferApprovalPort,
 } from '../../../modules/provider-privacy-policy/src/index.js';
+import {
+  evaluateStandingAIProcessingPolicy,
+  type StandingAIProcessingPolicyReaderPort,
+} from '../../../packages/policy/src/index.js';
 
 export type SemanticEmbeddingAuthorityResolverOptions = {
   readonly deploymentCeiling?: ProviderDeploymentCeiling;
   readonly approvalAuthority?: ProviderExternalTransferApprovalPort;
   readonly legacyExternalTransferAllowed?: (projectId: string) => Promise<boolean>;
+  readonly standingPolicyAuthority?: StandingAIProcessingPolicyReaderPort;
   readonly clock?: () => string;
 };
 
@@ -61,7 +66,10 @@ export class SemanticEmbeddingAuthorityResolver
     }
 
     // Fail closed if required privacy authorities are missing
-    if (!this.options?.deploymentCeiling || !this.options?.approvalAuthority) {
+    if (
+      !this.options?.deploymentCeiling ||
+      (!this.options?.approvalAuthority && !this.options?.standingPolicyAuthority)
+    ) {
       throw new SemanticEmbeddingError({
         code: 'CONFIGURATION_REQUIRED',
         safeMessage:
@@ -121,18 +129,33 @@ export class SemanticEmbeddingAuthorityResolver
     }
 
     // 4. Evaluate privacy & deployment policies via canonical evaluateProviderExternalTransfer
-    const approval = await this.options.approvalAuthority.getCurrent(projectId, profile.providerId);
-    const legacyExternalTransferAllowed = this.options.legacyExternalTransferAllowed
-      ? await this.options.legacyExternalTransferAllowed(projectId)
-      : false;
+    const standingPolicy = await this.options.standingPolicyAuthority?.getCurrent(projectId);
+    const approval = standingPolicy
+      ? undefined
+      : await this.options.approvalAuthority?.getCurrent(projectId, profile.providerId);
+    const legacyExternalTransferAllowed = standingPolicy
+      ? false
+      : this.options.legacyExternalTransferAllowed
+        ? await this.options.legacyExternalTransferAllowed(projectId)
+        : false;
 
-    const privacyDecision = evaluateProviderExternalTransfer({
-      providerId: profile.providerId,
-      sensitivity: input.sensitivity,
-      deployment: this.options.deploymentCeiling,
-      approval,
-      legacyExternalTransferAllowed,
-    });
+    const privacyDecision = standingPolicy
+      ? {
+          ...evaluateStandingAIProcessingPolicy({
+            policy: standingPolicy,
+            providerId: profile.providerId,
+            sensitivity: input.sensitivity,
+            deploymentAllowsPrivate: this.options.deploymentCeiling.allows(profile.providerId),
+          }),
+          usedLegacyGeminiCompatibility: false,
+        }
+      : evaluateProviderExternalTransfer({
+          providerId: profile.providerId,
+          sensitivity: input.sensitivity,
+          deployment: this.options.deploymentCeiling,
+          approval,
+          legacyExternalTransferAllowed,
+        });
 
     if (!privacyDecision.eligible) {
       let safeMessage = 'External transfer policy denied embedding execution.';
@@ -143,6 +166,12 @@ export class SemanticEmbeddingAuthorityResolver
         safeMessage = 'Deployment policy blocks private external transfer for this provider.';
       } else if (privacyDecision.reason === 'PROJECT_APPROVAL_REQUIRED') {
         safeMessage = 'Project owner approval is required for private external transfer.';
+      } else if (privacyDecision.reason === 'STANDING_POLICY_DISABLED') {
+        safeMessage = 'Project standing AI processing is disabled.';
+      } else if (privacyDecision.reason === 'STANDING_POLICY_PROVIDER_MISMATCH') {
+        safeMessage = 'Project standing AI processing is bound to a different provider.';
+      } else if (privacyDecision.reason === 'NOT_CONFIGURED') {
+        safeMessage = 'Project standing AI processing policy is not configured.';
       }
 
       throw new SemanticEmbeddingError({
@@ -213,6 +242,9 @@ export class SemanticEmbeddingAuthorityResolver
         approvalRevision: approval?.approvalRevision ?? null,
         approvalApproved: approval?.approved ?? null,
         usedLegacyGeminiCompatibility: privacyDecision.usedLegacyGeminiCompatibility,
+        standingPolicyRevision: standingPolicy?.policyRevision ?? null,
+        standingPolicyEnabled: standingPolicy?.enabled ?? false,
+        standingPolicyProviderId: standingPolicy?.providerId ?? null,
         eligible: privacyDecision.eligible,
       }),
     );
@@ -229,6 +261,7 @@ export class SemanticEmbeddingAuthorityResolver
       providerRegistryRevision: provider.registryRevision,
       capabilityCatalogRevision: model.capabilityRevision,
       providerPolicyFingerprint,
+      ...(standingPolicy ? { standingPolicyRevision: standingPolicy.policyRevision } : {}),
       representationVersion: profile.representationVersion,
       dimension: profile.dimension,
       createdAt: this.clock(),

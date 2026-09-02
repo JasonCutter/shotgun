@@ -623,6 +623,16 @@ export type AISettingsPrivacyStatus = {
   readonly legacyGeminiCompatibility: boolean;
 };
 
+export type AIStandingProcessingPolicy = {
+  readonly projectId: string;
+  readonly enabled: boolean;
+  readonly providerId: string;
+  readonly policyRevision: number;
+  readonly aiConfigurationRevision: number;
+  readonly changedBy: string;
+  readonly changedAt: string;
+};
+
 export type AISettingsVaultAvailability =
   | { readonly state: 'AVAILABLE'; readonly keyVersion: string }
   | {
@@ -650,6 +660,8 @@ export type AISettingsReadModel = {
   readonly providers: readonly AISettingsProvider[];
   readonly credentialStatuses: readonly AISettingsCredentialStatus[];
   readonly privacy: readonly AISettingsPrivacyStatus[];
+  /** Optional for compatibility with older settings responses. */
+  readonly standingPolicy?: AIStandingProcessingPolicy;
   readonly vaultAvailability: AISettingsVaultAvailability;
   readonly legacyGeminiCredentialConfigured: boolean;
 };
@@ -938,6 +950,16 @@ export type ShotgunApiClient = {
     },
     options?: RequestOptions,
   ): Promise<AISettingsConfiguration>;
+  saveAIStandingPolicy(
+    params: {
+      readonly projectId: string;
+      readonly expectedRevision: number;
+      readonly enabled: boolean;
+      readonly providerId: string;
+      readonly aiConfigurationRevision: number;
+    },
+    options?: RequestOptions,
+  ): Promise<AIStandingProcessingPolicy>;
   testAIConnection(
     params: {
       readonly projectId: string;

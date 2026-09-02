@@ -148,16 +148,28 @@ const owner = (value: string): string => normalize('Principal ID', value, 256);
 export const parseProviderDeploymentCeiling = (input: {
   readonly providerAllowlist?: string;
   readonly legacyGeminiAllowed?: boolean;
+  /**
+   * Local-owner default only. Managed deployments must pass an explicit
+   * allowlist (or remain fail-closed); this never overrides a non-empty
+   * operator allowlist.
+   */
+  readonly localOwnerDefault?: boolean;
 }): ProviderDeploymentCeiling => {
-  const configured = input.providerAllowlist !== undefined;
+  const hasExplicitAllowlist =
+    typeof input.providerAllowlist === 'string' && input.providerAllowlist.trim().length > 0;
+  const configured = input.localOwnerDefault
+    ? hasExplicitAllowlist
+    : input.providerAllowlist !== undefined;
   const allowedProviders = new Set<string>();
-  if (configured) {
+  if (hasExplicitAllowlist) {
     for (const candidate of input.providerAllowlist!.split(',')) {
       const normalized = candidate.trim();
       if ((A4_SUPPORTED_PROVIDER_IDS as readonly string[]).includes(normalized)) {
         allowedProviders.add(normalized);
       }
     }
+  } else if (input.localOwnerDefault) {
+    for (const provider of A4_SUPPORTED_PROVIDER_IDS) allowedProviders.add(provider);
   } else if (input.legacyGeminiAllowed === true) {
     allowedProviders.add('google-gemini');
   }

@@ -173,6 +173,7 @@ export type SemanticEmbeddingExecutionPin = {
   readonly providerRegistryRevision: string;
   readonly capabilityCatalogRevision: string;
   readonly providerPolicyFingerprint: string;
+  readonly standingPolicyRevision?: number;
   readonly representationVersion: string;
   readonly dimension: number;
   readonly createdAt: string;

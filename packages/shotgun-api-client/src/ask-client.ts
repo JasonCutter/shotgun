@@ -134,6 +134,27 @@ const identityMismatch = (message: string): never => {
   throw new FrontendContractError('UNSUPPORTED_SCHEMA', message);
 };
 
+export const ASK_PROVIDER_ELIGIBILITY_TIMEOUT_MS = 10_000;
+
+const createBoundedSignal = (parent: AbortSignal | undefined, timeoutMs: number) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    const error = new Error('Provider eligibility preflight timed out.');
+    error.name = 'TimeoutError';
+    controller.abort(error);
+  }, timeoutMs);
+  const onAbort = () => controller.abort(parent?.reason);
+  if (parent?.aborted) onAbort();
+  else parent?.addEventListener('abort', onAbort, { once: true });
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      clearTimeout(timer);
+      parent?.removeEventListener('abort', onAbort);
+    },
+  };
+};
+
 export const createAskWorkspaceClient = (
   options: { readonly fetch?: typeof globalThis.fetch } = {},
 ): AskWorkspaceClient => {
@@ -173,13 +194,21 @@ export const createAskWorkspaceClient = (
 
   return {
     async getProviderEligibility(params, requestOptions) {
-      const response = await mutate(
-        '/product-api/frontend/ask/provider-eligibility',
-        params,
+      const bounded = createBoundedSignal(
         requestOptions?.signal,
+        ASK_PROVIDER_ELIGIBILITY_TIMEOUT_MS,
       );
-      const body = (await assertOk(response)) as { providerEligibility?: unknown };
-      return decodeAskProviderEligibilityView(body.providerEligibility);
+      try {
+        const response = await mutate(
+          '/product-api/frontend/ask/provider-eligibility',
+          params,
+          bounded.signal,
+        );
+        const body = (await assertOk(response)) as { providerEligibility?: unknown };
+        return decodeAskProviderEligibilityView(body.providerEligibility);
+      } finally {
+        bounded.dispose();
+      }
     },
     async getWorkspace(conversationId, requestOptions) {
       const parameters = new URLSearchParams();

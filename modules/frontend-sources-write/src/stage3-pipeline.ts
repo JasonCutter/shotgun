@@ -24,5 +24,42 @@ export type SourcesStage3PipelinePort = {
     readonly contentHash: string;
     readonly accessScope: readonly string[];
     readonly sensitivity: SourcesSensitivity;
-  }): Promise<void>;
+  }): Promise<SourcesStage3PipelineOutcome | void>;
+};
+
+/**
+ * Stage 3 is the Source product's authoritative completion boundary. A
+ * downstream Stage 4 continuation is reported separately so its failure can
+ * be recovered in the Stage 4 domain without changing the Source intake
+ * outcome.
+ */
+export type SourcesStage3PipelineOutcome = {
+  readonly stage3: {
+    readonly revisionId: string;
+    readonly evidenceCount: number;
+    readonly reusedCount: number;
+  };
+  readonly stage4:
+    | { readonly status: 'NOT_CONFIGURED' }
+    | { readonly status: 'SUCCEEDED' }
+    | { readonly status: 'FAILED' };
+};
+
+/** Stage 4 is started only after the Stage 3 Evidence transaction has
+ * committed. The callback is intentionally a narrow event boundary so the
+ * Sources domain never owns Candidate or AI persistence. */
+export type SourcesStage3EvidenceIndexedInput = {
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly revisionId: string;
+  readonly evidenceCount: number;
+  readonly reusedCount: number;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SourcesSensitivity;
+  readonly dataClassification: string;
+};
+
+export type SourcesStage4ContinuationPort = {
+  onEvidenceIndexed(input: SourcesStage3EvidenceIndexedInput): Promise<void>;
 };

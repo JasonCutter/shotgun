@@ -283,15 +283,19 @@ export const AskShellProvider = ({
       mode,
       sourceSelections,
     ],
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (!mode) throw new Error('Cannot query provider eligibility without an authoritative mode');
-      return askClient.getProviderEligibility({
-        schemaVersion: '1.0.0',
-        ...(activeConversationId ? { conversationId: activeConversationId } : {}),
-        mode,
-        sourceSelections: mode === 'CANONICAL_ONLY' ? [] : sourceSelections,
-      });
+      return askClient.getProviderEligibility(
+        {
+          schemaVersion: '1.0.0',
+          ...(activeConversationId ? { conversationId: activeConversationId } : {}),
+          mode,
+          sourceSelections: mode === 'CANONICAL_ONLY' ? [] : sourceSelections,
+        },
+        { signal },
+      );
     },
+    retry: false,
     enabled:
       workspace !== undefined &&
       mode !== undefined &&

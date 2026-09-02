@@ -167,6 +167,54 @@ export class AIProviderRouter implements AskAnswerProviderRouterPort {
     this.legacyCredentialId = options.legacyCredentialId ?? 'legacy-gemini-compatibility';
   }
 
+  /**
+   * Resolve the neutral structured-output adapter used by Stage 4. This is
+   * deliberately separate from the Ask answer adapter: Source candidate
+   * extraction must use the same pinned Vault/provider route without inheriting
+   * Ask answer/citation semantics.
+   */
+  async resolveStructured(input: {
+    readonly projectId: string;
+    readonly executionPin: AIExecutionPin;
+  }): Promise<AIProviderAdapterPort> {
+    if (input.projectId !== input.executionPin.projectId) {
+      throw routerError(
+        'The structured provider route is bound to another Project.',
+        'validate-project-route',
+      );
+    }
+    if (input.executionPin.credentialId === this.legacyCredentialId) {
+      throw routerError(
+        'Legacy provider credentials are not permitted for Stage 4 Source processing.',
+        'reject-legacy-source-route',
+      );
+    }
+    const provider = this.registry.getProvider(input.executionPin.providerId);
+    const model = this.registry.getModel(input.executionPin.providerId, input.executionPin.modelId);
+    const connectivity = this.connectivity.get(input.executionPin.providerId);
+    if (
+      !provider ||
+      provider.status !== 'active' ||
+      !model ||
+      !model.shotgunUsableCapabilities.includes('structuredOutput') ||
+      !connectivity
+    ) {
+      throw routerError(
+        'The pinned structured provider route is unavailable.',
+        'resolve-structured-provider-route',
+      );
+    }
+    return createCredentialBackedAIProviderAdapter({
+      connectivity,
+      vault: this.vault,
+      projectId: input.projectId,
+      providerId: input.executionPin.providerId,
+      credentialId: input.executionPin.credentialId,
+      credentialRevision: input.executionPin.credentialRevision,
+      modelId: model.modelId,
+    });
+  }
+
   async resolve(input: {
     readonly scope: AskExecutionScope;
     readonly executionPin: AIExecutionPin;

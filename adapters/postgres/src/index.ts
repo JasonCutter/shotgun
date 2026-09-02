@@ -802,6 +802,21 @@ export class PostgresProjectAdministrationRepository implements ProjectAdministr
         [input.projectId, now],
       );
 
+      await client.query(
+        `INSERT INTO ai.project_standing_ai_processing_policy_revisions
+           (project_id, enabled, provider_id, policy_revision,
+            ai_configuration_revision, changed_by, changed_at)
+         VALUES ($1, false, 'deepseek', 1, 0, $2, $3)`,
+        [input.projectId, input.actorPrincipalId, now],
+      );
+      await client.query(
+        `INSERT INTO ai.project_standing_ai_processing_policies
+           (project_id, enabled, provider_id, policy_revision,
+            ai_configuration_revision, changed_by, changed_at)
+         VALUES ($1, false, 'deepseek', 1, 0, $2, $3)`,
+        [input.projectId, input.actorPrincipalId, now],
+      );
+
       // Step 6: Project Lifecycle Command Idempotency
       await client.query(
         `INSERT INTO project_admin.project_commands (command_id, client_request_id, idempotency_key, project_id, actor_id, expected_revision, command_type, command_payload, status, created_at)
@@ -1230,6 +1245,20 @@ export class PostgresProjectBootstrapUnitOfWork implements ProjectBootstrapUnitO
            project_id, revision, policy_binding, created_at
          ) VALUES ($1, 1, '{}'::jsonb, $2)`,
         [projectId, createdAt],
+      );
+      await client.query(
+        `INSERT INTO ai.project_standing_ai_processing_policy_revisions
+           (project_id, enabled, provider_id, policy_revision,
+            ai_configuration_revision, changed_by, changed_at)
+         VALUES ($1, false, 'deepseek', 1, 0, $2, $3)`,
+        [projectId, input.principalId, createdAt],
+      );
+      await client.query(
+        `INSERT INTO ai.project_standing_ai_processing_policies
+           (project_id, enabled, provider_id, policy_revision,
+            ai_configuration_revision, changed_by, changed_at)
+         VALUES ($1, false, 'deepseek', 1, 0, $2, $3)`,
+        [projectId, input.principalId, createdAt],
       );
       await client.query(
         `INSERT INTO project_admin.project_commands (

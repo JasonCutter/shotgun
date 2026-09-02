@@ -15,6 +15,7 @@ import { OpenAIEmbeddingConnectivityAdapter } from '../../../adapters/ai-provide
 import { DeepSeekConnectivityAdapter } from '../../../adapters/ai-provider-deepseek/src/index.js';
 import { PostgresCredentialVaultRepository } from '../../../adapters/credential-vault-postgres/src/index.js';
 import { PostgresProjectAIConfigurationRepository } from '../../../adapters/ai-configuration-postgres/src/index.js';
+import { PostgresStandingAIProcessingPolicyRepository } from '../../../adapters/project-standing-ai-policy-postgres/src/index.js';
 import { PostgresProviderExternalTransferApprovalRepository } from '../../../adapters/provider-privacy-deployment-postgres/src/index.js';
 import { StructuredAskAnswerProviderAdapter } from '../../../adapters/ai-provider-ask/src/index.js';
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
@@ -115,6 +116,7 @@ import { hasSensitivityClearance } from '../../../packages/authentication/src/in
 import type { DiscoveryFindingEnvelopeV1 } from '../../../packages/contracts/src/index.js';
 import type { KnowledgeModelRepositoryPort } from '../../../modules/knowledge-model/src/index.js';
 import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
+import { StandingAIProcessingPolicyService } from '../../../packages/policy/src/index.js';
 import {
   KnowledgeModelTypedPropositionConflictAuthorityReader,
   TypedPropositionConflictEvaluatorV1,
@@ -143,6 +145,10 @@ import {
 } from '../../../adapters/discovery-runtime-product/src/index.js';
 import type { DiscoveryCompetingResourcePortV1 } from '../../../modules/discovery-finding-fingerprint/src/index.js';
 import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
+import type {
+  SourcesStage3EvidenceIndexedInput,
+  SourcesStage4ContinuationPort,
+} from '../../../modules/frontend-sources-write/src/index.js';
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import {
   NodeUrlHopTransport,
@@ -157,6 +163,7 @@ import {
   AISettingsBackendService,
   StaticAIProviderConnectivityRegistry,
 } from '../../../modules/ai-settings-backend/src/index.js';
+import type { AIProviderExecutionResolverPort } from '../../../modules/ai-provider/src/index.js';
 import {
   EnvironmentCredentialMasterKeyAuthority,
   CredentialVaultService,
@@ -363,12 +370,24 @@ export const startShotgunApplication = async (
     const transformationRepository = new PostgresTransformationRepository(pool);
     const evidenceRepository = new PostgresEvidenceRepository(pool);
     const transformer = new PythonDocumentFormatAdapter();
+    const stage4Publisher: {
+      current?: (input: SourcesStage3EvidenceIndexedInput) => Promise<void>;
+    } = {};
+    const sourcesStage4Continuation: SourcesStage4ContinuationPort = {
+      onEvidenceIndexed: async (input) => {
+        if (!stage4Publisher.current) {
+          throw new Error('Stage 4 continuation is not ready.');
+        }
+        await stage4Publisher.current(input);
+      },
+    };
     const sourcesStage3Pipeline = new SourcesStage3Pipeline({
       storage: assetStorage,
       transformer,
       locator: plainTextAdapter,
       transformationRepository,
       evidenceRepository,
+      stage4: sourcesStage4Continuation,
     });
     const sourcesProductService = new PostgresSourcesProductService(
       pool,
@@ -400,6 +419,7 @@ export const startShotgunApplication = async (
     const deploymentCeiling = parseProviderDeploymentCeiling({
       providerAllowlist: process.env.AI_PRIVATE_EGRESS_ALLOWED_PROVIDERS,
       legacyGeminiAllowed: process.env.GEMINI_ALLOW_PRIVATE === 'true',
+      localOwnerDefault: process.env.SHOTGUN_DEPLOYMENT_MODE !== 'managed',
     });
     const deploymentAllowsPrivateExternalTransfer = deploymentCeiling.allows('google-gemini');
     const settingsRepository = new PostgresSettingsRepository(
@@ -415,6 +435,9 @@ export const startShotgunApplication = async (
       aiProviderRegistry,
       new PostgresProjectAIConfigurationRepository(pool),
       credentialVault,
+    );
+    const standingPolicy = new StandingAIProcessingPolicyService(
+      new PostgresStandingAIProcessingPolicyRepository(pool),
     );
     const connectivityRegistry = new StaticAIProviderConnectivityRegistry([
       new OpenAIConnectivityAdapter({ baseUrl: process.env.OPENAI_BASE_URL }),
@@ -447,6 +470,7 @@ export const startShotgunApplication = async (
         deploymentCeiling,
         approvalAuthority: providerApprovalService,
         legacyExternalTransferAllowed: legacyPrivacy.getLegacyExternalTransferAllowed,
+        standingPolicyAuthority: standingPolicy,
       },
     );
     const semanticEmbeddingRouter = new SemanticEmbeddingRouter(
@@ -456,7 +480,10 @@ export const startShotgunApplication = async (
       providerApprovalService,
       deploymentCeiling,
       [new OpenAIEmbeddingConnectivityAdapter({ baseUrl: process.env.OPENAI_BASE_URL })],
-      { legacyExternalTransferAllowed: legacyPrivacy.getLegacyExternalTransferAllowed },
+      {
+        legacyExternalTransferAllowed: legacyPrivacy.getLegacyExternalTransferAllowed,
+        standingPolicyAuthority: standingPolicy,
+      },
     );
     const semanticGenerationBuilder = new SemanticGenerationBuilder(
       semanticIndexRepository,
@@ -491,6 +518,7 @@ export const startShotgunApplication = async (
       {
         isGeminiCredentialConfigured: () => Boolean(process.env.GEMINI_API_KEY?.trim()),
       },
+      standingPolicy,
     );
     // The legacy Gemini adapter remains available only for the older durable
     // materialization path. Ask itself uses the A8 request-time router below.
@@ -511,7 +539,7 @@ export const startShotgunApplication = async (
       },
     );
     const askProviderPolicy = new AskProviderPolicyResolver(
-      new PostgresAskProviderPolicyAuthorityReader(pool),
+      new PostgresAskProviderPolicyAuthorityReader(pool, standingPolicy),
       {
         providerId: 'google-gemini',
         deploymentPrivateTransferAllowed: deploymentAllowsPrivateExternalTransfer,
@@ -555,6 +583,7 @@ export const startShotgunApplication = async (
         },
         legacyCredential: () => process.env.GEMINI_API_KEY,
         legacyModelId: aiProviderRegistry.getProvider('google-gemini')?.models[0]?.modelId,
+        standingPolicyAuthority: standingPolicy,
       },
     );
     const providerRouter = new AIProviderRouter(
@@ -563,6 +592,30 @@ export const startShotgunApplication = async (
       credentialVault,
       { legacyCredential: () => process.env.GEMINI_API_KEY },
     );
+    const stage4AIExecutionResolver: AIProviderExecutionResolverPort = {
+      resolve: async (input) => {
+        const resolved = await executionIdentityResolver.resolveSourceAIExecutionIdentity({
+          principalId: 'stage4-source-materialization',
+          projectId: input.projectId,
+          requestId: input.requestId,
+          sourceVersionId: input.sourceVersionId,
+          sensitivity: input.sensitivity,
+          accessScope: input.accessScope,
+          dataClassification: input.dataClassification,
+          ...(input.existingIdentity === undefined
+            ? {}
+            : { existingIdentity: input.existingIdentity }),
+        });
+        const adapter = await providerRouter.resolveStructured({
+          projectId: input.projectId,
+          executionPin: resolved.pin,
+        });
+        return {
+          adapter,
+          executionIdentity: resolved.executionIdentity,
+        };
+      },
+    };
     const askAnswerExecution = new AskAnswerExecutionService(
       new PostgresAskAnswerExecutionRepository(
         pool,
@@ -1079,10 +1132,14 @@ export const startShotgunApplication = async (
       aiProvider: aiProvider,
       askAnswerExecution,
       aiProviderPolicy: {
-        allowPrivate: process.env.GEMINI_ALLOW_PRIVATE === 'true',
+        // The request-time Stage 4 resolver is the governing private-data
+        // authority. This flag is only the legacy module-level safety floor;
+        // it must not be used as a provider bypass.
+        allowPrivate: true,
         allowRestricted: false,
         maxAttempts: 2,
       },
+      aiProviderExecutionResolver: stage4AIExecutionResolver,
       // LPA-WP4 (D03/D04): serve the built SPA from the same origin.
       ...(options.spaDirectory === undefined ? {} : { spaDirectory: options.spaDirectory }),
       // LPA-WP5 (D12 recovery harness): optional recovery worker override.
@@ -1104,6 +1161,37 @@ export const startShotgunApplication = async (
         await pool.end();
       },
     });
+    stage4Publisher.current = async (input) => {
+      const delivery = await application.kernel.connector.publishEvent({
+        messageId: randomUUID(),
+        messageType: 'EvidenceIndexed',
+        messageKind: 'event',
+        schemaVersion: '1.0.0',
+        producerModule: 'sources-stage3-pipeline',
+        producerVersion: '1.0.0',
+        correlationId: `sources-stage3:${input.projectId}:${input.sourceVersionId}`,
+        projectId: input.projectId,
+        actor: { type: 'service', id: 'sources-stage3-pipeline' },
+        security: {
+          accessScope: [...input.accessScope],
+          sensitivity: input.sensitivity,
+          dataClassification: input.dataClassification,
+        },
+        idempotencyKey: `evidence-indexed:${input.projectId}:${input.revisionId}`,
+        payload: {
+          revisionId: input.revisionId,
+          sourceVersionId: input.sourceVersionId,
+          evidenceCount: input.evidenceCount,
+          reusedCount: input.reusedCount,
+        },
+        createdAt: new Date().toISOString(),
+        traceId: randomUUID(),
+      });
+      const failed = delivery.consumers.find((consumer) => consumer.status === 'dead-letter');
+      if (failed) {
+        throw new Error(`Stage 4 continuation failed for ${failed.consumerId}.`);
+      }
+    };
     const { server } = application;
 
     let askWorkerStarted = false;

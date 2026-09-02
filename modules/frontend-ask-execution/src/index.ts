@@ -73,7 +73,6 @@ export type AskSourceVersionContextReaderPort = {
 
 export type AskAnswerProviderCitation = {
   readonly evidenceId: string;
-  readonly exactQuote?: string;
 };
 
 export type AskAnswerProviderRequest = {
@@ -1211,13 +1210,6 @@ export class AskAnswerExecutionService {
         throw executionError(
           'VALIDATION_ERROR',
           `Provider citation ${index + 1} is not part of the selected Evidence.`,
-          'validate-citations',
-        );
-      }
-      if (citation.exactQuote !== undefined && citation.exactQuote !== evidence.exactQuote) {
-        throw executionError(
-          'VALIDATION_ERROR',
-          `Provider citation ${index + 1} does not match the selected Evidence quote.`,
           'validate-citations',
         );
       }

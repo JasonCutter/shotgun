@@ -69,7 +69,7 @@ describe('AskAnswerExecutionService', () => {
         await request.onPartial('The source');
         return {
           answer: 'The source quote.',
-          citations: [{ evidenceId: 'evidence-1', exactQuote: 'The source quote.' }],
+          citations: [{ evidenceId: 'evidence-1' }],
           provider: {
             provider: 'test-provider',
             model: 'test-model',
@@ -123,7 +123,7 @@ describe('AskAnswerExecutionService', () => {
     expect(result.capabilities).toContain('RETRY_SAME_CONTEXT');
   });
 
-  it('fails closed when a canonical citation has the wrong exact quote', async () => {
+  it('reconstructs the authoritative exact quote from the cited Evidence', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
     repository.register(snapshot(), [
       {
@@ -137,16 +137,23 @@ describe('AskAnswerExecutionService', () => {
     const service = new AskAnswerExecutionService(
       repository,
       provider(async () => ({
-        answer: 'Wrongly grounded answer',
-        citations: [{ evidenceId: 'evidence-1', exactQuote: 'A different quote.' }],
+        answer: 'Grounded answer',
+        citations: [{ evidenceId: 'evidence-1' }],
         provider: { provider: 'test-provider', model: 'test-model' },
       })),
     );
 
     const result = await service.execute(scope, 'run-1');
 
-    expect(result.state).toBe('FAILED');
-    expect(result.failure).toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(result.state).toBe('SUCCEEDED');
+    expect(result.statements[0]?.citations).toEqual([
+      expect.objectContaining({
+        evidenceId: 'evidence-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        exactQuote: 'The source quote.',
+      }),
+    ]);
   });
 
   it('does not invoke the provider when authoritative context has no supported answer', async () => {

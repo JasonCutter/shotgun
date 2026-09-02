@@ -52,7 +52,6 @@ const answerSchemaFor = (citationBindings: readonly ProviderCitationBinding[]) =
                     type: 'string',
                     enum: citationBindings.map((binding) => binding.citationRef),
                   },
-            exactQuote: { type: 'string', minLength: 1, maxLength: 20000 },
           },
         },
       },
@@ -61,7 +60,7 @@ const answerSchemaFor = (citationBindings: readonly ProviderCitationBinding[]) =
 
 type AnswerPayload = {
   readonly answer: string;
-  readonly citations: readonly { readonly citationRef: string; readonly exactQuote?: string }[];
+  readonly citations: readonly { readonly citationRef: string }[];
 };
 
 const promptFor = (
@@ -117,16 +116,7 @@ const parseAnswer = (rawText: string): AnswerPayload => {
       if (typeof item.citationRef !== 'string' || item.citationRef.trim().length === 0) {
         throw new Error('citation reference is invalid');
       }
-      if (
-        item.exactQuote !== undefined &&
-        (typeof item.exactQuote !== 'string' || item.exactQuote.length === 0)
-      ) {
-        throw new Error('citation exactQuote is invalid');
-      }
-      return {
-        citationRef: item.citationRef,
-        ...(item.exactQuote === undefined ? {} : { exactQuote: item.exactQuote }),
-      };
+      return { citationRef: item.citationRef };
     });
     return { answer: value.answer, citations };
   } catch (error) {
@@ -160,10 +150,7 @@ const canonicalCitationsFor = (
         retryable: false,
       });
     }
-    return {
-      evidenceId,
-      ...(citation.exactQuote === undefined ? {} : { exactQuote: citation.exactQuote }),
-    };
+    return { evidenceId };
   });
 };
 

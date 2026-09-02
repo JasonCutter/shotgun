@@ -55,7 +55,7 @@ const provider = (
 });
 
 describe('StructuredAskAnswerProviderAdapter citation reference binding', () => {
-  it('maps the single issued E1 reference back to the exact canonical Evidence ID', async () => {
+  it('maps the single issued E1 reference back to the canonical Evidence ID', async () => {
     let generation: StructuredGenerationRequest | undefined;
     const adapter = new StructuredAskAnswerProviderAdapter(
       provider(async (value) => {
@@ -63,7 +63,7 @@ describe('StructuredAskAnswerProviderAdapter citation reference binding', () => 
         return {
           rawText: JSON.stringify({
             answer: 'The selected evidence says 42.',
-            citations: [{ citationRef: 'E1', exactQuote: 'Verification number A is 17.' }],
+            citations: [{ citationRef: 'E1' }],
           }),
         };
       }),
@@ -76,7 +76,6 @@ describe('StructuredAskAnswerProviderAdapter citation reference binding', () => 
     expect(result.citations).toEqual([
       {
         evidenceId: '550e8400-e29b-41d4-a716-446655440000',
-        exactQuote: 'Verification number A is 17.',
       },
     ]);
     expect(JSON.parse(generation!.prompt).context).toEqual([
@@ -88,6 +87,11 @@ describe('StructuredAskAnswerProviderAdapter citation reference binding', () => 
         citations: {
           items: { properties: { citationRef: { enum: ['E1'] } } },
         },
+      },
+    });
+    expect(generation!.responseSchema).not.toMatchObject({
+      properties: {
+        citations: { items: { properties: { exactQuote: expect.anything() } } },
       },
     });
   });

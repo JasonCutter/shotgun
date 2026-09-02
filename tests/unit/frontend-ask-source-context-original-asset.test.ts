@@ -81,6 +81,27 @@ describe('OriginalAssetAskSourceVersionContextReader', () => {
     });
   });
 
+  it('preserves a UTF-8 BOM in the exact Ask source context', async () => {
+    const bomBytes = new TextEncoder().encode('\uFEFFOriginal evidence');
+    const bomContentHash = `sha256:${createHash('sha256').update(bomBytes).digest('hex')}`;
+    const reader = new OriginalAssetAskSourceVersionContextReader(
+      repository(
+        stored({
+          assetReference: {
+            ...stored().assetReference,
+            contentHash: bomContentHash,
+            sizeBytes: bomBytes.byteLength,
+          },
+        }),
+      ),
+      storage(bomBytes),
+    );
+
+    await expect(
+      reader.resolve({ scope, sourceId: 'source-1', sourceVersionId: 'version-1' }),
+    ).resolves.toMatchObject({ text: '\uFEFFOriginal evidence' });
+  });
+
   it.each([
     ['missing from the Resource Project', undefined],
     ['owned by another Project', stored({ projectId: 'project-other' })],

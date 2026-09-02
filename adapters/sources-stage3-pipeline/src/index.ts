@@ -36,7 +36,10 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
     input: Parameters<SourcesStage3PipelinePort['runForSourceVersion']>[0],
   ): Promise<void> {
     const bytes = await this.deps.storage.read(input.storageKey);
-    const text = new TextDecoder().decode(bytes);
+    // TextDecoder's default UTF-8 mode consumes a leading BOM. The original
+    // asset hash is byte-addressed, so dropping that character makes the
+    // document root hash disagree with the immutable SourceVersion hash.
+    const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes);
     const sourceContentHash = input.contentHash;
     const output = await this.deps.transformer.transform({
       sourceId: input.sourceId,

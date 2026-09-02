@@ -243,7 +243,10 @@ describe.runIf(pool)('FE-P5-XP Sources Stage 3 failure recovery', () => {
   it('Stage3 first attempt throws → retry → same SourceId/SourceVersionId → Stage3 completes → Evidence exists → no duplicate SourceVersion', async () => {
     const context = await seedContext();
     const submissionId = randomUUID();
-    const text = 'Shotgun Sources recovery: the founding evidence lineage claim.';
+    // Preserve a UTF-8 BOM exactly as received from a real text-file upload.
+    // Stage 3 must hash the decoded text with the same bytes used by the
+    // immutable SourceVersion, rather than silently dropping the BOM.
+    const text = '\uFEFFShotgun Sources recovery: the founding evidence lineage claim.';
     const service = new PostgresSourcesProductService(
       pool!,
       new SealedSourcesStagingService(

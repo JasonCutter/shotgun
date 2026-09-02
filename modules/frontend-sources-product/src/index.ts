@@ -364,7 +364,7 @@ export class FrontendSourcesReadCoordinator {
     const bytes = mode === 'ORIGINAL' ? await this.storage.read(record.storageKey) : undefined;
     const text =
       bytes && record.mediaType.startsWith('text/')
-        ? new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+        ? new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
         : undefined;
     return decodeSourcePreviewView({
       schemaVersion: '1.0.0',

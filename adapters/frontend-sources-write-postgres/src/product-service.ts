@@ -377,7 +377,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
    */
   private async runStage3AndFinalize(
     items: readonly MaterializedStage3Item[],
-    input: SubmitSourcesProductInput,
+    input: Pick<SubmitSourcesProductInput, 'submissionId' | 'createdAt'>,
     scope: SourcesProductWriteScope,
     actionRequired: number,
   ): Promise<void> {
@@ -798,8 +798,28 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           );
         }
       }
-      await this.recomputeSubmission(client, row.submission_id, input.createdAt);
+      // Duplicate resolution can materialize a new SourceVersion (or reuse an
+      // existing one whose Stage 3 work was interrupted). When the real Stage
+      // 3 pipeline is available, the submission was already moved to RUNNING
+      // above; keep it there until transform and Evidence indexing complete.
+      // Recomputing here would terminalize it as SUCCEEDED before Stage 3 and
+      // the lifecycle contract intentionally forbids SUCCEEDED -> RUNNING.
+      if (input.disposition === 'CANCEL_SUBMISSION' || !this.stage3Pipeline) {
+        await this.recomputeSubmission(client, row.submission_id, input.createdAt);
+      }
       await client.query('COMMIT');
+      if (input.disposition !== 'CANCEL_SUBMISSION' && this.stage3Pipeline) {
+        const { items, actionRequired } = await this.materializedItemsForStage3(
+          input.scope.projectId,
+          row.submission_id,
+        );
+        await this.runStage3AndFinalize(
+          items,
+          { submissionId: row.submission_id, createdAt: input.createdAt },
+          input.scope,
+          actionRequired,
+        );
+      }
       return (await this.getSubmission(input.scope, row.submission_id))!;
     } catch (error) {
       await client.query('ROLLBACK');

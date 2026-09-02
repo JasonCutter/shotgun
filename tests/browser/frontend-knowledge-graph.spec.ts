@@ -328,7 +328,12 @@ test('Graph Workspace keyboard set switches base view, toggles overlays and anno
     .getByRole('button', { name: 'Select' })
     .first()
     .click();
-  await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
+  await expect(
+    page
+      .getByRole('region', { name: 'Semantic Graph', exact: true })
+      .getByRole('status')
+      .filter({ hasText: '선택됨: Entity One' }),
+  ).toContainText('선택됨: Entity One');
 });
 
 test('Graph Workspace honours prefers-reduced-motion with no animation runs', async ({ page }) => {
@@ -346,7 +351,12 @@ test('Graph Workspace restores deep-link focus to the selected node', async ({ p
   await page.goto('/knowledge/graph?focus=entity-1');
   await expect(page.getByRole('heading', { name: 'Semantic Graph', level: 1 })).toBeVisible();
   // The deep-link selection announces the focused node once the snapshot resolves.
-  await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
+  await expect(
+    page
+      .getByRole('region', { name: 'Semantic Graph', exact: true })
+      .getByRole('status')
+      .filter({ hasText: '선택됨: Entity One' }),
+  ).toContainText('선택됨: Entity One');
 });
 
 test('AC-08: the three authorities carry distinct non-color visual signatures and accessible descriptions', async ({
@@ -435,12 +445,22 @@ test('AC-17: refresh issues a new snapshot identity and keeps the selected resou
     .getByRole('button', { name: 'Select' })
     .first()
     .click();
-  await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
+  await expect(
+    page
+      .getByRole('region', { name: 'Semantic Graph', exact: true })
+      .getByRole('status')
+      .filter({ hasText: '선택됨: Entity One' }),
+  ).toContainText('선택됨: Entity One');
 
   await page.getByRole('button', { name: '새로 고침' }).click();
 
   await expectTechnicalInformation(page, ['snapshot-2', 'proj-2']);
-  await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
+  await expect(
+    page
+      .getByRole('region', { name: 'Semantic Graph', exact: true })
+      .getByRole('status')
+      .filter({ hasText: '선택됨: Entity One' }),
+  ).toContainText('선택됨: Entity One');
 });
 
 test('AC-18: a refresh while the canvas stays mounted rebuilds the actual cytoscape instance with the new snapshot', async ({
@@ -601,9 +621,13 @@ test('AC-20: the full frozen keyboard matrix is exercised end to end', async ({ 
   // placed on a neutral element (the heading) so the keys never collide with
   // radio/button default behavior from the toolbar.
   await page.getByRole('heading', { name: 'Semantic Graph', level: 1 }).focus();
+  const graphWorkspace = page.getByRole('region', { name: 'Semantic Graph', exact: true });
   const activateAndExpect = async (label: string) => {
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('status')).toContainText(`선택됨: ${label}`);
+    const announcement = `선택됨: ${label}`;
+    await expect(
+      graphWorkspace.getByRole('status').filter({ hasText: announcement }),
+    ).toContainText(announcement);
   };
   await page.keyboard.press('ArrowDown'); // focus Entity One
   await activateAndExpect('Entity One');
@@ -676,7 +700,11 @@ test('AC-22: at 200% zoom list/table/path lose no primary content and keep focus
     const actionControl = region.getByRole('button', { name: /Select|보정/ }).first();
     await expect(actionControl).toBeVisible();
     await expect(page.getByRole('group', { name: 'View switcher' }).first()).toBeVisible();
-    await expect(page.getByRole('status').first()).toBeAttached();
+    await expect(
+      page
+        .getByRole('region', { name: 'Semantic Graph', exact: true })
+        .locator('p.visually-hidden[role="status"][aria-live="polite"]'),
+    ).toBeAttached();
 
     // The first item's label is not text-clipped.
     const labelClip = await firstItem.evaluate((element) => {
@@ -725,7 +753,12 @@ test('AC-22: at 200% zoom list/table/path lose no primary content and keep focus
     .getByRole('button', { name: 'Select' })
     .first()
     .click();
-  await expect(page.getByRole('status')).toContainText('선택됨: Entity One');
+  await expect(
+    page
+      .getByRole('region', { name: 'Semantic Graph', exact: true })
+      .getByRole('status')
+      .filter({ hasText: '선택됨: Entity One' }),
+  ).toContainText('선택됨: Entity One');
 });
 
 test('AC-21: axe scan finds zero critical violations across canvas, list, table and path', async ({

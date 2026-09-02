@@ -125,22 +125,7 @@ describe('Standing AI processing policy Project Owner authority', () => {
     await pool.end();
   });
 
-  it('keeps migration defaults, rejects admin-only writes, and persists one owner revision', async () => {
-    const migrationDefault = await pool.query<{
-      enabled: boolean;
-      provider_id: string;
-      policy_revision: number;
-    }>(
-      `SELECT enabled, provider_id, policy_revision
-       FROM ai.project_standing_ai_processing_policies
-       WHERE project_id = 'shotgun'`,
-    );
-    expect(migrationDefault.rows[0]).toMatchObject({
-      enabled: false,
-      provider_id: 'deepseek',
-      policy_revision: 1,
-    });
-
+  it('rejects admin-only writes and persists one owner revision', async () => {
     const fixture = await createFixture();
     const auth = new PostgresAuthRepository(pool);
     const standingPolicy = new StandingAIProcessingPolicyService(

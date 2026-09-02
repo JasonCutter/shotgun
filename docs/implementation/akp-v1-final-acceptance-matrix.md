@@ -1,7 +1,7 @@
 # AKP v1 Final Acceptance Matrix
 
 - Audit owner: AKP-8 WP1
-- Baseline: `main@73044a7844fa008f7b0fce598799e9cba6d9b000`
+- Baseline: `main@ddb318f4a447b62c687d9b0ebf25d3df08362192`
 - Matrix status: **technical closure candidate; final user approval not recorded**
 - Companion audit: [AKP-8 WP1 Final Acceptance & Evidence Gap Audit](./akp-8-wp1-final-acceptance-evidence-audit.md)
 - Final closure record: [AKP v1 Final Technical and Governance Closure](./akp-8-final-technical-governance-closure.md)
@@ -20,7 +20,7 @@ and Section AC row, is recorded in the linked closure record. That record is the
 current technical candidate and deliberately leaves the ADR-142 final user gate
 open; it does not declare `AKP v1 COMPLETE`.
 
-### Canonical reconciliation after WP2/WP3 merge (2026-09-02)
+### Canonical reconciliation after WP2/WP3/Stage 4 merge (2026-09-02)
 
 The historical candidate wording in the WP2A/WP2/WP3 records is retained as
 history. The current canonical sequence is:
@@ -28,13 +28,77 @@ history. The current canonical sequence is:
 - WP2A PR #157 merged as `ba6f8e9e1fd5e2d0335bb054bde1a3d9a2d2fa01`;
 - WP2 PR #158 merged as `71920f4bc9f0815a8aae251a898bf5af723140c5`;
 - WP3 PR #159 merged as `73044a7844fa008f7b0fce598799e9cba6d9b000`;
-- current canonical `main` is `73044a7844fa008f7b0fce598799e9cba6d9b000`;
+- PR #160 final technical/governance closure merged as
+  `b2c70eed403e2a51772d8e53b052aaf21339647d`;
+- PR #161 Standing AI Policy / Stage 4 completion merged as
+  `ddb318f4a447b62c687d9b0ebf25d3df08362192`;
+- current canonical `main` is `ddb318f4a447b62c687d9b0ebf25d3df08362192`;
 - WP3 post-merge automatic CI #1237 / run `33542369178` passed on that exact
   merge head, including Quality database tests, Frontend E2E, and Required
   Gates.
+- PR #161 exact-head CI #1241 / run `33637477935` and post-merge main CI #1242 /
+  run `33638529588` both passed.
 
 The final closure record consumes these exact-head results and the accepted
 component evidence without rerunning A-P or duplicating accepted suites.
+
+The historical closure baseline `main@73044a7844fa008f7b0fce598799e9cba6d9b000`
+is preserved as history; it is not the current canonical subject.
+
+### Standing AI Policy / Stage 4 authority reconciliation
+
+- ADR-153 final disposition is `ACCEPTED / IMPLEMENTED / CANONICAL`. Its
+  Project-level policy is provider-bound and layered with provider
+  configuration, vault credential revision, deployment ceiling, access scope
+  and sensitivity controls.
+- The validated ADR-153 correction head is
+  `7c5bad0c298a9e00fb5a56dfa9e54a7ea8aa512d`; migration
+  `060_project_standing_ai_processing_policy.sql` retains append-only policy
+  revisions, `ON DELETE RESTRICT`, HIGH-risk audit and historical A4 records.
+- Stage 4 Product implementation head was
+  `82c04b2ca5784b95f48bd6a33486a13067007b18`; CI-contract correction head was
+  `593bdbda6da1ea375b5810dc1b2c357ee064d3cc`.
+- Accepted actual-use evidence is one real execution for SourceVersion
+  `b8049064-0b10-44ec-a962-d09ef361669b` using DeepSeek
+  `deepseek-v4-flash`: providerResponseId
+  `bf795e2e-2050-4e10-98dc-9065b8307f6b`, attemptId
+  `fc6e07a9-d0b5-4548-a903-28b91ea5080f`, token usage `6103 / 1845 / 7948`,
+  29 READY Candidates, authoritative Evidence binding, deterministic
+  Validation, and no Canonical write. This evidence is reused; no provider
+  execution is repeated.
+- The governed continuation is `SourceVersion → Transformation → Evidence →
+governed Stage 4 AI → ClaimCandidate → deterministic Validation`. Candidate
+  output remains `DERIVED_INFERENCE`, cannot establish Fact, Stage 4 failure
+  cannot invalidate authoritative Source/Evidence, and restricted external
+  transfer remains fail-closed.
+- Accepted Stage 4 failure-isolation evidence shows that durable Stage 3
+  Evidence is authoritative Source success: Standing Policy `OFF` leaves
+  Source `SUCCEEDED` with Evidence retained, zero provider calls and zero
+  Candidates; provider failure leaves Source `SUCCEEDED` with Evidence retained;
+  a genuine Stage 3 failure remains `OUTCOME_INDETERMINATE`; and replay does not
+  duplicate the Candidate batch or provider execution.
+- CI #1240 / run `33627500881` remains visible as historical test-contract and
+  fixture drift: stale standing-policy fixture cleanup after migration 060,
+  stale SourceVersion citation expectation, ambiguous Graph `role=status`
+  locator, and stale Privacy copy expectation. Its test-only correction was
+  committed at `593bdbda6da1ea375b5810dc1b2c357ee064d3cc`; production behavior
+  and migration/FK authority were not weakened.
+
+### Reconciliation closure boundary
+
+- A-P remains `16/16 PASS`, reused from accepted exact-head evidence; A-P is not
+  rerun by this documentation reconciliation.
+- PAC technical closure remains unchanged except for PAC-23 moving from
+  component evidence to `PROVEN_EXISTING` because the accepted Standing AI and
+  real Stage 4 execution now close its integrated provider/privacy evidence.
+- Section AC technical dispositions remain unchanged; the new Stage 4 evidence
+  strengthens the existing O/provider boundary without changing its epistemic
+  meaning.
+- Critical unresolved gaps remain `0`; High unresolved gaps remain `0`.
+- Deferred items remain explicit, including FACT authority (ADR-147) and the
+  epistemic comparator (ADR-150).
+- Final USER approval remains `NOT RECORDED`. The ADR-142 final user gate is
+  still open, and `AKP v1 COMPLETE` is not declared.
 
 ## Status legend
 
@@ -102,7 +166,7 @@ WP2, authorize WP3/deployment, or declare AKP v1 complete.
 | PAC-20 | Existing Activity/Attention is reused through an adapter                                                                        | `PROVEN_EXISTING`            | AKP-4 WP5 activity contract/database tests; AKP-6/7 UI records                                                                                                                                                                                                                                                                                                                                                                                                                                            | B, H, L; AKP4-AC-10; AKP6-AC-06, 07          | Add cross-surface H and final activity lifecycle evidence                                                             |
 | PAC-21 | Epistemic feedback causes correction/validation; utility feedback only ranks/suppresses; mandatory visibility remains           | `PROVEN_EXISTING`            | AKP-7 WP1/WP3/WP4 contract/database/integration tests; ADR-150                                                                                                                                                                                                                                                                                                                                                                                                                                            | C, L, M; AKP7-AC-02..08                      | Final fixture must prove both lanes and mandatory Conflict visibility                                                 |
 | PAC-22 | Prioritization is deterministic, versioned, bounded, and explainable; no implicit ML/telemetry requirement                      | `PROVEN_EXISTING`            | AKP-7 ranking contracts/database tests and implementation record                                                                                                                                                                                                                                                                                                                                                                                                                                          | C, L; AKP7-AC-09, 10                         | Retain deterministic ranking evidence in closure campaign                                                             |
-| PAC-23 | ADR-133 governs provider, credential, and egress authority; content is not tool/credential authority                            | `PARTIAL_COMPONENT_EVIDENCE` | A9 is `COMPLETE / FINAL_AFTER_MERGE / ACTUAL_USE_VERIFIED` after PR #114; R4/R5 uses a deterministic provider-network boundary; AKP-3 WP5 proves prompt/privacy data-only handling and fail-closed negatives                                                                                                                                                                                                                                                                                              | H, O; AKP1-AC-04, 08; AKP3-AC-07, 08         | AKP-specific integrated O evidence remains; live third-party acceptance is not required                               |
+| PAC-23 | ADR-133 governs provider, credential, and egress authority; content is not tool/credential authority                            | `PROVEN_EXISTING`            | ADR-133 plus ADR-153 provider/configuration/credential/deployment authority; accepted real Stage 4 execution on SourceVersion `b8049064-0b10-44ec-a962-d09ef361669b` with DeepSeek `deepseek-v4-flash`, 29 READY Candidates, authoritative Evidence, deterministic Validation and no Canonical write; exact-head CI #1241 and post-merge CI #1242                                                                                                                                                         | H, O; AKP1-AC-04, 08; AKP3-AC-07, 08         | Preserve provider-bound policy, Candidate/DERIVED_INFERENCE and restricted fail-closed boundaries; no A-P rerun       |
 | PAC-24 | Semantic/AI unavailability degrades safely to typed deterministic/lexical behavior                                              | `PROVEN_EXISTING`            | `tests/unit/semantic-runtime-r4.test.ts` covers lexical health without a generation and conservative degraded classification; AKP-3 WP5 records typed degradation and safe fallback                                                                                                                                                                                                                                                                                                                       | D, O; AKP1-AC-09; AKP3-AC-06, 08             | Broader Product/Graph/Review presentation may be added as closure evidence                                            |
 | PAC-25 | Golden Query/Discovery evaluation covers exact, typo, synonym, paraphrase, multilingual, temporal, conflict, and negative cases | `MISSING_ACCEPTANCE_TEST`    | `tests/fixtures/akp-1-semantic-golden-corpus.v1.json` and `tests/unit/akp-1-wp5-closure.test.ts` exact tests: `loads an approved closed Golden Query corpus and preserves Product semantic eligibility`; `compares lexical-only, semantic-only and Hybrid retrieval through the existing Stage 12 evaluator`; `proves security-before-top-k, request-local degradation, and privacy-safe evaluation output`; `records measured local retrieval latency without asserting an invented universal threshold` | D, I, O; AKP1-AC-12; AKP3-AC-10              | Final rank/cutoff acceptance record is missing; this is an evidence gap, not an external dependency                   |
 | PAC-26 | Incremental/full semantic equivalence removes obsolete/ineligible resources and preserves retention/sensitivity                 | `PARTIAL_COMPONENT_EVIDENCE` | `tests/unit/semantic-index-parity.test.ts`, generation lifecycle tests, and R5 production-chain evidence cover parity, invalidation, pointer, restart, and stale/security boundaries                                                                                                                                                                                                                                                                                                                      | H, I, N; AKP1-AC-10, 11                      | Integrated equivalence plus governed finding retention/restore proof remains                                          |
@@ -111,7 +175,7 @@ WP2, authorize WP3/deployment, or declare AKP v1 complete.
 | PAC-29 | Closure requires all PAC/AC, zero Critical/High, Deferred assignments, CI, and user approval                                    | `MISSING_ACCEPTANCE_TEST`    | ADR-142, master design PAC-29, Phase-6 amendment                                                                                                                                                                                                                                                                                                                                                                                                                                                          | All; AKP8-AC-02, 03, 07, 08                  | Resolve five High evidence gaps, record governance approval, normal merge/post-merge                                  |
 | PAC-30 | Reuse only exact-head PASS evidence; do not duplicate full campaigns                                                            | `PROVEN_EXISTING`            | ADR-142 exact-head rule; AKP-7 WP5 exact-head CI #1194/#1195 record                                                                                                                                                                                                                                                                                                                                                                                                                                       | AKP8-AC-06                                   | Apply exact SHA/run linkage for each reused result in final closure                                                   |
 
-PAC summary: `PROVEN_EXISTING` 20, `PARTIAL_COMPONENT_EVIDENCE` 7,
+PAC summary: `PROVEN_EXISTING` 21, `PARTIAL_COMPONENT_EVIDENCE` 6,
 `MISSING_ACCEPTANCE_TEST` 3, `MISSING_PRODUCT_CAPABILITY` 0,
 `APPROVED_NON_BLOCKING_DISPOSITION` 0, `EXTERNAL_ACCEPTANCE_DEPENDENCY` 0,
 `BLOCKED_ARCHITECTURE_GAP` 0, `NOT_APPLICABLE_BY_FROZEN_CONTRACT` 0. A PAC may
@@ -131,16 +195,16 @@ records exist.
 
 ### AKP0 — Scope and governance
 
-| AC         | Criterion                                                                        | Status            | Evidence / remaining work                                                                                  |
-| ---------- | -------------------------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| AKP0-AC-01 | Exact canonical main SHA recorded                                                | `PROVEN_EXISTING` | `main@d6ed927654d04a44be0b3b068e7aef69e22d39f0` is recorded and verified; preserve exact-head linkage      |
-| AKP0-AC-02 | Every active-knowledge capability classified with repository evidence            | `PROVEN_EXISTING` | Master design, section design, implementation records, and this matrix provide the classification register |
-| AKP0-AC-03 | Outbox/Review/Graph/Activity/provider authority reuse identified                 | `PROVEN_EXISTING` | ADR-142, AKP-4/5/6/7 records, and ADR-133 records identify each owner; final journey proof remains open    |
-| AKP0-AC-04 | PAC and non-scope frozen after whole-design approval                             | `PROVEN_EXISTING` | Accepted AKP architecture record and amendments freeze the boundary                                        |
-| AKP0-AC-05 | Every gap has one owner and cross-section dependencies                           | `PROVEN_EXISTING` | GAP-H-01..05 and the remaining-work plan assign owners; future closure updates must retain one owner       |
-| AKP0-AC-06 | ADR ownership is unique and approval state is explicit                           | `PROVEN_EXISTING` | Accepted ADR records identify decision owner/status; no duplicate authority found                          |
-| AKP0-AC-07 | ADD/Product/migration/dependency/Ready/Merge remain unauthorized before approval | `PROVEN_EXISTING` | WP1 makes no such change; branch remains documentation-only and Draft                                      |
-| AKP0-AC-08 | Scope expansion requires a Master Scope Amendment                                | `PROVEN_EXISTING` | Master design and ADR-142 boundary retained; no scope amendment introduced                                 |
+| AC         | Criterion                                                                        | Status            | Evidence / remaining work                                                                                                                                                                            |
+| ---------- | -------------------------------------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AKP0-AC-01 | Exact canonical main SHA recorded                                                | `PROVEN_EXISTING` | Historical WP1 snapshot `main@d6ed927654d04a44be0b3b068e7aef69e22d39f0` is retained; current canonical is `main@ddb318f4a447b62c687d9b0ebf25d3df08362192` after PR #161; preserve exact-head linkage |
+| AKP0-AC-02 | Every active-knowledge capability classified with repository evidence            | `PROVEN_EXISTING` | Master design, section design, implementation records, and this matrix provide the classification register                                                                                           |
+| AKP0-AC-03 | Outbox/Review/Graph/Activity/provider authority reuse identified                 | `PROVEN_EXISTING` | ADR-142, AKP-4/5/6/7 records, and ADR-133 records identify each owner; final journey proof remains open                                                                                              |
+| AKP0-AC-04 | PAC and non-scope frozen after whole-design approval                             | `PROVEN_EXISTING` | Accepted AKP architecture record and amendments freeze the boundary                                                                                                                                  |
+| AKP0-AC-05 | Every gap has one owner and cross-section dependencies                           | `PROVEN_EXISTING` | GAP-H-01..05 and the remaining-work plan assign owners; future closure updates must retain one owner                                                                                                 |
+| AKP0-AC-06 | ADR ownership is unique and approval state is explicit                           | `PROVEN_EXISTING` | Accepted ADR records identify decision owner/status; no duplicate authority found                                                                                                                    |
+| AKP0-AC-07 | ADD/Product/migration/dependency/Ready/Merge remain unauthorized before approval | `PROVEN_EXISTING` | WP1 makes no such change; branch remains documentation-only and Draft                                                                                                                                |
+| AKP0-AC-08 | Scope expansion requires a Master Scope Amendment                                | `PROVEN_EXISTING` | Master design and ADR-142 boundary retained; no scope amendment introduced                                                                                                                           |
 
 ### AKP1 — Hybrid semantic retrieval
 
@@ -149,11 +213,11 @@ records exist.
 | AKP1-AC-01 | Vectors are derived/rebuildable and never Canonical/Evidence/confidence     | `PROVEN_EXISTING`            | Semantic runtime R4 and R5 production-chain tests prove the derived boundary, normal `startShotgunApplication` composition, generation pointer, restart, policy/stale, and CAS behavior                | Current R3/R4/R5 evidence is canonical; only AKP-specific final closure evidence remains |
 | AKP1-AC-02 | Corpus excludes unapproved/raw bulk content                                 | `PROVEN_EXISTING`            | Semantic corpus/representation contracts and privacy tests; final O campaign remains                                                                                                                   |
 | AKP1-AC-03 | Deterministic typed representation, digest, and version exist               | `PROVEN_EXISTING`            | Semantic representation, fingerprint, and generation unit/contract tests                                                                                                                               |
-| AKP1-AC-04 | Embedding profile is independent and ADR-133 resolved                       | `PROVEN_EXISTING`            | Profile/registry tests, ADR-133, A9 `ACTUAL_USE_VERIFIED`, and R5 deterministic provider-network boundary prove the authority boundary without a live third-party dependency                           | Add AKP-specific integrated O evidence if required by the final campaign                 |
+| AKP1-AC-04 | Embedding profile is independent and ADR-133 resolved                       | `PROVEN_EXISTING`            | Profile/registry tests, ADR-133, ADR-153, A9 `ACTUAL_USE_VERIFIED`, R5 deterministic provider-network boundary and accepted Stage 4 actual-use evidence prove the authority boundary                   | Preserve the provider/configuration/credential boundary; no new authority is introduced  |
 | AKP1-AC-05 | Vector store is behind a Port; pgvector is only the first adapter candidate | `PROVEN_EXISTING`            | Semantic embedding/index contracts and module architecture boundary                                                                                                                                    |
 | AKP1-AC-06 | Authorization and sensitivity are enforced before/in retrieval              | `PROVEN_EXISTING`            | Semantic privacy and cross-project negative tests; final all-surface H proof remains                                                                                                                   |
 | AKP1-AC-07 | Hybrid results preserve EvidenceSpan/SourceVersion citation                 | `PROVEN_EXISTING`            | Retriever/citation and Evidence lineage contracts; final K/O journey remains                                                                                                                           |
-| AKP1-AC-08 | Query/index embedding follows provider-egress policy                        | `PROVEN_EXISTING`            | ADR-133, semantic egress-negative tests, A9 completion record, and R5 provider boundary prove policy-controlled egress                                                                                 | Add AKP-specific integrated O evidence if required by the final campaign                 |
+| AKP1-AC-08 | Query/index embedding follows provider-egress policy                        | `PROVEN_EXISTING`            | ADR-133/153, semantic egress-negative tests, A9 completion record, R5 provider boundary and accepted Stage 4 policy-bound execution prove policy-controlled egress                                     | Preserve deployment ceiling and restricted fail-closed behavior                          |
 | AKP1-AC-09 | Semantic degradation falls back to lexical where allowed                    | `PROVEN_EXISTING`            | `tests/unit/semantic-runtime-r4.test.ts` (`keeps lexical search healthy when normal semantic runtime is constructed but no generation exists`) and the AKP-3 WP5 typed degradation record              | Preserve the bounded fallback in final closure evidence                                  |
 | AKP1-AC-10 | Incremental invalidation/tombstone and full equivalence are proven          | `PARTIAL_COMPONENT_EVIDENCE` | `tests/unit/semantic-index-parity.test.ts` and generation lifecycle tests cover component parity/invalidation; R5 proves pointer/restart/stale boundaries                                              | One AKP-specific equivalence and governed-retention fixture remains                      |
 | AKP1-AC-11 | Generation switch/rollback/pruning do not mutate Canonical                  | `PARTIAL_COMPONENT_EVIDENCE` | `tests/unit/semantic-generation-lifecycle.test.ts` and R5 `uses normal startShotgunApplication composition...` prove persisted activation, pointer/CAS, restart, and rollback boundaries after PR #125 | Final AKP-specific I/N proof remains; no repair work is pending                          |
@@ -177,18 +241,18 @@ records exist.
 
 ### AKP3 — Active Discovery engine
 
-| AC         | Criterion                                                             | Status            | Evidence / remaining work                                                                                                                               |
-| ---------- | --------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AKP3-AC-01 | Strategy registry is versioned and bounded                            | `PROVEN_EXISTING` | AKP-3 strategy registry and deterministic generation contracts                                                                                          |
-| AKP3-AC-02 | Signal reads are authorized and version-bound                         | `PROVEN_EXISTING` | AKP-3 bounded candidate/strategy contracts and security tests                                                                                           |
-| AKP3-AC-03 | Deterministic, AI, and hybrid methods are distinguishable             | `PROVEN_EXISTING` | AKP-3 method/provenance contracts and evaluation record                                                                                                 |
-| AKP3-AC-04 | Relation/conflict/pattern candidate space is bounded before AI        | `PROVEN_EXISTING` | AKP-3 candidate enumeration and budget tests                                                                                                            |
-| AKP3-AC-05 | Every frozen v1 type has accepted generation/disposition              | `PROVEN_EXISTING` | Seven-type mapping, accepted amendments, and AKP-3 evaluation record                                                                                    |
-| AKP3-AC-06 | Deterministic quality gate runs before persistence                    | `PROVEN_EXISTING` | AKP-3 quality/degradation contracts; final cross-section evidence remains                                                                               |
-| AKP3-AC-07 | DiscoveryModelProfile is distinct and ADR-133-pinned                  | `PROVEN_EXISTING` | Profile/registry tests, ADR-133 authority records, A9 completion state, and the deterministic R5 provider boundary prove the distinction and policy pin | AKP-specific integrated O evidence may remain for the final campaign; no external acceptance is required |
-| AKP3-AC-08 | Prompt injection/content cannot alter policy or execute tools/Actions | `PROVEN_EXISTING` | AKP-3 WP5 evaluation/degradation/security closure records prompt injection/data-only handling, typed degradation, and negative Action/tool boundaries   | Preserve the negative proof in final closure evidence                                                    |
-| AKP3-AC-09 | Token, cost, time, and concurrency budgets are enforced               | `PROVEN_EXISTING` | AKP-3 evaluation/degradation record and budget tests                                                                                                    |
-| AKP3-AC-10 | Positive/negative quality fixtures include conflict cases             | `PROVEN_EXISTING` | AKP-3 evaluation fixtures and conflict strategy tests; final rank/cutoff record remains                                                                 |
+| AC         | Criterion                                                             | Status            | Evidence / remaining work                                                                                                                                                                        |
+| ---------- | --------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AKP3-AC-01 | Strategy registry is versioned and bounded                            | `PROVEN_EXISTING` | AKP-3 strategy registry and deterministic generation contracts                                                                                                                                   |
+| AKP3-AC-02 | Signal reads are authorized and version-bound                         | `PROVEN_EXISTING` | AKP-3 bounded candidate/strategy contracts and security tests                                                                                                                                    |
+| AKP3-AC-03 | Deterministic, AI, and hybrid methods are distinguishable             | `PROVEN_EXISTING` | AKP-3 method/provenance contracts and evaluation record                                                                                                                                          |
+| AKP3-AC-04 | Relation/conflict/pattern candidate space is bounded before AI        | `PROVEN_EXISTING` | AKP-3 candidate enumeration and budget tests                                                                                                                                                     |
+| AKP3-AC-05 | Every frozen v1 type has accepted generation/disposition              | `PROVEN_EXISTING` | Seven-type mapping, accepted amendments, and AKP-3 evaluation record                                                                                                                             |
+| AKP3-AC-06 | Deterministic quality gate runs before persistence                    | `PROVEN_EXISTING` | AKP-3 quality/degradation contracts; final cross-section evidence remains                                                                                                                        |
+| AKP3-AC-07 | DiscoveryModelProfile is distinct and ADR-133-pinned                  | `PROVEN_EXISTING` | Profile/registry tests, ADR-133/153 authority records, A9 completion state, deterministic R5 provider boundary and accepted Stage 4 provider/model identity prove the distinction and policy pin | Preserve the durable execution identity and provider-bound Standing AI policy; no external acceptance is required |
+| AKP3-AC-08 | Prompt injection/content cannot alter policy or execute tools/Actions | `PROVEN_EXISTING` | AKP-3 WP5 evaluation/degradation/security closure records prompt injection/data-only handling, typed degradation, and negative Action/tool boundaries                                            | Preserve the negative proof in final closure evidence                                                             |
+| AKP3-AC-09 | Token, cost, time, and concurrency budgets are enforced               | `PROVEN_EXISTING` | AKP-3 evaluation/degradation record and budget tests                                                                                                                                             |
+| AKP3-AC-10 | Positive/negative quality fixtures include conflict cases             | `PROVEN_EXISTING` | AKP-3 evaluation fixtures and conflict strategy tests; final rank/cutoff record remains                                                                                                          |
 
 ### AKP4 — Durable Discovery orchestration
 

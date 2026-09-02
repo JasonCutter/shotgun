@@ -26,3 +26,22 @@ export type SourcesStage3PipelinePort = {
     readonly sensitivity: SourcesSensitivity;
   }): Promise<void>;
 };
+
+/** Stage 4 is started only after the Stage 3 Evidence transaction has
+ * committed. The callback is intentionally a narrow event boundary so the
+ * Sources domain never owns Candidate or AI persistence. */
+export type SourcesStage3EvidenceIndexedInput = {
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly revisionId: string;
+  readonly evidenceCount: number;
+  readonly reusedCount: number;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SourcesSensitivity;
+  readonly dataClassification: string;
+};
+
+export type SourcesStage4ContinuationPort = {
+  onEvidenceIndexed(input: SourcesStage3EvidenceIndexedInput): Promise<void>;
+};

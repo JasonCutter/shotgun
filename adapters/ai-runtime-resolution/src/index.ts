@@ -1,6 +1,7 @@
 import {
   ShotgunError,
   type AskContextSensitivity,
+  type AIExecutionIdentity,
   type AskProviderPolicyResolverPort,
 } from '../../../packages/contracts/src/index.js';
 import {
@@ -54,7 +55,24 @@ export type EffectiveAIConfigurationResolverOptions = {
   readonly legacyCredential?: () => string | undefined;
   readonly legacyModelId?: string;
   readonly legacyCredentialId?: string;
+  /** Optional direct reader used to verify Standing Policy's exact config
+   * revision for non-Ask structured processing. */
+  readonly standingPolicyAuthority?: {
+    getCurrent(projectId: string): Promise<
+      | {
+          readonly enabled: boolean;
+          readonly providerId: string;
+          readonly aiConfigurationRevision: number;
+        }
+      | undefined
+    >;
+  };
   readonly clock?: () => string;
+};
+
+export type SourceAIExecutionResolution = {
+  readonly pin: AIExecutionPin;
+  readonly executionIdentity: AIExecutionIdentity;
 };
 
 const resolutionError = (
@@ -200,6 +218,154 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
         credentialRevision: input.executionPin.credentialRevision,
       },
     );
+  }
+
+  /**
+   * Resolve a Source → Candidate structured call through the same Project AI
+   * authority used by Ask and Discovery. The returned identity is immutable
+   * for the durable request; a retry may only use the exact same revisions.
+   */
+  async resolveSourceAIExecutionIdentity(input: {
+    readonly principalId: string;
+    readonly projectId: string;
+    readonly requestId: string;
+    readonly sourceVersionId: string;
+    readonly sensitivity: AskContextSensitivity;
+    readonly accessScope: readonly string[];
+    readonly dataClassification: string;
+    readonly existingIdentity?: AIExecutionIdentity;
+  }): Promise<SourceAIExecutionResolution> {
+    void input.principalId;
+    void input.sourceVersionId;
+    void input.accessScope;
+    void input.dataClassification;
+    if (input.sensitivity === 'restricted') {
+      throw resolutionError(
+        'POLICY_DENIED',
+        'Restricted Source context cannot be sent to an external AI provider.',
+        'resolve-source-sensitivity',
+      );
+    }
+    const current = await this.configuration.getCurrent(input.projectId);
+    if (!current) {
+      throw resolutionError(
+        'CONFIGURATION_REQUIRED',
+        'Project AI configuration is required before Source processing can run.',
+        'resolve-source-configuration',
+      );
+    }
+    const existing = input.existingIdentity;
+    if (
+      existing &&
+      (existing.providerId !== current.activeProviderId ||
+        existing.modelId !== current.activeModelId ||
+        existing.aiConfigurationRevision !== current.aiConfigurationRevision ||
+        existing.credentialId !== current.credentialId ||
+        existing.credentialRevision !== current.credentialRevision)
+    ) {
+      throw resolutionError(
+        'CONFIGURATION_REQUIRED',
+        'The durable Source AI request is no longer bound to the current Project configuration.',
+        'verify-source-configuration-pin',
+      );
+    }
+
+    const { provider, model } = assertProviderAndModel(
+      this.registry,
+      current.activeProviderId,
+      current.activeModelId,
+    );
+    const metadata = await this.vault.getMetadata({
+      projectId: input.projectId,
+      providerId: current.activeProviderId,
+      credentialId: current.credentialId,
+      credentialRevision: current.credentialRevision,
+    });
+    if (
+      !sameMetadata(metadata, {
+        projectId: input.projectId,
+        providerId: current.activeProviderId,
+        credentialId: current.credentialId,
+        credentialRevision: current.credentialRevision,
+      })
+    ) {
+      throw resolutionError(
+        'AI_CAPABILITY_UNAVAILABLE',
+        'The configured Project credential revision is unavailable.',
+        'resolve-source-credential',
+      );
+    }
+    if (!this.options.policy) {
+      throw resolutionError(
+        'POLICY_DENIED',
+        'The Project AI provider policy authority is unavailable.',
+        'resolve-source-policy',
+      );
+    }
+    const policy = await this.options.policy.evaluateContext({
+      projectId: input.projectId,
+      providerId: current.activeProviderId,
+      modelId: current.activeModelId,
+      sensitivities: [input.sensitivity],
+    });
+    if (!policy.eligible) {
+      throw resolutionError(
+        'POLICY_DENIED',
+        'The configured AI provider is not permitted for this Source context.',
+        'resolve-source-policy',
+      );
+    }
+    const standingAuthority = this.options.standingPolicyAuthority;
+    if (!standingAuthority) {
+      throw resolutionError(
+        'POLICY_DENIED',
+        'The Standing AI Processing Policy authority is unavailable for Source processing.',
+        'resolve-source-standing-policy',
+      );
+    }
+    const standing = await standingAuthority.getCurrent(input.projectId);
+    if (
+      !standing ||
+      !standing.enabled ||
+      standing.providerId !== current.activeProviderId ||
+      standing.aiConfigurationRevision !== current.aiConfigurationRevision
+    ) {
+      throw resolutionError(
+        'POLICY_DENIED',
+        'The Standing AI Processing Policy is not bound to the current Project AI configuration.',
+        'verify-source-standing-policy-pin',
+      );
+    }
+    if (existing && existing.providerPolicyFingerprint !== policy.policyFingerprint) {
+      throw resolutionError(
+        'POLICY_DENIED',
+        'The durable Source AI request is no longer bound to the same provider policy.',
+        'verify-source-policy-pin',
+      );
+    }
+    const pin: AIExecutionPin = Object.freeze({
+      answerRunId: input.requestId,
+      projectId: input.projectId,
+      providerId: current.activeProviderId,
+      modelId: current.activeModelId,
+      aiConfigurationRevision: current.aiConfigurationRevision,
+      credentialId: current.credentialId,
+      credentialRevision: current.credentialRevision,
+      initialProviderPolicyFingerprint: policy.policyFingerprint,
+      createdAt: this.clock(),
+    });
+    return {
+      pin,
+      executionIdentity: Object.freeze({
+        providerId: provider.providerId,
+        modelId: model.modelId,
+        aiConfigurationRevision: current.aiConfigurationRevision,
+        credentialId: current.credentialId,
+        credentialRevision: current.credentialRevision,
+        policyContextRevision: policy.policyContextRevision,
+        providerPolicyFingerprint: policy.policyFingerprint,
+      }),
+    };
   }
 
   /**

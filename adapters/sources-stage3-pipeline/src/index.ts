@@ -8,7 +8,11 @@ import type {
   DocumentTransformerPort,
   TransformationRepositoryPort,
 } from '../../../modules/transformation/src/index.js';
-import type { SourcesStage3PipelinePort } from '../../../modules/frontend-sources-write/src/index.js';
+import type {
+  SourcesStage3EvidenceIndexedInput,
+  SourcesStage3PipelinePort,
+  SourcesStage4ContinuationPort,
+} from '../../../modules/frontend-sources-write/src/index.js';
 
 /**
  * FE-P5-XP Correction C — Source Intake → Stage 3 Transformation/Evidence
@@ -29,6 +33,7 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
       readonly locator: EvidenceLocatorPort;
       readonly transformationRepository: TransformationRepositoryPort;
       readonly evidenceRepository: EvidenceRepositoryPort;
+      readonly stage4?: SourcesStage4ContinuationPort;
     },
   ) {}
 
@@ -59,8 +64,22 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
       sensitivity: input.sensitivity,
       createdAt: new Date().toISOString(),
     });
-    await this.deps.evidenceRepository.index(
+    const indexed = await this.deps.evidenceRepository.index(
       buildEvidenceCandidates(saved.revision, this.deps.locator),
     );
+    if (this.deps.stage4) {
+      const continuation: SourcesStage3EvidenceIndexedInput = {
+        projectId: input.projectId,
+        sourceId: input.sourceId,
+        sourceVersionId: input.sourceVersionId,
+        revisionId: saved.revision.revisionId,
+        evidenceCount: indexed.items.length,
+        reusedCount: indexed.reusedCount,
+        accessScope: [...input.accessScope],
+        sensitivity: input.sensitivity,
+        dataClassification: 'source-content',
+      };
+      await this.deps.stage4.onEvidenceIndexed(continuation);
+    }
   }
 }

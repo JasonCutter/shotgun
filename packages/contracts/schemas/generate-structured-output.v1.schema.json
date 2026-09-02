@@ -54,9 +54,8 @@
         "modelVersion": { "type": "string", "minLength": 1 },
         "promptVersion": { "const": "direct-claim-v1" },
         "policyVersion": { "const": "direct-only-v1" },
-        "dataPolicyVersion": {
-          "enum": ["gemini-stateless-no-sharing-v1", "fake-local-v1"]
-        },
+        "dataPolicyVersion": { "type": "string", "minLength": 1 },
+        "executionIdentity": { "$ref": "#/definitions/executionIdentity" },
         "dataClassification": { "type": "string", "minLength": 1 },
         "inputEvidenceIds": {
           "type": "array",
@@ -142,9 +141,7 @@
         "schemaVersion": { "const": "1.0.0" },
         "promptVersion": { "const": "direct-claim-v1" },
         "policyVersion": { "const": "direct-only-v1" },
-        "dataPolicyVersion": {
-          "enum": ["gemini-stateless-no-sharing-v1", "fake-local-v1"]
-        },
+        "dataPolicyVersion": { "type": "string", "minLength": 1 },
         "contentDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
         "requestDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
         "inputSnapshotDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
@@ -154,6 +151,28 @@
         "usage": { "$ref": "#/definitions/call/properties/usage" },
         "cost": { "$ref": "#/definitions/call/properties/cost" },
         "receivedAt": { "type": "string", "minLength": 1 }
+      }
+    },
+    "executionIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "providerId",
+        "modelId",
+        "aiConfigurationRevision",
+        "credentialId",
+        "credentialRevision",
+        "policyContextRevision",
+        "providerPolicyFingerprint"
+      ],
+      "properties": {
+        "providerId": { "type": "string", "minLength": 1 },
+        "modelId": { "type": "string", "minLength": 1 },
+        "aiConfigurationRevision": { "type": "integer", "minimum": 1 },
+        "credentialId": { "type": "string", "minLength": 1 },
+        "credentialRevision": { "type": "integer", "minimum": 1 },
+        "policyContextRevision": { "type": "string", "minLength": 1 },
+        "providerPolicyFingerprint": { "type": "string", "minLength": 1 }
       }
     }
   }

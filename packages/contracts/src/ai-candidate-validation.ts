@@ -22,6 +22,17 @@ export type AIProviderAttempt = {
   readonly latencyMs: number;
 };
 
+/** Immutable Project AI authority captured before a Stage 4 provider call. */
+export type AIExecutionIdentity = {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly aiConfigurationRevision: number;
+  readonly credentialId: string;
+  readonly credentialRevision: number;
+  readonly policyContextRevision: string;
+  readonly providerPolicyFingerprint: string;
+};
+
 export type AIDurableState =
   | 'REQUESTED'
   | 'PROVIDER_RUNNING'
@@ -44,7 +55,10 @@ export type AIProviderOutput = {
   readonly schemaVersion: '1.0.0';
   readonly promptVersion: 'direct-claim-v1';
   readonly policyVersion: 'direct-only-v1';
-  readonly dataPolicyVersion: 'gemini-stateless-no-sharing-v1' | 'fake-local-v1';
+  /** Provider-specific policy identity. Kept open so routed providers can
+   * persist their own governed policy version without changing this contract.
+   */
+  readonly dataPolicyVersion: string;
   readonly rawText: string;
   readonly contentDigest: string;
   readonly requestDigest: string;
@@ -77,13 +91,14 @@ export type AIProviderCall = {
   readonly modelVersion: string;
   readonly promptVersion: 'direct-claim-v1';
   readonly policyVersion: 'direct-only-v1';
-  readonly dataPolicyVersion: 'gemini-stateless-no-sharing-v1' | 'fake-local-v1';
+  readonly dataPolicyVersion: string;
   readonly dataClassification: string;
   readonly inputEvidenceIds: readonly string[];
   readonly usage: AIUsage;
   readonly cost: AICost;
   readonly attempts: readonly AIProviderAttempt[];
   readonly structuredOutputValid: boolean;
+  readonly executionIdentity?: AIExecutionIdentity;
   readonly createdAt: string;
 };
 

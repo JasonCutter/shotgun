@@ -317,7 +317,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
     readonly idempotencyKey: string;
     readonly correlationId: string;
   }): Promise<JobRecord> {
-    const result = await this.pool.query<JobRow>(
+    await this.pool.query<JobRow>(
       `INSERT INTO connector.jobs
        (job_id,dedup_record_id,correlation_id,status,created_at,updated_at)
        VALUES ($1,$2,$3,'queued',clock_timestamp(),clock_timestamp())
@@ -872,7 +872,7 @@ export class PostgresConnectorRuntimeState implements ConnectorRuntimeStatePort 
         this.recoveryTimer.unref();
       }
     },
-    stop: async (_options?: { readonly graceMs?: number }): Promise<void> => {
+    stop: async (): Promise<void> => {
       if (this.recoveryTimer) {
         clearInterval(this.recoveryTimer);
         this.recoveryTimer = undefined;

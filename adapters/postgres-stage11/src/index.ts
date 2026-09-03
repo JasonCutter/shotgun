@@ -66,7 +66,7 @@ export class PostgresActionExecutionRepository implements ActionExecutionReposit
     initialAudit: readonly Omit<ActionAuditEvent, 'auditEventId' | 'sequence'>[],
   ): Promise<ActionExecutionRecord> {
     return this.transaction(async (client) => {
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `${record.projectId}:${record.preview.candidate.candidateId}:${record.preview.candidate.revisionNumber}:${record.preview.operationKey}`,
       ]);
       const existing = await client.query<ExecutionRow>(

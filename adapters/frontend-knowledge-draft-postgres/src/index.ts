@@ -132,7 +132,7 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
     draft: FrontendKnowledgeDraftChangeSetV1,
   ): Promise<void> {
     for (const ref of this.artifactQueryValues(draft)) {
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `artifact:${draft.draftId}:${draft.revision}:${ref.kind}`,
       ]);
       const existing = await client.query<{
@@ -372,7 +372,7 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
          * migration 025 remain as a hard safety net.
          */
         findBySeed: async (seedId) => {
-          await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
             `seed:${seedId}`,
           ]);
           const result = await client.query<{ snapshot: string }>(
@@ -392,7 +392,7 @@ export class PostgresFrontendKnowledgeDraftRepository implements FrontendKnowled
           return row ? (PARSE(row.snapshot) as DraftMaterializationRecordV1) : undefined;
         },
         findByCommandReplayKey: async (projectId, replayKey) => {
-          await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
             `replay:${projectId}:${replayKey.principalId}:${replayKey.clientRequestId}:${replayKey.idempotencyKey}`,
           ]);
           const result = await client.query<{ snapshot: string }>(

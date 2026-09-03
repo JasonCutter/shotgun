@@ -127,7 +127,7 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `${input.projectId}:${input.submissionId}`,
       ]);
 
@@ -213,7 +213,7 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `${input.projectId}:${input.submissionId}`,
       ]);
       const item = await client.query<{ content_hash: string | null }>(
@@ -288,7 +288,7 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `${input.projectId}:${input.submissionId}`,
       ]);
       await this.acceptedCommand(

@@ -27,11 +27,11 @@ This directory and the registered consolidated ADR documents form the global ADR
 | ADR-095         | Reserved Legacy Gap                                                            |
 | ADR-096–ADR-099 | Individual files in this directory                                             |
 | ADR-100–ADR-113 | [Frontend consolidated record](../frontend/adr-100-113-consolidated-record.md) |
-| ADR-114–ADR-154 | Individual files in this directory                                             |
+| ADR-114–ADR-155 | Individual files in this directory                                             |
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
-ADR-131 through ADR-154 are authoritative accepted individual files. ADR-151 was accepted by the user on 2026-09-01 for the bounded AKP-8 WP2R remediation; its Product implementation authorization is limited to the chain and boundaries recorded in that ADR. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately authorized by subsequent implementation records. ADR-143 is the accepted finite implementation/completion contract for ADR-133 Runtime-selectable AI Settings. ADR-147 records the FACT Product-eligibility deferral. ADR-148 is the accepted AKP-1 implementation-mechanics refinement that unifies durable semantic profile, exact embedding execution, coherent corpus, generation lifecycle, query readiness and Product composition while preserving ADR-135's core semantic-projection architecture. ADR-154 records the accepted WP-04 Source/Evidence progress and durable Stage 4 continuation boundary.
+ADR-131 through ADR-155 are authoritative accepted individual files. ADR-151 was accepted by the user on 2026-09-01 for the bounded AKP-8 WP2R remediation; its Product implementation authorization is limited to the chain and boundaries recorded in that ADR. ADR-134 through ADR-142 were accepted together by the user on 2026-08-12 as the AKP v1 whole-design architecture. Their Product implementation remains separately authorized by subsequent implementation records. ADR-143 is the accepted finite implementation/completion contract for ADR-133 Runtime-selectable AI Settings. ADR-147 records the FACT Product-eligibility deferral. ADR-148 is the accepted AKP-1 implementation-mechanics refinement that unifies durable semantic profile, exact embedding execution, coherent corpus, generation lifecycle, query readiness and Product composition while preserving ADR-135's core semantic-projection architecture. ADR-154 records the accepted WP-04 Source/Evidence progress and durable Stage 4 continuation boundary. ADR-155 records the accepted WP-05 Connector durable state and `OUTCOME_UNKNOWN` recovery boundary.
 
 ADR-152 is the User-accepted implementation-enabling refinement for the AKP-8
 WP2A Discovery authoring and Canonical Relation authority audit. It authorizes
@@ -42,7 +42,7 @@ complete.
 ADR-145 remains an accepted historical individual decision. ADR-146 supersedes ADR-145 as the governing owner-facing Product interaction architecture; both identifiers retain explicit relationship metadata.
 
 The current latest accepted individual decision is
-[ADR-154 — WP-04 Source/Evidence Stage 3 Progress and Stage 4 Continuation](ADR-154-wp04-source-evidence-stage3-progress-and-stage4-continuation.md), accepted on 2026-09-03.
+[ADR-155 — WP-05 Connector Durable State and Outcome-Unknown Recovery](ADR-155-wp05-connector-durable-state-and-outcome-unknown.md), accepted on 2026-09-03.
 
 ADR-150 is an accepted implementation-discovered refinement for the bounded AKP-7
 WP4 implementation. It does not create a new AKP Section, expand the accepted AKP

@@ -314,7 +314,8 @@ deterministic fake와 fault-injection adapter를 사용한다.
 
 - PostgreSQL 16.14 기존 기반을 `ADOPT`하고, 새 Shotgun-owned Port/adapter/schema로
   RIC-N3/RIC-N4를 해결한다.
-- pg-boss 12.26.0과 Graphile Worker 0.17.3은 기능 참고 후 `DEFER`하며 이번 WP-05에
+- pg-boss(Canonical/Stage-6 historical baseline 12.26.0; current registry-reviewed
+  pin 12.28.1)와 Graphile Worker 0.17.3은 기능 참고 후 `DEFER`하며 이번 WP-05에
   설치·schema·worker를 추가하지 않는다.
 - gbrain Minion pinned commit은 `REFERENCE_ONLY`로 lock/retry/recovery acceptance
   criteria만 재사용한다.

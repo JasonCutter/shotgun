@@ -23,6 +23,11 @@ They are not duplicated into the new progress table. `EvidenceIndexedV1` keeps
 `items.minItems = 1`; a zero-result indexing run is internal `NO_EVIDENCE` and
 does not publish that event.
 
+Migration `063_runtime_data_integrity_wp04_recovery_invariants.sql` is a
+follow-up additive hardening migration: it closes the lease-state invariant and
+the materialized Source binding trigger without modifying the already-applied
+062 migration.
+
 ## Invariants
 
 - Materialization is committed before Stage 3 execution; post-commit errors

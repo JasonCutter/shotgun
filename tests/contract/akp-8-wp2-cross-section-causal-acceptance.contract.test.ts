@@ -343,6 +343,7 @@ const context = (): DiscoveryExecutionContextV1 => ({
       trigger: { triggerClass: 'CANONICAL_COMMITTED' },
     },
   } as unknown as DiscoveryRuntimeClaimV1,
+  signal: new AbortController().signal,
   budgetSnapshot: emptySnapshot,
   checkpointRevision: 0,
   saveBudgetSnapshot: async () => 'SAVED',

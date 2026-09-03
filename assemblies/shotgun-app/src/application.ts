@@ -218,6 +218,7 @@ import {
 import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
 import { createApplication } from './server.js';
 import { installSignalShutdown } from './shutdown.js';
+import { AsyncCleanupStack } from './cleanup-stack.js';
 
 export type StartShotgunApplicationOptions = {
   /** Override HOST (defaults to the `HOST` env or `127.0.0.1`). */
@@ -362,12 +363,10 @@ export const startShotgunApplication = async (
   const stagingSecret = configuration.stagingSecret as string;
   const recoveryHarness = environmentProfile === 'recovery';
 
+  const cleanupStack = new AsyncCleanupStack();
   const pool = createPostgresPool(databaseUrl);
-  // Declared outside the try so the construction-failure catch can release
-  // resources that were already created before an error (R3-4 invariant).
-  let stopAskAnswerWorker = async (): Promise<void> => {};
-  let stopDiscoveryExecutionWorker = async (): Promise<void> => {};
-  let removeSourcesWriteRuntime = (): void => {};
+  cleanupStack.add('database pool', () => pool.end());
+  let application: Awaited<ReturnType<typeof createApplication>> | undefined;
   try {
     const port = options.port ?? Number.parseInt(process.env.PORT ?? '3000', 10);
     const host = options.host ?? process.env.HOST ?? '127.0.0.1';
@@ -424,13 +423,14 @@ export const startShotgunApplication = async (
     // Sources write runtime — recovery verification never serves Sources
     // write requests, so no global registration is created (nothing to leak
     // on construction failure). The normal Product assembly keeps it.
-    removeSourcesWriteRuntime = recoveryHarness
+    const removeSourcesWriteRuntime = recoveryHarness
       ? () => {}
       : configureSourcesWriteRuntime({
           commandGateway,
           staging,
           productService: sourcesProductService,
         });
+    cleanupStack.add('Sources write runtime registration', removeSourcesWriteRuntime);
     const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
     const semanticCorpusSourceSnapshotReader = new PostgresSemanticCorpusSourceSnapshotReader(pool);
     const semanticIndexRepository = new PostgresSemanticIndexRepository(pool, {
@@ -1056,17 +1056,13 @@ export const startShotgunApplication = async (
               ),
             },
           );
-    if (discoveryExecutionWorker !== undefined) {
-      stopDiscoveryExecutionWorker = () => discoveryExecutionWorker.stop();
-    }
-
     const frontendKnowledgeDraftRepository = new PostgresFrontendKnowledgeDraftRepository(pool);
     const frontendReviewStore = new PostgresFrontendReviewRepository(pool);
     const frontendReviewAuthoringBridge = new PostgresDiscoveryAuthoringBridge(
       frontendKnowledgeDraftRepository,
     );
 
-    const application = await createApplication({
+    application = await createApplication({
       projectAdminRepository,
       projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
       projectTombstoneStore: new PostgresProjectTombstoneStore(pool),
@@ -1181,14 +1177,11 @@ export const startShotgunApplication = async (
             aiDurableMaterializationRecoveryEnabled:
               options.aiDurableMaterializationRecoveryEnabled,
           }),
-      closeResources: async () => {
-        removeSourcesWriteRuntime();
-        await stopAskAnswerWorker();
-        await pool.end();
-      },
+      cleanupStack,
     });
+    const runningApplication = application!;
     stage4Publisher.current = async (input) => {
-      const delivery = await application.kernel.connector.publishEvent({
+      const delivery = await runningApplication.kernel.connector.publishEvent({
         messageId: randomUUID(),
         messageType: 'EvidenceIndexed',
         messageKind: 'event',
@@ -1222,9 +1215,10 @@ export const startShotgunApplication = async (
 
     let askWorkerStarted = false;
     if (!disableAskWorker) {
-      stopAskAnswerWorker = await askAnswerExecution.startWorker(
+      const stopAskAnswerWorker = await askAnswerExecution.startWorker(
         Number.parseInt(process.env.ASK_WORKER_INTERVAL_MS ?? '1000', 10),
       );
+      cleanupStack.add('Ask answer worker', stopAskAnswerWorker);
       askWorkerStarted = true;
     }
 
@@ -1245,45 +1239,33 @@ export const startShotgunApplication = async (
       host,
       port,
       url: `http://${host}:${port}`,
-      recoveryState: application.state.canonicalProjectionRecovery,
+      recoveryState: runningApplication.state.canonicalProjectionRecovery,
       askWorkerStarted,
-      readCanonicalProjectIds: () => application.repositories.canonical.listProjectIds(),
+      readCanonicalProjectIds: () => runningApplication.repositories.canonical.listProjectIds(),
       listen,
       close,
     };
     // LPA-WP4 (D09): idempotent SIGINT/SIGTERM shutdown (duplicate signals or a
     // close path overlapping a signal can never double-close resources).
     if (!options.noSignals) {
-      installSignalShutdown({
+      const removeSignalShutdown = installSignalShutdown({
         close,
         exit: (code) => process.exit(code),
       });
+      cleanupStack.add('process signal handlers', removeSignalShutdown);
     }
     return handle;
   } catch (error) {
-    // R3-4: if application construction throws, release everything already
-    // created (process-global Sources runtime, Ask worker if started, pool)
-    // and preserve the original error so no resource leaks / stale global
-    // registration survives.
+    // R3-4: startup failure and normal close share the exact same cleanup
+    // authority. Preserve the original error while keeping cleanup safe.
     try {
-      removeSourcesWriteRuntime();
+      if (application !== undefined) {
+        await application.server.close();
+      }
+      await cleanupStack.close();
     } catch {
-      // ignore cleanup failure — the original error is preserved below.
-    }
-    try {
-      await stopDiscoveryExecutionWorker();
-    } catch {
-      // ignore cleanup failure — the original error is preserved below.
-    }
-    try {
-      await stopAskAnswerWorker();
-    } catch {
-      // ignore cleanup failure — the original error is preserved below.
-    }
-    try {
-      await pool.end();
-    } catch {
-      // ignore cleanup failure — the original error is preserved below.
+      // CleanupAggregateError is intentionally not chained into the startup
+      // error because it may contain implementation-specific details.
     }
     throw error;
   }

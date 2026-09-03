@@ -21,6 +21,8 @@ import type {
 
 export type DiscoveryExecutionContextV1 = {
   readonly claim: DiscoveryRuntimeClaimV1;
+  /** Claim-scoped cancellation owned by PersistentDiscoveryWorker. */
+  readonly signal: AbortSignal;
   readonly budgetSnapshot: DiscoveryRuntimeBudgetSnapshotV1;
   readonly checkpointRevision: number;
   /** The worker clock used for all lease-fenced operational writes. */
@@ -86,11 +88,37 @@ export type PersistentDiscoveryWorkerOptionsV1 = {
   readonly leaseDurationMs?: number;
   readonly maxAttempts?: number;
   readonly retryBackoffMs?: number;
+  readonly loopBackoffMaxMs?: number;
   readonly clock?: () => Date;
+  /** Deterministic observer for loop-level infrastructure failures. */
+  readonly observer?: PersistentDiscoveryWorkerObserverV1;
+  /** Optional injected delay used by bounded loop backoff tests. */
+  readonly sleep?: (delayMs: number) => Promise<void>;
+};
+
+export type PersistentDiscoveryWorkerObserverV1 = {
+  onLoopError?(input: {
+    readonly workerId: string;
+    readonly code: string;
+    readonly consecutiveFailures: number;
+    readonly backoffMs: number;
+    readonly observedAt: string;
+  }): void | Promise<void>;
+  onLoopHealthy?(input: {
+    readonly workerId: string;
+    readonly observedAt: string;
+  }): void | Promise<void>;
+};
+
+export type PersistentDiscoveryWorkerStatusV1 = {
+  readonly state: 'RUNNING' | 'STOPPING' | 'STOPPED';
+  readonly health: 'HEALTHY' | 'DEGRADED';
+  readonly consecutiveLoopFailures: number;
+  readonly lastLoopErrorCode?: string;
 };
 
 export type PersistentDiscoveryWorkerRunResultV1 =
-  'IDLE' | 'COMPLETED' | 'PARTIAL' | 'FAILED_RETRYABLE' | 'FAILED_TERMINAL' | 'STALE';
+  'IDLE' | 'COMPLETED' | 'PARTIAL' | 'FAILED_RETRYABLE' | 'FAILED_TERMINAL' | 'STALE' | 'STOPPED';
 
 export class DiscoveryWorkerFailureV1 extends Error {
   public readonly code: string;
@@ -450,17 +478,29 @@ const nowIso = (clock: () => Date): string => {
   return now.toISOString();
 };
 
+const shutdownAbort = (error: unknown): boolean =>
+  error instanceof Error && error.name === 'AbortError';
+
 export class PersistentDiscoveryWorker {
   private readonly workerId: string;
   private readonly pollIntervalMs: number;
   private readonly leaseDurationMs: number;
   private readonly maxAttempts: number;
   private readonly retryBackoffMs: number;
+  private readonly loopBackoffMaxMs: number;
   private readonly clock: () => Date;
+  private readonly observer: PersistentDiscoveryWorkerObserverV1 | undefined;
+  private readonly sleep: (delayMs: number) => Promise<void>;
   private running = false;
+  private stopping = false;
   private loopPromise: Promise<void> | undefined;
+  private stopPromise: Promise<void> | undefined;
   private wakePoll: (() => void) | undefined;
   private pollTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly activeClaims = new Set<AbortController>();
+  private loopHealth: 'HEALTHY' | 'DEGRADED' = 'HEALTHY';
+  private consecutiveLoopFailures = 0;
+  private lastLoopErrorCode: string | undefined;
 
   public constructor(
     private readonly repository: DiscoveryRuntimeExecutionRepositoryPort,
@@ -484,23 +524,91 @@ export class PersistentDiscoveryWorker {
       'retryBackoffMs',
       60_000,
     );
+    this.loopBackoffMaxMs = positiveBounded(
+      options.loopBackoffMaxMs ?? 30_000,
+      'loopBackoffMaxMs',
+      300_000,
+    );
     this.clock = options.clock ?? (() => new Date());
+    this.observer = options.observer;
+    this.sleep =
+      options.sleep ??
+      ((delayMs) =>
+        new Promise((resolve) => {
+          const timer = setTimeout(resolve, delayMs);
+          timer.unref?.();
+        }));
   }
 
   public start(): void {
-    if (this.running) return;
+    if (this.running || this.loopPromise !== undefined) return;
+    this.stopping = false;
+    this.stopPromise = undefined;
     this.running = true;
-    this.loopPromise = this.runLoop();
+    const loop = this.runLoop();
+    this.loopPromise = loop;
+    void loop.then(
+      () => {
+        if (this.loopPromise === loop) {
+          this.loopPromise = undefined;
+          if (!this.running) this.stopping = false;
+        }
+      },
+      () => {
+        if (this.loopPromise === loop) {
+          this.loopPromise = undefined;
+          if (!this.running) this.stopping = false;
+        }
+      },
+    );
   }
 
-  public async stop(): Promise<void> {
+  public status(): PersistentDiscoveryWorkerStatusV1 {
+    return {
+      state: this.running ? 'RUNNING' : this.stopping ? 'STOPPING' : 'STOPPED',
+      health: this.loopHealth,
+      consecutiveLoopFailures: this.consecutiveLoopFailures,
+      ...(this.lastLoopErrorCode === undefined
+        ? {}
+        : { lastLoopErrorCode: this.lastLoopErrorCode }),
+    };
+  }
+
+  public stop(options: { readonly graceMs?: number } = {}): Promise<void> {
+    if (this.stopPromise !== undefined) return this.stopPromise;
     this.running = false;
+    this.stopping = true;
+    for (const controller of this.activeClaims) {
+      controller.abort('SHOTGUN_DISCOVERY_WORKER_SHUTDOWN');
+    }
     this.wakePoll?.();
-    await this.loopPromise;
-    this.loopPromise = undefined;
+    const loop = this.loopPromise;
+    const graceMs = options.graceMs ?? 5_000;
+    if (!Number.isSafeInteger(graceMs) || graceMs < 0 || graceMs > 300_000) {
+      return Promise.reject(new TypeError('graceMs must be between 0 and 300000'));
+    }
+    this.stopPromise = (async () => {
+      if (loop === undefined) return;
+      if (graceMs === 0) return;
+      const settledLoop = loop.then(
+        () => undefined,
+        () => undefined,
+      );
+      await Promise.race([
+        settledLoop,
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, graceMs);
+          timer.unref?.();
+        }),
+      ]);
+      // Keep loopPromise until the actual loop settles. This prevents a new
+      // start() from creating a second worker while a provider ignores abort.
+    })();
+    return this.stopPromise;
   }
 
   public async runOnce(): Promise<PersistentDiscoveryWorkerRunResultV1> {
+    if (this.stopping) return 'IDLE';
     const now = nowIso(this.clock);
     const claim = await this.repository.claimNext({
       workerId: this.workerId,
@@ -508,6 +616,12 @@ export class PersistentDiscoveryWorker {
       leaseDurationMs: this.leaseDurationMs,
     });
     if (!claim) return 'IDLE';
+
+    const controller = new AbortController();
+    this.activeClaims.add(controller);
+    if (this.stopping) {
+      controller.abort('SHOTGUN_DISCOVERY_WORKER_SHUTDOWN');
+    }
 
     let lease: DiscoveryRuntimeLeaseV1 = {
       projectId: claim.projectId,
@@ -589,6 +703,7 @@ export class PersistentDiscoveryWorker {
       };
       const context = (stage?: DiscoveryStageV1): DiscoveryExecutionContextV1 => ({
         claim,
+        signal: controller.signal,
         budgetSnapshot,
         checkpointRevision,
         now: nowIso(this.clock),
@@ -755,6 +870,7 @@ export class PersistentDiscoveryWorker {
           : 'COMPLETE';
 
       for (const stage of stages) {
+        if (this.stopping && controller.signal.aborted) return 'STOPPED';
         const renewed = await this.repository.renewLease({
           ...lease,
           now: nowIso(this.clock),
@@ -913,6 +1029,7 @@ export class PersistentDiscoveryWorker {
               break;
           }
           if (leaseLost) return 'STALE';
+          if (this.stopping && controller.signal.aborted) return 'STOPPED';
           if (result.completion === 'PARTIAL') completion = 'PARTIAL';
           if (result.budgetSnapshot !== undefined) {
             const saved = await saveBudgetSnapshot(result.budgetSnapshot);
@@ -1002,6 +1119,9 @@ export class PersistentDiscoveryWorker {
           if (typeof finished === 'string')
             return finished === 'STALE' ? 'STALE' : 'FAILED_TERMINAL';
         } catch (error) {
+          if (this.stopping && (controller.signal.aborted || shutdownAbort(error))) {
+            return 'STOPPED';
+          }
           return await this.failClaim(
             lease,
             currentStage.stageId,
@@ -1016,6 +1136,7 @@ export class PersistentDiscoveryWorker {
       }
 
       const target = completion === 'PARTIAL' ? 'PARTIAL' : 'SUCCEEDED';
+      if (this.stopping && controller.signal.aborted) return 'STOPPED';
       const finalized = await this.repository.finalizeClaimWithLease({
         ...lease,
         expectedAttemptLifecycleRevision: claim.attempt.lifecycleRevision,
@@ -1028,6 +1149,9 @@ export class PersistentDiscoveryWorker {
       if (finalized === 'NOT_FOUND' || finalized === 'CONFLICT') return 'FAILED_TERMINAL';
       return completion === 'PARTIAL' ? 'PARTIAL' : 'COMPLETED';
     } catch (error) {
+      if (this.stopping && (controller.signal.aborted || shutdownAbort(error))) {
+        return 'STOPPED';
+      }
       return await this.failClaim(
         lease,
         undefined,
@@ -1037,6 +1161,7 @@ export class PersistentDiscoveryWorker {
         claim,
       );
     } finally {
+      this.activeClaims.delete(controller);
       await this.repository.releaseLease({ ...lease, now: nowIso(this.clock) });
     }
   }
@@ -1177,14 +1302,81 @@ export class PersistentDiscoveryWorker {
   }
 
   private async runLoop(): Promise<void> {
+    let consecutiveFailures = 0;
     while (this.running) {
       try {
         await this.runOnce();
-      } catch {
+        if (consecutiveFailures > 0) {
+          consecutiveFailures = 0;
+          this.consecutiveLoopFailures = 0;
+          this.loopHealth = 'HEALTHY';
+          this.lastLoopErrorCode = undefined;
+          await this.notifyHealthy();
+        }
+        if (this.running) await this.waitForPoll();
+      } catch (error) {
+        if (this.stopping && !this.running) break;
         // The lease is finite and the next worker can recover the claim. An
-        // unexpected repository error must not kill the worker loop.
+        // unexpected repository error must not kill the worker loop, but it
+        // must be observable and bounded so a broken dependency cannot cause
+        // an unbounded hot loop.
+        consecutiveFailures += 1;
+        this.consecutiveLoopFailures = consecutiveFailures;
+        this.loopHealth = 'DEGRADED';
+        const backoffMs = Math.min(
+          this.loopBackoffMaxMs,
+          this.retryBackoffMs * 2 ** Math.min(consecutiveFailures - 1, 20),
+        );
+        const code =
+          error instanceof DiscoveryWorkerFailureV1 ? error.code : 'DISCOVERY_LOOP_UNEXPECTED';
+        this.lastLoopErrorCode = code;
+        await this.notifyLoopError({
+          workerId: this.workerId,
+          code,
+          consecutiveFailures,
+          backoffMs,
+          observedAt: nowIso(this.clock),
+        });
+        if (this.running) await this.waitForBackoff(backoffMs);
       }
-      if (this.running) await this.waitForPoll();
+    }
+  }
+
+  private async notifyLoopError(
+    input: Parameters<NonNullable<PersistentDiscoveryWorkerObserverV1['onLoopError']>>[0],
+  ): Promise<void> {
+    try {
+      await this.observer?.onLoopError?.(input);
+    } catch {
+      // Observability must never become a second failure path.
+    }
+  }
+
+  private async notifyHealthy(): Promise<void> {
+    try {
+      await this.observer?.onLoopHealthy?.({
+        workerId: this.workerId,
+        observedAt: nowIso(this.clock),
+      });
+    } catch {
+      // Observability must never become a second failure path.
+    }
+  }
+
+  private async waitForBackoff(delayMs: number): Promise<void> {
+    let wake: (() => void) | undefined;
+    const interrupted = new Promise<void>((resolve) => {
+      wake = resolve;
+    });
+    const previousWake = this.wakePoll;
+    this.wakePoll = () => {
+      previousWake?.();
+      wake?.();
+    };
+    try {
+      await Promise.race([this.sleep(delayMs), interrupted]);
+    } finally {
+      if (this.wakePoll !== undefined) this.wakePoll = previousWake;
     }
   }
 

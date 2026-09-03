@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import Fastify from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import staticPlugin from '@fastify/static';
 
 import {
@@ -167,6 +168,7 @@ import {
   createGraphReadDomain,
   type GraphDiscoveryOverlayPort,
 } from '../../../modules/frontend-knowledge-graph/src/index.js';
+import { AsyncCleanupStack } from './cleanup-stack.js';
 import {
   createInMemoryHealthStore,
   createInMemorySnapshotContextStore,
@@ -551,6 +553,8 @@ export type SecurityHeaders = {
 };
 
 export type ApplicationOptions = {
+  /** Shared application-owned cleanup authority supplied by the composition. */
+  readonly cleanupStack?: AsyncCleanupStack;
   readonly transport?: MessageTransport;
   readonly intakeRepository?: IntakeRepositoryPort;
   readonly originalAssetRepository?: OriginalAssetRepositoryPort;
@@ -1489,7 +1493,11 @@ const reviewPage = (bundle: {
 </html>`;
 };
 
-export const createApplication = async (options: ApplicationOptions = {}) => {
+const createApplicationCore = async (
+  options: ApplicationOptions,
+  cleanupStack: AsyncCleanupStack,
+  setServerForStartupCleanup: (server: FastifyInstance) => void,
+) => {
   const intakeRepository = options.intakeRepository ?? new InMemoryIntakeRepository();
   const originalAssetRepository =
     options.originalAssetRepository ?? new InMemoryOriginalAssetRepository();
@@ -2110,6 +2118,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
     hybridRetrieval,
   );
   await kernel.start();
+  cleanupStack.add('kernel connector runtime', () => kernel.shutdown());
   const actionCenterProjection = new InMemoryActionCenterProjection(
     new CoordinatorActionCenterAttentionProjection(
       frontendReviewCoordinator,
@@ -2162,16 +2171,31 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
           options.canonicalProjectionRecoveryIntervalMs ?? 30_000,
           applicationCanonicalProjectionRecoveryReporter,
         );
+  if (canonicalProjectionRecoveryWorker) {
+    cleanupStack.add('canonical projection recovery worker', () =>
+      canonicalProjectionRecoveryWorker.stop(),
+    );
+  }
   if (discoveryScheduler && schedulerIntervalMs !== undefined && schedulerIntervalMs !== false) {
     discoverySchedulerWorker = startPersistentDiscoverySchedulerWorker(
       discoveryScheduler,
       schedulerIntervalMs,
     );
+    cleanupStack.add('discovery scheduler worker', () => discoverySchedulerWorker!.stop());
   }
-  discoveryExecutionWorker?.start();
-  discoveryReentryWorker?.start();
+  if (discoveryExecutionWorker) {
+    discoveryExecutionWorker.start();
+    cleanupStack.add('discovery execution worker', () =>
+      discoveryExecutionWorker.stop({ graceMs: 5_000 }),
+    );
+  }
+  if (discoveryReentryWorker) {
+    discoveryReentryWorker.start();
+    cleanupStack.add('discovery reentry worker', () => discoveryReentryWorker.stop());
+  }
 
   const server = Fastify({ logger: false });
+  setServerForStartupCleanup(server);
 
   server.setErrorHandler(async (error, request, reply) => {
     const normalized =
@@ -3893,12 +3917,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   );
 
   server.addHook('onClose', async () => {
-    await discoveryExecutionWorker?.stop();
-    await discoveryReentryWorker?.stop();
-    await discoverySchedulerWorker?.stop();
-    await canonicalProjectionRecoveryWorker?.stop();
-    await kernel.shutdown();
-    await options.closeResources?.();
+    await cleanupStack.close();
   });
 
   // LPA-WP4 (D03/D05): same-origin built-SPA serving. @fastify/static
@@ -3972,4 +3991,34 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       canonicalProjectionRecoveryReporter,
     },
   };
+};
+
+export const createApplication = async (options: ApplicationOptions = {}) => {
+  const cleanupStack = options.cleanupStack ?? new AsyncCleanupStack();
+  let serverForStartupCleanup: FastifyInstance | undefined;
+  if (options.closeResources) {
+    cleanupStack.add('application resources', options.closeResources);
+  }
+
+  try {
+    return await createApplicationCore(options, cleanupStack, (server) => {
+      serverForStartupCleanup = server;
+    });
+  } catch (error) {
+    // A route/static registration or startup recovery failure can happen
+    // after background workers have already started. Close through Fastify's
+    // hook when available, then invoke the same shared stack as a fallback.
+    try {
+      await serverForStartupCleanup?.close();
+    } catch {
+      // Preserve the original startup error; cleanup failures are aggregated
+      // and intentionally not allowed to leak protected details.
+    }
+    try {
+      await cleanupStack.close();
+    } catch {
+      // Preserve the original startup error.
+    }
+    throw error;
+  }
 };

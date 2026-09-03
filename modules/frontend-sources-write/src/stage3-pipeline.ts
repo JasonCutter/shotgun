@@ -9,6 +9,11 @@ import type {
   TransformationRevision,
 } from '../../../packages/contracts/src/index.js';
 
+/** Historical backfill rows require explicit reconciliation and are never
+ * picked up by the normal Stage 3/provider recovery loop. */
+export const HISTORICAL_RECONCILIATION_REQUIRED_CODE =
+  'HISTORICAL_RECONCILIATION_REQUIRED' as const;
+
 /** Structural Stage 3 contracts kept in the Sources module boundary. The
  * implementation adapters may satisfy these shapes without making this
  * module depend on Evidence or Transformation domain modules. */

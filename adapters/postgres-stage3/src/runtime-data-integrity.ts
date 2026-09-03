@@ -6,6 +6,7 @@ import {
   buildEvidenceCandidates,
   type EvidenceLocatorPort,
 } from '../../../modules/evidence/src/index.js';
+import { HISTORICAL_RECONCILIATION_REQUIRED_CODE } from '../../../modules/frontend-sources-write/src/index.js';
 import type {
   SourcesStage3AtomicPersistencePort,
   SourcesStage3EvidenceIndexedInput,
@@ -298,7 +299,9 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
           AND version.source_version_id = progress.source_version_id
          JOIN asset.original_assets AS original
            ON original.asset_id = version.original_asset_id
-        WHERE progress.state IN ('MATERIALIZED', 'RECONCILIATION_REQUIRED')
+        WHERE progress.state = 'MATERIALIZED'
+           OR (progress.state = 'RECONCILIATION_REQUIRED'
+               AND progress.safe_failure_code IS DISTINCT FROM $3)
            OR (progress.state = 'STAGE3_RETRYABLE'
                AND (progress.next_attempt_at IS NULL
                     OR progress.next_attempt_at <= COALESCE($1::timestamptz, now())))
@@ -306,7 +309,7 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
                AND progress.lease_expires_at <= COALESCE($1::timestamptz, now()))
         ORDER BY progress.updated_at, progress.source_version_id
         LIMIT $2`,
-      [input?.now ?? null, input?.limit ?? 100],
+      [input?.now ?? null, input?.limit ?? 100, HISTORICAL_RECONCILIATION_REQUIRED_CODE],
     );
     return result.rows.map((row) => ({
       projectId: row.project_id,
@@ -581,9 +584,8 @@ export class PostgresSourcesStage4ContinuationStore implements SourcesStage4Cont
            FROM evidence.stage4_continuations AS continuation
            JOIN evidence.indexing_results AS result
              ON result.indexing_result_id = continuation.indexing_result_id
-          WHERE ((continuation.state IN ('PENDING', 'RETRYABLE_FAILED')
-                 AND (continuation.next_attempt_at IS NULL OR continuation.next_attempt_at <= $1))
-             OR (continuation.state = 'RUNNING' AND continuation.lease_expires_at <= $1))
+          WHERE continuation.state IN ('PENDING', 'RETRYABLE_FAILED')
+            AND (continuation.next_attempt_at IS NULL OR continuation.next_attempt_at <= $1)
           ORDER BY COALESCE(continuation.next_attempt_at, continuation.created_at),
                    continuation.continuation_id
           FOR UPDATE OF continuation SKIP LOCKED

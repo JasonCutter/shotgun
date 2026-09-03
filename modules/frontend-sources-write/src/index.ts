@@ -18,6 +18,7 @@ export type {
   SourcesStage4ContinuationPort,
   SourcesStage4ContinuationStorePort,
 } from './stage3-pipeline.js';
+export { HISTORICAL_RECONCILIATION_REQUIRED_CODE } from './stage3-pipeline.js';
 export {
   assertSourcesResourceSecurityContinuation,
   resolveSourcesResourceSecurity,

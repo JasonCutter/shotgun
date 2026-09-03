@@ -5,6 +5,7 @@ import type { Pool } from 'pg';
 
 import { createPostgresPool } from '../adapters/postgres/src/index.js';
 import { sha256Text, stableJson } from '../packages/contracts/src/index.js';
+import { HISTORICAL_RECONCILIATION_REQUIRED_CODE } from '../modules/frontend-sources-write/src/index.js';
 
 type BackfillOptions = {
   readonly write: boolean;
@@ -130,10 +131,20 @@ export const backfillRuntimeDataIntegrityWp04 = async (
         const result = await pool.query(
           `INSERT INTO source_product.source_stage3_progress (
              project_id, source_id, source_version_id, state, indexing_result_id,
-             created_at, updated_at
-           ) VALUES ($1, $2, $3, $4, $5, now(), now())
+             safe_failure_code, safe_failure_message, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
            ON CONFLICT (project_id, source_version_id) DO NOTHING`,
-          [row.project_id, row.source_id, row.source_version_id, state, row.indexing_result_id],
+          [
+            row.project_id,
+            row.source_id,
+            row.source_version_id,
+            state,
+            row.indexing_result_id,
+            state === 'RECONCILIATION_REQUIRED' ? HISTORICAL_RECONCILIATION_REQUIRED_CODE : null,
+            state === 'RECONCILIATION_REQUIRED'
+              ? 'Historical Stage 3 outcome requires explicit reconciliation.'
+              : null,
+          ],
         );
         progressInserted += result.rowCount ?? 0;
       }

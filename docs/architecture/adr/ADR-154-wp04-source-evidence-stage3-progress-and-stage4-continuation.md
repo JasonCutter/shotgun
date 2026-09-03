@@ -34,7 +34,9 @@ does not publish that event.
   3 durable outcomes remain successful.
 - Historical Evidence without a durable Stage 4 intent is not permission to
   call a provider. Historical rows without Evidence are
-  `RECONCILIATION_REQUIRED`, never inferred `NO_EVIDENCE`.
+  `RECONCILIATION_REQUIRED` with the reserved
+  `HISTORICAL_RECONCILIATION_REQUIRED` marker; they are never inferred
+  `NO_EVIDENCE` or picked up by ordinary startup/replay recovery.
 - The production application starts a Stage 3 recovery dispatcher during
   startup and repeats it periodically; the Canonical-only recovery harness
   deliberately does not start Source/Stage 3 or Stage 4 workers.
@@ -42,6 +44,9 @@ does not publish that event.
   expires while publishing, becomes durable `OUTCOME_UNKNOWN`. It is not
   automatically replayed against a provider; explicit reconciliation reuses
   the deterministic candidate-generation request identity.
+- Stage 4 claim selects only due `PENDING`/`RETRYABLE_FAILED` rows. Expired
+  `RUNNING` rows are first converted to `OUTCOME_UNKNOWN` with `completed_at`
+  by the recovery sweep, so a stale worker can never be directly re-claimed.
 
 ## Alternatives rejected
 

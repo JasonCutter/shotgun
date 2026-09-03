@@ -23,6 +23,7 @@ import {
   assertSourcesResourceSecurityContinuation,
   resolveSourcesResourceSecurity,
   sourceSecurityMetadataEqual,
+  HISTORICAL_RECONCILIATION_REQUIRED_CODE,
   type SourcesResourceSecurityMetadata,
   type SourcesStage3PipelinePort,
   type SourcesStage3ProgressState,
@@ -256,7 +257,6 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             resumed.items,
             input,
             input.scope,
-            resumed.actionRequired,
             resumed.unfinishedCount,
           );
         }
@@ -380,7 +380,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       // REAL production Stage 3 pipeline for every materialized SourceVersion
       // (transform + evidence indexing). The pipeline is idempotent.
       if (this.stage3Pipeline && materializedForStage3.length > 0) {
-        await this.runStage3AndFinalize(materializedForStage3, input, input.scope, actionRequired);
+        await this.runStage3AndFinalize(materializedForStage3, input, input.scope);
       } else if (actionRequired === 0) {
         await this.finalizeSubmissionState(input.submissionId, 'SUCCEEDED', input.createdAt);
       }
@@ -404,7 +404,6 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     items: readonly MaterializedStage3Item[],
     input: Pick<SubmitSourcesProductInput, 'submissionId' | 'createdAt'>,
     scope: SourcesProductWriteScope,
-    actionRequired: number,
     unfinishedCount = 0,
   ): Promise<void> {
     if (!this.stage3Pipeline) return;
@@ -437,9 +436,14 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       throw error;
     }
     await this.markStage3ItemsSucceeded(input.submissionId);
+    // A historical reconciliation row is intentionally not eligible for the
+    // normal pipeline.  Do not let another eligible item make the submission
+    // look terminal while that unresolved SourceVersion remains outstanding.
+    const remaining = await this.materializedItemsForStage3(scope.projectId, input.submissionId);
+    if (remaining.unfinishedCount > 0) return;
     await this.finalizeSubmissionState(
       input.submissionId,
-      actionRequired === 0 ? 'SUCCEEDED' : 'PARTIAL',
+      remaining.actionRequired === 0 ? 'SUCCEEDED' : 'PARTIAL',
       input.createdAt,
     );
   }
@@ -585,7 +589,8 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         epochMs(row.stage3_lease_expires_at)! <= now;
       const eligible =
         state === 'MATERIALIZED' ||
-        state === 'RECONCILIATION_REQUIRED' ||
+        (state === 'RECONCILIATION_REQUIRED' &&
+          row.safe_failure_code !== HISTORICAL_RECONCILIATION_REQUIRED_CODE) ||
         retryableReady ||
         staleRunning;
       if (!eligible) continue;
@@ -913,7 +918,6 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             resumed.items,
             { submissionId: row.submission_id, createdAt: input.createdAt },
             input.scope,
-            resumed.actionRequired,
             resumed.unfinishedCount,
           );
         }
@@ -1047,7 +1051,6 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             resumed.items,
             { submissionId: input.submissionId, createdAt: input.createdAt },
             input.scope,
-            resumed.actionRequired,
             resumed.unfinishedCount,
           );
         }

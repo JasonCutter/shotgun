@@ -709,7 +709,7 @@ export class PostgresSourcesStage4ContinuationStore implements SourcesStage4Cont
   async recoverExpired(input?: { readonly now?: string }): Promise<number> {
     const result = await this.pool.query(
       `UPDATE evidence.stage4_continuations
-          SET state = 'OUTCOME_UNKNOWN', next_attempt_at = NULL,
+          SET state = 'OUTCOME_UNKNOWN', completed_at = clock_timestamp(), next_attempt_at = NULL,
               lease_owner = NULL, lease_token = NULL, lease_acquired_at = NULL,
               lease_expires_at = NULL, safe_failure_code = 'LEASE_EXPIRED',
               safe_failure_message = 'The Stage 4 continuation lease expired; outcome requires reconciliation.',

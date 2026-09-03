@@ -1499,6 +1499,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   if (options.closeResources) {
     cleanupStack.add('application resources', options.closeResources);
   }
+  // prettier-ignore
   try {
   const intakeRepository = options.intakeRepository ?? new InMemoryIntakeRepository();
   const originalAssetRepository =

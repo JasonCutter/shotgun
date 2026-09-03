@@ -846,6 +846,7 @@ export const createProductDiscoveryExecution = (
             runId: context.claim.runId,
             candidate,
             context: qualifiedContextFor(state, candidate),
+            signal: context.signal,
             maxOutputTokens: state.budget.maxOutputTokensPerCall(),
           });
           const materialized = materializeAIGeneration(
@@ -868,6 +869,7 @@ export const createProductDiscoveryExecution = (
               projectId: context.claim.projectId,
               runId: context.claim.runId,
               context: qualifiedContext,
+              signal: context.signal,
               maxOutputTokens: state.budget.maxOutputTokensPerCall(),
             }),
         },
@@ -887,6 +889,7 @@ export const createProductDiscoveryExecution = (
               projectId: context.claim.projectId,
               runId: context.claim.runId,
               context: qualifiedContext,
+              signal: context.signal,
               maxOutputTokens: state.budget.maxOutputTokensPerCall(),
             }),
         },

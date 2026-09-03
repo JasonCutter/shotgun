@@ -259,6 +259,7 @@ const createContext = (): DiscoveryExecutionContextV1 => {
   } as unknown as DiscoveryRuntimeClaimV1;
   return {
     claim,
+    signal: new AbortController().signal,
     budgetSnapshot: emptySnapshot,
     checkpointRevision: 0,
     saveBudgetSnapshot: vi.fn(async () => 'SAVED' as const),

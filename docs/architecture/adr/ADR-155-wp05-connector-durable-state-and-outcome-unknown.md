@@ -170,13 +170,13 @@ details do not cross module contracts.
 
 ### 7. Lifecycle and recovery
 
-The production adapter's pool, claim loop, lease renewer, stale-claim sweep,
-and reconciliation loop use the existing app-owned `AsyncCleanupStack`.
+The production adapter's pool, request-scoped claim/renew operations, and
+expired-lease recovery timer use the existing app-owned `AsyncCleanupStack`.
 Startup validates migration compatibility before accepting work. Startup
-failure cleans resources already acquired. Shutdown stops polling and renewal,
+failure cleans resources already acquired. Shutdown stops the recovery timer,
 waits only for the configured bounded grace period, and does not consume a
 business retry merely because the process is stopping. Expired running jobs
-become recoverable/unknown according to the durable state rules; they are not
+become `OUTCOME_UNKNOWN` according to the durable state rules; they are not
 silently re-executed.
 
 ## OSS and replacement decision

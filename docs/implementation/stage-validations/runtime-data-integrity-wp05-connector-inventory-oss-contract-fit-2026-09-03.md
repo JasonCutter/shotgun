@@ -231,9 +231,10 @@ reference+digest만 저장한다. project/tenant/security scope를 모든 unique
   선택적으로 주입받고, 기본값은 test용 InMemory로 제한한다.
 - `createApplicationCore`의 production PostgreSQL 조립부가 새 adapter를 명시적으로
   주입한다. recovery/test harness는 의도적으로 InMemory 또는 fake adapter를 명시한다.
-- persistent claim/recovery/renew loop는 기존 `AsyncCleanupStack`에 등록한다. start
-  실패 시 이미 열린 pool/loop를 정리하고, shutdown은 bounded grace를 지키며 running
-  handler를 business failure로 재기록하지 않는다.
+- request-scoped claim/renew와 만료 lease recovery timer는 기존
+  `AsyncCleanupStack`에 등록한다. start 실패 시 이미 열린 pool/timer를 정리하고,
+  shutdown은 bounded grace를 지키며 running handler를 business failure로 재기록하지
+  않는다.
 - Canonical Outbox, Evidence continuation, Discovery/Ask durable state는 각각의 기존
   owner/Port를 유지한다. Connector migration이 그들의 상태를 backfill하거나 global
   queue로 흡수하지 않는다.

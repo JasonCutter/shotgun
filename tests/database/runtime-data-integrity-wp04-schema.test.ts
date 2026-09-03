@@ -66,15 +66,12 @@ describe.runIf(pool)('WP-04 runtime data-integrity schema', () => {
   it('keeps NO_EVIDENCE and Stage 4 continuation cardinality mutually exclusive', async () => {
     const checks = await pool!.query<{ table_name: string; definition: string }>(
       `SELECT cls.relname AS table_name, pg_get_constraintdef(con.oid) AS definition
-         FROM pg_constraint AS con
+        FROM pg_constraint AS con
          JOIN pg_class AS cls ON cls.oid = con.conrelid
          JOIN pg_namespace AS ns ON ns.oid = cls.relnamespace
         WHERE ns.nspname IN ('evidence', 'source_product')
-          AND con.conname IN (
-            'indexing_results_status_check',
-            'evidence_stage4_continuations_evidence_count_check',
-            'source_stage3_progress_state_check'
-          )`,
+          AND cls.relname IN ('indexing_results', 'stage4_continuations', 'source_stage3_progress')
+          AND con.contype = 'c'`,
     );
     expect(
       checks.rows.some(

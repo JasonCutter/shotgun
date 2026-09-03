@@ -55,6 +55,7 @@
 | [Release Strategy](./release-strategy.md) | 내부 릴리스, 버전, Migration, Rollback과 운영 준비 |
 | [Windows Desktop Distribution — 구현 예정](./deferred-windows-desktop-distribution.md) | Project Shotgun 최종 단계의 독립 Windows 프로그램 패키징 목표와 활성화 조건 |
 | [Risk Register](./risk-register.md) | 주요 구현 위험, 조기 신호, 완화책과 중단 기준 |
+| [Runtime Data Integrity Proposed Canonical Implementation Plan](./runtime-data-integrity-canonical-implementation-plan-2026-09-03.md) | Source·Evidence·Connector·Ask·Discovery의 데이터 정합성, 런타임 및 동시성 결함 통합 수정 순서와 검증 |
 
 `OSS Integration Roadmap`은 언제 어떤 후보를 검토할지 정하고, `OSS Evaluation Plan`은 후보를 어떤 기준으로 평가할지 정한다.
 

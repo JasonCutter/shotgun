@@ -262,8 +262,8 @@
       "stages": [6],
       "officialSource": "https://github.com/timgit/pg-boss",
       "pin": {
-        "type": "reviewed-version",
-        "value": "12.26.0"
+        "type": "reviewed-version-and-tag",
+        "value": "12.28.1; tag 12.28.1 @ 78089bbd51cce5e70282f6e5f9a9d937856ab414"
       },
       "license": {
         "spdx": "MIT",
@@ -275,8 +275,12 @@
       "security": "No package-owned schema, worker lifecycle, or job administration surface is added for the Stage 6 domain Outbox",
       "maintenance": "No runtime dependency installed",
       "evidence": [
+        "npm 12.28.1 metadata, MIT license, and Node >=22.12 engine reviewed on 2026-09-03",
+        "tag 12.28.1 commit and upstream activity reviewed; later 12.29.0 release is discovery-only",
         "transaction insertion and SKIP LOCKED behavior reviewed",
-        "Stage 6 needs one Canonical Outbox flow rather than a general job system"
+        "WP-00 contract-fit: package job metadata would duplicate Shotgun-owned state",
+        "Stage 6/WP-05 needs one Shotgun-owned durable flow rather than a package-owned authority",
+        "docs/implementation/stage-validations/runtime-data-integrity-wp00-governance-and-oss-review.md"
       ],
       "boundary": "Future JobRuntime or Outbox delivery adapter",
       "replacement": "Can replace the delivery loop without changing Canonical contracts",
@@ -288,8 +292,8 @@
       "stages": [6],
       "officialSource": "https://github.com/graphile/worker",
       "pin": {
-        "type": "reviewed-version",
-        "value": "0.17.3"
+        "type": "reviewed-version-and-tag",
+        "value": "0.17.3; tag v0.17.3 @ 195491c6c4ebf58420ab9d1c8291df0334184063"
       },
       "license": {
         "spdx": "MIT",
@@ -301,8 +305,12 @@
       "security": "No task loader or separately operated worker is required for the single-process MVP",
       "maintenance": "No runtime dependency installed",
       "evidence": [
+        "npm 0.17.3 metadata, MIT license, and Node >=14 engine reviewed on 2026-09-03",
+        "tag v0.17.3 commit and active upstream repository reviewed",
         "official worker capabilities reviewed",
-        "current Outbox recovery contract is smaller than a general task runner"
+        "WP-00 contract-fit: package task schema/claim lifecycle would duplicate Shotgun-owned state",
+        "current Outbox recovery contract is smaller than a general task runner",
+        "docs/implementation/stage-validations/runtime-data-integrity-wp00-governance-and-oss-review.md"
       ],
       "boundary": "Future JobRuntime adapter",
       "replacement": "Can be adopted behind the existing Connector and Canonical Outbox contracts",

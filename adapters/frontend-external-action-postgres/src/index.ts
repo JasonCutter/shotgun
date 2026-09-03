@@ -204,7 +204,7 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
       lockActionId: async (actionId) => {
         // Serialize the initial action creation per action identity.
         await client.query(
-          `SELECT pg_advisory_xact_lock(hashtext('frontend_external_action:action:' || $1))`,
+          `SELECT pg_advisory_xact_lock(hashtextextended('frontend_external_action:action:' || $1, 0))`,
           [actionId],
         );
       },
@@ -785,7 +785,7 @@ export class PostgresExternalActionStore implements ExternalActionRepositoryBoun
         // lock so concurrent commands can never receive the same sequence
         // (the lock is released at commit/rollback).
         await client.query(
-          `SELECT pg_advisory_xact_lock(hashtext('frontend_external_action:' || $1))`,
+          `SELECT pg_advisory_xact_lock(hashtextextended('frontend_external_action:' || $1, 0))`,
           [actionId],
         );
         const result = await client.query<{ readonly next: string | null }>(

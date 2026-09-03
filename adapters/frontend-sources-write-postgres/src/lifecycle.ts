@@ -200,7 +200,7 @@ export class PostgresSourcesIntakeLifecycle implements SourcesIntakeLifecyclePor
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `${projectId}:${submissionId}`,
       ]);
       const submission = await client.query(

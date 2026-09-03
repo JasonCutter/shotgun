@@ -147,7 +147,7 @@ export class PostgresTransformationRepository implements TransformationRepositor
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `${input.projectId}:${input.sourceVersionId}:${input.transformer.id}:${input.transformer.version}`,
       ]);
       let revision = await client.query<RevisionRow>(

@@ -248,7 +248,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     const materializedForStage3: MaterializedStage3Item[] = [];
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `${input.scope.projectId}:${input.submissionId}`,
       ]);
       await this.assertAcceptedCommand(

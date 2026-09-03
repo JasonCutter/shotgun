@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 const rootDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceRoots = ['apps', 'packages', 'modules', 'adapters', 'assemblies'];
 const importExpression = /from\s+['"]([^'"]+)['"]|import\s+['"]([^'"]+)['"]/g;
+const forbiddenAdvisoryLockHashExpression = new RegExp(
+  `pg_(?:try_)?advisory_(?:xact_)?(?:lock|unlock)(?:_shared)?\\([\\s\\S]{0,240}?\\bhashtext\\s*\\(`,
+);
 
 const toPosix = (value: string) => value.split(path.sep).join('/');
 
@@ -71,6 +74,14 @@ export const findArchitectureViolations = async (): Promise<string[]> => {
     const isFrontendApp = relativeFile.startsWith('apps/shotgun-web/');
     const isFrontendClient = relativeFile.startsWith('packages/shotgun-api-client/');
     const source = await readFile(file, 'utf8');
+
+    const forbiddenAdvisoryLockHashMatch = forbiddenAdvisoryLockHashExpression.exec(source);
+    if (forbiddenAdvisoryLockHashMatch?.index !== undefined) {
+      const line = source.slice(0, forbiddenAdvisoryLockHashMatch.index).split('\n').length;
+      violations.push(
+        `${relativeFile}:${line} derives a PostgreSQL advisory-lock key with hashtext(); use hashtextextended(..., 0).`,
+      );
+    }
 
     for (const match of source.matchAll(importExpression)) {
       const imported = match[1] ?? match[2];

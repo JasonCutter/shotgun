@@ -97,6 +97,18 @@ export type SourcesStage3ProgressLease = {
   readonly leaseToken: string;
 };
 
+export type SourcesStage3RecoveryItem = {
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly storageKey: string;
+  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly contentHash: string;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SourcesSensitivity;
+  readonly state: SourcesStage3ProgressState;
+};
+
 export type SourcesStage3ProgressPort = {
   ensureMaterialized(input: {
     readonly projectId: string;
@@ -134,14 +146,10 @@ export type SourcesStage3ProgressPort = {
     readonly message: string;
     readonly nextAttemptAt?: string;
   }): Promise<void>;
-  findRecoverable(input?: { readonly limit?: number; readonly now?: string }): Promise<
-    readonly {
-      readonly projectId: string;
-      readonly sourceId: string;
-      readonly sourceVersionId: string;
-      readonly state: SourcesStage3ProgressState;
-    }[]
-  >;
+  findRecoverable(input?: {
+    readonly limit?: number;
+    readonly now?: string;
+  }): Promise<readonly SourcesStage3RecoveryItem[]>;
 };
 
 /**

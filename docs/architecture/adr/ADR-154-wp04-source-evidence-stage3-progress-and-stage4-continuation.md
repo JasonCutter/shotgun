@@ -35,6 +35,13 @@ does not publish that event.
 - Historical Evidence without a durable Stage 4 intent is not permission to
   call a provider. Historical rows without Evidence are
   `RECONCILIATION_REQUIRED`, never inferred `NO_EVIDENCE`.
+- The production application starts a Stage 3 recovery dispatcher during
+  startup and repeats it periodically; the Canonical-only recovery harness
+  deliberately does not start Source/Stage 3 or Stage 4 workers.
+- A Stage 4 connector `TIMEOUT`/`OUTCOME_UNKNOWN`, or a continuation lease that
+  expires while publishing, becomes durable `OUTCOME_UNKNOWN`. It is not
+  automatically replayed against a provider; explicit reconciliation reuses
+  the deterministic candidate-generation request identity.
 
 ## Alternatives rejected
 

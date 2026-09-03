@@ -12,6 +12,7 @@ import type {
   SourcesStage3ProgressLease,
   SourcesStage3ProgressPort,
   SourcesStage3ProgressState,
+  SourcesStage3RecoveryItem,
   SourcesStage4ContinuationStorePort,
 } from '../../../modules/frontend-sources-write/src/index.js';
 import type { SaveTransformationInput } from '../../../modules/transformation/src/index.js';
@@ -280,14 +281,30 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
       source_id: string;
       source_version_id: string;
       state: SourcesStage3ProgressState;
+      storage_key: string;
+      media_type: 'text/plain' | 'text/markdown';
+      content_hash: string;
+      access_scope: string[];
+      sensitivity: SourcesStage3RecoveryItem['sensitivity'];
     }>(
-      `SELECT project_id, source_id::text, source_version_id::text, state
+      `SELECT progress.project_id, progress.source_id::text,
+              progress.source_version_id::text, progress.state,
+              original.storage_key, version.media_type, original.content_hash,
+              version.access_scope, version.sensitivity
          FROM source_product.source_stage3_progress
-        WHERE state IN ('MATERIALIZED', 'RECONCILIATION_REQUIRED')
-           OR (state = 'STAGE3_RETRYABLE'
-               AND (next_attempt_at IS NULL OR next_attempt_at <= COALESCE($1::timestamptz, now())))
-           OR (state = 'STAGE3_RUNNING' AND lease_expires_at <= COALESCE($1::timestamptz, now()))
-        ORDER BY updated_at, source_version_id
+              AS progress
+         JOIN asset.source_versions AS version
+           ON version.source_id = progress.source_id
+          AND version.source_version_id = progress.source_version_id
+         JOIN asset.original_assets AS original
+           ON original.asset_id = version.original_asset_id
+        WHERE progress.state IN ('MATERIALIZED', 'RECONCILIATION_REQUIRED')
+           OR (progress.state = 'STAGE3_RETRYABLE'
+               AND (progress.next_attempt_at IS NULL
+                    OR progress.next_attempt_at <= COALESCE($1::timestamptz, now())))
+           OR (progress.state = 'STAGE3_RUNNING'
+               AND progress.lease_expires_at <= COALESCE($1::timestamptz, now()))
+        ORDER BY progress.updated_at, progress.source_version_id
         LIMIT $2`,
       [input?.now ?? null, input?.limit ?? 100],
     );
@@ -295,6 +312,11 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
       projectId: row.project_id,
       sourceId: row.source_id,
       sourceVersionId: row.source_version_id,
+      storageKey: row.storage_key,
+      mediaType: row.media_type,
+      contentHash: row.content_hash,
+      accessScope: row.access_scope,
+      sensitivity: row.sensitivity,
       state: row.state,
     }));
   }
@@ -647,10 +669,18 @@ export class PostgresSourcesStage4ContinuationStore implements SourcesStage4Cont
     readonly message: string;
     readonly nextAttemptAt?: string;
   }): Promise<void> {
-    const state = input.retryable ? 'RETRYABLE_FAILED' : 'TERMINAL_FAILED';
+    const state =
+      input.code === 'OUTCOME_UNKNOWN'
+        ? 'OUTCOME_UNKNOWN'
+        : input.retryable
+          ? 'RETRYABLE_FAILED'
+          : 'TERMINAL_FAILED';
     const result = await this.pool.query(
       `UPDATE evidence.stage4_continuations
-          SET state = $4, completed_at = CASE WHEN $4 = 'TERMINAL_FAILED' THEN now() ELSE NULL END,
+          SET state = $4, completed_at = CASE
+                WHEN $4 IN ('TERMINAL_FAILED', 'OUTCOME_UNKNOWN') THEN now()
+                ELSE NULL
+              END,
               next_attempt_at = CASE
                 WHEN $4 = 'RETRYABLE_FAILED' THEN COALESCE(
                   $5::timestamptz,
@@ -679,10 +709,10 @@ export class PostgresSourcesStage4ContinuationStore implements SourcesStage4Cont
   async recoverExpired(input?: { readonly now?: string }): Promise<number> {
     const result = await this.pool.query(
       `UPDATE evidence.stage4_continuations
-          SET state = 'RETRYABLE_FAILED', next_attempt_at = COALESCE(next_attempt_at, $1),
+          SET state = 'OUTCOME_UNKNOWN', next_attempt_at = NULL,
               lease_owner = NULL, lease_token = NULL, lease_acquired_at = NULL,
               lease_expires_at = NULL, safe_failure_code = 'LEASE_EXPIRED',
-              safe_failure_message = 'The Stage 4 continuation lease expired.',
+              safe_failure_message = 'The Stage 4 continuation lease expired; outcome requires reconciliation.',
               updated_at = clock_timestamp()
         WHERE state = 'RUNNING' AND lease_expires_at <= $1`,
       [input?.now ?? nowIso()],

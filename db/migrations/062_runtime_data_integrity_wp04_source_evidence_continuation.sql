@@ -116,8 +116,8 @@ CREATE TABLE IF NOT EXISTS evidence.stage4_continuations (
   CHECK (updated_at >= created_at),
   CHECK (completed_at IS NULL OR completed_at >= created_at),
   CHECK (
-    (state IN ('COMPLETED', 'TERMINAL_FAILED') AND completed_at IS NOT NULL)
-    OR (state NOT IN ('COMPLETED', 'TERMINAL_FAILED') AND completed_at IS NULL)
+    (state IN ('COMPLETED', 'TERMINAL_FAILED', 'OUTCOME_UNKNOWN') AND completed_at IS NOT NULL)
+    OR (state NOT IN ('COMPLETED', 'TERMINAL_FAILED', 'OUTCOME_UNKNOWN') AND completed_at IS NULL)
   ),
   CHECK (
     (lease_owner IS NULL AND lease_token IS NULL AND lease_acquired_at IS NULL

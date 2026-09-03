@@ -10,6 +10,7 @@ export type {
   SourcesStage3ProgressLease,
   SourcesStage3ProgressPort,
   SourcesStage3ProgressState,
+  SourcesStage3RecoveryItem,
   SourcesStage3SavedTransformation,
   SourcesStage3TransformationInput,
   SourcesStage3TransformationRepositoryPort,

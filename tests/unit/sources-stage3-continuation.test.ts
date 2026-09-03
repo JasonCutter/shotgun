@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   SourcesStage3Pipeline,
+  SourcesStage3RecoveryDispatcher,
   SourcesStage4ContinuationDispatcher,
 } from '../../adapters/sources-stage3-pipeline/src/index.js';
 import type {
   SourcesStage3EvidenceIndexedInput,
+  SourcesStage3PipelinePort,
+  SourcesStage3ProgressPort,
+  SourcesStage3RecoveryItem,
   SourcesStage4ContinuationPort,
   SourcesStage4ContinuationStorePort,
 } from '../../modules/frontend-sources-write/src/index.js';
@@ -24,12 +28,14 @@ const continuation: SourcesStage3EvidenceIndexedInput = {
 };
 
 class MemoryContinuationStore implements SourcesStage4ContinuationStorePort {
-  state: 'PENDING' | 'RETRYABLE_FAILED' | 'COMPLETED' = 'PENDING';
+  state: 'PENDING' | 'RETRYABLE_FAILED' | 'OUTCOME_UNKNOWN' | 'COMPLETED' = 'PENDING';
   attempts = 0;
   failures: Array<{ retryable: boolean; code: string }> = [];
 
   async claimNext() {
-    if (this.state === 'COMPLETED') return { status: 'EMPTY' as const };
+    if (this.state === 'COMPLETED' || this.state === 'OUTCOME_UNKNOWN') {
+      return { status: 'EMPTY' as const };
+    }
     this.state = 'PENDING';
     this.attempts += 1;
     return {
@@ -47,7 +53,12 @@ class MemoryContinuationStore implements SourcesStage4ContinuationStorePort {
 
   async fail(input: Parameters<SourcesStage4ContinuationStorePort['fail']>[0]) {
     this.failures.push({ retryable: input.retryable, code: input.code });
-    this.state = input.retryable ? 'RETRYABLE_FAILED' : 'COMPLETED';
+    this.state =
+      input.code === 'OUTCOME_UNKNOWN'
+        ? 'OUTCOME_UNKNOWN'
+        : input.retryable
+          ? 'RETRYABLE_FAILED'
+          : 'COMPLETED';
   }
 
   async recoverExpired() {
@@ -138,5 +149,63 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
 
     await expect(dispatcher.dispatchOnce()).resolves.toBe('FAILED');
     expect(store.failures).toEqual([{ retryable: false, code: 'POLICY_DENIED' }]);
+  });
+
+  it('preserves timeout as OUTCOME_UNKNOWN instead of replaying a provider call', async () => {
+    const store = new MemoryContinuationStore();
+    const publisher: SourcesStage4ContinuationPort = {
+      onEvidenceIndexed: async () => {
+        throw new ShotgunError({
+          code: 'TIMEOUT',
+          safeMessage: 'provider timeout',
+          module: 'test',
+          operation: 'publish',
+        });
+      },
+    };
+    const dispatcher = new SourcesStage4ContinuationDispatcher(store, publisher);
+
+    await expect(dispatcher.dispatchOnce()).resolves.toBe('FAILED');
+    expect(store.failures).toEqual([{ retryable: false, code: 'OUTCOME_UNKNOWN' }]);
+    expect(store.state).toBe('OUTCOME_UNKNOWN');
+    await expect(dispatcher.dispatchOnce()).resolves.toBe('EMPTY');
+  });
+
+  it('starts Stage 3 recovery on startup and drains durable per-SourceVersion rows', async () => {
+    const recoveryItem: SourcesStage3RecoveryItem = {
+      projectId: 'project-1',
+      sourceId: 'source-1',
+      sourceVersionId: 'version-1',
+      storageKey: 'asset/1',
+      mediaType: 'text/plain',
+      contentHash: 'sha256:' + 'a'.repeat(64),
+      accessScope: ['owner'],
+      sensitivity: 'public',
+      state: 'STAGE3_RETRYABLE',
+    };
+    let listed = 0;
+    let recovered: SourcesStage3RecoveryItem | undefined;
+    const progress = {
+      findRecoverable: async () => {
+        listed += 1;
+        return listed === 1 ? [recoveryItem] : [];
+      },
+    } as unknown as SourcesStage3ProgressPort;
+    const pipeline: SourcesStage3PipelinePort = {
+      runForSourceVersion: async (input) => {
+        recovered = { ...recoveryItem, ...input };
+      },
+    };
+    const dispatcher = new SourcesStage3RecoveryDispatcher(progress, pipeline);
+    const stop = await dispatcher.startWorker();
+    await stop();
+
+    expect(recovered).toMatchObject({
+      projectId: recoveryItem.projectId,
+      sourceVersionId: recoveryItem.sourceVersionId,
+      storageKey: recoveryItem.storageKey,
+      contentHash: recoveryItem.contentHash,
+    });
+    expect(listed).toBe(2);
   });
 });

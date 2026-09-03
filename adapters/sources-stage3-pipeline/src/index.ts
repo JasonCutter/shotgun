@@ -15,6 +15,7 @@ import type {
   SourcesStage3PipelineOutcome,
   SourcesStage3PipelinePort,
   SourcesStage3ProgressPort,
+  SourcesStage3RecoveryItem,
   SourcesStage4ContinuationPort,
 } from '../../../modules/frontend-sources-write/src/index.js';
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
@@ -219,6 +220,84 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
   }
 }
 
+/**
+ * Reclaims durable Stage 3 positions after a process crash or lease expiry.
+ * The progress repository is the recovery authority and returns the complete
+ * immutable SourceVersion input, so recovery never reconstructs a new
+ * SourceVersion or relies on submission state.
+ */
+export class SourcesStage3RecoveryDispatcher {
+  private stopped = false;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private activeTick: Promise<void> | undefined;
+
+  constructor(
+    private readonly progress: SourcesStage3ProgressPort,
+    private readonly pipeline: SourcesStage3PipelinePort,
+    private readonly options: {
+      readonly intervalMs?: number;
+      readonly batchSize?: number;
+    } = {},
+  ) {}
+
+  async dispatchOnce(): Promise<'EMPTY' | 'SUCCEEDED' | 'FAILED'> {
+    const recoverable = await this.progress.findRecoverable({
+      limit: this.options.batchSize ?? 1,
+    });
+    const item = recoverable[0] as SourcesStage3RecoveryItem | undefined;
+    if (!item) return 'EMPTY';
+    try {
+      await this.pipeline.runForSourceVersion({
+        projectId: item.projectId,
+        sourceId: item.sourceId,
+        sourceVersionId: item.sourceVersionId,
+        storageKey: item.storageKey,
+        mediaType: item.mediaType,
+        contentHash: item.contentHash,
+        accessScope: [...item.accessScope],
+        sensitivity: item.sensitivity,
+      });
+      return 'SUCCEEDED';
+    } catch (error) {
+      // The pipeline owns the lease-guarded retry transition.  Keep the
+      // recovery loop observable and stop this tick so a broken dependency
+      // cannot produce a hot loop.
+      console.error('[sources-stage3-recovery] item failed', error);
+      return 'FAILED';
+    }
+  }
+
+  async startWorker(): Promise<() => Promise<void>> {
+    this.stopped = false;
+    const tick = async (): Promise<void> => {
+      if (this.stopped) return;
+      do {
+        const outcome = await this.dispatchOnce();
+        if (outcome !== 'SUCCEEDED') break;
+      } while (!this.stopped);
+      if (!this.stopped) {
+        this.timer = setTimeout(() => {
+          this.activeTick = tick()
+            .catch((error: unknown) => {
+              console.error('[sources-stage3-recovery] tick failed', error);
+            })
+            .finally(() => {
+              this.activeTick = undefined;
+            });
+        }, this.options.intervalMs ?? 1_000);
+      }
+    };
+    await tick();
+    return async () => {
+      this.stopped = true;
+      if (this.timer !== undefined) clearTimeout(this.timer);
+      this.timer = undefined;
+      const activeTick = this.activeTick;
+      if (activeTick) await Promise.allSettled([activeTick]);
+    };
+  }
+}
+
 /** Durable Stage 4 handoff worker. The store owns claim/lease/fence state;
  * this adapter only publishes the already-persisted EvidenceIndexed contract. */
 export class SourcesStage4ContinuationDispatcher {
@@ -251,8 +330,15 @@ export class SourcesStage4ContinuationDispatcher {
       });
       return 'SUCCEEDED';
     } catch (error) {
-      const code = error instanceof ShotgunError ? error.code : 'STAGE4_RETRYABLE_FAILURE';
-      const retryable = !['POLICY_DENIED', 'VALIDATION_ERROR', 'CONFLICT'].includes(code);
+      const sourceCode = error instanceof ShotgunError ? error.code : undefined;
+      // A connector timeout or an unknown provider outcome must not be
+      // replayed automatically: the external candidate-generation boundary
+      // may have completed after the local acknowledgement was lost.  The
+      // stable candidate request id is retained for explicit reconciliation.
+      const outcomeUnknown = sourceCode === 'TIMEOUT' || sourceCode === 'OUTCOME_UNKNOWN';
+      const code = outcomeUnknown ? 'OUTCOME_UNKNOWN' : (sourceCode ?? 'STAGE4_RETRYABLE_FAILURE');
+      const retryable =
+        !outcomeUnknown && !['POLICY_DENIED', 'VALIDATION_ERROR', 'CONFLICT'].includes(code);
       await this.store.fail({
         continuationId: claimed.continuationId,
         leaseToken: claimed.leaseToken,

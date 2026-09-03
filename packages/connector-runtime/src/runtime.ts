@@ -202,6 +202,7 @@ export class ConnectorRuntime {
           consumerId: route.module.manifest.id,
           status: 'dead-letter',
           deadLetterId: entry.deadLetterId,
+          errorCode: entry.error.code,
           ...(route.handler.requiredForPublisherAcknowledgement === true
             ? { requiredForPublisherAcknowledgement: true }
             : {}),

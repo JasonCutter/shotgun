@@ -113,7 +113,10 @@ import { PostgresDiscoveryModelProfileRepository } from '../../../adapters/disco
 import { PostgresDiscoveryScheduleRepository } from '../../../adapters/discovery-trigger-coordinator/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
-import type { DiscoveryFindingEnvelopeV1 } from '../../../packages/contracts/src/index.js';
+import {
+  ShotgunError,
+  type DiscoveryFindingEnvelopeV1,
+} from '../../../packages/contracts/src/index.js';
 import type { KnowledgeModelRepositoryPort } from '../../../modules/knowledge-model/src/index.js';
 import { PersistentDiscoveryWorker } from '../../../modules/discovery-runtime/src/index.js';
 import { StandingAIProcessingPolicyService } from '../../../packages/policy/src/index.js';
@@ -146,6 +149,7 @@ import {
 import type { DiscoveryCompetingResourcePortV1 } from '../../../modules/discovery-finding-fingerprint/src/index.js';
 import {
   SourcesStage3Pipeline,
+  SourcesStage3RecoveryDispatcher,
   SourcesStage4ContinuationDispatcher,
 } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import {
@@ -1221,13 +1225,34 @@ export const startShotgunApplication = async (
       });
       const failed = delivery.consumers.find((consumer) => consumer.status === 'dead-letter');
       if (failed) {
-        throw new Error(`Stage 4 continuation failed for ${failed.consumerId}.`);
+        const code = failed.errorCode;
+        const outcomeUnknown = code === 'TIMEOUT' || code === 'OUTCOME_UNKNOWN';
+        throw new ShotgunError({
+          code: outcomeUnknown
+            ? 'OUTCOME_UNKNOWN'
+            : code === 'POLICY_DENIED' || code === 'VALIDATION_ERROR' || code === 'CONFLICT'
+              ? code
+              : 'TERMINAL_FAILURE',
+          safeMessage: outcomeUnknown
+            ? 'Stage 4 continuation outcome requires reconciliation.'
+            : `Stage 4 continuation failed for ${failed.consumerId}.`,
+          module: 'shotgun-app',
+          operation: 'publish-evidence-indexed',
+        });
       }
     };
     // Recovery verification is intentionally limited to Canonical Projection
     // recovery.  Do not claim or publish pending Stage 4 work against the
     // restored database while the recovery harness is running.
     if (!recoveryHarness) {
+      const stage3RecoveryDispatcher = new SourcesStage3RecoveryDispatcher(
+        stage3Progress,
+        sourcesStage3Pipeline,
+      );
+      cleanupStack.add(
+        'Sources Stage 3 recovery worker',
+        await stage3RecoveryDispatcher.startWorker(),
+      );
       const stage4Dispatcher = new SourcesStage4ContinuationDispatcher(
         stage4ContinuationStore,
         sourcesStage4Continuation,

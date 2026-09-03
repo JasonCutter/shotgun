@@ -362,3 +362,6 @@ GPT 승인 이후 위 순서대로 다음 구현을 반영했다.
   `ACQUIRED` 단일 승자, `DUPLICATE` 단일 패자, stale fence completion 무시를
   확인했다. 전체 handler concurrency·restart fault matrix는 CI의 전용 DB gate에서
   계속 실행해야 한다.
+- 실제 PostgreSQL state를 주입한 `ShotgunKernel` E2E에서 command/event/query의
+  처리·중복 결과와 query result 재사용을 확인했고, Kernel 재시작 후 동일 command가
+  `duplicate`로 반환되며 새 process handler side effect가 0회임을 확인했다.

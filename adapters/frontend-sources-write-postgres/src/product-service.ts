@@ -82,6 +82,7 @@ type ProductItemRow = QueryResultRow & {
   readonly item_revision: string;
   readonly version_number: number | null;
   readonly stage3_state?: SourcesStage3ProgressState | null;
+  readonly stage3_safe_failure_code?: string | null;
   readonly stage3_next_attempt_at?: Date | string | null;
   readonly stage3_lease_expires_at?: Date | string | null;
 };
@@ -412,6 +413,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     // no currently-claimable rows; the durable progress row remains the
     // authority for when resume is safe.
     if (items.length === 0 && unfinishedCount > 0) return;
+    const completedSourceVersionIds: string[] = [];
     try {
       for (const item of items) {
         await this.stage3Pipeline.runForSourceVersion({
@@ -424,6 +426,12 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           accessScope: [...item.security.accessScope],
           sensitivity: item.security.sensitivity,
         });
+        // Some existing adapters expose the pre-WP-04 void-returning pipeline
+        // contract and do not own the durable progress row. A successful
+        // return is still a completed Stage 3 result for that adapter; record
+        // the exact SourceVersion so replay finalization can distinguish it
+        // from unrelated RUNNING/future-retry rows in the same submission.
+        completedSourceVersionIds.push(item.sourceVersionId);
       }
     } catch (error) {
       await this.markSubmissionStage3Incomplete(
@@ -435,11 +443,15 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       );
       throw error;
     }
-    await this.markStage3ItemsSucceeded(input.submissionId);
+    await this.markStage3ItemsSucceeded(input.submissionId, completedSourceVersionIds);
     // A historical reconciliation row is intentionally not eligible for the
     // normal pipeline.  Do not let another eligible item make the submission
     // look terminal while that unresolved SourceVersion remains outstanding.
-    const remaining = await this.materializedItemsForStage3(scope.projectId, input.submissionId);
+    const remaining = await this.materializedItemsForStage3(
+      scope.projectId,
+      input.submissionId,
+      completedSourceVersionIds,
+    );
     if (remaining.unfinishedCount > 0) return;
     await this.finalizeSubmissionState(
       input.submissionId,
@@ -535,6 +547,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
   private async materializedItemsForStage3(
     projectId: string,
     submissionId: string,
+    completedSourceVersionIds: readonly string[] = [],
   ): Promise<{
     readonly items: MaterializedStage3Item[];
     readonly actionRequired: number;
@@ -550,6 +563,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
               item.safe_failure_retryable, item.item_revision::text,
               version.version_number,
               progress.state AS stage3_state,
+              progress.safe_failure_code AS stage3_safe_failure_code,
               progress.next_attempt_at AS stage3_next_attempt_at,
               progress.lease_expires_at AS stage3_lease_expires_at
        FROM source_product.intake_submission_items AS item
@@ -577,7 +591,10 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     const now = Date.now();
     for (const row of result.rows) {
       const state = row.stage3_state as SourcesStage3ProgressState | null;
-      const terminal = state === 'STAGE3_COMPLETED' || state === 'NO_EVIDENCE';
+      const terminal =
+        state === 'STAGE3_COMPLETED' ||
+        state === 'NO_EVIDENCE' ||
+        completedSourceVersionIds.includes(row.produced_source_version_id ?? '');
       if (!terminal) unfinishedCount += 1;
       const retryableReady =
         state === 'STAGE3_RETRYABLE' &&
@@ -590,7 +607,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       const eligible =
         state === 'MATERIALIZED' ||
         (state === 'RECONCILIATION_REQUIRED' &&
-          row.safe_failure_code !== HISTORICAL_RECONCILIATION_REQUIRED_CODE) ||
+          row.stage3_safe_failure_code !== HISTORICAL_RECONCILIATION_REQUIRED_CODE) ||
         retryableReady ||
         staleRunning;
       if (!eligible) continue;
@@ -1493,7 +1510,10 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     await this.ensureStage3Progress(client, scope.projectId, sourceId, sourceVersionId, createdAt);
   }
 
-  private async markStage3ItemsSucceeded(submissionId: string): Promise<void> {
+  private async markStage3ItemsSucceeded(
+    submissionId: string,
+    completedSourceVersionIds: readonly string[],
+  ): Promise<void> {
     const client = await this.pool.connect();
     let transactionActive = false;
     try {
@@ -1506,14 +1526,8 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           WHERE item.submission_id = $1
             AND item.state IN ('OUTCOME_INDETERMINATE', 'RUNNING')
             AND item.produced_source_version_id IS NOT NULL
-            AND EXISTS (
-              SELECT 1
-                FROM source_product.source_stage3_progress AS progress
-               WHERE progress.project_id = item.project_id
-                 AND progress.source_version_id = item.produced_source_version_id
-                 AND progress.state IN ('STAGE3_COMPLETED', 'NO_EVIDENCE')
-            )`,
-        [submissionId],
+            AND item.produced_source_version_id = ANY($2::uuid[])`,
+        [submissionId, completedSourceVersionIds],
       );
       await client.query(
         `UPDATE source_product.intake_attempts AS attempt
@@ -1522,14 +1536,11 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             AND attempt.state = 'RUNNING'
             AND EXISTS (
               SELECT 1
-                FROM source_product.intake_submission_items AS item
-                JOIN source_product.source_stage3_progress AS progress
-                  ON progress.project_id = item.project_id
-                 AND progress.source_version_id = item.produced_source_version_id
-               WHERE item.submission_item_id = attempt.submission_item_id
-                 AND progress.state IN ('STAGE3_COMPLETED', 'NO_EVIDENCE')
+                FROM source_product.intake_submission_items AS completed_item
+               WHERE completed_item.submission_item_id = attempt.submission_item_id
+                 AND completed_item.produced_source_version_id = ANY($2::uuid[])
             )`,
-        [submissionId],
+        [submissionId, completedSourceVersionIds],
       );
       await client.query('COMMIT');
       transactionActive = false;

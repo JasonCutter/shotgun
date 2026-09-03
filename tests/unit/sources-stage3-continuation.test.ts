@@ -5,6 +5,7 @@ import {
   SourcesStage3RecoveryDispatcher,
   SourcesStage4ContinuationDispatcher,
 } from '../../adapters/sources-stage3-pipeline/src/index.js';
+import { PostgresSourcesStage3ProgressRepository } from '../../adapters/postgres-stage3/src/runtime-data-integrity.js';
 import type {
   SourcesStage3EvidenceIndexedInput,
   SourcesStage3PipelinePort,
@@ -13,6 +14,7 @@ import type {
   SourcesStage4ContinuationPort,
   SourcesStage4ContinuationStorePort,
 } from '../../modules/frontend-sources-write/src/index.js';
+import { HISTORICAL_RECONCILIATION_REQUIRED_CODE } from '../../modules/frontend-sources-write/src/index.js';
 import { ShotgunError } from '../../packages/contracts/src/index.js';
 
 const continuation: SourcesStage3EvidenceIndexedInput = {
@@ -67,6 +69,46 @@ class MemoryContinuationStore implements SourcesStage4ContinuationStorePort {
 }
 
 describe('durable Sources Stage 4 continuation dispatcher', () => {
+  it('does not claim a historical reconciliation marker for provider recovery', async () => {
+    const statements: string[] = [];
+    const client = {
+      query: async (sql: string) => {
+        statements.push(sql);
+        if (sql.includes('SELECT state, fencing_token')) {
+          return {
+            rows: [
+              {
+                state: 'RECONCILIATION_REQUIRED',
+                fencing_token: '0',
+                lease_expires_at: null,
+                next_attempt_at: null,
+                indexing_result_id: null,
+                safe_failure_code: HISTORICAL_RECONCILIATION_REQUIRED_CODE,
+              },
+            ],
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      },
+      release: () => undefined,
+    };
+    const pool = {
+      connect: async () => client,
+    } as never;
+    const repository = new PostgresSourcesStage3ProgressRepository(pool);
+
+    await expect(
+      repository.claim({
+        projectId: 'project-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        workerId: 'worker-1',
+        leaseDurationMs: 30_000,
+      }),
+    ).resolves.toEqual({ status: 'BUSY' });
+    expect(statements.some((sql) => sql.includes("SET state = 'STAGE3_RUNNING'"))).toBe(false);
+  });
+
   it('rejects malformed Stage 3 input before invoking storage or transformation', async () => {
     let reads = 0;
     const pipeline = new SourcesStage3Pipeline({

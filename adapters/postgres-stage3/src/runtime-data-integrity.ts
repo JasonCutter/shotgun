@@ -86,9 +86,10 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
         lease_expires_at: Date | null;
         next_attempt_at: Date | null;
         indexing_result_id: string | null;
+        safe_failure_code: string | null;
       }>(
         `SELECT state, fencing_token::text, lease_expires_at, next_attempt_at,
-                indexing_result_id::text
+                indexing_result_id::text, safe_failure_code
            FROM source_product.source_stage3_progress
           WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
           FOR UPDATE`,
@@ -127,6 +128,14 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
           evidenceCount: completed.evidence_count,
           reusedCount: completed.reused_count,
         };
+      }
+      if (
+        current.state === 'RECONCILIATION_REQUIRED' &&
+        current.safe_failure_code === HISTORICAL_RECONCILIATION_REQUIRED_CODE
+      ) {
+        await client.query('COMMIT');
+        active = false;
+        return { status: 'BUSY' };
       }
       if (
         current.state === 'STAGE3_RUNNING' &&

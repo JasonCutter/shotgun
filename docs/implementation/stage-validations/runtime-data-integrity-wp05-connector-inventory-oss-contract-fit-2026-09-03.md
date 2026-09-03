@@ -322,3 +322,33 @@ deterministic fake와 fault-injection adapter를 사용한다.
 - 위 최소 Port 경계가 확인되면, GPT의 별도 승인 대기 없이 WP-05 구현으로 연속 진행한다.
   반대로 Port 경계를 바꾸거나 OSS queue authority를 도입해야 한다면 즉시 중단하고
   새 계약 검토를 요청한다.
+
+## 12. 구현 결과 및 잔여 검증
+
+GPT 승인 이후 위 순서대로 다음 구현을 반영했다.
+
+- `packages/connector-runtime/src/ports.ts`: Dedup/Job/Attempt/DLQ/Replay/Ordering의
+  infrastructure-neutral Port와 상태·결과 계약을 추가했다.
+- `db/migrations/064_runtime_data_integrity_wp05_connector_runtime.sql`: 063 이후
+  additive `connector` schema와 최소 6개 권위 테이블을 추가했다. `jobs`는
+  `dedup_records`를 참조하고 `job_attempts`는 append-only 이력으로 남는다.
+- `adapters/connector-runtime-postgres/src/index.ts`: PostgreSQL 16 substrate 위에
+  unique semantic identity, fingerprint conflict, lease/fence, retry, safe DLQ/replay,
+  ordering checkpoint와 migration preflight lifecycle을 구현했다. pg-boss/Graphile
+  schema·worker는 설치하지 않았다.
+- `runtime.ts`, `packages/kernel`, `assemblies/shotgun-app`: production composition이
+  adapter를 명시적으로 주입하고 `AsyncCleanupStack`에서 start/stop을 소유하도록
+  연결했다. 기본 test composition은 InMemory를 유지한다.
+- timeout/ack-loss는 InMemory와 PostgreSQL 모두 `OUTCOME_UNKNOWN` tombstone을
+  유지하며, 동일 fingerprint 요청·replay가 handler를 자동 재호출하지 않는다.
+  `reconcileOutcome`/`DedupStorePort.reconcile`만 명시적 정합성 확정을 수행한다.
+
+검증 증거:
+
+- `npm run typecheck`, `npm run lint`, `npm run test:architecture` 통과
+- `npx vitest run tests/contract/connector.contract.test.ts tests/integration/connector-reliability.test.ts`
+  통과(14 tests); timeout 후 동일 key 재실행 방지 회귀 포함
+- `npm run docs:validate -- all`, `npm run docs:adr-index`, `npm run oss:verify` 통과
+- 실제 PostgreSQL 2-connection/restart/fault-injection은 이 실행 환경에
+  `TEST_DATABASE_URL`이 없어 미실행 상태다. 해당 DB gate를 통과하기 전에는 Stage를
+  `COMPLETE`로 판정하지 않는다.

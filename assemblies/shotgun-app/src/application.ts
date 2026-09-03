@@ -102,6 +102,7 @@ import {
 } from '../../../adapters/semantic-index-postgres/src/index.js';
 import { PostgresSemanticEmbeddingProfileRepository } from '../../../adapters/semantic-embedding-postgres/src/index.js';
 import { PostgresDiscoveryRuntimeRepository } from '../../../adapters/discovery-runtime-postgres/src/index.js';
+import { PostgresConnectorRuntimeState } from '../../../adapters/connector-runtime-postgres/src/index.js';
 import {
   PostgresDiscoveryApprovedResourceRevisionResolver,
   PostgresDiscoveryReentryFreshnessAuthority,
@@ -1080,6 +1081,7 @@ export const startShotgunApplication = async (
     );
 
     application = await createApplication({
+      connectorRuntimeState: new PostgresConnectorRuntimeState(pool),
       projectAdminRepository,
       projectBootstrapUnitOfWork: new PostgresProjectBootstrapUnitOfWork(pool),
       projectTombstoneStore: new PostgresProjectTombstoneStore(pool),

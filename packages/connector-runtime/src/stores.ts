@@ -21,6 +21,10 @@ type RunningDedupEntry<TResult> = {
 export class InMemoryDedupStore {
   private readonly completed = new Map<string, DedupEntry<unknown>>();
   private readonly running = new Map<string, RunningDedupEntry<unknown>>();
+  /** A timeout/ack-loss is terminal for this semantic key until an explicit
+   * reconciliation occurs. Never delete this tombstone when the late handler
+   * promise settles. */
+  private readonly outcomeUnknown = new Map<string, string>();
 
   async runOnce<TResult>(
     key: string,
@@ -34,6 +38,17 @@ export class InMemoryDedupStore {
         duplicate: true,
         result: completed.result as TResult,
       };
+    }
+
+    const unknown = this.outcomeUnknown.get(key);
+    if (unknown) {
+      this.assertSameFingerprint(key, unknown, fingerprint);
+      throw new ShotgunError({
+        code: 'OUTCOME_UNKNOWN',
+        safeMessage: 'The previous delivery outcome is unknown and requires reconciliation.',
+        module: 'connector-runtime',
+        operation: 'deduplicate-message',
+      });
     }
 
     const inProgress = this.running.get(key);
@@ -51,6 +66,11 @@ export class InMemoryDedupStore {
       const result = await promise;
       this.completed.set(key, { fingerprint, result });
       return { duplicate: false, result };
+    } catch (error) {
+      if (error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN') {
+        this.outcomeUnknown.set(key, fingerprint);
+      }
+      throw error;
     } finally {
       this.running.delete(key);
     }
@@ -114,10 +134,12 @@ export type ReplayRecord = {
   readonly replayId: string;
   readonly attemptedAt: string;
   status: 'running' | 'succeeded' | 'failed';
+  readonly reason?: string;
 };
 
 export type DeadLetterEntry = {
   readonly deadLetterId: string;
+  readonly projectId: string;
   readonly kind: DeadLetterKind;
   readonly consumerId: string;
   readonly envelope: AnyEnvelope;

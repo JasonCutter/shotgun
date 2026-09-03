@@ -37,14 +37,18 @@ import type {
   MessageTransport,
   QueryDelivery,
 } from './types.js';
+import type { ConnectorRuntimeStatePort, ConnectorSemanticIdentity } from './ports.js';
 
-type RuntimeOptions = {
+export type RuntimeOptions = {
   readonly jobs?: InMemoryJobRuntime;
   readonly traces?: InMemoryTraceStore;
   readonly audit?: InMemoryAuditStore;
   readonly dedup?: InMemoryDedupStore;
   readonly ordering?: InMemoryOrderingStore;
   readonly deadLetters?: InMemoryDeadLetterStore;
+  /** Optional production durability authority. In-memory stores remain the
+   * default for unit/contract compositions. */
+  readonly state?: ConnectorRuntimeStatePort;
 };
 
 type ExecutedHandler<TResult> = {
@@ -91,6 +95,7 @@ const withTimeout = async <TResult>(
   timeoutMs: number | undefined,
   envelope: AnyEnvelope,
   moduleId: string,
+  onTimeout?: () => void,
 ): Promise<TResult> => {
   if (!timeoutMs) {
     return operation();
@@ -101,19 +106,18 @@ const withTimeout = async <TResult>(
     return await Promise.race([
       operation(),
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(
-          () =>
-            reject(
-              new ShotgunError({
-                code: 'OUTCOME_UNKNOWN',
-                safeMessage: 'The handler timed out and its final outcome is unknown.',
-                module: moduleId,
-                operation: envelope.messageType,
-                correlationId: envelope.correlationId,
-              }),
-            ),
-          timeoutMs,
-        );
+        timer = setTimeout(() => {
+          onTimeout?.();
+          reject(
+            new ShotgunError({
+              code: 'OUTCOME_UNKNOWN',
+              safeMessage: 'The handler timed out and its final outcome is unknown.',
+              module: moduleId,
+              operation: envelope.messageType,
+              correlationId: envelope.correlationId,
+            }),
+          );
+        }, timeoutMs);
       }),
     ]);
   } finally {
@@ -131,6 +135,7 @@ export class ConnectorRuntime {
 
   private readonly dedup: InMemoryDedupStore;
   private readonly ordering: InMemoryOrderingStore;
+  private readonly durableState?: ConnectorRuntimeStatePort;
 
   constructor(
     private readonly registry: ModuleRegistry,
@@ -143,6 +148,7 @@ export class ConnectorRuntime {
     this.dedup = options.dedup ?? new InMemoryDedupStore();
     this.ordering = options.ordering ?? new InMemoryOrderingStore();
     this.deadLetters = options.deadLetters ?? new InMemoryDeadLetterStore();
+    this.durableState = options.state;
   }
 
   async sendCommand<TResult = unknown>(
@@ -157,7 +163,9 @@ export class ConnectorRuntime {
     const route = this.registry.getCommandHandler(envelope.messageType, envelope.schemaVersion);
 
     try {
-      const delivery = await this.executeDeduplicated<TResult>(envelope, route, 'command');
+      const delivery = this.durableState
+        ? await this.executeDeduplicatedDurable<TResult>(envelope, route, 'command')
+        : await this.executeDeduplicated<TResult>(envelope, route, 'command');
       return {
         status: delivery.duplicate ? 'duplicate' : 'processed',
         envelope,
@@ -165,7 +173,11 @@ export class ConnectorRuntime {
         jobId: delivery.result.jobId,
       };
     } catch (error) {
-      this.addDeadLetter('command', envelope, route.module.manifest.id, error);
+      if (this.durableState) {
+        await this.addDeadLetterDurable('command', envelope, route.module.manifest.id, error);
+      } else {
+        this.addDeadLetter('command', envelope, route.module.manifest.id, error);
+      }
       throw error;
     }
   }
@@ -188,7 +200,9 @@ export class ConnectorRuntime {
 
     for (const route of routes) {
       try {
-        const delivery = await this.executeDeduplicated<void>(envelope, route, 'event');
+        const delivery = this.durableState
+          ? await this.executeDeduplicatedDurable<void>(envelope, route, 'event')
+          : await this.executeDeduplicated<void>(envelope, route, 'event');
         consumers.push({
           consumerId: route.module.manifest.id,
           status: delivery.duplicate ? 'duplicate' : 'processed',
@@ -197,7 +211,9 @@ export class ConnectorRuntime {
             : {}),
         });
       } catch (error) {
-        const entry = this.addDeadLetter('event', envelope, route.module.manifest.id, error);
+        const entry = this.durableState
+          ? await this.addDeadLetterDurable('event', envelope, route.module.manifest.id, error)
+          : this.addDeadLetter('event', envelope, route.module.manifest.id, error);
         consumers.push({
           consumerId: route.module.manifest.id,
           status: 'dead-letter',
@@ -222,6 +238,9 @@ export class ConnectorRuntime {
     );
     const route = this.registry.getQueryHandler(envelope.messageType, envelope.schemaVersion);
     this.authorize(envelope, route);
+    if (this.durableState) {
+      return this.queryDurable<TResult>(envelope, route);
+    }
     const id = consumerId(route.module.manifest.id, 'query', envelope.messageType);
 
     const execution = await this.jobs.run(
@@ -268,13 +287,20 @@ export class ConnectorRuntime {
   }
 
   async replay(deadLetterId: string, reason: string): Promise<void> {
-    const entry = this.deadLetters.get(deadLetterId);
+    const entry = this.durableState
+      ? await this.durableState.deadLetters.get(deadLetterId)
+      : this.deadLetters.get(deadLetterId);
     const replay: ReplayRecord = {
       replayId: randomUUID(),
       attemptedAt: new Date().toISOString(),
       status: 'running',
+      reason,
     };
-    entry.replays.push(replay);
+    if (this.durableState) {
+      await this.durableState.deadLetters.appendReplay(deadLetterId, replay);
+    } else {
+      entry.replays.push(replay);
+    }
     const envelope = {
       ...entry.envelope,
       replay: {
@@ -284,12 +310,22 @@ export class ConnectorRuntime {
     };
 
     try {
+      validateEnvelope(envelope);
+      this.registry.schemas.validateInput(
+        envelope.messageType,
+        envelope.schemaVersion,
+        envelope.payload,
+      );
       if (entry.kind === 'command' && envelope.messageKind === 'command') {
         const route = this.registry.getCommandHandler(envelope.messageType, envelope.schemaVersion);
         if (route.module.manifest.id !== entry.consumerId) {
           throw this.replayBlocked(entry);
         }
-        await this.executeDeduplicated(envelope, route, 'command');
+        if (this.durableState) {
+          await this.executeDeduplicatedDurable(envelope, route, 'command');
+        } else {
+          await this.executeDeduplicated(envelope, route, 'command');
+        }
       } else if (entry.kind === 'event' && envelope.messageKind === 'event') {
         const route = this.registry
           .getEventHandlers(envelope.messageType, envelope.schemaVersion)
@@ -297,17 +333,49 @@ export class ConnectorRuntime {
         if (!route) {
           throw this.replayBlocked(entry);
         }
-        await this.executeDeduplicated(envelope, route, 'event');
+        if (this.durableState) {
+          await this.executeDeduplicatedDurable(envelope, route, 'event');
+        } else {
+          await this.executeDeduplicated(envelope, route, 'event');
+        }
       } else {
         throw this.replayBlocked(entry);
       }
 
       replay.status = 'succeeded';
-      entry.status = 'resolved';
+      if (this.durableState) {
+        await this.durableState.deadLetters.updateReplay(replay.replayId, 'succeeded');
+        await this.durableState.deadLetters.resolve(deadLetterId);
+      } else {
+        entry.status = 'resolved';
+      }
     } catch (error) {
       replay.status = 'failed';
+      if (this.durableState) {
+        await this.durableState.deadLetters.updateReplay(replay.replayId, 'failed');
+      }
       throw error;
     }
+  }
+
+  /** Resolve an OUTCOME_UNKNOWN tombstone using an authoritative provider or
+   * operator observation. This is the only API that can reopen the durable
+   * semantic outcome; replay never calls a handler for an unknown identity. */
+  async reconcileOutcome<TResult>(input: {
+    readonly identity: ConnectorSemanticIdentity;
+    readonly result?: TResult;
+    readonly safeErrorCode?: string;
+    readonly safeErrorMessage?: string;
+  }): Promise<unknown> {
+    if (!this.durableState) {
+      throw new ShotgunError({
+        code: 'OUTCOME_UNKNOWN',
+        safeMessage: 'Durable outcome reconciliation is unavailable for an in-memory runtime.',
+        module: 'connector-runtime',
+        operation: 'reconcile-outcome',
+      });
+    }
+    return this.durableState.dedup.reconcile(input);
   }
 
   private async executeDeduplicated<TResult>(
@@ -370,11 +438,340 @@ export class ConnectorRuntime {
     return delivery;
   }
 
+  /** Durable equivalent of executeDeduplicated.  The dedup record is opened
+   * before invoking the handler and is fenced on every terminal transition;
+   * therefore a timeout/ack-loss cannot make a second request eligible. */
+  private async executeDeduplicatedDurable<TResult>(
+    envelope: CommandEnvelope | EventEnvelope,
+    route: RegisteredCommandHandler | RegisteredEventHandler,
+    kind: 'command' | 'event',
+  ): Promise<{ duplicate: boolean; result: ExecutedHandler<TResult> }> {
+    const state = this.durableState!;
+    this.authorize(envelope, route);
+    const id = consumerId(route.module.manifest.id, kind, envelope.messageType);
+    const identity = this.semanticIdentity(envelope, id, kind, envelope.idempotencyKey);
+    const jobId = randomUUID();
+    const began = await state.dedup.begin<TResult>({ ...identity, jobId });
+    if (began.kind === 'CONFLICT') {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: `Idempotency key '${envelope.idempotencyKey}' was reused for a different message.`,
+        module: 'connector-runtime',
+        operation: 'deduplicate-message',
+        correlationId: envelope.correlationId,
+      });
+    }
+    if (began.kind === 'DUPLICATE') {
+      if (began.record.state === 'COMPLETED') {
+        return {
+          duplicate: true,
+          result: { result: began.record.result as TResult, jobId: began.record.jobId ?? jobId },
+        };
+      }
+      if (began.record.state === 'OUTCOME_UNKNOWN') {
+        throw new ShotgunError({
+          code: 'OUTCOME_UNKNOWN',
+          safeMessage: 'The previous delivery outcome is unknown and requires reconciliation.',
+          module: 'connector-runtime',
+          operation: envelope.messageType,
+          correlationId: envelope.correlationId,
+        });
+      }
+      if (began.record.state === 'IN_PROGRESS') {
+        // A concurrent duplicate never invokes the handler. Give the owner a
+        // bounded opportunity to publish its terminal state, then require
+        // reconciliation instead of guessing or replacing the side effect.
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          const current = await state.dedup.get<TResult>(identity);
+          if (current?.state === 'COMPLETED') {
+            return {
+              duplicate: true,
+              result: { result: current.result as TResult, jobId: current.jobId ?? jobId },
+            };
+          }
+          if (current?.state === 'OUTCOME_UNKNOWN') {
+            throw new ShotgunError({
+              code: 'OUTCOME_UNKNOWN',
+              safeMessage: 'The previous delivery outcome is unknown and requires reconciliation.',
+              module: 'connector-runtime',
+              operation: envelope.messageType,
+              correlationId: envelope.correlationId,
+            });
+          }
+        }
+        throw new ShotgunError({
+          code: 'RETRYABLE_DEPENDENCY',
+          safeMessage: 'The delivery is still owned by another active worker.',
+          module: 'connector-runtime',
+          operation: envelope.messageType,
+          correlationId: envelope.correlationId,
+          retryable: true,
+        });
+      }
+    }
+
+    try {
+      const execution = await state.jobs.run(
+        envelope.idempotencyKey,
+        id,
+        envelope.correlationId,
+        async (attempt) => {
+          await state.ordering.assertNext(id, envelope);
+          let active = true;
+          const deliveredEnvelope = {
+            ...envelope,
+            job: {
+              jobId: attempt.jobId,
+              attemptId: attempt.attemptId,
+              attemptNumber: attempt.attemptNumber,
+            },
+          };
+          const operation =
+            kind === 'command'
+              ? () =>
+                  (route as RegisteredCommandHandler).handler.handle(
+                    deliveredEnvelope as CommandEnvelope,
+                    this.context(route, deliveredEnvelope, attempt, () => active),
+                  )
+              : () =>
+                  (route as RegisteredEventHandler).handler.handle(
+                    deliveredEnvelope as EventEnvelope,
+                    this.context(route, deliveredEnvelope, attempt, () => active),
+                  );
+          const result = await this.invoke(route, deliveredEnvelope, attempt, operation, () => {
+            active = false;
+          });
+          active = false;
+          await state.ordering.commit(id, envelope);
+          return result as TResult;
+        },
+      );
+      await state.dedup.complete({
+        identity,
+        fenceToken: began.record.fenceToken,
+        jobId: began.record.jobId ?? execution.job.jobId,
+        result: execution.result,
+      });
+      return {
+        duplicate: false,
+        result: { result: execution.result, jobId: execution.job.jobId },
+      };
+    } catch (error) {
+      const shotgunError = toShotgunError(error, {
+        code: 'TERMINAL_FAILURE',
+        safeMessage: 'The durable connector handler failed.',
+        module: route.module.manifest.id,
+        operation: envelope.messageType,
+        correlationId: envelope.correlationId,
+      });
+      if (shotgunError.code === 'OUTCOME_UNKNOWN') {
+        await state.dedup.markOutcomeUnknown({
+          identity,
+          fenceToken: began.record.fenceToken,
+          jobId: began.record.jobId ?? jobId,
+          safeErrorMessage: shotgunError.safeMessage,
+        });
+      } else {
+        await state.dedup.fail({
+          identity,
+          fenceToken: began.record.fenceToken,
+          jobId: began.record.jobId ?? jobId,
+          safeErrorCode: shotgunError.code,
+          safeErrorMessage: shotgunError.safeMessage,
+        });
+      }
+      throw shotgunError;
+    }
+  }
+
+  private semanticIdentity(
+    envelope: CommandEnvelope | EventEnvelope | QueryEnvelope,
+    id: string,
+    kind: 'command' | 'event' | 'query',
+    semanticKey: string,
+  ): ConnectorSemanticIdentity {
+    const security = envelope.security ?? {
+      accessScope: [],
+      sensitivity: 'public' as const,
+      dataClassification: 'unspecified',
+    };
+    return {
+      projectId: envelope.projectId ?? 'global',
+      securityScope: JSON.stringify({
+        accessScope: [...security.accessScope].sort(),
+        sensitivity: security.sensitivity,
+        dataClassification: security.dataClassification,
+      }),
+      consumerId: id,
+      messageKind: kind,
+      messageType: envelope.messageType,
+      semanticKey,
+      fingerprint:
+        kind === 'query'
+          ? envelope.messageId
+          : messageFingerprint(envelope as CommandEnvelope | EventEnvelope),
+    };
+  }
+
+  private async queryDurable<TResult>(
+    envelope: QueryEnvelope,
+    route: RegisteredQueryHandler,
+  ): Promise<QueryDelivery<TResult>> {
+    const state = this.durableState!;
+    const id = consumerId(route.module.manifest.id, 'query', envelope.messageType);
+    const semanticKey = `query:${envelope.messageId}`;
+    const identity = this.semanticIdentity(envelope, id, 'query', semanticKey);
+    const began = await state.dedup.begin<TResult>({ ...identity, jobId: randomUUID() });
+    if (began.kind === 'CONFLICT') {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'The query idempotency identity conflicts with a prior request.',
+        module: 'connector-runtime',
+        operation: envelope.messageType,
+        correlationId: envelope.correlationId,
+      });
+    }
+    let result: TResult;
+    let jobId: string;
+    if (began.kind === 'DUPLICATE') {
+      if (began.record.state === 'COMPLETED') {
+        result = began.record.result as TResult;
+        jobId = began.record.jobId ?? randomUUID();
+      } else {
+        throw new ShotgunError({
+          code: 'OUTCOME_UNKNOWN',
+          safeMessage: 'The previous query outcome requires reconciliation.',
+          module: 'connector-runtime',
+          operation: envelope.messageType,
+          correlationId: envelope.correlationId,
+        });
+      }
+    } else {
+      try {
+        const execution = await state.jobs.run(
+          semanticKey,
+          id,
+          envelope.correlationId,
+          async (attempt) => {
+            let active = true;
+            const deliveredEnvelope = {
+              ...envelope,
+              job: {
+                jobId: attempt.jobId,
+                attemptId: attempt.attemptId,
+                attemptNumber: attempt.attemptNumber,
+              },
+            };
+            const value = await this.invoke(
+              route,
+              deliveredEnvelope,
+              attempt,
+              () =>
+                route.handler.handle(
+                  deliveredEnvelope,
+                  this.context(route, deliveredEnvelope, attempt, () => active),
+                ),
+              () => {
+                active = false;
+              },
+            );
+            active = false;
+            this.registry.schemas.validateOutput(
+              envelope.messageType,
+              envelope.schemaVersion,
+              value,
+            );
+            return value as TResult;
+          },
+        );
+        result = execution.result;
+        jobId = execution.job.jobId;
+        await state.dedup.complete({
+          identity,
+          fenceToken: began.record.fenceToken,
+          jobId: began.record.jobId ?? jobId,
+          result,
+        });
+      } catch (error) {
+        const shotgunError = toShotgunError(error, {
+          code: 'TERMINAL_FAILURE',
+          safeMessage: 'The durable query failed.',
+          module: route.module.manifest.id,
+          operation: envelope.messageType,
+          correlationId: envelope.correlationId,
+        });
+        if (shotgunError.code === 'OUTCOME_UNKNOWN') {
+          await state.dedup.markOutcomeUnknown({
+            identity,
+            fenceToken: began.record.fenceToken,
+            jobId: began.record.jobId ?? '',
+            safeErrorMessage: shotgunError.safeMessage,
+          });
+        } else {
+          await state.dedup.fail({
+            identity,
+            fenceToken: began.record.fenceToken,
+            jobId: began.record.jobId ?? '',
+            safeErrorCode: shotgunError.code,
+            safeErrorMessage: shotgunError.safeMessage,
+          });
+        }
+        throw shotgunError;
+      }
+    }
+    const queryResult = {
+      ...createQueryResult(envelope, {
+        messageType: `${envelope.messageType}Result`,
+        schemaVersion: envelope.schemaVersion,
+        producerModule: route.module.manifest.id,
+        producerVersion: route.module.manifest.version,
+        payload: result,
+      }),
+      job: { jobId, attemptId: randomUUID(), attemptNumber: 1 },
+    };
+    return { envelope, result: queryResult, jobId };
+  }
+
+  private async addDeadLetterDurable(
+    kind: 'command' | 'event',
+    envelope: CommandEnvelope | EventEnvelope,
+    moduleId: string,
+    error: unknown,
+  ): Promise<DeadLetterEntry> {
+    const state = this.durableState!;
+    const id = consumerId(moduleId, kind, envelope.messageType);
+    const shotgunError = toShotgunError(error, {
+      code: 'TERMINAL_FAILURE',
+      safeMessage: 'The message was moved to dead-letter.',
+      module: moduleId,
+      operation: envelope.messageType,
+      correlationId: envelope.correlationId,
+    });
+    const job = await state.jobs.find(id, envelope.idempotencyKey);
+    this.traces.record(envelope, {
+      consumerModule: moduleId,
+      attemptNumber: job?.attempts.length ?? 0,
+      status: 'dead-letter',
+      errorCode: shotgunError.code,
+    });
+    this.auditEnvelope(envelope, moduleId, 'dead-letter', shotgunError.code);
+    return state.deadLetters.add({
+      projectId: envelope.projectId ?? 'global',
+      kind,
+      consumerId: moduleId,
+      envelope,
+      error: shotgunError,
+      ...(job ? { job } : {}),
+    });
+  }
+
   private async invoke<TResult>(
     route: RegisteredCommandHandler | RegisteredEventHandler | RegisteredQueryHandler,
     envelope: CommandEnvelope | EventEnvelope | QueryEnvelope,
     attempt: AttemptRecord,
     operation: () => Promise<TResult> | TResult,
+    onTimeout?: () => void,
   ): Promise<TResult> {
     this.traces.record(envelope, {
       consumerModule: route.module.manifest.id,
@@ -389,6 +786,7 @@ export class ConnectorRuntime {
           route.handler.timeoutMs,
           envelope,
           route.module.manifest.id,
+          onTimeout,
         ),
       );
       this.traces.record(envelope, {
@@ -421,11 +819,21 @@ export class ConnectorRuntime {
     route: RegisteredCommandHandler | RegisteredEventHandler | RegisteredQueryHandler,
     parent: CommandEnvelope | EventEnvelope | QueryEnvelope,
     attempt: AttemptRecord,
+    isActive?: () => boolean,
   ): HandlerContext {
     return {
       moduleId: route.module.manifest.id,
       attemptNumber: attempt.attemptNumber,
       publish: async (input) => {
+        if (isActive && !isActive()) {
+          throw new ShotgunError({
+            code: 'OUTCOME_UNKNOWN',
+            safeMessage: 'The parent delivery outcome is unknown; child publication is fenced.',
+            module: route.module.manifest.id,
+            operation: input.messageType,
+            correlationId: parent.correlationId,
+          });
+        }
         const event = {
           ...createChildEvent(parent, {
             ...input,
@@ -456,6 +864,15 @@ export class ConnectorRuntime {
         }
       },
       query: async <TPayload, TResult>(input: DispatchQueryInput<TPayload>) => {
+        if (isActive && !isActive()) {
+          throw new ShotgunError({
+            code: 'OUTCOME_UNKNOWN',
+            safeMessage: 'The parent delivery outcome is unknown; child query is fenced.',
+            module: route.module.manifest.id,
+            operation: input.messageType,
+            correlationId: parent.correlationId,
+          });
+        }
         const query = createChildQuery(parent, {
           ...input,
           producerModule: route.module.manifest.id,
@@ -500,6 +917,7 @@ export class ConnectorRuntime {
     });
     this.auditEnvelope(envelope, moduleId, 'dead-letter', shotgunError.code);
     return this.deadLetters.add({
+      projectId: envelope.projectId ?? 'global',
       kind,
       consumerId: moduleId,
       envelope,

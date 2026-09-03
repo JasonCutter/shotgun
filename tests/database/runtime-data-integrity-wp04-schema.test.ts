@@ -71,7 +71,7 @@ describe.runIf(pool)('WP-04 runtime data-integrity schema', () => {
          JOIN pg_namespace AS ns ON ns.oid = cls.relnamespace
         WHERE ns.nspname IN ('evidence', 'source_product')
           AND con.conname IN (
-            'evidence_indexing_results_status_check',
+            'indexing_results_status_check',
             'evidence_stage4_continuations_evidence_count_check',
             'source_stage3_progress_state_check'
           )`,

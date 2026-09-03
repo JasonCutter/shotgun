@@ -350,12 +350,15 @@ GPT 승인 이후 위 순서대로 다음 구현을 반영했다.
 - `npx vitest run tests/contract/connector.contract.test.ts tests/integration/connector-reliability.test.ts`
   통과(14 tests); timeout 후 동일 key 재실행 방지 회귀 포함
 - `npm run docs:validate -- all`, `npm run docs:adr-index`, `npm run oss:verify` 통과
-- 실제 PostgreSQL 2-connection/restart/fault-injection은 이 실행 환경에
-  기본적으로 `TEST_DATABASE_URL`이 없었으나, 임시 `pgvector/pg16` PostgreSQL에서
+- 실제 PostgreSQL은 이 실행 환경에 `TEST_DATABASE_URL`이 없었으나, 임시
+  `pgvector/pg16` PostgreSQL에서
   migration/adapter smoke를 실행했다. `npm run db:test:reset` 및
-  `npm run db:test:verify`가 통과했고, 별도 2-connection 테스트 환경이 아니므로
-  Stage의 최종 concurrency gate는 아직 남아 있다.
+  `npm run db:test:verify`가 통과했다.
 - 실제 adapter smoke에서 semantic begin/duplicate/fingerprint conflict,
   `COMPLETED` 영속화, ordering stale rejection을 확인했다. 별도 unknown smoke에서
   `OUTCOME_UNKNOWN` tombstone, late completion 무시, append-only attempt 1건을
   확인했다.
+- 두 개의 실제 PostgreSQL connection을 동시에 사용한 dedup/fence smoke에서
+  `ACQUIRED` 단일 승자, `DUPLICATE` 단일 패자, stale fence completion 무시를
+  확인했다. 전체 handler concurrency·restart fault matrix는 CI의 전용 DB gate에서
+  계속 실행해야 한다.

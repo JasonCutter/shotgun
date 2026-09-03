@@ -1493,14 +1493,11 @@ const reviewPage = (bundle: {
 </html>`;
 };
 
-export const createApplication = async (options: ApplicationOptions = {}) => {
-  const cleanupStack = options.cleanupStack ?? new AsyncCleanupStack();
-  let serverForStartupCleanup: FastifyInstance | undefined;
-  if (options.closeResources) {
-    cleanupStack.add('application resources', options.closeResources);
-  }
-  // prettier-ignore
-  try {
+const createApplicationCore = async (
+  options: ApplicationOptions,
+  cleanupStack: AsyncCleanupStack,
+  setServerForStartupCleanup: (server: FastifyInstance) => void,
+) => {
   const intakeRepository = options.intakeRepository ?? new InMemoryIntakeRepository();
   const originalAssetRepository =
     options.originalAssetRepository ?? new InMemoryOriginalAssetRepository();
@@ -2198,7 +2195,7 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
   }
 
   const server = Fastify({ logger: false });
-  serverForStartupCleanup = server;
+  setServerForStartupCleanup(server);
 
   server.setErrorHandler(async (error, request, reply) => {
     const normalized =
@@ -3994,6 +3991,19 @@ export const createApplication = async (options: ApplicationOptions = {}) => {
       canonicalProjectionRecoveryReporter,
     },
   };
+};
+
+export const createApplication = async (options: ApplicationOptions = {}) => {
+  const cleanupStack = options.cleanupStack ?? new AsyncCleanupStack();
+  let serverForStartupCleanup: FastifyInstance | undefined;
+  if (options.closeResources) {
+    cleanupStack.add('application resources', options.closeResources);
+  }
+
+  try {
+    return await createApplicationCore(options, cleanupStack, (server) => {
+      serverForStartupCleanup = server;
+    });
   } catch (error) {
     // A route/static registration or startup recovery failure can happen
     // after background workers have already started. Close through Fastify's

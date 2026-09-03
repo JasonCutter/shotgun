@@ -25,6 +25,7 @@ import {
   sourceSecurityMetadataEqual,
   type SourcesResourceSecurityMetadata,
   type SourcesStage3PipelinePort,
+  type SourcesStage3ProgressState,
 } from '../../../modules/frontend-sources-write/src/index.js';
 import type {
   CreateSourcesIntakeSubmissionInput,
@@ -79,10 +80,20 @@ type ProductItemRow = QueryResultRow & {
   readonly safe_failure_retryable: boolean | null;
   readonly item_revision: string;
   readonly version_number: number | null;
+  readonly stage3_state?: SourcesStage3ProgressState | null;
+  readonly stage3_next_attempt_at?: Date | string | null;
+  readonly stage3_lease_expires_at?: Date | string | null;
 };
 
 const iso = (value: Date | string): string =>
   value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+
+const epochMs = (value: Date | string | null | undefined): number | undefined =>
+  value === null || value === undefined
+    ? undefined
+    : value instanceof Date
+      ? value.getTime()
+      : Date.parse(value);
 
 const inputCapabilities = (
   state: IntakeSubmissionItemView['state'],
@@ -225,19 +236,30 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     if (existing) {
       // FE-P5-XP Correction Round 2: a replay of an intake whose SourceVersions
       // were materialized but whose Stage 3 pipeline did not complete
-      // (OUTCOME_INDETERMINATE) RESUMES the pipeline for the SAME
+      // (RUNNING/PARTIAL/OUTCOME_INDETERMINATE) RESUMES the pipeline for the SAME
       // SourceVersions (idempotent) and then finalizes the submission — a
       // transient Stage 3 failure must never leave a SourceVersion permanently
       // without Evidence nor falsely report a final SUCCESS.
       // FE-P5-XP Correction Round 3: the original mixed outcome (duplicate /
       // action-required items) is preserved, so a mixed submission resumes to
       // PARTIAL and an all-succeeded one to SUCCEEDED.
-      if (existing.state === 'OUTCOME_INDETERMINATE' && this.stage3Pipeline) {
-        const { items: resumeItems, actionRequired } = await this.materializedItemsForStage3(
+      if (
+        this.stage3Pipeline &&
+        ['RUNNING', 'PARTIAL', 'OUTCOME_INDETERMINATE'].includes(existing.state)
+      ) {
+        const resumed = await this.materializedItemsForStage3(
           input.scope.projectId,
           input.submissionId,
         );
-        await this.runStage3AndFinalize(resumeItems, input, input.scope, actionRequired);
+        if (resumed.items.length > 0 || resumed.unfinishedCount === 0) {
+          await this.runStage3AndFinalize(
+            resumed.items,
+            input,
+            input.scope,
+            resumed.actionRequired,
+            resumed.unfinishedCount,
+          );
+        }
         return (await this.getSubmission(input.scope, input.submissionId))!;
       }
       return existing;
@@ -246,8 +268,10 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     // Materialized SourceVersions are handed to the Stage 3 pipeline AFTER the
     // intake transaction commits (real production path, never fixture-side).
     const materializedForStage3: MaterializedStage3Item[] = [];
+    let transactionActive = false;
     try {
       await client.query('BEGIN');
+      transactionActive = true;
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
         `${input.scope.projectId}:${input.submissionId}`,
       ]);
@@ -351,6 +375,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         [input.submissionId, baseState],
       );
       await client.query('COMMIT');
+      transactionActive = false;
       // FE-P5-XP Correction C: after the intake transaction commits, run the
       // REAL production Stage 3 pipeline for every materialized SourceVersion
       // (transform + evidence indexing). The pipeline is idempotent.
@@ -361,7 +386,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       }
       return (await this.getSubmission(input.scope, input.submissionId))!;
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (transactionActive) await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
@@ -380,8 +405,14 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     input: Pick<SubmitSourcesProductInput, 'submissionId' | 'createdAt'>,
     scope: SourcesProductWriteScope,
     actionRequired: number,
+    unfinishedCount = 0,
   ): Promise<void> {
     if (!this.stage3Pipeline) return;
+    // A submission may be RUNNING while another worker still holds a valid
+    // SourceVersion lease. Do not finalize it merely because this replay has
+    // no currently-claimable rows; the durable progress row remains the
+    // authority for when resume is safe.
+    if (items.length === 0 && unfinishedCount > 0) return;
     try {
       for (const item of items) {
         await this.stage3Pipeline.runForSourceVersion({
@@ -396,9 +427,16 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         });
       }
     } catch (error) {
-      await this.markSubmissionStage3Incomplete(input.submissionId);
+      await this.markSubmissionStage3Incomplete(
+        input.submissionId,
+        error instanceof ShotgunError ? error.code : 'STAGE3_RETRYABLE_FAILURE',
+        error instanceof ShotgunError
+          ? error.safeMessage
+          : 'Stage 3 transformation or Evidence indexing failed.',
+      );
       throw error;
     }
+    await this.markStage3ItemsSucceeded(input.submissionId);
     await this.finalizeSubmissionState(
       input.submissionId,
       actionRequired === 0 ? 'SUCCEEDED' : 'PARTIAL',
@@ -412,19 +450,42 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
    * (mixed duplicate + materialized items) submissions transition here, so a
    * mixed submission is also retryable instead of permanently lacking Evidence.
    */
-  private async markSubmissionStage3Incomplete(submissionId: string): Promise<void> {
+  private async markSubmissionStage3Incomplete(
+    submissionId: string,
+    code: string,
+    message: string,
+  ): Promise<void> {
     const client = await this.pool.connect();
+    let transactionActive = false;
     try {
       await client.query('BEGIN');
+      transactionActive = true;
       await client.query(
         `UPDATE source_product.intake_submissions
          SET state = 'OUTCOME_INDETERMINATE'
          WHERE submission_id = $1 AND state IN ('RUNNING', 'PARTIAL')`,
         [submissionId],
       );
+      await client.query(
+        `UPDATE source_product.intake_submission_items AS item
+            SET state = 'OUTCOME_INDETERMINATE', safe_failure_code = $2,
+                safe_failure_message = $3, safe_failure_retryable = true
+          WHERE item.submission_id = $1
+            AND item.produced_source_version_id IS NOT NULL
+            AND item.state = 'SUCCEEDED'
+            AND EXISTS (
+              SELECT 1
+                FROM source_product.source_stage3_progress AS progress
+               WHERE progress.project_id = item.project_id
+                 AND progress.source_version_id = item.produced_source_version_id
+                 AND progress.state NOT IN ('STAGE3_COMPLETED', 'NO_EVIDENCE')
+            )`,
+        [submissionId, code.slice(0, 200), message.slice(0, 2000)],
+      );
       await client.query('COMMIT');
+      transactionActive = false;
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (transactionActive) await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
@@ -438,8 +499,10 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     createdAt: string,
   ): Promise<void> {
     const client = await this.pool.connect();
+    let transactionActive = false;
     try {
       await client.query('BEGIN');
+      transactionActive = true;
       await client.query(
         `UPDATE source_product.intake_submissions
          SET state = $2,
@@ -448,8 +511,9 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         [submissionId, state, createdAt],
       );
       await client.query('COMMIT');
+      transactionActive = false;
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (transactionActive) await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
@@ -470,6 +534,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
   ): Promise<{
     readonly items: MaterializedStage3Item[];
     readonly actionRequired: number;
+    readonly unfinishedCount: number;
   }> {
     const result = await this.pool.query<ProductItemRow>(
       `SELECT item.submission_item_id::text, item.client_item_id, item.input_kind,
@@ -479,10 +544,17 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
               item.active_duplicate_decision_id::text, item.attention_reason,
               item.safe_failure_code, item.safe_failure_message,
               item.safe_failure_retryable, item.item_revision::text,
-              version.version_number
+              version.version_number,
+              progress.state AS stage3_state,
+              progress.next_attempt_at AS stage3_next_attempt_at,
+              progress.lease_expires_at AS stage3_lease_expires_at
        FROM source_product.intake_submission_items AS item
        LEFT JOIN asset.source_versions AS version
          ON version.source_version_id = item.produced_source_version_id
+       LEFT JOIN source_product.source_stage3_progress AS progress
+         ON progress.project_id = item.project_id
+        AND progress.source_id = item.produced_source_id
+        AND progress.source_version_id = item.produced_source_version_id
        WHERE item.project_id = $1 AND item.submission_id = $2
          AND item.produced_source_id IS NOT NULL
          AND item.produced_source_version_id IS NOT NULL
@@ -497,7 +569,26 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       [projectId, submissionId],
     );
     const items: MaterializedStage3Item[] = [];
+    let unfinishedCount = 0;
+    const now = Date.now();
     for (const row of result.rows) {
+      const state = row.stage3_state as SourcesStage3ProgressState | null;
+      const terminal = state === 'STAGE3_COMPLETED' || state === 'NO_EVIDENCE';
+      if (!terminal) unfinishedCount += 1;
+      const retryableReady =
+        state === 'STAGE3_RETRYABLE' &&
+        (epochMs(row.stage3_next_attempt_at) === undefined ||
+          epochMs(row.stage3_next_attempt_at)! <= now);
+      const staleRunning =
+        state === 'STAGE3_RUNNING' &&
+        epochMs(row.stage3_lease_expires_at) !== undefined &&
+        epochMs(row.stage3_lease_expires_at)! <= now;
+      const eligible =
+        state === 'MATERIALIZED' ||
+        state === 'RECONCILIATION_REQUIRED' ||
+        retryableReady ||
+        staleRunning;
+      if (!eligible) continue;
       const contentHash = row.content_hash;
       if (!contentHash) continue;
       const storage = await this.pool.query<{ storage_key: string }>(
@@ -518,6 +609,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     return {
       items,
       actionRequired: Number(actionRequired.rows[0]?.count ?? 0),
+      unfinishedCount,
     };
   }
 
@@ -655,8 +747,10 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     input: ResolveSourcesDuplicateProductInput,
   ): Promise<IntakeSubmissionSnapshot> {
     const client = await this.pool.connect();
+    let transactionActive = false;
     try {
       await client.query('BEGIN');
+      transactionActive = true;
       const decision = await client.query<{
         submission_id: string;
         submission_item_id: string;
@@ -808,21 +902,25 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         await this.recomputeSubmission(client, row.submission_id, input.createdAt);
       }
       await client.query('COMMIT');
+      transactionActive = false;
       if (input.disposition !== 'CANCEL_SUBMISSION' && this.stage3Pipeline) {
-        const { items, actionRequired } = await this.materializedItemsForStage3(
+        const resumed = await this.materializedItemsForStage3(
           input.scope.projectId,
           row.submission_id,
         );
-        await this.runStage3AndFinalize(
-          items,
-          { submissionId: row.submission_id, createdAt: input.createdAt },
-          input.scope,
-          actionRequired,
-        );
+        if (resumed.items.length > 0 || resumed.unfinishedCount === 0) {
+          await this.runStage3AndFinalize(
+            resumed.items,
+            { submissionId: row.submission_id, createdAt: input.createdAt },
+            input.scope,
+            resumed.actionRequired,
+            resumed.unfinishedCount,
+          );
+        }
       }
       return (await this.getSubmission(input.scope, row.submission_id))!;
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (transactionActive) await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
@@ -845,8 +943,10 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       createdAt: input.createdAt,
     });
     const client = await this.pool.connect();
+    let transactionActive = false;
     try {
       await client.query('BEGIN');
+      transactionActive = true;
       await client.query(
         `UPDATE source_product.intake_submissions SET state = 'RUNNING'
          WHERE submission_id = $1 AND state = 'QUEUED'`,
@@ -860,9 +960,12 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           content_hash: string;
           submission_item_id: string;
           intake_attempt_id: string;
+          produced_source_id: string | null;
+          produced_source_version_id: string | null;
         }>(
           `SELECT item.input_kind, item.client_item_id, item.input_manifest,
                   item.content_hash, item.submission_item_id::text,
+                  item.produced_source_id::text, item.produced_source_version_id::text,
                   attempt.intake_attempt_id::text
            FROM source_product.intake_submission_items AS item
            JOIN LATERAL (
@@ -889,6 +992,9 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
            WHERE submission_item_id = $1 AND state = 'QUEUED'`,
           [row.submission_item_id],
         );
+        // Stage 3 retries resume the durable SourceVersion and never restage
+        // the original artifact.
+        if (row.produced_source_id && row.produced_source_version_id) continue;
         const artifact = await this.staging.resolve({
           stagingReference: String(row.input_manifest['stagingReference'] ?? ''),
           draftId: String(row.input_manifest['draftId'] ?? ''),
@@ -926,11 +1032,29 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           );
         }
       }
-      await this.recomputeSubmission(client, input.submissionId, input.createdAt);
+      if (!this.stage3Pipeline) {
+        await this.recomputeSubmission(client, input.submissionId, input.createdAt);
+      }
       await client.query('COMMIT');
+      transactionActive = false;
+      if (this.stage3Pipeline) {
+        const resumed = await this.materializedItemsForStage3(
+          input.scope.projectId,
+          input.submissionId,
+        );
+        if (resumed.items.length > 0 || resumed.unfinishedCount === 0) {
+          await this.runStage3AndFinalize(
+            resumed.items,
+            { submissionId: input.submissionId, createdAt: input.createdAt },
+            input.scope,
+            resumed.actionRequired,
+            resumed.unfinishedCount,
+          );
+        }
+      }
       return (await this.getSubmission(input.scope, input.submissionId))!;
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (transactionActive) await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
@@ -1207,6 +1331,13 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         recovered.sourceVersionId,
         createdAt,
       );
+      await this.ensureStage3Progress(
+        client,
+        scope.projectId,
+        recovered.sourceId,
+        recovered.sourceVersionId,
+        createdAt,
+      );
       return { sourceId: recovered.sourceId, sourceVersionId: recovered.sourceVersionId };
     }
     await this.insertStage2Submission(client, scope, itemId, item, security, createdAt);
@@ -1291,6 +1422,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       );
     }
     await this.finishItem(client, itemId, attemptId, sourceId, sourceVersionId, createdAt);
+    await this.ensureStage3Progress(client, scope.projectId, sourceId, sourceVersionId, createdAt);
     return { sourceId, sourceVersionId };
   }
 
@@ -1355,6 +1487,71 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       );
     }
     await this.finishItem(client, itemId, attemptId, sourceId, sourceVersionId, createdAt);
+    await this.ensureStage3Progress(client, scope.projectId, sourceId, sourceVersionId, createdAt);
+  }
+
+  private async markStage3ItemsSucceeded(submissionId: string): Promise<void> {
+    const client = await this.pool.connect();
+    let transactionActive = false;
+    try {
+      await client.query('BEGIN');
+      transactionActive = true;
+      await client.query(
+        `UPDATE source_product.intake_submission_items AS item
+            SET state = 'SUCCEEDED', safe_failure_code = NULL,
+                safe_failure_message = NULL, safe_failure_retryable = NULL
+          WHERE item.submission_id = $1
+            AND item.state IN ('OUTCOME_INDETERMINATE', 'RUNNING')
+            AND item.produced_source_version_id IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+                FROM source_product.source_stage3_progress AS progress
+               WHERE progress.project_id = item.project_id
+                 AND progress.source_version_id = item.produced_source_version_id
+                 AND progress.state IN ('STAGE3_COMPLETED', 'NO_EVIDENCE')
+            )`,
+        [submissionId],
+      );
+      await client.query(
+        `UPDATE source_product.intake_attempts AS attempt
+            SET state = 'SUCCEEDED', completed_at = clock_timestamp()
+          WHERE attempt.submission_id = $1
+            AND attempt.state = 'RUNNING'
+            AND EXISTS (
+              SELECT 1
+                FROM source_product.intake_submission_items AS item
+                JOIN source_product.source_stage3_progress AS progress
+                  ON progress.project_id = item.project_id
+                 AND progress.source_version_id = item.produced_source_version_id
+               WHERE item.submission_item_id = attempt.submission_item_id
+                 AND progress.state IN ('STAGE3_COMPLETED', 'NO_EVIDENCE')
+            )`,
+        [submissionId],
+      );
+      await client.query('COMMIT');
+      transactionActive = false;
+    } catch (error) {
+      if (transactionActive) await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async ensureStage3Progress(
+    client: PoolClient,
+    projectId: string,
+    sourceId: string,
+    sourceVersionId: string,
+    createdAt: string,
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO source_product.source_stage3_progress (
+         project_id, source_id, source_version_id, state, created_at, updated_at
+       ) VALUES ($1, $2, $3, 'MATERIALIZED', $4, $4)
+       ON CONFLICT (project_id, source_version_id) DO NOTHING`,
+      [projectId, sourceId, sourceVersionId, createdAt],
+    );
   }
 
   private async insertStage2Submission(

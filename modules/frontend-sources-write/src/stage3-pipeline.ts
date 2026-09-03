@@ -1,4 +1,58 @@
-import type { SourcesSensitivity } from '../../../packages/contracts/src/index.js';
+import type {
+  DocumentIR,
+  EvidenceSpan,
+  SecurityContext,
+  SourceMap,
+  SourcesSensitivity,
+  TextPositionSelector,
+  TextQuoteSelector,
+  TransformationRevision,
+} from '../../../packages/contracts/src/index.js';
+
+/** Structural Stage 3 contracts kept in the Sources module boundary. The
+ * implementation adapters may satisfy these shapes without making this
+ * module depend on Evidence or Transformation domain modules. */
+export type SourcesStage3EvidenceLocatorPort = {
+  locate(source: string, quote: TextQuoteSelector): TextPositionSelector | undefined;
+};
+
+export type SourcesStage3EvidenceIndexResult = {
+  readonly items: readonly EvidenceSpan[];
+  readonly reusedCount: number;
+};
+
+export type SourcesStage3SavedTransformation = {
+  readonly attemptId: string;
+  readonly revision: TransformationRevision;
+  readonly reusedRevision: boolean;
+};
+
+export type SourcesStage3TransformationInput = {
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly sourceContentHash: string;
+  readonly transformer: { readonly id: string; readonly version: string };
+  readonly output: {
+    readonly documentIR: DocumentIR;
+    readonly sourceMap: SourceMap;
+    readonly documentHash: string;
+    readonly sourceMapHash: string;
+  };
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SecurityContext['sensitivity'];
+  readonly createdAt: string;
+};
+
+export type SourcesStage3TransformationRepositoryPort = {
+  save(input: SourcesStage3TransformationInput): Promise<SourcesStage3SavedTransformation>;
+};
+
+export type SourcesStage3EvidenceRepositoryPort = {
+  index(
+    candidates: readonly Omit<EvidenceSpan, 'evidenceId'>[],
+  ): Promise<SourcesStage3EvidenceIndexResult>;
+};
 
 /**
  * FE-P5-XP Correction C — Source Intake → Stage 3 Transformation/Evidence
@@ -27,6 +81,126 @@ export type SourcesStage3PipelinePort = {
   }): Promise<SourcesStage3PipelineOutcome | void>;
 };
 
+export type SourcesStage3ProgressState =
+  | 'MATERIALIZED'
+  | 'STAGE3_RUNNING'
+  | 'STAGE3_COMPLETED'
+  | 'NO_EVIDENCE'
+  | 'STAGE3_RETRYABLE'
+  | 'RECONCILIATION_REQUIRED';
+
+export type SourcesStage3ProgressLease = {
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly fencingToken: number;
+  readonly leaseToken: string;
+};
+
+export type SourcesStage3ProgressPort = {
+  ensureMaterialized(input: {
+    readonly projectId: string;
+    readonly sourceId: string;
+    readonly sourceVersionId: string;
+    readonly createdAt?: string;
+  }): Promise<void>;
+  claim(input: {
+    readonly projectId: string;
+    readonly sourceId: string;
+    readonly sourceVersionId: string;
+    readonly workerId: string;
+    readonly leaseDurationMs: number;
+    readonly now?: string;
+  }): Promise<
+    | { readonly status: 'CLAIMED'; readonly lease: SourcesStage3ProgressLease }
+    | {
+        readonly status: 'COMPLETED';
+        readonly state: 'STAGE3_COMPLETED' | 'NO_EVIDENCE';
+        readonly revisionId: string;
+        readonly indexingResultId: string;
+        readonly evidenceCount: number;
+        readonly reusedCount: number;
+      }
+    | { readonly status: 'BUSY' }
+  >;
+  finalize(input: {
+    readonly lease: SourcesStage3ProgressLease;
+    readonly state: 'STAGE3_COMPLETED' | 'NO_EVIDENCE';
+    readonly indexingResultId: string;
+  }): Promise<void>;
+  markRetryable(input: {
+    readonly lease: SourcesStage3ProgressLease;
+    readonly code: string;
+    readonly message: string;
+    readonly nextAttemptAt?: string;
+  }): Promise<void>;
+  findRecoverable(input?: { readonly limit?: number; readonly now?: string }): Promise<
+    readonly {
+      readonly projectId: string;
+      readonly sourceId: string;
+      readonly sourceVersionId: string;
+      readonly state: SourcesStage3ProgressState;
+    }[]
+  >;
+};
+
+/**
+ * A PostgreSQL Stage 3 adapter implements this port when transformation,
+ * Evidence spans, indexing result and continuation intent must share one
+ * transaction. The default repositories remain usable for isolated module
+ * tests, but production wiring supplies this atomic adapter.
+ */
+export type SourcesStage3AtomicPersistencePort = {
+  persist(input: {
+    readonly transformation: SourcesStage3TransformationInput;
+    readonly locator: SourcesStage3EvidenceLocatorPort;
+    readonly continuation: Omit<
+      SourcesStage3EvidenceIndexedInput,
+      'revisionId' | 'evidenceCount' | 'reusedCount'
+    >;
+    readonly lease: SourcesStage3ProgressLease;
+  }): Promise<{
+    readonly saved: SourcesStage3SavedTransformation;
+    readonly indexed: SourcesStage3EvidenceIndexResult;
+    readonly indexingResultId: string;
+    readonly continuationId?: string;
+  }>;
+};
+
+export type SourcesStage4ContinuationStorePort = {
+  claimNext(input: {
+    readonly workerId: string;
+    readonly leaseDurationMs: number;
+    readonly now?: string;
+  }): Promise<
+    | {
+        readonly status: 'CLAIMED';
+        readonly continuation: SourcesStage3EvidenceIndexedInput;
+        readonly continuationId: string;
+        readonly leaseToken: string;
+        readonly fencingToken: number;
+      }
+    | { readonly status: 'EMPTY' }
+  >;
+  complete(input: {
+    readonly continuationId: string;
+    readonly leaseToken: string;
+    readonly fencingToken: number;
+    readonly generationRequestId?: string;
+    readonly executionPinRef?: string;
+  }): Promise<void>;
+  fail(input: {
+    readonly continuationId: string;
+    readonly leaseToken: string;
+    readonly fencingToken: number;
+    readonly retryable: boolean;
+    readonly code: string;
+    readonly message: string;
+    readonly nextAttemptAt?: string;
+  }): Promise<void>;
+  recoverExpired(input?: { readonly now?: string }): Promise<number>;
+};
+
 /**
  * Stage 3 is the Source product's authoritative completion boundary. A
  * downstream Stage 4 continuation is reported separately so its failure can
@@ -41,6 +215,7 @@ export type SourcesStage3PipelineOutcome = {
   };
   readonly stage4:
     | { readonly status: 'NOT_CONFIGURED' }
+    | { readonly status: 'PENDING' }
     | { readonly status: 'SUCCEEDED' }
     | { readonly status: 'FAILED' };
 };

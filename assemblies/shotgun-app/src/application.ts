@@ -144,7 +144,15 @@ import {
   observeDiscoveryReconciliation,
 } from '../../../adapters/discovery-runtime-product/src/index.js';
 import type { DiscoveryCompetingResourcePortV1 } from '../../../modules/discovery-finding-fingerprint/src/index.js';
-import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
+import {
+  SourcesStage3Pipeline,
+  SourcesStage4ContinuationDispatcher,
+} from '../../../adapters/sources-stage3-pipeline/src/index.js';
+import {
+  PostgresSourcesStage3AtomicPersistence,
+  PostgresSourcesStage3ProgressRepository,
+  PostgresSourcesStage4ContinuationStore,
+} from '../../../adapters/postgres-stage3/src/runtime-data-integrity.js';
 import type {
   SourcesStage3EvidenceIndexedInput,
   SourcesStage4ContinuationPort,
@@ -394,6 +402,9 @@ export const startShotgunApplication = async (
     // a successful intake materializes a SourceVersion).
     const transformationRepository = new PostgresTransformationRepository(pool);
     const evidenceRepository = new PostgresEvidenceRepository(pool);
+    const stage3Progress = new PostgresSourcesStage3ProgressRepository(pool);
+    const stage3AtomicPersistence = new PostgresSourcesStage3AtomicPersistence(pool);
+    const stage4ContinuationStore = new PostgresSourcesStage4ContinuationStore(pool);
     const transformer = new PythonDocumentFormatAdapter();
     const stage4Publisher: {
       current?: (input: SourcesStage3EvidenceIndexedInput) => Promise<void>;
@@ -412,6 +423,8 @@ export const startShotgunApplication = async (
       locator: plainTextAdapter,
       transformationRepository,
       evidenceRepository,
+      progress: stage3Progress,
+      atomicPersistence: stage3AtomicPersistence,
       stage4: sourcesStage4Continuation,
     });
     const sourcesProductService = new PostgresSourcesProductService(
@@ -1211,6 +1224,16 @@ export const startShotgunApplication = async (
         throw new Error(`Stage 4 continuation failed for ${failed.consumerId}.`);
       }
     };
+    // Recovery verification is intentionally limited to Canonical Projection
+    // recovery.  Do not claim or publish pending Stage 4 work against the
+    // restored database while the recovery harness is running.
+    if (!recoveryHarness) {
+      const stage4Dispatcher = new SourcesStage4ContinuationDispatcher(
+        stage4ContinuationStore,
+        sourcesStage4Continuation,
+      );
+      cleanupStack.add('Sources Stage 4 continuation worker', await stage4Dispatcher.startWorker());
+    }
     const { server } = application;
 
     let askWorkerStarted = false;

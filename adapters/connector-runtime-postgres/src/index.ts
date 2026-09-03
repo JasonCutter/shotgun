@@ -838,6 +838,7 @@ export class PostgresConnectorRuntimeState implements ConnectorRuntimeStatePort 
   readonly jobs: JobRuntimePort;
   readonly deadLetters: DeadLetterStorePort;
   readonly ordering: OrderingStorePort;
+  private recoveryTimer: NodeJS.Timeout | undefined;
   readonly lifecycle = {
     start: async (): Promise<void> => {
       const result = await this.pool.query<{ relation: string | null }>(
@@ -851,10 +852,18 @@ export class PostgresConnectorRuntimeState implements ConnectorRuntimeStatePort 
           operation: 'start',
         });
       }
+      if (!this.recoveryTimer) {
+        this.recoveryTimer = setInterval(() => {
+          void this.recoverExpiredLeases();
+        }, 5_000);
+        this.recoveryTimer.unref();
+      }
     },
     stop: async (_options?: { readonly graceMs?: number }): Promise<void> => {
-      // The application-owned PostgreSQL pool is closed by AsyncCleanupStack;
-      // this adapter owns no independent timer or worker process.
+      if (this.recoveryTimer) {
+        clearInterval(this.recoveryTimer);
+        this.recoveryTimer = undefined;
+      }
     },
   };
 
@@ -863,5 +872,38 @@ export class PostgresConnectorRuntimeState implements ConnectorRuntimeStatePort 
     this.jobs = new PostgresJobRuntime(pool);
     this.deadLetters = new PostgresDeadLetterStore(pool);
     this.ordering = new PostgresOrderingStore(pool);
+  }
+
+  private async recoverExpiredLeases(): Promise<void> {
+    try {
+      await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const result = await client.query<{ dedup_record_id: string }>(
+            `UPDATE connector.jobs
+             SET status='outcome-unknown', safe_error_code='OUTCOME_UNKNOWN',
+                 safe_error_message='Worker lease expired before completion was acknowledged.',
+                 lease_owner=NULL, lease_expires_at=NULL, updated_at=clock_timestamp()
+             WHERE status='running' AND lease_expires_at IS NOT NULL
+               AND lease_expires_at < clock_timestamp()
+             RETURNING dedup_record_id`,
+          );
+          if (result.rows.length > 0) {
+            await client.query(
+              `UPDATE connector.dedup_records
+               SET state='OUTCOME_UNKNOWN', safe_error_code='OUTCOME_UNKNOWN',
+                   safe_error_message='Worker lease expired before completion was acknowledged.',
+                   updated_at=clock_timestamp(), completed_at=clock_timestamp()
+               WHERE dedup_record_id = ANY($1::uuid[]) AND state='IN_PROGRESS'`,
+              [result.rows.map((row) => row.dedup_record_id)],
+            );
+          }
+        },
+        { module: 'connector-runtime-postgres', operation: 'recover-expired-leases' },
+      );
+    } catch {
+      // Recovery is retried on the next tick; failure is observable through
+      // the existing application health/logging surface without exposing data.
+    }
   }
 }

@@ -575,9 +575,11 @@ transaction callback 밖에 두어 post-commit 오류를 rollback 오류로 가�
 `packages/connector-runtime`에 infrastructure-neutral async Port를 정의한다.
 
 - `DedupStorePort`: atomic begin/read/complete/fail/markOutcomeUnknown/reconcile.
-- `JobRuntimePort`: enqueue/claim/renew/complete/retry/terminal/cancel.
-- `DeadLetterStorePort`: safe envelope reference, failure code, replay authorization.
-- `OrderingStorePort`: ordering key별 sequence/fence/checkpoint.
+- `JobRuntimePort`: full semantic identity 기반 enqueue/claim/renew/complete/retry/terminal/cancel/find.
+- `DeadLetterStorePort`: full identity와 safe envelope reference, failure code,
+  actor/project/security scope replay authorization.
+- `OrderingStorePort`: full scope별 pre-handler ordering reservation, sequence/fence,
+  fenced commit/release/checkpoint.
 
 상태 최소 집합은 `IN_PROGRESS | OUTCOME_UNKNOWN | COMPLETED | FAILED`이며, 같은 key와
 같은 request fingerprint만 재조회할 수 있다. 같은 key에 다른 fingerprint면
@@ -588,7 +590,8 @@ transaction callback 밖에 두어 post-commit 오류를 rollback 오류로 가�
 1. 새 `adapters/connector-runtime-postgres`를 Port 뒤에 구현한다.
 2. unique semantic key, request fingerprint, lease/fence, result reference, safe error,
    retention을 저장한다.
-3. payload를 무조건 DLQ에 복사하지 않는다. protected data는 승인된 encrypted replay
+3. Job retry는 `retryable`과 `next_attempt_at`를 영속화해 process restart 후에도
+   backoff를 잃지 않는다. payload를 무조건 DLQ에 복사하지 않는다. protected data는 승인된 encrypted replay
    payload 또는 canonical resource reference+digest로 저장한다.
 4. Kernel/assembly production wiring은 PostgreSQL adapter를 명시적으로 주입한다.
    InMemory adapter는 unit test와 명시적 ephemeral assembly에만 남긴다.
@@ -603,13 +606,16 @@ transaction callback 밖에 두어 post-commit 오류를 rollback 오류로 가�
 - cancellation signal은 전달할 수 있지만 신뢰성의 근거는 durable state와 reconciliation이다.
 - reconciliation만 `OUTCOME_UNKNOWN`을 `COMPLETED`, `FAILED`, 수동 재시도 가능 상태로
   바꿀 수 있다.
+- DLQ replay는 원본 project/security scope, actor, reason, route, fingerprint를
+  검증·기록하며 `OUTCOME_UNKNOWN`은 reconciliation 전 거부한다.
 
 ### 검증
 
 - timeout 직후 동일 key 2개 동시 요청에서 handler 총 호출 1회.
 - timeout 후 원 handler가 늦게 완료되는 경우 result fencing 검증.
 - process restart 뒤 completed/in-progress/unknown dedup 유지.
-- ordering key별 순서, 다른 key 병렬성, lease recovery, DLQ replay authorization.
+- project/security scope별 ordering key 선점 fence, 다른 scope 병렬성, restart-safe
+  retry/backoff, lease recovery, DLQ replay authorization.
 - InMemory↔PostgreSQL adapter replacement contract test.
 - pg-boss/Graphile Worker를 채택했다면 package 교체 test와 pinned-version 검증.
 

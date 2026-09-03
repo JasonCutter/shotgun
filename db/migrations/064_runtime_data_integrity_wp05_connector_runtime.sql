@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS connector.jobs (
   job_id uuid PRIMARY KEY,
   dedup_record_id uuid NOT NULL REFERENCES connector.dedup_records(dedup_record_id) ON DELETE RESTRICT,
   correlation_id text NOT NULL,
-  status text NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'outcome-unknown', 'dead-letter', 'cancelled')),
+  status text NOT NULL CHECK (status IN ('queued', 'running', 'retryable', 'succeeded', 'failed', 'outcome-unknown', 'dead-letter', 'cancelled')),
   attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
   max_attempts integer NOT NULL DEFAULT 3 CHECK (max_attempts > 0),
   lease_owner text,
@@ -68,8 +68,12 @@ CREATE TABLE IF NOT EXISTS connector.dead_letters (
   dead_letter_id uuid PRIMARY KEY,
   dedup_record_id uuid NOT NULL REFERENCES connector.dedup_records(dedup_record_id) ON DELETE RESTRICT,
   project_id text NOT NULL,
+  security_scope text NOT NULL,
   consumer_id text NOT NULL,
+  identity_consumer_id text NOT NULL,
   kind text NOT NULL CHECK (kind IN ('command', 'event')),
+  message_kind text NOT NULL CHECK (message_kind IN ('command', 'event')),
+  message_type text NOT NULL,
   semantic_key text NOT NULL,
   fingerprint text NOT NULL,
   envelope jsonb NOT NULL,
@@ -84,14 +88,27 @@ CREATE TABLE IF NOT EXISTS connector.replays (
   dead_letter_id uuid NOT NULL REFERENCES connector.dead_letters(dead_letter_id) ON DELETE CASCADE,
   attempted_at timestamptz NOT NULL,
   status text NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')),
-  reason text NOT NULL
+  reason text NOT NULL,
+  actor_id text NOT NULL,
+  actor_type text NOT NULL CHECK (actor_type IN ('user', 'service', 'system')),
+  project_id text NOT NULL,
+  security_scope text NOT NULL,
+  original_fingerprint text NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS connector.ordering_checkpoints (
+  project_id text NOT NULL,
+  security_scope text NOT NULL,
   consumer_id text NOT NULL,
+  message_kind text NOT NULL CHECK (message_kind IN ('command', 'event', 'query')),
+  message_type text NOT NULL,
   ordering_key text NOT NULL,
   last_sequence bigint NOT NULL DEFAULT 0 CHECK (last_sequence >= 0),
   fencing_token bigint NOT NULL DEFAULT 1 CHECK (fencing_token > 0),
+  claim_sequence bigint,
+  claim_job_id uuid,
+  claim_fence_token bigint,
+  claim_expires_at timestamptz,
   updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-  PRIMARY KEY (consumer_id, ordering_key)
+  PRIMARY KEY (project_id, security_scope, consumer_id, message_kind, message_type, ordering_key)
 );

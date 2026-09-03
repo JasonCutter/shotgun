@@ -37,7 +37,11 @@ import type {
   MessageTransport,
   QueryDelivery,
 } from './types.js';
-import type { ConnectorRuntimeStatePort, ConnectorSemanticIdentity } from './ports.js';
+import type {
+  ConnectorRuntimeStatePort,
+  ConnectorSemanticIdentity,
+  ReplayAuthorization,
+} from './ports.js';
 
 export type RuntimeOptions = {
   readonly jobs?: InMemoryJobRuntime;
@@ -50,6 +54,8 @@ export type RuntimeOptions = {
    * default for unit/contract compositions. */
   readonly state?: ConnectorRuntimeStatePort;
 };
+
+export type ReplayRequest = ReplayAuthorization;
 
 type ExecutedHandler<TResult> = {
   readonly result: TResult;
@@ -89,6 +95,19 @@ const messageFingerprint = (envelope: CommandEnvelope | EventEnvelope): string =
       sequence: envelope.sequence,
     }),
   );
+
+const securityScopeFor = (envelope: AnyEnvelope): string => {
+  const security = envelope.security ?? {
+    accessScope: [],
+    sensitivity: 'public' as const,
+    dataClassification: 'unspecified',
+  };
+  return JSON.stringify({
+    accessScope: [...security.accessScope].sort(),
+    sensitivity: security.sensitivity,
+    dataClassification: security.dataClassification,
+  });
+};
 
 const withTimeout = async <TResult>(
   operation: () => Promise<TResult>,
@@ -286,15 +305,56 @@ export class ConnectorRuntime {
     };
   }
 
-  async replay(deadLetterId: string, reason: string): Promise<void> {
+  async replay(deadLetterId: string, request: ReplayRequest | string): Promise<void> {
     const entry = this.durableState
       ? await this.durableState.deadLetters.get(deadLetterId)
       : this.deadLetters.get(deadLetterId);
+    const authorization: ReplayAuthorization =
+      typeof request === 'string'
+        ? {
+            actor: { type: 'system', id: 'legacy-in-memory-replay' },
+            projectId: entry.projectId,
+            securityScope: entry.securityScope,
+            reason: request,
+          }
+        : request;
+    if (this.durableState) {
+      await this.durableState.deadLetters.authorizeReplay(deadLetterId, authorization);
+    } else {
+      this.deadLetters.authorizeReplay(deadLetterId, authorization);
+    }
+    if (!authorization.reason.trim()) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'A replay reason is required.',
+        module: 'connector-runtime',
+        operation: 'replay',
+      });
+    }
+    const expectedIdentity = this.semanticIdentity(
+      entry.envelope as CommandEnvelope | EventEnvelope,
+      entry.identity.consumerId,
+      entry.identity.messageKind,
+      entry.identity.semanticKey,
+    );
+    if (
+      expectedIdentity.projectId !== entry.identity.projectId ||
+      expectedIdentity.securityScope !== entry.identity.securityScope ||
+      expectedIdentity.messageType !== entry.identity.messageType ||
+      expectedIdentity.fingerprint !== entry.identity.fingerprint
+    ) {
+      throw this.replayBlocked(entry);
+    }
     const replay: ReplayRecord = {
       replayId: randomUUID(),
       attemptedAt: new Date().toISOString(),
       status: 'running',
-      reason,
+      reason: authorization.reason,
+      actorId: authorization.actor.id,
+      actorType: authorization.actor.type,
+      projectId: authorization.projectId,
+      securityScope: authorization.securityScope,
+      originalFingerprint: entry.identity.fingerprint,
     };
     if (this.durableState) {
       await this.durableState.deadLetters.appendReplay(deadLetterId, replay);
@@ -305,7 +365,7 @@ export class ConnectorRuntime {
       ...entry.envelope,
       replay: {
         replayId: replay.replayId,
-        reason,
+        reason: authorization.reason,
       },
     };
 
@@ -318,7 +378,10 @@ export class ConnectorRuntime {
       );
       if (entry.kind === 'command' && envelope.messageKind === 'command') {
         const route = this.registry.getCommandHandler(envelope.messageType, envelope.schemaVersion);
-        if (route.module.manifest.id !== entry.consumerId) {
+        if (
+          entry.identity.consumerId !==
+          consumerId(route.module.manifest.id, 'command', envelope.messageType)
+        ) {
           throw this.replayBlocked(entry);
         }
         if (this.durableState) {
@@ -329,7 +392,11 @@ export class ConnectorRuntime {
       } else if (entry.kind === 'event' && envelope.messageKind === 'event') {
         const route = this.registry
           .getEventHandlers(envelope.messageType, envelope.schemaVersion)
-          .find((candidate) => candidate.module.manifest.id === entry.consumerId);
+          .find(
+            (candidate) =>
+              entry.identity.consumerId ===
+              consumerId(candidate.module.manifest.id, 'event', envelope.messageType),
+          );
         if (!route) {
           throw this.replayBlocked(entry);
         }
@@ -417,7 +484,7 @@ export class ConnectorRuntime {
           const result = await this.invoke(route, deliveredEnvelope, attempt, () =>
             handlerOperation(),
           );
-          this.ordering.commit(id, envelope);
+          this.ordering.commitLegacy(id, envelope);
           return result as TResult;
         },
       );
@@ -511,42 +578,60 @@ export class ConnectorRuntime {
       }
     }
 
+    let orderingFence: { readonly fencingToken: number } | undefined;
     try {
-      const execution = await state.jobs.run(
-        envelope.idempotencyKey,
-        id,
-        envelope.correlationId,
-        async (attempt) => {
-          await state.ordering.assertNext(id, envelope);
-          let active = true;
-          const deliveredEnvelope = {
-            ...envelope,
-            job: {
-              jobId: attempt.jobId,
-              attemptId: attempt.attemptId,
-              attemptNumber: attempt.attemptNumber,
-            },
-          };
-          const operation =
-            kind === 'command'
-              ? () =>
-                  (route as RegisteredCommandHandler).handler.handle(
-                    deliveredEnvelope as CommandEnvelope,
-                    this.context(route, deliveredEnvelope, attempt, () => active),
-                  )
-              : () =>
-                  (route as RegisteredEventHandler).handler.handle(
-                    deliveredEnvelope as EventEnvelope,
-                    this.context(route, deliveredEnvelope, attempt, () => active),
-                  );
+      const execution = await state.jobs.run(identity, envelope.correlationId, async (attempt) => {
+        const acquiredFence = await state.ordering.acquireNext(
+          identity,
+          envelope,
+          attempt.jobId,
+          300_000,
+        );
+        orderingFence = acquiredFence;
+        let active = true;
+        const deliveredEnvelope = {
+          ...envelope,
+          job: {
+            jobId: attempt.jobId,
+            attemptId: attempt.attemptId,
+            attemptNumber: attempt.attemptNumber,
+          },
+        };
+        const operation =
+          kind === 'command'
+            ? () =>
+                (route as RegisteredCommandHandler).handler.handle(
+                  deliveredEnvelope as CommandEnvelope,
+                  this.context(route, deliveredEnvelope, attempt, () => active),
+                )
+            : () =>
+                (route as RegisteredEventHandler).handler.handle(
+                  deliveredEnvelope as EventEnvelope,
+                  this.context(route, deliveredEnvelope, attempt, () => active),
+                );
+        try {
           const result = await this.invoke(route, deliveredEnvelope, attempt, operation, () => {
             active = false;
           });
           active = false;
-          await state.ordering.commit(id, envelope);
+          await state.ordering.commit(identity, envelope, acquiredFence.fencingToken);
+          orderingFence = undefined;
           return result as TResult;
-        },
-      );
+        } catch (error) {
+          const handlerError = toShotgunError(error, {
+            code: 'TERMINAL_FAILURE',
+            safeMessage: 'The durable connector handler failed.',
+            module: route.module.manifest.id,
+            operation: envelope.messageType,
+            correlationId: envelope.correlationId,
+          });
+          if (handlerError.code !== 'OUTCOME_UNKNOWN' && orderingFence) {
+            await state.ordering.release(identity, envelope, acquiredFence.fencingToken);
+            orderingFence = undefined;
+          }
+          throw handlerError;
+        }
+      });
       await state.dedup.complete({
         identity,
         fenceToken: began.record.fenceToken,
@@ -565,6 +650,10 @@ export class ConnectorRuntime {
         operation: envelope.messageType,
         correlationId: envelope.correlationId,
       });
+      if (shotgunError.code !== 'OUTCOME_UNKNOWN' && orderingFence) {
+        await state.ordering.release(identity, envelope, orderingFence.fencingToken);
+        orderingFence = undefined;
+      }
       if (shotgunError.code === 'OUTCOME_UNKNOWN') {
         await state.dedup.markOutcomeUnknown({
           identity,
@@ -591,18 +680,9 @@ export class ConnectorRuntime {
     kind: 'command' | 'event' | 'query',
     semanticKey: string,
   ): ConnectorSemanticIdentity {
-    const security = envelope.security ?? {
-      accessScope: [],
-      sensitivity: 'public' as const,
-      dataClassification: 'unspecified',
-    };
     return {
       projectId: envelope.projectId ?? 'global',
-      securityScope: JSON.stringify({
-        accessScope: [...security.accessScope].sort(),
-        sensitivity: security.sensitivity,
-        dataClassification: security.dataClassification,
-      }),
+      securityScope: securityScopeFor(envelope),
       consumerId: id,
       messageKind: kind,
       messageType: envelope.messageType,
@@ -650,8 +730,7 @@ export class ConnectorRuntime {
     } else {
       try {
         const execution = await state.jobs.run(
-          semanticKey,
-          id,
+          identity,
           envelope.correlationId,
           async (attempt) => {
             let active = true;
@@ -741,6 +820,7 @@ export class ConnectorRuntime {
   ): Promise<DeadLetterEntry> {
     const state = this.durableState!;
     const id = consumerId(moduleId, kind, envelope.messageType);
+    const identity = this.semanticIdentity(envelope, id, kind, envelope.idempotencyKey);
     const shotgunError = toShotgunError(error, {
       code: 'TERMINAL_FAILURE',
       safeMessage: 'The message was moved to dead-letter.',
@@ -748,7 +828,7 @@ export class ConnectorRuntime {
       operation: envelope.messageType,
       correlationId: envelope.correlationId,
     });
-    const job = await state.jobs.find(id, envelope.idempotencyKey);
+    const job = await state.jobs.find(identity);
     this.traces.record(envelope, {
       consumerModule: moduleId,
       attemptNumber: job?.attempts.length ?? 0,
@@ -757,9 +837,14 @@ export class ConnectorRuntime {
     });
     this.auditEnvelope(envelope, moduleId, 'dead-letter', shotgunError.code);
     return state.deadLetters.add({
-      projectId: envelope.projectId ?? 'global',
+      projectId: identity.projectId,
+      securityScope: identity.securityScope,
       kind,
       consumerId: moduleId,
+      identity,
+      messageType: identity.messageType,
+      semanticKey: identity.semanticKey,
+      fingerprint: identity.fingerprint,
       envelope,
       error: shotgunError,
       ...(job ? { job } : {}),
@@ -902,6 +987,7 @@ export class ConnectorRuntime {
     error: unknown,
   ): DeadLetterEntry {
     const id = consumerId(moduleId, kind, envelope.messageType);
+    const identity = this.semanticIdentity(envelope, id, kind, envelope.idempotencyKey);
     const shotgunError = toShotgunError(error, {
       code: 'TERMINAL_FAILURE',
       safeMessage: 'The message was moved to dead-letter.',
@@ -917,9 +1003,14 @@ export class ConnectorRuntime {
     });
     this.auditEnvelope(envelope, moduleId, 'dead-letter', shotgunError.code);
     return this.deadLetters.add({
-      projectId: envelope.projectId ?? 'global',
+      projectId: identity.projectId,
+      securityScope: identity.securityScope,
       kind,
       consumerId: moduleId,
+      identity,
+      messageType: identity.messageType,
+      semanticKey: identity.semanticKey,
+      fingerprint: identity.fingerprint,
       envelope,
       error: shotgunError,
       job: this.jobs.find(id, envelope.idempotencyKey),

@@ -56,7 +56,7 @@ semantic truth merely because it contains a convenient status column.
 | `connector.job_attempts`         | Append-only attempt start/end, worker/fence, safe error and delay evidence                                                                                | Current semantic outcome authority                                       |
 | `connector.dead_letters`         | Governed failure disposition and safe envelope/resource reference                                                                                         | Automatic replacement execution or raw protected payload by default      |
 | `connector.replays`              | Explicit authorization, reason, actor/scope, and replay result referencing the original semantic identity                                                 | New identity or bypass of `OUTCOME_UNKNOWN` reconciliation               |
-| `connector.ordering_checkpoints` | Monotonic consumer + ordering-key sequence and fence                                                                                                      | Business revision or Canonical version                                   |
+| `connector.ordering_checkpoints` | Monotonic project/security/consumer/message scope + ordering-key sequence, reservation lease, and fence                                                   | Business revision or Canonical version                                   |
 
 `jobs` references the semantic identity in `dedup_records`; it never invents a
 second idempotency key. A job-level `unknown`/`dead-letter` marker is an
@@ -95,9 +95,9 @@ DeadLetterStorePort
   recordReplay(deadLetterId, result)
 
 OrderingStorePort
-  assertNext(identity, orderingKey, sequence)
+  acquireNext(identity, orderingKey, sequence, job/lease)
   commit(identity, orderingKey, sequence, fence)
-  checkpoint(identity, orderingKey)
+  release(identity, orderingKey, sequence, fence)
 ```
 
 The exact TypeScript shapes may be refined during implementation, but the
@@ -114,8 +114,13 @@ assemblies.
 - `renew`, `complete`, `retry`, and `terminal` include the owner and fencing
   token in their `WHERE` condition. A stale worker changes zero rows and cannot
   overwrite a successor's state.
-- Ordering assertion and checkpoint commit use the same durable fence. A
-  successful handler is the only path that advances the checkpoint.
+- `retry` persists a `retryable` state and `next_attempt_at` with the lease
+  released; a restarted worker claims only after that time. Retry progress is
+  therefore durable rather than an in-memory loop.
+- Ordering acquisition locks the full project/security/consumer/message scope,
+  reserves the next sequence with a lease/fence before the handler runs, and
+  commit/release require that fence. A successful handler is the only path that
+  advances the checkpoint.
 - External network/provider/action work never executes inside a database claim
   transaction. Existing business repositories and their transaction boundaries
   remain the owners of their data.
@@ -143,15 +148,18 @@ behavior from WP-04 are preserved.
 
 ### 5. Dead-letter and replay
 
-Dead-letter rows contain the original semantic identity, consumer, safe failure
-code/message, and a protected envelope/resource reference. Raw credential,
+Dead-letter rows contain the complete original semantic identity (including
+project, security scope, message kind/type, semantic key, and fingerprint),
+consumer, safe failure code/message, and a protected envelope/resource reference. Raw credential,
 provider response, prompt, or protected Evidence is not copied unless an
 approved encrypted replay payload is explicitly part of a future contract.
 
 Replay requires current project/tenant authorization, the original route and
-fingerprint, and an explicit reason. A replay is an audit record, not a new
-semantic identity. `OUTCOME_UNKNOWN` cannot be replayed until reconciliation
-explicitly proves that replacement is safe; the default behavior is rejection.
+fingerprint, an actor, the original security scope, and an explicit reason. The
+authorization and all of those fields are persisted on the replay audit row. A
+replay is an audit record, not a new semantic identity. `OUTCOME_UNKNOWN` cannot
+be replayed until reconciliation explicitly proves that replacement is safe;
+the default behavior is rejection.
 
 ### 6. PostgreSQL adapter and schema
 

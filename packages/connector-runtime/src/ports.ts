@@ -1,4 +1,4 @@
-import type { AnyEnvelope } from '../../contracts/src/index.js';
+import type { AnyEnvelope, Actor } from '../../contracts/src/index.js';
 import type { AttemptRecord, JobRecord, JobRunResult } from '../../job-runtime/src/index.js';
 import type { DeadLetterEntry, ReplayRecord } from './stores.js';
 
@@ -34,6 +34,14 @@ export type DedupBeginResult<TResult = unknown> =
   | { readonly kind: 'ACQUIRED'; readonly record: DedupRecord<TResult> }
   | { readonly kind: 'DUPLICATE'; readonly record: DedupRecord<TResult> }
   | { readonly kind: 'CONFLICT'; readonly record: DedupRecord<TResult> };
+
+export type ReplayAuthorization = {
+  readonly actor: Actor;
+  readonly projectId: string;
+  /** Canonical serialized security scope for the original delivery. */
+  readonly securityScope: string;
+  readonly reason: string;
+};
 
 export type DedupStorePort = {
   begin<TResult>(
@@ -71,8 +79,7 @@ export type JobRuntimePort = {
   enqueue(input: {
     readonly jobId: string;
     readonly dedupRecordId: string;
-    readonly consumerId: string;
-    readonly idempotencyKey: string;
+    readonly identity: ConnectorSemanticIdentity;
     readonly correlationId: string;
   }): Promise<JobRecord>;
   claim(input: {
@@ -107,13 +114,12 @@ export type JobRuntimePort = {
   }): Promise<boolean>;
   cancel(input: { readonly jobId: string; readonly fencingToken: number }): Promise<boolean>;
   run<TResult>(
-    idempotencyKey: string,
-    consumerId: string,
+    identity: ConnectorSemanticIdentity,
     correlationId: string,
     operation: (attempt: AttemptRecord) => Promise<TResult>,
   ): Promise<JobRunResult<TResult>>;
   list(): Promise<readonly JobRecord[]>;
-  find(consumerId: string, idempotencyKey: string): Promise<JobRecord | undefined>;
+  find(identity: ConnectorSemanticIdentity): Promise<JobRecord | undefined>;
 };
 
 export type DeadLetterStorePort = {
@@ -122,14 +128,29 @@ export type DeadLetterStorePort = {
   ): Promise<DeadLetterEntry>;
   get(deadLetterId: string): Promise<DeadLetterEntry>;
   list(): Promise<readonly DeadLetterEntry[]>;
+  authorizeReplay(deadLetterId: string, authorization: ReplayAuthorization): Promise<void>;
   appendReplay(deadLetterId: string, replay: ReplayRecord): Promise<void>;
   updateReplay(replayId: string, status: ReplayRecord['status']): Promise<void>;
   resolve(deadLetterId: string): Promise<void>;
 };
 
 export type OrderingStorePort = {
-  assertNext(consumerId: string, envelope: AnyEnvelope): Promise<void>;
-  commit(consumerId: string, envelope: AnyEnvelope): Promise<void>;
+  acquireNext(
+    identity: ConnectorSemanticIdentity,
+    envelope: AnyEnvelope,
+    jobId: string,
+    leaseDurationMs: number,
+  ): Promise<{ readonly fencingToken: number }>;
+  commit(
+    identity: ConnectorSemanticIdentity,
+    envelope: AnyEnvelope,
+    fencingToken: number,
+  ): Promise<void>;
+  release(
+    identity: ConnectorSemanticIdentity,
+    envelope: AnyEnvelope,
+    fencingToken: number,
+  ): Promise<void>;
 };
 
 export type ConnectorRuntimeStatePort = {

@@ -21,6 +21,7 @@ import type {
   DedupStorePort,
   JobRuntimePort,
   OrderingStorePort,
+  ReplayAuthorization,
 } from '../../../packages/connector-runtime/src/ports.js';
 import type {
   DeadLetterEntry,
@@ -253,11 +254,17 @@ export class PostgresDedupStore implements DedupStorePort {
 
 type JobRow = QueryResultRow & {
   job_id: string;
+  project_id: string;
+  security_scope: string;
   consumer_id: string;
+  message_kind: ConnectorSemanticIdentity['messageKind'];
+  message_type: string;
   idempotency_key: string;
+  fingerprint: string;
   correlation_id: string;
-  status: JobRecord['status'] | 'queued' | 'dead-letter' | 'cancelled';
+  status: JobRecord['status'] | 'queued' | 'retryable' | 'dead-letter' | 'cancelled';
   attempt_count: number;
+  next_attempt_at: Date | null;
   created_at: Date;
   result: unknown;
   safe_error_code: string | null;
@@ -282,7 +289,7 @@ const mapJob = (row: JobRow, attempts: readonly AttemptRow[]): JobRecord => ({
   consumerId: row.consumer_id,
   createdAt: date(row.created_at),
   status:
-    row.status === 'queued'
+    row.status === 'queued' || row.status === 'retryable'
       ? 'running'
       : row.status === 'dead-letter' || row.status === 'cancelled'
         ? 'failed'
@@ -313,8 +320,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
   async enqueue(input: {
     readonly jobId: string;
     readonly dedupRecordId: string;
-    readonly consumerId: string;
-    readonly idempotencyKey: string;
+    readonly identity: ConnectorSemanticIdentity;
     readonly correlationId: string;
   }): Promise<JobRecord> {
     await this.pool.query<JobRow>(
@@ -325,7 +331,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
        RETURNING *`,
       [input.jobId, input.dedupRecordId, input.correlationId],
     );
-    const job = await this.find(input.consumerId, input.idempotencyKey);
+    const job = await this.find(input.identity);
     if (!job)
       throw new ShotgunError({
         code: 'OUTCOME_UNKNOWN',
@@ -347,10 +353,11 @@ export class PostgresJobRuntime implements JobRuntimePort {
     }>(
       `UPDATE connector.jobs
        SET status='running', lease_owner=$2,
-           lease_expires_at=clock_timestamp() + ($3 * interval '1 millisecond'),
-           fencing_token=fencing_token+1, updated_at=clock_timestamp()
-       WHERE job_id=$1 AND status IN ('queued','running')
-         AND (lease_expires_at IS NULL OR lease_expires_at < clock_timestamp())
+            lease_expires_at=clock_timestamp() + ($3 * interval '1 millisecond'),
+            fencing_token=fencing_token+1, next_attempt_at=NULL, updated_at=clock_timestamp()
+        WHERE job_id=$1 AND status IN ('queued','retryable')
+          AND (next_attempt_at IS NULL OR next_attempt_at <= clock_timestamp())
+          AND (lease_expires_at IS NULL OR lease_expires_at < clock_timestamp())
        RETURNING fencing_token, lease_expires_at`,
       [input.jobId, input.leaseOwner, input.leaseDurationMs],
     );
@@ -398,9 +405,10 @@ export class PostgresJobRuntime implements JobRuntimePort {
     readonly safeErrorMessage: string;
   }): Promise<boolean> {
     const result = await this.pool.query(
-      `UPDATE connector.jobs SET status='running', next_attempt_at=$3,
+      `UPDATE connector.jobs SET status='retryable', next_attempt_at=$3,
        attempt_count=attempt_count+1,
-       safe_error_code=$4, safe_error_message=$5, updated_at=clock_timestamp()
+       safe_error_code=$4, safe_error_message=$5,
+       lease_owner=NULL, lease_expires_at=NULL, updated_at=clock_timestamp()
        WHERE job_id=$1 AND fencing_token=$2 AND status='running'`,
       [
         input.jobId,
@@ -442,15 +450,24 @@ export class PostgresJobRuntime implements JobRuntimePort {
   }
 
   async run<TResult>(
-    idempotencyKey: string,
-    consumerId: string,
+    identity: ConnectorSemanticIdentity,
     correlationId: string,
     operation: (attempt: AttemptRecord) => Promise<TResult>,
   ): Promise<JobRunResult<TResult>> {
     const dedup = await this.pool.query<{ dedup_record_id: string; job_id: string }>(
       `SELECT dedup_record_id, job_id FROM connector.dedup_records
-       WHERE consumer_id=$1 AND semantic_key=$2 ORDER BY created_at DESC LIMIT 1`,
-      [consumerId, idempotencyKey],
+       WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
+         AND message_kind=$4 AND message_type=$5 AND semantic_key=$6
+         AND fingerprint=$7`,
+      [
+        identity.projectId,
+        identity.securityScope,
+        identity.consumerId,
+        identity.messageKind,
+        identity.messageType,
+        identity.semanticKey,
+        identity.fingerprint,
+      ],
     );
     if (!dedup.rows[0])
       throw new ShotgunError({
@@ -460,37 +477,58 @@ export class PostgresJobRuntime implements JobRuntimePort {
         operation: 'job-run',
         correlationId,
       });
-    const created = await this.pool.query<JobRow>(
+    await this.pool.query(
       `INSERT INTO connector.jobs
        (job_id,dedup_record_id,correlation_id,status,created_at,updated_at)
-       VALUES ($1,$2,$3,'running',clock_timestamp(),clock_timestamp())
-       ON CONFLICT (job_id)
-       DO UPDATE SET status='running', lease_owner=NULL, lease_expires_at=NULL,
-         next_attempt_at=NULL, updated_at=clock_timestamp()
-       RETURNING *`,
+       VALUES ($1,$2,$3,'queued',clock_timestamp(),clock_timestamp())
+       ON CONFLICT (job_id) DO NOTHING`,
       [dedup.rows[0].job_id, dedup.rows[0].dedup_record_id, correlationId],
     );
-    const jobId = created.rows[0]!.job_id;
-    const priorAttempts = Number(created.rows[0]!.attempt_count ?? 0);
-    const lease = await this.claim({
-      jobId,
-      leaseOwner: this.workerId,
-      leaseDurationMs: 300_000,
-    });
-    if (!lease) {
+    const current = await this.findJobRow(identity);
+    if (!current) {
       throw new ShotgunError({
-        code: 'RETRYABLE_DEPENDENCY',
-        safeMessage: 'The durable job is currently leased by another worker.',
+        code: 'OUTCOME_UNKNOWN',
+        safeMessage: 'The durable job could not be read back.',
         module: 'connector-runtime-postgres',
-        operation: 'job-claim',
+        operation: 'job-run',
         correlationId,
-        retryable: true,
       });
     }
-    const fencingToken = lease.fencingToken;
-    for (let index = 0; index < this.maxAttempts; index += 1) {
+    const jobId = current.job_id;
+    const priorAttempts = Number(current.attempt_count ?? 0);
+    const remainingAttempts = Math.max(0, this.maxAttempts - priorAttempts);
+    if (remainingAttempts === 0) {
+      throw new ShotgunError({
+        code: 'TERMINAL_FAILURE',
+        safeMessage: 'The durable retry policy has been exhausted.',
+        module: identity.consumerId,
+        operation: 'job-run',
+        correlationId,
+      });
+    }
+    for (let index = 0; index < remainingAttempts; index += 1) {
       const delayMs = index === 0 ? 0 : this.baseDelayMs * 2 ** (index - 1);
       if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+      if (index === 0 && current.next_attempt_at) {
+        const persistedDelay = new Date(current.next_attempt_at).getTime() - Date.now();
+        if (persistedDelay > 0) await new Promise((resolve) => setTimeout(resolve, persistedDelay));
+      }
+      const lease = await this.claim({
+        jobId,
+        leaseOwner: this.workerId,
+        leaseDurationMs: 300_000,
+      });
+      if (!lease) {
+        throw new ShotgunError({
+          code: 'RETRYABLE_DEPENDENCY',
+          safeMessage: 'The durable job is currently leased or not yet retryable.',
+          module: 'connector-runtime-postgres',
+          operation: 'job-claim',
+          correlationId,
+          retryable: true,
+        });
+      }
+      const fencingToken = lease.fencingToken;
       const attempt: AttemptRecord = {
         attemptId: randomUUID(),
         jobId,
@@ -529,13 +567,13 @@ export class PostgresJobRuntime implements JobRuntimePort {
             correlationId,
           });
         }
-        const job = await this.find(consumerId, idempotencyKey);
+        const job = await this.find(identity);
         return { result, job: job! };
       } catch (error) {
         const shotgunError = toShotgunError(error, {
           code: 'TERMINAL_FAILURE',
           safeMessage: 'The connector handler failed.',
-          module: consumerId,
+          module: identity.consumerId,
           operation: 'execute-handler',
           correlationId,
         });
@@ -544,12 +582,13 @@ export class PostgresJobRuntime implements JobRuntimePort {
            finished_at=clock_timestamp() WHERE attempt_id=$1`,
           [attempt.attemptId, shotgunError.code],
         );
-        const canRetry = shotgunError.retryable && index + 1 < this.maxAttempts;
+        const canRetry = shotgunError.retryable && priorAttempts + index + 1 < this.maxAttempts;
         if (canRetry) {
+          const nextDelayMs = this.baseDelayMs * 2 ** index;
           const retained = await this.retry({
             jobId,
             fencingToken,
-            nextAttemptAt: new Date(Date.now() + delayMs).toISOString(),
+            nextAttemptAt: new Date(Date.now() + nextDelayMs).toISOString(),
             safeErrorCode: shotgunError.code,
             safeErrorMessage: shotgunError.safeMessage,
           });
@@ -586,7 +625,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
     throw new ShotgunError({
       code: 'TERMINAL_FAILURE',
       safeMessage: 'The retry policy ended without a result.',
-      module: consumerId,
+      module: identity.consumerId,
       operation: 'execute-handler',
       correlationId,
     });
@@ -594,7 +633,9 @@ export class PostgresJobRuntime implements JobRuntimePort {
 
   async list(): Promise<readonly JobRecord[]> {
     const result = await this.pool.query<JobRow>(
-      `SELECT j.*, d.consumer_id, d.semantic_key AS idempotency_key
+      `SELECT j.*, d.project_id, d.security_scope, d.consumer_id,
+              d.message_kind, d.message_type, d.semantic_key AS idempotency_key,
+              d.fingerprint
        FROM connector.jobs j
        JOIN connector.dedup_records d ON d.dedup_record_id=j.dedup_record_id
        ORDER BY j.created_at`,
@@ -604,13 +645,25 @@ export class PostgresJobRuntime implements JobRuntimePort {
     );
   }
 
-  async find(consumerId: string, idempotencyKey: string): Promise<JobRecord | undefined> {
+  async find(identity: ConnectorSemanticIdentity): Promise<JobRecord | undefined> {
     const result = await this.pool.query<JobRow>(
-      `SELECT j.*, d.consumer_id, d.semantic_key AS idempotency_key
+      `SELECT j.*, d.project_id, d.security_scope, d.consumer_id,
+              d.message_kind, d.message_type, d.semantic_key AS idempotency_key,
+              d.fingerprint
        FROM connector.jobs j
        JOIN connector.dedup_records d ON d.dedup_record_id=j.dedup_record_id
-       WHERE d.consumer_id=$1 AND d.semantic_key=$2`,
-      [consumerId, idempotencyKey],
+       WHERE d.project_id=$1 AND d.security_scope=$2 AND d.consumer_id=$3
+         AND d.message_kind=$4 AND d.message_type=$5 AND d.semantic_key=$6
+         AND d.fingerprint=$7`,
+      [
+        identity.projectId,
+        identity.securityScope,
+        identity.consumerId,
+        identity.messageKind,
+        identity.messageType,
+        identity.semanticKey,
+        identity.fingerprint,
+      ],
     );
     const row = result.rows[0];
     return row ? mapJob(row, await this.attempts(row.job_id)) : undefined;
@@ -623,13 +676,42 @@ export class PostgresJobRuntime implements JobRuntimePort {
     );
     return result.rows;
   }
+
+  private async findJobRow(identity: ConnectorSemanticIdentity): Promise<JobRow | undefined> {
+    const result = await this.pool.query<JobRow>(
+      `SELECT j.*, d.project_id, d.security_scope, d.consumer_id,
+              d.message_kind, d.message_type, d.semantic_key AS idempotency_key,
+              d.fingerprint
+       FROM connector.jobs j
+       JOIN connector.dedup_records d ON d.dedup_record_id=j.dedup_record_id
+       WHERE d.project_id=$1 AND d.security_scope=$2 AND d.consumer_id=$3
+         AND d.message_kind=$4 AND d.message_type=$5 AND d.semantic_key=$6
+         AND d.fingerprint=$7`,
+      [
+        identity.projectId,
+        identity.securityScope,
+        identity.consumerId,
+        identity.messageKind,
+        identity.messageType,
+        identity.semanticKey,
+        identity.fingerprint,
+      ],
+    );
+    return result.rows[0];
+  }
 }
 
 type DeadLetterRow = QueryResultRow & {
   dead_letter_id: string;
   project_id: string;
+  security_scope: string;
   consumer_id: string;
   kind: DeadLetterKind;
+  identity_consumer_id: string;
+  message_kind: ConnectorSemanticIdentity['messageKind'];
+  message_type: string;
+  semantic_key: string;
+  fingerprint: string;
   envelope: unknown;
   safe_error: {
     code: ErrorCode;
@@ -664,8 +746,21 @@ const mapDeadLetter = (row: DeadLetterRow, replays: ReplayRecord[]): DeadLetterE
   return {
     deadLetterId: row.dead_letter_id,
     projectId: row.project_id,
+    securityScope: row.security_scope,
     consumerId: row.consumer_id,
     kind: row.kind,
+    identity: {
+      projectId: row.project_id,
+      securityScope: row.security_scope,
+      consumerId: row.identity_consumer_id,
+      messageKind: row.message_kind,
+      messageType: row.message_type,
+      semanticKey: row.semantic_key,
+      fingerprint: row.fingerprint,
+    },
+    messageType: row.message_type,
+    semanticKey: row.semantic_key,
+    fingerprint: row.fingerprint,
     envelope: parseJson(row.envelope) as AnyEnvelope,
     error,
     ...(row.job ? { job: parseJson(row.job) as JobRecord } : {}),
@@ -689,13 +784,44 @@ export class PostgresDeadLetterStore implements DeadLetterStorePort {
         module: 'connector-runtime-postgres',
         operation: 'dead-letter-add',
       });
-    const semanticKey = input.envelope.idempotencyKey;
-    const identity = await this.pool.query<{ dedup_record_id: string; fingerprint: string }>(
+    if (input.envelope.idempotencyKey !== input.identity.semanticKey) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'The dead-letter envelope does not match its semantic identity.',
+        module: 'connector-runtime-postgres',
+        operation: 'dead-letter-add',
+      });
+    }
+    if (
+      input.projectId !== input.identity.projectId ||
+      input.securityScope !== input.identity.securityScope ||
+      input.messageType !== input.identity.messageType ||
+      input.semanticKey !== input.identity.semanticKey ||
+      input.fingerprint !== input.identity.fingerprint
+    ) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'The dead-letter projection does not match its semantic identity.',
+        module: 'connector-runtime-postgres',
+        operation: 'dead-letter-add',
+      });
+    }
+    const dedup = await this.pool.query<{ dedup_record_id: string; fingerprint: string }>(
       `SELECT dedup_record_id, fingerprint FROM connector.dedup_records
-       WHERE consumer_id=$1 AND semantic_key=$2 ORDER BY created_at DESC LIMIT 1`,
-      [`${input.consumerId}:${input.kind}:${input.envelope.messageType}`, semanticKey],
+       WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
+         AND message_kind=$4 AND message_type=$5 AND semantic_key=$6
+         AND fingerprint=$7`,
+      [
+        input.identity.projectId,
+        input.identity.securityScope,
+        input.identity.consumerId,
+        input.identity.messageKind,
+        input.identity.messageType,
+        input.identity.semanticKey,
+        input.identity.fingerprint,
+      ],
     );
-    const dedupRecord = identity.rows[0];
+    const dedupRecord = dedup.rows[0];
     if (!dedupRecord)
       throw new ShotgunError({
         code: 'OUTCOME_UNKNOWN',
@@ -705,17 +831,22 @@ export class PostgresDeadLetterStore implements DeadLetterStorePort {
       });
     await this.pool.query(
       `INSERT INTO connector.dead_letters
-       (dead_letter_id,dedup_record_id,project_id,consumer_id,kind,semantic_key,fingerprint,
+       (dead_letter_id,dedup_record_id,project_id,security_scope,consumer_id,identity_consumer_id,
+        kind,message_kind,message_type,semantic_key,fingerprint,
         envelope,safe_error,job,status,created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,'open',clock_timestamp())`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14::jsonb,'open',clock_timestamp())`,
       [
         id,
         dedupRecord.dedup_record_id,
-        input.projectId,
+        input.identity.projectId,
+        input.identity.securityScope,
         input.consumerId,
+        input.identity.consumerId,
         input.kind,
-        semanticKey,
-        dedupRecord.fingerprint,
+        input.identity.messageKind,
+        input.identity.messageType,
+        input.identity.semanticKey,
+        input.identity.fingerprint,
         json(safeEnvelopeForPersistence(input.envelope)),
         json({
           code: input.error.code,
@@ -744,7 +875,7 @@ export class PostgresDeadLetterStore implements DeadLetterStorePort {
         operation: 'get-dead-letter',
       });
     const replayResult = await this.pool.query<ReplayRecord>(
-      'SELECT replay_id AS "replayId", attempted_at AS "attemptedAt", status, reason FROM connector.replays WHERE dead_letter_id=$1 ORDER BY attempted_at',
+      'SELECT replay_id AS "replayId", attempted_at AS "attemptedAt", status, reason, actor_id AS "actorId", actor_type AS "actorType", project_id AS "projectId", security_scope AS "securityScope", original_fingerprint AS "originalFingerprint" FROM connector.replays WHERE dead_letter_id=$1 ORDER BY attempted_at',
       [deadLetterId],
     );
     return mapDeadLetter(result.rows[0], replayResult.rows);
@@ -757,16 +888,62 @@ export class PostgresDeadLetterStore implements DeadLetterStorePort {
     return Promise.all(result.rows.map((row) => this.get(row.dead_letter_id)));
   }
 
+  async authorizeReplay(deadLetterId: string, authorization: ReplayAuthorization): Promise<void> {
+    if (!authorization.reason.trim() || !authorization.actor.id.trim()) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'A replay actor and reason are required.',
+        module: 'connector-runtime-postgres',
+        operation: 'authorize-replay',
+      });
+    }
+    const result = await this.pool.query<{ status: string; dedup_state: string }>(
+      `SELECT dl.status, d.state AS dedup_state
+       FROM connector.dead_letters dl
+       JOIN connector.dedup_records d ON d.dedup_record_id=dl.dedup_record_id
+       WHERE dl.dead_letter_id=$1 AND dl.project_id=$2 AND dl.security_scope=$3
+         AND dl.fingerprint=d.fingerprint`,
+      [deadLetterId, authorization.projectId, authorization.securityScope],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      throw new ShotgunError({
+        code: 'REPLAY_BLOCKED',
+        safeMessage: 'The replay authorization is outside the original project/security scope.',
+        module: 'connector-runtime-postgres',
+        operation: 'authorize-replay',
+      });
+    }
+    if (row.status !== 'open' || row.dedup_state === 'OUTCOME_UNKNOWN') {
+      throw new ShotgunError({
+        code: 'REPLAY_BLOCKED',
+        safeMessage:
+          row.dedup_state === 'OUTCOME_UNKNOWN'
+            ? 'OUTCOME_UNKNOWN must be reconciled before replay.'
+            : 'The dead-letter is not open for replay.',
+        module: 'connector-runtime-postgres',
+        operation: 'authorize-replay',
+      });
+    }
+  }
+
   async appendReplay(deadLetterId: string, replay: ReplayRecord): Promise<void> {
     await this.pool.query(
-      `INSERT INTO connector.replays (replay_id,dead_letter_id,attempted_at,status,reason)
-       VALUES ($1,$2,$3,$4,$5)`,
+      `INSERT INTO connector.replays
+       (replay_id,dead_letter_id,attempted_at,status,reason,actor_id,actor_type,
+        project_id,security_scope,original_fingerprint)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [
         replay.replayId,
         deadLetterId,
         replay.attemptedAt,
         replay.status,
         replay.reason ?? 'governed-replay',
+        replay.actorId ?? 'system',
+        replay.actorType ?? 'system',
+        replay.projectId ?? 'global',
+        replay.securityScope ?? '[]',
+        replay.originalFingerprint ?? '',
       ],
     );
   }
@@ -789,7 +966,12 @@ export class PostgresDeadLetterStore implements DeadLetterStorePort {
 export class PostgresOrderingStore implements OrderingStorePort {
   constructor(private readonly pool: Pool) {}
 
-  async assertNext(consumerId: string, envelope: AnyEnvelope): Promise<void> {
+  async acquireNext(
+    identity: ConnectorSemanticIdentity,
+    envelope: AnyEnvelope,
+    jobId: string,
+    leaseDurationMs: number,
+  ): Promise<{ readonly fencingToken: number }> {
     const hasKey = envelope.orderingKey !== undefined;
     const hasSequence = envelope.sequence !== undefined;
     if (hasKey !== hasSequence)
@@ -800,48 +982,150 @@ export class PostgresOrderingStore implements OrderingStorePort {
         operation: 'validate-partial-order',
         correlationId: envelope.correlationId,
       });
-    if (!hasKey || envelope.sequence === undefined) return;
-    const result = await this.pool.query<{ last_sequence: number }>(
-      'SELECT last_sequence FROM connector.ordering_checkpoints WHERE consumer_id=$1 AND ordering_key=$2',
-      [consumerId, envelope.orderingKey],
-    );
-    const expected = (result.rows[0]?.last_sequence ?? 0) + 1;
-    if (envelope.sequence !== expected)
-      throw new ShotgunError({
-        code: 'STALE_VERSION',
-        safeMessage: `Partial ordering violation: expected sequence ${expected}, received ${envelope.sequence}.`,
-        module: 'connector-runtime-postgres',
-        operation: 'validate-partial-order',
-        correlationId: envelope.correlationId,
-      });
-  }
-
-  async commit(consumerId: string, envelope: AnyEnvelope): Promise<void> {
-    if (envelope.orderingKey === undefined || envelope.sequence === undefined) return;
-    await withSafePostgresTransaction(
+    if (!hasKey || envelope.sequence === undefined) return { fencingToken: 0 };
+    return withSafePostgresTransaction(
       this.pool,
       async (client) => {
-        const current = await client.query<{ last_sequence: number }>(
-          'SELECT last_sequence FROM connector.ordering_checkpoints WHERE consumer_id=$1 AND ordering_key=$2 FOR UPDATE',
-          [consumerId, envelope.orderingKey],
+        const key = [
+          identity.projectId,
+          identity.securityScope,
+          identity.consumerId,
+          identity.messageKind,
+          identity.messageType,
+          envelope.orderingKey,
+        ];
+        await client.query(
+          `INSERT INTO connector.ordering_checkpoints
+           (project_id,security_scope,consumer_id,message_kind,message_type,ordering_key,
+            last_sequence,fencing_token,updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,0,1,clock_timestamp())
+           ON CONFLICT (project_id,security_scope,consumer_id,message_kind,message_type,ordering_key)
+           DO NOTHING`,
+          key,
         );
-        const expected = (current.rows[0]?.last_sequence ?? 0) + 1;
+        const current = await client.query<{
+          last_sequence: number;
+          fencing_token: number | string;
+          claim_sequence: number | null;
+          claim_expires_at: Date | null;
+        }>(
+          `SELECT last_sequence,fencing_token,claim_sequence,claim_expires_at
+           FROM connector.ordering_checkpoints
+           WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
+             AND message_kind=$4 AND message_type=$5 AND ordering_key=$6
+           FOR UPDATE`,
+          key,
+        );
+        const row = current.rows[0];
+        if (!row)
+          throw new ShotgunError({
+            code: 'OUTCOME_UNKNOWN',
+            safeMessage: 'The ordering checkpoint could not be read.',
+            module: 'connector-runtime-postgres',
+            operation: 'acquire-partial-order',
+          });
+        const expected = Number(row.last_sequence) + 1;
         if (envelope.sequence !== expected)
           throw new ShotgunError({
             code: 'STALE_VERSION',
             safeMessage: `Partial ordering violation: expected sequence ${expected}, received ${envelope.sequence}.`,
             module: 'connector-runtime-postgres',
+            operation: 'validate-partial-order',
+            correlationId: envelope.correlationId,
+          });
+        if (
+          row.claim_sequence !== null &&
+          row.claim_expires_at &&
+          row.claim_expires_at > new Date()
+        )
+          throw new ShotgunError({
+            code: 'RETRYABLE_DEPENDENCY',
+            safeMessage: 'The ordering key is currently fenced by another delivery.',
+            module: 'connector-runtime-postgres',
+            operation: 'acquire-partial-order',
+            correlationId: envelope.correlationId,
+            retryable: true,
+          });
+        const updated = await client.query<{ fencing_token: number | string }>(
+          `UPDATE connector.ordering_checkpoints
+           SET claim_sequence=$7, claim_job_id=$8, claim_fence_token=fencing_token+1,
+               claim_expires_at=clock_timestamp() + ($9 * interval '1 millisecond'),
+               fencing_token=fencing_token+1, updated_at=clock_timestamp()
+           WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
+             AND message_kind=$4 AND message_type=$5 AND ordering_key=$6
+           RETURNING fencing_token`,
+          [...key, envelope.sequence, jobId, leaseDurationMs],
+        );
+        return { fencingToken: Number(updated.rows[0]!.fencing_token) };
+      },
+      { module: 'connector-runtime-postgres', operation: 'acquire-partial-order' },
+    );
+  }
+
+  async commit(
+    identity: ConnectorSemanticIdentity,
+    envelope: AnyEnvelope,
+    fencingToken: number,
+  ): Promise<void> {
+    if (envelope.orderingKey === undefined || envelope.sequence === undefined) return;
+    await withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const result = await client.query(
+          `UPDATE connector.ordering_checkpoints
+           SET last_sequence=claim_sequence, claim_sequence=NULL, claim_job_id=NULL,
+               claim_fence_token=NULL, claim_expires_at=NULL,
+               updated_at=clock_timestamp()
+           WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
+             AND message_kind=$4 AND message_type=$5 AND ordering_key=$6
+             AND claim_sequence=$7 AND claim_fence_token=$8`,
+          [
+            identity.projectId,
+            identity.securityScope,
+            identity.consumerId,
+            identity.messageKind,
+            identity.messageType,
+            envelope.orderingKey,
+            envelope.sequence,
+            fencingToken,
+          ],
+        );
+        if (result.rowCount !== 1)
+          throw new ShotgunError({
+            code: 'OUTCOME_UNKNOWN',
+            safeMessage: 'The ordering fence was lost before checkpoint commit.',
+            module: 'connector-runtime-postgres',
             operation: 'commit-partial-order',
             correlationId: envelope.correlationId,
           });
-        await client.query(
-          `INSERT INTO connector.ordering_checkpoints (consumer_id,ordering_key,last_sequence,updated_at)
-         VALUES ($1,$2,$3,clock_timestamp())
-         ON CONFLICT (consumer_id,ordering_key) DO UPDATE SET last_sequence=EXCLUDED.last_sequence, fencing_token=connector.ordering_checkpoints.fencing_token+1, updated_at=clock_timestamp()`,
-          [consumerId, envelope.orderingKey, envelope.sequence],
-        );
       },
       { module: 'connector-runtime-postgres', operation: 'commit-partial-order' },
+    );
+  }
+
+  async release(
+    identity: ConnectorSemanticIdentity,
+    envelope: AnyEnvelope,
+    fencingToken: number,
+  ): Promise<void> {
+    if (envelope.orderingKey === undefined || envelope.sequence === undefined) return;
+    await this.pool.query(
+      `UPDATE connector.ordering_checkpoints
+       SET claim_sequence=NULL, claim_job_id=NULL, claim_fence_token=NULL,
+           claim_expires_at=NULL, updated_at=clock_timestamp()
+       WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
+         AND message_kind=$4 AND message_type=$5 AND ordering_key=$6
+         AND claim_sequence=$7 AND claim_fence_token=$8`,
+      [
+        identity.projectId,
+        identity.securityScope,
+        identity.consumerId,
+        identity.messageKind,
+        identity.messageType,
+        envelope.orderingKey,
+        envelope.sequence,
+        fencingToken,
+      ],
     );
   }
 }
@@ -911,6 +1195,13 @@ export class PostgresConnectorRuntimeState implements ConnectorRuntimeStatePort 
               [result.rows.map((row) => row.dedup_record_id)],
             );
           }
+          await client.query(
+            `UPDATE connector.ordering_checkpoints
+             SET claim_sequence=NULL, claim_job_id=NULL, claim_fence_token=NULL,
+                 claim_expires_at=NULL, fencing_token=fencing_token+1,
+                 updated_at=clock_timestamp()
+             WHERE claim_expires_at IS NOT NULL AND claim_expires_at < clock_timestamp()`,
+          );
         },
         { module: 'connector-runtime-postgres', operation: 'recover-expired-leases' },
       );

@@ -194,14 +194,16 @@ validation은 `RIC-N6/WP-09`, Action feedback은 `RIC-N7/WP-10`의 단일 소유
 현재 migration 063 뒤에 **새 ordered additive migration**을 추가한다. 기존 migration은
 수정하지 않는다. 제안 테이블은 다음 의미만 저장한다.
 
-- `connector.dedup_records`: `(consumer_id, semantic_key)` unique, request fingerprint,
+- `connector.dedup_records`: `(project, security scope, consumer, message kind/type,
+semantic key)` unique, request fingerprint,
   state, result reference/digest, safe error, timestamps, retention
 - `connector.jobs` 및 `connector.job_attempts`: queued/running/retryable/terminal/
   dead-letter/unknown에 필요한 attempt, next-at, lease owner/token, fencing token,
   ack/result reference
-- `connector.dead_letters` 및 `connector.replays`: safe envelope reference, failure
-  code, authorization actor/scope, replay reason/result
-- `connector.ordering_checkpoints`: consumer + ordering key별 sequence와 fence
+- `connector.dead_letters` 및 `connector.replays`: complete semantic identity, safe
+  envelope reference, failure code, authorization actor/scope, replay reason/result
+- `connector.ordering_checkpoints`: project/security/consumer/message scope별 ordering
+  sequence, pre-handler reservation lease, and fence
 
 실제 이름·column은 Port 계약과 migration preflight 후 확정한다. protected raw payload는
 무조건 저장하지 않고 승인된 encrypted replay payload 또는 canonical resource
@@ -221,8 +223,11 @@ reference+digest만 저장한다. project/tenant/security scope를 모든 unique
   않는다.
 - unknown → completed/failed/manual-retryable 전이는 reconciliation만 수행한다.
   시간 경과나 단순 process restart로 provider/action을 재호출하지 않는다.
-- ordering commit은 handler 성공과 같은 durable fence 경계 뒤에만 수행한다.
-- DLQ replay는 명시적 authorization과 동일 route/fingerprint 검증 후 수행하고, unknown
+- ordering은 handler 전에 full-scope reservation fence를 획득하고, 같은 fence로
+  commit/release한다. handler 성공만 checkpoint를 전진시킨다.
+- retry는 `retryable` + `next_attempt_at`를 영속화하고 lease를 해제하므로 process
+  restart 후에도 schedule을 잃지 않는다.
+- DLQ replay는 actor/project/security scope/reason authorization과 동일 route/fingerprint 검증 후 수행하고, unknown
   semantic key에는 자동 replay를 허용하지 않는다.
 
 ### 7.3 Production wiring과 lifecycle
@@ -329,13 +334,16 @@ deterministic fake와 fault-injection adapter를 사용한다.
 GPT 승인 이후 위 순서대로 다음 구현을 반영했다.
 
 - `packages/connector-runtime/src/ports.ts`: Dedup/Job/Attempt/DLQ/Replay/Ordering의
-  infrastructure-neutral Port와 상태·결과 계약을 추가했다.
+  infrastructure-neutral Port와 상태·결과 계약을 추가했다. Job/DLQ/Ordering은
+  full semantic identity를 입력으로 받고, DLQ에는 `authorizeReplay`, Ordering에는
+  pre-handler `acquireNext`/fenced `commit`/`release`를 둔다.
 - `db/migrations/064_runtime_data_integrity_wp05_connector_runtime.sql`: 063 이후
   additive `connector` schema와 최소 6개 권위 테이블을 추가했다. `jobs`는
   `dedup_records`를 참조하고 `job_attempts`는 append-only 이력으로 남는다.
 - `adapters/connector-runtime-postgres/src/index.ts`: PostgreSQL 16 substrate 위에
-  unique semantic identity, fingerprint conflict, lease/fence, retry, safe DLQ/replay,
-  ordering checkpoint와 migration preflight lifecycle을 구현했다. pg-boss/Graphile
+  unique full semantic identity, fingerprint conflict, lease/fence, restart-safe
+  retryable scheduling, safe governed DLQ/replay, pre-handler ordering reservation
+  checkpoint와 migration preflight lifecycle을 구현했다. pg-boss/Graphile
   schema·worker는 설치하지 않았다.
 - `runtime.ts`, `packages/kernel`, `assemblies/shotgun-app`: production composition이
   adapter를 명시적으로 주입하고 `AsyncCleanupStack`에서 start/stop을 소유하도록
@@ -365,3 +373,6 @@ GPT 승인 이후 위 순서대로 다음 구현을 반영했다.
 - 실제 PostgreSQL state를 주입한 `ShotgunKernel` E2E에서 command/event/query의
   처리·중복 결과와 query result 재사용을 확인했고, Kernel 재시작 후 동일 command가
   `duplicate`로 반환되며 새 process handler side effect가 0회임을 확인했다.
+- correction smoke에서 서로 다른 project의 동일 key Job/Ordering 격리, 같은
+  ordering scope의 handler 전 fence 단일 승자, process 재시작 후 `retryable` 예약
+  재청구, 잘못된 project replay authorization 거부를 실제 PostgreSQL로 확인했다.

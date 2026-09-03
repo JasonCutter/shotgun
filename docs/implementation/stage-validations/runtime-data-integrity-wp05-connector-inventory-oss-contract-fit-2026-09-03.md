@@ -23,17 +23,17 @@ Issue #175가 요구한 첫 산출물은 (1) 현재 Connector Runtime의 실제 
 
 ### 2.1 기준선 스냅샷
 
-| 항목 | 확인 결과 |
-|---|---|
-| Git 기준선 | `48dac5e0e6c963531033e27b5d48d7dfb883f89b` (WP-04 merge 이후) |
-| Node/npm | 저장소 `package.json`의 Node `>=24`, npm `>=11` |
-| PostgreSQL | 기존 registry 기준 `16.14` Docker digest `postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777` |
-| PostgreSQL client | 기존 `pg` 의존성(현재 lockfile resolved `8.22.0`) 재사용; 새 Queue 패키지 미설치 |
-| Migration runner | `scripts/database.ts:39-115`, 파일명 사전순·transaction 적용·`runtime.schema_migrations` 기록 |
-| 마지막 migration | `063_runtime_data_integrity_wp04_recovery_invariants.sql` |
-| 기본 Connector 저장소 | `InMemoryJobRuntime`, `InMemoryDedupStore`, `InMemoryOrderingStore`, `InMemoryDeadLetterStore` |
-| Production wiring | `assemblies/shotgun-app/src/server.ts:2098-2121`에서 `new ShotgunKernel(transport)`; Connector 영속 옵션 주입 없음 |
-| 현재 branch 변경 | 이 WP-05 worktree에는 본 문서 작성 전 source/schema 변경 없음 |
+| 항목                  | 확인 결과                                                                                                                                |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Git 기준선            | `48dac5e0e6c963531033e27b5d48d7dfb883f89b` (WP-04 merge 이후)                                                                            |
+| Node/npm              | 저장소 `package.json`의 Node `>=24`, npm `>=11`                                                                                          |
+| PostgreSQL            | 기존 registry 기준 `16.14` Docker digest `postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777` |
+| PostgreSQL client     | 기존 `pg` 의존성(현재 lockfile resolved `8.22.0`) 재사용; 새 Queue 패키지 미설치                                                         |
+| Migration runner      | `scripts/database.ts:39-115`, 파일명 사전순·transaction 적용·`runtime.schema_migrations` 기록                                            |
+| 마지막 migration      | `063_runtime_data_integrity_wp04_recovery_invariants.sql`                                                                                |
+| 기본 Connector 저장소 | `InMemoryJobRuntime`, `InMemoryDedupStore`, `InMemoryOrderingStore`, `InMemoryDeadLetterStore`                                           |
+| Production wiring     | `assemblies/shotgun-app/src/server.ts:2098-2121`에서 `new ShotgunKernel(transport)`; Connector 영속 옵션 주입 없음                       |
+| 현재 branch 변경      | 이 WP-05 worktree에는 본 문서 작성 전 source/schema 변경 없음                                                                            |
 
 ### 2.2 현행 흐름
 
@@ -55,15 +55,15 @@ HTTP / application caller
 
 실제 주요 진입점은 다음과 같다.
 
-| 흐름 | 위치 | 확인된 연결 |
-|---|---|---|
-| Command·Event·Query runtime | `packages/connector-runtime/src/runtime.ts:148-268` | 입력 검증 → route → 실행 또는 결과 반환 |
-| 동일 key dedup | `runtime.ts:313-370`, `stores.ts:21-69` | consumer·kind·messageType와 idempotency key로 묶음 |
-| Job/attempt/retry | `packages/job-runtime/src/index.ts:40-133` | 메모리 Map, retryable 오류에 최대 3회 지수 backoff |
-| Partial ordering | `stores.ts:71-109` | consumer + orderingKey별 마지막 sequence 메모리 보관 |
-| DLQ/replay | `runtime.ts:270-311,481-508`, `stores.ts:111-164` | envelope·safe error·job을 메모리 보관 후 route 재실행 |
-| Stage 3 → Stage 4 handoff | `assemblies/shotgun-app/src/application.ts:1199-1240` | `EvidenceIndexed` publish; consumer dead-letter를 호출자 오류로 변환 |
-| HTTP command/query callers | `assemblies/shotgun-app/src/server.ts:3055-3910` | Sources, knowledge, review, action, entity-vault 등 다수 |
+| 흐름                        | 위치                                                  | 확인된 연결                                                          |
+| --------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------- |
+| Command·Event·Query runtime | `packages/connector-runtime/src/runtime.ts:148-268`   | 입력 검증 → route → 실행 또는 결과 반환                              |
+| 동일 key dedup              | `runtime.ts:313-370`, `stores.ts:21-69`               | consumer·kind·messageType와 idempotency key로 묶음                   |
+| Job/attempt/retry           | `packages/job-runtime/src/index.ts:40-133`            | 메모리 Map, retryable 오류에 최대 3회 지수 backoff                   |
+| Partial ordering            | `stores.ts:71-109`                                    | consumer + orderingKey별 마지막 sequence 메모리 보관                 |
+| DLQ/replay                  | `runtime.ts:270-311,481-508`, `stores.ts:111-164`     | envelope·safe error·job을 메모리 보관 후 route 재실행                |
+| Stage 3 → Stage 4 handoff   | `assemblies/shotgun-app/src/application.ts:1199-1240` | `EvidenceIndexed` publish; consumer dead-letter를 호출자 오류로 변환 |
+| HTTP command/query callers  | `assemblies/shotgun-app/src/server.ts:3055-3910`      | Sources, knowledge, review, action, entity-vault 등 다수             |
 
 ### 2.3 목표 WP-05 경계
 
@@ -90,14 +90,14 @@ continuation outbox를 Connector 전역 outbox로 합치지 않는다.
 
 ### 3.1 저장소별 책임과 결함
 
-| 구성요소 | 파일/함수 | 현재 권위와 상태 | 재시작 시 결과 | WP-05 판정 |
-|---|---|---|---|---|
-| Dedup | `stores.ts:21-57` `InMemoryDedupStore.runOnce` | `completed Map`과 `running Map<Promise>`; 동일 fingerprint만 duplicate | Map이 사라져 완료·진행·충돌 이력이 모두 유실 | PostgreSQL `DedupStorePort`로 교체 |
-| Job/Attempt | `job-runtime/src/index.ts:40-124` `InMemoryJobRuntime.run` | `running/succeeded/failed/outcome-unknown`, attempt 배열, retryable만 재시도 | 작업/attempt/다음 시각/lease 유실; 다른 process와 공유 불가 | `JobRuntimePort` + durable job authority |
-| Ordering | `stores.ts:71-109` | consumer + key별 마지막 sequence | 마지막 sequence 유실; 재시작 후 stale/duplicate 순서 판정 불가 | `OrderingStorePort` checkpoint/fence |
-| DLQ | `stores.ts:111-164` | open/resolved, envelope, safe error, replay 배열 | DLQ와 replay authorization/evidence 유실 | `DeadLetterStorePort` safe reference 중심 |
-| Trace/Audit | `runtime.ts:127-145` 및 observability | 메모리 trace/audit; business authority 아님 | 운영 추적 유실; WP-05에서는 durable business state와 혼동 금지 | 기존 Port 유지, 별도 persistence는 WP-08 이후 |
-| Transport | `packages/connector-runtime/src/types.ts:10-12`, in-memory/in-process adapters | `execute(operation)`만 제공; 취소 신뢰성은 보장하지 않음 | handler가 살아 있으면 transport timeout 이후 계속 실행 가능 | cancellation은 보조, durable state가 권위 |
+| 구성요소    | 파일/함수                                                                      | 현재 권위와 상태                                                             | 재시작 시 결과                                                 | WP-05 판정                                    |
+| ----------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------- |
+| Dedup       | `stores.ts:21-57` `InMemoryDedupStore.runOnce`                                 | `completed Map`과 `running Map<Promise>`; 동일 fingerprint만 duplicate       | Map이 사라져 완료·진행·충돌 이력이 모두 유실                   | PostgreSQL `DedupStorePort`로 교체            |
+| Job/Attempt | `job-runtime/src/index.ts:40-124` `InMemoryJobRuntime.run`                     | `running/succeeded/failed/outcome-unknown`, attempt 배열, retryable만 재시도 | 작업/attempt/다음 시각/lease 유실; 다른 process와 공유 불가    | `JobRuntimePort` + durable job authority      |
+| Ordering    | `stores.ts:71-109`                                                             | consumer + key별 마지막 sequence                                             | 마지막 sequence 유실; 재시작 후 stale/duplicate 순서 판정 불가 | `OrderingStorePort` checkpoint/fence          |
+| DLQ         | `stores.ts:111-164`                                                            | open/resolved, envelope, safe error, replay 배열                             | DLQ와 replay authorization/evidence 유실                       | `DeadLetterStorePort` safe reference 중심     |
+| Trace/Audit | `runtime.ts:127-145` 및 observability                                          | 메모리 trace/audit; business authority 아님                                  | 운영 추적 유실; WP-05에서는 durable business state와 혼동 금지 | 기존 Port 유지, 별도 persistence는 WP-08 이후 |
+| Transport   | `packages/connector-runtime/src/types.ts:10-12`, in-memory/in-process adapters | `execute(operation)`만 제공; 취소 신뢰성은 보장하지 않음                     | handler가 살아 있으면 transport timeout 이후 계속 실행 가능    | cancellation은 보조, durable state가 권위     |
 
 ### 3.2 Port 부재와 현재 호출 계약
 
@@ -119,13 +119,13 @@ continuation outbox를 Connector 전역 outbox로 합치지 않는다.
 
 ## 4. 결함 목록 (WP-05 고유 원인)
 
-| 위치 | 문제점 | 영향도 | 소유 WP |
-|---|---|---:|---|
-| `packages/connector-runtime/src/stores.ts:21-57` `InMemoryDedupStore.runOnce` | timeout으로 호출자가 `OUTCOME_UNKNOWN`을 받은 뒤에도 내부 Promise의 `finally`가 `running` key를 삭제한다. 늦게 완료한 handler의 결과도 durable하게 남지 않아 동일 semantic key가 새 handler 호출로 재진입할 수 있다. | **High** | WP-05 |
-| `packages/connector-runtime/src/runtime.ts:89-124` `withTimeout` | `Promise.race`는 경쟁 Promise를 취소하지 않는다. timeout은 unknown을 던지지만 원 handler의 side effect 완료·실패를 기록하거나 fence하지 않는다. | **High** | WP-05 |
-| `packages/connector-runtime/src/runtime.ts:126-145` `ConnectorRuntime` 생성자 | Job, dedup, ordering, DLQ의 기본 권위가 process memory다. process restart, 두 worker, crash-before-ack에서 idempotency·order·replay 증거가 사라진다. | **High** | WP-05 |
-| `packages/kernel/src/index.ts:4-12` `ShotgunKernel` | durable Connector/Job adapter를 주입할 Port가 없어 Production이 InMemory 기본값을 벗어날 수 없다. | **High** | WP-05 |
-| `assemblies/shotgun-app/src/server.ts:2098-2121` `createApplicationCore` | Kernel shutdown은 cleanup stack에 등록되어 있으나 Connector의 persistent worker/lease recovery lifecycle은 존재하지 않는다. 새 adapter는 bounded startup/stop/renew loop를 같은 stack에 추가해야 한다. | **Medium** | WP-05 (lifecycle 계약), WP-03/08과 중복 구현 금지 |
+| 위치                                                                          | 문제점                                                                                                                                                                                                               |     영향도 | 소유 WP                                           |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------: | ------------------------------------------------- |
+| `packages/connector-runtime/src/stores.ts:21-57` `InMemoryDedupStore.runOnce` | timeout으로 호출자가 `OUTCOME_UNKNOWN`을 받은 뒤에도 내부 Promise의 `finally`가 `running` key를 삭제한다. 늦게 완료한 handler의 결과도 durable하게 남지 않아 동일 semantic key가 새 handler 호출로 재진입할 수 있다. |   **High** | WP-05                                             |
+| `packages/connector-runtime/src/runtime.ts:89-124` `withTimeout`              | `Promise.race`는 경쟁 Promise를 취소하지 않는다. timeout은 unknown을 던지지만 원 handler의 side effect 완료·실패를 기록하거나 fence하지 않는다.                                                                      |   **High** | WP-05                                             |
+| `packages/connector-runtime/src/runtime.ts:126-145` `ConnectorRuntime` 생성자 | Job, dedup, ordering, DLQ의 기본 권위가 process memory다. process restart, 두 worker, crash-before-ack에서 idempotency·order·replay 증거가 사라진다.                                                                 |   **High** | WP-05                                             |
+| `packages/kernel/src/index.ts:4-12` `ShotgunKernel`                           | durable Connector/Job adapter를 주입할 Port가 없어 Production이 InMemory 기본값을 벗어날 수 없다.                                                                                                                    |   **High** | WP-05                                             |
+| `assemblies/shotgun-app/src/server.ts:2098-2121` `createApplicationCore`      | Kernel shutdown은 cleanup stack에 등록되어 있으나 Connector의 persistent worker/lease recovery lifecycle은 존재하지 않는다. 새 adapter는 bounded startup/stop/renew loop를 같은 stack에 추가해야 한다.               | **Medium** | WP-05 (lifecycle 계약), WP-03/08과 중복 구현 금지 |
 
 다음 항목은 이 WP-05에서 수정하지 않는다. `RIC-N1/RIC-N2`는 WP-04에서 완료됐고,
 Ask atomic claim은 `DIC-02/WP-06`, recovery readiness는 `RIC-N5/WP-08`, HTTP body
@@ -135,14 +135,14 @@ validation은 `RIC-N6/WP-09`, Action feedback은 `RIC-N7/WP-10`의 단일 소유
 
 ### 5.1 실제 Connector 호출자
 
-| 호출 위치 | 호출 | side-effect/결과 | WP-05 보호 방식 |
-|---|---|---|---|
-| `assemblies/shotgun-app/src/application.ts:1201-1225` | `publishEvent(EvidenceIndexed)` | Stage 4 continuation 소비자에 handoff | durable event dedup + unknown; Evidence/Stage4 의미는 WP-04 유지 |
-| `server.ts:3055-3130` | intake/original asset commands·queries | Source/asset persistence | command semantic key와 fingerprint 저장; 기존 repository transaction은 변경하지 않음 |
-| `server.ts:3170-3375` | transformation/evidence/ask 조회·명령 | transformation/evidence read/write | handler 성공 후 durable complete, failure/DLQ safe envelope |
-| `server.ts:3411-3650` | review, knowledge, compiled truth | review/canonical/projection transitions | approval/canonical ownership 유지; Connector는 delivery authority만 보강 |
-| `server.ts:3734-3910` | discovery, action, entity-vault | durable discovery/action state | action 자동 재실행 금지; unknown은 manual reconciliation |
-| `runtime.ts:428-467` | handler `context.publish/query` | child event/query 및 parent acknowledgement | required child failure만 parent outcome에 반영; child dedup은 별도 consumer key |
+| 호출 위치                                             | 호출                                   | side-effect/결과                            | WP-05 보호 방식                                                                      |
+| ----------------------------------------------------- | -------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `assemblies/shotgun-app/src/application.ts:1201-1225` | `publishEvent(EvidenceIndexed)`        | Stage 4 continuation 소비자에 handoff       | durable event dedup + unknown; Evidence/Stage4 의미는 WP-04 유지                     |
+| `server.ts:3055-3130`                                 | intake/original asset commands·queries | Source/asset persistence                    | command semantic key와 fingerprint 저장; 기존 repository transaction은 변경하지 않음 |
+| `server.ts:3170-3375`                                 | transformation/evidence/ask 조회·명령  | transformation/evidence read/write          | handler 성공 후 durable complete, failure/DLQ safe envelope                          |
+| `server.ts:3411-3650`                                 | review, knowledge, compiled truth      | review/canonical/projection transitions     | approval/canonical ownership 유지; Connector는 delivery authority만 보강             |
+| `server.ts:3734-3910`                                 | discovery, action, entity-vault        | durable discovery/action state              | action 자동 재실행 금지; unknown은 manual reconciliation                             |
+| `runtime.ts:428-467`                                  | handler `context.publish/query`        | child event/query 및 parent acknowledgement | required child failure만 parent outcome에 반영; child dedup은 별도 consumer key      |
 
 ### 5.2 lifecycle 현재 상태
 
@@ -161,12 +161,12 @@ validation은 `RIC-N6/WP-09`, Action feedback은 `RIC-N7/WP-10`의 단일 소유
 설치하거나 schema를 실행하지 않았으며, 도입 필요성 판단을 위해 공식 release,
 repository, license 문서와 현재 Shotgun registry를 대조했다.
 
-| 후보 | 공식 URL / 고정 기준 | Port 적합성 | tx/outbox | restart dedup·lock recovery | DLQ/replay | timeout unknown | license·보안·유지보수 | 결정 |
-|---|---|---|---|---|---|---|---|---|
-| PostgreSQL | [postgres/postgres](https://github.com/postgres/postgres), repo baseline `16.14` image digest; [PostgreSQL 16 SELECT/locking](https://www.postgresql.org/docs/16/sql-select.html) | 기존 `pg`와 repository adapter 뒤에 직접 맞음 | 기존 migration runner와 transaction, `FOR UPDATE SKIP LOCKED`, advisory/row lock 사용 가능 | unique key·lease·fence·checkpoint를 Shotgun schema로 소유 가능 | safe reference와 replay authorization을 Shotgun이 정의 | application tombstone으로 정확히 보존 가능 | PostgreSQL License; 기존 SBOM·image pin 재사용; major/patch 변경은 registry 검토 | **ADOPT (substrate/adapter only)** |
-| pg-boss | [release 12.26.0](https://github.com/timgit/pg-boss/releases/tag/12.26.0), tag commit `31a4cf0093b0df73d077782689b738bcd0292021`, [MIT license](https://github.com/timgit/pg-boss/blob/12.26.0/LICENSE) | generic queue API는 Job Port 뒤에 둘 수 있으나 package schema·job ID·worker lifecycle이 Shotgun 의미와 겹침 | 자체 schema/migration과 enqueue/claim을 제공하지만 Canonical/Evidence transaction 의미를 직접 소유하지 않음 | idempotency, retry, lease/fetch는 유용하나 Shotgun fingerprint/unknown/fence semantics를 그대로 보장하지 않음 | dead-letter/retry 기능은 있으나 Shotgun replay authorization·safe payload 계약으로 변환 필요 | timeout/late completion을 Shotgun `OUTCOME_UNKNOWN`으로 보존하려면 별도 ledger 필요 | MIT; 12.26.0 이후 tag가 존재하므로 이 기준을 production `latest`로 승격 금지; DB 오류 관측·schema migration 운영 surface 추가 | **DEFER** |
-| Graphile Worker | [release v0.17.3](https://github.com/graphile/worker/releases/tag/v0.17.3), tag commit `195491c6c4ebf58420ab9d1c8291df0334184063`, [repository](https://github.com/graphile/worker) | task runner API를 Job Port 뒤에 둘 수 있으나 task identifier/worker pool이 Connector semantic key와 다름 | package-owned `graphile_worker` schema와 migration/worker pool; 기존 Shotgun transaction authority와 중복 | claim/retry/cron은 강점이나 fingerprint conflict, fence result, unknown tombstone은 추가 adapter 필요 | failed jobs/cleanup은 존재하나 governed replay와 protected envelope reference는 Shotgun이 별도 소유해야 함 | timeout/worker shutdown 결과를 그대로 unknown authority로 사용할 수 없음 | MIT; active repository지만 task loader·worker 운영 surface와 별도 schema가 증가 | **DEFER** |
-| gbrain Minion | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned commit `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, [MIT license](https://github.com/garrytan/gbrain) | Minion queue를 그대로 Port로 노출하면 gbrain BrainEngine/DB schema와 결합 | `minion_jobs`/inbox와 gbrain migration에 결합; Shotgun Canonical/Connector transaction 경계와 불일치 | idempotency, retry/backoff, worker lock/stalled recovery 패턴은 높은 참고 가치 | queue recovery 패턴은 참고 가능하지만 Shotgun safe envelope/replay approval은 별도 | two-phase pending→done와 timeout 패턴은 참고하되 provider/action unknown을 자동 재실행하지 않도록 재정의 | MIT; pinned commit만 참고하고 runtime/provider/config/DB는 반입하지 않음; upstream issue/maintenance 변동은 자동 반영 금지 | **REFERENCE_ONLY** |
+| 후보            | 공식 URL / 고정 기준                                                                                                                                                                                    | Port 적합성                                                                                                 | tx/outbox                                                                                                   | restart dedup·lock recovery                                                                                   | DLQ/replay                                                                                                 | timeout unknown                                                                                          | license·보안·유지보수                                                                                                         | 결정                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| PostgreSQL      | [postgres/postgres](https://github.com/postgres/postgres), repo baseline `16.14` image digest; [PostgreSQL 16 SELECT/locking](https://www.postgresql.org/docs/16/sql-select.html)                       | 기존 `pg`와 repository adapter 뒤에 직접 맞음                                                               | 기존 migration runner와 transaction, `FOR UPDATE SKIP LOCKED`, advisory/row lock 사용 가능                  | unique key·lease·fence·checkpoint를 Shotgun schema로 소유 가능                                                | safe reference와 replay authorization을 Shotgun이 정의                                                     | application tombstone으로 정확히 보존 가능                                                               | PostgreSQL License; 기존 SBOM·image pin 재사용; major/patch 변경은 registry 검토                                              | **ADOPT (substrate/adapter only)** |
+| pg-boss         | [release 12.26.0](https://github.com/timgit/pg-boss/releases/tag/12.26.0), tag commit `31a4cf0093b0df73d077782689b738bcd0292021`, [MIT license](https://github.com/timgit/pg-boss/blob/12.26.0/LICENSE) | generic queue API는 Job Port 뒤에 둘 수 있으나 package schema·job ID·worker lifecycle이 Shotgun 의미와 겹침 | 자체 schema/migration과 enqueue/claim을 제공하지만 Canonical/Evidence transaction 의미를 직접 소유하지 않음 | idempotency, retry, lease/fetch는 유용하나 Shotgun fingerprint/unknown/fence semantics를 그대로 보장하지 않음 | dead-letter/retry 기능은 있으나 Shotgun replay authorization·safe payload 계약으로 변환 필요               | timeout/late completion을 Shotgun `OUTCOME_UNKNOWN`으로 보존하려면 별도 ledger 필요                      | MIT; 12.26.0 이후 tag가 존재하므로 이 기준을 production `latest`로 승격 금지; DB 오류 관측·schema migration 운영 surface 추가 | **DEFER**                          |
+| Graphile Worker | [release v0.17.3](https://github.com/graphile/worker/releases/tag/v0.17.3), tag commit `195491c6c4ebf58420ab9d1c8291df0334184063`, [repository](https://github.com/graphile/worker)                     | task runner API를 Job Port 뒤에 둘 수 있으나 task identifier/worker pool이 Connector semantic key와 다름    | package-owned `graphile_worker` schema와 migration/worker pool; 기존 Shotgun transaction authority와 중복   | claim/retry/cron은 강점이나 fingerprint conflict, fence result, unknown tombstone은 추가 adapter 필요         | failed jobs/cleanup은 존재하나 governed replay와 protected envelope reference는 Shotgun이 별도 소유해야 함 | timeout/worker shutdown 결과를 그대로 unknown authority로 사용할 수 없음                                 | MIT; active repository지만 task loader·worker 운영 surface와 별도 schema가 증가                                               | **DEFER**                          |
+| gbrain Minion   | [garrytan/gbrain](https://github.com/garrytan/gbrain), pinned commit `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, [MIT license](https://github.com/garrytan/gbrain)                                      | Minion queue를 그대로 Port로 노출하면 gbrain BrainEngine/DB schema와 결합                                   | `minion_jobs`/inbox와 gbrain migration에 결합; Shotgun Canonical/Connector transaction 경계와 불일치        | idempotency, retry/backoff, worker lock/stalled recovery 패턴은 높은 참고 가치                                | queue recovery 패턴은 참고 가능하지만 Shotgun safe envelope/replay approval은 별도                         | two-phase pending→done와 timeout 패턴은 참고하되 provider/action unknown을 자동 재실행하지 않도록 재정의 | MIT; pinned commit만 참고하고 runtime/provider/config/DB는 반입하지 않음; upstream issue/maintenance 변동은 자동 반영 금지    | **REFERENCE_ONLY**                 |
 
 ### 6.1 적합성 결론과 registry 불일치
 
@@ -238,16 +238,16 @@ reference+digest만 저장한다. project/tenant/security scope를 모든 unique
 
 ## 8. 구현 순서와 중복 방지
 
-| 순서 | 작업 | 산출물 | 중복 방지 경계 |
-|---:|---|---|---|
-| 0 | 이 inventory/OSS gate를 GPT가 검토 | 본 문서와 승인 comment | 승인 전 source/schema 변경 금지 |
-| 1 | Connector Port와 domain-neutral state/result contract 정의 | `packages/connector-runtime` Port/types | 기존 module/Canonical Port 재정의 금지 |
-| 2 | additive migration 및 PostgreSQL adapter 구현 | `adapters/connector-runtime-postgres`, ordered migration | pg-boss/Graphile schema 반입 금지 |
-| 3 | Dedup·Job·Ordering·DLQ를 runtime에 주입 | `runtime.ts`, `kernel/src/index.ts` | handler·module business logic 변경 금지 |
-| 4 | timeout/ack-loss/unknown reconciliation 구현 | durable tombstone와 recovery API | RIC-N5 readiness는 WP-08에서만 변경 |
-| 5 | production wiring/lifecycle | `server.ts`/application cleanup | WP-03 worker shutdown 구현과 contract 공유, 재작성 금지 |
-| 6 | focused contract/database/integration/replacement test | WP-05 test evidence | 기존 WP-04 tests 복제 금지 |
-| 7 | migration/rollback rehearsal 및 exact-head CI | 기록·runbook·PR | unresolved durable row에서 memory rollback 금지 |
+| 순서 | 작업                                                       | 산출물                                                   | 중복 방지 경계                                          |
+| ---: | ---------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------- |
+|    0 | 이 inventory/OSS gate를 GPT가 검토                         | 본 문서와 승인 comment                                   | 승인 전 source/schema 변경 금지                         |
+|    1 | Connector Port와 domain-neutral state/result contract 정의 | `packages/connector-runtime` Port/types                  | 기존 module/Canonical Port 재정의 금지                  |
+|    2 | additive migration 및 PostgreSQL adapter 구현              | `adapters/connector-runtime-postgres`, ordered migration | pg-boss/Graphile schema 반입 금지                       |
+|    3 | Dedup·Job·Ordering·DLQ를 runtime에 주입                    | `runtime.ts`, `kernel/src/index.ts`                      | handler·module business logic 변경 금지                 |
+|    4 | timeout/ack-loss/unknown reconciliation 구현               | durable tombstone와 recovery API                         | RIC-N5 readiness는 WP-08에서만 변경                     |
+|    5 | production wiring/lifecycle                                | `server.ts`/application cleanup                          | WP-03 worker shutdown 구현과 contract 공유, 재작성 금지 |
+|    6 | focused contract/database/integration/replacement test     | WP-05 test evidence                                      | 기존 WP-04 tests 복제 금지                              |
+|    7 | migration/rollback rehearsal 및 exact-head CI              | 기록·runbook·PR                                          | unresolved durable row에서 memory rollback 금지         |
 
 ## 9. 검증 매트릭스
 

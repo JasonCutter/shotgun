@@ -267,6 +267,8 @@ type AttemptRow = QueryResultRow & {
   attempt_id: string;
   job_id: string;
   attempt_number: number;
+  worker_id: string;
+  fencing_token: number | string;
   started_at: Date;
   finished_at: Date | null;
   status: AttemptRecord['status'];
@@ -289,6 +291,8 @@ const mapJob = (row: JobRow, attempts: readonly AttemptRow[]): JobRecord => ({
     attemptId: attempt.attempt_id,
     jobId: attempt.job_id,
     attemptNumber: attempt.attempt_number,
+    workerId: attempt.worker_id,
+    fencingToken: Number(attempt.fencing_token),
     startedAt: date(attempt.started_at),
     ...(attempt.finished_at ? { finishedAt: date(attempt.finished_at) } : {}),
     status: attempt.status,
@@ -298,6 +302,8 @@ const mapJob = (row: JobRow, attempts: readonly AttemptRow[]): JobRecord => ({
 });
 
 export class PostgresJobRuntime implements JobRuntimePort {
+  private readonly workerId = `connector-runtime:${process.pid}:${randomUUID()}`;
+
   constructor(
     private readonly pool: Pool,
     private readonly maxAttempts = 3,
@@ -394,8 +400,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
     const result = await this.pool.query(
       `UPDATE connector.jobs SET status='running', next_attempt_at=$3,
        attempt_count=attempt_count+1,
-       safe_error_code=$4, safe_error_message=$5, lease_owner=NULL,
-       lease_expires_at=NULL, updated_at=clock_timestamp()
+       safe_error_code=$4, safe_error_message=$5, updated_at=clock_timestamp()
        WHERE job_id=$1 AND fencing_token=$2 AND status='running'`,
       [
         input.jobId,
@@ -469,7 +474,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
     const priorAttempts = Number(created.rows[0]!.attempt_count ?? 0);
     const lease = await this.claim({
       jobId,
-      leaseOwner: `connector-runtime:${process.pid}`,
+      leaseOwner: this.workerId,
       leaseDurationMs: 300_000,
     });
     if (!lease) {
@@ -496,9 +501,17 @@ export class PostgresJobRuntime implements JobRuntimePort {
       };
       await this.pool.query(
         `INSERT INTO connector.job_attempts
-         (attempt_id,job_id,attempt_number,started_at,status,scheduled_delay_ms)
-         VALUES ($1,$2,$3,$4,'running',$5)`,
-        [attempt.attemptId, jobId, attempt.attemptNumber, attempt.startedAt, delayMs],
+         (attempt_id,job_id,attempt_number,worker_id,fencing_token,started_at,status,scheduled_delay_ms)
+         VALUES ($1,$2,$3,$4,$5,$6,'running',$7)`,
+        [
+          attempt.attemptId,
+          jobId,
+          attempt.attemptNumber,
+          this.workerId,
+          fencingToken,
+          attempt.startedAt,
+          delayMs,
+        ],
       );
       try {
         const result = await operation(attempt);

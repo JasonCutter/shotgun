@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS connector.job_attempts (
   attempt_id uuid PRIMARY KEY,
   job_id uuid NOT NULL REFERENCES connector.jobs(job_id) ON DELETE CASCADE,
   attempt_number integer NOT NULL CHECK (attempt_number > 0),
+  worker_id text NOT NULL,
+  fencing_token bigint NOT NULL CHECK (fencing_token > 0),
   started_at timestamptz NOT NULL,
   finished_at timestamptz,
   status text NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')),

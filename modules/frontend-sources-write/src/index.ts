@@ -1,11 +1,24 @@
 import type { SecurityContext } from '../../../packages/contracts/src/index.js';
 
 export type {
+  SourcesStage3EvidenceIndexResult,
   SourcesStage3EvidenceIndexedInput,
+  SourcesStage3EvidenceLocatorPort,
+  SourcesStage3AtomicPersistencePort,
   SourcesStage3PipelineOutcome,
   SourcesStage3PipelinePort,
+  SourcesStage3ProgressLease,
+  SourcesStage3ProgressPort,
+  SourcesStage3ProgressState,
+  SourcesStage3RecoveryItem,
+  SourcesStage3SavedTransformation,
+  SourcesStage3TransformationInput,
+  SourcesStage3TransformationRepositoryPort,
+  SourcesStage3EvidenceRepositoryPort,
   SourcesStage4ContinuationPort,
+  SourcesStage4ContinuationStorePort,
 } from './stage3-pipeline.js';
+export { HISTORICAL_RECONCILIATION_REQUIRED_CODE } from './stage3-pipeline.js';
 export {
   assertSourcesResourceSecurityContinuation,
   resolveSourcesResourceSecurity,

@@ -1,5 +1,6 @@
 import type {
   CommandEnvelope,
+  ErrorCode,
   EventEnvelope,
   QueryEnvelope,
   QueryResultEnvelope,
@@ -21,6 +22,7 @@ export type EventConsumerDelivery = {
   readonly consumerId: string;
   readonly status: 'processed' | 'duplicate' | 'dead-letter';
   readonly deadLetterId?: string;
+  readonly errorCode?: ErrorCode;
   readonly requiredForPublisherAcknowledgement?: boolean;
 };
 

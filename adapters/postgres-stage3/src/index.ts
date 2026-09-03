@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Pool, QueryResultRow } from 'pg';
+import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import {
   stableJson,
@@ -145,105 +145,112 @@ export class PostgresTransformationRepository implements TransformationRepositor
 
   async save(input: SaveTransformationInput): Promise<SavedTransformation> {
     const client = await this.pool.connect();
+    let active = false;
     try {
       await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-        `${input.projectId}:${input.sourceVersionId}:${input.transformer.id}:${input.transformer.version}`,
-      ]);
-      let revision = await client.query<RevisionRow>(
-        `${revisionSelect}
-         WHERE project_id = $1
-           AND source_version_id = $2
-           AND transformer_id = $3
-           AND transformer_version = $4`,
-        [input.projectId, input.sourceVersionId, input.transformer.id, input.transformer.version],
-      );
-      let reusedRevision = revision.rowCount === 1;
-      if (!reusedRevision) {
-        const revisionId = randomUUID();
-        await client.query(
-          `
-            INSERT INTO transformation.revisions (
-              revision_id, project_id, source_id, source_version_id, source_content_hash,
-              transformer_id, transformer_version, document_ir, source_map, document_hash,
-              source_map_hash, access_scope, sensitivity, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-          `,
-          [
-            revisionId,
-            input.projectId,
-            input.sourceId,
-            input.sourceVersionId,
-            input.sourceContentHash,
-            input.transformer.id,
-            input.transformer.version,
-            input.output.documentIR,
-            input.output.sourceMap,
-            input.output.documentHash,
-            input.output.sourceMapHash,
-            input.accessScope,
-            input.sensitivity,
-            input.createdAt,
-          ],
-        );
-        revision = await client.query<RevisionRow>(`${revisionSelect} WHERE revision_id = $1`, [
-          revisionId,
-        ]);
-        reusedRevision = false;
-      }
-
-      const stored = revision.rows[0];
-      if (!stored) {
-        throw new Error('Transformation Revision was not stored.');
-      }
-      const mapped = mapRevision(stored);
-      if (
-        mapped.sourceId !== input.sourceId ||
-        mapped.sourceContentHash !== input.sourceContentHash ||
-        mapped.documentHash !== input.output.documentHash ||
-        mapped.sourceMapHash !== input.output.sourceMapHash ||
-        stableJson([...mapped.accessScope].sort()) !== stableJson([...input.accessScope].sort()) ||
-        mapped.sensitivity !== input.sensitivity ||
-        stableJson(mapped.documentIR) !== stableJson(input.output.documentIR) ||
-        stableJson(mapped.sourceMap) !== stableJson(input.output.sourceMap)
-      ) {
-        throw new ShotgunError({
-          code: 'CONFLICT',
-          safeMessage: 'The same SourceVersion and transformer version produced different output.',
-          module: 'postgres-stage3',
-          operation: 'save-transformation',
-        });
-      }
-
-      const attemptId = randomUUID();
-      await client.query(
-        `
-          INSERT INTO transformation.attempts (
-            attempt_id, project_id, source_version_id, transformer_id, transformer_version,
-            revision_id, reused_revision, created_at
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        `,
-        [
-          attemptId,
-          input.projectId,
-          input.sourceVersionId,
-          input.transformer.id,
-          input.transformer.version,
-          mapped.revisionId,
-          reusedRevision,
-          input.createdAt,
-        ],
-      );
+      active = true;
+      const result = await this.saveInTransaction(client, input);
       await client.query('COMMIT');
-      return { attemptId, revision: mapped, reusedRevision };
+      active = false;
+      return result;
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (active) await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
     }
+  }
+
+  async saveInTransaction(
+    client: PoolClient,
+    input: SaveTransformationInput,
+  ): Promise<SavedTransformation> {
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      `${input.projectId}:${input.sourceVersionId}:${input.transformer.id}:${input.transformer.version}`,
+    ]);
+    let revision = await client.query<RevisionRow>(
+      `${revisionSelect}
+       WHERE project_id = $1
+         AND source_version_id = $2
+         AND transformer_id = $3
+         AND transformer_version = $4`,
+      [input.projectId, input.sourceVersionId, input.transformer.id, input.transformer.version],
+    );
+    const reusedRevision = revision.rowCount === 1;
+    if (!reusedRevision) {
+      const revisionId = randomUUID();
+      await client.query(
+        `
+          INSERT INTO transformation.revisions (
+            revision_id, project_id, source_id, source_version_id, source_content_hash,
+            transformer_id, transformer_version, document_ir, source_map, document_hash,
+            source_map_hash, access_scope, sensitivity, created_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        `,
+        [
+          revisionId,
+          input.projectId,
+          input.sourceId,
+          input.sourceVersionId,
+          input.sourceContentHash,
+          input.transformer.id,
+          input.transformer.version,
+          input.output.documentIR,
+          input.output.sourceMap,
+          input.output.documentHash,
+          input.output.sourceMapHash,
+          input.accessScope,
+          input.sensitivity,
+          input.createdAt,
+        ],
+      );
+      revision = await client.query<RevisionRow>(`${revisionSelect} WHERE revision_id = $1`, [
+        revisionId,
+      ]);
+    }
+
+    const stored = revision.rows[0];
+    if (!stored) throw new Error('Transformation Revision was not stored.');
+    const mapped = mapRevision(stored);
+    if (
+      mapped.sourceId !== input.sourceId ||
+      mapped.sourceContentHash !== input.sourceContentHash ||
+      mapped.documentHash !== input.output.documentHash ||
+      mapped.sourceMapHash !== input.output.sourceMapHash ||
+      stableJson([...mapped.accessScope].sort()) !== stableJson([...input.accessScope].sort()) ||
+      mapped.sensitivity !== input.sensitivity ||
+      stableJson(mapped.documentIR) !== stableJson(input.output.documentIR) ||
+      stableJson(mapped.sourceMap) !== stableJson(input.output.sourceMap)
+    ) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'The same SourceVersion and transformer version produced different output.',
+        module: 'postgres-stage3',
+        operation: 'save-transformation',
+      });
+    }
+    const attemptId = randomUUID();
+    await client.query(
+      `
+        INSERT INTO transformation.attempts (
+          attempt_id, project_id, source_version_id, transformer_id, transformer_version,
+          revision_id, reused_revision, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `,
+      [
+        attemptId,
+        input.projectId,
+        input.sourceVersionId,
+        input.transformer.id,
+        input.transformer.version,
+        mapped.revisionId,
+        reusedRevision,
+        input.createdAt,
+      ],
+    );
+    return { attemptId, revision: mapped, reusedRevision };
   }
 
   async findBySourceVersion(
@@ -281,77 +288,86 @@ export class PostgresEvidenceRepository implements EvidenceRepositoryPort {
 
   async index(candidates: readonly EvidenceCandidate[]) {
     const client = await this.pool.connect();
+    let active = false;
     try {
       await client.query('BEGIN');
-      const items: EvidenceSpan[] = [];
-      let reusedCount = 0;
-      for (const candidate of candidates) {
-        const inserted = await client.query<EvidenceRow>(
-          `
-            INSERT INTO evidence.spans (
-              evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
-              node_kind, origin, position, quote, selectors, exact_hash, access_scope, sensitivity, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-            ON CONFLICT (project_id, revision_id, pointer) DO NOTHING
-            RETURNING
-              evidence_id::text, revision_id::text, project_id, source_id::text,
-              source_version_id::text, pointer, node_kind, origin, position, quote, selectors,
-              exact_hash, access_scope, sensitivity, created_at
-          `,
-          [
-            randomUUID(),
-            candidate.revisionId,
-            candidate.projectId,
-            candidate.sourceId,
-            candidate.sourceVersionId,
-            candidate.pointer,
-            candidate.nodeKind,
-            candidate.origin,
-            candidate.position,
-            candidate.quote,
-            JSON.stringify(candidate.selectors ?? []),
-            candidate.exactHash,
-            candidate.accessScope,
-            candidate.sensitivity,
-            candidate.createdAt,
-          ],
-        );
-        let row = inserted.rows[0];
-        if (!row) {
-          reusedCount += 1;
-          const existing = await client.query<EvidenceRow>(
-            `${evidenceSelect}
-             WHERE project_id = $1 AND revision_id = $2 AND pointer = $3`,
-            [candidate.projectId, candidate.revisionId, candidate.pointer],
-          );
-          row = existing.rows[0];
-        }
-        if (!row) {
-          throw new Error('Evidence Span was not stored.');
-        }
-        const mapped = mapEvidence(row);
-        if (
-          stableJson({ ...mapped, evidenceId: undefined }) !==
-          stableJson({ ...candidate, evidenceId: undefined })
-        ) {
-          throw new ShotgunError({
-            code: 'CONFLICT',
-            safeMessage: 'An Evidence pointer was reused for different source content.',
-            module: 'postgres-stage3',
-            operation: 'index-evidence',
-          });
-        }
-        items.push(mapped);
-      }
+      active = true;
+      const result = await this.indexInTransaction(client, candidates);
       await client.query('COMMIT');
-      return { items, reusedCount };
+      active = false;
+      return result;
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (active) await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
     }
+  }
+
+  async indexInTransaction(
+    client: PoolClient,
+    candidates: readonly EvidenceCandidate[],
+  ): Promise<{ readonly items: readonly EvidenceSpan[]; readonly reusedCount: number }> {
+    const items: EvidenceSpan[] = [];
+    let reusedCount = 0;
+    for (const candidate of candidates) {
+      const inserted = await client.query<EvidenceRow>(
+        `
+          INSERT INTO evidence.spans (
+            evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
+            node_kind, origin, position, quote, selectors, exact_hash, access_scope, sensitivity, created_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          ON CONFLICT (project_id, revision_id, pointer) DO NOTHING
+          RETURNING
+            evidence_id::text, revision_id::text, project_id, source_id::text,
+            source_version_id::text, pointer, node_kind, origin, position, quote, selectors,
+            exact_hash, access_scope, sensitivity, created_at
+        `,
+        [
+          randomUUID(),
+          candidate.revisionId,
+          candidate.projectId,
+          candidate.sourceId,
+          candidate.sourceVersionId,
+          candidate.pointer,
+          candidate.nodeKind,
+          candidate.origin,
+          candidate.position,
+          candidate.quote,
+          JSON.stringify(candidate.selectors ?? []),
+          candidate.exactHash,
+          candidate.accessScope,
+          candidate.sensitivity,
+          candidate.createdAt,
+        ],
+      );
+      let row = inserted.rows[0];
+      if (!row) {
+        reusedCount += 1;
+        const existing = await client.query<EvidenceRow>(
+          `${evidenceSelect}
+           WHERE project_id = $1 AND revision_id = $2 AND pointer = $3`,
+          [candidate.projectId, candidate.revisionId, candidate.pointer],
+        );
+        row = existing.rows[0];
+      }
+      if (!row) throw new Error('Evidence Span was not stored.');
+      const mapped = mapEvidence(row);
+      if (
+        stableJson({ ...mapped, evidenceId: undefined }) !==
+        stableJson({ ...candidate, evidenceId: undefined })
+      ) {
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage: 'An Evidence pointer was reused for different source content.',
+          module: 'postgres-stage3',
+          operation: 'index-evidence',
+        });
+      }
+      items.push(mapped);
+    }
+    return { items, reusedCount };
   }
 
   async listBySourceVersion(

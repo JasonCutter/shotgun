@@ -175,7 +175,8 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
       await pool!.query<{ count: string }>(
         `SELECT count(*)::text AS count
          FROM information_schema.tables
-         WHERE table_schema = 'source_product'`,
+         WHERE table_schema = 'source_product'
+           AND table_name <> 'source_stage3_progress'`,
       ),
     ).toMatchObject({ rows: [{ count: '7' }] });
     await pool!.query(

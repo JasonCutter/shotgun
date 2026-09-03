@@ -210,6 +210,11 @@ import {
 } from '../../../modules/frontend-knowledge-graph/src/index.js';
 import { SecureUrlAcquisitionCoordinator } from '../../../modules/url-acquisition/src/index.js';
 import { configureSourcesWriteRuntime } from './product-api/sources-write-runtime.js';
+import {
+  decodeShotgunEnvironment,
+  formatEnvironmentIssues,
+  type RuntimeConfigurationProfile,
+} from '../../../packages/runtime-configuration/src/index.js';
 import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
 import { createApplication } from './server.js';
 import { installSignalShutdown } from './shutdown.js';
@@ -223,6 +228,12 @@ export type StartShotgunApplicationOptions = {
   readonly spaDirectory?: string;
   /** LPA-WP5 (D12 recovery harness): target a different database (defaults to `DATABASE_URL`). */
   readonly databaseUrl?: string;
+  /** Explicit environment injection for deterministic tests/recovery. */
+  readonly environment?: NodeJS.ProcessEnv;
+  /** Explicit secret injection for deterministic tests/recovery. */
+  readonly stagingSecret?: string;
+  /** Caller-owned configuration boundary; avoids NODE_ENV-only requiredness. */
+  readonly environmentProfile?: RuntimeConfigurationProfile;
   /** LPA-WP5 (D12 recovery harness): target asset root (defaults to `ASSET_STORAGE_ROOT`). */
   readonly assetRoot?: string;
   /** LPA-WP5 (D12 recovery harness): disable the periodic recovery worker. */
@@ -249,6 +260,10 @@ export type RecoveryApplicationOptions = {
   readonly databaseUrl: string;
   /** The restored target asset root (may be empty for the harness). */
   readonly assetRoot: string;
+  /** Optional explicit secret for restored staging assets/test fixtures. */
+  readonly stagingSecret?: string;
+  /** Optional environment injection for recovery verification tests. */
+  readonly environment?: NodeJS.ProcessEnv;
 };
 
 export type ShotgunApplicationHandle = {
@@ -323,18 +338,29 @@ export const createTypedPropositionConflictDiscoveryPort = (input: {
 export const startShotgunApplication = async (
   options: StartShotgunApplicationOptions = {},
 ): Promise<ShotgunApplicationHandle> => {
-  const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error('DATABASE_URL is required for persistent Stage 2 runtime.');
+  const environment = options.environment ?? process.env;
+  const environmentProfile =
+    options.environmentProfile ??
+    (options.databaseUrl !== undefined
+      ? 'recovery'
+      : environment.VITEST === 'true' || environment.NODE_ENV === 'test'
+        ? 'runtime-test'
+        : environment.NODE_ENV === 'production'
+          ? 'runtime-production'
+          : 'runtime-development');
+  const configuration = decodeShotgunEnvironment(environment, environmentProfile, {
+    databaseUrl: options.databaseUrl,
+    stagingSecret: options.stagingSecret,
+  });
+  if (configuration.issues.length > 0) {
+    throw new Error(
+      `Environment configuration invalid: ${formatEnvironmentIssues(configuration.issues)}.`,
+    );
   }
 
-  const recoveryHarness = options.databaseUrl !== undefined;
-  const stagingSecret = recoveryHarness
-    ? (process.env.SOURCES_STAGING_SECRET ?? 'x'.repeat(40))
-    : process.env.SOURCES_STAGING_SECRET;
-  if (!stagingSecret || stagingSecret.trim().length < 32) {
-    throw new Error('SOURCES_STAGING_SECRET with at least 32 characters is required.');
-  }
+  const databaseUrl = configuration.databaseUrl as string;
+  const stagingSecret = configuration.stagingSecret as string;
+  const recoveryHarness = environmentProfile === 'recovery';
 
   const pool = createPostgresPool(databaseUrl);
   // Declared outside the try so the construction-failure catch can release
@@ -345,12 +371,12 @@ export const startShotgunApplication = async (
   try {
     const port = options.port ?? Number.parseInt(process.env.PORT ?? '3000', 10);
     const host = options.host ?? process.env.HOST ?? '127.0.0.1';
-    const production = process.env.NODE_ENV === 'production';
+    const production = environment.NODE_ENV === 'production';
     assertRuntimeSecurityConfiguration({
       host,
       production,
-      allowExternalBind: process.env.ALLOW_EXTERNAL_BIND === 'true',
-      developmentAuthEnabled: process.env.SHOTGUN_DEVELOPMENT_AUTH === 'true',
+      allowExternalBind: environment.ALLOW_EXTERNAL_BIND === 'true',
+      developmentAuthEnabled: environment.SHOTGUN_DEVELOPMENT_AUTH === 'true',
     });
     const storageRoot = options.assetRoot
       ? path.resolve(options.assetRoot)
@@ -762,7 +788,7 @@ export const startShotgunApplication = async (
     // identity only; they are not an authorization DTO.
     const resolveOwnerDiscoverySecurity = async (projectId: string) => {
       const project = await projectAdminRepository.getProjectDetails(projectId);
-      const accountId = process.env.SHOTGUN_BOOTSTRAP_ACCOUNT_ID?.trim();
+      const accountId = configuration.runtimeOwnerAccountId;
       if (!project || project.status !== 'ACTIVE' || !project.active || !accountId) {
         return undefined;
       }
@@ -1277,6 +1303,9 @@ export const startRecoveryApplication = async (
   startShotgunApplication({
     databaseUrl: options.databaseUrl,
     assetRoot: options.assetRoot,
+    environment: options.environment,
+    stagingSecret: options.stagingSecret,
+    environmentProfile: 'recovery',
     recoveryIntervalMs: false,
     noSignals: true,
     disableAskWorker: true,

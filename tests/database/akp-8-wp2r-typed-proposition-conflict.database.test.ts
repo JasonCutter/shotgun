@@ -54,6 +54,7 @@ if (process.env.TEST_DATABASE_URL?.trim()) {
 }
 
 const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+const testStagingSecret = 'wp2r-test-staging-secret-with-32-characters';
 
 const relation = (input: {
   readonly id: string;
@@ -283,6 +284,7 @@ describe('AKP-8 WP2R PostgreSQL production composition', () => {
       application = await startShotgunApplication({
         databaseUrl,
         assetRoot,
+        stagingSecret: testStagingSecret,
         noSignals: true,
         disableAskWorker: true,
       });

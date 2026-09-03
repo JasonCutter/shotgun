@@ -26,8 +26,22 @@ export const createDefaultLaunchDeps = (): LaunchDeps => ({
   verifyDatabaseSchema: (cwd, env) => {
     execSync('npm run db:verify', { cwd, stdio: 'inherit', env });
   },
-  startApplication: async ({ host, port, spaDirectory }) =>
-    startShotgunApplication({ host, port, spaDirectory }),
+  startApplication: async ({
+    host,
+    port,
+    spaDirectory,
+    environment,
+    stagingSecret,
+    environmentProfile,
+  }) =>
+    startShotgunApplication({
+      host,
+      port,
+      spaDirectory,
+      environment,
+      stagingSecret,
+      environmentProfile,
+    }),
   fetchReadiness: async (url, timeoutMs) => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {

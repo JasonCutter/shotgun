@@ -35,13 +35,12 @@ const main = async (): Promise<void> => {
   const application = await runLaunch(
     {
       noOpen,
-      databaseUrl: process.env.DATABASE_URL ?? '',
-      stagingSecret: process.env.SOURCES_STAGING_SECRET ?? '',
       port: Number.parseInt(process.env.PORT ?? '3000', 10),
       host: process.env.HOST ?? '127.0.0.1',
       spaDirectory,
       rootDirectory,
       env: process.env,
+      environmentProfile: 'runtime-development',
     },
     createDefaultLaunchDeps(),
   );

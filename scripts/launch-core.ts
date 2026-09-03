@@ -20,6 +20,12 @@ import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
+import {
+  decodeShotgunEnvironment,
+  formatEnvironmentIssues,
+  type RuntimeConfigurationProfile,
+} from '../packages/runtime-configuration/src/index.js';
+
 export type LaunchFailureCode =
   | 'ENV_CONFIGURATION_INVALID'
   | 'DATABASE_UNAVAILABLE'
@@ -44,13 +50,14 @@ export class LaunchFailure extends Error {
 
 export interface ShotgunLaunchOptions {
   readonly noOpen: boolean;
-  readonly databaseUrl: string;
-  readonly stagingSecret: string;
+  readonly databaseUrl?: string;
+  readonly stagingSecret?: string;
   readonly port: number;
   readonly host: string;
   readonly spaDirectory: string;
   readonly rootDirectory: string;
   readonly env: NodeJS.ProcessEnv;
+  readonly environmentProfile?: RuntimeConfigurationProfile;
 }
 
 export interface ApplicationHandleLike {
@@ -90,6 +97,9 @@ export interface LaunchDeps {
     host: string;
     port: number;
     spaDirectory: string;
+    environment: NodeJS.ProcessEnv;
+    stagingSecret: string;
+    environmentProfile: RuntimeConfigurationProfile;
   }): Promise<ApplicationHandleLike>;
   fetchReadiness(url: string, timeoutMs: number): Promise<boolean>;
   openBrowser(platform: NodeJS.Platform, url: string): BrowserOpenResult;
@@ -130,22 +140,33 @@ export const runLaunch = async (
   options: ShotgunLaunchOptions,
   deps: LaunchDeps,
 ): Promise<ApplicationHandleLike> => {
-  const { noOpen, databaseUrl, stagingSecret, port, host, spaDirectory, rootDirectory, env } =
-    options;
+  const {
+    noOpen,
+    databaseUrl: databaseUrlOverride,
+    stagingSecret: stagingSecretOverride,
+    port,
+    host,
+    spaDirectory,
+    rootDirectory,
+    env,
+  } = options;
+  const environmentProfile = options.environmentProfile ?? 'runtime-development';
 
   // 1. Environment pre-check (D12 ENV_CONFIGURATION_INVALID).
-  const missing = [
-    databaseUrl ? undefined : 'DATABASE_URL',
-    !stagingSecret || stagingSecret.trim().length < 32 ? 'SOURCES_STAGING_SECRET' : undefined,
-  ].filter((value): value is string => value !== undefined);
-  if (missing.length > 0) {
+  const configuration = decodeShotgunEnvironment(env, environmentProfile, {
+    databaseUrl: databaseUrlOverride,
+    stagingSecret: stagingSecretOverride,
+  });
+  if (configuration.issues.length > 0) {
     throw new LaunchFailure(
       'ENV_CONFIGURATION_INVALID',
-      `Required environment variable(s) missing: ${missing.join(', ')}.`,
+      `Environment configuration invalid: ${formatEnvironmentIssues(configuration.issues)}.`,
       'Copy `.env.example` to `.env` and fill the required values.',
       'Copy-Item .env.example .env',
     );
   }
+  const databaseUrl = configuration.databaseUrl as string;
+  const stagingSecret = configuration.stagingSecret as string;
 
   const url = `http://${host}:${port}`;
 
@@ -201,7 +222,14 @@ export const runLaunch = async (
   //    close it gracefully exactly once before reporting.
   let application: ApplicationHandleLike | undefined;
   try {
-    application = await deps.startApplication({ host, port, spaDirectory });
+    application = await deps.startApplication({
+      host,
+      port,
+      spaDirectory,
+      environment: env,
+      stagingSecret,
+      environmentProfile,
+    });
     await application.listen();
   } catch (error) {
     const code = (error as { code?: string }).code;

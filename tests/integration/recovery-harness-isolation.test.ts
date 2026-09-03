@@ -33,6 +33,7 @@ import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.j
  */
 const databaseUrl = await requireTestDatabaseTarget();
 const hasDb = true;
+const recoveryStagingSecret = 'recovery-test-staging-secret-with-32-characters';
 
 let assetRoot = '';
 
@@ -72,6 +73,7 @@ describe.runIf(hasDb)('LPA-WP5 D12 recovery harness isolation (C2 + R3)', () => 
     const application = await startRecoveryApplication({
       databaseUrl: databaseUrl as string,
       assetRoot,
+      stagingSecret: recoveryStagingSecret,
     });
     try {
       // C2-1: recovery verification must never start the Ask worker (its
@@ -94,6 +96,7 @@ describe.runIf(hasDb)('LPA-WP5 D12 recovery harness isolation (C2 + R3)', () => 
     const application = await startRecoveryApplication({
       databaseUrl: databaseUrl as string,
       assetRoot,
+      stagingSecret: recoveryStagingSecret,
     });
     await application.close();
     await application.close();
@@ -108,6 +111,7 @@ describe.runIf(hasDb)('LPA-WP5 D12 recovery harness isolation (C2 + R3)', () => 
       startShotgunApplication({
         databaseUrl: parsed.toString(),
         assetRoot,
+        stagingSecret: recoveryStagingSecret,
         recoveryIntervalMs: false,
         noSignals: true,
       }),
@@ -121,6 +125,7 @@ describe.runIf(hasDb)('LPA-WP5 D12 recovery harness isolation (C2 + R3)', () => 
       const application = await startRecoveryApplication({
         databaseUrl: databaseUrl as string,
         assetRoot,
+        stagingSecret: recoveryStagingSecret,
       });
       await application.close();
       // The expired running attempt and PROVIDER_RUNNING call must be UNCHANGED
@@ -171,6 +176,7 @@ describe.runIf(hasDb)('LPA-WP5 D12 recovery harness isolation (C2 + R3)', () => 
       startShotgunApplication({
         databaseUrl: parsed.toString(),
         assetRoot,
+        stagingSecret: recoveryStagingSecret,
         recoveryIntervalMs: false,
         noSignals: true,
       }),
@@ -181,6 +187,7 @@ describe.runIf(hasDb)('LPA-WP5 D12 recovery harness isolation (C2 + R3)', () => 
     const application = await startRecoveryApplication({
       databaseUrl: databaseUrl as string,
       assetRoot,
+      stagingSecret: recoveryStagingSecret,
     });
     await application.close();
   });

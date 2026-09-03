@@ -201,6 +201,13 @@ const main = async (): Promise<void> => {
   const duplicate = await secondKernel.connector.sendCommand(command);
   if (duplicate.status !== 'duplicate' || secondPing.state.commandSideEffects !== 0)
     throw new Error('runtime restart dedup failed');
+  let durableLegacyReplayDenied = false;
+  try {
+    await secondKernel.connector.replay(dlq.deadLetterId, 'legacy string replay');
+  } catch (error) {
+    durableLegacyReplayDenied = error instanceof ShotgunError && error.code === 'REPLAY_BLOCKED';
+  }
+  if (!durableLegacyReplayDenied) throw new Error('durable legacy replay bypass was not blocked');
   await secondKernel.shutdown();
   console.log('wp05-correction-smoke: PASS');
 };

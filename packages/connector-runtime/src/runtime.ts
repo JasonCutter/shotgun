@@ -309,6 +309,16 @@ export class ConnectorRuntime {
     const entry = this.durableState
       ? await this.durableState.deadLetters.get(deadLetterId)
       : this.deadLetters.get(deadLetterId);
+    if (this.durableState && typeof request === 'string') {
+      throw new ShotgunError({
+        code: 'REPLAY_BLOCKED',
+        safeMessage:
+          'Durable replay requires an explicit actor, project, security scope, and reason.',
+        module: 'connector-runtime',
+        operation: 'replay',
+        correlationId: entry.envelope.correlationId,
+      });
+    }
     const authorization: ReplayAuthorization =
       typeof request === 'string'
         ? {

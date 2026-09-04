@@ -221,6 +221,36 @@ export const createChangeSetReviewModule = (
         { name: 'ReviewDecisionRecorded', range: '>=1.0.0 <2.0.0' },
         { name: 'ChangeSetApproved', range: '>=1.0.0 <2.0.0' },
       ],
+      handoffs: [
+        {
+          event: { name: 'DraftChangeSetReady', range: '>=1.0.0 <2.0.0' },
+          target: {
+            kind: 'intentional',
+            disposition: 'INTENTIONAL_TERMINAL',
+            owner: 'stage5.change-set-review',
+            retention: 'review.change_sets retention policy',
+            observability: 'review audit and UI activity log',
+          },
+          tags: ['INTENTIONAL_TERMINAL'],
+        },
+        {
+          event: { name: 'ReviewDecisionRecorded', range: '>=1.0.0 <2.0.0' },
+          target: {
+            kind: 'intentional',
+            disposition: 'INTENTIONAL_TERMINAL',
+            owner: 'stage5.change-set-review',
+            retention: 'review.decisions retention policy',
+            observability: 'review audit and UI activity log',
+          },
+          tags: ['INTENTIONAL_TERMINAL'],
+        },
+        {
+          event: { name: 'ChangeSetApproved', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage6.canonical-knowledge' },
+          tags: ['TRANSACTIONAL', 'REQUIRED_ACK'],
+          authority: 'stage6.canonical-knowledge.commit-transaction',
+        },
+      ],
     },
     provides: {
       queries: [
@@ -388,6 +418,23 @@ export const createChangeSetReviewModule = (
                 module: 'stage5.change-set-review',
                 operation: 'record-review-decision',
                 correlationId: envelope.correlationId,
+              });
+            }
+            if (existingDecision.decision.decision === 'APPROVE' && existingDecision.manifest) {
+              await context.publish({
+                messageType: 'ChangeSetApproved',
+                schemaVersion: '1.0.0',
+                idempotencyKey: `change-set-approved:${projectId}:${existingDecision.manifest.manifestId}`,
+                payload: {
+                  manifestId: existingDecision.manifest.manifestId,
+                  changeSetId: existingDecision.manifest.changeSetId,
+                  candidateId: existingDecision.manifest.candidateId,
+                  operation: existingDecision.manifest.operation,
+                  contentDigest: existingDecision.manifest.contentDigest,
+                  expectedCanonicalVersion: existingDecision.manifest.expectedCanonicalVersion,
+                  approvalTokenDigest: existingDecision.manifest.approvalToken.tokenDigest,
+                  manifestDigest: existingDecision.manifest.manifestDigest,
+                },
               });
             }
             return {
@@ -563,6 +610,7 @@ export const createChangeSetReviewModule = (
         messageType: 'ComparisonCompleted',
         version: '1.0.0',
         requiredAccessScopes: ['owner'],
+        requiredForPublisherAcknowledgement: true,
         async handle(envelope, context) {
           const { projectId, security } = assertContext(envelope);
           const payload = envelope.payload as ComparisonCompletedPayload;

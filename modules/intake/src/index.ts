@@ -221,6 +221,18 @@ export const createIntakeModule = (repository: IntakeRepositoryPort): ShotgunMod
     },
     produces: {
       events: [{ name: 'IntakeAccepted', range: '>=1.0.0 <2.0.0' }],
+      handoffs: [
+        {
+          event: { name: 'IntakeAccepted', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage2.original-asset' },
+          tags: ['INTENTIONAL_BEST_EFFORT'],
+          dispositionEvidence: {
+            owner: 'stage2.original-asset',
+            retention: 'source intake audit retention policy',
+            observability: 'intake trace and audit records',
+          },
+        },
+      ],
     },
     provides: {
       queries: [],

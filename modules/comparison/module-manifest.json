@@ -23,7 +23,14 @@
     "events": [{ "name": "CandidateValidated", "range": ">=1.0.0 <2.0.0" }]
   },
   "produces": {
-    "events": [{ "name": "ComparisonCompleted", "range": ">=1.0.0 <2.0.0" }]
+    "events": [{ "name": "ComparisonCompleted", "range": ">=1.0.0 <2.0.0" }],
+    "handoffs": [
+      {
+        "event": { "name": "ComparisonCompleted", "range": ">=1.0.0 <2.0.0" },
+        "target": { "kind": "consumer", "moduleId": "stage5.change-set-review" },
+        "tags": ["REQUIRED_ACK"]
+      }
+    ]
   },
   "provides": {
     "queries": [

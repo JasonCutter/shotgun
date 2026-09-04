@@ -269,7 +269,16 @@ describe.runIf(pool)('Stage 6 PostgreSQL persistence', () => {
       failpoint: 'after-history',
     });
     const created = await createDraft(harness.kernel, 'stage6-postgres-rollback');
-    await approve(harness.kernel, created.command, created.draft, 'Trigger rollback test.');
+    const approval = decisionCommand(
+      created.command,
+      created.draft,
+      'APPROVE',
+      randomUUID(),
+      'Trigger rollback test.',
+    );
+    await expect(harness.kernel.connector.sendCommand(approval)).rejects.toMatchObject({
+      code: 'TERMINAL_FAILURE',
+    });
     const deadLetter = harness.kernel.connector.deadLetters
       .list()
       .find((entry) => entry.consumerId === 'stage6.canonical-knowledge');
@@ -289,6 +298,34 @@ describe.runIf(pool)('Stage 6 PostgreSQL persistence', () => {
         (SELECT count(*) FROM canonical.outbox)::text AS outbox
     `);
     expect(counts.rows[0]).toEqual({
+      states: '0',
+      claims: '0',
+      commits: '0',
+      history: '0',
+      outbox: '0',
+    });
+    await expect(harness.kernel.connector.sendCommand(approval)).rejects.toMatchObject({
+      code: 'TERMINAL_FAILURE',
+    });
+    const retryDeadLetters = harness.kernel.connector.deadLetters
+      .list()
+      .filter((entry) => entry.consumerId === 'stage6.canonical-knowledge');
+    expect(retryDeadLetters).toHaveLength(2);
+    const retryCounts = await pool!.query<{
+      states: string;
+      claims: string;
+      commits: string;
+      history: string;
+      outbox: string;
+    }>(`
+      SELECT
+        (SELECT count(*) FROM canonical.project_state)::text AS states,
+        (SELECT count(*) FROM canonical.claims)::text AS claims,
+        (SELECT count(*) FROM canonical.commits)::text AS commits,
+        (SELECT count(*) FROM canonical.history_events)::text AS history,
+        (SELECT count(*) FROM canonical.outbox)::text AS outbox
+    `);
+    expect(retryCounts.rows[0]).toEqual({
       states: '0',
       claims: '0',
       commits: '0',

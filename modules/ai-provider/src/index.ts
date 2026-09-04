@@ -384,7 +384,7 @@ export const createAIProviderModule = (
         { name: 'CandidateMaterializationFailed', range: '>=1.0.0 <2.0.0' },
       ],
     },
-    produces: { events: [] },
+    produces: { events: [], handoffs: [] },
     provides: {
       queries: [{ name: 'GenerateStructured', range: '>=1.0.0 <2.0.0' }],
       capabilities: [{ name: 'structured-ai-provider', priority: 100 }],

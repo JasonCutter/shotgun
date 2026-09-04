@@ -784,7 +784,7 @@ export const createDiscoveryTriggerCoordinatorModule = (
       commands: [{ name: DISCOVERY_DURABLE_MANUAL_COMMAND_V1, range: '>=1.0.0 <2.0.0' }],
       events: [{ name: 'CanonicalCommitted', range: '>=1.0.0 <2.0.0' }],
     },
-    produces: { events: [] },
+    produces: { events: [], handoffs: [] },
     provides: { queries: [], capabilities: [] },
     requires: { capabilities: [] },
     security: {

@@ -45,7 +45,7 @@ export const createCitedAnswerModule = (): ShotgunModule => ({
       directSchemaAccess: false,
     },
     consumes: { commands: [], events: [] },
-    produces: { events: [] },
+    produces: { events: [], handoffs: [] },
     provides: {
       queries: [{ name: 'AskCanonicalKnowledge', range: '>=1.0.0 <2.0.0' }],
       capabilities: [{ name: 'cited-answer-provider', priority: 100 }],

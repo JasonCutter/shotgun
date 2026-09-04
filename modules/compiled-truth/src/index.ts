@@ -518,6 +518,19 @@ export const createCompiledTruthModule = (
     },
     produces: {
       events: [{ name: 'DerivedInferenceReady', range: '>=1.0.0 <2.0.0' }],
+      handoffs: [
+        {
+          event: { name: 'DerivedInferenceReady', range: '>=1.0.0 <2.0.0' },
+          target: {
+            kind: 'intentional',
+            disposition: 'INTENTIONAL_TERMINAL',
+            owner: 'stage10.compiled-truth',
+            retention: 'projection.compiled_truth retention policy',
+            observability: 'compiled truth lifecycle audit and metrics',
+          },
+          tags: ['INTENTIONAL_TERMINAL'],
+        },
+      ],
     },
     provides: {
       queries: [

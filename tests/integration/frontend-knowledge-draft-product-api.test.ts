@@ -345,6 +345,192 @@ describe('FE-P3-S2 Knowledge Draft Product API foundation', () => {
     await application.server.close();
   });
 
+  it('derives a deterministic, de-duplicated Evidence lineage for Review Submission', async () => {
+    const resolver = new InMemoryFrontendKnowledgeDraftTargetResolver();
+    resolver.registerSeed('seed-1', {
+      resourceId: 'resource-1',
+      resourceProjectId: PROJECT_ID,
+      draftProjectId: PROJECT_ID,
+      effectiveProjectId: PROJECT_ID,
+      base: base(),
+    });
+    const repository = new InMemoryFrontendKnowledgeDraftRepository();
+    const coordinator = new FrontendKnowledgeDraftProductCoordinator(
+      repository,
+      new InMemoryFrontendCommandGateway(),
+      resolver,
+    );
+    const application = await createApplication({
+      authRepository: auth,
+      frontendKnowledgeDraftRepository: repository,
+      frontendKnowledgeDraftCoordinator: coordinator,
+    });
+    const cookie = await projectSession();
+
+    const materialized = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/materialize',
+      envelope('request-1', { seedId: 'seed-1' }),
+    );
+    expect(materialized.statusCode).toBe(200);
+    const draft = materialized.json<{
+      draft: { draftId: string; base: FrontendKnowledgeDraftBaseV1 };
+    }>().draft;
+
+    const evidenceReferences = [
+      { sourceId: 'source-1', sourceVersionId: 'source-version-1', evidenceSpanId: 'span-1' },
+      { sourceId: 'source-1', sourceVersionId: 'source-version-1', evidenceSpanId: 'span-2' },
+      // A repeated reference must not create a second Review Evidence entry.
+      { sourceId: 'source-1', sourceVersionId: 'source-version-1', evidenceSpanId: 'span-1' },
+    ] as const;
+    const operations: readonly FrontendKnowledgeOperationV1[] = [
+      { ...pOperation(2), evidenceReferences },
+    ];
+    const contentDigest = frontendKnowledgeDraftRevisionDigest({
+      draftId: draft.draftId,
+      revision: 2,
+      base: draft.base,
+      operations,
+    });
+    const saved = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/save',
+      envelope('request-2', {
+        draftId: draft.draftId,
+        expectedDraftRevision: 1,
+        expectedBaseRevision: draft.base.canonicalVersion,
+        operationRevision: 2,
+        operations,
+        contentDigest,
+      }),
+    );
+    expect(saved.statusCode).toBe(200);
+
+    const validation = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/validate',
+      envelope('request-3', {
+        draftId: draft.draftId,
+        expectedDraftRevision: 2,
+        expectedBaseRevision: draft.base.canonicalVersion,
+      }),
+    );
+    expect(validation.statusCode).toBe(200);
+    const validationArtifact = validation.json<{ validation: object }>().validation;
+
+    const impact = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/impact-preview',
+      envelope('request-4', {
+        draftId: draft.draftId,
+        expectedDraftRevision: 2,
+        expectedBaseRevision: draft.base.canonicalVersion,
+      }),
+    );
+    expect(impact.statusCode).toBe(200);
+    const impactArtifact = impact.json<{ impactPreview: object }>().impactPreview;
+
+    const submitPayload = envelope('request-5', {
+      draftId: draft.draftId,
+      expectedDraftRevision: 2,
+      expectedBaseRevision: draft.base.canonicalVersion,
+      validationArtifact,
+      impactArtifact,
+    });
+    const submitted = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/submit-review',
+      submitPayload,
+    );
+    expect(submitted.statusCode).toBe(200);
+    const submission = submitted.json<{
+      reviewSubmission: { evidenceLineage: readonly unknown[] };
+    }>().reviewSubmission;
+    expect(submission.evidenceLineage).toEqual([evidenceReferences[0], evidenceReferences[1]]);
+
+    const queue = await inject(application, cookie, '/product-api/frontend/review/queue', {
+      schemaVersion: '1.0.0',
+      pageSize: 50,
+    });
+    expect(queue.statusCode).toBe(200);
+    const queueItem = queue
+      .json<{
+        items: readonly {
+          reviewContextId: string;
+          contextRevision: number;
+          targetKind: string;
+        }[];
+      }>()
+      .items.find((item) => item.targetKind === 'KNOWLEDGE_DRAFT_CHANGE_SET');
+    expect(queueItem).toBeDefined();
+
+    const context = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/review/contexts/read',
+      {
+        schemaVersion: '1.0.0',
+        reviewContextId: queueItem!.reviewContextId,
+        contextRevision: queueItem!.contextRevision,
+      },
+    );
+    expect(context.statusCode).toBe(200);
+    expect(
+      context.json<{ context: { artifactRefs: { evidence?: object } } }>().context.artifactRefs
+        .evidence,
+    ).toBeDefined();
+
+    const itemDetail = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/review/items/read',
+      {
+        schemaVersion: '1.0.0',
+        reviewContextId: queueItem!.reviewContextId,
+        contextRevision: queueItem!.contextRevision,
+        reviewItemId: 'item-1',
+        includeEvidence: true,
+      },
+    );
+    expect(itemDetail.statusCode).toBe(200);
+    expect(itemDetail.json<{ evidence: readonly unknown[] }>().evidence).toEqual([
+      {
+        schemaVersion: '1.0.0',
+        sourceId: evidenceReferences[0].sourceId,
+        sourceVersionId: evidenceReferences[0].sourceVersionId,
+        evidenceSpanId: evidenceReferences[0].evidenceSpanId,
+        snippet: 'Evidence span span-1 in source source-1.',
+      },
+      {
+        schemaVersion: '1.0.0',
+        sourceId: evidenceReferences[1].sourceId,
+        sourceVersionId: evidenceReferences[1].sourceVersionId,
+        evidenceSpanId: evidenceReferences[1].evidenceSpanId,
+        snippet: 'Evidence span span-2 in source source-1.',
+      },
+    ]);
+
+    // Replaying the same command reads the immutable submitted Draft and must
+    // return exactly the same lineage, without creating another Evidence entry.
+    const replayed = await inject(
+      application,
+      cookie,
+      '/product-api/frontend/knowledge/drafts/submit-review',
+      submitPayload,
+    );
+    expect(replayed.statusCode).toBe(200);
+    expect(
+      replayed.json<{ reviewSubmission: { evidenceLineage: readonly unknown[] } }>()
+        .reviewSubmission.evidenceLineage,
+    ).toEqual(submission.evidenceLineage);
+    await application.server.close();
+  });
+
   it('abandons a Draft as persistent state', async () => {
     const resolver = new InMemoryFrontendKnowledgeDraftTargetResolver();
     resolver.registerSeed('seed-1', {

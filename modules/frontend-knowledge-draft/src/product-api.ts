@@ -34,6 +34,7 @@ import {
   type FrontendCanonicalAuthorityV1,
   type FrontendKnowledgeDraftBaseV1,
   type FrontendKnowledgeDraftChangeSetV1,
+  type FrontendKnowledgeEvidenceLineageV1,
   type FrontendKnowledgeDraftCommandOutcomeV1,
   type FrontendKnowledgeDraftCommandType,
   type FrontendKnowledgeOperationV1,
@@ -223,6 +224,37 @@ function draftFailure(
 }
 
 const generatedIdentity = (prefix: string): string => `${prefix}-${randomUUID()}`;
+
+/**
+ * Build the Review Submission's authoritative Evidence lineage from the
+ * immutable Draft operations. Operation evidence references are the source of
+ * truth at this boundary; the browser never supplies a second lineage
+ * payload. Keep first declaration order for stable replay output while
+ * removing duplicate Evidence identities deterministically.
+ */
+const reviewSubmissionEvidenceLineage = (
+  operations: readonly FrontendKnowledgeOperationV1[],
+): readonly FrontendKnowledgeEvidenceLineageV1[] => {
+  const seen = new Set<string>();
+  const lineage: FrontendKnowledgeEvidenceLineageV1[] = [];
+  for (const operation of operations) {
+    for (const reference of operation.evidenceReferences) {
+      const identity = stableJson({
+        sourceId: reference.sourceId,
+        sourceVersionId: reference.sourceVersionId,
+        evidenceSpanId: reference.evidenceSpanId,
+      });
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      lineage.push({
+        sourceId: reference.sourceId,
+        sourceVersionId: reference.sourceVersionId,
+        evidenceSpanId: reference.evidenceSpanId,
+      });
+    }
+  }
+  return lineage;
+};
 
 /**
  * FE-P5-XP Correction B: deterministic canonical commit identity. The commit id
@@ -1091,7 +1123,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
             contentDigest: current.contentDigest,
             validationArtifact: current.validation,
             impactArtifact: current.impactPreview,
-            evidenceLineage: [],
+            evidenceLineage: reviewSubmissionEvidenceLineage(current.operations),
             projectPolicyContext: {
               activeProjectId: current.activeProjectId,
               resourceProjectId: current.resourceProjectId,

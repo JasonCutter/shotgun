@@ -530,6 +530,120 @@ type KnowledgeReviewRequest = {
     'WORDING_LAYOUT' | 'FACTUAL_CORRECTION' | 'NEW_KNOWLEDGE' | 'REFERENCE_CHANGE';
 };
 
+export type LegacyRoute = '/intake' | '/search' | '/ask/query';
+export type DeprecatedLegacyRoute = '/intake' | '/search';
+export type LegacyRouteDisposition = 'DEPRECATED' | 'ACTIVE_COMPATIBILITY';
+
+export type LegacyRouteTelemetryEntry = {
+  readonly route: LegacyRoute;
+  readonly disposition: LegacyRouteDisposition;
+  readonly invocationCount: number;
+  readonly successorPaths: readonly string[];
+  readonly sunset?: string;
+};
+
+export type LegacyRouteTelemetrySnapshot = {
+  readonly version: 1;
+  readonly routes: readonly LegacyRouteTelemetryEntry[];
+};
+
+type LegacyRouteMetadata = {
+  readonly disposition: LegacyRouteDisposition;
+  readonly successorPaths: readonly string[];
+};
+
+const LEGACY_ROUTE_ORDER: readonly LegacyRoute[] = ['/intake', '/search', '/ask/query'];
+
+const LEGACY_ROUTE_METADATA: Readonly<Record<LegacyRoute, LegacyRouteMetadata>> = {
+  '/intake': {
+    disposition: 'DEPRECATED',
+    successorPaths: [
+      '/product-api/frontend/sources/staging/bytes',
+      '/product-api/frontend/sources/staging/url',
+      '/product-api/frontend/sources/submissions',
+    ],
+  },
+  '/search': {
+    disposition: 'DEPRECATED',
+    successorPaths: ['/product-api/frontend/search/query'],
+  },
+  '/ask/query': {
+    disposition: 'ACTIVE_COMPATIBILITY',
+    successorPaths: [],
+  },
+};
+
+const HTTP_DATE_PATTERN =
+  /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+
+const normalizeHttpDate = (value: unknown): string | undefined => {
+  if (typeof value !== 'string' || !HTTP_DATE_PATTERN.test(value)) return undefined;
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return undefined;
+  const normalized = new Date(parsed).toUTCString();
+  return normalized === value ? normalized : undefined;
+};
+
+/**
+ * Application-owned, bounded and content-free observation of legacy route
+ * attempts. The registry is operational state only: it is neither a business
+ * authority nor evidence sufficient to remove a compatibility route.
+ */
+export class LegacyRouteUsageRegistry {
+  private static readonly MAX_INVOCATIONS = 1_000_000;
+  private readonly counts = new Map<LegacyRoute, number>(
+    LEGACY_ROUTE_ORDER.map((route) => [route, 0]),
+  );
+  private readonly sunsets: ReadonlyMap<DeprecatedLegacyRoute, string>;
+
+  constructor(sunsetDates?: Partial<Record<DeprecatedLegacyRoute, string>>) {
+    const normalized = new Map<DeprecatedLegacyRoute, string>();
+    for (const route of ['/intake', '/search'] as const) {
+      const sunset = normalizeHttpDate(sunsetDates?.[route]);
+      if (sunset !== undefined) normalized.set(route, sunset);
+    }
+    this.sunsets = normalized;
+  }
+
+  record(route: LegacyRoute): void {
+    if (!this.counts.has(route)) return;
+    const current = this.counts.get(route) ?? 0;
+    if (current < LegacyRouteUsageRegistry.MAX_INVOCATIONS) {
+      this.counts.set(route, current + 1);
+    }
+  }
+
+  snapshot(): LegacyRouteTelemetrySnapshot {
+    return {
+      version: 1,
+      routes: LEGACY_ROUTE_ORDER.map((route) => {
+        const metadata = LEGACY_ROUTE_METADATA[route];
+        const sunset =
+          route === '/intake' || route === '/search' ? this.sunsets.get(route) : undefined;
+        return {
+          route,
+          disposition: metadata.disposition,
+          invocationCount: this.counts.get(route) ?? 0,
+          successorPaths: [...metadata.successorPaths],
+          ...(sunset === undefined ? {} : { sunset }),
+        };
+      }),
+    };
+  }
+
+  metadata(route: LegacyRoute): LegacyRouteMetadata {
+    const metadata = LEGACY_ROUTE_METADATA[route];
+    return {
+      disposition: metadata.disposition,
+      successorPaths: [...metadata.successorPaths],
+    };
+  }
+
+  sunsetFor(route: DeprecatedLegacyRoute): string | undefined {
+    return this.sunsets.get(route);
+  }
+}
+
 type KnowledgeImpactRequest = {
   readonly rootCandidateId: string;
   readonly maxDepth?: number;
@@ -675,6 +789,11 @@ export type ApplicationOptions = {
   readonly spaDirectory?: string;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
   readonly canonicalProjectionRecoveryReporter?: CanonicalProjectionRecoveryReporterPort;
+  /**
+   * Release-owned HTTP dates for legacy-route deprecation. Invalid or absent
+   * values produce no Sunset header; the assembly never invents a date.
+   */
+  readonly legacyRouteSunsetDates?: Partial<Record<DeprecatedLegacyRoute, string>>;
   readonly semanticRetriever?: SemanticRetrieverPort;
   readonly semanticActiveGenerationReader?: SemanticActiveGenerationReaderPort;
   readonly semanticProjectionRefresh?: SemanticProjectionRefreshPort;
@@ -2511,6 +2630,7 @@ const createApplicationCore = async (
     cleanupStack.add('discovery reentry worker', () => discoveryReentryWorker.stop());
   }
 
+  const legacyRouteUsageRegistry = new LegacyRouteUsageRegistry(options.legacyRouteSunsetDates);
   const server = Fastify({ logger: false });
   setServerForStartupCleanup(server);
 
@@ -2612,8 +2732,33 @@ const createApplicationCore = async (
     }
     return true;
   };
-  server.addHook('onRequest', async (request) => {
+  server.addHook('onRequest', async (request, reply) => {
     const urlPath = request.url.split('?')[0] ?? request.url;
+    if (urlPath === '/intake' || urlPath === '/search' || urlPath === '/ask/query') {
+      const legacyRoute = urlPath as LegacyRoute;
+      // Observation is deliberately best-effort. It is bounded, content-free
+      // operational state and must never change authentication or route
+      // success/failure if the registry implementation is unavailable.
+      try {
+        legacyRouteUsageRegistry.record(legacyRoute);
+      } catch {
+        // Preserve the legacy handler's behavior when telemetry is unavailable.
+      }
+      const metadata = legacyRouteUsageRegistry.metadata(legacyRoute);
+      if (metadata.disposition === 'DEPRECATED') {
+        reply.header('deprecation', 'true');
+        reply.header(
+          'link',
+          metadata.successorPaths
+            .map((successor) => `<${successor}>; rel="successor-version"`)
+            .join(', '),
+        );
+        if (legacyRoute === '/intake' || legacyRoute === '/search') {
+          const sunset = legacyRouteUsageRegistry.sunsetFor(legacyRoute);
+          if (sunset !== undefined) reply.header('sunset', sunset);
+        }
+      }
+    }
     if (urlPath.startsWith('/auth/') && !legacyAuthEnabled) {
       throw new ShotgunError({
         code: 'NOT_FOUND',
@@ -3379,6 +3524,7 @@ const createApplicationCore = async (
     ...kernel.health(),
     readiness: recoveryRegistry.readiness(),
     recoveries: recoveryRegistry.list().map(toPublicRecoveryStatus),
+    legacyRouteTelemetry: legacyRouteUsageRegistry.snapshot(),
   }));
 
   server.post<{ Body: PingRequest }>('/demo/ping', async (request) => {
@@ -4350,6 +4496,9 @@ const createApplicationCore = async (
         list: () => recoveryRegistry.list(),
         get: (runnerId: string) => recoveryRegistry.get(runnerId),
         readiness: () => recoveryRegistry.readiness(),
+      },
+      legacyRouteTelemetry: {
+        snapshot: () => legacyRouteUsageRegistry.snapshot(),
       },
     },
   };

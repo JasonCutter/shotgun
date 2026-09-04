@@ -200,6 +200,30 @@ describe('Ask queued atomic multi-worker claim PostgreSQL verification', () => {
     );
   });
 
+  it('claims all 10 queued runs exactly once when two workers have capacity 32', async () => {
+    const fixture = await createFixture();
+    const runIds: string[] = [];
+    for (let index = 0; index < 10; index += 1) runIds.push(await enqueue(fixture, index));
+    const resolveInitialIdentity = async ({
+      scope,
+      answerRunId,
+    }: {
+      readonly scope: AskExecutionScope;
+      readonly answerRunId: string;
+    }): Promise<AIExecutionPin> => pinFor(scope, answerRunId);
+
+    const [first, second] = await Promise.all([
+      fixture.repository.claimQueuedForWorker('ask-claim-worker-10-a', 32, resolveInitialIdentity),
+      fixture.repository.claimQueuedForWorker('ask-claim-worker-10-b', 32, resolveInitialIdentity),
+    ]);
+    const firstIds = first.map(({ claimed }) => claimed.context.snapshot.answerRunId);
+    const secondIds = second.map(({ claimed }) => claimed.context.snapshot.answerRunId);
+
+    expect(firstIds.filter((id) => secondIds.includes(id))).toEqual([]);
+    expect(new Set([...firstIds, ...secondIds])).toEqual(new Set(runIds));
+    expect(firstIds.length + secondIds.length).toBe(10);
+  });
+
   it('continues to later FIFO candidates when the first pin validation fails', async () => {
     const fixture = await createFixture();
     const runIds: string[] = [];

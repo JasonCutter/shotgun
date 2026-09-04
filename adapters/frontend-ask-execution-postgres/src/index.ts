@@ -1719,6 +1719,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   > {
     const owner = workerId ?? `ask-worker-${process.pid}-${randomUUID()}`;
     const requestedLimit = Math.max(1, Math.floor(limit));
+    const candidateLimit = Math.max(requestedLimit * 2, requestedLimit + 1);
     const claimed: { scope: AskExecutionScope; claimed: AskClaimedExecution }[] = [];
     const excluded = new Set<string>();
 
@@ -1734,7 +1735,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
               candidateParams.push([...excluded]);
               return ` AND answer_run_id <> ALL($${candidateParams.length}::text[])`;
             })();
-      candidateParams.push(requestedLimit - claimed.length);
+      candidateParams.push(candidateLimit);
       const candidates = await this.pool.query<RunRow>(
         `SELECT answer_run_id, project_id, state, attempt_number, event_revision,
                 access_scope, sensitivity_clearance, access_revision,
@@ -1793,8 +1794,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       if (prepared.size === 0) continue;
 
       const remaining = requestedLimit - claimed.length;
-      const preparedIds = [...prepared.keys()];
       const batch = await this.poolTransaction(async (client) => {
+        // This is the authoritative queue boundary. The prepared map only
+        // supplies context/identity resolved without locks; it never narrows
+        // which FIFO QUEUED rows the transaction is allowed to select.
         const selected = await client.query<RunRow>(
           `SELECT answer_run_id, project_id, state, attempt_number, event_revision,
                   access_scope, sensitivity_clearance, access_revision,
@@ -1802,16 +1805,17 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
                   ai_configuration_revision, credential_id, credential_revision,
                   initial_provider_policy_fingerprint, ai_execution_pin_created_at
            FROM frontend_ask.answer_runs
-           WHERE state = 'QUEUED' AND answer_run_id = ANY($1::text[])
+           WHERE state = 'QUEUED'
            ORDER BY created_at, answer_run_id
-           LIMIT $2
+           LIMIT $1
            FOR UPDATE SKIP LOCKED`,
-          [preparedIds, remaining],
+          [remaining],
         );
         const batchClaimed: { scope: AskExecutionScope; claimed: AskClaimedExecution }[] = [];
         for (const [index, row] of selected.rows.entries()) {
           const candidate = prepared.get(row.answer_run_id);
           if (!candidate) continue;
+          excluded.add(row.answer_run_id);
           const savepoint = `ask_claim_${index}`;
           await client.query(`SAVEPOINT ${savepoint}`);
           try {

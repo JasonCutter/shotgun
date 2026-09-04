@@ -3319,76 +3319,80 @@ const createApplicationCore = async (
     };
   });
 
-  server.post<{ Body: unknown; Headers: SecurityHeaders }>('/intake', async (request) => {
-    const context = requestContext(request.headers);
-    const body = decodeIntakeBody(request.body);
-    const command = createCommand({
-      messageType: 'SubmitIntake',
-      schemaVersion: '1.0.0',
-      producerModule: 'shotgun-app',
-      producerVersion: '1.0.0',
-      idempotencyKey: `intake:${context.projectId}:${body.submissionId}`,
-      ...context,
-      payload: body,
-    });
-    const commandDelivery = await kernel.connector.sendCommand(command);
-    const resultQuery = createChildQuery(command, {
-      messageType: 'GetIntakeResult',
-      schemaVersion: '1.0.0',
-      producerModule: 'shotgun-app',
-      producerVersion: '1.0.0',
-      payload: { submissionId: body.submissionId },
-    });
-    const stored = await kernel.connector.query(resultQuery);
-    const storedPayload = stored.result.payload as { readonly sourceVersionId: string };
-    const document = await kernel.connector.query(
-      createChildQuery(command, {
-        messageType: 'GetDocumentRevision',
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/intake',
+    { bodyLimit: 14 * 1024 * 1024 },
+    async (request) => {
+      const context = requestContext(request.headers);
+      const body = decodeIntakeBody(request.body);
+      const command = createCommand({
+        messageType: 'SubmitIntake',
         schemaVersion: '1.0.0',
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
-        payload: { sourceVersionId: storedPayload.sourceVersionId },
-      }),
-    );
-    const evidence = await kernel.connector.query(
-      createChildQuery(command, {
-        messageType: 'ListEvidenceSpans',
+        idempotencyKey: `intake:${context.projectId}:${body.submissionId}`,
+        ...context,
+        payload: body,
+      });
+      const commandDelivery = await kernel.connector.sendCommand(command);
+      const resultQuery = createChildQuery(command, {
+        messageType: 'GetIntakeResult',
         schemaVersion: '1.0.0',
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
-        payload: { sourceVersionId: storedPayload.sourceVersionId },
-      }),
-    );
-    const candidates = await kernel.connector.query(
-      createChildQuery(command, {
-        messageType: 'ListClaimCandidates',
-        schemaVersion: '1.0.0',
-        producerModule: 'shotgun-app',
-        producerVersion: '1.0.0',
-        payload: { sourceVersionId: storedPayload.sourceVersionId },
-      }),
-    );
-    const reviews = await kernel.connector.query(
-      createChildQuery(command, {
-        messageType: 'ListDraftChangeSets',
-        schemaVersion: '1.0.0',
-        producerModule: 'shotgun-app',
-        producerVersion: '1.0.0',
-        payload: { sourceVersionId: storedPayload.sourceVersionId },
-      }),
-    );
-    return {
-      commandStatus: commandDelivery.status,
-      intake: commandDelivery.result,
-      stored: stored.result.payload,
-      document: document.result.payload,
-      evidence: evidence.result.payload,
-      candidates: candidates.result.payload,
-      reviews: reviews.result.payload,
-      trace: traceView(kernel, command.traceId),
-      audit: auditView(kernel, command.traceId),
-    };
-  });
+        payload: { submissionId: body.submissionId },
+      });
+      const stored = await kernel.connector.query(resultQuery);
+      const storedPayload = stored.result.payload as { readonly sourceVersionId: string };
+      const document = await kernel.connector.query(
+        createChildQuery(command, {
+          messageType: 'GetDocumentRevision',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          payload: { sourceVersionId: storedPayload.sourceVersionId },
+        }),
+      );
+      const evidence = await kernel.connector.query(
+        createChildQuery(command, {
+          messageType: 'ListEvidenceSpans',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          payload: { sourceVersionId: storedPayload.sourceVersionId },
+        }),
+      );
+      const candidates = await kernel.connector.query(
+        createChildQuery(command, {
+          messageType: 'ListClaimCandidates',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          payload: { sourceVersionId: storedPayload.sourceVersionId },
+        }),
+      );
+      const reviews = await kernel.connector.query(
+        createChildQuery(command, {
+          messageType: 'ListDraftChangeSets',
+          schemaVersion: '1.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          payload: { sourceVersionId: storedPayload.sourceVersionId },
+        }),
+      );
+      return {
+        commandStatus: commandDelivery.status,
+        intake: commandDelivery.result,
+        stored: stored.result.payload,
+        document: document.result.payload,
+        evidence: evidence.result.payload,
+        candidates: candidates.result.payload,
+        reviews: reviews.result.payload,
+        trace: traceView(kernel, command.traceId),
+        audit: auditView(kernel, command.traceId),
+      };
+    },
+  );
 
   server.post<{ Body: ComparisonRequest; Headers: SecurityHeaders }>(
     '/comparisons/resolve',

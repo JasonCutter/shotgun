@@ -269,6 +269,54 @@ describe('WP-09 HTTP boundary decoders', () => {
     await app.server.close();
   });
 
+  it('aligns the intake transport ceiling with the canonical schema ceiling', async () => {
+    let operations = 0;
+    const transport: MessageTransport = {
+      name: 'in-process',
+      execute: async (operation) => {
+        operations += 1;
+        return operation();
+      },
+    };
+    const app = await createApplication({
+      transport,
+      aiDurableMaterializationRecoveryEnabled: false,
+      canonicalProjectionRecoveryIntervalMs: false,
+    });
+
+    try {
+      const aboveDefault = {
+        submissionId: 'intake-over-default-limit',
+        input: { kind: 'direct_text' as const, text: 'x'.repeat(1_048_500) },
+      };
+      expect(Buffer.byteLength(JSON.stringify(aboveDefault), 'utf8')).toBeGreaterThan(1_048_576);
+      const validResponse = await app.server.inject({
+        method: 'POST',
+        url: '/intake',
+        payload: aboveDefault,
+      });
+      expect(validResponse.statusCode).not.toBe(413);
+      expect(validResponse.statusCode).not.toBe(500);
+      expect(operations).toBeGreaterThan(0);
+
+      const beforeOversizedSchema = operations;
+      const overSchema = {
+        submissionId: 'intake-over-schema-limit',
+        input: { kind: 'direct_text' as const, text: 'x'.repeat(1_048_577) },
+      };
+      const oversizedResponse = await app.server.inject({
+        method: 'POST',
+        url: '/intake',
+        payload: overSchema,
+      });
+      expect(oversizedResponse.statusCode).toBe(400);
+      expect(oversizedResponse.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+      expect(operations).toBe(beforeOversizedSchema);
+    } finally {
+      await app.server.close();
+    }
+  });
+
   it('keeps valid route requests on their original downstream paths', async () => {
     let operations = 0;
     const transport: MessageTransport = {

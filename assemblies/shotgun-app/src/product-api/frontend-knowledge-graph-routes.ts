@@ -57,9 +57,11 @@ export function registerFrontendKnowledgeGraphRoutes(
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/snapshot',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const decoded = decodeGraphSnapshotRequestV1(request.body);
-      return reply(() => domain.snapshot(scope, decoded));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const decoded = decodeGraphSnapshotRequestV1(request.body);
+        return domain.snapshot(scope, decoded);
+      });
     },
   );
 
@@ -74,114 +76,136 @@ export function registerFrontendKnowledgeGraphRoutes(
   }>(
     '/product-api/frontend/knowledge/graph/snapshot/discovery/:findingId/:findingRevision',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const findingId = request.params.findingId.trim();
-      const revisionText = request.params.findingRevision;
-      if (!findingId || !/^[1-9]\d*$/u.test(revisionText)) {
-        throw new FrontendContractError(
-          'INVALID_REQUEST',
-          'Discovery snapshot Finding identity is invalid',
-        );
-      }
-      const findingRevision = Number(revisionText);
-      if (!Number.isSafeInteger(findingRevision) || findingRevision < 1) {
-        throw new FrontendContractError(
-          'INVALID_REQUEST',
-          'Discovery snapshot Finding revision is invalid',
-        );
-      }
-      const decoded = decodeGraphSnapshotRequestV1(request.body);
-      return reply(() => domain.discoverySnapshot(scope, decoded, findingId, findingRevision));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const findingId = request.params.findingId.trim();
+        const revisionText = request.params.findingRevision;
+        if (!findingId || !/^[1-9]\d*$/u.test(revisionText)) {
+          throw new FrontendContractError(
+            'INVALID_REQUEST',
+            'Discovery snapshot Finding identity is invalid',
+          );
+        }
+        const findingRevision = Number(revisionText);
+        if (!Number.isSafeInteger(findingRevision) || findingRevision < 1) {
+          throw new FrontendContractError(
+            'INVALID_REQUEST',
+            'Discovery snapshot Finding revision is invalid',
+          );
+        }
+        const decoded = decodeGraphSnapshotRequestV1(request.body);
+        return domain.discoverySnapshot(scope, decoded, findingId, findingRevision);
+      });
     },
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/neighborhood',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const decoded = decodeGraphNeighborhoodRequestV1(request.body);
-      return reply(() => domain.neighborhood(scope, decoded));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const decoded = decodeGraphNeighborhoodRequestV1(request.body);
+        return domain.neighborhood(scope, decoded);
+      });
     },
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/path',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const decoded = decodeGraphPathRequestV1(request.body);
-      return reply(() => domain.path(scope, decoded));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const decoded = decodeGraphPathRequestV1(request.body);
+        return domain.path(scope, decoded);
+      });
     },
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/path/describe',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const decoded = decodeGraphPathDescribeRequestV1(request.body);
-      return reply(() => domain.pathDescription(scope, decoded));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const decoded = decodeGraphPathDescribeRequestV1(request.body);
+        return domain.pathDescription(scope, decoded);
+      });
     },
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/overlay/conflict',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const decoded = decodeGraphConflictOverlayRequestV1(request.body);
-      return reply(() => domain.conflictOverlay(scope, decoded));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const decoded = decodeGraphConflictOverlayRequestV1(request.body);
+        return domain.conflictOverlay(scope, decoded);
+      });
     },
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/overlay/gap',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const decoded = decodeGraphKnowledgeGapOverlayRequestV1(request.body);
-      return reply(() => domain.gapOverlay(scope, decoded));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const decoded = decodeGraphKnowledgeGapOverlayRequestV1(request.body);
+        return domain.gapOverlay(scope, decoded);
+      });
     },
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/overlay/impact',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const decoded = decodeGraphRecursiveImpactOverlayRequestV1(request.body);
-      return reply(() => domain.impactOverlay(scope, decoded));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const decoded = decodeGraphRecursiveImpactOverlayRequestV1(request.body);
+        return domain.impactOverlay(scope, decoded);
+      });
     },
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/overlay/discovery',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const decoded = decodeGraphDiscoveryOverlayRequestV1(request.body);
-      return reply(() => domain.discoveryOverlay(scope, decoded));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const decoded = decodeGraphDiscoveryOverlayRequestV1(request.body);
+        return domain.discoveryOverlay(scope, decoded);
+      });
     },
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/evidence',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const decoded = decodeGraphEvidenceDetailRequestV1(request.body);
-      return reply(() => domain.evidenceDetail(scope, decoded));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const decoded = decodeGraphEvidenceDetailRequestV1(request.body);
+        return domain.evidenceDetail(scope, decoded);
+      });
     },
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/snapshot/refresh',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const decoded = decodeGraphSnapshotRefreshRequestV1(request.body);
-      return reply(() => domain.refresh(scope, decoded));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const decoded = decodeGraphSnapshotRefreshRequestV1(request.body);
+        return domain.refresh(scope, decoded);
+      });
     },
   );
 
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/product-api/frontend/knowledge/graph/restore',
     async (request) => {
-      const scope = await resolveScope(request.headers);
-      const decoded = decodeGraphRestoreRequestV1(request.body);
-      return reply(() => domain.restore(scope, decoded));
+      return reply(async () => {
+        const scope = await resolveScope(request.headers);
+        const decoded = decodeGraphRestoreRequestV1(request.body);
+        return domain.restore(scope, decoded);
+      });
     },
   );
 }

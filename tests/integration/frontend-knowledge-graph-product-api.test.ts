@@ -157,6 +157,40 @@ describe('FE-P3-S3 Knowledge Graph Product API', () => {
     expect(body.health).toBe('COMPLETE');
   });
 
+  it('maps malformed snapshot input to INVALID_REQUEST instead of INTERNAL_UNCLASSIFIED', async () => {
+    const cookie = await projectSession();
+    const app = await buildApplication();
+    const token = await csrf(app, cookie);
+    const response = await app.server.inject({
+      method: 'POST',
+      url: '/product-api/frontend/knowledge/graph/snapshot',
+      headers: { cookie, 'x-csrf-token': token.csrfToken ?? '' },
+      payload: { schemaVersion: '1.0.0' },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ code?: string }>()).toMatchObject({ code: 'INVALID_REQUEST' });
+  });
+
+  it('maps invalid discovery snapshot parameters to INVALID_REQUEST instead of INTERNAL_UNCLASSIFIED', async () => {
+    const cookie = await projectSession();
+    const app = await buildApplication();
+    const token = await csrf(app, cookie);
+    const response = await app.server.inject({
+      method: 'POST',
+      url: '/product-api/frontend/knowledge/graph/snapshot/discovery/finding-1/0',
+      headers: { cookie, 'x-csrf-token': token.csrfToken ?? '' },
+      payload: {
+        schemaVersion: '1.0.0',
+        viewKind: 'KNOWLEDGE_SEMANTIC',
+        overlayKinds: [],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<{ code?: string }>()).toMatchObject({ code: 'INVALID_REQUEST' });
+  });
+
   it('expands a neighborhood and explores a path under the snapshot context', async () => {
     const cookie = await projectSession();
     const app = await buildApplication();

@@ -9,8 +9,9 @@ import {
 } from '../../adapters/stage2-in-memory/src/index.js';
 import { InMemoryEvidenceRepository } from '../../adapters/stage3-in-memory/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
+import { sha256Text } from '../../packages/contracts/src/index.js';
 
-const createFixture = async () => {
+const createFixture = async (includeEmptyQuoteContextEvidence = false) => {
   const auth = new InMemoryAuthRepository();
   await auth.bootstrapOwner({
     accountId: 'sources-owner',
@@ -46,6 +47,26 @@ const createFixture = async () => {
     sensitivity: 'internal',
     createdAt: '2026-07-30T12:00:00.000Z',
   });
+  if (includeEmptyQuoteContextEvidence) {
+    await evidence.index([
+      {
+        revisionId: 'revision-empty-quote-context',
+        projectId: 'project-1',
+        sourceId: stored.sourceId,
+        sourceVersionId: stored.sourceVersionId,
+        pointer: '',
+        nodeKind: 'document',
+        origin: 'source',
+        position: { type: 'TextPositionSelector', start: 0, end: 17, unit: 'unicode-code-point' },
+        quote: { type: 'TextQuoteSelector', exact: 'Original evidence', suffix: '' },
+        selectors: [],
+        exactHash: sha256Text('Original evidence'),
+        accessScope: ['owner'],
+        sensitivity: 'internal',
+        createdAt: '2026-07-30T12:00:00.000Z',
+      },
+    ]);
+  }
   const application = await createApplication({
     authRepository: auth,
     originalAssetRepository: repository,
@@ -172,6 +193,30 @@ describe('Frontend Sources Product API', () => {
     expect(response.json()).toMatchObject({
       code: 'NOT_FOUND',
       message: 'The requested Source resource was not found.',
+    });
+    await application.server.close();
+  });
+
+  it('returns Evidence with an empty TextQuoteSelector suffix as a valid 200 response', async () => {
+    const { application, cookie, stored } = await createFixture(true);
+    const response = await application.server.inject({
+      method: 'GET',
+      url: `/product-api/frontend/sources/${stored.sourceId}/versions/${stored.sourceVersionId}/evidence`,
+      headers: { cookie },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      evidence: {
+        items: [
+          {
+            exactText: 'Original evidence',
+            locators: [
+              { type: 'TextPositionSelector', start: 0, end: 17 },
+              { type: 'TextQuoteSelector', exact: 'Original evidence', suffix: '' },
+            ],
+          },
+        ],
+      },
     });
     await application.server.close();
   });

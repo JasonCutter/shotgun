@@ -562,6 +562,52 @@ describe('Frontend Phase 2 Section 1 Sources contracts', () => {
     ).toThrow(/greater than or equal to 1/);
   });
 
+  it('accepts empty or absent TextQuoteSelector context but rejects non-string context', () => {
+    const evidenceItem = (evidenceId: string, quote: Record<string, unknown>) => ({
+      evidenceId,
+      sourceId: 'source-1',
+      sourceVersionId: 'version-1',
+      revisionId: 'revision-1',
+      label: 'Boundary evidence',
+      origin: 'ORIGINAL',
+      exactText: 'Boundary evidence',
+      locators: [{ type: 'TextQuoteSelector', exact: 'Boundary evidence', ...quote }],
+      createdAt: now,
+    });
+
+    const decoded = decodeEvidenceListView({
+      schemaVersion: '1.0.0',
+      projectId: 'project-1',
+      sourceId: 'source-1',
+      sourceVersionId: 'version-1',
+      items: [
+        evidenceItem('evidence-empty-prefix', { prefix: '' }),
+        evidenceItem('evidence-empty-suffix', { suffix: '' }),
+        evidenceItem('evidence-absent-context', {}),
+      ],
+      ...revisions,
+    });
+
+    expect(decoded.items).toHaveLength(3);
+    expect(decoded.items[0]?.locators[0]).toMatchObject({ prefix: '' });
+    expect(decoded.items[1]?.locators[0]).toMatchObject({ suffix: '' });
+    expect(decoded.items[2]?.locators[0]).toMatchObject({
+      type: 'TextQuoteSelector',
+      exact: 'Boundary evidence',
+    });
+
+    expect(() =>
+      decodeEvidenceListView({
+        schemaVersion: '1.0.0',
+        projectId: 'project-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        items: [evidenceItem('evidence-invalid-context', { suffix: 0 })],
+        ...revisions,
+      }),
+    ).toThrow(/suffix must be a string when present/);
+  });
+
   it('accepts only internal Citation return routes and explicit pinned identities', () => {
     expect(
       decodeCitationReturnTarget({

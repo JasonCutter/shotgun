@@ -36,8 +36,8 @@ type Fixture = {
 
 const createFixture = async (): Promise<Fixture> => {
   const suffix = randomUUID();
-  const principalId = `ask-claim-principal-${suffix}`;
-  const projectId = `ask-claim-project-${suffix}`;
+  const principalId = randomUUID();
+  const projectId = randomUUID();
   await pool.query(
     `INSERT INTO auth.principals
        (principal_id, actor_type, status, account_id, created_at)

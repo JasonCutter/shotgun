@@ -420,6 +420,23 @@ export const createChangeSetReviewModule = (
                 correlationId: envelope.correlationId,
               });
             }
+            if (existingDecision.decision.decision === 'APPROVE' && existingDecision.manifest) {
+              await context.publish({
+                messageType: 'ChangeSetApproved',
+                schemaVersion: '1.0.0',
+                idempotencyKey: `change-set-approved:${projectId}:${existingDecision.manifest.manifestId}`,
+                payload: {
+                  manifestId: existingDecision.manifest.manifestId,
+                  changeSetId: existingDecision.manifest.changeSetId,
+                  candidateId: existingDecision.manifest.candidateId,
+                  operation: existingDecision.manifest.operation,
+                  contentDigest: existingDecision.manifest.contentDigest,
+                  expectedCanonicalVersion: existingDecision.manifest.expectedCanonicalVersion,
+                  approvalTokenDigest: existingDecision.manifest.approvalToken.tokenDigest,
+                  manifestDigest: existingDecision.manifest.manifestDigest,
+                },
+              });
+            }
             return {
               changeSet: existingDecision.changeSet,
               manifest: existingDecision.manifest,

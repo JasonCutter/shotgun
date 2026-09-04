@@ -2037,6 +2037,9 @@ const createApplicationCore = async (
           },
         },
         canonical: canonicalKnowledgeRepository,
+        evidence: {
+          findById: (projectId, evidenceId) => evidenceRepository.findById(projectId, evidenceId),
+        },
         ...(discoveryRelationAuthority === undefined ? {} : { discoveryRelationAuthority }),
       },
     );

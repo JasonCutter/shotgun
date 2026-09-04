@@ -5,11 +5,14 @@ import { InMemoryFrontendKnowledgeDraftTargetResolver } from '../../adapters/fro
 import { InMemoryFrontendCommandGateway } from '../../adapters/frontend-command-gateway-in-memory/src/index.js';
 import { InMemoryFrontendReviewStore } from '../../adapters/frontend-review-in-memory/src/index.js';
 import { InMemoryCanonicalKnowledgeRepository } from '../../adapters/stage6-in-memory/src/index.js';
+import { InMemorySearchProjectionRepository } from '../../adapters/stage7-in-memory/src/index.js';
 import type { CompleteFrontendCommandInput } from '../../modules/frontend-command-gateway/src/index.js';
 import {
   FrontendKnowledgeDraftProductCoordinator,
   type FrontendKnowledgeDraftCommitDependenciesV1,
+  type FrontendKnowledgeDraftEvidenceReaderPort,
 } from '../../modules/frontend-knowledge-draft/src/product-api.js';
+import { createProjectionSearchModule } from '../../modules/projection-search/src/index.js';
 import {
   frontendKnowledgeDraftDiscoveryRelationSemanticV1,
   frontendKnowledgeDraftOperationDigestV1,
@@ -17,16 +20,43 @@ import {
 } from '../../modules/frontend-knowledge-draft/src/index.js';
 import {
   canonicalSnapshotDigest,
+  createQuery,
+  createQueryResult,
   reviewApprovalManifestDigest,
+  sha256Text,
   type ApprovalPurposeV1,
+  type FrontendCanonicalCommitWrite,
+  type EvidenceSpan,
   type FrontendKnowledgeDraftBaseV1,
   type FrontendKnowledgeDraftChangeSetV1,
   type FrontendKnowledgeOperationV1,
+  type GetCompiledTruthReadSnapshotResult,
   type RelationDraftValueV2,
   type ReviewApprovalV1,
+  type SearchKnowledgeWorkspaceResult,
+  type TransformationRevision,
 } from '../../packages/contracts/src/index.js';
+import type { HandlerContext } from '../../packages/module-sdk/src/index.js';
 
 const PROJECT_ID = 'project-1';
+
+const evidenceSpan = (overrides: Partial<EvidenceSpan> = {}): EvidenceSpan => ({
+  evidenceId: 'span-1',
+  revisionId: 'revision-1',
+  projectId: PROJECT_ID,
+  sourceId: 'source-1',
+  sourceVersionId: 'source-version-1',
+  pointer: '/paragraphs/0',
+  nodeKind: 'paragraph',
+  origin: 'source',
+  position: { type: 'TextPositionSelector', start: 0, end: 4, unit: 'unicode-code-point' },
+  quote: { type: 'TextQuoteSelector', exact: 'claim' },
+  exactHash: sha256Text('claim'),
+  accessScope: ['owner'],
+  sensitivity: 'private',
+  createdAt: '2026-08-09T00:00:00.000Z',
+  ...overrides,
+});
 
 const base = (): FrontendKnowledgeDraftBaseV1 => ({
   resourceProjectId: PROJECT_ID,
@@ -277,6 +307,7 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
   let draftRepository: InMemoryFrontendKnowledgeDraftRepository;
   let canonicalRepository: InMemoryCanonicalKnowledgeRepository;
   let reviewStore: InMemoryFrontendReviewStore;
+  let evidenceReader: FrontendKnowledgeDraftEvidenceReaderPort;
   let coordinator: FrontendKnowledgeDraftProductCoordinator;
 
   const approvalPort = (): FrontendKnowledgeDraftCommitDependenciesV1['approvals'] => ({
@@ -300,6 +331,7 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
       readonly gateway?: InMemoryFrontendCommandGateway;
       readonly approvals?: FrontendKnowledgeDraftCommitDependenciesV1['approvals'];
       readonly canonical?: FrontendKnowledgeDraftCommitDependenciesV1['canonical'];
+      readonly evidence?: FrontendKnowledgeDraftCommitDependenciesV1['evidence'];
     } = {},
   ): FrontendKnowledgeDraftProductCoordinator =>
     new FrontendKnowledgeDraftProductCoordinator(
@@ -309,6 +341,7 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
       {
         approvals: input.approvals ?? approvalPort(),
         canonical: input.canonical ?? canonicalRepository,
+        evidence: input.evidence ?? evidenceReader,
       },
     );
 
@@ -316,6 +349,10 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
     draftRepository = new InMemoryFrontendKnowledgeDraftRepository();
     canonicalRepository = new InMemoryCanonicalKnowledgeRepository();
     reviewStore = new InMemoryFrontendReviewStore();
+    evidenceReader = {
+      findById: async (projectId, evidenceId) =>
+        projectId === PROJECT_ID && evidenceId === 'span-1' ? evidenceSpan() : undefined,
+    };
     coordinator = new FrontendKnowledgeDraftProductCoordinator(
       draftRepository,
       new InMemoryFrontendCommandGateway(),
@@ -323,6 +360,7 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
       {
         approvals: approvalPort(),
         canonical: canonicalRepository,
+        evidence: evidenceReader,
       },
     );
   });
@@ -363,6 +401,283 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
     );
     expect(approval?.status).toBe('CONSUMED');
     expect(approval?.invalidationReason).toContain(result.commitIds[0]);
+  });
+
+  it('inherits Evidence visibility when the caller has broader capabilities', async () => {
+    const draft = submittedDraft([claimOperation()]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+
+    const broadScope = { ...scope, accessScope: ['owner', 'project:action:rollback'] };
+    const writes: FrontendCanonicalCommitWrite[] = [];
+    const broadCoordinator = makeCoordinator({
+      canonical: {
+        getSnapshot: (projectId) => canonicalRepository.getSnapshot(projectId),
+        commitFrontendDraft: async (write) => {
+          writes.push(write);
+          return canonicalRepository.commitFrontendDraft(write);
+        },
+        findCommit: (projectId, commitId) => canonicalRepository.findCommit(projectId, commitId),
+      },
+    });
+    const result = await broadCoordinator.commitFrontendDraft(broadScope, request());
+
+    expect(result.outcome).toBe('COMPLETED');
+    const claimWrite = writes[0];
+    expect(claimWrite?.operation).toBe('ADD_CLAIM');
+    if (claimWrite?.operation !== 'ADD_CLAIM') throw new Error('Expected an ADD_CLAIM write.');
+    expect(claimWrite.accessScope).toEqual(['owner']);
+    expect(claimWrite.sensitivity).toBe('private');
+    expect(claimWrite.accessScope).not.toContain('project:action:rollback');
+  });
+
+  it('keeps the corrected claim searchable through SearchKnowledgeWorkspace', async () => {
+    const draft = submittedDraft([claimOperation()]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+
+    const broadScope = { ...scope, accessScope: ['owner', 'project:action:rollback'] };
+    const writes: FrontendCanonicalCommitWrite[] = [];
+    const broadCoordinator = makeCoordinator({
+      canonical: {
+        getSnapshot: (projectId) => canonicalRepository.getSnapshot(projectId),
+        commitFrontendDraft: async (write) => {
+          writes.push(write);
+          return canonicalRepository.commitFrontendDraft(write);
+        },
+        findCommit: (projectId, commitId) => canonicalRepository.findCommit(projectId, commitId),
+      },
+    });
+    const commitResult = await broadCoordinator.commitFrontendDraft(broadScope, request());
+    const write = writes[0];
+    if (!write || write.operation !== 'ADD_CLAIM') {
+      throw new Error('Expected the frontend coordinator to emit an ADD_CLAIM write.');
+    }
+    const claim = await canonicalRepository.findClaim(PROJECT_ID, write.claimId);
+    const commit = await canonicalRepository.findCommit(PROJECT_ID, commitResult.commitIds[0]!);
+    const snapshot = await canonicalRepository.getSnapshot(PROJECT_ID);
+    if (!claim || !commit) throw new Error('Expected Canonical claim and commit lineage.');
+
+    const evidence = evidenceSpan();
+    const searchRepository = new InMemorySearchProjectionRepository();
+    await searchRepository.rebuild(PROJECT_ID, {
+      documents: [
+        {
+          projectId: claim.projectId,
+          claimId: claim.claimId,
+          commitId: commit.commitId,
+          revisionId: commit.revisionId,
+          canonicalVersion: snapshot.version,
+          claimText: claim.claimText,
+          sourceVersionId: claim.sourceVersionId,
+          evidenceIds: claim.evidenceIds,
+          accessScope: claim.accessScope,
+          sensitivity: claim.sensitivity,
+          projectedAt: write.committedAt,
+        },
+      ],
+      watermark: {
+        projectId: PROJECT_ID,
+        lastCommitId: commit.commitId,
+        canonicalVersion: snapshot.version,
+        snapshotDigest: snapshot.digest,
+        status: 'READY',
+        updatedAt: write.committedAt,
+      },
+    });
+
+    const searchModule = createProjectionSearchModule(searchRepository);
+    const handler = searchModule.handlers.queries.find(
+      (entry) => entry.messageType === 'SearchKnowledgeWorkspace',
+    );
+    if (!handler) throw new Error('SearchKnowledgeWorkspace handler is not registered.');
+    const query = createQuery({
+      messageType: 'SearchKnowledgeWorkspace',
+      schemaVersion: '1.0.0',
+      producerModule: 'frontend-knowledge-draft-correction-test',
+      producerVersion: '1.0.0',
+      projectId: PROJECT_ID,
+      actor: { type: 'user', id: broadScope.principalId },
+      principalId: broadScope.principalId,
+      security: {
+        accessScope: broadScope.accessScope,
+        sensitivity: broadScope.sensitivityClearance,
+        dataClassification: 'SYNTHETIC',
+      },
+      payload: { schemaVersion: '1.0.0', query: 'reviewed claim' },
+    });
+    const transformation = {
+      revisionId: evidence.revisionId,
+      projectId: evidence.projectId,
+      sourceId: evidence.sourceId,
+      sourceVersionId: evidence.sourceVersionId,
+      sourceContentHash: evidence.exactHash,
+      transformer: { id: 'correction-test', version: '1.0.0' },
+      documentIR: {
+        schemaVersion: '1.0.0' as const,
+        mediaType: 'text/plain' as const,
+        blocks: [],
+      },
+      sourceMap: { schemaVersion: '1.0.0' as const, entries: [] },
+      documentHash: sha256Text(claim.claimText),
+      sourceMapHash: sha256Text('source-map'),
+      accessScope: evidence.accessScope,
+      sensitivity: evidence.sensitivity,
+      createdAt: evidence.createdAt,
+    } satisfies TransformationRevision;
+    const compiled = {
+      schemaVersion: '1.0.0' as const,
+      projectId: PROJECT_ID,
+      status: {
+        status: 'NOT_BUILT' as const,
+        projectorVersion: 'correction-test',
+        canonicalVersion: snapshot.version,
+        projectedCanonicalVersion: 0,
+        lag: snapshot.version,
+      },
+    } satisfies GetCompiledTruthReadSnapshotResult;
+    const context: HandlerContext = {
+      moduleId: 'frontend-knowledge-draft-correction-test',
+      attemptNumber: 1,
+      async publish() {},
+      async query<TPayload, TResult>(input: {
+        readonly messageType: string;
+        readonly schemaVersion: string;
+        readonly payload: TPayload;
+      }) {
+        const { messageType } = input;
+        let payload: unknown;
+        switch (messageType) {
+          case 'GetCanonicalSnapshot':
+            payload = snapshot;
+            break;
+          case 'GetCanonicalCommit':
+            payload = commit;
+            break;
+          case 'GetDocumentRevision':
+            payload = transformation;
+            break;
+          case 'ListKnowledgeGroups':
+          case 'ListDerivedInferences':
+            payload = { items: [] };
+            break;
+          case 'GetCompiledTruthReadSnapshot':
+            payload = compiled;
+            break;
+          default:
+            throw new Error(`Unexpected SearchKnowledgeWorkspace dependency '${messageType}'.`);
+        }
+        return createQueryResult(query, {
+          messageType: `${messageType}Result`,
+          schemaVersion: '1.0.0',
+          producerModule: 'frontend-knowledge-draft-correction-test',
+          producerVersion: '1.0.0',
+          payload: payload as TResult,
+        });
+      },
+    };
+
+    const result = (await handler.handle(query, context)) as SearchKnowledgeWorkspaceResult;
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0]?.authority).toBe('CANONICAL');
+    expect(result.matches[0]?.source.evidenceIds).toEqual(claim.evidenceIds);
+    expect(result.readiness.canonicalSearch.status).toBe('READY');
+  });
+
+  it('fails closed when the caller lacks a referenced Evidence scope', async () => {
+    const draft = submittedDraft([claimOperation()]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+    const inaccessibleEvidenceReader: FrontendKnowledgeDraftEvidenceReaderPort = {
+      findById: async () => evidenceSpan({ accessScope: ['restricted-scope'] }),
+    };
+
+    const failingCoordinator = makeCoordinator({ evidence: inaccessibleEvidenceReader });
+    await expect(failingCoordinator.commitFrontendDraft(scope, request())).rejects.toMatchObject({
+      apiCode: 'FORBIDDEN',
+    });
+    expect((await canonicalRepository.getSnapshot(PROJECT_ID)).claims).toHaveLength(0);
+  });
+
+  it('fails closed when referenced Evidence sensitivities are mixed', async () => {
+    const operation = claimOperation({
+      evidenceReferences: [
+        { sourceId: 'source-1', sourceVersionId: 'source-version-1', evidenceSpanId: 'span-1' },
+        { sourceId: 'source-1', sourceVersionId: 'source-version-1', evidenceSpanId: 'span-2' },
+      ],
+    });
+    const draft = submittedDraft([operation]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+    const mixedEvidenceReader: FrontendKnowledgeDraftEvidenceReaderPort = {
+      findById: async (_projectId, evidenceId) =>
+        evidenceId === 'span-1'
+          ? evidenceSpan()
+          : evidenceSpan({ evidenceId: 'span-2', accessScope: ['owner'], sensitivity: 'internal' }),
+    };
+
+    const failingCoordinator = makeCoordinator({ evidence: mixedEvidenceReader });
+    const broadScope = { ...scope, accessScope: ['owner', 'project:knowledge:read'] };
+    await expect(
+      failingCoordinator.commitFrontendDraft(broadScope, request()),
+    ).rejects.toMatchObject({
+      apiCode: 'VALIDATION_FAILED',
+    });
+    expect((await canonicalRepository.getSnapshot(PROJECT_ID)).claims).toHaveLength(0);
+  });
+
+  it('fails closed when referenced Evidence access scopes are mixed', async () => {
+    const operation = claimOperation({
+      evidenceReferences: [
+        { sourceId: 'source-1', sourceVersionId: 'source-version-1', evidenceSpanId: 'span-1' },
+        { sourceId: 'source-1', sourceVersionId: 'source-version-1', evidenceSpanId: 'span-2' },
+      ],
+    });
+    const draft = submittedDraft([operation]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+    const mixedEvidenceReader: FrontendKnowledgeDraftEvidenceReaderPort = {
+      findById: async (_projectId, evidenceId) =>
+        evidenceId === 'span-1'
+          ? evidenceSpan()
+          : evidenceSpan({
+              evidenceId: 'span-2',
+              accessScope: ['owner', 'project:knowledge:read'],
+            }),
+    };
+
+    const failingCoordinator = makeCoordinator({ evidence: mixedEvidenceReader });
+    const broadScope = { ...scope, accessScope: ['owner', 'project:knowledge:read'] };
+    await expect(
+      failingCoordinator.commitFrontendDraft(broadScope, request()),
+    ).rejects.toMatchObject({
+      apiCode: 'VALIDATION_FAILED',
+    });
+    expect((await canonicalRepository.getSnapshot(PROJECT_ID)).claims).toHaveLength(0);
+  });
+
+  it('fails closed when an Evidence sourceVersion differs from the operation reference', async () => {
+    const draft = submittedDraft([
+      claimOperation({
+        evidenceReferences: [
+          { sourceId: 'source-1', sourceVersionId: 'source-version-2', evidenceSpanId: 'span-1' },
+        ],
+      }),
+    ]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+    await expect(coordinator.commitFrontendDraft(scope, request())).rejects.toMatchObject({
+      apiCode: 'VALIDATION_FAILED',
+    });
+    expect((await canonicalRepository.getSnapshot(PROJECT_ID)).claims).toHaveLength(0);
+  });
+
+  it('fails closed when Evidence crosses the active Project or source identity', async () => {
+    const draft = submittedDraft([claimOperation()]);
+    await seed({ draft, approval: approvalFor({ draft, approvedItemIds: ['item-1'] }) });
+    const mismatchedEvidenceReader: FrontendKnowledgeDraftEvidenceReaderPort = {
+      findById: async () => evidenceSpan({ projectId: 'project-2' }),
+    };
+
+    const failingCoordinator = makeCoordinator({ evidence: mismatchedEvidenceReader });
+    await expect(failingCoordinator.commitFrontendDraft(scope, request())).rejects.toMatchObject({
+      apiCode: 'VALIDATION_FAILED',
+    });
+    expect((await canonicalRepository.getSnapshot(PROJECT_ID)).claims).toHaveLength(0);
   });
 
   it('is idempotent on replay: same request returns the same commit identity', async () => {

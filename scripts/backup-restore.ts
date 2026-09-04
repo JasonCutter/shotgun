@@ -68,6 +68,8 @@ const DISCOVERY_SEMANTIC_FAMILY_PROJECTION_MIGRATION =
 const DISCOVERY_EPISTEMIC_REENTRY_MIGRATION = '057_akp_7_wp4_epistemic_feedback_reentry.sql';
 const TYPED_PROPOSITION_CONFLICT_MIGRATION = '058_akp8_typed_proposition_conflict_authority.sql';
 const CANONICAL_RELATION_MIGRATION = '059_akp8_canonical_relation_authority.sql';
+const WP10_ACTION_REVIEW_DIAGNOSTICS_MIGRATION =
+  '065_runtime_data_integrity_wp10_action_review_discovery_diagnostics.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
@@ -145,6 +147,9 @@ export const authoritativeIntegrityTablesForMigrations = (
       : []),
     ...(applied.has(CANONICAL_RELATION_MIGRATION)
       ? ['canonical.relations', 'canonical.relation_precursors']
+      : []),
+    ...(applied.has(WP10_ACTION_REVIEW_DIAGNOSTICS_MIGRATION)
+      ? ['action.action_review_work_items', 'discovery.semantic_essence_diagnostics']
       : []),
   ];
 };

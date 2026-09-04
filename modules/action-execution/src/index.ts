@@ -299,8 +299,8 @@ export const createActionExecutionModule = (
       handoffs: [
         {
           event: { name: 'ActionFeedbackRecorded', range: '>=1.0.0 <2.0.0' },
-          target: { kind: 'runtime', authority: 'stage11.action-execution.feedback' },
-          tags: ['DURABLE_OUTBOX'],
+          target: { kind: 'consumer', moduleId: 'stage11.action-feedback-review' },
+          tags: ['DURABLE_OUTBOX', 'REQUIRED_ACK'],
           authority: 'stage11.action-execution.feedback-outbox',
         },
       ],

@@ -199,6 +199,8 @@ const requiredTables = [
   'action.candidates',
   'action.preview_snapshots',
   'action.approval_records',
+  'action.action_review_work_items',
+  'discovery.semantic_essence_diagnostics',
   'auth.principals',
   'auth.credentials',
   'auth.project_memberships',

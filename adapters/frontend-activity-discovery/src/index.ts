@@ -273,6 +273,39 @@ const historyEventSort = (
   return `${a.resourceKind}:${a.resourceId}`.localeCompare(`${b.resourceKind}:${b.resourceId}`);
 };
 
+const semanticEssenceDiagnosticEvent = (input: {
+  readonly jobId: string;
+  readonly runId: string;
+  readonly runRevision: number;
+  readonly excludedCount: number;
+  readonly candidateCount?: number;
+  readonly occurredAt: string;
+}): ActivityEventViewV1 => {
+  const ratio =
+    input.candidateCount === undefined
+      ? `${input.excludedCount}`
+      : `${input.excludedCount}/${input.candidateCount}`;
+  return {
+    schemaVersion: '1.0.0',
+    eventId: `discovery:${input.jobId}:run:${input.runId}:semantic-essence-diagnostics`,
+    relatedRef: {
+      schemaVersion: '1.0.0',
+      resourceKind: 'DiscoveryRun',
+      resourceId: input.runId,
+      resourceRevision: input.runRevision,
+    },
+    category: 'PROGRESS',
+    sequence: 0,
+    occurredAt: input.occurredAt,
+    summary: `Semantic-essence exclusions: ${ratio} candidates; run completion PARTIAL.`,
+    domainResourceRef: {
+      schemaVersion: '1.0.0',
+      resourceKind: 'DiscoveryJob',
+      resourceId: input.jobId,
+    },
+  };
+};
+
 export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
   readonly adapterId = ADAPTER_ID;
   readonly domainKind = 'DISCOVERY' as const;
@@ -643,11 +676,35 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
       attemptIds: attempts.map((attempt) => attempt.attemptId),
       stageIds: sortedStages.map((stage) => stage.stageId),
     });
+    const diagnosticAggregate =
+      run === undefined
+        ? undefined
+        : await this.read.getSemanticEssenceDiagnosticAggregate?.({
+            projectId: scope.activeProjectId,
+            jobId: job.jobId,
+            runId: run.runId,
+          });
     const currentState = run?.lifecycleState ?? job.lifecycleState;
     const findings = await this.findingsFor(scope, job, run);
     const hasReviewEligibleFinding = await this.hasReviewEligibleFindingFor(scope, job, run);
     const attention = attentionFor(currentState, hasReviewEligibleFinding);
     const runId = run?.runId ?? root.runId;
+    const events = this.eventViews(history, job);
+    if (diagnosticAggregate !== undefined) {
+      events.push({
+        ...semanticEssenceDiagnosticEvent({
+          jobId: job.jobId,
+          runId,
+          runRevision: run?.runRevision ?? 1,
+          excludedCount: diagnosticAggregate.excludedCount,
+          ...(diagnosticAggregate.candidateCount === undefined
+            ? {}
+            : { candidateCount: diagnosticAggregate.candidateCount }),
+          occurredAt: diagnosticAggregate.updatedAt,
+        }),
+        sequence: events.length + 1,
+      });
+    }
     const attemptRefs = attempts.map((attempt) => ({
       schemaVersion: '1.0.0' as const,
       resourceKind: 'DiscoveryAttempt',
@@ -670,6 +727,7 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
       run?.updatedAt,
       ...attempts.flatMap((attempt) => [attempt.updatedAt, attempt.failure?.occurredAt]),
       ...sortedStages.map((stage) => stage.updatedAt),
+      ...(diagnosticAggregate === undefined ? [] : [diagnosticAggregate.updatedAt]),
       ...[...history.job, ...history.run, ...history.attempt, ...history.stage].map(
         (event) => event.occurredAt,
       ),
@@ -719,7 +777,7 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
           index + 1,
         ),
       ),
-      events: this.eventViews(history, job),
+      events,
       transportAttempts: [],
       metadata: metadataFor({ sourceUpdatedAt }),
       dimensions: {

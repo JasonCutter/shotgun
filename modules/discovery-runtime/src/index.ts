@@ -351,6 +351,24 @@ export type DiscoveryRuntimeRepositoryPort = {
   transitionStage(
     input: DiscoveryRuntimeStageTransitionInputV1,
   ): Promise<DiscoveryStageV1 | 'NOT_FOUND' | 'CONFLICT'>;
+
+  /** Durable, redacted evidence for a semantic-essence candidate exclusion. */
+  recordSemanticEssenceDiagnostic(
+    input: DiscoverySemanticEssenceDiagnosticInputV1,
+  ): Promise<'CREATED' | 'ALREADY_EXISTS'>;
+};
+
+export type DiscoverySemanticEssenceDiagnosticInputV1 = {
+  readonly projectId: string;
+  readonly jobId: string;
+  readonly runId: string;
+  readonly attemptId: string;
+  /** Irreversible identity digest; Finding bodies and source text never cross this port. */
+  readonly findingIdentity: `sha256:${string}`;
+  readonly attemptNumber: number;
+  readonly occurredAt: string;
+  readonly excludedCount: number;
+  readonly candidateCount?: number;
 };
 
 export * from './worker.js';

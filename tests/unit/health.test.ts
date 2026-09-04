@@ -38,6 +38,7 @@ describe('Shotgun application', () => {
         'stage10.compiled-truth',
         'akp-4.discovery-trigger-coordinator',
         'stage11.action-execution',
+        'stage11.action-feedback-review',
         'stage7.hybrid-retrieval',
       ],
       capabilities: [
@@ -63,6 +64,7 @@ describe('Shotgun application', () => {
         'rich-knowledge-review-provider',
         'compiled-truth-projector',
         'risk-controlled-external-action',
+        'governed-action-feedback-review',
         'hybrid-retrieval-provider',
       ],
       readiness: 'READY',

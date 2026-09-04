@@ -19,7 +19,7 @@
     "commands": [],
     "events": [{ "name": "PongEvent", "range": ">=1.0.0 <2.0.0" }]
   },
-  "produces": { "events": [] },
+  "produces": { "events": [], "handoffs": [] },
   "provides": {
     "queries": [{ "name": "GetPongResult", "range": ">=1.0.0 <2.0.0" }],
     "capabilities": [{ "name": "pong-query", "priority": 100 }]

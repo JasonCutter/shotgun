@@ -1423,6 +1423,7 @@ export const createHybridRetrievalModule = (
     },
     produces: {
       events: [],
+      handoffs: [],
     },
     provides: {
       queries: [{ name: 'SearchHybridKnowledge', range: '>=1.0.0 <2.0.0' }],

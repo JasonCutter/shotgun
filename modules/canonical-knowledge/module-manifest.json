@@ -36,7 +36,26 @@
     "events": [{ "name": "ChangeSetApproved", "range": ">=1.0.0 <2.0.0" }]
   },
   "produces": {
-    "events": [{ "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" }]
+    "events": [{ "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" }],
+    "handoffs": [
+      {
+        "event": { "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" },
+        "target": { "kind": "consumer", "moduleId": "stage7.projection-search" },
+        "tags": ["DURABLE_OUTBOX", "RECONSTRUCTABLE"],
+        "authority": "stage6.canonical-knowledge.outbox",
+        "replayEvidence": {
+          "replaySource": "canonical.outbox",
+          "deterministicIdentity": "projectId:commitId:outboxId",
+          "idempotencyEvidence": "canonical-projection:projectId:commitId"
+        }
+      },
+      {
+        "event": { "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" },
+        "target": { "kind": "consumer", "moduleId": "akp-4.discovery-trigger-coordinator" },
+        "tags": ["DURABLE_OUTBOX", "REQUIRED_ACK"],
+        "authority": "stage6.canonical-knowledge.outbox"
+      }
+    ]
   },
   "provides": {
     "queries": [

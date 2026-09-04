@@ -1,4 +1,4 @@
-import { satisfies } from 'semver';
+import { intersects, satisfies } from 'semver';
 
 import { SchemaRegistry, ShotgunError } from '../../contracts/src/index.js';
 import { validateManifest } from './manifest.js';
@@ -8,6 +8,7 @@ import type {
   RegisteredCommandHandler,
   RegisteredEventHandler,
   RegisteredQueryHandler,
+  HandoffPolicy,
   ShotgunModule,
 } from './types.js';
 
@@ -71,6 +72,7 @@ export class ModuleRegistry {
       this.registerHandlers(module);
     }
     this.validateRequiredCapabilities();
+    this.validateHandoffs();
 
     for (const module of this.modules.values()) {
       await module.initialize?.();
@@ -206,6 +208,177 @@ export class ModuleRegistry {
           });
         }
       }
+    }
+  }
+
+  /**
+   * Validate edge-level producer handoff declarations against the routes that
+   * are actually registered. This intentionally does not assert that a
+   * metadata authority string has persisted anything; the corresponding
+   * Contract/Integration tests own that runtime proof.
+   */
+  private validateHandoffs(): void {
+    for (const producer of this.modules.values()) {
+      const { events, handoffs } = producer.manifest.produces;
+      for (const produced of events) {
+        const edges = handoffs.filter((handoff) => handoff.event.name === produced.name);
+        if (edges.length === 0) {
+          throw new ShotgunError({
+            code: 'POLICY_DENIED',
+            safeMessage: `Produced event '${produced.name}' in module '${producer.manifest.id}' has no handoff or intentional disposition.`,
+            module: 'module-registry',
+            operation: 'validate-handoff-completeness',
+          });
+        }
+      }
+
+      for (const handoff of handoffs) {
+        this.validateHandoffEvent(producer, handoff);
+        if (handoff.target.kind === 'consumer') {
+          this.validateConsumerHandoff(handoff);
+        }
+      }
+    }
+
+    // A required handler is itself a declaration of a critical edge. Require
+    // the producer manifest to say the same thing, preventing one-sided flags.
+    for (const routes of this.eventRoutes.values()) {
+      for (const route of routes) {
+        if (route.handler.requiredForPublisherAcknowledgement !== true) continue;
+        const producerRegistered = [...this.modules.values()].some((producer) =>
+          producer.manifest.produces.events.some(
+            (produced) => produced.name === route.handler.messageType,
+          ),
+        );
+        // A partial assembly may include a consumer before the producer is
+        // composed. Once the producer is registered, however, its handoff
+        // declaration must bind this required handler (fail closed below).
+        if (!producerRegistered) continue;
+        const matched = [...this.modules.values()].some((producer) =>
+          producer.manifest.produces.handoffs.some(
+            (handoff) =>
+              handoff.event.name === route.handler.messageType &&
+              handoff.tags.includes('REQUIRED_ACK') &&
+              handoff.target.kind === 'consumer' &&
+              handoff.target.moduleId === route.module.manifest.id &&
+              this.rangesIntersect(handoff.event.range, route.handler.version),
+          ),
+        );
+        if (!matched) {
+          throw new ShotgunError({
+            code: 'POLICY_DENIED',
+            safeMessage: `Required handler '${route.handler.messageType}' in module '${route.module.manifest.id}' has no matching REQUIRED_ACK handoff.`,
+            module: 'module-registry',
+            operation: 'validate-required-handoff-bidirectionality',
+          });
+        }
+      }
+    }
+  }
+
+  private validateHandoffEvent(producer: ShotgunModule, handoff: HandoffPolicy): void {
+    const declared = requirementFor(producer.manifest.produces.events, handoff.event.name);
+    if (!declared) {
+      throw new ShotgunError({
+        code: 'UNSUPPORTED_SCHEMA',
+        safeMessage: `Handoff event '${handoff.event.name}' is not declared by producer module '${producer.manifest.id}'.`,
+        module: 'module-registry',
+        operation: 'validate-handoff-event',
+      });
+    }
+    if (!this.rangesIntersect(declared.range, handoff.event.range)) {
+      throw new ShotgunError({
+        code: 'UNSUPPORTED_SCHEMA',
+        safeMessage: `Handoff range '${handoff.event.range}' is incompatible with producer declaration '${declared.range}' for '${handoff.event.name}'.`,
+        module: 'module-registry',
+        operation: 'validate-handoff-event-version',
+      });
+    }
+    if (handoff.tags.includes('REQUIRED_ACK') && handoff.target.kind !== 'consumer') {
+      throw new ShotgunError({
+        code: 'POLICY_DENIED',
+        safeMessage: `REQUIRED_ACK handoff '${handoff.event.name}' must target a registered consumer module.`,
+        module: 'module-registry',
+        operation: 'validate-required-handoff-target',
+      });
+    }
+  }
+
+  private validateConsumerHandoff(handoff: HandoffPolicy): void {
+    if (handoff.target.kind !== 'consumer') return;
+    const consumer = this.modules.get(handoff.target.moduleId);
+    if (!consumer) {
+      // Registry validation is assembly-local. A partial assembly may stop at
+      // this edge; when the target is present, all contract and handler facts
+      // below are still fail-closed. The complete production assembly
+      // registers every REQUIRED_ACK target and therefore binds its flag.
+      return;
+    }
+    const consumed = requirementFor(consumer.manifest.consumes.events, handoff.event.name);
+    if (!consumed || !this.rangesIntersect(consumed.range, handoff.event.range)) {
+      throw new ShotgunError({
+        code: 'UNSUPPORTED_SCHEMA',
+        safeMessage: `Consumer module '${consumer.manifest.id}' does not consume compatible '${handoff.event.name}'.`,
+        module: 'module-registry',
+        operation: 'validate-handoff-consumer-contract',
+      });
+    }
+    const routes = this.eventRoutes.get(routeKey(handoff.event.name)) ?? [];
+    const route = routes.find((candidate) => candidate.module.manifest.id === consumer.manifest.id);
+    if (!route) {
+      throw new ShotgunError({
+        code: 'NOT_FOUND',
+        safeMessage: `Handoff '${handoff.event.name}' targets module '${consumer.manifest.id}', but no event handler route is registered.`,
+        module: 'module-registry',
+        operation: 'resolve-handoff-route',
+      });
+    }
+    if (!this.rangesIntersect(handoff.event.range, route.handler.version)) {
+      throw new ShotgunError({
+        code: 'UNSUPPORTED_SCHEMA',
+        safeMessage: `Handoff '${handoff.event.name}' targets module '${consumer.manifest.id}', but the handler version is incompatible.`,
+        module: 'module-registry',
+        operation: 'validate-handoff-handler-version',
+      });
+    }
+    if (handoff.tags.includes('REQUIRED_ACK')) {
+      const required = routes.some(
+        (candidate) =>
+          candidate.module.manifest.id === consumer.manifest.id &&
+          candidate.handler.requiredForPublisherAcknowledgement === true,
+      );
+      if (!required) {
+        throw new ShotgunError({
+          code: 'POLICY_DENIED',
+          safeMessage: `REQUIRED_ACK handoff '${handoff.event.name}' to '${consumer.manifest.id}' is not bound to a required publisher acknowledgement handler.`,
+          module: 'module-registry',
+          operation: 'validate-required-handoff-handler',
+        });
+      }
+    } else if (
+      handoff.tags.some(
+        (tag) => tag === 'INTENTIONAL_BEST_EFFORT' || tag === 'INTENTIONAL_TERMINAL',
+      ) &&
+      routes.some(
+        (candidate) =>
+          candidate.module.manifest.id === consumer.manifest.id &&
+          candidate.handler.requiredForPublisherAcknowledgement === true,
+      )
+    ) {
+      throw new ShotgunError({
+        code: 'POLICY_DENIED',
+        safeMessage: `Intentional handoff '${handoff.event.name}' cannot target a required consumer '${consumer.manifest.id}'.`,
+        module: 'module-registry',
+        operation: 'validate-intentional-handoff',
+      });
+    }
+  }
+
+  private rangesIntersect(left: string, right: string): boolean {
+    try {
+      return intersects(left, right, { includePrerelease: true });
+    } catch {
+      return false;
     }
   }
 

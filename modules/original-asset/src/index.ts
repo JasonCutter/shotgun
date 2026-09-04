@@ -215,6 +215,18 @@ export const createOriginalAssetModule = (
     },
     produces: {
       events: [{ name: 'OriginalAssetStored', range: '>=1.0.0 <2.0.0' }],
+      handoffs: [
+        {
+          event: { name: 'OriginalAssetStored', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage3.transformation' },
+          tags: ['RECONSTRUCTABLE'],
+          replayEvidence: {
+            replaySource: 'source-version.original-asset',
+            deterministicIdentity: 'projectId:sourceVersionId:assetVersion',
+            idempotencyEvidence: 'transformation:projectId:sourceVersionId:assetVersion',
+          },
+        },
+      ],
     },
     provides: {
       queries: [

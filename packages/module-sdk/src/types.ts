@@ -11,6 +11,63 @@ export type ContractRequirement = {
   readonly range: string;
 };
 
+/** The only classifications permitted for a producer-to-consumer handoff. */
+export const HANDOFF_TAGS = [
+  'TRANSACTIONAL',
+  'DURABLE_OUTBOX',
+  'DURABLE_JOB',
+  'RECONSTRUCTABLE',
+  'REQUIRED_ACK',
+  'INTENTIONAL_BEST_EFFORT',
+  'INTENTIONAL_TERMINAL',
+] as const;
+
+export type HandoffTag = (typeof HANDOFF_TAGS)[number];
+
+export type HandoffReplayEvidence = {
+  /** The persisted record or operation from which the event can be replayed. */
+  readonly replaySource: string;
+  /** The deterministic identity used when rebuilding the event. */
+  readonly deterministicIdentity: string;
+  /** The idempotency key or deduplication proof used by a replay. */
+  readonly idempotencyEvidence: string;
+};
+
+export type HandoffDispositionEvidence = {
+  readonly owner: string;
+  readonly retention: string;
+  readonly observability: string;
+};
+
+export type HandoffTarget =
+  | {
+      readonly kind: 'consumer';
+      readonly moduleId: string;
+    }
+  | {
+      readonly kind: 'runtime';
+      readonly authority: string;
+    }
+  | {
+      readonly kind: 'intentional';
+      readonly disposition: 'INTENTIONAL_BEST_EFFORT' | 'INTENTIONAL_TERMINAL';
+      readonly owner: string;
+      readonly retention: string;
+      readonly observability: string;
+    };
+
+/** Edge-level policy for one produced event and one target/disposition. */
+export type HandoffPolicy = {
+  readonly event: ContractRequirement;
+  readonly target: HandoffTarget;
+  readonly tags: readonly HandoffTag[];
+  /** Existing transaction/outbox/job authority; metadata alone is not proof of durability. */
+  readonly authority?: string;
+  readonly replayEvidence?: HandoffReplayEvidence;
+  /** Required evidence when an intentional best-effort edge remains observable. */
+  readonly dispositionEvidence?: HandoffDispositionEvidence;
+};
+
 export type CapabilityDefinition = {
   readonly name: string;
   readonly priority?: number;
@@ -40,6 +97,7 @@ export type ModuleManifest = {
   };
   readonly produces: {
     readonly events: readonly ContractRequirement[];
+    readonly handoffs: readonly HandoffPolicy[];
   };
   readonly provides: {
     readonly queries: readonly ContractRequirement[];

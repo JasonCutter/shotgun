@@ -8,12 +8,18 @@
   },
   "deployment": { "modes": ["in_process", "worker"] },
   "dataOwnership": {
-    "owns": ["ai.provider_calls", "ai.provider_attempts"],
+    "owns": ["ai.provider_calls", "ai.provider_attempts", "ai.provider_outputs"],
     "readsViaPorts": ["AIProviderAdapterPort"],
     "directSchemaAccess": false
   },
-  "consumes": { "commands": [], "events": [] },
-  "produces": { "events": [] },
+  "consumes": {
+    "commands": [],
+    "events": [
+      { "name": "CandidateMaterialized", "range": ">=1.0.0 <2.0.0" },
+      { "name": "CandidateMaterializationFailed", "range": ">=1.0.0 <2.0.0" }
+    ]
+  },
+  "produces": { "events": [], "handoffs": [] },
   "provides": {
     "queries": [{ "name": "GenerateStructured", "range": ">=1.0.0 <2.0.0" }],
     "capabilities": [{ "name": "structured-ai-provider", "priority": 100 }]

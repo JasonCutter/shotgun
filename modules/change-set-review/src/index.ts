@@ -221,6 +221,36 @@ export const createChangeSetReviewModule = (
         { name: 'ReviewDecisionRecorded', range: '>=1.0.0 <2.0.0' },
         { name: 'ChangeSetApproved', range: '>=1.0.0 <2.0.0' },
       ],
+      handoffs: [
+        {
+          event: { name: 'DraftChangeSetReady', range: '>=1.0.0 <2.0.0' },
+          target: {
+            kind: 'intentional',
+            disposition: 'INTENTIONAL_TERMINAL',
+            owner: 'stage5.change-set-review',
+            retention: 'review.change_sets retention policy',
+            observability: 'review audit and UI activity log',
+          },
+          tags: ['INTENTIONAL_TERMINAL'],
+        },
+        {
+          event: { name: 'ReviewDecisionRecorded', range: '>=1.0.0 <2.0.0' },
+          target: {
+            kind: 'intentional',
+            disposition: 'INTENTIONAL_TERMINAL',
+            owner: 'stage5.change-set-review',
+            retention: 'review.decisions retention policy',
+            observability: 'review audit and UI activity log',
+          },
+          tags: ['INTENTIONAL_TERMINAL'],
+        },
+        {
+          event: { name: 'ChangeSetApproved', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage6.canonical-knowledge' },
+          tags: ['TRANSACTIONAL', 'REQUIRED_ACK'],
+          authority: 'stage6.canonical-knowledge.commit-transaction',
+        },
+      ],
     },
     provides: {
       queries: [
@@ -563,6 +593,7 @@ export const createChangeSetReviewModule = (
         messageType: 'ComparisonCompleted',
         version: '1.0.0',
         requiredAccessScopes: ['owner'],
+        requiredForPublisherAcknowledgement: true,
         async handle(envelope, context) {
           const { projectId, security } = assertContext(envelope);
           const payload = envelope.payload as ComparisonCompletedPayload;

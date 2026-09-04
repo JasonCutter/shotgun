@@ -8,6 +8,10 @@
     "knowledge.review_items",
     "knowledge.entity_vault_imports"
   ],
+  "produces": {
+    "events": [],
+    "handoffs": []
+  },
   "approvalPolicy": {
     "canWriteCanonical": false,
     "canExecuteExternalAction": false

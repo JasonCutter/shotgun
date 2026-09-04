@@ -499,7 +499,7 @@ export const createKnowledgeModelModule = (
       ],
       events: [],
     },
-    produces: { events: [] },
+    produces: { events: [], handoffs: [] },
     provides: {
       queries: [
         { name: 'GetKnowledgeGroup', range: '>=1.0.0 <2.0.0' },

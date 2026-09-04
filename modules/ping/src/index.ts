@@ -53,6 +53,18 @@ export const createPingModule = (): {
       },
       produces: {
         events: [{ name: 'PongEvent', range: '>=1.0.0 <2.0.0' }],
+        handoffs: [
+          {
+            event: { name: 'PongEvent', range: '>=1.0.0 <2.0.0' },
+            target: { kind: 'consumer', moduleId: 'stage1.pong' },
+            tags: ['INTENTIONAL_BEST_EFFORT'],
+            dispositionEvidence: {
+              owner: 'stage1.pong',
+              retention: 'stage1 read-model retention policy',
+              observability: 'stage1 ping/pong audit and metrics',
+            },
+          },
+        ],
       },
       provides: {
         queries: [],

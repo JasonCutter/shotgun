@@ -175,6 +175,13 @@ export const createComparisonModule = (
     },
     produces: {
       events: [{ name: 'ComparisonCompleted', range: '>=1.0.0 <2.0.0' }],
+      handoffs: [
+        {
+          event: { name: 'ComparisonCompleted', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage5.change-set-review' },
+          tags: ['REQUIRED_ACK'],
+        },
+      ],
     },
     provides: {
       queries: [
@@ -235,6 +242,7 @@ export const createComparisonModule = (
         messageType: 'CandidateValidated',
         version: '1.0.0',
         requiredAccessScopes: ['owner'],
+        requiredForPublisherAcknowledgement: true,
         async handle(envelope, context) {
           const { projectId, security } = assertContext(envelope);
           const payload = envelope.payload as { readonly candidateId: string };

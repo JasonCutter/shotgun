@@ -38,7 +38,7 @@ const eventConsumer = (
       commands: [],
       events: [{ name: 'PongEvent', range: '>=1.0.0 <2.0.0' }],
     },
-    produces: { events: [] },
+    produces: { events: [], handoffs: [] },
     provides: { queries: [], capabilities: [] },
     requires: { capabilities: [] },
     security: {
@@ -74,6 +74,39 @@ const eventConsumer = (
     queries: [],
   },
 });
+
+const pingWithConsumer = (consumerId: string, required = false) => {
+  const ping = createPingModule();
+  return {
+    ...ping,
+    module: {
+      ...ping.module,
+      manifest: {
+        ...ping.module.manifest,
+        produces: {
+          ...ping.module.manifest.produces,
+          handoffs: [
+            ...ping.module.manifest.produces.handoffs,
+            {
+              event: { name: 'PongEvent', range: '>=1.0.0 <2.0.0' },
+              target: { kind: 'consumer' as const, moduleId: consumerId },
+              tags: required ? (['REQUIRED_ACK'] as const) : (['INTENTIONAL_BEST_EFFORT'] as const),
+              ...(required
+                ? {}
+                : {
+                    dispositionEvidence: {
+                      owner: consumerId,
+                      retention: 'test retention',
+                      observability: 'test observability',
+                    },
+                  }),
+            },
+          ],
+        },
+      },
+    },
+  };
+};
 
 const pongEvent = (requestId: string, sequence = 1) =>
   createChildEvent(securePingCommand(`parent:${requestId}`), {
@@ -115,7 +148,7 @@ describe('Connector reliability', () => {
         });
       }
     });
-    const ping = createPingModule();
+    const ping = pingWithConsumer('stage1.flaky');
     const pong = createPongModule();
     const kernel = new ShotgunKernel(new InProcessTransport());
     kernel.register(ping.module, pong.module, flaky);
@@ -152,7 +185,7 @@ describe('Connector reliability', () => {
       }
       sideEffects += 1;
     });
-    const ping = createPingModule();
+    const ping = pingWithConsumer('stage1.recovering');
     const pong = createPongModule();
     const kernel = new ShotgunKernel(new InProcessTransport());
     kernel.register(ping.module, pong.module, recovering);
@@ -184,7 +217,7 @@ describe('Connector reliability', () => {
   it('propagates only opt-in required event failures to the parent publication', async () => {
     const optionalKernel = new ShotgunKernel(new InProcessTransport());
     optionalKernel.register(
-      createPingModule().module,
+      pingWithConsumer('stage1.optional-failure').module,
       createPongModule().module,
       eventConsumer('stage1.optional-failure', () => {
         throw new ShotgunError({
@@ -208,7 +241,7 @@ describe('Connector reliability', () => {
 
     const requiredKernel = new ShotgunKernel(new InProcessTransport());
     requiredKernel.register(
-      createPingModule().module,
+      pingWithConsumer('stage1.required-failure', true).module,
       createPongModule().module,
       eventConsumer(
         'stage1.required-failure',
@@ -256,7 +289,7 @@ describe('Connector reliability', () => {
           commands: [{ name: 'SlowCommand', range: '>=1.0.0 <2.0.0' }],
           events: [],
         },
-        produces: { events: [] },
+        produces: { events: [], handoffs: [] },
         provides: { queries: [], capabilities: [] },
         requires: { capabilities: [] },
         security: {

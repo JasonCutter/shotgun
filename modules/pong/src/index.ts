@@ -67,6 +67,7 @@ export const createPongModule = (): {
       },
       produces: {
         events: [],
+        handoffs: [],
       },
       provides: {
         queries: [{ name: 'GetPongResult', range: '>=1.0.0 <2.0.0' }],

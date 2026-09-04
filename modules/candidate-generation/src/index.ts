@@ -352,6 +352,29 @@ export const createCandidateGenerationModule = (
           { name: 'CandidateMaterialized', range: '>=1.0.0 <2.0.0' },
           { name: 'CandidateMaterializationFailed', range: '>=1.0.0 <2.0.0' },
         ],
+        handoffs: [
+          {
+            event: { name: 'CandidateGenerated', range: '>=1.0.0 <2.0.0' },
+            target: { kind: 'consumer', moduleId: 'stage4.validation' },
+            tags: ['DURABLE_JOB', 'REQUIRED_ACK'],
+            authority: 'connector-runtime.candidate-validation-job',
+          },
+          {
+            event: { name: 'CandidateMaterialized', range: '>=1.0.0 <2.0.0' },
+            target: { kind: 'consumer', moduleId: 'stage4.ai-provider' },
+            tags: ['DURABLE_JOB'],
+            authority: 'stage4.ai-provider.provider-call-state',
+          },
+          {
+            event: {
+              name: 'CandidateMaterializationFailed',
+              range: '>=1.0.0 <2.0.0',
+            },
+            target: { kind: 'consumer', moduleId: 'stage4.ai-provider' },
+            tags: ['DURABLE_JOB'],
+            authority: 'stage4.ai-provider.provider-call-state',
+          },
+        ],
       },
       provides: {
         queries: [
@@ -479,6 +502,7 @@ export const createCandidateGenerationModule = (
           messageType: 'CandidateValidated',
           version: '1.0.0',
           requiredAccessScopes: ['owner'],
+          requiredForPublisherAcknowledgement: true,
           async handle(envelope) {
             const { projectId } = assertContext(envelope);
             const payload = envelope.payload as { readonly candidateId: string };
@@ -489,6 +513,7 @@ export const createCandidateGenerationModule = (
           messageType: 'CandidateRejected',
           version: '1.0.0',
           requiredAccessScopes: ['owner'],
+          requiredForPublisherAcknowledgement: true,
           async handle(envelope) {
             const { projectId } = assertContext(envelope);
             const payload = envelope.payload as { readonly candidateId: string };

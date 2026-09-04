@@ -175,6 +175,18 @@ export const createTransformationModule = (
     },
     produces: {
       events: [{ name: 'DocumentTransformed', range: '>=1.0.0 <2.0.0' }],
+      handoffs: [
+        {
+          event: { name: 'DocumentTransformed', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage3.evidence' },
+          tags: ['RECONSTRUCTABLE'],
+          replayEvidence: {
+            replaySource: 'transformation.revision',
+            deterministicIdentity: 'projectId:sourceVersionId:revisionId',
+            idempotencyEvidence: 'evidence:projectId:revisionId',
+          },
+        },
+      ],
     },
     provides: {
       queries: [{ name: 'GetDocumentRevision', range: '>=1.0.0 <2.0.0' }],

@@ -857,7 +857,22 @@ export const createProjectionSearchModule = (
       commands: [{ name: 'RebuildSearchProjection', range: '>=1.0.0 <2.0.0' }],
       events: [{ name: 'CanonicalCommitted', range: '>=1.0.0 <2.0.0' }],
     },
-    produces: { events: [{ name: 'ProjectionReady', range: '>=1.0.0 <2.0.0' }] },
+    produces: {
+      events: [{ name: 'ProjectionReady', range: '>=1.0.0 <2.0.0' }],
+      handoffs: [
+        {
+          event: { name: 'ProjectionReady', range: '>=1.0.0 <2.0.0' },
+          target: {
+            kind: 'intentional',
+            disposition: 'INTENTIONAL_TERMINAL',
+            owner: 'stage7.projection-search',
+            retention: 'projection.watermarks retention policy',
+            observability: 'projection readiness audit and metrics',
+          },
+          tags: ['INTENTIONAL_TERMINAL'],
+        },
+      ],
+    },
     provides: {
       queries: [
         { name: 'SearchCanonicalKnowledge', range: '>=1.0.0 <2.0.0' },

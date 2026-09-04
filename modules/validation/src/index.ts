@@ -127,6 +127,23 @@ export const createValidationModule = (repository: ValidationRepositoryPort): Sh
         { name: 'CandidateValidated', range: '>=1.0.0 <2.0.0' },
         { name: 'CandidateRejected', range: '>=1.0.0 <2.0.0' },
       ],
+      handoffs: [
+        {
+          event: { name: 'CandidateValidated', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage4.candidate-generation' },
+          tags: ['REQUIRED_ACK'],
+        },
+        {
+          event: { name: 'CandidateValidated', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage5.comparison' },
+          tags: ['REQUIRED_ACK'],
+        },
+        {
+          event: { name: 'CandidateRejected', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage4.candidate-generation' },
+          tags: ['REQUIRED_ACK'],
+        },
+      ],
     },
     provides: {
       queries: [{ name: 'GetValidationResult', range: '>=1.0.0 <2.0.0' }],

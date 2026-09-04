@@ -252,7 +252,9 @@ describe.each(transports)('%s Stage 6 contract', (_name, createTransport) => {
       createdAt: '2026-07-15T00:00:00.000Z',
     };
     clock.set('2026-07-17T00:00:00.000Z');
-    await kernel.connector.sendCommand(oldDecision);
+    await expect(kernel.connector.sendCommand(oldDecision)).rejects.toMatchObject({
+      code: 'TERMINAL_FAILURE',
+    });
     expect(
       kernel.connector.deadLetters
         .list()

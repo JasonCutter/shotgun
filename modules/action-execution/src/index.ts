@@ -294,7 +294,17 @@ export const createActionExecutionModule = (
       ],
       events: [],
     },
-    produces: { events: [{ name: 'ActionFeedbackRecorded', range: '>=1.0.0 <2.0.0' }] },
+    produces: {
+      events: [{ name: 'ActionFeedbackRecorded', range: '>=1.0.0 <2.0.0' }],
+      handoffs: [
+        {
+          event: { name: 'ActionFeedbackRecorded', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'runtime', authority: 'stage11.action-execution.feedback' },
+          tags: ['DURABLE_OUTBOX'],
+          authority: 'stage11.action-execution.feedback-outbox',
+        },
+      ],
+    },
     provides: {
       queries: [
         { name: 'GetActionExecution', range: '>=1.1.0 <2.0.0' },

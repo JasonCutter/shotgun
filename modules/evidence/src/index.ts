@@ -222,6 +222,14 @@ export const createEvidenceModule = (
     },
     produces: {
       events: [{ name: 'EvidenceIndexed', range: '>=1.0.0 <2.0.0' }],
+      handoffs: [
+        {
+          event: { name: 'EvidenceIndexed', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage4.candidate-generation' },
+          tags: ['DURABLE_JOB'],
+          authority: 'stage4.source-evidence.continuation-job',
+        },
+      ],
     },
     provides: {
       queries: [

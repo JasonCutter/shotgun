@@ -9,6 +9,11 @@
 - Current disposition: `IN_PROGRESS / DRAFT_CANDIDATE`
 - Final recommendation at this capture point: `BLOCKED` until the final WP-12 PR
   exact-head Quality, Frontend, and Required Gates run and controller review completes.
+- Final exact-head operational evidence authority: the controller evidence comment
+  on Issue #189. After the candidate head is frozen, the final backup drill and
+  CI result are recorded in that Issue comment and are not inserted into this
+  tracked artifact, so recording the result cannot create a self-referential
+  SHA change.
 
 ## 1. Authority and frozen scope
 
@@ -72,15 +77,41 @@ The current canonical base is therefore proven by WP-11 post-merge CI run
   Action/Discovery (WP-10), and legacy compatibility (WP-11).
 - No same-head PASS test was rerun solely to duplicate evidence.
 
+### Final exact-head evidence freeze protocol
+
+The base-SHA backup output in Section 4 is retained as a historical,
+pre-correction rehearsal. It is not the final WP-12 operational acceptance
+record. Once this documentation correction is committed and pushed:
+
+1. Freeze that correction commit as the final WP-12 candidate head; do not edit
+   any tracked file afterward.
+2. Run `npm run backup:drill` exactly once at that SHA.
+3. Record PASS/FAIL, exact SHA, backup format, migration count, and
+   asset/canonical/recovery observations in the controller evidence comment on
+   [Issue #189](https://github.com/JasonCutter/shotgun/issues/189); do not
+   backfill the result into this file.
+4. Confirm the same-head Quality, Frontend, and Required Gates CI results. The
+   controller performs the final exact-head review and Ready/merge decision.
+
+This ordering prevents a post-drill documentation commit from invalidating the
+SHA on which the drill was executed.
+
 ### Newly executed operational evidence
 
-The two gates below are not supplied by the repository-wide exact-head CI and
-were therefore executed once on the frozen base. They changed no tracked file.
+The migration rehearsal below is not supplied by the repository-wide exact-head
+CI and was executed once on the frozen base; it remains valid across this
+documentation-only correction because no schema, migration, or runtime behavior
+changes. The backup output in the next section is explicitly historical until
+the final candidate-head drill is recorded by the controller under the freeze
+protocol above. Neither rehearsal changed a tracked file.
 
-## 4. Backup / restore drill — PASS
+## 4. Backup / restore drill — PRE-CORRECTION BASE REHEARSAL (HISTORICAL)
 
 Issue #189 required `npm run backup:drill`; the drill itself creates and removes
 isolated source/target databases and must not touch the normal `shotgun` data.
+The following PASS was captured on the frozen base before this evidence-pointer
+correction. It is retained for traceability only; the final exact-head result is
+authoritative in the controller Issue comment described in Section 3.
 
 Environment and command:
 
@@ -149,23 +180,46 @@ reconcile before any application rollback; a destructive down migration is not
 permitted. This follows the [developer workflow contract](../../engineering/developer-workflow-contract-260728001.md)
 and [Stage 12.1 hardening strategy](../../engineering/stage-12-1-hardening-strategy.md).
 
-The rehearsal result and resume condition were reported to the controller. No
-migration or script was edited.
+The rehearsal result and resume condition were reported to the controller in
+[Issue #189 comment 5542621651](https://github.com/JasonCutter/shotgun/issues/189#issuecomment-5542621651).
+No migration or script was edited. Because this WP-12 correction is
+documentation-only, the migration rehearsal is not repeated.
 
 ## 6. Ten acceptance layers
 
-| Layer                | Disposition           | Evidence pointer                                                                                        |
-| -------------------- | --------------------- | ------------------------------------------------------------------------------------------------------- |
-| Unit                 | `PASS / REUSED`       | WP-01, WP-03, WP-08, WP-09, WP-10 exact-head suites                                                     |
-| Contract             | `PASS / REUSED`       | WP-01 configuration, WP-07 handoff, WP-09 decoder, WP-11 compatibility contracts                        |
-| Database             | `PASS / REUSED + NEW` | WP-02/04/05/06/07/10 database suites; Section 5 migration rehearsal                                     |
-| Integration          | `PASS / REUSED`       | WP-03/04/05/06/08/10 integration and database suites                                                    |
-| Replay / Idempotency | `PASS / REUSED`       | WP-04 continuation, WP-05 outcome-unknown, WP-06 claim, WP-10 Action feedback and WP-11 route telemetry |
-| Golden Corpus        | `PASS / REUSED`       | Quality exact-head Stage 4/corpus and digest checks in runs listed above                                |
-| Security Negative    | `PASS / REUSED`       | WP-01 environment guards, WP-05/07 scope checks, WP-09 malformed input, WP-10 redaction                 |
-| Migration / Rollback | `PASS / NEW`          | Sections 4–5; isolated backup/restore and additive rollback boundary                                    |
-| E2E                  | `PASS / REUSED`       | Final-base `Frontend` E2E in post-merge run `33882208199`; no real provider/action                      |
-| Architecture         | `PASS / REUSED`       | WP-07 topology/disposition and repository Quality/Stage/OSS gates                                       |
+### Direct evidence pointers
+
+- **Golden Corpus:** `tests/unit/plain-text-transformation.test.ts:57,105,177`
+  verifies document/source-map hashes, Unicode offsets, Evidence lineage, and
+  adapter replacement. `tests/unit/stage-8-format-expansion.test.ts:60,84,96,105,117`
+  exercises Stage 8 format golden fixtures, selectors, validation, and Evidence
+  boundaries.
+- **E2E Input→Canonical:**
+  `tests/browser/frontend-cross-phase-journey.spec.ts:60` verifies Source
+  intake→Draft→Review/Approval→Canonical Commit.
+- **E2E Discovery re-entry:**
+  `tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:269-294`
+  verifies FindingReady→DiscoveryReentryConsumer→validation/materialization→
+  Review/Draft. Durable replay boundaries are covered by
+  `tests/database/akp-5-wp2-discovery-reentry.database.test.ts:743,765,884`
+  (restart, concurrent duplicate, retry).
+- **E2E Action-feedback re-entry:**
+  `tests/contract/runtime-data-integrity-wp10-action-feedback.contract.test.ts:35`
+  and `tests/database/runtime-data-integrity-wp10.database.test.ts:106` verify
+  duplicate-safe materialization and concurrent persistence.
+
+| Layer                | Disposition           | Evidence pointer                                                                                                                                                      |
+| -------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit                 | `PASS / REUSED`       | WP-01, WP-03, WP-08, WP-09, WP-10 exact-head suites                                                                                                                   |
+| Contract             | `PASS / REUSED`       | WP-01 configuration, WP-07 handoff, WP-09 decoder, WP-11 compatibility contracts                                                                                      |
+| Database             | `PASS / REUSED + NEW` | WP-02/04/05/06/07/10 database suites; Section 5 migration rehearsal                                                                                                   |
+| Integration          | `PASS / REUSED`       | WP-03/04/05/06/08/10 integration and database suites                                                                                                                  |
+| Replay / Idempotency | `PASS / REUSED`       | WP-04 continuation, WP-05 outcome-unknown, WP-06 claim, WP-10 Action feedback and WP-11 route telemetry                                                               |
+| Golden Corpus        | `PASS / REUSED`       | Direct pointers above; no new corpus or test                                                                                                                          |
+| Security Negative    | `PASS / REUSED`       | WP-01 environment guards, WP-05/07 scope checks, WP-09 malformed input, WP-10 redaction                                                                               |
+| Migration / Rollback | `PASS / NEW`          | Section 5 migration rehearsal and Section 4 historical backup trace; final exact-head backup result is controller-authoritative in Issue #189 per the freeze protocol |
+| E2E                  | `PASS / REUSED`       | Direct Input→Canonical, Discovery re-entry, and Action-feedback pointers above; no real provider/action                                                               |
+| Architecture         | `PASS / REUSED`       | WP-07 topology/disposition and repository Quality/Stage/OSS gates                                                                                                     |
 
 ## 7. Required completion metrics
 
@@ -198,10 +252,12 @@ test fixtures.
 
 ## 9. Final-head gate and completion decision
 
-The final WP-12 PR exact head is the commit that adds this artifact. Its SHA is
-reported by `git rev-parse HEAD` at delivery and must be the exact SHA attached
-to the automatic PR CI. At this capture point the branch CI has not yet run,
-so the artifact deliberately does not claim a PASS on a future SHA.
+The final WP-12 PR exact head is the correction commit that freezes this
+artifact. Its SHA is reported by `git rev-parse HEAD` at delivery and must be the
+exact SHA attached to the automatic PR CI. The earlier PR run is superseded by
+this evidence correction; until the correction commit's CI and final backup
+drill are recorded by the controller, this artifact deliberately does not claim
+PASS on a future SHA.
 
 Before `PASS_FOR_COMPLETION`, the controller must verify on the same final PR
 head:
@@ -209,8 +265,10 @@ head:
 1. `Quality=SUCCESS`;
 2. `Frontend=SUCCESS`;
 3. `Required Gates=SUCCESS`;
-4. Draft PR exact-head review has no blocker; and
-5. post-merge `main` CI is successful before `FINAL_AFTER_MERGE`.
+4. final exact-head `npm run backup:drill` is PASS and recorded in the
+   controller Issue comment (without a post-drill tracked-file commit);
+5. Draft PR exact-head review has no blocker; and
+6. post-merge `main` CI is successful before `FINAL_AFTER_MERGE`.
 
 Current recommendation: **`BLOCKED` — awaiting final exact-head CI and
 controller review only.** This is a delivery checkpoint, not a Product defect.

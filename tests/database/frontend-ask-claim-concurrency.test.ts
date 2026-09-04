@@ -189,11 +189,10 @@ describe('Ask queued atomic multi-worker claim PostgreSQL verification', () => {
       `EXPLAIN (COSTS OFF)
        SELECT answer_run_id
        FROM frontend_ask.answer_runs
-       WHERE state = 'QUEUED' AND answer_run_id = ANY($1::text[])
+       WHERE state = 'QUEUED'
        ORDER BY created_at, answer_run_id
        LIMIT 32
        FOR UPDATE SKIP LOCKED`,
-      [runIds],
     );
     expect(plan.rows.map((row) => row['QUERY PLAN'])).toContainEqual(
       expect.stringContaining('LockRows'),

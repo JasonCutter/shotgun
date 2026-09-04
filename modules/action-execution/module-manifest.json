@@ -5,9 +5,7 @@
   "deployment": ["in_process", "worker"],
   "dataOwnership": ["action.executions", "action.approvals", "action.audit_events"],
   "produces": {
-    "events": [
-      { "name": "ActionFeedbackRecorded", "range": ">=1.0.0 <2.0.0" }
-    ],
+    "events": [{ "name": "ActionFeedbackRecorded", "range": ">=1.0.0 <2.0.0" }],
     "handoffs": [
       {
         "event": { "name": "ActionFeedbackRecorded", "range": ">=1.0.0 <2.0.0" },

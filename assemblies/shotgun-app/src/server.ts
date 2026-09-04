@@ -233,7 +233,6 @@ import {
   type DraftChangeSet,
   type EvidenceSpan,
   type TextDiffSegment,
-  type EntityCandidate,
   type EntityVaultImport,
   type KnowledgeCandidate,
   type KnowledgeGraphView,
@@ -265,7 +264,6 @@ import {
 import {
   createIntakeModule,
   type IntakeRepositoryPort,
-  type SubmitIntakePayload,
 } from '../../../modules/intake/src/index.js';
 import {
   type AssetStoragePort,
@@ -360,6 +358,15 @@ import {
   createActionExecutionModule,
 } from '../../../modules/action-execution/src/index.js';
 import { createProductSessionView, type ProductSessionView } from './product-api/session-view.js';
+import {
+  decodeActionApprovalBody,
+  decodeAskBody,
+  decodeEntityVaultReviewBody,
+  decodeEntityVaultStageBody,
+  decodeIntakeBody,
+  decodeLoginBody,
+  decodeSearchBody,
+} from './http-boundary-decoders.js';
 
 type PingRequest = {
   readonly requestId?: string;
@@ -397,9 +404,6 @@ type CanonicalClaimRequest = {
 type CanonicalCommitRequest = {
   readonly commitId: string;
 };
-
-type SearchRequest = { readonly query: string; readonly limit?: number };
-type AskRequest = { readonly question: string; readonly limit?: number };
 
 export const isLoopbackIp = (ipAddress: string | undefined): boolean => {
   if (!ipAddress) return false;
@@ -519,18 +523,6 @@ type KnowledgeImpactRequest = {
   readonly rootCandidateId: string;
   readonly maxDepth?: number;
   readonly maxNodes?: number;
-};
-
-type EntityVaultStageRequest = {
-  readonly importId: string;
-  readonly sourceVersionId: string;
-  readonly entities: readonly EntityCandidate[];
-};
-
-type EntityVaultReviewRequest = {
-  readonly importId: string;
-  readonly expectedContentDigest: string;
-  readonly decision: 'APPROVE' | 'REJECT';
 };
 
 type ReviewDecisionRequest = ChangeSetRequest & {
@@ -2426,17 +2418,47 @@ const createApplicationCore = async (
   const server = Fastify({ logger: false });
   setServerForStartupCleanup(server);
 
+  const httpSchemaValidationRoutes = new Set([
+    '/auth/login',
+    '/intake',
+    '/search',
+    '/ask/query',
+    '/knowledge/entity-vault/stage',
+    '/knowledge/entity-vault/review',
+  ]);
+  const isHttpSchemaValidationRoute = (url: string): boolean => {
+    const urlPath = url.split('?')[0] ?? url;
+    return httpSchemaValidationRoutes.has(urlPath) || /^\/actions\/[^/]+\/approve$/.test(urlPath);
+  };
+  const isBodyParserValidationError = (value: unknown): boolean => {
+    if (!value || typeof value !== 'object' || !('code' in value)) return false;
+    const code = (value as { readonly code?: unknown }).code;
+    return (
+      code === 'FST_ERR_CTP_INVALID_JSON_BODY' ||
+      code === 'FST_ERR_CTP_EMPTY_JSON_BODY' ||
+      code === 'FST_ERR_CTP_BODY_TOO_LARGE'
+    );
+  };
+
   server.setErrorHandler(async (error, request, reply) => {
     const normalized =
       error instanceof ShotgunError
         ? error
-        : new ShotgunError({
-            code: 'INTERNAL_UNCLASSIFIED',
-            safeMessage: 'Request failed.',
-            module: 'product-api',
-            operation: 'request',
-            cause: error,
-          });
+        : isHttpSchemaValidationRoute(request.url) && isBodyParserValidationError(error)
+          ? new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: 'Request body is invalid.',
+              module: 'shotgun-app',
+              operation: 'decode-http-body',
+              cause: error,
+            })
+          : new ShotgunError({
+              code: 'INTERNAL_UNCLASSIFIED',
+              safeMessage: 'Request failed.',
+              module: 'product-api',
+              operation: 'request',
+              cause: error,
+            });
     const descriptor = getFailureDescriptor(normalized.code);
     const context = trustedRequestContexts.get(request.headers as object);
     const principalContext = trustedPrincipalContexts.get(request.headers as object);
@@ -3033,56 +3055,51 @@ const createApplicationCore = async (
     requirePrincipalBrowserSession,
   );
 
-  server.post<{ Body: { accountId: string; password: string; projectId: string } }>(
-    '/auth/login',
-    async (request, reply) => {
-      const principal = await authRepository.authenticatePassword(
-        request.body.accountId,
-        request.body.password,
-      );
-      if (!principal) {
-        await authRepository.appendAudit({ event: 'LOGIN_DENIED' });
-        throw new ShotgunError({
-          code: 'AUTHENTICATION_INVALID',
-          safeMessage: 'Credential is invalid.',
-          module: 'shotgun-app',
-          operation: 'login',
-        });
-      }
-      const context = await authorize({
-        repository: authRepository,
-        principal,
-        projectId: request.body.projectId,
-        requiredScopes: [],
+  server.post<{ Body: unknown }>('/auth/login', async (request, reply) => {
+    const body = decodeLoginBody(request.body);
+    const principal = await authRepository.authenticatePassword(body.accountId, body.password);
+    if (!principal) {
+      await authRepository.appendAudit({ event: 'LOGIN_DENIED' });
+      throw new ShotgunError({
+        code: 'AUTHENTICATION_INVALID',
+        safeMessage: 'Credential is invalid.',
+        module: 'shotgun-app',
+        operation: 'login',
       });
-      if (!context)
-        throw new ShotgunError({
-          code: 'PROJECT_ACCESS_DENIED',
-          safeMessage: 'Project membership is missing.',
-          module: 'shotgun-app',
-          operation: 'login',
-        });
-      const session = await authRepository.createSession(
-        principal.principalId,
-        context.projectId,
-        new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
-      );
-      await authRepository.appendAudit({
-        principalId: principal.principalId,
-        projectId: context.projectId,
-        event: 'LOGIN_SUCCEEDED',
+    }
+    const context = await authorize({
+      repository: authRepository,
+      principal,
+      projectId: body.projectId,
+      requiredScopes: [],
+    });
+    if (!context)
+      throw new ShotgunError({
+        code: 'PROJECT_ACCESS_DENIED',
+        safeMessage: 'Project membership is missing.',
+        module: 'shotgun-app',
+        operation: 'login',
       });
-      reply.header(
-        'Set-Cookie',
-        `${sessionCookieName}=${session.sessionToken}; HttpOnly; SameSite=Lax; Path=/${production ? '; Secure' : ''}`,
-      );
-      return {
-        csrfToken: session.csrfToken,
-        projectId: context.projectId,
-        principalId: principal.principalId,
-      };
-    },
-  );
+    const session = await authRepository.createSession(
+      principal.principalId,
+      context.projectId,
+      new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+    );
+    await authRepository.appendAudit({
+      principalId: principal.principalId,
+      projectId: context.projectId,
+      event: 'LOGIN_SUCCEEDED',
+    });
+    reply.header(
+      'Set-Cookie',
+      `${sessionCookieName}=${session.sessionToken}; HttpOnly; SameSite=Lax; Path=/${production ? '; Secure' : ''}`,
+    );
+    return {
+      csrfToken: session.csrfToken,
+      projectId: context.projectId,
+      principalId: principal.principalId,
+    };
+  });
 
   server.get('/auth/csrf', async (request, reply) => {
     const sessionToken = parseCookie(request.headers.cookie, sessionCookieName);
@@ -3302,78 +3319,76 @@ const createApplicationCore = async (
     };
   });
 
-  server.post<{ Body: SubmitIntakePayload; Headers: SecurityHeaders }>(
-    '/intake',
-    async (request) => {
-      const context = requestContext(request.headers);
-      const command = createCommand({
-        messageType: 'SubmitIntake',
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>('/intake', async (request) => {
+    const context = requestContext(request.headers);
+    const body = decodeIntakeBody(request.body);
+    const command = createCommand({
+      messageType: 'SubmitIntake',
+      schemaVersion: '1.0.0',
+      producerModule: 'shotgun-app',
+      producerVersion: '1.0.0',
+      idempotencyKey: `intake:${context.projectId}:${body.submissionId}`,
+      ...context,
+      payload: body,
+    });
+    const commandDelivery = await kernel.connector.sendCommand(command);
+    const resultQuery = createChildQuery(command, {
+      messageType: 'GetIntakeResult',
+      schemaVersion: '1.0.0',
+      producerModule: 'shotgun-app',
+      producerVersion: '1.0.0',
+      payload: { submissionId: body.submissionId },
+    });
+    const stored = await kernel.connector.query(resultQuery);
+    const storedPayload = stored.result.payload as { readonly sourceVersionId: string };
+    const document = await kernel.connector.query(
+      createChildQuery(command, {
+        messageType: 'GetDocumentRevision',
         schemaVersion: '1.0.0',
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
-        idempotencyKey: `intake:${context.projectId}:${request.body.submissionId}`,
-        ...context,
-        payload: request.body,
-      });
-      const commandDelivery = await kernel.connector.sendCommand(command);
-      const resultQuery = createChildQuery(command, {
-        messageType: 'GetIntakeResult',
+        payload: { sourceVersionId: storedPayload.sourceVersionId },
+      }),
+    );
+    const evidence = await kernel.connector.query(
+      createChildQuery(command, {
+        messageType: 'ListEvidenceSpans',
         schemaVersion: '1.0.0',
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
-        payload: { submissionId: request.body.submissionId },
-      });
-      const stored = await kernel.connector.query(resultQuery);
-      const storedPayload = stored.result.payload as { readonly sourceVersionId: string };
-      const document = await kernel.connector.query(
-        createChildQuery(command, {
-          messageType: 'GetDocumentRevision',
-          schemaVersion: '1.0.0',
-          producerModule: 'shotgun-app',
-          producerVersion: '1.0.0',
-          payload: { sourceVersionId: storedPayload.sourceVersionId },
-        }),
-      );
-      const evidence = await kernel.connector.query(
-        createChildQuery(command, {
-          messageType: 'ListEvidenceSpans',
-          schemaVersion: '1.0.0',
-          producerModule: 'shotgun-app',
-          producerVersion: '1.0.0',
-          payload: { sourceVersionId: storedPayload.sourceVersionId },
-        }),
-      );
-      const candidates = await kernel.connector.query(
-        createChildQuery(command, {
-          messageType: 'ListClaimCandidates',
-          schemaVersion: '1.0.0',
-          producerModule: 'shotgun-app',
-          producerVersion: '1.0.0',
-          payload: { sourceVersionId: storedPayload.sourceVersionId },
-        }),
-      );
-      const reviews = await kernel.connector.query(
-        createChildQuery(command, {
-          messageType: 'ListDraftChangeSets',
-          schemaVersion: '1.0.0',
-          producerModule: 'shotgun-app',
-          producerVersion: '1.0.0',
-          payload: { sourceVersionId: storedPayload.sourceVersionId },
-        }),
-      );
-      return {
-        commandStatus: commandDelivery.status,
-        intake: commandDelivery.result,
-        stored: stored.result.payload,
-        document: document.result.payload,
-        evidence: evidence.result.payload,
-        candidates: candidates.result.payload,
-        reviews: reviews.result.payload,
-        trace: traceView(kernel, command.traceId),
-        audit: auditView(kernel, command.traceId),
-      };
-    },
-  );
+        payload: { sourceVersionId: storedPayload.sourceVersionId },
+      }),
+    );
+    const candidates = await kernel.connector.query(
+      createChildQuery(command, {
+        messageType: 'ListClaimCandidates',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        payload: { sourceVersionId: storedPayload.sourceVersionId },
+      }),
+    );
+    const reviews = await kernel.connector.query(
+      createChildQuery(command, {
+        messageType: 'ListDraftChangeSets',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        payload: { sourceVersionId: storedPayload.sourceVersionId },
+      }),
+    );
+    return {
+      commandStatus: commandDelivery.status,
+      intake: commandDelivery.result,
+      stored: stored.result.payload,
+      document: document.result.payload,
+      evidence: evidence.result.payload,
+      candidates: candidates.result.payload,
+      reviews: reviews.result.payload,
+      trace: traceView(kernel, command.traceId),
+      audit: auditView(kernel, command.traceId),
+    };
+  });
 
   server.post<{ Body: ComparisonRequest; Headers: SecurityHeaders }>(
     '/comparisons/resolve',
@@ -3424,7 +3439,8 @@ const createApplicationCore = async (
     },
   );
 
-  server.post<{ Body: SearchRequest; Headers: SecurityHeaders }>('/search', async (request) => {
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>('/search', async (request) => {
+    const body = decodeSearchBody(request.body);
     const delivery = await kernel.connector.query<CanonicalSearchResponse>(
       createQuery({
         messageType: 'SearchCanonicalKnowledge',
@@ -3432,7 +3448,7 @@ const createApplicationCore = async (
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
         ...requestContext(request.headers),
-        payload: request.body,
+        payload: body,
       }),
     );
     return { search: delivery.result.payload };
@@ -3455,7 +3471,8 @@ const createApplicationCore = async (
     },
   );
 
-  server.post<{ Body: AskRequest; Headers: SecurityHeaders }>('/ask/query', async (request) => {
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>('/ask/query', async (request) => {
+    const body = decodeAskBody(request.body);
     const delivery = await kernel.connector.query<CitedAnswer>(
       createQuery({
         messageType: 'AskCanonicalKnowledge',
@@ -3463,7 +3480,7 @@ const createApplicationCore = async (
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
         ...requestContext(request.headers),
-        payload: request.body,
+        payload: body,
       }),
     );
     return { answer: delivery.result.payload };
@@ -4020,19 +4037,20 @@ const createApplicationCore = async (
 
   server.post<{
     Params: { readonly actionId: string };
-    Body: { readonly expectedPreviewDigest: string };
+    Body: unknown;
     Headers: SecurityHeaders;
   }>('/actions/:actionId/approve', async (request) => {
     const context = requestContext(request.headers);
+    const body = decodeActionApprovalBody(request.body);
     const delivery = await kernel.connector.sendCommand<ActionExecutionRecord>(
       createCommand({
         messageType: 'ApproveActionPreview',
         schemaVersion: '1.1.0',
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
-        idempotencyKey: `action-approve:${request.params.actionId}:${request.body.expectedPreviewDigest}:${context.actor.id}`,
+        idempotencyKey: `action-approve:${request.params.actionId}:${body.expectedPreviewDigest}:${context.actor.id}`,
         ...context,
-        payload: { actionId: request.params.actionId, ...request.body },
+        payload: { actionId: request.params.actionId, ...body },
       }),
     );
     return { action: delivery.result };
@@ -4094,38 +4112,40 @@ const createApplicationCore = async (
     return { audit: delivery.result.payload.items };
   });
 
-  server.post<{ Body: EntityVaultStageRequest; Headers: SecurityHeaders }>(
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/knowledge/entity-vault/stage',
     async (request) => {
       const context = requestContext(request.headers);
+      const body = decodeEntityVaultStageBody(request.body);
       const delivery = await kernel.connector.sendCommand<EntityVaultImport>(
         createCommand({
           messageType: 'StageEntityVaultImport',
           schemaVersion: '1.0.0',
           producerModule: 'shotgun-app',
           producerVersion: '1.0.0',
-          idempotencyKey: `entity-vault-stage:${context.projectId}:${request.body.importId}`,
+          idempotencyKey: `entity-vault-stage:${context.projectId}:${body.importId}`,
           ...context,
-          payload: request.body,
+          payload: body,
         }),
       );
       return { stagedImport: delivery.result };
     },
   );
 
-  server.post<{ Body: EntityVaultReviewRequest; Headers: SecurityHeaders }>(
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
     '/knowledge/entity-vault/review',
     async (request) => {
       const context = requestContext(request.headers);
+      const body = decodeEntityVaultReviewBody(request.body);
       const delivery = await kernel.connector.sendCommand<EntityVaultImport>(
         createCommand({
           messageType: 'ReviewEntityVaultImport',
           schemaVersion: '1.0.0',
           producerModule: 'shotgun-app',
           producerVersion: '1.0.0',
-          idempotencyKey: `entity-vault-review:${context.projectId}:${request.body.importId}:${request.body.decision}`,
+          idempotencyKey: `entity-vault-review:${context.projectId}:${body.importId}:${body.decision}`,
           ...context,
-          payload: request.body,
+          payload: body,
         }),
       );
       return { stagedImport: delivery.result };

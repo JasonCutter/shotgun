@@ -127,11 +127,17 @@ import {
   ActivityProductCoordinator,
   ActivityProjectionBuilder,
   type ActivityReadModelStorePort,
+  type ActivityAdapterScopeV1,
+  type ActivityDetailV1,
+  type ActivityQueueFilterV1,
+  type ActivityQueuePageV1,
   type AskActivityReadPort,
   type DiscoveryActivityFindingReadPort,
   type DiscoveryActivityReadPort,
+  type ExternalActionActivityAdapterPort,
   type SourcesActivityReadPort,
 } from '../../../modules/frontend-activity/src/index.js';
+import type { ActivityRootReferenceV1 } from '../../../packages/contracts/src/index.js';
 import {
   HistoryProductCoordinator,
   createHistoryAdapterRegistry,
@@ -357,6 +363,11 @@ import {
   type ActionExecutionRepositoryPort,
   createActionExecutionModule,
 } from '../../../modules/action-execution/src/index.js';
+import {
+  createActionFeedbackReviewModule,
+  InMemoryActionFeedbackReviewRepository,
+  type ActionFeedbackReviewRepositoryPort,
+} from '../../../modules/action-feedback-review/src/index.js';
 import { createProductSessionView, type ProductSessionView } from './product-api/session-view.js';
 import {
   decodeActionApprovalBody,
@@ -1677,6 +1688,73 @@ const reviewPage = (bundle: {
 </html>`;
 };
 
+/**
+ * Composition-only Activity decorator. It never creates an Activity root and
+ * only overlays attention on an already-authorized External Action when the
+ * owning Action review repository has a pending item for the same identity.
+ */
+export const withActionReviewActivity = (
+  adapter: ExternalActionActivityAdapterPort,
+  reviewRepository: ActionFeedbackReviewRepositoryPort,
+): ExternalActionActivityAdapterPort => {
+  const hasPendingReview = async (projectId: string, actionId: string): Promise<boolean> => {
+    try {
+      const rows = await reviewRepository.listByAction({ projectId, actionId, limit: 1 });
+      return rows.some((row) => row.status === 'PENDING');
+    } catch {
+      // Activity must fail closed when the optional review projection is
+      // unavailable; the owning Action adapter remains the access authority.
+      return false;
+    }
+  };
+  return {
+    adapterId: adapter.adapterId,
+    domainKind: adapter.domainKind,
+    domainKinds: adapter.domainKinds,
+    async readQueue(
+      scope: ActivityAdapterScopeV1,
+      filter: ActivityQueueFilterV1,
+    ): Promise<ActivityQueuePageV1> {
+      const { attention: requestedAttention, ...withoutAttention } = filter;
+      const page = await adapter.readQueue(scope, withoutAttention);
+      const items = await Promise.all(
+        page.items.map(async (item) => {
+          if (item.root.domainKind !== 'EXTERNAL_ACTION') return item;
+          if (!(await hasPendingReview(scope.activeProjectId, item.root.domainResourceId)))
+            return item;
+          return {
+            ...item,
+            dimensions: { ...item.dimensions, attention: 'NEEDS_ATTENTION' as const },
+          };
+        }),
+      );
+      return {
+        ...page,
+        items:
+          requestedAttention === undefined
+            ? items
+            : items.filter((item) => item.dimensions.attention === requestedAttention),
+      };
+    },
+    async readDetail(
+      scope: ActivityAdapterScopeV1,
+      root: ActivityRootReferenceV1,
+    ): Promise<ActivityDetailV1> {
+      const detail = await adapter.readDetail(scope, root);
+      if (root.domainKind !== 'EXTERNAL_ACTION') return detail;
+      if (!(await hasPendingReview(scope.activeProjectId, root.domainResourceId))) return detail;
+      return {
+        ...detail,
+        dimensions: { ...detail.dimensions, attention: 'NEEDS_ATTENTION' as const },
+      };
+    },
+    readStages: (scope, root, cursor, limit) => adapter.readStages(scope, root, cursor, limit),
+    readEvents: (scope, root, cursor, limit) => adapter.readEvents(scope, root, cursor, limit),
+    canAccess: (scope, root) => adapter.canAccess(scope, root),
+    health: () => adapter.health(),
+  };
+};
+
 const createApplicationCore = async (
   options: ApplicationOptions,
   cleanupStack: AsyncCleanupStack,
@@ -1718,6 +1796,17 @@ const createApplicationCore = async (
     );
   const actionExecutionRepository =
     options.actionExecutionRepository ?? new InMemoryActionExecutionRepository();
+  const actionFeedbackReviewRepository =
+    typeof (actionExecutionRepository as Partial<ActionFeedbackReviewRepositoryPort>)
+      .upsertFromFeedback === 'function'
+      ? (actionExecutionRepository as unknown as ActionFeedbackReviewRepositoryPort)
+      : undefined;
+  // Keep the non-Postgres composition on one durable-in-process boundary:
+  // ActionFeedbackReview's consumer and the Activity decorator must observe
+  // the same fallback repository instance. A fresh repository per consumer
+  // would acknowledge the event but make Activity appear unchanged.
+  const effectiveActionFeedbackReviewRepository =
+    actionFeedbackReviewRepository ?? new InMemoryActionFeedbackReviewRepository();
   const canonicalProjectionRecoveryReporter =
     options.canonicalProjectionRecoveryReporter ??
     new InMemoryCanonicalProjectionRecoveryReporter();
@@ -1974,7 +2063,10 @@ const createApplicationCore = async (
           new SourcesActivityAdapter(activitySourcesRead),
           new AskActivityAdapter(activityAskRead),
           new DiscoveryActivityAdapter(activityDiscoveryRead, activityDiscoveryFindingRead),
-          new ExternalActionActivityAdapter(externalActionStore),
+          withActionReviewActivity(
+            new ExternalActionActivityAdapter(externalActionStore),
+            effectiveActionFeedbackReviewRepository,
+          ),
         ],
         adapterFor(domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY') {
           return registry.adapters.find((adapter) => adapter.domainKind === domainKind);
@@ -2248,6 +2340,9 @@ const createApplicationCore = async (
     },
     actionConnector,
   );
+  const actionFeedbackReview = createActionFeedbackReviewModule(
+    effectiveActionFeedbackReviewRepository,
+  );
 
   const lexicalRetriever = new LexicalRetriever(searchProjectionRepository, async (projectId) =>
     canonicalSnapshot.getSnapshot(projectId),
@@ -2314,6 +2409,7 @@ const createApplicationCore = async (
     compiledTruth,
     discoveryTriggerCoordinatorModule,
     actionExecution,
+    actionFeedbackReview,
     hybridRetrieval,
   );
   await kernel.start();

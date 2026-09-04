@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import {
@@ -50,7 +51,9 @@ import type {
   DiscoveryRuntimeStageTransitionInputV1,
   DiscoveryRuntimeStageOutputV1,
   DiscoveryRuntimeProviderReservationV1,
+  DiscoverySemanticEssenceDiagnosticInputV1,
 } from '../../../modules/discovery-runtime/src/index.js';
+import type { DiscoveryActivityDiagnosticAggregateV1 } from '../../../modules/frontend-activity/src/activity-domain-read-ports.js';
 import type {
   DiscoveryActivityAttemptRow,
   DiscoveryActivityHistoryV1,
@@ -808,6 +811,33 @@ export class PostgresDiscoveryRuntimeRepository
 {
   constructor(private readonly pool: Pool) {}
 
+  async recordSemanticEssenceDiagnostic(
+    input: DiscoverySemanticEssenceDiagnosticInputV1,
+  ): Promise<'CREATED' | 'ALREADY_EXISTS'> {
+    const result = await this.pool.query(
+      `INSERT INTO discovery.semantic_essence_diagnostics
+         (diagnostic_id, project_id, job_id, run_id, attempt_id, finding_identity,
+          stage, reason_code, attempt_number, occurred_at, completion, excluded_count,
+          candidate_count, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'SEMANTIC_ESSENCE',
+               'DISCOVERY_SEMANTIC_ESSENCE_INVALID', $7, $8, 'PARTIAL', $9, $10, $8, $8)
+       ON CONFLICT (project_id, run_id, attempt_id, finding_identity, reason_code) DO NOTHING`,
+      [
+        randomUUID(),
+        input.projectId,
+        input.jobId,
+        input.runId,
+        input.attemptId,
+        input.findingIdentity,
+        input.attemptNumber,
+        input.occurredAt,
+        input.excludedCount,
+        input.candidateCount ?? null,
+      ],
+    );
+    return result.rowCount === 1 ? 'CREATED' : 'ALREADY_EXISTS';
+  }
+
   /**
    * Activity read boundary over the same durable runtime tables. These
    * methods are intentionally read-only and expose no Finding/stage-output
@@ -971,6 +1001,47 @@ export class PostgresDiscoveryRuntimeRepository
     const attempt = attemptResult.rows.map((row) => lifecycleHistoryEvent(row, 'DiscoveryAttempt'));
     const stage = stageResult.rows.map((row) => lifecycleHistoryEvent(row, 'DiscoveryStage'));
     return { job, run, attempt, stage };
+  }
+
+  async getSemanticEssenceDiagnosticAggregate(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+  }): Promise<DiscoveryActivityDiagnosticAggregateV1 | undefined> {
+    const result = await this.pool.query<{
+      diagnostic_count: string;
+      excluded_count: string;
+      candidate_count: string | null;
+      updated_at: Date;
+    }>(
+      `WITH per_attempt AS (
+         SELECT attempt_id,
+                sum(excluded_count)::int AS excluded_count,
+                max(candidate_count)::int AS candidate_count,
+                max(updated_at) AS updated_at
+         FROM discovery.semantic_essence_diagnostics
+         WHERE project_id = $1 AND job_id = $2 AND run_id = $3
+         GROUP BY attempt_id
+       )
+       SELECT (SELECT count(*)::text
+               FROM discovery.semantic_essence_diagnostics
+               WHERE project_id = $1 AND job_id = $2 AND run_id = $3) AS diagnostic_count,
+              COALESCE(sum(excluded_count), 0)::text AS excluded_count,
+              sum(candidate_count)::text AS candidate_count,
+              max(updated_at) AS updated_at
+       FROM per_attempt
+       HAVING count(*) > 0`,
+      [input.projectId, input.jobId, input.runId],
+    );
+    const row = result.rows[0];
+    if (row === undefined) return undefined;
+    return {
+      diagnosticCount: Number(row.diagnostic_count),
+      excludedCount: Number(row.excluded_count),
+      ...(row.candidate_count === null ? {} : { candidateCount: Number(row.candidate_count) }),
+      completion: 'PARTIAL',
+      updatedAt: row.updated_at.toISOString(),
+    };
   }
 
   async saveJob(job: DiscoveryJobV1): Promise<'CREATED' | 'CONFLICT'> {

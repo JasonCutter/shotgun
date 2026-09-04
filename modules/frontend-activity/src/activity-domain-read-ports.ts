@@ -286,6 +286,15 @@ export type DiscoveryActivityFindingReadPort = {
   }): Promise<boolean>;
 };
 
+/** Safe, bounded aggregate for Discovery semantic-essence exclusions. */
+export type DiscoveryActivityDiagnosticAggregateV1 = {
+  readonly diagnosticCount: number;
+  readonly excludedCount: number;
+  readonly candidateCount?: number;
+  readonly completion: 'PARTIAL';
+  readonly updatedAt: string;
+};
+
 /** One durable lifecycle transition; payloads and Finding bodies are excluded. */
 export type DiscoveryActivityLifecycleEventV1 = {
   readonly resourceKind: 'DiscoveryJob' | 'DiscoveryRun' | 'DiscoveryAttempt' | 'DiscoveryStage';
@@ -376,4 +385,10 @@ export type DiscoveryActivityReadPort = {
     readonly attemptIds: readonly string[];
     readonly stageIds: readonly string[];
   }): Promise<DiscoveryActivityHistoryV1>;
+  /** Optional read-only aggregate; never returns a diagnostic body. */
+  getSemanticEssenceDiagnosticAggregate?(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly runId: string;
+  }): Promise<DiscoveryActivityDiagnosticAggregateV1 | undefined>;
 };

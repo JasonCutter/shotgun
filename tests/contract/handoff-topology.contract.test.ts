@@ -39,6 +39,7 @@ import {
   createActionExecutionModule,
   type CurrentActionBinding,
 } from '../../modules/action-execution/src/index.js';
+import { createActionFeedbackReviewModule } from '../../modules/action-feedback-review/src/index.js';
 import { createAIProviderModule } from '../../modules/ai-provider/src/index.js';
 import { createCandidateGenerationModule } from '../../modules/candidate-generation/src/index.js';
 import { createCanonicalKnowledgeModule } from '../../modules/canonical-knowledge/src/index.js';
@@ -142,6 +143,7 @@ const productionModules = (): readonly ShotgunModule[] => {
       independentVerification,
       new FakeDraftActionConnector(),
     ),
+    createActionFeedbackReviewModule(),
   ];
 };
 

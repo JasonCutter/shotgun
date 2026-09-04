@@ -1048,6 +1048,26 @@ export const createProductDiscoveryExecution = (
           );
         } catch {
           completion = 'PARTIAL';
+          // Diagnostics are best-effort observability. A persistence outage
+          // must not turn the already-safe candidate exclusion into a failed
+          // Quality Gate or discard healthy candidates in this same run.
+          try {
+            await input.runtimeRepository.recordSemanticEssenceDiagnostic({
+              projectId: context.claim.projectId,
+              jobId: context.claim.jobId,
+              runId: context.claim.runId,
+              attemptId: context.claim.attemptId,
+              findingIdentity: sha256Text(
+                `${finding.fingerprintVersion}:${finding.fingerprint}`,
+              ) as `sha256:${string}`,
+              attemptNumber: context.claim.attempt.attemptNumber,
+              occurredAt: executionNow(context),
+              excludedCount: 1,
+              candidateCount: Math.min(candidates.length, 100_000),
+            });
+          } catch {
+            // Preserve PARTIAL completion and continue with the next candidate.
+          }
           continue;
         }
         const result = await qualityGate.evaluate({

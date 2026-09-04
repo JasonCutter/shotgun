@@ -1,0 +1,12 @@
+{
+  "id": "stage11.action-feedback-review",
+  "version": "1.0.0",
+  "owner": "Shotgun Governed Action Feedback Review",
+  "deployment": ["in_process", "worker"],
+  "dataOwnership": ["action.action_review_work_items"],
+  "consumes": {
+    "events": [{ "name": "ActionFeedbackRecorded", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": { "events": [], "handoffs": [] },
+  "approvalPolicy": { "canWriteCanonical": false, "canExecuteExternalAction": false }
+}

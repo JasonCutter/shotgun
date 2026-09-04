@@ -19,14 +19,53 @@ import type {
   ActionExecutionRepositoryPort,
   ActionTransition,
 } from '../../../modules/action-execution/src/index.js';
+import type {
+  ActionFeedbackReviewRepositoryPort,
+  ActionReviewWorkItem,
+} from '../../../modules/action-feedback-review/src/index.js';
 
 type ExecutionRow = { readonly record_json: ActionExecutionRecord };
 type AuditRow = { readonly event_json: ActionAuditEvent };
 type CandidateRow = { readonly candidate_json: ServerActionCandidate };
+type ActionReviewRow = {
+  readonly work_item_id: string;
+  readonly project_id: string;
+  readonly semantic_key: string;
+  readonly action_id: string;
+  readonly outcome: ActionReviewWorkItem['outcome'];
+  readonly phase: 'ACTION_REVIEW';
+  readonly status: 'PENDING';
+  readonly evidence_ref: string;
+  readonly feedback_occurred_at: Date;
+  readonly created_at: Date;
+  readonly updated_at: Date;
+};
 
 const normalizedTimestamp = (value: string | Date): string | undefined => {
   const timestamp = new Date(value);
   return Number.isNaN(timestamp.getTime()) ? undefined : timestamp.toISOString();
+};
+
+const mapActionReviewRow = (row: ActionReviewRow): ActionReviewWorkItem => {
+  const feedbackOccurredAt = normalizedTimestamp(row.feedback_occurred_at);
+  const createdAt = normalizedTimestamp(row.created_at);
+  const updatedAt = normalizedTimestamp(row.updated_at);
+  if (feedbackOccurredAt === undefined || createdAt === undefined || updatedAt === undefined) {
+    throw new Error('Action review work item timestamps are invalid.');
+  }
+  return {
+    workItemId: row.work_item_id,
+    projectId: row.project_id,
+    semanticKey: row.semantic_key,
+    actionId: row.action_id,
+    outcome: row.outcome,
+    phase: row.phase,
+    status: row.status,
+    evidenceRef: row.evidence_ref,
+    feedbackOccurredAt,
+    createdAt,
+    updatedAt,
+  };
 };
 
 /** Trusted Candidate persistence. No HTTP adapter writes to this port. */
@@ -58,7 +97,9 @@ export class PostgresActionCandidateRepository implements ActionCandidateReposit
   }
 }
 
-export class PostgresActionExecutionRepository implements ActionExecutionRepositoryPort {
+export class PostgresActionExecutionRepository
+  implements ActionExecutionRepositoryPort, ActionFeedbackReviewRepositoryPort
+{
   constructor(private readonly pool: Pool) {}
 
   async createPreview(
@@ -324,6 +365,87 @@ export class PostgresActionExecutionRepository implements ActionExecutionReposit
       [projectId, actionId],
     );
     return result.rows.map((row) => row.event_json);
+  }
+
+  async upsertFromFeedback(
+    input: Parameters<ActionFeedbackReviewRepositoryPort['upsertFromFeedback']>[0],
+  ): Promise<ActionReviewWorkItem> {
+    return this.transaction(async (client) => {
+      const owner = await client.query<{ readonly project_id: string }>(
+        `SELECT project_id
+         FROM action.executions
+         WHERE action_id::text = $1
+         FOR SHARE`,
+        [input.actionId],
+      );
+      if (owner.rows[0]?.project_id !== input.projectId) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'The Action feedback owner was not found in this project.',
+          module: 'stage11.action-feedback-review',
+          operation: 'bind-action-feedback-project',
+        });
+      }
+      const result = await client.query<ActionReviewRow>(
+        `INSERT INTO action.action_review_work_items
+           (work_item_id, project_id, semantic_key, action_id, outcome, phase, status,
+            evidence_ref, feedback_occurred_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+         ON CONFLICT (project_id, semantic_key) DO NOTHING
+         RETURNING work_item_id, project_id, semantic_key, action_id, outcome, phase, status,
+                   evidence_ref, feedback_occurred_at, created_at, updated_at`,
+        [
+          randomUUID(),
+          input.projectId,
+          input.semanticKey,
+          input.actionId,
+          input.outcome,
+          input.phase,
+          'PENDING',
+          input.evidenceRef,
+          input.feedbackOccurredAt,
+          input.now,
+        ],
+      );
+      const row =
+        result.rows[0] ??
+        (
+          await client.query<ActionReviewRow>(
+            `SELECT work_item_id, project_id, semantic_key, action_id, outcome, phase, status,
+                    evidence_ref, feedback_occurred_at, created_at, updated_at
+             FROM action.action_review_work_items
+             WHERE project_id = $1 AND semantic_key = $2`,
+            [input.projectId, input.semanticKey],
+          )
+        ).rows[0];
+      if (row === undefined) throw new Error('Action review work item could not be persisted.');
+      if (row.action_id !== input.actionId || row.outcome !== input.outcome) {
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage: 'Action feedback semantic identity is already bound to different data.',
+          module: 'stage11.action-feedback-review',
+          operation: 'upsert-action-review-work-item',
+        });
+      }
+      return mapActionReviewRow(row);
+    });
+  }
+
+  async listByAction(input: {
+    readonly projectId: string;
+    readonly actionId: string;
+    readonly limit: number;
+  }): Promise<readonly ActionReviewWorkItem[]> {
+    const result = await this.pool.query<ActionReviewRow>(
+      `SELECT work_item_id, project_id, semantic_key, action_id, outcome, phase, status,
+              evidence_ref, feedback_occurred_at, created_at, updated_at
+       FROM action.action_review_work_items
+       WHERE project_id = $1 AND action_id = $2
+       ORDER BY created_at ASC, work_item_id ASC
+       LIMIT $3`,
+      [input.projectId, input.actionId, Math.max(1, Math.min(100, input.limit))],
+    );
+    return result.rows.map(mapActionReviewRow);
   }
 
   private async transaction<T>(operation: (client: PoolClient) => Promise<T>): Promise<T> {

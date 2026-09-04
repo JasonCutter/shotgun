@@ -67,6 +67,7 @@ const managedSchemas = [
   'review',
   'comparison',
   'runtime',
+  'connector',
   'discovery',
 ] as const;
 
@@ -128,6 +129,12 @@ const reset = async (connectionString: string): Promise<void> => {
 
 const requiredTables = [
   'runtime.schema_migrations',
+  'connector.dedup_records',
+  'connector.jobs',
+  'connector.job_attempts',
+  'connector.dead_letters',
+  'connector.replays',
+  'connector.ordering_checkpoints',
   'intake.submissions',
   'asset.source_versions',
   'transformation.revisions',

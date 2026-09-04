@@ -318,6 +318,13 @@ describe('Connector reliability', () => {
       code: 'OUTCOME_UNKNOWN',
     });
 
+    // The late handler promise must not clear the semantic tombstone and
+    // make a second side effect eligible after the timeout.
+    await delay(40);
+    await expect(kernel.connector.sendCommand(command)).rejects.toMatchObject({
+      code: 'OUTCOME_UNKNOWN',
+    });
+
     const job = kernel.connector.jobs.list()[0];
     expect(calls).toBe(1);
     expect(job?.attempts).toHaveLength(1);

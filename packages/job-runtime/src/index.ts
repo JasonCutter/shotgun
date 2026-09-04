@@ -9,6 +9,8 @@ export type AttemptRecord = {
   readonly startedAt: string;
   finishedAt?: string;
   status: 'running' | 'succeeded' | 'failed';
+  readonly workerId?: string;
+  readonly fencingToken?: number;
   errorCode?: ErrorCode;
   scheduledDelayMs: number;
 };

@@ -1,4 +1,8 @@
-import { ConnectorRuntime, type MessageTransport } from '../../connector-runtime/src/index.js';
+import {
+  ConnectorRuntime,
+  type ConnectorRuntimeStatePort,
+  type MessageTransport,
+} from '../../connector-runtime/src/index.js';
 import { ModuleRegistry, type ShotgunModule } from '../../module-sdk/src/index.js';
 
 export class ShotgunKernel {
@@ -7,8 +11,13 @@ export class ShotgunKernel {
 
   private ready = false;
 
-  constructor(transport: MessageTransport) {
-    this.connector = new ConnectorRuntime(this.registry, transport);
+  constructor(
+    transport: MessageTransport,
+    options: { readonly connectorRuntimeState?: ConnectorRuntimeStatePort } = {},
+  ) {
+    this.connector = new ConnectorRuntime(this.registry, transport, {
+      ...(options.connectorRuntimeState ? { state: options.connectorRuntimeState } : {}),
+    });
   }
 
   register(...modules: readonly ShotgunModule[]): void {

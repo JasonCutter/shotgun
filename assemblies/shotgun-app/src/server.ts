@@ -248,6 +248,7 @@ import {
   type HybridSearchRequest,
   type HybridSearchResponse,
 } from '../../../packages/kernel/src/index.js';
+import type { ConnectorRuntimeStatePort } from '../../../packages/connector-runtime/src/index.js';
 import {
   type HybridRetrievalCoordinatorPort,
   type KnowledgeResourceResolverPort,
@@ -556,6 +557,8 @@ export type ApplicationOptions = {
   /** Shared application-owned cleanup authority supplied by the composition. */
   readonly cleanupStack?: AsyncCleanupStack;
   readonly transport?: MessageTransport;
+  /** Production connector semantic/execution authority (PostgreSQL adapter). */
+  readonly connectorRuntimeState?: ConnectorRuntimeStatePort;
   readonly intakeRepository?: IntakeRepositoryPort;
   readonly originalAssetRepository?: OriginalAssetRepositoryPort;
   readonly assetStorage?: AssetStoragePort;
@@ -2095,7 +2098,15 @@ const createApplicationCore = async (
 
   const hybridRetrieval = createHybridRetrievalModule(hybridRetrievalCoordinator);
 
-  const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport());
+  const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport(), {
+    connectorRuntimeState: options.connectorRuntimeState,
+  });
+  if (options.connectorRuntimeState?.lifecycle) {
+    await options.connectorRuntimeState.lifecycle.start();
+    cleanupStack.add('connector durable runtime', () =>
+      options.connectorRuntimeState!.lifecycle!.stop({ graceMs: 5_000 }),
+    );
+  }
   kernel.register(
     ping.module,
     pong.module,

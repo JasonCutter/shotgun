@@ -4,6 +4,7 @@ import { InMemoryCanonicalKnowledgeRepository } from '../../adapters/stage6-in-m
 import {
   createApplication,
   InMemoryCanonicalProjectionRecoveryReporter,
+  RECOVERY_RUNNER_IDS,
   type CanonicalProjectionRecoveryConnector,
   runCanonicalProjectionRecovery,
   runCanonicalProjectionRecoveryWithReport,
@@ -236,7 +237,64 @@ describe('Canonical Projection recovery coordinator', () => {
         ],
       },
     });
+    const recovery = app.state.recovery.get(RECOVERY_RUNNER_IDS.CANONICAL_PROJECTION);
+    expect(recovery).toMatchObject({
+      runnerId: RECOVERY_RUNNER_IDS.CANONICAL_PROJECTION,
+      executionStatus: 'COMPLETED',
+      outcome: 'DEGRADED',
+      freshness: 'CURRENT',
+      readinessImpact: 'DEGRADED',
+      scannedCount: 2,
+      succeededCount: 1,
+      retryableCount: 1,
+      safeCodes: ['CANONICAL_PROJECTION_RECOVERY_PARTIAL_FAILURE'],
+    });
+    expect(JSON.stringify(recovery)).not.toContain('project-a');
+    expect(JSON.stringify(recovery)).not.toContain('project-b');
     expect(JSON.stringify(reporter.latest())).not.toContain('postgres://');
+    await app.server.close();
+  });
+
+  it('retains one canonical runner identity across periodic degradation and recovery', async () => {
+    const repository = new InMemoryCanonicalKnowledgeRepository();
+    repository.listProjectIds = async () => ['project-a'];
+    let fail = true;
+    const claimOutbox = repository.claimOutbox.bind(repository);
+    repository.claimOutbox = async (...args) => {
+      if (fail) throw new Error('project recovery unavailable');
+      return claimOutbox(...args);
+    };
+
+    const app = await createApplication({
+      canonicalKnowledgeRepository: repository,
+      canonicalProjectionRecoveryIntervalMs: 60_000,
+    });
+
+    const degraded = app.state.recovery.get(RECOVERY_RUNNER_IDS.CANONICAL_PROJECTION);
+    expect(degraded).toMatchObject({
+      runnerId: RECOVERY_RUNNER_IDS.CANONICAL_PROJECTION,
+      executionStatus: 'COMPLETED',
+      outcome: 'DEGRADED',
+      freshness: 'CURRENT',
+      readinessImpact: 'DEGRADED',
+    });
+    expect(degraded?.lastSuccessAt).toBeUndefined();
+
+    fail = false;
+    await app.state.canonicalProjectionRecovery.tick();
+    const healthy = app.state.recovery.get(RECOVERY_RUNNER_IDS.CANONICAL_PROJECTION);
+    expect(healthy).toMatchObject({
+      runnerId: RECOVERY_RUNNER_IDS.CANONICAL_PROJECTION,
+      executionStatus: 'COMPLETED',
+      outcome: 'HEALTHY',
+      freshness: 'CURRENT',
+      readinessImpact: 'NONE',
+      scannedCount: 1,
+      succeededCount: 1,
+      retryableCount: 0,
+      safeCodes: [],
+    });
+    expect(healthy?.lastSuccessAt).toBeDefined();
     await app.server.close();
   });
 

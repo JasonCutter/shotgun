@@ -689,6 +689,98 @@ type AIDurableRecoveryConnector = {
   sendCommand(command: ReturnType<typeof createCommand>): Promise<unknown>;
 };
 
+export type RecoveryExecutionStatus = 'COMPLETED' | 'FAILED_TO_RUN';
+export type RecoveryOutcome = 'HEALTHY' | 'DEGRADED' | 'FAILED';
+export type RecoveryFreshness = 'CURRENT' | 'STALE';
+export type RecoveryReadinessImpact = 'NONE' | 'DEGRADED' | 'NOT_READY';
+export type ApplicationReadiness = 'READY' | 'DEGRADED' | 'NOT_READY';
+
+export type RecoveryStatus = {
+  readonly runnerId: string;
+  readonly executionStatus: RecoveryExecutionStatus;
+  readonly outcome: RecoveryOutcome;
+  readonly freshness: RecoveryFreshness;
+  readonly readinessImpact: RecoveryReadinessImpact;
+  readonly startedAt?: string;
+  readonly completedAt?: string;
+  readonly lastSuccessAt?: string;
+  readonly nextScheduledAt?: string;
+  readonly scannedCount: number;
+  readonly succeededCount: number;
+  readonly retryableCount: number;
+  readonly terminalCount: number;
+  readonly outcomeUnknownCount: number;
+  readonly safeCodes: readonly string[];
+};
+
+export type PublicRecoveryStatus = Omit<
+  RecoveryStatus,
+  'startedAt' | 'completedAt' | 'lastSuccessAt' | 'nextScheduledAt'
+>;
+
+export const RECOVERY_RUNNER_IDS = {
+  AI_DURABLE_MATERIALIZATION: 'ai-durable-materialization',
+  CANONICAL_PROJECTION: 'canonical-projection',
+} as const;
+
+const cloneRecoveryStatus = (status: RecoveryStatus): RecoveryStatus => ({
+  ...status,
+  safeCodes: [...status.safeCodes],
+});
+
+const toPublicRecoveryStatus = (status: RecoveryStatus): PublicRecoveryStatus => ({
+  runnerId: status.runnerId,
+  executionStatus: status.executionStatus,
+  outcome: status.outcome,
+  freshness: status.freshness,
+  readinessImpact: status.readinessImpact,
+  scannedCount: status.scannedCount,
+  succeededCount: status.succeededCount,
+  retryableCount: status.retryableCount,
+  terminalCount: status.terminalCount,
+  outcomeUnknownCount: status.outcomeUnknownCount,
+  safeCodes: [...status.safeCodes],
+});
+
+const isActiveRecoveryStatus = (status: RecoveryStatus): boolean =>
+  status.executionStatus === 'FAILED_TO_RUN' ||
+  status.outcome !== 'HEALTHY' ||
+  status.freshness === 'STALE';
+
+/**
+ * Application-owned, in-memory operational projection of existing recovery
+ * authorities. It records observations but never starts recovery or persists
+ * business data; the owning runner remains responsible for execution.
+ */
+export class ApplicationRecoveryRegistry {
+  private readonly statuses = new Map<string, RecoveryStatus>();
+
+  record(status: RecoveryStatus): void {
+    this.statuses.set(status.runnerId, cloneRecoveryStatus(status));
+  }
+
+  get(runnerId: string): RecoveryStatus | undefined {
+    const status = this.statuses.get(runnerId);
+    return status === undefined ? undefined : cloneRecoveryStatus(status);
+  }
+
+  list(): readonly RecoveryStatus[] {
+    return [...this.statuses.values()]
+      .sort((left, right) => left.runnerId.localeCompare(right.runnerId))
+      .map(cloneRecoveryStatus);
+  }
+
+  readiness(): ApplicationReadiness {
+    let degraded = false;
+    for (const status of this.statuses.values()) {
+      if (!isActiveRecoveryStatus(status)) continue;
+      if (status.readinessImpact === 'NOT_READY') return 'NOT_READY';
+      if (status.readinessImpact === 'DEGRADED') degraded = true;
+    }
+    return degraded ? 'DEGRADED' : 'READY';
+  }
+}
+
 export const runAIDurableMaterializationRecovery = async (
   aiProviderRepository: AIProviderCallRepositoryPort,
   connector: AIDurableRecoveryConnector,
@@ -810,6 +902,103 @@ const recordRecoveryReport = async (
   } catch {
     // Recovery remains retryable if an optional observability adapter is unavailable.
   }
+};
+
+export const aiRecoveryStatusFromResult = (
+  result: { readonly attempted: number; readonly resumed: number; readonly failed: number },
+  startedAt: string,
+  completedAt: string,
+  previous?: RecoveryStatus,
+): RecoveryStatus => {
+  const healthy = result.failed === 0;
+  return {
+    runnerId: RECOVERY_RUNNER_IDS.AI_DURABLE_MATERIALIZATION,
+    executionStatus: 'COMPLETED',
+    outcome: healthy ? 'HEALTHY' : 'DEGRADED',
+    freshness: 'CURRENT',
+    readinessImpact: healthy ? 'NONE' : 'DEGRADED',
+    startedAt,
+    completedAt,
+    ...(healthy
+      ? { lastSuccessAt: completedAt }
+      : previous?.lastSuccessAt
+        ? { lastSuccessAt: previous.lastSuccessAt }
+        : {}),
+    scannedCount: result.attempted,
+    succeededCount: result.resumed,
+    retryableCount: result.failed,
+    terminalCount: 0,
+    outcomeUnknownCount: 0,
+    safeCodes: healthy ? [] : ['AI_DURABLE_MATERIALIZATION_RECOVERY_DEGRADED'],
+  };
+};
+
+export const aiRecoveryFailureStatus = (
+  startedAt: string,
+  completedAt: string,
+  previous?: RecoveryStatus,
+): RecoveryStatus => ({
+  runnerId: RECOVERY_RUNNER_IDS.AI_DURABLE_MATERIALIZATION,
+  executionStatus: 'FAILED_TO_RUN',
+  outcome: 'FAILED',
+  freshness: 'STALE',
+  readinessImpact: 'NOT_READY',
+  startedAt,
+  completedAt,
+  ...(previous?.lastSuccessAt ? { lastSuccessAt: previous.lastSuccessAt } : {}),
+  scannedCount: 0,
+  succeededCount: 0,
+  retryableCount: 0,
+  terminalCount: 0,
+  outcomeUnknownCount: 0,
+  safeCodes: ['AI_DURABLE_MATERIALIZATION_RECOVERY_FAILED'],
+});
+
+export const canonicalRecoveryStatusFromReport = (
+  report: CanonicalProjectionRecoveryReport,
+  previous?: RecoveryStatus,
+): RecoveryStatus => {
+  const result = report.result;
+  if (report.runStatus === 'COMPLETED' && result !== undefined) {
+    const healthy = result.failed === 0;
+    return {
+      runnerId: RECOVERY_RUNNER_IDS.CANONICAL_PROJECTION,
+      executionStatus: 'COMPLETED',
+      outcome: healthy ? 'HEALTHY' : 'DEGRADED',
+      freshness: 'CURRENT',
+      readinessImpact: healthy ? 'NONE' : 'DEGRADED',
+      startedAt: report.startedAt,
+      completedAt: report.completedAt,
+      ...(healthy
+        ? { lastSuccessAt: report.completedAt }
+        : previous?.lastSuccessAt
+          ? { lastSuccessAt: previous.lastSuccessAt }
+          : {}),
+      scannedCount: result.projects.length,
+      succeededCount: result.ready,
+      retryableCount: result.failed,
+      terminalCount: 0,
+      outcomeUnknownCount: 0,
+      safeCodes: healthy ? [] : ['CANONICAL_PROJECTION_RECOVERY_PARTIAL_FAILURE'],
+    };
+  }
+
+  return {
+    runnerId: RECOVERY_RUNNER_IDS.CANONICAL_PROJECTION,
+    executionStatus: 'FAILED_TO_RUN',
+    outcome: 'FAILED',
+    freshness: 'STALE',
+    readinessImpact: 'NOT_READY',
+    startedAt: report.startedAt,
+    completedAt: report.completedAt,
+    ...(previous?.lastSuccessAt ? { lastSuccessAt: previous.lastSuccessAt } : {}),
+    scannedCount: 0,
+    succeededCount: 0,
+    retryableCount: 0,
+    terminalCount: 0,
+    outcomeUnknownCount: 0,
+    safeCodes: [report.safeError ?? 'CANONICAL_PROJECTION_RECOVERY_FAILED'],
+  };
 };
 
 const recoveryEnvelopeContext = (projectId: string) => ({
@@ -1540,10 +1729,17 @@ const createApplicationCore = async (
   const canonicalProjectionRecoveryReporter =
     options.canonicalProjectionRecoveryReporter ??
     new InMemoryCanonicalProjectionRecoveryReporter();
+  const recoveryRegistry = new ApplicationRecoveryRegistry();
   let latestCanonicalProjectionRecoveryReport: CanonicalProjectionRecoveryReport | undefined;
   const applicationCanonicalProjectionRecoveryReporter: CanonicalProjectionRecoveryReporterPort = {
     async report(value) {
       latestCanonicalProjectionRecoveryReport = value;
+      recoveryRegistry.record(
+        canonicalRecoveryStatusFromReport(
+          value,
+          recoveryRegistry.get(RECOVERY_RUNNER_IDS.CANONICAL_PROJECTION),
+        ),
+      );
       await canonicalProjectionRecoveryReporter.report(value);
     },
   };
@@ -2165,7 +2361,29 @@ const createApplicationCore = async (
   // Canonical Projection Recovery (ADR-097). The normal Product startup keeps
   // this recovery enabled (default `true`).
   if (options.aiDurableMaterializationRecoveryEnabled !== false) {
-    await runAIDurableMaterializationRecovery(aiProviderRepository, kernel.connector);
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await runAIDurableMaterializationRecovery(
+        aiProviderRepository,
+        kernel.connector,
+      );
+      recoveryRegistry.record(
+        aiRecoveryStatusFromResult(
+          result,
+          startedAt,
+          new Date().toISOString(),
+          recoveryRegistry.get(RECOVERY_RUNNER_IDS.AI_DURABLE_MATERIALIZATION),
+        ),
+      );
+    } catch {
+      recoveryRegistry.record(
+        aiRecoveryFailureStatus(
+          startedAt,
+          new Date().toISOString(),
+          recoveryRegistry.get(RECOVERY_RUNNER_IDS.AI_DURABLE_MATERIALIZATION),
+        ),
+      );
+    }
   }
   await runCanonicalProjectionRecoveryWithReport(
     canonicalKnowledgeRepository,
@@ -3044,7 +3262,11 @@ const createApplicationCore = async (
     return { tokens };
   });
 
-  server.get('/health', async () => kernel.health());
+  server.get('/health', async () => ({
+    ...kernel.health(),
+    readiness: recoveryRegistry.readiness(),
+    recoveries: recoveryRegistry.list().map(toPublicRecoveryStatus),
+  }));
 
   server.post<{ Body: PingRequest }>('/demo/ping', async (request) => {
     const requestId = request.body?.requestId ?? randomUUID();
@@ -3998,8 +4220,17 @@ const createApplicationCore = async (
       pong: pong.state,
       canonicalProjectionRecovery: {
         latest: () => latestCanonicalProjectionRecoveryReport,
+        tick: async () => {
+          await canonicalProjectionRecoveryWorker?.tick();
+        },
       },
       canonicalProjectionRecoveryReporter,
+      recoveryRegistry,
+      recovery: {
+        list: () => recoveryRegistry.list(),
+        get: (runnerId: string) => recoveryRegistry.get(runnerId),
+        readiness: () => recoveryRegistry.readiness(),
+      },
     },
   };
 };

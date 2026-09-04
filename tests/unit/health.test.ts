@@ -210,6 +210,17 @@ describe('Shotgun application', () => {
         }),
       ]),
     });
+    const publicCanonical = response
+      .json()
+      .recoveries.find(
+        (recovery: { runnerId: string }) =>
+          recovery.runnerId === RECOVERY_RUNNER_IDS.CANONICAL_PROJECTION,
+      );
+    expect(publicCanonical).toBeDefined();
+    expect(publicCanonical).not.toHaveProperty('startedAt');
+    expect(publicCanonical).not.toHaveProperty('completedAt');
+    expect(publicCanonical).not.toHaveProperty('lastSuccessAt');
+    expect(publicCanonical).not.toHaveProperty('nextScheduledAt');
     expect(serialized).not.toContain('postgres://');
     expect(serialized).not.toContain('project-secret');
     expect(serialized).not.toContain('prompt evidence');

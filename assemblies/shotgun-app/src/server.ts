@@ -713,6 +713,11 @@ export type RecoveryStatus = {
   readonly safeCodes: readonly string[];
 };
 
+export type PublicRecoveryStatus = Omit<
+  RecoveryStatus,
+  'startedAt' | 'completedAt' | 'lastSuccessAt' | 'nextScheduledAt'
+>;
+
 export const RECOVERY_RUNNER_IDS = {
   AI_DURABLE_MATERIALIZATION: 'ai-durable-materialization',
   CANONICAL_PROJECTION: 'canonical-projection',
@@ -720,6 +725,20 @@ export const RECOVERY_RUNNER_IDS = {
 
 const cloneRecoveryStatus = (status: RecoveryStatus): RecoveryStatus => ({
   ...status,
+  safeCodes: [...status.safeCodes],
+});
+
+const toPublicRecoveryStatus = (status: RecoveryStatus): PublicRecoveryStatus => ({
+  runnerId: status.runnerId,
+  executionStatus: status.executionStatus,
+  outcome: status.outcome,
+  freshness: status.freshness,
+  readinessImpact: status.readinessImpact,
+  scannedCount: status.scannedCount,
+  succeededCount: status.succeededCount,
+  retryableCount: status.retryableCount,
+  terminalCount: status.terminalCount,
+  outcomeUnknownCount: status.outcomeUnknownCount,
   safeCodes: [...status.safeCodes],
 });
 
@@ -3246,7 +3265,7 @@ const createApplicationCore = async (
   server.get('/health', async () => ({
     ...kernel.health(),
     readiness: recoveryRegistry.readiness(),
-    recoveries: recoveryRegistry.list(),
+    recoveries: recoveryRegistry.list().map(toPublicRecoveryStatus),
   }));
 
   server.post<{ Body: PingRequest }>('/demo/ping', async (request) => {

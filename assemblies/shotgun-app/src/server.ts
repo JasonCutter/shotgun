@@ -756,7 +756,7 @@ export class ApplicationRecoveryRegistry {
     for (const status of this.statuses.values()) {
       if (!isActiveRecoveryStatus(status)) continue;
       if (status.readinessImpact === 'NOT_READY') return 'NOT_READY';
-      degraded = true;
+      if (status.readinessImpact === 'DEGRADED') degraded = true;
     }
     return degraded ? 'DEGRADED' : 'READY';
   }

@@ -130,7 +130,7 @@ describe('Shotgun application', () => {
     );
     expect(registry.readiness()).toBe('NOT_READY');
     registry.record(status({ freshness: 'STALE' }));
-    expect(registry.readiness()).toBe('DEGRADED');
+    expect(registry.readiness()).toBe('READY');
   });
 
   it('maps completed, degraded and failed-to-run executions without leaking exceptions', () => {

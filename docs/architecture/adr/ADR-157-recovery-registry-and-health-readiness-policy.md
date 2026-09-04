@@ -83,9 +83,10 @@ redacted `recoveries` list.
 For each recorded status, an active condition is any `FAILED_TO_RUN`, non-healthy
 outcome, or `STALE` freshness. Any active status with
 `readinessImpact = NOT_READY` yields application readiness `NOT_READY`. Otherwise
-any active status yields `DEGRADED`; with no active status the result is `READY`.
-Stale status is therefore never silently treated as healthy, even if an older
-status had `NONE` impact. Kernel liveness and application readiness remain
+an active status with `readinessImpact = DEGRADED` yields `DEGRADED`; otherwise
+the result is `READY`. An active status whose owner explicitly reports
+`readinessImpact = NONE` does not lower readiness; freshness and readiness impact
+remain separate dimensions. Kernel liveness and application readiness remain
 separate fields.
 
 ## Existing-authority inventory

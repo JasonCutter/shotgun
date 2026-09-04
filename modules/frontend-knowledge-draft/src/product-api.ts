@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
 import {
   FrontendContractError,
   FrontendKnowledgeDraftCommandError,
@@ -25,6 +26,7 @@ import {
   type CanonicalSnapshot,
   type CommitKnowledgeDraftRequestV1,
   type CommitKnowledgeDraftResultV1,
+  type EvidenceSpan,
   type DraftImpactArtifactRefV1,
   type DraftValidationArtifactRefV1,
   type ErrorCode,
@@ -412,9 +414,20 @@ export type FrontendKnowledgeDraftCanonicalCommitPort = {
   findCommit(projectId: string, commitId: string): Promise<CanonicalCommitResult | undefined>;
 };
 
+/**
+ * Server-owned Evidence authority used by the Approval -> Canonical commit
+ * boundary.  The caller's capabilities authorize the operation, but the
+ * Evidence Span remains the authority for the Canonical resource's visibility
+ * and sensitivity.
+ */
+export type FrontendKnowledgeDraftEvidenceReaderPort = {
+  findById(projectId: string, evidenceId: string): Promise<EvidenceSpan | undefined>;
+};
+
 export type FrontendKnowledgeDraftCommitDependenciesV1 = {
   readonly approvals: FrontendKnowledgeDraftApprovalCommitPort;
   readonly canonical: FrontendKnowledgeDraftCanonicalCommitPort;
+  readonly evidence: FrontendKnowledgeDraftEvidenceReaderPort;
   /** Server-only Discovery authority used for the final relation commit read. */
   readonly discoveryRelationAuthority?: FrontendKnowledgeDraftDiscoveryRelationAuthorityPort;
 };
@@ -508,6 +521,96 @@ const approvedClaimableOperation = (input: {
   return {
     claimReviewItemId: claimItems[0]?.reviewItemId,
     relationReviewItemId: relationItems[0]?.reviewItemId,
+  };
+};
+
+type ClaimEvidenceAuthority = {
+  readonly accessScope: readonly string[];
+  readonly sensitivity: FrontendKnowledgeDraftSensitivityClearance;
+  readonly sourceVersionId: string;
+  readonly revisionId: string;
+};
+
+const normalizedScopes = (scopes: readonly string[]): readonly string[] =>
+  [...new Set(scopes)].sort((left, right) => left.localeCompare(right));
+
+/**
+ * Resolves the immutable provenance authority for a CLAIM_ADD.  Membership
+ * capabilities authorize the commit, but they must never widen the
+ * visibility/sensitivity carried by the Evidence resource into Canonical.
+ */
+const resolveClaimEvidenceAuthority = async (
+  scope: FrontendKnowledgeDraftCommandScopeV1,
+  operation: Extract<FrontendKnowledgeOperationV1, { readonly kind: 'CLAIM_ADD' }>,
+  evidenceReader: FrontendKnowledgeDraftEvidenceReaderPort,
+): Promise<ClaimEvidenceAuthority> => {
+  if (operation.evidenceReferences.length === 0) {
+    draftFailure(
+      'VALIDATION_FAILED',
+      'A CLAIM_ADD commit requires at least one evidence reference.',
+    );
+  }
+
+  const references = operation.evidenceReferences;
+  if (new Set(references.map((reference) => reference.sourceVersionId)).size > 1) {
+    draftFailure(
+      'UNSUPPORTED_OPERATION',
+      'Multiple evidence source versions cannot be represented in the single-source Canonical claim model.',
+    );
+  }
+  const spans = await Promise.all(
+    references.map((reference) =>
+      evidenceReader.findById(scope.activeProjectId, reference.evidenceSpanId),
+    ),
+  );
+  if (spans.some((span) => span === undefined)) {
+    draftFailure('VALIDATION_FAILED', 'A CLAIM_ADD references missing Evidence provenance.');
+  }
+
+  const resolved = spans as EvidenceSpan[];
+  const first = resolved[0]!;
+  const expectedScope = normalizedScopes(first.accessScope);
+  if (expectedScope.length === 0) {
+    draftFailure('VALIDATION_FAILED', 'Evidence provenance must carry a non-empty access scope.');
+  }
+
+  for (const [index, span] of resolved.entries()) {
+    const reference = references[index]!;
+    if (
+      span.projectId !== scope.activeProjectId ||
+      span.sourceId !== reference.sourceId ||
+      span.sourceVersionId !== reference.sourceVersionId ||
+      span.evidenceId !== reference.evidenceSpanId
+    ) {
+      draftFailure(
+        'VALIDATION_FAILED',
+        'A CLAIM_ADD Evidence reference does not match its active Project/source identity.',
+      );
+    }
+    if (
+      !span.accessScope.every((required) => scope.accessScope.includes(required)) ||
+      !hasSensitivityClearance(scope.sensitivityClearance, span.sensitivity)
+    ) {
+      draftFailure('FORBIDDEN', 'The caller cannot commit the referenced Evidence provenance.');
+    }
+    if (
+      normalizedScopes(span.accessScope).join('\u0000') !== expectedScope.join('\u0000') ||
+      span.sensitivity !== first.sensitivity ||
+      span.sourceVersionId !== first.sourceVersionId ||
+      span.revisionId !== first.revisionId
+    ) {
+      draftFailure(
+        'VALIDATION_FAILED',
+        'A CLAIM_ADD references Evidence provenance with mixed scope, sensitivity, or revision.',
+      );
+    }
+  }
+
+  return {
+    accessScope: expectedScope,
+    sensitivity: first.sensitivity,
+    sourceVersionId: first.sourceVersionId,
+    revisionId: first.revisionId,
   };
 };
 
@@ -1080,6 +1183,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
       readonly relationAuthority?: Awaited<
         ReturnType<FrontendKnowledgeDraftDiscoveryRelationAuthorityPort['revalidateRelation']>
       >;
+      readonly claimEvidenceAuthority?: ClaimEvidenceAuthority;
     }> => {
       const now = new Date().toISOString();
       const draft = input.draft;
@@ -1197,6 +1301,25 @@ export class FrontendKnowledgeDraftProductCoordinator {
         ): operation is Extract<FrontendKnowledgeOperationV1, { readonly kind: 'RELATION_ADD' }> =>
           operation.kind === 'RELATION_ADD',
       );
+      let claimEvidenceAuthority: ClaimEvidenceAuthority | undefined;
+      if (input.mode !== 'RESOLVE') {
+        const claimable = approvedClaimableOperation({
+          operations: draft.operations,
+          approvedItemIds: approval.approvedItemIds,
+          discoveryProvenance: draft.discoveryProvenance,
+        });
+        const claimOperation =
+          claimable.claimReviewItemId === undefined
+            ? undefined
+            : operationByReviewItemId(draft.operations, claimable.claimReviewItemId);
+        if (claimOperation?.kind === 'CLAIM_ADD') {
+          claimEvidenceAuthority = await resolveClaimEvidenceAuthority(
+            scope,
+            claimOperation,
+            dependencies.evidence,
+          );
+        }
+      }
       let relationAuthority:
         | Awaited<
             ReturnType<FrontendKnowledgeDraftDiscoveryRelationAuthorityPort['revalidateRelation']>
@@ -1244,7 +1367,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
           );
         }
       }
-      return { draft, approval, canonicalSnapshot, relationAuthority };
+      return { draft, approval, canonicalSnapshot, relationAuthority, claimEvidenceAuthority };
     };
     const commitCanonical = async (
       transaction: unknown | undefined,
@@ -1281,6 +1404,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
       readonly relationAuthority?: Awaited<
         ReturnType<FrontendKnowledgeDraftDiscoveryRelationAuthorityPort['revalidateRelation']>
       >;
+      readonly claimEvidenceAuthority?: ClaimEvidenceAuthority;
       readonly now: string;
     }): FrontendCanonicalCommitWrite => {
       const claimable = approvedClaimableOperation({
@@ -1345,6 +1469,12 @@ export class FrontendKnowledgeDraftProductCoordinator {
             'Multiple evidence source versions cannot be represented in the single-source Canonical claim model.',
           );
         }
+        if (input.claimEvidenceAuthority === undefined) {
+          draftFailure(
+            'VALIDATION_FAILED',
+            'The authoritative Evidence provenance is unavailable for Canonical commit.',
+          );
+        }
         const evidence = claimOperation.evidenceReferences[0]!;
         return {
           ...base,
@@ -1357,8 +1487,8 @@ export class FrontendKnowledgeDraftProductCoordinator {
           claimText: claimOperation.after.statement,
           sourceVersionId: evidence.sourceVersionId,
           evidenceIds: claimOperation.evidenceReferences.map((ref) => ref.evidenceSpanId),
-          accessScope: [...scope.accessScope],
-          sensitivity: scope.sensitivityClearance,
+          accessScope: [...input.claimEvidenceAuthority.accessScope],
+          sensitivity: input.claimEvidenceAuthority.sensitivity,
         };
       }
       if (relationOperation?.kind === 'RELATION_ADD') {
@@ -1432,15 +1562,17 @@ export class FrontendKnowledgeDraftProductCoordinator {
         if (!current) {
           draftFailure('DRAFT_NOT_FOUND', 'The Draft was not found.');
         }
-        const { draft, approval, canonicalSnapshot, relationAuthority } = await revalidated({
-          draft: current,
-          transaction,
-        });
+        const { draft, approval, canonicalSnapshot, relationAuthority, claimEvidenceAuthority } =
+          await revalidated({
+            draft: current,
+            transaction,
+          });
         const write = buildWrite({
           draft,
           approval,
           canonicalSnapshot,
           relationAuthority,
+          claimEvidenceAuthority,
           now,
         });
         // Order per §3.2: durable Canonical commit → Approval CONSUMED → the
@@ -1525,6 +1657,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
           approval: revalidatedApproval,
           canonicalSnapshot,
           relationAuthority,
+          claimEvidenceAuthority,
         } = await revalidated({
           draft: current,
           mode: 'REVALIDATE',
@@ -1535,6 +1668,7 @@ export class FrontendKnowledgeDraftProductCoordinator {
           approval: revalidatedApproval,
           canonicalSnapshot,
           relationAuthority,
+          claimEvidenceAuthority,
           now,
         });
         const result = await commitCanonical(transaction, write);

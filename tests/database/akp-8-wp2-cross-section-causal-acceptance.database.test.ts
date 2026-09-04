@@ -1101,7 +1101,7 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
       draftRepository,
       new PostgresFrontendCommandGateway(pool!),
       new PostgresFrontendKnowledgeDraftTargetResolver(pool!),
-      createDraftCommitDependencies(reviewStore, canonical, bridge),
+      createDraftCommitDependencies(reviewStore, canonical, bridge, evidenceRepository),
     );
     const draftId = accepted.draft!.draftId;
     let draft = await draftRepository.transaction((repositories) =>
@@ -2069,6 +2069,7 @@ const createDraftCommitDependencies = (
   reviewStore: PostgresFrontendReviewRepository,
   canonical: PostgresCanonicalKnowledgeRepository,
   bridge: PostgresDiscoveryAuthoringBridge,
+  evidenceRepository: PostgresEvidenceRepository,
 ): FrontendKnowledgeDraftCommitDependenciesV1 => ({
   approvals: {
     findByIdWithRevision: async (approvalId) =>
@@ -2093,5 +2094,6 @@ const createDraftCommitDependencies = (
         .approvals.consumeApproval(approvalId, commitId, consumedAt, consumedBy),
   },
   canonical,
+  evidence: evidenceRepository,
   discoveryRelationAuthority: bridge,
 });

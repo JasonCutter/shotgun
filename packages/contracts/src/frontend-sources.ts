@@ -436,6 +436,16 @@ const stringValue = (value: unknown, path: string): string =>
 const optionalString = (value: unknown, path: string): string | undefined =>
   value === undefined ? undefined : stringValue(value, path);
 
+// Text Quote context is allowed to be empty at a document boundary. Keep this
+// rule local to the TextQuoteSelector decoder so other optional string fields
+// retain their non-empty contract.
+const optionalTextQuoteContext = (value: unknown, path: string): string | undefined =>
+  value === undefined
+    ? undefined
+    : typeof value === 'string'
+      ? value
+      : fail(`${path} must be a string when present.`);
+
 const boundedString = (value: unknown, path: string, maximum: number): string => {
   const decoded = stringValue(value, path);
   return decoded.length <= maximum
@@ -1034,8 +1044,8 @@ const decodeLocator = (input: unknown, path: string): PreviewLocatorView => {
     return { type, start, end, unit: 'unicode-code-point' };
   }
   if (type === 'TextQuoteSelector') {
-    const prefix = optionalString(value['prefix'], `${path}.prefix`);
-    const suffix = optionalString(value['suffix'], `${path}.suffix`);
+    const prefix = optionalTextQuoteContext(value['prefix'], `${path}.prefix`);
+    const suffix = optionalTextQuoteContext(value['suffix'], `${path}.suffix`);
     return {
       type,
       exact: stringValue(value['exact'], `${path}.exact`),

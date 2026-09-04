@@ -221,9 +221,28 @@ describe('Shotgun application', () => {
     expect(publicCanonical).not.toHaveProperty('completedAt');
     expect(publicCanonical).not.toHaveProperty('lastSuccessAt');
     expect(publicCanonical).not.toHaveProperty('nextScheduledAt');
+    expect(Object.keys(publicCanonical).sort()).toEqual(
+      [
+        'runnerId',
+        'executionStatus',
+        'outcome',
+        'freshness',
+        'readinessImpact',
+        'scannedCount',
+        'succeededCount',
+        'retryableCount',
+        'terminalCount',
+        'outcomeUnknownCount',
+        'safeCodes',
+      ].sort(),
+    );
     expect(serialized).not.toContain('postgres://');
     expect(serialized).not.toContain('project-secret');
     expect(serialized).not.toContain('prompt evidence');
+    expect(serialized).not.toContain('startedAt');
+    expect(serialized).not.toContain('completedAt');
+    expect(serialized).not.toContain('lastSuccessAt');
+    expect(serialized).not.toContain('nextScheduledAt');
     await server.close();
   });
 

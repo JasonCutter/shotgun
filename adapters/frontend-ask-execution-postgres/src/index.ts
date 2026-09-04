@@ -1718,33 +1718,131 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     }[]
   > {
     const owner = workerId ?? `ask-worker-${process.pid}-${randomUUID()}`;
-    const result = await this.pool.query<RunRow>(
-      `SELECT answer_run_id, project_id, state, attempt_number, event_revision,
-              access_scope, sensitivity_clearance, access_revision,
-              policy_context_revision, provider_id, model_id,
-              ai_configuration_revision, credential_id, credential_revision,
-              initial_provider_policy_fingerprint, ai_execution_pin_created_at
-       FROM frontend_ask.answer_runs
-       WHERE state = 'QUEUED'
-       ORDER BY created_at, answer_run_id
-       LIMIT $1`,
-      [Math.max(1, Math.floor(limit))],
-    );
+    const requestedLimit = Math.max(1, Math.floor(limit));
+    const candidateLimit = Math.max(requestedLimit * 2, requestedLimit + 1);
     const claimed: { scope: AskExecutionScope; claimed: AskClaimedExecution }[] = [];
-    for (const row of result.rows) {
-      const scope: AskExecutionScope = {
-        principalId: 'ask-worker',
-        projectId: row.project_id,
-        accessRevision: row.access_revision,
-        policyContextRevision: row.policy_context_revision,
-        sensitivityClearance: row.sensitivity_clearance,
-        accessScope: row.access_scope,
-      };
-      const executionPin = resolveInitialIdentity
-        ? await resolveInitialIdentity({ scope, answerRunId: row.answer_run_id })
-        : undefined;
-      const execution = await this.claimInitial(scope, row.answer_run_id, owner, executionPin);
-      if (execution) claimed.push({ scope, claimed: execution });
+    const excluded = new Set<string>();
+
+    // Context and initial identity resolution can re-enter the pool and may
+    // invoke policy/configuration adapters. Resolve those values before the
+    // claim transaction so a row lock is never held across that work.
+    while (claimed.length < requestedLimit) {
+      const candidateParams: unknown[] = [];
+      const excludedClause =
+        excluded.size === 0
+          ? ''
+          : (() => {
+              candidateParams.push([...excluded]);
+              return ` AND answer_run_id <> ALL($${candidateParams.length}::text[])`;
+            })();
+      candidateParams.push(candidateLimit);
+      const candidates = await this.pool.query<RunRow>(
+        `SELECT answer_run_id, project_id, state, attempt_number, event_revision,
+                access_scope, sensitivity_clearance, access_revision,
+                policy_context_revision, provider_id, model_id,
+                ai_configuration_revision, credential_id, credential_revision,
+                initial_provider_policy_fingerprint, ai_execution_pin_created_at
+         FROM frontend_ask.answer_runs
+         WHERE state = 'QUEUED'${excludedClause}
+         ORDER BY created_at, answer_run_id
+         LIMIT $${candidateParams.length}`,
+        candidateParams,
+      );
+      if (candidates.rows.length === 0) break;
+
+      const prepared = new Map<
+        string,
+        {
+          readonly scope: AskExecutionScope;
+          readonly context: AskExecutionRunContext;
+          readonly executionPin?: AIExecutionPin;
+        }
+      >();
+      for (const row of candidates.rows) {
+        excluded.add(row.answer_run_id);
+        const scope: AskExecutionScope = {
+          principalId: 'ask-worker',
+          projectId: row.project_id,
+          accessRevision: row.access_revision,
+          policyContextRevision: row.policy_context_revision,
+          sensitivityClearance: row.sensitivity_clearance,
+          accessScope: row.access_scope,
+        };
+        try {
+          const context = await this.getRunContext(scope, row.answer_run_id);
+          if (!context || context.snapshot.state !== 'QUEUED') continue;
+          const executionPin = resolveInitialIdentity
+            ? await resolveInitialIdentity({ scope, answerRunId: row.answer_run_id })
+            : undefined;
+          prepared.set(row.answer_run_id, {
+            scope,
+            context,
+            ...(executionPin === undefined ? {} : { executionPin }),
+          });
+        } catch (error) {
+          // A malformed/temporarily unavailable candidate must not abort the
+          // batch. The candidate remains QUEUED for a later worker tick, while
+          // the safe error is still observable for operations.
+          console.error(
+            '[ask-answer-worker] queued claim candidate skipped',
+            row.answer_run_id,
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }
+
+      if (prepared.size === 0) continue;
+
+      const remaining = requestedLimit - claimed.length;
+      const batch = await this.poolTransaction(async (client) => {
+        // This is the authoritative queue boundary. The prepared map only
+        // supplies context/identity resolved without locks; it never narrows
+        // which FIFO QUEUED rows the transaction is allowed to select.
+        const selected = await client.query<RunRow>(
+          `SELECT answer_run_id, project_id, state, attempt_number, event_revision,
+                  access_scope, sensitivity_clearance, access_revision,
+                  policy_context_revision, provider_id, model_id,
+                  ai_configuration_revision, credential_id, credential_revision,
+                  initial_provider_policy_fingerprint, ai_execution_pin_created_at
+           FROM frontend_ask.answer_runs
+           WHERE state = 'QUEUED'
+           ORDER BY created_at, answer_run_id
+           LIMIT $1
+           FOR UPDATE SKIP LOCKED`,
+          [remaining],
+        );
+        const batchClaimed: { scope: AskExecutionScope; claimed: AskClaimedExecution }[] = [];
+        for (const [index, row] of selected.rows.entries()) {
+          const candidate = prepared.get(row.answer_run_id);
+          if (!candidate) continue;
+          excluded.add(row.answer_run_id);
+          const savepoint = `ask_claim_${index}`;
+          await client.query(`SAVEPOINT ${savepoint}`);
+          try {
+            const execution = await this.claimLocked(
+              client,
+              row,
+              candidate.context,
+              candidate.scope,
+              'INITIAL',
+              owner,
+              candidate.executionPin,
+            );
+            batchClaimed.push({ scope: candidate.scope, claimed: execution });
+            await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+          } catch (error) {
+            await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+            await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+            console.error(
+              '[ask-answer-worker] queued claim candidate failed',
+              row.answer_run_id,
+              error instanceof Error ? error.message : error,
+            );
+          }
+        }
+        return batchClaimed;
+      });
+      claimed.push(...batch);
     }
     return claimed;
   }

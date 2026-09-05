@@ -104,6 +104,7 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
     readonly sensitivities: readonly AskContextSensitivity[];
     readonly providerId?: string;
     readonly modelId?: string;
+    readonly ignoreStandingProviderMismatch?: boolean;
   }): Promise<AskProviderEligibilityView> {
     const projectPolicy = await this.reader.readProjectPrivacyPolicy(input.projectId);
     const standingPolicy = await this.reader.readStandingAIProcessingPolicy?.(input.projectId);
@@ -146,6 +147,7 @@ export class AskProviderPolicyResolver implements AskProviderPolicyResolverPort 
           providerId: selectedProviderId,
           sensitivity: restricted ? 'restricted' : privateContext ? 'private' : 'internal',
           deploymentAllowsPrivate: deploymentPrivateTransferAllowed,
+          ignoreStandingProviderMismatch: input.ignoreStandingProviderMismatch,
         })
       : undefined;
     const reason: AskProviderEligibilityView['reason'] = standingDecision

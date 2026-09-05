@@ -1,4 +1,8 @@
-import { type AnyEnvelope, ShotgunError } from '../../contracts/src/index.js';
+import {
+  GENERATIVE_AI_PROVIDER_ID,
+  type AnyEnvelope,
+  ShotgunError,
+} from '../../contracts/src/index.js';
 import type {
   ActionRiskDecision,
   ActionRiskInput,
@@ -64,13 +68,18 @@ export const evaluateStandingAIProcessingPolicy = (input: {
   readonly providerId: string;
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
   readonly deploymentAllowsPrivate: boolean;
+  /** Only the durable historical-recovery path may set this flag. */
+  readonly ignoreStandingProviderMismatch?: boolean;
 }): StandingAIProcessingDecision => {
   if (input.sensitivity === 'restricted') {
     return { eligible: false, reason: 'RESTRICTED_CONTEXT_BLOCKED' };
   }
   if (!input.policy) return { eligible: false, reason: 'NOT_CONFIGURED' };
   if (!input.policy.enabled) return { eligible: false, reason: 'STANDING_POLICY_DISABLED' };
-  if (input.policy.providerId !== input.providerId.trim()) {
+  if (
+    input.policy.providerId !== input.providerId.trim() &&
+    input.ignoreStandingProviderMismatch !== true
+  ) {
     return { eligible: false, reason: 'STANDING_POLICY_PROVIDER_MISMATCH' };
   }
   if (input.sensitivity === 'private' && !input.deploymentAllowsPrivate) {
@@ -80,7 +89,10 @@ export const evaluateStandingAIProcessingPolicy = (input: {
 };
 
 export class StandingAIProcessingPolicyService implements StandingAIProcessingPolicyWriterPort {
-  constructor(private readonly repository: StandingAIProcessingPolicyRepositoryPort) {}
+  constructor(
+    private readonly repository: StandingAIProcessingPolicyRepositoryPort,
+    private readonly options: { readonly enforceDeepSeekOnly?: boolean } = {},
+  ) {}
 
   getCurrent(projectId: string): Promise<StandingAIProcessingPolicy | undefined> {
     return this.repository.getCurrent(standingNormalize('Project ID', projectId));
@@ -94,6 +106,14 @@ export class StandingAIProcessingPolicyService implements StandingAIProcessingPo
       throw new ShotgunError({
         code: 'VALIDATION_ERROR',
         safeMessage: 'Provider is not registered.',
+        module: 'standing-ai-processing-policy',
+        operation: 'save',
+      });
+    }
+    if (this.options.enforceDeepSeekOnly === true && providerId !== GENERATIVE_AI_PROVIDER_ID) {
+      throw new ShotgunError({
+        code: 'POLICY_DENIED',
+        safeMessage: 'New automatic AI processing must use the canonical DeepSeek provider.',
         module: 'standing-ai-processing-policy',
         operation: 'save',
       });

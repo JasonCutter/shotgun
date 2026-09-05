@@ -73,6 +73,7 @@ export class DiscoveryModelProfileService implements DiscoveryModelProfileServic
     private readonly credentials: DiscoveryAICredentialMetadataReaderPort,
     private readonly repository: DiscoveryModelProfileRepositoryPort,
     private readonly clock: () => string = () => new Date().toISOString(),
+    private readonly options: { readonly enforceDeepSeekOnly?: boolean } = {},
   ) {}
 
   getActive(projectId: string): Promise<DiscoveryModelProfileV1 | undefined> {
@@ -120,6 +121,15 @@ export class DiscoveryModelProfileService implements DiscoveryModelProfileServic
       throw new DiscoveryModelProfileError(
         'CAPABILITY_UNAVAILABLE',
         'The requested Discovery provider capability is mismatched.',
+      );
+    }
+    if (
+      this.options.enforceDeepSeekOnly === true &&
+      (providerId !== 'deepseek' || modelId !== 'deepseek-v4-flash')
+    ) {
+      throw new DiscoveryModelProfileError(
+        'CONFIGURATION_REQUIRED',
+        'New Discovery profiles must use DeepSeek deepseek-v4-flash.',
       );
     }
 

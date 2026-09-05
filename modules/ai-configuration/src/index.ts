@@ -1,6 +1,11 @@
 export const A3_PROVIDER_REGISTRY_REVISION = 'provider-registry:v1';
 export const A3_MODEL_CATALOG_REVISION = 'model-catalog:v1';
 
+export {
+  GENERATIVE_AI_MODEL_ID,
+  GENERATIVE_AI_PROVIDER_ID,
+} from '../../../packages/contracts/src/index.js';
+
 export type AIProviderStatus = 'active' | 'disabled';
 export type AIProviderCapability = 'text' | 'image' | 'audio' | 'structuredOutput';
 
@@ -266,6 +271,10 @@ export class ProjectAIConfigurationService implements ProjectAIConfigurationPort
     private readonly repository: ProjectAIConfigurationRepositoryPort,
     private readonly credentials: CredentialMetadataReaderPort,
     private readonly clock: () => string = () => new Date().toISOString(),
+    private readonly options: {
+      /** Product composition enables this for all new active configurations. */
+      readonly enforceDeepSeekOnly?: boolean;
+    } = {},
   ) {}
 
   listProviders(): readonly AIProviderDescriptor[] {
@@ -310,6 +319,16 @@ export class ProjectAIConfigurationService implements ProjectAIConfigurationPort
     const model = this.registry.getModel(providerId, modelId);
     if (!model)
       throw new AIConfigurationError('UNKNOWN_MODEL', 'Model is not registered for provider.');
+
+    if (
+      this.options.enforceDeepSeekOnly === true &&
+      (providerId !== 'deepseek' || modelId !== 'deepseek-v4-flash')
+    ) {
+      throw new AIConfigurationError(
+        'INVALID_INPUT',
+        'New generative AI configurations must use DeepSeek deepseek-v4-flash.',
+      );
+    }
 
     const metadata = await this.credentials.getMetadata(
       mapCredentialScope({

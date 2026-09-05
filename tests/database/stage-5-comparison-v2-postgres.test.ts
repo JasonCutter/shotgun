@@ -488,22 +488,64 @@ describe.runIf(pool)('Stage 5 WP2 PostgreSQL Comparison v2 persistence', () => {
     await insertCandidate(pool!, projectId, fixture);
     const snapshot = makeSnapshot(projectId);
     const repository = new PostgresComparisonV2Repository(pool!);
-    const first = makeAnalysis({
+    const firstPending = makeAnalysis({
       comparisonId: randomUUID(),
       candidate: fixture.candidate,
       snapshot,
       resourceIds: ['claim-a'],
+      state: 'PENDING',
       attempt: 1,
     });
-    const retry = makeAnalysis({
+    const retryPending = makeAnalysis({
       comparisonId: randomUUID(),
       candidate: fixture.candidate,
       snapshot,
       resourceIds: ['claim-a'],
+      state: 'PENDING',
       attempt: 2,
     });
-    await repository.saveAnalysisRevision({ projectId, revision: first });
-    await repository.saveAnalysisRevision({ projectId, revision: retry });
+    await repository.saveAnalysisRevision({ projectId, revision: firstPending });
+    const firstAnalyzing = await repository.transitionAnalysisRevision({
+      projectId,
+      analysisRevisionId: firstPending.analysisRevisionId,
+      expectedState: 'PENDING',
+      nextState: 'ANALYZING',
+    });
+    const firstFailed = await repository.transitionAnalysisRevision({
+      projectId,
+      analysisRevisionId: firstAnalyzing.analysisRevisionId,
+      expectedState: 'ANALYZING',
+      nextState: 'FAILED_RETRYABLE',
+      updates: { safeFailureCode: 'RETRYABLE_DEPENDENCY' },
+    });
+    const firstFailedBeforeIllegalRetry = await repository.findAnalysisRevision(
+      projectId,
+      firstFailed.analysisRevisionId,
+    );
+    expect(firstFailedBeforeIllegalRetry).toEqual(firstFailed);
+
+    await repository.saveAnalysisRevision({ projectId, revision: retryPending });
+    const retryAnalyzing = await repository.transitionAnalysisRevision({
+      projectId,
+      analysisRevisionId: retryPending.analysisRevisionId,
+      expectedState: 'PENDING',
+      nextState: 'ANALYZING',
+    });
+    expect(retryAnalyzing.state).toBe('ANALYZING');
+    expect(retryPending.inputDigest).toBe(firstPending.inputDigest);
+    expect(retryAnalyzing.inputDigest).toBe(firstFailed.inputDigest);
+
+    await expect(
+      repository.transitionAnalysisRevision({
+        projectId,
+        analysisRevisionId: firstFailed.analysisRevisionId,
+        expectedState: 'FAILED_RETRYABLE',
+        nextState: 'ANALYZING',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_TRANSITION' });
+    expect(
+      await repository.findAnalysisRevision(projectId, firstFailed.analysisRevisionId),
+    ).toEqual(firstFailedBeforeIllegalRetry);
     expect(
       (await pool!.query('SELECT count(*)::int AS count FROM comparison.analysis_revisions_v2'))
         .rows[0].count,
@@ -564,26 +606,37 @@ describe.runIf(pool)('Stage 5 WP2 PostgreSQL Comparison v2 persistence', () => {
       resourceIds: ['claim-a'],
       state: 'ANALYZING',
     });
-    await new PostgresComparisonV2Repository(pool!).saveAnalysisRevision({
-      projectId,
-      revision: analysis,
-    });
-    const restarted = new PostgresComparisonV2Repository(pool!);
-    expect(await restarted.findAnalysisRevision(projectId, analysis.analysisRevisionId)).toEqual(
-      analysis,
-    );
-    expect(
-      (
-        await restarted.findAnalysisRevisionByInput({
-          projectId,
-          candidateId: fixture.candidate.id,
-          candidateRevision: 1,
-          canonicalSnapshotDigest: analysis.canonicalSnapshot.digest,
-          inputDigest: analysis.inputDigest,
-          attempt: 1,
-        })
-      )?.state,
-    ).toBe('ANALYZING');
+    const writerPool = createPostgresPool(databaseUrl);
+    const restartedPool = createPostgresPool(databaseUrl);
+    let writerPoolClosed = false;
+    try {
+      await new PostgresComparisonV2Repository(writerPool).saveAnalysisRevision({
+        projectId,
+        revision: analysis,
+      });
+      await writerPool.end();
+      writerPoolClosed = true;
+
+      const restarted = new PostgresComparisonV2Repository(restartedPool);
+      expect(await restarted.findAnalysisRevision(projectId, analysis.analysisRevisionId)).toEqual(
+        analysis,
+      );
+      expect(
+        (
+          await restarted.findAnalysisRevisionByInput({
+            projectId,
+            candidateId: fixture.candidate.id,
+            candidateRevision: 1,
+            canonicalSnapshotDigest: analysis.canonicalSnapshot.digest,
+            inputDigest: analysis.inputDigest,
+            attempt: 1,
+          })
+        )?.state,
+      ).toBe('ANALYZING');
+    } finally {
+      if (!writerPoolClosed) await writerPool.end();
+      await restartedPool.end();
+    }
   });
 
   it('P2-11 rolls back a completed aggregate when one child conflicts', async () => {
@@ -591,14 +644,29 @@ describe.runIf(pool)('Stage 5 WP2 PostgreSQL Comparison v2 persistence', () => {
     const fixture = makeCandidate(projectId);
     await insertCandidate(pool!, projectId, fixture);
     const valid = semanticAggregate({ projectId, candidate: fixture.candidate });
+    const preexistingAnalysis = makeAnalysis({
+      comparisonId: `preexisting-${valid.comparison.comparisonId}`,
+      candidate: fixture.candidate,
+      snapshot: valid.comparison.canonicalSnapshot,
+      resourceIds: ['claim-1'],
+    });
+    const repository = new PostgresComparisonV2Repository(pool!);
+    await repository.saveAnalysisRevision({ projectId, revision: preexistingAnalysis });
+    expect(
+      await repository.findAnalysisRevision(projectId, preexistingAnalysis.analysisRevisionId),
+    ).toEqual(preexistingAnalysis);
     const invalid = {
       ...valid,
-      relationships: valid.relationships.map((relationship) => ({
-        ...relationship,
-        analysisRevisionId: 'unknown-analysis',
-      })),
+      analyses: valid.analyses.map((analysis, index) =>
+        index === 0
+          ? {
+              ...analysis,
+              outputDigest: digest('conflicting-output'),
+              materialDigest: digest('conflicting-material'),
+            }
+          : analysis,
+      ),
     } satisfies ComparisonV2Aggregate;
-    const repository = new PostgresComparisonV2Repository(pool!);
     await expect(repository.saveCompletedAggregate(invalid)).rejects.toThrow();
     expect(
       await repository.findComparisonById(projectId, valid.comparison.comparisonId),
@@ -611,6 +679,17 @@ describe.runIf(pool)('Stage 5 WP2 PostgreSQL Comparison v2 persistence', () => {
         )
       ).rows[0].count,
     ).toBe(0);
+    expect(
+      (
+        await pool!.query(
+          'SELECT count(*)::int AS count FROM comparison.analysis_revisions_v2 WHERE project_id = $1',
+          [projectId],
+        )
+      ).rows[0].count,
+    ).toBe(1);
+    expect(
+      await repository.findAnalysisRevision(projectId, preexistingAnalysis.analysisRevisionId),
+    ).toEqual(preexistingAnalysis);
   });
 
   it('P2-12 rejects cross-project aggregate references at the DB/adapter boundary', async () => {

@@ -66,7 +66,11 @@ const detail: SourceDetailView = {
   updatedAt: now,
 };
 
-const createMockRuntime = (evidenceItems: EvidenceListView['items']): AppRuntime => {
+const createMockRuntime = (
+  evidenceItems: EvidenceListView['items'],
+  transformationState:
+    'NOT_STARTED' | 'RUNNING' | 'RETRYING' | 'BLOCKED' | 'NO_EVIDENCE' | 'READY' = 'READY',
+): AppRuntime => {
   const evidenceList: EvidenceListView = {
     schemaVersion: '1.0.0',
     projectId: 'project-1',
@@ -94,7 +98,7 @@ const createMockRuntime = (evidenceItems: EvidenceListView['items']): AppRuntime
           mediaType: 'text/markdown',
           sizeBytes: 128,
           createdAt: now,
-          transformationState: 'READY',
+          transformationState,
           evidenceCount: evidenceItems.length,
         },
       ],
@@ -181,6 +185,29 @@ describe('SourceDetailWorkspace Evidence Presentation HFM-S7-C8-D3', () => {
     const card = items[0]!;
     expect(card.querySelector('p')?.textContent).toBe(quoteText);
     expect(card.querySelector('strong')).toBeNull();
+  });
+
+  it('shows a retry-safe status instead of hiding a Stage 3 failure as empty Evidence', async () => {
+    const runtime = createMockRuntime([], 'RETRYING');
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources/source-1?version=version-1&view=evidence'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByText('A temporary issue occurred. Retry scheduled.')).toBeTruthy();
+    expect(screen.queryByText('No Evidence is indexed yet.')).toBeNull();
   });
 
   it('B. SAME TEXT + SAME POSITION: collapses structurally equivalent spans into a single visible card', async () => {

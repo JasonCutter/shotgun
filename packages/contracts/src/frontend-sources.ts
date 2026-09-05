@@ -253,7 +253,8 @@ export type SourceVersionHistoryItemView = {
   readonly mediaType: string;
   readonly sizeBytes: number;
   readonly createdAt: string;
-  readonly transformationState: 'NOT_STARTED' | 'RUNNING' | 'READY' | 'FAILED';
+  readonly transformationState:
+    'NOT_STARTED' | 'RUNNING' | 'RETRYING' | 'BLOCKED' | 'NO_EVIDENCE' | 'READY' | 'FAILED';
   readonly evidenceCount: number;
 };
 
@@ -980,7 +981,7 @@ const decodeHistoryItem = (input: unknown, path: string): SourceVersionHistoryIt
     createdAt: timestamp(value['createdAt'], `${path}.createdAt`),
     transformationState: enumValue(
       value['transformationState'],
-      ['NOT_STARTED', 'RUNNING', 'READY', 'FAILED'],
+      ['NOT_STARTED', 'RUNNING', 'RETRYING', 'BLOCKED', 'NO_EVIDENCE', 'READY', 'FAILED'],
       `${path}.transformationState`,
     ),
     evidenceCount: integer(value['evidenceCount'], `${path}.evidenceCount`),

@@ -46,7 +46,7 @@ import { InMemoryAssetStorage } from '../../../adapters/stage2-in-memory/src/ind
 import { JsDiffAdapter } from '../../../adapters/text-diff-jsdiff/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../../adapters/plain-text-lucas-augmented/src/index.js';
 import { PythonDocumentFormatAdapter } from '../../../adapters/document-format-python/src/index.js';
-import { SourcesStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
+import { createProductionStage3Pipeline } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import {
   createPostgresPool,
   PostgresIntakeRepository,
@@ -66,6 +66,10 @@ import {
   PostgresEvidenceRepository,
   PostgresTransformationRepository,
 } from '../../../adapters/postgres-stage3/src/index.js';
+import {
+  PostgresSourcesStage3AtomicPersistence,
+  PostgresSourcesStage3ProgressRepository,
+} from '../../../adapters/postgres-stage3/src/runtime-data-integrity.js';
 import {
   PostgresAIProviderCallRepository,
   PostgresCandidateRepository,
@@ -164,14 +168,18 @@ export async function startFrontendCrossPhaseBackend() {
   // the sources product service so the real Stage 3 adapters are injected.
   const transformationRepository = new PostgresTransformationRepository(pool);
   const evidenceRepository = new PostgresEvidenceRepository(pool);
+  const stage3Progress = new PostgresSourcesStage3ProgressRepository(pool);
+  const stage3AtomicPersistence = new PostgresSourcesStage3AtomicPersistence(pool);
   const transformer = new PythonDocumentFormatAdapter();
   const evidenceLocator = new LucasAugmentedPlainTextAdapter();
-  const sourcesStage3Pipeline = new SourcesStage3Pipeline({
+  const sourcesStage3Pipeline = createProductionStage3Pipeline({
     storage: assetStorage,
     transformer,
     locator: evidenceLocator,
     transformationRepository,
     evidenceRepository,
+    progress: stage3Progress,
+    atomicPersistence: stage3AtomicPersistence,
   });
   const sourcesProductService = new PostgresSourcesProductService(
     pool,

@@ -11,7 +11,7 @@ import {
   InMemoryTransformationRepository,
 } from '../../adapters/stage3-in-memory/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../adapters/plain-text-lucas-augmented/src/index.js';
-import { SourcesStage3Pipeline } from '../../adapters/sources-stage3-pipeline/src/index.js';
+import { SourcesStage3TestPipeline } from '../../adapters/sources-stage3-pipeline/src/index.js';
 import {
   InMemoryAIProviderCallRepository,
   InMemoryCandidateRepository,
@@ -184,7 +184,7 @@ describe('Stage 3 → Stage 4 production continuation', () => {
     const contentHash = hash(bytes);
     const storageKey = await storage.put(contentHash, bytes);
     let evidenceIndexed = false;
-    const stage4Adapter = new SourcesStage3Pipeline({
+    const stage4Adapter = new SourcesStage3TestPipeline({
       storage,
       transformer: textAdapter,
       locator: textAdapter,
@@ -230,7 +230,7 @@ describe('Stage 3 → Stage 4 production continuation', () => {
     const bytes = new TextEncoder().encode('Durable Evidence survives AI failure.');
     const contentHash = hash(bytes);
     const storageKey = await storage.put(contentHash, bytes);
-    const pipeline = new SourcesStage3Pipeline({
+    const pipeline = new SourcesStage3TestPipeline({
       storage,
       transformer: new LucasAugmentedPlainTextAdapter(),
       locator: new LucasAugmentedPlainTextAdapter(),

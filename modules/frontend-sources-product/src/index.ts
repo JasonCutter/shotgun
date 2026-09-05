@@ -32,6 +32,13 @@ export type SourcesProjectionRecord = {
   readonly accessScope: readonly string[];
   readonly sensitivity: SourcesSensitivity;
   readonly createdAt: string;
+  readonly stage3State?:
+    | 'MATERIALIZED'
+    | 'STAGE3_RUNNING'
+    | 'STAGE3_COMPLETED'
+    | 'NO_EVIDENCE'
+    | 'STAGE3_RETRYABLE'
+    | 'RECONCILIATION_REQUIRED';
 };
 
 export type SourcesProjectionRepositoryPort = {
@@ -104,6 +111,19 @@ const labelFor = (record: SourcesProjectionRecord): string =>
   record.displayLabel?.trim() ||
   record.originalFileName?.trim() ||
   (record.mediaType === 'text/plain' ? 'Untitled direct text' : 'Untitled source');
+
+const transformationStateFor = (
+  stage3State: SourcesProjectionRecord['stage3State'],
+  evidenceCount: number,
+): 'NOT_STARTED' | 'RUNNING' | 'RETRYING' | 'BLOCKED' | 'NO_EVIDENCE' | 'READY' => {
+  if (stage3State === 'STAGE3_RUNNING') return 'RUNNING';
+  if (stage3State === 'STAGE3_RETRYABLE') return 'RETRYING';
+  if (stage3State === 'RECONCILIATION_REQUIRED') return 'BLOCKED';
+  if (stage3State === 'NO_EVIDENCE') return 'NO_EVIDENCE';
+  if (stage3State === 'STAGE3_COMPLETED' || evidenceCount > 0) return 'READY';
+  if (stage3State === 'MATERIALIZED') return 'RUNNING';
+  return 'NOT_STARTED';
+};
 
 const latestBySource = (
   records: readonly SourcesProjectionRecord[],
@@ -335,8 +355,10 @@ export class FrontendSourcesReadCoordinator {
         mediaType: record.mediaType,
         sizeBytes: record.sizeBytes,
         createdAt: record.createdAt,
-        transformationState:
-          (evidenceCounts.get(record.sourceVersionId) ?? 0) > 0 ? 'READY' : 'NOT_STARTED',
+        transformationState: transformationStateFor(
+          record.stage3State,
+          evidenceCounts.get(record.sourceVersionId) ?? 0,
+        ),
         evidenceCount: evidenceCounts.get(record.sourceVersionId) ?? 0,
       })),
       projectionRevision: projectionRevision(records),

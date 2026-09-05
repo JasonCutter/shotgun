@@ -53,6 +53,36 @@ the materialized Source binding trigger without modifying the already-applied
   `RUNNING` rows are first converted to `OUTCOME_UNKNOWN` with `completed_at`
   by the recovery sweep, so a stale worker can never be directly re-claimed.
 
+## Recovery semantics correction (2026-09-06)
+
+The correction run makes the pre-claim boundary explicit. A failure in
+`ensureMaterialized`/`claim` is outside the lease-owned processing `try` block,
+so it is recorded through a separate progress transaction before the original
+error is returned. This prevents a failed claim from leaving a `MATERIALIZED`
+row with `attempt_count = 0` and no retry schedule.
+
+- `CLAIMED` means the worker owns the fenced lease and may process the immutable
+  SourceVersion.
+- `COMPLETED` means the durable indexing result is already authoritative.
+- `DEFERRED` means normal waiting (`ACTIVE_LEASE` or `RETRY_NOT_DUE`) and is not
+  an error-level conflict.
+- `BLOCKED` means recovery must not continue automatically. Historical
+  reconciliation remains permanently excluded from ordinary replay, and a
+  runtime/SQL contract defect is stored as `RECONCILIATION_REQUIRED` with the
+  safe code `STAGE3_RUNTIME_CONTRACT_ERROR` so it is distinguishable from data
+  reconciliation.
+
+Failure classification is shared by the Stage 3 worker and Source submission
+lifecycle. PostgreSQL connection/serialization/deadlock/lock errors are
+retryable and receive bounded exponential backoff (2 seconds initial, maximum
+5 minutes, full jitter). Validation, policy, and runtime/SQL contract errors
+are non-retryable; they do not enter the automatic recovery queue and degrade
+the relevant worker readiness signal through the existing safe failure code.
+Successful processing clears the failure/backoff fields. A retry always uses
+the same `(project_id, source_id, source_version_id)` and fencing rules, never
+creating a replacement SourceVersion. Stale leases cannot write transformation,
+Evidence, indexing, or Stage 4 continuation rows.
+
 ## Alternatives rejected
 
 - Submission-level state alone: cannot express SourceVersion-level execution,

@@ -123,6 +123,9 @@ export const SourceDetailWorkspace = () => {
   const history = useQuery(
     sourceVersionHistoryQueryOptions(apiClient, shell, sourceId, selectedVersionId),
   );
+  const selectedVersionState = history.data?.versions.find(
+    (version) => version.sourceVersionId === selectedVersionId,
+  )?.transformationState;
   const preview = useQuery(
     sourcePreviewQueryOptions(apiClient, shell, sourceId, selectedVersionId, 'ORIGINAL'),
   );
@@ -278,7 +281,17 @@ export const SourceDetailWorkspace = () => {
             <LoadingState message={t('source_detail.loading_evidence')} />
           ) : null}
           {evidence.error ? <ErrorState error={evidence.error} /> : null}
-          {evidence.data?.items.length === 0 ? <p>{t('source_detail.no_evidence')}</p> : null}
+          {evidence.data?.items.length === 0 ? (
+            <p>
+              {selectedVersionState === 'RUNNING' || selectedVersionState === 'NOT_STARTED'
+                ? t('source_detail.processing')
+                : selectedVersionState === 'RETRYING'
+                  ? t('source_detail.retry_wait')
+                  : selectedVersionState === 'BLOCKED'
+                    ? t('source_detail.blocked')
+                    : t('source_detail.no_evidence')}
+            </p>
+          ) : null}
           {evidence.data && groupedEvidence.length > 0 ? (
             <ul className="source-evidence-list">
               {groupedEvidence.map((group) => {

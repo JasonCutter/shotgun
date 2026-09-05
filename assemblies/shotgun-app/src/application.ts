@@ -151,7 +151,7 @@ import {
 } from '../../../adapters/discovery-runtime-product/src/index.js';
 import type { DiscoveryCompetingResourcePortV1 } from '../../../modules/discovery-finding-fingerprint/src/index.js';
 import {
-  SourcesStage3Pipeline,
+  createProductionStage3Pipeline,
   SourcesStage3RecoveryDispatcher,
   SourcesStage4ContinuationDispatcher,
 } from '../../../adapters/sources-stage3-pipeline/src/index.js';
@@ -424,7 +424,7 @@ export const startShotgunApplication = async (
         await stage4Publisher.current(input);
       },
     };
-    const sourcesStage3Pipeline = new SourcesStage3Pipeline({
+    const sourcesStage3Pipeline = createProductionStage3Pipeline({
       storage: assetStorage,
       transformer,
       locator: plainTextAdapter,

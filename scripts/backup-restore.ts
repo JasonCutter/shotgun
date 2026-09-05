@@ -70,6 +70,7 @@ const TYPED_PROPOSITION_CONFLICT_MIGRATION = '058_akp8_typed_proposition_conflic
 const CANONICAL_RELATION_MIGRATION = '059_akp8_canonical_relation_authority.sql';
 const WP10_ACTION_REVIEW_DIAGNOSTICS_MIGRATION =
   '065_runtime_data_integrity_wp10_action_review_discovery_diagnostics.sql';
+const STAGE5_COMPARISON_V2_MIGRATION = '066_stage5_semantic_comparison_v2_persistence.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
@@ -127,6 +128,9 @@ export const authoritativeIntegrityTablesForMigrations = (
   }
   return [
     ...baseAuthoritativeTables,
+    ...(applied.has(STAGE5_COMPARISON_V2_MIGRATION)
+      ? ['comparison.results_v2', 'comparison.analysis_revisions_v2', 'comparison.relationships_v2']
+      : []),
     ...(applied.has(DISCOVERY_FINDING_MIGRATION) ? ['discovery.findings'] : []),
     ...(applied.has(DISCOVERY_LIFECYCLE_MIGRATION)
       ? ['discovery.finding_lifecycle_current', 'discovery.finding_lifecycle_history']

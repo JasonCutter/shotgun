@@ -24,6 +24,8 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 
+export * from './persistence-v2.js';
+
 export type CanonicalSnapshotPort = {
   getSnapshot(projectId: string): Promise<CanonicalSnapshot>;
 };
@@ -165,7 +167,12 @@ export const createComparisonModule = (
     },
     deployment: { modes: ['in_process', 'worker'] },
     dataOwnership: {
-      owns: ['comparison.results'],
+      owns: [
+        'comparison.results',
+        'comparison.results_v2',
+        'comparison.analysis_revisions_v2',
+        'comparison.relationships_v2',
+      ],
       readsViaPorts: ['CanonicalSnapshotPort', 'TextDiffPort', 'GetClaimCandidate query'],
       directSchemaAccess: false,
     },

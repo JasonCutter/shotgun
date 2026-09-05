@@ -14,7 +14,12 @@
   },
   "deployment": { "modes": ["in_process", "worker"] },
   "dataOwnership": {
-    "owns": ["comparison.results"],
+    "owns": [
+      "comparison.results",
+      "comparison.results_v2",
+      "comparison.analysis_revisions_v2",
+      "comparison.relationships_v2"
+    ],
     "readsViaPorts": ["CanonicalSnapshotPort", "TextDiffPort", "GetClaimCandidate query"],
     "directSchemaAccess": false
   },

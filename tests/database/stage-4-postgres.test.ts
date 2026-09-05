@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { FakeAIProviderAdapter } from '../../adapters/ai-provider-fake/src/index.js';
@@ -215,10 +217,10 @@ describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
   it('does not reclaim terminal failures after restart, but preserves retryable reclaim', async () => {
     const repository = new PostgresAIProviderCallRepository(pool!);
     const baseRecord = (requestId: string): AIProviderExecutionRecord => ({
-      callId: `call-${requestId}`,
+      callId: randomUUID(),
       requestId,
       projectId: 'stage4-retry-contract-postgres',
-      sourceVersionId: 'source-1',
+      sourceVersionId: randomUUID(),
       provider: 'fake',
       model: 'fake-model',
       promptVersion: 'direct-claim-v1',
@@ -227,7 +229,7 @@ describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
       dataClassification: 'private',
       accessScope: ['owner'],
       sensitivity: 'private',
-      inputEvidenceIds: ['evidence-1'],
+      inputEvidenceIds: [randomUUID()],
       inputSnapshotDigest: `snapshot-${requestId}`,
       requestDigest: `request-${requestId}`,
       state: 'REQUESTED',

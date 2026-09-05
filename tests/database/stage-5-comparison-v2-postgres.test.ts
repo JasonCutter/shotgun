@@ -24,9 +24,10 @@ import {
   type ComparisonV2StorageIdentity,
 } from '../../modules/comparison/src/index.js';
 import { authoritativeIntegrityTablesForMigrations } from '../../scripts/backup-restore.js';
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
-const databaseUrl = process.env.TEST_DATABASE_URL?.trim();
-const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+const databaseUrl = await requireTestDatabaseTarget();
+const pool: Pool = createPostgresPool(databaseUrl);
 
 const digest = (value: unknown): string => sha256Text(stableJson(value));
 

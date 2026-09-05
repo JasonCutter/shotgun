@@ -26,6 +26,9 @@
       "LexicalRetrieverPort",
       "HybridRetrievalCoordinatorPort",
       "SemanticActiveGenerationReaderPort",
+      "KnowledgeResourceResolverPort",
+      "AIProviderExecutionResolverPort",
+      "AIProviderAdapterPort",
       "GetClaimCandidate query"
     ],
     "directSchemaAccess": false

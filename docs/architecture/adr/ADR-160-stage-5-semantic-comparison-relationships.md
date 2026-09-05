@@ -1,9 +1,13 @@
 # ADR-160 — Stage 5 Semantic Comparison and Durable Multi-Relationship Boundary
 
-- Status: **PROPOSED — Issue #203 design review**
+- Status: **ACCEPTED**
 - Proposed at: 2026-09-05
-- Decision owner: Stage 5 architecture review / user approval required
-- Work item: Issue #203 — ECAV Gate A comparison graduation
+- Accepted at: 2026-09-05
+- Acceptance authority: Project Shotgun architecture/controller approval
+- Decision owner: Stage 5 architecture review / Project Shotgun controller
+- Work item: [Issue #203](https://github.com/JasonCutter/shotgun/issues/203) — ECAV Gate A comparison graduation
+- Governing boundary: ADR-085 remains historical authority for the Stage 5 MVP;
+  ADR-160 governs the mature semantic-comparison graduation.
 - Subject base: `main@fb209bffb5876ac3c717b429654be026dc1d84c3`
 - Related decisions: ADR-037, ADR-038, ADR-039, ADR-041, ADR-042, ADR-045,
   ADR-046, ADR-047, ADR-048, ADR-084, ADR-085, ADR-096, ADR-133, ADR-135,

@@ -1,8 +1,9 @@
 # Issue #203 — Semantic Comparison Graduation Implementation Plan
 
-- Status: **DESIGN PACKAGE — pending ADR-160 approval**
+- Status: **DESIGN PACKAGE — ADR-160 accepted; implementation authorization pending**
 - Canonical base: `main@fb209bffb5876ac3c717b429654be026dc1d84c3`
-- Governing ADR proposal: [ADR-160](../architecture/adr/ADR-160-stage-5-semantic-comparison-relationships.md)
+- Governing ADR: [ADR-160](../architecture/adr/ADR-160-stage-5-semantic-comparison-relationships.md) (accepted 2026-09-05)
+- Product implementation authorization: separate controller approval required after this design PR is merged
 - Blocked validation: ECAV-01B Gate A
 - Product implementation in this package: **none**
 

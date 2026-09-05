@@ -22,7 +22,7 @@ import {
   type ProviderExternalTransferApprovalPort,
 } from '../../../modules/provider-privacy-policy/src/index.js';
 import {
-  evaluateStandingAIProcessingPolicy,
+  evaluateStandingAIProcessingPolicyForEmbedding,
   type StandingAIProcessingPolicyReaderPort,
 } from '../../../packages/policy/src/index.js';
 
@@ -128,7 +128,7 @@ export class SemanticEmbeddingAuthorityResolver
       });
     }
 
-    // 4. Evaluate privacy & deployment policies via canonical evaluateProviderExternalTransfer
+    // 4. Evaluate embedding-scoped standing controls or the legacy privacy path
     const standingPolicy = await this.options.standingPolicyAuthority?.getCurrent(projectId);
     const approval = standingPolicy
       ? undefined
@@ -141,9 +141,8 @@ export class SemanticEmbeddingAuthorityResolver
 
     const privacyDecision = standingPolicy
       ? {
-          ...evaluateStandingAIProcessingPolicy({
+          ...evaluateStandingAIProcessingPolicyForEmbedding({
             policy: standingPolicy,
-            providerId: profile.providerId,
             sensitivity: input.sensitivity,
             deploymentAllowsPrivate: this.options.deploymentCeiling.allows(profile.providerId),
           }),
@@ -168,8 +167,6 @@ export class SemanticEmbeddingAuthorityResolver
         safeMessage = 'Project owner approval is required for private external transfer.';
       } else if (privacyDecision.reason === 'STANDING_POLICY_DISABLED') {
         safeMessage = 'Project standing AI processing is disabled.';
-      } else if (privacyDecision.reason === 'STANDING_POLICY_PROVIDER_MISMATCH') {
-        safeMessage = 'Project standing AI processing is bound to a different provider.';
       } else if (privacyDecision.reason === 'NOT_CONFIGURED') {
         safeMessage = 'Project standing AI processing policy is not configured.';
       }

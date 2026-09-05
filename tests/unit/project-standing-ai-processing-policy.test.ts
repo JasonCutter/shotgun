@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   evaluateStandingAIProcessingPolicy,
+  evaluateStandingAIProcessingPolicyForEmbedding,
   StandingAIProcessingPolicyService,
   type StandingAIProcessingPolicy,
   type StandingAIProcessingPolicyRepositoryPort,
@@ -87,6 +88,71 @@ describe('Project Standing AI Processing Policy', () => {
         deploymentAllowsPrivate: false,
       }),
     ).toEqual({ eligible: false, reason: 'DEPLOYMENT_POLICY_BLOCKED' });
+  });
+
+  it('EMB-POL-1/3/4/5 keeps embedding provider identity independent of generative policy', () => {
+    expect(
+      evaluateStandingAIProcessingPolicyForEmbedding({
+        policy: policy({ providerId: 'deepseek' }),
+        sensitivity: 'internal',
+        deploymentAllowsPrivate: false,
+      }),
+    ).toEqual({ eligible: true, reason: 'ELIGIBLE' });
+
+    expect(
+      evaluateStandingAIProcessingPolicyForEmbedding({
+        policy: policy({ providerId: 'deepseek' }),
+        sensitivity: 'private',
+        deploymentAllowsPrivate: true,
+      }),
+    ).toEqual({ eligible: true, reason: 'ELIGIBLE' });
+
+    expect(
+      evaluateStandingAIProcessingPolicyForEmbedding({
+        policy: policy({ providerId: 'deepseek' }),
+        sensitivity: 'restricted',
+        deploymentAllowsPrivate: true,
+      }),
+    ).toEqual({ eligible: false, reason: 'RESTRICTED_CONTEXT_BLOCKED' });
+
+    expect(
+      evaluateStandingAIProcessingPolicyForEmbedding({
+        policy: policy({ providerId: 'deepseek', enabled: false }),
+        sensitivity: 'internal',
+        deploymentAllowsPrivate: true,
+      }),
+    ).toEqual({ eligible: false, reason: 'STANDING_POLICY_DISABLED' });
+  });
+
+  it('EMB-POL-2 preserves the private deployment ceiling for an independently pinned provider', () => {
+    expect(
+      evaluateStandingAIProcessingPolicyForEmbedding({
+        policy: policy({ providerId: 'deepseek' }),
+        sensitivity: 'private',
+        deploymentAllowsPrivate: false,
+      }),
+    ).toEqual({ eligible: false, reason: 'DEPLOYMENT_POLICY_BLOCKED' });
+  });
+
+  it('EMB-POL-6 keeps generative provider mismatch fail-closed', () => {
+    expect(
+      evaluateStandingAIProcessingPolicy({
+        policy: policy({ providerId: 'deepseek' }),
+        providerId: 'openai',
+        sensitivity: 'internal',
+        deploymentAllowsPrivate: true,
+      }),
+    ).toEqual({ eligible: false, reason: 'STANDING_POLICY_PROVIDER_MISMATCH' });
+  });
+
+  it('keeps the legacy compatibility path explicit when the standing policy is absent', () => {
+    expect(
+      evaluateStandingAIProcessingPolicyForEmbedding({
+        policy: undefined,
+        sensitivity: 'internal',
+        deploymentAllowsPrivate: true,
+      }),
+    ).toEqual({ eligible: false, reason: 'NOT_CONFIGURED' });
   });
 
   it('ignores only the standing provider mismatch for historical recovery', () => {

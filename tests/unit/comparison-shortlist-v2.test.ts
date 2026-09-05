@@ -293,6 +293,33 @@ describe('ComparisonShortlistV2Service', () => {
     expect(result).toMatchObject({ status: 'BLOCKED', reason: 'SEMANTIC_UNAVAILABLE' });
   });
 
+  it('EMB-POL-8 keeps an OpenAI embedding generation READY under a DeepSeek generative policy topology', async () => {
+    const { deps, hybridRetrieval, activeGenerationReader } = dependencies();
+    activeGenerationReader.getActiveGeneration.mockResolvedValue({
+      ...generation,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+    });
+    hybridRetrieval.search.mockResolvedValue(
+      hybridResponse([hybridItem()], {
+        readiness: {
+          lexical: lexicalReadiness(),
+          semantic: semanticReadiness(),
+          degraded: false,
+        },
+      }),
+    );
+
+    const result = await new ComparisonShortlistV2Service(deps).build(
+      request('A non-exact candidate that needs semantic comparison'),
+    );
+
+    expect(result.status).toBe('READY');
+    if (result.status !== 'READY') return;
+    expect(result.shortlist.querySemanticReadiness).toBe('READY');
+    expect(result.shortlist.semanticGenerationId).toBe(generation.generationId);
+  });
+
   it('S3-07 blocks a semantic generation mismatch', async () => {
     const { deps, hybridRetrieval } = dependencies();
     hybridRetrieval.search.mockResolvedValue(

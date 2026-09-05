@@ -88,6 +88,39 @@ export const evaluateStandingAIProcessingPolicy = (input: {
   return { eligible: true, reason: 'ELIGIBLE' };
 };
 
+export type StandingAIProcessingEmbeddingDecision = Omit<StandingAIProcessingDecision, 'reason'> & {
+  readonly reason: Exclude<
+    StandingAIProcessingDecision['reason'],
+    'STANDING_POLICY_PROVIDER_MISMATCH'
+  >;
+};
+
+/**
+ * Evaluate the Project Standing AI Processing Policy for semantic embeddings.
+ *
+ * The standing policy is a generative capability policy.  Embedding provider,
+ * model, credential and representation identity remain owned by the active
+ * semantic embedding profile and frozen generation pin.  This capability-
+ * scoped evaluator therefore keeps the shared safety controls (automatic-AI
+ * enablement, restricted-data denial and private deployment ceiling) without
+ * applying the generative provider binding to the embedding provider.
+ */
+export const evaluateStandingAIProcessingPolicyForEmbedding = (input: {
+  readonly policy: StandingAIProcessingPolicy | undefined;
+  readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  readonly deploymentAllowsPrivate: boolean;
+}): StandingAIProcessingEmbeddingDecision => {
+  if (input.sensitivity === 'restricted') {
+    return { eligible: false, reason: 'RESTRICTED_CONTEXT_BLOCKED' };
+  }
+  if (!input.policy) return { eligible: false, reason: 'NOT_CONFIGURED' };
+  if (!input.policy.enabled) return { eligible: false, reason: 'STANDING_POLICY_DISABLED' };
+  if (input.sensitivity === 'private' && !input.deploymentAllowsPrivate) {
+    return { eligible: false, reason: 'DEPLOYMENT_POLICY_BLOCKED' };
+  }
+  return { eligible: true, reason: 'ELIGIBLE' };
+};
+
 export class StandingAIProcessingPolicyService implements StandingAIProcessingPolicyWriterPort {
   constructor(
     private readonly repository: StandingAIProcessingPolicyRepositoryPort,

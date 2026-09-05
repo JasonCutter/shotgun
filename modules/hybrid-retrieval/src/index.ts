@@ -140,19 +140,23 @@ export class ProductKnowledgeResourceResolver implements KnowledgeResourceResolv
     switch (resourceType) {
       case 'CLAIM': {
         const claim = await this.canonicalKnowledge.findClaim(projectId, resourceId);
-        if (!claim || (expectedAuthority && expectedAuthority !== 'CANONICAL')) {
+        if (!claim) {
           return undefined;
         }
-        return {
-          text: claim.claimText,
-          authority: 'CANONICAL',
-          authorityRevision: claim.revisionNumber,
-          resourceRevision: claim.revisionNumber,
-          evidenceIds: claim.evidenceIds,
-          sourceVersionId: claim.sourceVersionId,
-          accessScope: claim.accessScope,
-          sensitivity: claim.sensitivity,
-        };
+        if (!expectedAuthority || expectedAuthority === 'CANONICAL') {
+          return {
+            text: claim.claimText,
+            authority: 'CANONICAL',
+            authorityRevision: claim.revisionNumber,
+            resourceRevision: claim.revisionNumber,
+            evidenceIds: claim.evidenceIds,
+            sourceVersionId: claim.sourceVersionId,
+            accessScope: claim.accessScope,
+            sensitivity: claim.sensitivity,
+          };
+        }
+        if (expectedAuthority !== 'COMPILED_TRUTH') return undefined;
+        break;
       }
 
       case 'ENTITY':

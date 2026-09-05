@@ -380,6 +380,106 @@ describe('ProductKnowledgeResourceResolver & Application Composition Tests', () 
 
     // FACT must not be present
     expect((typeMap as Map<string, HybridCandidateResult>).get('FACT')).toBeUndefined();
+
+    // Regression: a healthy semantic Claim backed by the Compiled Truth
+    // projection must resolve through the existing Product authority path.
+    const compiledTruthClaimProjection: CompiledTruthProjection = {
+      projectId,
+      projectorVersion: '1.0.0',
+      sourceSnapshotDigest: 'sha256:src-digest',
+      logicalDigest: 'sha256:logical-digest',
+      canonicalVersion: 1,
+      items: [
+        {
+          id: 'claim-100',
+          type: 'CLAIM',
+          label: 'Compiled Truth claim label.',
+          state: 'CURRENT',
+          source: 'CANONICAL_CLAIM',
+          evidenceIds: [evidenceId],
+          accessScope: ['finance'],
+          sensitivity: 'internal',
+        },
+      ],
+      graph: { nodes: [], edges: [], fallback: { available: true, modes: ['LIST', 'TABLE'] } },
+      projectedAt: '2026-08-18T10:00:00.000Z',
+      buildMode: 'FULL_REBUILD',
+    };
+    await repositories.compiledTruth.synchronize(compiledTruthClaimProjection);
+    (semanticRetriever as { retrieve: () => Promise<readonly unknown[]> }).retrieve = async () => [
+      {
+        semanticItemId: 'sem-compiled-claim',
+        projectId,
+        generationId: 'gen-prod-001',
+        resourceType: 'CLAIM',
+        resourceId: 'claim-100',
+        sourceProjectionDigest: 'sha256:src-digest',
+        canonicalVersion: 1,
+        semanticTextDigest: 'sha256:text-claim-compiled',
+        embeddingProfileId: 'prof-1',
+        embeddingProfileRevision: 1,
+        representationVersion: 'semantic-representation:v1',
+        distance: 0.05,
+        dimension: 768,
+        authority: 'COMPILED_TRUTH',
+        provenance: {
+          authority: 'COMPILED_TRUTH',
+          resourceBaseId: 'claim-100',
+          resourceRevision: 1,
+          baseAuthority: 'CANONICAL',
+          baseResourceRevision: 1,
+          baseCanonicalVersion: 1,
+          sourceVersionId,
+          evidenceIds: [evidenceId],
+          accessScope: ['finance'],
+          sensitivity: 'internal',
+          projectionCanonicalVersion: 1,
+          sourceProjectionDigest: 'sha256:src-digest',
+          projectionLogicalDigest: 'sha256:logical-digest',
+        },
+        evidenceIds: [evidenceId],
+        accessScope: ['finance'],
+        sensitivity: 'internal',
+        indexedAt: '2026-08-18T10:00:00.000Z',
+        createdAt: '2026-08-18T10:00:00.000Z',
+        updatedAt: '2026-08-18T10:00:00.000Z',
+      },
+    ];
+
+    const compiledTruthResponse = await server.inject({
+      method: 'POST',
+      url: '/search/hybrid',
+      headers: {
+        cookie: `shotgun_session=${session.sessionToken}`,
+        'x-csrf-token': session.csrfToken,
+      },
+      payload: {
+        query: 'compiled truth claim',
+        limit: 10,
+      },
+    });
+
+    expect(compiledTruthResponse.statusCode).toBe(200);
+    const compiledTruthBody = JSON.parse(compiledTruthResponse.body);
+    const compiledTruthSearch = compiledTruthBody.hybridSearch;
+    expect(compiledTruthSearch.readiness.semantic.status).toBe('READY');
+    expect(compiledTruthSearch.items).toHaveLength(1);
+    expect(compiledTruthSearch.items[0]).toMatchObject({
+      resourceType: 'CLAIM',
+      resourceId: 'claim-100',
+      text: 'Compiled Truth claim label.',
+      authority: 'COMPILED_TRUTH',
+      authorityRevision: 1,
+      resourceRevision: 1,
+      baseCanonicalVersion: 1,
+      sourceProjectionDigest: 'sha256:src-digest',
+      citations: [
+        expect.objectContaining({
+          evidenceId,
+          sourceVersionId,
+        }),
+      ],
+    });
   });
 
   it('degrades semantic channel cleanly to lexical fallback when semantic candidate unexpectedly contains FACT', async () => {

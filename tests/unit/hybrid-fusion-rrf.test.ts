@@ -473,6 +473,16 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
       canonicalVersion: 3,
       items: [
         {
+          id: 'claim-auth-1',
+          type: 'CLAIM',
+          label: 'Compiled Truth claim label.',
+          state: 'CURRENT',
+          source: 'CANONICAL_CLAIM',
+          evidenceIds: ['ev-claim-1'],
+          accessScope: ['finance'],
+          sensitivity: 'internal',
+        },
+        {
           id: 'fact-1',
           type: 'CLAIM',
           label: 'Q2 revenue: $100M USD',
@@ -506,6 +516,26 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     expect(claimRes?.evidenceIds).toEqual(['ev-claim-1']);
     // Do NOT hardcode canonicalVersion: 1
     expect(claimRes?.canonicalVersion).toBeUndefined();
+
+    // 1b. Resolve the same Claim through the Compiled Truth authority path.
+    const compiledClaimRes = await resolver.resolveResource(
+      'proj-alpha',
+      'CLAIM',
+      'claim-auth-1',
+      'COMPILED_TRUTH',
+    );
+    expect(compiledClaimRes).toBeDefined();
+    expect(compiledClaimRes?.text).toBe('Compiled Truth claim label.');
+    expect(compiledClaimRes?.authority).toBe('COMPILED_TRUTH');
+    expect(compiledClaimRes?.authorityRevision).toBe(3);
+    expect(compiledClaimRes?.resourceRevision).toBe(1);
+    expect(compiledClaimRes?.baseCanonicalVersion).toBe(3);
+    expect(compiledClaimRes?.sourceSnapshotDigest).toBe('sha256:snap-digest');
+    expect(compiledClaimRes?.sourceProjectionDigest).toBe('sha256:snap-digest');
+    expect(compiledClaimRes?.sourceVersionId).toBe('src-ver-1');
+    expect(compiledClaimRes?.evidenceIds).toEqual(['ev-claim-1']);
+    expect(compiledClaimRes?.accessScope).toEqual(['finance']);
+    expect(compiledClaimRes?.sensitivity).toBe('internal');
 
     // 2. Resolve ENTITY
     const entityRes = await resolver.resolveResource('proj-alpha', 'ENTITY', 'entity-1');

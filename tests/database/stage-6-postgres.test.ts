@@ -39,9 +39,11 @@ import { createTransformationModule } from '../../modules/transformation/src/ind
 import { createValidationModule } from '../../modules/validation/src/index.js';
 import {
   type ApprovedChangeSetManifest,
+  type ApprovedChangeSetManifestV2,
   type CanonicalHistoryEvent,
   type CanonicalOutboxRecord,
   type CanonicalSnapshot,
+  canonicalSnapshotDigest,
   createChildEvent,
   type DraftChangeSet,
 } from '../../packages/contracts/src/index.js';
@@ -364,5 +366,38 @@ describe.runIf(pool)('Stage 6 PostgreSQL persistence', () => {
     expect(snapshot.version).toBe(1);
     expect(snapshot.claims).toHaveLength(1);
     await review.kernel.shutdown();
+  });
+
+  it('fails closed when a v2 ADD_CLAIM handoff omits its Claim identity', async () => {
+    const repository = new PostgresCanonicalKnowledgeRepository(pool!);
+    const projectId = `stage6-v2-missing-claim-${randomUUID()}`;
+    const snapshotDigest = canonicalSnapshotDigest(projectId, 0, []);
+    const manifest = {
+      manifestId: `manifest-v2:${projectId}`,
+      projectId,
+      changeSetId: `comparison-v2:${projectId}`,
+      manifestDigest: 'sha256:v2-missing-claim',
+      expectedCanonicalVersion: 0,
+      snapshotDigest,
+      operation: 'ADD_CLAIM',
+      candidate: { sourceVersionId: 'source-v2-missing-claim' },
+      evidenceIds: ['evidence-v2-missing-claim'],
+      accessScope: ['owner'],
+      sensitivity: 'private',
+      userApproval: { reason: 'Guard test.' },
+    } as unknown as ApprovedChangeSetManifestV2;
+
+    await expect(
+      repository.commitV2!({
+        commitId: `canonical-v2:${projectId}`,
+        revisionId: `revision-v2:${projectId}`,
+        historyEventId: `history-v2:${projectId}`,
+        outboxId: `outbox-v2:${projectId}`,
+        manifest,
+        candidateClaimText: 'A claim without an identity must not commit.',
+        actor: { type: 'user', id: 'owner-v2-guard' },
+        committedAt: '2026-09-06T00:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 });

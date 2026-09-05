@@ -481,9 +481,12 @@ export const startShotgunApplication = async (
       aiProviderRegistry,
       new PostgresProjectAIConfigurationRepository(pool),
       credentialVault,
+      undefined,
+      { enforceDeepSeekOnly: true },
     );
     const standingPolicy = new StandingAIProcessingPolicyService(
       new PostgresStandingAIProcessingPolicyRepository(pool),
+      { enforceDeepSeekOnly: true },
     );
     const connectivityRegistry = new StaticAIProviderConnectivityRegistry([
       new OpenAIConnectivityAdapter({ baseUrl: process.env.OPENAI_BASE_URL }),
@@ -587,7 +590,7 @@ export const startShotgunApplication = async (
     const askProviderPolicy = new AskProviderPolicyResolver(
       new PostgresAskProviderPolicyAuthorityReader(pool, standingPolicy),
       {
-        providerId: 'google-gemini',
+        providerId: 'deepseek',
         deploymentPrivateTransferAllowed: deploymentAllowsPrivateExternalTransfer,
         deploymentPrivateTransferAllowedForProvider: (providerId) =>
           deploymentCeiling.allows(providerId),
@@ -612,8 +615,8 @@ export const startShotgunApplication = async (
             : undefined;
         },
         providerPolicyIdentity: askAnswerProvider.identity.dataPolicyVersion,
-        providerDisplayName: 'Gemini',
-        providerModel: aiProvider.identity.model,
+        providerDisplayName: 'DeepSeek',
+        providerModel: 'deepseek-v4-flash',
       },
     );
     const executionIdentityResolver = new EffectiveAIConfigurationResolver(
@@ -621,6 +624,7 @@ export const startShotgunApplication = async (
       projectAIConfiguration,
       credentialVault,
       {
+        enforceDeepSeekOnly: true,
         policy: askProviderPolicy,
         legacyAuthority: {
           readLegacyExternalTransferAllowed: legacyPrivacy.getLegacyExternalTransferAllowed,
@@ -828,6 +832,8 @@ export const startShotgunApplication = async (
       projectAIConfiguration,
       credentialVault,
       new PostgresDiscoveryModelProfileRepository(pool),
+      undefined,
+      { enforceDeepSeekOnly: true },
     );
     const discoveryExecutionWorker = recoveryHarness
       ? undefined

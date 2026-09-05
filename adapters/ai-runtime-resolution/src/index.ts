@@ -1,5 +1,6 @@
 import {
   ShotgunError,
+  isCanonicalGenerativeAIExecution,
   type AskContextSensitivity,
   type AIExecutionIdentity,
   type AskProviderPolicyResolverPort,
@@ -50,6 +51,8 @@ export type EffectiveAIConfiguration = {
 };
 
 export type EffectiveAIConfigurationResolverOptions = {
+  /** Product composition enables the DeepSeek-only policy for new generation. */
+  readonly enforceDeepSeekOnly?: boolean;
   readonly policy?: AskProviderPolicyResolverPort;
   readonly legacyAuthority?: LegacyGeminiRuntimeAuthority;
   readonly legacyCredential?: () => string | undefined;
@@ -255,6 +258,20 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
       );
     }
     const existing = input.existingIdentity;
+    const historicalRetry = Boolean(
+      existing && !isCanonicalGenerativeAIExecution(existing.providerId, existing.modelId),
+    );
+    if (
+      this.options.enforceDeepSeekOnly === true &&
+      !isCanonicalGenerativeAIExecution(current.activeProviderId, current.activeModelId) &&
+      !historicalRetry
+    ) {
+      throw resolutionError(
+        'CONFIGURATION_REQUIRED',
+        'The current Project configuration is not authorized for new generative AI execution.',
+        'resolve-source-generative-policy',
+      );
+    }
     if (
       existing &&
       (existing.providerId !== current.activeProviderId ||
@@ -275,6 +292,17 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
       current.activeProviderId,
       current.activeModelId,
     );
+    if (
+      this.options.enforceDeepSeekOnly === true &&
+      !isCanonicalGenerativeAIExecution(provider.providerId, model.modelId) &&
+      !historicalRetry
+    ) {
+      throw resolutionError(
+        'CONFIGURATION_REQUIRED',
+        'The current Project configuration is not authorized for new generative AI execution.',
+        'resolve-managed-generative-policy',
+      );
+    }
     const metadata = await this.vault.getMetadata({
       projectId: input.projectId,
       providerId: current.activeProviderId,
@@ -414,6 +442,16 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
       input.profile.modelId,
     );
     if (
+      this.options.enforceDeepSeekOnly === true &&
+      !isCanonicalGenerativeAIExecution(provider.providerId, model.modelId)
+    ) {
+      throw resolutionError(
+        'CONFIGURATION_REQUIRED',
+        'The active Discovery profile is not authorized for new generative AI execution.',
+        'resolve-discovery-generative-policy',
+      );
+    }
+    if (
       provider.registryRevision !== input.profile.providerRegistryRevision ||
       model.capabilityRevision !== input.profile.modelCapabilityRevision
     ) {
@@ -499,6 +537,16 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
       current.activeProviderId,
       current.activeModelId,
     );
+    if (
+      this.options.enforceDeepSeekOnly === true &&
+      !isCanonicalGenerativeAIExecution(provider.providerId, model.modelId)
+    ) {
+      throw resolutionError(
+        'CONFIGURATION_REQUIRED',
+        'The current Project configuration is not authorized for new generative AI execution.',
+        'resolve-managed-generative-policy',
+      );
+    }
     const metadata = await this.vault.getMetadata({
       projectId,
       providerId: current.activeProviderId,

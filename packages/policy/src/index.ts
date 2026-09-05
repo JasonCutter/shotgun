@@ -1,4 +1,8 @@
-import { type AnyEnvelope, ShotgunError } from '../../contracts/src/index.js';
+import {
+  GENERATIVE_AI_PROVIDER_ID,
+  type AnyEnvelope,
+  ShotgunError,
+} from '../../contracts/src/index.js';
 import type {
   ActionRiskDecision,
   ActionRiskInput,
@@ -80,7 +84,10 @@ export const evaluateStandingAIProcessingPolicy = (input: {
 };
 
 export class StandingAIProcessingPolicyService implements StandingAIProcessingPolicyWriterPort {
-  constructor(private readonly repository: StandingAIProcessingPolicyRepositoryPort) {}
+  constructor(
+    private readonly repository: StandingAIProcessingPolicyRepositoryPort,
+    private readonly options: { readonly enforceDeepSeekOnly?: boolean } = {},
+  ) {}
 
   getCurrent(projectId: string): Promise<StandingAIProcessingPolicy | undefined> {
     return this.repository.getCurrent(standingNormalize('Project ID', projectId));
@@ -94,6 +101,14 @@ export class StandingAIProcessingPolicyService implements StandingAIProcessingPo
       throw new ShotgunError({
         code: 'VALIDATION_ERROR',
         safeMessage: 'Provider is not registered.',
+        module: 'standing-ai-processing-policy',
+        operation: 'save',
+      });
+    }
+    if (this.options.enforceDeepSeekOnly === true && providerId !== GENERATIVE_AI_PROVIDER_ID) {
+      throw new ShotgunError({
+        code: 'POLICY_DENIED',
+        safeMessage: 'New automatic AI processing must use the canonical DeepSeek provider.',
         module: 'standing-ai-processing-policy',
         operation: 'save',
       });

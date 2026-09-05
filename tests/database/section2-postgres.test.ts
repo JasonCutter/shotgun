@@ -9,6 +9,8 @@ import {
 } from '../../adapters/postgres/src/index.js';
 import { FrontendContractError } from '../../packages/contracts/src/index.js';
 import type { FrontendCommandRequest } from '../../packages/contracts/src/index.js';
+import { COMPARISON_ROLLOUT_SETTING_KEY } from '../../modules/settings-policy/src/index.js';
+import { createComparisonRolloutAuthorityResolver } from '../../assemblies/shotgun-app/src/comparison-v2-runtime.js';
 
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
@@ -147,6 +149,78 @@ describe.runIf(pool)('Persistent PostgreSQL Section 2 Settings & Project Adminis
 
     const projectDetail = await newProjectAdminRepo.getProjectDetails(projId);
     expect(projectDetail?.id).toBe(projId);
+  });
+
+  it('persists the WP6 rollout setting through the append-only PostgreSQL Settings reader', async () => {
+    const projId = `pg-proj-${randomUUID().slice(0, 8)}`;
+    const actorId = randomUUID();
+    await pool!.query(
+      'INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, $2, $3, $4, now())',
+      [actorId, 'user', 'active', `user-${actorId.slice(0, 8)}`],
+    );
+    await projectAdminRepo.createProject({
+      commandId: randomUUID(),
+      clientRequestId: `req-init-${randomUUID()}`,
+      idempotencyKey: `idem-init-${randomUUID()}`,
+      projectId: projId,
+      actorPrincipalId: actorId,
+      expectedProjectRevision: 0,
+      name: 'WP6 Rollout Project',
+    });
+
+    // APPLICATION / REPOSITORY / DB-CONNECTION RESTART DURABILITY:
+    // use dedicated writer and reader pools; this is not a physical database restart.
+    const writerPool = createPostgresPool(databaseUrl!);
+    try {
+      const writerSettings = new PostgresSettingsRepository(writerPool);
+      const beforeActivation = await createComparisonRolloutAuthorityResolver(
+        writerSettings,
+      ).resolve({
+        projectId: projId,
+        candidateId: 'candidate-1',
+        candidateRevision: 1,
+      });
+      expect(beforeActivation.rollout).toBe('V1_ONLY');
+
+      const applied = await writerSettings.applySettingsCommand({
+        commandId: randomUUID(),
+        clientRequestId: `req-rollout-${randomUUID()}`,
+        idempotencyKey: `idem-rollout-${randomUUID()}`,
+        projectId: projId,
+        expectedSettingsRevision: 1,
+        observedPolicyContextRevision: 1,
+        settings: { [COMPARISON_ROLLOUT_SETTING_KEY]: 'V2_ACTIVE' },
+        actorId,
+      });
+      expect(applied.status).toBe('APPLIED');
+    } finally {
+      await writerPool.end();
+    }
+
+    const readerPool = createPostgresPool(databaseUrl!);
+    try {
+      const readerSettings = new PostgresSettingsRepository(readerPool);
+      await expect(
+        readerSettings.getProjectSettingValue(projId, COMPARISON_ROLLOUT_SETTING_KEY),
+      ).resolves.toBe('V2_ACTIVE');
+      await expect(
+        readerSettings.applySettingsCommand({
+          commandId: randomUUID(),
+          clientRequestId: `req-invalid-rollout-${randomUUID()}`,
+          idempotencyKey: `idem-invalid-rollout-${randomUUID()}`,
+          projectId: projId,
+          expectedSettingsRevision: 2,
+          observedPolicyContextRevision: 2,
+          settings: { [COMPARISON_ROLLOUT_SETTING_KEY]: 'INVALID' },
+          actorId,
+        }),
+      ).rejects.toThrow('comparison.stage5.rollout');
+      await expect(
+        readerSettings.getProjectSettingValue(projId, COMPARISON_ROLLOUT_SETTING_KEY),
+      ).resolves.toBe('V2_ACTIVE');
+    } finally {
+      await readerPool.end();
+    }
   });
 
   it('requires a revision-bound audited review before Project private external transfer approval', async () => {

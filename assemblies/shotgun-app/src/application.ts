@@ -86,7 +86,9 @@ import {
 } from '../../../adapters/postgres-stage4/src/index.js';
 import {
   PostgresChangeSetReviewRepository,
+  PostgresChangeSetReviewV2Repository,
   PostgresComparisonRepository,
+  PostgresComparisonV2Repository,
 } from '../../../adapters/postgres-stage5/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres-stage6/src/index.js';
 import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
@@ -1131,7 +1133,9 @@ export const startShotgunApplication = async (
       candidateRepository: new PostgresCandidateRepository(pool),
       validationRepository: new PostgresValidationRepository(pool),
       comparisonRepository: new PostgresComparisonRepository(pool),
+      comparisonV2Repository: new PostgresComparisonV2Repository(pool),
       changeSetReviewRepository: new PostgresChangeSetReviewRepository(pool),
+      changeSetReviewV2Repository: new PostgresChangeSetReviewV2Repository(pool),
       canonicalSnapshot: canonicalKnowledgeRepository,
       canonicalKnowledgeRepository,
       searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
@@ -1181,6 +1185,7 @@ export const startShotgunApplication = async (
         maxAttempts: 2,
       },
       aiProviderExecutionResolver: stage4AIExecutionResolver,
+      comparisonV2ExecutionResolver: stage4AIExecutionResolver,
       // LPA-WP4 (D03/D04): serve the built SPA from the same origin.
       ...(options.spaDirectory === undefined ? {} : { spaDirectory: options.spaDirectory }),
       // LPA-WP5 (D12 recovery harness): optional recovery worker override.

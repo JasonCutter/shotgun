@@ -298,15 +298,26 @@ import {
 } from '../../../modules/validation/src/index.js';
 import {
   createComparisonModule,
+  createComparisonShortlistV2,
+  createComparisonSemanticAnalysisV2,
+  createComparisonV2Orchestrator,
   type CanonicalSnapshotPort,
   type ComparisonRepositoryPort,
   type TextDiffPort,
+  type ComparisonV2RepositoryPort,
 } from '../../../modules/comparison/src/index.js';
 import {
   createChangeSetReviewModule,
+  createComparisonV2ReviewBridge,
   createReversalEligibilityPort,
   type ChangeSetReviewRepositoryPort,
+  type ReviewV2RepositoryPort,
 } from '../../../modules/change-set-review/src/index.js';
+import {
+  createComparisonV2ReviewFreshnessAdapter,
+  createComparisonRolloutAuthorityResolver,
+  createComparisonV2Runtime,
+} from './comparison-v2-runtime.js';
 import {
   createCanonicalKnowledgeModule,
   type CanonicalKnowledgeRepositoryPort,
@@ -694,7 +705,13 @@ export type ApplicationOptions = {
   readonly canonicalSnapshot?: CanonicalSnapshotPort;
   readonly textDiff?: TextDiffPort;
   readonly comparisonRepository?: ComparisonRepositoryPort;
+  /** Optional additive Stage 5 v2 persistence; omitted keeps v1-only
+   * compositions and recovery harnesses unchanged. */
+  readonly comparisonV2Repository?: ComparisonV2RepositoryPort;
   readonly changeSetReviewRepository?: ChangeSetReviewRepositoryPort;
+  readonly changeSetReviewV2Repository?: ReviewV2RepositoryPort;
+  /** Governed provider resolver used only when V2_ACTIVE executes semantic analysis. */
+  readonly comparisonV2ExecutionResolver?: AIProviderExecutionResolverPort;
   readonly canonicalKnowledgeRepository?: CanonicalKnowledgeRepositoryPort;
   readonly searchProjectionRepository?: SearchProjectionRepositoryPort;
   readonly knowledgeModelRepository?: KnowledgeModelRepositoryPort;
@@ -2290,7 +2307,6 @@ const createApplicationCore = async (
   );
   const candidateGeneration = createCandidateGenerationModule(candidateRepository);
   const validation = createValidationModule(validationRepository);
-  const comparison = createComparisonModule(comparisonRepository, canonicalSnapshot, textDiff);
   const changeSetReview = createChangeSetReviewModule(changeSetReviewRepository);
   const canonicalKnowledge = createCanonicalKnowledgeModule(canonicalKnowledgeRepository);
   const projectionSearch = createProjectionSearchModule(searchProjectionRepository);
@@ -2502,6 +2518,79 @@ const createApplicationCore = async (
     );
 
   const hybridRetrieval = createHybridRetrievalModule(hybridRetrievalCoordinator);
+
+  // WP6 is an additive composition seam. If the durable v2 repositories and
+  // governed semantic ports are absent, the existing v1 module is wired
+  // exactly as before. A missing/invalid rollout setting is resolved to
+  // V1_ONLY by the runtime authority resolver.
+  const comparisonV2Runtime =
+    options.comparisonV2Repository &&
+    options.changeSetReviewV2Repository &&
+    options.comparisonV2ExecutionResolver &&
+    options.semanticActiveGenerationReader
+      ? (() => {
+          const shortlist = createComparisonShortlistV2({
+            canonicalSnapshot,
+            lexicalRetriever,
+            hybridRetrieval: hybridRetrievalCoordinator,
+            activeGenerationReader: options.semanticActiveGenerationReader!,
+          });
+          const semanticAnalysis = createComparisonSemanticAnalysisV2({
+            executionResolver: options.comparisonV2ExecutionResolver!,
+            canonicalSnapshot,
+            resourceResolver: knowledgeResourceResolver,
+          });
+          const orchestrator = createComparisonV2Orchestrator({
+            candidate: candidateRepository,
+            shortlist,
+            semanticAnalysis,
+            repository: options.comparisonV2Repository!,
+          });
+          const rollout = createComparisonRolloutAuthorityResolver(settingsRepository);
+          const freshness = createComparisonV2ReviewFreshnessAdapter({
+            candidate: candidateRepository,
+            canonicalSnapshot,
+            lexicalRetriever,
+            activeGenerationReader: options.semanticActiveGenerationReader,
+            rollout,
+            readSemanticMetadata: async ({ projectId, candidate, security }) => {
+              const resolved = await options.comparisonV2ExecutionResolver!.resolve({
+                projectId,
+                requestId: `comparison-freshness:${candidate.candidateId}`,
+                sourceVersionId: candidate.sourceVersionId,
+                dataClassification: 'knowledge',
+                accessScope: candidate.accessScope,
+                sensitivity: security.sensitivity,
+              });
+              return {
+                providerModelCapabilityIdentity: [
+                  resolved.executionIdentity.providerId,
+                  resolved.executionIdentity.modelId,
+                  'comparison-semantic-analysis:v1',
+                ].join('/'),
+              };
+            },
+          });
+          const reviewBridge = createComparisonV2ReviewBridge({
+            aggregate: options.comparisonV2Repository!,
+            freshness,
+            repository: options.changeSetReviewV2Repository!,
+          });
+          return createComparisonV2Runtime({
+            candidate: candidateRepository,
+            settings: settingsRepository,
+            orchestrator,
+            reviewBridge,
+            freshness,
+          });
+        })()
+      : undefined;
+  const comparison = createComparisonModule(
+    comparisonRepository,
+    canonicalSnapshot,
+    textDiff,
+    comparisonV2Runtime,
+  );
 
   const kernel = new ShotgunKernel(options.transport ?? new InProcessTransport(), {
     connectorRuntimeState: options.connectorRuntimeState,

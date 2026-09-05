@@ -45,8 +45,10 @@ import type {
 } from '../../../modules/settings-policy/src/index.js';
 import {
   comparePolicyHistoryEntries,
+  COMPARISON_ROLLOUT_SETTING_KEY,
   deriveSettingsImpact,
   paginatePolicyHistory,
+  validateComparisonRolloutSetting,
 } from '../../../modules/settings-policy/src/index.js';
 
 export class InMemoryProjectAdministrationRepository implements ProjectAdministrationRepositoryPort {
@@ -517,12 +519,23 @@ export class InMemorySettingsRepository implements SettingsRepositoryPort {
     });
   }
 
+  async getProjectSettingValue(projectId: string, key: string): Promise<unknown | undefined> {
+    return this.projectSettings.get(projectId)?.get(key);
+  }
+
   async validateSettingsDraft(
     _projectId: string,
     draft: Record<string, unknown>,
   ): Promise<SettingsValidationResult> {
     const errors: { key: string; message: string }[] = [];
     const warnings: { key: string; message: string }[] = [];
+
+    if (draft[COMPARISON_ROLLOUT_SETTING_KEY] !== undefined) {
+      const validation = validateComparisonRolloutSetting(draft[COMPARISON_ROLLOUT_SETTING_KEY]);
+      if (!validation.valid) {
+        errors.push({ key: COMPARISON_ROLLOUT_SETTING_KEY, message: validation.message });
+      }
+    }
 
     if (
       draft['costs.monthlyHardLimitUsd'] !== undefined &&

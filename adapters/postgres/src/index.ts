@@ -47,7 +47,11 @@ import type {
   PolicyHistoryEntry,
   PolicyHistoryReadPort,
 } from '../../../modules/settings-policy/src/index.js';
-import { deriveSettingsImpact } from '../../../modules/settings-policy/src/index.js';
+import {
+  COMPARISON_ROLLOUT_SETTING_KEY,
+  deriveSettingsImpact,
+  validateComparisonRolloutSetting,
+} from '../../../modules/settings-policy/src/index.js';
 import type {
   IntakeRepositoryPort,
   IntakeSubmission,
@@ -1623,12 +1627,29 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
     });
   }
 
+  async getProjectSettingValue(projectId: string, key: string): Promise<unknown | undefined> {
+    const result = await this.pool.query<{ settings_snapshot: Record<string, unknown> }>(
+      `SELECT settings_snapshot FROM settings.settings_revisions
+       WHERE project_id = $1
+       ORDER BY revision DESC LIMIT 1`,
+      [projectId],
+    );
+    return result.rows[0]?.settings_snapshot?.[key];
+  }
+
   async validateSettingsDraft(
     _projectId: string,
     draft: Record<string, unknown>,
   ): Promise<SettingsValidationResult> {
     const errors: { key: string; message: string }[] = [];
     const warnings: { key: string; message: string }[] = [];
+
+    if (draft[COMPARISON_ROLLOUT_SETTING_KEY] !== undefined) {
+      const validation = validateComparisonRolloutSetting(draft[COMPARISON_ROLLOUT_SETTING_KEY]);
+      if (!validation.valid) {
+        errors.push({ key: COMPARISON_ROLLOUT_SETTING_KEY, message: validation.message });
+      }
+    }
 
     if (
       draft['costs.monthlyHardLimitUsd'] !== undefined &&
@@ -1702,6 +1723,13 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
       throw new FrontendContractError(
         'INVALID_REQUEST',
         'privacy.externalTransferAllowed must be a boolean value.',
+      );
+    }
+    const validation = await this.validateSettingsDraft(input.projectId, input.settings);
+    if (!validation.isValid) {
+      throw new FrontendContractError(
+        'INVALID_REQUEST',
+        `Validation failed: ${validation.errors.map((error) => error.message).join('; ')}`,
       );
     }
     const client = await this.pool.connect();

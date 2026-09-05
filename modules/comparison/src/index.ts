@@ -87,6 +87,20 @@ export type ComparisonRepositoryPort = {
   ): Promise<ComparisonResult | undefined>;
 };
 
+/** Application composition seam for additive v2 rollout. The Comparison
+ * module remains the sole CandidateValidated consumer; the seam decides
+ * whether v1 is authoritative and may materialize v2 Review drafts. */
+export type ComparisonV2RuntimeBoundary = {
+  handleCandidateValidated(input: {
+    readonly projectId: string;
+    readonly candidateId: string;
+    readonly candidate: ClaimCandidate;
+    readonly actor: EventEnvelope['actor'];
+    readonly security: SecurityContext;
+    readonly correlationId?: string;
+  }): Promise<{ readonly rollout: 'V1_ONLY' | 'V2_SHADOW' | 'V2_ACTIVE' }>;
+};
+
 const normalizeClaim = (value: string): string =>
   value.normalize('NFKC').trim().replace(/\s+/gu, ' ').toLocaleLowerCase('en-US');
 
@@ -189,6 +203,7 @@ export const createComparisonModule = (
   repository: ComparisonRepositoryPort,
   snapshotProvider: CanonicalSnapshotPort,
   textDiff: TextDiffPort,
+  runtime?: ComparisonV2RuntimeBoundary,
 ): ShotgunModule => ({
   manifest: {
     id: 'stage5.comparison',
@@ -317,6 +332,17 @@ export const createComparisonModule = (
               operation: 'compare-candidate',
               correlationId: envelope.correlationId,
             });
+          }
+          if (runtime) {
+            const runtimeOutcome = await runtime.handleCandidateValidated({
+              projectId,
+              candidateId: candidate.candidateId,
+              candidate,
+              actor: envelope.actor!,
+              security,
+              correlationId: envelope.correlationId,
+            });
+            if (runtimeOutcome.rollout === 'V2_ACTIVE') return;
           }
           const snapshot = await snapshotProvider.getSnapshot(projectId);
           assertSnapshot(snapshot, projectId);

@@ -142,7 +142,7 @@ const isCompatibleClaimRevision = (
   snapshotVersion: number,
 ): boolean => value === undefined || value === claimRevision || value === snapshotVersion;
 
-const lexicalProjectionWatermark = (
+export const comparisonLexicalProjectionWatermarkV2 = (
   readiness: ProjectionReadiness,
   snapshot: CanonicalSnapshot,
 ): string =>
@@ -155,7 +155,7 @@ const lexicalProjectionWatermark = (
     }),
   );
 
-const lexicalProjectionBase = (readiness: ProjectionReadiness): string =>
+export const comparisonLexicalProjectionBaseV2 = (readiness: ProjectionReadiness): string =>
   sha256Text(
     stableJson({
       identityVersion: 'comparison-lexical-projection-base:v1',
@@ -495,8 +495,11 @@ export class ComparisonShortlistV2Service implements ComparisonShortlistV2Port {
         version: snapshot.version,
         digest: snapshot.digest,
       },
-      lexicalProjectionWatermark: lexicalProjectionWatermark(hybrid.readiness.lexical, snapshot),
-      lexicalProjectionBase: lexicalProjectionBase(hybrid.readiness.lexical),
+      lexicalProjectionWatermark: comparisonLexicalProjectionWatermarkV2(
+        hybrid.readiness.lexical,
+        snapshot,
+      ),
+      lexicalProjectionBase: comparisonLexicalProjectionBaseV2(hybrid.readiness.lexical),
       semanticGenerationId: generation.generationId,
       semanticSourceProjectionDigest: generation.sourceProjectionDigest,
       semanticCanonicalBaseVersion: generation.canonicalBaseVersion,

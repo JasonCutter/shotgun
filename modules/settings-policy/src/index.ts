@@ -13,6 +13,23 @@ import type {
   ProductFeatureView,
 } from '../../../packages/contracts/src/index.js';
 
+export const COMPARISON_ROLLOUT_SETTING_KEY = 'comparison.stage5.rollout' as const;
+export const COMPARISON_ROLLOUT_STATES = ['V1_ONLY', 'V2_SHADOW', 'V2_ACTIVE'] as const;
+export type ComparisonRolloutStateSetting = (typeof COMPARISON_ROLLOUT_STATES)[number];
+
+export const isComparisonRolloutState = (value: unknown): value is ComparisonRolloutStateSetting =>
+  typeof value === 'string' && (COMPARISON_ROLLOUT_STATES as readonly string[]).includes(value);
+
+export const validateComparisonRolloutSetting = (
+  value: unknown,
+): { readonly valid: true } | { readonly valid: false; readonly message: string } =>
+  isComparisonRolloutState(value)
+    ? { valid: true }
+    : {
+        valid: false,
+        message: `comparison.stage5.rollout must be one of ${COMPARISON_ROLLOUT_STATES.join(', ')}.`,
+      };
+
 export const deriveSettingsImpact = (
   draft: Record<string, unknown>,
 ): Pick<
@@ -36,9 +53,13 @@ export const deriveSettingsImpact = (
   );
   const hasHardBudget = keys.includes('costs.monthlyHardLimitUsd');
   const hasModelRouting = keys.some((key) => key.startsWith('models.'));
+  const hasComparisonRollout = keys.includes(COMPARISON_ROLLOUT_SETTING_KEY);
   const requiresMigration = hasSchemaChange;
+  // Rollout transitions are high-impact and confirmation-gated, but use the
+  // existing Settings command/confirmation path rather than the privacy-only
+  // review proposal store.
   const requiresReview = hasPrivacyReduction;
-  const requiresConfirmation = hasHardBudget || hasModelRouting;
+  const requiresConfirmation = hasHardBudget || hasModelRouting || hasComparisonRollout;
   return {
     applicationMode: requiresMigration
       ? 'MIGRATION_REQUIRED'
@@ -48,7 +69,11 @@ export const deriveSettingsImpact = (
           ? 'CONFIRM_REQUIRED'
           : 'IMMEDIATE',
     riskLevel:
-      hasPrivacyReduction || hasSchemaChange ? 'HIGH' : requiresConfirmation ? 'MEDIUM' : 'LOW',
+      hasPrivacyReduction || hasSchemaChange || hasComparisonRollout
+        ? 'HIGH'
+        : requiresConfirmation
+          ? 'MEDIUM'
+          : 'LOW',
     requiresConfirmation,
     requiresReview,
     requiresMigration,
@@ -84,6 +109,8 @@ export type ApplyPreferenceCommandInput = {
 
 export type SettingsRepositoryPort = {
   getSettingsSnapshot(projectId: string): Promise<SettingsSnapshot>;
+  /** Narrow read boundary for append-only project settings used by runtime policy resolvers. */
+  getProjectSettingValue?(projectId: string, key: string): Promise<unknown | undefined>;
   getPrincipalPreferences(principalId: string): Promise<Record<string, unknown>>;
   getPrincipalPreferenceRevision(principalId: string): Promise<number>;
   updatePrincipalPreferences(input: ApplyPreferenceCommandInput): Promise<Record<string, unknown>>;

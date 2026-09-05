@@ -30,7 +30,7 @@
       "canonical.history_events",
       "canonical.outbox"
     ],
-    "readsViaPorts": ["GetApprovedChangeSetManifest query"],
+    "readsViaPorts": ["GetApprovedChangeSetManifest query", "GetClaimCandidate query"],
     "directSchemaAccess": false
   },
   "consumes": {

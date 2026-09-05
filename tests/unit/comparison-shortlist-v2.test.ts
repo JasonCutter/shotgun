@@ -250,6 +250,33 @@ describe('ComparisonShortlistV2Service', () => {
     });
   });
 
+  it('S3-03a admits a canonical-backed COMPILED_TRUTH Claim with full lineage', async () => {
+    const { deps, hybridRetrieval } = dependencies();
+    hybridRetrieval.search.mockResolvedValue(
+      hybridResponse([
+        hybridItem({
+          authority: 'COMPILED_TRUTH',
+          authorityRevision: snapshot.version,
+          resourceRevision: claim.revisionNumber,
+          canonicalVersion: snapshot.version,
+          baseCanonicalVersion: snapshot.version,
+          sourceSnapshotDigest: generation.sourceProjectionDigest,
+          sourceProjectionDigest: generation.sourceProjectionDigest,
+        }),
+      ]),
+    );
+
+    const result = await new ComparisonShortlistV2Service(deps).build(
+      request('A non-exact candidate requiring the compiled truth projection'),
+    );
+
+    expect(result.status).toBe('READY');
+    if (result.status !== 'READY') return;
+    expect(result.shortlist.selectedTargetIdentities).toEqual([
+      { resourceType: 'CLAIM', resourceId: claim.claimId, resourceRevision: claim.revisionNumber },
+    ]);
+  });
+
   it('S3-04 produces the same shortlist digest on deterministic replay', async () => {
     const { deps } = dependencies();
     const service = new ComparisonShortlistV2Service(deps);

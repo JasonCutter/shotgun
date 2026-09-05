@@ -132,7 +132,9 @@ export const authoritativeIntegrityTablesForMigrations = (
     ...(applied.has(STAGE5_COMPARISON_V2_MIGRATION)
       ? ['comparison.results_v2', 'comparison.analysis_revisions_v2', 'comparison.relationships_v2']
       : []),
-    ...(applied.has(STAGE5_COMPARISON_REVIEW_V2_MIGRATION) ? ['review.change_sets_v2'] : []),
+    ...(applied.has(STAGE5_COMPARISON_REVIEW_V2_MIGRATION)
+      ? ['review.change_sets_v2', 'review.decisions_v2', 'review.approved_manifests_v2']
+      : []),
     ...(applied.has(DISCOVERY_FINDING_MIGRATION) ? ['discovery.findings'] : []),
     ...(applied.has(DISCOVERY_LIFECYCLE_MIGRATION)
       ? ['discovery.finding_lifecycle_current', 'discovery.finding_lifecycle_history']

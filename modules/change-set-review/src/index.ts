@@ -209,6 +209,8 @@ export const createChangeSetReviewModule = (
         'review.decisions',
         'review.approved_manifests',
         'review.change_sets_v2',
+        'review.decisions_v2',
+        'review.approved_manifests_v2',
       ],
       readsViaPorts: [
         'GetComparisonResult query',

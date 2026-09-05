@@ -6,6 +6,7 @@ import {
   canonicalSnapshotDigest,
   claimCandidateDigest,
   createExactDuplicateComparisonResultV2,
+  validateApprovedChangeSetManifestV2,
   semanticRelationshipMaterialDigestV2,
   sha256Text,
   shortlistAuditDigestV2,
@@ -17,6 +18,8 @@ import {
 } from '../../packages/contracts/src/index.js';
 import {
   createComparisonV2ReviewBridge,
+  type ComparisonV2ReviewDecisionResult,
+  type ComparisonV2ReviewDecisionWrite,
   type ComparisonV2AggregateForReview,
   type ComparisonV2ReviewBridgeDependencies,
 } from '../../modules/change-set-review/src/review-v2.js';
@@ -249,6 +252,8 @@ const setup = (
   aggregateInput: ComparisonV2AggregateForReview = aggregate,
 ) => {
   let saved: DraftChangeSetV2 | undefined;
+  let savedDecision: ComparisonV2ReviewDecisionWrite['decision'] | undefined;
+  let savedManifest: ComparisonV2ReviewDecisionResult['manifest'];
   const repository = {
     async saveDraft(
       draft: Parameters<ComparisonV2ReviewBridgeDependencies['repository']['saveDraft']>[0],
@@ -256,8 +261,34 @@ const setup = (
       saved = draft;
       return draft;
     },
-    async findDraftByComparisonId() {
-      return undefined;
+    async findDraftByComparisonId(_projectId: string, comparisonId: string) {
+      return saved?.comparisonId === comparisonId ? saved : undefined;
+    },
+    async recordDecision(
+      write: ComparisonV2ReviewDecisionWrite,
+    ): Promise<ComparisonV2ReviewDecisionResult> {
+      if (
+        savedDecision &&
+        savedDecision.decisionId === write.decision.decisionId &&
+        JSON.stringify(savedDecision) !== JSON.stringify(write.decision)
+      ) {
+        throw Object.assign(new Error('decision conflict'), { code: 'CONFLICT' });
+      }
+      if (savedDecision?.decisionId === write.decision.decisionId) {
+        return {
+          draft: saved!,
+          decision: savedDecision,
+          ...(savedManifest === undefined ? {} : { manifest: savedManifest }),
+        };
+      }
+      savedDecision = write.decision;
+      savedManifest = write.manifest;
+      saved = write.updated;
+      return {
+        draft: write.updated,
+        decision: write.decision,
+        ...(write.manifest === undefined ? {} : { manifest: write.manifest }),
+      };
     },
   };
   const dependencies: ComparisonV2ReviewBridgeDependencies = {
@@ -355,5 +386,196 @@ describe('Comparison v2 Review bridge', () => {
     const setupValue = setup(stale);
     const result = await setupValue.bridge.materializeDraft(request);
     expect(result).toEqual({ status: 'BLOCKED', reason: 'STALE_COMPARISON' });
+  });
+
+  it('rejects non-user approval before any decision write', async () => {
+    const setupValue = setup();
+    await setupValue.bridge.materializeDraft(request);
+    const draft = setupValue.getSaved()!;
+    const result = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'service', id: 'worker' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'APPROVE',
+      reason: 'automated approval is forbidden',
+      decisionId: 'decision-service-1',
+      decidedAt: now,
+    });
+    expect(result).toEqual({ status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' });
+  });
+
+  it('creates a token-bound immutable manifest for a valid user approval', async () => {
+    const setupValue = setup();
+    await setupValue.bridge.materializeDraft(request);
+    const draft = setupValue.getSaved()!;
+    const result = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'APPROVE',
+      reason: 'reviewed by owner',
+      decisionId: 'decision-user-1',
+      decidedAt: now,
+    });
+    expect(result.status).toBe('DECISION_RECORDED');
+    if (result.status === 'DECISION_RECORDED') {
+      expect(result.draft.status).toBe('APPROVED');
+      expect(result.manifest?.userApproval.actor).toEqual({ type: 'user', id: 'owner-1' });
+      expect(result.manifest?.userApproval.approvalToken.contentDigest).toBe(draft.contentDigest);
+      expect(() => validateApprovedChangeSetManifestV2(result.manifest)).not.toThrow();
+    }
+  });
+
+  it('rejects approval for an ON_HOLD Draft', async () => {
+    const setupValue = setup();
+    await setupValue.bridge.materializeDraft(request);
+    const draft = setupValue.getSaved()!;
+    const held = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'HOLD',
+      reason: 'needs more evidence',
+      decisionId: 'decision-hold-1',
+      decidedAt: now,
+    });
+    expect(held.status).toBe('DECISION_RECORDED');
+    const approval = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'APPROVE',
+      reason: 'approve without clearing hold',
+      decisionId: 'decision-approve-held-1',
+      decidedAt: now,
+    });
+    expect(approval).toEqual({ status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' });
+  });
+
+  it('records REJECT and HOLD without creating a manifest', async () => {
+    for (const decision of ['REJECT', 'HOLD'] as const) {
+      const setupValue = setup();
+      await setupValue.bridge.materializeDraft(request);
+      const draft = setupValue.getSaved()!;
+      const result = await setupValue.bridge.recordDecision({
+        projectId,
+        changeSetId: draft.changeSetId,
+        actor: { type: 'user', id: 'owner-1' },
+        security,
+        authority: authority('V2_ACTIVE'),
+        rolloutAuthorityRevision: 'rollout-revision-1',
+        expectedRevisionNumber: draft.revisionNumber,
+        expectedContentDigest: draft.contentDigest,
+        decision,
+        reason: `decision ${decision}`,
+        decisionId: `decision-${decision.toLowerCase()}-1`,
+        decidedAt: now,
+      });
+      expect(result.status).toBe('DECISION_RECORDED');
+      if (result.status === 'DECISION_RECORDED') {
+        expect(result.draft.status).toBe(decision === 'REJECT' ? 'REJECTED' : 'ON_HOLD');
+        expect(result.manifest).toBeUndefined();
+      }
+    }
+  });
+
+  it('rejects stale approval and token-bound manifest tampering', async () => {
+    const setupValue = setup();
+    await setupValue.bridge.materializeDraft(request);
+    const draft = setupValue.getSaved()!;
+    const stale = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: sha256Text('stale'),
+      decision: 'APPROVE',
+      reason: 'stale approval',
+      decisionId: 'decision-stale-1',
+      decidedAt: now,
+    });
+    expect(stale).toEqual({ status: 'BLOCKED', reason: 'DECISION_STALE' });
+
+    const approved = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'APPROVE',
+      reason: 'valid approval',
+      decisionId: 'decision-valid-1',
+      decidedAt: now,
+    });
+    expect(approved.status).toBe('DECISION_RECORDED');
+    if (approved.status === 'DECISION_RECORDED' && approved.manifest) {
+      const manifest = approved.manifest;
+      expect(() =>
+        validateApprovedChangeSetManifestV2({
+          ...manifest,
+          userApproval: {
+            ...manifest.userApproval,
+            approvalToken: {
+              ...manifest.userApproval.approvalToken,
+              tokenDigest: sha256Text('tampered'),
+            },
+          },
+        }),
+      ).toThrow();
+    }
+  });
+
+  it('converges a repeated approval decision by decision identity', async () => {
+    const setupValue = setup();
+    await setupValue.bridge.materializeDraft(request);
+    const draft = setupValue.getSaved()!;
+    const decision = {
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user' as const, id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'APPROVE' as const,
+      reason: 'replayed approval',
+      decisionId: 'decision-replay-1',
+      decidedAt: now,
+    };
+    const first = await setupValue.bridge.recordDecision(decision);
+    const second = await setupValue.bridge.recordDecision(decision);
+    expect(first.status).toBe('DECISION_RECORDED');
+    expect(second.status).toBe('DECISION_RECORDED');
+    if (first.status === 'DECISION_RECORDED' && second.status === 'DECISION_RECORDED') {
+      expect(second.decision).toEqual(first.decision);
+      expect(second.manifest).toEqual(first.manifest);
+    }
   });
 });

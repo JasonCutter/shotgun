@@ -16,7 +16,7 @@ second persistence identity.
 - `lucasastorian/llmwiki`: `REFERENCE_ONLY`; its conversion/evidence pieces do
   not provide the frozen ComparisonResultV2 or Review freshness contracts.
 - `ddsyasas/llm-wiki`: `REFERENCE_ONLY`; its UX/backend runtime is not a
-  replacement for the Review-owned v2 Draft store.
+  replacement for the Review-owned v2 Draft/decision/manifest stores.
 - Inkeep OpenKnowledge: `REFERENCE_ONLY`; its review/graph patterns do not
   provide the required Candidate-to-Canonical lineage and rollout authority.
 

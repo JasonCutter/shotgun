@@ -145,23 +145,19 @@ const parent = createCommand({
 const eventFor = (
   manifest: ApprovedChangeSetManifestV2,
   eventActor: Actor = actor,
-): EventEnvelope =>
-  {
-    const event = createChildEvent(parent, {
-      messageType: 'ChangeSetApprovedV2',
-      schemaVersion: '2.0.0',
-      producerModule: 'guard-test',
-      producerVersion: '1.0.0',
-      idempotencyKey: `guard:${manifest.manifestId}:${eventActor.type}`,
-      payload: { manifest, rollout: 'V2_ACTIVE', rolloutAuthorityRevision: 'rollout-v2-guard' },
-    });
-    return { ...event, actor: eventActor };
-  };
+): EventEnvelope => {
+  const event = createChildEvent(parent, {
+    messageType: 'ChangeSetApprovedV2',
+    schemaVersion: '2.0.0',
+    producerModule: 'guard-test',
+    producerVersion: '1.0.0',
+    idempotencyKey: `guard:${manifest.manifestId}:${eventActor.type}`,
+    payload: { manifest, rollout: 'V2_ACTIVE', rolloutAuthorityRevision: 'rollout-v2-guard' },
+  });
+  return { ...event, actor: eventActor };
+};
 
-const invoke = async (
-  repository: InMemoryCanonicalKnowledgeRepository,
-  event: EventEnvelope,
-) => {
+const invoke = async (repository: InMemoryCanonicalKnowledgeRepository, event: EventEnvelope) => {
   const handler = createCanonicalKnowledgeModule(repository).handlers.events.find(
     (entry) => entry.messageType === 'ChangeSetApprovedV2',
   )!;
@@ -200,7 +196,9 @@ describe('Canonical v2 handoff guards', () => {
   it('rejects a non-user event actor and a stale snapshot', async () => {
     const repository = new InMemoryCanonicalKnowledgeRepository();
     const manifest = makeManifest();
-    await expect(invoke(repository, eventFor(manifest, { type: 'service', id: actor.id }))).rejects.toBeTruthy();
+    await expect(
+      invoke(repository, eventFor(manifest, { type: 'service', id: actor.id })),
+    ).rejects.toBeTruthy();
     await invoke(repository, eventFor(manifest));
     const staleManifest = makeManifest({ manifestId: 'manifest-v2:stale' });
     await expect(invoke(repository, eventFor(staleManifest))).rejects.toMatchObject({

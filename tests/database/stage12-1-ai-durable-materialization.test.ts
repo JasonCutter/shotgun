@@ -318,6 +318,65 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
     await recovery.kernel.shutdown();
   });
 
+  it('preserves pre-deployment request identity while resuming an incomplete durable request', async () => {
+    const first = await createHarness(new InMemoryAssetStorage(), new FakeAIProviderAdapter(), {
+      candidateRepository: false,
+    });
+    const prepared = await prepareGeneration(first, 'stage12-legacy-request-digest');
+    await generateStructured(first, prepared);
+    const record = (await first.aiRepository.list())[0]!;
+    const historicalDigest = record.requestDigest;
+
+    await pool!.query(
+      'ALTER TABLE ai.provider_outputs DISABLE TRIGGER provider_outputs_append_only',
+    );
+    try {
+      await pool!.query('BEGIN');
+      await pool!.query(
+        `UPDATE ai.provider_calls
+         SET accepted_output_id = NULL, durable_state = 'REQUESTED', status = 'failed'
+         WHERE project_id = $1 AND request_id = $2`,
+        [record.projectId, record.requestId],
+      );
+      await pool!.query('DELETE FROM ai.provider_outputs');
+      await pool!.query('DELETE FROM ai.provider_attempts');
+      await pool!.query('COMMIT');
+    } catch (error) {
+      await pool!.query('ROLLBACK');
+      throw error;
+    } finally {
+      await pool!.query(
+        'ALTER TABLE ai.provider_outputs ENABLE TRIGGER provider_outputs_append_only',
+      );
+    }
+    await first.kernel.shutdown();
+
+    const recoveryProvider = new FakeAIProviderAdapter();
+    const recovery = await createHarness(new InMemoryAssetStorage(), recoveryProvider);
+    await recovery.kernel.connector.sendCommand(resumeCommand(record));
+
+    const after = await pool!.query<{
+      request_digest: string;
+      durable_state: string;
+      provider_calls: string;
+      batches: string;
+      candidates: string;
+    }>(`SELECT request_digest, durable_state,
+      (SELECT count(*)::text FROM ai.provider_calls) AS provider_calls,
+      (SELECT count(*)::text FROM candidate.batches) AS batches,
+      (SELECT count(*)::text FROM candidate.claim_candidates) AS candidates
+      FROM ai.provider_calls`);
+    expect(after.rows[0]).toEqual({
+      request_digest: historicalDigest,
+      durable_state: 'COMPLETED',
+      provider_calls: '1',
+      batches: '1',
+      candidates: '1',
+    });
+    expect(recoveryProvider.calls()).toBe(1);
+    await recovery.kernel.shutdown();
+  });
+
   it('recovers a failed Materialization by binding the existing Batch without Provider recall', async () => {
     const first = await createHarness(new InMemoryAssetStorage(), new FakeAIProviderAdapter());
     const command = directTextCommand('stage12-bind-existing', 'Milo weighs 5 kg.');

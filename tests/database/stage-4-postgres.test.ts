@@ -25,7 +25,7 @@ import { createIntakeModule } from '../../modules/intake/src/index.js';
 import { createOriginalAssetModule } from '../../modules/original-asset/src/index.js';
 import { createTransformationModule } from '../../modules/transformation/src/index.js';
 import { createValidationModule } from '../../modules/validation/src/index.js';
-import type { ClaimCandidate } from '../../packages/contracts/src/index.js';
+import { createCommand, type ClaimCandidate } from '../../packages/contracts/src/index.js';
 import { ShotgunKernel } from '../../packages/kernel/src/index.js';
 import { candidatesQuery, directTextCommand, intakeResultQuery } from '../helpers/stage-4.js';
 
@@ -53,6 +53,24 @@ const createHarness = async (storage: InMemoryAssetStorage, provider: FakeAIProv
   await kernel.start();
   return kernel;
 };
+
+const reextractCommand = (
+  parent: ReturnType<typeof directTextCommand>,
+  sourceVersionId: string,
+  requestId: string,
+  idempotencyKey: string,
+) =>
+  createCommand({
+    messageType: 'ReextractCandidateMaterialization',
+    schemaVersion: '1.0.0',
+    producerModule: 'stage4-postgres-test',
+    producerVersion: '1.0.0',
+    idempotencyKey,
+    projectId: parent.projectId!,
+    actor: parent.actor!,
+    security: parent.security!,
+    payload: { sourceVersionId, requestId },
+  });
 
 describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
   beforeEach(async () => {
@@ -133,5 +151,63 @@ describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
       validations: '1',
     });
     await second.shutdown();
+  });
+
+  it('persists separate re-extraction epochs for one SourceVersion and converges replay', async () => {
+    const storage = new InMemoryAssetStorage();
+    const provider = new FakeAIProviderAdapter();
+    const kernel = await createHarness(storage, provider);
+    const command = directTextCommand('stage4-postgres-reextract', 'Milo weighs 5 kg.');
+
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const historical = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    await kernel.connector.sendCommand(
+      reextractCommand(command, sourceVersionId, 'R2', 'postgres-reextract-r2'),
+    );
+    const afterR2 = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+    expect(afterR2).toHaveLength(2);
+    expect(afterR2[0]!.candidateId).not.toBe(afterR2[1]!.candidateId);
+    expect(afterR2[0]!.batchId).not.toBe(afterR2[1]!.batchId);
+
+    await kernel.connector.sendCommand(
+      reextractCommand(command, sourceVersionId, 'R2', 'postgres-reextract-r2-replay'),
+    );
+    expect(provider.calls()).toBe(2);
+
+    const durable = await pool!.query<{
+      source_versions: string;
+      batches: string;
+      candidates: string;
+      materializations: string;
+      provider_calls: string;
+    }>(`
+      SELECT
+        (SELECT count(DISTINCT source_version_id) FROM candidate.batches)::text AS source_versions,
+        (SELECT count(*) FROM candidate.batches)::text AS batches,
+        (SELECT count(*) FROM candidate.claim_candidates)::text AS candidates,
+        (SELECT count(*) FROM candidate.materializations)::text AS materializations,
+        (SELECT count(*) FROM ai.provider_calls)::text AS provider_calls
+    `);
+    expect(durable.rows[0]).toEqual({
+      source_versions: '1',
+      batches: '2',
+      candidates: '2',
+      materializations: '2',
+      provider_calls: '2',
+    });
+    expect(historical[0]!.candidateId).toBeDefined();
+    await kernel.shutdown();
   });
 });

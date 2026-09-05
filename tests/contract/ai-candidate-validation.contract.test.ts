@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { createChildEvent } from '../../packages/contracts/src/index.js';
+import { createChildEvent, createCommand } from '../../packages/contracts/src/index.js';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -22,6 +22,41 @@ const transports = [
   ['in-memory', () => new InMemoryTransport()],
   ['in-process', () => new InProcessTransport()],
 ] as const;
+
+const reextractCommand = (
+  parent: ReturnType<typeof directTextCommand>,
+  sourceVersionId: string,
+  requestId: string,
+  idempotencyKey: string,
+) =>
+  createCommand({
+    messageType: 'ReextractCandidateMaterialization',
+    schemaVersion: '1.0.0',
+    producerModule: 'stage4-contract-test',
+    producerVersion: '1.0.0',
+    idempotencyKey,
+    projectId: parent.projectId!,
+    actor: parent.actor!,
+    security: parent.security!,
+    payload: { sourceVersionId, requestId },
+  });
+
+const resumeCommand = (
+  parent: ReturnType<typeof directTextCommand>,
+  sourceVersionId: string,
+  requestId: string,
+) =>
+  createCommand({
+    messageType: 'ResumeCandidateMaterialization',
+    schemaVersion: '1.0.0',
+    producerModule: 'stage4-contract-test',
+    producerVersion: '1.0.0',
+    idempotencyKey: `resume:${parent.projectId}:${sourceVersionId}`,
+    projectId: parent.projectId!,
+    actor: parent.actor!,
+    security: parent.security!,
+    payload: { sourceVersionId, requestId },
+  });
 
 describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
   it('creates only evidence-backed READY candidates with provider provenance', async () => {
@@ -188,5 +223,79 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
     expect(provider.calls()).toBe(1);
     expect(candidateRepository.counts()).toEqual({ batches: 1, candidates: 1 });
     expect(validationRepository.count()).toBe(1);
+  });
+
+  it('creates additive re-extraction epochs while preserving Resume recovery semantics', async () => {
+    const provider = new FakeAIProviderAdapter();
+    const { kernel, candidateRepository } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: provider,
+    });
+    const command = directTextCommand('stage4-reextract', 'Milo weighs 5 kg.');
+
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const historical = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+    const historicalCandidateId = historical[0]!.candidateId;
+    const historicalBatchId = historical[0]!.batchId;
+    const historicalRequestId = `${command.projectId}:${sourceVersionId}:candidate-extraction:direct-claim-v1:direct-only-v1`;
+
+    await kernel.connector.sendCommand(
+      reextractCommand(command, sourceVersionId, 'R2', 'reextract-command-r2'),
+    );
+    const afterR2 = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+    const r2Candidates = afterR2.filter((item) => item.batchId !== historicalBatchId);
+
+    expect(provider.calls()).toBe(2);
+    expect(r2Candidates).toHaveLength(1);
+    expect(r2Candidates[0]!.candidateId).not.toBe(historicalCandidateId);
+    expect(r2Candidates[0]!.revisionNumber).toBe(1);
+    expect(r2Candidates[0]!.status).toBe('READY');
+    expect(candidateRepository.counts()).toEqual({ batches: 2, candidates: 2 });
+    expect(
+      kernel.connector.traces
+        .list()
+        .filter(
+          (record) => record.messageType === 'CandidateGenerated' && record.status === 'published',
+        ),
+    ).toHaveLength(2);
+
+    await kernel.connector.sendCommand(
+      reextractCommand(command, sourceVersionId, 'R2', 'reextract-command-r2-replay'),
+    );
+    expect(provider.calls()).toBe(2);
+    expect(candidateRepository.counts()).toEqual({ batches: 2, candidates: 2 });
+
+    await kernel.connector.sendCommand(
+      reextractCommand(command, sourceVersionId, 'R3', 'reextract-command-r3'),
+    );
+    expect(provider.calls()).toBe(3);
+    expect(candidateRepository.counts()).toEqual({ batches: 3, candidates: 3 });
+
+    await kernel.connector.sendCommand(
+      resumeCommand(command, sourceVersionId, historicalRequestId),
+    );
+    expect(provider.calls()).toBe(3);
+    expect(candidateRepository.counts()).toEqual({ batches: 3, candidates: 3 });
+
+    await expect(
+      kernel.connector.sendCommand({
+        ...reextractCommand(command, sourceVersionId, 'R4', 'reextract-command-r4-denied'),
+        actor: undefined,
+        security: undefined,
+      }),
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+    expect(provider.calls()).toBe(3);
+    expect(candidateRepository.counts()).toEqual({ batches: 3, candidates: 3 });
   });
 });

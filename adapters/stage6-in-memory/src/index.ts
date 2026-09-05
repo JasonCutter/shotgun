@@ -1,6 +1,7 @@
 import type { CanonicalSnapshotPort } from '../../../modules/comparison/src/index.js';
 import type {
   CanonicalCommitWrite,
+  CanonicalCommitV2Write,
   CanonicalKnowledgeRepositoryPort,
 } from '../../../modules/canonical-knowledge/src/index.js';
 import {
@@ -266,6 +267,164 @@ export class InMemoryCanonicalKnowledgeRepository
     this.revisions.set(write.revisionId, clone(revision));
     this.history.set(write.historyEventId, clone(history));
     this.outbox.set(write.outboxId, clone(outbox));
+    return clone(result);
+  }
+
+  async commitV2(write: CanonicalCommitV2Write): Promise<CanonicalCommitResult> {
+    const existing = [...this.commits.values()].find(
+      (commit) =>
+        commit.projectId === write.manifest.projectId &&
+        commit.authorityId === write.manifest.manifestId,
+    );
+    if (existing) {
+      if (existing.authorityDigest !== write.manifest.manifestDigest) {
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage: 'The v2 Canonical authority was reused with different content.',
+          module: 'stage6-in-memory',
+          operation: 'commit-canonical-v2',
+        });
+      }
+      return clone(existing);
+    }
+    if (write.manifest.operation !== 'ADD_CLAIM' && write.manifest.operation !== 'NO_OP') {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'The v2 Canonical handoff supports only ADD_CLAIM or NO_OP.',
+        module: 'stage6-in-memory',
+        operation: 'commit-canonical-v2',
+      });
+    }
+    const before = await this.getSnapshot(write.manifest.projectId);
+    if (
+      before.version !== write.manifest.expectedCanonicalVersion ||
+      before.digest !== write.manifest.snapshotDigest
+    ) {
+      throw new ShotgunError({
+        code: 'STALE_APPROVAL',
+        safeMessage: 'The v2 Canonical Snapshot changed after approval.',
+        module: 'stage6-in-memory',
+        operation: 'commit-canonical-v2',
+      });
+    }
+    const claim =
+      write.manifest.operation === 'ADD_CLAIM' && write.claimId
+        ? {
+            claimId: write.claimId,
+            projectId: write.manifest.projectId,
+            revisionNumber: 1 as const,
+            claimText: write.candidateClaimText,
+            sourceVersionId: write.manifest.candidate.sourceVersionId,
+            evidenceIds: [...write.manifest.evidenceIds],
+            createdFromManifestId: null,
+            authorityId: write.manifest.manifestId,
+            authorityDigest: write.manifest.manifestDigest,
+            accessScope: [...write.manifest.accessScope],
+            sensitivity: write.manifest.sensitivity,
+            createdAt: write.committedAt,
+          }
+        : undefined;
+    if (claim && this.claims.has(claim.claimId)) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'The v2 Canonical claim identity already exists.',
+        module: 'stage6-in-memory',
+        operation: 'commit-canonical-v2',
+      });
+    }
+    const afterClaims = claim
+      ? [
+          ...before.claims,
+          {
+            claimId: claim.claimId,
+            text: claim.claimText,
+            revisionNumber: claim.revisionNumber,
+            evidenceIds: claim.evidenceIds,
+          },
+        ]
+      : before.claims;
+    const afterVersion = claim ? before.version + 1 : before.version;
+    const afterDigest = canonicalSnapshotDigest(
+      write.manifest.projectId,
+      afterVersion,
+      afterClaims,
+    );
+    const commitId = `canonical-v2:${write.manifest.manifestId}`;
+    const result: CanonicalCommitResult = {
+      commitId,
+      projectId: write.manifest.projectId,
+      manifestId: write.manifest.manifestId,
+      manifestDigest: write.manifest.manifestDigest,
+      changeSetId: write.manifest.changeSetId,
+      authorityId: write.manifest.manifestId,
+      authorityDigest: write.manifest.manifestDigest,
+      operation: write.manifest.operation,
+      status: claim ? 'COMMITTED' : 'NO_OP',
+      beforeVersion: before.version,
+      afterVersion,
+      snapshotDigest: afterDigest,
+      claimId: claim?.claimId,
+      revisionId: write.revisionId,
+      historyEventId: write.historyEventId,
+      outboxId: write.outboxId,
+      committedAt: write.committedAt,
+    };
+    if (claim) this.claims.set(claim.claimId, clone(claim));
+    this.states.set(write.manifest.projectId, {
+      version: afterVersion,
+      digest: afterDigest,
+      updatedAt: write.committedAt,
+    });
+    this.commits.set(commitId, clone(result));
+    this.revisions.set(write.revisionId, {
+      revisionId: write.revisionId,
+      projectId: write.manifest.projectId,
+      commitId,
+      manifestId: write.manifest.manifestId,
+      operation: write.manifest.operation,
+      beforeVersion: before.version,
+      afterVersion,
+      claimId: claim?.claimId,
+      reason: write.manifest.userApproval.reason,
+      actor: write.actor,
+      createdAt: write.committedAt,
+    });
+    this.history.set(write.historyEventId, {
+      historyEventId: write.historyEventId,
+      projectId: write.manifest.projectId,
+      commitId,
+      manifestId: write.manifest.manifestId,
+      changeSetId: write.manifest.changeSetId,
+      eventType: claim ? 'CANONICAL_CLAIM_ADDED' : 'CHANGESET_NO_OP',
+      beforeVersion: before.version,
+      afterVersion,
+      claimId: claim?.claimId,
+      reason: write.manifest.userApproval.reason,
+      actor: write.actor,
+      createdAt: write.committedAt,
+    });
+    this.outbox.set(write.outboxId, {
+      outboxId: write.outboxId,
+      projectId: write.manifest.projectId,
+      aggregateId: commitId,
+      eventType: 'CanonicalCommitted',
+      payload: {
+        commitId,
+        manifestId: write.manifest.manifestId,
+        changeSetId: write.manifest.changeSetId,
+        operation: write.manifest.operation,
+        status: result.status,
+        canonicalVersion: afterVersion,
+        snapshotDigest: afterDigest,
+        claimId: claim?.claimId,
+        actorId: write.actor.id,
+        accessScope: [...write.manifest.accessScope],
+        sensitivity: write.manifest.sensitivity,
+      },
+      status: 'pending',
+      attempts: 0,
+      availableAt: write.committedAt,
+    });
     return clone(result);
   }
 

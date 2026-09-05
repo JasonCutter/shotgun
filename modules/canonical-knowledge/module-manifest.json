@@ -6,6 +6,8 @@
     "runtime": ">=1.0.0 <2.0.0",
     "contracts": [
       { "name": "ChangeSetApproved", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ChangeSetApprovedV2", "range": ">=2.0.0 <3.0.0" },
+      { "name": "GetClaimCandidate", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetApprovedChangeSetManifest", "range": ">=1.0.0 <2.0.0" },
       { "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" },
       { "name": "DispatchCanonicalOutbox", "range": ">=1.0.0 <2.0.0" },
@@ -33,7 +35,10 @@
   },
   "consumes": {
     "commands": [{ "name": "DispatchCanonicalOutbox", "range": ">=1.0.0 <2.0.0" }],
-    "events": [{ "name": "ChangeSetApproved", "range": ">=1.0.0 <2.0.0" }]
+    "events": [
+      { "name": "ChangeSetApproved", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ChangeSetApprovedV2", "range": ">=2.0.0 <3.0.0" }
+    ]
   },
   "produces": {
     "events": [{ "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" }],
@@ -70,7 +75,7 @@
       { "name": "canonical-snapshot-provider", "priority": 100 }
     ]
   },
-  "requires": { "capabilities": ["change-set-review-provider"] },
+  "requires": { "capabilities": ["change-set-review-provider", "claim-candidate-provider"] },
   "security": {
     "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
     "defaultOnMissingContext": "deny"

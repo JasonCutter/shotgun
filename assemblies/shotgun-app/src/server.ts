@@ -310,6 +310,7 @@ import {
   createChangeSetReviewModule,
   createComparisonV2ReviewBridge,
   createReversalEligibilityPort,
+  type ComparisonV2ReviewBridgePort,
   type ChangeSetReviewRepositoryPort,
   type ReviewV2RepositoryPort,
 } from '../../../modules/change-set-review/src/index.js';
@@ -667,6 +668,15 @@ type ReviewDecisionRequest = ChangeSetRequest & {
   readonly expectedContentDigest: string;
   readonly decision: 'APPROVE' | 'HOLD' | 'REJECT';
   readonly reason: string;
+};
+
+type ComparisonV2ReviewDecisionRequest = {
+  readonly changeSetId: string;
+  readonly expectedRevisionNumber: number;
+  readonly expectedContentDigest: string;
+  readonly decision: 'APPROVE' | 'HOLD' | 'REJECT';
+  readonly reason: string;
+  readonly decisionId?: string;
 };
 
 export type SecurityHeaders = {
@@ -2523,6 +2533,8 @@ const createApplicationCore = async (
   // governed semantic ports are absent, the existing v1 module is wired
   // exactly as before. A missing/invalid rollout setting is resolved to
   // V1_ONLY by the runtime authority resolver.
+  const comparisonV2Rollout = createComparisonRolloutAuthorityResolver(settingsRepository);
+  let comparisonV2ReviewBridge: ComparisonV2ReviewBridgePort | undefined;
   const comparisonV2Runtime =
     options.comparisonV2Repository &&
     options.changeSetReviewV2Repository &&
@@ -2546,13 +2558,12 @@ const createApplicationCore = async (
             semanticAnalysis,
             repository: options.comparisonV2Repository!,
           });
-          const rollout = createComparisonRolloutAuthorityResolver(settingsRepository);
           const freshness = createComparisonV2ReviewFreshnessAdapter({
             candidate: candidateRepository,
             canonicalSnapshot,
             lexicalRetriever,
             activeGenerationReader: options.semanticActiveGenerationReader,
-            rollout,
+            rollout: comparisonV2Rollout,
             readSemanticMetadata: async ({ projectId, candidate, security }) => {
               const resolved = await options.comparisonV2ExecutionResolver!.resolve({
                 projectId,
@@ -2576,6 +2587,7 @@ const createApplicationCore = async (
             freshness,
             repository: options.changeSetReviewV2Repository!,
           });
+          comparisonV2ReviewBridge = reviewBridge;
           return createComparisonV2Runtime({
             candidate: candidateRepository,
             settings: settingsRepository,
@@ -4004,6 +4016,127 @@ const createApplicationCore = async (
         commandStatus: delivery.status,
         changeSet: delivery.result.changeSet,
         manifest: delivery.result.manifest,
+      };
+    },
+  );
+
+  /**
+   * Product-owned additive Comparison v2 Review boundary. The authenticated
+   * user and server-resolved rollout authority are bound here; callers cannot
+   * supply an actor, approval token, manifest, or Stage 6 write payload.
+   */
+  server.post<{ Body: ComparisonV2ReviewDecisionRequest; Headers: SecurityHeaders }>(
+    '/reviews/v2/decision',
+    async (request, reply) => {
+      const context = requestContext(request.headers);
+      const body = request.body;
+      if (
+        !body ||
+        typeof body.changeSetId !== 'string' ||
+        body.changeSetId.trim().length === 0 ||
+        !Number.isInteger(body.expectedRevisionNumber) ||
+        body.expectedRevisionNumber < 1 ||
+        typeof body.expectedContentDigest !== 'string' ||
+        body.expectedContentDigest.trim().length === 0 ||
+        !['APPROVE', 'HOLD', 'REJECT'].includes(body.decision) ||
+        typeof body.reason !== 'string' ||
+        body.reason.trim().length === 0
+      ) {
+        throw new ShotgunError({
+          code: 'INVALID_REQUEST',
+          safeMessage: 'The v2 Review decision request is invalid.',
+          module: 'product-api',
+          operation: 'record-review-decision-v2',
+        });
+      }
+      if (!comparisonV2ReviewBridge || !options.changeSetReviewV2Repository) {
+        throw new ShotgunError({
+          code: 'AI_CAPABILITY_UNAVAILABLE',
+          safeMessage: 'Comparison v2 Review is unavailable.',
+          module: 'product-api',
+          operation: 'record-review-decision-v2',
+        });
+      }
+      const draft = await options.changeSetReviewV2Repository.findDraftById?.(
+        context.projectId,
+        body.changeSetId,
+      );
+      if (!draft) {
+        throw new ShotgunError({
+          code: 'NOT_FOUND',
+          safeMessage: 'The v2 Draft Change Set was not found.',
+          module: 'product-api',
+          operation: 'record-review-decision-v2',
+        });
+      }
+      const authority = await comparisonV2Rollout.resolve({
+        projectId: context.projectId,
+        candidateId: draft.candidate.id,
+        candidateRevision: draft.candidate.revision,
+      });
+      const outcome = await comparisonV2ReviewBridge.recordDecision({
+        projectId: context.projectId,
+        changeSetId: body.changeSetId,
+        actor: context.actor,
+        security: context.security,
+        authority: authority.selection,
+        rolloutAuthorityRevision: authority.authorityRevision,
+        expectedRevisionNumber: body.expectedRevisionNumber,
+        expectedContentDigest: body.expectedContentDigest,
+        decision: body.decision,
+        reason: body.reason,
+        ...(body.decisionId === undefined ? {} : { decisionId: body.decisionId }),
+      });
+      if (outcome.status === 'BLOCKED') {
+        return reply.code(409).send(outcome);
+      }
+      let handoff: { readonly status: string; readonly consumers?: readonly unknown[] } | undefined;
+      if (outcome.decision.decision === 'APPROVE') {
+        if (!outcome.manifest) {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage: 'An approved v2 Review decision did not produce a Manifest.',
+            module: 'product-api',
+            operation: 'record-review-decision-v2',
+          });
+        }
+        const delivery = await kernel.connector.publishEvent({
+          messageId: randomUUID(),
+          messageType: 'ChangeSetApprovedV2',
+          messageKind: 'event',
+          schemaVersion: '2.0.0',
+          producerModule: 'shotgun-app',
+          producerVersion: '1.0.0',
+          correlationId: `review-v2:${context.projectId}:${outcome.manifest.manifestId}`,
+          projectId: context.projectId,
+          actor: context.actor,
+          security: context.security,
+          idempotencyKey: `canonical-v2-approval:${context.projectId}:${outcome.manifest.manifestId}`,
+          payload: {
+            manifest: outcome.manifest,
+            rollout: 'V2_ACTIVE',
+            rolloutAuthorityRevision: authority.authorityRevision,
+          },
+          createdAt: new Date().toISOString(),
+          traceId: randomUUID(),
+        });
+        handoff = {
+          status: delivery.consumers.some((consumer) => consumer.status === 'dead-letter')
+            ? 'failed'
+            : 'processed',
+          consumers: delivery.consumers.map((consumer) => ({
+            consumerId: consumer.consumerId,
+            status: consumer.status,
+            errorCode: consumer.errorCode,
+          })),
+        };
+      }
+      return {
+        commandStatus: 'succeeded',
+        decision: outcome.decision,
+        changeSet: outcome.draft,
+        manifest: outcome.manifest,
+        handoff,
       };
     },
   );

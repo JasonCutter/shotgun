@@ -15,6 +15,7 @@ import listClaimCandidatesOutputSchema from '../../../packages/contracts/schemas
 import listClaimCandidatesSchema from '../../../packages/contracts/schemas/list-claim-candidates.v1.schema.json';
 import listEvidenceSpansOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-output.v1.schema.json';
 import listEvidenceSpansSchema from '../../../packages/contracts/schemas/list-evidence-spans.v1.schema.json';
+import reextractCandidateMaterializationSchema from '../../../packages/contracts/schemas/reextract-candidate-materialization.v1.schema.json';
 import resumeCandidateMaterializationSchema from '../../../packages/contracts/schemas/resume-candidate-materialization.v1.schema.json';
 import {
   type AIProviderCall,
@@ -120,6 +121,9 @@ const assertScope = (
 const batchKey = (projectId: string, sourceVersionId: string) =>
   `${projectId}:${sourceVersionId}:candidate-extraction:direct-claim-v1:direct-only-v1`;
 
+const reextractBatchKey = (projectId: string, sourceVersionId: string, requestId: string) =>
+  `${projectId}:${sourceVersionId}:candidate-reextract:${requestId}:direct-claim-v1:direct-only-v1`;
+
 const publishGenerated = async (
   context: Parameters<NonNullable<ShotgunModule['handlers']['events'][number]['handle']>>[1],
   batch: CandidateBatch,
@@ -149,12 +153,16 @@ export const createCandidateGenerationModule = (
     envelope: EventEnvelope | CommandEnvelope,
     context: HandlerContext,
     payload: EvidenceIndexedPayload & { readonly requestId?: string },
-    force: boolean,
+    mode: 'event' | 'resume' | 'reextract',
   ) => {
     const { projectId, security } = assertContext(envelope);
-    const idempotencyKey = batchKey(projectId, payload.sourceVersionId);
-    const requestId = payload.requestId ?? idempotencyKey;
-    if (requestId !== idempotencyKey) {
+    const requestId = payload.requestId ?? batchKey(projectId, payload.sourceVersionId);
+    const idempotencyKey =
+      mode === 'reextract'
+        ? reextractBatchKey(projectId, payload.sourceVersionId, requestId)
+        : batchKey(projectId, payload.sourceVersionId);
+    const generationRequestId = mode === 'reextract' ? idempotencyKey : requestId;
+    if (mode !== 'reextract' && requestId !== idempotencyKey) {
       throw new ShotgunError({
         code: 'CONFLICT',
         safeMessage: 'The durable materialization request does not match this source version.',
@@ -164,7 +172,7 @@ export const createCandidateGenerationModule = (
       });
     }
     const existing = await repository.findBatchByIdempotencyKey(projectId, idempotencyKey);
-    if (existing && !force) {
+    if (existing && mode !== 'resume') {
       await publishGenerated(context, existing);
       return;
     }
@@ -202,6 +210,7 @@ export const createCandidateGenerationModule = (
       await context.query<
         {
           requestId: string;
+          generationEpochId?: string;
           taskProfile: 'candidate-extraction';
           schemaName: 'ClaimCandidateBatch.v1';
           policyVersion: 'direct-only-v1';
@@ -221,7 +230,8 @@ export const createCandidateGenerationModule = (
         messageType: 'GenerateStructured',
         schemaVersion: '1.0.0',
         payload: {
-          requestId,
+          requestId: generationRequestId,
+          ...(mode === 'reextract' ? { generationEpochId: idempotencyKey } : {}),
           taskProfile: 'candidate-extraction',
           schemaName: 'ClaimCandidateBatch.v1',
           policyVersion: 'direct-only-v1',
@@ -239,7 +249,7 @@ export const createCandidateGenerationModule = (
       })
     ).payload;
     const materialization = {
-      requestId,
+      requestId: generationRequestId,
       outputId: generated.output.outputId,
       outputDigest: generated.output.contentDigest,
       inputSnapshotDigest: generated.output.inputSnapshotDigest,
@@ -298,7 +308,11 @@ export const createCandidateGenerationModule = (
         messageType: 'CandidateMaterialized',
         schemaVersion: '1.0.0',
         idempotencyKey: `candidate-materialized:${projectId}:${generated.output.outputId}`,
-        payload: { requestId, outputId: generated.output.outputId, batchId: batch.batchId },
+        payload: {
+          requestId: generationRequestId,
+          outputId: generated.output.outputId,
+          batchId: batch.batchId,
+        },
       });
     } catch (error) {
       const code = error instanceof ShotgunError ? error.code : 'TERMINAL_FAILURE';
@@ -307,7 +321,11 @@ export const createCandidateGenerationModule = (
         messageType: 'CandidateMaterializationFailed',
         schemaVersion: '1.0.0',
         idempotencyKey: `candidate-materialization-failed:${projectId}:${generated.output.outputId}`,
-        payload: { requestId, outputId: generated.output.outputId, errorCode: code },
+        payload: {
+          requestId: generationRequestId,
+          outputId: generated.output.outputId,
+          errorCode: code,
+        },
       });
       throw error;
     }
@@ -339,7 +357,10 @@ export const createCandidateGenerationModule = (
         directSchemaAccess: false,
       },
       consumes: {
-        commands: [{ name: 'ResumeCandidateMaterialization', range: '>=1.0.0 <2.0.0' }],
+        commands: [
+          { name: 'ResumeCandidateMaterialization', range: '>=1.0.0 <2.0.0' },
+          { name: 'ReextractCandidateMaterialization', range: '>=1.0.0 <2.0.0' },
+        ],
         events: [
           { name: 'EvidenceIndexed', range: '>=1.0.0 <2.0.0' },
           { name: 'CandidateValidated', range: '>=1.0.0 <2.0.0' },
@@ -448,6 +469,12 @@ export const createCandidateGenerationModule = (
         inputSchema: resumeCandidateMaterializationSchema,
       },
       {
+        name: 'ReextractCandidateMaterialization',
+        version: '1.0.0',
+        kind: 'command',
+        inputSchema: reextractCandidateMaterializationSchema,
+      },
+      {
         name: 'CandidateValidated',
         version: '1.0.0',
         kind: 'event',
@@ -485,7 +512,19 @@ export const createCandidateGenerationModule = (
               readonly sourceVersionId: string;
               readonly requestId: string;
             };
-            await materialize(envelope, context, payload, true);
+            await materialize(envelope, context, payload, 'resume');
+          },
+        },
+        {
+          messageType: 'ReextractCandidateMaterialization',
+          version: '1.0.0',
+          requiredAccessScopes: ['owner'],
+          async handle(envelope, context) {
+            const payload = envelope.payload as {
+              readonly sourceVersionId: string;
+              readonly requestId: string;
+            };
+            await materialize(envelope, context, payload, 'reextract');
           },
         },
       ],
@@ -495,7 +534,12 @@ export const createCandidateGenerationModule = (
           version: '1.0.0',
           requiredAccessScopes: ['owner'],
           async handle(envelope, context) {
-            await materialize(envelope, context, envelope.payload as EvidenceIndexedPayload, false);
+            await materialize(
+              envelope,
+              context,
+              envelope.payload as EvidenceIndexedPayload,
+              'event',
+            );
           },
         },
         {

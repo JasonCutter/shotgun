@@ -176,6 +176,7 @@ export type AIProviderModuleOptions = {
 
 type GenerateStructuredPayload = {
   readonly requestId: string;
+  readonly generationEpochId?: string;
   readonly taskProfile: 'candidate-extraction';
   readonly schemaName: 'ClaimCandidateBatch.v1';
   readonly policyVersion: 'direct-only-v1';
@@ -277,6 +278,9 @@ const requestDigest = (payload: GenerateStructuredPayload, inputSnapshotDigest: 
       promptVersion: 'direct-claim-v1',
       policyVersion: payload.policyVersion,
       inputSnapshotDigest,
+      ...(payload.generationEpochId === undefined
+        ? {}
+        : { generationEpochId: payload.generationEpochId }),
     }),
   );
 

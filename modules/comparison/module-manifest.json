@@ -20,7 +20,14 @@
       "comparison.analysis_revisions_v2",
       "comparison.relationships_v2"
     ],
-    "readsViaPorts": ["CanonicalSnapshotPort", "TextDiffPort", "GetClaimCandidate query"],
+    "readsViaPorts": [
+      "CanonicalSnapshotPort",
+      "TextDiffPort",
+      "LexicalRetrieverPort",
+      "HybridRetrievalCoordinatorPort",
+      "SemanticActiveGenerationReaderPort",
+      "GetClaimCandidate query"
+    ],
     "directSchemaAccess": false
   },
   "consumes": {

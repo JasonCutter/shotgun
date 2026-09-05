@@ -703,8 +703,8 @@ export const validateComparisonResultV2: (value: unknown) => asserts value is Co
         'comparison.shortlist',
       );
     }
-    if (comparison.relationshipIds.length > 0 || comparison.analysisRevisionIds.length === 0) {
-      fail('NEW requires completed analysis and no material relationship', 'comparison');
+    if (comparison.analysisRevisionIds.length === 0) {
+      fail('NEW requires completed analysis', 'comparison');
     }
   }
   if (
@@ -1406,6 +1406,12 @@ export const validateComparisonChildrenV2 = (
         relationship.relationshipId,
       );
     }
+  }
+  if (
+    comparison.disposition === 'NEW' &&
+    relationships.some((relationship) => relationship.type !== 'UNRELATED')
+  ) {
+    fail('NEW may retain only UNRELATED relationship evidence', 'relationships');
   }
   for (const analysis of analyses) {
     validateAnalysisRevisionV2(analysis);

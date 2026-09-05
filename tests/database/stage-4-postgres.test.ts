@@ -26,6 +26,7 @@ import { createOriginalAssetModule } from '../../modules/original-asset/src/inde
 import { createTransformationModule } from '../../modules/transformation/src/index.js';
 import { createValidationModule } from '../../modules/validation/src/index.js';
 import { createCommand, type ClaimCandidate } from '../../packages/contracts/src/index.js';
+import type { AIProviderExecutionRecord } from '../../modules/ai-provider/src/index.js';
 import { ShotgunKernel } from '../../packages/kernel/src/index.js';
 import { candidatesQuery, directTextCommand, intakeResultQuery } from '../helpers/stage-4.js';
 
@@ -209,5 +210,68 @@ describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
     });
     expect(historical[0]!.candidateId).toBeDefined();
     await kernel.shutdown();
+  });
+
+  it('does not reclaim terminal failures after restart, but preserves retryable reclaim', async () => {
+    const repository = new PostgresAIProviderCallRepository(pool!);
+    const baseRecord = (requestId: string): AIProviderExecutionRecord => ({
+      callId: `call-${requestId}`,
+      requestId,
+      projectId: 'stage4-retry-contract-postgres',
+      sourceVersionId: 'source-1',
+      provider: 'fake',
+      model: 'fake-model',
+      promptVersion: 'direct-claim-v1',
+      policyVersion: 'direct-only-v1',
+      schemaName: 'ClaimCandidateBatch.v1',
+      dataClassification: 'private',
+      accessScope: ['owner'],
+      sensitivity: 'private',
+      inputEvidenceIds: ['evidence-1'],
+      inputSnapshotDigest: `snapshot-${requestId}`,
+      requestDigest: `request-${requestId}`,
+      state: 'REQUESTED',
+      status: 'failed',
+      maxAttempts: 2,
+      attempts: [],
+      createdAt: new Date().toISOString(),
+    });
+
+    const terminalRequestId = 'terminal-restart-request';
+    const retryableRequestId = 'retryable-restart-request';
+    try {
+      for (const requestId of [terminalRequestId, retryableRequestId]) {
+        await repository.ensure(baseRecord(requestId));
+        const first = await repository.claimNextAttempt(
+          'stage4-retry-contract-postgres',
+          requestId,
+        );
+        expect(first).toBeDefined();
+        await repository.failAttempt(
+          'stage4-retry-contract-postgres',
+          requestId,
+          first!.attempt.attemptId,
+          requestId === terminalRequestId ? 'CONFIGURATION_REQUIRED' : 'TIMEOUT',
+        );
+      }
+
+      // A new repository instance models process restart/recovery; the
+      // decision must come from durable attempt evidence, not process state.
+      const recoveredRepository = new PostgresAIProviderCallRepository(pool!);
+      await expect(
+        recoveredRepository.claimNextAttempt('stage4-retry-contract-postgres', terminalRequestId),
+      ).resolves.toBeUndefined();
+      const retry = await recoveredRepository.claimNextAttempt(
+        'stage4-retry-contract-postgres',
+        retryableRequestId,
+      );
+      expect(retry).toBeDefined();
+      expect(retry!.attempt.attemptNumber).toBe(2);
+      expect(retry!.record.requestId).toBe(retryableRequestId);
+    } finally {
+      await pool!.query('DELETE FROM ai.provider_calls WHERE project_id = $1', [
+        'stage4-retry-contract-postgres',
+      ]);
+    }
   });
 });

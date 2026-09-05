@@ -12,6 +12,7 @@ import {
   type AIProviderOutput,
   type AIProviderOutputReference,
   type ErrorCode,
+  isRetryableAIProviderErrorCode,
   type GeneratedClaim,
   type QueryEnvelope,
   assertJsonSchema,
@@ -243,8 +244,7 @@ const assertContext = (envelope: QueryEnvelope) => {
 const errorCode = (error: unknown): ErrorCode =>
   error instanceof ShotgunError ? error.code : 'TERMINAL_FAILURE';
 const isRetryable = (error: ShotgunError) =>
-  error.retryable ||
-  ['VALIDATION_ERROR', 'RATE_LIMITED', 'TIMEOUT', 'RETRYABLE_DEPENDENCY'].includes(error.code);
+  error.retryable || isRetryableAIProviderErrorCode(error.code);
 
 const snapshotDigest = (projectId: string, payload: GenerateStructuredPayload) =>
   sha256Text(

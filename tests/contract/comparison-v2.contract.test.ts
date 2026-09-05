@@ -264,8 +264,60 @@ describe('Stage 5 semantic comparison v2 contract (C-Contract-01..14)', () => {
     expect(() => assertAnalysisStateTransitionV2('PENDING', 'COMPLETED')).toThrow(
       /Illegal analysis transition/,
     );
-    expect(() => assertAnalysisStateTransitionV2('FAILED_RETRYABLE', 'ANALYZING')).not.toThrow();
+    expect(() => assertAnalysisStateTransitionV2('FAILED_RETRYABLE', 'ANALYZING')).toThrow(
+      /Illegal analysis transition/,
+    );
     expect(() => assertAnalysisStateTransitionV2('COMPLETED', 'ANALYZING')).toThrow();
+  });
+
+  it('keeps retryable failure evidence immutable while a retry uses a new revision attempt', () => {
+    const failedRetryable = analysis({
+      state: 'FAILED_RETRYABLE',
+      outcome: 'FAILED_RETRYABLE',
+      safeFailureCode: 'RETRYABLE_DEPENDENCY',
+    });
+    validateAnalysisRevisionV2(failedRetryable);
+    const beforeIllegalTransition = structuredClone(failedRetryable);
+
+    expect(() => assertAnalysisStateTransitionV2('FAILED_RETRYABLE', 'ANALYZING')).toThrow(
+      ComparisonContractErrorV2,
+    );
+    expect(failedRetryable).toEqual(beforeIllegalTransition);
+
+    const retryAttempt: AnalysisRevisionV2 = {
+      analysisRevisionId: 'analysis-2',
+      contractVersion: failedRetryable.contractVersion,
+      comparisonId: failedRetryable.comparisonId,
+      candidate: failedRetryable.candidate,
+      canonicalSnapshot: failedRetryable.canonicalSnapshot,
+      inputDigest: failedRetryable.inputDigest,
+      shortlistDigest: failedRetryable.shortlistDigest,
+      comparedResourceIdentities: failedRetryable.comparedResourceIdentities,
+      providerIdentity: failedRetryable.providerIdentity,
+      credentialRevisionRef: failedRetryable.credentialRevisionRef,
+      promptTemplateRevision: failedRetryable.promptTemplateRevision,
+      outputSchemaRevision: failedRetryable.outputSchemaRevision,
+      semanticPolicyRevision: failedRetryable.semanticPolicyRevision,
+      attempt: failedRetryable.attempt + 1,
+      state: 'PENDING',
+      startedAt: failedRetryable.startedAt,
+      createdAt: failedRetryable.createdAt,
+    };
+    validateAnalysisRevisionV2(retryAttempt);
+    expect(retryAttempt.analysisRevisionId).not.toBe(failedRetryable.analysisRevisionId);
+    expect(retryAttempt.attempt).toBe(failedRetryable.attempt + 1);
+    expect(retryAttempt.inputDigest).toBe(failedRetryable.inputDigest);
+    expect(retryAttempt.inputDigest).toBe(analysisInputDigestV2(retryAttempt));
+    expect(retryAttempt.outcome).toBeUndefined();
+    expect(retryAttempt.completedAt).toBeUndefined();
+    expect(retryAttempt.durationMs).toBeUndefined();
+    expect(retryAttempt.outputDigest).toBeUndefined();
+    expect(retryAttempt.materialDigest).toBeUndefined();
+    expect(retryAttempt.safeFailureCode).toBeUndefined();
+    expect(() => assertAnalysisStateTransitionV2('PENDING', 'ANALYZING')).not.toThrow();
+    expect(() => assertAnalysisStateTransitionV2('FAILED_RETRYABLE', 'ANALYZING')).toThrow(
+      /Illegal analysis transition/,
+    );
   });
 
   it('C-Contract-07 keeps unavailable/failure explicit and prevents successful completion', () => {

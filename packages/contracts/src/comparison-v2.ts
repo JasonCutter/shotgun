@@ -997,7 +997,7 @@ const allowedTransitions: Readonly<
   ],
   COMPLETED: [],
   SEMANTIC_UNAVAILABLE: [],
-  FAILED_RETRYABLE: ['ANALYZING'],
+  FAILED_RETRYABLE: [],
   FAILED_TERMINAL: [],
   POLICY_BLOCKED: [],
 };

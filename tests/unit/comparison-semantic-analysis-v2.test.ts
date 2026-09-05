@@ -8,6 +8,7 @@ import type {
 import {
   COMPARISON_V2_CONTRACT_VERSION,
   canonicalSnapshotDigest,
+  claimCandidateDigest,
   shortlistAuditDigestV2,
   ShotgunError,
   type CanonicalSnapshot,
@@ -24,6 +25,7 @@ import {
 
 const projectId = 'project-semantic-v2';
 const fixedNow = '2026-09-05T12:00:00.000Z';
+const candidateText = 'Shotgun stores Evidence and Evidence is immutable.';
 
 const snapshotBase = {
   snapshotId: 'snapshot-7',
@@ -60,7 +62,14 @@ const snapshot: CanonicalSnapshot = {
 const candidate: ComparisonCandidateV2 = {
   id: 'candidate-1',
   revision: 1,
-  digest: 'sha256:candidate',
+  digest: claimCandidateDigest({
+    candidateId: 'candidate-1',
+    revisionNumber: 1,
+    sourceVersionId: 'source-version-1',
+    claimText: candidateText,
+    evidenceIds: ['candidate-evidence-1'],
+    status: 'READY',
+  }),
   sourceVersionId: 'source-version-1',
   evidenceIds: ['candidate-evidence-1'],
 };
@@ -119,7 +128,7 @@ const makeRequest = (
   projectId,
   comparisonId: 'comparison-1',
   candidate,
-  candidateText: 'Shotgun stores Evidence and Evidence is immutable.',
+  candidateText,
   shortlist: audit,
   shortlistDigest: shortlistAuditDigestV2(audit),
   actor: { type: 'user', id: 'user-1' },
@@ -253,6 +262,21 @@ describe('WP4 governed semantic analysis v2', () => {
         expect(result.relationships).toEqual([]);
       }
     }
+  });
+
+  it('blocks a candidate text/digest mismatch before provider egress', async () => {
+    const setup = makeDependencies(validRelationships);
+    const result = await createComparisonSemanticAnalysisV2(setup.dependencies).analyze({
+      ...makeRequest(),
+      candidateText: 'Different candidate text.',
+    });
+
+    expect(result).toMatchObject({
+      status: 'BLOCKED',
+      reason: 'INVALID_REQUEST',
+      safeFailureCode: 'CONTRACT_FAILURE',
+    });
+    expect(setup.getProviderCalls()).toBe(0);
   });
 
   it('enforces CONTRADICTS conflictKind and rejects conflictKind on other types', async () => {

@@ -9,6 +9,7 @@ import {
   COMPARISON_V2_CONTRACT_VERSION,
   analysisInputDigestV2,
   canonicalSnapshotDigest,
+  claimCandidateDigest,
   deriveAuthorizedSensitivities,
   semanticRelationshipMaterialDigestV2,
   sha256Text,
@@ -345,7 +346,17 @@ const validateRequest = (request: ComparisonSemanticAnalysisV2Request): boolean 
   request.attempt >= 1 &&
   request.security.accessScope.length > 0 &&
   isNonEmpty(request.shortlistDigest) &&
-  request.shortlist.selectedTargetIdentities.length > 0;
+  request.shortlist.selectedTargetIdentities.length > 0 &&
+  request.candidate.revision === 1 &&
+  request.candidate.digest ===
+    claimCandidateDigest({
+      candidateId: request.candidate.id,
+      revisionNumber: 1,
+      sourceVersionId: request.candidate.sourceVersionId,
+      claimText: request.candidateText,
+      evidenceIds: request.candidate.evidenceIds,
+      status: 'READY',
+    });
 
 const executionErrorOutcome = (error: unknown): ComparisonSemanticAnalysisV2Outcome => {
   const normalized = toShotgunError(error, {

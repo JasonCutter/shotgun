@@ -89,6 +89,45 @@ describe('Project Standing AI Processing Policy', () => {
     ).toEqual({ eligible: false, reason: 'DEPLOYMENT_POLICY_BLOCKED' });
   });
 
+  it('ignores only the standing provider mismatch for historical recovery', () => {
+    expect(
+      evaluateStandingAIProcessingPolicy({
+        policy: policy({ providerId: 'deepseek' }),
+        providerId: 'openai',
+        sensitivity: 'internal',
+        deploymentAllowsPrivate: true,
+        ignoreStandingProviderMismatch: true,
+      }),
+    ).toEqual({ eligible: true, reason: 'ELIGIBLE' });
+    expect(
+      evaluateStandingAIProcessingPolicy({
+        policy: policy({ providerId: 'deepseek' }),
+        providerId: 'openai',
+        sensitivity: 'private',
+        deploymentAllowsPrivate: false,
+        ignoreStandingProviderMismatch: true,
+      }),
+    ).toEqual({ eligible: false, reason: 'DEPLOYMENT_POLICY_BLOCKED' });
+    expect(
+      evaluateStandingAIProcessingPolicy({
+        policy: policy({ providerId: 'deepseek', enabled: false }),
+        providerId: 'openai',
+        sensitivity: 'internal',
+        deploymentAllowsPrivate: true,
+        ignoreStandingProviderMismatch: true,
+      }),
+    ).toEqual({ eligible: false, reason: 'STANDING_POLICY_DISABLED' });
+    expect(
+      evaluateStandingAIProcessingPolicy({
+        policy: policy({ providerId: 'deepseek' }),
+        providerId: 'openai',
+        sensitivity: 'restricted',
+        deploymentAllowsPrivate: true,
+        ignoreStandingProviderMismatch: true,
+      }),
+    ).toEqual({ eligible: false, reason: 'RESTRICTED_CONTEXT_BLOCKED' });
+  });
+
   it('uses all registered providers only for the explicit local-owner default', () => {
     const local = parseProviderDeploymentCeiling({ localOwnerDefault: true });
     expect(local.configured).toBe(false);

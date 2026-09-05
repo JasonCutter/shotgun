@@ -86,6 +86,97 @@ const standing = (providerId: string, aiConfigurationRevision: number) => ({
   getCurrent: async () => ({ enabled: true, providerId, aiConfigurationRevision }),
 });
 
+const historicalMigrationPolicy = (
+  deploymentAllowsPrivate = true,
+): AskProviderPolicyResolverPort => ({
+  ...policy(),
+  evaluateContext: async (input) => {
+    if (input.sensitivities.includes('restricted')) {
+      return {
+        schemaVersion: '1.0.0',
+        eligible: false,
+        reason: 'RESTRICTED_CONTEXT_BLOCKED',
+        requiredAction: 'REMOVE_RESTRICTED_CONTEXT',
+        policyFingerprint: 'current-deepseek-policy',
+        policyContextRevision: 'standing-3',
+        provider: { displayName: 'OpenAI', model: 'gpt-5.6-luna' },
+        message: 'restricted context is denied',
+      };
+    }
+    if (input.providerId === 'openai') {
+      if (input.sensitivities.includes('private') && !deploymentAllowsPrivate) {
+        return {
+          schemaVersion: '1.0.0',
+          eligible: false,
+          reason: 'DEPLOYMENT_POLICY_BLOCKED',
+          requiredAction: 'CONTACT_DEPLOYMENT_ADMINISTRATOR',
+          policyFingerprint: 'current-deepseek-policy',
+          policyContextRevision: 'standing-3',
+          provider: { displayName: 'OpenAI', model: 'gpt-5.6-luna' },
+          message: 'deployment blocks private OpenAI transfer',
+        };
+      }
+      if (input.ignoreStandingProviderMismatch === true) {
+        return {
+          schemaVersion: '1.0.0',
+          eligible: true,
+          reason: 'ELIGIBLE',
+          requiredAction: 'NONE',
+          policyFingerprint: 'current-deepseek-policy',
+          policyContextRevision: 'standing-3',
+          provider: { displayName: 'OpenAI', model: 'gpt-5.6-luna' },
+          message: 'historical provider mismatch ignored only',
+        };
+      }
+      return {
+        schemaVersion: '1.0.0',
+        eligible: false,
+        reason: 'STANDING_POLICY_PROVIDER_MISMATCH',
+        requiredAction: 'CONFIGURE_STANDING_AI_FOR_PROVIDER',
+        policyFingerprint: 'current-deepseek-policy',
+        policyContextRevision: 'standing-3',
+        provider: { displayName: 'OpenAI', model: 'gpt-5.6-luna' },
+        message: 'historical provider is no longer current',
+      };
+    }
+    return policy().evaluateContext(input);
+  },
+});
+
+const historicalMigrationFixture = (
+  options: {
+    readonly deploymentAllowsPrivate?: boolean;
+    readonly standingEnabled?: boolean;
+  } = {},
+) => {
+  const current = {
+    ...configuration('deepseek', 'deepseek-v4-flash'),
+    aiConfigurationRevision: 3,
+  };
+  const historical = configuration('openai', 'gpt-5.6-luna');
+  const getRevision = vi.fn(async () => historical);
+  const resolver = new EffectiveAIConfigurationResolver(
+    initialProviderRegistry(),
+    { getCurrent: async () => current, getRevision } as never,
+    {
+      getMetadata: async (scope: { readonly providerId: string }) =>
+        scope.providerId === 'deepseek' ? deepseekCredential : openaiCredential,
+    } as unknown as CredentialVaultPort,
+    {
+      enforceDeepSeekOnly: true,
+      policy: historicalMigrationPolicy(options.deploymentAllowsPrivate ?? true),
+      standingPolicyAuthority: {
+        getCurrent: async () => ({
+          enabled: options.standingEnabled ?? true,
+          providerId: 'deepseek',
+          aiConfigurationRevision: 3,
+        }),
+      },
+    },
+  );
+  return { current, historical, getRevision, resolver };
+};
+
 describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
   it('DSK-1 rejects new OpenAI/Gemini configurations and accepts DeepSeek', async () => {
     const repository = new InMemoryProjectAIConfigurationRepository();
@@ -340,44 +431,17 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
     ).rejects.toMatchObject({ code: 'CONFIGURATION_REQUIRED' });
   });
 
-  it('DSK-8 reconstructs a historical OpenAI retry after the current Project migrated to DeepSeek', async () => {
-    const current = {
-      ...configuration('deepseek', 'deepseek-v4-flash'),
-      aiConfigurationRevision: 3,
+  it('DSK-8A reconstructs a historical OpenAI retry after the current Project migrated to DeepSeek', async () => {
+    const { historical, getRevision, resolver } = historicalMigrationFixture();
+    const existingIdentity = {
+      providerId: 'openai',
+      modelId: 'gpt-5.6-luna',
+      aiConfigurationRevision: historical.aiConfigurationRevision,
+      credentialId: historical.credentialId,
+      credentialRevision: historical.credentialRevision,
+      policyContextRevision: 'standing-1',
+      providerPolicyFingerprint: 'historical-openai-policy',
     };
-    const historical = configuration('openai', 'gpt-5.6-luna');
-    const historicalPolicy: AskProviderPolicyResolverPort = {
-      ...policy(),
-      evaluateContext: async (input) =>
-        input.providerId === 'openai'
-          ? {
-              schemaVersion: '1.0.0',
-              eligible: false,
-              reason: 'STANDING_POLICY_PROVIDER_MISMATCH',
-              requiredAction: 'CONFIGURE_STANDING_AI_FOR_PROVIDER',
-              policyFingerprint: 'current-deepseek-policy',
-              policyContextRevision: 'standing-3',
-              provider: { displayName: 'OpenAI', model: 'gpt-5.6-luna' },
-              message: 'historical provider is no longer current',
-            }
-          : await policy().evaluateContext(input),
-    };
-    const resolver = new EffectiveAIConfigurationResolver(
-      initialProviderRegistry(),
-      {
-        getCurrent: async () => current,
-        getRevision: async () => historical,
-      } as never,
-      {
-        getMetadata: async (scope: { readonly providerId: string }) =>
-          scope.providerId === 'deepseek' ? deepseekCredential : openaiCredential,
-      } as unknown as CredentialVaultPort,
-      {
-        enforceDeepSeekOnly: true,
-        policy: historicalPolicy,
-        standingPolicyAuthority: standing('deepseek', 3),
-      },
-    );
     const retry = await resolver.resolveSourceAIExecutionIdentity({
       principalId: 'stage4-recovery',
       projectId,
@@ -386,22 +450,10 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
       sensitivity: 'internal',
       accessScope: ['owner'],
       dataClassification: 'source-content',
-      existingIdentity: {
-        providerId: 'openai',
-        modelId: 'gpt-5.6-luna',
-        aiConfigurationRevision: historical.aiConfigurationRevision,
-        credentialId: historical.credentialId,
-        credentialRevision: historical.credentialRevision,
-        policyContextRevision: 'standing-1',
-        providerPolicyFingerprint: 'historical-openai-policy',
-      },
+      existingIdentity,
     });
-    expect(retry.executionIdentity).toMatchObject({
-      providerId: 'openai',
-      modelId: 'gpt-5.6-luna',
-      aiConfigurationRevision: historical.aiConfigurationRevision,
-      providerPolicyFingerprint: 'historical-openai-policy',
-    });
+    expect(retry.executionIdentity).toEqual(existingIdentity);
+    expect(getRevision).toHaveBeenCalledWith(projectId, 2);
     const fresh = await resolver.resolveInitialAIExecutionIdentity({
       principalId: 'owner',
       projectId,
@@ -416,6 +468,80 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
       },
     });
     expect(fresh).toMatchObject({ providerId: 'deepseek', modelId: 'deepseek-v4-flash' });
+  });
+
+  it('DSK-8B preserves the private deployment veto during historical provider migration', async () => {
+    const { historical, resolver } = historicalMigrationFixture({
+      deploymentAllowsPrivate: false,
+    });
+    await expect(
+      resolver.resolveSourceAIExecutionIdentity({
+        principalId: 'stage4-recovery',
+        projectId,
+        requestId: 'historical-private-retry',
+        sourceVersionId: 'source-version',
+        sensitivity: 'private',
+        accessScope: ['owner'],
+        dataClassification: 'source-content',
+        existingIdentity: {
+          providerId: 'openai',
+          modelId: 'gpt-5.6-luna',
+          aiConfigurationRevision: historical.aiConfigurationRevision,
+          credentialId: historical.credentialId,
+          credentialRevision: historical.credentialRevision,
+          policyContextRevision: 'standing-1',
+          providerPolicyFingerprint: 'historical-openai-policy',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+  });
+
+  it('DSK-8C blocks historical recovery when the current Standing Policy is disabled', async () => {
+    const { historical, resolver } = historicalMigrationFixture({ standingEnabled: false });
+    await expect(
+      resolver.resolveSourceAIExecutionIdentity({
+        principalId: 'stage4-recovery',
+        projectId,
+        requestId: 'historical-disabled-retry',
+        sourceVersionId: 'source-version',
+        sensitivity: 'internal',
+        accessScope: ['owner'],
+        dataClassification: 'source-content',
+        existingIdentity: {
+          providerId: 'openai',
+          modelId: 'gpt-5.6-luna',
+          aiConfigurationRevision: historical.aiConfigurationRevision,
+          credentialId: historical.credentialId,
+          credentialRevision: historical.credentialRevision,
+          policyContextRevision: 'standing-1',
+          providerPolicyFingerprint: 'historical-openai-policy',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+  });
+
+  it('DSK-8D keeps restricted historical recovery denied', async () => {
+    const { historical, resolver } = historicalMigrationFixture();
+    await expect(
+      resolver.resolveSourceAIExecutionIdentity({
+        principalId: 'stage4-recovery',
+        projectId,
+        requestId: 'historical-restricted-retry',
+        sourceVersionId: 'source-version',
+        sensitivity: 'restricted',
+        accessScope: ['owner'],
+        dataClassification: 'source-content',
+        existingIdentity: {
+          providerId: 'openai',
+          modelId: 'gpt-5.6-luna',
+          aiConfigurationRevision: historical.aiConfigurationRevision,
+          credentialId: historical.credentialId,
+          credentialRevision: historical.credentialRevision,
+          policyContextRevision: 'standing-1',
+          providerPolicyFingerprint: 'historical-openai-policy',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
   });
 });
 

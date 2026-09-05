@@ -151,6 +151,59 @@ describe('Ask provider policy and stream boundary', () => {
     ).toBe(3);
   });
 
+  it('allows only historical standing-provider migration while retaining deployment vetoes', async () => {
+    const reader: AskProviderPolicyAuthorityReaderPort = {
+      readProjectPrivacyPolicy: async () => ({
+        externalTransferAllowed: true,
+        settingsRevision: 1,
+        policyContextRevision: 1,
+      }),
+      readStandingAIProcessingPolicy: async () => ({
+        projectId: 'project-1',
+        enabled: true,
+        providerId: 'deepseek',
+        policyRevision: 3,
+        aiConfigurationRevision: 3,
+        changedBy: 'owner',
+        changedAt: '2026-09-05T00:00:00.000Z',
+      }),
+      readSelectedSensitivities: async () => ['internal'],
+    };
+    const resolver = new AskProviderPolicyResolver(reader, {
+      deploymentPrivateTransferAllowed: false,
+      providerPolicyIdentity: 'deepseek-policy-v1',
+      providerDisplayName: 'DeepSeek',
+      providerModel: 'deepseek-v4-flash',
+    });
+    await expect(
+      resolver.evaluateContext({
+        projectId: 'project-1',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-luna',
+        sensitivities: ['internal'],
+        ignoreStandingProviderMismatch: true,
+      }),
+    ).resolves.toMatchObject({ eligible: true, reason: 'ELIGIBLE' });
+    await expect(
+      resolver.evaluateContext({
+        projectId: 'project-1',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-luna',
+        sensitivities: ['private'],
+        ignoreStandingProviderMismatch: true,
+      }),
+    ).resolves.toMatchObject({ eligible: false, reason: 'DEPLOYMENT_POLICY_BLOCKED' });
+    await expect(
+      resolver.evaluateContext({
+        projectId: 'project-1',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-luna',
+        sensitivities: ['restricted'],
+        ignoreStandingProviderMismatch: true,
+      }),
+    ).resolves.toMatchObject({ eligible: false, reason: 'RESTRICTED_CONTEXT_BLOCKED' });
+  });
+
   it('blocks private and restricted Evidence before any provider call', async () => {
     const generateStructured = vi.fn();
     const generateStructuredStream = vi.fn();

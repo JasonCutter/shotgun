@@ -42,6 +42,11 @@ AnswerRun pins, Discovery profiles and review evidence are immutable/readable an
 are not rewritten or converted to DeepSeek. A historical provider cannot create a
 new logical request.
 
+Historical recovery may ignore only the current Standing AI Processing Policy
+provider binding when that mismatch is caused by provider migration; all other
+current privacy, deployment, credential and capability constraints remain
+fail-closed.
+
 ## Accepted and rejected alternatives
 
 Accepted:

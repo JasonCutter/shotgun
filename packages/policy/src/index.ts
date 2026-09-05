@@ -68,13 +68,18 @@ export const evaluateStandingAIProcessingPolicy = (input: {
   readonly providerId: string;
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
   readonly deploymentAllowsPrivate: boolean;
+  /** Only the durable historical-recovery path may set this flag. */
+  readonly ignoreStandingProviderMismatch?: boolean;
 }): StandingAIProcessingDecision => {
   if (input.sensitivity === 'restricted') {
     return { eligible: false, reason: 'RESTRICTED_CONTEXT_BLOCKED' };
   }
   if (!input.policy) return { eligible: false, reason: 'NOT_CONFIGURED' };
   if (!input.policy.enabled) return { eligible: false, reason: 'STANDING_POLICY_DISABLED' };
-  if (input.policy.providerId !== input.providerId.trim()) {
+  if (
+    input.policy.providerId !== input.providerId.trim() &&
+    input.ignoreStandingProviderMismatch !== true
+  ) {
     return { eligible: false, reason: 'STANDING_POLICY_PROVIDER_MISMATCH' };
   }
   if (input.sensitivity === 'private' && !input.deploymentAllowsPrivate) {

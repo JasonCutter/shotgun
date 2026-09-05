@@ -237,6 +237,11 @@ export type AskProviderPolicyResolverPort = {
     readonly sensitivities: readonly AskContextSensitivity[];
     readonly providerId?: string;
     readonly modelId?: string;
+    /**
+     * Durable historical recovery may ignore only the current Standing
+     * provider binding. All other privacy/deployment checks remain enforced.
+     */
+    readonly ignoreStandingProviderMismatch?: boolean;
   }): Promise<AskProviderEligibilityView>;
 };
 

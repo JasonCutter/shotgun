@@ -261,6 +261,9 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
     const historicalRetry = Boolean(
       existing && !isCanonicalGenerativeAIExecution(existing.providerId, existing.modelId),
     );
+    const migratedHistoricalRetry =
+      historicalRetry &&
+      isCanonicalGenerativeAIExecution(current.activeProviderId, current.activeModelId);
     if (
       this.options.enforceDeepSeekOnly === true &&
       !isCanonicalGenerativeAIExecution(current.activeProviderId, current.activeModelId) &&
@@ -357,11 +360,9 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
       providerId: effectiveConfiguration.activeProviderId,
       modelId: effectiveConfiguration.activeModelId,
       sensitivities: [input.sensitivity],
+      ignoreStandingProviderMismatch: migratedHistoricalRetry,
     });
-    if (
-      !policy.eligible &&
-      !(historicalRetry && policy.reason === 'STANDING_POLICY_PROVIDER_MISMATCH')
-    ) {
+    if (!policy.eligible) {
       throw resolutionError(
         'POLICY_DENIED',
         'The configured AI provider is not permitted for this Source context.',
@@ -380,9 +381,8 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
     if (
       !standing ||
       !standing.enabled ||
-      (!historicalRetry &&
-        (standing.providerId !== current.activeProviderId ||
-          standing.aiConfigurationRevision !== current.aiConfigurationRevision))
+      standing.providerId !== current.activeProviderId ||
+      standing.aiConfigurationRevision !== current.aiConfigurationRevision
     ) {
       throw resolutionError(
         'POLICY_DENIED',

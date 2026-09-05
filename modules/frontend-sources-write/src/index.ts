@@ -7,6 +7,8 @@ export type {
   SourcesStage3AtomicPersistencePort,
   SourcesStage3PipelineOutcome,
   SourcesStage3PipelinePort,
+  SourcesStage3ClaimResult,
+  SourcesStage3FailureClassification,
   SourcesStage3ProgressLease,
   SourcesStage3ProgressPort,
   SourcesStage3ProgressState,
@@ -18,7 +20,11 @@ export type {
   SourcesStage4ContinuationPort,
   SourcesStage4ContinuationStorePort,
 } from './stage3-pipeline.js';
-export { HISTORICAL_RECONCILIATION_REQUIRED_CODE } from './stage3-pipeline.js';
+export {
+  HISTORICAL_RECONCILIATION_REQUIRED_CODE,
+  STAGE3_RUNTIME_CONTRACT_ERROR_CODE,
+  classifySourcesStage3Failure,
+} from './stage3-pipeline.js';
 export {
   assertSourcesResourceSecurityContinuation,
   resolveSourcesResourceSecurity,

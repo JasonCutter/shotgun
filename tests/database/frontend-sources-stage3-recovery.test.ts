@@ -11,7 +11,11 @@ import {
   PostgresEvidenceRepository,
   PostgresTransformationRepository,
 } from '../../adapters/postgres-stage3/src/index.js';
-import { SourcesStage3Pipeline } from '../../adapters/sources-stage3-pipeline/src/index.js';
+import { createProductionStage3Pipeline } from '../../adapters/sources-stage3-pipeline/src/index.js';
+import {
+  PostgresSourcesStage3AtomicPersistence,
+  PostgresSourcesStage3ProgressRepository,
+} from '../../adapters/postgres-stage3/src/runtime-data-integrity.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import type { SourcesStage3PipelinePort } from '../../modules/frontend-sources-write/src/index.js';
 import type {
@@ -41,20 +45,22 @@ class FailOnceStage3Pipeline implements SourcesStage3PipelinePort {
   constructor(private readonly inner: SourcesStage3PipelinePort) {}
   async runForSourceVersion(
     input: Parameters<SourcesStage3PipelinePort['runForSourceVersion']>[0],
-  ): Promise<void> {
+  ): Promise<Awaited<ReturnType<SourcesStage3PipelinePort['runForSourceVersion']>>> {
     this.calls += 1;
     if (this.calls === 1) throw new Error('Stage 3 transient failure');
-    await this.inner.runForSourceVersion(input);
+    return this.inner.runForSourceVersion(input);
   }
 }
 
 const stage3 = () =>
-  new SourcesStage3Pipeline({
+  createProductionStage3Pipeline({
     storage: assetStorage,
     transformer: new PythonDocumentFormatAdapter(),
     locator: new LucasAugmentedPlainTextAdapter(),
     transformationRepository: new PostgresTransformationRepository(pool!),
     evidenceRepository: new PostgresEvidenceRepository(pool!),
+    progress: new PostgresSourcesStage3ProgressRepository(pool!),
+    atomicPersistence: new PostgresSourcesStage3AtomicPersistence(pool!),
   });
 
 let assetStorage = new InMemoryAssetStorage();

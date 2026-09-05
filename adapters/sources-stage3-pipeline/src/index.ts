@@ -18,6 +18,7 @@ import type {
   SourcesStage3RecoveryItem,
   SourcesStage4ContinuationPort,
 } from '../../../modules/frontend-sources-write/src/index.js';
+import { classifySourcesStage3Failure } from '../../../modules/frontend-sources-write/src/index.js';
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
 
 import type { SourcesStage4ContinuationStorePort } from '../../../modules/frontend-sources-write/src/index.js';
@@ -58,19 +59,29 @@ const assertStage3Input = (
  * `TransformationRepositoryPort.save` reuses the stored revision for the same
  * SourceVersion/transformer output, and the evidence index upserts.
  */
-export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
-  constructor(
-    private readonly deps: {
-      readonly storage: AssetStoragePort;
-      readonly transformer: DocumentTransformerPort;
-      readonly locator: EvidenceLocatorPort;
-      readonly transformationRepository: TransformationRepositoryPort;
-      readonly evidenceRepository: EvidenceRepositoryPort;
-      readonly progress?: SourcesStage3ProgressPort;
-      readonly atomicPersistence?: SourcesStage3AtomicPersistencePort;
-      readonly stage4?: SourcesStage4ContinuationPort;
-    },
-  ) {}
+export type SharedSourcesStage3PipelineDependencies = {
+  readonly storage: AssetStoragePort;
+  readonly transformer: DocumentTransformerPort;
+  readonly locator: EvidenceLocatorPort;
+  readonly transformationRepository: TransformationRepositoryPort;
+  readonly evidenceRepository: EvidenceRepositoryPort;
+  readonly progress?: SourcesStage3ProgressPort;
+  readonly atomicPersistence?: SourcesStage3AtomicPersistencePort;
+  readonly stage4?: SourcesStage4ContinuationPort;
+};
+
+export type ProductionSourcesStage3PipelineDependencies = Omit<
+  SharedSourcesStage3PipelineDependencies,
+  'progress' | 'atomicPersistence'
+> & {
+  readonly progress: SourcesStage3ProgressPort;
+  readonly atomicPersistence: SourcesStage3AtomicPersistencePort;
+};
+
+/** Shared implementation used by the durable production pipeline and the
+ * explicitly test-only non-durable harness. */
+class SourcesStage3PipelineRuntime implements SourcesStage3PipelinePort {
+  constructor(private readonly deps: SharedSourcesStage3PipelineDependencies) {}
 
   async runForSourceVersion(
     input: Parameters<SourcesStage3PipelinePort['runForSourceVersion']>[0],
@@ -78,25 +89,52 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
     assertStage3Input(input);
     const workerId = `sources-stage3:${process.pid}`;
     const progressEnabled = Boolean(this.deps.progress && this.deps.atomicPersistence);
-    if (progressEnabled)
-      await this.deps.progress!.ensureMaterialized({
-        projectId: input.projectId,
-        sourceId: input.sourceId,
-        sourceVersionId: input.sourceVersionId,
-      });
-    const claim = progressEnabled
-      ? await this.deps.progress!.claim({
+    let claim;
+    if (progressEnabled) {
+      try {
+        await this.deps.progress!.ensureMaterialized({
+          projectId: input.projectId,
+          sourceId: input.sourceId,
+          sourceVersionId: input.sourceVersionId,
+        });
+        claim = await this.deps.progress!.claim({
           projectId: input.projectId,
           sourceId: input.sourceId,
           sourceVersionId: input.sourceVersionId,
           workerId,
           leaseDurationMs: 30_000,
-        })
-      : undefined;
-    if (claim?.status === 'BUSY') {
+        });
+      } catch (error) {
+        const failure = classifySourcesStage3Failure(error);
+        try {
+          await this.deps.progress!.recordPreClaimFailure({
+            projectId: input.projectId,
+            sourceId: input.sourceId,
+            sourceVersionId: input.sourceVersionId,
+            ...failure,
+          });
+        } catch {
+          // Preserve the original claim error. If the database is unavailable,
+          // the durable failure record cannot become a false success signal.
+        }
+        throw error;
+      }
+    }
+    if (claim?.status === 'DEFERRED') {
       throw new ShotgunError({
-        code: 'CONFLICT',
-        safeMessage: 'Stage 3 is already running for this SourceVersion.',
+        code: 'RETRYABLE_DEPENDENCY',
+        safeMessage:
+          claim.reason === 'ACTIVE_LEASE'
+            ? 'Stage 3 is already running for this SourceVersion.'
+            : 'Stage 3 retry is not due yet.',
+        module: 'sources-stage3-pipeline',
+        operation: 'claim-stage3',
+      });
+    }
+    if (claim?.status === 'BLOCKED') {
+      throw new ShotgunError({
+        code: 'TERMINAL_FAILURE',
+        safeMessage: 'Stage 3 requires reconciliation before it can continue.',
         module: 'sources-stage3-pipeline',
         operation: 'claim-stage3',
       });
@@ -166,14 +204,8 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
       }
     } catch (error) {
       if (claim?.status === 'CLAIMED') {
-        const failure =
-          error instanceof ShotgunError
-            ? { code: error.code, message: error.safeMessage }
-            : {
-                code: 'STAGE3_RETRYABLE_FAILURE',
-                message: 'Stage 3 transformation or Evidence indexing failed.',
-              };
-        await this.deps.progress?.markRetryable({ lease: claim.lease, ...failure });
+        const failure = classifySourcesStage3Failure(error);
+        await this.deps.progress!.markFailure({ lease: claim.lease, ...failure });
       }
       throw error;
     }
@@ -220,6 +252,38 @@ export class SourcesStage3Pipeline implements SourcesStage3PipelinePort {
   }
 }
 
+/** Production Stage 3 boundary. Durable progress and atomic persistence are
+ * required at compile time; the product assembly cannot accidentally select a
+ * non-durable path. */
+export class SourcesStage3Pipeline extends SourcesStage3PipelineRuntime {
+  constructor(deps: ProductionSourcesStage3PipelineDependencies) {
+    super(deps);
+  }
+}
+
+/** The only production construction boundary for Stage 3. */
+export const createProductionStage3Pipeline = (
+  deps: ProductionSourcesStage3PipelineDependencies,
+): SourcesStage3Pipeline => new SourcesStage3Pipeline(deps);
+
+/** Test/module harness only. It intentionally preserves the lightweight
+ * in-process path for isolated tests without making that path available from
+ * the production factory. */
+export class SourcesStage3TestPipeline extends SourcesStage3PipelineRuntime {
+  constructor(deps: SharedSourcesStage3PipelineDependencies) {
+    super(deps);
+  }
+}
+
+export type SourcesStage3RecoveryObservation = {
+  readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED';
+  readonly code?: string;
+};
+
+export type SourcesStage3RecoveryReporter = {
+  report(observation: SourcesStage3RecoveryObservation): void | Promise<void>;
+};
+
 /**
  * Reclaims durable Stage 3 positions after a process crash or lease expiry.
  * The progress repository is the recovery authority and returns the complete
@@ -237,15 +301,26 @@ export class SourcesStage3RecoveryDispatcher {
     private readonly options: {
       readonly intervalMs?: number;
       readonly batchSize?: number;
+      readonly reporter?: SourcesStage3RecoveryReporter;
     } = {},
   ) {}
 
   async dispatchOnce(): Promise<'EMPTY' | 'SUCCEEDED' | 'FAILED'> {
-    const recoverable = await this.progress.findRecoverable({
-      limit: this.options.batchSize ?? 1,
-    });
+    let recoverable: readonly SourcesStage3RecoveryItem[];
+    try {
+      recoverable = await this.progress.findRecoverable({
+        limit: this.options.batchSize ?? 1,
+      });
+    } catch (error) {
+      const failure = classifySourcesStage3Failure(error);
+      await this.options.reporter?.report({ status: 'FAILED', code: failure.code });
+      throw error;
+    }
     const item = recoverable[0] as SourcesStage3RecoveryItem | undefined;
-    if (!item) return 'EMPTY';
+    if (!item) {
+      await this.options.reporter?.report({ status: 'EMPTY' });
+      return 'EMPTY';
+    }
     try {
       await this.pipeline.runForSourceVersion({
         projectId: item.projectId,
@@ -257,12 +332,15 @@ export class SourcesStage3RecoveryDispatcher {
         accessScope: [...item.accessScope],
         sensitivity: item.sensitivity,
       });
+      await this.options.reporter?.report({ status: 'SUCCEEDED' });
       return 'SUCCEEDED';
     } catch (error) {
       // The pipeline owns the lease-guarded retry transition.  Keep the
       // recovery loop observable and stop this tick so a broken dependency
       // cannot produce a hot loop.
+      const failure = classifySourcesStage3Failure(error);
       console.error('[sources-stage3-recovery] item failed', error);
+      await this.options.reporter?.report({ status: 'FAILED', code: failure.code });
       return 'FAILED';
     }
   }

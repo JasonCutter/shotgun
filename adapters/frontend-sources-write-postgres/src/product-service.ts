@@ -21,6 +21,7 @@ import type {
 } from '../../../modules/frontend-sources-write/src/product-service.js';
 import {
   assertSourcesResourceSecurityContinuation,
+  classifySourcesStage3Failure,
   resolveSourcesResourceSecurity,
   sourceSecurityMetadataEqual,
   HISTORICAL_RECONCILIATION_REQUIRED_CODE,
@@ -426,21 +427,15 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           accessScope: [...item.security.accessScope],
           sensitivity: item.security.sensitivity,
         });
-        // Some existing adapters expose the pre-WP-04 void-returning pipeline
-        // contract and do not own the durable progress row. A successful
-        // return is still a completed Stage 3 result for that adapter; record
-        // the exact SourceVersion so replay finalization can distinguish it
-        // from unrelated RUNNING/future-retry rows in the same submission.
+        // Record the exact SourceVersion so replay finalization can distinguish
+        // this successful item from unrelated RUNNING/future-retry rows in the
+        // same submission. The Stage 3 outcome itself remains owned by the
+        // durable progress/atomic persistence boundary.
         completedSourceVersionIds.push(item.sourceVersionId);
       }
     } catch (error) {
-      await this.markSubmissionStage3Incomplete(
-        input.submissionId,
-        error instanceof ShotgunError ? error.code : 'STAGE3_RETRYABLE_FAILURE',
-        error instanceof ShotgunError
-          ? error.safeMessage
-          : 'Stage 3 transformation or Evidence indexing failed.',
-      );
+      const failure = classifySourcesStage3Failure(error);
+      await this.markSubmissionStage3Incomplete(input.submissionId, failure);
       throw error;
     }
     await this.markStage3ItemsSucceeded(input.submissionId, completedSourceVersionIds);
@@ -468,8 +463,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
    */
   private async markSubmissionStage3Incomplete(
     submissionId: string,
-    code: string,
-    message: string,
+    failure: { readonly retryable: boolean; readonly code: string; readonly message: string },
   ): Promise<void> {
     const client = await this.pool.connect();
     let transactionActive = false;
@@ -485,7 +479,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       await client.query(
         `UPDATE source_product.intake_submission_items AS item
             SET state = 'OUTCOME_INDETERMINATE', safe_failure_code = $2,
-                safe_failure_message = $3, safe_failure_retryable = true
+                safe_failure_message = $3, safe_failure_retryable = $4
           WHERE item.submission_id = $1
             AND item.produced_source_version_id IS NOT NULL
             AND item.state = 'SUCCEEDED'
@@ -496,7 +490,12 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
                  AND progress.source_version_id = item.produced_source_version_id
                  AND progress.state NOT IN ('STAGE3_COMPLETED', 'NO_EVIDENCE')
             )`,
-        [submissionId, code.slice(0, 200), message.slice(0, 2000)],
+        [
+          submissionId,
+          failure.code.slice(0, 200),
+          failure.message.slice(0, 2000),
+          failure.retryable,
+        ],
       );
       await client.query('COMMIT');
       transactionActive = false;

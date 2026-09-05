@@ -14,6 +14,43 @@ import type {
 export const HISTORICAL_RECONCILIATION_REQUIRED_CODE =
   'HISTORICAL_RECONCILIATION_REQUIRED' as const;
 
+/** Durable classification used by both the Stage 3 worker and submission
+ * lifecycle. Runtime/SQL contract defects must not be retried as if they were
+ * transient infrastructure failures. */
+export type SourcesStage3FailureClassification = {
+  readonly retryable: boolean;
+  readonly code: string;
+  readonly message: string;
+};
+
+export const STAGE3_RUNTIME_CONTRACT_ERROR_CODE = 'STAGE3_RUNTIME_CONTRACT_ERROR' as const;
+
+export const classifySourcesStage3Failure = (
+  error: unknown,
+): SourcesStage3FailureClassification => {
+  const candidate = error as { readonly code?: unknown; readonly safeMessage?: unknown };
+  const code = typeof candidate.code === 'string' ? candidate.code : undefined;
+  const message =
+    typeof candidate.safeMessage === 'string'
+      ? candidate.safeMessage
+      : error instanceof Error
+        ? error.message
+        : 'Stage 3 processing failed.';
+  if (code === 'VALIDATION_ERROR' || code === 'POLICY_DENIED' || code === 'TERMINAL_FAILURE') {
+    return { retryable: false, code, message };
+  }
+  if (code === 'RETRYABLE_DEPENDENCY' || code === 'TIMEOUT' || code === 'OUTCOME_UNKNOWN') {
+    return { retryable: true, code, message };
+  }
+  if (code && /^(08|40001$|40P01$|55P03$)/.test(code)) {
+    return { retryable: true, code: 'STAGE3_DB_TRANSIENT', message };
+  }
+  if (code && ['42P08', '42601', '42703', '42804'].includes(code)) {
+    return { retryable: false, code: STAGE3_RUNTIME_CONTRACT_ERROR_CODE, message };
+  }
+  return { retryable: true, code: 'STAGE3_RETRYABLE_FAILURE', message };
+};
+
 /** Structural Stage 3 contracts kept in the Sources module boundary. The
  * implementation adapters may satisfy these shapes without making this
  * module depend on Evidence or Transformation domain modules. */
@@ -83,7 +120,7 @@ export type SourcesStage3PipelinePort = {
     readonly contentHash: string;
     readonly accessScope: readonly string[];
     readonly sensitivity: SourcesSensitivity;
-  }): Promise<SourcesStage3PipelineOutcome | void>;
+  }): Promise<SourcesStage3PipelineOutcome>;
 };
 
 export type SourcesStage3ProgressState =
@@ -101,6 +138,22 @@ export type SourcesStage3ProgressLease = {
   readonly fencingToken: number;
   readonly leaseToken: string;
 };
+
+export type SourcesStage3ClaimResult =
+  | { readonly status: 'CLAIMED'; readonly lease: SourcesStage3ProgressLease }
+  | {
+      readonly status: 'COMPLETED';
+      readonly state: 'STAGE3_COMPLETED' | 'NO_EVIDENCE';
+      readonly revisionId: string;
+      readonly indexingResultId: string;
+      readonly evidenceCount: number;
+      readonly reusedCount: number;
+    }
+  | { readonly status: 'DEFERRED'; readonly reason: 'ACTIVE_LEASE' | 'RETRY_NOT_DUE' }
+  | {
+      readonly status: 'BLOCKED';
+      readonly reason: 'HISTORICAL_RECONCILIATION' | 'RUNTIME_CONTRACT';
+    };
 
 export type SourcesStage3RecoveryItem = {
   readonly projectId: string;
@@ -128,18 +181,16 @@ export type SourcesStage3ProgressPort = {
     readonly workerId: string;
     readonly leaseDurationMs: number;
     readonly now?: string;
-  }): Promise<
-    | { readonly status: 'CLAIMED'; readonly lease: SourcesStage3ProgressLease }
-    | {
-        readonly status: 'COMPLETED';
-        readonly state: 'STAGE3_COMPLETED' | 'NO_EVIDENCE';
-        readonly revisionId: string;
-        readonly indexingResultId: string;
-        readonly evidenceCount: number;
-        readonly reusedCount: number;
-      }
-    | { readonly status: 'BUSY' }
-  >;
+  }): Promise<SourcesStage3ClaimResult>;
+  recordPreClaimFailure(input: {
+    readonly projectId: string;
+    readonly sourceId: string;
+    readonly sourceVersionId: string;
+    readonly retryable: boolean;
+    readonly code: string;
+    readonly message: string;
+    readonly nextAttemptAt?: string;
+  }): Promise<void>;
   finalize(input: {
     readonly lease: SourcesStage3ProgressLease;
     readonly state: 'STAGE3_COMPLETED' | 'NO_EVIDENCE';
@@ -147,6 +198,13 @@ export type SourcesStage3ProgressPort = {
   }): Promise<void>;
   markRetryable(input: {
     readonly lease: SourcesStage3ProgressLease;
+    readonly code: string;
+    readonly message: string;
+    readonly nextAttemptAt?: string;
+  }): Promise<void>;
+  markFailure(input: {
+    readonly lease: SourcesStage3ProgressLease;
+    readonly retryable: boolean;
     readonly code: string;
     readonly message: string;
     readonly nextAttemptAt?: string;

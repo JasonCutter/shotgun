@@ -522,6 +522,7 @@ export class PostgresOriginalAssetRepository
       access_scope: string[];
       sensitivity: SourcesProjectionRecord['sensitivity'];
       created_at: Date;
+      stage3_state: SourcesProjectionRecord['stage3State'] | null;
     }>(
       `SELECT source.project_id,
               source.source_id::text,
@@ -535,7 +536,8 @@ export class PostgresOriginalAssetRepository
               original.storage_key,
               version.access_scope,
               version.sensitivity,
-              version.created_at
+              version.created_at,
+              progress.state AS stage3_state
        FROM asset.source_versions AS version
        JOIN asset.sources AS source ON source.source_id = version.source_id
        JOIN asset.original_assets AS original ON original.asset_id = version.original_asset_id
@@ -558,6 +560,10 @@ export class PostgresOriginalAssetRepository
          ORDER BY candidate.created_at, candidate.receipt_id
          LIMIT 1
        ) AS receipt ON true
+       LEFT JOIN source_product.source_stage3_progress AS progress
+         ON progress.project_id = source.project_id
+        AND progress.source_id = source.source_id
+        AND progress.source_version_id = version.source_version_id
        WHERE source.project_id = $1
        ORDER BY source.source_id, version.version_number`,
       [projectId],
@@ -576,6 +582,7 @@ export class PostgresOriginalAssetRepository
       accessScope: row.access_scope,
       sensitivity: row.sensitivity,
       createdAt: row.created_at.toISOString(),
+      ...(row.stage3_state === null ? {} : { stage3State: row.stage3_state }),
     }));
   }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  SourcesStage3Pipeline,
+  SourcesStage3TestPipeline,
   SourcesStage3RecoveryDispatcher,
   SourcesStage4ContinuationDispatcher,
 } from '../../adapters/sources-stage3-pipeline/src/index.js';
@@ -15,6 +15,7 @@ import type {
   SourcesStage4ContinuationStorePort,
 } from '../../modules/frontend-sources-write/src/index.js';
 import { HISTORICAL_RECONCILIATION_REQUIRED_CODE } from '../../modules/frontend-sources-write/src/index.js';
+import { STAGE3_RUNTIME_CONTRACT_ERROR_CODE } from '../../modules/frontend-sources-write/src/index.js';
 import { ShotgunError } from '../../packages/contracts/src/index.js';
 
 const continuation: SourcesStage3EvidenceIndexedInput = {
@@ -105,13 +106,13 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
         workerId: 'worker-1',
         leaseDurationMs: 30_000,
       }),
-    ).resolves.toEqual({ status: 'BUSY' });
+    ).resolves.toEqual({ status: 'BLOCKED', reason: 'HISTORICAL_RECONCILIATION' });
     expect(statements.some((sql) => sql.includes("SET state = 'STAGE3_RUNNING'"))).toBe(false);
   });
 
   it('rejects malformed Stage 3 input before invoking storage or transformation', async () => {
     let reads = 0;
-    const pipeline = new SourcesStage3Pipeline({
+    const pipeline = new SourcesStage3TestPipeline({
       storage: {
         put: async () => 'unused',
         read: async () => {
@@ -155,6 +156,72 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     expect(reads).toBe(0);
+  });
+
+  it('records a classified pre-claim contract failure without entering transformation', async () => {
+    const recorded: Array<{ retryable: boolean; code: string }> = [];
+    let transformed = false;
+    const pipeline = new SourcesStage3TestPipeline({
+      storage: {
+        put: async () => 'unused',
+        read: async () => new Uint8Array(),
+      },
+      transformer: {
+        identity: { id: 'test', version: '1' },
+        transform: async () => {
+          transformed = true;
+          throw new Error('must not be called');
+        },
+      },
+      locator: { locate: () => undefined },
+      transformationRepository: {
+        save: async () => undefined as never,
+        findTransformationRevisionSecurity: async () => undefined,
+        findBySourceVersion: async () => undefined,
+      },
+      evidenceRepository: {
+        index: async () => ({ items: [], reusedCount: 0 }),
+        listBySourceVersion: async () => [],
+        findById: async () => undefined,
+      },
+      progress: {
+        ensureMaterialized: async () => undefined,
+        claim: async () => {
+          const error = new Error('operator does not exist: timestamptz = integer') as Error & {
+            code: string;
+          };
+          error.code = '42804';
+          throw error;
+        },
+        recordPreClaimFailure: async (input) => {
+          recorded.push({ retryable: input.retryable, code: input.code });
+        },
+        finalize: async () => undefined,
+        markRetryable: async () => undefined,
+        markFailure: async () => undefined,
+        findRecoverable: async () => [],
+      },
+      atomicPersistence: {
+        persist: async () => {
+          throw new Error('must not be called');
+        },
+      },
+    });
+
+    await expect(
+      pipeline.runForSourceVersion({
+        projectId: 'project-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        storageKey: 'asset/1',
+        mediaType: 'text/plain',
+        contentHash: 'sha256:' + 'a'.repeat(64),
+        accessScope: ['owner'],
+        sensitivity: 'public',
+      }),
+    ).rejects.toThrow('timestamptz = integer');
+    expect(recorded).toEqual([{ retryable: false, code: STAGE3_RUNTIME_CONTRACT_ERROR_CODE }]);
+    expect(transformed).toBe(false);
   });
 
   it('retries a retryable failure and completes the same continuation', async () => {
@@ -236,6 +303,14 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
     const pipeline: SourcesStage3PipelinePort = {
       runForSourceVersion: async (input) => {
         recovered = { ...recoveryItem, ...input };
+        return {
+          stage3: {
+            revisionId: `revision-${input.sourceVersionId}`,
+            evidenceCount: 0,
+            reusedCount: 0,
+          },
+          stage4: { status: 'NOT_CONFIGURED' },
+        };
       },
     };
     const dispatcher = new SourcesStage3RecoveryDispatcher(progress, pipeline);
@@ -249,5 +324,41 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
       contentHash: recoveryItem.contentHash,
     });
     expect(listed).toBe(2);
+  });
+
+  it('reports Stage 3 contract failures to readiness without retrying the tick', async () => {
+    const observations: Array<{ status: string; code?: string }> = [];
+    const progress = {
+      findRecoverable: async () => [
+        {
+          projectId: 'project-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          storageKey: 'asset/1',
+          mediaType: 'text/plain',
+          contentHash: 'sha256:' + 'a'.repeat(64),
+          accessScope: ['owner'],
+          sensitivity: 'public' as const,
+          state: 'STAGE3_RETRYABLE' as const,
+        },
+      ],
+    } as unknown as SourcesStage3ProgressPort;
+    const pipeline: SourcesStage3PipelinePort = {
+      runForSourceVersion: async () => {
+        const error = new Error('inconsistent parameter types') as Error & { code: string };
+        error.code = '42P08';
+        throw error;
+      },
+    };
+    const dispatcher = new SourcesStage3RecoveryDispatcher(progress, pipeline, {
+      reporter: {
+        report: (observation) => {
+          observations.push(observation);
+        },
+      },
+    });
+
+    await expect(dispatcher.dispatchOnce()).resolves.toBe('FAILED');
+    expect(observations).toEqual([{ status: 'FAILED', code: 'STAGE3_RUNTIME_CONTRACT_ERROR' }]);
   });
 });

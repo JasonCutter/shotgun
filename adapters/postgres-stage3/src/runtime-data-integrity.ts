@@ -6,7 +6,10 @@ import {
   buildEvidenceCandidates,
   type EvidenceLocatorPort,
 } from '../../../modules/evidence/src/index.js';
-import { HISTORICAL_RECONCILIATION_REQUIRED_CODE } from '../../../modules/frontend-sources-write/src/index.js';
+import {
+  HISTORICAL_RECONCILIATION_REQUIRED_CODE,
+  STAGE3_RUNTIME_CONTRACT_ERROR_CODE,
+} from '../../../modules/frontend-sources-write/src/index.js';
 import type {
   SourcesStage3AtomicPersistencePort,
   SourcesStage3EvidenceIndexedInput,
@@ -14,6 +17,7 @@ import type {
   SourcesStage3ProgressPort,
   SourcesStage3ProgressState,
   SourcesStage3RecoveryItem,
+  SourcesStage3ClaimResult,
   SourcesStage4ContinuationStorePort,
 } from '../../../modules/frontend-sources-write/src/index.js';
 import type { SaveTransformationInput } from '../../../modules/transformation/src/index.js';
@@ -88,18 +92,7 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
     readonly workerId: string;
     readonly leaseDurationMs: number;
     readonly now?: string;
-  }): Promise<
-    | { readonly status: 'CLAIMED'; readonly lease: SourcesStage3ProgressLease }
-    | {
-        readonly status: 'COMPLETED';
-        readonly state: 'STAGE3_COMPLETED' | 'NO_EVIDENCE';
-        readonly revisionId: string;
-        readonly indexingResultId: string;
-        readonly evidenceCount: number;
-        readonly reusedCount: number;
-      }
-    | { readonly status: 'BUSY' }
-  > {
+  }): Promise<SourcesStage3ClaimResult> {
     const now = validateLeaseInput(input.now, input.leaseDurationMs);
     const client = await this.pool.connect();
     let active = false;
@@ -161,7 +154,7 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
       ) {
         await client.query('COMMIT');
         active = false;
-        return { status: 'BUSY' };
+        return { status: 'BLOCKED', reason: 'HISTORICAL_RECONCILIATION' };
       }
       if (
         current.state === 'STAGE3_RUNNING' &&
@@ -170,7 +163,7 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
       ) {
         await client.query('COMMIT');
         active = false;
-        return { status: 'BUSY' };
+        return { status: 'DEFERRED', reason: 'ACTIVE_LEASE' };
       }
       if (
         current.state === 'STAGE3_RETRYABLE' &&
@@ -179,7 +172,7 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
       ) {
         await client.query('COMMIT');
         active = false;
-        return { status: 'BUSY' };
+        return { status: 'DEFERRED', reason: 'RETRY_NOT_DUE' };
       }
       if (current.state === 'STAGE3_RUNNING') {
         await client.query(
@@ -218,7 +211,7 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
       if (!claimed) {
         await client.query('COMMIT');
         active = false;
-        return { status: 'BUSY' };
+        return { status: 'DEFERRED', reason: 'ACTIVE_LEASE' };
       }
       await client.query('COMMIT');
       active = false;
@@ -238,6 +231,52 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
     } finally {
       client.release();
     }
+  }
+
+  async recordPreClaimFailure(input: {
+    readonly projectId: string;
+    readonly sourceId: string;
+    readonly sourceVersionId: string;
+    readonly retryable: boolean;
+    readonly code: string;
+    readonly message: string;
+    readonly nextAttemptAt?: string;
+  }): Promise<void> {
+    const result = await this.pool.query(
+      `UPDATE source_product.source_stage3_progress
+          SET state = CASE WHEN $4 THEN 'STAGE3_RETRYABLE' ELSE 'RECONCILIATION_REQUIRED' END,
+              attempt_count = attempt_count + 1,
+              next_attempt_at = CASE
+                WHEN $4 THEN COALESCE(
+                  $5::timestamptz,
+                  clock_timestamp() + GREATEST(0.001, random())
+                    * LEAST(300, 2 * POWER(2, LEAST(attempt_count, 7))) * interval '1 second'
+                )
+                ELSE NULL
+              END,
+              lease_owner = NULL, lease_token = NULL,
+              lease_acquired_at = NULL, lease_expires_at = NULL,
+              safe_failure_code = $6, safe_failure_message = $7,
+              updated_at = clock_timestamp()
+        WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
+          AND state IN ('MATERIALIZED', 'STAGE3_RETRYABLE', 'RECONCILIATION_REQUIRED')`,
+      [
+        input.projectId,
+        input.sourceId,
+        input.sourceVersionId,
+        input.retryable,
+        input.nextAttemptAt ?? null,
+        input.code.slice(0, 200),
+        input.message.slice(0, 2000),
+      ],
+    );
+    if (result.rowCount === 1) return;
+    throw new ShotgunError({
+      code: 'CONFLICT',
+      safeMessage: 'Stage 3 pre-claim failure could not update its progress row.',
+      module: 'postgres-stage3',
+      operation: 'record-stage3-pre-claim-failure',
+    });
   }
 
   async finalize(input: {
@@ -285,31 +324,50 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
     throw new Error('Stage 3 finalize lost its lease.');
   }
 
-  async markRetryable(input: {
+  async markFailure(input: {
     readonly lease: SourcesStage3ProgressLease;
+    readonly retryable: boolean;
     readonly code: string;
     readonly message: string;
     readonly nextAttemptAt?: string;
   }): Promise<void> {
     const result = await this.pool.query(
       `UPDATE source_product.source_stage3_progress
-          SET state = 'STAGE3_RETRYABLE', next_attempt_at = $5,
+          SET state = CASE WHEN $5 THEN 'STAGE3_RETRYABLE' ELSE 'RECONCILIATION_REQUIRED' END,
+              next_attempt_at = CASE
+                WHEN $5 THEN COALESCE(
+                  $6::timestamptz,
+                  clock_timestamp() + GREATEST(0.001, random())
+                    * LEAST(300, 2 * POWER(2, LEAST(attempt_count - 1, 7))) * interval '1 second'
+                )
+                ELSE NULL
+              END,
               lease_owner = NULL, lease_token = NULL, lease_acquired_at = NULL,
-              lease_expires_at = NULL, safe_failure_code = $6, safe_failure_message = $7
+              lease_expires_at = NULL, safe_failure_code = $7, safe_failure_message = $8
         WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
-          AND lease_token = $4 AND fencing_token = $8 AND state = 'STAGE3_RUNNING'`,
+          AND lease_token = $4 AND fencing_token = $9 AND state = 'STAGE3_RUNNING'`,
       [
         input.lease.projectId,
         input.lease.sourceId,
         input.lease.sourceVersionId,
         input.lease.leaseToken,
-        input.nextAttemptAt ?? nowIso(),
+        input.retryable,
+        input.nextAttemptAt ?? null,
         input.code.slice(0, 200),
         input.message.slice(0, 2000),
         input.lease.fencingToken,
       ],
     );
     if (result.rowCount !== 1) throw new Error('Stage 3 failure update lost its lease.');
+  }
+
+  async markRetryable(input: {
+    readonly lease: SourcesStage3ProgressLease;
+    readonly code: string;
+    readonly message: string;
+    readonly nextAttemptAt?: string;
+  }): Promise<void> {
+    return this.markFailure({ ...input, retryable: true });
   }
 
   async findRecoverable(input?: { readonly limit?: number; readonly now?: string }) {
@@ -337,7 +395,8 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
            ON original.asset_id = version.original_asset_id
         WHERE progress.state = 'MATERIALIZED'
            OR (progress.state = 'RECONCILIATION_REQUIRED'
-               AND progress.safe_failure_code IS DISTINCT FROM $3)
+               AND progress.safe_failure_code IS DISTINCT FROM $3
+               AND progress.safe_failure_code IS DISTINCT FROM $4)
            OR (progress.state = 'STAGE3_RETRYABLE'
                AND (progress.next_attempt_at IS NULL
                     OR progress.next_attempt_at <= COALESCE($1::timestamptz, now())))
@@ -345,7 +404,12 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
                AND progress.lease_expires_at <= COALESCE($1::timestamptz, now()))
         ORDER BY progress.updated_at, progress.source_version_id
         LIMIT $2`,
-      [input?.now ?? null, input?.limit ?? 100, HISTORICAL_RECONCILIATION_REQUIRED_CODE],
+      [
+        input?.now ?? null,
+        input?.limit ?? 100,
+        HISTORICAL_RECONCILIATION_REQUIRED_CODE,
+        STAGE3_RUNTIME_CONTRACT_ERROR_CODE,
+      ],
     );
     return result.rows.map((row) => ({
       projectId: row.project_id,

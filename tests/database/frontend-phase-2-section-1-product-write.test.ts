@@ -21,8 +21,12 @@ class RecordingStage3Pipeline implements SourcesStage3PipelinePort {
 
   async runForSourceVersion(
     input: Parameters<SourcesStage3PipelinePort['runForSourceVersion']>[0],
-  ): Promise<void> {
+  ): Promise<Awaited<ReturnType<SourcesStage3PipelinePort['runForSourceVersion']>>> {
     this.calls.push(input);
+    return {
+      stage3: { revisionId: `revision-${input.sourceVersionId}`, evidenceCount: 0, reusedCount: 0 },
+      stage4: { status: 'NOT_CONFIGURED' },
+    };
   }
 }
 

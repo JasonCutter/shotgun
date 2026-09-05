@@ -14,7 +14,7 @@ import {
   PostgresTransformationRepository,
 } from '../../adapters/postgres-stage3/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
-import { SourcesStage3Pipeline } from '../../adapters/sources-stage3-pipeline/src/index.js';
+import { SourcesStage3TestPipeline } from '../../adapters/sources-stage3-pipeline/src/index.js';
 import {
   InMemoryAssetStorage,
   InMemoryOriginalAssetRepository,
@@ -204,9 +204,9 @@ const prepareSubmission = async (
 const createStage3Pipeline = (
   storage: InMemoryAssetStorage,
   stage4?: SourcesStage4ContinuationPort,
-): SourcesStage3Pipeline => {
+): SourcesStage3TestPipeline => {
   const transformer = new LucasAugmentedPlainTextAdapter();
-  return new SourcesStage3Pipeline({
+  return new SourcesStage3TestPipeline({
     storage,
     transformer,
     locator: transformer,
@@ -335,7 +335,7 @@ const createStage4Harness = async (options: { readonly enabled: boolean }) => {
 class GenuineStage3Failure implements SourcesStage3PipelinePort {
   async runForSourceVersion(
     _input: Parameters<SourcesStage3PipelinePort['runForSourceVersion']>[0],
-  ): Promise<void> {
+  ): Promise<Awaited<ReturnType<SourcesStage3PipelinePort['runForSourceVersion']>>> {
     void _input;
     throw new Error('genuine transformation failure');
   }

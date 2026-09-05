@@ -211,7 +211,11 @@ const isAuthorizedClaimResult = (
   security: SecurityContext,
   allowedSensitivities: readonly SecurityContext['sensitivity'][],
 ): boolean =>
-  item.authority === 'CANONICAL' &&
+  // Semantic Product rows are commonly served from the immutable
+  // COMPILED_TRUTH projection.  That projection is canonical-backed; the
+  // source/version/evidence lineage is still enforced below by
+  // isSnapshotCompatibleClaimResult before a target is admitted.
+  (item.authority === 'CANONICAL' || item.authority === 'COMPILED_TRUTH') &&
   isScopeAllowed(item.accessScope, security.accessScope) &&
   isSensitivityAllowed(item.sensitivity, allowedSensitivities);
 
@@ -227,8 +231,14 @@ const isSnapshotCompatibleClaimResult = (
   if (item.baseCanonicalVersion !== undefined && item.baseCanonicalVersion !== snapshot.version) {
     return false;
   }
-  if (item.sourceSnapshotDigest !== undefined && item.sourceSnapshotDigest !== snapshot.digest) {
-    return false;
+  if (item.sourceSnapshotDigest !== undefined) {
+    // COMPILED_TRUTH rows carry the source projection watermark in this
+    // legacy-named field; the generation pin below is the authoritative
+    // comparison for that projection. Direct CANONICAL rows continue to pin
+    // against the canonical snapshot digest.
+    const expectedSourceDigest =
+      item.authority === 'COMPILED_TRUTH' ? generation.sourceProjectionDigest : snapshot.digest;
+    if (item.sourceSnapshotDigest !== expectedSourceDigest) return false;
   }
   if (
     item.sourceProjectionDigest !== undefined &&

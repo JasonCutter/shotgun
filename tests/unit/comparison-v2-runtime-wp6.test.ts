@@ -487,6 +487,9 @@ describe('WP6 comparison rollout runtime', () => {
               canonicalSnapshotDigest: 'digest-2',
               lastCommitId: 'commit-2',
             }),
+            querySemanticReadiness: 'READY',
+            coverageStatus: 'COMPLETE',
+            truncated: false,
           },
         },
       } as never,
@@ -511,6 +514,11 @@ describe('WP6 comparison rollout runtime', () => {
         .providerModelCapabilityIdentity,
     ).toBe('provider-new/model-new/capability');
     expect(current.identity.rolloutAuthorityRevision).not.toBe('old-rollout');
+    expect(current.shortlist).toEqual({
+      querySemanticReadiness: 'READY',
+      coverageStatus: 'COMPLETE',
+      truncated: false,
+    });
     lexicalStatus = 'STALE';
     await expect(adapter.getCurrent(freshnessRequest)).rejects.toThrow(
       'lexical projection unavailable',

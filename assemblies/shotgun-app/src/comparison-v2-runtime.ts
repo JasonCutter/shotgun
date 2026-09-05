@@ -258,6 +258,17 @@ export const createComparisonV2ReviewFreshnessAdapter = (
         semanticPolicyRevision:
           metadata.semanticPolicyRevision ?? COMPARISON_SEMANTIC_ANALYSIS_POLICY_REVISION_V2,
       },
+      // Reuse the persisted semantic shortlist readiness after the current
+      // candidate, lexical projection, generation, and provider metadata have
+      // been revalidated above. Review requires these fields to distinguish a
+      // fresh semantic comparison from an unavailable or incomplete shortlist.
+      shortlist: comparison.shortlist
+        ? {
+            querySemanticReadiness: comparison.shortlist.querySemanticReadiness,
+            coverageStatus: comparison.shortlist.coverageStatus,
+            truncated: comparison.shortlist.truncated,
+          }
+        : undefined,
     };
   },
 });

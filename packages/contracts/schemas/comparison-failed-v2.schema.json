@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventType",
+    "contractVersion",
+    "comparisonId",
+    "state",
+    "analysisRevisionId",
+    "safeFailureCode",
+    "emittedAt"
+  ],
+  "properties": {
+    "eventType": { "const": "ComparisonFailedV2" },
+    "contractVersion": { "const": "2.0" },
+    "comparisonId": { "type": "string", "minLength": 1 },
+    "state": { "enum": ["FAILED_RETRYABLE", "FAILED_TERMINAL"] },
+    "analysisRevisionId": { "type": "string", "minLength": 1 },
+    "safeFailureCode": { "type": "string", "minLength": 1 },
+    "emittedAt": { "type": "string", "minLength": 1 }
+  }
+}

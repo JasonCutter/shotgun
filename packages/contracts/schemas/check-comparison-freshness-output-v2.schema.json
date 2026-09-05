@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "reasons"],
+  "properties": {
+    "status": { "enum": ["FRESH", "STALE"] },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "CANDIDATE_CHANGED",
+          "CANDIDATE_EVIDENCE_CHANGED",
+          "CANONICAL_SNAPSHOT_CHANGED",
+          "SHORTLIST_POLICY_CHANGED",
+          "ACCESS_SENSITIVITY_POLICY_CHANGED",
+          "SEMANTIC_GENERATION_CHANGED",
+          "SEMANTIC_BASE_CHANGED",
+          "PROVIDER_MODEL_CAPABILITY_CHANGED",
+          "PROMPT_TEMPLATE_CHANGED",
+          "OUTPUT_SCHEMA_CHANGED",
+          "SEMANTIC_POLICY_CHANGED",
+          "ROLLOUT_AUTHORITY_CHANGED",
+          "SHORTLIST_STALE",
+          "SHORTLIST_DEGRADED",
+          "SHORTLIST_UNAVAILABLE",
+          "SHORTLIST_INSUFFICIENT",
+          "SHORTLIST_TRUNCATED",
+          "FRESHNESS_MODE_CHANGED",
+          "EXACT_DUPLICATE_TARGET_CHANGED"
+        ]
+      }
+    }
+  }
+}

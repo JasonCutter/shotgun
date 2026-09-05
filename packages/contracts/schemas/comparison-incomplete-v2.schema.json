@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventType",
+    "contractVersion",
+    "comparisonId",
+    "state",
+    "analysisRevisionId",
+    "safeFailureCode",
+    "emittedAt"
+  ],
+  "properties": {
+    "eventType": { "const": "ComparisonIncompleteV2" },
+    "contractVersion": { "const": "2.0" },
+    "comparisonId": { "type": "string", "minLength": 1 },
+    "state": { "enum": ["ANALYSIS_PENDING", "SEMANTIC_UNAVAILABLE", "POLICY_BLOCKED"] },
+    "analysisRevisionId": { "type": "string", "minLength": 1 },
+    "safeFailureCode": { "type": "string", "minLength": 1 },
+    "coverageStatus": { "enum": ["COMPLETE", "PARTIAL", "INSUFFICIENT", "UNAVAILABLE"] },
+    "emittedAt": { "type": "string", "minLength": 1 }
+  }
+}

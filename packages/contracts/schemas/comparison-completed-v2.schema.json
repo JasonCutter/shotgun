@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventType", "contractVersion", "comparison", "analysisRevisionIds", "emittedAt"],
+  "properties": {
+    "eventType": { "const": "ComparisonCompletedV2" },
+    "contractVersion": { "const": "2.0" },
+    "comparison": { "$ref": "comparison-result-v2.schema.json" },
+    "analysisRevisionIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "emittedAt": { "type": "string", "minLength": 1 }
+  }
+}

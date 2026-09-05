@@ -4,6 +4,7 @@ export * from './ai-candidate-validation.js';
 export * from './canonical-knowledge.js';
 export * from './cited-search.js';
 export * from './comparison-review.js';
+export * from './comparison-v2.js';
 export * from './compiled-truth.js';
 export * from './discovery-finding.js';
 export * from './discovery-ai.js';

@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "relationshipId",
+    "contractVersion",
+    "comparisonId",
+    "candidateId",
+    "candidateRevision",
+    "candidateDigest",
+    "candidateEvidenceIds",
+    "comparedResource",
+    "canonicalSnapshot",
+    "type",
+    "analysisRevisionId",
+    "ruleIdentity",
+    "rationale",
+    "materialDigest",
+    "accessScope",
+    "sensitivity",
+    "revision",
+    "createdAt"
+  ],
+  "properties": {
+    "relationshipId": { "type": "string", "minLength": 1 },
+    "contractVersion": { "const": "2.0" },
+    "comparisonId": { "type": "string", "minLength": 1 },
+    "candidateId": { "type": "string", "minLength": 1 },
+    "candidateRevision": { "type": "integer", "minimum": 1 },
+    "candidateDigest": { "type": "string", "minLength": 1 },
+    "candidateEvidenceIds": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "comparedResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceType", "resourceId", "resourceRevision"],
+      "properties": {
+        "resourceType": { "const": "CLAIM" },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "resourceRevision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "canonicalSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshotId", "version", "digest"],
+      "properties": {
+        "snapshotId": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 0 },
+        "digest": { "type": "string", "minLength": 1 }
+      }
+    },
+    "type": {
+      "enum": [
+        "SEMANTIC_DUPLICATE",
+        "SUPPORTS",
+        "REFINES",
+        "NARROWS",
+        "BROADENS",
+        "UPDATES",
+        "SUPERSEDES",
+        "CONTRADICTS",
+        "TEMPORALLY_COEXISTS",
+        "AMBIGUOUS",
+        "UNRELATED",
+        "POLICY_BLOCKED"
+      ]
+    },
+    "conflictKind": {
+      "enum": [
+        "DIRECT_NEGATION",
+        "QUANTITATIVE_VALUE",
+        "SCOPE",
+        "TEMPORAL",
+        "DEFINITION_TERM",
+        "ENTITY_IDENTITY",
+        "SOURCE_OBSERVATION",
+        "POLICY"
+      ]
+    },
+    "analysisRevisionId": { "type": "string", "minLength": 1 },
+    "ruleIdentity": { "type": "string", "minLength": 1 },
+    "rationale": { "type": "string", "minLength": 1 },
+    "materialDigest": { "type": "string", "minLength": 1 },
+    "accessScope": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "sensitivity": { "enum": ["public", "internal", "private", "restricted"] },
+    "revision": { "type": "integer", "minimum": 1 },
+    "createdAt": { "type": "string", "minLength": 1 }
+  }
+}

@@ -272,7 +272,29 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
         'resolve-source-generative-policy',
       );
     }
-    if (
+    let effectiveConfiguration = current;
+    if (existing && historicalRetry) {
+      const historical = await this.configuration.getRevision(
+        input.projectId,
+        existing.aiConfigurationRevision,
+      );
+      if (
+        !historical ||
+        historical.projectId !== input.projectId ||
+        historical.activeProviderId !== existing.providerId ||
+        historical.activeModelId !== existing.modelId ||
+        historical.aiConfigurationRevision !== existing.aiConfigurationRevision ||
+        historical.credentialId !== existing.credentialId ||
+        historical.credentialRevision !== existing.credentialRevision
+      ) {
+        throw resolutionError(
+          'CONFIGURATION_REQUIRED',
+          'The historical Source AI execution identity cannot be reconstructed.',
+          'verify-source-historical-configuration-pin',
+        );
+      }
+      effectiveConfiguration = historical;
+    } else if (
       existing &&
       (existing.providerId !== current.activeProviderId ||
         existing.modelId !== current.activeModelId ||
@@ -289,8 +311,8 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
 
     const { provider, model } = assertProviderAndModel(
       this.registry,
-      current.activeProviderId,
-      current.activeModelId,
+      effectiveConfiguration.activeProviderId,
+      effectiveConfiguration.activeModelId,
     );
     if (
       this.options.enforceDeepSeekOnly === true &&
@@ -305,16 +327,16 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
     }
     const metadata = await this.vault.getMetadata({
       projectId: input.projectId,
-      providerId: current.activeProviderId,
-      credentialId: current.credentialId,
-      credentialRevision: current.credentialRevision,
+      providerId: effectiveConfiguration.activeProviderId,
+      credentialId: effectiveConfiguration.credentialId,
+      credentialRevision: effectiveConfiguration.credentialRevision,
     });
     if (
       !sameMetadata(metadata, {
         projectId: input.projectId,
-        providerId: current.activeProviderId,
-        credentialId: current.credentialId,
-        credentialRevision: current.credentialRevision,
+        providerId: effectiveConfiguration.activeProviderId,
+        credentialId: effectiveConfiguration.credentialId,
+        credentialRevision: effectiveConfiguration.credentialRevision,
       })
     ) {
       throw resolutionError(
@@ -332,11 +354,14 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
     }
     const policy = await this.options.policy.evaluateContext({
       projectId: input.projectId,
-      providerId: current.activeProviderId,
-      modelId: current.activeModelId,
+      providerId: effectiveConfiguration.activeProviderId,
+      modelId: effectiveConfiguration.activeModelId,
       sensitivities: [input.sensitivity],
     });
-    if (!policy.eligible) {
+    if (
+      !policy.eligible &&
+      !(historicalRetry && policy.reason === 'STANDING_POLICY_PROVIDER_MISMATCH')
+    ) {
       throw resolutionError(
         'POLICY_DENIED',
         'The configured AI provider is not permitted for this Source context.',
@@ -355,8 +380,9 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
     if (
       !standing ||
       !standing.enabled ||
-      standing.providerId !== current.activeProviderId ||
-      standing.aiConfigurationRevision !== current.aiConfigurationRevision
+      (!historicalRetry &&
+        (standing.providerId !== current.activeProviderId ||
+          standing.aiConfigurationRevision !== current.aiConfigurationRevision))
     ) {
       throw resolutionError(
         'POLICY_DENIED',
@@ -364,7 +390,11 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
         'verify-source-standing-policy-pin',
       );
     }
-    if (existing && existing.providerPolicyFingerprint !== policy.policyFingerprint) {
+    if (
+      !historicalRetry &&
+      existing &&
+      existing.providerPolicyFingerprint !== policy.policyFingerprint
+    ) {
       throw resolutionError(
         'POLICY_DENIED',
         'The durable Source AI request is no longer bound to the same provider policy.',
@@ -374,12 +404,13 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
     const pin: AIExecutionPin = Object.freeze({
       answerRunId: input.requestId,
       projectId: input.projectId,
-      providerId: current.activeProviderId,
-      modelId: current.activeModelId,
-      aiConfigurationRevision: current.aiConfigurationRevision,
-      credentialId: current.credentialId,
-      credentialRevision: current.credentialRevision,
-      initialProviderPolicyFingerprint: policy.policyFingerprint,
+      providerId: effectiveConfiguration.activeProviderId,
+      modelId: effectiveConfiguration.activeModelId,
+      aiConfigurationRevision: effectiveConfiguration.aiConfigurationRevision,
+      credentialId: effectiveConfiguration.credentialId,
+      credentialRevision: effectiveConfiguration.credentialRevision,
+      initialProviderPolicyFingerprint:
+        historicalRetry && existing ? existing.providerPolicyFingerprint : policy.policyFingerprint,
       createdAt: this.clock(),
     });
     return {
@@ -387,11 +418,17 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
       executionIdentity: Object.freeze({
         providerId: provider.providerId,
         modelId: model.modelId,
-        aiConfigurationRevision: current.aiConfigurationRevision,
-        credentialId: current.credentialId,
-        credentialRevision: current.credentialRevision,
-        policyContextRevision: policy.policyContextRevision,
-        providerPolicyFingerprint: policy.policyFingerprint,
+        aiConfigurationRevision: effectiveConfiguration.aiConfigurationRevision,
+        credentialId: effectiveConfiguration.credentialId,
+        credentialRevision: effectiveConfiguration.credentialRevision,
+        policyContextRevision:
+          historicalRetry && existing
+            ? existing.policyContextRevision
+            : policy.policyContextRevision,
+        providerPolicyFingerprint:
+          historicalRetry && existing
+            ? existing.providerPolicyFingerprint
+            : policy.policyFingerprint,
       }),
     };
   }

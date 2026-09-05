@@ -259,7 +259,9 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
     }
     const existing = input.existingIdentity;
     const historicalRetry = Boolean(
-      existing && !isCanonicalGenerativeAIExecution(existing.providerId, existing.modelId),
+      this.options.enforceDeepSeekOnly === true &&
+      existing &&
+      !isCanonicalGenerativeAIExecution(existing.providerId, existing.modelId),
     );
     const migratedHistoricalRetry =
       historicalRetry &&

@@ -543,6 +543,45 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
       }),
     ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
   });
+
+  it('preserves non-strict resolver mismatch behavior without historical reconstruction', async () => {
+    const current = {
+      ...configuration('deepseek', 'deepseek-v4-flash'),
+      aiConfigurationRevision: 3,
+    };
+    const historical = configuration('openai', 'gpt-5.6-luna');
+    const getRevision = vi.fn(async () => historical);
+    const resolver = new EffectiveAIConfigurationResolver(
+      initialProviderRegistry(),
+      { getCurrent: async () => current, getRevision } as never,
+      vaultFor(openaiCredential),
+      {
+        policy: policy(),
+        standingPolicyAuthority: standing('deepseek', 3),
+      },
+    );
+    await expect(
+      resolver.resolveSourceAIExecutionIdentity({
+        principalId: 'stage4-legacy',
+        projectId,
+        requestId: 'legacy-mismatch',
+        sourceVersionId: 'source-version',
+        sensitivity: 'internal',
+        accessScope: ['owner'],
+        dataClassification: 'source-content',
+        existingIdentity: {
+          providerId: 'openai',
+          modelId: 'gpt-5.6-luna',
+          aiConfigurationRevision: historical.aiConfigurationRevision,
+          credentialId: historical.credentialId,
+          credentialRevision: historical.credentialRevision,
+          policyContextRevision: 'standing-1',
+          providerPolicyFingerprint: 'historical-openai-policy',
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'CONFIGURATION_REQUIRED' });
+    expect(getRevision).not.toHaveBeenCalled();
+  });
 });
 
 describe('DeepSeek-only standing-policy write authority', () => {

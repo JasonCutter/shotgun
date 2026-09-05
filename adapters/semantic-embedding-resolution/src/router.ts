@@ -16,7 +16,7 @@ import {
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
 import {
-  evaluateStandingAIProcessingPolicy,
+  evaluateStandingAIProcessingPolicyForEmbedding,
   type StandingAIProcessingPolicyReaderPort,
 } from '../../../packages/policy/src/index.js';
 
@@ -249,9 +249,8 @@ export class SemanticEmbeddingRouter implements SemanticEmbeddingRouterPort {
 
     const privacyDecision = standingPolicy
       ? {
-          ...evaluateStandingAIProcessingPolicy({
+          ...evaluateStandingAIProcessingPolicyForEmbedding({
             policy: standingPolicy,
-            providerId: pin.providerId,
             sensitivity,
             deploymentAllowsPrivate: this.deploymentCeiling.allows(pin.providerId),
           }),
@@ -276,8 +275,6 @@ export class SemanticEmbeddingRouter implements SemanticEmbeddingRouterPort {
         safeMessage = 'Project owner approval is required for private external transfer.';
       } else if (privacyDecision.reason === 'STANDING_POLICY_DISABLED') {
         safeMessage = 'Project standing AI processing is disabled.';
-      } else if (privacyDecision.reason === 'STANDING_POLICY_PROVIDER_MISMATCH') {
-        safeMessage = 'Project standing AI processing is bound to a different provider.';
       } else if (privacyDecision.reason === 'NOT_CONFIGURED') {
         safeMessage = 'Project standing AI processing policy is not configured.';
       }

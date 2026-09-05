@@ -286,7 +286,7 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       standingPolicy: {
         projectId: 'project-1',
         enabled: true,
-        providerId: 'openai',
+        providerId: 'deepseek',
         policyRevision: 8,
         aiConfigurationRevision: 3,
         changedBy: 'principal-owner',
@@ -314,6 +314,44 @@ describe('AKP-1 WP1: Semantic Embedding Resolution and Execution Pinning', () =>
       sensitivity: 'private',
     });
     expect(resolved.pin).toMatchObject({ standingPolicyRevision: 8 });
+  });
+
+  it('keeps the embedding pin independent from the standing generative provider while retaining the private ceiling', async () => {
+    const { resolver, profileService } = createTestRig({
+      approvedProviders: [],
+      allowedDeploymentProviders: 'deepseek',
+      standingPolicy: {
+        projectId: 'project-1',
+        enabled: true,
+        providerId: 'deepseek',
+        policyRevision: 3,
+        aiConfigurationRevision: 3,
+        changedBy: 'principal-owner',
+        changedAt: '2026-09-05T00:00:00.000Z',
+      },
+    });
+    const profile = await profileService.createProfile({
+      projectId: 'project-1',
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+    await profileService.activateProfile({
+      projectId: 'project-1',
+      profileId: profile.profileId,
+      profileRevision: 1,
+      updatedBy: 'principal-owner',
+    });
+
+    await expect(
+      resolver.resolveExecution({ projectId: 'project-1', sensitivity: 'private' }),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'POLICY_DENIED',
+    });
   });
 
   it('proves providerRegistryRevision is authoritatively derived from ProviderRegistryPort rather than a local fallback literal', async () => {

@@ -21,6 +21,7 @@ import type {
   CredentialMetadata,
   CredentialVaultPort,
 } from '../../modules/credential-vault/src/index.js';
+import type { StandingAIProcessingPolicy } from '../../packages/policy/src/index.js';
 
 describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', () => {
   const FIXTURE_CREDENTIAL_TEXT = 'fixture-credential-bytes';
@@ -85,6 +86,8 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
       readonly credentialRevoked?: boolean;
       readonly approved?: boolean;
       readonly customConnectivity?: ProviderEmbeddingConnectivityPort;
+      readonly standingPolicy?: StandingAIProcessingPolicy;
+      readonly providerAllowlist?: string;
     } = {},
   ) => {
     const providerRegistry = initialProviderRegistry();
@@ -200,7 +203,7 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
     };
 
     const deploymentCeiling = parseProviderDeploymentCeiling({
-      providerAllowlist: 'openai,google-gemini',
+      providerAllowlist: options.providerAllowlist ?? 'openai,google-gemini',
     });
 
     const profileService = new SemanticEmbeddingProfileService(
@@ -227,6 +230,9 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
       {
         approvalAuthority,
         deploymentCeiling,
+        standingPolicyAuthority: options.standingPolicy
+          ? { getCurrent: async () => options.standingPolicy }
+          : undefined,
         clock: () => '2026-08-19T12:00:00.000Z',
       },
     );
@@ -238,6 +244,11 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
       approvalAuthority,
       deploymentCeiling,
       [connectivity],
+      {
+        standingPolicyAuthority: options.standingPolicy
+          ? { getCurrent: async () => options.standingPolicy }
+          : undefined,
+      },
     );
 
     return {
@@ -578,6 +589,131 @@ describe('AKP-1R R1: SemanticEmbeddingRouter & Exact-Pin Credential Binding', ()
 
     // Zero network/connectivity calls made
     expect(connectivity.callCount).toBe(0);
+  });
+
+  it('EMB-POL-7 allows an OpenAI embedding pin under an enabled DeepSeek generative policy', async () => {
+    const standingPolicy: StandingAIProcessingPolicy = {
+      projectId: 'project-r1',
+      enabled: true,
+      providerId: 'deepseek',
+      policyRevision: 3,
+      aiConfigurationRevision: 3,
+      changedBy: 'principal-owner',
+      changedAt: '2026-09-05T00:00:00.000Z',
+    };
+    const { router, connectivity } = createRig({ standingPolicy });
+    const pin = {
+      projectId: 'project-r1',
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
+      providerPolicyFingerprint:
+        'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+      representationVersion: 'semantic-representation:v1',
+      dimension: 1536,
+      createdAt: '2026-08-19T12:00:00.000Z',
+    };
+
+    await expect(
+      router.embed(pin, { text: 'Embedding policy topology' }, 'internal'),
+    ).resolves.toMatchObject({
+      providerId: 'openai',
+      modelId: 'text-embedding-3-small',
+    });
+    expect(connectivity.callCount).toBe(1);
+  });
+
+  it('EMB-POL-2 blocks private embedding egress at the deployment ceiling before provider execution', async () => {
+    const standingPolicy: StandingAIProcessingPolicy = {
+      projectId: 'project-r1',
+      enabled: true,
+      providerId: 'deepseek',
+      policyRevision: 3,
+      aiConfigurationRevision: 3,
+      changedBy: 'principal-owner',
+      changedAt: '2026-09-05T00:00:00.000Z',
+    };
+    const { router, connectivity } = createRig({
+      standingPolicy,
+      providerAllowlist: 'deepseek',
+    });
+    const pin = {
+      projectId: 'project-r1',
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
+      providerPolicyFingerprint:
+        'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+      representationVersion: 'semantic-representation:v1',
+      dimension: 1536,
+      createdAt: '2026-08-19T12:00:00.000Z',
+    };
+
+    await expect(
+      router.embed(pin, { text: 'Private embedding policy topology' }, 'private'),
+    ).rejects.toMatchObject({
+      name: 'SemanticEmbeddingError',
+      embeddingErrorCode: 'POLICY_DENIED',
+      safeMessage: 'Deployment policy blocks private external transfer for this provider.',
+    });
+    expect(connectivity.callCount).toBe(0);
+  });
+
+  it('EMB-POL-4/5 preserve restricted and disabled standing-policy denials before provider execution', async () => {
+    const basePolicy: StandingAIProcessingPolicy = {
+      projectId: 'project-r1',
+      enabled: true,
+      providerId: 'deepseek',
+      policyRevision: 3,
+      aiConfigurationRevision: 3,
+      changedBy: 'principal-owner',
+      changedAt: '2026-09-05T00:00:00.000Z',
+    };
+    const { router, connectivity } = createRig({ standingPolicy: basePolicy });
+    const pin = {
+      projectId: 'project-r1',
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      embeddingProfileId: 'prof-1',
+      embeddingProfileRevision: 1,
+      credentialId: 'cred-openai-1',
+      credentialRevision: 1,
+      providerRegistryRevision: 'provider-registry:v1',
+      capabilityCatalogRevision: 'semantic-embedding-catalog:v1',
+      providerPolicyFingerprint:
+        'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+      representationVersion: 'semantic-representation:v1',
+      dimension: 1536,
+      createdAt: '2026-08-19T12:00:00.000Z',
+    };
+
+    await expect(
+      router.embed(pin, { text: 'Restricted embedding' }, 'restricted'),
+    ).rejects.toMatchObject({
+      embeddingErrorCode: 'POLICY_DENIED',
+      safeMessage:
+        'Restricted sensitivity context cannot be sent to an external embedding provider.',
+    });
+    expect(connectivity.callCount).toBe(0);
+
+    const disabledRig = createRig({ standingPolicy: { ...basePolicy, enabled: false } });
+    await expect(
+      disabledRig.router.embed(pin, { text: 'Disabled embedding' }, 'internal'),
+    ).rejects.toMatchObject({
+      embeddingErrorCode: 'POLICY_DENIED',
+      safeMessage: 'Project standing AI processing is disabled.',
+    });
+    expect(disabledRig.connectivity.callCount).toBe(0);
   });
 
   it('13. Valid exact-dimension batch preserves input cardinality, order, and dimensions', async () => {

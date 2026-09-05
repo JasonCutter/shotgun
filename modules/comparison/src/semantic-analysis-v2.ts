@@ -4,7 +4,8 @@ import type {
   AIProviderExecutionResolverPort,
   AIProviderAdapterPort,
   StructuredGenerationRequest,
-} from '../../ai-provider/src/index.js';
+  CanonicalSnapshotPort,
+} from './index.js';
 import {
   COMPARISON_V2_CONTRACT_VERSION,
   analysisInputDigestV2,
@@ -34,8 +35,6 @@ import {
   type KnowledgeResourceResolverPort,
   toShotgunError,
 } from '../../../packages/contracts/src/index.js';
-import type { CanonicalSnapshotPort } from './index.js';
-
 export const COMPARISON_SEMANTIC_ANALYSIS_CAPABILITY_V2 =
   'comparison-semantic-analysis:v1' as const;
 export const COMPARISON_SEMANTIC_ANALYSIS_PROMPT_REVISION_V2 =

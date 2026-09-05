@@ -16,7 +16,9 @@ import {
   type ClaimCandidate,
   type ComparisonResult,
   type EventEnvelope,
+  type AIExecutionIdentity,
   type QueryEnvelope,
+  type SecurityContext,
   sha256Text,
   stableJson,
   ShotgunError,
@@ -30,6 +32,40 @@ export * from './semantic-analysis-v2.js';
 
 export type CanonicalSnapshotPort = {
   getSnapshot(projectId: string): Promise<CanonicalSnapshot>;
+};
+
+/** Minimal local ports keep Comparison decoupled from the AI provider module. */
+export type StructuredGenerationRequest = {
+  readonly systemInstruction: string;
+  readonly prompt: string;
+  readonly responseSchema: Record<string, unknown>;
+};
+
+export type StructuredGenerationResponse = {
+  readonly rawText: string;
+  readonly providerResponseId?: string;
+};
+
+export type AIProviderAdapterPort = {
+  readonly identity: {
+    readonly provider: string;
+    readonly model: string;
+  };
+  generateStructured(request: StructuredGenerationRequest): Promise<StructuredGenerationResponse>;
+};
+
+export type AIProviderExecutionResolverPort = {
+  resolve(input: {
+    readonly projectId: string;
+    readonly requestId: string;
+    readonly sourceVersionId: string;
+    readonly dataClassification: string;
+    readonly accessScope: readonly string[];
+    readonly sensitivity: SecurityContext['sensitivity'];
+  }): Promise<{
+    readonly adapter: AIProviderAdapterPort;
+    readonly executionIdentity: AIExecutionIdentity;
+  }>;
 };
 
 export type TextDiffPort = {

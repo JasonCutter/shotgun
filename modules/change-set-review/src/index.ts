@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import approvedChangeSetManifestSchema from '../../../packages/contracts/schemas/approved-change-set-manifest.v1.schema.json';
 import changeSetApprovedSchema from '../../../packages/contracts/schemas/change-set-approved.v1.schema.json';
+import changeSetApprovedV2Schema from '../../../packages/contracts/schemas/change-set-approved-v2.schema.json';
 import checkComparisonFreshnessOutputSchema from '../../../packages/contracts/schemas/check-comparison-freshness-output.v1.schema.json';
 import checkComparisonFreshnessSchema from '../../../packages/contracts/schemas/check-comparison-freshness.v1.schema.json';
 import claimCandidateSchema from '../../../packages/contracts/schemas/claim-candidate.v1.schema.json';
@@ -200,6 +201,7 @@ export const createChangeSetReviewModule = (
         { name: 'ListDraftChangeSets', range: '>=1.0.0 <2.0.0' },
         { name: 'GetReviewBundle', range: '>=1.0.0 <2.0.0' },
         { name: 'GetApprovedChangeSetManifest', range: '>=1.0.0 <2.0.0' },
+        { name: 'ChangeSetApprovedV2', range: '>=2.0.0 <3.0.0' },
       ],
     },
     deployment: { modes: ['in_process', 'worker'] },
@@ -229,6 +231,7 @@ export const createChangeSetReviewModule = (
         { name: 'DraftChangeSetReady', range: '>=1.0.0 <2.0.0' },
         { name: 'ReviewDecisionRecorded', range: '>=1.0.0 <2.0.0' },
         { name: 'ChangeSetApproved', range: '>=1.0.0 <2.0.0' },
+        { name: 'ChangeSetApprovedV2', range: '>=2.0.0 <3.0.0' },
       ],
       handoffs: [
         {
@@ -255,6 +258,12 @@ export const createChangeSetReviewModule = (
         },
         {
           event: { name: 'ChangeSetApproved', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage6.canonical-knowledge' },
+          tags: ['TRANSACTIONAL', 'REQUIRED_ACK'],
+          authority: 'stage6.canonical-knowledge.commit-transaction',
+        },
+        {
+          event: { name: 'ChangeSetApprovedV2', range: '>=2.0.0 <3.0.0' },
           target: { kind: 'consumer', moduleId: 'stage6.canonical-knowledge' },
           tags: ['TRANSACTIONAL', 'REQUIRED_ACK'],
           authority: 'stage6.canonical-knowledge.commit-transaction',
@@ -340,6 +349,12 @@ export const createChangeSetReviewModule = (
       version: '1.0.0',
       kind: 'event',
       inputSchema: changeSetApprovedSchema,
+    },
+    {
+      name: 'ChangeSetApprovedV2',
+      version: '2.0.0',
+      kind: 'event',
+      inputSchema: changeSetApprovedV2Schema,
     },
     {
       name: 'GetDraftChangeSet',

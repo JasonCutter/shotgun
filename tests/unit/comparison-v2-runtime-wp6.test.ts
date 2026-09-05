@@ -459,6 +459,9 @@ describe('WP6 comparison rollout runtime', () => {
           disposition: 'NEW',
           shortlist: {
             policyRevision: 'policy-1',
+            querySemanticReadiness: 'READY',
+            coverageStatus: 'COMPLETE',
+            truncated: false,
             lexicalProjectionWatermark: comparisonLexicalProjectionWatermarkV2(
               {
                 status: 'READY',
@@ -511,6 +514,11 @@ describe('WP6 comparison rollout runtime', () => {
         .providerModelCapabilityIdentity,
     ).toBe('provider-new/model-new/capability');
     expect(current.identity.rolloutAuthorityRevision).not.toBe('old-rollout');
+    expect(current.shortlist).toEqual({
+      querySemanticReadiness: 'READY',
+      coverageStatus: 'COMPLETE',
+      truncated: false,
+    });
     lexicalStatus = 'STALE';
     await expect(adapter.getCurrent(freshnessRequest)).rejects.toThrow(
       'lexical projection unavailable',

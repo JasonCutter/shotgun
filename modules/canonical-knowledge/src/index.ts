@@ -6,6 +6,7 @@ import canonicalOutboxRecordSchema from '../../../packages/contracts/schemas/can
 import canonicalSnapshotSchema from '../../../packages/contracts/schemas/canonical-snapshot.v1.schema.json';
 import changeSetApprovedSchema from '../../../packages/contracts/schemas/change-set-approved.v1.schema.json';
 import dispatchCanonicalOutboxSchema from '../../../packages/contracts/schemas/dispatch-canonical-outbox.v1.schema.json';
+import changeSetApprovedV2Schema from '../../../packages/contracts/schemas/change-set-approved-v2.schema.json';
 import getApprovedChangeSetManifestSchema from '../../../packages/contracts/schemas/get-approved-change-set-manifest.v1.schema.json';
 import getCanonicalClaimSchema from '../../../packages/contracts/schemas/get-canonical-claim.v1.schema.json';
 import getCanonicalCommitSchema from '../../../packages/contracts/schemas/get-canonical-commit.v1.schema.json';
@@ -29,6 +30,9 @@ import {
   type CommandEnvelope,
   type EventEnvelope,
   type FrontendCanonicalCommitWrite,
+  type ApprovedChangeSetManifestV2,
+  validateApprovedChangeSetManifestV2,
+  type ClaimCandidate,
   type QueryEnvelope,
   ShotgunError,
   stableJson,
@@ -46,6 +50,12 @@ type ChangeSetApprovedPayload = {
   readonly manifestDigest: string;
 };
 
+type ChangeSetApprovedV2Payload = {
+  readonly manifest: ApprovedChangeSetManifestV2;
+  readonly rollout: 'V2_ACTIVE';
+  readonly rolloutAuthorityRevision: string;
+};
+
 export type CanonicalCommitWrite = {
   readonly commitId: string;
   readonly revisionId: string;
@@ -57,10 +67,30 @@ export type CanonicalCommitWrite = {
   readonly committedAt: string;
 };
 
+/**
+ * Versioned Stage 6 handoff for the additive Comparison v2 review contract.
+ * This is deliberately not converted to the legacy ApprovedChangeSetManifest:
+ * the v2 manifest remains the authority and its candidate is resolved through
+ * the Candidate module at the handoff boundary.
+ */
+export type CanonicalCommitV2Write = {
+  readonly commitId: string;
+  readonly revisionId: string;
+  readonly historyEventId: string;
+  readonly outboxId: string;
+  readonly claimId?: string;
+  readonly manifest: ApprovedChangeSetManifestV2;
+  readonly candidateClaimText: string;
+  readonly actor: Actor;
+  readonly committedAt: string;
+};
+
 export type CanonicalKnowledgeRepositoryPort = {
   listProjectIds(): Promise<readonly string[]>;
   getSnapshot(projectId: string): Promise<CanonicalSnapshot>;
   commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult>;
+  /** Additive v2 authority path. Legacy Stage 6 commit remains unchanged. */
+  commitV2?(write: CanonicalCommitV2Write): Promise<CanonicalCommitResult>;
   /**
    * FE-P5-XP Correction B: commit a Frontend Review Approval into Canonical.
    * Unlike `commit`, this path carries `FrontendCanonicalAuthorityV1` provenance
@@ -232,6 +262,71 @@ const validateManifest = (
   }
 };
 
+const validateManifestV2 = (
+  manifest: ApprovedChangeSetManifestV2,
+  payload: ChangeSetApprovedV2Payload,
+  candidate: ClaimCandidate,
+  envelope: EventEnvelope,
+  now: string,
+): void => {
+  try {
+    validateApprovedChangeSetManifestV2(manifest);
+  } catch {
+    invalidManifest('The approved v2 Manifest contract is invalid.', envelope.correlationId);
+  }
+  if (
+    payload.rollout !== 'V2_ACTIVE' ||
+    manifest.projectId !== envelope.projectId ||
+    manifest.operation === 'MODIFY_REVIEW' ||
+    manifest.userApproval.actor.type !== 'user' ||
+    envelope.actor?.type !== 'user' ||
+    envelope.actor.id !== manifest.userApproval.actor.id ||
+    manifest.userApproval.actor.id !== manifest.userApproval.approvalToken.actorId ||
+    Date.parse(now) > Date.parse(manifest.userApproval.approvalToken.expiresAt) ||
+    manifest.freshnessIdentity.rolloutAuthorityRevision !== payload.rolloutAuthorityRevision
+  ) {
+    throw new ShotgunError({
+      code: 'STALE_APPROVAL',
+      safeMessage: 'The v2 approval actor, rollout, or validity window is no longer valid.',
+      module: 'stage6.canonical-knowledge',
+      operation: 'validate-approved-manifest-v2',
+      correlationId: envelope.correlationId,
+    });
+  }
+  const sameEvidence =
+    candidate.evidenceIds.length === manifest.evidenceIds.length &&
+    candidate.evidenceIds.every((evidenceId) => manifest.evidenceIds.includes(evidenceId));
+  const candidateScopes = new Set(candidate.accessScope);
+  const manifestScopes = new Set(manifest.accessScope);
+  const grantedScopes = new Set(envelope.security?.accessScope ?? []);
+  const sameAccessScope =
+    candidateScopes.size === manifestScopes.size &&
+    [...candidateScopes].every((scope) => manifestScopes.has(scope));
+  const manifestAccessIsGranted = [...manifestScopes].every((scope) => grantedScopes.has(scope));
+  const candidateDigest = claimCandidateDigest({
+    candidateId: candidate.candidateId,
+    revisionNumber: candidate.revisionNumber,
+    sourceVersionId: candidate.sourceVersionId,
+    claimText: candidate.claimText,
+    evidenceIds: candidate.evidenceIds,
+    status: candidate.status,
+  });
+  if (
+    candidate.projectId !== manifest.projectId ||
+    candidate.candidateId !== manifest.candidate.id ||
+    candidate.revisionNumber !== manifest.candidate.revision ||
+    candidate.status !== 'READY' ||
+    candidate.sourceVersionId !== manifest.candidate.sourceVersionId ||
+    candidateDigest !== manifest.candidate.digest ||
+    !sameEvidence ||
+    !sameAccessScope ||
+    !manifestAccessIsGranted ||
+    candidate.sensitivity !== manifest.sensitivity
+  ) {
+    invalidManifest('The v2 Manifest candidate lineage is invalid.', envelope.correlationId);
+  }
+};
+
 export const dispatchCanonicalOutbox = async (
   repository: CanonicalKnowledgeRepositoryPort,
   context: Pick<HandlerContext, 'publish'>,
@@ -289,6 +384,8 @@ export const createCanonicalKnowledgeModule = (
       runtime: '>=1.0.0 <2.0.0',
       contracts: [
         { name: 'ChangeSetApproved', range: '>=1.0.0 <2.0.0' },
+        { name: 'ChangeSetApprovedV2', range: '>=2.0.0 <3.0.0' },
+        { name: 'GetClaimCandidate', range: '>=1.0.0 <2.0.0' },
         { name: 'GetApprovedChangeSetManifest', range: '>=1.0.0 <2.0.0' },
         { name: 'CanonicalCommitted', range: '>=1.0.0 <2.0.0' },
         { name: 'DispatchCanonicalOutbox', range: '>=1.0.0 <2.0.0' },
@@ -311,12 +408,15 @@ export const createCanonicalKnowledgeModule = (
         'canonical.history_events',
         'canonical.outbox',
       ],
-      readsViaPorts: ['GetApprovedChangeSetManifest query'],
+      readsViaPorts: ['GetApprovedChangeSetManifest query', 'GetClaimCandidate query'],
       directSchemaAccess: false,
     },
     consumes: {
       commands: [{ name: 'DispatchCanonicalOutbox', range: '>=1.0.0 <2.0.0' }],
-      events: [{ name: 'ChangeSetApproved', range: '>=1.0.0 <2.0.0' }],
+      events: [
+        { name: 'ChangeSetApproved', range: '>=1.0.0 <2.0.0' },
+        { name: 'ChangeSetApprovedV2', range: '>=2.0.0 <3.0.0' },
+      ],
     },
     produces: {
       events: [{ name: 'CanonicalCommitted', range: '>=1.0.0 <2.0.0' }],
@@ -353,7 +453,7 @@ export const createCanonicalKnowledgeModule = (
         { name: 'canonical-snapshot-provider', priority: 100 },
       ],
     },
-    requires: { capabilities: ['change-set-review-provider'] },
+    requires: { capabilities: ['change-set-review-provider', 'claim-candidate-provider'] },
     security: {
       requiredContext: ['actor', 'project', 'access_scope', 'sensitivity'],
       defaultOnMissingContext: 'deny',
@@ -369,6 +469,12 @@ export const createCanonicalKnowledgeModule = (
       version: '1.0.0',
       kind: 'event',
       inputSchema: changeSetApprovedSchema,
+    },
+    {
+      name: 'ChangeSetApprovedV2',
+      version: '2.0.0',
+      kind: 'event',
+      inputSchema: changeSetApprovedV2Schema,
     },
     {
       name: 'GetApprovedChangeSetManifest',
@@ -476,6 +582,50 @@ export const createCanonicalKnowledgeModule = (
             committedAt: now,
           });
           await dispatchCanonicalOutbox(repository, context, projectId, 100, now);
+        },
+      },
+      {
+        messageType: 'ChangeSetApprovedV2',
+        version: '2.0.0',
+        requiredAccessScopes: ['owner'],
+        requiredForPublisherAcknowledgement: true,
+        async handle(envelope, context) {
+          const { projectId, actor } = assertContext(envelope);
+          const payload = envelope.payload as ChangeSetApprovedV2Payload;
+          if (!repository.commitV2) {
+            throw new ShotgunError({
+              code: 'AI_CAPABILITY_UNAVAILABLE',
+              safeMessage: 'The Stage 6 v2 Canonical handoff is unavailable.',
+              module: 'stage6.canonical-knowledge',
+              operation: 'commit-canonical-v2',
+              correlationId: envelope.correlationId,
+            });
+          }
+          const candidate = (
+            await context.query<{ candidateId: string }, ClaimCandidate>({
+              messageType: 'GetClaimCandidate',
+              schemaVersion: '1.0.0',
+              payload: { candidateId: payload.manifest.candidate.id },
+            })
+          ).payload;
+          const now = clock.now();
+          validateManifestV2(payload.manifest, payload, candidate, envelope, now);
+          const result = await repository.commitV2({
+            commitId: `canonical-v2:${payload.manifest.manifestId}`,
+            revisionId: `revision-v2:${payload.manifest.manifestId}`,
+            historyEventId: `history-v2:${payload.manifest.manifestId}`,
+            outboxId: `outbox-v2:${payload.manifest.manifestId}`,
+            claimId:
+              payload.manifest.operation === 'ADD_CLAIM'
+                ? `claim-v2:${payload.manifest.manifestId}`
+                : undefined,
+            manifest: payload.manifest,
+            candidateClaimText: candidate.claimText,
+            actor,
+            committedAt: now,
+          });
+          await dispatchCanonicalOutbox(repository, context, projectId, 100, now);
+          void result;
         },
       },
     ],

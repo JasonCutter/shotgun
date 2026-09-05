@@ -72,11 +72,20 @@ const WP10_ACTION_REVIEW_DIAGNOSTICS_MIGRATION =
   '065_runtime_data_integrity_wp10_action_review_discovery_diagnostics.sql';
 const STAGE5_COMPARISON_V2_MIGRATION = '066_stage5_semantic_comparison_v2_persistence.sql';
 const STAGE5_COMPARISON_REVIEW_V2_MIGRATION = '067_stage5_comparison_review_v2_persistence.sql';
+const STAGE6_COMPARISON_REVIEW_V2_HANDOFF_MIGRATION = '068_stage6_comparison_review_v2_handoff.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
 ): readonly string[] => {
   const applied = new Set(migrations);
+  if (
+    applied.has(STAGE6_COMPARISON_REVIEW_V2_HANDOFF_MIGRATION) &&
+    !applied.has(STAGE5_COMPARISON_REVIEW_V2_MIGRATION)
+  ) {
+    throw new Error(
+      `Backup migration identity is invalid: ${STAGE6_COMPARISON_REVIEW_V2_HANDOFF_MIGRATION} requires ${STAGE5_COMPARISON_REVIEW_V2_MIGRATION}.`,
+    );
+  }
   if (applied.has(DISCOVERY_LIFECYCLE_MIGRATION) && !applied.has(DISCOVERY_FINDING_MIGRATION)) {
     throw new Error(
       `Backup migration identity is invalid: ${DISCOVERY_LIFECYCLE_MIGRATION} requires ${DISCOVERY_FINDING_MIGRATION}.`,

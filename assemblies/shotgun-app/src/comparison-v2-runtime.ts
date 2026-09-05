@@ -258,6 +258,13 @@ export const createComparisonV2ReviewFreshnessAdapter = (
         semanticPolicyRevision:
           metadata.semanticPolicyRevision ?? COMPARISON_SEMANTIC_ANALYSIS_POLICY_REVISION_V2,
       },
+      shortlist: comparison.shortlist
+        ? {
+            querySemanticReadiness: comparison.shortlist.querySemanticReadiness,
+            coverageStatus: comparison.shortlist.coverageStatus,
+            truncated: comparison.shortlist.truncated,
+          }
+        : undefined,
     };
   },
 });

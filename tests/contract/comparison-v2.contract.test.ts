@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import Ajv from 'ajv';
 
 import {
   COMPARISON_V2_CONTRACT_VERSION,
@@ -37,6 +38,9 @@ import {
   validateSemanticRelationshipV2,
 } from '../../packages/contracts/src/index.js';
 import type { ComparisonClassification } from '../../packages/contracts/src/comparison-review.js';
+import analysisRevisionSchema from '../../packages/contracts/schemas/analysis-revision-v2.schema.json';
+import semanticRelationshipSchema from '../../packages/contracts/schemas/semantic-relationship-v2.schema.json';
+import shortlistAuditSchema from '../../packages/contracts/schemas/shortlist-audit-v2.schema.json';
 
 const candidate = {
   id: 'candidate-1',
@@ -66,6 +70,7 @@ const shortlist: ShortlistAuditV2 = {
 };
 
 const freshnessIdentity: ComparisonFreshnessIdentityV2 = {
+  mode: 'SEMANTIC',
   candidateId: candidate.id,
   candidateRevision: candidate.revision,
   candidateSourceVersionId: candidate.sourceVersionId,
@@ -100,6 +105,11 @@ const approvalToken = {
   ...approvalTokenMaterial,
   tokenDigest: approvedChangeSetApprovalTokenDigestV2(approvalTokenMaterial),
 };
+
+const activeSchemaAjv = new Ajv({ allErrors: true, strict: true });
+const validateActiveRelationshipSchema = activeSchemaAjv.compile(semanticRelationshipSchema);
+const validateActiveShortlistSchema = activeSchemaAjv.compile(shortlistAuditSchema);
+const validateActiveAnalysisSchema = activeSchemaAjv.compile(analysisRevisionSchema);
 
 const comparison = (overrides: Partial<ComparisonResultV2> = {}): ComparisonResultV2 => ({
   comparisonId: 'comparison-1',
@@ -173,7 +183,6 @@ const analysis = (overrides: Partial<AnalysisRevisionV2> = {}): AnalysisRevision
   materialDigest: 'sha256:material',
   createdAt: '2026-09-05T00:00:01.000Z',
   inputDigest: analysisInputDigestV2({
-    comparisonId: 'comparison-1',
     candidate,
     canonicalSnapshot: snapshot,
     shortlistDigest: 'sha256:shortlist',
@@ -322,7 +331,7 @@ describe('Stage 5 semantic comparison v2 contract (C-Contract-01..14)', () => {
           comparedResource: { resourceType: 'FACT', resourceId: 'fact-1', resourceRevision: 1 },
         }),
       ),
-    ).toThrow(/Claim-only/);
+    ).toThrow(/Claim-only|schema validation/);
     expect(() =>
       validateAnalysisRevisionV2(
         analysis({
@@ -331,7 +340,32 @@ describe('Stage 5 semantic comparison v2 contract (C-Contract-01..14)', () => {
           ],
         }),
       ),
-    ).toThrow(/Claim resources/);
+    ).toThrow(/Claim resources|schema validation/);
+  });
+
+  it('active v2 JSON schemas reject FACT and ENTITY wire targets directly', () => {
+    expect(
+      validateActiveRelationshipSchema({
+        ...relationship(),
+        comparedResource: { resourceType: 'FACT', resourceId: 'fact-1', resourceRevision: 1 },
+      }),
+    ).toBe(false);
+    expect(
+      validateActiveShortlistSchema({
+        ...shortlist,
+        selectedTargetIdentities: [
+          { resourceType: 'ENTITY', resourceId: 'entity-1', resourceRevision: 1 },
+        ],
+      }),
+    ).toBe(false);
+    expect(
+      validateActiveAnalysisSchema({
+        ...analysis(),
+        comparedResourceIdentities: [
+          { resourceType: 'ENTITY', resourceId: 'entity-1', resourceRevision: 1 },
+        ],
+      }),
+    ).toBe(false);
   });
 
   it('freshness returns typed reasons and blocks stale review', () => {
@@ -343,6 +377,68 @@ describe('Stage 5 semantic comparison v2 contract (C-Contract-01..14)', () => {
     );
     expect(stale).toEqual({ status: 'STALE', reasons: ['CANONICAL_SNAPSHOT_CHANGED'] });
     expect(() => assertComparisonFreshForReviewV2(stale, comparison())).toThrow();
+  });
+
+  it('EXACT_DUPLICATE NO_OP Draft validates without semantic/provider freshness', () => {
+    const exactFreshness: ComparisonFreshnessIdentityV2 = {
+      mode: 'DETERMINISTIC_EXACT',
+      candidateId: candidate.id,
+      candidateRevision: candidate.revision,
+      candidateSourceVersionId: candidate.sourceVersionId,
+      candidateDigest: candidate.digest,
+      candidateEvidenceDigest: candidateEvidenceDigestV2(candidate),
+      canonicalSnapshotId: snapshot.id,
+      canonicalSnapshotDigest: snapshot.digest,
+      canonicalSnapshotVersion: snapshot.version,
+      exactDuplicateTarget: {
+        resourceType: 'CLAIM',
+        resourceId: 'claim-1',
+        resourceRevision: 1,
+        canonicalSnapshot: snapshot,
+      },
+    };
+    const exactDraft: DraftChangeSetV2 = {
+      changeSetId: 'draft-exact',
+      contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+      revisionNumber: 1,
+      projectId: 'project-1',
+      candidate,
+      comparisonId: 'comparison-exact',
+      comparisonDigest: 'sha256:comparison-exact',
+      canonicalSnapshot: snapshot,
+      analysisRevisionIds: [],
+      disposition: 'EXACT_DUPLICATE',
+      relationshipIds: [],
+      evidenceIds: [...candidate.evidenceIds],
+      operation: 'NO_OP',
+      reviewRecommendation: 'NO_OP',
+      status: 'PENDING_REVIEW',
+      expectedCanonicalVersion: snapshot.version,
+      snapshotDigest: snapshot.digest,
+      freshnessIdentity: exactFreshness,
+      freshnessDigest: comparisonFreshnessDigestV2(exactFreshness),
+      accessScope: ['owner'],
+      sensitivity: 'private',
+      contentDigest: 'sha256:draft-exact',
+      createdAt: '2026-09-05T00:00:00.000Z',
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    };
+    expect(() => validateDraftChangeSetV2(exactDraft)).not.toThrow();
+    expect(() =>
+      assertComparisonFreshForReviewV2(
+        { status: 'FRESH', reasons: [] },
+        createExactDuplicateComparisonResultV2({
+          comparisonId: 'comparison-exact',
+          projectId: 'project-1',
+          candidate,
+          canonicalSnapshot: snapshot,
+          exactDuplicateTarget: exactFreshness.exactDuplicateTarget,
+          accessScope: ['owner'],
+          sensitivity: 'private',
+          createdAt: '2026-09-05T00:00:00.000Z',
+        }),
+      ),
+    ).not.toThrow();
   });
 
   it('allows a valid NEW + ADD_CLAIM comparison into Review', () => {
@@ -384,7 +480,7 @@ describe('Stage 5 semantic comparison v2 contract (C-Contract-01..14)', () => {
         { resourceType: 'FACT' as const, resourceId: 'fact-1', resourceRevision: 1 },
       ],
     };
-    expect(() => validateShortlistAuditV2(nonClaim)).toThrow(/Claim-only/);
+    expect(() => validateShortlistAuditV2(nonClaim)).toThrow(/Claim-only|schema validation/);
   });
 
   it('C-Contract-04 blocks NEW when shortlist coverage is partial, stale, excluded or truncated', () => {
@@ -554,6 +650,15 @@ describe('Stage 5 semantic comparison v2 contract (C-Contract-01..14)', () => {
         ],
       }),
     );
+    expect(analysisInputDigestV2(analysis())).toBe(
+      analysisInputDigestV2({ ...analysis(), comparisonId: 'comparison-other' }),
+    );
+    expect(analysisInputDigestV2(analysis())).not.toBe(
+      analysisInputDigestV2({
+        ...analysis(),
+        providerIdentity: { ...analysis().providerIdentity, modelId: 'model-other' },
+      }),
+    );
   });
 
   it('freshness output schema accepts every typed reason and rejects unknown reasons', () => {
@@ -643,6 +748,98 @@ describe('Stage 5 semantic comparison v2 contract (C-Contract-01..14)', () => {
     ).toThrow(/parent identity/);
   });
 
+  it('requires completed Analysis lineage for semantic success and relationship targets', () => {
+    const pending = Object.fromEntries(
+      Object.entries(analysis({ state: 'PENDING' })).filter(([key]) => key !== 'outcome'),
+    ) as AnalysisRevisionV2;
+    expect(() =>
+      validateComparisonChildrenV2(
+        comparison(),
+        [relationship(), relationship({ relationshipId: 'relationship-2' })],
+        [pending],
+      ),
+    ).toThrow(/COMPLETED AnalysisRevision/);
+    expect(() =>
+      validateComparisonChildrenV2(
+        comparison(),
+        [relationship(), relationship({ relationshipId: 'relationship-2' })],
+        [
+          analysis({
+            state: 'SEMANTIC_UNAVAILABLE',
+            outcome: 'SEMANTIC_UNAVAILABLE',
+            safeFailureCode: 'SEMANTIC_UNAVAILABLE',
+          }),
+        ],
+      ),
+    ).toThrow(/COMPLETED AnalysisRevision/);
+    expect(() =>
+      validateComparisonChildrenV2(
+        comparison(),
+        [
+          relationship({ analysisRevisionId: 'analysis-unknown' }),
+          relationship({ relationshipId: 'relationship-2' }),
+        ],
+        [analysis()],
+      ),
+    ).toThrow(/must resolve/);
+    expect(() =>
+      validateComparisonChildrenV2(
+        comparison(),
+        [
+          relationship({
+            comparedResource: { resourceType: 'CLAIM', resourceId: 'claim-2', resourceRevision: 1 },
+          }),
+          relationship({ relationshipId: 'relationship-2' }),
+        ],
+        [analysis()],
+      ),
+    ).toThrow(/compared resources/);
+  });
+
+  it('requires ComparisonCompletedV2 analysis identity to exactly match the result', () => {
+    expect(() =>
+      assertComparisonEventV2({
+        eventType: 'ComparisonCompletedV2',
+        contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+        comparison: comparison(),
+        analysisRevisionIds: [],
+        emittedAt: 'now',
+      }),
+    ).toThrow(/exactly match/);
+    expect(() =>
+      assertComparisonEventV2({
+        eventType: 'ComparisonCompletedV2',
+        contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+        comparison: comparison(),
+        analysisRevisionIds: ['analysis-1', 'analysis-extra'],
+        emittedAt: 'now',
+      }),
+    ).toThrow(/exactly match/);
+    expect(() =>
+      assertComparisonEventV2({
+        eventType: 'ComparisonCompletedV2',
+        contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+        comparison: createExactDuplicateComparisonResultV2({
+          comparisonId: 'comparison-exact',
+          projectId: 'project-1',
+          candidate,
+          canonicalSnapshot: snapshot,
+          exactDuplicateTarget: {
+            resourceType: 'CLAIM',
+            resourceId: 'claim-1',
+            resourceRevision: 1,
+            canonicalSnapshot: snapshot,
+          },
+          accessScope: ['owner'],
+          sensitivity: 'private',
+          createdAt: '2026-09-05T00:00:00.000Z',
+        }),
+        analysisRevisionIds: [],
+        emittedAt: 'now',
+      }),
+    ).not.toThrow();
+  });
+
   it('C-Contract-12 leaves the v1 classification vocabulary intact', () => {
     const legacy: ComparisonClassification = 'NEW_CLAIM';
     expect(['NEW_CLAIM', 'EXACT_DUPLICATE', 'POSSIBLE_CONFLICT']).toContain(legacy);
@@ -670,6 +867,6 @@ describe('Stage 5 semantic comparison v2 contract (C-Contract-01..14)', () => {
         analysisRevisionIds: [],
         emittedAt: 'now',
       }),
-    ).not.toThrow();
+    ).toThrow(/exactly match/);
   });
 });

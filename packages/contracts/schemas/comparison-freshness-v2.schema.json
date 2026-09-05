@@ -25,7 +25,9 @@
           "SHORTLIST_DEGRADED",
           "SHORTLIST_UNAVAILABLE",
           "SHORTLIST_INSUFFICIENT",
-          "SHORTLIST_TRUNCATED"
+          "SHORTLIST_TRUNCATED",
+          "FRESHNESS_MODE_CHANGED",
+          "EXACT_DUPLICATE_TARGET_CHANGED"
         ]
       }
     }

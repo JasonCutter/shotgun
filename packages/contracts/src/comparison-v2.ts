@@ -283,6 +283,8 @@ export const COMPARISON_FRESHNESS_REASONS_V2 = [
   'SHORTLIST_UNAVAILABLE',
   'SHORTLIST_INSUFFICIENT',
   'SHORTLIST_TRUNCATED',
+  'FRESHNESS_MODE_CHANGED',
+  'EXACT_DUPLICATE_TARGET_CHANGED',
 ] as const;
 
 export type ComparisonFreshnessReasonV2 = (typeof COMPARISON_FRESHNESS_REASONS_V2)[number];
@@ -293,7 +295,7 @@ export type ComparisonFreshnessV2 = {
   readonly reasons: readonly ComparisonFreshnessReasonV2[];
 };
 
-export type ComparisonFreshnessIdentityV2 = {
+type ComparisonFreshnessIdentityCommonV2 = {
   readonly candidateId: string;
   readonly candidateRevision: number;
   readonly candidateSourceVersionId: string;
@@ -302,9 +304,14 @@ export type ComparisonFreshnessIdentityV2 = {
   readonly canonicalSnapshotId: string;
   readonly canonicalSnapshotDigest: string;
   readonly canonicalSnapshotVersion: number;
+  readonly accessSensitivityPolicyRevision?: string;
+  readonly rolloutAuthorityRevision?: string;
+};
+
+export type ComparisonSemanticFreshnessIdentityV2 = ComparisonFreshnessIdentityCommonV2 & {
+  readonly mode: 'SEMANTIC';
   readonly shortlistDigest: ComparisonDigestV2;
   readonly shortlistPolicyRevision: string;
-  readonly accessSensitivityPolicyRevision?: string;
   readonly semanticGenerationId: string;
   readonly semanticSourceProjectionDigest: string;
   readonly semanticCanonicalBaseVersion: number;
@@ -312,8 +319,16 @@ export type ComparisonFreshnessIdentityV2 = {
   readonly promptTemplateRevision: string;
   readonly outputSchemaRevision: string;
   readonly semanticPolicyRevision: string;
-  readonly rolloutAuthorityRevision?: string;
 };
+
+export type ComparisonDeterministicExactFreshnessIdentityV2 =
+  ComparisonFreshnessIdentityCommonV2 & {
+    readonly mode: 'DETERMINISTIC_EXACT';
+    readonly exactDuplicateTarget: ExactDuplicateTargetV2;
+  };
+
+export type ComparisonFreshnessIdentityV2 =
+  ComparisonSemanticFreshnessIdentityV2 | ComparisonDeterministicExactFreshnessIdentityV2;
 
 export type DraftChangeSetV2Status =
   'PENDING_REVIEW' | 'ON_HOLD' | 'APPROVED' | 'REJECTED' | 'STALE';
@@ -336,7 +351,7 @@ export type DraftChangeSetV2 = {
   readonly status: DraftChangeSetV2Status;
   readonly expectedCanonicalVersion: number;
   readonly snapshotDigest: ComparisonDigestV2;
-  readonly shortlistDigest: ComparisonDigestV2;
+  readonly shortlistDigest?: ComparisonDigestV2;
   readonly freshnessIdentity: ComparisonFreshnessIdentityV2;
   readonly freshnessDigest: ComparisonDigestV2;
   readonly accessScope: readonly string[];
@@ -363,7 +378,7 @@ export type ApprovedChangeSetManifestV2 = {
   readonly operation: DraftChangeSetV2['operation'];
   readonly expectedCanonicalVersion: number;
   readonly snapshotDigest: ComparisonDigestV2;
-  readonly shortlistDigest: ComparisonDigestV2;
+  readonly shortlistDigest?: ComparisonDigestV2;
   readonly freshnessIdentity: ComparisonFreshnessIdentityV2;
   readonly freshnessDigest: ComparisonDigestV2;
   readonly accessScope: readonly string[];
@@ -809,21 +824,80 @@ export const validateApprovedChangeSetManifestV2: (
 };
 
 const validateComparisonFreshnessIdentityV2 = (identity: ComparisonFreshnessIdentityV2): void => {
+  if (identity.mode !== 'SEMANTIC' && identity.mode !== 'DETERMINISTIC_EXACT') {
+    fail(
+      'freshnessIdentity.mode must identify an active comparison path',
+      'freshnessIdentity.mode',
+    );
+  }
   nonEmpty(identity.candidateId, 'freshnessIdentity.candidateId');
   nonEmpty(identity.candidateSourceVersionId, 'freshnessIdentity.candidateSourceVersionId');
   nonEmpty(identity.candidateDigest, 'freshnessIdentity.candidateDigest');
   nonEmpty(identity.candidateEvidenceDigest, 'freshnessIdentity.candidateEvidenceDigest');
   nonEmpty(identity.canonicalSnapshotId, 'freshnessIdentity.canonicalSnapshotId');
   nonEmpty(identity.canonicalSnapshotDigest, 'freshnessIdentity.canonicalSnapshotDigest');
-  nonEmpty(identity.shortlistDigest, 'freshnessIdentity.shortlistDigest');
   if (identity.candidateRevision < 1 || identity.canonicalSnapshotVersion < 0) {
     fail('freshness identity versions must be valid');
+  }
+  if (identity.mode === 'SEMANTIC') {
+    nonEmpty(identity.shortlistDigest, 'freshnessIdentity.shortlistDigest');
+    nonEmpty(identity.shortlistPolicyRevision, 'freshnessIdentity.shortlistPolicyRevision');
+    nonEmpty(identity.semanticGenerationId, 'freshnessIdentity.semanticGenerationId');
+    nonEmpty(
+      identity.semanticSourceProjectionDigest,
+      'freshnessIdentity.semanticSourceProjectionDigest',
+    );
+    nonEmpty(
+      identity.providerModelCapabilityIdentity,
+      'freshnessIdentity.providerModelCapabilityIdentity',
+    );
+    nonEmpty(identity.promptTemplateRevision, 'freshnessIdentity.promptTemplateRevision');
+    nonEmpty(identity.outputSchemaRevision, 'freshnessIdentity.outputSchemaRevision');
+    nonEmpty(identity.semanticPolicyRevision, 'freshnessIdentity.semanticPolicyRevision');
+    if (identity.semanticCanonicalBaseVersion < 0) {
+      fail('freshness identity semantic base version must be valid');
+    }
+    return;
+  }
+  validateExactDuplicateTargetV2(
+    identity.exactDuplicateTarget,
+    identity.canonicalSnapshotId,
+    identity.canonicalSnapshotVersion,
+    identity.canonicalSnapshotDigest,
+  );
+};
+
+const validateExactDuplicateTargetV2 = (
+  target: ExactDuplicateTargetV2,
+  snapshotId: string,
+  snapshotVersion: number,
+  snapshotDigest: string,
+): void => {
+  if (target.resourceType !== 'CLAIM') {
+    fail(
+      'deterministic exact freshness must pin a Claim target',
+      'freshnessIdentity.exactDuplicateTarget',
+    );
+  }
+  nonEmpty(target.resourceId, 'freshnessIdentity.exactDuplicateTarget.resourceId');
+  if (target.resourceRevision < 1) {
+    fail('freshness identity exact target revision must be positive');
+  }
+  if (
+    target.canonicalSnapshot.id !== snapshotId ||
+    target.canonicalSnapshot.version !== snapshotVersion ||
+    target.canonicalSnapshot.digest !== snapshotDigest
+  ) {
+    fail(
+      'deterministic exact freshness target must use the pinned Canonical snapshot',
+      'freshnessIdentity.exactDuplicateTarget.canonicalSnapshot',
+    );
   }
 };
 
 const assertDraftFreshnessBindingsV2 = (draft: DraftChangeSetV2): void => {
   const freshness = draft.freshnessIdentity;
-  if (
+  const commonMismatch =
     freshness.candidateId !== draft.candidate.id ||
     freshness.candidateRevision !== draft.candidate.revision ||
     freshness.candidateSourceVersionId !== draft.candidate.sourceVersionId ||
@@ -832,20 +906,44 @@ const assertDraftFreshnessBindingsV2 = (draft: DraftChangeSetV2): void => {
     freshness.canonicalSnapshotId !== draft.canonicalSnapshot.id ||
     freshness.canonicalSnapshotVersion !== draft.canonicalSnapshot.version ||
     freshness.canonicalSnapshotDigest !== draft.canonicalSnapshot.digest ||
-    freshness.shortlistDigest !== draft.shortlistDigest ||
     draft.snapshotDigest !== draft.canonicalSnapshot.digest ||
-    draft.expectedCanonicalVersion !== draft.canonicalSnapshot.version
-  ) {
+    draft.expectedCanonicalVersion !== draft.canonicalSnapshot.version;
+  if (commonMismatch) {
     fail(
       'Draft freshness identity is inconsistent with its pinned review identities',
       'draftChangeSet.freshnessIdentity',
     );
   }
+  if (freshness.mode === 'SEMANTIC') {
+    if (
+      draft.shortlistDigest === undefined ||
+      freshness.shortlistDigest !== draft.shortlistDigest
+    ) {
+      fail(
+        'Semantic Draft freshness must bind its shortlist digest',
+        'draftChangeSet.shortlistDigest',
+      );
+    }
+  } else {
+    if (
+      draft.shortlistDigest !== undefined ||
+      draft.disposition !== 'EXACT_DUPLICATE' ||
+      draft.operation !== 'NO_OP' ||
+      draft.reviewRecommendation !== 'NO_OP' ||
+      draft.analysisRevisionIds.length > 0 ||
+      draft.relationshipIds.length > 0
+    ) {
+      fail(
+        'Deterministic exact Draft must be a provider-free NO_OP without semantic identities',
+        'draftChangeSet',
+      );
+    }
+  }
 };
 
 const assertManifestFreshnessBindingsV2 = (manifest: ApprovedChangeSetManifestV2): void => {
   const freshness = manifest.freshnessIdentity;
-  if (
+  const commonMismatch =
     freshness.candidateId !== manifest.candidate.id ||
     freshness.candidateRevision !== manifest.candidate.revision ||
     freshness.candidateSourceVersionId !== manifest.candidate.sourceVersionId ||
@@ -854,13 +952,34 @@ const assertManifestFreshnessBindingsV2 = (manifest: ApprovedChangeSetManifestV2
     freshness.canonicalSnapshotId !== manifest.canonicalSnapshot.id ||
     freshness.canonicalSnapshotVersion !== manifest.canonicalSnapshot.version ||
     freshness.canonicalSnapshotDigest !== manifest.canonicalSnapshot.digest ||
-    freshness.shortlistDigest !== manifest.shortlistDigest ||
     manifest.snapshotDigest !== manifest.canonicalSnapshot.digest ||
-    manifest.expectedCanonicalVersion !== manifest.canonicalSnapshot.version
-  ) {
+    manifest.expectedCanonicalVersion !== manifest.canonicalSnapshot.version;
+  if (commonMismatch) {
     fail(
       'Manifest freshness identity is inconsistent with its pinned approval identities',
       'manifest.freshnessIdentity',
+    );
+  }
+  if (freshness.mode === 'SEMANTIC') {
+    if (
+      manifest.shortlistDigest === undefined ||
+      freshness.shortlistDigest !== manifest.shortlistDigest
+    ) {
+      fail(
+        'Semantic Manifest freshness must bind its shortlist digest',
+        'manifest.shortlistDigest',
+      );
+    }
+  } else if (
+    manifest.shortlistDigest !== undefined ||
+    manifest.disposition !== 'EXACT_DUPLICATE' ||
+    manifest.operation !== 'NO_OP' ||
+    manifest.analysisRevisionIds.length > 0 ||
+    manifest.relationshipIds.length > 0
+  ) {
+    fail(
+      'Deterministic exact Manifest must be a provider-free NO_OP without semantic identities',
+      'manifest',
     );
   }
 };
@@ -939,7 +1058,6 @@ export const comparisonFreshnessDigestV2 = (
 export const analysisInputDigestV2 = (
   input: Pick<
     AnalysisRevisionV2,
-    | 'comparisonId'
     | 'candidate'
     | 'canonicalSnapshot'
     | 'shortlistDigest'
@@ -949,10 +1067,10 @@ export const analysisInputDigestV2 = (
     | 'promptTemplateRevision'
     | 'outputSchemaRevision'
     | 'semanticPolicyRevision'
-  >,
+  > &
+    Partial<Pick<AnalysisRevisionV2, 'comparisonId'>>,
 ): ComparisonDigestV2 =>
   digest({
-    comparisonId: input.comparisonId,
     candidate: {
       ...input.candidate,
       evidenceIds: sorted(input.candidate.evidenceIds),
@@ -1021,28 +1139,41 @@ export const evaluateComparisonFreshnessV2 = (
     expected.canonicalSnapshotVersion !== current.canonicalSnapshotVersion
   )
     reasons.push('CANONICAL_SNAPSHOT_CHANGED');
-  if (expected.shortlistPolicyRevision !== current.shortlistPolicyRevision)
-    reasons.push('SHORTLIST_POLICY_CHANGED');
-  if (expected.shortlistDigest !== current.shortlistDigest)
-    reasons.push('SHORTLIST_POLICY_CHANGED');
   if (expected.accessSensitivityPolicyRevision !== current.accessSensitivityPolicyRevision) {
     reasons.push('ACCESS_SENSITIVITY_POLICY_CHANGED');
   }
-  if (expected.semanticGenerationId !== current.semanticGenerationId)
-    reasons.push('SEMANTIC_GENERATION_CHANGED');
-  if (expected.semanticSourceProjectionDigest !== current.semanticSourceProjectionDigest)
-    reasons.push('SEMANTIC_BASE_CHANGED');
-  if (expected.semanticCanonicalBaseVersion !== current.semanticCanonicalBaseVersion)
-    reasons.push('SEMANTIC_BASE_CHANGED');
-  if (expected.providerModelCapabilityIdentity !== current.providerModelCapabilityIdentity) {
-    reasons.push('PROVIDER_MODEL_CAPABILITY_CHANGED');
+  if (expected.mode !== current.mode) {
+    reasons.push('FRESHNESS_MODE_CHANGED');
+  } else if (expected.mode === 'SEMANTIC' && current.mode === 'SEMANTIC') {
+    if (expected.shortlistPolicyRevision !== current.shortlistPolicyRevision)
+      reasons.push('SHORTLIST_POLICY_CHANGED');
+    if (expected.shortlistDigest !== current.shortlistDigest)
+      reasons.push('SHORTLIST_POLICY_CHANGED');
+    if (expected.semanticGenerationId !== current.semanticGenerationId)
+      reasons.push('SEMANTIC_GENERATION_CHANGED');
+    if (expected.semanticSourceProjectionDigest !== current.semanticSourceProjectionDigest)
+      reasons.push('SEMANTIC_BASE_CHANGED');
+    if (expected.semanticCanonicalBaseVersion !== current.semanticCanonicalBaseVersion)
+      reasons.push('SEMANTIC_BASE_CHANGED');
+    if (expected.providerModelCapabilityIdentity !== current.providerModelCapabilityIdentity) {
+      reasons.push('PROVIDER_MODEL_CAPABILITY_CHANGED');
+    }
+    if (expected.promptTemplateRevision !== current.promptTemplateRevision)
+      reasons.push('PROMPT_TEMPLATE_CHANGED');
+    if (expected.outputSchemaRevision !== current.outputSchemaRevision)
+      reasons.push('OUTPUT_SCHEMA_CHANGED');
+    if (expected.semanticPolicyRevision !== current.semanticPolicyRevision)
+      reasons.push('SEMANTIC_POLICY_CHANGED');
+  } else if (
+    expected.mode === 'DETERMINISTIC_EXACT' &&
+    current.mode === 'DETERMINISTIC_EXACT' &&
+    (expected.exactDuplicateTarget.resourceType !== current.exactDuplicateTarget.resourceType ||
+      expected.exactDuplicateTarget.resourceId !== current.exactDuplicateTarget.resourceId ||
+      expected.exactDuplicateTarget.resourceRevision !==
+        current.exactDuplicateTarget.resourceRevision)
+  ) {
+    reasons.push('EXACT_DUPLICATE_TARGET_CHANGED');
   }
-  if (expected.promptTemplateRevision !== current.promptTemplateRevision)
-    reasons.push('PROMPT_TEMPLATE_CHANGED');
-  if (expected.outputSchemaRevision !== current.outputSchemaRevision)
-    reasons.push('OUTPUT_SCHEMA_CHANGED');
-  if (expected.semanticPolicyRevision !== current.semanticPolicyRevision)
-    reasons.push('SEMANTIC_POLICY_CHANGED');
   if (expected.rolloutAuthorityRevision !== current.rolloutAuthorityRevision)
     reasons.push('ROLLOUT_AUTHORITY_CHANGED');
   if (shortlist?.querySemanticReadiness === 'STALE') reasons.push('SHORTLIST_STALE');
@@ -1079,8 +1210,25 @@ export const validateComparisonFreshnessOutputV2: (
 
 export const assertComparisonFreshForReviewV2 = (
   freshness: ComparisonFreshnessV2,
-  comparison: Pick<ComparisonResultV2, 'disposition' | 'shortlist' | 'reviewRecommendation'>,
+  comparison: Pick<
+    ComparisonResultV2,
+    'disposition' | 'shortlist' | 'reviewRecommendation' | 'exactDuplicateTarget'
+  >,
 ): void => {
+  if (comparison.disposition === 'EXACT_DUPLICATE') {
+    if (
+      freshness.status !== 'FRESH' ||
+      comparison.reviewRecommendation !== 'NO_OP' ||
+      comparison.shortlist !== undefined ||
+      comparison.exactDuplicateTarget === undefined
+    ) {
+      throw new ComparisonContractErrorV2(
+        'FRESHNESS_FAILURE',
+        'Deterministic exact comparison is not eligible for Review approval',
+      );
+    }
+    return;
+  }
   if (
     freshness.status !== 'FRESH' ||
     !['REVIEW_REQUIRED', 'NEW'].includes(comparison.disposition) ||
@@ -1189,8 +1337,59 @@ export const validateComparisonChildrenV2 = (
   if (stableJson(analysisIds) !== stableJson([...comparison.analysisRevisionIds].sort())) {
     fail('Analysis children do not match ComparisonResult analysisRevisionIds', 'analyses');
   }
+  const analysisById = new Map(analyses.map((analysis) => [analysis.analysisRevisionId, analysis]));
+  const requiresCompletedSemanticLineage =
+    comparison.disposition === 'NEW' || comparison.disposition === 'REVIEW_REQUIRED';
+  if (requiresCompletedSemanticLineage) {
+    for (const analysisId of comparison.analysisRevisionIds) {
+      const analysis = analysisById.get(analysisId);
+      if (analysis === undefined) {
+        fail(
+          'Successful semantic ComparisonResult must resolve every AnalysisRevision child',
+          `comparison.analysisRevisionIds.${analysisId}`,
+        );
+        continue;
+      }
+      if (analysis.state !== 'COMPLETED' || analysis.outcome !== 'COMPLETED') {
+        fail(
+          'Successful semantic ComparisonResult requires COMPLETED AnalysisRevision children',
+          `analysis.${analysisId}.state`,
+        );
+      }
+    }
+  }
   for (const relationship of relationships) {
     validateSemanticRelationshipV2(relationship);
+    const analysis = analysisById.get(relationship.analysisRevisionId);
+    if (analysis === undefined) {
+      fail(
+        'Relationship analysisRevisionId must resolve to a supplied AnalysisRevision child',
+        `${relationship.relationshipId}.analysisRevisionId`,
+      );
+      continue;
+    }
+    if (
+      !comparison.analysisRevisionIds.includes(relationship.analysisRevisionId) ||
+      analysis.state !== 'COMPLETED' ||
+      analysis.outcome !== 'COMPLETED'
+    ) {
+      fail(
+        'Relationship must reference a completed AnalysisRevision in the ComparisonResult',
+        `${relationship.relationshipId}.analysisRevisionId`,
+      );
+    }
+    const comparedResource = analysis.comparedResourceIdentities.some(
+      (resource) =>
+        resource.resourceType === relationship.comparedResource.resourceType &&
+        resource.resourceId === relationship.comparedResource.resourceId &&
+        resource.resourceRevision === relationship.comparedResource.resourceRevision,
+    );
+    if (!comparedResource) {
+      fail(
+        'Relationship target must be present in its AnalysisRevision compared resources',
+        relationship.relationshipId,
+      );
+    }
     if (
       relationship.comparisonId !== comparison.comparisonId ||
       relationship.candidateId !== comparison.candidate.id ||
@@ -1240,11 +1439,13 @@ export const assertComparisonEventV2 = (
         'event.comparison.disposition',
       );
     }
+    unique(event.analysisRevisionIds, 'event.analysisRevisionIds');
     if (
-      event.analysisRevisionIds.some((id) => !event.comparison.analysisRevisionIds.includes(id))
+      stableJson([...event.analysisRevisionIds].sort()) !==
+      stableJson([...event.comparison.analysisRevisionIds].sort())
     ) {
       fail(
-        'completed event analysisRevisionIds must be present on the comparison',
+        'completed event analysisRevisionIds must exactly match the comparison analysis lineage',
         'event.analysisRevisionIds',
       );
     }

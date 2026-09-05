@@ -20,7 +20,6 @@
     "status",
     "expectedCanonicalVersion",
     "snapshotDigest",
-    "shortlistDigest",
     "freshnessIdentity",
     "freshnessDigest",
     "accessScope",
@@ -86,10 +85,30 @@
     "expectedCanonicalVersion": { "type": "integer", "minimum": 0 },
     "snapshotDigest": { "type": "string", "minLength": 1 },
     "shortlistDigest": { "type": "string", "minLength": 1 },
+    "freshnessIdentity": { "$ref": "#/definitions/freshnessIdentity" },
+    "freshnessDigest": { "type": "string", "minLength": 1 },
+    "accessScope": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "sensitivity": { "enum": ["public", "internal", "private", "restricted"] },
+    "contentDigest": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "minLength": 1 },
+    "updatedAt": { "type": "string", "minLength": 1 }
+  },
+  "definitions": {
     "freshnessIdentity": {
+      "oneOf": [
+        { "$ref": "#/definitions/semanticFreshnessIdentity" },
+        { "$ref": "#/definitions/exactFreshnessIdentity" }
+      ]
+    },
+    "semanticFreshnessIdentity": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "mode",
         "candidateId",
         "candidateRevision",
         "candidateSourceVersionId",
@@ -109,6 +128,7 @@
         "semanticPolicyRevision"
       ],
       "properties": {
+        "mode": { "const": "SEMANTIC" },
         "candidateId": { "type": "string", "minLength": 1 },
         "candidateRevision": { "type": "integer", "minimum": 1 },
         "candidateSourceVersionId": { "type": "string", "minLength": 1 },
@@ -130,15 +150,54 @@
         "rolloutAuthorityRevision": { "type": "string", "minLength": 1 }
       }
     },
-    "freshnessDigest": { "type": "string", "minLength": 1 },
-    "accessScope": {
-      "type": "array",
-      "minItems": 1,
-      "items": { "type": "string", "minLength": 1 }
-    },
-    "sensitivity": { "enum": ["public", "internal", "private", "restricted"] },
-    "contentDigest": { "type": "string", "minLength": 1 },
-    "createdAt": { "type": "string", "minLength": 1 },
-    "updatedAt": { "type": "string", "minLength": 1 }
+    "exactFreshnessIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "candidateId",
+        "candidateRevision",
+        "candidateSourceVersionId",
+        "candidateDigest",
+        "candidateEvidenceDigest",
+        "canonicalSnapshotId",
+        "canonicalSnapshotDigest",
+        "canonicalSnapshotVersion",
+        "exactDuplicateTarget"
+      ],
+      "properties": {
+        "mode": { "const": "DETERMINISTIC_EXACT" },
+        "candidateId": { "type": "string", "minLength": 1 },
+        "candidateRevision": { "type": "integer", "minimum": 1 },
+        "candidateSourceVersionId": { "type": "string", "minLength": 1 },
+        "candidateDigest": { "type": "string", "minLength": 1 },
+        "candidateEvidenceDigest": { "type": "string", "minLength": 1 },
+        "canonicalSnapshotId": { "type": "string", "minLength": 1 },
+        "canonicalSnapshotDigest": { "type": "string", "minLength": 1 },
+        "canonicalSnapshotVersion": { "type": "integer", "minimum": 0 },
+        "accessSensitivityPolicyRevision": { "type": "string", "minLength": 1 },
+        "rolloutAuthorityRevision": { "type": "string", "minLength": 1 },
+        "exactDuplicateTarget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["resourceType", "resourceId", "resourceRevision", "canonicalSnapshot"],
+          "properties": {
+            "resourceType": { "const": "CLAIM" },
+            "resourceId": { "type": "string", "minLength": 1 },
+            "resourceRevision": { "type": "integer", "minimum": 1 },
+            "canonicalSnapshot": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "version", "digest"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "version": { "type": "integer", "minimum": 0 },
+                "digest": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }

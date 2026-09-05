@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import approvedChangeSetManifestSchema from '../../../packages/contracts/schemas/approved-change-set-manifest.v1.schema.json';
 import changeSetApprovedSchema from '../../../packages/contracts/schemas/change-set-approved.v1.schema.json';
+import changeSetApprovedV2Schema from '../../../packages/contracts/schemas/change-set-approved-v2.schema.json';
 import checkComparisonFreshnessOutputSchema from '../../../packages/contracts/schemas/check-comparison-freshness-output.v1.schema.json';
 import checkComparisonFreshnessSchema from '../../../packages/contracts/schemas/check-comparison-freshness.v1.schema.json';
 import claimCandidateSchema from '../../../packages/contracts/schemas/claim-candidate.v1.schema.json';
@@ -348,6 +349,12 @@ export const createChangeSetReviewModule = (
       version: '1.0.0',
       kind: 'event',
       inputSchema: changeSetApprovedSchema,
+    },
+    {
+      name: 'ChangeSetApprovedV2',
+      version: '2.0.0',
+      kind: 'event',
+      inputSchema: changeSetApprovedV2Schema,
     },
     {
       name: 'GetDraftChangeSet',

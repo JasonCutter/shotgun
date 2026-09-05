@@ -248,6 +248,54 @@ describe.runIf(pool)('WP-05 Stage 3 durable recovery semantics', () => {
     }
   });
 
+  it('T09 reloads a due retry after worker restart and reclaims the same SourceVersion', async () => {
+    const ids = await seedMaterialized('wp05-restart');
+    try {
+      const firstRepository = new PostgresSourcesStage3ProgressRepository(pool!);
+      const first = await firstRepository.claim({
+        ...ids,
+        workerId: 'wp05-restart-before-crash',
+        leaseDurationMs: 30_000,
+        now: '2026-09-05T20:00:00.000Z',
+      });
+      expect(first.status).toBe('CLAIMED');
+      if (first.status !== 'CLAIMED') return;
+      await firstRepository.markFailure({
+        lease: first.lease,
+        retryable: true,
+        code: 'STAGE3_DB_TRANSIENT',
+        message: 'simulated process interruption',
+        nextAttemptAt: '2026-09-05T20:00:01.000Z',
+      });
+
+      // A new repository/worker instance observes only the durable row; no
+      // in-memory claim state is carried across the simulated restart.
+      const restartedRepository = new PostgresSourcesStage3ProgressRepository(pool!);
+      const recoverable = await restartedRepository.findRecoverable({
+        now: '2026-09-05T20:00:02.000Z',
+      });
+      const matching = recoverable.filter((item) => item.sourceVersionId === ids.sourceVersionId);
+      expect(matching).toHaveLength(1);
+      expect(matching[0]).toMatchObject({
+        sourceId: ids.sourceId,
+        sourceVersionId: ids.sourceVersionId,
+        state: 'STAGE3_RETRYABLE',
+      });
+      const second = await restartedRepository.claim({
+        ...ids,
+        workerId: 'wp05-restart-after-crash',
+        leaseDurationMs: 30_000,
+        now: '2026-09-05T20:00:02.000Z',
+      });
+      expect(second.status).toBe('CLAIMED');
+      if (second.status !== 'CLAIMED') return;
+      expect(second.lease.fencingToken).toBeGreaterThan(first.lease.fencingToken);
+      expect(second.lease.sourceVersionId).toBe(first.lease.sourceVersionId);
+    } finally {
+      await cleanup(ids);
+    }
+  });
+
   it('T05 recovers an expired lease with a new fence and rejects the stale lease update', async () => {
     const ids = await seedMaterialized('wp05-fence');
     try {

@@ -325,4 +325,40 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
     });
     expect(listed).toBe(2);
   });
+
+  it('reports Stage 3 contract failures to readiness without retrying the tick', async () => {
+    const observations: Array<{ status: string; code?: string }> = [];
+    const progress = {
+      findRecoverable: async () => [
+        {
+          projectId: 'project-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          storageKey: 'asset/1',
+          mediaType: 'text/plain',
+          contentHash: 'sha256:' + 'a'.repeat(64),
+          accessScope: ['owner'],
+          sensitivity: 'public' as const,
+          state: 'STAGE3_RETRYABLE' as const,
+        },
+      ],
+    } as unknown as SourcesStage3ProgressPort;
+    const pipeline: SourcesStage3PipelinePort = {
+      runForSourceVersion: async () => {
+        const error = new Error('inconsistent parameter types') as Error & { code: string };
+        error.code = '42P08';
+        throw error;
+      },
+    };
+    const dispatcher = new SourcesStage3RecoveryDispatcher(progress, pipeline, {
+      reporter: {
+        report: (observation) => {
+          observations.push(observation);
+        },
+      },
+    });
+
+    await expect(dispatcher.dispatchOnce()).resolves.toBe('FAILED');
+    expect(observations).toEqual([{ status: 'FAILED', code: 'STAGE3_RUNTIME_CONTRACT_ERROR' }]);
+  });
 });

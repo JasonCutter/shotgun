@@ -870,6 +870,7 @@ export type PublicRecoveryStatus = Omit<
 export const RECOVERY_RUNNER_IDS = {
   AI_DURABLE_MATERIALIZATION: 'ai-durable-materialization',
   CANONICAL_PROJECTION: 'canonical-projection',
+  SOURCES_STAGE3: 'sources-stage3',
 } as const;
 
 const cloneRecoveryStatus = (status: RecoveryStatus): RecoveryStatus => ({

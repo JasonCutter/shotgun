@@ -231,7 +231,7 @@ import {
   type RuntimeConfigurationProfile,
 } from '../../../packages/runtime-configuration/src/index.js';
 import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
-import { createApplication } from './server.js';
+import { createApplication, RECOVERY_RUNNER_IDS } from './server.js';
 import { installSignalShutdown } from './shutdown.js';
 import { AsyncCleanupStack } from './cleanup-stack.js';
 
@@ -1210,6 +1210,41 @@ export const startShotgunApplication = async (
       cleanupStack,
     });
     const runningApplication = application!;
+    const reportStage3Recovery = async (observation: {
+      readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED';
+      readonly code?: string;
+    }): Promise<void> => {
+      const previous = runningApplication.state.recoveryRegistry.get(
+        RECOVERY_RUNNER_IDS.SOURCES_STAGE3,
+      );
+      const now = new Date().toISOString();
+      const failed = observation.status === 'FAILED';
+      const retryable = observation.code?.includes('RETRYABLE') === true;
+      runningApplication.state.recoveryRegistry.record({
+        runnerId: RECOVERY_RUNNER_IDS.SOURCES_STAGE3,
+        executionStatus: failed ? 'FAILED_TO_RUN' : 'COMPLETED',
+        outcome: failed ? 'DEGRADED' : 'HEALTHY',
+        freshness: 'CURRENT',
+        readinessImpact: failed ? 'DEGRADED' : 'NONE',
+        startedAt: previous?.startedAt ?? now,
+        completedAt: now,
+        ...(failed ? {} : { lastSuccessAt: now }),
+        scannedCount: (previous?.scannedCount ?? 0) + (observation.status === 'EMPTY' ? 0 : 1),
+        succeededCount:
+          (previous?.succeededCount ?? 0) + (observation.status === 'SUCCEEDED' ? 1 : 0),
+        retryableCount: (previous?.retryableCount ?? 0) + (failed && retryable ? 1 : 0),
+        terminalCount: (previous?.terminalCount ?? 0) + (failed && !retryable ? 1 : 0),
+        outcomeUnknownCount: previous?.outcomeUnknownCount ?? 0,
+        safeCodes: failed
+          ? [
+              ...new Set([
+                ...(previous?.safeCodes ?? []),
+                observation.code ?? 'STAGE3_RECOVERY_FAILED',
+              ]),
+            ]
+          : [],
+      });
+    };
     stage4Publisher.current = async (input) => {
       const delivery = await runningApplication.kernel.connector.publishEvent({
         messageId: randomUUID(),
@@ -1261,6 +1296,7 @@ export const startShotgunApplication = async (
       const stage3RecoveryDispatcher = new SourcesStage3RecoveryDispatcher(
         stage3Progress,
         sourcesStage3Pipeline,
+        { reporter: { report: reportStage3Recovery } },
       );
       cleanupStack.add(
         'Sources Stage 3 recovery worker',

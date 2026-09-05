@@ -275,6 +275,15 @@ export class SourcesStage3TestPipeline extends SourcesStage3PipelineRuntime {
   }
 }
 
+export type SourcesStage3RecoveryObservation = {
+  readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED';
+  readonly code?: string;
+};
+
+export type SourcesStage3RecoveryReporter = {
+  report(observation: SourcesStage3RecoveryObservation): void | Promise<void>;
+};
+
 /**
  * Reclaims durable Stage 3 positions after a process crash or lease expiry.
  * The progress repository is the recovery authority and returns the complete
@@ -292,15 +301,26 @@ export class SourcesStage3RecoveryDispatcher {
     private readonly options: {
       readonly intervalMs?: number;
       readonly batchSize?: number;
+      readonly reporter?: SourcesStage3RecoveryReporter;
     } = {},
   ) {}
 
   async dispatchOnce(): Promise<'EMPTY' | 'SUCCEEDED' | 'FAILED'> {
-    const recoverable = await this.progress.findRecoverable({
-      limit: this.options.batchSize ?? 1,
-    });
+    let recoverable: readonly SourcesStage3RecoveryItem[];
+    try {
+      recoverable = await this.progress.findRecoverable({
+        limit: this.options.batchSize ?? 1,
+      });
+    } catch (error) {
+      const failure = classifySourcesStage3Failure(error);
+      await this.options.reporter?.report({ status: 'FAILED', code: failure.code });
+      throw error;
+    }
     const item = recoverable[0] as SourcesStage3RecoveryItem | undefined;
-    if (!item) return 'EMPTY';
+    if (!item) {
+      await this.options.reporter?.report({ status: 'EMPTY' });
+      return 'EMPTY';
+    }
     try {
       await this.pipeline.runForSourceVersion({
         projectId: item.projectId,
@@ -312,12 +332,15 @@ export class SourcesStage3RecoveryDispatcher {
         accessScope: [...item.accessScope],
         sensitivity: item.sensitivity,
       });
+      await this.options.reporter?.report({ status: 'SUCCEEDED' });
       return 'SUCCEEDED';
     } catch (error) {
       // The pipeline owns the lease-guarded retry transition.  Keep the
       // recovery loop observable and stop this tick so a broken dependency
       // cannot produce a hot loop.
+      const failure = classifySourcesStage3Failure(error);
       console.error('[sources-stage3-recovery] item failed', error);
+      await this.options.reporter?.report({ status: 'FAILED', code: failure.code });
       return 'FAILED';
     }
   }

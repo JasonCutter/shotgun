@@ -2,7 +2,10 @@ import { randomUUID } from 'node:crypto';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { PostgresSourcesStage4ContinuationStore } from '../../adapters/postgres-stage3/src/runtime-data-integrity.js';
+import {
+  PostgresSourcesStage3ProgressRepository,
+  PostgresSourcesStage4ContinuationStore,
+} from '../../adapters/postgres-stage3/src/runtime-data-integrity.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
@@ -14,6 +17,207 @@ afterAll(async () => {
 });
 
 describe.runIf(pool)('WP-04 runtime data-integrity schema', () => {
+  it('T01 claims a MATERIALIZED Stage 3 progress row with the injected lease timestamp', async () => {
+    const projectId = `wp04-t01-${randomUUID()}`;
+    const sourceId = randomUUID();
+    const sourceVersionId = randomUUID();
+    const assetId = randomUUID();
+    const digest = `sha256:${'1'.repeat(64)}`;
+    const now = '2026-09-05T20:00:00.000Z';
+    try {
+      await pool!.query(
+        `INSERT INTO asset.original_assets
+           (asset_id, content_hash, size_bytes, storage_key, created_at)
+         VALUES ($1, $2, 1, $3, $4)`,
+        [assetId, digest, `wp04-t01/${assetId}`, now],
+      );
+      await pool!.query(
+        `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+         VALUES ($1, $2, 'wp04-t01-test', $3)`,
+        [sourceId, projectId, now],
+      );
+      await pool!.query(
+        `INSERT INTO asset.source_versions (
+           source_version_id, source_id, version_number, original_asset_id,
+           media_type, access_scope, sensitivity, created_at
+         ) VALUES ($1, $2, 1, $3, 'text/plain', '{owner}', 'public', $4)`,
+        [sourceVersionId, sourceId, assetId, now],
+      );
+      await pool!.query(
+        `INSERT INTO source_product.source_stage3_progress
+           (project_id, source_id, source_version_id, state, created_at, updated_at)
+         VALUES ($1, $2, $3, 'MATERIALIZED', $4, $4)`,
+        [projectId, sourceId, sourceVersionId, now],
+      );
+
+      const claim = await new PostgresSourcesStage3ProgressRepository(pool!).claim({
+        projectId,
+        sourceId,
+        sourceVersionId,
+        workerId: 'wp04-t01-worker',
+        leaseDurationMs: 30_000,
+        now,
+      });
+      expect(claim.status).toBe('CLAIMED');
+      if (claim.status !== 'CLAIMED') return;
+      const row = await pool!.query<{
+        state: string;
+        attempt_count: number;
+        lease_acquired_at: Date;
+        lease_expires_at: Date;
+      }>(
+        `SELECT state, attempt_count, lease_acquired_at, lease_expires_at
+           FROM source_product.source_stage3_progress
+          WHERE project_id = $1 AND source_version_id = $2`,
+        [projectId, sourceVersionId],
+      );
+      expect(row.rows[0]?.state).toBe('STAGE3_RUNNING');
+      expect(row.rows[0]?.attempt_count).toBe(1);
+      expect(row.rows[0]?.lease_acquired_at.toISOString()).toBe(now);
+      expect(row.rows[0]?.lease_expires_at.toISOString()).toBe('2026-09-05T20:00:30.000Z');
+    } finally {
+      await pool!.query('DELETE FROM source_product.source_stage3_progress WHERE project_id = $1', [
+        projectId,
+      ]);
+      await pool!.query('DELETE FROM asset.source_versions WHERE source_version_id = $1', [
+        sourceVersionId,
+      ]);
+      await pool!.query('DELETE FROM asset.sources WHERE source_id = $1', [sourceId]);
+      await pool!.query('DELETE FROM asset.original_assets WHERE asset_id = $1', [assetId]);
+    }
+  });
+
+  it('T02 claims a pending Stage 4 continuation with the injected lease timestamp and fence', async () => {
+    const projectId = `wp04-t02-${randomUUID()}`;
+    const sourceId = randomUUID();
+    const sourceVersionId = randomUUID();
+    const assetId = randomUUID();
+    const revisionId = randomUUID();
+    const indexingResultId = randomUUID();
+    const continuationId = randomUUID();
+    const digest = `sha256:${'2'.repeat(64)}`;
+    const now = '2026-09-05T20:00:00.000Z';
+    try {
+      await pool!.query(
+        `INSERT INTO asset.original_assets
+           (asset_id, content_hash, size_bytes, storage_key, created_at)
+         VALUES ($1, $2, 1, $3, $4)`,
+        [assetId, digest, `wp04-t02/${assetId}`, now],
+      );
+      await pool!.query(
+        `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+         VALUES ($1, $2, 'wp04-t02-test', $3)`,
+        [sourceId, projectId, now],
+      );
+      await pool!.query(
+        `INSERT INTO asset.source_versions (
+           source_version_id, source_id, version_number, original_asset_id,
+           media_type, access_scope, sensitivity, created_at
+         ) VALUES ($1, $2, 1, $3, 'text/plain', '{owner}', 'public', $4)`,
+        [sourceVersionId, sourceId, assetId, now],
+      );
+      await pool!.query(
+        `INSERT INTO transformation.revisions (
+           revision_id, project_id, source_id, source_version_id, source_content_hash,
+           transformer_id, transformer_version, document_ir, source_map,
+           document_hash, source_map_hash, access_scope, sensitivity, created_at
+         ) VALUES ($1, $2, $3, $4, $5, 'wp04-t02', '1', '{}'::jsonb, '{}'::jsonb,
+                   $5, $5, '{owner}', 'public', $6)`,
+        [revisionId, projectId, sourceId, sourceVersionId, digest, now],
+      );
+      await pool!.query(
+        `INSERT INTO evidence.indexing_results (
+           indexing_result_id, project_id, source_id, source_version_id, revision_id,
+           transformer_id, transformer_version, status, evidence_count, reused_count,
+           evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, 'wp04-t02', '1', 'INDEXED', 1, 0,
+                   $6, 'stage3-evidence-index.v1', $6, $7, $7)`,
+        [indexingResultId, projectId, sourceId, sourceVersionId, revisionId, digest, now],
+      );
+      await pool!.query(
+        `INSERT INTO evidence.stage4_continuations (
+           continuation_id, project_id, source_id, source_version_id, revision_id,
+           indexing_result_id, continuation_key, evidence_snapshot, evidence_set_digest,
+           evidence_count, access_scope, sensitivity, data_classification, state,
+           created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, 'wp04-t02', '[]'::jsonb, $7,
+                   1, '{owner}', 'public', 'source-content', 'PENDING', $8, $8)`,
+        [
+          continuationId,
+          projectId,
+          sourceId,
+          sourceVersionId,
+          revisionId,
+          indexingResultId,
+          digest,
+          now,
+        ],
+      );
+
+      const claim = await new PostgresSourcesStage4ContinuationStore(pool!).claimNext({
+        workerId: 'wp04-t02-worker',
+        leaseDurationMs: 30_000,
+        now,
+      });
+      expect(claim.status).toBe('CLAIMED');
+      if (claim.status !== 'CLAIMED') return;
+      expect(claim.fencingToken).toBe(1);
+      const row = await pool!.query<{
+        state: string;
+        attempt_count: number;
+        lease_acquired_at: Date;
+        lease_expires_at: Date;
+        fencing_token: string;
+      }>(
+        `SELECT state, attempt_count, lease_acquired_at, lease_expires_at, fencing_token::text
+           FROM evidence.stage4_continuations
+          WHERE continuation_id = $1`,
+        [continuationId],
+      );
+      expect(row.rows[0]?.state).toBe('RUNNING');
+      expect(row.rows[0]?.attempt_count).toBe(1);
+      expect(row.rows[0]?.lease_acquired_at.toISOString()).toBe(now);
+      expect(row.rows[0]?.lease_expires_at.toISOString()).toBe('2026-09-05T20:00:30.000Z');
+      expect(row.rows[0]?.fencing_token).toBe('1');
+    } finally {
+      await pool!.query('DELETE FROM evidence.stage4_continuations WHERE continuation_id = $1', [
+        continuationId,
+      ]);
+      await pool!.query('DELETE FROM evidence.indexing_results WHERE indexing_result_id = $1', [
+        indexingResultId,
+      ]);
+      await pool!.query('DELETE FROM transformation.revisions WHERE revision_id = $1', [
+        revisionId,
+      ]);
+      await pool!.query('DELETE FROM asset.source_versions WHERE source_version_id = $1', [
+        sourceVersionId,
+      ]);
+      await pool!.query('DELETE FROM asset.sources WHERE source_id = $1', [sourceId]);
+      await pool!.query('DELETE FROM asset.original_assets WHERE asset_id = $1', [assetId]);
+    }
+  });
+
+  it('rejects malformed lease inputs before opening a PostgreSQL transaction', async () => {
+    const repository = new PostgresSourcesStage3ProgressRepository(pool!);
+    await expect(
+      repository.claim({
+        projectId: 'wp04-invalid',
+        sourceId: randomUUID(),
+        sourceVersionId: randomUUID(),
+        workerId: 'wp04-invalid-worker',
+        leaseDurationMs: 0,
+        now: 'not-a-timestamp',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      new PostgresSourcesStage4ContinuationStore(pool!).claimNext({
+        workerId: 'wp04-invalid-worker',
+        leaseDurationMs: Number.MAX_SAFE_INTEGER + 1,
+        now: '2026-09-05T20:00:00.000Z',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('creates the three additive authorities and their semantic uniqueness keys', async () => {
     const relations = await pool!.query<{ name: string; relation: string | null }>(
       `SELECT name, to_regclass(name)::text AS relation

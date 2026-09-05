@@ -21,6 +21,32 @@ import { sha256Text, ShotgunError, stableJson } from '../../../packages/contract
 import { PostgresEvidenceRepository, PostgresTransformationRepository } from './index.js';
 
 const nowIso = (): string => new Date().toISOString();
+const MAX_STAGE3_LEASE_DURATION_MS = 5 * 60_000;
+
+const validateLeaseInput = (now: string | undefined, leaseDurationMs: number): string => {
+  const resolvedNow = now ?? nowIso();
+  if (!Number.isFinite(Date.parse(resolvedNow))) {
+    throw new ShotgunError({
+      code: 'VALIDATION_ERROR',
+      safeMessage: 'Stage 3 lease timestamp must be a valid ISO timestamp.',
+      module: 'postgres-stage3',
+      operation: 'validate-stage3-lease',
+    });
+  }
+  if (
+    !Number.isSafeInteger(leaseDurationMs) ||
+    leaseDurationMs < 1 ||
+    leaseDurationMs > MAX_STAGE3_LEASE_DURATION_MS
+  ) {
+    throw new ShotgunError({
+      code: 'VALIDATION_ERROR',
+      safeMessage: `Stage 3 lease duration must be a safe integer between 1 and ${MAX_STAGE3_LEASE_DURATION_MS} milliseconds.`,
+      module: 'postgres-stage3',
+      operation: 'validate-stage3-lease',
+    });
+  }
+  return resolvedNow;
+};
 
 export class PostgresSourcesStage3ProgressRepository implements SourcesStage3ProgressPort {
   constructor(private readonly pool: Pool) {}
@@ -74,8 +100,8 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
       }
     | { readonly status: 'BUSY' }
   > {
+    const now = validateLeaseInput(input.now, input.leaseDurationMs);
     const client = await this.pool.connect();
-    const now = input.now ?? nowIso();
     let active = false;
     try {
       await client.query('BEGIN');
@@ -159,7 +185,7 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
         await client.query(
           `UPDATE source_product.source_stage3_progress
               SET state = 'STAGE3_RETRYABLE', lease_owner = NULL, lease_token = NULL,
-                  lease_acquired_at = NULL, lease_expires_at = NULL, next_attempt_at = $4,
+                  lease_acquired_at = NULL, lease_expires_at = NULL, next_attempt_at = $4::timestamptz,
                   safe_failure_code = 'LEASE_EXPIRED',
                   safe_failure_message = 'The previous Stage 3 lease expired.'
             WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3`,
@@ -171,7 +197,8 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
         `UPDATE source_product.source_stage3_progress
             SET state = 'STAGE3_RUNNING', attempt_count = attempt_count + 1,
                 next_attempt_at = NULL, lease_owner = $4, lease_token = $5,
-                lease_acquired_at = $6, lease_expires_at = $6 + ($7::bigint * interval '1 millisecond'),
+                lease_acquired_at = $6::timestamptz,
+                lease_expires_at = $6::timestamptz + ($7::bigint * interval '1 millisecond'),
                 fencing_token = fencing_token + 1, safe_failure_code = NULL,
                 safe_failure_message = NULL
           WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
@@ -565,8 +592,8 @@ export class PostgresSourcesStage4ContinuationStore implements SourcesStage4Cont
     readonly leaseDurationMs: number;
     readonly now?: string;
   }) {
+    const now = validateLeaseInput(input.now, input.leaseDurationMs);
     const client = await this.pool.connect();
-    const now = input.now ?? nowIso();
     const leaseToken = randomUUID();
     let active = false;
     try {
@@ -610,8 +637,8 @@ export class PostgresSourcesStage4ContinuationStore implements SourcesStage4Cont
       const updated = await client.query<{ fencing_token: string }>(
         `UPDATE evidence.stage4_continuations
             SET state = 'RUNNING', attempt_count = attempt_count + 1,
-                lease_owner = $2, lease_token = $3, lease_acquired_at = $4,
-                lease_expires_at = $4 + ($5::bigint * interval '1 millisecond'),
+                lease_owner = $2, lease_token = $3, lease_acquired_at = $4::timestamptz,
+                lease_expires_at = $4::timestamptz + ($5::bigint * interval '1 millisecond'),
                 fencing_token = fencing_token + 1, updated_at = clock_timestamp()
           WHERE continuation_id = $1
          RETURNING fencing_token::text`,

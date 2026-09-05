@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "canonicalSnapshot",
+    "lexicalProjectionWatermark",
+    "lexicalProjectionBase",
+    "semanticGenerationId",
+    "semanticSourceProjectionDigest",
+    "semanticCanonicalBaseVersion",
+    "querySemanticReadiness",
+    "policyRevision",
+    "k",
+    "selectedTargetIdentities",
+    "exclusionCounts",
+    "truncated",
+    "coverageStatus"
+  ],
+  "properties": {
+    "contractVersion": { "const": "2.0" },
+    "canonicalSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "digest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 0 },
+        "digest": { "type": "string", "minLength": 1 }
+      }
+    },
+    "lexicalProjectionWatermark": { "type": "string", "minLength": 1 },
+    "lexicalProjectionBase": { "type": "string", "minLength": 1 },
+    "semanticGenerationId": { "type": "string", "minLength": 1 },
+    "semanticSourceProjectionDigest": { "type": "string", "minLength": 1 },
+    "semanticCanonicalBaseVersion": { "type": "integer", "minimum": 0 },
+    "querySemanticReadiness": { "enum": ["READY", "STALE", "DEGRADED", "UNAVAILABLE"] },
+    "policyRevision": { "type": "string", "minLength": 1 },
+    "k": { "type": "integer", "minimum": 1 },
+    "selectedTargetIdentities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resourceType", "resourceId", "resourceRevision"],
+        "properties": {
+          "resourceType": { "enum": ["CLAIM", "FACT", "ENTITY", "RELATION", "EVENT", "DECISION"] },
+          "resourceId": { "type": "string", "minLength": 1 },
+          "resourceRevision": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "exclusionCounts": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "truncated": { "type": "boolean" },
+    "coverageStatus": { "enum": ["COMPLETE", "PARTIAL", "INSUFFICIENT", "UNAVAILABLE"] }
+  }
+}

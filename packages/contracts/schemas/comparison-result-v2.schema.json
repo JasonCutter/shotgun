@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "comparisonId",
+    "contractVersion",
+    "projectId",
+    "candidate",
+    "canonicalSnapshot",
+    "disposition",
+    "reviewRecommendation",
+    "analysisRevisionIds",
+    "relationshipIds",
+    "accessScope",
+    "sensitivity",
+    "createdAt"
+  ],
+  "properties": {
+    "comparisonId": { "type": "string", "minLength": 1 },
+    "contractVersion": { "const": "2.0" },
+    "projectId": { "type": "string", "minLength": 1 },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision", "digest", "sourceVersionId", "evidenceIds"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "revision": { "type": "integer", "minimum": 1 },
+        "digest": { "type": "string", "minLength": 1 },
+        "sourceVersionId": { "type": "string", "minLength": 1 },
+        "evidenceIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "canonicalSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "digest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 0 },
+        "digest": { "type": "string", "minLength": 1 }
+      }
+    },
+    "disposition": {
+      "enum": [
+        "NEW",
+        "EXACT_DUPLICATE",
+        "REVIEW_REQUIRED",
+        "ANALYSIS_PENDING",
+        "SEMANTIC_UNAVAILABLE",
+        "POLICY_BLOCKED",
+        "STALE"
+      ]
+    },
+    "reviewRecommendation": { "enum": ["NO_OP", "ADD_CLAIM", "MODIFY_REVIEW", "HOLD"] },
+    "shortlist": { "$ref": "shortlist-audit-v2.schema.json" },
+    "exactDuplicateTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceType", "resourceId", "resourceRevision", "canonicalSnapshot"],
+      "properties": {
+        "resourceType": { "const": "CLAIM" },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "resourceRevision": { "type": "integer", "minimum": 1 },
+        "canonicalSnapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "digest"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "version": { "type": "integer", "minimum": 0 },
+            "digest": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "analysisRevisionIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "relationshipIds": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "accessScope": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "sensitivity": { "enum": ["public", "internal", "private", "restricted"] },
+    "createdAt": { "type": "string", "minLength": 1 }
+  }
+}

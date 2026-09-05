@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "projectId", "comparisonId", "expected", "current"],
+  "properties": {
+    "contractVersion": { "const": "2.0" },
+    "projectId": { "type": "string", "minLength": 1 },
+    "comparisonId": { "type": "string", "minLength": 1 },
+    "expected": { "$ref": "#/definitions/freshnessIdentity" },
+    "current": { "$ref": "#/definitions/freshnessIdentity" },
+    "shortlist": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["querySemanticReadiness", "coverageStatus", "truncated"],
+      "properties": {
+        "querySemanticReadiness": { "enum": ["READY", "STALE", "DEGRADED", "UNAVAILABLE"] },
+        "coverageStatus": { "enum": ["COMPLETE", "PARTIAL", "INSUFFICIENT", "UNAVAILABLE"] },
+        "truncated": { "type": "boolean" }
+      }
+    }
+  },
+  "definitions": {
+    "freshnessIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateId",
+        "candidateRevision",
+        "candidateSourceVersionId",
+        "candidateDigest",
+        "candidateEvidenceDigest",
+        "canonicalSnapshotId",
+        "canonicalSnapshotDigest",
+        "canonicalSnapshotVersion",
+        "shortlistDigest",
+        "shortlistPolicyRevision",
+        "semanticGenerationId",
+        "semanticSourceProjectionDigest",
+        "semanticCanonicalBaseVersion",
+        "providerModelCapabilityIdentity",
+        "promptTemplateRevision",
+        "outputSchemaRevision",
+        "semanticPolicyRevision"
+      ],
+      "properties": {
+        "candidateId": { "type": "string", "minLength": 1 },
+        "candidateRevision": { "type": "integer", "minimum": 1 },
+        "candidateSourceVersionId": { "type": "string", "minLength": 1 },
+        "candidateDigest": { "type": "string", "minLength": 1 },
+        "candidateEvidenceDigest": { "type": "string", "minLength": 1 },
+        "canonicalSnapshotId": { "type": "string", "minLength": 1 },
+        "canonicalSnapshotDigest": { "type": "string", "minLength": 1 },
+        "canonicalSnapshotVersion": { "type": "integer", "minimum": 0 },
+        "shortlistDigest": { "type": "string", "minLength": 1 },
+        "shortlistPolicyRevision": { "type": "string", "minLength": 1 },
+        "accessSensitivityPolicyRevision": { "type": "string", "minLength": 1 },
+        "semanticGenerationId": { "type": "string", "minLength": 1 },
+        "semanticSourceProjectionDigest": { "type": "string", "minLength": 1 },
+        "semanticCanonicalBaseVersion": { "type": "integer", "minimum": 0 },
+        "providerModelCapabilityIdentity": { "type": "string", "minLength": 1 },
+        "promptTemplateRevision": { "type": "string", "minLength": 1 },
+        "outputSchemaRevision": { "type": "string", "minLength": 1 },
+        "semanticPolicyRevision": { "type": "string", "minLength": 1 },
+        "rolloutAuthorityRevision": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -40,6 +40,8 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 
+export * from './review-v2.js';
+
 export type ReviewDecisionWrite = {
   readonly projectId: string;
   readonly changeSetId: string;
@@ -202,7 +204,12 @@ export const createChangeSetReviewModule = (
     },
     deployment: { modes: ['in_process', 'worker'] },
     dataOwnership: {
-      owns: ['review.change_sets', 'review.decisions', 'review.approved_manifests'],
+      owns: [
+        'review.change_sets',
+        'review.decisions',
+        'review.approved_manifests',
+        'review.change_sets_v2',
+      ],
       readsViaPorts: [
         'GetComparisonResult query',
         'GetClaimCandidate query',

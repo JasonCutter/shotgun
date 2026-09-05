@@ -224,6 +224,26 @@ describe('Stage 5 semantic comparison v2 contract (C-Contract-01..14)', () => {
     expect(comparison().relationshipIds).toHaveLength(2);
   });
 
+  it('C-Contract-01b retains UNRELATED evidence on NEW but rejects material evidence', () => {
+    const unrelated = relationship({ type: 'UNRELATED' });
+    const newComparison = comparison({
+      disposition: 'NEW',
+      reviewRecommendation: 'ADD_CLAIM',
+      relationshipIds: [unrelated.relationshipId],
+    });
+    expect(() => validateComparisonResultV2(newComparison)).not.toThrow();
+    expect(() =>
+      validateComparisonChildrenV2(newComparison, [unrelated], [analysis()]),
+    ).not.toThrow();
+    expect(() =>
+      validateComparisonChildrenV2(
+        newComparison,
+        [{ ...unrelated, type: 'SUPPORTS' }],
+        [analysis()],
+      ),
+    ).toThrow(/UNRELATED/);
+  });
+
   it('C-Contract-03 rejects a relationship without exact compared Claim identity', () => {
     expect(() =>
       validateSemanticRelationshipV2(

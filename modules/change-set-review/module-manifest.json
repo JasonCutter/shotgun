@@ -19,7 +19,12 @@
   },
   "deployment": { "modes": ["in_process", "worker"] },
   "dataOwnership": {
-    "owns": ["review.change_sets", "review.decisions", "review.approved_manifests"],
+    "owns": [
+      "review.change_sets",
+      "review.decisions",
+      "review.approved_manifests",
+      "review.change_sets_v2"
+    ],
     "readsViaPorts": [
       "GetComparisonResult query",
       "GetClaimCandidate query",

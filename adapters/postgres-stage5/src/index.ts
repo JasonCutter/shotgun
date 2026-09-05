@@ -13,6 +13,7 @@ import {
 } from '../../../modules/comparison/src/index.js';
 import type {
   ChangeSetReviewRepositoryPort,
+  ReviewV2RepositoryPort,
   ReviewDecisionWrite,
 } from '../../../modules/change-set-review/src/index.js';
 import {
@@ -24,12 +25,14 @@ import {
   type SemanticRelationshipV2,
   type ComparisonResult,
   type DraftChangeSet,
+  type DraftChangeSetV2,
   type ReversalDraftChangeSetV1,
   stableJson,
   sha256Text,
   ShotgunError,
   validateAnalysisRevisionV2,
   validateComparisonResultV2,
+  validateDraftChangeSetV2,
   shortlistAuditDigestV2,
 } from '../../../packages/contracts/src/index.js';
 
@@ -40,6 +43,10 @@ type ComparisonRow = QueryResultRow & {
 type ChangeSetRow = QueryResultRow & {
   readonly change_set_json: DraftChangeSet;
   readonly manifest_json: ApprovedChangeSetManifest | null;
+};
+
+type ChangeSetV2Row = QueryResultRow & {
+  readonly change_set_json: DraftChangeSetV2;
 };
 
 type DecisionRow = QueryResultRow & {
@@ -1165,5 +1172,70 @@ export class PostgresChangeSetReviewRepository implements ChangeSetReviewReposit
       [projectId],
     );
     return result.rows.map((row) => row.reversal_json);
+  }
+}
+
+/** Additive durable store for the v2 Review Draft boundary. */
+export class PostgresChangeSetReviewV2Repository implements ReviewV2RepositoryPort {
+  constructor(private readonly pool: Pool) {}
+
+  async saveDraft(draft: DraftChangeSetV2): Promise<DraftChangeSetV2> {
+    validateDraftChangeSetV2(draft);
+    const inserted = await this.pool.query<ChangeSetV2Row>(
+      `
+        INSERT INTO review.change_sets_v2 (
+          change_set_id, project_id, candidate_id, comparison_id, revision_number,
+          status, content_digest, expected_canonical_version, snapshot_digest,
+          change_set_json, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (project_id, comparison_id) DO NOTHING
+        RETURNING change_set_json
+      `,
+      [
+        draft.changeSetId,
+        draft.projectId,
+        draft.candidate.id,
+        draft.comparisonId,
+        draft.revisionNumber,
+        draft.status,
+        draft.contentDigest,
+        draft.expectedCanonicalVersion,
+        draft.snapshotDigest,
+        JSON.stringify(draft),
+        draft.createdAt,
+        draft.updatedAt,
+      ],
+    );
+    if (inserted.rows[0]) return inserted.rows[0].change_set_json;
+
+    const existing = await this.findDraftByComparisonId(draft.projectId, draft.comparisonId);
+    if (!existing) throw new Error('v2 Draft Change Set was not stored.');
+    if (stableJson(existing) !== stableJson(draft)) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'The same v2 Comparison produced a different Draft Change Set.',
+        module: 'postgres-stage5',
+        operation: 'save-draft-change-set-v2',
+      });
+    }
+    return existing;
+  }
+
+  async findDraftByComparisonId(
+    projectId: string,
+    comparisonId: string,
+  ): Promise<DraftChangeSetV2 | undefined> {
+    const result = await this.pool.query<ChangeSetV2Row>(
+      `
+        SELECT change_set_json
+        FROM review.change_sets_v2
+        WHERE project_id = $1 AND comparison_id = $2
+      `,
+      [projectId, comparisonId],
+    );
+    const draft = result.rows[0]?.change_set_json;
+    if (draft) validateDraftChangeSetV2(draft);
+    return draft;
   }
 }

@@ -29,6 +29,7 @@ import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 export * from './persistence-v2.js';
 export * from './shortlist-v2.js';
 export * from './semantic-analysis-v2.js';
+export * from './orchestration-v2.js';
 
 export type CanonicalSnapshotPort = {
   getSnapshot(projectId: string): Promise<CanonicalSnapshot>;

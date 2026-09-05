@@ -264,8 +264,37 @@ describe('Stage 5 semantic comparison v2 contract (C-Contract-01..14)', () => {
     expect(() => assertAnalysisStateTransitionV2('PENDING', 'COMPLETED')).toThrow(
       /Illegal analysis transition/,
     );
-    expect(() => assertAnalysisStateTransitionV2('FAILED_RETRYABLE', 'ANALYZING')).not.toThrow();
+    expect(() => assertAnalysisStateTransitionV2('FAILED_RETRYABLE', 'ANALYZING')).toThrow(
+      /Illegal analysis transition/,
+    );
     expect(() => assertAnalysisStateTransitionV2('COMPLETED', 'ANALYZING')).toThrow();
+  });
+
+  it('keeps retryable failure evidence immutable while a retry uses a new revision attempt', () => {
+    const failedRetryable = analysis({
+      state: 'FAILED_RETRYABLE',
+      outcome: 'FAILED_RETRYABLE',
+      safeFailureCode: 'RETRYABLE_DEPENDENCY',
+    });
+    validateAnalysisRevisionV2(failedRetryable);
+    const beforeIllegalTransition = structuredClone(failedRetryable);
+
+    expect(() => assertAnalysisStateTransitionV2('FAILED_RETRYABLE', 'ANALYZING')).toThrow(
+      ComparisonContractErrorV2,
+    );
+    expect(failedRetryable).toEqual(beforeIllegalTransition);
+
+    const retryAttempt = {
+      ...failedRetryable,
+      analysisRevisionId: 'analysis-2',
+      attempt: 2,
+    };
+    validateAnalysisRevisionV2(retryAttempt);
+    expect(retryAttempt.analysisRevisionId).not.toBe(failedRetryable.analysisRevisionId);
+    expect(retryAttempt.attempt).toBe(failedRetryable.attempt + 1);
+    expect(retryAttempt.inputDigest).toBe(failedRetryable.inputDigest);
+    expect(retryAttempt.inputDigest).toBe(analysisInputDigestV2(retryAttempt));
+    expect(retryAttempt.safeFailureCode).toBe(failedRetryable.safeFailureCode);
   });
 
   it('C-Contract-07 keeps unavailable/failure explicit and prevents successful completion', () => {

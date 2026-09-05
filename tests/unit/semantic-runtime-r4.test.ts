@@ -21,6 +21,7 @@ import {
   HybridRetrievalCoordinator,
   SemanticRetriever,
 } from '../../modules/hybrid-retrieval/src/index.js';
+import { ComparisonShortlistV2Service } from '../../modules/comparison/src/shortlist-v2.js';
 import { SemanticProjectionRefreshService } from '../../modules/semantic-generation/src/index.js';
 import { initialProviderRegistry } from '../../modules/ai-configuration/src/index.js';
 import {
@@ -33,6 +34,7 @@ import {
 } from '../../modules/provider-privacy-policy/src/index.js';
 import hybridSearchResponseSchema from '../../packages/contracts/schemas/hybrid-search-response.v1.schema.json';
 import type {
+  CanonicalSnapshot,
   EvidenceSpan,
   LexicalCandidateResult,
   LexicalRetrieverPort,
@@ -45,7 +47,9 @@ import type {
   SemanticQueryClassificationInput,
   SemanticQueryClassificationPort,
 } from '../../packages/contracts/src/index.js';
+import { canonicalSnapshotDigest } from '../../packages/contracts/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
+import type { StandingAIProcessingPolicy } from '../../packages/policy/src/index.js';
 
 const projectId = 'project-r4-query';
 const credentialId = 'credential-r4';
@@ -149,6 +153,7 @@ const createRig = async (
     readonly activeGeneration?: boolean;
     readonly deploymentAllowsProvider?: boolean;
     readonly projectApproval?: boolean;
+    readonly standingPolicy?: StandingAIProcessingPolicy;
   } = {},
 ) => {
   const providerRegistry = initialProviderRegistry();
@@ -193,7 +198,13 @@ const createRig = async (
     embeddingRegistry,
     profileService,
     vault,
-    { approvalAuthority: approval, deploymentCeiling: deployment },
+    {
+      approvalAuthority: approval,
+      deploymentCeiling: deployment,
+      standingPolicyAuthority: options.standingPolicy
+        ? { getCurrent: async () => options.standingPolicy }
+        : undefined,
+    },
   );
   const connectivity = new RecordingEmbeddingConnectivity();
   connectivity.wrongDimension = options.wrongDimension ?? false;
@@ -204,6 +215,11 @@ const createRig = async (
     approval,
     deployment,
     [connectivity],
+    {
+      standingPolicyAuthority: options.standingPolicy
+        ? { getCurrent: async () => options.standingPolicy }
+        : undefined,
+    },
   );
   const generation = createGeneration(profile);
   const repository = new RecordingSemanticIndexRepository();
@@ -263,6 +279,110 @@ const query = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const ecavEmbeddingStandingPolicy: StandingAIProcessingPolicy = {
+  projectId,
+  enabled: true,
+  providerId: 'deepseek',
+  policyRevision: 3,
+  aiConfigurationRevision: 3,
+  changedBy: 'owner-r4',
+  changedAt: '2026-09-05T00:00:00.000Z',
+};
+
+const createEcavHybridFixture = () => {
+  const claim = {
+    claimId: 'claim-ecav-embedding-policy',
+    text: 'Canonical claim used by the real embedding policy regression.',
+    revisionNumber: 2,
+    evidenceIds: ['evidence-ecav-embedding-policy'],
+  } as const;
+  const snapshot: CanonicalSnapshot = {
+    snapshotId: 'snapshot-ecav-embedding-policy',
+    projectId,
+    version: 7,
+    digest: canonicalSnapshotDigest(projectId, 7, [claim]),
+    claims: [claim],
+    createdAt: '2026-09-05T00:00:00.000Z',
+  };
+  const lexicalItem: LexicalCandidateResult = {
+    claimId: claim.claimId,
+    commitId: 'commit-ecav-embedding-policy',
+    revisionId: 'revision-ecav-embedding-policy',
+    canonicalVersion: snapshot.version,
+    claimText: claim.text,
+    sourceVersionId: 'source-version-ecav-embedding-policy',
+    evidenceIds: [...claim.evidenceIds],
+    accessScope: ['project:r4'],
+    sensitivity: 'private',
+    score: 1,
+    matchType: 'SUBSTRING',
+    rank: 1,
+  };
+  const lexicalReadiness = {
+    status: 'READY' as const,
+    projectedCanonicalVersion: snapshot.version,
+    canonicalVersion: snapshot.version,
+    lag: 0,
+    projectedSnapshotDigest: snapshot.digest,
+    canonicalSnapshotDigest: snapshot.digest,
+    lastCommitId: lexicalItem.commitId,
+    updatedAt: '2026-09-05T00:00:00.000Z',
+  };
+  const lexicalRetriever: LexicalRetrieverPort = {
+    retrieve: async () => ({ items: [lexicalItem], readiness: lexicalReadiness }),
+  };
+  const evidence: EvidenceSpan = {
+    evidenceId: claim.evidenceIds[0]!,
+    revisionId: lexicalItem.revisionId,
+    projectId,
+    sourceId: 'source-ecav-embedding-policy',
+    sourceVersionId: lexicalItem.sourceVersionId,
+    pointer: '/blocks/0',
+    nodeKind: 'paragraph',
+    origin: 'source',
+    position: {
+      type: 'TextPositionSelector',
+      start: 0,
+      end: claim.text.length,
+      unit: 'unicode-code-point',
+    },
+    quote: { type: 'TextQuoteSelector', exact: claim.text },
+    exactHash: 'sha256:ecav-embedding-policy-evidence',
+    accessScope: ['project:r4'],
+    sensitivity: 'private',
+    createdAt: '2026-09-05T00:00:00.000Z',
+  };
+  const evidenceResolver = { getEvidenceSpan: async () => evidence };
+  const sourceVersionResolver = {
+    getSourceVersion: async () => ({
+      sourceVersionId: lexicalItem.sourceVersionId,
+      projectId,
+      sourceId: evidence.sourceId,
+    }),
+  };
+  return {
+    snapshot,
+    lexicalItem,
+    lexicalRetriever,
+    lexicalReadiness,
+    evidenceResolver,
+    sourceVersionResolver,
+    request: {
+      projectId,
+      query: 'A non-exact candidate requiring semantic comparison',
+      accessScopes: ['project:r4'],
+      allowedSensitivities: ['public', 'internal', 'private'] as const,
+      actor: { type: 'user' as const, id: 'principal-r4' },
+      security: {
+        accessScope: ['project:r4'],
+        sensitivity: 'private' as const,
+        dataClassification: 'user-query',
+      },
+      limit: 4,
+    },
+  };
+};
+
 describe('AKP-1R R4 semantic query runtime authority', () => {
   it('uses the active generation identity while allowing historical audit revisions to change', async () => {
     const rig = await createRig();
@@ -271,6 +391,66 @@ describe('AKP-1R R4 semantic query runtime authority', () => {
     expect(rig.connectivity.calls).toBe(1);
     expect(rig.repository.nearestNeighborCalls).toBe(1);
     expect(rig.connectivity.secretSeen).toBe('r4-test-secret');
+  });
+
+  it('EMB-POL-7R reaches READY Hybrid Retrieval through the real embedding chain', async () => {
+    const rig = await createRig({ standingPolicy: ecavEmbeddingStandingPolicy });
+    const fixture = createEcavHybridFixture();
+    const coordinator = new HybridRetrievalCoordinator(
+      fixture.lexicalRetriever,
+      rig.retriever,
+      undefined,
+      fixture.evidenceResolver,
+      fixture.sourceVersionResolver,
+      rig.activeReader,
+    );
+
+    const response = await coordinator.search(fixture.request);
+
+    expect(response.readiness.semantic).toMatchObject({
+      status: 'READY',
+      execution: 'AVAILABLE',
+      activeGenerationId: rig.generation.generationId,
+    });
+    expect(response.readiness.degraded).toBe(false);
+    expect(rig.connectivity.calls).toBe(1);
+  });
+
+  it('EMB-POL-8R reaches READY Comparison shortlist through the real Hybrid Retrieval coordinator', async () => {
+    const rig = await createRig({ standingPolicy: ecavEmbeddingStandingPolicy });
+    const fixture = createEcavHybridFixture();
+    const coordinator = new HybridRetrievalCoordinator(
+      fixture.lexicalRetriever,
+      rig.retriever,
+      undefined,
+      fixture.evidenceResolver,
+      fixture.sourceVersionResolver,
+      rig.activeReader,
+    );
+    const shortlist = new ComparisonShortlistV2Service({
+      canonicalSnapshot: { getSnapshot: async () => fixture.snapshot },
+      lexicalRetriever: fixture.lexicalRetriever,
+      hybridRetrieval: coordinator,
+      activeGenerationReader: rig.activeReader,
+    });
+
+    const result = await shortlist.build({
+      projectId,
+      candidate: {
+        candidateId: 'candidate-ecav-embedding-policy',
+        projectId,
+        claimText: fixture.request.query,
+      },
+      actor: fixture.request.actor,
+      security: fixture.request.security,
+      k: 1,
+    });
+
+    expect(result.status).toBe('READY');
+    if (result.status !== 'READY') return;
+    expect(result.shortlist.querySemanticReadiness).toBe('READY');
+    expect(result.shortlist.semanticGenerationId).toBe(rig.generation.generationId);
+    expect(rig.connectivity.calls).toBe(1);
   });
 
   it('classifies browser queries conservatively without allowing clearance or markers to downgrade them', () => {

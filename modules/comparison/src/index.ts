@@ -25,6 +25,7 @@ import {
 import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 
 export * from './persistence-v2.js';
+export * from './shortlist-v2.js';
 
 export type CanonicalSnapshotPort = {
   getSnapshot(projectId: string): Promise<CanonicalSnapshot>;
@@ -173,7 +174,14 @@ export const createComparisonModule = (
         'comparison.analysis_revisions_v2',
         'comparison.relationships_v2',
       ],
-      readsViaPorts: ['CanonicalSnapshotPort', 'TextDiffPort', 'GetClaimCandidate query'],
+      readsViaPorts: [
+        'CanonicalSnapshotPort',
+        'TextDiffPort',
+        'LexicalRetrieverPort',
+        'HybridRetrievalCoordinatorPort',
+        'SemanticActiveGenerationReaderPort',
+        'GetClaimCandidate query',
+      ],
       directSchemaAccess: false,
     },
     consumes: {

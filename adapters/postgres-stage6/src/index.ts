@@ -566,6 +566,14 @@ export class PostgresCanonicalKnowledgeRepository
         });
       }
       const claimId = write.claimId;
+      if (manifest.operation === 'ADD_CLAIM' && !claimId) {
+        throw new ShotgunError({
+          code: 'VALIDATION_ERROR',
+          safeMessage: 'An ADD_CLAIM Canonical handoff requires a Claim identity.',
+          module: 'postgres-stage6',
+          operation: 'commit-canonical-v2',
+        });
+      }
       let claim: CanonicalClaim | undefined;
       if (manifest.operation === 'ADD_CLAIM' && claimId) {
         claim = {

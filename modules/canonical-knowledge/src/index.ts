@@ -296,6 +296,13 @@ const validateManifestV2 = (
   const sameEvidence =
     candidate.evidenceIds.length === manifest.evidenceIds.length &&
     candidate.evidenceIds.every((evidenceId) => manifest.evidenceIds.includes(evidenceId));
+  const candidateScopes = new Set(candidate.accessScope);
+  const manifestScopes = new Set(manifest.accessScope);
+  const grantedScopes = new Set(envelope.security?.accessScope ?? []);
+  const sameAccessScope =
+    candidateScopes.size === manifestScopes.size &&
+    [...candidateScopes].every((scope) => manifestScopes.has(scope));
+  const manifestAccessIsGranted = [...manifestScopes].every((scope) => grantedScopes.has(scope));
   const candidateDigest = claimCandidateDigest({
     candidateId: candidate.candidateId,
     revisionNumber: candidate.revisionNumber,
@@ -312,7 +319,8 @@ const validateManifestV2 = (
     candidate.sourceVersionId !== manifest.candidate.sourceVersionId ||
     candidateDigest !== manifest.candidate.digest ||
     !sameEvidence ||
-    candidate.accessScope.some((scope) => !envelope.security?.accessScope.includes(scope)) ||
+    !sameAccessScope ||
+    !manifestAccessIsGranted ||
     candidate.sensitivity !== manifest.sensitivity
   ) {
     invalidManifest('The v2 Manifest candidate lineage is invalid.', envelope.correlationId);

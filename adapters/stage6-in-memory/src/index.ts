@@ -295,6 +295,14 @@ export class InMemoryCanonicalKnowledgeRepository
         operation: 'commit-canonical-v2',
       });
     }
+    if (write.manifest.operation === 'ADD_CLAIM' && !write.claimId) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'An ADD_CLAIM Canonical handoff requires a Claim identity.',
+        module: 'stage6-in-memory',
+        operation: 'commit-canonical-v2',
+      });
+    }
     const before = await this.getSnapshot(write.manifest.projectId);
     if (
       before.version !== write.manifest.expectedCanonicalVersion ||

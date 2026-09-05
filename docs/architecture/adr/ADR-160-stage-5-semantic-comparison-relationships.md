@@ -109,6 +109,26 @@ type ComparisonResultV2 = {
   createdAt: string;
 };
 
+type ShortlistAudit = {
+  canonicalSnapshot: {
+    id: string;
+    version: number;
+    digest: string;
+  };
+  lexicalProjectionWatermark: string;
+  lexicalProjectionBase: string;
+  semanticGenerationId: string;
+  semanticSourceProjectionDigest: string;
+  semanticCanonicalBaseVersion: number;
+  querySemanticReadiness: 'READY' | 'STALE' | 'DEGRADED' | 'UNAVAILABLE';
+  policyRevision: string;
+  k: number;
+  selectedTargetIdentities: readonly string[];
+  exclusionCounts: Readonly<Record<string, number>>;
+  truncated: boolean;
+  coverageStatus: 'COMPLETE' | 'PARTIAL' | 'INSUFFICIENT' | 'UNAVAILABLE';
+};
+
 type SemanticRelationshipV2 = {
   relationshipId: string;
   comparisonId: string;
@@ -152,8 +172,13 @@ The implementation must preserve these identities and invariants even if the
 wire representation is adapted. `matchedClaim` is not a v2 relationship model;
 it may remain only as a read-only v1 compatibility field.
 
-`NEW` is a candidate-level conclusion that no material relationship was
-established. It never creates a synthetic relationship to an arbitrary Claim.
+`NEW` is a candidate-level conclusion scoped to a successfully completed,
+versioned bounded-comparison policy: within the valid comparison coverage, no
+material relationship was established. It is not proof of absolute or global
+corpus novelty and never creates a synthetic relationship to an arbitrary
+Claim. A shortlist cap, truncation, stale projection, unavailable retrieval
+channel, policy exclusion or unsupported resource type is not evidence of
+`UNRELATED` or `NEW`.
 `EXACT_DUPLICATE` is deterministic normalized identity and recommends `NO_OP`;
 it does not require an LLM call. A Candidate may be `REVIEW_REQUIRED` while
 having, for example, `SUPPORTS` C1, `REFINES` C2, and `UNRELATED` to a third
@@ -164,6 +189,22 @@ within the configured cap. Non-selected corpus members are not represented as
 unrelated. `POLICY_BLOCKED` is a bounded disposition/diagnostic when policy
 prevents comparison; a protected resource is never leaked merely to create a
 relationship row.
+
+### 1.1 Issue #203 activation scope
+
+The mature v2 contract reserves the Phase 4 resource union, but the first
+Issue #203 implementation and Gate A closure are explicitly **`CLAIM`-only**.
+The implementation must not silently expand comparison to `FACT`, `ENTITY`,
+`RELATION`, `EVENT`, or `DECISION`. `FACT` remains deferred under ADR-147 and
+is not Product-eligible in this rollout.
+
+Activation of another resource type requires a separate authorization that
+identifies its authoritative Canonical snapshot/read boundary, retrieval
+eligibility, security lineage and comparison acceptance evidence. Until then,
+an unsupported resource type must not be classified as `UNRELATED` or `NEW`,
+and must not be sent to semantic analysis as though it were eligible. The
+long-term Phase 4 vocabulary is therefore preserved while the first
+implementation authorization remains narrowly scoped to `CLAIM`.
 
 ## 2. Immutable identity and persistence strategy
 
@@ -220,7 +261,22 @@ The Product constructs a bounded, server-owned shortlist in this order:
    entity/topic/time hints when available, against the pinned Canonical snapshot.
 4. Apply access/sensitivity/provider-egress policy before ranking or prompt
    construction. Cap the eligible shortlist at an explicit configuration (K)
-   and persist the shortlist identity/digest and exclusion counts.
+   and persist a `ShortlistAudit` containing the pinned Canonical snapshot,
+   lexical projection watermark/base, semantic generation ID,
+   `sourceProjectionDigest`, semantic Canonical base version, query readiness,
+   policy revision, K/cap, selected target identities, exclusion counts,
+   truncation and coverage status.
+
+The pinned Canonical snapshot must be exactly compatible with the lexical
+projection and semantic generation used to construct the shortlist. If the
+semantic generation or any required retrieval channel is stale, degraded,
+unavailable, based on another Canonical base, or otherwise ineligible for the
+pinned snapshot, the comparison fails closed into an explicit incomplete or
+unavailable state. It must not conclude `NEW`. If coverage is insufficient to
+support a `NEW` disposition, Review receives `ANALYSIS_PENDING` or
+`SEMANTIC_UNAVAILABLE` with `HOLD`; no DraftChangeSet or approval is produced
+until a fresh eligible shortlist and completed comparison exist. This follows
+the semantic stale/readiness behavior established by ADR-148.
 
 The full project corpus is never sent to a provider. Ranking/similarity only
 selects targets; it cannot create `SUPPORTS`, `REFINES`, `CONTRADICTS`, or any
@@ -364,6 +420,23 @@ project/capability flag. Rollback disables v2 production and leaves v2 rows for
 audit; it does not rewrite v1 or Canonical data. Removal of v1 requires a later
 ADR, two compatible releases, consumer evidence, and a separate migration plan.
 
+### 10.1 Mutually exclusive Review authority rollout
+
+The rollout is an explicit project-scoped state machine:
+
+| State       | Review-authoritative path                      | Allowed v2 behavior                                                                                                                                                |
+| ----------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `V1_ONLY`   | v1 only                                        | v2 does not process production-authoritative comparisons                                                                                                           |
+| `V2_SHADOW` | v1 only                                        | v2 may persist shadow Comparison/Analysis/Relationship evidence, but may not emit a Review-authoritative completion or create Draft, Approval or Canonical handoff |
+| `V2_ACTIVE` | v2 only for newly eligible Candidate revisions | v1 remains historical/read-compatible and cannot create a second Draft/Approval path for the same Candidate revision                                               |
+
+The invariant is strict: **exactly one comparison contract version is
+Review-authoritative for a given project and Candidate revision**. Dual v1/v2
+approval paths are forbidden. Disabling v2 stops new v2 authority but leaves
+historical v2 evidence readable; a Candidate already completed or approved
+under v2 is not automatically replayed through v1. Any manual re-entry after
+rollback must be explicit, user-authorized and auditable.
+
 ## 11. ECAV acceptance target
 
 The implementation must later prove the following durable evidence in the
@@ -405,18 +478,21 @@ OSS runtime is adopted by this design-only change.
 Implementation, after acceptance, must proceed in this order:
 
 1. **Contract package:** freeze v2 TypeScript/JSON schemas, events, queries,
-   failure codes, digest rules, and module capability ranges.
+   failure codes, digest rules, module capability ranges, Claim-only initial
+   activation and the mutually exclusive Review-authority state machine.
 2. **Persistence package:** additive migration, normalized relationship and
    analysis repositories, uniqueness/idempotency, restart/recovery and rollback.
 3. **Shortlist package:** authority-safe retrieval adapter, policy-before-egress
-   filtering, cap/digest audit and deterministic exact-match path.
+   filtering, exact snapshot/projection/generation compatibility, complete
+   `ShortlistAudit`, cap/digest audit and deterministic exact-match path.
 4. **Analysis package:** provider-neutral governed capability, immutable
    AnalysisRevision, schema validation, retry/outcome-unknown and fail-closed
    state machine.
 5. **Comparison package:** v2 orchestration, multi-resource relationships,
    conflict subtypes, freshness, and `ComparisonCompletedV2` acknowledgement.
 6. **Review package:** v2 Draft/Manifest materialization, user-only decisions,
-   stale blocking and v1/v2 consumer negotiation.
+   stale/insufficient-coverage blocking, Claim-only eligibility and mutually
+   exclusive v1/v2 consumer negotiation.
 7. **Observability/security package:** safe status codes, scope redaction,
    metrics/audit, migration and replacement documentation.
 8. **Acceptance package:** contract, golden ECAV corpus, replay/idempotency,
@@ -430,22 +506,25 @@ the Definition of Done before the next package begins.
 
 ## 14. Focused acceptance matrix
 
-| Area              | Required proof                                                                                             | Failure classification            |
-| ----------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| Contract          | v2 schema rejects missing candidate/snapshot/resource/analysis identity and accepts multiple relationships | `CONTRACT_FAILURE`                |
-| Exact duplicate   | normalized exact identity produces one idempotent `EXACT_DUPLICATE -> NO_OP` with zero semantic call       | `DETERMINISTIC_PATH_FAILURE`      |
-| Semantic relation | N1/C1 and N2/C2 durable multi-resource evidence with rationale/material                                    | `GATE_A_RELATIONSHIP_NOT_PROVEN`  |
-| Negative controls | C3 and N5–N7 do not become unjustified duplicates/conflicts                                                | `SEMANTIC_FALSE_POSITIVE`         |
-| Fail closed       | unavailable analysis is explicit, no success event/Draft/approval/NEW fallback                             | `SEMANTIC_AVAILABILITY_LEAK`      |
-| Conflict          | similarity alone never emits conflict; subtype is preserved                                                | `CONFLICT_CLASSIFICATION_FAILURE` |
-| Security          | unauthorized targets are absent before prompt, output, rationale and errors                                | `COMPARISON_SCOPE_LEAK`           |
-| Freshness         | candidate/snapshot/policy/model changes stale old result and require recomparison                          | `STALE_COMPARISON_ACCEPTED`       |
-| Replay            | duplicate delivery, restart and concurrent workers yield one durable result                                | `COMPARISON_IDEMPOTENCY_FAILURE`  |
-| Durability        | PostgreSQL restart restores summary, relationships and analysis lineage                                    | `COMPARISON_RECOVERY_FAILURE`     |
-| Review            | only user approval can create a v2 manifest; ambiguous/conflict/unavailable states block approval          | `REVIEW_AUTHORITY_FAILURE`        |
-| Compatibility     | v1 rows retain original meaning; v1 consumers cannot receive lossy v2 downcast                             | `LEGACY_REINTERPRETATION`         |
-| Replacement       | in-memory/test and alternate provider adapters pass the same Port contract                                 | `ADAPTER_REPLACEMENT_FAILURE`     |
-| ECAV              | Gate A proof contains both Candidate and pre-existing Canonical identity in one chain                      | `GATE_A_CAPABILITY_GAP`           |
+| Area               | Required proof                                                                                                            | Failure classification            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Contract           | v2 schema rejects missing candidate/snapshot/resource/analysis identity and accepts multiple relationships                | `CONTRACT_FAILURE`                |
+| Exact duplicate    | normalized exact identity produces one idempotent `EXACT_DUPLICATE -> NO_OP` with zero semantic call                      | `DETERMINISTIC_PATH_FAILURE`      |
+| Semantic relation  | N1/C1 and N2/C2 durable multi-resource evidence with rationale/material                                                   | `GATE_A_RELATIONSHIP_NOT_PROVEN`  |
+| Negative controls  | C3 and N5–N7 do not become unjustified duplicates/conflicts                                                               | `SEMANTIC_FALSE_POSITIVE`         |
+| Fail closed        | unavailable analysis is explicit, no success event/Draft/approval/NEW fallback                                            | `SEMANTIC_AVAILABILITY_LEAK`      |
+| Conflict           | similarity alone never emits conflict; subtype is preserved                                                               | `CONFLICT_CLASSIFICATION_FAILURE` |
+| Security           | unauthorized targets are absent before prompt, output, rationale and errors                                               | `COMPARISON_SCOPE_LEAK`           |
+| Freshness          | candidate/snapshot/policy/model changes stale old result and require recomparison                                         | `STALE_COMPARISON_ACCEPTED`       |
+| Shortlist coverage | snapshot/projection/generation compatibility, readiness, truncation and scoped `NEW`; insufficient coverage blocks Review | `SHORTLIST_COVERAGE_FAILURE`      |
+| Resource scope     | Issue #203 is Claim-only; unsupported types cannot become `NEW`/`UNRELATED` or enter analysis                             | `RESOURCE_SCOPE_LEAK`             |
+| Replay             | duplicate delivery, restart and concurrent workers yield one durable result                                               | `COMPARISON_IDEMPOTENCY_FAILURE`  |
+| Durability         | PostgreSQL restart restores summary, relationships and analysis lineage                                                   | `COMPARISON_RECOVERY_FAILURE`     |
+| Review             | only user approval can create a v2 manifest; ambiguous/conflict/unavailable states block approval                         | `REVIEW_AUTHORITY_FAILURE`        |
+| Compatibility      | v1 rows retain original meaning; v1 consumers cannot receive lossy v2 downcast                                            | `LEGACY_REINTERPRETATION`         |
+| Rollout authority  | V1_ONLY/V2_SHADOW/V2_ACTIVE enforce exactly one Review-authoritative path per Candidate revision                          | `DUAL_REVIEW_AUTHORITY`           |
+| Replacement        | in-memory/test and alternate provider adapters pass the same Port contract                                                | `ADAPTER_REPLACEMENT_FAILURE`     |
+| ECAV               | Gate A proof contains both Candidate and pre-existing Canonical identity in one chain                                     | `GATE_A_CAPABILITY_GAP`           |
 
 ## Consequences
 

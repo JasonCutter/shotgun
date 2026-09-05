@@ -12,6 +12,7 @@ import {
   type AIProviderOutput,
   type AIProviderOutputReference,
   type ErrorCode,
+  isRetryableAIProviderErrorCode,
   type GeneratedClaim,
   type QueryEnvelope,
   assertJsonSchema,
@@ -243,8 +244,7 @@ const assertContext = (envelope: QueryEnvelope) => {
 const errorCode = (error: unknown): ErrorCode =>
   error instanceof ShotgunError ? error.code : 'TERMINAL_FAILURE';
 const isRetryable = (error: ShotgunError) =>
-  error.retryable ||
-  ['VALIDATION_ERROR', 'RATE_LIMITED', 'TIMEOUT', 'RETRYABLE_DEPENDENCY'].includes(error.code);
+  error.retryable || isRetryableAIProviderErrorCode(error.code);
 
 const snapshotDigest = (projectId: string, payload: GenerateStructuredPayload) =>
   sha256Text(
@@ -505,6 +505,27 @@ export const createAIProviderModule = (
               code: 'OUTCOME_UNKNOWN',
               safeMessage:
                 'The prior provider attempt has an unknown outcome and will not be called again automatically.',
+              module: 'stage4.ai-provider',
+              operation: 'claim-provider-attempt',
+              correlationId: envelope.correlationId,
+              retryable: false,
+            });
+          }
+          // A repeated GenerateStructured request must honor the durable
+          // failure class before resolving a provider route.  The repository
+          // also enforces this at claim time, but this module-level guard
+          // keeps terminal replays fail-closed and avoids reporting a
+          // misleading "attempt budget exhausted" error when budget remains.
+          if (
+            existing?.state === 'PROVIDER_FAILED' &&
+            !isRetryableAIProviderErrorCode(
+              existing.attempts.at(-1)?.errorCode ?? 'TERMINAL_FAILURE',
+            )
+          ) {
+            throw new ShotgunError({
+              code: existing.attempts.at(-1)?.errorCode ?? 'TERMINAL_FAILURE',
+              safeMessage:
+                'The prior provider attempt failed terminally and will not be called again automatically.',
               module: 'stage4.ai-provider',
               operation: 'claim-provider-attempt',
               correlationId: envelope.correlationId,

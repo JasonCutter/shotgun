@@ -1,6 +1,22 @@
 import type { ErrorCode } from './errors.js';
 import type { SecurityContext } from './types.js';
 
+const RETRYABLE_AI_PROVIDER_ERROR_CODES: readonly ErrorCode[] = [
+  'VALIDATION_ERROR',
+  'RATE_LIMITED',
+  'TIMEOUT',
+  'RETRYABLE_DEPENDENCY',
+];
+
+/**
+ * Retry authorization is a durable error classification, not a consequence
+ * of unused attempt budget. Adapters use this when reconstructing a call
+ * after a process restart because the transient ShotgunError.retryable flag
+ * is not persisted in an attempt row.
+ */
+export const isRetryableAIProviderErrorCode = (code: ErrorCode): boolean =>
+  RETRYABLE_AI_PROVIDER_ERROR_CODES.includes(code);
+
 export type AIUsage = {
   readonly inputTokens: number;
   readonly outputTokens: number;

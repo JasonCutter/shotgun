@@ -15,6 +15,7 @@ import {
   type ClaimCandidate,
   type ClaimCandidateStatus,
   type ErrorCode,
+  isRetryableAIProviderErrorCode,
   stableJson,
   ShotgunError,
   type ValidationResult,
@@ -47,7 +48,11 @@ export class InMemoryAIProviderCallRepository implements AIProviderCallRepositor
     const record = this.records.get(key);
     if (
       !record ||
-      !['REQUESTED', 'PROVIDER_FAILED'].includes(record.state) ||
+      !(
+        record.state === 'REQUESTED' ||
+        (record.state === 'PROVIDER_FAILED' &&
+          isRetryableAIProviderErrorCode(record.attempts.at(-1)?.errorCode ?? 'TERMINAL_FAILURE'))
+      ) ||
       record.attempts.length >= record.maxAttempts
     )
       return undefined;

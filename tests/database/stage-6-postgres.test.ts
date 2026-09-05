@@ -399,5 +399,31 @@ describe.runIf(pool)('Stage 6 PostgreSQL persistence', () => {
         committedAt: '2026-09-06T00:00:00.000Z',
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+
+    const counts = await pool!.query<{
+      project_state: string;
+      claims: string;
+      commits: string;
+      revisions: string;
+      history_events: string;
+      outbox: string;
+    }>(
+      `SELECT
+         (SELECT count(*) FROM canonical.project_state WHERE project_id = $1)::text AS project_state,
+         (SELECT count(*) FROM canonical.claims WHERE project_id = $1)::text AS claims,
+         (SELECT count(*) FROM canonical.commits WHERE project_id = $1)::text AS commits,
+         (SELECT count(*) FROM canonical.revisions WHERE project_id = $1)::text AS revisions,
+         (SELECT count(*) FROM canonical.history_events WHERE project_id = $1)::text AS history_events,
+         (SELECT count(*) FROM canonical.outbox WHERE project_id = $1)::text AS outbox`,
+      [projectId],
+    );
+    expect(counts.rows[0]).toEqual({
+      project_state: '0',
+      claims: '0',
+      commits: '0',
+      revisions: '0',
+      history_events: '0',
+      outbox: '0',
+    });
   });
 });

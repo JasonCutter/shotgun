@@ -200,6 +200,7 @@ export const createChangeSetReviewModule = (
         { name: 'ListDraftChangeSets', range: '>=1.0.0 <2.0.0' },
         { name: 'GetReviewBundle', range: '>=1.0.0 <2.0.0' },
         { name: 'GetApprovedChangeSetManifest', range: '>=1.0.0 <2.0.0' },
+        { name: 'ChangeSetApprovedV2', range: '>=2.0.0 <3.0.0' },
       ],
     },
     deployment: { modes: ['in_process', 'worker'] },
@@ -229,6 +230,7 @@ export const createChangeSetReviewModule = (
         { name: 'DraftChangeSetReady', range: '>=1.0.0 <2.0.0' },
         { name: 'ReviewDecisionRecorded', range: '>=1.0.0 <2.0.0' },
         { name: 'ChangeSetApproved', range: '>=1.0.0 <2.0.0' },
+        { name: 'ChangeSetApprovedV2', range: '>=2.0.0 <3.0.0' },
       ],
       handoffs: [
         {
@@ -255,6 +257,12 @@ export const createChangeSetReviewModule = (
         },
         {
           event: { name: 'ChangeSetApproved', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: 'stage6.canonical-knowledge' },
+          tags: ['TRANSACTIONAL', 'REQUIRED_ACK'],
+          authority: 'stage6.canonical-knowledge.commit-transaction',
+        },
+        {
+          event: { name: 'ChangeSetApprovedV2', range: '>=2.0.0 <3.0.0' },
           target: { kind: 'consumer', moduleId: 'stage6.canonical-knowledge' },
           tags: ['TRANSACTIONAL', 'REQUIRED_ACK'],
           authority: 'stage6.canonical-knowledge.commit-transaction',

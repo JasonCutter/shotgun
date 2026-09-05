@@ -511,6 +511,27 @@ export const createAIProviderModule = (
               retryable: false,
             });
           }
+          // A repeated GenerateStructured request must honor the durable
+          // failure class before resolving a provider route.  The repository
+          // also enforces this at claim time, but this module-level guard
+          // keeps terminal replays fail-closed and avoids reporting a
+          // misleading "attempt budget exhausted" error when budget remains.
+          if (
+            existing?.state === 'PROVIDER_FAILED' &&
+            !isRetryableAIProviderErrorCode(
+              existing.attempts.at(-1)?.errorCode ?? 'TERMINAL_FAILURE',
+            )
+          ) {
+            throw new ShotgunError({
+              code: existing.attempts.at(-1)?.errorCode ?? 'TERMINAL_FAILURE',
+              safeMessage:
+                'The prior provider attempt failed terminally and will not be called again automatically.',
+              module: 'stage4.ai-provider',
+              operation: 'claim-provider-attempt',
+              correlationId: envelope.correlationId,
+              retryable: false,
+            });
+          }
           const resolution = options.executionResolver
             ? await options.executionResolver.resolve({
                 projectId,

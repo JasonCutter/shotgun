@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { InMemoryAIProviderCallRepository } from '../../adapters/stage4-in-memory/src/index.js';
 import type { AIProviderExecutionRecord } from '../../modules/ai-provider/src/index.js';
 
-const record = (requestId: string): AIProviderExecutionRecord => ({
+const record = (requestId: string, maxAttempts = 2): AIProviderExecutionRecord => ({
   callId: `call-${requestId}`,
   requestId,
   projectId: 'stage4-retry-contract',
@@ -21,7 +21,7 @@ const record = (requestId: string): AIProviderExecutionRecord => ({
   requestDigest: `request-${requestId}`,
   state: 'REQUESTED',
   status: 'failed',
-  maxAttempts: 2,
+  maxAttempts,
   attempts: [],
   createdAt: new Date().toISOString(),
 });
@@ -66,5 +66,38 @@ describe('Stage 4 provider retry authorization', () => {
     expect(second!.attempt.attemptNumber).toBe(2);
     expect(second!.record.requestId).toBe(requestId);
     expect(second!.record.callId).toBe(`call-${requestId}`);
+  });
+
+  it('does not reclaim a retryable failure after the durable attempt budget is exhausted', async () => {
+    const repository = new InMemoryAIProviderCallRepository();
+    const requestId = 'retryable-budget-exhausted';
+    await repository.ensure(record(requestId, 1));
+    const first = await repository.claimNextAttempt('stage4-retry-contract', requestId);
+    expect(first).toBeDefined();
+
+    await repository.failAttempt(
+      'stage4-retry-contract',
+      requestId,
+      first!.attempt.attemptId,
+      'TIMEOUT',
+    );
+
+    expect(await repository.claimNextAttempt('stage4-retry-contract', requestId)).toBeUndefined();
+  });
+
+  it('keeps outcome-unknown attempts non-recallable', async () => {
+    const repository = new InMemoryAIProviderCallRepository();
+    const requestId = 'outcome-unknown';
+    await repository.ensure(record(requestId));
+    const first = await repository.claimNextAttempt('stage4-retry-contract', requestId);
+    expect(first).toBeDefined();
+
+    await repository.markAttemptOutcomeUnknown(
+      'stage4-retry-contract',
+      requestId,
+      first!.attempt.attemptId,
+    );
+
+    expect(await repository.claimNextAttempt('stage4-retry-contract', requestId)).toBeUndefined();
   });
 });

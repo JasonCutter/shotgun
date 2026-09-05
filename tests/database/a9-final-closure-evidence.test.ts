@@ -52,6 +52,7 @@ import {
 } from '../../modules/provider-privacy-policy/src/index.js';
 import {
   ASK_SCHEMA_VERSION,
+  ShotgunError,
   type AskAnswerRunSnapshot,
 } from '../../packages/contracts/src/index.js';
 import { migrateUpTo } from '../../scripts/database.js';
@@ -897,5 +898,101 @@ describe('A9 final closure deterministic cross-boundary evidence', () => {
     ).toEqual(interruptedPinA);
     expect(fixture.initialIdentityResolutionRunIds).not.toContain(interrupted.answerRunId);
     expect(fixture.providerCalls).toHaveLength(providerCallsBeforeWorker + 1);
+  });
+
+  it('E2E-O: quarantines a poison queued context without starving valid work and retains transient failures', async () => {
+    const fixture = await createFixture();
+    await configure(fixture, 'deepseek', 0);
+
+    const poison = await enqueue(fixture, `Poison context ${fixture.suffix}`);
+    const selection = await pool.query<{ readonly selection_id: string }>(
+      `SELECT selection_id::text
+       FROM frontend_ask.source_selections
+       WHERE answer_run_id = $1 AND project_id = $2`,
+      [poison.answerRunId, fixture.projectId],
+    );
+    expect(selection.rows).toHaveLength(1);
+    const unrelatedEvidence = await pool.query<{ readonly evidence_id: string }>(
+      `SELECT evidence_id::text
+       FROM evidence.spans
+       LIMIT 1`,
+    );
+    expect(unrelatedEvidence.rows).toHaveLength(1);
+    await pool.query(
+      `INSERT INTO frontend_ask.source_selection_evidence (
+         selection_id, evidence_ordinal, evidence_id
+       ) VALUES ($1, 0, $2)`,
+      [selection.rows[0]!.selection_id, unrelatedEvidence.rows[0]!.evidence_id],
+    );
+
+    const valid = await enqueue(fixture, `Valid context ${fixture.suffix}`);
+    const claimed = await fixture.executionRepository.claimQueuedForWorker(
+      'a9-poison-isolation-worker',
+      2,
+    );
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0]!.claimed.context.snapshot.answerRunId).toBe(valid.answerRunId);
+
+    const poisonState = await pool.query<{
+      readonly state: string;
+      readonly failure_code: string | null;
+      readonly attempt_number: number;
+    }>(
+      `SELECT state, failure_code, attempt_number
+       FROM frontend_ask.answer_runs
+       WHERE answer_run_id = $1 AND project_id = $2`,
+      [poison.answerRunId, fixture.projectId],
+    );
+    expect(poisonState.rows[0]).toMatchObject({
+      state: 'FAILED',
+      failure_code: 'INVALID_REQUEST',
+      attempt_number: 0,
+    });
+    const poisonFailureEvent = await pool.query<{ readonly kind: string; readonly state: string }>(
+      `SELECT kind, state
+       FROM frontend_ask.answer_run_events
+       WHERE answer_run_id = $1 AND project_id = $2
+       ORDER BY ordinal DESC
+       LIMIT 1`,
+      [poison.answerRunId, fixture.projectId],
+    );
+    expect(poisonFailureEvent.rows[0]).toEqual({ kind: 'FAILED', state: 'FAILED' });
+
+    await fixture.executionRepository.fail({
+      scope: fixture.executionScope,
+      answerRunId: valid.answerRunId,
+      attemptNumber: claimed[0]!.claimed.attempt.attemptNumber,
+      state: 'FAILED',
+      failure: {
+        code: 'CANCELLED',
+        message: 'Poison isolation regression cleanup.',
+        retryable: true,
+        outcomeUnknown: false,
+      },
+      workerId: 'a9-poison-isolation-worker',
+    });
+
+    const transient = await enqueue(fixture, `Transient context ${fixture.suffix}`);
+    const transientRepository = new PostgresAskAnswerExecutionRepository(pool, fixture.projection, {
+      resolve: async () => {
+        throw new ShotgunError({
+          code: 'RETRYABLE_DEPENDENCY',
+          safeMessage: 'Synthetic transient SourceVersion reader failure.',
+          module: 'a9-poison-isolation-test',
+          operation: 'transient-source-context',
+          retryable: true,
+        });
+      },
+    });
+    expect(await transientRepository.claimQueuedForWorker('a9-transient-worker', 1)).toHaveLength(
+      0,
+    );
+    const transientState = await pool.query<{ readonly state: string }>(
+      `SELECT state
+       FROM frontend_ask.answer_runs
+       WHERE answer_run_id = $1 AND project_id = $2`,
+      [transient.answerRunId, fixture.projectId],
+    );
+    expect(transientState.rows[0]?.state).toBe('QUEUED');
   });
 });

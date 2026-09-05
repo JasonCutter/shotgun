@@ -170,6 +170,14 @@ const invalid = (message: string): ShotgunError =>
     operation: 'execution',
   });
 
+const invalidExplicitEvidence = (): ShotgunError =>
+  new ShotgunError({
+    code: 'INVALID_REQUEST',
+    safeMessage: 'An explicitly selected EvidenceSpan is no longer valid for this SourceVersion.',
+    module: 'frontend-ask-execution-postgres',
+    operation: 'resolve-explicit-evidence-selection',
+  });
+
 const staleContext = (): ShotgunError =>
   new ShotgunError({
     code: 'STALE_VERSION',
@@ -553,9 +561,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         evidence.source_id !== selection.source_id ||
         evidence.source_version_id !== selection.source_version_id
       ) {
-        throw invalid(
-          'An explicitly selected EvidenceSpan is no longer valid for this SourceVersion.',
-        );
+        throw invalidExplicitEvidence();
       }
     }
     for (const [selectionId, evidenceIdsForSelection] of automaticEvidenceBySelection) {
@@ -1781,8 +1787,26 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           });
         } catch (error) {
           // A malformed/temporarily unavailable candidate must not abort the
-          // batch. The candidate remains QUEUED for a later worker tick, while
-          // the safe error is still observable for operations.
+          // batch. A permanently invalid persisted context is quarantined as a
+          // terminal Product failure so one corrupt queue row cannot starve
+          // later valid work. Other failures remain queued for retry.
+          if (
+            error instanceof ShotgunError &&
+            error.code === 'INVALID_REQUEST' &&
+            error.operation === 'resolve-explicit-evidence-selection'
+          ) {
+            try {
+              await this.poolTransaction((client) =>
+                this.failQueuedContextWithClient(client, scope, row.answer_run_id, error.message),
+              );
+            } catch (quarantineError) {
+              console.error(
+                '[ask-answer-worker] queued claim quarantine failed',
+                row.answer_run_id,
+                quarantineError instanceof Error ? quarantineError.message : quarantineError,
+              );
+            }
+          }
           console.error(
             '[ask-answer-worker] queued claim candidate skipped',
             row.answer_run_id,
@@ -1845,6 +1869,29 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       claimed.push(...batch);
     }
     return claimed;
+  }
+
+  private async failQueuedContextWithClient(
+    client: PoolClient,
+    scope: AskExecutionScope,
+    answerRunId: string,
+    message: string,
+  ): Promise<void> {
+    const row = await this.lockRun(client, scope, answerRunId);
+    if (!row || row.state !== 'QUEUED') return;
+    const eventRevision = Number(row.event_revision) + 1;
+    await this.updateRun(client, scope, answerRunId, {
+      state: 'FAILED',
+      capabilities: ['RETRY_SAME_CONTEXT', 'RETRY_CURRENT_POLICY'],
+      failure: {
+        code: 'INVALID_REQUEST',
+        message,
+        retryable: false,
+        outcomeUnknown: false,
+      },
+      eventRevision,
+    });
+    await this.appendEvent(client, scope, answerRunId, 'FAILED', 'FAILED', eventRevision);
   }
 
   private async claimLocked(

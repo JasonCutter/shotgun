@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Pool } from 'pg';
 
 import { PostgresConnectorRuntimeState } from '../../adapters/connector-runtime-postgres/src/index.js';
@@ -174,8 +174,9 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
     await postgresComparisonRepository.saveCompletedAggregate(fixture.aggregate);
     const repository = new PostgresChangeSetReviewV2Repository(pool!);
     await repository.saveDraft(fixture.draft);
+    const resolveOperationSpy = vi.spyOn(repository, 'resolveOperation');
 
-    let resolverInvocations = 0;
+    let aggregateReadInvocations = 0;
     const candidateRepository = {
       findById: async () => fixture.candidate,
       saveBatch: async (batch: never) => batch,
@@ -186,7 +187,7 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
     } as unknown as CandidateRepositoryPort;
     const comparisonV2Repository = {
       findComparisonById: async () => {
-        resolverInvocations += 1;
+        aggregateReadInvocations += 1;
         return fixture.aggregate;
       },
       saveAnalysisRevision: async () => {
@@ -325,56 +326,18 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
         headers: { 'content-type': 'application/json', cookie, 'x-csrf-token': csrf },
         payload: body,
       });
-      if (response.statusCode !== 200) {
-        const diagnosticCounts = await pool!.query<{
-          resolutions: string;
-          revisions: string;
-        }>(
-          `SELECT
-             (SELECT count(*)::text FROM review.operation_resolutions_v2
-              WHERE project_id = $1 AND change_set_id = $2) AS resolutions,
-             (SELECT count(*)::text FROM review.change_set_revisions_v2
-              WHERE project_id = $1 AND change_set_id = $2) AS revisions`,
-          [fixture.draft.projectId, fixture.draft.changeSetId],
-        );
-        const diagnosticDedup = await pool!.query<{ state: string }>(
-          `SELECT state
-           FROM connector.dedup_records
-           WHERE project_id = $1 AND semantic_key = $2`,
-          [fixture.draft.projectId, commandIdempotencyKey],
-        );
-        let safeResponseBody: unknown;
-        try {
-          safeResponseBody = response.json();
-        } catch {
-          safeResponseBody = response.body;
-        }
-        console.error('[ADR-163 R19 diagnostics]', {
-          statusCode: response.statusCode,
-          responseBody: safeResponseBody,
-          resolverInvocations,
-          transportCompletedOperations,
-          providerGenerationCalls,
-          operationResolutionCount: diagnosticCounts.rows[0]?.resolutions ?? '0',
-          revisionCount: diagnosticCounts.rows[0]?.revisions ?? '0',
-          connectorDedupState: diagnosticDedup.rows[0]?.state ?? null,
-        });
+      let responseBody: unknown;
+      try {
+        responseBody = response.json();
+      } catch {
+        responseBody = response.body;
       }
-      expect(response.statusCode).toBe(200);
-      expect(response.json()).toMatchObject({
-        commandStatus: 'reconciled',
-        resolution: { changeSetId: fixture.draft.changeSetId, chosenOperation: 'ADD_CLAIM' },
-      });
-      expect(resolverInvocations).toBe(1);
-      expect(transportCompletedOperations).toBe(1);
-      expect(providerGenerationCalls).toBe(0);
       const dedupState = await pool!.query<{ state: string }>(
         `SELECT state
          FROM connector.dedup_records
          WHERE project_id = $1 AND semantic_key = $2`,
         [fixture.draft.projectId, commandIdempotencyKey],
       );
-      expect(dedupState.rows[0]?.state).toBe('COMPLETED');
       const counts = await pool!.query<{ resolutions: string; revisions: string }>(
         `SELECT
            (SELECT count(*)::text FROM review.operation_resolutions_v2
@@ -383,8 +346,42 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
             WHERE project_id = $1 AND change_set_id = $2) AS revisions`,
         [fixture.draft.projectId, fixture.draft.changeSetId],
       );
+      const resolveOperationWriteInvocations = resolveOperationSpy.mock.calls.length;
+      const diagnosticNeeded =
+        response.statusCode !== 200 ||
+        aggregateReadInvocations !== 2 ||
+        resolveOperationWriteInvocations !== 1 ||
+        transportCompletedOperations !== 1 ||
+        providerGenerationCalls !== 0 ||
+        dedupState.rows[0]?.state !== 'COMPLETED' ||
+        counts.rows[0]?.resolutions !== '1' ||
+        counts.rows[0]?.revisions !== '2';
+      if (diagnosticNeeded) {
+        console.error('[ADR-163 R19 diagnostics]', {
+          statusCode: response.statusCode,
+          responseBody,
+          aggregateReadInvocations,
+          resolveOperationWriteInvocations,
+          transportCompletedOperations,
+          providerGenerationCalls,
+          operationResolutionCount: counts.rows[0]?.resolutions ?? '0',
+          revisionCount: counts.rows[0]?.revisions ?? '0',
+          connectorDedupState: dedupState.rows[0]?.state ?? null,
+        });
+      }
+      expect(response.statusCode).toBe(200);
+      expect(responseBody).toMatchObject({
+        commandStatus: 'reconciled',
+        resolution: { changeSetId: fixture.draft.changeSetId, chosenOperation: 'ADD_CLAIM' },
+      });
+      expect(aggregateReadInvocations).toBe(2);
+      expect(resolveOperationSpy).toHaveBeenCalledTimes(1);
+      expect(transportCompletedOperations).toBe(1);
+      expect(providerGenerationCalls).toBe(0);
+      expect(dedupState.rows[0]?.state).toBe('COMPLETED');
       expect(counts.rows[0]).toEqual({ resolutions: '1', revisions: '2' });
     } finally {
+      resolveOperationSpy.mockRestore();
       await app.server.close();
       const dedup = await pool!.query<{ dedup_record_id: string }>(
         `SELECT dedup_record_id FROM connector.dedup_records

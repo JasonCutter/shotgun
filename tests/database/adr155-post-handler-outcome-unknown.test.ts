@@ -166,6 +166,10 @@ describe('ADR-155 post-handler outcome-unknown conformance', () => {
   it('does not converge a stale job completion from a successor fence', async () => {
     const projectId = `adr155-job-stale-fence-${randomUUID()}`;
     const identity = identityFor(projectId);
+    const dedup = new PostgresDedupStore(pool);
+    const began = await dedup.begin({ ...identity, jobId: randomUUID() });
+    expect(began.kind).toBe('ACQUIRED');
+    if (began.kind !== 'ACQUIRED') return;
     const jobs = new PostgresJobRuntime(pool);
 
     try {

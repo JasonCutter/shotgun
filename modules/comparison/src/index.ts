@@ -8,12 +8,14 @@ import comparisonCompletedSchema from '../../../packages/contracts/schemas/compa
 import comparisonResultSchema from '../../../packages/contracts/schemas/comparison-result.v1.schema.json';
 import getClaimCandidateSchema from '../../../packages/contracts/schemas/get-claim-candidate.v1.schema.json';
 import getComparisonResultSchema from '../../../packages/contracts/schemas/get-comparison-result.v1.schema.json';
+import recompareClaimCandidateSchema from '../../../packages/contracts/schemas/recompare-claim-candidate.v1.schema.json';
 import {
   canonicalSnapshotDigest,
   claimCandidateDigest,
   type CanonicalSnapshot,
   type CanonicalSnapshotClaim,
   type ClaimCandidate,
+  type CommandEnvelope,
   type ComparisonResult,
   type EventEnvelope,
   type AIExecutionIdentity,
@@ -128,7 +130,7 @@ const assertSnapshot = (snapshot: CanonicalSnapshot, projectId: string): void =>
   }
 };
 
-const assertContext = (envelope: EventEnvelope | QueryEnvelope) => {
+const assertContext = (envelope: CommandEnvelope | EventEnvelope | QueryEnvelope) => {
   if (!envelope.projectId || !envelope.actor || !envelope.security) {
     throw new ShotgunError({
       code: 'POLICY_DENIED',
@@ -199,6 +201,83 @@ const bestMatch = (
   };
 };
 
+type ComparisonExecution = {
+  readonly rollout: 'V1_ONLY' | 'V2_SHADOW' | 'V2_ACTIVE';
+  readonly v1Executed: boolean;
+  readonly result?: ComparisonResult;
+  readonly snapshot?: CanonicalSnapshot;
+};
+
+/**
+ * The event path and the explicit re-entry command intentionally share this
+ * execution boundary.  It pins the server-read Canonical snapshot and uses
+ * the repository's candidate+snapshot identity before doing any write, so a
+ * replay cannot create a second v1 comparison for the same immutable input.
+ */
+const executeComparison = async (input: {
+  readonly projectId: string;
+  readonly candidate: ClaimCandidate;
+  readonly actor: EventEnvelope['actor'];
+  readonly security: SecurityContext;
+  readonly createdAt: string;
+  readonly correlationId?: string;
+  readonly runtime?: ComparisonV2RuntimeBoundary;
+  readonly repository: ComparisonRepositoryPort;
+  readonly snapshotProvider: CanonicalSnapshotPort;
+  readonly textDiff: TextDiffPort;
+}): Promise<ComparisonExecution> => {
+  let rollout: ComparisonExecution['rollout'] = 'V1_ONLY';
+  if (input.runtime) {
+    const runtimeOutcome = await input.runtime.handleCandidateValidated({
+      projectId: input.projectId,
+      candidateId: input.candidate.candidateId,
+      candidate: input.candidate,
+      actor: input.actor,
+      security: input.security,
+      correlationId: input.correlationId,
+    });
+    rollout = runtimeOutcome.rollout;
+    if (rollout === 'V2_ACTIVE') {
+      return { rollout, v1Executed: false };
+    }
+  }
+
+  const snapshot = await input.snapshotProvider.getSnapshot(input.projectId);
+  assertSnapshot(snapshot, input.projectId);
+  const existing = await input.repository.findByCandidateAndSnapshot(
+    input.projectId,
+    input.candidate.candidateId,
+    snapshot.digest,
+  );
+  const result =
+    existing ??
+    (await (async () => {
+      const match = bestMatch(snapshot.claims, input.candidate, input.textDiff);
+      const diffDigest = sha256Text(stableJson(match.diff));
+      return input.repository.save({
+        comparisonId: randomUUID(),
+        projectId: input.projectId,
+        sourceVersionId: input.candidate.sourceVersionId,
+        candidateId: input.candidate.candidateId,
+        candidateRevisionNumber: input.candidate.revisionNumber,
+        candidateDigest: claimCandidateDigest(input.candidate),
+        snapshotId: snapshot.snapshotId,
+        snapshotVersion: snapshot.version,
+        snapshotDigest: snapshot.digest,
+        classification: match.classification,
+        matchedClaim: match.claim,
+        similarity: match.similarity,
+        diff: match.diff,
+        diffDigest,
+        recommendation: match.classification === 'EXACT_DUPLICATE' ? 'NO_OP' : 'ADD_CLAIM',
+        accessScope: [...input.security.accessScope],
+        sensitivity: input.security.sensitivity,
+        createdAt: input.createdAt,
+      });
+    })());
+  return { rollout, v1Executed: true, result, snapshot };
+};
+
 export const createComparisonModule = (
   repository: ComparisonRepositoryPort,
   snapshotProvider: CanonicalSnapshotPort,
@@ -213,6 +292,7 @@ export const createComparisonModule = (
       runtime: '>=1.0.0 <2.0.0',
       contracts: [
         { name: 'CandidateValidated', range: '>=1.0.0 <2.0.0' },
+        { name: 'RecompareClaimCandidate', range: '>=1.0.0 <2.0.0' },
         { name: 'GetClaimCandidate', range: '>=1.0.0 <2.0.0' },
         { name: 'ComparisonCompleted', range: '>=1.0.0 <2.0.0' },
         { name: 'GetComparisonResult', range: '>=1.0.0 <2.0.0' },
@@ -241,7 +321,7 @@ export const createComparisonModule = (
       directSchemaAccess: false,
     },
     consumes: {
-      commands: [],
+      commands: [{ name: 'RecompareClaimCandidate', range: '>=1.0.0 <2.0.0' }],
       events: [{ name: 'CandidateValidated', range: '>=1.0.0 <2.0.0' }],
     },
     produces: {
@@ -279,6 +359,12 @@ export const createComparisonModule = (
       inputSchema: candidateValidatedSchema,
     },
     {
+      name: 'RecompareClaimCandidate',
+      version: '1.0.0',
+      kind: 'command',
+      inputSchema: recompareClaimCandidateSchema,
+    },
+    {
       name: 'GetClaimCandidate',
       version: '1.0.0',
       kind: 'query',
@@ -307,7 +393,73 @@ export const createComparisonModule = (
     },
   ],
   handlers: {
-    commands: [],
+    commands: [
+      {
+        messageType: 'RecompareClaimCandidate',
+        version: '1.0.0',
+        requiredAccessScopes: ['owner'],
+        async handle(envelope, context) {
+          const { projectId, security } = assertContext(envelope);
+          const payload = envelope.payload as { readonly candidateId: string };
+          const candidate = (
+            await context.query<{ candidateId: string }, ClaimCandidate>({
+              messageType: 'GetClaimCandidate',
+              schemaVersion: '1.0.0',
+              payload: { candidateId: payload.candidateId },
+            })
+          ).payload;
+          if (candidate.status !== 'READY') {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: 'Only READY Claim Candidates can be re-compared.',
+              module: 'stage5.comparison',
+              operation: 'recompare-candidate',
+              correlationId: envelope.correlationId,
+            });
+          }
+          const execution = await executeComparison({
+            projectId,
+            candidate,
+            actor: envelope.actor,
+            security,
+            createdAt: envelope.createdAt,
+            correlationId: envelope.correlationId,
+            runtime,
+            repository,
+            snapshotProvider,
+            textDiff,
+          });
+          if (execution.result) {
+            await context.publish({
+              messageType: 'ComparisonCompleted',
+              schemaVersion: '1.0.0',
+              idempotencyKey: `comparison-completed:${projectId}:${execution.result.comparisonId}`,
+              payload: {
+                comparisonId: execution.result.comparisonId,
+                candidateId: execution.result.candidateId,
+                sourceVersionId: execution.result.sourceVersionId,
+                classification: execution.result.classification,
+                snapshotVersion: execution.result.snapshotVersion,
+                snapshotDigest: execution.result.snapshotDigest,
+              },
+            });
+          }
+          return {
+            candidateId: candidate.candidateId,
+            candidateRevisionNumber: candidate.revisionNumber,
+            rollout: execution.rollout,
+            v1Executed: execution.v1Executed,
+            ...(execution.result
+              ? {
+                  comparisonId: execution.result.comparisonId,
+                  snapshotVersion: execution.result.snapshotVersion,
+                  snapshotDigest: execution.result.snapshotDigest,
+                }
+              : {}),
+          };
+        },
+      },
+    ],
     events: [
       {
         messageType: 'CandidateValidated',
@@ -333,50 +485,20 @@ export const createComparisonModule = (
               correlationId: envelope.correlationId,
             });
           }
-          if (runtime) {
-            const runtimeOutcome = await runtime.handleCandidateValidated({
-              projectId,
-              candidateId: candidate.candidateId,
-              candidate,
-              actor: envelope.actor!,
-              security,
-              correlationId: envelope.correlationId,
-            });
-            if (runtimeOutcome.rollout === 'V2_ACTIVE') return;
-          }
-          const snapshot = await snapshotProvider.getSnapshot(projectId);
-          assertSnapshot(snapshot, projectId);
-          const existing = await repository.findByCandidateAndSnapshot(
+          const execution = await executeComparison({
             projectId,
-            candidate.candidateId,
-            snapshot.digest,
-          );
-          const result =
-            existing ??
-            (await (async () => {
-              const match = bestMatch(snapshot.claims, candidate, textDiff);
-              const diffDigest = sha256Text(stableJson(match.diff));
-              return repository.save({
-                comparisonId: randomUUID(),
-                projectId,
-                sourceVersionId: candidate.sourceVersionId,
-                candidateId: candidate.candidateId,
-                candidateRevisionNumber: candidate.revisionNumber,
-                candidateDigest: claimCandidateDigest(candidate),
-                snapshotId: snapshot.snapshotId,
-                snapshotVersion: snapshot.version,
-                snapshotDigest: snapshot.digest,
-                classification: match.classification,
-                matchedClaim: match.claim,
-                similarity: match.similarity,
-                diff: match.diff,
-                diffDigest,
-                recommendation: match.classification === 'EXACT_DUPLICATE' ? 'NO_OP' : 'ADD_CLAIM',
-                accessScope: [...security.accessScope],
-                sensitivity: security.sensitivity,
-                createdAt: envelope.createdAt,
-              });
-            })());
+            candidate,
+            actor: envelope.actor,
+            security,
+            createdAt: envelope.createdAt,
+            correlationId: envelope.correlationId,
+            runtime,
+            repository,
+            snapshotProvider,
+            textDiff,
+          });
+          if (!execution.result) return;
+          const result = execution.result;
           await context.publish({
             messageType: 'ComparisonCompleted',
             schemaVersion: '1.0.0',

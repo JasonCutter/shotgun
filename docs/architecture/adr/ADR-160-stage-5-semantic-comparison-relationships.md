@@ -34,6 +34,35 @@ intentionally deferred. It does not rewrite ADR-085, change Canonical authority,
 or authorize Product implementation by itself. Product work begins only after
 this ADR is accepted and an implementation request is approved.
 
+## Amendment — Stage 5 stale-comparison re-entry (2026-09-07)
+
+An approved Candidate may outlive the Canonical snapshot against which its first
+Comparison and DraftChangeSet were created. The Product therefore exposes the
+server-authoritative `RecompareClaimCandidate@1.0.0` command. A caller supplies
+only the Candidate identity and a command idempotency identity; project, actor,
+access scope, sensitivity, rollout authority, Candidate readiness, immutable
+Candidate revision/digest, and the current Canonical snapshot are resolved by
+the normal command/runtime boundary.
+
+The command accepts only a `READY` Candidate. It reuses the same comparison
+execution as `CandidateValidated`, pins the current verified Canonical snapshot,
+and finds or creates the immutable Comparison identity for
+`project + candidate revision/digest + snapshot digest`. A new Comparison emits
+the normal `ComparisonCompleted` event, so the review module creates a new
+DraftChangeSet while preserving every prior Comparison, ChangeSet, stale
+decision, and dead-letter record. Replaying the same command or re-entering it
+before approval is idempotent for the same Candidate/current snapshot.
+
+The command never writes Candidate, SourceVersion, Evidence, OriginalAsset, or
+Canonical state and never promotes a result automatically. Canonical changes
+remain behind the existing explicit Review/Approval boundary. `V1_ONLY`,
+`V2_SHADOW`, and `V2_ACTIVE` remain server-owned rollout decisions; in
+`V2_ACTIVE` the v1 Comparison path is not silently invoked. If Canonical advances
+again before approval, the newly created ChangeSet becomes stale and a
+subsequent re-entry creates the next snapshot-scoped identity. The
+CANONICAL_ONLY explicit-Evidence issue is a separate Product Ask defect and is
+not part of this amendment.
+
 ## Decision summary
 
 The mature comparison contract is introduced as version 2. It keeps a bounded

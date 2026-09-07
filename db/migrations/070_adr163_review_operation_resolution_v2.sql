@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS review.change_set_revisions_v2 (
   CONSTRAINT change_set_revisions_v2_change_set_fk
     FOREIGN KEY (project_id, change_set_id)
     REFERENCES review.change_sets_v2 (project_id, change_set_id)
-    ON DELETE RESTRICT
+    ON DELETE CASCADE
 );
 
 INSERT INTO review.change_set_revisions_v2

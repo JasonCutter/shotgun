@@ -90,12 +90,12 @@ Canonical precondition, and the approval manifest.
 
 The initial resolved operation set is deliberately closed:
 
-| User choice | Meaning | Canonical effect after explicit APPROVE |
-| --- | --- | --- |
-| `ADD_CLAIM` | Preserve the Candidate as an independent Claim | Existing Stage 6 `ADD_CLAIM`; version `+1` |
-| `NO_OP` | Existing Canonical representation is sufficient for this review | Existing Stage 6 `NO_OP`; version `+0` |
-| `REJECT` | Ordinary Review decision, not an operation resolution | Canonical `+0` |
-| `HOLD` | Ordinary Review decision, not an operation resolution | Canonical `+0` |
+| User choice | Meaning                                                         | Canonical effect after explicit APPROVE    |
+| ----------- | --------------------------------------------------------------- | ------------------------------------------ |
+| `ADD_CLAIM` | Preserve the Candidate as an independent Claim                  | Existing Stage 6 `ADD_CLAIM`; version `+1` |
+| `NO_OP`     | Existing Canonical representation is sufficient for this review | Existing Stage 6 `NO_OP`; version `+0`     |
+| `REJECT`    | Ordinary Review decision, not an operation resolution           | Canonical `+0`                             |
+| `HOLD`      | Ordinary Review decision, not an operation resolution           | Canonical `+0`                             |
 
 No additional Canonical operation is introduced by this ADR. In particular,
 there is no relation update, merge, delete, replace, conflict-resolution, or
@@ -222,17 +222,17 @@ a second resolution attempt.
 The command may resolve only a fresh, valid V2 review Draft that satisfies all
 of the following:
 
-| Preconditions | Required proof |
-| --- | --- |
+| Preconditions     | Required proof                                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | Draft eligibility | Current Draft operation is `MODIFY_REVIEW`, review status is pending, and the comparison disposition is `REVIEW_REQUIRED`. |
-| Claim-only scope | Issue #203 activation is Claim-only; unsupported resource types fail closed. |
-| Candidate | Exact Candidate ID, revision, digest, project, readiness, SourceVersion and Evidence IDs resolve server-side. |
-| Comparison | Completed immutable ComparisonResultV2, AnalysisRevision(s), relationship IDs and material digests are readable. |
-| Canonical base | Snapshot ID, version and digest still match the comparison and shortlist audit. |
-| Security | Actor, project, access scope, sensitivity and policy context remain authorized. |
-| Freshness | Candidate, Evidence, relationship, analysis, shortlist, semantic generation and Canonical identities have not drifted. |
-| Resolution state | No prior successful resolution exists for this source Draft revision, except an exact idempotent replay. |
-| Authority | Actor is an authenticated user; Service/System/AI actors are denied. |
+| Claim-only scope  | Issue #203 activation is Claim-only; unsupported resource types fail closed.                                               |
+| Candidate         | Exact Candidate ID, revision, digest, project, readiness, SourceVersion and Evidence IDs resolve server-side.              |
+| Comparison        | Completed immutable ComparisonResultV2, AnalysisRevision(s), relationship IDs and material digests are readable.           |
+| Canonical base    | Snapshot ID, version and digest still match the comparison and shortlist audit.                                            |
+| Security          | Actor, project, access scope, sensitivity and policy context remain authorized.                                            |
+| Freshness         | Candidate, Evidence, relationship, analysis, shortlist, semantic generation and Canonical identities have not drifted.     |
+| Resolution state  | No prior successful resolution exists for this source Draft revision, except an exact idempotent replay.                   |
+| Authority         | Actor is an authenticated user; Service/System/AI actors are denied.                                                       |
 
 If any precondition fails, the command creates no resolution and no Draft
 revision. It never silently refreshes, rebases, downgrades to V1, or converts
@@ -686,13 +686,13 @@ This design introduces no runtime dependency and no provider requirement.
 `NO_RELEVANT_OSS` is recorded for semantic review-operation authority: no
 reviewed candidate supplies the required Shotgun Canonical/Approval boundary.
 
-| Candidate | Decision | Boundary and reason |
-| --- | --- | --- |
-| [garrytan/gbrain](https://github.com/garrytan/gbrain), `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, MIT | `REFERENCE_ONLY` | Job/idempotency/history patterns only; no Runtime, DB, or Canonical authority. |
-| [lucasastorian/llmwiki](https://github.com/lucasastorian/llmwiki), `ad626a3d81be1480e35ef4e94234de8dbb27a61e`, Apache-2.0 | `REFERENCE_ONLY` | Evidence/locator parts do not resolve Candidate-to-Canonical operations. |
-| [ddsyasas/llm-wiki](https://github.com/ddsyasas/llm-wiki), `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`, MIT | `REFERENCE_ONLY` | Review/action UX only; backend and SQLite excluded. |
-| [Inkeep OpenKnowledge](https://github.com/inkeep/open-knowledge), `f2834c237639e2cff603817ed88182b33f83cf91`, GPL-3.0-or-later | `REFERENCE_ONLY` | Activity/diff UX patterns only; GPL Runtime, storage and Yjs excluded. |
-| Existing PostgreSQL, JSON Schema/Ajv and Transactional Outbox decisions | `ADOPTED` / existing | Reuse existing Shotgun Ports and pins in the later implementation; no new dependency is adopted here. |
+| Candidate                                                                                                                      | Decision             | Boundary and reason                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------- |
+| [garrytan/gbrain](https://github.com/garrytan/gbrain), `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, MIT                         | `REFERENCE_ONLY`     | Job/idempotency/history patterns only; no Runtime, DB, or Canonical authority.                        |
+| [lucasastorian/llmwiki](https://github.com/lucasastorian/llmwiki), `ad626a3d81be1480e35ef4e94234de8dbb27a61e`, Apache-2.0      | `REFERENCE_ONLY`     | Evidence/locator parts do not resolve Candidate-to-Canonical operations.                              |
+| [ddsyasas/llm-wiki](https://github.com/ddsyasas/llm-wiki), `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`, MIT                     | `REFERENCE_ONLY`     | Review/action UX only; backend and SQLite excluded.                                                   |
+| [Inkeep OpenKnowledge](https://github.com/inkeep/open-knowledge), `f2834c237639e2cff603817ed88182b33f83cf91`, GPL-3.0-or-later | `REFERENCE_ONLY`     | Activity/diff UX patterns only; GPL Runtime, storage and Yjs excluded.                                |
+| Existing PostgreSQL, JSON Schema/Ajv and Transactional Outbox decisions                                                        | `ADOPTED` / existing | Reuse existing Shotgun Ports and pins in the later implementation; no new dependency is adopted here. |
 
 The Open-source Role Matrix does not require a status change because no OSS is
 being newly adopted, extracted, or augmented by this design.
@@ -701,29 +701,29 @@ being newly adopted, extracted, or augmented by this design.
 
 The implementation request must freeze and prove at least:
 
-| ID | Scenario | Required result |
-| --- | --- | --- |
-| R1 | Raw `MODIFY_REVIEW + APPROVE` | `BLOCKED`; no persistence or handoff |
-| R2 | Resolve `MODIFY_REVIEW -> ADD_CLAIM` | N+1 resolved revision; N preserved |
-| R3 | Resolved `ADD_CLAIM + APPROVE` | Stage 6 commit; Canonical `+1`; lineage valid |
-| R4 | Resolve `MODIFY_REVIEW -> NO_OP` | N+1 resolved revision; N preserved |
-| R5 | Resolved `NO_OP + APPROVE` | Canonical `+0`; no Claim/Fact |
-| R6 | Raw `MODIFY_REVIEW + REJECT` | Allowed; Canonical `+0` |
-| R7 | Raw `MODIFY_REVIEW + HOLD` | Allowed; Canonical `+0` |
-| R8 | Canonical changes before resolution | Resolution stale/blocked |
-| R9 | Canonical changes after resolution before approval | Approval stale/blocked |
-| R10 | Replay same resolution idempotency key | One logical resolution/result |
-| R11 | Concurrent conflicting resolutions | One winner; other blocked; no second revision |
-| R12 | Process restart after command | Exact resolution/audit state restored |
-| R13 | Tesla 2008 + 2009 conflict | Both source-supported Claims can coexist; disagreement inspectable |
-| R14 | Relationship evidence | No automatic Canonical Relation |
-| R15 | Claim authority | No automatic Fact |
-| R16 | Historical r8 invalid approvals | Untouched, unretried, unrewritten |
-| R17 | Contract compatibility | Resolved N+1 validates as existing strict V2.0; Stage 6 unchanged |
-| R18 | Immutable revision migration | Existing current row is exact revision snapshot; N remains retrievable |
-| R19 | Domain commit then connector ack loss | `OUTCOME_UNKNOWN` lookup/reconcile; no duplicate resolution/revision |
-| R20 | Recommendation/operation separation | `REVIEW_REQUIRED` + `MODIFY_REVIEW` preserved; only Draft operation changes |
-| R21 | Resolver/approver provenance | Both authorized actors audited; same and different actors supported |
+| ID  | Scenario                                           | Required result                                                             |
+| --- | -------------------------------------------------- | --------------------------------------------------------------------------- |
+| R1  | Raw `MODIFY_REVIEW + APPROVE`                      | `BLOCKED`; no persistence or handoff                                        |
+| R2  | Resolve `MODIFY_REVIEW -> ADD_CLAIM`               | N+1 resolved revision; N preserved                                          |
+| R3  | Resolved `ADD_CLAIM + APPROVE`                     | Stage 6 commit; Canonical `+1`; lineage valid                               |
+| R4  | Resolve `MODIFY_REVIEW -> NO_OP`                   | N+1 resolved revision; N preserved                                          |
+| R5  | Resolved `NO_OP + APPROVE`                         | Canonical `+0`; no Claim/Fact                                               |
+| R6  | Raw `MODIFY_REVIEW + REJECT`                       | Allowed; Canonical `+0`                                                     |
+| R7  | Raw `MODIFY_REVIEW + HOLD`                         | Allowed; Canonical `+0`                                                     |
+| R8  | Canonical changes before resolution                | Resolution stale/blocked                                                    |
+| R9  | Canonical changes after resolution before approval | Approval stale/blocked                                                      |
+| R10 | Replay same resolution idempotency key             | One logical resolution/result                                               |
+| R11 | Concurrent conflicting resolutions                 | One winner; other blocked; no second revision                               |
+| R12 | Process restart after command                      | Exact resolution/audit state restored                                       |
+| R13 | Tesla 2008 + 2009 conflict                         | Both source-supported Claims can coexist; disagreement inspectable          |
+| R14 | Relationship evidence                              | No automatic Canonical Relation                                             |
+| R15 | Claim authority                                    | No automatic Fact                                                           |
+| R16 | Historical r8 invalid approvals                    | Untouched, unretried, unrewritten                                           |
+| R17 | Contract compatibility                             | Resolved N+1 validates as existing strict V2.0; Stage 6 unchanged           |
+| R18 | Immutable revision migration                       | Existing current row is exact revision snapshot; N remains retrievable      |
+| R19 | Domain commit then connector ack loss              | `OUTCOME_UNKNOWN` lookup/reconcile; no duplicate resolution/revision        |
+| R20 | Recommendation/operation separation                | `REVIEW_REQUIRED` + `MODIFY_REVIEW` preserved; only Draft operation changes |
+| R21 | Resolver/approver provenance                       | Both authorized actors audited; same and different actors supported         |
 
 Required later tests include Contract, Review bridge unit, Product/PostgreSQL
 boundary, Security Negative, Replay/Idempotency, concurrency, restart,

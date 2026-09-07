@@ -652,6 +652,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
               d.fingerprint
        FROM connector.jobs j
        JOIN connector.dedup_records d ON d.dedup_record_id=j.dedup_record_id
+         AND j.job_id=d.job_id
        WHERE d.project_id=$1 AND d.security_scope=$2 AND d.consumer_id=$3
          AND d.message_kind=$4 AND d.message_type=$5 AND d.semantic_key=$6
          AND d.fingerprint=$7`,
@@ -684,6 +685,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
               d.fingerprint
        FROM connector.jobs j
        JOIN connector.dedup_records d ON d.dedup_record_id=j.dedup_record_id
+         AND j.job_id=d.job_id
        WHERE d.project_id=$1 AND d.security_scope=$2 AND d.consumer_id=$3
          AND d.message_kind=$4 AND d.message_type=$5 AND d.semantic_key=$6
          AND d.fingerprint=$7`,

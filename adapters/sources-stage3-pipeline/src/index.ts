@@ -280,7 +280,7 @@ export class SourcesStage3TestPipeline extends SourcesStage3PipelineRuntime {
 }
 
 export type SourcesStage3RecoveryObservation = {
-  readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED' | 'DEFERRED';
+  readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED' | 'DEFERRED' | 'BREAKER_OPEN';
   readonly code?: string;
 };
 
@@ -353,7 +353,10 @@ export class SourcesStage3RecoveryDispatcher {
 
   async dispatchOnce(): Promise<'EMPTY' | 'SUCCEEDED' | 'FAILED'> {
     if (this.breaker.isOpen()) {
-      await this.options.reporter?.report({ status: 'DEFERRED' });
+      await this.options.reporter?.report({
+        status: 'BREAKER_OPEN',
+        code: 'STAGE3_RECOVERY_BREAKER_OPEN',
+      });
       return 'EMPTY';
     }
     let recoverable: readonly SourcesStage3RecoveryItem[];

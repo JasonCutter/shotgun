@@ -1211,7 +1211,7 @@ export const startShotgunApplication = async (
     });
     const runningApplication = application!;
     const reportStage3Recovery = async (observation: {
-      readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED' | 'DEFERRED';
+      readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED' | 'DEFERRED' | 'BREAKER_OPEN';
       readonly code?: string;
     }): Promise<void> => {
       const previous = runningApplication.state.recoveryRegistry.get(
@@ -1219,8 +1219,9 @@ export const startShotgunApplication = async (
       );
       const now = new Date().toISOString();
       const deferred = observation.status === 'DEFERRED';
-      const failed = observation.status === 'FAILED' || deferred;
-      const retryable = deferred || observation.code?.includes('RETRYABLE') === true;
+      const breakerOpen = observation.status === 'BREAKER_OPEN';
+      const failed = observation.status === 'FAILED' || breakerOpen;
+      const retryable = breakerOpen || observation.code?.includes('RETRYABLE') === true;
       runningApplication.state.recoveryRegistry.record({
         runnerId: RECOVERY_RUNNER_IDS.SOURCES_STAGE3,
         executionStatus: failed ? 'FAILED_TO_RUN' : 'COMPLETED',
@@ -1232,7 +1233,9 @@ export const startShotgunApplication = async (
         ...(failed ? {} : { lastSuccessAt: now }),
         scannedCount:
           (previous?.scannedCount ?? 0) +
-          (observation.status === 'EMPTY' || observation.status === 'DEFERRED' ? 0 : 1),
+          (observation.status === 'EMPTY' || observation.status === 'DEFERRED' || breakerOpen
+            ? 0
+            : 1),
         succeededCount:
           (previous?.succeededCount ?? 0) + (observation.status === 'SUCCEEDED' ? 1 : 0),
         retryableCount: (previous?.retryableCount ?? 0) + (failed && retryable ? 1 : 0),
@@ -1242,8 +1245,9 @@ export const startShotgunApplication = async (
           ? [
               ...new Set([
                 ...(previous?.safeCodes ?? []),
-                observation.code ??
-                  (deferred ? 'STAGE3_RECOVERY_DEFERRED' : 'STAGE3_RECOVERY_FAILED'),
+                (observation.code ?? breakerOpen)
+                  ? 'STAGE3_RECOVERY_BREAKER_OPEN'
+                  : 'STAGE3_RECOVERY_FAILED',
               ]),
             ]
           : [],

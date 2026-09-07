@@ -375,6 +375,68 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
     expect(scans).toBe(1);
   });
 
+  it('distinguishes normal deferred work from an open outage breaker', async () => {
+    const normalObservations: string[] = [];
+    const normal = new SourcesStage3RecoveryDispatcher(
+      {
+        findRecoverable: async () => [
+          {
+            projectId: 'project-1',
+            sourceId: 'source-1',
+            sourceVersionId: 'version-1',
+            storageKey: 'asset/1',
+            mediaType: 'text/plain' as const,
+            contentHash: 'sha256:' + 'a'.repeat(64),
+            accessScope: ['owner'],
+            sensitivity: 'public' as const,
+            state: 'STAGE3_RETRYABLE' as const,
+          },
+        ],
+      } as unknown as SourcesStage3ProgressPort,
+      {
+        runForSourceVersion: async () => ({
+          status: 'DEFERRED' as const,
+          reason: 'RETRY_NOT_DUE' as const,
+        }),
+      },
+      {
+        reporter: {
+          report: (observation) => {
+            normalObservations.push(observation.status);
+          },
+        },
+      },
+    );
+    await expect(normal.dispatchOnce()).resolves.toBe('EMPTY');
+    expect(normalObservations).toEqual(['DEFERRED']);
+
+    const outageObservations: string[] = [];
+    const outage = new SourcesStage3RecoveryDispatcher(
+      {
+        findRecoverable: async () => {
+          throw Object.assign(new Error('database unavailable'), { code: 'ECONNREFUSED' });
+        },
+      } as unknown as SourcesStage3ProgressPort,
+      {
+        runForSourceVersion: async () => ({
+          status: 'DEFERRED' as const,
+          reason: 'ACTIVE_LEASE' as const,
+        }),
+      },
+      {
+        failureBackoffMs: 100,
+        reporter: {
+          report: (observation) => {
+            outageObservations.push(observation.status);
+          },
+        },
+      },
+    );
+    await expect(outage.dispatchOnce()).rejects.toMatchObject({ code: 'ECONNREFUSED' });
+    await expect(outage.dispatchOnce()).resolves.toBe('EMPTY');
+    expect(outageObservations).toEqual(['FAILED', 'BREAKER_OPEN']);
+  });
+
   it('retries a retryable failure and completes the same continuation', async () => {
     const store = new MemoryContinuationStore();
     let publishes = 0;

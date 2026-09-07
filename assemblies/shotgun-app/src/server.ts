@@ -258,6 +258,7 @@ import {
   type HybridRetrievalCoordinatorPort,
   type KnowledgeResourceResolverPort,
   type SemanticActiveGenerationReaderPort,
+  type SemanticEmbeddingProfilePort,
   type SemanticProjectionRefreshPort,
   type SemanticRetrieverPort,
 } from '../../../packages/contracts/src/index.js';
@@ -793,6 +794,8 @@ export type ApplicationOptions = {
   readonly projectBootstrapUnitOfWork?: ProjectBootstrapUnitOfWorkPort;
   readonly settingsRepository?: SettingsRepositoryPort;
   readonly aiSettingsBackend?: AISettingsBackendPort;
+  /** Product-owned semantic embedding profile provisioning boundary. */
+  readonly semanticEmbeddingProfile?: SemanticEmbeddingProfilePort;
   /** Existing A4 authority exposed only through provider-scoped review routes. */
   readonly providerExternalTransferApprovals?: ProviderExternalTransferApprovalPort;
   readonly frontendCommandGateway?: FrontendCommandGatewayPort;
@@ -3328,6 +3331,7 @@ const createApplicationCore = async (
       authRepository,
       requireBrowserSession,
       options.providerExternalTransferApprovals,
+      options.semanticEmbeddingProfile,
     );
   }
   registerFrontendKnowledgeDraftRoutes(

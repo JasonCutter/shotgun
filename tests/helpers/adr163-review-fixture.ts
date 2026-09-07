@@ -67,6 +67,7 @@ const providerCall = (createdAt: string) =>
 
 export const createAdr163ReviewFixture = (input: {
   readonly suffix: string;
+  readonly candidateId?: string;
   readonly claimText: string;
   readonly snapshot?: CanonicalSnapshot;
   readonly createdAt?: string;
@@ -91,7 +92,7 @@ export const createAdr163ReviewFixture = (input: {
       digest: canonicalSnapshotDigest(ADR163_FIXTURE_PROJECT, 0, []),
     } satisfies CanonicalSnapshot);
   const evidenceId = `evidence:adr163:${input.suffix}`;
-  const candidateId = `candidate:adr163:${input.suffix}`;
+  const candidateId = input.candidateId ?? `candidate:adr163:${input.suffix}`;
   const sourceVersionId = `source-version:adr163:${input.suffix}`;
   const semanticFreshness = input.semanticFreshness;
   const candidateWithoutDigest = {

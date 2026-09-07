@@ -48,6 +48,7 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
 
   it('reconciles Product route ack loss without replaying the resolver', async () => {
     const suffix = randomUUID();
+    const candidateId = randomUUID();
     const snapshot: CanonicalSnapshot = {
       snapshotId: `snapshot:adr163-product:${suffix}`,
       projectId: 'shotgun',
@@ -89,6 +90,7 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
     };
     const fixture = createAdr163ReviewFixture({
       suffix: `product-r19-${suffix}`,
+      candidateId,
       claimText: 'Product R19 acknowledgement loss fixture.',
       snapshot,
       freshnessMode: 'SEMANTIC',

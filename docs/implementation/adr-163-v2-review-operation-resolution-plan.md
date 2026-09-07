@@ -134,16 +134,29 @@ Add the Review-owned persistence boundary additively. Logical
 `OperationResolution` fields are defined by ADR-163, including source and
 resolved revisions/digests, Candidate/Evidence/Comparison/Analysis/
 relationship references, Canonical snapshot, access/policy revisions, chosen
-operation, actor, command identity, digest, and state.
+operation, resolver actor, semantic command identity, digest, and immutable
+`RESOLVED` state.
 
 Materialize the same Draft aggregate as immutable revision N+1:
 
 - N remains `MODIFY_REVIEW` and queryable.
-- N+1 contains `ADD_CLAIM` or `NO_OP` and an immutable resolution reference.
+- N+1 contains `ADD_CLAIM` or `NO_OP` and remains a normal strict
+  `DraftChangeSetV2` `contractVersion: 2.0` object.
+- N+1 preserves `disposition = REVIEW_REQUIRED` and
+  `reviewRecommendation = MODIFY_REVIEW`; only the Draft `operation` changes.
 - N+1 remains unapproved and non-Canonical.
 - The current pointer advances atomically only with the resolution record.
-- The existing immutable Review submission boundary is reused or extended
-  additively; the old Review authority is not mutated or reused.
+- The existing immutable Review submission boundary is reused without adding
+  `operationResolutionRef` to the strict Draft or Manifest schemas. Approval
+  finds exactly one matching separate resolution by project, change-set,
+  resolved revision/digest, and chosen operation.
+
+Keep `review.change_sets_v2` as the backward-compatible current aggregate/head
+row. Add an additive immutable `review.change_set_revisions_v2` authority. A
+pre-enable migration copies each existing current row into that revision store
+at its existing revision/digest as an exact historical snapshot; it creates no
+invented OperationResolution and does not reinterpret existing comparisons.
+Freeze reader precedence and rollback behavior before migration SQL.
 
 Freeze canonical serialization and digest field order in the accepted contract
 before writing migration SQL. Exclude UI order, labels, browser rationale,
@@ -151,37 +164,67 @@ timestamps, and unrelated projections from digests.
 
 ### Step 4 — Transaction, idempotency, and concurrency
 
-Use the existing command ledger and owning transaction adapter. The critical
-section is:
+Keep ConnectorRuntime deduplication and the Review domain transaction as two
+distinct layers. Do not attempt to make connector completion part of the
+Review database transaction and do not create a parallel generic idempotency
+subsystem.
+
+The existing connector lifecycle remains:
 
 ```text
-accept envelope
-  -> lock current Draft/revision
+connector dedup begin
+  -> durable job
+  -> invoke Review command handler
+  -> handler returns
+  -> connector dedup complete
+```
+
+The Review-owned critical section is:
+
+```text
+lock current head N
   -> resolve and validate all server-owned references
   -> check rollout and security policy
-  -> check command-ledger replay
   -> enforce one resolution per source revision
   -> insert resolution
   -> insert N+1 Draft revision
   -> advance current pointer
-  -> append History/Audit and produced resources
-  -> complete command ledger
+  -> append Review History/Audit
   -> commit
 ```
 
 The transaction must not call Canonical, Stage 6, a provider, or an external
-Action. Same semantic command identity replays the original result. A reused
-key with different payload fails closed. Competing `ADD_CLAIM` and `NO_OP`
-choices serialize so exactly one wins and the other creates no rows. Restart
-must restore the exact outcome without a provider re-run.
+Action. Database uniqueness protects one logical resolution per source
+revision/semantic resolution identity. Competing `ADD_CLAIM` and `NO_OP`
+choices serialize so exactly one wins and the other creates no rows.
+
+If the Review commit succeeds but connector completion/acknowledgement is
+lost, the connector record becomes `OUTCOME_UNKNOWN`. Restart must perform a
+read-only authoritative domain lookup using project plus `clientRequestId`
+and/or semantic resolution identity. The lookup proves committed status,
+resolution ID, source/resolved revision and digest, and chosen operation. Only
+then does existing `ConnectorRuntime.reconcileOutcome` converge the ledger.
+The handler is not blindly replayed, no new idempotency key is created, and no
+second revision is possible.
 
 ### Step 5 — Approval bridge
 
 Retain PR #228's raw guard. The existing APPROVE route must require a resolved
-N+1 revision whose resolution is `RESOLVED`; bind the approval to resolution
-ID, source revision, resolved revision/digest, Candidate/Evidence/Comparison/
-relationship/Analysis identities, Canonical snapshot, actor, access, and
-policy. Revalidate freshness immediately before manifest/token/handoff.
+N+1 revision whose separate `OperationResolution` is `RESOLVED`; find exactly
+one match by project, change-set, resolved revision, resolved digest, and
+chosen operation. Bind the approval to resolution ID, source revision,
+resolved revision/digest, Candidate/Evidence/Comparison/relationship/Analysis
+identities, Canonical snapshot, access, and policy. Revalidate freshness
+immediately before manifest/token/handoff.
+
+The resolved Draft remains valid ordinary strict V2.0 and retains
+`disposition = REVIEW_REQUIRED` plus `reviewRecommendation = MODIFY_REVIEW`.
+Only its user-resolved `operation` is `ADD_CLAIM` or `NO_OP`; the existing
+ApprovedChangeSetManifestV2 and Stage 6 contracts remain unchanged.
+
+Resolution actor and approval actor are independently authorized users. Record
+both `resolverActorId` and `approverActorId`; they may be the same user but are
+not required to match by this plan.
 
 The caller cannot replace the stored operation. Raw `MODIFY_REVIEW + APPROVE`
 stops before persistence, manifest, token, handoff, or Canonical mutation.
@@ -209,11 +252,17 @@ Draft. Historical r8 artifacts remain immutable and untouched.
 ### Step 8 — Adapter and migration gates
 
 Implement the in-memory Adapter first for deterministic Contract tests, then
-the PostgreSQL Adapter behind the same Port. The migration is additive,
-reader-compatible before enablement, uniqueness-protected, and has forward
-verification plus restore/replay drills. No destructive down migration is
-allowed. A project-scoped capability flag controls rollout; disabling it is
-fail-closed and leaves immutable resolution history readable.
+the PostgreSQL Adapter behind the same Port. Keep
+`review.change_sets_v2` as the current aggregate/head compatibility surface
+and add `review.change_set_revisions_v2` as immutable revision authority. The
+migration deterministically snapshots every existing current row at its
+existing revision/digest, without semantic backfill or fabricated resolution.
+It is additive, reader-compatible before enablement, uniqueness-protected,
+and has forward verification plus restore/replay drills. No destructive down
+migration is allowed. A project-scoped capability flag controls rollout;
+disabling it is fail-closed and leaves immutable resolution history readable.
+Connector `OUTCOME_UNKNOWN` reconciliation must be tested separately from the
+Review transaction and must never invoke a blind handler replay.
 
 ## 5. Acceptance and test contract
 
@@ -238,10 +287,17 @@ artifact. At minimum:
 | R14 | Relationship evidence | No automatic Canonical Relation |
 | R15 | Claim authority | No automatic Fact |
 | R16 | r8 historical artifacts | Untouched, unretried, unrewritten |
+| R17 | Contract compatibility | Resolved N+1 is strict V2.0; Stage 6 unchanged |
+| R18 | Immutable revision migration | Existing current row is exact snapshot; N remains retrievable |
+| R19 | Domain commit then connector ack loss | `OUTCOME_UNKNOWN` lookup/reconcile; no duplicate revision |
+| R20 | Recommendation/operation separation | `REVIEW_REQUIRED` + `MODIFY_REVIEW` preserved; only operation changes |
+| R21 | Resolver/approver provenance | Both authorized actors audited; same/different actors supported |
 
 Required gates are Contract, Review bridge unit, Product/PostgreSQL boundary,
 Security Negative, Replay/Idempotency, concurrency, restart,
-Migration/Rollback, Adapter Replacement, and the bounded ECAV conflict corpus.
+Migration/Rollback, Adapter Replacement, Connector `OUTCOME_UNKNOWN`
+reconciliation, immutable revision migration, and the bounded ECAV conflict
+corpus.
 Golden Corpus evidence is required for any comparison/evidence behavior change.
 No Product or r8 test is authorized on this design branch.
 
@@ -274,7 +330,7 @@ adopted, extracted, or augmented.
 | D | Approval bridge | Raw guard and resolved binding pass |
 | E | In-memory/PostgreSQL Adapters | Replacement/rollback evidence pass |
 | F | Rollout/migration | Restore/replay drill and reader compatibility pass |
-| G | E2E corpus | R1–R16 and required gates pass |
+| G | E2E corpus | R1–R21 and required gates pass |
 
 Any failure keeps the work item blocked. There is no `COMPLETE_WITH_LIMITS`
 shortcut for an unreviewed OSS decision, missing Contract test, unsafe
@@ -289,7 +345,7 @@ The eventual completion report must state:
 - OSS candidates, decisions, commits, licenses, and Role Matrix status;
 - Port/Adapter boundaries and direct-implementation justification;
 - Contract, Golden Corpus, Security, Replay/Idempotency, Replacement,
-  Migration/Rollback, and R1–R16 results;
+  Migration/Rollback, Connector `OUTCOME_UNKNOWN`, and R1–R21 results;
 - r8 immutability evidence and any known limitations;
 - the next accepted Contract version or explicit blocker.
 

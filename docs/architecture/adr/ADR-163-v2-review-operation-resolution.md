@@ -208,9 +208,12 @@ IDEMPOTENCY_KEY_REUSE
 OUTCOME_UNKNOWN
 ```
 
-Mutation automatic retry is disabled. `OUTCOME_UNKNOWN` is resolved with the
-original `clientRequestId` and idempotency key through the existing command
-ledger; a new key never creates a second resolution attempt.
+Mutation automatic retry is disabled. If ConnectorRuntime reports
+`OUTCOME_UNKNOWN`, the handler is not replayed blindly. The existing
+`ConnectorRuntime.reconcileOutcome` path first performs the authoritative
+Review-domain lookup using the original `clientRequestId` and semantic command
+identity, then reconciles the durable connector record. A new key never creates
+a second resolution attempt.
 
 ## 3. Resolution preconditions
 
@@ -252,7 +255,7 @@ Logical fields:
 resolutionId
 contractVersion = review-operation-resolution.v1
 projectId
-draftId
+changeSetId
 sourceDraftRevision
 sourceDraftDigest
 resolvedDraftRevision
@@ -267,18 +270,30 @@ relationshipIds[]
 chosenOperation = ADD_CLAIM | NO_OP
 accessRevision
 policyContextRevision
-actorId
+resolverActorId
 clientRequestId
+semanticCommandIdentity
 idempotencyKey
 commandDigest
 resolutionDigest
-state = RESOLVED | STALE | CONFLICTED
+state = RESOLVED
 createdAt
 ```
 
 All referenced identities are server-resolved references. The resolution does
 not duplicate or become the owner of Candidate, Evidence, Comparison,
 Analysis, or Canonical rows.
+
+`idempotencyKey` and `semanticCommandIdentity` retain the incoming connector
+and command identity for audit/reconciliation; they do not create a second
+generic domain command ledger. Connector delivery state remains owned by the
+existing ConnectorRuntime ledger.
+
+`OperationResolution` is an immutable record of a successfully committed user
+choice. `STALE` is a later freshness/read-eligibility result and is never a
+rewrite of this record. `CONFLICTED` is a failed command outcome and creates no
+`OperationResolution` row. If stale/conflict observability must be durable, it
+is appended to the existing History/Audit event stream or a derived projection.
 
 ### 4.2 Resolved Draft revision
 
@@ -287,9 +302,10 @@ The previous `MODIFY_REVIEW` revision N remains queryable with its original
 operation and digest. Revision N+1:
 
 - has `operation = ADD_CLAIM` or `operation = NO_OP`;
-- contains an immutable `operationResolutionRef` to the new resolution;
-- carries the same server-owned Candidate/Evidence/Comparison/relationship
-  lineage and the exact freshness preconditions;
+- remains a valid ordinary `DraftChangeSetV2` `contractVersion: 2.0` object;
+- preserves `disposition = REVIEW_REQUIRED`,
+  `reviewRecommendation = MODIFY_REVIEW`, comparison identity, Candidate/
+  Evidence/relationship/Analysis lineage, and exact freshness preconditions;
 - has a new deterministic content digest;
 - remains unapproved and non-Canonical until an explicit user APPROVE;
 - is the only revision eligible for a later approval.
@@ -297,10 +313,32 @@ operation and digest. Revision N+1:
 The Draft aggregate's current pointer may advance atomically to N+1, but no
 historical revision is updated. If the existing Review submission contract
 requires one immutable Review Resource per submitted revision, the server
-creates a new resource for N+1 using that existing boundary. No second
-parallel Review authority is introduced.
+creates a new resource for N+1 using that existing boundary. No
+`operationResolutionRef` is added to the strict V2.0 Draft or Manifest schema;
+the separate `OperationResolution` binds the two through project, change-set,
+revision, digest, and operation identity.
 
-### 4.3 Digest rules
+### 4.3 AI recommendation and user operation remain separate
+
+The resolved N+1 Draft preserves the Comparison's
+`disposition = REVIEW_REQUIRED` and `reviewRecommendation = MODIFY_REVIEW`.
+The Comparison ID/digest, Candidate, Evidence, relationship IDs,
+AnalysisRevision IDs, and freshness identity are copied by server-owned
+resolution into the ordinary V2.0 Draft fields. Only the user-authorized Draft
+`operation` changes from `MODIFY_REVIEW` to `ADD_CLAIM` or `NO_OP`.
+
+Activity and Audit must show both facts independently:
+
+```text
+AI recommendation: MODIFY_REVIEW
+user-resolved operation: ADD_CLAIM | NO_OP
+final approval: separate user action
+```
+
+Neither the AI recommendation nor the semantic relationship is rewritten as
+the user's operation choice.
+
+### 4.4 Digest rules
 
 `resolutionDigest` and `resolvedDraftDigest` are computed from a versioned,
 canonical serialization of server-resolved fields, including:
@@ -319,61 +357,106 @@ from the browser, and unrelated projection fields are not digest inputs.
 The serialization algorithm and field ordering must be frozen by the later
 implementation contract before migration.
 
-### 4.4 Ownership and migration boundary
+### 4.5 Ownership and migration boundary
 
 The later implementation is expected to add an additive Review-owned
 persistence boundary, for example:
 
 ```text
 review.operation_resolutions_v2
-review.draft_change_set_revisions_v2       # only if not already present
+review.change_set_revisions_v2             # immutable revision authority
 review.review_submission_refs_v2           # existing boundary, additive fields only
 ```
 
 The names are design names, not an authorization to create SQL now. Existing
 V1/V2 rows remain readable and are not backfilled with invented resolutions.
-The existing command ledger is reused for replay; a parallel idempotency table
-or second command runtime is not introduced. A destructive down migration is
-not permitted. Application rollback is a capability/rollout decision that
-leaves immutable resolution history intact.
+Before enablement, each existing `review.change_sets_v2` current row is
+deterministically copied as an exact immutable snapshot into
+`review.change_set_revisions_v2` at its existing revision. This is historical
+snapshot preservation, not semantic backfill or reinterpretation.
 
-## 5. Transaction and concurrency contract
+After migration, `review.change_sets_v2` remains the backward-compatible
+current aggregate/head surface, while `review.change_set_revisions_v2` is the
+immutable revision-history authority. Reader precedence and rollback behavior
+must be frozen so there is never a dual-source ambiguity. A destructive down
+migration is not permitted. Application rollback is a capability/rollout
+decision that leaves immutable resolution history intact.
 
-Resolution materialization is one transaction at the Review module's owning
-store (or the existing transaction adapter when multiple owned repositories
-must participate):
+## 5. Transaction, idempotency, and concurrency contract
+
+The ConnectorRuntime durable ledger and the Review domain transaction are two
+distinct idempotency layers. They must not be forced into one atomic
+transaction:
+
+### 5.1 Connector/runtime layer
+
+The existing Connector durable ledger remains the transport and delivery
+authority for semantic command identity, duplicate delivery, `IN_PROGRESS`,
+`COMPLETED`, `FAILED`, `OUTCOME_UNKNOWN`, fencing, and restart behavior. Its
+normal lifecycle remains:
 
 ```text
-accept command envelope
-  -> lock current Draft aggregate/revision
+connector dedup begin
+  -> durable job
+  -> invoke Review command handler
+  -> handler returns
+  -> connector dedup complete
+```
+
+The implementation must not create a parallel generic idempotency subsystem or
+attempt to include connector completion in the Review database transaction.
+
+### 5.2 Review/domain layer
+
+The Review-owned transaction atomically persists the domain outcome:
+
+```text
+lock current head N
   -> resolve and validate server-owned Comparison/Candidate/Evidence/base
-  -> check rollout, actor and access/policy authority
-  -> check command-ledger replay
-  -> check one-resolution-per-source-revision invariant
+  -> check rollout, actor, access and policy authority
+  -> check one resolution per source revision
   -> insert OperationResolution
-  -> insert immutable Draft revision N+1
-  -> advance Draft current-revision pointer
-  -> record History/Audit and produced resources
-  -> complete command ledger
+  -> insert immutable revision N+1
+  -> advance current aggregate/head to N+1
+  -> append Review History/Audit
   -> COMMIT
 ```
 
-The transaction never calls Canonical, a provider, Stage 6, or an external
-Action. A crash before commit persists nothing; an acknowledgement-unknown
-crash is resolved by the original command identity. The in-memory adapter must
-provide equivalent clone/commit/rollback behavior.
+Database uniqueness on the resolution and immutable revision identities
+guarantees one logical resolution. The transaction never calls Canonical, a
+provider, Stage 6, or an external Action. The in-memory adapter must provide
+equivalent clone/commit/rollback behavior.
 
-Idempotency and concurrency rules:
+### 5.3 Replay and the `OUTCOME_UNKNOWN` crash window
 
-1. Replaying the same command identity with the same semantic payload returns
-   the original resolution and resolved revision.
-2. Reusing a key with a different chosen operation or digest returns
-   `IDEMPOTENCY_KEY_REUSE`; it never creates another revision.
+If the Review transaction commits but connector completion/acknowledgement is
+lost, the connector record becomes the existing `OUTCOME_UNKNOWN` case. The
+handler must not be blindly re-executed. Reconciliation performs a read-only
+authoritative domain lookup using the stored project plus `clientRequestId`
+and/or the exact semantic resolution identity. The lookup must prove:
+
+- whether `OperationResolution` committed;
+- `resolutionId`;
+- source Draft revision/digest;
+- resolved Draft revision/digest;
+- `chosenOperation`.
+
+Only after that observation may the existing
+`ConnectorRuntime.reconcileOutcome` boundary reconcile the durable
+`OUTCOME_UNKNOWN` record. It never creates a new idempotency key, second
+resolution, or duplicate revision.
+
+### 5.4 Concurrency rules
+
+1. A same semantic command identity is resolved by the domain outcome lookup
+   or returns the original resolution and resolved revision.
+2. Reusing a connector key or `clientRequestId` with a different operation or
+   digest fails with `IDEMPOTENCY_KEY_REUSE`; it never creates another revision.
 3. Concurrent `ADD_CLAIM` and `NO_OP` commands against the same expected Draft
-   revision are serialized. Exactly one wins; the loser receives
+   revision serialize on the current head. Exactly one wins; the loser gets
    `DRAFT_REVISION_CONFLICT` or `RESOLUTION_CONFLICT` and creates no rows.
-4. A restart restores the command outcome, resolution, and exact Draft
-   revision; it never re-runs a provider or creates a second resolution.
+4. A process restart reconciles the connector outcome to the exact committed
+   domain result; it never re-runs a provider or creates a second resolution.
 5. A changed Canonical base, Candidate, Evidence, relationship, policy, access
    or governed analysis input makes the resolution stale. No automatic rebase
    occurs.
@@ -392,17 +475,24 @@ The user explicitly submits the existing V2 APPROVE command for revision N+1.
 The Review module must verify:
 
 - the stored operation is `ADD_CLAIM` or `NO_OP`;
-- the `operationResolutionRef` exists and is `RESOLVED`;
+- exactly one matching `OperationResolution` exists for project, change-set,
+  resolved revision, resolved digest, and chosen operation;
+- the matching resolution is immutable and `RESOLVED`;
 - the approval binds to resolution ID, source revision, resolved revision and
   resolved digest;
 - Candidate, Evidence, Comparison, relationships, AnalysisRevision,
   Canonical snapshot, access and policy are still fresh;
-- the actor is the same authorized user and the approval reason is recorded.
+- the approval actor is an authorized user under the normal approval policy and
+  the approval reason is recorded.
 
 The manifest and approval token bind to the resolved operation. A caller cannot
 override it with a different operation. Raw `MODIFY_REVIEW + APPROVE` remains
 blocked by PR #228 before persistence. The existing Stage 6 handoff consumes
 only the supported `ADD_CLAIM` or `NO_OP` manifest and remains unchanged.
+
+The resolver and approver are independently authorized user actions. Their
+`resolverActorId` and `approverActorId` are preserved in audit provenance and
+may be the same user, but this ADR does not require actor identity equality.
 
 ## 7. Operation semantics
 
@@ -524,6 +614,12 @@ never mutate it.
 - PR #228's raw `MODIFY_REVIEW` approval guard remains unchanged.
 - Existing `ADD_CLAIM`, `NO_OP`, `REJECT`, and `HOLD` contracts remain the
   supported meanings.
+- Existing strict `DraftChangeSetV2` and `ApprovedChangeSetManifestV2`
+  `contractVersion: 2.0` shapes and `additionalProperties: false` identity
+  remain unchanged; no `operationResolutionRef` is added.
+- Approval matches the separate resolution by project, change-set, resolved
+  revision, resolved digest, and chosen operation before constructing the
+  existing manifest/token.
 - A V1 consumer must never receive a lossy V2 downcast or fabricated
   `NEW_CLAIM`.
 
@@ -534,7 +630,8 @@ OperationResolution and append-only Draft revision linkage. The migration must:
 
 1. add nullable/standalone structures without altering historical V1/V2 rows;
 2. add uniqueness for one logical resolution per source Draft revision and
-   durable command replay;
+   semantic resolution identity; connector dedup remains outside this
+   transaction;
 3. preserve existing Review/Manifest/Stage 6 rows unchanged;
 4. support readers before enabling the command;
 5. include forward verification and a clean restore/replay drill;
@@ -601,11 +698,17 @@ The implementation request must freeze and prove at least:
 | R14 | Relationship evidence | No automatic Canonical Relation |
 | R15 | Claim authority | No automatic Fact |
 | R16 | Historical r8 invalid approvals | Untouched, unretried, unrewritten |
+| R17 | Contract compatibility | Resolved N+1 validates as existing strict V2.0; Stage 6 unchanged |
+| R18 | Immutable revision migration | Existing current row is exact revision snapshot; N remains retrievable |
+| R19 | Domain commit then connector ack loss | `OUTCOME_UNKNOWN` lookup/reconcile; no duplicate resolution/revision |
+| R20 | Recommendation/operation separation | `REVIEW_REQUIRED` + `MODIFY_REVIEW` preserved; only Draft operation changes |
+| R21 | Resolver/approver provenance | Both authorized actors audited; same and different actors supported |
 
 Required later tests include Contract, Review bridge unit, Product/PostgreSQL
 boundary, Security Negative, Replay/Idempotency, concurrency, restart,
-Migration/Rollback, and the bounded ECAV conflict corpus. No such test runs are
-authorized by this ADR branch.
+Migration/Rollback, Adapter Replacement, Connector `OUTCOME_UNKNOWN`
+reconciliation, immutable revision migration, and the bounded ECAV conflict
+corpus. No such test runs are authorized by this ADR branch.
 
 ## 14. Consequences
 

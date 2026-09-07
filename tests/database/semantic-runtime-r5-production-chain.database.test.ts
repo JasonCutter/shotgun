@@ -296,7 +296,9 @@ const safeRefreshResponseSummary = (response: RefreshResponse) => {
   }
 };
 
-const createFixture = async (): Promise<Fixture> => {
+const createFixture = async (
+  options: { readonly provisionProfile?: boolean } = {},
+): Promise<Fixture> => {
   if (!pool) throw new Error('R5 fixture requires PostgreSQL.');
 
   const suffix = randomUUID();
@@ -512,28 +514,30 @@ const createFixture = async (): Promise<Fixture> => {
     new PostgresSemanticEmbeddingProfileRepository(pool),
     vault,
   );
-  const profile = await profileService.createProfile({
-    projectId,
-    expectedRevision: 0,
-    providerId: 'openai',
-    embeddingModelId: 'text-embedding-3-small',
-    credentialId: credential.credentialId,
-    credentialRevision: credential.credentialRevision,
-    representationVersion: SEMANTIC_REPRESENTATION_VERSION_V2,
-    dimension: P1_DIMENSION,
-    distanceMetric: 'cosine',
-    normalizationPolicy: 'unit_length',
-    status: 'PREPARED',
-    updatedBy: principal.principalId,
-    now,
-  });
-  await profileService.activateProfile({
-    projectId,
-    profileId: profile.profileId,
-    profileRevision: profile.profileRevision,
-    updatedBy: principal.principalId,
-    now,
-  });
+  if (options.provisionProfile !== false) {
+    const profile = await profileService.createProfile({
+      projectId,
+      expectedRevision: 0,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      credentialId: credential.credentialId,
+      credentialRevision: credential.credentialRevision,
+      representationVersion: SEMANTIC_REPRESENTATION_VERSION_V2,
+      dimension: P1_DIMENSION,
+      distanceMetric: 'cosine',
+      normalizationPolicy: 'unit_length',
+      status: 'PREPARED',
+      updatedBy: principal.principalId,
+      now,
+    });
+    await profileService.activateProfile({
+      projectId,
+      profileId: profile.profileId,
+      profileRevision: profile.profileRevision,
+      updatedBy: principal.principalId,
+      now,
+    });
+  }
 
   return {
     projectId,
@@ -1263,6 +1267,310 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
             `SELECT build_status FROM projection.semantic_generations
              WHERE project_id = $1 AND generation_id = $2`,
             [fixture.projectId, third.pointer?.active_generation_id],
+          )
+        ).rows[0]?.build_status,
+      ).toBe('READY');
+    } finally {
+      await application?.close();
+      await provider.close();
+      for (const name of environmentNames) {
+        const value = previousEnvironment[name];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
+  it('proves Product credential/profile provisioning reaches durable PostgreSQL semantic refresh after restart', async () => {
+    await migrateUpTo(undefined, databaseUrl!);
+
+    const provider = new DeterministicOpenAIProvider();
+    await provider.listen();
+    const environmentNames = [
+      'DATABASE_URL',
+      'OPENAI_BASE_URL',
+      'AI_PRIVATE_EGRESS_ALLOWED_PROVIDERS',
+      'GEMINI_ALLOW_PRIVATE',
+      'SOURCES_STAGING_SECRET',
+      'SHOTGUN_CREDENTIAL_MASTER_KEY',
+      'SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION',
+      'NODE_ENV',
+    ] as const;
+    const previousEnvironment = Object.fromEntries(
+      environmentNames.map((name) => [name, process.env[name]]),
+    ) as Record<(typeof environmentNames)[number], string | undefined>;
+    const databaseEnvironmentName = ['DATABASE', '_URL'].join('');
+    process.env[databaseEnvironmentName] = databaseUrl;
+    process.env.OPENAI_BASE_URL = provider.baseUrl;
+    process.env.AI_PRIVATE_EGRESS_ALLOWED_PROVIDERS = 'openai';
+    process.env.GEMINI_ALLOW_PRIVATE = 'false';
+    process.env.SOURCES_STAGING_SECRET = 'r5-product-bridge-staging-secret-32-bytes';
+    process.env.SHOTGUN_CREDENTIAL_MASTER_KEY = randomBytes(32).toString('base64url');
+    process.env.SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION = 'r5-product-bridge';
+    process.env.NODE_ENV = 'test';
+
+    let application: ShotgunApplicationHandle | undefined;
+    try {
+      const fixture = await createFixture({ provisionProfile: false });
+      const cookie = `shotgun_session=${fixture.sessionToken}`;
+      const startNormalApplication = async (): Promise<ShotgunApplicationHandle> =>
+        startShotgunApplication({
+          host: '127.0.0.1',
+          port: 0,
+          noSignals: true,
+          disableAskWorker: true,
+        });
+      const request = async (
+        method: 'GET' | 'POST',
+        url: string,
+        body?: unknown,
+      ): Promise<RefreshResponse> => {
+        if (!application) throw new Error('R5 Product bridge application is not running.');
+        const response = await application.server.inject({
+          method,
+          url,
+          ...(body === undefined ? {} : { payload: JSON.stringify(body) }),
+          headers: {
+            cookie,
+            ...(body === undefined
+              ? {}
+              : { 'x-csrf-token': fixture.csrfToken, 'content-type': 'application/json' }),
+          },
+        });
+        return { statusCode: response.statusCode, body: response.body };
+      };
+      const post = (url: string, body: unknown) => request('POST', url, body);
+      const getProfile = async () => {
+        const response = await request('GET', '/api/v1/settings/ai/semantic-embedding-profile');
+        expect(response.statusCode).toBe(200);
+        return JSON.parse(response.body) as {
+          readonly profile: {
+            readonly profileId: string;
+            readonly projectId: string;
+            readonly profileRevision: number;
+            readonly status: string;
+            readonly credentialId: string;
+            readonly credentialRevision: number;
+          } | null;
+        };
+      };
+
+      application = await startNormalApplication();
+      expect(await getProfile()).toEqual({ profile: null });
+
+      const credentialResponse = await post('/api/v1/settings/ai/credentials', {
+        targetProjectId: fixture.projectId,
+        providerId: 'openai',
+        secret: 'r5-product-bridge-secret',
+      });
+      expect(credentialResponse.statusCode).toBe(200);
+      const productCredential = (
+        JSON.parse(credentialResponse.body) as {
+          readonly credential: {
+            readonly credentialId: string;
+            readonly credentialRevision: number;
+          };
+        }
+      ).credential;
+
+      const profileResponse = await post('/api/v1/settings/ai/semantic-embedding-profile', {
+        expectedRevision: 0,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        credentialId: productCredential.credentialId,
+        credentialRevision: productCredential.credentialRevision,
+        dimension: P1_DIMENSION,
+      });
+      expect(profileResponse.statusCode).toBe(200);
+      const createdProfile = (
+        JSON.parse(profileResponse.body) as {
+          readonly profile: {
+            readonly profileId: string;
+            readonly projectId: string;
+            readonly profileRevision: number;
+            readonly status: string;
+            readonly credentialId: string;
+            readonly credentialRevision: number;
+          };
+        }
+      ).profile;
+      expect(createdProfile).toMatchObject({
+        projectId: fixture.projectId,
+        profileRevision: 1,
+        status: 'PREPARED',
+        credentialId: productCredential.credentialId,
+        credentialRevision: productCredential.credentialRevision,
+      });
+      expect(
+        (
+          await pool.query<{
+            project_id: string;
+            profile_id: string;
+            profile_revision: number;
+            status: string;
+            credential_id: string;
+            credential_revision: number;
+          }>(
+            `SELECT project_id, profile_id, profile_revision, status,
+                    credential_id, credential_revision
+               FROM projection.semantic_embedding_profiles
+              WHERE project_id = $1 AND profile_id = $2`,
+            [fixture.projectId, createdProfile.profileId],
+          )
+        ).rows[0],
+      ).toMatchObject({
+        project_id: fixture.projectId,
+        profile_id: createdProfile.profileId,
+        profile_revision: 1,
+        status: 'PREPARED',
+        credential_id: productCredential.credentialId,
+        credential_revision: productCredential.credentialRevision,
+      });
+
+      const canonicalBefore = (
+        await pool.query<{ version: number; snapshot_digest: string }>(
+          `SELECT version, snapshot_digest FROM canonical.project_state WHERE project_id = $1`,
+          [fixture.projectId],
+        )
+      ).rows[0]!;
+      expect(
+        (
+          await pool.query(
+            `SELECT COUNT(*)::int AS count FROM projection.semantic_generations WHERE project_id = $1`,
+            [fixture.projectId],
+          )
+        ).rows[0]?.count,
+      ).toBe(0);
+      expect(
+        (
+          await pool.query(
+            `SELECT COUNT(*)::int AS count FROM projection.semantic_generation_pointers WHERE project_id = $1`,
+            [fixture.projectId],
+          )
+        ).rows[0]?.count,
+      ).toBe(0);
+
+      await application.close();
+      application = await startNormalApplication();
+      expect(await getProfile()).toMatchObject({
+        profile: {
+          profileId: createdProfile.profileId,
+          projectId: fixture.projectId,
+          profileRevision: 1,
+          status: 'PREPARED',
+          credentialId: productCredential.credentialId,
+          credentialRevision: productCredential.credentialRevision,
+        },
+      });
+
+      provider.beginBuildPhase({ model: 'text-embedding-3-small', dimension: P1_DIMENSION });
+      let refreshResponse: RefreshResponse;
+      try {
+        refreshResponse = await post('/projection/semantic/refresh', {});
+      } finally {
+        provider.endBuildPhase();
+      }
+      expect(refreshResponse!.statusCode).toBe(200);
+      const refreshResult = (
+        JSON.parse(refreshResponse!.body) as {
+          readonly refresh: {
+            readonly status: string;
+            readonly generationId: string;
+            readonly itemCount: number;
+          };
+        }
+      ).refresh;
+      expect(refreshResult).toMatchObject({ status: 'ACTIVATED', itemCount: 2 });
+      expect(provider.buildRequests).toBe(1);
+
+      const sourceSnapshot = await new PostgresSemanticCorpusSourceSnapshotReader(
+        pool,
+      ).readSnapshot(fixture.projectId);
+      const pointer = (
+        await pool.query<{
+          active_generation_id: string;
+          pointer_revision: string;
+          source_projection_digest: string;
+          canonical_base_version: number;
+        }>(
+          `SELECT active_generation_id, pointer_revision::text,
+                  source_projection_digest, canonical_base_version
+             FROM projection.semantic_generation_pointers
+            WHERE project_id = $1`,
+          [fixture.projectId],
+        )
+      ).rows[0];
+      const generation = (
+        await pool.query<{
+          generation_id: string;
+          build_status: string;
+          source_projection_digest: string;
+          canonical_base_version: number;
+          embedding_profile_revision: number;
+        }>(
+          `SELECT generation_id, build_status, source_projection_digest,
+                  canonical_base_version, embedding_profile_revision
+             FROM projection.semantic_generations
+            WHERE project_id = $1 AND generation_id = $2`,
+          [fixture.projectId, refreshResult.generationId],
+        )
+      ).rows[0];
+      expect(pointer).toMatchObject({
+        active_generation_id: refreshResult.generationId,
+        pointer_revision: '1',
+        source_projection_digest: sourceSnapshot.sourceSnapshotDigest,
+        canonical_base_version: canonicalBefore.version,
+      });
+      expect(generation).toMatchObject({
+        generation_id: refreshResult.generationId,
+        build_status: 'READY',
+        source_projection_digest: sourceSnapshot.sourceSnapshotDigest,
+        canonical_base_version: canonicalBefore.version,
+        embedding_profile_revision: 1,
+      });
+      expect(
+        (
+          await pool.query<{ count: number }>(
+            `SELECT COUNT(*)::int AS count FROM projection.semantic_generation_pointers WHERE project_id = $1`,
+            [fixture.projectId],
+          )
+        ).rows[0]?.count,
+      ).toBe(1);
+      expect(
+        (
+          await pool.query<{ version: number; snapshot_digest: string }>(
+            `SELECT version, snapshot_digest FROM canonical.project_state WHERE project_id = $1`,
+            [fixture.projectId],
+          )
+        ).rows[0],
+      ).toEqual(canonicalBefore);
+
+      await application.close();
+      application = await startNormalApplication();
+      expect(await getProfile()).toMatchObject({
+        profile: {
+          profileId: createdProfile.profileId,
+          profileRevision: 1,
+          status: 'PREPARED',
+        },
+      });
+      const pointerAfterRestart = (
+        await pool.query<{ active_generation_id: string; pointer_revision: string }>(
+          `SELECT active_generation_id, pointer_revision::text
+             FROM projection.semantic_generation_pointers WHERE project_id = $1`,
+          [fixture.projectId],
+        )
+      ).rows[0];
+      expect(pointerAfterRestart).toEqual({
+        active_generation_id: refreshResult.generationId,
+        pointer_revision: '1',
+      });
+      expect(
+        (
+          await pool.query<{ build_status: string }>(
+            `SELECT build_status FROM projection.semantic_generations
+             WHERE project_id = $1 AND generation_id = $2`,
+            [fixture.projectId, refreshResult.generationId],
           )
         ).rows[0]?.build_status,
       ).toBe('READY');

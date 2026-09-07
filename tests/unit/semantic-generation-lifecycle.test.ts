@@ -99,6 +99,31 @@ const makeResource = (
   };
 };
 
+const makeCompiledTruthResource = (resourceId: string): SemanticCorpusSourceResource => {
+  const canonical = makeResource(resourceId);
+  const projectionCanonicalVersion = 1;
+  const sourceProjectionDigest = digest(`compiled-source-${resourceId}`);
+  return {
+    ...canonical,
+    authority: 'COMPILED_TRUTH',
+    provenance: {
+      authority: 'COMPILED_TRUTH',
+      resourceBaseId: resourceId,
+      resourceRevision: 1,
+      baseAuthority: 'CANONICAL',
+      baseResourceRevision: 1,
+      baseCanonicalVersion: 1,
+      sourceVersionId: `source-${resourceId}`,
+      evidenceIds: [...canonical.provenance.evidenceIds],
+      accessScope: [...canonical.provenance.accessScope],
+      sensitivity: canonical.provenance.sensitivity,
+      projectionCanonicalVersion,
+      sourceProjectionDigest,
+      projectionLogicalDigest: digest(`compiled-logical-${resourceId}`),
+    },
+  };
+};
+
 const makeSnapshot = (
   resources: readonly SemanticCorpusSourceResource[],
   sourceDigest: string,
@@ -214,6 +239,76 @@ const makeRig = (initialSnapshot: SemanticCorpusSourceSnapshot) => {
 };
 
 describe('R3 semantic generation lifecycle', () => {
+  it('preserves Canonical Claim authority when Compiled Truth collides on the same identity', async () => {
+    const canonical = makeResource('claim-authority');
+    const compiledTruth = makeCompiledTruthResource('claim-authority');
+    const snapshot = makeSnapshot(
+      [compiledTruth, canonical],
+      digest('snapshot-authority-collision'),
+    );
+    const rig = makeRig(snapshot);
+
+    const first = await rig.builder('generation-authority-a').build({
+      projectId: 'project-r3',
+      targetProfileRevision: 1,
+    });
+    const firstItem = await rig.repository.getItem(
+      'project-r3',
+      first.generationId,
+      'CLAIM',
+      'claim-authority',
+    );
+
+    expect(first.itemCount).toBe(1);
+    expect(firstItem).toMatchObject({
+      resourceType: 'CLAIM',
+      resourceId: 'claim-authority',
+      authority: 'CANONICAL',
+      evidenceIds: ['evidence-claim-authority'],
+      accessScope: ['project:r3'],
+      sensitivity: 'internal',
+      provenance: {
+        authority: 'CANONICAL',
+        resourceRevision: 1,
+        sourceVersionId: 'source-claim-authority',
+      },
+    });
+
+    const second = await rig.builder('generation-authority-b').build({
+      projectId: 'project-r3',
+      targetProfileRevision: 1,
+    });
+    expect(second.itemCount).toBe(1);
+    expect(second.membershipDigest).toBe(first.membershipDigest);
+    expect(
+      (await rig.repository.getItem('project-r3', second.generationId, 'CLAIM', 'claim-authority'))
+        ?.authority,
+    ).toBe('CANONICAL');
+  });
+
+  it('does not resurrect a Compiled Truth Claim without a Canonical Claim in the snapshot', async () => {
+    const snapshot = makeSnapshot(
+      [makeCompiledTruthResource('orphan-compiled-claim')],
+      digest('snapshot-orphan-compiled-claim'),
+    );
+    const rig = makeRig(snapshot);
+
+    const result = await rig.builder('generation-orphan-compiled').build({
+      projectId: 'project-r3',
+      targetProfileRevision: 1,
+    });
+
+    expect(result.itemCount).toBe(0);
+    expect(
+      await rig.repository.getItem(
+        'project-r3',
+        result.generationId,
+        'CLAIM',
+        'orphan-compiled-claim',
+      ),
+    ).toBeUndefined();
+  });
+
   it('splits compatible embedding work into bounded batches and activates a persisted candidate', async () => {
     const snapshot = makeSnapshot(
       ['a', 'b', 'c', 'd', 'e'].map((id) => makeResource(id)),

@@ -1,22 +1,25 @@
 # ADR-163 Implementation Plan — V2 Review Operation Resolution
 
-- Status: **ARCHITECTURE ACCEPTED / IMPLEMENTATION NOT YET AUTHORIZED**
+- Status: **IMPLEMENTATION IN PROGRESS (AUTHORIZED 2026-09-08)**
 - Proposed at: 2026-09-07
 - Accepted: 2026-09-07
 - Acceptance authority: Project Shotgun GPT/controller
 - Governing ADR: `docs/architecture/adr/ADR-163-v2-review-operation-resolution.md`
 - Subject base: `main@2d64936c08937788a801adeeb29c893abe1585f2`
+- Implementation authorization: **2026-09-08**
+- Implementation authority: **Project Shotgun GPT/controller**
+- Implementation base: `main@4441a1dc6eeb5cede40ae137b8b38b6b1d9a35be`
 - Predecessor: PR #228 (`MODIFY_REVIEW` raw approval guard), merged and verified
 - Frozen acceptance DB: `shotgun_full_e2e_20260907_r8`
 - Frozen project: `8a079162-a26f-43a0-a903-1eb5d0465fc9`
-- Implementation status: **NOT AUTHORIZED**
+- Implementation status: **IN PROGRESS — Phase C implementation only**
 
 ## 1. Purpose and decision boundary
 
-This plan turns ADR-163 into an implementation-ready sequence for a later,
-separately authorized work item. It does not implement Product code, create a
-database migration, call an AI provider, mutate the r8 database, rerun ECAV,
-start Phase F, or start r9.
+This plan turns ADR-163 into an implementation sequence authorized against the
+merged main base above. It does not call an AI provider, mutate the r8 database,
+rerun ECAV, start Phase F, or start r9. The original architecture acceptance
+and frozen-r8 history below remains unchanged for auditability.
 
 The narrow objective is to resolve a V2 `MODIFY_REVIEW` recommendation through
 an explicit user operation choice while preserving the existing fail-closed
@@ -52,7 +55,7 @@ resolution, or Fact-promotion operation is introduced.
 
 ## 3. Scope fence and non-goals
 
-### In scope for the later implementation request
+### In scope for the authorized implementation request
 
 - A versioned Review-module command Port, `ResolveReviewOperationV2@1.0.0`.
 - Server-owned resolution of the exact Candidate/Evidence/Comparison/
@@ -62,9 +65,16 @@ resolution, or Fact-promotion operation is introduced.
 - Durable idempotency, optimistic concurrency, stale detection, and audit.
 - In-memory and PostgreSQL Adapter parity behind the same Port.
 
+### OSS integration decision
+
+`NO_RELEVANT_OSS` for this Stage. Existing gbrain/llmwiki/ddsyasas/OpenKnowledge
+references were reviewed under `AGENTS.md`; none owns the Shotgun Review,
+Canonical, Evidence, or Approval boundary required by ADR-163. The implementation
+therefore adds no dependency and keeps the replaceable Port/Adapter seam.
+
 ### Explicitly out of scope
 
-- Product implementation on this design branch.
+- Any change outside the ADR-163 Review boundary on this implementation branch.
 - Any provider or DeepSeek/OpenAI call.
 - Any write, retry, replay, cleanup, or reinterpretation of the frozen r8 DB.
 - Direct Relation authority, Claim merge/delete/replace, or Fact promotion.
@@ -78,10 +88,9 @@ The following order prevents a half-bound command from reaching Canonical:
 ### Step 0 — Architecture acceptance and freeze
 
 Before code, record the accepted command, digest, persistence, failure,
-rollout, and test contract together with the exact base SHA in the
-implementation issue. ADR-163 is accepted, but this plan still does not
-authorize Product code or database migration. A separate implementation
-request must authorize those actions explicitly.
+rollout, and test contract together with the exact authorized base SHA. ADR-163
+is accepted and Product implementation is authorized only for this bounded
+Review work item; r8, provider, Phase F, and r9 remain frozen.
 
 ### Step 1 — Contract and type package
 
@@ -286,29 +295,29 @@ Review transaction and must never invoke a blind handler replay.
 The implementation request must map each requirement to a test and evidence
 artifact. At minimum:
 
-| ID | Scenario | Required proof |
-| --- | --- | --- |
-| R1 | Raw `MODIFY_REVIEW + APPROVE` | Blocked; no persistence/handoff |
-| R2 | Resolve to `ADD_CLAIM` | N+1 exists; N is unchanged |
-| R3 | Approve resolved `ADD_CLAIM` | Stage 6; Canonical `+1`; lineage valid |
-| R4 | Resolve to `NO_OP` | N+1 exists; N is unchanged |
-| R5 | Approve resolved `NO_OP` | Canonical `+0`; no Claim/Fact |
-| R6 | Raw `REJECT` | Existing decision; Canonical `+0` |
-| R7 | Raw `HOLD` | Existing decision; Canonical `+0` |
-| R8 | Base changes before resolution | Typed stale block; no rows |
-| R9 | Base changes before approval | Typed stale approval block |
-| R10 | Same idempotency replay | One resolution/result |
-| R11 | Conflicting concurrent choices | One winner; loser has no rows |
-| R12 | Restart after command | Exact durable outcome restored |
-| R13 | Tesla 2008 + 2009 | Both Claims may coexist; conflict inspectable |
-| R14 | Relationship evidence | No automatic Canonical Relation |
-| R15 | Claim authority | No automatic Fact |
-| R16 | r8 historical artifacts | Untouched, unretried, unrewritten |
-| R17 | Contract compatibility | Resolved N+1 is strict V2.0; Stage 6 unchanged |
-| R18 | Immutable revision migration | Existing current row is exact snapshot; N remains retrievable |
-| R19 | Domain commit then connector ack loss | `OUTCOME_UNKNOWN` lookup/reconcile; no duplicate revision |
-| R20 | Recommendation/operation separation | `REVIEW_REQUIRED` + `MODIFY_REVIEW` preserved; only operation changes |
-| R21 | Resolver/approver provenance | Both authorized actors audited; same/different actors supported |
+| ID  | Scenario                              | Required proof                                                        |
+| --- | ------------------------------------- | --------------------------------------------------------------------- |
+| R1  | Raw `MODIFY_REVIEW + APPROVE`         | Blocked; no persistence/handoff                                       |
+| R2  | Resolve to `ADD_CLAIM`                | N+1 exists; N is unchanged                                            |
+| R3  | Approve resolved `ADD_CLAIM`          | Stage 6; Canonical `+1`; lineage valid                                |
+| R4  | Resolve to `NO_OP`                    | N+1 exists; N is unchanged                                            |
+| R5  | Approve resolved `NO_OP`              | Canonical `+0`; no Claim/Fact                                         |
+| R6  | Raw `REJECT`                          | Existing decision; Canonical `+0`                                     |
+| R7  | Raw `HOLD`                            | Existing decision; Canonical `+0`                                     |
+| R8  | Base changes before resolution        | Typed stale block; no rows                                            |
+| R9  | Base changes before approval          | Typed stale approval block                                            |
+| R10 | Same idempotency replay               | One resolution/result                                                 |
+| R11 | Conflicting concurrent choices        | One winner; loser has no rows                                         |
+| R12 | Restart after command                 | Exact durable outcome restored                                        |
+| R13 | Tesla 2008 + 2009                     | Both Claims may coexist; conflict inspectable                         |
+| R14 | Relationship evidence                 | No automatic Canonical Relation                                       |
+| R15 | Claim authority                       | No automatic Fact                                                     |
+| R16 | r8 historical artifacts               | Untouched, unretried, unrewritten                                     |
+| R17 | Contract compatibility                | Resolved N+1 is strict V2.0; Stage 6 unchanged                        |
+| R18 | Immutable revision migration          | Existing current row is exact snapshot; N remains retrievable         |
+| R19 | Domain commit then connector ack loss | `OUTCOME_UNKNOWN` lookup/reconcile; no duplicate revision             |
+| R20 | Recommendation/operation separation   | `REVIEW_REQUIRED` + `MODIFY_REVIEW` preserved; only operation changes |
+| R21 | Resolver/approver provenance          | Both authorized actors audited; same/different actors supported       |
 
 Required gates are Contract, Review bridge unit, Product/PostgreSQL boundary,
 Security Negative, Replay/Idempotency, concurrency, restart,
@@ -316,7 +325,7 @@ Migration/Rollback, Adapter Replacement, Connector `OUTCOME_UNKNOWN`
 reconciliation, immutable revision migration, and the bounded ECAV conflict
 corpus.
 Golden Corpus evidence is required for any comparison/evidence behavior change.
-No Product or r8 test is authorized on this design branch.
+No r8 mutation or provider test is authorized on this implementation branch.
 
 ## 6. OSS and dependency decision
 
@@ -339,15 +348,15 @@ adopted, extracted, or augmented.
 
 ## 7. Work packages and stop gates
 
-| Package | Deliverable | Stop gate |
-| --- | --- | --- |
-| A | Accepted Port/types/failures | Contract reviewed and version frozen |
-| B | Server resolver | Freshness/security negative tests pass |
-| C | Resolution + N+1 persistence | Atomicity/idempotency/concurrency pass |
-| D | Approval bridge | Raw guard and resolved binding pass |
-| E | In-memory/PostgreSQL Adapters | Replacement/rollback evidence pass |
-| F | Rollout/migration | Restore/replay drill and reader compatibility pass |
-| G | E2E corpus | R1–R21 and required gates pass |
+| Package | Deliverable                   | Stop gate                                          |
+| ------- | ----------------------------- | -------------------------------------------------- |
+| A       | Accepted Port/types/failures  | Contract reviewed and version frozen               |
+| B       | Server resolver               | Freshness/security negative tests pass             |
+| C       | Resolution + N+1 persistence  | Atomicity/idempotency/concurrency pass             |
+| D       | Approval bridge               | Raw guard and resolved binding pass                |
+| E       | In-memory/PostgreSQL Adapters | Replacement/rollback evidence pass                 |
+| F       | Rollout/migration             | Restore/replay drill and reader compatibility pass |
+| G       | E2E corpus                    | R1–R21 and required gates pass                     |
 
 Any failure keeps the work item blocked. There is no `COMPLETE_WITH_LIMITS`
 shortcut for an unreviewed OSS decision, missing Contract test, unsafe
@@ -368,7 +377,9 @@ The eventual completion report must state:
 
 ## 9. Design-branch validation and handoff
 
-This design branch is limited to Markdown and ADR-index metadata. Run only:
+The implementation branch may run focused Product/Contract tests, migration
+validation against an isolated test database, and static/document checks. It
+must not touch the frozen r8 database or call a provider. Before handoff run:
 
 ```text
 npm run docs:adr-index
@@ -378,8 +389,7 @@ npm run docs:canonical
 git diff --check
 ```
 
-Do not run Product tests, database migrations, provider calls, r8 commands,
-ECAV, or Phase F/r9 from this branch. Commit and push the design branch and
-keep PR #229 as a **Draft** PR until the new automatic exact-head CI completes.
-Do not manually rerun CI, mark Ready, merge, or declare final completion.
-Product implementation remains separately unauthorized.
+Do not run r8 commands, ECAV, provider calls, or Phase F/r9 from this branch.
+Commit and push the implementation branch and keep its PR as a **Draft** until
+the new automatic exact-head CI completes. Do not manually rerun CI, mark Ready,
+merge, or declare final completion.

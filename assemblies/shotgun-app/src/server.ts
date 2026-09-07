@@ -310,11 +310,19 @@ import {
 import {
   createChangeSetReviewModule,
   createComparisonV2ReviewBridge,
+  createReviewOperationResolutionV2,
   createReversalEligibilityPort,
   type ComparisonV2ReviewBridgePort,
   type ChangeSetReviewRepositoryPort,
   type ReviewV2RepositoryPort,
+  type ReviewOperationResolutionStorePort,
 } from '../../../modules/change-set-review/src/index.js';
+import {
+  resolveReviewOperationV2CommandDigest,
+  validateResolveReviewOperationV2Request,
+  type ResolveReviewOperationV2Request,
+  type ResolveReviewOperationV2Outcome,
+} from '../../../packages/contracts/src/index.js';
 import {
   createComparisonV2ReviewFreshnessAdapter,
   createComparisonRolloutAuthorityResolver,
@@ -717,6 +725,12 @@ type ComparisonV2ReviewDecisionRequest = {
   readonly reason: string;
   readonly decisionId?: string;
 };
+
+type ResolveReviewOperationV2HttpRequest = ResolveReviewOperationV2Request;
+
+const validateResolveReviewOperationV2RequestInput: (
+  value: unknown,
+) => asserts value is ResolveReviewOperationV2Request = validateResolveReviewOperationV2Request;
 
 export type SecurityHeaders = {
   readonly 'x-project-id'?: string;
@@ -2359,7 +2373,6 @@ const createApplicationCore = async (
   );
   const candidateGeneration = createCandidateGenerationModule(candidateRepository);
   const validation = createValidationModule(validationRepository);
-  const changeSetReview = createChangeSetReviewModule(changeSetReviewRepository);
   const canonicalKnowledge = createCanonicalKnowledgeModule(canonicalKnowledgeRepository);
   const projectionSearch = createProjectionSearchModule(searchProjectionRepository);
   const citedAnswer = createCitedAnswerModule();
@@ -2577,6 +2590,7 @@ const createApplicationCore = async (
   // V1_ONLY by the runtime authority resolver.
   const comparisonV2Rollout = createComparisonRolloutAuthorityResolver(settingsRepository);
   let comparisonV2ReviewBridge: ComparisonV2ReviewBridgePort | undefined;
+  let reviewOperationResolutionV2: ReturnType<typeof createReviewOperationResolutionV2> | undefined;
   const comparisonV2Runtime =
     options.comparisonV2Repository &&
     options.changeSetReviewV2Repository &&
@@ -2630,6 +2644,19 @@ const createApplicationCore = async (
             repository: options.changeSetReviewV2Repository!,
           });
           comparisonV2ReviewBridge = reviewBridge;
+          const operationStore =
+            options.changeSetReviewV2Repository as unknown as Partial<ReviewOperationResolutionStorePort>;
+          if (
+            typeof operationStore.findDraftById === 'function' &&
+            typeof operationStore.findOperationResolutionByRequest === 'function' &&
+            typeof operationStore.resolveOperation === 'function'
+          ) {
+            reviewOperationResolutionV2 = createReviewOperationResolutionV2({
+              aggregate: options.comparisonV2Repository!,
+              freshness,
+              repository: operationStore as ReviewOperationResolutionStorePort,
+            });
+          }
           return createComparisonV2Runtime({
             candidate: candidateRepository,
             settings: settingsRepository,
@@ -2639,6 +2666,22 @@ const createApplicationCore = async (
           });
         })()
       : undefined;
+  const operationStore =
+    options.changeSetReviewV2Repository as unknown as Partial<ReviewOperationResolutionStorePort>;
+  const changeSetReview = createChangeSetReviewModule(changeSetReviewRepository, {
+    ...(reviewOperationResolutionV2 &&
+    typeof operationStore.findDraftById === 'function' &&
+    typeof operationStore.findOperationResolutionByRequest === 'function' &&
+    typeof operationStore.resolveOperation === 'function'
+      ? {
+          operationResolution: {
+            resolver: reviewOperationResolutionV2,
+            repository: operationStore as ReviewOperationResolutionStorePort,
+            authority: comparisonV2Rollout,
+          },
+        }
+      : {}),
+  });
   const comparison = createComparisonModule(
     comparisonRepository,
     canonicalSnapshot,
@@ -4210,6 +4253,76 @@ const createApplicationCore = async (
         changeSet: outcome.draft,
         manifest: outcome.manifest,
         handoff,
+      };
+    },
+  );
+
+  /** ADR-163: resolve a V2 MODIFY_REVIEW recommendation inside Review only.
+   * The route persists an immutable resolution and Draft revision N+1; it
+   * never invokes a provider, Canonical, Stage 6, or an external Action. */
+  server.post<{ Body: ResolveReviewOperationV2HttpRequest; Headers: SecurityHeaders }>(
+    '/reviews/v2/resolve-operation',
+    async (request, reply) => {
+      const context = requestContext(request.headers);
+      const rawBody: unknown = request.body;
+      const body = rawBody as Record<string, unknown>;
+      const allowedKeys = new Set([
+        'changeSetId',
+        'expectedDraftRevision',
+        'expectedDraftDigest',
+        'chosenOperation',
+        'clientRequestId',
+        'idempotencyKey',
+      ]);
+      if (!body || Object.keys(body).some((key) => !allowedKeys.has(key))) {
+        throw new ShotgunError({
+          code: 'INVALID_REQUEST',
+          safeMessage: 'The v2 Review operation resolution request is invalid.',
+          module: 'product-api',
+          operation: 'resolve-review-operation-v2',
+        });
+      }
+      try {
+        validateResolveReviewOperationV2RequestInput(rawBody);
+      } catch {
+        throw new ShotgunError({
+          code: 'INVALID_REQUEST',
+          safeMessage: 'The v2 Review operation resolution request is invalid.',
+          module: 'product-api',
+          operation: 'resolve-review-operation-v2',
+        });
+      }
+      if (
+        !reviewOperationResolutionV2 ||
+        !options.changeSetReviewV2Repository?.findDraftById ||
+        typeof (options.changeSetReviewV2Repository as Partial<ReviewOperationResolutionStorePort>)
+          .findOperationResolutionByRequest !== 'function' ||
+        typeof (options.changeSetReviewV2Repository as Partial<ReviewOperationResolutionStorePort>)
+          .resolveOperation !== 'function'
+      ) {
+        throw new ShotgunError({
+          code: 'AI_CAPABILITY_UNAVAILABLE',
+          safeMessage: 'Review operation resolution is unavailable.',
+          module: 'product-api',
+          operation: 'resolve-review-operation-v2',
+        });
+      }
+      const typedBody = body as ResolveReviewOperationV2Request;
+      const command = createCommand({
+        messageType: 'ResolveReviewOperationV2',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        idempotencyKey: `review-operation-v2:${context.projectId}:${resolveReviewOperationV2CommandDigest(typedBody)}`,
+        ...context,
+        payload: typedBody,
+      });
+      const delivery = await kernel.connector.sendCommand<ResolveReviewOperationV2Outcome>(command);
+      const outcome = delivery.result;
+      if (outcome.status === 'BLOCKED') return reply.code(409).send(outcome);
+      return {
+        commandStatus: delivery.status,
+        resolution: outcome,
       };
     },
   );

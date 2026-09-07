@@ -30,6 +30,7 @@ import {
   type ReviewAuthoritySelectionV2,
   type ShortlistAuditV2,
 } from '../../../packages/contracts/src/index.js';
+import type { OperationResolutionV2 } from './operation-resolution-v2.js';
 
 export type ComparisonV2AggregateForReview = {
   readonly comparison: ComparisonResultV2;
@@ -72,6 +73,13 @@ export type ReviewV2RepositoryPort = {
   recordDecision?: (
     write: ComparisonV2ReviewDecisionWrite,
   ) => Promise<ComparisonV2ReviewDecisionResult>;
+  findOperationResolutionForDraft?: (
+    projectId: string,
+    changeSetId: string,
+    resolvedDraftRevision: number,
+    resolvedDraftDigest: string,
+    chosenOperation: 'ADD_CLAIM' | 'NO_OP',
+  ) => Promise<OperationResolutionV2 | undefined>;
 };
 
 export type ComparisonV2ReviewDecision = {
@@ -575,12 +583,36 @@ export const createComparisonV2ReviewBridge = (
       } catch {
         return { status: 'BLOCKED', reason: 'AGGREGATE_INVALID' };
       }
-      // MODIFY_REVIEW is a review-only proposal until a separately
-      // authorized Canonical operation exists.  Stage 6 deliberately
-      // rejects this operation, so fail closed before a decision, approval
-      // token, manifest, or ChangeSetApprovedV2 handoff can be persisted.
-      if (request.decision === 'APPROVE' && draft.operation === 'MODIFY_REVIEW') {
-        return { status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' };
+      // A raw MODIFY_REVIEW can never be approved. A resolved revision keeps
+      // the recommendation as MODIFY_REVIEW but is approvable only when its
+      // immutable ADR-163 OperationResolution is present and exact.
+      if (request.decision === 'APPROVE') {
+        if (draft.operation === 'MODIFY_REVIEW') {
+          return { status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' };
+        }
+        if (draft.reviewRecommendation === 'MODIFY_REVIEW') {
+          if (!['ADD_CLAIM', 'NO_OP'].includes(draft.operation)) {
+            return { status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' };
+          }
+          const resolution = dependencies.repository.findOperationResolutionForDraft
+            ? await dependencies.repository.findOperationResolutionForDraft(
+                request.projectId,
+                draft.changeSetId,
+                draft.revisionNumber,
+                draft.contentDigest,
+                draft.operation,
+              )
+            : undefined;
+          if (
+            !resolution ||
+            resolution.state !== 'RESOLVED' ||
+            resolution.resolvedDraftRevision !== draft.revisionNumber ||
+            resolution.resolvedDraftDigest !== draft.contentDigest ||
+            resolution.chosenOperation !== draft.operation
+          ) {
+            return { status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' };
+          }
+        }
       }
 
       const aggregate = await dependencies.aggregate.findComparisonById(

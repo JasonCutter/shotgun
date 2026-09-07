@@ -367,9 +367,9 @@ export class SourcesStage3RecoveryDispatcher {
       await this.options.reporter?.report({ status: 'FAILED', code: failure.code });
       throw error;
     }
-    this.breaker.recordSuccess();
     const item = recoverable[0] as SourcesStage3RecoveryItem | undefined;
     if (!item) {
+      this.breaker.recordSuccess();
       await this.options.reporter?.report({ status: 'EMPTY' });
       return 'EMPTY';
     }
@@ -388,6 +388,7 @@ export class SourcesStage3RecoveryDispatcher {
         await this.options.reporter?.report({ status: 'DEFERRED' });
         return 'EMPTY';
       }
+      this.breaker.recordSuccess();
       await this.options.reporter?.report({ status: 'SUCCEEDED' });
       return 'SUCCEEDED';
     } catch (error) {

@@ -1218,8 +1218,9 @@ export const startShotgunApplication = async (
         RECOVERY_RUNNER_IDS.SOURCES_STAGE3,
       );
       const now = new Date().toISOString();
-      const failed = observation.status === 'FAILED';
-      const retryable = observation.code?.includes('RETRYABLE') === true;
+      const deferred = observation.status === 'DEFERRED';
+      const failed = observation.status === 'FAILED' || deferred;
+      const retryable = deferred || observation.code?.includes('RETRYABLE') === true;
       runningApplication.state.recoveryRegistry.record({
         runnerId: RECOVERY_RUNNER_IDS.SOURCES_STAGE3,
         executionStatus: failed ? 'FAILED_TO_RUN' : 'COMPLETED',
@@ -1241,7 +1242,8 @@ export const startShotgunApplication = async (
           ? [
               ...new Set([
                 ...(previous?.safeCodes ?? []),
-                observation.code ?? 'STAGE3_RECOVERY_FAILED',
+                observation.code ??
+                  (deferred ? 'STAGE3_RECOVERY_DEFERRED' : 'STAGE3_RECOVERY_FAILED'),
               ]),
             ]
           : [],

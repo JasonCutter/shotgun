@@ -264,7 +264,7 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
               safe_failure_code = $6, safe_failure_message = $7,
               updated_at = clock_timestamp()
         WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
-          AND state IN ('MATERIALIZED', 'STAGE3_RETRYABLE', 'RECONCILIATION_REQUIRED')`,
+          AND state IN ('MATERIALIZED', 'STAGE3_RETRYABLE')`,
       [
         input.projectId,
         input.sourceId,
@@ -276,6 +276,15 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
       ],
     );
     if (result.rowCount === 1) return;
+    const existing = await this.pool.query<{ state: SourcesStage3ProgressState }>(
+      `SELECT state
+         FROM source_product.source_stage3_progress
+        WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3`,
+      [input.projectId, input.sourceId, input.sourceVersionId],
+    );
+    // A terminal reconciliation marker is monotonic. A late pre-claim error
+    // must acknowledge that marker rather than resurrecting it as retryable.
+    if (existing.rows[0]?.state === 'RECONCILIATION_REQUIRED') return;
     throw new ShotgunError({
       code: 'CONFLICT',
       safeMessage: 'Stage 3 pre-claim failure could not update its progress row.',

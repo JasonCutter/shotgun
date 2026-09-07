@@ -160,6 +160,22 @@ describe.runIf(pool)('WP-05 Stage 3 durable recovery semantics', () => {
       });
       const recoverable = await repository.findRecoverable({ limit: 100 });
       expect(recoverable.some((item) => item.sourceVersionId === ids.sourceVersionId)).toBe(false);
+      await repository.recordPreClaimFailure({
+        ...ids,
+        retryable: true,
+        code: 'STAGE3_DB_TRANSIENT',
+        message: 'late writer must not resurrect a blocked row',
+      });
+      const stillBlocked = await pool!.query<{ state: string; safe_failure_code: string | null }>(
+        `SELECT state, safe_failure_code
+           FROM source_product.source_stage3_progress
+          WHERE project_id = $1 AND source_version_id = $2`,
+        [ids.projectId, ids.sourceVersionId],
+      );
+      expect(stillBlocked.rows[0]).toMatchObject({
+        state: 'RECONCILIATION_REQUIRED',
+        safe_failure_code: STAGE3_RUNTIME_CONTRACT_ERROR_CODE,
+      });
     } finally {
       await cleanup(ids);
     }

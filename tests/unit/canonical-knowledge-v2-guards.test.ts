@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { InMemoryCanonicalKnowledgeRepository } from '../../adapters/stage6-in-memory/src/index.js';
-import { createCanonicalKnowledgeModule } from '../../modules/canonical-knowledge/src/index.js';
+import {
+  createCanonicalKnowledgeModule,
+  type ClockPort,
+} from '../../modules/canonical-knowledge/src/index.js';
 import {
   approvedChangeSetApprovalTokenDigestV2,
   approvedChangeSetManifestDigestV2,
@@ -23,6 +26,7 @@ const candidateId = 'candidate-v2-guard';
 const evidenceId = 'evidence-v2-guard';
 const sourceVersionId = 'source-version-v2-guard';
 const actor = { type: 'user' as const, id: 'owner-v2-guard' };
+const testClock: ClockPort = { now: () => '2026-09-06T00:05:00.000Z' };
 
 const candidate: ClaimCandidate = {
   candidateId,
@@ -85,9 +89,7 @@ const makeManifest = (overrides: Partial<ApprovedChangeSetManifestV2> = {}) => {
     expectedCanonicalVersion: snapshot.version,
     snapshotDigest: snapshot.digest,
     issuedAt: '2026-09-06T00:00:00.000Z',
-    // Keep the approval fixture valid independently of the wall clock running
-    // in CI; expiry-specific negative cases construct their own stale data.
-    expiresAt: '2099-01-01T00:15:00.000Z',
+    expiresAt: '2026-09-06T00:15:00.000Z',
   };
   const token = {
     ...unsignedToken,
@@ -160,7 +162,7 @@ const eventFor = (
 };
 
 const invoke = async (repository: InMemoryCanonicalKnowledgeRepository, event: EventEnvelope) => {
-  const handler = createCanonicalKnowledgeModule(repository).handlers.events.find(
+  const handler = createCanonicalKnowledgeModule(repository, testClock).handlers.events.find(
     (entry) => entry.messageType === 'ChangeSetApprovedV2',
   )!;
   await handler.handle(event, {

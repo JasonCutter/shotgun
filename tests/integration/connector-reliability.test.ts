@@ -13,6 +13,21 @@ import {
 import type { EventHandlerDefinition, ShotgunModule } from '../../packages/module-sdk/src/index.js';
 import { createPingModule } from '../../modules/ping/src/index.js';
 import { createPongModule } from '../../modules/pong/src/index.js';
+import { InMemoryOrderingStore } from '../../packages/connector-runtime/src/stores.js';
+import type {
+  ConnectorRuntimeStatePort,
+  ConnectorSemanticIdentity,
+  DedupBeginResult,
+  DedupRecord,
+  DedupStorePort,
+  JobRuntimePort,
+} from '../../packages/connector-runtime/src/ports.js';
+import type { DeadLetterEntry } from '../../packages/connector-runtime/src/stores.js';
+import type {
+  AttemptRecord,
+  JobRecord,
+  JobRunResult,
+} from '../../packages/job-runtime/src/index.js';
 import { createStage1Harness, securePingCommand } from '../helpers/stage-1.js';
 
 const eventConsumer = (
@@ -124,6 +139,250 @@ const pongEvent = (requestId: string, sequence = 1) =>
   });
 
 describe('Connector reliability', () => {
+  it('keeps a post-handler ordering ambiguity unknown and never re-enters the handler', async () => {
+    class AmbiguousOrderingStore extends InMemoryOrderingStore {
+      override async commit(): Promise<void> {
+        throw new Error('ordering acknowledgement lost after handler success');
+      }
+    }
+
+    let calls = 0;
+    const consumer = eventConsumer('stage1.ordering-ambiguous', async () => {
+      calls += 1;
+    });
+    const state = {
+      dedup: new TestDedupStore(),
+      jobs: new TestJobRuntime(),
+      deadLetters: {
+        add: async (
+          input: Omit<DeadLetterEntry, 'deadLetterId' | 'createdAt' | 'status' | 'replays'>,
+        ): Promise<DeadLetterEntry> => ({
+          ...input,
+          deadLetterId: 'test-dead-letter',
+          createdAt: new Date().toISOString(),
+          status: 'open',
+          replays: [],
+        }),
+      },
+      ordering: new AmbiguousOrderingStore(),
+    } as unknown as ConnectorRuntimeStatePort;
+    const kernel = new ShotgunKernel(new InProcessTransport(), {
+      connectorRuntimeState: state,
+    });
+    kernel.register(
+      pingWithConsumer('stage1.ordering-ambiguous').module,
+      createPongModule().module,
+      consumer,
+    );
+    await kernel.start();
+
+    const event = pongEvent('ordering-ack-loss');
+    const first = await kernel.connector.publishEvent(event);
+    expect(
+      first.consumers.some(
+        (consumerResult) =>
+          consumerResult.consumerId === 'stage1.ordering-ambiguous' &&
+          consumerResult.status === 'dead-letter' &&
+          consumerResult.errorCode === 'OUTCOME_UNKNOWN',
+      ),
+    ).toBe(true);
+    expect(calls).toBe(1);
+
+    const second = await kernel.connector.publishEvent(event);
+    expect(
+      second.consumers.some(
+        (consumerResult) =>
+          consumerResult.consumerId === 'stage1.ordering-ambiguous' &&
+          consumerResult.status === 'dead-letter' &&
+          consumerResult.errorCode === 'OUTCOME_UNKNOWN',
+      ),
+    ).toBe(true);
+    expect(calls).toBe(1);
+    await kernel.shutdown();
+  });
+
+  const durableKey = (identity: ConnectorSemanticIdentity): string =>
+    [
+      identity.projectId,
+      identity.securityScope,
+      identity.consumerId,
+      identity.messageKind,
+      identity.messageType,
+      identity.semanticKey,
+    ].join('\u0000');
+
+  class TestDedupStore implements DedupStorePort {
+    private readonly records = new Map<string, DedupRecord<unknown>>();
+
+    async begin<TResult>(
+      input: ConnectorSemanticIdentity & { readonly jobId: string },
+    ): Promise<DedupBeginResult<TResult>> {
+      const key = durableKey(input);
+      const current = this.records.get(key);
+      if (!current) {
+        const record: DedupRecord<TResult> = {
+          ...input,
+          state: 'IN_PROGRESS',
+          jobId: input.jobId,
+          fenceToken: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        this.records.set(key, record);
+        return { kind: 'ACQUIRED', record };
+      }
+      if (current.fingerprint !== input.fingerprint) {
+        return { kind: 'CONFLICT', record: current as DedupRecord<TResult> };
+      }
+      return { kind: 'DUPLICATE', record: current as DedupRecord<TResult> };
+    }
+
+    async complete<TResult>(input: {
+      readonly identity: ConnectorSemanticIdentity;
+      readonly fenceToken: number;
+      readonly jobId: string;
+      readonly result: TResult;
+    }): Promise<void> {
+      const record = this.records.get(durableKey(input.identity));
+      if (!record || record.fenceToken !== input.fenceToken || record.jobId !== input.jobId) {
+        throw new Error('test dedup completion was not fenced');
+      }
+      this.records.set(durableKey(input.identity), {
+        ...record,
+        state: 'COMPLETED',
+        result: input.result,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    async fail(input: {
+      readonly identity: ConnectorSemanticIdentity;
+      readonly fenceToken: number;
+      readonly jobId: string;
+      readonly safeErrorCode: string;
+      readonly safeErrorMessage: string;
+    }): Promise<void> {
+      const record = this.records.get(durableKey(input.identity));
+      if (!record || record.fenceToken !== input.fenceToken || record.jobId !== input.jobId) return;
+      this.records.set(durableKey(input.identity), {
+        ...record,
+        state: 'FAILED',
+        safeErrorCode: input.safeErrorCode,
+        safeErrorMessage: input.safeErrorMessage,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    async markOutcomeUnknown(input: {
+      readonly identity: ConnectorSemanticIdentity;
+      readonly fenceToken: number;
+      readonly jobId: string;
+      readonly safeErrorMessage: string;
+    }): Promise<void> {
+      const record = this.records.get(durableKey(input.identity));
+      if (!record || record.fenceToken !== input.fenceToken || record.jobId !== input.jobId) return;
+      this.records.set(durableKey(input.identity), {
+        ...record,
+        state: 'OUTCOME_UNKNOWN',
+        safeErrorCode: 'OUTCOME_UNKNOWN',
+        safeErrorMessage: input.safeErrorMessage,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    async reconcile<TResult>(): Promise<DedupRecord<TResult> | undefined> {
+      return undefined;
+    }
+
+    async get<TResult>(
+      identity: ConnectorSemanticIdentity,
+    ): Promise<DedupRecord<TResult> | undefined> {
+      return this.records.get(durableKey(identity)) as DedupRecord<TResult> | undefined;
+    }
+  }
+
+  class TestJobRuntime implements JobRuntimePort {
+    private readonly jobs = new Map<string, JobRecord>();
+
+    async enqueue(): Promise<JobRecord> {
+      throw new Error('not used by this test');
+    }
+
+    async claim(): Promise<
+      { readonly fencingToken: number; readonly leaseExpiresAt: string } | undefined
+    > {
+      return undefined;
+    }
+
+    async renew(): Promise<boolean> {
+      return false;
+    }
+
+    async complete(): Promise<boolean> {
+      return false;
+    }
+
+    async retry(): Promise<boolean> {
+      return false;
+    }
+
+    async terminal(): Promise<boolean> {
+      return false;
+    }
+
+    async cancel(): Promise<boolean> {
+      return false;
+    }
+
+    async run<TResult>(
+      identity: ConnectorSemanticIdentity,
+      _correlationId: string,
+      operation: (attempt: AttemptRecord) => Promise<TResult>,
+    ): Promise<JobRunResult<TResult>> {
+      const job: JobRecord = {
+        jobId: identity.semanticKey,
+        idempotencyKey: identity.semanticKey,
+        consumerId: identity.consumerId,
+        createdAt: new Date().toISOString(),
+        status: 'running',
+        attempts: [],
+      };
+      this.jobs.set(durableKey(identity), job);
+      const attempt: AttemptRecord = {
+        attemptId: `${identity.semanticKey}:attempt`,
+        jobId: job.jobId,
+        attemptNumber: 1,
+        startedAt: new Date().toISOString(),
+        status: 'running',
+        scheduledDelayMs: 0,
+      };
+      job.attempts.push(attempt);
+      try {
+        const result = await operation(attempt);
+        attempt.status = 'succeeded';
+        attempt.finishedAt = new Date().toISOString();
+        job.status = 'succeeded';
+        return { result, job };
+      } catch (error) {
+        attempt.status = 'failed';
+        attempt.finishedAt = new Date().toISOString();
+        job.status =
+          error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN'
+            ? 'outcome-unknown'
+            : 'failed';
+        throw error;
+      }
+    }
+
+    async list(): Promise<readonly JobRecord[]> {
+      return [...this.jobs.values()];
+    }
+
+    async find(identity: ConnectorSemanticIdentity): Promise<JobRecord | undefined> {
+      return this.jobs.get(durableKey(identity));
+    }
+  }
+
   it('detects a missing partial-order sequence and quarantines the event', async () => {
     const { kernel, pong } = await createStage1Harness(new InProcessTransport());
 

@@ -9,7 +9,10 @@ import {
   ProviderExternalTransferPolicyError,
   type ProviderExternalTransferApprovalPort,
 } from '../../../../modules/provider-privacy-policy/src/index.js';
-import { ShotgunError } from '../../../../packages/contracts/src/index.js';
+import {
+  SEMANTIC_REPRESENTATION_VERSION_V2,
+  ShotgunError,
+} from '../../../../packages/contracts/src/index.js';
 import type { SemanticEmbeddingProfilePort } from '../../../../packages/contracts/src/index.js';
 
 type BrowserSession = (headers: Record<string, string | string[] | undefined>) => Promise<{
@@ -296,6 +299,11 @@ export function registerAISettingsRoutes(
               embeddingModelId: requiredString(body, 'embeddingModelId'),
               credentialId: requiredString(body, 'credentialId'),
               credentialRevision: requiredInteger(body, 'credentialRevision'),
+              // The Product boundary owns the representation default. The
+              // semantic corpus currently emits V2 resources, so omitting it
+              // must not silently create a legacy V1 profile that refresh
+              // cannot execute.
+              representationVersion: SEMANTIC_REPRESENTATION_VERSION_V2,
               ...(dimension === undefined ? {} : { dimension: dimension as number }),
               updatedBy: context.principalId,
               status: 'PREPARED',

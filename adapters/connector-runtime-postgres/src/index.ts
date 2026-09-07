@@ -34,8 +34,9 @@ import { withSafePostgresTransaction } from '../../../packages/postgres-transact
 const json = (value: unknown): string => JSON.stringify(value ?? null);
 const parseJson = (value: unknown): unknown =>
   typeof value === 'string' ? JSON.parse(value) : value;
+const persistedJsonValue = (value: unknown): unknown => parseJson(json(value));
 const sameJsonValue = (left: unknown, right: unknown): boolean =>
-  stableJson(parseJson(left)) === stableJson(right);
+  stableJson(persistedJsonValue(parseJson(left))) === stableJson(persistedJsonValue(right));
 const date = (value: Date | string): string => new Date(value).toISOString();
 const payloadDigest = (value: unknown): string =>
   `sha256:${createHash('sha256').update(json(value)).digest('hex')}`;
@@ -353,6 +354,7 @@ type JobRow = QueryResultRow & {
   correlation_id: string;
   status: JobRecord['status'] | 'queued' | 'retryable' | 'dead-letter' | 'cancelled';
   attempt_count: number;
+  fencing_token: number | string;
   next_attempt_at: Date | null;
   created_at: Date;
   result: unknown;
@@ -487,22 +489,30 @@ export class PostgresJobRuntime implements JobRuntimePort {
       if (result.rowCount === 1) return true;
     } catch (error) {
       try {
-        if (await this.readCompletedJob(input.jobId, input.result)) return true;
+        if (await this.readCompletedJob(input.jobId, input.fencingToken, input.result)) return true;
       } catch {
         // Preserve the ambiguous completion as a failure to acknowledge.
       }
       throw error;
     }
-    return this.readCompletedJob(input.jobId, input.result);
+    return this.readCompletedJob(input.jobId, input.fencingToken, input.result);
   }
 
-  private async readCompletedJob(jobId: string, result: unknown): Promise<boolean> {
-    const current = await this.pool.query<Pick<JobRow, 'status' | 'result'>>(
-      'SELECT status, result FROM connector.jobs WHERE job_id=$1',
+  private async readCompletedJob(
+    jobId: string,
+    fencingToken: number,
+    result: unknown,
+  ): Promise<boolean> {
+    const current = await this.pool.query<Pick<JobRow, 'status' | 'fencing_token' | 'result'>>(
+      'SELECT status, fencing_token, result FROM connector.jobs WHERE job_id=$1',
       [jobId],
     );
     const row = current.rows[0];
-    return row?.status === 'succeeded' && sameJsonValue(row.result, result);
+    return (
+      row?.status === 'succeeded' &&
+      Number(row.fencing_token) === fencingToken &&
+      sameJsonValue(row.result, result)
+    );
   }
 
   async retry(input: {

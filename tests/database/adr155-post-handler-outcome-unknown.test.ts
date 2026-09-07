@@ -144,10 +144,10 @@ describe('ADR-155 post-handler outcome-unknown conformance', () => {
 
       const execution = await jobs.run(identity, randomUUID(), async () => {
         invocations += 1;
-        return { accepted: true };
+        return undefined;
       });
       expect(invocations).toBe(1);
-      expect(execution.result).toEqual({ accepted: true });
+      expect(execution.result).toBeUndefined();
       await dedup.complete({
         identity,
         fenceToken: began.record.fenceToken,
@@ -158,6 +158,29 @@ describe('ADR-155 post-handler outcome-unknown conformance', () => {
       const duplicate = await dedup.begin({ ...identity, jobId: randomUUID() });
       expect(duplicate).toMatchObject({ kind: 'DUPLICATE', record: { state: 'COMPLETED' } });
       expect(invocations).toBe(1);
+    } finally {
+      await cleanup(projectId);
+    }
+  });
+
+  it('does not converge a stale job completion from a successor fence', async () => {
+    const projectId = `adr155-job-stale-fence-${randomUUID()}`;
+    const identity = identityFor(projectId);
+    const jobs = new PostgresJobRuntime(pool);
+
+    try {
+      const execution = await jobs.run(identity, randomUUID(), async () => undefined);
+      const fencingToken = execution.job.attempts.at(-1)?.fencingToken;
+      expect(fencingToken).toBeDefined();
+      expect(execution.result).toBeUndefined();
+
+      await expect(
+        jobs.complete({
+          jobId: execution.job.jobId,
+          fencingToken: fencingToken! + 1,
+          result: execution.result,
+        }),
+      ).resolves.toBe(false);
     } finally {
       await cleanup(projectId);
     }

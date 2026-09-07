@@ -1222,6 +1222,9 @@ export const startShotgunApplication = async (
       const breakerOpen = observation.status === 'BREAKER_OPEN';
       const failed = observation.status === 'FAILED' || breakerOpen;
       const retryable = breakerOpen || observation.code?.includes('RETRYABLE') === true;
+      const safeCode = breakerOpen
+        ? 'STAGE3_RECOVERY_BREAKER_OPEN'
+        : (observation.code ?? 'STAGE3_RECOVERY_FAILED');
       runningApplication.state.recoveryRegistry.record({
         runnerId: RECOVERY_RUNNER_IDS.SOURCES_STAGE3,
         executionStatus: failed ? 'FAILED_TO_RUN' : 'COMPLETED',
@@ -1230,7 +1233,7 @@ export const startShotgunApplication = async (
         readinessImpact: failed ? 'DEGRADED' : 'NONE',
         startedAt: previous?.startedAt ?? now,
         completedAt: now,
-        ...(failed ? {} : { lastSuccessAt: now }),
+        ...(failed || deferred ? {} : { lastSuccessAt: now }),
         scannedCount:
           (previous?.scannedCount ?? 0) +
           (observation.status === 'EMPTY' || observation.status === 'DEFERRED' || breakerOpen
@@ -1241,16 +1244,7 @@ export const startShotgunApplication = async (
         retryableCount: (previous?.retryableCount ?? 0) + (failed && retryable ? 1 : 0),
         terminalCount: (previous?.terminalCount ?? 0) + (failed && !retryable ? 1 : 0),
         outcomeUnknownCount: previous?.outcomeUnknownCount ?? 0,
-        safeCodes: failed
-          ? [
-              ...new Set([
-                ...(previous?.safeCodes ?? []),
-                (observation.code ?? breakerOpen)
-                  ? 'STAGE3_RECOVERY_BREAKER_OPEN'
-                  : 'STAGE3_RECOVERY_FAILED',
-              ]),
-            ]
-          : [],
+        safeCodes: failed ? [...new Set([...(previous?.safeCodes ?? []), safeCode])] : [],
       });
     };
     stage4Publisher.current = async (input) => {

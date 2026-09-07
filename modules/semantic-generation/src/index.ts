@@ -126,16 +126,49 @@ const authorityRank = (authority: SemanticCorpusSourceResource['authority']): nu
 const uniqueResources = (
   resources: readonly SemanticCorpusSourceResource[],
 ): readonly SemanticCorpusSourceResource[] => {
-  const selected = new Map<string, SemanticCorpusSourceResource>();
+  const candidates = new Map<string, SemanticCorpusSourceResource[]>();
   for (const resource of resources) {
     if (!isSemanticProductResourceType(resource.resourceType)) continue;
     const key = `${resource.resourceType}\u0000${resource.resourceId}`;
-    const current = selected.get(key);
-    if (!current || authorityRank(resource.authority) > authorityRank(current.authority)) {
-      selected.set(key, resource);
-    }
+    const group = candidates.get(key);
+    if (group) group.push(resource);
+    else candidates.set(key, [resource]);
   }
-  return [...selected.values()].sort((left, right) =>
+
+  const selected: SemanticCorpusSourceResource[] = [];
+  for (const group of candidates.values()) {
+    const resourceType = group[0]!.resourceType;
+    if (resourceType === 'CLAIM') {
+      // A derived Compiled Truth row may enrich a Canonical Claim, but it
+      // cannot replace (or resurrect) that Claim's authority. Resolve this
+      // collision before persistence so the generation identity remains
+      // Canonical even when source rows arrive in either order.
+      const canonical = group.find((resource) => resource.authority === 'CANONICAL');
+      if (canonical) {
+        selected.push(canonical);
+        continue;
+      }
+
+      // Never promote a standalone derived Claim into the semantic corpus.
+      // Preserve the pre-existing Approved Knowledge behavior only when no
+      // Compiled Truth row is present for the identity.
+      if (group.some((resource) => resource.authority === 'COMPILED_TRUTH')) {
+        const approved = group.find((resource) => resource.authority === 'APPROVED_KNOWLEDGE');
+        if (approved) selected.push(approved);
+        continue;
+      }
+      selected.push(group[0]!);
+      continue;
+    }
+
+    selected.push(
+      group.reduce((current, resource) =>
+        authorityRank(resource.authority) > authorityRank(current.authority) ? resource : current,
+      ),
+    );
+  }
+
+  return selected.sort((left, right) =>
     left.resourceType < right.resourceType
       ? -1
       : left.resourceType > right.resourceType

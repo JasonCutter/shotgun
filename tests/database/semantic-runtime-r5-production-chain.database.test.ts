@@ -7,13 +7,25 @@ import type { Pool } from 'pg';
 import { PostgresCredentialVaultRepository } from '../../adapters/credential-vault-postgres/src/index.js';
 import {
   PostgresOriginalAssetRepository,
+  PostgresSettingsRepository,
   createPostgresPool,
 } from '../../adapters/postgres/src/index.js';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
 import { PostgresProviderExternalTransferApprovalRepository } from '../../adapters/provider-privacy-deployment-postgres/src/index.js';
 import { PostgresSemanticEmbeddingProfileRepository } from '../../adapters/semantic-embedding-postgres/src/index.js';
-import { PostgresSemanticIndexRepository } from '../../adapters/semantic-index-postgres/src/index.js';
+import {
+  PostgresSemanticActiveGenerationReader,
+  PostgresSemanticIndexRepository,
+} from '../../adapters/semantic-index-postgres/src/index.js';
 import { PostgresSemanticCorpusSourceSnapshotReader } from '../../adapters/semantic-corpus-postgres/src/index.js';
+import { PostgresCandidateRepository } from '../../adapters/postgres-stage4/src/index.js';
+import {
+  PostgresChangeSetReviewRepository,
+  PostgresChangeSetReviewV2Repository,
+  PostgresComparisonRepository,
+  PostgresComparisonV2Repository,
+} from '../../adapters/postgres-stage5/src/index.js';
+import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
 import {
   EnvironmentCredentialMasterKeyAuthority,
   CredentialVaultService,
@@ -30,13 +42,16 @@ import {
   SEMANTIC_REPRESENTATION_VERSION_V2,
   sha256Text,
   type CanonicalClaim,
+  type HybridRetrievalCoordinatorPort,
   type HybridSearchResponse,
   type KnowledgeCandidate,
 } from '../../packages/contracts/src/index.js';
+import { COMPARISON_ROLLOUT_SETTING_KEY } from '../../modules/settings-policy/src/index.js';
 import {
   startShotgunApplication,
   type ShotgunApplicationHandle,
 } from '../../assemblies/shotgun-app/src/application.js';
+import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import { migrateUpTo } from '../../scripts/database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
@@ -1576,6 +1591,404 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       ).toBe('READY');
     } finally {
       await application?.close();
+      await provider.close();
+      for (const name of environmentNames) {
+        const value = previousEnvironment[name];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
+  it('preserves Canonical Claim authority through the real generation builder and V2 Product re-entry', async () => {
+    await migrateUpTo(undefined, databaseUrl!);
+
+    const provider = new DeterministicOpenAIProvider();
+    await provider.listen();
+    const environmentNames = [
+      'DATABASE_URL',
+      'OPENAI_BASE_URL',
+      'AI_PRIVATE_EGRESS_ALLOWED_PROVIDERS',
+      'GEMINI_ALLOW_PRIVATE',
+      'SOURCES_STAGING_SECRET',
+      'SHOTGUN_CREDENTIAL_MASTER_KEY',
+      'SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION',
+      'NODE_ENV',
+    ] as const;
+    const previousEnvironment = Object.fromEntries(
+      environmentNames.map((name) => [name, process.env[name]]),
+    ) as Record<(typeof environmentNames)[number], string | undefined>;
+    const databaseEnvironmentName = ['DATABASE', '_URL'].join('');
+    process.env[databaseEnvironmentName] = databaseUrl;
+    process.env.OPENAI_BASE_URL = provider.baseUrl;
+    process.env.AI_PRIVATE_EGRESS_ALLOWED_PROVIDERS = 'openai';
+    process.env.GEMINI_ALLOW_PRIVATE = 'false';
+    process.env.SOURCES_STAGING_SECRET = 'r5-authority-collision-staging-secret-32-bytes';
+    process.env.SHOTGUN_CREDENTIAL_MASTER_KEY = randomBytes(32).toString('base64url');
+    process.env.SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION = 'r5-authority-collision';
+    process.env.NODE_ENV = 'test';
+
+    let generationApplication: ShotgunApplicationHandle | undefined;
+    let productApplication: Awaited<ReturnType<typeof createApplication>> | undefined;
+    try {
+      const fixture = await createFixture();
+      const sourceReader = new PostgresSemanticCorpusSourceSnapshotReader(pool!);
+      generationApplication = await startShotgunApplication({
+        host: '127.0.0.1',
+        port: 0,
+        noSignals: true,
+        disableAskWorker: true,
+      });
+
+      const sourceBefore = await sourceReader.readSnapshot(fixture.projectId);
+      const collisionProjection = {
+        projectId: fixture.projectId,
+        projectorVersion: 'r5-authority-collision',
+        sourceSnapshotDigest: sourceBefore.sourceSnapshotDigest,
+        logicalDigest: digest(`authority-collision-${fixture.projectId}`),
+        canonicalVersion: sourceBefore.canonicalVersion,
+        items: [
+          {
+            id: fixture.claimId,
+            type: 'CLAIM' as const,
+            label: fixture.claim.claimText,
+            state: 'CURRENT' as const,
+            source: 'CANONICAL_CLAIM' as const,
+            evidenceIds: [...fixture.claim.evidenceIds],
+            accessScope: [...fixture.claim.accessScope],
+            sensitivity: fixture.claim.sensitivity,
+          },
+        ],
+        graph: {
+          nodes: [],
+          edges: [],
+          fallback: { available: true, modes: ['LIST', 'TABLE'] },
+        },
+        projectedAt: new Date().toISOString(),
+        buildMode: 'FULL_REBUILD' as const,
+      };
+      await pool!.query(
+        `INSERT INTO projection.compiled_truth
+           (project_id, projector_version, source_snapshot_digest, logical_digest,
+            canonical_version, build_mode, projection, status, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'READY', now())
+         ON CONFLICT (project_id) DO UPDATE SET
+           projector_version = EXCLUDED.projector_version,
+           source_snapshot_digest = EXCLUDED.source_snapshot_digest,
+           logical_digest = EXCLUDED.logical_digest,
+           canonical_version = EXCLUDED.canonical_version,
+           build_mode = EXCLUDED.build_mode,
+           projection = EXCLUDED.projection,
+           status = EXCLUDED.status,
+           last_error = NULL,
+           updated_at = EXCLUDED.updated_at`,
+        [
+          fixture.projectId,
+          collisionProjection.projectorVersion,
+          collisionProjection.sourceSnapshotDigest,
+          collisionProjection.logicalDigest,
+          collisionProjection.canonicalVersion,
+          collisionProjection.buildMode,
+          JSON.stringify(collisionProjection),
+        ],
+      );
+
+      const sourceWithCollision = await sourceReader.readSnapshot(fixture.projectId);
+      expect(
+        sourceWithCollision.resources
+          .filter(
+            (resource) =>
+              resource.resourceType === 'CLAIM' && resource.resourceId === fixture.claimId,
+          )
+          .map((resource) => resource.authority),
+      ).toEqual(['CANONICAL', 'COMPILED_TRUTH']);
+
+      provider.reset();
+      provider.beginBuildPhase({ model: 'text-embedding-3-small', dimension: P1_DIMENSION });
+      const refreshResponse = await generationApplication.server.inject({
+        method: 'POST',
+        url: '/projection/semantic/refresh',
+        headers: {
+          cookie: `shotgun_session=${fixture.sessionToken}`,
+          'x-csrf-token': fixture.csrfToken,
+          'content-type': 'application/json',
+        },
+        payload: {},
+      });
+      provider.endBuildPhase();
+      expect(refreshResponse.statusCode).toBe(200);
+      const refreshBody = refreshResponse.json<{
+        refresh: { generationId: string; itemCount: number };
+      }>();
+      expect(refreshBody.refresh.itemCount).toBe(2);
+
+      const semanticRepository = new PostgresSemanticIndexRepository(pool!);
+      const canonicalItem = await semanticRepository.getItem(
+        fixture.projectId,
+        refreshBody.refresh.generationId,
+        'CLAIM',
+        fixture.claimId,
+      );
+      expect(canonicalItem).toMatchObject({
+        authority: 'CANONICAL',
+        resourceId: fixture.claimId,
+        provenance: { authority: 'CANONICAL', resourceRevision: fixture.claim.revisionNumber },
+      });
+
+      const candidateId = randomUUID();
+      const batchId = randomUUID();
+      const candidateText = 'A non-exact candidate for authority collision re-entry.';
+      await pool!.query(
+        `INSERT INTO candidate.batches
+           (batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at)
+         VALUES ($1, $2, $3, $4, '{}'::jsonb, now())`,
+        [batchId, fixture.projectId, fixture.sourceVersionId, `authority-batch-${candidateId}`],
+      );
+      await pool!.query(
+        `INSERT INTO candidate.claim_candidates
+           (candidate_id, batch_id, project_id, source_version_id, revision_number, claim_text,
+            evidence_id, evidence_mode, extraction_profile, status, provider_call,
+            access_scope, sensitivity, created_at)
+         VALUES ($1, $2, $3, $4, 1, $5, $6, 'DIRECT_EVIDENCE', 'direct-only', 'READY', '{}', $7, 'private', now())`,
+        [
+          candidateId,
+          batchId,
+          fixture.projectId,
+          fixture.sourceVersionId,
+          candidateText,
+          fixture.evidenceId,
+          ['owner'],
+        ],
+      );
+
+      const settingsRepository = new PostgresSettingsRepository(pool!);
+      const settingsRevision =
+        (
+          await pool!.query<{ revision: number }>(
+            `SELECT COALESCE(MAX(revision), 0)::int AS revision
+             FROM settings.settings_revisions WHERE project_id = $1`,
+            [fixture.projectId],
+          )
+        ).rows[0]?.revision ?? 0;
+      const policyContextRevision =
+        (
+          await pool!.query<{ revision: number }>(
+            `SELECT COALESCE(MAX(revision), 0)::int AS revision
+             FROM settings.policy_context_revisions WHERE project_id = $1`,
+            [fixture.projectId],
+          )
+        ).rows[0]?.revision ?? 0;
+      await settingsRepository.applySettingsCommand({
+        commandId: randomUUID(),
+        clientRequestId: `authority-rollout-${candidateId}`,
+        idempotencyKey: `authority-rollout-${candidateId}`,
+        projectId: fixture.projectId,
+        expectedSettingsRevision: settingsRevision,
+        observedPolicyContextRevision: policyContextRevision,
+        settings: { [COMPARISON_ROLLOUT_SETTING_KEY]: 'V2_ACTIVE' },
+        actorId: fixture.principalId,
+      });
+
+      await generationApplication.close();
+      generationApplication = undefined;
+
+      const canonical = new PostgresCanonicalKnowledgeRepository(pool!);
+      const candidateRepository = new PostgresCandidateRepository(pool!);
+      const activeGenerationReader = new PostgresSemanticActiveGenerationReader(semanticRepository);
+      const searchProjection = {
+        applyCommit: async () => undefined,
+        rebuild: async () => undefined,
+        markDegraded: async () => undefined,
+        findWatermark: async (projectId: string) => {
+          const snapshot = await canonical.getSnapshot(projectId);
+          return {
+            projectId,
+            canonicalVersion: snapshot.version,
+            snapshotDigest: snapshot.digest,
+            status: 'READY' as const,
+            updatedAt: snapshot.createdAt,
+            lastCommitId: `canonical-${projectId}-${snapshot.version}`,
+          };
+        },
+        search: async () => [],
+      };
+      const hybridRetrieval: HybridRetrievalCoordinatorPort = {
+        async search(input) {
+          const snapshot = await canonical.getSnapshot(input.projectId);
+          const generation = await activeGenerationReader.getActiveGeneration(input.projectId);
+          if (!generation) throw new Error('Authority collision test has no active generation.');
+          const item = await semanticRepository.getItem(
+            input.projectId,
+            generation.generationId,
+            'CLAIM',
+            fixture.claimId,
+          );
+          if (!item) throw new Error('Authority collision test has no semantic Claim item.');
+          const claim = snapshot.claims.find((candidate) => candidate.claimId === fixture.claimId);
+          if (!claim) throw new Error('Authority collision test has no Canonical Claim.');
+          return {
+            schemaVersion: '1.0.0',
+            projectId: input.projectId,
+            query: input.query,
+            items: [
+              {
+                resourceType: 'CLAIM' as const,
+                resourceId: fixture.claimId,
+                text: claim.text,
+                authority: item.authority ?? 'CANONICAL',
+                authorityRevision: item.provenance?.resourceRevision ?? claim.revisionNumber,
+                resourceRevision: item.provenance?.resourceRevision ?? claim.revisionNumber,
+                canonicalVersion: snapshot.version,
+                baseCanonicalVersion: snapshot.version,
+                sourceSnapshotDigest: snapshot.digest,
+                sourceProjectionDigest: item.sourceProjectionDigest,
+                evidenceIds: [...claim.evidenceIds],
+                citations: [],
+                accessScope: [...item.accessScope],
+                sensitivity: item.sensitivity,
+                signals: ['SEMANTIC' as const],
+                semanticRank: 1,
+                fusionRank: 1,
+                fusionScore: 1,
+              },
+            ],
+            fusionPolicy: { version: 'rrf:v1' as const, k: 60 },
+            readiness: {
+              lexical: {
+                status: 'READY' as const,
+                projectedCanonicalVersion: snapshot.version,
+                canonicalVersion: snapshot.version,
+                lag: 0,
+                canonicalSnapshotDigest: snapshot.digest,
+                projectedSnapshotDigest: snapshot.digest,
+                lastCommitId: `canonical-${input.projectId}-${snapshot.version}`,
+              },
+              semantic: {
+                status: 'READY' as const,
+                data: 'READY' as const,
+                execution: 'AVAILABLE' as const,
+                activeGenerationId: generation.generationId,
+                embeddingProfileId: generation.embeddingProfileId,
+                dimension: generation.dimension,
+              },
+              degraded: false,
+            },
+            generatedAt: new Date().toISOString(),
+          } satisfies HybridSearchResponse;
+        },
+      };
+      let providerCalls = 0;
+      const comparisonV2ExecutionResolver = {
+        async resolve() {
+          return {
+            executionIdentity: {
+              providerId: 'deepseek',
+              modelId: 'deepseek-authority-collision-test',
+              aiConfigurationRevision: 1,
+              credentialId: 'deterministic-test-credential',
+              credentialRevision: 1,
+              policyContextRevision: 'authority-collision-test-policy',
+              providerPolicyFingerprint: 'authority-collision-test-provider-policy',
+            },
+            adapter: {
+              identity: {
+                provider: 'deepseek',
+                model: 'deepseek-authority-collision-test',
+                adapterVersion: 'authority-collision-test-adapter-v1',
+                dataPolicyVersion: 'authority-collision-test-policy-v1',
+              },
+              async generateStructured(request: { readonly prompt: string }) {
+                providerCalls += 1;
+                const parsed = JSON.parse(request.prompt) as {
+                  readonly claims?: readonly {
+                    readonly resourceId: string;
+                    readonly resourceRevision: number;
+                  }[];
+                };
+                return {
+                  rawText: JSON.stringify({
+                    relationships: (parsed.claims ?? []).map((claim) => ({
+                      resourceId: claim.resourceId,
+                      resourceRevision: claim.resourceRevision,
+                      type: 'UNRELATED',
+                      rationale: 'Deterministic authority collision regression.',
+                    })),
+                  }),
+                  providerResponseId: `authority-collision-provider-${providerCalls}`,
+                };
+              },
+            },
+          };
+        },
+      };
+      productApplication = await createApplication({
+        authRepository: new PostgresAuthRepository(pool!),
+        candidateRepository,
+        comparisonRepository: new PostgresComparisonRepository(pool!),
+        comparisonV2Repository: new PostgresComparisonV2Repository(pool!),
+        changeSetReviewRepository: new PostgresChangeSetReviewRepository(pool!),
+        changeSetReviewV2Repository: new PostgresChangeSetReviewV2Repository(pool!),
+        canonicalSnapshot: canonical,
+        canonicalKnowledgeRepository: canonical,
+        searchProjectionRepository: searchProjection,
+        hybridRetrievalCoordinator: hybridRetrieval,
+        semanticActiveGenerationReader: activeGenerationReader,
+        semanticCorpusSourceSnapshotReader: sourceReader,
+        comparisonV2ExecutionResolver,
+        settingsRepository,
+      });
+
+      const response = await productApplication.server.inject({
+        method: 'POST',
+        url: '/comparisons/recompare',
+        headers: {
+          cookie: `shotgun_session=${fixture.sessionToken}`,
+          'x-csrf-token': fixture.csrfToken,
+        },
+        payload: { candidateId, idempotencyKey: `authority-reentry-${candidateId}` },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        result: {
+          rollout: 'V2_ACTIVE',
+          v1Executed: false,
+          v2: { status: 'COMPLETED' },
+          review: { status: 'DRAFT_CREATED' },
+        },
+      });
+      expect(providerCalls).toBe(1);
+
+      const durable = await pool!.query<{
+        comparisons: string;
+        analyses: string;
+        relationships: string;
+        reviews: string;
+        legacy: string;
+      }>(
+        `SELECT
+           (SELECT count(*)::text FROM comparison.results_v2 WHERE project_id = $1) AS comparisons,
+           (SELECT count(*)::text FROM comparison.analysis_revisions_v2 WHERE project_id = $1) AS analyses,
+           (SELECT count(*)::text FROM comparison.relationships_v2 WHERE project_id = $1) AS relationships,
+           (SELECT count(*)::text FROM review.change_sets_v2 WHERE project_id = $1) AS reviews,
+           (SELECT count(*)::text FROM comparison.results WHERE project_id = $1) AS legacy`,
+        [fixture.projectId],
+      );
+      expect(durable.rows[0]).toEqual({
+        comparisons: '1',
+        analyses: '1',
+        relationships: '1',
+        reviews: '1',
+        legacy: '0',
+      });
+      const relationship = await pool!.query<{ resource_id: string }>(
+        `SELECT compared_resource_id AS resource_id
+           FROM comparison.relationships_v2 WHERE project_id = $1`,
+        [fixture.projectId],
+      );
+      expect(relationship.rows).toEqual([{ resource_id: fixture.claimId }]);
+    } finally {
+      await productApplication?.server.close();
+      await generationApplication?.close();
       await provider.close();
       for (const name of environmentNames) {
         const value = previousEnvironment[name];

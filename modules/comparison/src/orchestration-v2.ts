@@ -22,6 +22,7 @@ import {
 import {
   type ComparisonV2Aggregate,
   type ComparisonV2RepositoryPort,
+  comparisonV2StorageIdentity,
   validateComparisonV2Aggregate,
 } from './persistence-v2.js';
 import {
@@ -154,6 +155,27 @@ const publish = async (
 ): Promise<void> => {
   assertComparisonEventV2(event);
   if (publisher) await publisher.publish(event);
+};
+
+const saveOrReuseCompletedAggregate = async (
+  repository: ComparisonV2RepositoryPort,
+  aggregate: ComparisonV2Aggregate,
+): Promise<ComparisonV2Aggregate> => {
+  const identity = comparisonV2StorageIdentity(aggregate);
+  // Keep partial contract/test compositions source-compatible while all
+  // production adapters expose the identity lookup. A missing lookup simply
+  // falls through to the adapter's existing uniqueness guard.
+  const existing =
+    typeof repository.findComparisonByIdentity === 'function'
+      ? await repository.findComparisonByIdentity(identity)
+      : undefined;
+  if (existing) {
+    validateComparisonV2Aggregate(existing);
+    return existing;
+  }
+  const stored = await repository.saveCompletedAggregate(aggregate);
+  validateComparisonV2Aggregate(stored);
+  return stored;
 };
 
 const failedEvent = (
@@ -334,8 +356,7 @@ export const createComparisonV2Orchestrator = (
         });
         const aggregate: ComparisonV2Aggregate = { comparison, analyses: [], relationships: [] };
         validateComparisonV2Aggregate(aggregate);
-        const stored = await dependencies.repository.saveCompletedAggregate(aggregate);
-        validateComparisonV2Aggregate(stored);
+        const stored = await saveOrReuseCompletedAggregate(dependencies.repository, aggregate);
         const event: ComparisonCompletedV2 = {
           eventType: 'ComparisonCompletedV2',
           contractVersion: COMPARISON_V2_CONTRACT_VERSION,
@@ -401,8 +422,7 @@ export const createComparisonV2Orchestrator = (
           detail: 'semantic aggregate validation failed',
         };
       }
-      const stored = await dependencies.repository.saveCompletedAggregate(aggregate);
-      validateComparisonV2Aggregate(stored);
+      const stored = await saveOrReuseCompletedAggregate(dependencies.repository, aggregate);
       const event: ComparisonCompletedV2 = {
         eventType: 'ComparisonCompletedV2',
         contractVersion: COMPARISON_V2_CONTRACT_VERSION,

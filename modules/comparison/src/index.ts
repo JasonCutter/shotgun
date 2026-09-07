@@ -12,6 +12,7 @@ import recompareClaimCandidateSchema from '../../../packages/contracts/schemas/r
 import {
   canonicalSnapshotDigest,
   claimCandidateDigest,
+  deriveAuthorizedSensitivities,
   type CanonicalSnapshot,
   type CanonicalSnapshotClaim,
   type ClaimCandidate,
@@ -201,6 +202,27 @@ const bestMatch = (
   };
 };
 
+const assertCandidateAccess = (
+  candidate: ClaimCandidate,
+  security: SecurityContext,
+  correlationId?: string,
+): void => {
+  const granted = new Set(security.accessScope);
+  const allowedSensitivities = deriveAuthorizedSensitivities(security.sensitivity);
+  if (
+    candidate.accessScope.some((scope) => !granted.has(scope)) ||
+    !allowedSensitivities.includes(candidate.sensitivity)
+  ) {
+    throw new ShotgunError({
+      code: 'POLICY_DENIED',
+      safeMessage: 'The caller cannot access this Claim Candidate.',
+      module: 'stage5.comparison',
+      operation: 'compare-candidate',
+      correlationId,
+    });
+  }
+};
+
 type ComparisonExecution = {
   readonly rollout: 'V1_ONLY' | 'V2_SHADOW' | 'V2_ACTIVE';
   readonly v1Executed: boolean;
@@ -213,6 +235,8 @@ type ComparisonExecution = {
  * execution boundary.  It pins the server-read Canonical snapshot and uses
  * the repository's candidate+snapshot identity before doing any write, so a
  * replay cannot create a second v1 comparison for the same immutable input.
+ * V2 identity remains governed by the runtime/orchestrator's full analysis
+ * input identity and never falls back to this v1 key in V2_ACTIVE.
  */
 const executeComparison = async (input: {
   readonly projectId: string;
@@ -226,6 +250,7 @@ const executeComparison = async (input: {
   readonly snapshotProvider: CanonicalSnapshotPort;
   readonly textDiff: TextDiffPort;
 }): Promise<ComparisonExecution> => {
+  assertCandidateAccess(input.candidate, input.security, input.correlationId);
   let rollout: ComparisonExecution['rollout'] = 'V1_ONLY';
   if (input.runtime) {
     const runtimeOutcome = await input.runtime.handleCandidateValidated({

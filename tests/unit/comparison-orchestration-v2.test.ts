@@ -20,7 +20,11 @@ import {
   createComparisonV2Orchestrator,
   type ComparisonV2OrchestratorDependencies,
 } from '../../modules/comparison/src/orchestration-v2.js';
-import type { ComparisonV2RepositoryPort } from '../../modules/comparison/src/persistence-v2.js';
+import {
+  type ComparisonV2Aggregate,
+  comparisonV2StorageIdentity,
+  type ComparisonV2RepositoryPort,
+} from '../../modules/comparison/src/persistence-v2.js';
 
 const projectId = 'project-orchestration-v2';
 const now = '2026-09-05T12:00:00.000Z';
@@ -429,5 +433,98 @@ describe('Comparison v2 orchestration', () => {
         'UNRELATED',
       ]);
     }
+  });
+
+  it('reuses an identical governed analysis identity but stores a new identity when shortlist input changes', async () => {
+    const aggregates: ComparisonV2Aggregate[] = [];
+    let generatedId = 0;
+    const repository: ComparisonV2RepositoryPort = {
+      async saveAnalysisRevision({ revision }) {
+        return revision;
+      },
+      async transitionAnalysisRevision() {
+        throw new Error('not used');
+      },
+      async findAnalysisRevision() {
+        return undefined;
+      },
+      async findAnalysisRevisionByInput() {
+        return undefined;
+      },
+      async saveCompletedAggregate(aggregate) {
+        aggregates.push(aggregate);
+        return aggregate;
+      },
+      async findComparisonById(requestProjectId, comparisonId) {
+        return aggregates.find(
+          (aggregate) =>
+            aggregate.comparison.projectId === requestProjectId &&
+            aggregate.comparison.comparisonId === comparisonId,
+        );
+      },
+      async findComparisonByIdentity(identity) {
+        const key = JSON.stringify(identity);
+        return aggregates.find(
+          (aggregate) => JSON.stringify(comparisonV2StorageIdentity(aggregate)) === key,
+        );
+      },
+    };
+    const execute = async (target: 'claim-1' | 'claim-2') => {
+      const shortlistAudit = audit([target]);
+      const orchestrator = createComparisonV2Orchestrator({
+        candidate: { findById: async () => candidate },
+        shortlist: {
+          async build() {
+            return {
+              status: 'READY' as const,
+              shortlist: shortlistAudit,
+              shortlistDigest: shortlistAuditDigestV2(shortlistAudit),
+            };
+          },
+        },
+        semanticAnalysis: {
+          async analyze(input) {
+            const analysisValue = analysis(input.comparisonId, input.shortlistDigest, [target]);
+            return {
+              status: 'COMPLETED' as const,
+              analysis: analysisValue,
+              relationships: [
+                relationship(
+                  input.comparisonId,
+                  analysisValue.analysisRevisionId,
+                  target,
+                  'UNRELATED',
+                ),
+              ],
+            };
+          },
+        },
+        repository,
+        now: () => now,
+        randomId: () => `comparison-${++generatedId}`,
+      });
+      return orchestrator.compare(request);
+    };
+
+    const first = await execute('claim-1');
+    const replay = await execute('claim-1');
+    const changedInput = await execute('claim-2');
+
+    expect(first.status).toBe('COMPLETED');
+    expect(replay.status).toBe('COMPLETED');
+    expect(changedInput.status).toBe('COMPLETED');
+    if (
+      first.status === 'COMPLETED' &&
+      replay.status === 'COMPLETED' &&
+      changedInput.status === 'COMPLETED'
+    ) {
+      expect(replay.aggregate.comparison.comparisonId).toBe(
+        first.aggregate.comparison.comparisonId,
+      );
+      expect(changedInput.aggregate.comparison.comparisonId).not.toBe(
+        first.aggregate.comparison.comparisonId,
+      );
+    }
+    expect(aggregates).toHaveLength(2);
   });
 });

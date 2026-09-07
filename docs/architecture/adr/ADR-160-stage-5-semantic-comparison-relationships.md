@@ -47,11 +47,16 @@ the normal command/runtime boundary.
 The command accepts only a `READY` Candidate. It reuses the same comparison
 execution as `CandidateValidated`, pins the current verified Canonical snapshot,
 and finds or creates the immutable Comparison identity for
-`project + candidate revision/digest + snapshot digest`. A new Comparison emits
-the normal `ComparisonCompleted` event, so the review module creates a new
-DraftChangeSet while preserving every prior Comparison, ChangeSet, stale
-decision, and dead-letter record. Replaying the same command or re-entering it
-before approval is idempotent for the same Candidate/current snapshot.
+`project + candidate revision/digest + snapshot digest + governed analysis
+input identity`. For v2 that governed identity includes the shortlist/retrieval
+identity, semantic generation/base, provider-model-capability and credential
+revision, prompt/schema revisions, and semantic-policy revision. A new
+Comparison emits the normal `ComparisonCompleted` event, so the review module
+creates a new DraftChangeSet while preserving every prior Comparison, ChangeSet,
+stale decision, and dead-letter record. Replaying the same command or re-entering
+it before approval is idempotent for the same Candidate/current snapshot and
+governed analysis input; a changed governed input intentionally creates a new
+analysis/Comparison identity instead of reusing stale analysis.
 
 The command never writes Candidate, SourceVersion, Evidence, OriginalAsset, or
 Canonical state and never promotes a result automatically. Canonical changes

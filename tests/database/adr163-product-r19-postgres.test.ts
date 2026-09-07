@@ -21,6 +21,7 @@ import { COMPARISON_ROLLOUT_SETTING_KEY } from '../../modules/settings-policy/sr
 import { COMPARISON_SEMANTIC_ANALYSIS_CAPABILITY_V2 } from '../../modules/comparison/src/index.js';
 import {
   resolveReviewOperationV2CommandDigest,
+  ShotgunError,
   sha256Text,
   stableJson,
   type CanonicalSnapshot,
@@ -253,13 +254,20 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
       actorId: 'product-r19-test',
     });
     let injectAckLoss = true;
+    let transportCompletedOperations = 0;
     const transport: MessageTransport = {
       name: 'in-process',
       async execute<TResult>(operation: () => Promise<TResult>): Promise<TResult> {
         const result = await operation();
+        transportCompletedOperations += 1;
         if (injectAckLoss) {
           injectAckLoss = false;
-          throw Object.assign(new Error('acknowledgement was lost'), { code: 'OUTCOME_UNKNOWN' });
+          throw new ShotgunError({
+            code: 'OUTCOME_UNKNOWN',
+            safeMessage: 'The handler completed but the transport acknowledgement was lost.',
+            module: 'adr163-r19-test-transport',
+            operation: 'execute',
+          });
         }
         return result;
       },
@@ -317,12 +325,48 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
         headers: { 'content-type': 'application/json', cookie, 'x-csrf-token': csrf },
         payload: body,
       });
+      if (response.statusCode !== 200) {
+        const diagnosticCounts = await pool!.query<{
+          resolutions: string;
+          revisions: string;
+        }>(
+          `SELECT
+             (SELECT count(*)::text FROM review.operation_resolutions_v2
+              WHERE project_id = $1 AND change_set_id = $2) AS resolutions,
+             (SELECT count(*)::text FROM review.change_set_revisions_v2
+              WHERE project_id = $1 AND change_set_id = $2) AS revisions`,
+          [fixture.draft.projectId, fixture.draft.changeSetId],
+        );
+        const diagnosticDedup = await pool!.query<{ state: string }>(
+          `SELECT state
+           FROM connector.dedup_records
+           WHERE project_id = $1 AND semantic_key = $2`,
+          [fixture.draft.projectId, commandIdempotencyKey],
+        );
+        let safeResponseBody: unknown;
+        try {
+          safeResponseBody = response.json();
+        } catch {
+          safeResponseBody = response.body;
+        }
+        console.error('[ADR-163 R19 diagnostics]', {
+          statusCode: response.statusCode,
+          responseBody: safeResponseBody,
+          resolverInvocations,
+          transportCompletedOperations,
+          providerGenerationCalls,
+          operationResolutionCount: diagnosticCounts.rows[0]?.resolutions ?? '0',
+          revisionCount: diagnosticCounts.rows[0]?.revisions ?? '0',
+          connectorDedupState: diagnosticDedup.rows[0]?.state ?? null,
+        });
+      }
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject({
         commandStatus: 'reconciled',
         resolution: { changeSetId: fixture.draft.changeSetId, chosenOperation: 'ADD_CLAIM' },
       });
       expect(resolverInvocations).toBe(1);
+      expect(transportCompletedOperations).toBe(1);
       expect(providerGenerationCalls).toBe(0);
       const dedupState = await pool!.query<{ state: string }>(
         `SELECT state

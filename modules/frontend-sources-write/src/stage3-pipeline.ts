@@ -24,6 +24,30 @@ export type SourcesStage3FailureClassification = {
 };
 
 export const STAGE3_RUNTIME_CONTRACT_ERROR_CODE = 'STAGE3_RUNTIME_CONTRACT_ERROR' as const;
+export const STAGE3_UNKNOWN_FAILURE_CODE = 'STAGE3_UNKNOWN_FAILURE' as const;
+
+const knownDatabaseTransientCodes = new Set([
+  '08000',
+  '08001',
+  '08003',
+  '08004',
+  '08006',
+  '08007',
+  '08P01',
+  '40001',
+  '40P01',
+  '53300',
+  '55P03',
+  '57P01',
+  '57P02',
+  '57P03',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'EPIPE',
+  'ETIMEDOUT',
+]);
 
 export const classifySourcesStage3Failure = (
   error: unknown,
@@ -42,13 +66,15 @@ export const classifySourcesStage3Failure = (
   if (code === 'RETRYABLE_DEPENDENCY' || code === 'TIMEOUT' || code === 'OUTCOME_UNKNOWN') {
     return { retryable: true, code, message };
   }
-  if (code && /^(08|40001$|40P01$|55P03$)/.test(code)) {
+  if (code && (code.startsWith('08') || knownDatabaseTransientCodes.has(code))) {
     return { retryable: true, code: 'STAGE3_DB_TRANSIENT', message };
   }
   if (code && ['42P08', '42601', '42703', '42804'].includes(code)) {
     return { retryable: false, code: STAGE3_RUNTIME_CONTRACT_ERROR_CODE, message };
   }
-  return { retryable: true, code: 'STAGE3_RETRYABLE_FAILURE', message };
+  // No evidence means replay safety is unknown. Fail closed into manual
+  // reconciliation instead of turning an unknown side effect into a retry loop.
+  return { retryable: false, code: STAGE3_UNKNOWN_FAILURE_CODE, message };
 };
 
 /** Structural Stage 3 contracts kept in the Sources module boundary. The
@@ -152,7 +178,7 @@ export type SourcesStage3ClaimResult =
   | { readonly status: 'DEFERRED'; readonly reason: 'ACTIVE_LEASE' | 'RETRY_NOT_DUE' }
   | {
       readonly status: 'BLOCKED';
-      readonly reason: 'HISTORICAL_RECONCILIATION' | 'RUNTIME_CONTRACT';
+      readonly reason: 'HISTORICAL_RECONCILIATION' | 'RUNTIME_CONTRACT' | 'TERMINAL_FAILURE';
     };
 
 export type SourcesStage3RecoveryItem = {
@@ -278,18 +304,28 @@ export type SourcesStage4ContinuationStorePort = {
  * be recovered in the Stage 4 domain without changing the Source intake
  * outcome.
  */
-export type SourcesStage3PipelineOutcome = {
-  readonly stage3: {
-    readonly revisionId: string;
-    readonly evidenceCount: number;
-    readonly reusedCount: number;
-  };
-  readonly stage4:
-    | { readonly status: 'NOT_CONFIGURED' }
-    | { readonly status: 'PENDING' }
-    | { readonly status: 'SUCCEEDED' }
-    | { readonly status: 'FAILED' };
-};
+export type SourcesStage3PipelineOutcome =
+  | {
+      readonly status?: 'COMPLETED';
+      readonly stage3: {
+        readonly revisionId: string;
+        readonly evidenceCount: number;
+        readonly reusedCount: number;
+      };
+      readonly stage4:
+        | { readonly status: 'NOT_CONFIGURED' }
+        | { readonly status: 'PENDING' }
+        | { readonly status: 'SUCCEEDED' }
+        | { readonly status: 'FAILED' };
+    }
+  | {
+      readonly status: 'DEFERRED';
+      readonly reason: 'ACTIVE_LEASE' | 'RETRY_NOT_DUE';
+    }
+  | {
+      readonly status: 'BLOCKED';
+      readonly reason: 'HISTORICAL_RECONCILIATION' | 'RUNTIME_CONTRACT' | 'TERMINAL_FAILURE';
+    };
 
 /** Stage 4 is started only after the Stage 3 Evidence transaction has
  * committed. The callback is intentionally a narrow event boundary so the

@@ -148,13 +148,18 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
           reusedCount: completed.reused_count,
         };
       }
-      if (
-        current.state === 'RECONCILIATION_REQUIRED' &&
-        current.safe_failure_code === HISTORICAL_RECONCILIATION_REQUIRED_CODE
-      ) {
+      if (current.state === 'RECONCILIATION_REQUIRED') {
         await client.query('COMMIT');
         active = false;
-        return { status: 'BLOCKED', reason: 'HISTORICAL_RECONCILIATION' };
+        return {
+          status: 'BLOCKED',
+          reason:
+            current.safe_failure_code === HISTORICAL_RECONCILIATION_REQUIRED_CODE
+              ? 'HISTORICAL_RECONCILIATION'
+              : current.safe_failure_code === STAGE3_RUNTIME_CONTRACT_ERROR_CODE
+                ? 'RUNTIME_CONTRACT'
+                : 'TERMINAL_FAILURE',
+        };
       }
       if (
         current.state === 'STAGE3_RUNNING' &&
@@ -259,7 +264,7 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
               safe_failure_code = $6, safe_failure_message = $7,
               updated_at = clock_timestamp()
         WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
-          AND state IN ('MATERIALIZED', 'STAGE3_RETRYABLE', 'RECONCILIATION_REQUIRED')`,
+          AND state IN ('MATERIALIZED', 'STAGE3_RETRYABLE')`,
       [
         input.projectId,
         input.sourceId,
@@ -271,6 +276,15 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
       ],
     );
     if (result.rowCount === 1) return;
+    const existing = await this.pool.query<{ state: SourcesStage3ProgressState }>(
+      `SELECT state
+         FROM source_product.source_stage3_progress
+        WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3`,
+      [input.projectId, input.sourceId, input.sourceVersionId],
+    );
+    // A terminal reconciliation marker is monotonic. A late pre-claim error
+    // must acknowledge that marker rather than resurrecting it as retryable.
+    if (existing.rows[0]?.state === 'RECONCILIATION_REQUIRED') return;
     throw new ShotgunError({
       code: 'CONFLICT',
       safeMessage: 'Stage 3 pre-claim failure could not update its progress row.',
@@ -394,9 +408,6 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
          JOIN asset.original_assets AS original
            ON original.asset_id = version.original_asset_id
         WHERE progress.state = 'MATERIALIZED'
-           OR (progress.state = 'RECONCILIATION_REQUIRED'
-               AND progress.safe_failure_code IS DISTINCT FROM $3
-               AND progress.safe_failure_code IS DISTINCT FROM $4)
            OR (progress.state = 'STAGE3_RETRYABLE'
                AND (progress.next_attempt_at IS NULL
                     OR progress.next_attempt_at <= COALESCE($1::timestamptz, now())))
@@ -404,12 +415,7 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
                AND progress.lease_expires_at <= COALESCE($1::timestamptz, now()))
         ORDER BY progress.updated_at, progress.source_version_id
         LIMIT $2`,
-      [
-        input?.now ?? null,
-        input?.limit ?? 100,
-        HISTORICAL_RECONCILIATION_REQUIRED_CODE,
-        STAGE3_RUNTIME_CONTRACT_ERROR_CODE,
-      ],
+      [input?.now ?? null, input?.limit ?? 100],
     );
     return result.rows.map((row) => ({
       projectId: row.project_id,

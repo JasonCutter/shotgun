@@ -1211,15 +1211,20 @@ export const startShotgunApplication = async (
     });
     const runningApplication = application!;
     const reportStage3Recovery = async (observation: {
-      readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED';
+      readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED' | 'DEFERRED' | 'BREAKER_OPEN';
       readonly code?: string;
     }): Promise<void> => {
       const previous = runningApplication.state.recoveryRegistry.get(
         RECOVERY_RUNNER_IDS.SOURCES_STAGE3,
       );
       const now = new Date().toISOString();
-      const failed = observation.status === 'FAILED';
-      const retryable = observation.code?.includes('RETRYABLE') === true;
+      const deferred = observation.status === 'DEFERRED';
+      const breakerOpen = observation.status === 'BREAKER_OPEN';
+      const failed = observation.status === 'FAILED' || breakerOpen;
+      const retryable = breakerOpen || observation.code?.includes('RETRYABLE') === true;
+      const safeCode = breakerOpen
+        ? 'STAGE3_RECOVERY_BREAKER_OPEN'
+        : (observation.code ?? 'STAGE3_RECOVERY_FAILED');
       runningApplication.state.recoveryRegistry.record({
         runnerId: RECOVERY_RUNNER_IDS.SOURCES_STAGE3,
         executionStatus: failed ? 'FAILED_TO_RUN' : 'COMPLETED',
@@ -1228,21 +1233,18 @@ export const startShotgunApplication = async (
         readinessImpact: failed ? 'DEGRADED' : 'NONE',
         startedAt: previous?.startedAt ?? now,
         completedAt: now,
-        ...(failed ? {} : { lastSuccessAt: now }),
-        scannedCount: (previous?.scannedCount ?? 0) + (observation.status === 'EMPTY' ? 0 : 1),
+        ...(failed || deferred ? {} : { lastSuccessAt: now }),
+        scannedCount:
+          (previous?.scannedCount ?? 0) +
+          (observation.status === 'EMPTY' || observation.status === 'DEFERRED' || breakerOpen
+            ? 0
+            : 1),
         succeededCount:
           (previous?.succeededCount ?? 0) + (observation.status === 'SUCCEEDED' ? 1 : 0),
         retryableCount: (previous?.retryableCount ?? 0) + (failed && retryable ? 1 : 0),
         terminalCount: (previous?.terminalCount ?? 0) + (failed && !retryable ? 1 : 0),
         outcomeUnknownCount: previous?.outcomeUnknownCount ?? 0,
-        safeCodes: failed
-          ? [
-              ...new Set([
-                ...(previous?.safeCodes ?? []),
-                observation.code ?? 'STAGE3_RECOVERY_FAILED',
-              ]),
-            ]
-          : [],
+        safeCodes: failed ? [...new Set([...(previous?.safeCodes ?? []), safeCode])] : [],
       });
     };
     stage4Publisher.current = async (input) => {

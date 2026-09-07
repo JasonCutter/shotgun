@@ -244,7 +244,7 @@ describe('Stage 3 → Stage 4 production continuation', () => {
     });
 
     const outcome = await pipeline.runForSourceVersion(sourceInput(contentHash, storageKey));
-    expect(outcome.stage4.status).toBe('FAILED');
+    expect('stage4' in outcome ? outcome.stage4.status : undefined).toBe('FAILED');
     const evidence = await evidenceRepository.listBySourceVersion(
       'source-stage4-project',
       '22222222-2222-4222-8222-222222222222',

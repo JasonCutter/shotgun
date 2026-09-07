@@ -24,7 +24,6 @@ import {
   classifySourcesStage3Failure,
   resolveSourcesResourceSecurity,
   sourceSecurityMetadataEqual,
-  HISTORICAL_RECONCILIATION_REQUIRED_CODE,
   type SourcesResourceSecurityMetadata,
   type SourcesStage3PipelinePort,
   type SourcesStage3ProgressState,
@@ -417,7 +416,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     const completedSourceVersionIds: string[] = [];
     try {
       for (const item of items) {
-        await this.stage3Pipeline.runForSourceVersion({
+        const outcome = await this.stage3Pipeline.runForSourceVersion({
           projectId: scope.projectId,
           sourceId: item.sourceId,
           sourceVersionId: item.sourceVersionId,
@@ -427,6 +426,11 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           accessScope: [...item.security.accessScope],
           sensitivity: item.security.sensitivity,
         });
+        if (outcome.status === 'DEFERRED') {
+          // Another worker owns the lease or durable backoff has not elapsed;
+          // leave this SourceVersion unfinished for the recovery worker.
+          continue;
+        }
         // Record the exact SourceVersion so replay finalization can distinguish
         // this successful item from unrelated RUNNING/future-retry rows in the
         // same submission. The Stage 3 outcome itself remains owned by the
@@ -603,12 +607,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         state === 'STAGE3_RUNNING' &&
         epochMs(row.stage3_lease_expires_at) !== undefined &&
         epochMs(row.stage3_lease_expires_at)! <= now;
-      const eligible =
-        state === 'MATERIALIZED' ||
-        (state === 'RECONCILIATION_REQUIRED' &&
-          row.stage3_safe_failure_code !== HISTORICAL_RECONCILIATION_REQUIRED_CODE) ||
-        retryableReady ||
-        staleRunning;
+      const eligible = state === 'MATERIALIZED' || retryableReady || staleRunning;
       if (!eligible) continue;
       const contentHash = row.content_hash;
       if (!contentHash) continue;

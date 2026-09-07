@@ -113,30 +113,32 @@ class SourcesStage3PipelineRuntime implements SourcesStage3PipelinePort {
             sourceVersionId: input.sourceVersionId,
             ...failure,
           });
-        } catch {
-          // Preserve the original claim error. If the database is unavailable,
-          // the durable failure record cannot become a false success signal.
+        } catch (recordError) {
+          // If the failure record itself cannot be persisted, surface that
+          // durable-store failure so the recovery circuit breaker can rate-limit
+          // the worker instead of polling PostgreSQL every second.
+          const recordFailure = classifySourcesStage3Failure(recordError);
+          throw Object.assign(
+            new Error(`Stage 3 failure could not be durably recorded: ${recordFailure.message}`),
+            { code: recordFailure.code },
+          );
         }
         throw error;
       }
     }
     if (claim?.status === 'DEFERRED') {
-      throw new ShotgunError({
-        code: 'RETRYABLE_DEPENDENCY',
-        safeMessage:
-          claim.reason === 'ACTIVE_LEASE'
-            ? 'Stage 3 is already running for this SourceVersion.'
-            : 'Stage 3 retry is not due yet.',
-        module: 'sources-stage3-pipeline',
-        operation: 'claim-stage3',
-      });
+      // Another worker's lease or a durable retry schedule is normal
+      // back-pressure, not a Product failure. Preserve it as a typed outcome.
+      return { status: 'DEFERRED', reason: claim.reason };
     }
     if (claim?.status === 'BLOCKED') {
-      throw new ShotgunError({
-        code: 'TERMINAL_FAILURE',
-        safeMessage: 'Stage 3 requires reconciliation before it can continue.',
-        module: 'sources-stage3-pipeline',
-        operation: 'claim-stage3',
+      throw Object.assign(new Error('Stage 3 requires reconciliation before it can continue.'), {
+        code:
+          claim.reason === 'HISTORICAL_RECONCILIATION'
+            ? 'HISTORICAL_RECONCILIATION_REQUIRED'
+            : claim.reason === 'RUNTIME_CONTRACT'
+              ? 'STAGE3_RUNTIME_CONTRACT_ERROR'
+              : 'TERMINAL_FAILURE',
       });
     }
     if (claim?.status === 'COMPLETED') {
@@ -209,7 +211,9 @@ class SourcesStage3PipelineRuntime implements SourcesStage3PipelinePort {
       }
       throw error;
     }
-    let stage4: SourcesStage3PipelineOutcome['stage4'] = { status: 'NOT_CONFIGURED' };
+    let stage4: { status: 'NOT_CONFIGURED' | 'PENDING' | 'SUCCEEDED' | 'FAILED' } = {
+      status: 'NOT_CONFIGURED',
+    };
     if (indexed.items.length > 0 && this.deps.atomicPersistence && continuationId) {
       stage4 = { status: 'PENDING' };
     } else if (indexed.items.length > 0 && this.deps.stage4) {
@@ -276,9 +280,42 @@ export class SourcesStage3TestPipeline extends SourcesStage3PipelineRuntime {
 }
 
 export type SourcesStage3RecoveryObservation = {
-  readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED';
+  readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED' | 'DEFERRED' | 'BREAKER_OPEN';
   readonly code?: string;
 };
+
+/** Process-local guard for an outage where the durable failure write cannot
+ * reach PostgreSQL. It is only a rate limiter; PostgreSQL remains the source
+ * of truth and a successful scan resets the guard. */
+export class SourcesStage3RecoveryCircuitBreaker {
+  private consecutiveFailures = 0;
+  private openedUntil = 0;
+
+  constructor(
+    private readonly baseDelayMs = 1_000,
+    private readonly maxDelayMs = 60_000,
+    private readonly clock: () => number = Date.now,
+  ) {}
+
+  isOpen(): boolean {
+    return this.clock() < this.openedUntil;
+  }
+
+  remainingMs(): number {
+    return Math.max(0, this.openedUntil - this.clock());
+  }
+
+  recordFailure(): void {
+    this.consecutiveFailures += 1;
+    const exponent = Math.min(this.consecutiveFailures - 1, 16);
+    this.openedUntil = this.clock() + Math.min(this.maxDelayMs, this.baseDelayMs * 2 ** exponent);
+  }
+
+  recordSuccess(): void {
+    this.consecutiveFailures = 0;
+    this.openedUntil = 0;
+  }
+}
 
 export type SourcesStage3RecoveryReporter = {
   report(observation: SourcesStage3RecoveryObservation): void | Promise<void>;
@@ -302,10 +339,26 @@ export class SourcesStage3RecoveryDispatcher {
       readonly intervalMs?: number;
       readonly batchSize?: number;
       readonly reporter?: SourcesStage3RecoveryReporter;
+      readonly failureBackoffMs?: number;
+      readonly maxFailureBackoffMs?: number;
     } = {},
-  ) {}
+  ) {
+    this.breaker = new SourcesStage3RecoveryCircuitBreaker(
+      options.failureBackoffMs ?? 1_000,
+      options.maxFailureBackoffMs ?? 60_000,
+    );
+  }
+
+  private readonly breaker: SourcesStage3RecoveryCircuitBreaker;
 
   async dispatchOnce(): Promise<'EMPTY' | 'SUCCEEDED' | 'FAILED'> {
+    if (this.breaker.isOpen()) {
+      await this.options.reporter?.report({
+        status: 'BREAKER_OPEN',
+        code: 'STAGE3_RECOVERY_BREAKER_OPEN',
+      });
+      return 'EMPTY';
+    }
     let recoverable: readonly SourcesStage3RecoveryItem[];
     try {
       recoverable = await this.progress.findRecoverable({
@@ -313,16 +366,18 @@ export class SourcesStage3RecoveryDispatcher {
       });
     } catch (error) {
       const failure = classifySourcesStage3Failure(error);
+      if (failure.code === 'STAGE3_DB_TRANSIENT') this.breaker.recordFailure();
       await this.options.reporter?.report({ status: 'FAILED', code: failure.code });
       throw error;
     }
     const item = recoverable[0] as SourcesStage3RecoveryItem | undefined;
     if (!item) {
+      this.breaker.recordSuccess();
       await this.options.reporter?.report({ status: 'EMPTY' });
       return 'EMPTY';
     }
     try {
-      await this.pipeline.runForSourceVersion({
+      const outcome = await this.pipeline.runForSourceVersion({
         projectId: item.projectId,
         sourceId: item.sourceId,
         sourceVersionId: item.sourceVersionId,
@@ -332,6 +387,11 @@ export class SourcesStage3RecoveryDispatcher {
         accessScope: [...item.accessScope],
         sensitivity: item.sensitivity,
       });
+      if (outcome.status === 'DEFERRED') {
+        await this.options.reporter?.report({ status: 'DEFERRED' });
+        return 'EMPTY';
+      }
+      this.breaker.recordSuccess();
       await this.options.reporter?.report({ status: 'SUCCEEDED' });
       return 'SUCCEEDED';
     } catch (error) {
@@ -339,6 +399,7 @@ export class SourcesStage3RecoveryDispatcher {
       // recovery loop observable and stop this tick so a broken dependency
       // cannot produce a hot loop.
       const failure = classifySourcesStage3Failure(error);
+      if (failure.code === 'STAGE3_DB_TRANSIENT') this.breaker.recordFailure();
       console.error('[sources-stage3-recovery] item failed', error);
       await this.options.reporter?.report({ status: 'FAILED', code: failure.code });
       return 'FAILED';
@@ -349,11 +410,18 @@ export class SourcesStage3RecoveryDispatcher {
     this.stopped = false;
     const tick = async (): Promise<void> => {
       if (this.stopped) return;
-      do {
-        const outcome = await this.dispatchOnce();
-        if (outcome !== 'SUCCEEDED') break;
-      } while (!this.stopped);
+      try {
+        do {
+          const outcome = await this.dispatchOnce();
+          if (outcome !== 'SUCCEEDED') break;
+        } while (!this.stopped);
+      } catch (error) {
+        // Keep the worker alive so the breaker can impose its cooldown. The
+        // durable error/readiness report was already attempted in dispatchOnce.
+        console.error('[sources-stage3-recovery] tick failed', error);
+      }
       if (!this.stopped) {
+        const delayMs = Math.max(this.options.intervalMs ?? 1_000, this.breaker.remainingMs());
         this.timer = setTimeout(() => {
           this.activeTick = tick()
             .catch((error: unknown) => {
@@ -362,7 +430,7 @@ export class SourcesStage3RecoveryDispatcher {
             .finally(() => {
               this.activeTick = undefined;
             });
-        }, this.options.intervalMs ?? 1_000);
+        }, delayMs);
       }
     };
     await tick();

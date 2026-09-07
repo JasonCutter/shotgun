@@ -5,7 +5,10 @@ import type { Pool } from 'pg';
 
 import { PostgresConnectorRuntimeState } from '../../adapters/connector-runtime-postgres/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
-import { PostgresChangeSetReviewV2Repository } from '../../adapters/postgres-stage5/src/index.js';
+import {
+  PostgresChangeSetReviewV2Repository,
+  PostgresComparisonV2Repository,
+} from '../../adapters/postgres-stage5/src/index.js';
 import { InMemorySettingsRepository } from '../../adapters/settings-project-admin-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
@@ -49,6 +52,11 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
   it('reconciles Product route ack loss without replaying the resolver', async () => {
     const suffix = randomUUID();
     const candidateId = randomUUID();
+    const batchId = randomUUID();
+    const evidenceId = randomUUID();
+    const sourceVersionId = randomUUID();
+    const sourceId = randomUUID();
+    const revisionId = randomUUID();
     const snapshot: CanonicalSnapshot = {
       snapshotId: `snapshot:adr163-product:${suffix}`,
       projectId: 'shotgun',
@@ -91,6 +99,9 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
     const fixture = createAdr163ReviewFixture({
       suffix: `product-r19-${suffix}`,
       candidateId,
+      batchId,
+      evidenceId,
+      sourceVersionId,
       claimText: 'Product R19 acknowledgement loss fixture.',
       snapshot,
       freshnessMode: 'SEMANTIC',
@@ -102,6 +113,64 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
         shortlistPolicyRevision: 'comparison-shortlist-policy:fixture-v1',
       },
     });
+    const fixtureHash = sha256Text(fixture.candidate.claimText);
+    await pool!.query(
+      `INSERT INTO transformation.revisions (
+         revision_id, project_id, source_id, source_version_id, source_content_hash,
+         transformer_id, transformer_version, document_ir, source_map, document_hash,
+         source_map_hash, access_scope, sensitivity, created_at
+       ) VALUES ($1, $2, $3, $4, $5, 'test', '1', '{}', '{}', $5, $5, '{owner}', 'private', $6)`,
+      [
+        revisionId,
+        fixture.draft.projectId,
+        sourceId,
+        sourceVersionId,
+        fixtureHash,
+        snapshot.createdAt,
+      ],
+    );
+    await pool!.query(
+      `INSERT INTO evidence.spans (
+         evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
+         node_kind, origin, position, quote, exact_hash, access_scope, sensitivity, created_at
+       ) VALUES ($1, $2, $3, $4, $5, '/claim', 'sentence', 'source',
+         '{"start":0,"end":1}', $6::jsonb, $7, '{owner}', 'private', $8)`,
+      [
+        evidenceId,
+        revisionId,
+        fixture.draft.projectId,
+        sourceId,
+        sourceVersionId,
+        JSON.stringify({ text: fixture.candidate.claimText }),
+        fixtureHash,
+        snapshot.createdAt,
+      ],
+    );
+    await pool!.query(
+      `INSERT INTO candidate.batches (
+         batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at
+       ) VALUES ($1, $2, $3, $4, '{}', $5)`,
+      [batchId, fixture.draft.projectId, sourceVersionId, `batch:${batchId}`, snapshot.createdAt],
+    );
+    await pool!.query(
+      `INSERT INTO candidate.claim_candidates (
+         candidate_id, batch_id, project_id, source_version_id, revision_number, claim_text,
+         evidence_id, evidence_mode, extraction_profile, status, provider_call,
+         access_scope, sensitivity, created_at
+       ) VALUES ($1, $2, $3, $4, 1, $5, $6, 'DIRECT_EVIDENCE',
+         'direct-only', 'READY', '{}', '{owner}', 'private', $7)`,
+      [
+        candidateId,
+        batchId,
+        fixture.draft.projectId,
+        sourceVersionId,
+        fixture.candidate.claimText,
+        evidenceId,
+        snapshot.createdAt,
+      ],
+    );
+    const postgresComparisonRepository = new PostgresComparisonV2Repository(pool!);
+    await postgresComparisonRepository.saveCompletedAggregate(fixture.aggregate);
     const repository = new PostgresChangeSetReviewV2Repository(pool!);
     await repository.saveDraft(fixture.draft);
 
@@ -308,6 +377,34 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
       await pool!.query(
         'DELETE FROM review.change_sets_v2 WHERE project_id = $1 AND change_set_id = $2',
         [fixture.draft.projectId, fixture.draft.changeSetId],
+      );
+      await pool!.query(
+        'DELETE FROM comparison.relationships_v2 WHERE project_id = $1 AND comparison_id = $2',
+        [fixture.draft.projectId, fixture.draft.comparisonId],
+      );
+      await pool!.query(
+        'DELETE FROM comparison.results_v2 WHERE project_id = $1 AND comparison_id = $2',
+        [fixture.draft.projectId, fixture.draft.comparisonId],
+      );
+      await pool!.query(
+        'DELETE FROM comparison.analysis_revisions_v2 WHERE project_id = $1 AND comparison_id = $2',
+        [fixture.draft.projectId, fixture.draft.comparisonId],
+      );
+      await pool!.query(
+        'DELETE FROM candidate.claim_candidates WHERE project_id = $1 AND candidate_id = $2',
+        [fixture.draft.projectId, candidateId],
+      );
+      await pool!.query('DELETE FROM candidate.batches WHERE project_id = $1 AND batch_id = $2', [
+        fixture.draft.projectId,
+        batchId,
+      ]);
+      await pool!.query('DELETE FROM evidence.spans WHERE project_id = $1 AND evidence_id = $2', [
+        fixture.draft.projectId,
+        evidenceId,
+      ]);
+      await pool!.query(
+        'DELETE FROM transformation.revisions WHERE project_id = $1 AND revision_id = $2',
+        [fixture.draft.projectId, revisionId],
       );
     }
   });

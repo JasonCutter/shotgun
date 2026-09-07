@@ -10,6 +10,7 @@ import {
   type ProviderExternalTransferApprovalPort,
 } from '../../../../modules/provider-privacy-policy/src/index.js';
 import { ShotgunError } from '../../../../packages/contracts/src/index.js';
+import type { SemanticEmbeddingProfilePort } from '../../../../packages/contracts/src/index.js';
 
 type BrowserSession = (headers: Record<string, string | string[] | undefined>) => Promise<{
   context: { principalId: string; projectId: string };
@@ -85,6 +86,23 @@ const requiredBoolean = (body: Record<string, unknown>, name: string): boolean =
     });
   }
   return value;
+};
+
+const assertAllowedFields = (
+  body: Record<string, unknown>,
+  allowed: readonly string[],
+  operation: string,
+): void => {
+  const allowedSet = new Set(allowed);
+  const unknown = Object.keys(body).filter((key) => !allowedSet.has(key));
+  if (unknown.length > 0) {
+    throw new ShotgunError({
+      code: 'VALIDATION_ERROR',
+      safeMessage: `Unknown request field '${unknown[0]}'.`,
+      module: 'ai-settings-api',
+      operation,
+    });
+  }
 };
 
 const projectFrom = (body: ProjectBody, fallback: string): string => {
@@ -183,6 +201,7 @@ export function registerAISettingsRoutes(
   authRepo: AuthRepositoryPort,
   requireBrowserSession: BrowserSession,
   providerApprovals?: ProviderExternalTransferApprovalPort,
+  semanticEmbeddingProfile?: SemanticEmbeddingProfilePort,
 ): void {
   const access = async (headers: SecurityHeaders, projectId: string, manage: boolean) => {
     const { context } = await requireBrowserSession(headers);
@@ -224,6 +243,70 @@ export function registerAISettingsRoutes(
       }
     },
   );
+
+  if (semanticEmbeddingProfile) {
+    server.get<{ Headers: SecurityHeaders }>(
+      '/api/v1/settings/ai/semantic-embedding-profile',
+      async (request) => {
+        const { context } = await requireBrowserSession(request.headers);
+        await access(request.headers, context.projectId, false);
+        try {
+          return {
+            profile: (await semanticEmbeddingProfile.getCurrent(context.projectId)) ?? null,
+          };
+        } catch (error) {
+          throw mapError(error, 'get-semantic-embedding-profile');
+        }
+      },
+    );
+
+    server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+      '/api/v1/settings/ai/semantic-embedding-profile',
+      async (request) => {
+        const body = objectBody(request.body);
+        assertAllowedFields(
+          body,
+          [
+            'expectedRevision',
+            'providerId',
+            'embeddingModelId',
+            'credentialId',
+            'credentialRevision',
+            'dimension',
+          ],
+          'decode-semantic-embedding-profile-request',
+        );
+        const { context } = await requireBrowserSession(request.headers);
+        await access(request.headers, context.projectId, true);
+        try {
+          const dimension = body.dimension;
+          if (dimension !== undefined && !Number.isSafeInteger(dimension)) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: 'dimension must be an integer.',
+              module: 'ai-settings-api',
+              operation: 'decode-semantic-embedding-profile-request',
+            });
+          }
+          return {
+            profile: await semanticEmbeddingProfile.createProfile({
+              projectId: context.projectId,
+              expectedRevision: requiredInteger(body, 'expectedRevision'),
+              providerId: requiredString(body, 'providerId'),
+              embeddingModelId: requiredString(body, 'embeddingModelId'),
+              credentialId: requiredString(body, 'credentialId'),
+              credentialRevision: requiredInteger(body, 'credentialRevision'),
+              ...(dimension === undefined ? {} : { dimension: dimension as number }),
+              updatedBy: context.principalId,
+              status: 'PREPARED',
+            }),
+          };
+        } catch (error) {
+          throw mapError(error, 'create-semantic-embedding-profile');
+        }
+      },
+    );
+  }
 
   server.get<{
     Querystring: {

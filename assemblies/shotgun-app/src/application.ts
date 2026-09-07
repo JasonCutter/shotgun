@@ -1095,6 +1095,7 @@ export const startShotgunApplication = async (
       projectTombstoneStore: new PostgresProjectTombstoneStore(pool),
       settingsRepository,
       aiSettingsBackend: recoveryHarness ? undefined : aiSettingsBackend,
+      semanticEmbeddingProfile: recoveryHarness ? undefined : semanticProfileService,
       providerExternalTransferApprovals: recoveryHarness ? undefined : providerApprovalService,
       frontendCommandGateway: commandGateway,
       typedPropositionConflictRuleRepository,

@@ -75,6 +75,101 @@ class StoreFailingPostgresAIProviderCallRepository extends PostgresAIProviderCal
   }
 }
 
+class AcceptanceInvariantProbeRepository extends PostgresAIProviderCallRepository {
+  beforeAcceptance?: boolean;
+  invalidAcceptance?: { readonly error: unknown; readonly persisted: boolean };
+  mismatchedAcceptance?: { readonly error: unknown; readonly persisted: boolean };
+  corruptAcceptance?: { readonly error: unknown; readonly persisted: boolean };
+
+  private async structuredOutputValid(outputId: string): Promise<boolean> {
+    const result = await pool!.query<{ structured_output_valid: boolean }>(
+      `SELECT structured_output_valid
+       FROM ai.provider_outputs
+       WHERE output_id = $1`,
+      [outputId],
+    );
+    return result.rows[0]?.structured_output_valid ?? false;
+  }
+
+  override async acceptOutput(
+    projectId: string,
+    requestId: string,
+    outputId: string,
+    call: Parameters<PostgresAIProviderCallRepository['acceptOutput']>[3],
+  ): Promise<AIProviderExecutionRecord> {
+    this.beforeAcceptance = await this.structuredOutputValid(outputId);
+
+    let invalidError: unknown;
+    try {
+      await super.acceptOutput(projectId, requestId, outputId, {
+        ...call,
+        structuredOutputValid: false,
+      });
+    } catch (error) {
+      invalidError = error;
+    }
+    this.invalidAcceptance = {
+      error: invalidError,
+      persisted: await this.structuredOutputValid(outputId),
+    };
+
+    let mismatchedError: unknown;
+    try {
+      await super.acceptOutput(projectId, requestId, outputId, {
+        ...call,
+        model: `${call.model}-mismatch`,
+      });
+    } catch (error) {
+      mismatchedError = error;
+    }
+    this.mismatchedAcceptance = {
+      error: mismatchedError,
+      persisted: await this.structuredOutputValid(outputId),
+    };
+
+    const originalRequestDigest = (
+      await pool!.query<{ request_digest: string }>(
+        `SELECT request_digest FROM ai.provider_outputs WHERE output_id = $1`,
+        [outputId],
+      )
+    ).rows[0]?.request_digest;
+    if (!originalRequestDigest) throw new Error('Provider output request digest was not stored.');
+    let triggerDisabled = false;
+    try {
+      await pool!.query(
+        `ALTER TABLE ai.provider_outputs DISABLE TRIGGER provider_outputs_append_only`,
+      );
+      triggerDisabled = true;
+      await pool!.query(`UPDATE ai.provider_outputs SET request_digest = $1 WHERE output_id = $2`, [
+        `sha256:${'f'.repeat(64)}`,
+        outputId,
+      ]);
+      let corruptError: unknown;
+      try {
+        await super.acceptOutput(projectId, requestId, outputId, call);
+      } catch (error) {
+        corruptError = error;
+      }
+      this.corruptAcceptance = {
+        error: corruptError,
+        persisted: await this.structuredOutputValid(outputId),
+      };
+    } finally {
+      if (triggerDisabled) {
+        await pool!.query(
+          `UPDATE ai.provider_outputs SET request_digest = $1 WHERE output_id = $2`,
+          [originalRequestDigest, outputId],
+        );
+        await pool!.query(
+          `ALTER TABLE ai.provider_outputs ENABLE TRIGGER provider_outputs_append_only`,
+        );
+      }
+    }
+
+    return super.acceptOutput(projectId, requestId, outputId, call);
+  }
+}
+
 type HarnessOptions = {
   readonly aiRepository?: PostgresAIProviderCallRepository;
   readonly candidateRepository?: CandidateRepositoryPort | false;
@@ -261,6 +356,60 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
       batch_id: firstBatch.rows[0]?.batch_id,
     });
     await first.kernel.shutdown();
+  });
+
+  it('promotes structured-output provenance only after validated acceptance and converges on replay', async () => {
+    const provider = new FakeAIProviderAdapter();
+    const aiRepository = new AcceptanceInvariantProbeRepository(pool!);
+    const first = await createHarness(new InMemoryAssetStorage(), provider, {
+      aiRepository,
+      candidateRepository: false,
+    });
+    const prepared = await prepareGeneration(first, 'stage12-structured-output-provenance');
+    const generated = (await generateStructured(first, prepared)).result.payload;
+
+    expect(aiRepository.beforeAcceptance).toBe(false);
+    expect(aiRepository.invalidAcceptance?.error).toMatchObject({ code: 'FORMAT_CORRUPT' });
+    expect(aiRepository.invalidAcceptance?.persisted).toBe(false);
+    expect(aiRepository.mismatchedAcceptance?.error).toMatchObject({ code: 'FORMAT_CORRUPT' });
+    expect(aiRepository.mismatchedAcceptance?.persisted).toBe(false);
+    expect(aiRepository.corruptAcceptance?.error).toMatchObject({ code: 'FORMAT_CORRUPT' });
+    expect(aiRepository.corruptAcceptance?.persisted).toBe(false);
+
+    const accepted = await pool!.query<{
+      structured_output_valid: boolean;
+      accepted_output_id: string;
+      durable_state: string;
+    }>(
+      `SELECT output.structured_output_valid, call.accepted_output_id::text,
+        call.durable_state
+      FROM ai.provider_outputs output
+      JOIN ai.provider_calls call ON call.accepted_output_id = output.output_id
+      WHERE output.output_id = $1`,
+      [generated.output.outputId],
+    );
+    expect(accepted.rows[0]).toEqual({
+      structured_output_valid: true,
+      accepted_output_id: generated.output.outputId,
+      durable_state: 'OUTPUT_MATERIALIZED',
+    });
+
+    await first.kernel.shutdown();
+    const replayRepository = new PostgresAIProviderCallRepository(pool!);
+    const projectId = prepared.command.projectId ?? 'project-a';
+    const replayRecord = await replayRepository.findByRequestId(projectId, prepared.requestId);
+    expect(replayRecord?.call).toBeDefined();
+    await replayRepository.acceptOutput(
+      projectId,
+      prepared.requestId,
+      generated.output.outputId,
+      replayRecord!.call!,
+    );
+    const replayed = await pool!.query<{ structured_output_valid: boolean }>(
+      `SELECT structured_output_valid FROM ai.provider_outputs WHERE output_id = $1`,
+      [generated.output.outputId],
+    );
+    expect(replayed.rows[0]?.structured_output_valid).toBe(true);
   });
 
   it('recovers a genuinely stored accepted Output with no Candidate state', async () => {

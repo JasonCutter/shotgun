@@ -34,6 +34,40 @@ intentionally deferred. It does not rewrite ADR-085, change Canonical authority,
 or authorize Product implementation by itself. Product work begins only after
 this ADR is accepted and an implementation request is approved.
 
+## Amendment — Stage 5 stale-comparison re-entry (2026-09-07)
+
+An approved Candidate may outlive the Canonical snapshot against which its first
+Comparison and DraftChangeSet were created. The Product therefore exposes the
+server-authoritative `RecompareClaimCandidate@1.0.0` command. A caller supplies
+only the Candidate identity and a command idempotency identity; project, actor,
+access scope, sensitivity, rollout authority, Candidate readiness, immutable
+Candidate revision/digest, and the current Canonical snapshot are resolved by
+the normal command/runtime boundary.
+
+The command accepts only a `READY` Candidate. It reuses the same comparison
+execution as `CandidateValidated`, pins the current verified Canonical snapshot,
+and finds or creates the immutable Comparison identity for
+`project + candidate revision/digest + snapshot digest + governed analysis
+input identity`. For v2 that governed identity includes the shortlist/retrieval
+identity, semantic generation/base, provider-model-capability and credential
+revision, prompt/schema revisions, and semantic-policy revision. A new
+Comparison emits the normal `ComparisonCompleted` event, so the review module
+creates a new DraftChangeSet while preserving every prior Comparison, ChangeSet,
+stale decision, and dead-letter record. Replaying the same command or re-entering
+it before approval is idempotent for the same Candidate/current snapshot and
+governed analysis input; a changed governed input intentionally creates a new
+analysis/Comparison identity instead of reusing stale analysis.
+
+The command never writes Candidate, SourceVersion, Evidence, OriginalAsset, or
+Canonical state and never promotes a result automatically. Canonical changes
+remain behind the existing explicit Review/Approval boundary. `V1_ONLY`,
+`V2_SHADOW`, and `V2_ACTIVE` remain server-owned rollout decisions; in
+`V2_ACTIVE` the v1 Comparison path is not silently invoked. If Canonical advances
+again before approval, the newly created ChangeSet becomes stale and a
+subsequent re-entry creates the next snapshot-scoped identity. The
+CANONICAL_ONLY explicit-Evidence issue is a separate Product Ask defect and is
+not part of this amendment.
+
 ## Decision summary
 
 The mature comparison contract is introduced as version 2. It keeps a bounded
@@ -440,6 +474,25 @@ approval paths are forbidden. Disabling v2 stops new v2 authority but leaves
 historical v2 evidence readable; a Candidate already completed or approved
 under v2 is not automatically replayed through v1. Any manual re-entry after
 rollback must be explicit, user-authorized and auditable.
+
+### 10.2 Compatibility and V2 persistence identities
+
+The two rollout contracts intentionally use different identities; the v1
+compatibility key must never be used as a V2 semantic fallback.
+
+| Path                   | Persistence identity                                                                                                                       | Reuse rule                                                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1 compatibility       | `Candidate ID + Candidate revision/digest + current Canonical snapshot identity (id/version/digest)`                                       | Reuse the existing v1 result for the same immutable Candidate/snapshot pair. A snapshot change creates a new v1 comparison.                                         |
+| v2 semantic            | `Candidate ID + revision + digest + Canonical snapshot identity + governed analysis-input identity`                                        | Resolve the complete input identity before provider execution. Reuse the completed Comparison/Analysis/Relationship lineage and materialize/reuse its Review draft. |
+| v2 deterministic exact | Existing V2 `DETERMINISTIC_EXACT` storage identity: Candidate revision/digest + Canonical snapshot digest + exact target Claim ID/revision | Reuse only the exact target identity defined by the V2 storage contract; never collapse it into the semantic identity.                                              |
+
+The V2 governed analysis-input identity includes shortlist/retrieval identity,
+provider/model/capability, credential revision, prompt and output-schema
+revisions, and semantic-policy revision. Any change to one of those fields is a
+new legitimate V2 identity and must not reuse an older aggregate. Transport
+idempotency keys are delivery protection only; they are not semantic identity.
+This amendment records the correction without rewriting the original ADR
+history.
 
 ## 11. ECAV acceptance target
 

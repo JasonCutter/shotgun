@@ -6,6 +6,7 @@
     "runtime": ">=1.0.0 <2.0.0",
     "contracts": [
       { "name": "CandidateValidated", "range": ">=1.0.0 <2.0.0" },
+      { "name": "RecompareClaimCandidate", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetClaimCandidate", "range": ">=1.0.0 <2.0.0" },
       { "name": "ComparisonCompleted", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetComparisonResult", "range": ">=1.0.0 <2.0.0" },
@@ -34,7 +35,7 @@
     "directSchemaAccess": false
   },
   "consumes": {
-    "commands": [],
+    "commands": [{ "name": "RecompareClaimCandidate", "range": ">=1.0.0 <2.0.0" }],
     "events": [{ "name": "CandidateValidated", "range": ">=1.0.0 <2.0.0" }]
   },
   "produces": {

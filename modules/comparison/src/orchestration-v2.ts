@@ -22,6 +22,8 @@ import {
 import {
   type ComparisonV2Aggregate,
   type ComparisonV2RepositoryPort,
+  analysisInputSetDigestV2,
+  comparisonV2StorageIdentity,
   validateComparisonV2Aggregate,
 } from './persistence-v2.js';
 import {
@@ -154,6 +156,27 @@ const publish = async (
 ): Promise<void> => {
   assertComparisonEventV2(event);
   if (publisher) await publisher.publish(event);
+};
+
+const saveOrReuseCompletedAggregate = async (
+  repository: ComparisonV2RepositoryPort,
+  aggregate: ComparisonV2Aggregate,
+): Promise<ComparisonV2Aggregate> => {
+  const identity = comparisonV2StorageIdentity(aggregate);
+  // Keep partial contract/test compositions source-compatible while all
+  // production adapters expose the identity lookup. A missing lookup simply
+  // falls through to the adapter's existing uniqueness guard.
+  const existing =
+    typeof repository.findComparisonByIdentity === 'function'
+      ? await repository.findComparisonByIdentity(identity)
+      : undefined;
+  if (existing) {
+    validateComparisonV2Aggregate(existing);
+    return existing;
+  }
+  const stored = await repository.saveCompletedAggregate(aggregate);
+  validateComparisonV2Aggregate(stored);
+  return stored;
 };
 
 const failedEvent = (
@@ -334,8 +357,7 @@ export const createComparisonV2Orchestrator = (
         });
         const aggregate: ComparisonV2Aggregate = { comparison, analyses: [], relationships: [] };
         validateComparisonV2Aggregate(aggregate);
-        const stored = await dependencies.repository.saveCompletedAggregate(aggregate);
-        validateComparisonV2Aggregate(stored);
+        const stored = await saveOrReuseCompletedAggregate(dependencies.repository, aggregate);
         const event: ComparisonCompletedV2 = {
           eventType: 'ComparisonCompletedV2',
           contractVersion: COMPARISON_V2_CONTRACT_VERSION,
@@ -345,6 +367,67 @@ export const createComparisonV2Orchestrator = (
         };
         await publish(dependencies.events, event);
         return { status: 'COMPLETED', aggregate: stored, event };
+      }
+
+      // Resolve the full governed semantic identity before any provider call.
+      // This is intentionally separate from transport idempotency: a replay
+      // with a different command key must converge on the completed V2
+      // aggregate when Candidate, Canonical snapshot, shortlist and all
+      // provider/prompt/policy inputs are unchanged.
+      if (dependencies.semanticAnalysis.resolveInputIdentity) {
+        let identity:
+          | Awaited<
+              ReturnType<NonNullable<ComparisonSemanticAnalysisV2Port['resolveInputIdentity']>>
+            >
+          | undefined;
+        try {
+          identity = await dependencies.semanticAnalysis.resolveInputIdentity({
+            projectId: request.projectId,
+            comparisonId,
+            candidate: candidateV2,
+            candidateText: candidate.claimText,
+            shortlist: shortlist.shortlist,
+            shortlistDigest: shortlist.shortlistDigest,
+            actor: request.actor,
+            security: request.security,
+            attempt: request.attempt,
+          });
+        } catch {
+          return { status: 'BLOCKED', reason: 'SEMANTIC_BLOCKED' };
+        }
+        if ('status' in identity) {
+          if (identity.status === 'BLOCKED') {
+            return {
+              status: 'BLOCKED',
+              reason: 'SEMANTIC_BLOCKED',
+              detail: `${identity.reason}:${identity.safeFailureCode}`,
+            };
+          }
+          // The pre-provider identity resolver must never produce a terminal
+          // AnalysisRevision. Treat an unexpected outcome as a safe block.
+          return { status: 'BLOCKED', reason: 'SEMANTIC_BLOCKED' };
+        }
+        const existing = await dependencies.repository.findComparisonByIdentity({
+          mode: 'SEMANTIC',
+          projectId: request.projectId,
+          candidateId: candidateV2.id,
+          candidateRevision: candidateV2.revision,
+          candidateDigest: candidateV2.digest,
+          canonicalSnapshotDigest: shortlist.shortlist.canonicalSnapshot.digest,
+          analysisInputSetDigest: analysisInputSetDigestV2([{ inputDigest: identity.inputDigest }]),
+        });
+        if (existing) {
+          validateComparisonV2Aggregate(existing);
+          const event: ComparisonCompletedV2 = {
+            eventType: 'ComparisonCompletedV2',
+            contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+            comparison: existing.comparison,
+            analysisRevisionIds: [...existing.comparison.analysisRevisionIds],
+            emittedAt: now(),
+          };
+          await publish(dependencies.events, event);
+          return { status: 'COMPLETED', aggregate: existing, event };
+        }
       }
 
       let semantic: ComparisonSemanticAnalysisV2Outcome;
@@ -401,8 +484,7 @@ export const createComparisonV2Orchestrator = (
           detail: 'semantic aggregate validation failed',
         };
       }
-      const stored = await dependencies.repository.saveCompletedAggregate(aggregate);
-      validateComparisonV2Aggregate(stored);
+      const stored = await saveOrReuseCompletedAggregate(dependencies.repository, aggregate);
       const event: ComparisonCompletedV2 = {
         eventType: 'ComparisonCompletedV2',
         contractVersion: COMPARISON_V2_CONTRACT_VERSION,

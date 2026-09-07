@@ -416,6 +416,11 @@ type ComparisonRequest = {
   readonly comparisonId: string;
 };
 
+type RecompareCandidateRequest = {
+  readonly candidateId: string;
+  readonly idempotencyKey: string;
+};
+
 type ChangeSetRequest = {
   readonly changeSetId: string;
 };
@@ -426,6 +431,39 @@ type CanonicalClaimRequest = {
 
 type CanonicalCommitRequest = {
   readonly commitId: string;
+};
+
+const decodeRecompareCandidateRequest = (body: unknown): RecompareCandidateRequest => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new ShotgunError({
+      code: 'VALIDATION_ERROR',
+      safeMessage: 'A candidateId and idempotencyKey are required.',
+      module: 'shotgun-app',
+      operation: 'decode-recompare-candidate',
+    });
+  }
+  const record = body as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  if (
+    keys.length !== 2 ||
+    keys[0] !== 'candidateId' ||
+    keys[1] !== 'idempotencyKey' ||
+    typeof record.candidateId !== 'string' ||
+    typeof record.idempotencyKey !== 'string' ||
+    record.candidateId.trim().length === 0 ||
+    record.idempotencyKey.trim().length === 0
+  ) {
+    throw new ShotgunError({
+      code: 'VALIDATION_ERROR',
+      safeMessage: 'A candidateId and idempotencyKey are required.',
+      module: 'shotgun-app',
+      operation: 'decode-recompare-candidate',
+    });
+  }
+  return {
+    candidateId: record.candidateId.trim(),
+    idempotencyKey: record.idempotencyKey.trim(),
+  };
 };
 
 export const isLoopbackIp = (ipAddress: string | undefined): boolean => {
@@ -3754,6 +3792,36 @@ const createApplicationCore = async (
       });
       const delivery = await kernel.connector.query<ComparisonResult>(query);
       return { comparison: delivery.result.payload };
+    },
+  );
+
+  /**
+   * Product re-entry for a stale Stage 5 comparison.  The caller can supply
+   * only the immutable Candidate identity and its command idempotency key;
+   * project, actor, access scope, sensitivity, rollout and Canonical snapshot
+   * are resolved from the authenticated server context and runtime authority.
+   */
+  server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+    '/comparisons/recompare',
+    async (request) => {
+      const context = requestContext(request.headers);
+      const body = decodeRecompareCandidateRequest(request.body);
+      const command = createCommand({
+        messageType: 'RecompareClaimCandidate',
+        schemaVersion: '1.0.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        idempotencyKey: `recompare:${context.projectId}:${body.idempotencyKey}`,
+        ...context,
+        payload: { candidateId: body.candidateId },
+      });
+      const delivery = await kernel.connector.sendCommand(command);
+      return {
+        commandStatus: delivery.status,
+        result: delivery.result,
+        trace: traceView(kernel, command.traceId),
+        audit: auditView(kernel, command.traceId),
+      };
     },
   );
 

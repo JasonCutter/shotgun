@@ -7,6 +7,7 @@ import {
   claimCandidateDigest,
   semanticRelationshipMaterialDigestV2,
   sha256Text,
+  stableJson,
   shortlistAuditDigestV2,
   type AnalysisRevisionV2,
   type CanonicalSnapshot,
@@ -20,7 +21,11 @@ import {
   createComparisonV2Orchestrator,
   type ComparisonV2OrchestratorDependencies,
 } from '../../modules/comparison/src/orchestration-v2.js';
-import type { ComparisonV2RepositoryPort } from '../../modules/comparison/src/persistence-v2.js';
+import {
+  type ComparisonV2Aggregate,
+  comparisonV2StorageIdentity,
+  type ComparisonV2RepositoryPort,
+} from '../../modules/comparison/src/persistence-v2.js';
 
 const projectId = 'project-orchestration-v2';
 const now = '2026-09-05T12:00:00.000Z';
@@ -292,6 +297,84 @@ describe('Comparison v2 orchestration', () => {
     }
   });
 
+  it('reuses the deterministic exact identity without invoking semantic analysis', async () => {
+    const stored: ComparisonV2Aggregate[] = [];
+    let generatedId = 0;
+    let semanticCalls = 0;
+    const repository: ComparisonV2RepositoryPort = {
+      async saveAnalysisRevision({ revision }) {
+        return revision;
+      },
+      async transitionAnalysisRevision() {
+        throw new Error('not used');
+      },
+      async findAnalysisRevision() {
+        return undefined;
+      },
+      async findAnalysisRevisionByInput() {
+        return undefined;
+      },
+      async saveCompletedAggregate(aggregate) {
+        stored.push(aggregate);
+        return aggregate;
+      },
+      async findComparisonById(project, comparisonId) {
+        return stored.find(
+          (aggregate) =>
+            aggregate.comparison.projectId === project &&
+            aggregate.comparison.comparisonId === comparisonId,
+        );
+      },
+      async findComparisonByIdentity(identity) {
+        return stored.find(
+          (aggregate) =>
+            stableJson(comparisonV2StorageIdentity(aggregate)) === stableJson(identity),
+        );
+      },
+    };
+    const dependencies: ComparisonV2OrchestratorDependencies = {
+      candidate: { findById: async () => candidate },
+      shortlist: {
+        async build() {
+          return {
+            status: 'EXACT_DUPLICATE' as const,
+            exactDuplicateTarget: {
+              resourceType: 'CLAIM' as const,
+              resourceId: 'claim-1',
+              resourceRevision: 1,
+              canonicalSnapshot: {
+                id: snapshot.snapshotId,
+                version: snapshot.version,
+                digest: snapshot.digest,
+              },
+            },
+          };
+        },
+      },
+      semanticAnalysis: {
+        async analyze() {
+          semanticCalls += 1;
+          throw new Error('deterministic exact must not invoke semantic analysis');
+        },
+      },
+      repository,
+      now: () => now,
+      randomId: () => `exact-${++generatedId}`,
+    };
+    const orchestrator = createComparisonV2Orchestrator(dependencies);
+    const first = await orchestrator.compare(request);
+    const replay = await orchestrator.compare(request);
+    expect(first.status).toBe('COMPLETED');
+    expect(replay.status).toBe('COMPLETED');
+    expect(semanticCalls).toBe(0);
+    expect(stored).toHaveLength(1);
+    if (first.status === 'COMPLETED' && replay.status === 'COMPLETED') {
+      expect(replay.aggregate.comparison.comparisonId).toBe(
+        first.aggregate.comparison.comparisonId,
+      );
+    }
+  });
+
   it('passes the same candidate and shortlist to WP4 and retains every UNRELATED target as NEW', async () => {
     const shortlistAudit = audit(['claim-1', 'claim-2']);
     let receivedCandidate: ComparisonCandidateV2 | undefined;
@@ -428,6 +511,183 @@ describe('Comparison v2 orchestration', () => {
         'SUPPORTS',
         'UNRELATED',
       ]);
+    }
+  });
+
+  it('reuses an identical governed analysis identity but stores a new identity when shortlist input changes', async () => {
+    const aggregates: ComparisonV2Aggregate[] = [];
+    let generatedId = 0;
+    const repository: ComparisonV2RepositoryPort = {
+      async saveAnalysisRevision({ revision }) {
+        return revision;
+      },
+      async transitionAnalysisRevision() {
+        throw new Error('not used');
+      },
+      async findAnalysisRevision() {
+        return undefined;
+      },
+      async findAnalysisRevisionByInput() {
+        return undefined;
+      },
+      async saveCompletedAggregate(aggregate) {
+        aggregates.push(aggregate);
+        return aggregate;
+      },
+      async findComparisonById(requestProjectId, comparisonId) {
+        return aggregates.find(
+          (aggregate) =>
+            aggregate.comparison.projectId === requestProjectId &&
+            aggregate.comparison.comparisonId === comparisonId,
+        );
+      },
+      async findComparisonByIdentity(identity) {
+        const key = JSON.stringify(identity);
+        return aggregates.find(
+          (aggregate) => JSON.stringify(comparisonV2StorageIdentity(aggregate)) === key,
+        );
+      },
+    };
+    const execute = async (target: 'claim-1' | 'claim-2') => {
+      const shortlistAudit = audit([target]);
+      const orchestrator = createComparisonV2Orchestrator({
+        candidate: { findById: async () => candidate },
+        shortlist: {
+          async build() {
+            return {
+              status: 'READY' as const,
+              shortlist: shortlistAudit,
+              shortlistDigest: shortlistAuditDigestV2(shortlistAudit),
+            };
+          },
+        },
+        semanticAnalysis: {
+          async analyze(input) {
+            const analysisValue = analysis(input.comparisonId, input.shortlistDigest, [target]);
+            return {
+              status: 'COMPLETED' as const,
+              analysis: analysisValue,
+              relationships: [
+                relationship(
+                  input.comparisonId,
+                  analysisValue.analysisRevisionId,
+                  target,
+                  'UNRELATED',
+                ),
+              ],
+            };
+          },
+        },
+        repository,
+        now: () => now,
+        randomId: () => `comparison-${++generatedId}`,
+      });
+      return orchestrator.compare(request);
+    };
+
+    const first = await execute('claim-1');
+    const replay = await execute('claim-1');
+    const changedInput = await execute('claim-2');
+
+    expect(first.status).toBe('COMPLETED');
+    expect(replay.status).toBe('COMPLETED');
+    expect(changedInput.status).toBe('COMPLETED');
+    if (
+      first.status === 'COMPLETED' &&
+      replay.status === 'COMPLETED' &&
+      changedInput.status === 'COMPLETED'
+    ) {
+      expect(replay.aggregate.comparison.comparisonId).toBe(
+        first.aggregate.comparison.comparisonId,
+      );
+      expect(changedInput.aggregate.comparison.comparisonId).not.toBe(
+        first.aggregate.comparison.comparisonId,
+      );
+    }
+    expect(aggregates).toHaveLength(2);
+  });
+
+  it('looks up a completed semantic aggregate before invoking the provider on a different delivery key', async () => {
+    const shortlistAudit = audit(['claim-1']);
+    const shortlistDigest = shortlistAuditDigestV2(shortlistAudit);
+    const stored: ComparisonV2Aggregate[] = [];
+    let providerCalls = 0;
+    let generatedId = 0;
+    const repository: ComparisonV2RepositoryPort = {
+      async saveAnalysisRevision({ revision }) {
+        return revision;
+      },
+      async transitionAnalysisRevision() {
+        throw new Error('not used');
+      },
+      async findAnalysisRevision() {
+        return undefined;
+      },
+      async findAnalysisRevisionByInput() {
+        return undefined;
+      },
+      async saveCompletedAggregate(aggregate) {
+        stored.push(aggregate);
+        return aggregate;
+      },
+      async findComparisonById() {
+        return undefined;
+      },
+      async findComparisonByIdentity(identity) {
+        return stored.find(
+          (aggregate) =>
+            stableJson(comparisonV2StorageIdentity(aggregate)) === stableJson(identity),
+        );
+      },
+    };
+    const semanticAnalysis = {
+      async resolveInputIdentity() {
+        const value = analysis('preflight-comparison', shortlistDigest, ['claim-1']);
+        return {
+          inputDigest: value.inputDigest,
+          providerIdentity: value.providerIdentity,
+          credentialRevisionRef: value.credentialRevisionRef,
+          promptTemplateRevision: value.promptTemplateRevision,
+          outputSchemaRevision: value.outputSchemaRevision,
+          semanticPolicyRevision: value.semanticPolicyRevision,
+        };
+      },
+      async analyze(input: { readonly comparisonId: string; readonly shortlistDigest: string }) {
+        providerCalls += 1;
+        const value = analysis(input.comparisonId, input.shortlistDigest, ['claim-1']);
+        return {
+          status: 'COMPLETED' as const,
+          analysis: value,
+          relationships: [
+            relationship(input.comparisonId, value.analysisRevisionId, 'claim-1', 'UNRELATED'),
+          ],
+        };
+      },
+    };
+    const execute = () =>
+      createComparisonV2Orchestrator({
+        candidate: { findById: async () => candidate },
+        shortlist: {
+          async build() {
+            return { status: 'READY' as const, shortlist: shortlistAudit, shortlistDigest };
+          },
+        },
+        semanticAnalysis,
+        repository,
+        now: () => now,
+        randomId: () => `comparison-${++generatedId}`,
+      }).compare(request);
+
+    const first = await execute();
+    const replayWithDifferentKey = await execute();
+    expect(first.status).toBe('COMPLETED');
+    expect(replayWithDifferentKey.status).toBe('COMPLETED');
+    expect(providerCalls).toBe(1);
+    expect(stored).toHaveLength(1);
+    if (first.status === 'COMPLETED' && replayWithDifferentKey.status === 'COMPLETED') {
+      expect(replayWithDifferentKey.aggregate.comparison.comparisonId).toBe(
+        first.aggregate.comparison.comparisonId,
+      );
     }
   });
 });

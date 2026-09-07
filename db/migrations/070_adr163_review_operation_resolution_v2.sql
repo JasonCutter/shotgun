@@ -23,8 +23,19 @@ CREATE TABLE IF NOT EXISTS review.change_set_revisions_v2 (
   CONSTRAINT change_set_revisions_v2_change_set_fk
     FOREIGN KEY (project_id, change_set_id)
     REFERENCES review.change_sets_v2 (project_id, change_set_id)
-    ON DELETE CASCADE
+    ON DELETE RESTRICT
 );
+
+-- Re-entry must repair older installs that were created with a cascading
+-- revision FK.  Immutable revision authority is never allowed to disappear
+-- with the mutable current-head row.
+ALTER TABLE review.change_set_revisions_v2
+  DROP CONSTRAINT IF EXISTS change_set_revisions_v2_change_set_fk;
+ALTER TABLE review.change_set_revisions_v2
+  ADD CONSTRAINT change_set_revisions_v2_change_set_fk
+  FOREIGN KEY (project_id, change_set_id)
+  REFERENCES review.change_sets_v2 (project_id, change_set_id)
+  ON DELETE RESTRICT;
 
 DO $$
 BEGIN
@@ -76,6 +87,7 @@ CREATE TABLE IF NOT EXISTS review.operation_resolutions_v2 (
   shortlist_digest text CHECK (shortlist_digest IS NULL OR shortlist_digest ~ '^sha256:[a-f0-9]{64}$'),
   analysis_revision_ids jsonb NOT NULL CHECK (jsonb_typeof(analysis_revision_ids) = 'array'),
   relationship_ids jsonb NOT NULL CHECK (jsonb_typeof(relationship_ids) = 'array'),
+  relationship_material_digests jsonb NOT NULL CHECK (jsonb_typeof(relationship_material_digests) = 'array'),
   chosen_operation text NOT NULL CHECK (chosen_operation IN ('ADD_CLAIM', 'NO_OP')),
   access_revision text NOT NULL,
   policy_context_revision text NOT NULL,
@@ -106,6 +118,22 @@ CREATE TABLE IF NOT EXISTS review.operation_resolutions_v2 (
 );
 
 ALTER TABLE review.operation_resolutions_v2
+  ADD COLUMN IF NOT EXISTS relationship_material_digests jsonb;
+
+-- Existing immutable rows predate the narrowed material binding.  Preserve
+-- them verbatim; new rows are required to provide the complete set.  A
+-- nullable compatibility column is intentional for historical snapshots.
+UPDATE review.operation_resolutions_v2
+SET relationship_material_digests = COALESCE(
+  resolution_json -> 'relationshipMaterialDigests',
+  '[]'::jsonb
+)
+WHERE relationship_material_digests IS NULL;
+
+ALTER TABLE review.operation_resolutions_v2
+  ALTER COLUMN relationship_material_digests SET NOT NULL;
+
+ALTER TABLE review.operation_resolutions_v2
   ADD COLUMN IF NOT EXISTS resolved_draft_material_digest text;
 
 UPDATE review.operation_resolutions_v2
@@ -127,3 +155,32 @@ CREATE INDEX IF NOT EXISTS operation_resolutions_v2_change_set_idx
 
 CREATE INDEX IF NOT EXISTS operation_resolutions_v2_semantic_identity_idx
   ON review.operation_resolutions_v2 (project_id, semantic_command_identity);
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT project_id, semantic_command_identity
+    FROM review.operation_resolutions_v2
+    GROUP BY project_id, semantic_command_identity
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION
+      'Migration 070 conflict: duplicate semantic command identity exists';
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'operation_resolutions_v2_semantic_identity_unique'
+      AND conrelid = 'review.operation_resolutions_v2'::regclass
+  ) THEN
+    ALTER TABLE review.operation_resolutions_v2
+      ADD CONSTRAINT operation_resolutions_v2_semantic_identity_unique
+      UNIQUE (project_id, semantic_command_identity);
+  END IF;
+END
+$$;

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
@@ -374,6 +375,19 @@ describe.runIf(databaseUrl)('WP5 v2 Review PostgreSQL persistence', () => {
     ]);
   });
 
+  it('ADR-163 enforces project-scoped semantic command identity uniqueness', async () => {
+    const result = await pool!.query<{ constraint_name: string }>(
+      `SELECT constraint_name
+       FROM information_schema.table_constraints
+       WHERE table_schema = 'review'
+         AND table_name = 'operation_resolutions_v2'
+         AND constraint_name = 'operation_resolutions_v2_semantic_identity_unique'`,
+    );
+    expect(result.rows.map((row) => row.constraint_name)).toEqual([
+      'operation_resolutions_v2_semantic_identity_unique',
+    ]);
+  });
+
   it('DB-1/DB-2: round-trips and rejects conflicting Draft replay', async () => {
     const fixture = await makeFixture(pool!);
     const repository = new PostgresChangeSetReviewV2Repository(pool!);
@@ -406,6 +420,47 @@ describe.runIf(databaseUrl)('WP5 v2 Review PostgreSQL persistence', () => {
     } finally {
       await freshPool.end();
     }
+  });
+
+  it('ADR-163/R18: migration re-entry rejects a conflicting immutable snapshot', async () => {
+    const fixture = await makeFixture(pool!);
+    const repository = new PostgresChangeSetReviewV2Repository(pool!);
+    await repository.saveDraft(fixture.draft);
+    const conflictingDigest = sha256Text(`${fixture.projectId}:conflicting-head`);
+    await pool!.query(
+      `UPDATE review.change_sets_v2
+       SET content_digest = $3,
+           change_set_json = jsonb_set(change_set_json, '{contentDigest}', to_jsonb($3::text))
+       WHERE project_id = $1 AND change_set_id = $2`,
+      [fixture.projectId, fixture.draft.changeSetId, conflictingDigest],
+    );
+    const migration = await readFile(
+      new URL('../../db/migrations/070_adr163_review_operation_resolution_v2.sql', import.meta.url),
+      'utf8',
+    );
+    await expect(pool!.query(migration)).rejects.toThrow(/Migration 070 conflict/);
+    const original = await pool!.query<{
+      content_digest: string;
+      change_set_json: DraftChangeSetV2;
+    }>(
+      `SELECT content_digest, change_set_json
+       FROM review.change_set_revisions_v2
+       WHERE project_id = $1 AND change_set_id = $2 AND revision_number = 1`,
+      [fixture.projectId, fixture.draft.changeSetId],
+    );
+    expect(original.rows[0]?.content_digest).toBe(fixture.draft.contentDigest);
+    expect(original.rows[0]?.change_set_json.contentDigest).toBe(fixture.draft.contentDigest);
+    await pool!.query(
+      `UPDATE review.change_sets_v2
+       SET content_digest = $3, change_set_json = $4
+       WHERE project_id = $1 AND change_set_id = $2`,
+      [
+        fixture.projectId,
+        fixture.draft.changeSetId,
+        fixture.draft.contentDigest,
+        JSON.stringify(fixture.draft),
+      ],
+    );
   });
 
   it('DB-4: atomically records user approval, manifest, and replay convergence', async () => {
@@ -476,6 +531,10 @@ describe.runIf(databaseUrl)('WP5 v2 Review PostgreSQL persistence', () => {
       shortlistDigest: source.shortlistDigest,
       analysisRevisionIds: [...source.analysisRevisionIds],
       relationshipIds: [...source.relationshipIds],
+      relationshipMaterialDigests: source.relationshipIds.map((relationshipId) => ({
+        relationshipId,
+        materialDigest: sha256Text(`${relationshipId}:material`),
+      })),
       accessRevision: 'access:database-test',
       policyContextRevision: 'policy:database-test',
       resolverActorId: 'database-test',

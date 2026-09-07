@@ -62,6 +62,11 @@ type OperationResolutionV2Row = QueryResultRow & {
   readonly resolution_json: OperationResolutionV2;
 };
 
+const normalizeOperationResolution = (value: OperationResolutionV2): OperationResolutionV2 => ({
+  ...value,
+  relationshipMaterialDigests: value.relationshipMaterialDigests ?? [],
+});
+
 type DecisionV2Row = QueryResultRow & {
   readonly decision_json: ComparisonV2ReviewDecisionWrite['decision'];
 };
@@ -1204,97 +1209,134 @@ export class PostgresChangeSetReviewV2Repository
 
   async saveDraft(draft: DraftChangeSetV2): Promise<DraftChangeSetV2> {
     validateDraftChangeSetV2(draft);
-    const inserted = await this.pool.query<ChangeSetV2Row>(
-      `
-        INSERT INTO review.change_sets_v2 (
-          change_set_id, project_id, candidate_id, comparison_id, revision_number,
-          status, content_digest, expected_canonical_version, snapshot_digest,
-          change_set_json, created_at, updated_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        ON CONFLICT (project_id, comparison_id) DO NOTHING
-        RETURNING change_set_json
-      `,
-      [
-        draft.changeSetId,
-        draft.projectId,
-        draft.candidate.id,
-        draft.comparisonId,
-        draft.revisionNumber,
-        draft.status,
-        draft.contentDigest,
-        draft.expectedCanonicalVersion,
-        draft.snapshotDigest,
-        JSON.stringify(draft),
-        draft.createdAt,
-        draft.updatedAt,
-      ],
-    );
-    if (inserted.rows[0]) {
-      await this.pool.query(
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const inserted = await client.query<ChangeSetV2Row>(
         `
-          INSERT INTO review.change_set_revisions_v2 (
-            project_id, change_set_id, revision_number, content_digest,
-            change_set_json, created_at
+          INSERT INTO review.change_sets_v2 (
+            change_set_id, project_id, candidate_id, comparison_id, revision_number,
+            status, content_digest, expected_canonical_version, snapshot_digest,
+            change_set_json, created_at, updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT (project_id, change_set_id, revision_number) DO NOTHING
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          ON CONFLICT (project_id, comparison_id) DO NOTHING
+          RETURNING change_set_json
         `,
         [
-          draft.projectId,
           draft.changeSetId,
+          draft.projectId,
+          draft.candidate.id,
+          draft.comparisonId,
           draft.revisionNumber,
+          draft.status,
           draft.contentDigest,
+          draft.expectedCanonicalVersion,
+          draft.snapshotDigest,
           JSON.stringify(draft),
           draft.createdAt,
+          draft.updatedAt,
         ],
       );
-      return inserted.rows[0].change_set_json;
-    }
+      if (inserted.rows[0]) {
+        await client.query(
+          `
+            INSERT INTO review.change_set_revisions_v2 (
+              project_id, change_set_id, revision_number, content_digest,
+              change_set_json, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (project_id, change_set_id, revision_number) DO NOTHING
+          `,
+          [
+            draft.projectId,
+            draft.changeSetId,
+            draft.revisionNumber,
+            draft.contentDigest,
+            JSON.stringify(draft),
+            draft.createdAt,
+          ],
+        );
+        const revision = await client.query<ChangeSetV2Row>(
+          `SELECT change_set_json
+           FROM review.change_set_revisions_v2
+           WHERE project_id = $1 AND change_set_id = $2 AND revision_number = $3`,
+          [draft.projectId, draft.changeSetId, draft.revisionNumber],
+        );
+        const storedRevision = revision.rows[0]?.change_set_json;
+        if (
+          !storedRevision ||
+          storedRevision.contentDigest !== draft.contentDigest ||
+          stableJson(storedRevision) !== stableJson(draft)
+        ) {
+          throw new ShotgunError({
+            code: 'CONFLICT',
+            safeMessage: 'The immutable v2 Draft revision conflicts with existing content.',
+            module: 'postgres-stage5',
+            operation: 'save-draft-change-set-v2',
+          });
+        }
+        await client.query('COMMIT');
+        return inserted.rows[0].change_set_json;
+      }
 
-    const existing = await this.findDraftByComparisonId(draft.projectId, draft.comparisonId);
-    if (!existing) throw new Error('v2 Draft Change Set was not stored.');
-    // `createdAt`, `updatedAt` and status are delivery/review state, not the
-    // durable comparison lineage. A replay of the same immutable Comparison
-    // may arrive with a fresh clock tick (or after a user decision); it must
-    // return the existing Draft rather than manufacture a conflicting row or
-    // overwrite the user's state. The digest is still integrity material: a
-    // caller may not replace it with an arbitrary value and bypass the
-    // conflict guard. Validate it against the submitted draft before applying
-    // the replay exception.
-    const { contentDigest: _submittedDigest, ...submittedWithoutDigest } = draft;
-    if (draftChangeSetContentDigestV2(submittedWithoutDigest) !== draft.contentDigest) {
-      throw new ShotgunError({
-        code: 'CONFLICT',
-        safeMessage: 'The v2 Draft Change Set content digest is invalid.',
-        module: 'postgres-stage5',
-        operation: 'save-draft-change-set-v2',
-      });
+      const existingResult = await client.query<ChangeSetV2Row>(
+        `SELECT change_set_json
+         FROM review.change_sets_v2
+         WHERE project_id = $1 AND comparison_id = $2
+         FOR UPDATE`,
+        [draft.projectId, draft.comparisonId],
+      );
+      const existing = existingResult.rows[0]?.change_set_json;
+      if (!existing) throw new Error('v2 Draft Change Set was not stored.');
+      // `createdAt`, `updatedAt` and status are delivery/review state, not the
+      // durable comparison lineage. A replay of the same immutable Comparison
+      // may arrive with a fresh clock tick (or after a user decision); it must
+      // return the existing Draft rather than manufacture a conflicting row or
+      // overwrite the user's state. The digest is still integrity material: a
+      // caller may not replace it with an arbitrary value and bypass the
+      // conflict guard. Validate it against the submitted draft before applying
+      // the replay exception.
+      const { contentDigest: _submittedDigest, ...submittedWithoutDigest } = draft;
+      if (draftChangeSetContentDigestV2(submittedWithoutDigest) !== draft.contentDigest) {
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage: 'The v2 Draft Change Set content digest is invalid.',
+          module: 'postgres-stage5',
+          operation: 'save-draft-change-set-v2',
+        });
+      }
+      void _submittedDigest;
+      const immutableDraft = (value: DraftChangeSetV2) => {
+        const {
+          status: _status,
+          createdAt: _createdAt,
+          updatedAt: _updatedAt,
+          contentDigest: _digest,
+          ...lineage
+        } = value;
+        void _status;
+        void _createdAt;
+        void _updatedAt;
+        void _digest;
+        return lineage;
+      };
+      if (stableJson(immutableDraft(existing)) !== stableJson(immutableDraft(draft))) {
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage: 'The same v2 Comparison produced a different Draft Change Set.',
+          module: 'postgres-stage5',
+          operation: 'save-draft-change-set-v2',
+        });
+      }
+      await client.query('COMMIT');
+      return existing;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-    void _submittedDigest;
-    const immutableDraft = (value: DraftChangeSetV2) => {
-      const {
-        status: _status,
-        createdAt: _createdAt,
-        updatedAt: _updatedAt,
-        contentDigest: _digest,
-        ...lineage
-      } = value;
-      void _status;
-      void _createdAt;
-      void _updatedAt;
-      void _digest;
-      return lineage;
-    };
-    if (stableJson(immutableDraft(existing)) !== stableJson(immutableDraft(draft))) {
-      throw new ShotgunError({
-        code: 'CONFLICT',
-        safeMessage: 'The same v2 Comparison produced a different Draft Change Set.',
-        module: 'postgres-stage5',
-        operation: 'save-draft-change-set-v2',
-      });
-    }
-    return existing;
   }
 
   async findDraftById(
@@ -1336,6 +1378,7 @@ export class PostgresChangeSetReviewV2Repository
     changeSetId: string,
     clientRequestId: string,
     idempotencyKey: string,
+    semanticCommandIdentity?: string,
   ): Promise<OperationResolutionV2 | undefined> {
     void changeSetId;
     const result = await this.pool.query<OperationResolutionV2Row>(
@@ -1343,13 +1386,15 @@ export class PostgresChangeSetReviewV2Repository
         SELECT resolution_json
         FROM review.operation_resolutions_v2
         WHERE project_id = $1
-          AND (client_request_id = $2 OR idempotency_key = $3)
+          AND (client_request_id = $2 OR idempotency_key = $3 OR semantic_command_identity = $4)
         ORDER BY created_at DESC
         LIMIT 1
       `,
-      [projectId, clientRequestId, idempotencyKey],
+      [projectId, clientRequestId, idempotencyKey, semanticCommandIdentity ?? null],
     );
-    return result.rows[0]?.resolution_json;
+    return result.rows[0]
+      ? normalizeOperationResolution(result.rows[0].resolution_json)
+      : undefined;
   }
 
   async findOperationResolutionByClientRequest(
@@ -1369,7 +1414,9 @@ export class PostgresChangeSetReviewV2Repository
       `,
       [projectId, clientRequestId, semanticCommandIdentity ?? null],
     );
-    return result.rows[0]?.resolution_json;
+    return result.rows[0]
+      ? normalizeOperationResolution(result.rows[0].resolution_json)
+      : undefined;
   }
 
   async findOperationResolutionForDraft(
@@ -1392,7 +1439,9 @@ export class PostgresChangeSetReviewV2Repository
       `,
       [projectId, changeSetId, resolvedDraftRevision, resolvedDraftDigest, chosenOperation],
     );
-    return result.rows[0]?.resolution_json;
+    return result.rows[0]
+      ? normalizeOperationResolution(result.rows[0].resolution_json)
+      : undefined;
   }
 
   async resolveOperation(
@@ -1424,7 +1473,11 @@ export class PostgresChangeSetReviewV2Repository
           SELECT resolution_json
           FROM review.operation_resolutions_v2
           WHERE project_id = $1
-            AND (client_request_id = $2 OR idempotency_key = $3)
+            AND (
+              client_request_id = $2 OR
+              idempotency_key = $3 OR
+              semantic_command_identity = $4
+            )
           ORDER BY created_at DESC
           LIMIT 1
         `,
@@ -1432,9 +1485,12 @@ export class PostgresChangeSetReviewV2Repository
           write.resolution.projectId,
           write.resolution.clientRequestId,
           write.resolution.idempotencyKey,
+          write.resolution.semanticCommandIdentity,
         ],
       );
-      const existing = existingResult.rows[0]?.resolution_json;
+      const existing = existingResult.rows[0]
+        ? normalizeOperationResolution(existingResult.rows[0].resolution_json)
+        : undefined;
       if (existing) {
         if (
           existing.changeSetId !== write.resolution.changeSetId ||
@@ -1472,7 +1528,9 @@ export class PostgresChangeSetReviewV2Repository
       );
       if (
         sourceRevision.rows[0] &&
-        sourceRevision.rows[0].change_set_json.contentDigest !== write.resolution.sourceDraftDigest
+        (sourceRevision.rows[0].change_set_json.contentDigest !==
+          write.resolution.sourceDraftDigest ||
+          stableJson(sourceRevision.rows[0].change_set_json) !== stableJson(write.currentDraft))
       ) {
         throw Object.assign(new Error('The source revision conflicts.'), {
           code: 'RESOLUTION_CONFLICT',
@@ -1522,15 +1580,15 @@ export class PostgresChangeSetReviewV2Repository
             candidate_revision, candidate_digest, candidate_source_version_id,
             candidate_evidence_ids, canonical_snapshot_id, canonical_version,
             canonical_digest, shortlist_digest, analysis_revision_ids,
-            relationship_ids, chosen_operation, access_revision,
-            policy_context_revision, resolver_actor_id, client_request_id,
+            relationship_ids, relationship_material_digests, chosen_operation,
+            access_revision, policy_context_revision, resolver_actor_id, client_request_id,
             semantic_command_identity, idempotency_key, command_digest,
             resolution_digest, state, created_at, resolution_json
           )
           VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
             $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-            $27, $28, $29, $30, $31, $32, $33, $34
+            $27, $28, $29, $30, $31, $32, $33, $34, $35
           )
         `,
         [
@@ -1556,6 +1614,7 @@ export class PostgresChangeSetReviewV2Repository
           write.resolution.shortlistDigest ?? null,
           JSON.stringify(write.resolution.analysisRevisionIds),
           JSON.stringify(write.resolution.relationshipIds),
+          JSON.stringify(write.resolution.relationshipMaterialDigests),
           write.resolution.chosenOperation,
           write.resolution.accessRevision,
           write.resolution.policyContextRevision,
@@ -1594,6 +1653,12 @@ export class PostgresChangeSetReviewV2Repository
       return { status: 'RESOLVED', resolution: write.resolution, draft: write.resolvedDraft };
     } catch (error) {
       await client.query('ROLLBACK');
+      if ((error as { readonly code?: string }).code === '23505') {
+        throw Object.assign(new Error('The Review operation identity was already committed.'), {
+          code: 'IDEMPOTENCY_KEY_REUSE',
+          cause: error,
+        });
+      }
       throw error;
     } finally {
       client.release();

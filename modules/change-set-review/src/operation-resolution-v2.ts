@@ -63,6 +63,11 @@ export type OperationResolutionV2 = {
   readonly shortlistDigest?: ComparisonDigestV2;
   readonly analysisRevisionIds: readonly string[];
   readonly relationshipIds: readonly string[];
+  /** Server-owned relationship material identities bound by ADR-163. */
+  readonly relationshipMaterialDigests: readonly {
+    readonly relationshipId: string;
+    readonly materialDigest: ComparisonDigestV2;
+  }[];
   readonly accessRevision: string;
   readonly policyContextRevision: string;
   readonly resolverActorId: string;
@@ -98,6 +103,7 @@ export type ReviewOperationResolutionStorePort = {
     changeSetId: string,
     clientRequestId: string,
     idempotencyKey: string,
+    semanticCommandIdentity?: string,
   ): Promise<OperationResolutionV2 | undefined>;
   findOperationResolutionByClientRequest(
     projectId: string,
@@ -119,6 +125,19 @@ export type ResolveReviewOperationV2Dependencies = {
   readonly freshness: ComparisonV2ReviewFreshnessPort;
   readonly repository: ReviewOperationResolutionStorePort;
   readonly now?: () => string;
+  /** Server-owned access/policy authority.  If absent, explicit revisions are
+   * accepted only for deterministic adapter tests; production composition
+   * always supplies this port. */
+  readonly securityAuthority?: {
+    resolve(input: {
+      readonly projectId: string;
+      readonly actorId: string;
+      readonly security: SecurityContext;
+    }): Promise<{
+      readonly accessRevision: string;
+      readonly policyContextRevision: string;
+    }>;
+  };
   readonly accessRevision?: string;
   readonly policyContextRevision?: string;
 };
@@ -250,6 +269,9 @@ export const reviewOperationResolutionDigestV2 = (
       shortlistDigest: resolution.shortlistDigest,
       analysisRevisionIds: [...resolution.analysisRevisionIds].sort(),
       relationshipIds: [...resolution.relationshipIds].sort(),
+      relationshipMaterialDigests: [...resolution.relationshipMaterialDigests]
+        .sort((left, right) => left.relationshipId.localeCompare(right.relationshipId))
+        .map((entry) => ({ ...entry })),
       accessRevision: resolution.accessRevision,
       policyContextRevision: resolution.policyContextRevision,
     }),
@@ -322,6 +344,10 @@ export const createReviewOperationResolutionV2 = (
         return { status: 'BLOCKED', code: 'INVALID_OPERATION' };
       }
 
+      const semanticCommandIdentity =
+        command.semanticCommandIdentity ??
+        `review.resolve-operation-v2:${command.projectId}:${request.changeSetId}:${request.expectedDraftRevision}:${request.idempotencyKey}`;
+
       let existing: OperationResolutionV2 | undefined;
       try {
         existing = await dependencies.repository.findOperationResolutionByRequest(
@@ -329,6 +355,7 @@ export const createReviewOperationResolutionV2 = (
           request.changeSetId,
           request.clientRequestId,
           request.idempotencyKey,
+          semanticCommandIdentity,
         );
       } catch {
         return { status: 'BLOCKED', code: 'OUTCOME_UNKNOWN' };
@@ -568,6 +595,46 @@ export const createReviewOperationResolutionV2 = (
       };
       validateDraftChangeSetV2(resolvedDraft);
       const commandDigest = resolveReviewOperationV2CommandDigest(request);
+      const resolveSecurityAuthority = async () => {
+        if (dependencies.securityAuthority) {
+          const resolved = await dependencies.securityAuthority.resolve({
+            projectId: command.projectId,
+            actorId: command.actor.id,
+            security: command.security,
+          });
+          if (!nonEmpty(resolved.accessRevision) || !nonEmpty(resolved.policyContextRevision)) {
+            throw Object.assign(new Error('Review security authority is unavailable.'), {
+              code: 'OUTCOME_UNKNOWN',
+            });
+          }
+          return resolved;
+        }
+        if (nonEmpty(dependencies.accessRevision) && nonEmpty(dependencies.policyContextRevision)) {
+          return {
+            accessRevision: dependencies.accessRevision,
+            policyContextRevision: dependencies.policyContextRevision,
+          };
+        }
+        throw Object.assign(new Error('Review security authority is unavailable.'), {
+          code: 'OUTCOME_UNKNOWN',
+        });
+      };
+      let securityAuthority: Awaited<ReturnType<typeof resolveSecurityAuthority>>;
+      try {
+        securityAuthority = await resolveSecurityAuthority();
+      } catch (error) {
+        const code = (error as { readonly code?: string }).code;
+        return {
+          status: 'BLOCKED',
+          code: code === 'ACCESS_REVOKED' ? 'ACCESS_REVOKED' : 'OUTCOME_UNKNOWN',
+        };
+      }
+      const relationshipMaterialDigests = aggregate.relationships
+        .map((relationship) => ({
+          relationshipId: relationship.relationshipId,
+          materialDigest: relationship.materialDigest,
+        }))
+        .sort((left, right) => left.relationshipId.localeCompare(right.relationshipId));
       const unsigned: Omit<OperationResolutionV2, 'resolutionDigest'> = {
         resolutionId: randomUUID(),
         contractVersion: OPERATION_RESOLUTION_V2_CONTRACT_VERSION,
@@ -591,16 +658,12 @@ export const createReviewOperationResolutionV2 = (
         ...(draft.shortlistDigest === undefined ? {} : { shortlistDigest: draft.shortlistDigest }),
         analysisRevisionIds: [...draft.analysisRevisionIds].sort(),
         relationshipIds: [...draft.relationshipIds].sort(),
-        accessRevision: dependencies.accessRevision ?? command.rolloutAuthorityRevision,
-        policyContextRevision:
-          dependencies.policyContextRevision ??
-          command.accessSensitivityPolicyRevision ??
-          command.rolloutAuthorityRevision,
+        relationshipMaterialDigests,
+        accessRevision: securityAuthority.accessRevision,
+        policyContextRevision: securityAuthority.policyContextRevision,
         resolverActorId: command.actor.id,
         clientRequestId: request.clientRequestId,
-        semanticCommandIdentity:
-          command.semanticCommandIdentity ??
-          `review.resolve-operation-v2:${command.projectId}:${draft.changeSetId}:${draft.revisionNumber}`,
+        semanticCommandIdentity: semanticCommandIdentity,
         idempotencyKey: request.idempotencyKey,
         commandDigest,
         chosenOperation: request.chosenOperation,
@@ -616,7 +679,20 @@ export const createReviewOperationResolutionV2 = (
           currentDraft: draft,
           resolvedDraft,
           resolution,
-          validateAtCommit,
+          validateAtCommit: async () => {
+            await validateAtCommit();
+            const latestAuthority = await resolveSecurityAuthority();
+            if (latestAuthority.accessRevision !== securityAuthority.accessRevision) {
+              throw Object.assign(new Error('Review access authority changed before commit.'), {
+                code: 'ACCESS_REVOKED',
+              });
+            }
+            if (latestAuthority.policyContextRevision !== securityAuthority.policyContextRevision) {
+              throw Object.assign(new Error('Review policy authority changed before commit.'), {
+                code: 'POLICY_CHANGED',
+              });
+            }
+          },
         });
         return {
           status: stored.status,
@@ -687,13 +763,16 @@ export class InMemoryReviewOperationResolutionStore implements ReviewOperationRe
     changeSetId: string,
     clientRequestId: string,
     idempotencyKey: string,
+    semanticCommandIdentity?: string,
   ): Promise<OperationResolutionV2 | undefined> {
     void changeSetId;
     const found = [...this.resolutions.values()].find(
       (resolution) =>
         resolution.projectId === projectId &&
         (resolution.clientRequestId === clientRequestId ||
-          resolution.idempotencyKey === idempotencyKey),
+          resolution.idempotencyKey === idempotencyKey ||
+          (semanticCommandIdentity !== undefined &&
+            resolution.semanticCommandIdentity === semanticCommandIdentity)),
     );
     return found === undefined ? undefined : clone(found);
   }
@@ -744,7 +823,8 @@ export class InMemoryReviewOperationResolutionStore implements ReviewOperationRe
         (resolution) =>
           resolution.projectId === write.resolution.projectId &&
           (resolution.clientRequestId === write.resolution.clientRequestId ||
-            resolution.idempotencyKey === write.resolution.idempotencyKey),
+            resolution.idempotencyKey === write.resolution.idempotencyKey ||
+            resolution.semanticCommandIdentity === write.resolution.semanticCommandIdentity),
       );
       if (existing) {
         if (

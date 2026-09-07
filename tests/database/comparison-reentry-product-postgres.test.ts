@@ -882,6 +882,12 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       await pool.query('DELETE FROM review.approved_manifests_v2 WHERE project_id = $1', [
         projectId,
       ]);
+      await pool.query('DELETE FROM review.operation_resolutions_v2 WHERE project_id = $1', [
+        projectId,
+      ]);
+      await pool.query('DELETE FROM review.change_set_revisions_v2 WHERE project_id = $1', [
+        projectId,
+      ]);
       await pool.query('DELETE FROM review.change_sets_v2 WHERE project_id = $1', [projectId]);
       await pool.query('DELETE FROM comparison.relationships_v2 WHERE project_id = $1', [
         projectId,

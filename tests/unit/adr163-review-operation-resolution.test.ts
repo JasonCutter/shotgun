@@ -16,7 +16,9 @@ import {
 import {
   canonicalSnapshotDigest,
   claimCandidateDigest,
+  draftChangeSetContentDigestV2,
   semanticRelationshipMaterialDigestV2,
+  sha256Text,
   shortlistAuditDigestV2,
   analysisInputDigestV2,
   COMPARISON_V2_CONTRACT_VERSION,
@@ -213,8 +215,8 @@ const createHarness = (options: { readonly staleAtCommit?: boolean } = {}) => {
       store.seedDraft(value);
       return value;
     },
-    async findDraftById() {
-      return store.findDraftById(projectId, draft?.changeSetId ?? 'missing');
+    async findDraftById(requestProjectId: string, changeSetId: string) {
+      return store.findDraftById(requestProjectId, changeSetId);
     },
     async findDraftByComparisonId() {
       return draft;
@@ -323,10 +325,11 @@ describe('ADR-163 V2 review operation resolution', () => {
     });
     const replay = await harness.resolver.resolve(command);
     expect(replay.status).toBe('IDEMPOTENT_REPLAY');
+    expect(harness.store.listResolutions()[0]?.resolverActorId).toBe('owner-1');
     const approved = await harness.bridge.recordDecision({
       projectId,
       changeSetId: source.changeSetId,
-      actor: { type: 'user', id: 'owner-1' },
+      actor: { type: 'user', id: 'owner-approver' },
       security,
       authority,
       rolloutAuthorityRevision: 'rollout-r1',
@@ -338,6 +341,12 @@ describe('ADR-163 V2 review operation resolution', () => {
       decidedAt: now,
     });
     expect(approved.status).toBe('DECISION_RECORDED');
+    if (approved.status === 'DECISION_RECORDED') {
+      expect(approved.decision.actor.id).toBe('owner-approver');
+      expect(approved.decision.actor.id).not.toBe(
+        harness.store.listResolutions()[0]?.resolverActorId,
+      );
+    }
   });
 
   it('keeps the native NO_OP approval contract after explicit resolution', async () => {
@@ -513,6 +522,160 @@ describe('ADR-163 V2 review operation resolution', () => {
         chosenOperation: 'NO_OP',
       }),
     ).not.toBe(_digest);
+    expect(
+      reviewOperationResolutionDigestV2({
+        ...withoutDigest,
+        relationshipMaterialDigests: [
+          {
+            relationshipId: relationship.relationshipId,
+            materialDigest: sha256Text('relationship-material-changed'),
+          },
+        ],
+      }),
+    ).not.toBe(_digest);
+    expect(
+      reviewOperationResolutionDigestV2({
+        ...withoutDigest,
+        relationshipMaterialDigests: [...resolution.relationshipMaterialDigests].reverse(),
+      }),
+    ).toBe(_digest);
+  });
+
+  it('rejects the same semantic command identity across different change sets', async () => {
+    const harness = createHarness();
+    await harness.bridge.materializeDraft({
+      event: {
+        eventType: 'ComparisonCompletedV2',
+        contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+        comparison,
+        analysisRevisionIds: [analysis.analysisRevisionId],
+        emittedAt: now,
+      },
+      actor: { type: 'service', id: 'comparison-worker' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+    });
+    const firstDraft = harness.getDraft();
+    const semanticCommandIdentity = 'connector:semantic-domain-identity';
+    const first = await harness.resolver.resolve({
+      projectId,
+      actor: { type: 'user', id: 'owner-identity' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+      semanticCommandIdentity,
+      request: {
+        changeSetId: firstDraft.changeSetId,
+        expectedDraftRevision: 1,
+        expectedDraftDigest: firstDraft.contentDigest,
+        chosenOperation: 'ADD_CLAIM',
+        clientRequestId: 'client-semantic-identity-a',
+        idempotencyKey: 'idem-semantic-identity-a',
+      },
+    });
+    expect(first.status).toBe('RESOLVED');
+
+    const secondChangeSetId = `${firstDraft.changeSetId}:other`;
+    const secondWithoutDigest: Omit<DraftChangeSetV2, 'contentDigest'> = {
+      ...firstDraft,
+      changeSetId: secondChangeSetId,
+      revisionNumber: 1,
+      operation: 'MODIFY_REVIEW',
+      status: 'PENDING_REVIEW',
+      updatedAt: now,
+    };
+    const secondDraft: DraftChangeSetV2 = {
+      ...secondWithoutDigest,
+      contentDigest: draftChangeSetContentDigestV2(secondWithoutDigest),
+    };
+    harness.store.seedDraft(secondDraft);
+    const second = await harness.resolver.resolve({
+      projectId,
+      actor: { type: 'user', id: 'owner-identity' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+      semanticCommandIdentity,
+      request: {
+        changeSetId: secondChangeSetId,
+        expectedDraftRevision: 1,
+        expectedDraftDigest: secondDraft.contentDigest,
+        chosenOperation: 'NO_OP',
+        clientRequestId: 'client-semantic-identity-b',
+        idempotencyKey: 'idem-semantic-identity-b',
+      },
+    });
+    expect(second).toEqual({ status: 'BLOCKED', code: 'IDEMPOTENCY_KEY_REUSE' });
+    expect(harness.store.listResolutions()).toHaveLength(1);
+    expect(await harness.store.findDraftById(projectId, secondChangeSetId)).toMatchObject({
+      revisionNumber: 1,
+    });
+  });
+
+  it('fails closed when access authority changes at the commit boundary', async () => {
+    const harness = createHarness();
+    await harness.bridge.materializeDraft({
+      event: {
+        eventType: 'ComparisonCompletedV2',
+        contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+        comparison,
+        analysisRevisionIds: [analysis.analysisRevisionId],
+        emittedAt: now,
+      },
+      actor: { type: 'service', id: 'comparison-worker' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+    });
+    const source = harness.getDraft();
+    let accessRevision = 'access-authority-1';
+    const guardedRepository = {
+      ...harness.repository,
+      async resolveOperation(write: Parameters<typeof harness.store.resolveOperation>[0]) {
+        accessRevision = 'access-authority-2';
+        return harness.store.resolveOperation(write);
+      },
+    };
+    const resolver = createReviewOperationResolutionV2({
+      aggregate: {
+        async findComparisonById() {
+          return aggregate;
+        },
+      },
+      freshness: {
+        async getCurrent(input) {
+          return { identity: input.expected, shortlist };
+        },
+      },
+      repository: guardedRepository,
+      securityAuthority: {
+        async resolve() {
+          return { accessRevision, policyContextRevision: 'policy-authority-1' };
+        },
+      },
+      now: () => now,
+    });
+    const blocked = await resolver.resolve({
+      projectId,
+      actor: { type: 'user', id: 'owner-authority' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+      request: {
+        changeSetId: source.changeSetId,
+        expectedDraftRevision: source.revisionNumber,
+        expectedDraftDigest: source.contentDigest,
+        chosenOperation: 'ADD_CLAIM',
+        clientRequestId: 'client-access-authority-race',
+        idempotencyKey: 'idem-access-authority-race',
+      },
+    });
+    expect(blocked).toEqual({ status: 'BLOCKED', code: 'ACCESS_REVOKED' });
+    expect(harness.store.listResolutions()).toHaveLength(0);
+    expect(await harness.store.findDraftById(projectId, source.changeSetId)).toMatchObject({
+      revisionNumber: 1,
+    });
   });
 
   it('enforces project-scoped idempotency parity across different change sets', async () => {

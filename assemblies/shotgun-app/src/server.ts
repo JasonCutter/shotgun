@@ -10,6 +10,7 @@ import {
   InMemoryAuthRepository,
   LocalOwnerAuthenticationAdapter,
   authorize,
+  hasSensitivityClearance,
   hashPassword,
   hashSecuritySecret,
   type AuthRepositoryPort,
@@ -220,6 +221,7 @@ import {
   actionEvidenceSetDigest,
   actionEvidenceRecordDigest,
   sha256Text,
+  stableJson,
   validationResultDigest,
   ShotgunError,
   createProductFailureEnvelope,
@@ -2657,6 +2659,37 @@ const createApplicationCore = async (
               aggregate: options.comparisonV2Repository!,
               freshness,
               repository: operationStore as ReviewOperationResolutionStorePort,
+              securityAuthority: {
+                resolve: async ({ projectId, actorId, security }) => {
+                  const membership = await authRepository.findMembership(actorId, projectId);
+                  if (
+                    !membership ||
+                    !security.accessScope.every((scope) => membership.scopes.includes(scope)) ||
+                    !hasSensitivityClearance(membership.sensitivityClearance, security.sensitivity)
+                  ) {
+                    throw Object.assign(new Error('Review access authority is no longer valid.'), {
+                      code: 'ACCESS_REVOKED',
+                    });
+                  }
+                  const settings = await settingsRepository.getSettingsSnapshot(projectId);
+                  return {
+                    accessRevision: `membership:${sha256Text(
+                      stableJson({
+                        projectId,
+                        principalId: membership.principalId,
+                        effectiveScopes: [...membership.scopes].sort(),
+                        sensitivityClearance: membership.sensitivityClearance,
+                        requestedAccessScope: [...security.accessScope].sort(),
+                        requestedSensitivity: security.sensitivity,
+                        dataClassification: security.dataClassification,
+                        isOwner: membership.isOwner,
+                        expiresAt: membership.expiresAt ?? null,
+                      }),
+                    )}`,
+                    policyContextRevision: `settings:${projectId}:${settings.policyContextRevision}`,
+                  };
+                },
+              },
             });
           }
           return createComparisonV2Runtime({

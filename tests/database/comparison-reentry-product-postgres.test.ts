@@ -332,6 +332,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
     };
     let providerCalls = 0;
     let semanticFailure = false;
+    let semanticRelationshipType: 'UNRELATED' | 'SUPPORTS' = 'UNRELATED';
     const executionResolver = {
       async resolve() {
         const modelId = `deepseek-chat-e${generationEpoch}`;
@@ -375,7 +376,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
                   relationships: (parsed.claims ?? []).map((claim) => ({
                     resourceId: claim.resourceId,
                     resourceRevision: claim.resourceRevision,
-                    type: 'UNRELATED',
+                    type: semanticRelationshipType,
                     rationale: 'The candidate is distinct from this existing Canonical claim.',
                   })),
                 }),
@@ -674,6 +675,81 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       expect(legacyFailureComparison.rows).toHaveLength(0);
       semanticFailure = false;
 
+      // A source-supported relationship produces a REVIEW_REQUIRED /
+      // MODIFY_REVIEW Draft.  The Product Review route must fail closed for
+      // APPROVE before it persists a decision or publishes a Canonical event.
+      const modifyReviewCandidateId = randomUUID();
+      await insertCandidate({
+        candidateId: modifyReviewCandidateId,
+        batchId: randomUUID(),
+        sourceVersionId: candidateSourceVersionId,
+        claimText: 'Candidate requiring a governed review-only resolution.',
+        evidenceId: candidateEvidenceId,
+      });
+      semanticRelationshipType = 'SUPPORTS';
+      const modifyReviewResponse = await invoke(
+        modifyReviewCandidateId,
+        'product-key-v2-modify-review-approval',
+      );
+      expect(modifyReviewResponse.statusCode).toBe(200);
+      const modifyReviewBody = modifyReviewResponse.json<{
+        result: {
+          v2: { status: string; comparisonId?: string };
+          review: { status: string };
+        };
+      }>();
+      expect(modifyReviewBody.result).toMatchObject({
+        v2: { status: 'COMPLETED' },
+        review: { status: 'DRAFT_CREATED' },
+      });
+      const modifyReviewComparisonId = modifyReviewBody.result.v2.comparisonId;
+      if (!modifyReviewComparisonId) {
+        throw new Error('MODIFY_REVIEW regression did not return a comparisonId.');
+      }
+      const modifyReviewDraft = await reviewV2.findDraftByComparisonId(
+        projectId,
+        modifyReviewComparisonId,
+      );
+      if (!modifyReviewDraft) throw new Error('MODIFY_REVIEW Draft was not persisted.');
+      expect(modifyReviewDraft).toMatchObject({
+        operation: 'MODIFY_REVIEW',
+        reviewRecommendation: 'MODIFY_REVIEW',
+        status: 'PENDING_REVIEW',
+      });
+      const beforeModifyDecision = await pool.query<{ decisions: string; manifests: string }>(
+        `SELECT
+           (SELECT count(*)::text FROM review.decisions_v2 WHERE project_id = $1) AS decisions,
+           (SELECT count(*)::text FROM review.approved_manifests_v2 WHERE project_id = $1) AS manifests`,
+        [projectId],
+      );
+      const deadLettersBeforeModifyDecision =
+        application.kernel.connector.deadLetters.list().length;
+      const blockedModifyReview = await decideV2(modifyReviewDraft);
+      expect(blockedModifyReview.statusCode).toBe(409);
+      expect(blockedModifyReview.json()).toEqual({
+        status: 'BLOCKED',
+        reason: 'REVIEW_NOT_ELIGIBLE',
+      });
+      const afterModifyDecision = await pool.query<{ decisions: string; manifests: string }>(
+        `SELECT
+           (SELECT count(*)::text FROM review.decisions_v2 WHERE project_id = $1) AS decisions,
+           (SELECT count(*)::text FROM review.approved_manifests_v2 WHERE project_id = $1) AS manifests`,
+        [projectId],
+      );
+      expect(afterModifyDecision.rows[0]).toEqual(beforeModifyDecision.rows[0]);
+      expect(application.kernel.connector.deadLetters.list()).toHaveLength(
+        deadLettersBeforeModifyDecision,
+      );
+      const modifyReviewDraftAfterBlock = await reviewV2.findDraftByComparisonId(
+        projectId,
+        modifyReviewComparisonId,
+      );
+      expect(modifyReviewDraftAfterBlock).toMatchObject({
+        operation: 'MODIFY_REVIEW',
+        status: 'PENDING_REVIEW',
+      });
+      semanticRelationshipType = 'UNRELATED';
+
       const counts = await pool.query<{
         comparisons: string;
         analyses: string;
@@ -688,10 +764,10 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
         [projectId],
       );
       expect(counts.rows[0]).toEqual({
-        comparisons: '2',
-        analyses: '3',
-        relationships: '4',
-        reviews: '2',
+        comparisons: '3',
+        analyses: '4',
+        relationships: '6',
+        reviews: '3',
       });
 
       // Only the refreshed B draft is approved. This is the normal V2 Product

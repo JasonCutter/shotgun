@@ -575,6 +575,13 @@ export const createComparisonV2ReviewBridge = (
       } catch {
         return { status: 'BLOCKED', reason: 'AGGREGATE_INVALID' };
       }
+      // MODIFY_REVIEW is a review-only proposal until a separately
+      // authorized Canonical operation exists.  Stage 6 deliberately
+      // rejects this operation, so fail closed before a decision, approval
+      // token, manifest, or ChangeSetApprovedV2 handoff can be persisted.
+      if (request.decision === 'APPROVE' && draft.operation === 'MODIFY_REVIEW') {
+        return { status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' };
+      }
 
       const aggregate = await dependencies.aggregate.findComparisonById(
         request.projectId,

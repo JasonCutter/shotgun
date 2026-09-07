@@ -247,6 +247,19 @@ const semanticEvent: ComparisonCompletedV2 = {
   emittedAt: now,
 };
 
+const modifyReviewAggregate: ComparisonV2AggregateForReview = {
+  ...semanticAggregate,
+  comparison: {
+    ...semanticAggregate.comparison,
+    disposition: 'REVIEW_REQUIRED',
+    reviewRecommendation: 'MODIFY_REVIEW',
+  },
+};
+const modifyReviewEvent: ComparisonCompletedV2 = {
+  ...semanticEvent,
+  comparison: modifyReviewAggregate.comparison,
+};
+
 const setup = (
   current?: ComparisonFreshnessIdentityV2,
   aggregateInput: ComparisonV2AggregateForReview = aggregate,
@@ -254,6 +267,7 @@ const setup = (
   let saved: DraftChangeSetV2 | undefined;
   let savedDecision: ComparisonV2ReviewDecisionWrite['decision'] | undefined;
   let savedManifest: ComparisonV2ReviewDecisionResult['manifest'];
+  let recordDecisionCalls = 0;
   const repository = {
     async saveDraft(
       draft: Parameters<ComparisonV2ReviewBridgeDependencies['repository']['saveDraft']>[0],
@@ -267,6 +281,7 @@ const setup = (
     async recordDecision(
       write: ComparisonV2ReviewDecisionWrite,
     ): Promise<ComparisonV2ReviewDecisionResult> {
+      recordDecisionCalls += 1;
       if (
         savedDecision &&
         savedDecision.decisionId === write.decision.decisionId &&
@@ -310,7 +325,11 @@ const setup = (
     repository,
     now: () => now,
   };
-  return { bridge: createComparisonV2ReviewBridge(dependencies), getSaved: () => saved };
+  return {
+    bridge: createComparisonV2ReviewBridge(dependencies),
+    getSaved: () => saved,
+    getRecordDecisionCalls: () => recordDecisionCalls,
+  };
 };
 
 const request = {
@@ -356,6 +375,73 @@ describe('Comparison v2 Review bridge', () => {
       expect(result.draft.disposition).toBe('NEW');
       expect(result.draft.relationshipIds).toEqual(['relationship-1']);
       expect(result.draft.shortlistDigest).toBe(shortlistAuditDigestV2(semanticShortlist));
+    }
+  });
+
+  it('blocks MODIFY_REVIEW approval before any decision or manifest write', async () => {
+    const setupValue = setup(undefined, modifyReviewAggregate);
+    const materialized = await setupValue.bridge.materializeDraft({
+      ...request,
+      event: modifyReviewEvent,
+      authority: authority('V2_ACTIVE'),
+    });
+    expect(materialized.status).toBe('DRAFT_CREATED');
+    if (materialized.status !== 'DRAFT_CREATED') return;
+    expect(materialized.draft.operation).toBe('MODIFY_REVIEW');
+    expect(materialized.draft.status).toBe('PENDING_REVIEW');
+
+    const blocked = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: materialized.draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: materialized.draft.revisionNumber,
+      expectedContentDigest: materialized.draft.contentDigest,
+      decision: 'APPROVE',
+      reason: 'attempt to approve an unsupported Canonical operation',
+      decisionId: 'decision-modify-review-approve-1',
+      decidedAt: now,
+    });
+
+    expect(blocked).toEqual({ status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' });
+    expect(setupValue.getRecordDecisionCalls()).toBe(0);
+    expect(setupValue.getSaved()).toMatchObject({
+      operation: 'MODIFY_REVIEW',
+      status: 'PENDING_REVIEW',
+    });
+  });
+
+  it('keeps MODIFY_REVIEW REJECT as a non-Canonical review decision', async () => {
+    const setupValue = setup(undefined, modifyReviewAggregate);
+    const materialized = await setupValue.bridge.materializeDraft({
+      ...request,
+      event: modifyReviewEvent,
+      authority: authority('V2_ACTIVE'),
+    });
+    expect(materialized.status).toBe('DRAFT_CREATED');
+    if (materialized.status !== 'DRAFT_CREATED') return;
+
+    const rejected = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: materialized.draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: materialized.draft.revisionNumber,
+      expectedContentDigest: materialized.draft.contentDigest,
+      decision: 'REJECT',
+      reason: 'retain the review-only proposal without Canonical mutation',
+      decisionId: 'decision-modify-review-reject-1',
+      decidedAt: now,
+    });
+
+    expect(rejected.status).toBe('DECISION_RECORDED');
+    if (rejected.status === 'DECISION_RECORDED') {
+      expect(rejected.draft.status).toBe('REJECTED');
+      expect(rejected.manifest).toBeUndefined();
     }
   });
 

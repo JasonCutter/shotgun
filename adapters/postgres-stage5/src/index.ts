@@ -36,6 +36,7 @@ import {
   validateAnalysisRevisionV2,
   validateComparisonResultV2,
   validateDraftChangeSetV2,
+  draftChangeSetContentDigestV2,
   validateApprovedChangeSetManifestV2,
   shortlistAuditDigestV2,
 } from '../../../packages/contracts/src/index.js';
@@ -1223,11 +1224,24 @@ export class PostgresChangeSetReviewV2Repository implements ReviewV2RepositoryPo
 
     const existing = await this.findDraftByComparisonId(draft.projectId, draft.comparisonId);
     if (!existing) throw new Error('v2 Draft Change Set was not stored.');
-    // `createdAt`, `updatedAt`, status and the derived content digest are
-    // delivery/review state, not the durable comparison lineage. A replay of
-    // the same immutable Comparison may arrive with a fresh clock tick (or
-    // after a user decision); it must return the existing Draft rather than
-    // manufacture a conflicting row or overwrite the user's state.
+    // `createdAt`, `updatedAt` and status are delivery/review state, not the
+    // durable comparison lineage. A replay of the same immutable Comparison
+    // may arrive with a fresh clock tick (or after a user decision); it must
+    // return the existing Draft rather than manufacture a conflicting row or
+    // overwrite the user's state. The digest is still integrity material: a
+    // caller may not replace it with an arbitrary value and bypass the
+    // conflict guard. Validate it against the submitted draft before applying
+    // the replay exception.
+    const { contentDigest: _submittedDigest, ...submittedWithoutDigest } = draft;
+    if (draftChangeSetContentDigestV2(submittedWithoutDigest) !== draft.contentDigest) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'The v2 Draft Change Set content digest is invalid.',
+        module: 'postgres-stage5',
+        operation: 'save-draft-change-set-v2',
+      });
+    }
+    void _submittedDigest;
     const immutableDraft = (value: DraftChangeSetV2) => {
       const {
         status: _status,

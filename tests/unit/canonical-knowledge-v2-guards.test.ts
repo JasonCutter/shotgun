@@ -85,7 +85,9 @@ const makeManifest = (overrides: Partial<ApprovedChangeSetManifestV2> = {}) => {
     expectedCanonicalVersion: snapshot.version,
     snapshotDigest: snapshot.digest,
     issuedAt: '2026-09-06T00:00:00.000Z',
-    expiresAt: '2026-09-06T00:15:00.000Z',
+    // Keep the approval fixture valid independently of the wall clock running
+    // in CI; expiry-specific negative cases construct their own stale data.
+    expiresAt: '2099-01-01T00:15:00.000Z',
   };
   const token = {
     ...unsignedToken,

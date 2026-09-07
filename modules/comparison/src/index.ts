@@ -101,7 +101,31 @@ export type ComparisonV2RuntimeBoundary = {
     readonly actor: EventEnvelope['actor'];
     readonly security: SecurityContext;
     readonly correlationId?: string;
-  }): Promise<{ readonly rollout: 'V1_ONLY' | 'V2_SHADOW' | 'V2_ACTIVE' }>;
+  }): Promise<{
+    readonly rollout: 'V1_ONLY' | 'V2_SHADOW' | 'V2_ACTIVE';
+    readonly v2Outcome?:
+      | {
+          readonly status: 'COMPLETED';
+          readonly aggregate?: {
+            readonly comparison?: {
+              readonly comparisonId: string;
+              readonly canonicalSnapshot?: { readonly version: number; readonly digest: string };
+            };
+          };
+        }
+      | {
+          readonly status: 'INCOMPLETE' | 'FAILED';
+          readonly analysis?: {
+            readonly comparisonId: string;
+            readonly canonicalSnapshot?: { readonly version: number; readonly digest: string };
+          };
+        }
+      | { readonly status: 'BLOCKED'; readonly reason: string };
+    readonly review?:
+      | { readonly status: 'DRAFT_CREATED' }
+      | { readonly status: 'BLOCKED'; readonly reason: string }
+      | { readonly status: 'NOT_ATTEMPTED' };
+  }>;
 };
 
 const normalizeClaim = (value: string): string =>
@@ -228,6 +252,53 @@ type ComparisonExecution = {
   readonly v1Executed: boolean;
   readonly result?: ComparisonResult;
   readonly snapshot?: CanonicalSnapshot;
+  readonly v2?: {
+    readonly status: 'COMPLETED' | 'INCOMPLETE' | 'FAILED' | 'BLOCKED';
+    readonly reason?: string;
+    readonly comparisonId?: string;
+    readonly snapshotVersion?: number;
+    readonly snapshotDigest?: string;
+  };
+  readonly review?:
+    | { readonly status: 'DRAFT_CREATED' }
+    | { readonly status: 'BLOCKED'; readonly reason: string }
+    | { readonly status: 'NOT_ATTEMPTED' };
+};
+
+const normalizeV2Outcome = (
+  outcome:
+    | Awaited<ReturnType<NonNullable<ComparisonV2RuntimeBoundary['handleCandidateValidated']>>>
+    | {
+        readonly v2Outcome?: never;
+      },
+): ComparisonExecution['v2'] => {
+  const v2 = outcome.v2Outcome;
+  if (!v2) return { status: 'BLOCKED', reason: 'V2_OUTCOME_MISSING' };
+  if (v2.status === 'COMPLETED') {
+    const comparison = v2.aggregate?.comparison;
+    return {
+      status: 'COMPLETED',
+      ...(comparison?.comparisonId ? { comparisonId: comparison.comparisonId } : {}),
+      ...(comparison?.canonicalSnapshot?.version !== undefined
+        ? { snapshotVersion: comparison.canonicalSnapshot.version }
+        : {}),
+      ...(comparison?.canonicalSnapshot?.digest
+        ? { snapshotDigest: comparison.canonicalSnapshot.digest }
+        : {}),
+    };
+  }
+  if (v2.status === 'BLOCKED') return { status: 'BLOCKED', reason: v2.reason };
+  const analysis = v2.analysis;
+  return {
+    status: v2.status,
+    ...(analysis?.comparisonId ? { comparisonId: analysis.comparisonId } : {}),
+    ...(analysis?.canonicalSnapshot?.version !== undefined
+      ? { snapshotVersion: analysis.canonicalSnapshot.version }
+      : {}),
+    ...(analysis?.canonicalSnapshot?.digest
+      ? { snapshotDigest: analysis.canonicalSnapshot.digest }
+      : {}),
+  };
 };
 
 /**
@@ -263,7 +334,12 @@ const executeComparison = async (input: {
     });
     rollout = runtimeOutcome.rollout;
     if (rollout === 'V2_ACTIVE') {
-      return { rollout, v1Executed: false };
+      return {
+        rollout,
+        v1Executed: false,
+        v2: normalizeV2Outcome(runtimeOutcome),
+        ...(runtimeOutcome.review ? { review: runtimeOutcome.review } : {}),
+      };
     }
   }
 
@@ -474,6 +550,8 @@ export const createComparisonModule = (
             candidateRevisionNumber: candidate.revisionNumber,
             rollout: execution.rollout,
             v1Executed: execution.v1Executed,
+            ...(execution.v2 ? { v2: execution.v2 } : {}),
+            ...(execution.review ? { review: execution.review } : {}),
             ...(execution.result
               ? {
                   comparisonId: execution.result.comparisonId,

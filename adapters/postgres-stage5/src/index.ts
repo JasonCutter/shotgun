@@ -1223,7 +1223,26 @@ export class PostgresChangeSetReviewV2Repository implements ReviewV2RepositoryPo
 
     const existing = await this.findDraftByComparisonId(draft.projectId, draft.comparisonId);
     if (!existing) throw new Error('v2 Draft Change Set was not stored.');
-    if (stableJson(existing) !== stableJson(draft)) {
+    // `createdAt`, `updatedAt`, status and the derived content digest are
+    // delivery/review state, not the durable comparison lineage. A replay of
+    // the same immutable Comparison may arrive with a fresh clock tick (or
+    // after a user decision); it must return the existing Draft rather than
+    // manufacture a conflicting row or overwrite the user's state.
+    const immutableDraft = (value: DraftChangeSetV2) => {
+      const {
+        status: _status,
+        createdAt: _createdAt,
+        updatedAt: _updatedAt,
+        contentDigest: _digest,
+        ...lineage
+      } = value;
+      void _status;
+      void _createdAt;
+      void _updatedAt;
+      void _digest;
+      return lineage;
+    };
+    if (stableJson(immutableDraft(existing)) !== stableJson(immutableDraft(draft))) {
       throw new ShotgunError({
         code: 'CONFLICT',
         safeMessage: 'The same v2 Comparison produced a different Draft Change Set.',

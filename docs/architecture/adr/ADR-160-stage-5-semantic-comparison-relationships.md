@@ -475,6 +475,25 @@ historical v2 evidence readable; a Candidate already completed or approved
 under v2 is not automatically replayed through v1. Any manual re-entry after
 rollback must be explicit, user-authorized and auditable.
 
+### 10.2 Compatibility and V2 persistence identities
+
+The two rollout contracts intentionally use different identities; the v1
+compatibility key must never be used as a V2 semantic fallback.
+
+| Path                   | Persistence identity                                                                                                                       | Reuse rule                                                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| v1 compatibility       | `Candidate ID + Candidate revision/digest + current Canonical snapshot identity (id/version/digest)`                                       | Reuse the existing v1 result for the same immutable Candidate/snapshot pair. A snapshot change creates a new v1 comparison.                                         |
+| v2 semantic            | `Candidate ID + revision + digest + Canonical snapshot identity + governed analysis-input identity`                                        | Resolve the complete input identity before provider execution. Reuse the completed Comparison/Analysis/Relationship lineage and materialize/reuse its Review draft. |
+| v2 deterministic exact | Existing V2 `DETERMINISTIC_EXACT` storage identity: Candidate revision/digest + Canonical snapshot digest + exact target Claim ID/revision | Reuse only the exact target identity defined by the V2 storage contract; never collapse it into the semantic identity.                                              |
+
+The V2 governed analysis-input identity includes shortlist/retrieval identity,
+provider/model/capability, credential revision, prompt and output-schema
+revisions, and semantic-policy revision. Any change to one of those fields is a
+new legitimate V2 identity and must not reuse an older aggregate. Transport
+idempotency keys are delivery protection only; they are not semantic identity.
+This amendment records the correction without rewriting the original ADR
+history.
+
 ## 11. ECAV acceptance target
 
 The implementation must later prove the following durable evidence in the

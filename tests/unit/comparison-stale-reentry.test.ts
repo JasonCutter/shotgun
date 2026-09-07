@@ -159,7 +159,13 @@ describe('Stage 5 stale comparison re-entry', () => {
         },
       },
       { identity: { id: 'text-diff', version: '1' }, diff: () => [] },
-      { handleCandidateValidated: async () => ({ rollout: 'V2_ACTIVE' as const }) },
+      {
+        handleCandidateValidated: async () => ({
+          rollout: 'V2_ACTIVE' as const,
+          v2Outcome: { status: 'BLOCKED' as const, reason: 'SEMANTIC_UNAVAILABLE' },
+          review: { status: 'BLOCKED' as const, reason: 'SEMANTIC_UNAVAILABLE' },
+        }),
+      },
     );
 
     const result = await activeModule.handlers.commands[0]!.handle(
@@ -167,6 +173,11 @@ describe('Stage 5 stale comparison re-entry', () => {
       fixture.queryContext,
     );
     expect(result).toMatchObject({ rollout: 'V2_ACTIVE', v1Executed: false });
+    expect(result).toMatchObject({
+      v2: { status: 'BLOCKED', reason: 'SEMANTIC_UNAVAILABLE' },
+      review: { status: 'BLOCKED', reason: 'SEMANTIC_UNAVAILABLE' },
+    });
+    expect(result).not.toHaveProperty('comparisonId');
     expect(fixture.saved).toHaveLength(0);
   });
 });

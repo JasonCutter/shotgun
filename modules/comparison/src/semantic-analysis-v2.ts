@@ -163,6 +163,23 @@ export type ComparisonSemanticAnalysisV2Dependencies = {
 };
 
 export type ComparisonSemanticAnalysisV2Port = {
+  /**
+   * Resolve the complete governed analysis identity without invoking the
+   * semantic provider.  Orchestration uses this as the pre-provider lookup
+   * boundary so a replay with a different transport idempotency key can
+   * converge on an already completed aggregate.
+   */
+  resolveInputIdentity?(request: ComparisonSemanticAnalysisV2Request): Promise<
+    | {
+        readonly inputDigest: ComparisonDigestV2;
+        readonly providerIdentity: AnalysisRevisionV2['providerIdentity'];
+        readonly credentialRevisionRef: string;
+        readonly promptTemplateRevision: string;
+        readonly outputSchemaRevision: string;
+        readonly semanticPolicyRevision: string;
+      }
+    | ComparisonSemanticAnalysisV2Outcome
+  >;
   analyze(
     request: ComparisonSemanticAnalysisV2Request,
   ): Promise<ComparisonSemanticAnalysisV2Outcome>;
@@ -376,42 +393,132 @@ export const createComparisonSemanticAnalysisV2 = (
   const now = dependencies.now ?? (() => new Date().toISOString());
   const nextId = dependencies.randomId ?? randomUUID;
 
+  const resolveExecutionIdentity = async (request: ComparisonSemanticAnalysisV2Request) => {
+    const resolution = await dependencies.executionResolver.resolve({
+      projectId: request.projectId,
+      requestId: request.comparisonId,
+      sourceVersionId: request.candidate.sourceVersionId,
+      dataClassification: request.security.dataClassification,
+      accessScope: request.security.accessScope,
+      sensitivity: request.security.sensitivity,
+    });
+    const executionIdentity = resolution.executionIdentity;
+    if (
+      !isNonEmpty(executionIdentity.providerId) ||
+      !isNonEmpty(executionIdentity.modelId) ||
+      !isNonEmpty(executionIdentity.credentialId) ||
+      executionIdentity.credentialRevision < 1 ||
+      executionIdentity.providerId !== resolution.adapter.identity.provider ||
+      executionIdentity.modelId !== resolution.adapter.identity.model
+    ) {
+      throw new Error('Invalid governed AI execution identity.');
+    }
+    return { resolution, executionIdentity };
+  };
+
+  const validateShortlistAndSnapshot = async (
+    request: ComparisonSemanticAnalysisV2Request,
+  ): Promise<CanonicalSnapshot> => {
+    try {
+      validateShortlistAuditV2(request.shortlist);
+    } catch {
+      throw new Error('SHORTLIST_INTEGRITY');
+    }
+    if (
+      request.shortlist.querySemanticReadiness !== 'READY' ||
+      request.shortlist.coverageStatus !== 'COMPLETE' ||
+      request.shortlist.truncated ||
+      shortlistAuditDigestV2(request.shortlist) !== request.shortlistDigest
+    ) {
+      throw new Error('SHORTLIST_INTEGRITY');
+    }
+    const snapshot = await dependencies.canonicalSnapshot.getSnapshot(request.projectId);
+    if (
+      snapshot.projectId !== request.projectId ||
+      snapshot.digest !==
+        canonicalSnapshotDigest(
+          snapshot.projectId,
+          snapshot.version,
+          snapshot.claims,
+          snapshot.relations,
+        ) ||
+      !sameSnapshot(snapshotIdentity(snapshot), request.shortlist.canonicalSnapshot)
+    ) {
+      throw new Error('SNAPSHOT_MISMATCH');
+    }
+    return snapshot;
+  };
+
+  const governedInputIdentity = async (request: ComparisonSemanticAnalysisV2Request) => {
+    const snapshot = await validateShortlistAndSnapshot(request);
+    const { resolution, executionIdentity } = await resolveExecutionIdentity(request);
+    const providerIdentity = {
+      providerId: executionIdentity.providerId,
+      modelId: executionIdentity.modelId,
+      capabilityId: COMPARISON_SEMANTIC_ANALYSIS_CAPABILITY_V2,
+    } as const;
+    const comparedResourceIdentities = request.shortlist.selectedTargetIdentities.map((target) => ({
+      resourceType: target.resourceType,
+      resourceId: target.resourceId,
+      resourceRevision: target.resourceRevision,
+    }));
+    const inputDigest = analysisInputDigestV2({
+      candidate: request.candidate,
+      canonicalSnapshot: request.shortlist.canonicalSnapshot,
+      shortlistDigest: request.shortlistDigest,
+      comparedResourceIdentities,
+      providerIdentity,
+      credentialRevisionRef: credentialRevisionRef(executionIdentity),
+      promptTemplateRevision: COMPARISON_SEMANTIC_ANALYSIS_PROMPT_REVISION_V2,
+      outputSchemaRevision: COMPARISON_SEMANTIC_ANALYSIS_SCHEMA_REVISION_V2,
+      semanticPolicyRevision: COMPARISON_SEMANTIC_ANALYSIS_POLICY_REVISION_V2,
+    });
+    return {
+      snapshot,
+      resolution,
+      executionIdentity,
+      inputDigest,
+      providerIdentity,
+      credentialRevisionRef: credentialRevisionRef(executionIdentity),
+      promptTemplateRevision: COMPARISON_SEMANTIC_ANALYSIS_PROMPT_REVISION_V2,
+      outputSchemaRevision: COMPARISON_SEMANTIC_ANALYSIS_SCHEMA_REVISION_V2,
+      semanticPolicyRevision: COMPARISON_SEMANTIC_ANALYSIS_POLICY_REVISION_V2,
+      comparedResourceIdentities,
+    };
+  };
+
   return {
+    async resolveInputIdentity(request) {
+      if (!validateRequest(request)) return blocked('INVALID_REQUEST', 'CONTRACT_FAILURE');
+      try {
+        const identity = await governedInputIdentity(request);
+        return {
+          inputDigest: identity.inputDigest,
+          providerIdentity: identity.providerIdentity,
+          credentialRevisionRef: identity.credentialRevisionRef,
+          promptTemplateRevision: identity.promptTemplateRevision,
+          outputSchemaRevision: identity.outputSchemaRevision,
+          semanticPolicyRevision: identity.semanticPolicyRevision,
+        };
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : '';
+        if (reason === 'SHORTLIST_INTEGRITY')
+          return blocked('SHORTLIST_INTEGRITY', 'STALE_COMPARISON');
+        if (reason === 'SNAPSHOT_MISMATCH') return blocked('SNAPSHOT_MISMATCH', 'STALE_COMPARISON');
+        return executionErrorOutcome(error);
+      }
+    },
     async analyze(request) {
       if (!validateRequest(request)) return blocked('INVALID_REQUEST', 'CONTRACT_FAILURE');
-
-      try {
-        validateShortlistAuditV2(request.shortlist);
-      } catch {
-        return blocked('SHORTLIST_INTEGRITY', 'STALE_COMPARISON');
-      }
-      if (
-        request.shortlist.querySemanticReadiness !== 'READY' ||
-        request.shortlist.coverageStatus !== 'COMPLETE' ||
-        request.shortlist.truncated ||
-        shortlistAuditDigestV2(request.shortlist) !== request.shortlistDigest
-      ) {
-        return blocked('SHORTLIST_INTEGRITY', 'STALE_COMPARISON');
-      }
 
       const expectedSnapshot = request.shortlist.canonicalSnapshot;
       let snapshot: CanonicalSnapshot;
       try {
-        snapshot = await dependencies.canonicalSnapshot.getSnapshot(request.projectId);
-      } catch {
-        return blocked('SNAPSHOT_MISMATCH', 'STALE_COMPARISON');
-      }
-      if (
-        snapshot.projectId !== request.projectId ||
-        snapshot.digest !==
-          canonicalSnapshotDigest(
-            snapshot.projectId,
-            snapshot.version,
-            snapshot.claims,
-            snapshot.relations,
-          ) ||
-        !sameSnapshot(snapshotIdentity(snapshot), expectedSnapshot)
-      ) {
+        snapshot = await validateShortlistAndSnapshot(request);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'SHORTLIST_INTEGRITY') {
+          return blocked('SHORTLIST_INTEGRITY', 'STALE_COMPARISON');
+        }
         return blocked('SNAPSHOT_MISMATCH', 'STALE_COMPARISON');
       }
 
@@ -468,52 +575,17 @@ export const createComparisonSemanticAnalysisV2 = (
         });
       }
 
-      let resolution;
+      let resolution: Awaited<ReturnType<typeof resolveExecutionIdentity>>['resolution'];
+      let identity: Awaited<ReturnType<typeof governedInputIdentity>>;
       try {
-        resolution = await dependencies.executionResolver.resolve({
-          projectId: request.projectId,
-          requestId: request.comparisonId,
-          sourceVersionId: request.candidate.sourceVersionId,
-          dataClassification: request.security.dataClassification,
-          accessScope: request.security.accessScope,
-          sensitivity: request.security.sensitivity,
-        });
+        identity = await governedInputIdentity(request);
+        resolution = identity.resolution;
       } catch (error) {
         return executionErrorOutcome(error);
       }
 
-      const executionIdentity = resolution.executionIdentity;
-      if (
-        !isNonEmpty(executionIdentity.providerId) ||
-        !isNonEmpty(executionIdentity.modelId) ||
-        !isNonEmpty(executionIdentity.credentialId) ||
-        executionIdentity.credentialRevision < 1 ||
-        executionIdentity.providerId !== resolution.adapter.identity.provider ||
-        executionIdentity.modelId !== resolution.adapter.identity.model
-      ) {
-        return blocked('SEMANTIC_UNAVAILABLE', 'SEMANTIC_UNAVAILABLE');
-      }
-      const providerIdentity = {
-        providerId: executionIdentity.providerId,
-        modelId: executionIdentity.modelId,
-        capabilityId: COMPARISON_SEMANTIC_ANALYSIS_CAPABILITY_V2,
-      };
-      const comparedResourceIdentities = targets.map((target) => ({
-        resourceType: 'CLAIM' as const,
-        resourceId: target.resourceId,
-        resourceRevision: target.resourceRevision,
-      }));
-      const inputDigest = analysisInputDigestV2({
-        candidate: request.candidate,
-        canonicalSnapshot: expectedSnapshot,
-        shortlistDigest: request.shortlistDigest,
-        comparedResourceIdentities,
-        providerIdentity,
-        credentialRevisionRef: credentialRevisionRef(executionIdentity),
-        promptTemplateRevision: COMPARISON_SEMANTIC_ANALYSIS_PROMPT_REVISION_V2,
-        outputSchemaRevision: COMPARISON_SEMANTIC_ANALYSIS_SCHEMA_REVISION_V2,
-        semanticPolicyRevision: COMPARISON_SEMANTIC_ANALYSIS_POLICY_REVISION_V2,
-      });
+      const { executionIdentity, providerIdentity, comparedResourceIdentities, inputDigest } =
+        identity;
       const analysisRevisionId = nextId();
       const startedAt = now();
       const startedMillis = Date.now();

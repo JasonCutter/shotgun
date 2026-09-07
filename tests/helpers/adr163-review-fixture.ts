@@ -13,10 +13,20 @@ import {
   type ClaimCandidate,
   type ComparisonResultV2,
   type DraftChangeSetV2,
+  type ProjectionReadiness,
   type ReviewAuthoritySelectionV2,
   type SecurityContext,
+  type SemanticProjectionGeneration,
   type SemanticRelationshipV2,
 } from '../../packages/contracts/src/index.js';
+import {
+  COMPARISON_SEMANTIC_ANALYSIS_CAPABILITY_V2,
+  COMPARISON_SEMANTIC_ANALYSIS_POLICY_REVISION_V2,
+  COMPARISON_SEMANTIC_ANALYSIS_PROMPT_REVISION_V2,
+  COMPARISON_SEMANTIC_ANALYSIS_SCHEMA_REVISION_V2,
+  comparisonLexicalProjectionBaseV2,
+  comparisonLexicalProjectionWatermarkV2,
+} from '../../modules/comparison/src/index.js';
 import type { ComparisonV2AggregateForReview } from '../../modules/change-set-review/src/index.js';
 
 export const ADR163_FIXTURE_PROJECT = 'shotgun';
@@ -62,6 +72,12 @@ export const createAdr163ReviewFixture = (input: {
   readonly createdAt?: string;
   readonly freshnessMode?: 'SEMANTIC' | 'DETERMINISTIC_EXACT';
   readonly rolloutAuthorityRevision?: string;
+  readonly semanticFreshness?: {
+    readonly lexicalReadiness: ProjectionReadiness;
+    readonly semanticGeneration: SemanticProjectionGeneration;
+    readonly providerModelCapabilityIdentity: string;
+    readonly shortlistPolicyRevision?: string;
+  };
 }): Adr163ReviewFixture => {
   const createdAt = input.createdAt ?? '2026-09-08T12:00:00.000Z';
   const snapshot =
@@ -77,6 +93,7 @@ export const createAdr163ReviewFixture = (input: {
   const evidenceId = `evidence:adr163:${input.suffix}`;
   const candidateId = `candidate:adr163:${input.suffix}`;
   const sourceVersionId = `source-version:adr163:${input.suffix}`;
+  const semanticFreshness = input.semanticFreshness;
   const candidateWithoutDigest = {
     candidateId,
     batchId: `batch:adr163:${input.suffix}`,
@@ -109,13 +126,22 @@ export const createAdr163ReviewFixture = (input: {
       version: snapshot.version,
       digest: snapshot.digest,
     },
-    lexicalProjectionWatermark: sha256Text(`watermark:${input.suffix}`),
-    lexicalProjectionBase: sha256Text(`lexical:${input.suffix}`),
-    semanticGenerationId: `generation:${input.suffix}`,
-    semanticSourceProjectionDigest: sha256Text(`source-projection:${input.suffix}`),
-    semanticCanonicalBaseVersion: snapshot.version,
+    lexicalProjectionWatermark: semanticFreshness
+      ? comparisonLexicalProjectionWatermarkV2(semanticFreshness.lexicalReadiness, snapshot)
+      : sha256Text(`watermark:${input.suffix}`),
+    lexicalProjectionBase: semanticFreshness
+      ? comparisonLexicalProjectionBaseV2(semanticFreshness.lexicalReadiness)
+      : sha256Text(`lexical:${input.suffix}`),
+    semanticGenerationId:
+      semanticFreshness?.semanticGeneration.generationId ?? `generation:${input.suffix}`,
+    semanticSourceProjectionDigest:
+      semanticFreshness?.semanticGeneration.sourceProjectionDigest ??
+      sha256Text(`source-projection:${input.suffix}`),
+    semanticCanonicalBaseVersion:
+      semanticFreshness?.semanticGeneration.canonicalBaseVersion ?? snapshot.version,
     querySemanticReadiness: 'READY' as const,
-    policyRevision: sha256Text(`shortlist-policy:${input.suffix}`),
+    policyRevision:
+      semanticFreshness?.shortlistPolicyRevision ?? sha256Text(`shortlist-policy:${input.suffix}`),
     k: 1,
     selectedTargetIdentities: [
       {
@@ -136,7 +162,7 @@ export const createAdr163ReviewFixture = (input: {
   const providerIdentity = {
     providerId: 'fixture-provider',
     modelId: 'fixture-model',
-    capabilityId: 'fixture-capability',
+    capabilityId: COMPARISON_SEMANTIC_ANALYSIS_CAPABILITY_V2,
   };
   const analysisInput = {
     candidate: candidateIdentity,
@@ -149,9 +175,9 @@ export const createAdr163ReviewFixture = (input: {
     comparedResourceIdentities: [comparedResource],
     providerIdentity,
     credentialRevisionRef: 'credential:fixture',
-    promptTemplateRevision: 'prompt:fixture',
-    outputSchemaRevision: 'schema:fixture',
-    semanticPolicyRevision: 'policy:fixture',
+    promptTemplateRevision: COMPARISON_SEMANTIC_ANALYSIS_PROMPT_REVISION_V2,
+    outputSchemaRevision: COMPARISON_SEMANTIC_ANALYSIS_SCHEMA_REVISION_V2,
+    semanticPolicyRevision: COMPARISON_SEMANTIC_ANALYSIS_POLICY_REVISION_V2,
   };
   const analysis = {
     analysisRevisionId: `analysis:adr163:${input.suffix}`,
@@ -263,7 +289,9 @@ export const createAdr163ReviewFixture = (input: {
           semanticGenerationId: shortlist.semanticGenerationId,
           semanticSourceProjectionDigest: shortlist.semanticSourceProjectionDigest,
           semanticCanonicalBaseVersion: shortlist.semanticCanonicalBaseVersion,
-          providerModelCapabilityIdentity: 'fixture-provider/fixture-model/fixture-capability',
+          providerModelCapabilityIdentity:
+            semanticFreshness?.providerModelCapabilityIdentity ??
+            'fixture-provider/fixture-model/fixture-capability',
           promptTemplateRevision: analysis.promptTemplateRevision,
           outputSchemaRevision: analysis.outputSchemaRevision,
           semanticPolicyRevision: analysis.semanticPolicyRevision,

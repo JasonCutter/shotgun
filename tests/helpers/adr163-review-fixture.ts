@@ -291,7 +291,11 @@ export const createAdr163ReviewFixture = (input: {
           semanticCanonicalBaseVersion: shortlist.semanticCanonicalBaseVersion,
           providerModelCapabilityIdentity:
             semanticFreshness?.providerModelCapabilityIdentity ??
-            'fixture-provider/fixture-model/fixture-capability',
+            [
+              providerIdentity.providerId,
+              providerIdentity.modelId,
+              providerIdentity.capabilityId,
+            ].join('/'),
           promptTemplateRevision: analysis.promptTemplateRevision,
           outputSchemaRevision: analysis.outputSchemaRevision,
           semanticPolicyRevision: analysis.semanticPolicyRevision,

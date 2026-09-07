@@ -23,6 +23,7 @@ export type {
 export {
   HISTORICAL_RECONCILIATION_REQUIRED_CODE,
   STAGE3_RUNTIME_CONTRACT_ERROR_CODE,
+  STAGE3_UNKNOWN_FAILURE_CODE,
   classifySourcesStage3Failure,
 } from './stage3-pipeline.js';
 export {

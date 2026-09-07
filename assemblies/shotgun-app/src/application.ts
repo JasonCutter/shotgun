@@ -1211,7 +1211,7 @@ export const startShotgunApplication = async (
     });
     const runningApplication = application!;
     const reportStage3Recovery = async (observation: {
-      readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED';
+      readonly status: 'EMPTY' | 'SUCCEEDED' | 'FAILED' | 'DEFERRED';
       readonly code?: string;
     }): Promise<void> => {
       const previous = runningApplication.state.recoveryRegistry.get(
@@ -1229,7 +1229,9 @@ export const startShotgunApplication = async (
         startedAt: previous?.startedAt ?? now,
         completedAt: now,
         ...(failed ? {} : { lastSuccessAt: now }),
-        scannedCount: (previous?.scannedCount ?? 0) + (observation.status === 'EMPTY' ? 0 : 1),
+        scannedCount:
+          (previous?.scannedCount ?? 0) +
+          (observation.status === 'EMPTY' || observation.status === 'DEFERRED' ? 0 : 1),
         succeededCount:
           (previous?.succeededCount ?? 0) + (observation.status === 'SUCCEEDED' ? 1 : 0),
         retryableCount: (previous?.retryableCount ?? 0) + (failed && retryable ? 1 : 0),

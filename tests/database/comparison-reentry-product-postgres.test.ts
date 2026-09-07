@@ -6,6 +6,7 @@ import { InMemoryAuthRepository } from '../../packages/authentication/src/index.
 import {
   canonicalSnapshotDigest,
   sha256Text,
+  ShotgunError,
   type HybridRetrievalCoordinatorPort,
   type SemanticProjectionGeneration,
 } from '../../packages/contracts/src/index.js';
@@ -330,6 +331,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       },
     };
     let providerCalls = 0;
+    let semanticFailure = false;
     const executionResolver = {
       async resolve() {
         const modelId = `deepseek-chat-e${generationEpoch}`;
@@ -353,6 +355,15 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
             },
             async generateStructured(request: { readonly prompt: string }) {
               providerCalls += 1;
+              if (semanticFailure) {
+                throw new ShotgunError({
+                  code: 'TERMINAL_FAILURE',
+                  safeMessage:
+                    'Deterministic V2 semantic provider failure for Product bridge test.',
+                  module: 'stage5.product-reentry-test',
+                  operation: 'semantic-provider',
+                });
+              }
               const parsed = JSON.parse(request.prompt) as {
                 readonly claims?: readonly {
                   readonly resourceId: string;
@@ -588,6 +599,81 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       expect(changedDraft.expectedCanonicalVersion).toBe(1);
       expect((await canonical.getSnapshot(projectId)).version).toBe(1);
 
+      // The Product bridge must surface the exact durable AnalysisRevision
+      // identity for a terminal V2 semantic failure without falling back to
+      // the legacy V1 comparison path.
+      const failureCandidateId = randomUUID();
+      await insertCandidate({
+        candidateId: failureCandidateId,
+        batchId: randomUUID(),
+        sourceVersionId: candidateSourceVersionId,
+        claimText: 'Candidate that deterministically fails at V2 provider execution.',
+        evidenceId: candidateEvidenceId,
+      });
+      semanticFailure = true;
+      const failedReentry = await invoke(failureCandidateId, 'product-key-v2-terminal-failure');
+      expect(failedReentry.statusCode).toBe(200);
+      const failedBody = failedReentry.json<{
+        result: {
+          rollout: string;
+          v1Executed: boolean;
+          v2: {
+            status: string;
+            comparisonId: string;
+            snapshotVersion: number;
+            snapshotDigest: string;
+            analysisRevisionId: string;
+            analysisState: string;
+            safeFailureCode: string;
+          };
+          review: { status: string };
+        };
+      }>();
+      expect(failedBody.result).toMatchObject({
+        rollout: 'V2_ACTIVE',
+        v1Executed: false,
+        v2: {
+          status: 'FAILED',
+          analysisState: 'FAILED_TERMINAL',
+          safeFailureCode: 'TERMINAL_FAILURE',
+        },
+        review: { status: 'NOT_ATTEMPTED' },
+      });
+      const failedAnalysis = await pool.query<{
+        analysis_revision_id: string;
+        comparison_id: string;
+        snapshot_version: number;
+        snapshot_digest: string;
+        state: string;
+        safe_failure_code: string;
+      }>(
+        `SELECT analysis_revision_id,comparison_id,snapshot_version,snapshot_digest,state,safe_failure_code
+           FROM comparison.analysis_revisions_v2
+          WHERE project_id = $1 AND candidate_id = $2
+          ORDER BY attempt DESC`,
+        [projectId, failureCandidateId],
+      );
+      expect(failedAnalysis.rows).toHaveLength(1);
+      const durableFailure = failedAnalysis.rows[0]!;
+      expect(failedBody.result.v2).toEqual(
+        expect.objectContaining({
+          comparisonId: durableFailure.comparison_id,
+          snapshotVersion: durableFailure.snapshot_version,
+          snapshotDigest: durableFailure.snapshot_digest,
+          analysisRevisionId: durableFailure.analysis_revision_id,
+          analysisState: durableFailure.state,
+          safeFailureCode: durableFailure.safe_failure_code,
+        }),
+      );
+      expect(failedBody.result).not.toHaveProperty('v2.rawText');
+      expect(failedBody.result).not.toHaveProperty('v2.providerError');
+      const legacyFailureComparison = await pool.query(
+        `SELECT comparison_id FROM comparison.results WHERE project_id = $1 AND candidate_id = $2`,
+        [projectId, failureCandidateId],
+      );
+      expect(legacyFailureComparison.rows).toHaveLength(0);
+      semanticFailure = false;
+
       const counts = await pool.query<{
         comparisons: string;
         analyses: string;
@@ -603,7 +689,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       );
       expect(counts.rows[0]).toEqual({
         comparisons: '2',
-        analyses: '2',
+        analyses: '3',
         relationships: '4',
         reviews: '2',
       });

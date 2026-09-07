@@ -20,6 +20,7 @@ import {
   type ComparisonResult,
   type EventEnvelope,
   type AIExecutionIdentity,
+  type AnalysisRevisionV2,
   type QueryEnvelope,
   type SecurityContext,
   sha256Text,
@@ -115,10 +116,14 @@ export type ComparisonV2RuntimeBoundary = {
         }
       | {
           readonly status: 'INCOMPLETE' | 'FAILED';
-          readonly analysis?: {
-            readonly comparisonId: string;
-            readonly canonicalSnapshot?: { readonly version: number; readonly digest: string };
-          };
+          readonly analysis: Pick<
+            AnalysisRevisionV2,
+            | 'comparisonId'
+            | 'canonicalSnapshot'
+            | 'analysisRevisionId'
+            | 'state'
+            | 'safeFailureCode'
+          >;
         }
       | { readonly status: 'BLOCKED'; readonly reason: string };
     readonly review?:
@@ -252,13 +257,26 @@ type ComparisonExecution = {
   readonly v1Executed: boolean;
   readonly result?: ComparisonResult;
   readonly snapshot?: CanonicalSnapshot;
-  readonly v2?: {
-    readonly status: 'COMPLETED' | 'INCOMPLETE' | 'FAILED' | 'BLOCKED';
-    readonly reason?: string;
-    readonly comparisonId?: string;
-    readonly snapshotVersion?: number;
-    readonly snapshotDigest?: string;
-  };
+  readonly v2?:
+    | {
+        readonly status: 'COMPLETED';
+        readonly comparisonId?: string;
+        readonly snapshotVersion?: number;
+        readonly snapshotDigest?: string;
+      }
+    | {
+        readonly status: 'BLOCKED';
+        readonly reason?: string;
+      }
+    | {
+        readonly status: 'INCOMPLETE' | 'FAILED';
+        readonly comparisonId: string;
+        readonly snapshotVersion: number;
+        readonly snapshotDigest: string;
+        readonly analysisRevisionId: string;
+        readonly analysisState: AnalysisRevisionV2['state'];
+        readonly safeFailureCode: NonNullable<AnalysisRevisionV2['safeFailureCode']>;
+      };
   readonly review?:
     | { readonly status: 'DRAFT_CREATED' }
     | { readonly status: 'BLOCKED'; readonly reason: string }
@@ -289,15 +307,18 @@ const normalizeV2Outcome = (
   }
   if (v2.status === 'BLOCKED') return { status: 'BLOCKED', reason: v2.reason };
   const analysis = v2.analysis;
+  const safeFailureCode = analysis.safeFailureCode;
+  if (!safeFailureCode) {
+    return { status: 'BLOCKED', reason: 'V2_FAILURE_IDENTITY_MISSING' };
+  }
   return {
     status: v2.status,
-    ...(analysis?.comparisonId ? { comparisonId: analysis.comparisonId } : {}),
-    ...(analysis?.canonicalSnapshot?.version !== undefined
-      ? { snapshotVersion: analysis.canonicalSnapshot.version }
-      : {}),
-    ...(analysis?.canonicalSnapshot?.digest
-      ? { snapshotDigest: analysis.canonicalSnapshot.digest }
-      : {}),
+    comparisonId: analysis.comparisonId,
+    snapshotVersion: analysis.canonicalSnapshot.version,
+    snapshotDigest: analysis.canonicalSnapshot.digest,
+    analysisRevisionId: analysis.analysisRevisionId,
+    analysisState: analysis.state,
+    safeFailureCode,
   };
 };
 

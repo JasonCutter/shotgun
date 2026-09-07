@@ -15,7 +15,8 @@
       { "name": "ListDraftChangeSets", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetReviewBundle", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetApprovedChangeSetManifest", "range": ">=1.0.0 <2.0.0" },
-      { "name": "ChangeSetApprovedV2", "range": ">=2.0.0 <3.0.0" }
+      { "name": "ChangeSetApprovedV2", "range": ">=2.0.0 <3.0.0" },
+      { "name": "ResolveReviewOperationV2", "range": ">=1.0.0 <2.0.0" }
     ]
   },
   "deployment": { "modes": ["in_process", "worker"] },
@@ -26,7 +27,9 @@
       "review.approved_manifests",
       "review.change_sets_v2",
       "review.decisions_v2",
-      "review.approved_manifests_v2"
+      "review.approved_manifests_v2",
+      "review.change_set_revisions_v2",
+      "review.operation_resolutions_v2"
     ],
     "readsViaPorts": [
       "GetComparisonResult query",
@@ -37,7 +40,10 @@
     "directSchemaAccess": false
   },
   "consumes": {
-    "commands": [{ "name": "RecordReviewDecision", "range": ">=1.0.0 <2.0.0" }],
+    "commands": [
+      { "name": "RecordReviewDecision", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ResolveReviewOperationV2", "range": ">=1.0.0 <2.0.0" }
+    ],
     "events": [{ "name": "ComparisonCompleted", "range": ">=1.0.0 <2.0.0" }]
   },
   "produces": {

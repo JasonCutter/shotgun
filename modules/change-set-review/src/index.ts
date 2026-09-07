@@ -21,6 +21,7 @@ import getReviewBundleSchema from '../../../packages/contracts/schemas/get-revie
 import listDraftChangeSetsOutputSchema from '../../../packages/contracts/schemas/list-draft-change-sets-output.v1.schema.json';
 import listDraftChangeSetsSchema from '../../../packages/contracts/schemas/list-draft-change-sets.v1.schema.json';
 import recordReviewDecisionSchema from '../../../packages/contracts/schemas/record-review-decision.v1.schema.json';
+import resolveReviewOperationV2Schema from '../../../packages/contracts/schemas/resolve-review-operation-v2.schema.json';
 import reviewDecisionRecordedSchema from '../../../packages/contracts/schemas/review-decision-recorded.v1.schema.json';
 import {
   type ApprovedChangeSetManifest,
@@ -36,12 +37,19 @@ import {
   type ReversalDraftChangeSetV1,
   type ReviewDecisionRecord,
   type ReviewDecisionType,
+  type ResolveReviewOperationV2Request,
   changeSetContentDigest,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
 import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 
 export * from './review-v2.js';
+export * from './operation-resolution-v2.js';
+import type {
+  ReviewOperationResolutionStorePort,
+  ReviewOperationResolutionV2AuthorityPort,
+  ReviewOperationResolutionV2Port,
+} from './operation-resolution-v2.js';
 
 export type ReviewDecisionWrite = {
   readonly projectId: string;
@@ -181,8 +189,17 @@ const assertScope = (
 
 const terminal = new Set<DraftChangeSet['status']>(['APPROVED', 'REJECTED', 'STALE']);
 
+export type ChangeSetReviewModuleOptions = {
+  readonly operationResolution?: {
+    readonly resolver: ReviewOperationResolutionV2Port;
+    readonly repository: ReviewOperationResolutionStorePort;
+    readonly authority: ReviewOperationResolutionV2AuthorityPort;
+  };
+};
+
 export const createChangeSetReviewModule = (
   repository: ChangeSetReviewRepositoryPort,
+  options: ChangeSetReviewModuleOptions = {},
 ): ShotgunModule => ({
   manifest: {
     id: 'stage5.change-set-review',
@@ -202,6 +219,7 @@ export const createChangeSetReviewModule = (
         { name: 'GetReviewBundle', range: '>=1.0.0 <2.0.0' },
         { name: 'GetApprovedChangeSetManifest', range: '>=1.0.0 <2.0.0' },
         { name: 'ChangeSetApprovedV2', range: '>=2.0.0 <3.0.0' },
+        { name: 'ResolveReviewOperationV2', range: '>=1.0.0 <2.0.0' },
       ],
     },
     deployment: { modes: ['in_process', 'worker'] },
@@ -213,6 +231,8 @@ export const createChangeSetReviewModule = (
         'review.change_sets_v2',
         'review.decisions_v2',
         'review.approved_manifests_v2',
+        'review.change_set_revisions_v2',
+        'review.operation_resolutions_v2',
       ],
       readsViaPorts: [
         'GetComparisonResult query',
@@ -223,7 +243,10 @@ export const createChangeSetReviewModule = (
       directSchemaAccess: false,
     },
     consumes: {
-      commands: [{ name: 'RecordReviewDecision', range: '>=1.0.0 <2.0.0' }],
+      commands: [
+        { name: 'RecordReviewDecision', range: '>=1.0.0 <2.0.0' },
+        { name: 'ResolveReviewOperationV2', range: '>=1.0.0 <2.0.0' },
+      ],
       events: [{ name: 'ComparisonCompleted', range: '>=1.0.0 <2.0.0' }],
     },
     produces: {
@@ -355,6 +378,12 @@ export const createChangeSetReviewModule = (
       version: '2.0.0',
       kind: 'event',
       inputSchema: changeSetApprovedV2Schema,
+    },
+    {
+      name: 'ResolveReviewOperationV2',
+      version: '1.0.0',
+      kind: 'command',
+      inputSchema: resolveReviewOperationV2Schema,
     },
     {
       name: 'GetDraftChangeSet',
@@ -628,6 +657,38 @@ export const createChangeSetReviewModule = (
           return saved;
         },
       },
+      ...(options.operationResolution === undefined
+        ? []
+        : [
+            {
+              messageType: 'ResolveReviewOperationV2' as const,
+              version: '1.0.0' as const,
+              requiredAccessScopes: ['owner'],
+              async handle(envelope: CommandEnvelope) {
+                const { projectId, actor, security } = assertContext(envelope);
+                const payload = envelope.payload as ResolveReviewOperationV2Request;
+                const draft = await options.operationResolution!.repository.findDraftById(
+                  projectId,
+                  payload.changeSetId,
+                );
+                if (!draft) return { status: 'BLOCKED' as const, code: 'NOT_FOUND' as const };
+                const authority = await options.operationResolution!.authority.resolve({
+                  projectId,
+                  candidateId: draft.candidate.id,
+                  candidateRevision: draft.candidate.revision,
+                });
+                return options.operationResolution!.resolver.resolve({
+                  projectId,
+                  actor,
+                  security,
+                  authority: authority.selection,
+                  rolloutAuthorityRevision: authority.authorityRevision,
+                  request: payload,
+                  semanticCommandIdentity: `connector:${envelope.idempotencyKey}`,
+                });
+              },
+            },
+          ]),
     ],
     events: [
       {

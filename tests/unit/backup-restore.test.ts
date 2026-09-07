@@ -176,6 +176,17 @@ describe('Backup Bundle verification', () => {
     ).toThrow('requires 058_akp8_typed_proposition_conflict_authority.sql');
   });
 
+  it('includes ADR-163 immutable Review resolution tables in authoritative backups', () => {
+    expect(
+      authoritativeIntegrityTablesForMigrations([
+        '067_stage5_comparison_review_v2_persistence.sql',
+        '070_adr163_review_operation_resolution_v2.sql',
+      ]),
+    ).toEqual(
+      expect.arrayContaining(['review.change_set_revisions_v2', 'review.operation_resolutions_v2']),
+    );
+  });
+
   it('fails closed when a referenced Original Asset is corrupt or missing', async () => {
     const corrupt = await fixture();
     const corruptAsset = path.join(corrupt.directory, corrupt.manifest.assets.files[0]!.backupPath);

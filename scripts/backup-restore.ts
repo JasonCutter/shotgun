@@ -72,6 +72,8 @@ const WP10_ACTION_REVIEW_DIAGNOSTICS_MIGRATION =
   '065_runtime_data_integrity_wp10_action_review_discovery_diagnostics.sql';
 const STAGE5_COMPARISON_V2_MIGRATION = '066_stage5_semantic_comparison_v2_persistence.sql';
 const STAGE5_COMPARISON_REVIEW_V2_MIGRATION = '067_stage5_comparison_review_v2_persistence.sql';
+const ADR163_REVIEW_OPERATION_RESOLUTION_V2_MIGRATION =
+  '070_adr163_review_operation_resolution_v2.sql';
 const STAGE6_COMPARISON_REVIEW_V2_HANDOFF_MIGRATION = '068_stage6_comparison_review_v2_handoff.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
@@ -143,6 +145,9 @@ export const authoritativeIntegrityTablesForMigrations = (
       : []),
     ...(applied.has(STAGE5_COMPARISON_REVIEW_V2_MIGRATION)
       ? ['review.change_sets_v2', 'review.decisions_v2', 'review.approved_manifests_v2']
+      : []),
+    ...(applied.has(ADR163_REVIEW_OPERATION_RESOLUTION_V2_MIGRATION)
+      ? ['review.change_set_revisions_v2', 'review.operation_resolutions_v2']
       : []),
     ...(applied.has(DISCOVERY_FINDING_MIGRATION) ? ['discovery.findings'] : []),
     ...(applied.has(DISCOVERY_LIFECYCLE_MIGRATION)

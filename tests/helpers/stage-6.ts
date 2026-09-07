@@ -117,6 +117,7 @@ export const createStage6Harness = async (options: HarnessOptions = {}) => {
     clock,
     canonicalRepository,
     reviewRepository,
+    candidateRepository,
   };
 };
 

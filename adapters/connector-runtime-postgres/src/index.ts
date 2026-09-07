@@ -5,6 +5,7 @@ import {
   type AnyEnvelope,
   type ErrorCode,
   ShotgunError,
+  stableJson,
   toShotgunError,
 } from '../../../packages/contracts/src/index.js';
 import type {
@@ -33,6 +34,9 @@ import { withSafePostgresTransaction } from '../../../packages/postgres-transact
 const json = (value: unknown): string => JSON.stringify(value ?? null);
 const parseJson = (value: unknown): unknown =>
   typeof value === 'string' ? JSON.parse(value) : value;
+const persistedJsonValue = (value: unknown): unknown => parseJson(json(value));
+const sameJsonValue = (left: unknown, right: unknown): boolean =>
+  stableJson(persistedJsonValue(parseJson(left))) === stableJson(persistedJsonValue(right));
 const date = (value: Date | string): string => new Date(value).toISOString();
 const payloadDigest = (value: unknown): string =>
   `sha256:${createHash('sha256').update(json(value)).digest('hex')}`;
@@ -107,6 +111,31 @@ const identityWhere = (identity: ConnectorSemanticIdentity): readonly unknown[] 
 export class PostgresDedupStore implements DedupStorePort {
   constructor(private readonly pool: Pool) {}
 
+  private async readCompletionState<TResult>(input: {
+    readonly identity: ConnectorSemanticIdentity;
+    readonly fenceToken: number;
+    readonly jobId: string;
+    readonly result: TResult;
+  }): Promise<'COMPLETED' | 'UNRESOLVED'> {
+    const current = await this.pool.query<DedupRow>(
+      `SELECT * FROM connector.dedup_records
+       WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
+         AND message_kind=$4 AND message_type=$5 AND semantic_key=$6
+         AND fingerprint=$7`,
+      [...identityWhere(input.identity), input.identity.fingerprint],
+    );
+    const row = current.rows[0];
+    if (
+      row?.state === 'COMPLETED' &&
+      row.job_id === input.jobId &&
+      Number(row.fence_token) === input.fenceToken &&
+      sameJsonValue(row.result, input.result)
+    ) {
+      return 'COMPLETED';
+    }
+    return 'UNRESOLVED';
+  }
+
   async begin<TResult>(
     input: ConnectorSemanticIdentity & { readonly jobId: string },
   ): Promise<DedupBeginResult<TResult>> {
@@ -162,15 +191,49 @@ export class PostgresDedupStore implements DedupStorePort {
     readonly jobId: string;
     readonly result: TResult;
   }): Promise<void> {
-    await this.pool.query(
-      `UPDATE connector.dedup_records
-       SET state='COMPLETED', result=$7::jsonb, updated_at=clock_timestamp(),
-           completed_at=clock_timestamp()
-       WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
-         AND message_kind=$4 AND message_type=$5 AND semantic_key=$6
-         AND fence_token=$8 AND job_id=$9 AND state='IN_PROGRESS'`,
-      [...identityWhere(input.identity), json(input.result), input.fenceToken, input.jobId],
-    );
+    try {
+      const updated = await this.pool.query(
+        `UPDATE connector.dedup_records
+         SET state='COMPLETED', result=$7::jsonb, updated_at=clock_timestamp(),
+             completed_at=clock_timestamp()
+         WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
+           AND message_kind=$4 AND message_type=$5 AND semantic_key=$6
+           AND fence_token=$8 AND job_id=$9 AND state='IN_PROGRESS'`,
+        [...identityWhere(input.identity), json(input.result), input.fenceToken, input.jobId],
+      );
+      if (updated.rowCount === 1) return;
+    } catch (error) {
+      try {
+        if ((await this.readCompletionState(input)) === 'COMPLETED') return;
+      } catch {
+        // The read-back is itself ambiguous; preserve the unknown outcome below.
+      }
+      throw new ShotgunError({
+        code: 'OUTCOME_UNKNOWN',
+        safeMessage: 'The deduplication completion outcome could not be confirmed.',
+        module: 'connector-runtime-postgres',
+        operation: 'dedup-complete',
+        cause: error,
+      });
+    }
+
+    try {
+      if ((await this.readCompletionState(input)) === 'COMPLETED') return;
+    } catch (error) {
+      throw new ShotgunError({
+        code: 'OUTCOME_UNKNOWN',
+        safeMessage: 'The deduplication completion outcome could not be confirmed.',
+        module: 'connector-runtime-postgres',
+        operation: 'dedup-complete',
+        cause: error,
+      });
+    }
+    throw new ShotgunError({
+      code: 'OUTCOME_UNKNOWN',
+      safeMessage: 'The deduplication completion transition could not be confirmed.',
+      module: 'connector-runtime-postgres',
+      operation: 'dedup-complete',
+    });
   }
 
   async fail(input: {
@@ -203,15 +266,42 @@ export class PostgresDedupStore implements DedupStorePort {
     readonly jobId: string;
     readonly safeErrorMessage: string;
   }): Promise<void> {
-    await this.pool.query(
-      `UPDATE connector.dedup_records
-       SET state='OUTCOME_UNKNOWN', safe_error_code='OUTCOME_UNKNOWN',
-           safe_error_message=$7, updated_at=clock_timestamp(), completed_at=clock_timestamp()
+    try {
+      const updated = await this.pool.query(
+        `UPDATE connector.dedup_records
+         SET state='OUTCOME_UNKNOWN', safe_error_code='OUTCOME_UNKNOWN',
+             safe_error_message=$7, updated_at=clock_timestamp(), completed_at=clock_timestamp()
+         WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
+           AND message_kind=$4 AND message_type=$5 AND semantic_key=$6
+           AND fence_token=$8 AND job_id=$9 AND state='IN_PROGRESS'`,
+        [...identityWhere(input.identity), input.safeErrorMessage, input.fenceToken, input.jobId],
+      );
+      if (updated.rowCount === 1) return;
+    } catch (error) {
+      throw new ShotgunError({
+        code: 'OUTCOME_UNKNOWN',
+        safeMessage: 'The unknown delivery outcome could not be durably recorded.',
+        module: 'connector-runtime-postgres',
+        operation: 'dedup-mark-outcome-unknown',
+        cause: error,
+      });
+    }
+
+    const current = await this.pool.query<DedupRow>(
+      `SELECT * FROM connector.dedup_records
        WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
          AND message_kind=$4 AND message_type=$5 AND semantic_key=$6
-         AND fence_token=$8 AND job_id=$9 AND state='IN_PROGRESS'`,
-      [...identityWhere(input.identity), input.safeErrorMessage, input.fenceToken, input.jobId],
+         AND fingerprint=$7`,
+      [...identityWhere(input.identity), input.identity.fingerprint],
     );
+    const row = current.rows[0];
+    if (row?.state === 'OUTCOME_UNKNOWN' || row?.state === 'COMPLETED') return;
+    throw new ShotgunError({
+      code: 'OUTCOME_UNKNOWN',
+      safeMessage: 'The unknown delivery outcome could not be durably confirmed.',
+      module: 'connector-runtime-postgres',
+      operation: 'dedup-mark-outcome-unknown',
+    });
   }
 
   async reconcile<TResult>(input: {
@@ -264,6 +354,7 @@ type JobRow = QueryResultRow & {
   correlation_id: string;
   status: JobRecord['status'] | 'queued' | 'retryable' | 'dead-letter' | 'cancelled';
   attempt_count: number;
+  fencing_token: number | string;
   next_attempt_at: Date | null;
   created_at: Date;
   result: unknown;
@@ -387,14 +478,41 @@ export class PostgresJobRuntime implements JobRuntimePort {
     readonly fencingToken: number;
     readonly result: unknown;
   }): Promise<boolean> {
-    const result = await this.pool.query(
-      `UPDATE connector.jobs SET status='succeeded', result=$3::jsonb,
-       attempt_count=attempt_count+1, safe_error_code=NULL, safe_error_message=NULL,
-       lease_owner=NULL, lease_expires_at=NULL, updated_at=clock_timestamp()
-       WHERE job_id=$1 AND fencing_token=$2 AND status='running'`,
-      [input.jobId, input.fencingToken, json(input.result)],
+    try {
+      const result = await this.pool.query(
+        `UPDATE connector.jobs SET status='succeeded', result=$3::jsonb,
+         attempt_count=attempt_count+1, safe_error_code=NULL, safe_error_message=NULL,
+         lease_owner=NULL, lease_expires_at=NULL, updated_at=clock_timestamp()
+         WHERE job_id=$1 AND fencing_token=$2 AND status='running'`,
+        [input.jobId, input.fencingToken, json(input.result)],
+      );
+      if (result.rowCount === 1) return true;
+    } catch (error) {
+      try {
+        if (await this.readCompletedJob(input.jobId, input.fencingToken, input.result)) return true;
+      } catch {
+        // Preserve the ambiguous completion as a failure to acknowledge.
+      }
+      throw error;
+    }
+    return this.readCompletedJob(input.jobId, input.fencingToken, input.result);
+  }
+
+  private async readCompletedJob(
+    jobId: string,
+    fencingToken: number,
+    result: unknown,
+  ): Promise<boolean> {
+    const current = await this.pool.query<Pick<JobRow, 'status' | 'fencing_token' | 'result'>>(
+      'SELECT status, fencing_token, result FROM connector.jobs WHERE job_id=$1',
+      [jobId],
     );
-    return result.rowCount === 1;
+    const row = current.rows[0];
+    return (
+      row?.status === 'succeeded' &&
+      Number(row.fencing_token) === fencingToken &&
+      sameJsonValue(row.result, result)
+    );
   }
 
   async retry(input: {
@@ -551,8 +669,10 @@ export class PostgresJobRuntime implements JobRuntimePort {
           delayMs,
         ],
       );
+      let operationSucceeded = false;
       try {
         const result = await operation(attempt);
+        operationSucceeded = true;
         await this.pool.query(
           `UPDATE connector.job_attempts SET status='succeeded', finished_at=clock_timestamp()
            WHERE attempt_id=$1`,
@@ -568,20 +688,57 @@ export class PostgresJobRuntime implements JobRuntimePort {
           });
         }
         const job = await this.find(identity);
-        return { result, job: job! };
+        if (!job) {
+          throw new ShotgunError({
+            code: 'OUTCOME_UNKNOWN',
+            safeMessage: 'The completed job could not be read back.',
+            module: 'connector-runtime-postgres',
+            operation: 'job-complete-readback',
+            correlationId,
+          });
+        }
+        return { result, job };
       } catch (error) {
-        const shotgunError = toShotgunError(error, {
+        const observedError = toShotgunError(error, {
           code: 'TERMINAL_FAILURE',
           safeMessage: 'The connector handler failed.',
           module: identity.consumerId,
           operation: 'execute-handler',
           correlationId,
         });
-        await this.pool.query(
-          `UPDATE connector.job_attempts SET status='failed', error_code=$2,
-           finished_at=clock_timestamp() WHERE attempt_id=$1`,
-          [attempt.attemptId, shotgunError.code],
-        );
+        const shotgunError = operationSucceeded
+          ? new ShotgunError({
+              code: 'OUTCOME_UNKNOWN',
+              safeMessage:
+                'The operation returned successfully but its durable completion is ambiguous.',
+              module: 'connector-runtime-postgres',
+              operation: 'job-post-operation',
+              correlationId,
+              cause: observedError,
+            })
+          : observedError;
+        if (!operationSucceeded) {
+          await this.pool.query(
+            `UPDATE connector.job_attempts SET status='failed', error_code=$2,
+             finished_at=clock_timestamp() WHERE attempt_id=$1`,
+            [attempt.attemptId, shotgunError.code],
+          );
+        }
+        if (operationSucceeded) {
+          try {
+            await this.terminal({
+              jobId,
+              fencingToken,
+              status: 'outcome-unknown',
+              safeErrorCode: 'OUTCOME_UNKNOWN',
+              safeErrorMessage: shotgunError.safeMessage,
+            });
+          } catch {
+            // The outcome remains unknown even when its terminal marker is not
+            // acknowledged; never convert it into an ordinary failure.
+          }
+          throw shotgunError;
+        }
         const canRetry = shotgunError.retryable && priorAttempts + index + 1 < this.maxAttempts;
         if (canRetry) {
           const nextDelayMs = this.baseDelayMs * 2 ** index;

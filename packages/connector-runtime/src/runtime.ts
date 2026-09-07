@@ -146,6 +146,22 @@ const withTimeout = async <TResult>(
   }
 };
 
+const postHandlerOutcomeUnknown = (
+  error: unknown,
+  module: string,
+  operation: string,
+  correlationId: string,
+  safeMessage: string,
+): ShotgunError =>
+  new ShotgunError({
+    code: 'OUTCOME_UNKNOWN',
+    safeMessage,
+    module,
+    operation,
+    correlationId,
+    cause: error,
+  });
+
 export class ConnectorRuntime {
   readonly jobs: InMemoryJobRuntime;
   readonly traces: InMemoryTraceStore;
@@ -589,6 +605,7 @@ export class ConnectorRuntime {
     }
 
     let orderingFence: { readonly fencingToken: number } | undefined;
+    let handlerSucceeded = false;
     try {
       const execution = await state.jobs.run(identity, envelope.correlationId, async (attempt) => {
         const acquiredFence = await state.ordering.acquireNext(
@@ -623,8 +640,19 @@ export class ConnectorRuntime {
           const result = await this.invoke(route, deliveredEnvelope, attempt, operation, () => {
             active = false;
           });
+          handlerSucceeded = true;
           active = false;
-          await state.ordering.commit(identity, envelope, acquiredFence.fencingToken);
+          try {
+            await state.ordering.commit(identity, envelope, acquiredFence.fencingToken);
+          } catch (error) {
+            throw postHandlerOutcomeUnknown(
+              error,
+              route.module.manifest.id,
+              'commit-partial-order',
+              envelope.correlationId,
+              'The handler succeeded but ordering completion is ambiguous.',
+            );
+          }
           orderingFence = undefined;
           return result as TResult;
         } catch (error) {
@@ -653,24 +681,42 @@ export class ConnectorRuntime {
         result: { result: execution.result, jobId: execution.job.jobId },
       };
     } catch (error) {
-      const shotgunError = toShotgunError(error, {
-        code: 'TERMINAL_FAILURE',
-        safeMessage: 'The durable connector handler failed.',
-        module: route.module.manifest.id,
-        operation: envelope.messageType,
-        correlationId: envelope.correlationId,
-      });
+      const shotgunError = handlerSucceeded
+        ? postHandlerOutcomeUnknown(
+            error,
+            route.module.manifest.id,
+            envelope.messageType,
+            envelope.correlationId,
+            'The handler succeeded but durable completion is ambiguous.',
+          )
+        : toShotgunError(error, {
+            code: 'TERMINAL_FAILURE',
+            safeMessage: 'The durable connector handler failed.',
+            module: route.module.manifest.id,
+            operation: envelope.messageType,
+            correlationId: envelope.correlationId,
+          });
       if (shotgunError.code !== 'OUTCOME_UNKNOWN' && orderingFence) {
         await state.ordering.release(identity, envelope, orderingFence.fencingToken);
         orderingFence = undefined;
       }
       if (shotgunError.code === 'OUTCOME_UNKNOWN') {
-        await state.dedup.markOutcomeUnknown({
-          identity,
-          fenceToken: began.record.fenceToken,
-          jobId: began.record.jobId ?? jobId,
-          safeErrorMessage: shotgunError.safeMessage,
-        });
+        try {
+          await state.dedup.markOutcomeUnknown({
+            identity,
+            fenceToken: began.record.fenceToken,
+            jobId: began.record.jobId ?? jobId,
+            safeErrorMessage: shotgunError.safeMessage,
+          });
+        } catch (markError) {
+          throw postHandlerOutcomeUnknown(
+            markError,
+            route.module.manifest.id,
+            envelope.messageType,
+            envelope.correlationId,
+            'The delivery outcome is unknown and could not be durably recorded.',
+          );
+        }
       } else {
         await state.dedup.fail({
           identity,
@@ -738,6 +784,7 @@ export class ConnectorRuntime {
         });
       }
     } else {
+      let handlerSucceeded = false;
       try {
         const execution = await state.jobs.run(
           identity,
@@ -776,6 +823,7 @@ export class ConnectorRuntime {
         );
         result = execution.result;
         jobId = execution.job.jobId;
+        handlerSucceeded = true;
         await state.dedup.complete({
           identity,
           fenceToken: began.record.fenceToken,
@@ -783,20 +831,38 @@ export class ConnectorRuntime {
           result,
         });
       } catch (error) {
-        const shotgunError = toShotgunError(error, {
-          code: 'TERMINAL_FAILURE',
-          safeMessage: 'The durable query failed.',
-          module: route.module.manifest.id,
-          operation: envelope.messageType,
-          correlationId: envelope.correlationId,
-        });
+        const shotgunError = handlerSucceeded
+          ? postHandlerOutcomeUnknown(
+              error,
+              route.module.manifest.id,
+              envelope.messageType,
+              envelope.correlationId,
+              'The query handler succeeded but durable completion is ambiguous.',
+            )
+          : toShotgunError(error, {
+              code: 'TERMINAL_FAILURE',
+              safeMessage: 'The durable query failed.',
+              module: route.module.manifest.id,
+              operation: envelope.messageType,
+              correlationId: envelope.correlationId,
+            });
         if (shotgunError.code === 'OUTCOME_UNKNOWN') {
-          await state.dedup.markOutcomeUnknown({
-            identity,
-            fenceToken: began.record.fenceToken,
-            jobId: began.record.jobId ?? '',
-            safeErrorMessage: shotgunError.safeMessage,
-          });
+          try {
+            await state.dedup.markOutcomeUnknown({
+              identity,
+              fenceToken: began.record.fenceToken,
+              jobId: began.record.jobId ?? '',
+              safeErrorMessage: shotgunError.safeMessage,
+            });
+          } catch (markError) {
+            throw postHandlerOutcomeUnknown(
+              markError,
+              route.module.manifest.id,
+              envelope.messageType,
+              envelope.correlationId,
+              'The query outcome is unknown and could not be durably recorded.',
+            );
+          }
         } else {
           await state.dedup.fail({
             identity,

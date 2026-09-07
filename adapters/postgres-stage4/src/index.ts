@@ -533,6 +533,27 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
           operation: 'accept-provider-output',
         });
       }
+
+      // `storeOutput` deliberately records the raw provider response as
+      // unvalidated.  Only after every request/identity check above has
+      // passed, and the authoritative caller says the structured response is
+      // valid, may the audit row be promoted.  Keep this in the same
+      // transaction as the accepted-output pointer so a restart/replay
+      // converges to one durable truth without rewriting the raw provenance.
+      const validatedOutput = await client.query(
+        `UPDATE ai.provider_outputs
+         SET structured_output_valid = TRUE
+         WHERE output_id = $1 AND project_id = $2 AND call_id = $3 AND attempt_id = $4`,
+        [outputId, projectId, record.callId, outputRow.attempt_id],
+      );
+      if (validatedOutput.rowCount !== 1) {
+        throw new ShotgunError({
+          code: 'FORMAT_CORRUPT',
+          safeMessage: 'The Provider output audit identity could not be verified.',
+          module: 'postgres-stage4',
+          operation: 'accept-provider-output',
+        });
+      }
       if (record.output?.outputId === outputId) {
         await client.query('COMMIT');
         return record;

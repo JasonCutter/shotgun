@@ -1,7 +1,9 @@
 # ADR-163 Implementation Plan — V2 Review Operation Resolution
 
-- Status: **DESIGN-ONLY PLAN / GPT ARCHITECTURE REVIEW PENDING**
+- Status: **ARCHITECTURE ACCEPTED / IMPLEMENTATION NOT YET AUTHORIZED**
 - Proposed at: 2026-09-07
+- Accepted: 2026-09-07
+- Acceptance authority: Project Shotgun GPT/controller
 - Governing ADR: `docs/architecture/adr/ADR-163-v2-review-operation-resolution.md`
 - Subject base: `main@2d64936c08937788a801adeeb29c893abe1585f2`
 - Predecessor: PR #228 (`MODIFY_REVIEW` raw approval guard), merged and verified
@@ -75,11 +77,11 @@ The following order prevents a half-bound command from reaching Canonical:
 
 ### Step 0 — Architecture acceptance and freeze
 
-Before code, GPT/controller must accept ADR-163 and freeze the command,
-digest, persistence, failure, rollout, and test contract. Record the accepted
-contract version and the exact base SHA in the implementation issue.
-
-Exit gate: no Product work begins while ADR-163 is `DESIGN PROPOSED`.
+Before code, record the accepted command, digest, persistence, failure,
+rollout, and test contract together with the exact base SHA in the
+implementation issue. ADR-163 is accepted, but this plan still does not
+authorize Product code or database migration. A separate implementation
+request must authorize those actions explicitly.
 
 ### Step 1 — Contract and type package
 
@@ -88,7 +90,7 @@ limited to:
 
 ```ts
 type ResolveReviewOperationV2Request = {
-  draftId: string;
+  changeSetId: string;
   expectedDraftRevision: number;
   expectedDraftDigest: string;
   chosenOperation: 'ADD_CLAIM' | 'NO_OP';
@@ -206,6 +208,21 @@ resolution ID, source/resolved revision and digest, and chosen operation. Only
 then does existing `ConnectorRuntime.reconcileOutcome` converge the ledger.
 The handler is not blindly replayed, no new idempotency key is created, and no
 second revision is possible.
+
+ADR-155 remains the governing Connector authority for timeout,
+commit/acknowledgement ambiguity, lost responses, and `OUTCOME_UNKNOWN`.
+ADR-163 does not redefine or widen `ConnectorRuntime` semantics. Before any
+ADR-163 Product implementation, inspect the canonical `ConnectorRuntime` and
+PostgreSQL adapter for the exact post-commit/lost-completion case. The same
+semantic command must not become ordinary retryable/`FAILED` replacement
+authority or invoke the domain mutation again; unresolved execution must
+converge through `OUTCOME_UNKNOWN`, after which the authoritative Review-domain
+lookup may feed the existing `ConnectorRuntime.reconcileOutcome` boundary. If
+the canonical implementation does not already satisfy ADR-155, stop ADR-163
+implementation and create a separate narrow ADR-155 conformance-correction PR.
+Do not silently repair generic ConnectorRuntime behavior in the ADR-163
+implementation. R19 verifies this existing ADR-155 invariant rather than
+granting ADR-163 new Connector authority.
 
 ### Step 5 — Approval bridge
 
@@ -363,5 +380,6 @@ git diff --check
 
 Do not run Product tests, database migrations, provider calls, r8 commands,
 ECAV, or Phase F/r9 from this branch. Commit and push the design branch and
-open a **Draft** PR. Stop there for GPT/controller architecture review; do not
-mark Ready, merge, or declare final completion.
+keep PR #229 as a **Draft** PR until the new automatic exact-head CI completes.
+Do not manually rerun CI, mark Ready, merge, or declare final completion.
+Product implementation remains separately unauthorized.

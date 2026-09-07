@@ -1,7 +1,9 @@
 # ADR-163 — V2 Review Operation Resolution for `MODIFY_REVIEW`
 
-- Status: **DESIGN PROPOSED / GPT ARCHITECTURE REVIEW PENDING**
+- Status: **ACCEPTED**
 - Proposed at: 2026-09-07
+- Accepted: 2026-09-07
+- Acceptance authority: Project Shotgun GPT/controller
 - Decision owner: Project Shotgun architecture/controller approval
 - Work item: Phase E follow-up after PR #228 (`MODIFY_REVIEW_HANDOFF_CONTRACT_GAP`)
 - Subject base: `main@2d64936c08937788a801adeeb29c893abe1585f2`
@@ -15,12 +17,12 @@
 
 ## Authority and scope
 
-This ADR is an architecture/design proposal only. It defines the missing
+This ADR is an accepted architecture/design decision. It defines the missing
 resolution boundary exposed by PR #228; it does not authorize Product code,
 schema changes, provider execution, ECAV re-entry, r8 mutation, Phase F, or r9.
-Acceptance of this ADR must be followed by a separate implementation request
-with frozen contract versions, migration, rollback, tests, and rollout
-authority.
+Product implementation and database migration still require a separate
+implementation request with frozen contract versions, migration, rollback,
+tests, and rollout authority.
 
 The two historical r8 invalid approvals and their dead letters remain
 immutable defect evidence. This ADR never repairs, retries, rewrites, or
@@ -135,7 +137,7 @@ The browser/caller supplies only:
 
 ```ts
 type ResolveReviewOperationV2Request = {
-  draftId: string;
+  changeSetId: string;
   expectedDraftRevision: number;
   expectedDraftDigest: string;
   chosenOperation: 'ADD_CLAIM' | 'NO_OP';
@@ -178,7 +180,7 @@ The safe output is metadata only:
 type ResolveReviewOperationV2Result = {
   status: 'RESOLVED' | 'IDEMPOTENT_REPLAY';
   resolutionId: string;
-  draftId: string;
+  changeSetId: string;
   sourceDraftRevision: number;
   resolvedDraftRevision: number;
   resolvedDraftDigest: string;
@@ -446,7 +448,26 @@ Only after that observation may the existing
 `OUTCOME_UNKNOWN` record. It never creates a new idempotency key, second
 resolution, or duplicate revision.
 
-### 5.4 Concurrency rules
+### 5.4 ADR-155 implementation prerequisite
+
+ADR-155 remains the governing Connector authority for timeout,
+commit/acknowledgement ambiguity, lost responses, and `OUTCOME_UNKNOWN`.
+ADR-163 does not redefine or widen `ConnectorRuntime` semantics. Before any
+ADR-163 Product implementation begins, the canonical `ConnectorRuntime` and
+PostgreSQL adapter must be inspected against ADR-155 for the exact case where
+the Review domain transaction commits and the handler result exists, but
+connector completion or acknowledgement is lost or ambiguous. The semantic
+command must not become ordinary retryable/`FAILED` replacement authority;
+the same command must not invoke the domain mutation again; and the unresolved
+execution must converge through `OUTCOME_UNKNOWN` before the authoritative
+Review-domain lookup feeds the existing `ConnectorRuntime.reconcileOutcome`
+boundary. If the current canonical Connector implementation does not already
+satisfy this invariant, ADR-163 Product implementation stops and a separate,
+narrow ADR-155 conformance-correction PR is required. ADR-163 does not silently
+fix generic ConnectorRuntime semantics. R19 tests this existing ADR-155
+invariant and grants no new Connector authority.
+
+### 5.5 Concurrency rules
 
 1. A same semantic command identity is resolved by the domain outcome lookup
    or returns the original resolution and resolved revision.
@@ -733,8 +754,10 @@ Costs and limits:
 
 ## 15. Approval gate
 
-This document is a design proposal. It is not `ACCEPTED`, does not authorize
-Product implementation, migration SQL, provider calls, tests, CI, Ready,
-Merge, deployment, r8 re-entry, Phase F, or r9. Acceptance requires explicit
-GPT/controller and user architecture review followed by a separate
+This ADR is `ACCEPTED` on 2026-09-07 by the Project Shotgun GPT/controller.
+Acceptance is limited to the architecture and contract decisions recorded
+here. It does not authorize Product implementation, migration SQL, provider
+calls, Product/database tests, CI as an implementation gate, Ready, Merge,
+deployment, r8 re-entry, Phase F, or r9. Product implementation and database
+migration remain **NOT YET AUTHORIZED** and require a separate explicit
 implementation request.

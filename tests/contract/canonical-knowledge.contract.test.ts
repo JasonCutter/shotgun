@@ -139,6 +139,52 @@ describe.each(transports)('%s Stage 6 contract', (_name, createTransport) => {
     });
   });
 
+  it('preserves source-supported Tesla 2008/2009 propositions as separate Claims', async () => {
+    const { kernel, canonicalRepository } = await createStage6Harness({
+      transport: createTransport(),
+    });
+    const first = await createDraft(
+      kernel,
+      `stage6-tesla-2008-${randomUUID()}`,
+      'Tesla CEO was 2008.',
+    );
+    await kernel.connector.sendCommand(
+      decisionCommand(
+        first.command,
+        first.draft,
+        'APPROVE',
+        randomUUID(),
+        'Source A supports 2008.',
+      ),
+    );
+    const second = await createDraft(
+      kernel,
+      `stage6-tesla-2009-${randomUUID()}`,
+      'Tesla CEO was 2009.',
+    );
+    expect(second.draft.operation).toBe('ADD_CLAIM');
+    await kernel.connector.sendCommand(
+      decisionCommand(
+        second.command,
+        second.draft,
+        'APPROVE',
+        randomUUID(),
+        'Source B supports 2009.',
+      ),
+    );
+
+    const snapshot = (
+      await kernel.connector.query<CanonicalSnapshot>(snapshotQuery(second.command))
+    ).result.payload;
+    expect(snapshot.version).toBe(2);
+    expect(snapshot.claims.map((claim) => claim.text).sort()).toEqual([
+      'Tesla CEO was 2008.',
+      'Tesla CEO was 2009.',
+    ]);
+    expect(canonicalRepository.counts()).toMatchObject({ claims: 2, facts: 0 });
+    expect(canonicalRepository.fingerprint()).toContain('"relations":[]');
+  });
+
   it('replays the same approved Manifest without duplicating Canonical records', async () => {
     const { kernel, canonicalRepository } = await createStage6Harness({
       transport: createTransport(),

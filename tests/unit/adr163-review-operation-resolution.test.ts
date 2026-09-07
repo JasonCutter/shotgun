@@ -9,6 +9,8 @@ import {
   createComparisonV2ReviewBridge,
   createReviewOperationResolutionV2,
   InMemoryReviewOperationResolutionStore,
+  reviewOperationResolutionDigestV2,
+  reviewOperationResolvedDraftMaterialDigestV2,
   type ComparisonV2ReviewBridgeDependencies,
 } from '../../modules/change-set-review/src/index.js';
 import {
@@ -201,9 +203,10 @@ const authority = {
   ],
 };
 
-const createHarness = () => {
+const createHarness = (options: { readonly staleAtCommit?: boolean } = {}) => {
   const store = new InMemoryReviewOperationResolutionStore();
   let draft: DraftChangeSetV2 | undefined;
+  let freshnessCalls = 0;
   const repository = {
     async saveDraft(value: DraftChangeSetV2) {
       draft = value;
@@ -228,6 +231,8 @@ const createHarness = () => {
       };
     },
     findOperationResolutionByRequest: store.findOperationResolutionByRequest.bind(store),
+    findOperationResolutionByClientRequest:
+      store.findOperationResolutionByClientRequest.bind(store),
     findOperationResolutionForDraft: store.findOperationResolutionForDraft.bind(store),
     async resolveOperation(write: Parameters<typeof store.resolveOperation>[0]) {
       const result = await store.resolveOperation(write);
@@ -243,6 +248,16 @@ const createHarness = () => {
     },
     freshness: {
       async getCurrent(input) {
+        freshnessCalls += 1;
+        if (options.staleAtCommit && freshnessCalls > 2) {
+          return {
+            identity: {
+              ...input.expected,
+              canonicalSnapshotVersion: input.expected.canonicalSnapshotVersion + 1,
+            },
+            shortlist,
+          };
+        }
         return { identity: input.expected, shortlist };
       },
     },
@@ -250,6 +265,7 @@ const createHarness = () => {
     now: () => now,
   };
   return {
+    store,
     repository,
     bridge: createComparisonV2ReviewBridge(bridgeDependencies),
     resolver: createReviewOperationResolutionV2({
@@ -324,6 +340,60 @@ describe('ADR-163 V2 review operation resolution', () => {
     expect(approved.status).toBe('DECISION_RECORDED');
   });
 
+  it('keeps the native NO_OP approval contract after explicit resolution', async () => {
+    const harness = createHarness();
+    const materialized = await harness.bridge.materializeDraft({
+      event: {
+        eventType: 'ComparisonCompletedV2',
+        contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+        comparison,
+        analysisRevisionIds: [analysis.analysisRevisionId],
+        emittedAt: now,
+      },
+      actor: { type: 'service', id: 'comparison-worker' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+    });
+    expect(materialized.status).toBe('DRAFT_CREATED');
+    const source = harness.getDraft();
+    const resolved = await harness.resolver.resolve({
+      projectId,
+      actor: { type: 'user', id: 'owner-no-op' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+      request: {
+        changeSetId: source.changeSetId,
+        expectedDraftRevision: source.revisionNumber,
+        expectedDraftDigest: source.contentDigest,
+        chosenOperation: 'NO_OP',
+        clientRequestId: 'client-adr163-no-op-approval',
+        idempotencyKey: 'idem-adr163-no-op-approval',
+      },
+    });
+    expect(resolved.status).toBe('RESOLVED');
+    const approved = await harness.bridge.recordDecision({
+      projectId,
+      changeSetId: source.changeSetId,
+      actor: { type: 'user', id: 'owner-approver' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+      expectedRevisionNumber: 2,
+      expectedContentDigest: harness.getDraft().contentDigest,
+      decision: 'APPROVE',
+      reason: 'the existing Canonical representation is sufficient',
+      decisionId: 'decision-adr163-no-op-approval',
+      decidedAt: now,
+    });
+    expect(approved.status).toBe('DECISION_RECORDED');
+    if (approved.status === 'DECISION_RECORDED') {
+      expect(approved.draft.operation).toBe('NO_OP');
+      expect(approved.manifest?.operation).toBe('NO_OP');
+    }
+  });
+
   it('fails closed on stale revision and idempotency-key reuse', async () => {
     const harness = createHarness();
     await harness.bridge.materializeDraft({
@@ -383,5 +453,258 @@ describe('ADR-163 V2 review operation resolution', () => {
       },
     });
     expect(reused).toEqual({ status: 'BLOCKED', code: 'IDEMPOTENCY_KEY_REUSE' });
+  });
+
+  it('keeps ADR-163 material digests stable across wall-clock changes', async () => {
+    const harness = createHarness();
+    await harness.bridge.materializeDraft({
+      event: {
+        eventType: 'ComparisonCompletedV2',
+        contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+        comparison,
+        analysisRevisionIds: [analysis.analysisRevisionId],
+        emittedAt: now,
+      },
+      actor: { type: 'service', id: 'comparison-worker' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+    });
+    const source = harness.getDraft();
+    const command = {
+      projectId,
+      actor: { type: 'user' as const, id: 'owner-1' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+      request: {
+        changeSetId: source.changeSetId,
+        expectedDraftRevision: source.revisionNumber,
+        expectedDraftDigest: source.contentDigest,
+        chosenOperation: 'ADD_CLAIM' as const,
+        clientRequestId: 'client-adr163-digest',
+        idempotencyKey: 'idem-adr163-digest',
+      },
+    };
+    const resolved = await harness.resolver.resolve(command);
+    expect(resolved.status).toBe('RESOLVED');
+    const resolution = harness.store.listResolutions()[0]!;
+    const materialAtLaterTime = {
+      ...harness.getDraft(),
+      updatedAt: '2030-01-01T00:00:00.000Z',
+      createdAt: '2030-01-01T00:00:00.000Z',
+    };
+    expect(reviewOperationResolvedDraftMaterialDigestV2(harness.getDraft())).toBe(
+      reviewOperationResolvedDraftMaterialDigestV2(materialAtLaterTime),
+    );
+    const { resolutionDigest: _digest, ...withoutDigest } = resolution;
+    const laterRuntimeResolution = {
+      ...withoutDigest,
+      resolutionId: 'different-resolution-id',
+      clientRequestId: 'different-client-request-id',
+      idempotencyKey: 'different-idempotency-key',
+      semanticCommandIdentity: 'different-runtime-identity',
+      createdAt: '2030-01-01T00:00:00.000Z',
+    };
+    expect(reviewOperationResolutionDigestV2(laterRuntimeResolution)).toBe(_digest);
+    expect(
+      reviewOperationResolutionDigestV2({
+        ...laterRuntimeResolution,
+        chosenOperation: 'NO_OP',
+      }),
+    ).not.toBe(_digest);
+  });
+
+  it('enforces project-scoped idempotency parity across different change sets', async () => {
+    const firstHarness = createHarness();
+    const first = await firstHarness.bridge.materializeDraft({
+      event: {
+        eventType: 'ComparisonCompletedV2',
+        contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+        comparison,
+        analysisRevisionIds: [analysis.analysisRevisionId],
+        emittedAt: now,
+      },
+      actor: { type: 'service', id: 'comparison-worker' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+    });
+    expect(first.status).toBe('DRAFT_CREATED');
+    const source = firstHarness.getDraft();
+    const command = {
+      projectId,
+      actor: { type: 'user' as const, id: 'owner-1' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+      request: {
+        changeSetId: source.changeSetId,
+        expectedDraftRevision: source.revisionNumber,
+        expectedDraftDigest: source.contentDigest,
+        chosenOperation: 'ADD_CLAIM' as const,
+        clientRequestId: 'client-adr163-cross-set',
+        idempotencyKey: 'idem-adr163-cross-set',
+      },
+    };
+    expect((await firstHarness.resolver.resolve(command)).status).toBe('RESOLVED');
+    expect(
+      await firstHarness.store.findOperationResolutionByRequest(
+        projectId,
+        'other-change-set',
+        'client-adr163-cross-set',
+        'idem-adr163-cross-set',
+      ),
+    ).toMatchObject({ changeSetId: source.changeSetId });
+  });
+
+  it('rechecks freshness after the current head is locked and writes nothing on a race', async () => {
+    const harness = createHarness({ staleAtCommit: true });
+    const materialized = await harness.bridge.materializeDraft({
+      event: {
+        eventType: 'ComparisonCompletedV2',
+        contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+        comparison,
+        analysisRevisionIds: [analysis.analysisRevisionId],
+        emittedAt: now,
+      },
+      actor: { type: 'service', id: 'comparison-worker' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+    });
+    expect(materialized.status).toBe('DRAFT_CREATED');
+    const source = harness.getDraft();
+    const result = await harness.resolver.resolve({
+      projectId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+      request: {
+        changeSetId: source.changeSetId,
+        expectedDraftRevision: source.revisionNumber,
+        expectedDraftDigest: source.contentDigest,
+        chosenOperation: 'NO_OP',
+        clientRequestId: 'client-adr163-race',
+        idempotencyKey: 'idem-adr163-race',
+      },
+    });
+    expect(result).toEqual({ status: 'BLOCKED', code: 'STALE_REVIEW_INPUT' });
+    expect(harness.getDraft()).toEqual(source);
+  });
+
+  it('serializes conflicting ADD_CLAIM and NO_OP choices to one winner', async () => {
+    const harness = createHarness();
+    await harness.bridge.materializeDraft({
+      event: {
+        eventType: 'ComparisonCompletedV2',
+        contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+        comparison,
+        analysisRevisionIds: [analysis.analysisRevisionId],
+        emittedAt: now,
+      },
+      actor: { type: 'service', id: 'comparison-worker' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+    });
+    const source = harness.getDraft();
+    const base = {
+      projectId,
+      actor: { type: 'user' as const, id: 'owner-1' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+    };
+    const [addClaim, noOp] = await Promise.all([
+      harness.resolver.resolve({
+        ...base,
+        request: {
+          changeSetId: source.changeSetId,
+          expectedDraftRevision: source.revisionNumber,
+          expectedDraftDigest: source.contentDigest,
+          chosenOperation: 'ADD_CLAIM',
+          clientRequestId: 'client-adr163-concurrent-add',
+          idempotencyKey: 'idem-adr163-concurrent-add',
+        },
+      }),
+      harness.resolver.resolve({
+        ...base,
+        request: {
+          changeSetId: source.changeSetId,
+          expectedDraftRevision: source.revisionNumber,
+          expectedDraftDigest: source.contentDigest,
+          chosenOperation: 'NO_OP',
+          clientRequestId: 'client-adr163-concurrent-noop',
+          idempotencyKey: 'idem-adr163-concurrent-noop',
+        },
+      }),
+    ]);
+    expect([addClaim.status, noOp.status].filter((status) => status === 'RESOLVED')).toHaveLength(
+      1,
+    );
+    expect([addClaim, noOp].filter((outcome) => outcome.status === 'BLOCKED')).toHaveLength(1);
+    expect(harness.store.listResolutions()).toHaveLength(1);
+    expect(harness.getDraft().revisionNumber).toBe(2);
+  });
+
+  it('replays the exact committed result after a resolver restart', async () => {
+    const harness = createHarness();
+    await harness.bridge.materializeDraft({
+      event: {
+        eventType: 'ComparisonCompletedV2',
+        contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+        comparison,
+        analysisRevisionIds: [analysis.analysisRevisionId],
+        emittedAt: now,
+      },
+      actor: { type: 'service', id: 'comparison-worker' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+    });
+    const source = harness.getDraft();
+    const request = {
+      changeSetId: source.changeSetId,
+      expectedDraftRevision: source.revisionNumber,
+      expectedDraftDigest: source.contentDigest,
+      chosenOperation: 'NO_OP' as const,
+      clientRequestId: 'client-adr163-restart',
+      idempotencyKey: 'idem-adr163-restart',
+    };
+    const first = await harness.resolver.resolve({
+      projectId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+      request,
+    });
+    const restartedResolver = createReviewOperationResolutionV2({
+      aggregate: {
+        async findComparisonById() {
+          return aggregate;
+        },
+      },
+      freshness: {
+        async getCurrent(input) {
+          return { identity: input.expected, shortlist };
+        },
+      },
+      repository: harness.repository,
+      now: () => '2030-01-01T00:00:00.000Z',
+    });
+    const replay = await restartedResolver.resolve({
+      projectId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority,
+      rolloutAuthorityRevision: 'rollout-r1',
+      request,
+    });
+    expect(first.status).toBe('RESOLVED');
+    expect(replay).toEqual({ ...first, status: 'IDEMPOTENT_REPLAY' });
+    expect(harness.store.listResolutions()).toHaveLength(1);
   });
 });

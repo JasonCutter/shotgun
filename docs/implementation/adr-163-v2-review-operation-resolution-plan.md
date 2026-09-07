@@ -327,6 +327,33 @@ corpus.
 Golden Corpus evidence is required for any comparison/evidence behavior change.
 No r8 mutation or provider test is authorized on this implementation branch.
 
+### 5.1 Implementation-review correction evidence map
+
+The first exact-head CI was valid, but the controller review identified five
+contract gaps. The second implementation pass closes them as follows:
+
+| Requirement | Evidence                                                                                                                                                                                                                                                                                                                                                           | Boundary                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
+| R1          | `tests/unit/comparison-review-v2-bridge.test.ts` — `blocks MODIFY_REVIEW approval before any decision or manifest write`                                                                                                                                                                                                                                           | Review bridge                       |
+| R2/R4/R20   | `tests/unit/adr163-review-operation-resolution.test.ts` — immutable N+1, recommendation/operation separation                                                                                                                                                                                                                                                       | Review resolver + in-memory adapter |
+| R3/R5/R17   | `tests/unit/adr163-review-operation-resolution.test.ts` — resolved `ADD_CLAIM` approval and resolved `NO_OP` approval; `tests/unit/comparison-review-v2-bridge.test.ts` plus Stage 6 PostgreSQL approval suites preserve the native handoff                                                                                                                        | Review/Stage 6 boundary             |
+| R6/R7       | `tests/unit/comparison-review-v2-bridge.test.ts` — REJECT/HOLD remain non-Canonical decisions                                                                                                                                                                                                                                                                      | Review bridge                       |
+| R8/R9       | `tests/unit/adr163-review-operation-resolution.test.ts` — stale source and commit-boundary freshness race; `tests/unit/comparison-review-v2-bridge.test.ts` — stale approval                                                                                                                                                                                       | Review resolver/approval            |
+| R10/R11/R12 | `tests/unit/adr163-review-operation-resolution.test.ts` — exact replay, conflicting concurrent choices, restart replay                                                                                                                                                                                                                                             | In-memory parity contract           |
+| R13/R14/R15 | Bounded relationship-only Review fixture and existing Canonical handoff contracts; no resolution path invokes Relation or Fact mutation                                                                                                                                                                                                                            | Review/Canonical ownership boundary |
+| R16         | Frozen-r8 exclusion in implementation plan and migration (no historical resolution backfill)                                                                                                                                                                                                                                                                       | Migration safety                    |
+| R18         | Migration 070 conflict preflight rejects a disagreeing existing immutable snapshot; matching re-entry remains idempotent                                                                                                                                                                                                                                           | PostgreSQL migration                |
+| R19         | `tests/unit/adr163-r19-outcome-unknown-reconciliation.test.ts` plus `tests/database/comparison-review-v2-postgres.test.ts` — one durable resolution, project/client lookup, connector reconciliation, one resolution and N+1 revision; Product route uses the same read-only lookup and existing `ConnectorRuntime.reconcileOutcome` via `reconcileCommandOutcome` | Connector/Review boundary           |
+| R21         | Existing Review decision provenance tests plus immutable `resolverActorId` in OperationResolution; approval actor remains independently recorded by the existing bridge                                                                                                                                                                                            | Review audit/provenance             |
+
+The correction pass also freezes the ADR-163 digest projection. Resolution
+digests now exclude `resolutionId`, timestamps, client/idempotency/runtime
+identities, browser text, and other incidental values. A separate
+`resolvedDraftMaterialDigest` preserves deterministic material identity without
+changing the strict DraftChangeSetV2 2.0 `contentDigest` contract. In-memory
+and PostgreSQL lookup/uniqueness are project-scoped in the same way, including
+cross-change-set key reuse.
+
 ## 6. OSS and dependency decision
 
 The later implementation records `NO_RELEVANT_OSS` for semantic review-operation

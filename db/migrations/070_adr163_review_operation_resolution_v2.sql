@@ -26,6 +26,24 @@ CREATE TABLE IF NOT EXISTS review.change_set_revisions_v2 (
     ON DELETE CASCADE
 );
 
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM review.change_sets_v2 c
+    JOIN review.change_set_revisions_v2 r
+      ON r.project_id = c.project_id
+     AND r.change_set_id = c.change_set_id
+     AND r.revision_number = c.revision_number
+    WHERE r.content_digest <> c.content_digest
+       OR r.change_set_json <> c.change_set_json
+  ) THEN
+    RAISE EXCEPTION
+      'Migration 070 conflict: existing immutable Draft snapshot disagrees with current head';
+  END IF;
+END
+$$;
+
 INSERT INTO review.change_set_revisions_v2
   (project_id, change_set_id, revision_number, content_digest, change_set_json, created_at)
 SELECT project_id, change_set_id, revision_number, content_digest, change_set_json, created_at
@@ -44,6 +62,7 @@ CREATE TABLE IF NOT EXISTS review.operation_resolutions_v2 (
   source_draft_digest text NOT NULL CHECK (source_draft_digest ~ '^sha256:[a-f0-9]{64}$'),
   resolved_draft_revision integer NOT NULL CHECK (resolved_draft_revision = source_draft_revision + 1),
   resolved_draft_digest text NOT NULL CHECK (resolved_draft_digest ~ '^sha256:[a-f0-9]{64}$'),
+  resolved_draft_material_digest text NOT NULL CHECK (resolved_draft_material_digest ~ '^sha256:[a-f0-9]{64}$'),
   comparison_id text NOT NULL,
   comparison_digest text NOT NULL CHECK (comparison_digest ~ '^sha256:[a-f0-9]{64}$'),
   candidate_id text NOT NULL,
@@ -85,6 +104,23 @@ CREATE TABLE IF NOT EXISTS review.operation_resolutions_v2 (
   UNIQUE (project_id, client_request_id),
   UNIQUE (project_id, idempotency_key)
 );
+
+ALTER TABLE review.operation_resolutions_v2
+  ADD COLUMN IF NOT EXISTS resolved_draft_material_digest text;
+
+UPDATE review.operation_resolutions_v2
+SET resolved_draft_material_digest = resolved_draft_digest
+WHERE resolved_draft_material_digest IS NULL;
+
+ALTER TABLE review.operation_resolutions_v2
+  ALTER COLUMN resolved_draft_material_digest SET NOT NULL;
+
+ALTER TABLE review.operation_resolutions_v2
+  DROP CONSTRAINT IF EXISTS operation_resolutions_v2_resolved_draft_material_digest_check;
+
+ALTER TABLE review.operation_resolutions_v2
+  ADD CONSTRAINT operation_resolutions_v2_resolved_draft_material_digest_check
+  CHECK (resolved_draft_material_digest ~ '^sha256:[a-f0-9]{64}$');
 
 CREATE INDEX IF NOT EXISTS operation_resolutions_v2_change_set_idx
   ON review.operation_resolutions_v2 (project_id, change_set_id, created_at DESC);

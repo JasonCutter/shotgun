@@ -311,6 +311,7 @@ import {
   createChangeSetReviewModule,
   createComparisonV2ReviewBridge,
   createReviewOperationResolutionV2,
+  reviewOperationResolutionOutcomeV2,
   createReversalEligibilityPort,
   type ComparisonV2ReviewBridgePort,
   type ChangeSetReviewRepositoryPort,
@@ -2649,6 +2650,7 @@ const createApplicationCore = async (
           if (
             typeof operationStore.findDraftById === 'function' &&
             typeof operationStore.findOperationResolutionByRequest === 'function' &&
+            typeof operationStore.findOperationResolutionByClientRequest === 'function' &&
             typeof operationStore.resolveOperation === 'function'
           ) {
             reviewOperationResolutionV2 = createReviewOperationResolutionV2({
@@ -2672,6 +2674,7 @@ const createApplicationCore = async (
     ...(reviewOperationResolutionV2 &&
     typeof operationStore.findDraftById === 'function' &&
     typeof operationStore.findOperationResolutionByRequest === 'function' &&
+    typeof operationStore.findOperationResolutionByClientRequest === 'function' &&
     typeof operationStore.resolveOperation === 'function'
       ? {
           operationResolution: {
@@ -4298,6 +4301,8 @@ const createApplicationCore = async (
         typeof (options.changeSetReviewV2Repository as Partial<ReviewOperationResolutionStorePort>)
           .findOperationResolutionByRequest !== 'function' ||
         typeof (options.changeSetReviewV2Repository as Partial<ReviewOperationResolutionStorePort>)
+          .findOperationResolutionByClientRequest !== 'function' ||
+        typeof (options.changeSetReviewV2Repository as Partial<ReviewOperationResolutionStorePort>)
           .resolveOperation !== 'function'
       ) {
         throw new ShotgunError({
@@ -4317,7 +4322,27 @@ const createApplicationCore = async (
         ...context,
         payload: typedBody,
       });
-      const delivery = await kernel.connector.sendCommand<ResolveReviewOperationV2Outcome>(command);
+      let delivery;
+      try {
+        delivery = await kernel.connector.sendCommand<ResolveReviewOperationV2Outcome>(command);
+      } catch (error) {
+        if ((error as { readonly code?: string }).code !== 'OUTCOME_UNKNOWN') throw error;
+        const lookup = operationStore.findOperationResolutionByClientRequest;
+        if (typeof lookup !== 'function') throw error;
+        const resolution = await lookup.call(
+          operationStore,
+          context.projectId,
+          typedBody.clientRequestId,
+          `connector:${command.idempotencyKey}`,
+        );
+        if (!resolution) throw error;
+        const outcome = reviewOperationResolutionOutcomeV2(resolution);
+        await kernel.connector.reconcileCommandOutcome(command, { result: outcome });
+        return {
+          commandStatus: 'reconciled',
+          resolution: outcome,
+        };
+      }
       const outcome = delivery.result;
       if (outcome.status === 'BLOCKED') return reply.code(409).send(outcome);
       return {

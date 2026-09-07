@@ -30,7 +30,10 @@ import {
   type ReviewAuthoritySelectionV2,
   type ShortlistAuditV2,
 } from '../../../packages/contracts/src/index.js';
-import type { OperationResolutionV2 } from './operation-resolution-v2.js';
+import {
+  reviewOperationResolvedDraftMaterialDigestV2,
+  type OperationResolutionV2,
+} from './operation-resolution-v2.js';
 
 export type ComparisonV2AggregateForReview = {
   readonly comparison: ComparisonResultV2;
@@ -608,6 +611,8 @@ export const createComparisonV2ReviewBridge = (
             resolution.state !== 'RESOLVED' ||
             resolution.resolvedDraftRevision !== draft.revisionNumber ||
             resolution.resolvedDraftDigest !== draft.contentDigest ||
+            resolution.resolvedDraftMaterialDigest !==
+              reviewOperationResolvedDraftMaterialDigestV2(draft) ||
             resolution.chosenOperation !== draft.operation
           ) {
             return { status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' };

@@ -1337,17 +1337,37 @@ export class PostgresChangeSetReviewV2Repository
     clientRequestId: string,
     idempotencyKey: string,
   ): Promise<OperationResolutionV2 | undefined> {
+    void changeSetId;
     const result = await this.pool.query<OperationResolutionV2Row>(
       `
         SELECT resolution_json
         FROM review.operation_resolutions_v2
         WHERE project_id = $1
-          AND change_set_id = $2
-          AND (client_request_id = $3 OR idempotency_key = $4)
+          AND (client_request_id = $2 OR idempotency_key = $3)
         ORDER BY created_at DESC
         LIMIT 1
       `,
-      [projectId, changeSetId, clientRequestId, idempotencyKey],
+      [projectId, clientRequestId, idempotencyKey],
+    );
+    return result.rows[0]?.resolution_json;
+  }
+
+  async findOperationResolutionByClientRequest(
+    projectId: string,
+    clientRequestId: string,
+    semanticCommandIdentity?: string,
+  ): Promise<OperationResolutionV2 | undefined> {
+    const result = await this.pool.query<OperationResolutionV2Row>(
+      `
+        SELECT resolution_json
+        FROM review.operation_resolutions_v2
+        WHERE project_id = $1
+          AND client_request_id = $2
+          AND ($3::text IS NULL OR semantic_command_identity = $3)
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      [projectId, clientRequestId, semanticCommandIdentity ?? null],
     );
     return result.rows[0]?.resolution_json;
   }
@@ -1436,6 +1456,7 @@ export class PostgresChangeSetReviewV2Repository
           code: 'DRAFT_REVISION_CONFLICT',
         });
       }
+      await write.validateAtCommit?.();
 
       const sourceRevision = await client.query<ChangeSetV2Row>(
         `
@@ -1497,7 +1518,7 @@ export class PostgresChangeSetReviewV2Repository
           INSERT INTO review.operation_resolutions_v2 (
             resolution_id, contract_version, project_id, change_set_id,
             source_draft_revision, source_draft_digest, resolved_draft_revision,
-            resolved_draft_digest, comparison_id, comparison_digest, candidate_id,
+            resolved_draft_digest, resolved_draft_material_digest, comparison_id, comparison_digest, candidate_id,
             candidate_revision, candidate_digest, candidate_source_version_id,
             candidate_evidence_ids, canonical_snapshot_id, canonical_version,
             canonical_digest, shortlist_digest, analysis_revision_ids,
@@ -1509,7 +1530,7 @@ export class PostgresChangeSetReviewV2Repository
           VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
             $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-            $27, $28, $29, $30, $31, $32, $33
+            $27, $28, $29, $30, $31, $32, $33, $34
           )
         `,
         [
@@ -1521,6 +1542,7 @@ export class PostgresChangeSetReviewV2Repository
           write.resolution.sourceDraftDigest,
           write.resolution.resolvedDraftRevision,
           write.resolution.resolvedDraftDigest,
+          write.resolution.resolvedDraftMaterialDigest,
           write.resolution.comparisonId,
           write.resolution.comparisonDigest,
           write.resolution.candidateId,

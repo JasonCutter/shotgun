@@ -4,6 +4,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 
 import { PostgresChangeSetReviewV2Repository } from '../../adapters/postgres-stage5/src/index.js';
+import { PostgresConnectorRuntimeState } from '../../adapters/connector-runtime-postgres/src/index.js';
+import { ConnectorRuntime } from '../../packages/connector-runtime/src/index.js';
+import type { ConnectorSemanticIdentity } from '../../packages/connector-runtime/src/ports.js';
+import { ModuleRegistry } from '../../packages/module-sdk/src/index.js';
+import { InProcessTransport } from '../../adapters/transport-in-process/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { migrateUpTo } from '../../scripts/database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
@@ -16,6 +21,7 @@ import {
   createExactDuplicateComparisonResultV2,
   draftChangeSetContentDigestV2,
   sha256Text,
+  shortlistAuditDigestV2,
   stableJson,
   validateDraftChangeSetV2,
   type ApprovedChangeSetApprovalTokenV2,
@@ -23,6 +29,11 @@ import {
   type ComparisonResultV2,
   type DraftChangeSetV2,
 } from '../../packages/contracts/src/index.js';
+import {
+  reviewOperationResolutionDigestV2,
+  reviewOperationResolvedDraftMaterialDigestV2,
+  type OperationResolutionV2,
+} from '../../modules/change-set-review/src/index.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
   ? await requireTestDatabaseTarget()
@@ -33,6 +44,90 @@ type Fixture = {
   readonly projectId: string;
   readonly comparisonId: string;
   readonly draft: DraftChangeSetV2;
+};
+
+const makeResolutionDrafts = (
+  fixture: Fixture,
+): {
+  readonly source: DraftChangeSetV2;
+  readonly resolved: DraftChangeSetV2;
+} => {
+  const shortlist = {
+    contractVersion: '2.0' as const,
+    canonicalSnapshot: {
+      id: fixture.draft.canonicalSnapshot.id,
+      version: fixture.draft.canonicalSnapshot.version,
+      digest: fixture.draft.canonicalSnapshot.digest,
+    },
+    lexicalProjectionWatermark: sha256Text(`${fixture.projectId}:watermark`),
+    lexicalProjectionBase: sha256Text(`${fixture.projectId}:lexical-base`),
+    semanticGenerationId: `${fixture.projectId}:generation`,
+    semanticSourceProjectionDigest: sha256Text(`${fixture.projectId}:source-projection`),
+    semanticCanonicalBaseVersion: fixture.draft.canonicalSnapshot.version,
+    querySemanticReadiness: 'READY' as const,
+    policyRevision: sha256Text(`${fixture.projectId}:shortlist-policy`),
+    k: 1,
+    selectedTargetIdentities: [],
+    exclusionCounts: {},
+    truncated: false,
+    coverageStatus: 'COMPLETE' as const,
+  };
+  const shortlistDigest = shortlistAuditDigestV2(shortlist);
+  const freshnessIdentity = {
+    mode: 'SEMANTIC' as const,
+    candidateId: fixture.draft.candidate.id,
+    candidateRevision: fixture.draft.candidate.revision,
+    candidateSourceVersionId: fixture.draft.candidate.sourceVersionId,
+    candidateDigest: fixture.draft.candidate.digest,
+    candidateEvidenceDigest: sha256Text(stableJson({ evidenceIds: fixture.draft.evidenceIds })),
+    canonicalSnapshotId: fixture.draft.canonicalSnapshot.id,
+    canonicalSnapshotDigest: fixture.draft.canonicalSnapshot.digest,
+    canonicalSnapshotVersion: fixture.draft.canonicalSnapshot.version,
+    shortlistDigest,
+    shortlistPolicyRevision: shortlist.policyRevision,
+    semanticGenerationId: shortlist.semanticGenerationId,
+    semanticSourceProjectionDigest: shortlist.semanticSourceProjectionDigest,
+    semanticCanonicalBaseVersion: shortlist.semanticCanonicalBaseVersion,
+    providerModelCapabilityIdentity: 'provider:model:capability',
+    promptTemplateRevision: 'prompt:database-test',
+    outputSchemaRevision: 'schema:database-test',
+    semanticPolicyRevision: 'policy:database-test',
+    rolloutAuthorityRevision: 'rollout:database-test',
+  };
+  const makeDraft = (
+    revisionNumber: number,
+    operation: DraftChangeSetV2['operation'],
+    reviewRecommendation: DraftChangeSetV2['reviewRecommendation'],
+    updatedAt: string,
+  ): DraftChangeSetV2 => {
+    const withoutDigest: Omit<DraftChangeSetV2, 'contentDigest'> = {
+      ...fixture.draft,
+      changeSetId: `${fixture.draft.changeSetId}:resolution`,
+      revisionNumber,
+      comparisonId: fixture.comparisonId,
+      analysisRevisionIds: ['analysis-db-resolution'],
+      disposition: operation === 'MODIFY_REVIEW' ? 'REVIEW_REQUIRED' : 'NEW',
+      relationshipIds: ['relationship-db-resolution'],
+      operation,
+      reviewRecommendation,
+      shortlistDigest,
+      freshnessIdentity,
+      freshnessDigest: comparisonFreshnessDigestV2(freshnessIdentity),
+      status: 'PENDING_REVIEW',
+      createdAt: fixture.draft.createdAt,
+      updatedAt,
+    };
+    const draft = {
+      ...withoutDigest,
+      contentDigest: draftChangeSetContentDigestV2(withoutDigest),
+    };
+    validateDraftChangeSetV2(draft);
+    return draft;
+  };
+  return {
+    source: makeDraft(1, 'MODIFY_REVIEW', 'MODIFY_REVIEW', '2026-09-05T12:00:00.000Z'),
+    resolved: makeDraft(2, 'ADD_CLAIM', 'MODIFY_REVIEW', '2026-09-05T12:00:01.000Z'),
+  };
 };
 
 const makeFixture = async (database: Pool): Promise<Fixture> => {
@@ -349,5 +444,148 @@ describe.runIf(databaseUrl)('WP5 v2 Review PostgreSQL persistence', () => {
       fixture.comparisonId,
     );
     expect(unchanged?.status).toBe('APPROVED');
+  });
+
+  it('ADR-163/R19: reconciles an unknown connector outcome from one immutable resolution', async () => {
+    const fixture = await makeFixture(pool!);
+    const repository = new PostgresChangeSetReviewV2Repository(pool!);
+    const { source, resolved } = makeResolutionDrafts(fixture);
+    const clientRequestId = `r19-client:${fixture.projectId}`;
+    const idempotencyKey = `r19-idempotency:${fixture.projectId}`;
+    const semanticCommandIdentity = `connector:${idempotencyKey}`;
+    const unsignedResolution: Omit<OperationResolutionV2, 'resolutionDigest'> = {
+      resolutionId: `resolution:${fixture.projectId}`,
+      contractVersion: 'review-operation-resolution.v1',
+      projectId: fixture.projectId,
+      changeSetId: source.changeSetId,
+      sourceDraftRevision: source.revisionNumber,
+      sourceDraftDigest: source.contentDigest,
+      resolvedDraftRevision: resolved.revisionNumber,
+      resolvedDraftDigest: resolved.contentDigest,
+      resolvedDraftMaterialDigest: reviewOperationResolvedDraftMaterialDigestV2(resolved),
+      comparisonId: source.comparisonId,
+      comparisonDigest: source.comparisonDigest,
+      candidateId: source.candidate.id,
+      candidateRevision: source.candidate.revision,
+      candidateDigest: source.candidate.digest,
+      candidateSourceVersionId: source.candidate.sourceVersionId,
+      candidateEvidenceIds: [...source.candidate.evidenceIds],
+      canonicalSnapshotId: source.canonicalSnapshot.id,
+      canonicalVersion: source.canonicalSnapshot.version,
+      canonicalDigest: source.canonicalSnapshot.digest,
+      shortlistDigest: source.shortlistDigest,
+      analysisRevisionIds: [...source.analysisRevisionIds],
+      relationshipIds: [...source.relationshipIds],
+      accessRevision: 'access:database-test',
+      policyContextRevision: 'policy:database-test',
+      resolverActorId: 'database-test',
+      clientRequestId,
+      semanticCommandIdentity,
+      idempotencyKey,
+      commandDigest: sha256Text(`command:${fixture.projectId}`),
+      chosenOperation: 'ADD_CLAIM',
+      state: 'RESOLVED',
+      createdAt: '2026-09-05T12:00:01.000Z',
+    };
+    const resolution: OperationResolutionV2 = {
+      ...unsignedResolution,
+      resolutionDigest: reviewOperationResolutionDigestV2(unsignedResolution),
+    };
+
+    const identity: ConnectorSemanticIdentity = {
+      projectId: fixture.projectId,
+      securityScope: JSON.stringify({
+        accessScope: ['owner'],
+        sensitivity: 'public',
+        dataClassification: 'adr163-r19-db-test',
+      }),
+      consumerId: 'review.operation-resolution:command:ResolveReviewOperationV2',
+      messageKind: 'command',
+      messageType: 'ResolveReviewOperationV2',
+      semanticKey: idempotencyKey,
+      fingerprint: sha256Text(`fingerprint:${fixture.projectId}`),
+    };
+    const jobId = randomUUID();
+    const state = new PostgresConnectorRuntimeState(pool!);
+    const connector = new ConnectorRuntime(new ModuleRegistry(), new InProcessTransport(), {
+      state,
+    });
+
+    try {
+      await repository.saveDraft(source);
+      const stored = await repository.resolveOperation({
+        currentDraft: source,
+        resolvedDraft: resolved,
+        resolution,
+      });
+      expect(stored.status).toBe('RESOLVED');
+
+      await state.lifecycle.start();
+      const began = await state.dedup.begin({ ...identity, jobId });
+      expect(began.kind).toBe('ACQUIRED');
+      if (began.kind !== 'ACQUIRED' || !began.record.jobId) return;
+      await state.dedup.markOutcomeUnknown({
+        identity,
+        fenceToken: began.record.fenceToken,
+        jobId: began.record.jobId,
+        safeErrorMessage: 'acknowledgement was lost after the Review resolution committed',
+      });
+
+      const observed = await repository.findOperationResolutionByClientRequest(
+        fixture.projectId,
+        clientRequestId,
+        semanticCommandIdentity,
+      );
+      expect(observed?.resolutionId).toBe(resolution.resolutionId);
+      await connector.reconcileOutcome({
+        identity,
+        result: {
+          resolutionId: observed!.resolutionId,
+          chosenOperation: observed!.chosenOperation,
+        },
+      });
+
+      const duplicate = await state.dedup.begin({ ...identity, jobId: randomUUID() });
+      expect(duplicate).toMatchObject({ kind: 'DUPLICATE', record: { state: 'COMPLETED' } });
+      const counts = await pool!.query<{ resolutions: string; revisions: string }>(
+        `SELECT
+           (SELECT count(*)::text FROM review.operation_resolutions_v2 WHERE project_id = $1) AS resolutions,
+           (SELECT count(*)::text FROM review.change_set_revisions_v2 WHERE project_id = $1) AS revisions`,
+        [fixture.projectId],
+      );
+      expect(counts.rows[0]).toEqual({ resolutions: '1', revisions: '2' });
+    } finally {
+      await state.lifecycle.stop();
+      await pool!.query(
+        `DELETE FROM connector.jobs
+          WHERE dedup_record_id IN (
+            SELECT dedup_record_id FROM connector.dedup_records WHERE project_id = $1
+          )`,
+        [fixture.projectId],
+      );
+      await pool!.query('DELETE FROM connector.dedup_records WHERE project_id = $1', [
+        fixture.projectId,
+      ]);
+      await pool!.query('DELETE FROM review.operation_resolutions_v2 WHERE project_id = $1', [
+        fixture.projectId,
+      ]);
+      await pool!.query('DELETE FROM review.change_set_revisions_v2 WHERE project_id = $1', [
+        fixture.projectId,
+      ]);
+      await pool!.query('DELETE FROM review.change_sets_v2 WHERE project_id = $1', [
+        fixture.projectId,
+      ]);
+      await pool!.query('DELETE FROM comparison.results_v2 WHERE project_id = $1', [
+        fixture.projectId,
+      ]);
+      await pool!.query('DELETE FROM candidate.claim_candidates WHERE project_id = $1', [
+        fixture.projectId,
+      ]);
+      await pool!.query('DELETE FROM candidate.batches WHERE project_id = $1', [fixture.projectId]);
+      await pool!.query('DELETE FROM evidence.spans WHERE project_id = $1', [fixture.projectId]);
+      await pool!.query('DELETE FROM transformation.revisions WHERE project_id = $1', [
+        fixture.projectId,
+      ]);
+    }
   });
 });

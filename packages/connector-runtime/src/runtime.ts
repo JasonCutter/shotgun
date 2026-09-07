@@ -471,6 +471,28 @@ export class ConnectorRuntime {
     return this.durableState.dedup.reconcile(input);
   }
 
+  /** Reconcile a command using the exact semantic identity that durable
+   * delivery derived from its original envelope.  Product boundaries use this
+   * helper only after an authoritative domain lookup; it never re-invokes the
+   * command handler. */
+  async reconcileCommandOutcome<TResult>(
+    envelope: CommandEnvelope,
+    input: {
+      readonly result?: TResult;
+      readonly safeErrorCode?: string;
+      readonly safeErrorMessage?: string;
+    },
+  ): Promise<unknown> {
+    const route = this.registry.getCommandHandler(envelope.messageType, envelope.schemaVersion);
+    const identity = this.semanticIdentity(
+      envelope,
+      consumerId(route.module.manifest.id, 'command', envelope.messageType),
+      'command',
+      envelope.idempotencyKey,
+    );
+    return this.reconcileOutcome({ identity, ...input });
+  }
+
   private async executeDeduplicated<TResult>(
     envelope: CommandEnvelope | EventEnvelope,
     route: RegisteredCommandHandler | RegisteredEventHandler,

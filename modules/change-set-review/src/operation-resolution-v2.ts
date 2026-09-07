@@ -25,6 +25,7 @@ import {
   type ComparisonResultV2,
   type ComparisonDigestV2,
   type ResolveReviewOperationV2Operation,
+  type ResolveReviewOperationV2Result,
   type ResolveReviewOperationV2Outcome,
   type ResolveReviewOperationV2Request,
 } from '../../../packages/contracts/src/index.js';
@@ -44,6 +45,11 @@ export type OperationResolutionV2 = {
   readonly sourceDraftDigest: ComparisonDigestV2;
   readonly resolvedDraftRevision: number;
   readonly resolvedDraftDigest: ComparisonDigestV2;
+  /** ADR-163 material identity for the resolved draft.  This is deliberately
+   * separate from DraftChangeSetV2.contentDigest so the strict 2.0 Draft
+   * contract can retain its existing timestamp-sensitive digest rules while
+   * resolution provenance remains stable across wall-clock changes. */
+  readonly resolvedDraftMaterialDigest: ComparisonDigestV2;
   readonly comparisonId: string;
   readonly comparisonDigest: ComparisonDigestV2;
   readonly candidateId: string;
@@ -74,6 +80,9 @@ export type ReviewOperationResolutionWrite = {
   readonly currentDraft: DraftChangeSetV2;
   readonly resolvedDraft: DraftChangeSetV2;
   readonly resolution: OperationResolutionV2;
+  /** Re-run all server-owned freshness/security/policy checks after the
+   * current head has been locked, immediately before durable inserts. */
+  readonly validateAtCommit?: () => Promise<void>;
 };
 
 export type ReviewOperationResolutionStoreResult = {
@@ -89,6 +98,11 @@ export type ReviewOperationResolutionStorePort = {
     changeSetId: string,
     clientRequestId: string,
     idempotencyKey: string,
+  ): Promise<OperationResolutionV2 | undefined>;
+  findOperationResolutionByClientRequest(
+    projectId: string,
+    clientRequestId: string,
+    semanticCommandIdentity?: string,
   ): Promise<OperationResolutionV2 | undefined>;
   resolveOperation(
     write: ReviewOperationResolutionWrite,
@@ -176,15 +190,82 @@ const sameLineage = (
   );
 };
 
-const resolutionDigest = (resolution: Omit<OperationResolutionV2, 'resolutionDigest'>): string =>
+const resolvedDraftMaterialProjection = (draft: DraftChangeSetV2) => ({
+  contractVersion: draft.contractVersion,
+  changeSetId: draft.changeSetId,
+  revisionNumber: draft.revisionNumber,
+  projectId: draft.projectId,
+  candidate: {
+    id: draft.candidate.id,
+    revision: draft.candidate.revision,
+    digest: draft.candidate.digest,
+    sourceVersionId: draft.candidate.sourceVersionId,
+    evidenceIds: [...draft.candidate.evidenceIds].sort(),
+  },
+  comparisonId: draft.comparisonId,
+  comparisonDigest: draft.comparisonDigest,
+  canonicalSnapshot: draft.canonicalSnapshot,
+  analysisRevisionIds: [...draft.analysisRevisionIds].sort(),
+  disposition: draft.disposition,
+  relationshipIds: [...draft.relationshipIds].sort(),
+  evidenceIds: [...draft.evidenceIds].sort(),
+  operation: draft.operation,
+  reviewRecommendation: draft.reviewRecommendation,
+  expectedCanonicalVersion: draft.expectedCanonicalVersion,
+  snapshotDigest: draft.snapshotDigest,
+  shortlistDigest: draft.shortlistDigest,
+  freshnessIdentity: draft.freshnessIdentity,
+  freshnessDigest: draft.freshnessDigest,
+  accessScope: [...draft.accessScope].sort(),
+  sensitivity: draft.sensitivity,
+});
+
+export const reviewOperationResolvedDraftMaterialDigestV2 = (
+  draft: DraftChangeSetV2,
+): ComparisonDigestV2 => sha256Text(stableJson(resolvedDraftMaterialProjection(draft)));
+
+export const reviewOperationResolutionDigestV2 = (
+  resolution: Omit<OperationResolutionV2, 'resolutionDigest'>,
+): string =>
   sha256Text(
     stableJson({
-      ...resolution,
+      contractVersion: resolution.contractVersion,
+      projectId: resolution.projectId,
+      changeSetId: resolution.changeSetId,
+      sourceDraftRevision: resolution.sourceDraftRevision,
+      sourceDraftDigest: resolution.sourceDraftDigest,
+      resolvedDraftRevision: resolution.resolvedDraftRevision,
+      resolvedDraftMaterialDigest: resolution.resolvedDraftMaterialDigest,
+      chosenOperation: resolution.chosenOperation,
+      comparisonId: resolution.comparisonId,
+      comparisonDigest: resolution.comparisonDigest,
+      candidateId: resolution.candidateId,
+      candidateRevision: resolution.candidateRevision,
+      candidateDigest: resolution.candidateDigest,
+      candidateSourceVersionId: resolution.candidateSourceVersionId,
       candidateEvidenceIds: [...resolution.candidateEvidenceIds].sort(),
+      canonicalSnapshotId: resolution.canonicalSnapshotId,
+      canonicalVersion: resolution.canonicalVersion,
+      canonicalDigest: resolution.canonicalDigest,
+      shortlistDigest: resolution.shortlistDigest,
       analysisRevisionIds: [...resolution.analysisRevisionIds].sort(),
       relationshipIds: [...resolution.relationshipIds].sort(),
+      accessRevision: resolution.accessRevision,
+      policyContextRevision: resolution.policyContextRevision,
     }),
   );
+
+export const reviewOperationResolutionOutcomeV2 = (
+  resolution: OperationResolutionV2,
+): ResolveReviewOperationV2Result => ({
+  status: 'RESOLVED',
+  resolutionId: resolution.resolutionId,
+  changeSetId: resolution.changeSetId,
+  sourceDraftRevision: resolution.sourceDraftRevision,
+  resolvedDraftRevision: resolution.resolvedDraftRevision,
+  resolvedDraftDigest: resolution.resolvedDraftDigest,
+  chosenOperation: resolution.chosenOperation,
+});
 
 const matchesRequest = (
   resolution: OperationResolutionV2,
@@ -380,6 +461,100 @@ export const createReviewOperationResolutionV2 = (
         return { status: 'BLOCKED', code: 'STALE_REVIEW_INPUT' };
       }
 
+      const validateAtCommit = async (): Promise<void> => {
+        let latestAggregate: ComparisonV2AggregateForReview | undefined;
+        try {
+          latestAggregate = await dependencies.aggregate.findComparisonById(
+            command.projectId,
+            draft!.comparisonId,
+          );
+        } catch (error) {
+          throw Object.assign(new Error('Review freshness authority is unavailable.'), {
+            code: 'OUTCOME_UNKNOWN',
+            cause: error,
+          });
+        }
+        if (!latestAggregate) {
+          throw Object.assign(new Error('The comparison is no longer available.'), {
+            code: 'STALE_REVIEW_INPUT',
+          });
+        }
+        if (
+          latestAggregate.comparison.projectId !== command.projectId ||
+          latestAggregate.comparison.candidate.id !== draft!.candidate.id ||
+          latestAggregate.comparison.candidate.revision !== draft!.candidate.revision ||
+          command.authority.candidateId !== draft!.candidate.id ||
+          command.authority.candidateRevision !== draft!.candidate.revision ||
+          !sameLineage(draft!, latestAggregate)
+        ) {
+          throw Object.assign(new Error('Review lineage changed before commit.'), {
+            code: 'STALE_REVIEW_INPUT',
+          });
+        }
+        try {
+          validateComparisonChildrenV2(
+            latestAggregate.comparison,
+            latestAggregate.relationships,
+            latestAggregate.analyses,
+          );
+        } catch (error) {
+          throw Object.assign(new Error('Review lineage is invalid.'), {
+            code: 'STALE_REVIEW_INPUT',
+            cause: error,
+          });
+        }
+        if (!isAuthorized(latestAggregate.comparison, command.security)) {
+          throw Object.assign(new Error('Review access was revoked before commit.'), {
+            code: 'ACCESS_REVOKED',
+          });
+        }
+        let latestCurrent: Awaited<ReturnType<ComparisonV2ReviewFreshnessPort['getCurrent']>>;
+        try {
+          latestCurrent = await dependencies.freshness.getCurrent({
+            aggregate: latestAggregate,
+            expected: draft!.freshnessIdentity,
+            authority: command.authority,
+            security: command.security,
+          });
+        } catch (error) {
+          throw Object.assign(new Error('Review freshness authority is unavailable.'), {
+            code: 'OUTCOME_UNKNOWN',
+            cause: error,
+          });
+        }
+        const latestFreshness = evaluateComparisonFreshnessV2(
+          draft!.freshnessIdentity,
+          latestCurrent.identity,
+          latestCurrent.shortlist ?? latestAggregate.comparison.shortlist,
+        );
+        if (
+          latestFreshness.reasons.some((reason) =>
+            new Set<string>([
+              'ACCESS_SENSITIVITY_POLICY_CHANGED',
+              'SHORTLIST_POLICY_CHANGED',
+              'SEMANTIC_POLICY_CHANGED',
+            ]).has(reason),
+          )
+        ) {
+          throw Object.assign(new Error('Review policy changed before commit.'), {
+            code: 'POLICY_CHANGED',
+          });
+        }
+        try {
+          assertComparisonFreshForReviewV2(latestFreshness, latestAggregate.comparison);
+        } catch (error) {
+          throw Object.assign(new Error('Review freshness changed before commit.'), {
+            code: 'STALE_REVIEW_INPUT',
+            cause: error,
+          });
+        }
+        if (draft!.freshnessDigest !== comparisonFreshnessDigestV2(draft!.freshnessIdentity)) {
+          throw Object.assign(new Error('Review freshness digest changed before commit.'), {
+            code: 'STALE_REVIEW_INPUT',
+          });
+        }
+      };
+
       const createdAt = now();
       const resolvedDraftWithoutDigest: Omit<DraftChangeSetV2, 'contentDigest'> = {
         ...draft,
@@ -402,6 +577,7 @@ export const createReviewOperationResolutionV2 = (
         sourceDraftDigest: draft.contentDigest,
         resolvedDraftRevision: resolvedDraft.revisionNumber,
         resolvedDraftDigest: resolvedDraft.contentDigest,
+        resolvedDraftMaterialDigest: reviewOperationResolvedDraftMaterialDigestV2(resolvedDraft),
         comparisonId: aggregate.comparison.comparisonId,
         comparisonDigest: draft.comparisonDigest,
         candidateId: draft.candidate.id,
@@ -433,13 +609,14 @@ export const createReviewOperationResolutionV2 = (
       };
       const resolution: OperationResolutionV2 = {
         ...unsigned,
-        resolutionDigest: resolutionDigest(unsigned),
+        resolutionDigest: reviewOperationResolutionDigestV2(unsigned),
       };
       try {
         const stored = await dependencies.repository.resolveOperation({
           currentDraft: draft,
           resolvedDraft,
           resolution,
+          validateAtCommit,
         });
         return {
           status: stored.status,
@@ -455,7 +632,14 @@ export const createReviewOperationResolutionV2 = (
         if (code === 'IDEMPOTENCY_KEY_REUSE') {
           return { status: 'BLOCKED', code };
         }
-        if (code === 'OUTCOME_UNKNOWN') return { status: 'BLOCKED', code };
+        if (
+          code === 'OUTCOME_UNKNOWN' ||
+          code === 'STALE_REVIEW_INPUT' ||
+          code === 'ACCESS_REVOKED' ||
+          code === 'POLICY_CHANGED' ||
+          code === 'NOT_FOUND'
+        )
+          return { status: 'BLOCKED', code };
         return {
           status: 'BLOCKED',
           code: code === 'DRAFT_REVISION_CONFLICT' ? code : 'RESOLUTION_CONFLICT',
@@ -504,12 +688,27 @@ export class InMemoryReviewOperationResolutionStore implements ReviewOperationRe
     clientRequestId: string,
     idempotencyKey: string,
   ): Promise<OperationResolutionV2 | undefined> {
+    void changeSetId;
     const found = [...this.resolutions.values()].find(
       (resolution) =>
         resolution.projectId === projectId &&
-        resolution.changeSetId === changeSetId &&
         (resolution.clientRequestId === clientRequestId ||
           resolution.idempotencyKey === idempotencyKey),
+    );
+    return found === undefined ? undefined : clone(found);
+  }
+
+  async findOperationResolutionByClientRequest(
+    projectId: string,
+    clientRequestId: string,
+    semanticCommandIdentity?: string,
+  ): Promise<OperationResolutionV2 | undefined> {
+    const found = [...this.resolutions.values()].find(
+      (resolution) =>
+        resolution.projectId === projectId &&
+        resolution.clientRequestId === clientRequestId &&
+        (semanticCommandIdentity === undefined ||
+          resolution.semanticCommandIdentity === semanticCommandIdentity),
     );
     return found === undefined ? undefined : clone(found);
   }
@@ -544,7 +743,6 @@ export class InMemoryReviewOperationResolutionStore implements ReviewOperationRe
       const existing = [...this.resolutions.values()].find(
         (resolution) =>
           resolution.projectId === write.resolution.projectId &&
-          resolution.changeSetId === write.resolution.changeSetId &&
           (resolution.clientRequestId === write.resolution.clientRequestId ||
             resolution.idempotencyKey === write.resolution.idempotencyKey),
       );
@@ -574,6 +772,7 @@ export class InMemoryReviewOperationResolutionStore implements ReviewOperationRe
           code: 'DRAFT_REVISION_CONFLICT',
         });
       }
+      await write.validateAtCommit?.();
       const sourceKey = `${key}:${write.resolution.sourceDraftRevision}`;
       const source = this.revisions.get(sourceKey);
       if (source && source.contentDigest !== write.resolution.sourceDraftDigest) {

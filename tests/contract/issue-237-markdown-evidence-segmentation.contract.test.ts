@@ -53,6 +53,10 @@ const revisionFor = (text: string): TransformationRevision => {
 };
 
 describe('Issue #237 Markdown segmentation', () => {
+  it('publishes the governed transformer identity for the corrected behavior', () => {
+    expect(adapter.identity).toEqual({ id: 'shotgun.plain-text', version: '1.0.1' });
+  });
+
   it('keeps Markdown ordinal prefixes attached to the meaningful sentence', () => {
     const output = transformed('1. 태양광으로 전기를 생산한다.', 'text/markdown');
 

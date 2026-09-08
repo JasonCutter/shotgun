@@ -2,6 +2,7 @@ import type { CanonicalClaim } from './canonical-knowledge.js';
 import type { CanonicalSnapshot } from './comparison-review.js';
 import type { CompiledTruthProjection, CompiledTruthItem } from './compiled-truth.js';
 import type { KnowledgeCandidate, KnowledgeReviewGroup } from './knowledge-model.js';
+import type { SemanticProjectionGeneration } from './semantic-index.js';
 import {
   semanticRepresentationBuilderV2,
   semanticStableJson,
@@ -126,6 +127,26 @@ export type SemanticCorpusSourceSnapshotReaderPort = {
   readSnapshot(projectId: string): Promise<SemanticCorpusSourceSnapshot>;
   readWatermark(projectId: string): Promise<SemanticCorpusSourceWatermark>;
 };
+
+/**
+ * Shared server-authoritative freshness predicate for semantic retrieval and
+ * Product activation. Both source identity fields must match the watermark.
+ */
+export const semanticGenerationMatchesSourceWatermark = (
+  generation: Pick<
+    SemanticProjectionGeneration,
+    'projectId' | 'sourceProjectionDigest' | 'canonicalBaseVersion'
+  >,
+  watermark: Pick<
+    SemanticCorpusSourceWatermark,
+    'projectId' | 'sourceSnapshotDigest' | 'canonicalVersion'
+  >,
+  projectId: string,
+): boolean =>
+  generation.projectId === projectId &&
+  watermark.projectId === projectId &&
+  generation.sourceProjectionDigest === watermark.sourceSnapshotDigest &&
+  generation.canonicalBaseVersion === watermark.canonicalVersion;
 
 const sortedStrings = (values: readonly string[]): readonly string[] =>
   Object.freeze(

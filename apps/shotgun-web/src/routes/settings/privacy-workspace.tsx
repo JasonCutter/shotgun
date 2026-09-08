@@ -8,6 +8,7 @@ import type {
 } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../../app/providers.js';
+import { convergeOwnerState } from '../../app/query-keys.js';
 import { privacyProfileLabel, sensitivityLabel } from '../../presentation/product-labels.js';
 import { sessionQueryOptions } from '../../session/session-query.js';
 
@@ -144,7 +145,7 @@ export const PrivacyWorkspace = () => {
           ? 'Provider privacy approved for this provider.'
           : 'Provider privacy not approved.',
       );
-      await queryClient.invalidateQueries({ queryKey: ['settings', 'ai', targetProjectId] });
+      await convergeOwnerState(queryClient, targetProjectId);
     },
     onError: (error) => {
       setProviderNotice(error instanceof Error ? error.message : 'Provider privacy review failed.');
@@ -174,10 +175,7 @@ export const PrivacyWorkspace = () => {
       } else if (response.resource.status === 'APPLIED') {
         setProjectReviewProposalId(undefined);
         setProjectNotice('Project privacy approval was recorded. Deployment policy still applies.');
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['settings', 'privacy', targetProjectId] }),
-          queryClient.invalidateQueries({ queryKey: ['settings', 'snapshot', targetProjectId] }),
-        ]);
+        await convergeOwnerState(queryClient, targetProjectId);
       }
     } catch (reason) {
       setProjectNotice(reason instanceof Error ? reason.message : 'Privacy review command failed.');

@@ -12,10 +12,12 @@ import {
 import {
   SEMANTIC_REPRESENTATION_VERSION_V2,
   ShotgunError,
+  semanticGenerationMatchesSourceWatermark,
 } from '../../../../packages/contracts/src/index.js';
 import type { SemanticEmbeddingProfilePort } from '../../../../packages/contracts/src/index.js';
 import type {
   SemanticActiveGenerationReaderPort,
+  SemanticCorpusSourceSnapshotReaderPort,
   SemanticEmbeddingRegistryPort,
   SemanticProjectionRefreshPort,
 } from '../../../../packages/contracts/src/index.js';
@@ -224,6 +226,10 @@ export function registerAISettingsRoutes(
   semanticActiveGenerationReader?: SemanticActiveGenerationReaderPort,
   semanticProjectionRefresh?: SemanticProjectionRefreshPort,
   settingsRepository?: SettingsRepositoryPort,
+  semanticCorpusSourceSnapshotReader?: Pick<
+    SemanticCorpusSourceSnapshotReaderPort,
+    'readWatermark'
+  >,
 ): void {
   const access = async (headers: SecurityHeaders, projectId: string, manage: boolean) => {
     const { context } = await requireBrowserSession(headers);
@@ -331,6 +337,48 @@ export function registerAISettingsRoutes(
     );
 
     if (semanticEmbeddingRegistry && semanticActiveGenerationReader) {
+      const generationMatchesSource = async (
+        projectId: string,
+        generation: Awaited<ReturnType<SemanticActiveGenerationReaderPort['getActiveGeneration']>>,
+      ): Promise<boolean> => {
+        if (!generation || !semanticCorpusSourceSnapshotReader) return false;
+        const watermark = await semanticCorpusSourceSnapshotReader.readWatermark(projectId);
+        return semanticGenerationMatchesSourceWatermark(generation, watermark, projectId);
+      };
+
+      const orderedEmbeddingModels = () =>
+        [...semanticEmbeddingRegistry.listModels()].sort((left, right) => {
+          const rank = (model: { providerId: string; modelId: string }): string =>
+            model.providerId === 'openai' && model.modelId === 'text-embedding-3-small'
+              ? '0'
+              : `1:${model.providerId}:${model.modelId}`;
+          const leftRank = rank(left);
+          const rightRank = rank(right);
+          return leftRank < rightRank ? -1 : leftRank > rightRank ? 1 : 0;
+        });
+
+      const selectEmbeddingBinding = (
+        aiSettings: Awaited<ReturnType<AISettingsBackendPort['getSettings']>>,
+      ) => {
+        for (const model of orderedEmbeddingModels()) {
+          const credentials = aiSettings.credentialStatuses.filter(
+            (credential) =>
+              credential.providerId === model.providerId && credential.lifecycleState === 'active',
+          );
+          if (credentials.length > 1) {
+            throw new ShotgunError({
+              code: 'CONFIGURATION_REQUIRED',
+              safeMessage: `Choose one active ${model.providerId} embedding credential before enabling semantic comparison.`,
+              module: 'ai-settings-api',
+              operation: 'prepare-semantic-comparison-credential',
+            });
+          }
+          const credential = credentials[0];
+          if (credential) return { model, credential };
+        }
+        return undefined;
+      };
+
       const projectStatus = async (projectId: string) => {
         const [profile, generation, settings, aiSettings] = await Promise.all([
           semanticEmbeddingProfile.getCurrent(projectId),
@@ -359,7 +407,7 @@ export function registerAISettingsRoutes(
           generation.buildStatus === 'READY' &&
           generation.embeddingProfileId === profile.profileId &&
           generation.embeddingProfileRevision === profile.profileRevision,
-        );
+        ) && (await generationMatchesSource(projectId, generation));
         const profileBindingMissing = Boolean(
           profile &&
           (!aiSettings.credentialStatuses.some(
@@ -377,15 +425,18 @@ export function registerAISettingsRoutes(
             ? 'NEEDS_ATTENTION'
             : generationMatchesProfile
               ? 'READY'
-              : profile.status === 'BUILDING'
-                ? 'PREPARING'
-                : profile.status === 'FAILED' || profile.status === 'RETIRED'
-                  ? 'NEEDS_ATTENTION'
-                  : 'PREPARING';
+              : generation?.buildStatus === 'READY'
+                ? 'NEEDS_ATTENTION'
+                : profile.status === 'BUILDING'
+                  ? 'PREPARING'
+                  : profile.status === 'FAILED' || profile.status === 'RETIRED'
+                    ? 'NEEDS_ATTENTION'
+                    : 'PREPARING';
+        const effectiveRollout = generationMatchesProfile && status === 'READY' ? rollout : 'V1_ONLY';
         return {
           projectId,
           status,
-          rollout,
+          rollout: effectiveRollout,
           settingsRevision: settings?.settingsRevision ?? 0,
           ...(profile
             ? {
@@ -444,17 +495,6 @@ export function registerAISettingsRoutes(
             await access(request.headers, projectId, true);
             try {
               let profile = await semanticEmbeddingProfile.getCurrent(projectId);
-              const models = semanticEmbeddingRegistry.listModels('openai');
-              const model =
-                models.find((entry) => entry.modelId === 'text-embedding-3-small') ?? models[0];
-              if (!model) {
-                throw new ShotgunError({
-                  code: 'CONFIGURATION_REQUIRED',
-                  safeMessage: 'No supported embedding model is available.',
-                  module: 'ai-settings-api',
-                  operation: 'prepare-semantic-comparison',
-                });
-              }
               const aiSettings = await backend.getSettings(projectId);
               const currentCredential = profile
                 ? aiSettings.credentialStatuses.find(
@@ -475,23 +515,17 @@ export function registerAISettingsRoutes(
                 ['PREPARED', 'ACTIVE'].includes(profile.status),
               );
               if (!currentEligible) {
-                const credentials = aiSettings.credentialStatuses.filter(
-                  (credential) =>
-                    credential.providerId === model.providerId &&
-                    credential.lifecycleState === 'active',
-                );
-                const credential = credentials[0];
-                if (credentials.length !== 1 || !credential) {
+                const selected = selectEmbeddingBinding(aiSettings);
+                if (!selected) {
                   throw new ShotgunError({
                     code: 'CONFIGURATION_REQUIRED',
                     safeMessage:
-                      credentials.length === 0
-                        ? 'Add an OpenAI or supported embedding credential first.'
-                        : 'Choose one active embedding credential before enabling semantic comparison.',
+                      'Add one active credential for a registered semantic embedding provider first.',
                     module: 'ai-settings-api',
                     operation: 'prepare-semantic-comparison-credential',
                   });
                 }
+                const { model, credential } = selected;
                 profile = await semanticEmbeddingProfile.createProfile({
                   projectId,
                   expectedRevision: profile?.profileRevision ?? 0,
@@ -521,13 +555,24 @@ export function registerAISettingsRoutes(
                 readyGeneration.buildStatus === 'READY' &&
                 readyGeneration.embeddingProfileId === selectedProfile.profileId &&
                 readyGeneration.embeddingProfileRevision === selectedProfile.profileRevision,
-              );
+              ) && (await generationMatchesSource(projectId, readyGeneration));
               if (!generationMatchesProfile) {
-                await semanticProjectionRefresh.refresh({
+                const refreshResult = await semanticProjectionRefresh.refresh({
                   projectId,
                   actor: context.actor,
                   security: context.security,
                 });
+                const status = await projectStatus(projectId);
+                if (refreshResult.status !== 'ACTIVATED') {
+                  return {
+                    status: {
+                      ...status,
+                      status: 'NEEDS_ATTENTION' as const,
+                      rollout: 'V1_ONLY' as const,
+                    },
+                  };
+                }
+                return { status };
               }
               return { status: await projectStatus(projectId) };
             } catch (error) {

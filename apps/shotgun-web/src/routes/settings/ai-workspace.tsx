@@ -10,6 +10,7 @@ import type {
 } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../../app/providers.js';
+import { convergeOwnerState } from '../../app/query-keys.js';
 import { sessionQueryOptions } from '../../session/session-query.js';
 
 type SettingsOutletContext = {
@@ -174,7 +175,7 @@ export const AIWorkspace = () => {
     settings?.vaultAvailability.state === 'AVAILABLE';
 
   const invalidateSettings = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['settings', 'ai', targetProjectId] });
+    await convergeOwnerState(queryClient, targetProjectId);
   };
 
   const testMutation = useMutation({

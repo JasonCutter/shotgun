@@ -4,6 +4,7 @@ import { useEffect, useId, useState } from 'react';
 import type { GlobalShellView, SemanticComparisonStatusView } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
+import { convergeOwnerState } from '../app/query-keys.js';
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { safeErrorMessage } from '../components/error-state.js';
 import {
@@ -27,8 +28,6 @@ export type SemanticCommandSurfaceProps = {
 
 const statusQueryKey = (projectId: string) =>
   ['settings', 'ai', 'semantic-comparison', projectId] as const;
-const snapshotQueryKey = (projectId: string) => ['settings', 'snapshot', projectId] as const;
-
 const commandIdentity = (prefix: string): string =>
   typeof crypto.randomUUID === 'function'
     ? `${prefix}:${crypto.randomUUID()}`
@@ -77,13 +76,7 @@ export const SemanticCommandSurface = ({
   }, [commandId, invoker, open]);
 
   const refresh = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: statusQueryKey(projectId) }),
-      queryClient.invalidateQueries({ queryKey: snapshotQueryKey(projectId) }),
-      queryClient.invalidateQueries({ queryKey: ['settings', 'ai', projectId] }),
-      queryClient.invalidateQueries({ queryKey: ['protected'] }),
-      queryClient.invalidateQueries({ queryKey: ['project'] }),
-    ]);
+    await convergeOwnerState(queryClient, projectId);
     await statusQuery.refetch();
   };
 

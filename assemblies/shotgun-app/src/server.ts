@@ -3418,6 +3418,7 @@ const createApplicationCore = async (
       options.semanticActiveGenerationReader,
       options.semanticProjectionRefresh,
       options.settingsRepository,
+      semanticCorpusSourceSnapshotReader,
     );
   }
   registerFrontendKnowledgeDraftRoutes(

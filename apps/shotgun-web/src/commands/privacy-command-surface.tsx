@@ -9,6 +9,7 @@ import type {
 } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
+import { convergeOwnerState } from '../app/query-keys.js';
 import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { safeErrorMessage } from '../components/error-state.js';
 import {
@@ -159,11 +160,7 @@ export const PrivacyCommandSurface = ({
   }, [commandId, invoker, open]);
 
   const refreshPrivacy = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: privacyQueryKey(projectId) }),
-      queryClient.invalidateQueries({ queryKey: snapshotQueryKey(projectId) }),
-      queryClient.invalidateQueries({ queryKey: aiSettingsQueryKey(projectId) }),
-    ]);
+    await convergeOwnerState(queryClient, projectId);
     await privacyQuery.refetch();
     if (reviewMode) await snapshotQuery.refetch();
     await aiSettingsQuery.refetch();

@@ -102,6 +102,7 @@ const renderWorkspace = (
   apiClient: Partial<ShotgunApiClient>,
   settings = makeSettings(),
   initialUrl = '/settings/ai',
+  queryClient = createFrontendQueryClient(),
 ) => {
   const api = {
     getSession: vi.fn().mockResolvedValue(session),
@@ -159,7 +160,7 @@ const renderWorkspace = (
   } as unknown as ShotgunApiClient;
   const runtime: AppRuntime = {
     apiClient: api,
-    queryClient: createFrontendQueryClient(),
+    queryClient,
     sessionCycleState: createSessionCycleState(),
   };
   const router = createMemoryRouter(
@@ -181,7 +182,7 @@ const renderWorkspace = (
       <RouterProvider router={router} />
     </AppProviders>,
   );
-  return { api, router };
+  return { api, router, queryClient };
 };
 
 describe('AIWorkspace (A7 Settings → AI)', () => {
@@ -420,6 +421,8 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
   });
 
   it('enables Project-level automatic processing for the saved provider without a provider approval flow', async () => {
+    const queryClient = createFrontendQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
     const { api } = renderWorkspace(
       {},
       makeSettings({
@@ -445,6 +448,8 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
           changedAt: now,
         },
       }),
+      '/settings/ai',
+      queryClient,
     );
     const user = userEvent.setup();
     await user.click(await screen.findByRole('checkbox', { name: 'AI Automatic Processing' }));
@@ -458,6 +463,12 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
       }),
     );
     expect(screen.getByText('AI automatic processing enabled')).toBeTruthy();
+    const invalidatedKeys = invalidateQueries.mock.calls.map(
+      ([input]) => JSON.stringify(input?.queryKey),
+    );
+    expect(invalidatedKeys).toContain(JSON.stringify(['settings', 'ai', 'project-1']));
+    expect(invalidatedKeys).toContain(JSON.stringify(['protected', 'global-shell']));
+    expect(invalidatedKeys).toContain(JSON.stringify(['project']));
   });
 
   it('ignores targetProjectId URL parameter and binds strictly to the session active project', async () => {

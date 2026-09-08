@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { InMemoryCredentialVaultRepository } from '../../adapters/credential-vault-in-memory/src/index.js';
 import { InMemoryProjectAIConfigurationRepository } from '../../adapters/ai-configuration-in-memory/src/index.js';
 import { InMemorySemanticEmbeddingProfileRepository } from '../../adapters/semantic-embedding-in-memory/src/index.js';
-import { InMemoryProjectAdministrationRepository } from '../../adapters/settings-project-admin-in-memory/src/index.js';
+import {
+  InMemoryProjectAdministrationRepository,
+  InMemorySettingsRepository,
+} from '../../adapters/settings-project-admin-in-memory/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import {
@@ -23,6 +26,7 @@ import {
   SemanticEmbeddingProfileService,
   initialSemanticEmbeddingRegistry,
 } from '../../modules/semantic-embedding/src/index.js';
+import type { SemanticProjectionGeneration } from '../../packages/contracts/src/index.js';
 
 const applications: Array<Awaited<ReturnType<typeof createApplication>>> = [];
 
@@ -32,7 +36,7 @@ afterEach(async () => {
   }
 });
 
-const createFixture = async () => {
+const createFixture = async (options: { readonly refreshFails?: boolean } = {}) => {
   const projectId = `semantic-profile-${crypto.randomUUID()}`;
   const accountId = `semantic-profile-account-${crypto.randomUUID()}`;
   const auth = new InMemoryAuthRepository();
@@ -83,11 +87,57 @@ const createFixture = async () => {
     new InMemorySemanticEmbeddingProfileRepository(),
     vault,
   );
+  const embeddingRegistry = initialSemanticEmbeddingRegistry();
+  let activeGeneration: SemanticProjectionGeneration | undefined;
+  const settingsRepository = new InMemorySettingsRepository();
+  const semanticActiveGenerationReader = {
+    getActiveGeneration: async () => activeGeneration,
+  };
+  const semanticProjectionRefresh = {
+    refresh: async ({ projectId }: { readonly projectId: string }) => {
+      if (options.refreshFails) throw new Error('Semantic refresh is unavailable.');
+      const profile = await semanticProfile.getCurrent(projectId);
+      if (!profile) throw new Error('Profile is required before refresh.');
+      activeGeneration = {
+        projectId,
+        generationId: `generation-${profile.profileRevision}`,
+        sourceProjectionDigest: 'sha256:source',
+        canonicalBaseVersion: 1,
+        credentialId: profile.credentialId,
+        credentialRevision: profile.credentialRevision,
+        providerPolicyFingerprint: 'policy',
+        providerId: profile.providerId,
+        embeddingModelId: profile.embeddingModelId,
+        embeddingProfileId: profile.profileId,
+        embeddingProfileRevision: profile.profileRevision,
+        providerRegistryRevision: 'registry',
+        capabilityCatalogRevision: 'capability',
+        representationVersion: profile.representationVersion,
+        dimension: profile.dimension,
+        distanceMetric: 'cosine',
+        normalizationPolicy: 'unit_length',
+        buildStatus: 'READY',
+        createdAt: new Date().toISOString(),
+      };
+      return {
+        projectId,
+        profileRevision: profile.profileRevision,
+        status: 'ACTIVATED' as const,
+        generationId: activeGeneration.generationId,
+        itemCount: 0,
+        membershipDigest: 'sha256:membership',
+      };
+    },
+  };
   const application = await createApplication({
     authRepository: auth,
     projectAdminRepository: projects,
     aiSettingsBackend: backend,
     semanticEmbeddingProfile: semanticProfile,
+    semanticEmbeddingRegistry: embeddingRegistry,
+    semanticActiveGenerationReader,
+    semanticProjectionRefresh,
+    settingsRepository,
   });
   applications.push(application);
   const session = await auth.createSession(
@@ -107,10 +157,129 @@ const createFixture = async () => {
     application,
     projectId,
     headers: { cookie, 'x-csrf-token': csrfToken, 'content-type': 'application/json' },
+    settingsRepository,
   };
 };
 
 describe('Semantic embedding profile Product boundary', () => {
+  it('reports owner-safe semantic status and activates only after refresh readiness', async () => {
+    const fixture = await createFixture();
+    const before = await fixture.application.server.inject({
+      method: 'GET',
+      url: '/api/v1/settings/ai/semantic-comparison-status',
+      headers: { cookie: fixture.headers.cookie },
+    });
+    expect(before.statusCode).toBe(200);
+    expect(before.json()).toMatchObject({
+      status: { projectId: fixture.projectId, status: 'NOT_CONFIGURED', rollout: 'V1_ONLY' },
+    });
+
+    const credentialResponse = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/credentials',
+      headers: fixture.headers,
+      payload: {
+        targetProjectId: fixture.projectId,
+        providerId: 'openai',
+        secret: 'semantic-test',
+      },
+    });
+    expect(credentialResponse.statusCode).toBe(200);
+
+    const prepared = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/prepare',
+      headers: fixture.headers,
+      payload: { targetProjectId: fixture.projectId },
+    });
+    expect(prepared.statusCode).toBe(200);
+    expect(prepared.json()).toMatchObject({
+      status: { projectId: fixture.projectId, status: 'READY', rollout: 'V1_ONLY' },
+    });
+    const preparedAgain = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/prepare',
+      headers: fixture.headers,
+      payload: { targetProjectId: fixture.projectId },
+    });
+    expect(preparedAgain.statusCode).toBe(200);
+    expect(preparedAgain.json()).toMatchObject({
+      status: { status: 'READY', profile: { profileRevision: 1 } },
+    });
+
+    const settingsSnapshot = await fixture.settingsRepository.getSettingsSnapshot(
+      fixture.projectId,
+    );
+    const activated = await fixture.settingsRepository.applySettingsCommand({
+      commandId: `semantic-activation-${crypto.randomUUID()}`,
+      clientRequestId: `semantic-activation-${crypto.randomUUID()}`,
+      idempotencyKey: `semantic-activation-${crypto.randomUUID()}`,
+      projectId: fixture.projectId,
+      expectedSettingsRevision: settingsSnapshot.settingsRevision,
+      observedPolicyContextRevision: settingsSnapshot.policyContextRevision,
+      settings: { 'comparison.stage5.rollout': 'V2_ACTIVE' },
+      actorId: 'owner-1',
+    });
+    expect(activated.status).toBe('APPLIED');
+    const after = await fixture.application.server.inject({
+      method: 'GET',
+      url: '/api/v1/settings/ai/semantic-comparison-status',
+      headers: { cookie: fixture.headers.cookie },
+    });
+    expect(after.json()).toMatchObject({ status: { rollout: 'V2_ACTIVE', status: 'READY' } });
+  });
+
+  it('fails closed when no active OpenAI embedding credential exists', async () => {
+    const fixture = await createFixture();
+    const deepSeekCredential = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/credentials',
+      headers: fixture.headers,
+      payload: {
+        targetProjectId: fixture.projectId,
+        providerId: 'deepseek',
+        secret: 'deepseek-generative-only',
+      },
+    });
+    expect(deepSeekCredential.statusCode).toBe(200);
+    const response = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/prepare',
+      headers: fixture.headers,
+      payload: {},
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ code: 'CONFIGURATION_REQUIRED' });
+  });
+
+  it('keeps rollout V1_ONLY when semantic refresh fails', async () => {
+    const fixture = await createFixture({ refreshFails: true });
+    const credentialResponse = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/credentials',
+      headers: fixture.headers,
+      payload: {
+        targetProjectId: fixture.projectId,
+        providerId: 'openai',
+        secret: 'semantic-test',
+      },
+    });
+    expect(credentialResponse.statusCode).toBe(200);
+    const prepared = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/prepare',
+      headers: fixture.headers,
+      payload: {},
+    });
+    expect(prepared.statusCode).toBe(500);
+    const status = await fixture.application.server.inject({
+      method: 'GET',
+      url: '/api/v1/settings/ai/semantic-comparison-status',
+      headers: { cookie: fixture.headers.cookie },
+    });
+    expect(status.json()).toMatchObject({ status: { rollout: 'V1_ONLY' } });
+  });
+
   it('provisions a PREPARED profile through the Product API and enforces server ownership/CAS', async () => {
     const fixture = await createFixture();
     const empty = await fixture.application.server.inject({

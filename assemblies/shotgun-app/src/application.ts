@@ -1096,6 +1096,7 @@ export const startShotgunApplication = async (
       settingsRepository,
       aiSettingsBackend: recoveryHarness ? undefined : aiSettingsBackend,
       semanticEmbeddingProfile: recoveryHarness ? undefined : semanticProfileService,
+      semanticEmbeddingRegistry: recoveryHarness ? undefined : semanticEmbeddingRegistry,
       providerExternalTransferApprovals: recoveryHarness ? undefined : providerApprovalService,
       frontendCommandGateway: commandGateway,
       typedPropositionConflictRuleRepository,

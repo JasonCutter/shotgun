@@ -16,6 +16,7 @@ import {
   useOptionalAnswerCommandContext,
 } from '../commands/answer-command-context.js';
 import { AICommandSurface } from '../commands/ai-command-surface.js';
+import { SemanticCommandSurface } from '../commands/semantic-command-surface.js';
 import {
   createOwnerCommandRegistry,
   type AICommandId,
@@ -23,6 +24,7 @@ import {
   type PreferenceCommandId,
   type PrivacyCommandId,
   type ProjectCommandId,
+  type SemanticCommandId,
 } from '../commands/owner-command-registry.js';
 import { useOptionalDiscoveryCommandContext } from '../commands/discovery-command-context.js';
 import { PreferencesCommandSurface } from '../commands/preferences-command-surface.js';
@@ -102,6 +104,8 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
   );
   const [aiCommand, setAICommand] = useState<AICommandId | null>(null);
   const [aiCommandInvoker, setAICommandInvoker] = useState<HTMLElement | null>(null);
+  const [semanticCommand, setSemanticCommand] = useState<SemanticCommandId | null>(null);
+  const [semanticCommandInvoker, setSemanticCommandInvoker] = useState<HTMLElement | null>(null);
   const [privacyCommand, setPrivacyCommand] = useState<PrivacyCommandId | null>(null);
   const [privacyCommandInvoker, setPrivacyCommandInvoker] = useState<HTMLElement | null>(null);
   const [technicalOpen, setTechnicalOpen] = useState(false);
@@ -220,6 +224,12 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
     if (command.action.kind === 'OPEN_AI_FLOW') {
       setAICommandInvoker(commandInvoker);
       setAICommand(command.action.commandId);
+      closeCommandMode();
+      return;
+    }
+    if (command.action.kind === 'OPEN_SEMANTIC_FLOW') {
+      setSemanticCommandInvoker(commandInvoker);
+      setSemanticCommand(command.action.commandId);
       closeCommandMode();
       return;
     }
@@ -343,6 +353,13 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
           shell={shell}
           invoker={aiCommandInvoker}
           onClose={() => setAICommand(null)}
+        />
+        <SemanticCommandSurface
+          open={semanticCommand !== null}
+          commandId={semanticCommand}
+          shell={shell}
+          invoker={semanticCommandInvoker}
+          onClose={() => setSemanticCommand(null)}
         />
         <PrivacyCommandSurface
           open={privacyCommand !== null}

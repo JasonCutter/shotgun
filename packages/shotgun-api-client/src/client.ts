@@ -12,6 +12,7 @@ import type {
   ShotgunApiClient,
   FrontendCommandSubmission,
   FrontendCommandMutationResponse,
+  SemanticComparisonStatusView,
 } from './contracts.js';
 import { getSharedCsrfMutationManager } from './csrf-manager.js';
 import {
@@ -21,6 +22,7 @@ import {
   decodeAIStandingPolicyEnvelope,
   decodeAISettingsApprovalEnvelope,
   decodeAISettingsReadModel,
+  decodeSemanticComparisonStatusView,
   decodeAITestConnectionResult,
   decodeLogoutEnvelope,
   decodeProductApiErrorBody,
@@ -985,6 +987,54 @@ export const createShotgunApiClient = (
       });
       const body = (await assertOk(response)) as { settings: unknown };
       return decodeAISettingsReadModel(body.settings);
+    },
+
+    async getSemanticComparisonStatus(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<SemanticComparisonStatusView> {
+      const query = targetProjectId
+        ? `?targetProjectId=${encodeURIComponent(targetProjectId)}`
+        : '';
+      const response = await request(`/settings/ai/semantic-comparison-status${query}`, {
+        signal: requestOptions?.signal,
+      });
+      const body = (await assertOk(response)) as { status: unknown };
+      return decodeSemanticComparisonStatusView(body.status);
+    },
+
+    async prepareSemanticComparison(
+      targetProjectId?: string,
+      requestOptions?: RequestOptions,
+    ): Promise<SemanticComparisonStatusView> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/settings/ai/semantic-comparison/prepare', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(targetProjectId ? { targetProjectId } : {}),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { status: unknown };
+        return decodeSemanticComparisonStatusView(body.status);
+      });
+    },
+
+    async recompareCandidate(
+      params: { readonly candidateId: string; readonly idempotencyKey: string },
+      requestOptions?: RequestOptions,
+    ): Promise<{ readonly commandStatus: string; readonly result: unknown }> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/comparisons/recompare', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify(params),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { commandStatus: unknown; result: unknown };
+        if (typeof body.commandStatus !== 'string')
+          throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Recompare response is invalid.');
+        return { commandStatus: body.commandStatus, result: body.result };
+      });
     },
 
     async getAICredentialWriteOutcome(

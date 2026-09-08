@@ -260,6 +260,27 @@ describe('owner command registry', () => {
     );
   });
 
+  it('exposes semantic comparison as a rare owner command without adding navigation clutter', () => {
+    const command = createOwnerCommandRegistry({ shell, projects }).find(
+      (candidate) => candidate.id === 'semantic.enable',
+    );
+    expect(command).toMatchObject({
+      category: 'AI',
+      availability: 'AVAILABLE',
+      risk: 'WRITE',
+      presentation: 'DIALOG',
+      action: { kind: 'OPEN_SEMANTIC_FLOW', commandId: 'semantic.enable' },
+    });
+    expect(
+      createOwnerCommandRegistry({ shell, isOffline: true, projects }).find(
+        (candidate) => candidate.id === 'semantic.enable',
+      ),
+    ).toMatchObject({
+      availability: 'UNAVAILABLE_WITH_REASON',
+      reasonKey: 'commands.unavailable.semantic_offline',
+    });
+  });
+
   it('does not expose generic Settings or unsupported placeholders and preserves offline state', () => {
     const commands = createOwnerCommandRegistry({ shell, isOffline: true, projects });
 

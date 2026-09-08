@@ -19,6 +19,7 @@ import {
   type ComparisonCandidateV2ResolverPort,
   type ComparisonV2OrchestrationOutcome,
   type ComparisonV2OrchestratorPort,
+  type ComparisonV2ExecutionTrigger,
   comparisonLexicalProjectionBaseV2,
   comparisonLexicalProjectionWatermarkV2,
 } from '../../../modules/comparison/src/index.js';
@@ -41,6 +42,8 @@ export type ComparisonV2RuntimeBoundary = {
     readonly actor: Actor;
     readonly security: SecurityContext;
     readonly correlationId?: string;
+    /** Internal server authority; never accepted from Product payloads. */
+    readonly executionTrigger?: ComparisonV2ExecutionTrigger;
   }): Promise<ComparisonV2RuntimeOutcome>;
   shouldRunV1(input: {
     readonly projectId: string;
@@ -276,11 +279,11 @@ export const createComparisonV2Runtime = (input: {
   readonly reviewBridge?: ComparisonV2ReviewBridgePort;
   readonly freshness?: ComparisonV2ReviewFreshnessPort;
   readonly k?: number;
+  /** Deprecated compatibility field; attempt is resolved from persisted state. */
   readonly attempt?: number;
 }): ComparisonV2RuntimeBoundary => {
   const rollout = createComparisonRolloutAuthorityResolver(input.settings);
   const k = input.k ?? 10;
-  const attempt = input.attempt ?? 1;
   return {
     async shouldRunV1(request) {
       const authority = await rollout.resolve(request);
@@ -309,7 +312,8 @@ export const createComparisonV2Runtime = (input: {
           actor: request.actor,
           security: request.security,
           k,
-          attempt,
+          attempt: 1,
+          executionTrigger: request.executionTrigger ?? 'INITIAL_OR_EVENT_REPLAY',
         });
       } catch {
         v2Outcome = { status: 'BLOCKED', reason: 'CONTRACT_FAILURE' };

@@ -624,4 +624,70 @@ describe('WP6 comparison rollout runtime', () => {
     );
     expect(v1Saves).toBe(0);
   });
+
+  it('keeps event replay and operator re-entry as distinct server-owned triggers', async () => {
+    const triggers: string[] = [];
+    const runtime = runtimeInput(
+      settingStore('V2_ACTIVE'),
+      {
+        compare: async (input: { readonly executionTrigger?: string }) => {
+          triggers.push(input.executionTrigger ?? 'MISSING');
+          return completedOutcome();
+        },
+      },
+      { materializeDraft: async () => ({ status: 'DRAFT_CREATED' }) },
+    );
+    const module = createComparisonModule(
+      {
+        save: async (result) => result,
+        findById: async () => undefined,
+        findByCandidateAndSnapshot: async () => undefined,
+      },
+      {
+        getSnapshot: async () => ({
+          snapshotId: 'snapshot-1',
+          projectId: 'project-1',
+          version: 1,
+          digest: 'digest-1',
+          claims: [],
+          createdAt: '2026-09-05T00:00:00.000Z',
+        }),
+      },
+      { identity: { id: 'text-diff', version: '1' }, diff: () => [] },
+      runtime,
+    );
+    const context = {
+      query: async () => ({ payload: candidate() }),
+      publish: async () => undefined,
+    } as never;
+    await module.handlers.events[0]!.handle(
+      {
+        messageType: 'CandidateValidated',
+        schemaVersion: '1.0.0',
+        correlationId: 'correlation-event',
+        idempotencyKey: 'event-trigger',
+        createdAt: '2026-09-05T00:00:00.000Z',
+        projectId: 'project-1',
+        actor,
+        security,
+        payload: { candidateId: 'candidate-1' },
+      } as never,
+      context,
+    );
+    await module.handlers.commands[0]!.handle(
+      {
+        messageType: 'RecompareClaimCandidate',
+        schemaVersion: '1.0.0',
+        correlationId: 'correlation-command',
+        idempotencyKey: 'command-trigger',
+        createdAt: '2026-09-05T00:00:00.000Z',
+        projectId: 'project-1',
+        actor,
+        security,
+        payload: { candidateId: 'candidate-1' },
+      } as never,
+      context,
+    );
+    expect(triggers).toEqual(['INITIAL_OR_EVENT_REPLAY', 'EXPLICIT_OPERATOR_REENTRY']);
+  });
 });

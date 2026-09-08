@@ -19,6 +19,7 @@ import type {
   SemanticActiveGenerationReaderPort,
   SemanticCorpusSourceSnapshotReaderPort,
   SemanticEmbeddingRegistryPort,
+  SemanticEmbeddingResolverPort,
   SemanticProjectionRefreshPort,
 } from '../../../../packages/contracts/src/index.js';
 import type { SettingsRepositoryPort } from '../../../../modules/settings-policy/src/index.js';
@@ -228,8 +229,9 @@ export function registerAISettingsRoutes(
   settingsRepository?: SettingsRepositoryPort,
   semanticCorpusSourceSnapshotReader?: Pick<
     SemanticCorpusSourceSnapshotReaderPort,
-    'readWatermark'
+    'readWatermark' | 'readSnapshot'
   >,
+  semanticEmbeddingResolver?: SemanticEmbeddingResolverPort,
 ): void {
   const access = async (headers: SecurityHeaders, projectId: string, manage: boolean) => {
     const { context } = await requireBrowserSession(headers);
@@ -346,6 +348,65 @@ export function registerAISettingsRoutes(
         return semanticGenerationMatchesSourceWatermark(generation, watermark, projectId);
       };
 
+      const sourceSensitivity = async (
+        projectId: string,
+      ): Promise<'public' | 'internal' | 'private' | 'restricted'> => {
+        if (!semanticCorpusSourceSnapshotReader) {
+          return 'restricted';
+        }
+        const snapshot = await semanticCorpusSourceSnapshotReader.readSnapshot(projectId);
+        const rank: Record<'public' | 'internal' | 'private' | 'restricted', number> = {
+          public: 0,
+          internal: 1,
+          private: 2,
+          restricted: 3,
+        };
+        return snapshot.resources.reduce<'public' | 'internal' | 'private' | 'restricted'>(
+          (highest, resource) =>
+            rank[resource.provenance.sensitivity] > rank[highest]
+              ? resource.provenance.sensitivity
+              : highest,
+          'public',
+        );
+      };
+
+      const generationMatchesCurrentExecution = async (
+        projectId: string,
+        profile: Awaited<ReturnType<SemanticEmbeddingProfilePort['getCurrent']>>,
+        generation: Awaited<ReturnType<SemanticActiveGenerationReaderPort['getActiveGeneration']>>,
+      ): Promise<boolean> => {
+        if (!profile || !generation || !semanticEmbeddingResolver) return false;
+        try {
+          const resolved = await semanticEmbeddingResolver.resolveExecution({
+            projectId,
+            sensitivity: await sourceSensitivity(projectId),
+            profileRevision: profile.profileRevision,
+            credentialId: generation.credentialId,
+            credentialRevision: generation.credentialRevision,
+          });
+          return (
+            resolved.profile.profileId === profile.profileId &&
+            resolved.profile.profileRevision === profile.profileRevision &&
+            resolved.profile.providerId === generation.providerId &&
+            resolved.profile.embeddingModelId === generation.embeddingModelId &&
+            resolved.profile.dimension === generation.dimension &&
+            resolved.pin.providerId === generation.providerId &&
+            resolved.pin.embeddingModelId === generation.embeddingModelId &&
+            resolved.pin.embeddingProfileId === generation.embeddingProfileId &&
+            resolved.pin.embeddingProfileRevision === generation.embeddingProfileRevision &&
+            resolved.pin.credentialId === generation.credentialId &&
+            resolved.pin.credentialRevision === generation.credentialRevision &&
+            resolved.pin.providerRegistryRevision === generation.providerRegistryRevision &&
+            resolved.pin.capabilityCatalogRevision === generation.capabilityCatalogRevision &&
+            resolved.pin.providerPolicyFingerprint === generation.providerPolicyFingerprint &&
+            resolved.pin.representationVersion === generation.representationVersion &&
+            resolved.pin.dimension === generation.dimension
+          );
+        } catch {
+          return false;
+        }
+      };
+
       const orderedEmbeddingModels = () =>
         [...semanticEmbeddingRegistry.listModels()].sort((left, right) => {
           const rank = (model: { providerId: string; modelId: string }): string =>
@@ -407,7 +468,9 @@ export function registerAISettingsRoutes(
           generation.buildStatus === 'READY' &&
           generation.embeddingProfileId === profile.profileId &&
           generation.embeddingProfileRevision === profile.profileRevision,
-        ) && (await generationMatchesSource(projectId, generation));
+        ) &&
+          (await generationMatchesSource(projectId, generation)) &&
+          (await generationMatchesCurrentExecution(projectId, profile, generation));
         const profileBindingMissing = Boolean(
           profile &&
           (!aiSettings.credentialStatuses.some(
@@ -432,11 +495,10 @@ export function registerAISettingsRoutes(
                   : profile.status === 'FAILED' || profile.status === 'RETIRED'
                     ? 'NEEDS_ATTENTION'
                     : 'PREPARING';
-        const effectiveRollout = generationMatchesProfile && status === 'READY' ? rollout : 'V1_ONLY';
         return {
           projectId,
           status,
-          rollout: effectiveRollout,
+          rollout,
           settingsRevision: settings?.settingsRevision ?? 0,
           ...(profile
             ? {
@@ -550,12 +612,19 @@ export function registerAISettingsRoutes(
               }
               const readyGeneration =
                 await semanticActiveGenerationReader.getActiveGeneration(projectId);
-              const generationMatchesProfile = Boolean(
-                readyGeneration &&
-                readyGeneration.buildStatus === 'READY' &&
-                readyGeneration.embeddingProfileId === selectedProfile.profileId &&
-                readyGeneration.embeddingProfileRevision === selectedProfile.profileRevision,
-              ) && (await generationMatchesSource(projectId, readyGeneration));
+              const generationMatchesProfile =
+                Boolean(
+                  readyGeneration &&
+                    readyGeneration.buildStatus === 'READY' &&
+                    readyGeneration.embeddingProfileId === selectedProfile.profileId &&
+                    readyGeneration.embeddingProfileRevision === selectedProfile.profileRevision,
+                ) &&
+                (await generationMatchesSource(projectId, readyGeneration)) &&
+                (await generationMatchesCurrentExecution(
+                  projectId,
+                  selectedProfile,
+                  readyGeneration,
+                ));
               if (!generationMatchesProfile) {
                 const refreshResult = await semanticProjectionRefresh.refresh({
                   projectId,
@@ -568,7 +637,6 @@ export function registerAISettingsRoutes(
                     status: {
                       ...status,
                       status: 'NEEDS_ATTENTION' as const,
-                      rollout: 'V1_ONLY' as const,
                     },
                   };
                 }

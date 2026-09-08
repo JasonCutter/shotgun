@@ -262,6 +262,7 @@ import {
   type SemanticActiveGenerationReaderPort,
   type SemanticEmbeddingRegistryPort,
   type SemanticEmbeddingProfilePort,
+  type SemanticEmbeddingResolverPort,
   type SemanticProjectionRefreshPort,
   type SemanticRetrieverPort,
 } from '../../../packages/contracts/src/index.js';
@@ -814,6 +815,8 @@ export type ApplicationOptions = {
   readonly aiSettingsBackend?: AISettingsBackendPort;
   /** Product-owned semantic embedding profile provisioning boundary. */
   readonly semanticEmbeddingProfile?: SemanticEmbeddingProfilePort;
+  /** Server-owned semantic execution readiness authority used by Product status. */
+  readonly semanticEmbeddingResolver?: SemanticEmbeddingResolverPort;
   /** Server-owned embedding capability catalog used by Product activation. */
   readonly semanticEmbeddingRegistry?: SemanticEmbeddingRegistryPort;
   /** Existing A4 authority exposed only through provider-scoped review routes. */
@@ -3419,6 +3422,7 @@ const createApplicationCore = async (
       options.semanticProjectionRefresh,
       options.settingsRepository,
       semanticCorpusSourceSnapshotReader,
+      options.semanticEmbeddingResolver,
     );
   }
   registerFrontendKnowledgeDraftRoutes(

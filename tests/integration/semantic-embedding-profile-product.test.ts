@@ -26,7 +26,10 @@ import {
   SemanticEmbeddingProfileService,
   initialSemanticEmbeddingRegistry,
 } from '../../modules/semantic-embedding/src/index.js';
-import type { SemanticProjectionGeneration } from '../../packages/contracts/src/index.js';
+import type {
+  SemanticEmbeddingResolverPort,
+  SemanticProjectionGeneration,
+} from '../../packages/contracts/src/index.js';
 
 const applications: Array<Awaited<ReturnType<typeof createApplication>>> = [];
 
@@ -94,6 +97,8 @@ const createFixture = async (options: { readonly refreshFails?: boolean } = {}) 
     sourceSnapshotDigest: 'sha256:source',
   };
   let refreshCount = 0;
+  let executionResolutionCount = 0;
+  let executionEligible = true;
   const settingsRepository = new InMemorySettingsRepository();
   const semanticActiveGenerationReader = {
     getActiveGeneration: async () => activeGeneration,
@@ -143,9 +148,53 @@ const createFixture = async (options: { readonly refreshFails?: boolean } = {}) 
       approvedKnowledgeDigest: 'sha256:approved',
       sourceSnapshotDigest: sourceWatermark.sourceSnapshotDigest,
     }),
-    readSnapshot: async () => {
-      throw new Error('Snapshot reads are not part of this Product boundary fixture.');
+    readSnapshot: async (requestedProjectId: string) => ({
+      projectId: requestedProjectId,
+      canonicalVersion: sourceWatermark.canonicalVersion,
+      canonicalSnapshotDigest: 'sha256:canonical',
+      approvedKnowledgeDigest: 'sha256:approved',
+      sourceSnapshotDigest: sourceWatermark.sourceSnapshotDigest,
+      effectiveAt: new Date().toISOString(),
+      resources: [],
+    }),
+  };
+  const semanticEmbeddingResolver: SemanticEmbeddingResolverPort = {
+    resolveExecution: async ({
+      projectId: requestedProjectId,
+      profileRevision,
+    }: {
+      readonly projectId: string;
+      readonly profileRevision?: number;
+    }) => {
+      executionResolutionCount += 1;
+      if (!executionEligible) throw new Error('Current embedding policy is denied.');
+      const profile = profileRevision
+        ? await semanticProfile.getRevision(requestedProjectId, profileRevision)
+        : await semanticProfile.getCurrent(requestedProjectId);
+      if (!profile) throw new Error('Profile is required for readiness.');
+      const model = embeddingRegistry.getModel(profile.providerId, profile.embeddingModelId);
+      if (!model) throw new Error('Embedding model is unavailable.');
+      return {
+        profile,
+        model,
+        pin: {
+          projectId: requestedProjectId,
+          providerId: profile.providerId,
+          embeddingModelId: profile.embeddingModelId,
+          dimension: profile.dimension,
+          embeddingProfileId: profile.profileId,
+          embeddingProfileRevision: profile.profileRevision,
+          credentialId: profile.credentialId,
+          credentialRevision: profile.credentialRevision,
+          providerRegistryRevision: 'registry',
+          capabilityCatalogRevision: 'capability',
+          providerPolicyFingerprint: 'policy',
+          representationVersion: profile.representationVersion,
+          createdAt: new Date().toISOString(),
+        },
+      };
     },
+    resolveCompatibility: async (input) => input,
   };
   const application = await createApplication({
     authRepository: auth,
@@ -156,6 +205,7 @@ const createFixture = async (options: { readonly refreshFails?: boolean } = {}) 
     semanticActiveGenerationReader,
     semanticProjectionRefresh,
     semanticCorpusSourceSnapshotReader,
+    semanticEmbeddingResolver,
     settingsRepository,
   });
   applications.push(application);
@@ -181,6 +231,10 @@ const createFixture = async (options: { readonly refreshFails?: boolean } = {}) 
       sourceWatermark = next;
     },
     getRefreshCount: () => refreshCount,
+    setExecutionEligible: (next: boolean) => {
+      executionEligible = next;
+    },
+    getExecutionResolutionCount: () => executionResolutionCount,
   };
 };
 
@@ -321,6 +375,24 @@ describe('Semantic embedding profile Product boundary', () => {
     expect(prepared.statusCode).toBe(200);
     expect(prepared.json()).toMatchObject({ status: { status: 'READY' } });
 
+    const settingsSnapshot = await fixture.settingsRepository.getSettingsSnapshot(
+      fixture.projectId,
+    );
+    const activation = await fixture.settingsRepository.applySettingsCommand({
+      commandId: `semantic-activation-${crypto.randomUUID()}`,
+      clientRequestId: `semantic-activation-${crypto.randomUUID()}`,
+      idempotencyKey: `semantic-activation-${crypto.randomUUID()}`,
+      projectId: fixture.projectId,
+      expectedSettingsRevision: settingsSnapshot.settingsRevision,
+      observedPolicyContextRevision: settingsSnapshot.policyContextRevision,
+      settings: { 'comparison.stage5.rollout': 'V2_ACTIVE' },
+      actorId: 'owner-1',
+    });
+    expect(activation.status).toBe('APPLIED');
+    const revisionAfterActivation = (await fixture.settingsRepository.getSettingsSnapshot(
+      fixture.projectId,
+    )).settingsRevision;
+
     fixture.setSourceWatermark({ canonicalVersion: 2, sourceSnapshotDigest: 'sha256:changed' });
     const stale = await fixture.application.server.inject({
       method: 'GET',
@@ -329,7 +401,7 @@ describe('Semantic embedding profile Product boundary', () => {
     });
     expect(stale.statusCode).toBe(200);
     expect(stale.json()).toMatchObject({
-      status: { status: 'NEEDS_ATTENTION', rollout: 'V1_ONLY' },
+      status: { status: 'NEEDS_ATTENTION', rollout: 'V2_ACTIVE' },
     });
     const refreshed = await fixture.application.server.inject({
       method: 'POST',
@@ -338,8 +410,11 @@ describe('Semantic embedding profile Product boundary', () => {
       payload: {},
     });
     expect(refreshed.statusCode).toBe(200);
-    expect(refreshed.json()).toMatchObject({ status: { status: 'READY', rollout: 'V1_ONLY' } });
+    expect(refreshed.json()).toMatchObject({ status: { status: 'READY', rollout: 'V2_ACTIVE' } });
     expect(fixture.getRefreshCount()).toBe(2);
+    expect(
+      (await fixture.settingsRepository.getSettingsSnapshot(fixture.projectId)).settingsRevision,
+    ).toBe(revisionAfterActivation);
   });
 
   it('selects a deterministic registered embedding fallback when OpenAI is unavailable', async () => {
@@ -390,6 +465,71 @@ describe('Semantic embedding profile Product boundary', () => {
     });
     expect(prepared.statusCode).toBe(503);
     expect(prepared.json()).toMatchObject({ code: 'CONFIGURATION_REQUIRED' });
+  });
+
+  it('revalidates current embedding execution eligibility without calling a provider', async () => {
+    const fixture = await createFixture();
+    const credentialResponse = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/credentials',
+      headers: fixture.headers,
+      payload: { targetProjectId: fixture.projectId, providerId: 'openai', secret: 'semantic-test' },
+    });
+    expect(credentialResponse.statusCode).toBe(200);
+    const prepared = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/prepare',
+      headers: fixture.headers,
+      payload: {},
+    });
+    expect(prepared.statusCode).toBe(200);
+
+    const settingsSnapshot = await fixture.settingsRepository.getSettingsSnapshot(
+      fixture.projectId,
+    );
+    const activation = await fixture.settingsRepository.applySettingsCommand({
+      commandId: `semantic-activation-${crypto.randomUUID()}`,
+      clientRequestId: `semantic-activation-${crypto.randomUUID()}`,
+      idempotencyKey: `semantic-activation-${crypto.randomUUID()}`,
+      projectId: fixture.projectId,
+      expectedSettingsRevision: settingsSnapshot.settingsRevision,
+      observedPolicyContextRevision: settingsSnapshot.policyContextRevision,
+      settings: { 'comparison.stage5.rollout': 'V2_ACTIVE' },
+      actorId: 'owner-1',
+    });
+    expect(activation.status).toBe('APPLIED');
+
+    fixture.setExecutionEligible(false);
+    const denied = await fixture.application.server.inject({
+      method: 'GET',
+      url: '/api/v1/settings/ai/semantic-comparison-status',
+      headers: { cookie: fixture.headers.cookie },
+    });
+    expect(denied.statusCode).toBe(200);
+    expect(denied.json()).toMatchObject({
+      status: { status: 'NEEDS_ATTENTION', rollout: 'V2_ACTIVE' },
+    });
+    const deniedPrepare = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/prepare',
+      headers: fixture.headers,
+      payload: {},
+    });
+    expect(deniedPrepare.statusCode).toBe(200);
+    expect(deniedPrepare.json()).toMatchObject({
+      status: { status: 'NEEDS_ATTENTION', rollout: 'V2_ACTIVE' },
+    });
+
+    fixture.setExecutionEligible(true);
+    const restored = await fixture.application.server.inject({
+      method: 'GET',
+      url: '/api/v1/settings/ai/semantic-comparison-status',
+      headers: { cookie: fixture.headers.cookie },
+    });
+    expect(restored.json()).toMatchObject({
+      status: { status: 'READY', rollout: 'V2_ACTIVE' },
+    });
+    expect(fixture.getExecutionResolutionCount()).toBeGreaterThan(0);
   });
 
   it('provisions a PREPARED profile through the Product API and enforces server ownership/CAS', async () => {

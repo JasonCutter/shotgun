@@ -110,7 +110,7 @@ const approveResolvedDraft = async (input: {
     decision: 'APPROVE',
     reason: `Approve resolved ${input.operation}.`,
     decisionId: `decision:${input.fixture.draft.changeSetId}`,
-    decidedAt: '2026-09-08T12:01:00.000Z',
+    decidedAt: input.harness.clock.now(),
   });
   expect(approved.status).toBe('DECISION_RECORDED');
   if (approved.status !== 'DECISION_RECORDED' || !approved.manifest) {

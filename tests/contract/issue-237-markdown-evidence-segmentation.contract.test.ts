@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import { FakeAIProviderAdapter } from '../../adapters/ai-provider-fake/src/index.js';
+import { PythonDocumentFormatAdapter } from '../../adapters/document-format-python/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../adapters/plain-text-lucas-augmented/src/index.js';
 import type {
   StructuredGenerationRequest,
@@ -18,6 +19,7 @@ import { candidatesQuery, createStage4Harness, intakeResultQuery } from '../help
 import { fileCommand } from '../helpers/stage-2.js';
 
 const adapter = new LucasAugmentedPlainTextAdapter();
+const productionAdapter = new PythonDocumentFormatAdapter();
 
 const transformed = (text: string, mediaType: 'text/plain' | 'text/markdown') =>
   adapter.transform({
@@ -86,6 +88,68 @@ describe('Issue #237 Markdown segmentation', () => {
         'text/plain',
       ).documentIR.blocks[0]?.sentences.map((sentence) => sentence.text),
     ).toEqual(['1.', '태양광으로 전기를 생산한다.']);
+  });
+
+  it('publishes the production transformer identity and delegates corrected Markdown behavior', async () => {
+    expect(productionAdapter.identity).toEqual({
+      id: 'shotgun.document-formats',
+      version: '1.0.1',
+    });
+
+    const text = ['---', '', '## 1. Heading', '', '1. Meaningful sentence.'].join('\n');
+    const sourceId = randomUUID();
+    const sourceVersionId = randomUUID();
+    const output = await productionAdapter.transform({
+      sourceId,
+      sourceVersionId,
+      sourceContentHash: sha256Text(text),
+      mediaType: 'text/markdown',
+      text,
+    });
+    const sentenceTexts = output.documentIR.blocks.flatMap((block) =>
+      block.sentences.map((sentence) => sentence.text),
+    );
+    expect(output.documentIR.mediaType).toBe('text/markdown');
+    expect(sentenceTexts).not.toContain('## 1.');
+    expect(sentenceTexts).not.toContain('1.');
+    expect(sentenceTexts).toContain('## 1. Heading');
+    expect(sentenceTexts).toContain('1. Meaningful sentence.');
+
+    const revision: TransformationRevision = {
+      revisionId: randomUUID(),
+      projectId: 'project-a',
+      sourceId,
+      sourceVersionId,
+      sourceContentHash: sha256Text(text),
+      transformer: productionAdapter.identity,
+      ...output,
+      accessScope: ['owner'],
+      sensitivity: 'private',
+      createdAt: '2026-09-08T00:00:00.000Z',
+    };
+    const evidence = buildEvidenceCandidates(revision, adapter);
+    const exactTexts = evidence.map((item) => item.quote.exact);
+    expect(exactTexts).not.toContain('---');
+    expect(exactTexts).not.toContain('## 1.');
+    expect(exactTexts).not.toContain('1.');
+    expect(exactTexts).toContain('## 1. Heading');
+    expect(exactTexts).toContain('1. Meaningful sentence.');
+  });
+
+  it('preserves text/plain sentence behavior through the production adapter', async () => {
+    const text = '1. Meaningful sentence.';
+    const output = await productionAdapter.transform({
+      sourceId: randomUUID(),
+      sourceVersionId: randomUUID(),
+      sourceContentHash: sha256Text(text),
+      mediaType: 'text/plain',
+      text,
+    });
+
+    expect(output.documentIR.blocks[0]?.sentences.map((sentence) => sentence.text)).toEqual([
+      '1.',
+      'Meaningful sentence.',
+    ]);
   });
 });
 

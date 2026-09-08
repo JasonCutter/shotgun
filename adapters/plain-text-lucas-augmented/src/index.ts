@@ -72,7 +72,13 @@ const paragraphRanges = (text: string): readonly Range[] => {
   return ranges;
 };
 
-const sentenceRanges = (text: string, offset: number): readonly Range[] => {
+const markdownOrdinalMarker = /^(?:#{1,6}\s*)?\d+[.)]$/u;
+
+const sentenceRanges = (
+  text: string,
+  offset: number,
+  mediaType: DocumentTransformationInput['mediaType'],
+): readonly Range[] => {
   const characters = Array.from(text);
   const ranges: Range[] = [];
   let start = 0;
@@ -88,6 +94,15 @@ const sentenceRanges = (text: string, offset: number): readonly Range[] => {
     }
 
     const end = index + 1;
+    if (mediaType === 'text/markdown') {
+      const lineStart =
+        Math.max(characters.lastIndexOf('\n', index - 1), characters.lastIndexOf('\r', index - 1)) +
+        1;
+      const linePrefix = characters.slice(lineStart, end).join('').trim();
+      if (markdownOrdinalMarker.test(linePrefix)) {
+        continue;
+      }
+    }
     if (characters.slice(start, end).join('').trim().length > 0) {
       ranges.push({ start: offset + start, end: offset + end });
     }
@@ -147,7 +162,7 @@ export class LucasAugmentedPlainTextAdapter
 {
   readonly identity = {
     id: 'shotgun.plain-text',
-    version: '1.0.0',
+    version: '1.0.1',
   } as const;
 
   transform(input: DocumentTransformationInput): PlainTextTransformationOutput {
@@ -166,7 +181,7 @@ export class LucasAugmentedPlainTextAdapter
 
     paragraphRanges(text).forEach((paragraph, blockIndex) => {
       const paragraphText = unicodeSlice(text, paragraph.start, paragraph.end);
-      const sentences = sentenceRanges(paragraphText, paragraph.start).map(
+      const sentences = sentenceRanges(paragraphText, paragraph.start, mediaType).map(
         (sentence, sentenceIndex) => {
           const id = `sentence-${sentence.start}-${sentence.end}`;
           entries.push(

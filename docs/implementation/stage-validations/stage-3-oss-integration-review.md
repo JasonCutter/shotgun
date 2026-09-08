@@ -84,8 +84,19 @@ OriginalAssetStored
 
 - 변환기는 `PlainTextTransformerPort`, 위치 탐색기는 `EvidenceLocatorPort`만 유지하면 교체할 수 있다.
 - 교체 Adapter는 Golden, SourceMap round-trip, ambiguity, replacement contract를 모두 통과해야 한다.
-- 새 Adapter 실패 시 현재 `shotgun.plain-text@1.0.0`으로 되돌리고 기존 Revision은 그대로 유지한다.
+- 새 Adapter 실패 시 역사적 `shotgun.plain-text@1.0.0`으로 되돌리고 기존 Revision은 그대로 유지한다.
 - 변환기 version이 바뀌면 기존 Revision을 덮어쓰지 않고 새로운 version key로 평가한다.
+
+## Issue #237 Transformer Version Governance Correction
+
+- 역사적 `shotgun.plain-text@1.0.0`은 기존 Transformation Revision과 Evidence의
+  immutable 기록으로 유지한다.
+- Issue #237은 Markdown ordinal-prefix segmentation 및 structural-only Evidence
+  eligibility를 보정하고, 새 동작을 `shotgun.plain-text@1.0.1`로 도입한다.
+- 동일한 SourceVersion을 재처리할 때 `1.0.1` transformer key로 새 Revision을
+  생성·재사용하며, 기존 `1.0.0` Revision을 덮어쓰지 않는다.
+- Markdown은 여전히 구조를 완전 파싱한 DocumentIR이 아니며, 이번 Issue는
+  결정적 Markdown-aware segmentation과 구조 토큰 noise suppression만 추가한다.
 
 ## 알려진 제한
 

@@ -81,7 +81,7 @@ const errorFor = (result: Exclude<WorkerResult, { readonly status: 'OK' }>): Sho
   });
 
 export class PythonDocumentFormatAdapter implements PlainTextTransformerPort {
-  readonly identity = { id: 'shotgun.document-formats', version: '1.0.0' } as const;
+  readonly identity = { id: 'shotgun.document-formats', version: '1.0.1' } as const;
   readonly #plainText = new LucasAugmentedPlainTextAdapter();
   readonly #pythonExecutable: string;
   readonly #workerPath: string;

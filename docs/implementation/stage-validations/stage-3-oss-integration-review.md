@@ -92,7 +92,10 @@ OriginalAssetStored
 - 역사적 `shotgun.plain-text@1.0.0`은 기존 Transformation Revision과 Evidence의
   immutable 기록으로 유지한다.
 - Issue #237은 Markdown ordinal-prefix segmentation 및 structural-only Evidence
-  eligibility를 보정하고, 새 동작을 `shotgun.plain-text@1.0.1`로 도입한다.
+  eligibility를 보정하고, 중첩 `shotgun.plain-text@1.0.1`과 함께 Production 외부
+  transformer identity를 `shotgun.document-formats@1.0.1`로 도입한다.
+- Production에 기록된 역사적 `shotgun.document-formats@1.0.0`은 immutable 상태로
+  유지하며, 새 변환 Revision만 `shotgun.document-formats@1.0.1`을 사용한다.
 - 동일한 SourceVersion을 재처리할 때 `1.0.1` transformer key로 새 Revision을
   생성·재사용하며, 기존 `1.0.0` Revision을 덮어쓰지 않는다.
 - Markdown은 여전히 구조를 완전 파싱한 DocumentIR이 아니며, 이번 Issue는

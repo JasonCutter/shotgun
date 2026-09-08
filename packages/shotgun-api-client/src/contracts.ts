@@ -176,6 +176,8 @@ import type {
   ReviewQueueItemV1,
   ReviewRevisionReturnTargetV1,
   ReviewTargetKindV1,
+  SemanticEmbeddingProfile,
+  SemanticProjectionGeneration,
   // FE-P4-S2 WP5 External Action workspace types (contracts V1).
   ExternalActionSchemaVersion,
   FrontendExternalActionCommandType,
@@ -666,6 +668,39 @@ export type AISettingsReadModel = {
   readonly legacyGeminiCredentialConfigured: boolean;
 };
 
+/** Owner-facing, non-secret semantic-comparison readiness projection. */
+export type SemanticComparisonStatus = 'NOT_CONFIGURED' | 'PREPARING' | 'READY' | 'NEEDS_ATTENTION';
+
+export type SemanticComparisonStatusView = {
+  readonly projectId: string;
+  readonly status: SemanticComparisonStatus;
+  readonly rollout: 'V1_ONLY' | 'V2_SHADOW' | 'V2_ACTIVE';
+  readonly settingsRevision: number;
+  readonly profile?: Pick<
+    SemanticEmbeddingProfile,
+    | 'profileId'
+    | 'profileRevision'
+    | 'providerId'
+    | 'embeddingModelId'
+    | 'credentialRevision'
+    | 'representationVersion'
+    | 'dimension'
+    | 'status'
+  >;
+  readonly generation?: Pick<
+    SemanticProjectionGeneration,
+    | 'generationId'
+    | 'embeddingProfileId'
+    | 'embeddingProfileRevision'
+    | 'providerId'
+    | 'embeddingModelId'
+    | 'representationVersion'
+    | 'dimension'
+    | 'buildStatus'
+    | 'createdAt'
+  >;
+};
+
 export type AIProviderPrivacyProposal = {
   readonly proposalId: string;
   readonly projectId: string;
@@ -864,6 +899,21 @@ export type ShotgunApiClient = {
   ): Promise<FrontendCommandOutcomeView>;
 
   getAISettings(targetProjectId?: string, options?: RequestOptions): Promise<AISettingsReadModel>;
+  getSemanticComparisonStatus(
+    targetProjectId?: string,
+    options?: RequestOptions,
+  ): Promise<SemanticComparisonStatusView>;
+  prepareSemanticComparison(
+    targetProjectId?: string,
+    options?: RequestOptions,
+  ): Promise<SemanticComparisonStatusView>;
+  recompareCandidate(
+    params: { readonly candidateId: string; readonly idempotencyKey: string },
+    options?: RequestOptions,
+  ): Promise<{
+    readonly commandStatus: string;
+    readonly result: unknown;
+  }>;
   getAICredentialWriteOutcome(
     params:
       | {

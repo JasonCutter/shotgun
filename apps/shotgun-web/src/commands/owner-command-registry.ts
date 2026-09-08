@@ -37,6 +37,8 @@ export type PreferenceCommandId =
 
 export type AICommandId = 'ai.configure' | 'ai.test_connection';
 
+export type SemanticCommandId = 'semantic.enable';
+
 export type PrivacyCommandId = 'privacy.open' | 'privacy.review';
 
 export type AnswerCommandId =
@@ -54,6 +56,7 @@ export type OwnerCommandAction =
   | { readonly kind: 'OPEN_PROJECT_FLOW'; readonly commandId: ProjectCommandId }
   | { readonly kind: 'OPEN_PREFERENCE_FLOW'; readonly commandId: PreferenceCommandId }
   | { readonly kind: 'OPEN_AI_FLOW'; readonly commandId: AICommandId }
+  | { readonly kind: 'OPEN_SEMANTIC_FLOW'; readonly commandId: SemanticCommandId }
   | { readonly kind: 'OPEN_PRIVACY_FLOW'; readonly commandId: PrivacyCommandId }
   | { readonly kind: 'OPEN_ANSWER_FLOW'; readonly commandId: AnswerCommandId }
   | { readonly kind: 'OPEN_TECHNICAL_FLOW'; readonly commandId: 'technical.current' }
@@ -527,6 +530,30 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
         isOffline,
         'AI connection test',
         'commands.unavailable.ai_test_offline',
+      ),
+  },
+  {
+    id: 'semantic.enable',
+    category: 'AI',
+    label: 'Enable semantic comparison',
+    description: 'Prepare semantic comparison and enable it after confirmation',
+    aliases: [
+      'enable semantic comparison',
+      'semantic comparison',
+      'semantic setup',
+      '의미 비교 활성화',
+      '시맨틱 비교',
+    ],
+    keywords: ['semantic', 'comparison', 'embedding', 'knowledge', '의미', '비교'],
+    risk: 'WRITE',
+    presentation: 'DIALOG',
+    action: { kind: 'OPEN_SEMANTIC_FLOW', commandId: 'semantic.enable' },
+    getAvailability: (shell, isOffline) =>
+      focusedCommandAvailability(
+        shell,
+        isOffline,
+        'Semantic comparison',
+        'commands.unavailable.semantic_offline',
       ),
   },
   {

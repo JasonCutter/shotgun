@@ -14,6 +14,7 @@ import type {
   AISettingsProvider,
   AISettingsProviderModel,
   AISettingsReadModel,
+  SemanticComparisonStatusView,
   AIStandingProcessingPolicy,
   AITestConnectionResult,
   ProductApiErrorBody,
@@ -313,6 +314,71 @@ export const decodeAISettingsReadModel = (value: unknown): AISettingsReadModel =
               'MISSING_MASTER_KEY' | 'MALFORMED_MASTER_KEY' | 'UNSUPPORTED_MASTER_KEY_VERSION',
           },
     legacyGeminiCredentialConfigured: aiBoolean(value.legacyGeminiCredentialConfigured),
+  };
+};
+
+export const decodeSemanticComparisonStatusView = (
+  value: unknown,
+): SemanticComparisonStatusView => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  const status = aiString(value.status);
+  const rollout = aiString(value.rollout);
+  if (!['NOT_CONFIGURED', 'PREPARING', 'READY', 'NEEDS_ATTENTION'].includes(status)) {
+    throw invalidProductApiResponse();
+  }
+  if (!['V1_ONLY', 'V2_SHADOW', 'V2_ACTIVE'].includes(rollout)) {
+    throw invalidProductApiResponse();
+  }
+  const decodeProfile = (profile: unknown): SemanticComparisonStatusView['profile'] => {
+    if (profile === undefined || profile === null) return undefined;
+    if (!isRecord(profile)) throw invalidProductApiResponse();
+    const profileStatus = aiString(profile.status);
+    if (!['PREPARED', 'BUILDING', 'ACTIVE', 'RETIRED', 'FAILED'].includes(profileStatus)) {
+      throw invalidProductApiResponse();
+    }
+    return {
+      profileId: aiString(profile.profileId),
+      profileRevision: aiNumber(profile.profileRevision),
+      providerId: aiString(profile.providerId),
+      embeddingModelId: aiString(profile.embeddingModelId),
+      credentialRevision: aiNumber(profile.credentialRevision),
+      representationVersion: aiString(profile.representationVersion),
+      dimension: aiNumber(profile.dimension),
+      status: profileStatus as NonNullable<SemanticComparisonStatusView['profile']>['status'],
+    };
+  };
+  const decodeGeneration = (generation: unknown): SemanticComparisonStatusView['generation'] => {
+    if (generation === undefined || generation === null) return undefined;
+    if (!isRecord(generation)) throw invalidProductApiResponse();
+    const buildStatus = aiString(generation.buildStatus);
+    if (!['BUILDING', 'READY', 'FAILED'].includes(buildStatus)) {
+      throw invalidProductApiResponse();
+    }
+    return {
+      generationId: aiString(generation.generationId),
+      embeddingProfileId: aiString(generation.embeddingProfileId),
+      embeddingProfileRevision: aiNumber(generation.embeddingProfileRevision),
+      providerId: aiString(generation.providerId),
+      embeddingModelId: aiString(generation.embeddingModelId),
+      representationVersion: aiString(generation.representationVersion),
+      dimension: aiNumber(generation.dimension),
+      buildStatus: buildStatus as NonNullable<
+        SemanticComparisonStatusView['generation']
+      >['buildStatus'],
+      createdAt: aiString(generation.createdAt),
+    };
+  };
+  return {
+    projectId: aiString(value.projectId),
+    status: status as SemanticComparisonStatusView['status'],
+    rollout: rollout as SemanticComparisonStatusView['rollout'],
+    settingsRevision: aiNumber(value.settingsRevision),
+    ...(value.profile === undefined || value.profile === null
+      ? {}
+      : { profile: decodeProfile(value.profile)! }),
+    ...(value.generation === undefined || value.generation === null
+      ? {}
+      : { generation: decodeGeneration(value.generation)! }),
   };
 };
 

@@ -31,6 +31,7 @@ import {
   type ProjectionWatermark,
   type SemanticActiveGenerationReaderPort,
   type SemanticCorpusAuthority,
+  semanticGenerationMatchesSourceWatermark,
   type SemanticCandidateResult,
   SemanticEmbeddingError,
   type SemanticEmbeddingExecutionPort,
@@ -506,11 +507,7 @@ export class SemanticRetriever implements SemanticRetrieverPort {
 
     if (this.options.sourceWatermarkReader) {
       const watermark = await this.options.sourceWatermarkReader.readWatermark(projectId);
-      if (
-        watermark.projectId !== projectId ||
-        generation.sourceProjectionDigest !== watermark.sourceSnapshotDigest ||
-        generation.canonicalBaseVersion !== watermark.canonicalVersion
-      ) {
+      if (!semanticGenerationMatchesSourceWatermark(generation, watermark, projectId)) {
         throw new SemanticEmbeddingError({
           code: 'STALE',
           safeMessage: 'Semantic projection is stale relative to current Product knowledge.',

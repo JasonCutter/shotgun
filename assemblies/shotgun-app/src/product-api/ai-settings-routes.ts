@@ -12,11 +12,29 @@ import {
 import {
   SEMANTIC_REPRESENTATION_VERSION_V2,
   ShotgunError,
+  semanticGenerationMatchesSourceWatermark,
 } from '../../../../packages/contracts/src/index.js';
 import type { SemanticEmbeddingProfilePort } from '../../../../packages/contracts/src/index.js';
+import type {
+  SemanticActiveGenerationReaderPort,
+  SemanticCorpusSourceSnapshotReaderPort,
+  SemanticEmbeddingRegistryPort,
+  SemanticEmbeddingResolverPort,
+  SemanticProjectionRefreshPort,
+} from '../../../../packages/contracts/src/index.js';
+import type { SettingsRepositoryPort } from '../../../../modules/settings-policy/src/index.js';
 
 type BrowserSession = (headers: Record<string, string | string[] | undefined>) => Promise<{
-  context: { principalId: string; projectId: string };
+  context: {
+    principalId: string;
+    projectId: string;
+    actor: { readonly type: 'user' | 'service' | 'system'; readonly id: string };
+    security: {
+      readonly accessScope: readonly string[];
+      readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+      readonly dataClassification: string;
+    };
+  };
 }>;
 
 type ProjectBody = { readonly targetProjectId?: unknown; readonly projectId?: unknown };
@@ -205,6 +223,15 @@ export function registerAISettingsRoutes(
   requireBrowserSession: BrowserSession,
   providerApprovals?: ProviderExternalTransferApprovalPort,
   semanticEmbeddingProfile?: SemanticEmbeddingProfilePort,
+  semanticEmbeddingRegistry?: SemanticEmbeddingRegistryPort,
+  semanticActiveGenerationReader?: SemanticActiveGenerationReaderPort,
+  semanticProjectionRefresh?: SemanticProjectionRefreshPort,
+  settingsRepository?: SettingsRepositoryPort,
+  semanticCorpusSourceSnapshotReader?: Pick<
+    SemanticCorpusSourceSnapshotReaderPort,
+    'readWatermark' | 'readSnapshot'
+  >,
+  semanticEmbeddingResolver?: SemanticEmbeddingResolverPort,
 ): void {
   const access = async (headers: SecurityHeaders, projectId: string, manage: boolean) => {
     const { context } = await requireBrowserSession(headers);
@@ -299,10 +326,6 @@ export function registerAISettingsRoutes(
               embeddingModelId: requiredString(body, 'embeddingModelId'),
               credentialId: requiredString(body, 'credentialId'),
               credentialRevision: requiredInteger(body, 'credentialRevision'),
-              // The Product boundary owns the representation default. The
-              // semantic corpus currently emits V2 resources, so omitting it
-              // must not silently create a legacy V1 profile that refresh
-              // cannot execute.
               representationVersion: SEMANTIC_REPRESENTATION_VERSION_V2,
               ...(dimension === undefined ? {} : { dimension: dimension as number }),
               updatedBy: context.principalId,
@@ -314,6 +337,320 @@ export function registerAISettingsRoutes(
         }
       },
     );
+
+    if (semanticEmbeddingRegistry && semanticActiveGenerationReader) {
+      const generationMatchesSource = async (
+        projectId: string,
+        generation: Awaited<ReturnType<SemanticActiveGenerationReaderPort['getActiveGeneration']>>,
+      ): Promise<boolean> => {
+        if (!generation || !semanticCorpusSourceSnapshotReader) return false;
+        const watermark = await semanticCorpusSourceSnapshotReader.readWatermark(projectId);
+        return semanticGenerationMatchesSourceWatermark(generation, watermark, projectId);
+      };
+
+      const sourceSensitivity = async (
+        projectId: string,
+      ): Promise<'public' | 'internal' | 'private' | 'restricted'> => {
+        if (!semanticCorpusSourceSnapshotReader) {
+          return 'restricted';
+        }
+        const snapshot = await semanticCorpusSourceSnapshotReader.readSnapshot(projectId);
+        const rank: Record<'public' | 'internal' | 'private' | 'restricted', number> = {
+          public: 0,
+          internal: 1,
+          private: 2,
+          restricted: 3,
+        };
+        return snapshot.resources.reduce<'public' | 'internal' | 'private' | 'restricted'>(
+          (highest, resource) =>
+            rank[resource.provenance.sensitivity] > rank[highest]
+              ? resource.provenance.sensitivity
+              : highest,
+          'public',
+        );
+      };
+
+      const generationMatchesCurrentExecution = async (
+        projectId: string,
+        profile: Awaited<ReturnType<SemanticEmbeddingProfilePort['getCurrent']>>,
+        generation: Awaited<ReturnType<SemanticActiveGenerationReaderPort['getActiveGeneration']>>,
+      ): Promise<boolean> => {
+        if (!profile || !generation || !semanticEmbeddingResolver) return false;
+        try {
+          const resolved = await semanticEmbeddingResolver.resolveExecution({
+            projectId,
+            sensitivity: await sourceSensitivity(projectId),
+            profileRevision: profile.profileRevision,
+            credentialId: generation.credentialId,
+            credentialRevision: generation.credentialRevision,
+          });
+          return (
+            resolved.profile.profileId === profile.profileId &&
+            resolved.profile.profileRevision === profile.profileRevision &&
+            resolved.profile.providerId === generation.providerId &&
+            resolved.profile.embeddingModelId === generation.embeddingModelId &&
+            resolved.profile.dimension === generation.dimension &&
+            resolved.pin.providerId === generation.providerId &&
+            resolved.pin.embeddingModelId === generation.embeddingModelId &&
+            resolved.pin.embeddingProfileId === generation.embeddingProfileId &&
+            resolved.pin.embeddingProfileRevision === generation.embeddingProfileRevision &&
+            resolved.pin.credentialId === generation.credentialId &&
+            resolved.pin.credentialRevision === generation.credentialRevision &&
+            resolved.pin.providerRegistryRevision === generation.providerRegistryRevision &&
+            resolved.pin.capabilityCatalogRevision === generation.capabilityCatalogRevision &&
+            resolved.pin.providerPolicyFingerprint === generation.providerPolicyFingerprint &&
+            resolved.pin.representationVersion === generation.representationVersion &&
+            resolved.pin.dimension === generation.dimension
+          );
+        } catch {
+          return false;
+        }
+      };
+
+      const orderedEmbeddingModels = () =>
+        [...semanticEmbeddingRegistry.listModels()].sort((left, right) => {
+          const rank = (model: { providerId: string; modelId: string }): string =>
+            model.providerId === 'openai' && model.modelId === 'text-embedding-3-small'
+              ? '0'
+              : `1:${model.providerId}:${model.modelId}`;
+          const leftRank = rank(left);
+          const rightRank = rank(right);
+          return leftRank < rightRank ? -1 : leftRank > rightRank ? 1 : 0;
+        });
+
+      const selectEmbeddingBinding = (
+        aiSettings: Awaited<ReturnType<AISettingsBackendPort['getSettings']>>,
+      ) => {
+        for (const model of orderedEmbeddingModels()) {
+          const credentials = aiSettings.credentialStatuses.filter(
+            (credential) =>
+              credential.providerId === model.providerId && credential.lifecycleState === 'active',
+          );
+          if (credentials.length > 1) {
+            throw new ShotgunError({
+              code: 'CONFIGURATION_REQUIRED',
+              safeMessage: `Choose one active ${model.providerId} embedding credential before enabling semantic comparison.`,
+              module: 'ai-settings-api',
+              operation: 'prepare-semantic-comparison-credential',
+            });
+          }
+          const credential = credentials[0];
+          if (credential) return { model, credential };
+        }
+        return undefined;
+      };
+
+      const projectStatus = async (projectId: string) => {
+        const [profile, generation, settings, aiSettings] = await Promise.all([
+          semanticEmbeddingProfile.getCurrent(projectId),
+          semanticActiveGenerationReader.getActiveGeneration(projectId),
+          settingsRepository?.getSettingsSnapshot(projectId),
+          backend.getSettings(projectId),
+        ]);
+        const configuredRollout = settingsRepository?.getProjectSettingValue
+          ? await settingsRepository.getProjectSettingValue(projectId, 'comparison.stage5.rollout')
+          : undefined;
+        const rollout =
+          configuredRollout === 'V2_SHADOW' || configuredRollout === 'V2_ACTIVE'
+            ? configuredRollout
+            : 'V1_ONLY';
+        const generationMatchesProfile =
+          Boolean(
+            profile &&
+            aiSettings.credentialStatuses.some(
+              (credential) =>
+                credential.credentialId === profile.credentialId &&
+                credential.providerId === profile.providerId &&
+                credential.credentialRevision === profile.credentialRevision &&
+                credential.lifecycleState === 'active',
+            ) &&
+            semanticEmbeddingRegistry.getModel(profile.providerId, profile.embeddingModelId) &&
+            generation &&
+            generation.buildStatus === 'READY' &&
+            generation.embeddingProfileId === profile.profileId &&
+            generation.embeddingProfileRevision === profile.profileRevision,
+          ) &&
+          (await generationMatchesSource(projectId, generation)) &&
+          (await generationMatchesCurrentExecution(projectId, profile, generation));
+        const profileBindingMissing = Boolean(
+          profile &&
+          (!aiSettings.credentialStatuses.some(
+            (credential) =>
+              credential.credentialId === profile.credentialId &&
+              credential.providerId === profile.providerId &&
+              credential.credentialRevision === profile.credentialRevision &&
+              credential.lifecycleState === 'active',
+          ) ||
+            !semanticEmbeddingRegistry.getModel(profile.providerId, profile.embeddingModelId)),
+        );
+        const status = !profile
+          ? 'NOT_CONFIGURED'
+          : profileBindingMissing
+            ? 'NEEDS_ATTENTION'
+            : generationMatchesProfile
+              ? 'READY'
+              : generation?.buildStatus === 'READY'
+                ? 'NEEDS_ATTENTION'
+                : profile.status === 'BUILDING'
+                  ? 'PREPARING'
+                  : profile.status === 'FAILED' || profile.status === 'RETIRED'
+                    ? 'NEEDS_ATTENTION'
+                    : 'PREPARING';
+        return {
+          projectId,
+          status,
+          rollout,
+          settingsRevision: settings?.settingsRevision ?? 0,
+          ...(profile
+            ? {
+                profile: {
+                  profileId: profile.profileId,
+                  profileRevision: profile.profileRevision,
+                  providerId: profile.providerId,
+                  embeddingModelId: profile.embeddingModelId,
+                  credentialRevision: profile.credentialRevision,
+                  representationVersion: profile.representationVersion,
+                  dimension: profile.dimension,
+                  status: profile.status,
+                },
+              }
+            : {}),
+          ...(generation
+            ? {
+                generation: {
+                  generationId: generation.generationId,
+                  embeddingProfileId: generation.embeddingProfileId,
+                  embeddingProfileRevision: generation.embeddingProfileRevision,
+                  providerId: generation.providerId,
+                  embeddingModelId: generation.embeddingModelId,
+                  representationVersion: generation.representationVersion,
+                  dimension: generation.dimension,
+                  buildStatus: generation.buildStatus,
+                  createdAt: generation.createdAt,
+                },
+              }
+            : {}),
+        } as const;
+      };
+
+      server.get<{ Querystring: { targetProjectId?: string }; Headers: SecurityHeaders }>(
+        '/api/v1/settings/ai/semantic-comparison-status',
+        async (request) => {
+          const { context } = await requireBrowserSession(request.headers);
+          const projectId = request.query.targetProjectId ?? context.projectId;
+          await access(request.headers, projectId, false);
+          try {
+            return { status: await projectStatus(projectId) };
+          } catch (error) {
+            throw mapError(error, 'get-semantic-comparison-status');
+          }
+        },
+      );
+
+      if (semanticProjectionRefresh) {
+        server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+          '/api/v1/settings/ai/semantic-comparison/prepare',
+          async (request) => {
+            const body = objectBody(request.body ?? {});
+            assertAllowedFields(body, ['targetProjectId'], 'decode-semantic-comparison-prepare');
+            const { context } = await requireBrowserSession(request.headers);
+            const projectId = projectFrom(body, context.projectId);
+            await access(request.headers, projectId, true);
+            try {
+              let profile = await semanticEmbeddingProfile.getCurrent(projectId);
+              const aiSettings = await backend.getSettings(projectId);
+              const currentCredential = profile
+                ? aiSettings.credentialStatuses.find(
+                    (credential) =>
+                      credential.credentialId === profile?.credentialId &&
+                      credential.providerId === profile?.providerId &&
+                      credential.credentialRevision === profile?.credentialRevision &&
+                      credential.lifecycleState === 'active',
+                  )
+                : undefined;
+              const currentModel = profile
+                ? semanticEmbeddingRegistry.getModel(profile.providerId, profile.embeddingModelId)
+                : undefined;
+              const currentEligible = Boolean(
+                profile &&
+                currentCredential &&
+                currentModel &&
+                ['PREPARED', 'ACTIVE'].includes(profile.status),
+              );
+              if (!currentEligible) {
+                const selected = selectEmbeddingBinding(aiSettings);
+                if (!selected) {
+                  throw new ShotgunError({
+                    code: 'CONFIGURATION_REQUIRED',
+                    safeMessage:
+                      'Add one active credential for a registered semantic embedding provider first.',
+                    module: 'ai-settings-api',
+                    operation: 'prepare-semantic-comparison-credential',
+                  });
+                }
+                const { model, credential } = selected;
+                profile = await semanticEmbeddingProfile.createProfile({
+                  projectId,
+                  expectedRevision: profile?.profileRevision ?? 0,
+                  providerId: model.providerId,
+                  embeddingModelId: model.modelId,
+                  credentialId: credential.credentialId,
+                  credentialRevision: credential.credentialRevision,
+                  representationVersion: SEMANTIC_REPRESENTATION_VERSION_V2,
+                  dimension: model.shotgunDefaultDimension,
+                  updatedBy: context.principalId,
+                  status: 'PREPARED',
+                });
+              }
+              const selectedProfile = profile;
+              if (!selectedProfile) {
+                throw new ShotgunError({
+                  code: 'INTERNAL_UNCLASSIFIED',
+                  safeMessage: 'Semantic comparison profile could not be prepared.',
+                  module: 'ai-settings-api',
+                  operation: 'prepare-semantic-comparison',
+                });
+              }
+              const readyGeneration =
+                await semanticActiveGenerationReader.getActiveGeneration(projectId);
+              const generationMatchesProfile =
+                Boolean(
+                  readyGeneration &&
+                  readyGeneration.buildStatus === 'READY' &&
+                  readyGeneration.embeddingProfileId === selectedProfile.profileId &&
+                  readyGeneration.embeddingProfileRevision === selectedProfile.profileRevision,
+                ) &&
+                (await generationMatchesSource(projectId, readyGeneration)) &&
+                (await generationMatchesCurrentExecution(
+                  projectId,
+                  selectedProfile,
+                  readyGeneration,
+                ));
+              if (!generationMatchesProfile) {
+                const refreshResult = await semanticProjectionRefresh.refresh({
+                  projectId,
+                  actor: context.actor,
+                  security: context.security,
+                });
+                const status = await projectStatus(projectId);
+                if (refreshResult.status !== 'ACTIVATED') {
+                  return {
+                    status: {
+                      ...status,
+                      status: 'NEEDS_ATTENTION' as const,
+                    },
+                  };
+                }
+                return { status };
+              }
+              return { status: await projectStatus(projectId) };
+            } catch (error) {
+              throw mapError(error, 'prepare-semantic-comparison');
+            }
+          },
+        );
+      }
+    }
   }
 
   server.get<{

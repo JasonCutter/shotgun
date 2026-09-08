@@ -17,6 +17,34 @@ export const protectedQueryKey = ['protected'] as const;
 export const globalQueryKey = ['global'] as const;
 export const unprotectedQueryKey = ['unprotected'] as const;
 
+/**
+ * Owner mutations can change the server-authoritative state rendered in more
+ * than one surface (Settings, privacy, and the protected global shell). Keep
+ * this list narrow and explicit so a mutation converges active consumers
+ * without evicting unrelated queries or relying on a navigation/reload.
+ */
+export const ownerStateQueryKeys = (projectId: string) =>
+  [
+    ['settings', 'ai', projectId],
+    ['settings', 'ai', 'semantic-comparison', projectId],
+    ['settings', 'snapshot', projectId],
+    ['settings', 'privacy', projectId],
+    ['protected', 'global-shell'],
+    ['project'],
+  ] as const;
+
+export const convergeOwnerState = async (
+  queryClient: QueryClient,
+  projectId: string,
+): Promise<void> => {
+  if (!projectId) return;
+  await Promise.all(
+    ownerStateQueryKeys(projectId).map((queryKey) =>
+      queryClient.invalidateQueries({ queryKey: [...queryKey] }),
+    ),
+  );
+};
+
 export const projectQueryKey = (
   principalId: string,
   projectId: string,

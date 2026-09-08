@@ -35,6 +35,7 @@ const koCommandLabels: Readonly<
   'preferences.display': { label: '화면 환경설정', alias: '화면 설정' },
   'ai.configure': { label: 'AI 구성', alias: 'AI 설정' },
   'ai.test_connection': { label: 'AI 연결 테스트', alias: 'AI 연결' },
+  'semantic.enable': { label: '의미 비교 활성화', alias: '의미 비교' },
   'privacy.open': { label: '개인정보 설정 열기', alias: '개인정보' },
   'privacy.review': { label: '개인정보 검토', alias: '개인정보 검토' },
   'knowledge.open': { label: '지식 열기', alias: '지식' },

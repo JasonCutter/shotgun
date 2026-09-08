@@ -29,6 +29,7 @@ import {
   type TextDiffSegment,
 } from '../../../packages/contracts/src/index.js';
 import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
+import type { ComparisonV2ExecutionTrigger } from './orchestration-v2.js';
 
 export * from './persistence-v2.js';
 export * from './shortlist-v2.js';
@@ -102,6 +103,8 @@ export type ComparisonV2RuntimeBoundary = {
     readonly actor: EventEnvelope['actor'];
     readonly security: SecurityContext;
     readonly correlationId?: string;
+    /** Internal server authority; never accepted from Product payloads. */
+    readonly executionTrigger?: ComparisonV2ExecutionTrigger;
   }): Promise<{
     readonly rollout: 'V1_ONLY' | 'V2_SHADOW' | 'V2_ACTIVE';
     readonly v2Outcome?:
@@ -337,6 +340,7 @@ const executeComparison = async (input: {
   readonly security: SecurityContext;
   readonly createdAt: string;
   readonly correlationId?: string;
+  readonly executionTrigger?: ComparisonV2ExecutionTrigger;
   readonly runtime?: ComparisonV2RuntimeBoundary;
   readonly repository: ComparisonRepositoryPort;
   readonly snapshotProvider: CanonicalSnapshotPort;
@@ -352,6 +356,7 @@ const executeComparison = async (input: {
       actor: input.actor,
       security: input.security,
       correlationId: input.correlationId,
+      executionTrigger: input.executionTrigger,
     });
     rollout = runtimeOutcome.rollout;
     if (rollout === 'V2_ACTIVE') {
@@ -546,6 +551,7 @@ export const createComparisonModule = (
             security,
             createdAt: envelope.createdAt,
             correlationId: envelope.correlationId,
+            executionTrigger: 'EXPLICIT_OPERATOR_REENTRY',
             runtime,
             repository,
             snapshotProvider,
@@ -616,6 +622,7 @@ export const createComparisonModule = (
             security,
             createdAt: envelope.createdAt,
             correlationId: envelope.correlationId,
+            executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
             runtime,
             repository,
             snapshotProvider,

@@ -690,4 +690,131 @@ describe('Comparison v2 orchestration', () => {
       );
     }
   });
+
+  it('reuses terminal failures on replay and advances only on explicit operator re-entry', async () => {
+    const shortlistAudit = audit(['claim-1']);
+    const shortlistDigest = shortlistAuditDigestV2(shortlistAudit);
+    const stored: ComparisonV2Aggregate[] = [];
+    const analyses: AnalysisRevisionV2[] = [];
+    let providerCalls = 0;
+    let generatedId = 0;
+    const identity = analysis('identity-comparison', shortlistDigest, ['claim-1']);
+    const repository: ComparisonV2RepositoryPort = {
+      async saveAnalysisRevision({ revision }) {
+        analyses.push(revision);
+        return revision;
+      },
+      async transitionAnalysisRevision() {
+        throw new Error('not used');
+      },
+      async findAnalysisRevision(_projectId, analysisRevisionId) {
+        return analyses.find((item) => item.analysisRevisionId === analysisRevisionId);
+      },
+      async findAnalysisRevisionByInput() {
+        return undefined;
+      },
+      async findLatestAnalysisRevisionByInput() {
+        return analyses.at(-1);
+      },
+      async saveCompletedAggregate(aggregate) {
+        stored.push(aggregate);
+        analyses.push(...aggregate.analyses);
+        return aggregate;
+      },
+      async findComparisonById() {
+        return undefined;
+      },
+      async findComparisonByIdentity(identityToFind) {
+        return stored.find(
+          (aggregate) =>
+            stableJson(comparisonV2StorageIdentity(aggregate)) === stableJson(identityToFind),
+        );
+      },
+    };
+    const semanticAnalysis: ComparisonV2OrchestratorDependencies['semanticAnalysis'] = {
+      async resolveInputIdentity() {
+        return {
+          inputDigest: identity.inputDigest,
+          providerIdentity: identity.providerIdentity,
+          credentialRevisionRef: identity.credentialRevisionRef,
+          promptTemplateRevision: identity.promptTemplateRevision,
+          outputSchemaRevision: identity.outputSchemaRevision,
+          semanticPolicyRevision: identity.semanticPolicyRevision,
+        };
+      },
+      async analyze(input) {
+        providerCalls += 1;
+        if (input.attempt === 1) {
+          const failed = {
+            ...analysis(input.comparisonId, input.shortlistDigest, ['claim-1'], 'FAILED_TERMINAL'),
+            analysisRevisionId: 'analysis-1',
+            attempt: 1,
+            inputDigest: identity.inputDigest,
+            safeFailureCode: 'TERMINAL_FAILURE' as const,
+          };
+          return { status: 'FAILED' as const, analysis: failed, relationships: [] as const };
+        }
+        const completed = {
+          ...analysis(input.comparisonId, input.shortlistDigest, ['claim-1'], 'COMPLETED'),
+          analysisRevisionId: 'analysis-2',
+          attempt: input.attempt,
+          inputDigest: identity.inputDigest,
+        };
+        return {
+          status: 'COMPLETED' as const,
+          analysis: completed,
+          relationships: [
+            relationship(input.comparisonId, completed.analysisRevisionId, 'claim-1', 'UNRELATED'),
+          ],
+        };
+      },
+    };
+    const orchestrator = createComparisonV2Orchestrator({
+      candidate: { findById: async () => candidate },
+      shortlist: {
+        async build() {
+          return { status: 'READY' as const, shortlist: shortlistAudit, shortlistDigest };
+        },
+      },
+      semanticAnalysis,
+      repository,
+      now: () => now,
+      randomId: () => `comparison-${++generatedId}`,
+    });
+    const initial = await orchestrator.compare({
+      ...request,
+      executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+    });
+    const replay = await orchestrator.compare({
+      ...request,
+      executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+    });
+    expect(initial.status).toBe('FAILED');
+    expect(replay.status).toBe('FAILED');
+    expect(providerCalls).toBe(1);
+    expect(analyses).toHaveLength(1);
+    expect(analyses[0]?.attempt).toBe(1);
+
+    const reentry = await orchestrator.compare({
+      ...request,
+      executionTrigger: 'EXPLICIT_OPERATOR_REENTRY',
+    });
+    expect(reentry.status).toBe('COMPLETED');
+    expect(providerCalls).toBe(2);
+    expect(analyses).toHaveLength(2);
+    expect(analyses.map((item) => item.attempt)).toEqual([1, 2]);
+    expect(stored).toHaveLength(1);
+    if (reentry.status === 'COMPLETED') {
+      expect(reentry.aggregate.analyses[0]?.attempt).toBe(2);
+    }
+
+    const replayedOperatorCommand = await orchestrator.compare({
+      ...request,
+      executionTrigger: 'EXPLICIT_OPERATOR_REENTRY',
+    });
+    expect(replayedOperatorCommand.status).toBe('COMPLETED');
+    expect(providerCalls).toBe(2);
+    expect(analyses).toHaveLength(2);
+    expect(stored).toHaveLength(1);
+  });
 });

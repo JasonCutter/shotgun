@@ -674,6 +674,33 @@ export class PostgresComparisonV2Repository implements ComparisonV2RepositoryPor
       : undefined;
   }
 
+  async findLatestAnalysisRevisionByInput(input: {
+    readonly projectId: string;
+    readonly candidateId: string;
+    readonly candidateRevision: number;
+    readonly canonicalSnapshotDigest: string;
+    readonly inputDigest: string;
+  }): Promise<AnalysisRevisionV2 | undefined> {
+    const result = await this.pool.query<AnalysisV2Row>(
+      `SELECT analysis_json
+       FROM comparison.analysis_revisions_v2
+       WHERE project_id = $1 AND candidate_id = $2 AND candidate_revision = $3
+         AND snapshot_digest = $4 AND input_digest = $5
+       ORDER BY attempt DESC, created_at DESC
+       LIMIT 1`,
+      [
+        input.projectId,
+        input.candidateId,
+        input.candidateRevision,
+        input.canonicalSnapshotDigest,
+        input.inputDigest,
+      ],
+    );
+    return result.rows[0]
+      ? validatedAnalysis(result.rows[0].analysis_json, 'read-latest-analysis-revision-v2')
+      : undefined;
+  }
+
   async saveCompletedAggregate(aggregate: ComparisonV2Aggregate): Promise<ComparisonV2Aggregate> {
     this.assertWriterEnabled('save-completed-comparison-v2');
     validateComparisonV2Aggregate(aggregate);

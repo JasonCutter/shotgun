@@ -57,8 +57,13 @@ export type ComparisonV2OrchestrationRequest = {
   readonly actor: Actor;
   readonly security: SecurityContext;
   readonly k: number;
+  /** Internal server authority; never accepted from the Product payload. */
+  readonly executionTrigger?: ComparisonV2ExecutionTrigger;
+  /** Initial internal value retained for source compatibility. */
   readonly attempt: number;
 };
+
+export type ComparisonV2ExecutionTrigger = 'INITIAL_OR_EVENT_REPLAY' | 'EXPLICIT_OPERATOR_REENTRY';
 
 export type ComparisonV2OrchestratorDependencies = {
   readonly candidate: ComparisonCandidateV2ResolverPort;
@@ -208,6 +213,17 @@ const failedEvent = (
     safeFailureCode,
     emittedAt,
   } satisfies ComparisonFailedV2;
+};
+
+const existingFailedOutcome = (
+  analysis: AnalysisRevisionV2,
+  emittedAt: string,
+): Extract<ComparisonV2OrchestrationOutcome, { status: 'INCOMPLETE' | 'FAILED' }> => {
+  const event = failedEvent(analysis, emittedAt);
+  if (event.eventType === 'ComparisonIncompleteV2') {
+    return { status: 'INCOMPLETE', analysis, event };
+  }
+  return { status: 'FAILED', analysis, event };
 };
 
 const buildSemanticComparison = (input: {
@@ -428,6 +444,51 @@ export const createComparisonV2Orchestrator = (
           await publish(dependencies.events, event);
           return { status: 'COMPLETED', aggregate: existing, event };
         }
+
+        // A completed aggregate is handled above.  For an incomplete history,
+        // resolve the server-owned attempt from immutable AnalysisRevision
+        // rows before invoking the provider.  Event/replay execution must
+        // reuse a terminal failure, while the explicit Product re-entry
+        // command is the only path allowed to advance FAILED_TERMINAL to the
+        // next attempt.  The public Product payload remains candidateId plus
+        // idempotencyKey; attempt is never client-controlled.
+        let effectiveAttempt = request.attempt;
+        const latest = dependencies.repository.findLatestAnalysisRevisionByInput
+          ? await dependencies.repository.findLatestAnalysisRevisionByInput({
+              projectId: request.projectId,
+              candidateId: candidateV2.id,
+              candidateRevision: candidateV2.revision,
+              canonicalSnapshotDigest: shortlist.shortlist.canonicalSnapshot.digest,
+              inputDigest: identity.inputDigest,
+            })
+          : undefined;
+        if (latest) {
+          // An unknown provider outcome must be reconciled by the existing
+          // outcome/recovery path before any new provider execution. It is
+          // never safe to treat a replay as permission to duplicate work.
+          if (latest.safeFailureCode === 'OUTCOME_UNKNOWN') {
+            const unknown = existingFailedOutcome(latest, now());
+            await publish(dependencies.events, unknown.event);
+            return unknown;
+          }
+          if (latest.state === 'FAILED_TERMINAL') {
+            if (request.executionTrigger === 'EXPLICIT_OPERATOR_REENTRY') {
+              effectiveAttempt = latest.attempt + 1;
+            } else {
+              const terminal = existingFailedOutcome(latest, now());
+              await publish(dependencies.events, terminal.event);
+              return terminal;
+            }
+          } else if (latest.state === 'COMPLETED') {
+            return {
+              status: 'BLOCKED',
+              reason: 'CONTRACT_FAILURE',
+              detail: 'Completed analysis has no aggregate.',
+            };
+          }
+        }
+
+        request = { ...request, attempt: effectiveAttempt };
       }
 
       let semantic: ComparisonSemanticAnalysisV2Outcome;

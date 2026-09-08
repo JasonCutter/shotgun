@@ -6,7 +6,6 @@ import { InMemoryAuthRepository } from '../../packages/authentication/src/index.
 import {
   canonicalSnapshotDigest,
   sha256Text,
-  ShotgunError,
   type HybridRetrievalCoordinatorPort,
   type SemanticProjectionGeneration,
 } from '../../packages/contracts/src/index.js';
@@ -357,13 +356,15 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
             async generateStructured(request: { readonly prompt: string }) {
               providerCalls += 1;
               if (semanticFailure) {
-                throw new ShotgunError({
-                  code: 'TERMINAL_FAILURE',
-                  safeMessage:
-                    'Deterministic V2 semantic provider failure for Product bridge test.',
-                  module: 'stage5.product-reentry-test',
-                  operation: 'semantic-provider',
-                });
+                // The first governed provider call deliberately violates the
+                // structured-output contract. The semantic adapter must
+                // persist FAILED_TERMINAL/CONTRACT_FAILURE without leaking
+                // raw provider bytes; the next operator re-entry returns a
+                // valid relationship payload.
+                return {
+                  rawText: JSON.stringify({ relationships: [] }),
+                  providerResponseId: `deepseek-test-${providerCalls}`,
+                };
               }
               const parsed = JSON.parse(request.prompt) as {
                 readonly claims?: readonly {
@@ -636,7 +637,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
         v2: {
           status: 'FAILED',
           analysisState: 'FAILED_TERMINAL',
-          safeFailureCode: 'TERMINAL_FAILURE',
+          safeFailureCode: 'CONTRACT_FAILURE',
         },
         review: { status: 'NOT_ATTEMPTED' },
       });
@@ -674,6 +675,76 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       );
       expect(legacyFailureComparison.rows).toHaveLength(0);
       semanticFailure = false;
+
+      // A fresh Product operator command is the only governed path allowed to
+      // advance the immutable FAILED_TERMINAL row to attempt 2. The original
+      // attempt remains unchanged and the successful re-entry materializes a
+      // normal V2 Comparison plus Review draft.
+      const terminalReentry = await invoke(failureCandidateId, 'product-key-v2-terminal-reentry');
+      expect(terminalReentry.statusCode).toBe(200);
+      const terminalReentryBody = terminalReentry.json<typeof failedBody>();
+      expect(terminalReentryBody.result).toMatchObject({
+        rollout: 'V2_ACTIVE',
+        v1Executed: false,
+        v2: { status: 'COMPLETED', snapshotVersion: 1 },
+        review: { status: 'DRAFT_CREATED' },
+      });
+      expect(providerCalls).toBe(4);
+      const reentryAnalyses = await pool.query<{
+        analysis_revision_id: string;
+        attempt: number;
+        state: string;
+        safe_failure_code: string | null;
+      }>(
+        `SELECT analysis_revision_id,attempt,state,safe_failure_code
+           FROM comparison.analysis_revisions_v2
+          WHERE project_id = $1 AND candidate_id = $2
+          ORDER BY attempt ASC`,
+        [projectId, failureCandidateId],
+      );
+      expect(reentryAnalyses.rows).toHaveLength(2);
+      expect(reentryAnalyses.rows[0]).toMatchObject({
+        analysis_revision_id: durableFailure.analysis_revision_id,
+        attempt: 1,
+        state: 'FAILED_TERMINAL',
+        safe_failure_code: 'CONTRACT_FAILURE',
+      });
+      expect(reentryAnalyses.rows[1]).toMatchObject({ attempt: 2, state: 'COMPLETED' });
+      const terminalReentryComparisonId = terminalReentryBody.result.v2.comparisonId;
+      if (!terminalReentryComparisonId) {
+        throw new Error('Terminal re-entry did not return a completed comparisonId.');
+      }
+      const terminalReentryDraft = await reviewV2.findDraftByComparisonId(
+        projectId,
+        terminalReentryComparisonId,
+      );
+      if (!terminalReentryDraft)
+        throw new Error('Terminal re-entry did not create a Review draft.');
+      const duplicateTerminalReentry = await invoke(
+        failureCandidateId,
+        'product-key-v2-terminal-reentry',
+      );
+      expect(duplicateTerminalReentry.statusCode).toBe(200);
+      expect(duplicateTerminalReentry.json()).toMatchObject({ commandStatus: 'duplicate' });
+      const freshTerminalReplay = await invoke(
+        failureCandidateId,
+        'product-key-v2-terminal-reentry-alt',
+      );
+      expect(freshTerminalReplay.statusCode).toBe(200);
+      expect(freshTerminalReplay.json()).toMatchObject({
+        result: {
+          v2: { status: 'COMPLETED', comparisonId: terminalReentryComparisonId },
+        },
+      });
+      expect(providerCalls).toBe(4);
+      const noThirdAttempt = await pool.query(
+        `SELECT attempt
+           FROM comparison.analysis_revisions_v2
+          WHERE project_id = $1 AND candidate_id = $2
+          ORDER BY attempt ASC`,
+        [projectId, failureCandidateId],
+      );
+      expect(noThirdAttempt.rows.map((row) => row.attempt)).toEqual([1, 2]);
 
       // A source-supported relationship produces a REVIEW_REQUIRED /
       // MODIFY_REVIEW Draft.  The Product Review route must fail closed for
@@ -764,10 +835,10 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
         [projectId],
       );
       expect(counts.rows[0]).toEqual({
-        comparisons: '3',
-        analyses: '4',
-        relationships: '6',
-        reviews: '3',
+        comparisons: '4',
+        analyses: '5',
+        relationships: '8',
+        reviews: '4',
       });
 
       // Only the refreshed B draft is approved. This is the normal V2 Product

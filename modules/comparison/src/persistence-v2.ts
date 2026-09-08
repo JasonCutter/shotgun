@@ -76,6 +76,19 @@ export type ComparisonV2RepositoryPort = {
     readonly inputDigest: string;
     readonly attempt: number;
   }): Promise<AnalysisRevisionV2 | undefined>;
+  /**
+   * Returns the latest immutable AnalysisRevision for one governed semantic
+   * input identity, independent of its server-owned attempt number.
+   * Implementations use this only to resolve explicit operator re-entry;
+   * historical rows remain immutable.
+   */
+  findLatestAnalysisRevisionByInput?(input: {
+    readonly projectId: string;
+    readonly candidateId: string;
+    readonly candidateRevision: number;
+    readonly canonicalSnapshotDigest: string;
+    readonly inputDigest: string;
+  }): Promise<AnalysisRevisionV2 | undefined>;
   saveCompletedAggregate(aggregate: ComparisonV2Aggregate): Promise<ComparisonV2Aggregate>;
   findComparisonById(
     projectId: string,

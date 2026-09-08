@@ -19,6 +19,7 @@ import {
   type SemanticActiveGenerationReaderPort,
   type SemanticDegradationStage,
   type SemanticEmbeddingErrorCode,
+  type SemanticExecutionReadiness,
   type SemanticProjectionGeneration,
   type SemanticReadinessStatus,
   type SecurityContext,
@@ -64,6 +65,7 @@ export type ShortlistBlockedReasonV2 =
 export type ShortlistReadinessMetadataV2 = {
   readonly lexicalStatus?: ProjectionReadiness['status'];
   readonly semanticStatus?: SemanticReadinessStatus;
+  readonly semanticExecution?: SemanticExecutionReadiness;
   readonly semanticDegradationStage?: SemanticDegradationStage;
   readonly semanticSafeFailureCode?: SemanticEmbeddingErrorCode;
 };
@@ -105,12 +107,16 @@ const semanticReadinessMetadata = (input: {
   readonly lexicalStatus: ProjectionReadiness['status'];
   readonly semantic: {
     readonly status: SemanticReadinessStatus;
+    readonly execution: SemanticExecutionReadiness;
     readonly degradationStage?: SemanticDegradationStage;
     readonly safeFailureCode?: SemanticEmbeddingErrorCode;
   };
 }): ShortlistReadinessMetadataV2 => ({
   lexicalStatus: input.lexicalStatus,
   semanticStatus: input.semantic.status,
+  ...(input.semantic.degradationStage === undefined && input.semantic.safeFailureCode === undefined
+    ? {}
+    : { semanticExecution: input.semantic.execution }),
   ...(input.semantic.degradationStage === undefined
     ? {}
     : { semanticDegradationStage: input.semantic.degradationStage }),

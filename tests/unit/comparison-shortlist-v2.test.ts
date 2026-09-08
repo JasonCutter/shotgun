@@ -199,6 +199,7 @@ describe('ComparisonShortlistV2Service', () => {
       readiness: {
         lexicalStatus: 'READY',
         semanticStatus: 'DEGRADED',
+        semanticExecution: 'TEMPORARILY_UNAVAILABLE',
         semanticDegradationStage: 'RESULT_FUSION',
         semanticSafeFailureCode: 'POLICY_DENIED',
       },

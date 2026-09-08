@@ -463,8 +463,8 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
       }),
     );
     expect(screen.getByText('AI automatic processing enabled')).toBeTruthy();
-    const invalidatedKeys = invalidateQueries.mock.calls.map(
-      ([input]) => JSON.stringify(input?.queryKey),
+    const invalidatedKeys = invalidateQueries.mock.calls.map(([input]) =>
+      JSON.stringify(input?.queryKey),
     );
     expect(invalidatedKeys).toContain(JSON.stringify(['settings', 'ai', 'project-1']));
     expect(invalidatedKeys).toContain(JSON.stringify(['protected', 'global-shell']));

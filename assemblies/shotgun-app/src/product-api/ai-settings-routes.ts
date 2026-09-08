@@ -454,21 +454,22 @@ export function registerAISettingsRoutes(
           configuredRollout === 'V2_SHADOW' || configuredRollout === 'V2_ACTIVE'
             ? configuredRollout
             : 'V1_ONLY';
-        const generationMatchesProfile = Boolean(
-          profile &&
-          aiSettings.credentialStatuses.some(
-            (credential) =>
-              credential.credentialId === profile.credentialId &&
-              credential.providerId === profile.providerId &&
-              credential.credentialRevision === profile.credentialRevision &&
-              credential.lifecycleState === 'active',
+        const generationMatchesProfile =
+          Boolean(
+            profile &&
+            aiSettings.credentialStatuses.some(
+              (credential) =>
+                credential.credentialId === profile.credentialId &&
+                credential.providerId === profile.providerId &&
+                credential.credentialRevision === profile.credentialRevision &&
+                credential.lifecycleState === 'active',
+            ) &&
+            semanticEmbeddingRegistry.getModel(profile.providerId, profile.embeddingModelId) &&
+            generation &&
+            generation.buildStatus === 'READY' &&
+            generation.embeddingProfileId === profile.profileId &&
+            generation.embeddingProfileRevision === profile.profileRevision,
           ) &&
-          semanticEmbeddingRegistry.getModel(profile.providerId, profile.embeddingModelId) &&
-          generation &&
-          generation.buildStatus === 'READY' &&
-          generation.embeddingProfileId === profile.profileId &&
-          generation.embeddingProfileRevision === profile.profileRevision,
-        ) &&
           (await generationMatchesSource(projectId, generation)) &&
           (await generationMatchesCurrentExecution(projectId, profile, generation));
         const profileBindingMissing = Boolean(
@@ -615,9 +616,9 @@ export function registerAISettingsRoutes(
               const generationMatchesProfile =
                 Boolean(
                   readyGeneration &&
-                    readyGeneration.buildStatus === 'READY' &&
-                    readyGeneration.embeddingProfileId === selectedProfile.profileId &&
-                    readyGeneration.embeddingProfileRevision === selectedProfile.profileRevision,
+                  readyGeneration.buildStatus === 'READY' &&
+                  readyGeneration.embeddingProfileId === selectedProfile.profileId &&
+                  readyGeneration.embeddingProfileRevision === selectedProfile.profileRevision,
                 ) &&
                 (await generationMatchesSource(projectId, readyGeneration)) &&
                 (await generationMatchesCurrentExecution(

@@ -363,7 +363,11 @@ describe('Semantic embedding profile Product boundary', () => {
       method: 'POST',
       url: '/api/v1/settings/ai/credentials',
       headers: fixture.headers,
-      payload: { targetProjectId: fixture.projectId, providerId: 'openai', secret: 'semantic-test' },
+      payload: {
+        targetProjectId: fixture.projectId,
+        providerId: 'openai',
+        secret: 'semantic-test',
+      },
     });
     expect(credentialResponse.statusCode).toBe(200);
     const prepared = await fixture.application.server.inject({
@@ -389,9 +393,9 @@ describe('Semantic embedding profile Product boundary', () => {
       actorId: 'owner-1',
     });
     expect(activation.status).toBe('APPLIED');
-    const revisionAfterActivation = (await fixture.settingsRepository.getSettingsSnapshot(
-      fixture.projectId,
-    )).settingsRevision;
+    const revisionAfterActivation = (
+      await fixture.settingsRepository.getSettingsSnapshot(fixture.projectId)
+    ).settingsRevision;
 
     fixture.setSourceWatermark({ canonicalVersion: 2, sourceSnapshotDigest: 'sha256:changed' });
     const stale = await fixture.application.server.inject({
@@ -473,7 +477,11 @@ describe('Semantic embedding profile Product boundary', () => {
       method: 'POST',
       url: '/api/v1/settings/ai/credentials',
       headers: fixture.headers,
-      payload: { targetProjectId: fixture.projectId, providerId: 'openai', secret: 'semantic-test' },
+      payload: {
+        targetProjectId: fixture.projectId,
+        providerId: 'openai',
+        secret: 'semantic-test',
+      },
     });
     expect(credentialResponse.statusCode).toBe(200);
     const prepared = await fixture.application.server.inject({

@@ -17,6 +17,9 @@ import {
   type LexicalRetrieverPort,
   type ProjectionReadiness,
   type SemanticActiveGenerationReaderPort,
+  type SemanticDegradationStage,
+  type SemanticEmbeddingErrorCode,
+  type SemanticExecutionReadiness,
   type SemanticProjectionGeneration,
   type SemanticReadinessStatus,
   type SecurityContext,
@@ -62,6 +65,9 @@ export type ShortlistBlockedReasonV2 =
 export type ShortlistReadinessMetadataV2 = {
   readonly lexicalStatus?: ProjectionReadiness['status'];
   readonly semanticStatus?: SemanticReadinessStatus;
+  readonly semanticExecution?: SemanticExecutionReadiness;
+  readonly semanticDegradationStage?: SemanticDegradationStage;
+  readonly semanticSafeFailureCode?: SemanticEmbeddingErrorCode;
 };
 
 export type ComparisonShortlistV2Outcome =
@@ -96,6 +102,28 @@ const blocked = (
   reason: ShortlistBlockedReasonV2,
   readiness: ShortlistReadinessMetadataV2 = {},
 ): ComparisonShortlistV2Outcome => ({ status: 'BLOCKED', reason, readiness });
+
+const semanticReadinessMetadata = (input: {
+  readonly lexicalStatus: ProjectionReadiness['status'];
+  readonly semantic: {
+    readonly status: SemanticReadinessStatus;
+    readonly execution: SemanticExecutionReadiness;
+    readonly degradationStage?: SemanticDegradationStage;
+    readonly safeFailureCode?: SemanticEmbeddingErrorCode;
+  };
+}): ShortlistReadinessMetadataV2 => ({
+  lexicalStatus: input.lexicalStatus,
+  semanticStatus: input.semantic.status,
+  ...(input.semantic.degradationStage === undefined && input.semantic.safeFailureCode === undefined
+    ? {}
+    : { semanticExecution: input.semantic.execution }),
+  ...(input.semantic.degradationStage === undefined
+    ? {}
+    : { semanticDegradationStage: input.semantic.degradationStage }),
+  ...(input.semantic.safeFailureCode === undefined
+    ? {}
+    : { semanticSafeFailureCode: input.semantic.safeFailureCode }),
+});
 
 const isNonEmpty = (value: string | undefined): value is string =>
   typeof value === 'string' && value.trim().length > 0;
@@ -386,25 +414,25 @@ export class ComparisonShortlistV2Service implements ComparisonShortlistV2Port {
       return blocked('SEMANTIC_UNAVAILABLE', { lexicalStatus: lexical.readiness.status });
     }
 
-    if (hybrid.projectId !== request.projectId) {
-      return blocked('POLICY_INTEGRITY', {
+    const hybridReadinessMetadata = (): ShortlistReadinessMetadataV2 =>
+      semanticReadinessMetadata({
         lexicalStatus: hybrid.readiness.lexical.status,
-        semanticStatus: hybrid.readiness.semantic.status,
+        semantic: hybrid.readiness.semantic,
       });
+
+    if (hybrid.projectId !== request.projectId) {
+      return blocked('POLICY_INTEGRITY', hybridReadinessMetadata());
     }
     if (!isLexicalReadyForSnapshot(hybrid.readiness.lexical, snapshot)) {
-      return blocked(safeLexicalFailureReason(hybrid.readiness.lexical, snapshot), {
-        lexicalStatus: hybrid.readiness.lexical.status,
-        semanticStatus: hybrid.readiness.semantic.status,
-      });
+      return blocked(
+        safeLexicalFailureReason(hybrid.readiness.lexical, snapshot),
+        hybridReadinessMetadata(),
+      );
     }
 
     const semanticStatus = hybrid.readiness.semantic.status;
     if (semanticStatus !== 'READY') {
-      return blocked(safeSemanticReason(semanticStatus), {
-        lexicalStatus: hybrid.readiness.lexical.status,
-        semanticStatus,
-      });
+      return blocked(safeSemanticReason(semanticStatus), hybridReadinessMetadata());
     }
 
     let generation: SemanticProjectionGeneration | undefined;
@@ -413,28 +441,16 @@ export class ComparisonShortlistV2Service implements ComparisonShortlistV2Port {
         request.projectId,
       );
     } catch {
-      return blocked('GENERATION_UNAVAILABLE', {
-        lexicalStatus: hybrid.readiness.lexical.status,
-        semanticStatus,
-      });
+      return blocked('GENERATION_UNAVAILABLE', hybridReadinessMetadata());
     }
     if (!isGenerationReady(generation, snapshot)) {
-      return blocked('GENERATION_UNAVAILABLE', {
-        lexicalStatus: hybrid.readiness.lexical.status,
-        semanticStatus,
-      });
+      return blocked('GENERATION_UNAVAILABLE', hybridReadinessMetadata());
     }
     if (hybrid.readiness.semantic.activeGenerationId !== generation.generationId) {
-      return blocked('GENERATION_MISMATCH', {
-        lexicalStatus: hybrid.readiness.lexical.status,
-        semanticStatus,
-      });
+      return blocked('GENERATION_MISMATCH', hybridReadinessMetadata());
     }
     if (hybrid.readiness.degraded) {
-      return blocked('SEMANTIC_DEGRADED', {
-        lexicalStatus: hybrid.readiness.lexical.status,
-        semanticStatus,
-      });
+      return blocked('SEMANTIC_DEGRADED', hybridReadinessMetadata());
     }
 
     const exclusionCounts: Record<string, number> = {};
@@ -447,22 +463,13 @@ export class ComparisonShortlistV2Service implements ComparisonShortlistV2Port {
 
       const claim = snapshot.claims.find((entry) => entry.claimId === item.resourceId);
       if (!claim) {
-        return blocked('SNAPSHOT_INTEGRITY', {
-          lexicalStatus: hybrid.readiness.lexical.status,
-          semanticStatus,
-        });
+        return blocked('SNAPSHOT_INTEGRITY', hybridReadinessMetadata());
       }
       if (!isAuthorizedClaimResult(item, request.security, allowedSensitivities)) {
-        return blocked('POLICY_INTEGRITY', {
-          lexicalStatus: hybrid.readiness.lexical.status,
-          semanticStatus,
-        });
+        return blocked('POLICY_INTEGRITY', hybridReadinessMetadata());
       }
       if (!isSnapshotCompatibleClaimResult(item, claim, snapshot, generation)) {
-        return blocked('SNAPSHOT_INTEGRITY', {
-          lexicalStatus: hybrid.readiness.lexical.status,
-          semanticStatus,
-        });
+        return blocked('SNAPSHOT_INTEGRITY', hybridReadinessMetadata());
       }
 
       const target: ShortlistTargetIdentityV2 = {
@@ -482,10 +489,7 @@ export class ComparisonShortlistV2Service implements ComparisonShortlistV2Port {
       selectedTargetIdentities.length === 0 ||
       (retrievalSaturated && selectedTargetIdentities.length < request.k)
     ) {
-      return blocked('INSUFFICIENT_CLAIM_COVERAGE', {
-        lexicalStatus: hybrid.readiness.lexical.status,
-        semanticStatus,
-      });
+      return blocked('INSUFFICIENT_CLAIM_COVERAGE', hybridReadinessMetadata());
     }
 
     const shortlist: ShortlistAuditV2 = {
@@ -519,10 +523,7 @@ export class ComparisonShortlistV2Service implements ComparisonShortlistV2Port {
     try {
       validateShortlistAuditV2(shortlist);
     } catch {
-      return blocked('CONTRACT_INVALID', {
-        lexicalStatus: hybrid.readiness.lexical.status,
-        semanticStatus,
-      });
+      return blocked('CONTRACT_INVALID', hybridReadinessMetadata());
     }
 
     return {

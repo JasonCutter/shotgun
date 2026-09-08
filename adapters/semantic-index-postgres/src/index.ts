@@ -1,4 +1,4 @@
-import type { Pool, QueryResultRow } from 'pg';
+import type { Pool, QueryResult, QueryResultRow } from 'pg';
 
 import {
   type SemanticCandidateQuery,
@@ -17,6 +17,7 @@ import {
   type SemanticProjectionItem,
   type SemanticResourceType,
   SemanticEmbeddingError,
+  SemanticRetrievalError,
   validateFiniteVector,
   validatePersistedItem,
   validateSecurityInput,
@@ -708,47 +709,52 @@ export class PostgresSemanticIndexRepository
     // Candidate filtering (project_id, generation_id, dimension, access_scope, sensitivity)
     // is applied strictly in the WHERE clause BEFORE ORDER BY distance and LIMIT.
     this.observation.onNearestNeighbors?.();
-    const result = await this.pool.query<CandidateRow>(
-      `SELECT
-         project_id,
-         generation_id,
-         semantic_item_id,
-         resource_type,
-         resource_id,
-         source_projection_digest,
-         canonical_version,
-         semantic_text_digest,
-         embedding_profile_id,
-         embedding_profile_revision,
-         representation_version,
-         dimension,
-         evidence_ids,
-         access_scope,
-         sensitivity,
-         authority,
-         provenance,
-         indexed_at,
-         created_at,
-         updated_at,
-         (vector ${distanceOp} $3::vector)::double precision AS distance
-       FROM projection.semantic_items
-       WHERE project_id = $1
-         AND generation_id = $2
-         AND dimension = $4
-         AND access_scope <@ $5::text[]
-         AND sensitivity = ANY($6::text[])
-       ORDER BY distance ASC, resource_type ASC, resource_id ASC
-       LIMIT $7`,
-      [
-        projectId,
-        generationId,
-        vectorString,
-        gen.dimension,
-        query.accessScopes,
-        query.allowedSensitivities,
-        query.limit,
-      ],
-    );
+    let result: QueryResult<CandidateRow>;
+    try {
+      result = await this.pool.query<CandidateRow>(
+        `SELECT
+           project_id,
+           generation_id,
+           semantic_item_id,
+           resource_type,
+           resource_id,
+           source_projection_digest,
+           canonical_version,
+           semantic_text_digest,
+           embedding_profile_id,
+           embedding_profile_revision,
+           representation_version,
+           dimension,
+           evidence_ids,
+           access_scope,
+           sensitivity,
+           authority,
+           provenance,
+           indexed_at,
+           created_at,
+           updated_at,
+           (vector ${distanceOp} $3::vector)::double precision AS distance
+         FROM projection.semantic_items
+         WHERE project_id = $1
+           AND generation_id = $2
+           AND dimension = $4
+           AND access_scope <@ $5::text[]
+           AND sensitivity = ANY($6::text[])
+         ORDER BY distance ASC, resource_type ASC, resource_id ASC
+         LIMIT $7`,
+        [
+          projectId,
+          generationId,
+          vectorString,
+          gen.dimension,
+          query.accessScopes,
+          query.allowedSensitivities,
+          query.limit,
+        ],
+      );
+    } catch {
+      throw new SemanticRetrievalError({ degradationStage: 'NEAREST_NEIGHBOR' });
+    }
 
     return result.rows.map((row) => ({
       semanticItemId: row.semantic_item_id,

@@ -4,6 +4,7 @@ import type { SemanticCorpusAuthority, SemanticProductResourceType } from './sem
 import type { SemanticCandidateResult, SemanticProjectionGeneration } from './semantic-index.js';
 import type { SemanticResourceType } from './semantic-representation.js';
 import type { SemanticDataReadiness, SemanticExecutionReadiness } from './semantic-query.js';
+import type { SemanticEmbeddingErrorCode } from './semantic-embedding.js';
 import type { Actor, SecurityContext } from './types.js';
 
 export const HYBRID_FUSION_POLICY_RRF_V1 = 'rrf:v1' as const;
@@ -142,6 +143,37 @@ export type HybridFusionPolicy = {
 export type SemanticReadinessStatus =
   'READY' | 'STALE' | 'DEGRADED' | 'UNAVAILABLE' | 'NOT_CONFIGURED';
 
+/**
+ * Bounded, server-owned location of a semantic degradation.  This is
+ * diagnostic metadata only; it deliberately carries no provider payload,
+ * query/resource identity, or arbitrary exception text.
+ */
+export type SemanticDegradationStage =
+  | 'QUERY_EXECUTION'
+  | 'VECTOR_VALIDATION'
+  | 'NEAREST_NEIGHBOR'
+  | 'RESULT_FUSION'
+  | 'RESOURCE_RESOLUTION'
+  | 'CITATION_RESOLUTION'
+  | 'RESULT_VALIDATION'
+  | 'UNKNOWN';
+
+/**
+ * Safe, bounded failure emitted by a semantic index adapter when the
+ * nearest-neighbor execution boundary fails.  The adapter deliberately
+ * discards provider/database details before this error crosses the module
+ * boundary; callers may only inspect the bounded degradation stage.
+ */
+export class SemanticRetrievalError extends Error {
+  readonly degradationStage: SemanticDegradationStage;
+
+  constructor(input: { readonly degradationStage: SemanticDegradationStage }) {
+    super('Semantic retrieval is temporarily unavailable.');
+    this.name = 'SemanticRetrievalError';
+    this.degradationStage = input.degradationStage;
+  }
+}
+
 export type SemanticReadiness = {
   readonly status: SemanticReadinessStatus;
   readonly data: SemanticDataReadiness;
@@ -151,6 +183,10 @@ export type SemanticReadiness = {
   readonly dimension?: number;
   readonly reason?: string;
   readonly updatedAt?: string;
+  /** Safe stage for a DEGRADED/UNAVAILABLE semantic execution. */
+  readonly degradationStage?: SemanticDegradationStage;
+  /** Existing bounded semantic error taxonomy; never a raw provider error. */
+  readonly safeFailureCode?: SemanticEmbeddingErrorCode;
 };
 
 export type HybridSearchReadiness = {

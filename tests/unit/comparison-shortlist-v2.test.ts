@@ -173,6 +173,39 @@ const dependencies = (overrides: Partial<ComparisonShortlistV2Dependencies> = {}
 };
 
 describe('ComparisonShortlistV2Service', () => {
+  it('preserves bounded semantic degradation diagnostics in a blocked shortlist', async () => {
+    const { deps, hybridRetrieval } = dependencies();
+    hybridRetrieval.search.mockResolvedValue(
+      hybridResponse([], {
+        readiness: {
+          lexical: lexicalReadiness(),
+          semantic: semanticReadiness({
+            status: 'DEGRADED',
+            execution: 'TEMPORARILY_UNAVAILABLE',
+            degradationStage: 'RESULT_FUSION',
+            safeFailureCode: 'POLICY_DENIED',
+          }),
+          degraded: true,
+          degradedReason: 'Semantic retrieval is temporarily unavailable.',
+        },
+      }),
+    );
+
+    const result = await new ComparisonShortlistV2Service(deps).build(request());
+
+    expect(result).toEqual({
+      status: 'BLOCKED',
+      reason: 'SEMANTIC_DEGRADED',
+      readiness: {
+        lexicalStatus: 'READY',
+        semanticStatus: 'DEGRADED',
+        semanticExecution: 'TEMPORARILY_UNAVAILABLE',
+        semanticDegradationStage: 'RESULT_FUSION',
+        semanticSafeFailureCode: 'POLICY_DENIED',
+      },
+    });
+  });
+
   it('S3-01 returns an exact duplicate before any hybrid/semantic call', async () => {
     const { deps, lexicalRetriever, hybridRetrieval } = dependencies();
     lexicalRetriever.retrieve.mockResolvedValue({

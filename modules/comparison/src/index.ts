@@ -128,7 +128,12 @@ export type ComparisonV2RuntimeBoundary = {
             | 'safeFailureCode'
           >;
         }
-      | { readonly status: 'BLOCKED'; readonly reason: string };
+      | {
+          readonly status: 'BLOCKED';
+          readonly reason: string;
+          /** Safe orchestration detail; never contains provider or Claim payloads. */
+          readonly detail?: string;
+        };
     readonly review?:
       | { readonly status: 'DRAFT_CREATED' }
       | { readonly status: 'BLOCKED'; readonly reason: string }
@@ -270,6 +275,8 @@ type ComparisonExecution = {
     | {
         readonly status: 'BLOCKED';
         readonly reason?: string;
+        /** Safe orchestration detail retained for Product diagnostics. */
+        readonly detail?: string;
       }
     | {
         readonly status: 'INCOMPLETE' | 'FAILED';
@@ -308,7 +315,13 @@ const normalizeV2Outcome = (
         : {}),
     };
   }
-  if (v2.status === 'BLOCKED') return { status: 'BLOCKED', reason: v2.reason };
+  if (v2.status === 'BLOCKED') {
+    return {
+      status: 'BLOCKED',
+      reason: v2.reason,
+      ...(v2.detail !== undefined ? { detail: v2.detail } : {}),
+    };
+  }
   const analysis = v2.analysis;
   const safeFailureCode = analysis.safeFailureCode;
   if (!safeFailureCode) {

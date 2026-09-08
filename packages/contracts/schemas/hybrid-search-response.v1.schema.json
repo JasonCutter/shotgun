@@ -45,7 +45,32 @@
         "embeddingProfileId": { "type": "string" },
         "dimension": { "type": "integer", "minimum": 1 },
         "reason": { "type": "string" },
-        "updatedAt": { "type": "string" }
+        "updatedAt": { "type": "string" },
+        "degradationStage": {
+          "enum": [
+            "QUERY_EXECUTION",
+            "VECTOR_VALIDATION",
+            "NEAREST_NEIGHBOR",
+            "RESULT_FUSION",
+            "RESOURCE_RESOLUTION",
+            "CITATION_RESOLUTION",
+            "RESULT_VALIDATION",
+            "UNKNOWN"
+          ]
+        },
+        "safeFailureCode": {
+          "enum": [
+            "CONFIGURATION_REQUIRED",
+            "STALE",
+            "CAPABILITY_UNAVAILABLE",
+            "POLICY_DENIED",
+            "PROVIDER_FAILURE",
+            "VALIDATION_FAILURE",
+            "TIMEOUT",
+            "CONFLICT",
+            "INVALID_INPUT"
+          ]
+        }
       }
     },
     "citation": {

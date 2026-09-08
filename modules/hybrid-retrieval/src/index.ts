@@ -39,6 +39,8 @@ import {
   type SemanticEmbeddingRouterPort,
   type SemanticIndexRepositoryPort,
   type SemanticCorpusSourceSnapshotReaderPort,
+  type SemanticDegradationStage,
+  type SemanticEmbeddingErrorCode,
   type SemanticQueryClassificationPort,
   type SemanticQueryClassificationInput,
   type SemanticReadiness,
@@ -87,6 +89,80 @@ const getHighestSensitivity = (
   if (sensitivities.includes('private')) return 'private';
   if (sensitivities.includes('internal')) return 'internal';
   return 'public';
+};
+
+type SemanticDegradationDiagnostics = Pick<
+  SemanticReadiness,
+  'degradationStage' | 'safeFailureCode'
+>;
+
+const semanticEmbeddingFailureStage = (
+  code: SemanticEmbeddingErrorCode,
+  operation: string,
+): SemanticDegradationStage => {
+  if (operation === 'find-nearest-neighbors') return 'NEAREST_NEIGHBOR';
+  if (
+    code === 'VALIDATION_FAILURE' &&
+    (operation === 'semantic-retriever:validate-vector' ||
+      operation === 'semantic-retriever:retrieve')
+  ) {
+    return 'VECTOR_VALIDATION';
+  }
+  return 'QUERY_EXECUTION';
+};
+
+const semanticEmbeddingFailureDiagnostics = (
+  error: SemanticEmbeddingError,
+): SemanticDegradationDiagnostics => ({
+  degradationStage: semanticEmbeddingFailureStage(error.embeddingErrorCode, error.operation),
+  safeFailureCode: error.embeddingErrorCode,
+});
+
+const semanticSafeFailureCode = (
+  code: ShotgunError['code'],
+): SemanticEmbeddingErrorCode | undefined => {
+  switch (code) {
+    case 'CONFIGURATION_REQUIRED':
+      return 'CONFIGURATION_REQUIRED';
+    case 'STALE':
+      return 'STALE';
+    case 'AI_CAPABILITY_UNAVAILABLE':
+      return 'CAPABILITY_UNAVAILABLE';
+    case 'POLICY_DENIED':
+      return 'POLICY_DENIED';
+    case 'TERMINAL_FAILURE':
+      return 'PROVIDER_FAILURE';
+    case 'VALIDATION_ERROR':
+      return 'VALIDATION_FAILURE';
+    case 'TIMEOUT':
+      return 'TIMEOUT';
+    case 'CONFLICT':
+      return 'CONFLICT';
+    case 'INVALID_REQUEST':
+      return 'INVALID_INPUT';
+    default:
+      return undefined;
+  }
+};
+
+const semanticResultFailureDiagnostics = (error: unknown): SemanticDegradationDiagnostics => {
+  if (!(error instanceof ShotgunError)) {
+    return { degradationStage: 'UNKNOWN' };
+  }
+
+  const degradationStage: SemanticDegradationStage =
+    error.operation === 'fuse-candidates'
+      ? 'RESULT_FUSION'
+      : error.operation === 'resolve-content'
+        ? 'RESOURCE_RESOLUTION'
+        : error.operation === 'resolve-citations'
+          ? 'CITATION_RESOLUTION'
+          : 'RESULT_VALIDATION';
+  const safeFailureCode = semanticSafeFailureCode(error.code);
+  return {
+    degradationStage,
+    ...(safeFailureCode === undefined ? {} : { safeFailureCode }),
+  };
 };
 
 const areStringSetsEqual = (a: readonly string[], b: readonly string[]): boolean => {
@@ -764,6 +840,8 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
         data: 'NO_ACTIVE_GENERATION',
         execution: 'NOT_CONFIGURED',
         reason: 'Semantic retrieval is not configured.',
+        degradationStage: 'QUERY_EXECUTION',
+        safeFailureCode: 'CONFIGURATION_REQUIRED',
       };
       semanticDegradedReason = 'Semantic retrieval is not configured.';
     } else {
@@ -785,6 +863,8 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
             data: 'READY',
             execution: 'TEMPORARILY_UNAVAILABLE',
             reason: 'Semantic retrieval is temporarily unavailable.',
+            degradationStage: 'RESULT_VALIDATION',
+            safeFailureCode: 'VALIDATION_FAILURE',
           };
           semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
         } else {
@@ -890,12 +970,17 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
               semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
               break;
           }
+          semanticReadiness = {
+            ...semanticReadiness,
+            ...semanticEmbeddingFailureDiagnostics(err),
+          };
         } else {
           semanticReadiness = {
             status: 'DEGRADED',
             data: 'READY',
             execution: 'TEMPORARILY_UNAVAILABLE',
             reason: 'Semantic retrieval is temporarily unavailable.',
+            degradationStage: 'UNKNOWN',
           };
           semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
         }
@@ -1373,6 +1458,7 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
             data: 'READY',
             execution: 'TEMPORARILY_UNAVAILABLE',
             reason: 'Semantic retrieval is temporarily unavailable.',
+            ...semanticResultFailureDiagnostics(err),
           };
           semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
           items = await buildCandidatesAndResolve(lexicalResult.items, []);

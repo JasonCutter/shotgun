@@ -49,6 +49,31 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
     rank: 1,
   };
 
+  const semanticItem = (
+    overrides: Partial<SemanticCandidateResult> = {},
+  ): SemanticCandidateResult => ({
+    semanticItemId: 'sem-1',
+    projectId: 'proj-alpha',
+    generationId: 'gen-001',
+    resourceType: 'CLAIM',
+    resourceId: 'claim-sem-1',
+    sourceProjectionDigest: 'sha256:src-digest',
+    canonicalVersion: 1,
+    semanticTextDigest: 'sha256:text-sem-1',
+    embeddingProfileId: 'prof-1',
+    embeddingProfileRevision: 1,
+    representationVersion: 'semantic-representation:v1',
+    distance: 0.1,
+    dimension: 768,
+    evidenceIds: ['ev-lex-1'],
+    accessScope: ['finance'],
+    sensitivity: 'internal',
+    indexedAt: '2026-08-18T10:00:00.000Z',
+    createdAt: '2026-08-18T10:00:00.000Z',
+    updatedAt: '2026-08-18T10:00:00.000Z',
+    ...overrides,
+  });
+
   const defaultResourceResolver: KnowledgeResourceResolverPort = {
     resolveResource: async (_projId, resourceType, resourceId) => ({
       text: `Authoritative content for ${resourceType}:${resourceId}`,
@@ -63,6 +88,9 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
   const createRig = (options: {
     readonly semanticError?: unknown;
     readonly semanticRetriever?: SemanticRetrieverPort;
+    readonly resourceResolver?: KnowledgeResourceResolverPort;
+    readonly evidenceResolver?: EvidenceSpanResolverPort;
+    readonly sourceVersionResolver?: SourceVersionResolverPort;
   }) => {
     const lexicalRetriever: LexicalRetrieverPort = {
       retrieve: async () => ({
@@ -109,9 +137,9 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
         : options.semanticError
           ? semanticRetriever
           : undefined,
-      defaultResourceResolver,
-      evidenceResolver,
-      sourceVersionResolver,
+      options.resourceResolver ?? defaultResourceResolver,
+      options.evidenceResolver ?? evidenceResolver,
+      options.sourceVersionResolver ?? sourceVersionResolver,
       activeGenerationReader,
       undefined,
       { clock: () => '2026-08-18T12:00:00.000Z' },
@@ -300,5 +328,187 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
     expect(jsonStr).not.toContain('DATABASE_CONNECTION_ERROR');
     expect(jsonStr).not.toContain('57P01');
     expect(jsonStr).not.toContain('internal-db');
+  });
+
+  it('preserves bounded query-execution diagnostics for policy denial without raw error details', async () => {
+    const error = new SemanticEmbeddingError({
+      code: 'POLICY_DENIED',
+      safeMessage: 'Denied by policy: operation=enforce-privacy-policy secret=do-not-leak',
+      operation: 'enforce-privacy-policy',
+    });
+    const { coordinator } = createRig({ semanticError: error });
+
+    const response = await coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'financial report',
+      accessScopes: ['finance'],
+      allowedSensitivities: ['internal'],
+    });
+
+    expect(response.readiness.semantic).toMatchObject({
+      status: 'DEGRADED',
+      degradationStage: 'QUERY_EXECUTION',
+      safeFailureCode: 'POLICY_DENIED',
+    });
+    const json = JSON.stringify(response);
+    expect(json).not.toContain('enforce-privacy-policy');
+    expect(json).not.toContain('do-not-leak');
+  });
+
+  it('preserves timeout/provider failures with bounded execution-stage diagnostics', async () => {
+    const cases = [
+      {
+        code: 'TIMEOUT' as const,
+        operation: 'embed-batch',
+        stage: 'QUERY_EXECUTION' as const,
+        safeFailureCode: 'TIMEOUT' as const,
+      },
+      {
+        code: 'PROVIDER_FAILURE' as const,
+        operation: 'provider-request',
+        stage: 'QUERY_EXECUTION' as const,
+        safeFailureCode: 'PROVIDER_FAILURE' as const,
+      },
+      {
+        code: 'PROVIDER_FAILURE' as const,
+        operation: 'find-nearest-neighbors',
+        stage: 'NEAREST_NEIGHBOR' as const,
+        safeFailureCode: 'PROVIDER_FAILURE' as const,
+      },
+    ];
+
+    for (const testCase of cases) {
+      const { coordinator } = createRig({
+        semanticError: new SemanticEmbeddingError({
+          code: testCase.code,
+          safeMessage: 'provider failure details must remain private',
+          operation: testCase.operation,
+        }),
+      });
+      const response = await coordinator.search({
+        projectId: 'proj-alpha',
+        query: 'financial report',
+        accessScopes: ['finance'],
+        allowedSensitivities: ['internal'],
+      });
+
+      expect(response.readiness.semantic).toMatchObject({
+        status: 'DEGRADED',
+        degradationStage: testCase.stage,
+        safeFailureCode: testCase.safeFailureCode,
+      });
+    }
+  });
+
+  it('distinguishes semantic query-vector validation from query execution failure', async () => {
+    const { coordinator } = createRig({
+      semanticError: new SemanticEmbeddingError({
+        code: 'VALIDATION_FAILURE',
+        safeMessage: 'query vector dimension is invalid',
+        operation: 'semantic-retriever:validate-vector',
+      }),
+    });
+
+    const response = await coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'financial report',
+      accessScopes: ['finance'],
+      allowedSensitivities: ['internal'],
+    });
+
+    expect(response.readiness.semantic).toMatchObject({
+      status: 'DEGRADED',
+      degradationStage: 'VECTOR_VALIDATION',
+      safeFailureCode: 'VALIDATION_FAILURE',
+    });
+  });
+
+  it('classifies candidate fusion failures without exposing the internal operation', async () => {
+    const { coordinator } = createRig({
+      semanticRetriever: {
+        retrieve: async () => [
+          semanticItem({
+            semanticItemId: 'sem-fusion',
+            resourceId: 'claim-lex-1',
+            sensitivity: 'private',
+          }),
+        ],
+      },
+    });
+
+    const response = await coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'financial report',
+      accessScopes: ['finance'],
+      allowedSensitivities: ['private'],
+    });
+
+    expect(response.readiness.semantic).toMatchObject({
+      status: 'DEGRADED',
+      degradationStage: 'RESULT_FUSION',
+      safeFailureCode: 'POLICY_DENIED',
+    });
+    expect(JSON.stringify(response)).not.toContain('fuse-candidates');
+  });
+
+  it('classifies authoritative resource resolution failures', async () => {
+    const { coordinator } = createRig({
+      semanticRetriever: {
+        retrieve: async () => [semanticItem({ resourceId: 'claim-resource-fail' })],
+      },
+      resourceResolver: { resolveResource: async () => undefined },
+    });
+
+    const response = await coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'financial report',
+      accessScopes: ['finance'],
+      allowedSensitivities: ['internal'],
+    });
+
+    expect(response.readiness.semantic).toMatchObject({
+      status: 'DEGRADED',
+      degradationStage: 'RESOURCE_RESOLUTION',
+      safeFailureCode: 'VALIDATION_FAILURE',
+    });
+  });
+
+  it('classifies citation and evidence lineage resolution failures', async () => {
+    const { coordinator } = createRig({
+      semanticRetriever: {
+        retrieve: async () => [
+          semanticItem({ resourceId: 'claim-citation-fail', evidenceIds: ['ev-missing'] }),
+        ],
+      },
+      resourceResolver: {
+        resolveResource: async () => ({
+          text: 'Authoritative semantic content',
+          authority: 'CANONICAL',
+          authorityRevision: 1,
+          resourceRevision: 1,
+          canonicalVersion: 1,
+          evidenceIds: ['ev-missing'],
+          accessScope: ['finance'],
+          sensitivity: 'internal',
+        }),
+      },
+      evidenceResolver: {
+        getEvidenceSpan: async (_projectId, evidenceId) =>
+          evidenceId === 'ev-missing' ? undefined : sampleEvidence,
+      },
+    });
+
+    const response = await coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'financial report',
+      accessScopes: ['finance'],
+      allowedSensitivities: ['internal'],
+    });
+
+    expect(response.readiness.semantic).toMatchObject({
+      status: 'DEGRADED',
+      degradationStage: 'CITATION_RESOLUTION',
+      safeFailureCode: 'VALIDATION_FAILURE',
+    });
   });
 });

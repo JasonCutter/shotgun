@@ -4,6 +4,7 @@ import type { SemanticCorpusAuthority, SemanticProductResourceType } from './sem
 import type { SemanticCandidateResult, SemanticProjectionGeneration } from './semantic-index.js';
 import type { SemanticResourceType } from './semantic-representation.js';
 import type { SemanticDataReadiness, SemanticExecutionReadiness } from './semantic-query.js';
+import type { SemanticEmbeddingErrorCode } from './semantic-embedding.js';
 import type { Actor, SecurityContext } from './types.js';
 
 export const HYBRID_FUSION_POLICY_RRF_V1 = 'rrf:v1' as const;
@@ -142,6 +143,21 @@ export type HybridFusionPolicy = {
 export type SemanticReadinessStatus =
   'READY' | 'STALE' | 'DEGRADED' | 'UNAVAILABLE' | 'NOT_CONFIGURED';
 
+/**
+ * Bounded, server-owned location of a semantic degradation.  This is
+ * diagnostic metadata only; it deliberately carries no provider payload,
+ * query/resource identity, or arbitrary exception text.
+ */
+export type SemanticDegradationStage =
+  | 'QUERY_EXECUTION'
+  | 'VECTOR_VALIDATION'
+  | 'NEAREST_NEIGHBOR'
+  | 'RESULT_FUSION'
+  | 'RESOURCE_RESOLUTION'
+  | 'CITATION_RESOLUTION'
+  | 'RESULT_VALIDATION'
+  | 'UNKNOWN';
+
 export type SemanticReadiness = {
   readonly status: SemanticReadinessStatus;
   readonly data: SemanticDataReadiness;
@@ -151,6 +167,10 @@ export type SemanticReadiness = {
   readonly dimension?: number;
   readonly reason?: string;
   readonly updatedAt?: string;
+  /** Safe stage for a DEGRADED/UNAVAILABLE semantic execution. */
+  readonly degradationStage?: SemanticDegradationStage;
+  /** Existing bounded semantic error taxonomy; never a raw provider error. */
+  readonly safeFailureCode?: SemanticEmbeddingErrorCode;
 };
 
 export type HybridSearchReadiness = {

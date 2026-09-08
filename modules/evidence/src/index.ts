@@ -111,6 +111,16 @@ const invalidRevision = (message: string): never => {
   });
 };
 
+const markdownStructuralLine = /^(?:#{1,6}|[-+*]|(?:[-*_]){3,}|#{1,6}\s*\d+[.)]|\d+[.)])$/u;
+
+const isMarkdownStructuralOnly = (text: string): boolean => {
+  const lines = text
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  return lines.length > 0 && lines.every((line) => markdownStructuralLine.test(line));
+};
+
 const validateEntry = (
   revision: TransformationRevision,
   original: string,
@@ -173,7 +183,15 @@ export const buildEvidenceCandidates = (
   }
 
   return revision.sourceMap.entries
-    .filter((entry) => entry.origin === 'source')
+    .filter(
+      (entry) =>
+        entry.origin === 'source' &&
+        !(
+          revision.documentIR.mediaType === 'text/markdown' &&
+          (entry.nodeKind === 'paragraph' || entry.nodeKind === 'sentence') &&
+          isMarkdownStructuralOnly(entry.quote.exact)
+        ),
+    )
     .map((entry) => ({
       revisionId: revision.revisionId,
       projectId: revision.projectId,

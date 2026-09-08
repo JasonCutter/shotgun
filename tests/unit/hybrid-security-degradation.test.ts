@@ -423,6 +423,30 @@ describe('Hybrid Security & Request-Local Semantic Degradation Unit Tests', () =
     });
   });
 
+  it('keeps legacy retrieve validation at the non-overclaiming query-execution stage', async () => {
+    const { coordinator } = createRig({
+      semanticError: new SemanticEmbeddingError({
+        code: 'VALIDATION_FAILURE',
+        safeMessage: 'legacy pre-execution identity validation failed',
+        operation: 'semantic-retriever:retrieve',
+      }),
+    });
+
+    const response = await coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'financial report',
+      accessScopes: ['finance'],
+      allowedSensitivities: ['internal'],
+    });
+
+    expect(response.readiness.semantic).toMatchObject({
+      status: 'DEGRADED',
+      degradationStage: 'QUERY_EXECUTION',
+      safeFailureCode: 'VALIDATION_FAILURE',
+    });
+    expect(response.readiness.semantic.degradationStage).not.toBe('VECTOR_VALIDATION');
+  });
+
   it('classifies candidate fusion failures without exposing the internal operation', async () => {
     const { coordinator } = createRig({
       semanticRetriever: {

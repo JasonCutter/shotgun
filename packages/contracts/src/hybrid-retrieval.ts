@@ -158,6 +158,22 @@ export type SemanticDegradationStage =
   | 'RESULT_VALIDATION'
   | 'UNKNOWN';
 
+/**
+ * Safe, bounded failure emitted by a semantic index adapter when the
+ * nearest-neighbor execution boundary fails.  The adapter deliberately
+ * discards provider/database details before this error crosses the module
+ * boundary; callers may only inspect the bounded degradation stage.
+ */
+export class SemanticRetrievalError extends Error {
+  readonly degradationStage: SemanticDegradationStage;
+
+  constructor(input: { readonly degradationStage: SemanticDegradationStage }) {
+    super('Semantic retrieval is temporarily unavailable.');
+    this.name = 'SemanticRetrievalError';
+    this.degradationStage = input.degradationStage;
+  }
+}
+
 export type SemanticReadiness = {
   readonly status: SemanticReadinessStatus;
   readonly data: SemanticDataReadiness;

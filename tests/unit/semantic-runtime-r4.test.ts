@@ -47,7 +47,10 @@ import type {
   SemanticQueryClassificationInput,
   SemanticQueryClassificationPort,
 } from '../../packages/contracts/src/index.js';
-import { canonicalSnapshotDigest } from '../../packages/contracts/src/index.js';
+import {
+  canonicalSnapshotDigest,
+  SemanticRetrievalError,
+} from '../../packages/contracts/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
 import type { StandingAIProcessingPolicy } from '../../packages/policy/src/index.js';
 
@@ -98,6 +101,13 @@ class RecordingSemanticIndexRepository extends InMemorySemanticIndexRepository {
   ): Promise<readonly SemanticCandidateResult[]> {
     this.nearestNeighborCalls++;
     return super.findNearestNeighbors(query);
+  }
+}
+
+class FailingNearestNeighborRepository extends RecordingSemanticIndexRepository {
+  override async findNearestNeighbors(): Promise<readonly SemanticCandidateResult[]> {
+    this.nearestNeighborCalls++;
+    throw new SemanticRetrievalError({ degradationStage: 'NEAREST_NEIGHBOR' });
   }
 }
 
@@ -154,6 +164,7 @@ const createRig = async (
     readonly deploymentAllowsProvider?: boolean;
     readonly projectApproval?: boolean;
     readonly standingPolicy?: StandingAIProcessingPolicy;
+    readonly repository?: RecordingSemanticIndexRepository;
   } = {},
 ) => {
   const providerRegistry = initialProviderRegistry();
@@ -222,7 +233,7 @@ const createRig = async (
     },
   );
   const generation = createGeneration(profile);
-  const repository = new RecordingSemanticIndexRepository();
+  const repository = options.repository ?? new RecordingSemanticIndexRepository();
   await repository.saveGeneration(generation);
   const activeReader = new InMemorySemanticActiveGenerationReader();
   if (options.activeGeneration !== false) {
@@ -391,6 +402,33 @@ describe('AKP-1R R4 semantic query runtime authority', () => {
     expect(rig.connectivity.calls).toBe(1);
     expect(rig.repository.nearestNeighborCalls).toBe(1);
     expect(rig.connectivity.secretSeen).toBe('r4-test-secret');
+  });
+
+  it('preserves nearest-neighbor degradation through the real SemanticRetriever repository boundary', async () => {
+    const rig = await createRig({ repository: new FailingNearestNeighborRepository() });
+    const fixture = createEcavHybridFixture();
+    const coordinator = new HybridRetrievalCoordinator(
+      fixture.lexicalRetriever,
+      rig.retriever,
+      undefined,
+      fixture.evidenceResolver,
+      fixture.sourceVersionResolver,
+      rig.activeReader,
+    );
+
+    const response = await coordinator.search(fixture.request);
+
+    expect(response.readiness.semantic).toMatchObject({
+      status: 'DEGRADED',
+      data: 'READY',
+      execution: 'TEMPORARILY_UNAVAILABLE',
+      degradationStage: 'NEAREST_NEIGHBOR',
+    });
+    expect(response.readiness.semantic.safeFailureCode).toBeUndefined();
+    expect(response.items.map((item) => item.resourceId)).toEqual([fixture.lexicalItem.claimId]);
+    expect(rig.connectivity.calls).toBe(1);
+    expect(rig.repository.nearestNeighborCalls).toBe(1);
+    expect(JSON.stringify(response)).not.toContain('SemanticRetrievalError');
   });
 
   it('EMB-POL-7R reaches READY Hybrid Retrieval through the real embedding chain', async () => {

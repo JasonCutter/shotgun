@@ -49,6 +49,7 @@ import {
   type SemanticResourceType,
   type SemanticRetrieverInput,
   type SemanticRetrieverPort,
+  SemanticRetrievalError,
   ShotgunError,
   type SourceVersionResolverPort,
   validateFiniteVector,
@@ -101,11 +102,7 @@ const semanticEmbeddingFailureStage = (
   operation: string,
 ): SemanticDegradationStage => {
   if (operation === 'find-nearest-neighbors') return 'NEAREST_NEIGHBOR';
-  if (
-    code === 'VALIDATION_FAILURE' &&
-    (operation === 'semantic-retriever:validate-vector' ||
-      operation === 'semantic-retriever:retrieve')
-  ) {
+  if (code === 'VALIDATION_FAILURE' && operation === 'semantic-retriever:validate-vector') {
     return 'VECTOR_VALIDATION';
   }
   return 'QUERY_EXECUTION';
@@ -146,6 +143,9 @@ const semanticSafeFailureCode = (
 };
 
 const semanticResultFailureDiagnostics = (error: unknown): SemanticDegradationDiagnostics => {
+  if (error instanceof SemanticRetrievalError) {
+    return { degradationStage: error.degradationStage };
+  }
   if (!(error instanceof ShotgunError)) {
     return { degradationStage: 'UNKNOWN' };
   }
@@ -882,7 +882,16 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           }
         }
       } catch (err: unknown) {
-        if (err instanceof SemanticEmbeddingError) {
+        if (err instanceof SemanticRetrievalError) {
+          semanticReadiness = {
+            status: 'DEGRADED',
+            data: 'READY',
+            execution: 'TEMPORARILY_UNAVAILABLE',
+            reason: 'Semantic retrieval is temporarily unavailable.',
+            degradationStage: err.degradationStage,
+          };
+          semanticDegradedReason = 'Semantic retrieval is temporarily unavailable.';
+        } else if (err instanceof SemanticEmbeddingError) {
           switch (err.embeddingErrorCode) {
             case 'CONFIGURATION_REQUIRED':
               if (

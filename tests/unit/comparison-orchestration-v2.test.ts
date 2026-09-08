@@ -375,6 +375,36 @@ describe('Comparison v2 orchestration', () => {
     }
   });
 
+  it('retains only safe shortlist subreason and readiness detail when blocked', async () => {
+    let semanticCalls = 0;
+    const setup = baseDependencies(
+      {
+        async build() {
+          return {
+            status: 'BLOCKED' as const,
+            reason: 'SEMANTIC_DEGRADED' as const,
+            readiness: { lexicalStatus: 'READY' as const, semanticStatus: 'DEGRADED' as const },
+          };
+        },
+      },
+      {
+        async analyze() {
+          semanticCalls += 1;
+          throw new Error('blocked shortlist must not invoke semantic analysis');
+        },
+      },
+    );
+
+    const result = await createComparisonV2Orchestrator(setup.dependencies).compare(request);
+
+    expect(result).toEqual({
+      status: 'BLOCKED',
+      reason: 'SHORTLIST_BLOCKED',
+      detail: 'SEMANTIC_DEGRADED:{"lexicalStatus":"READY","semanticStatus":"DEGRADED"}',
+    });
+    expect(semanticCalls).toBe(0);
+  });
+
   it('passes the same candidate and shortlist to WP4 and retains every UNRELATED target as NEW', async () => {
     const shortlistAudit = audit(['claim-1', 'claim-2']);
     let receivedCandidate: ComparisonCandidateV2 | undefined;

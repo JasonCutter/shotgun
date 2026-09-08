@@ -181,6 +181,54 @@ describe('Stage 5 stale comparison re-entry', () => {
     expect(fixture.saved).toHaveLength(0);
   });
 
+  it('propagates safe shortlist detail without exposing internal payloads', async () => {
+    const fixture = makeModule();
+    const activeModule = createComparisonModule(
+      {
+        save: async (result) => {
+          fixture.saved.push(result);
+          return result;
+        },
+        findById: async () => undefined,
+        findByCandidateAndSnapshot: async () => undefined,
+      },
+      {
+        getSnapshot: async () => {
+          throw new Error('V1 snapshot read must not run in V2_ACTIVE');
+        },
+      },
+      { identity: { id: 'text-diff', version: '1' }, diff: () => [] },
+      {
+        handleCandidateValidated: async () => ({
+          rollout: 'V2_ACTIVE' as const,
+          v2Outcome: {
+            status: 'BLOCKED' as const,
+            reason: 'SHORTLIST_BLOCKED',
+            detail: 'SEMANTIC_DEGRADED:{"lexicalStatus":"READY","semanticStatus":"DEGRADED"}',
+          },
+          review: { status: 'NOT_ATTEMPTED' as const },
+        }),
+      },
+    );
+
+    const result = await activeModule.handlers.commands[0]!.handle(
+      envelope(),
+      fixture.queryContext,
+    );
+
+    expect(result).toMatchObject({
+      v2: {
+        status: 'BLOCKED',
+        reason: 'SHORTLIST_BLOCKED',
+        detail: 'SEMANTIC_DEGRADED:{"lexicalStatus":"READY","semanticStatus":"DEGRADED"}',
+      },
+      review: { status: 'NOT_ATTEMPTED' },
+    });
+    expect(result).not.toHaveProperty('v2.rawText');
+    expect(result).not.toHaveProperty('v2.providerError');
+    expect(fixture.saved).toHaveLength(0);
+  });
+
   it.each([
     {
       name: 'retryable',

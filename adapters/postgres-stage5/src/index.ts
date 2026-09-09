@@ -748,9 +748,8 @@ export class PostgresComparisonV2Repository implements ComparisonV2RepositoryPor
       const result = await this.pool.query<AnalysisV2Row>(
         `SELECT analysis_json
          FROM comparison.analysis_revisions_v2
-         WHERE project_id = $1
-           AND state IN ('SEMANTIC_UNAVAILABLE', 'FAILED_RETRYABLE', 'FAILED_TERMINAL', 'POLICY_BLOCKED')
-         ORDER BY COALESCE(completed_at, created_at) DESC, attempt DESC`,
+           WHERE project_id = $1
+         ORDER BY candidate_id, candidate_revision, candidate_digest, attempt DESC, created_at DESC`,
         [projectId],
       );
       return result.rows.map((row) =>

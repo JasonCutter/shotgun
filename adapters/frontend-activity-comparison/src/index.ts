@@ -69,6 +69,16 @@ const safeFailure = (input: {
 const analysisObservedAt = (analysis: AnalysisRevisionV2): string =>
   analysis.completedAt ?? analysis.createdAt;
 
+const analysisIdentity = (analysis: AnalysisRevisionV2): string =>
+  `${analysis.candidate.id}|${analysis.candidate.revision}|${analysis.candidate.digest}`;
+
+const isNewerAnalysis = (candidate: AnalysisRevisionV2, current: AnalysisRevisionV2): boolean =>
+  candidate.attempt > current.attempt ||
+  (candidate.attempt === current.attempt &&
+    (candidate.createdAt > current.createdAt ||
+      (candidate.createdAt === current.createdAt &&
+        candidate.analysisRevisionId > current.analysisRevisionId)));
+
 const rootFor = (record: ComparisonActivityRecord): ActivityRootReferenceV1 => {
   if (record.kind === 'BLOCKED') {
     const outcome = record.outcome;
@@ -292,19 +302,34 @@ export class ComparisonActivityAdapter implements ActivityAdapterPort {
     scope: ActivityAdapterScopeV1,
   ): Promise<readonly ComparisonActivityRecord[]> {
     if (!this.terminal || !this.candidates) return [];
-    const analyses = await this.terminal.listTerminalAnalysisRevisions(scope.activeProjectId);
+    const analyses = await this.latestTerminalAnalyses(scope.activeProjectId);
     const records: ComparisonActivityRecord[] = [];
-    const seen = new Set<string>();
     for (const analysis of analyses) {
-      if (!['SEMANTIC_UNAVAILABLE', 'FAILED_RETRYABLE', 'FAILED_TERMINAL'].includes(analysis.state))
-        continue;
-      const identity = `${analysis.candidate.id}|${analysis.candidate.revision}|${analysis.candidate.digest}`;
-      if (seen.has(identity)) continue;
-      seen.add(identity);
       if (await this.candidateCanAccess(scope, analysis))
         records.push({ kind: 'TERMINAL_ANALYSIS', analysis, projectId: scope.activeProjectId });
     }
     return records;
+  }
+
+  /**
+   * AnalysisRevisionV2 is append-only by attempt.  Select the latest
+   * authoritative state for each Candidate revision/digest before deciding
+   * whether a safe terminal failure is visible; otherwise an old failure can
+   * resurrect after a later completion or policy block.
+   */
+  private async latestTerminalAnalyses(projectId: string): Promise<readonly AnalysisRevisionV2[]> {
+    if (!this.terminal) return [];
+    const latestByCandidate = new Map<string, AnalysisRevisionV2>();
+    for (const analysis of await this.terminal.listTerminalAnalysisRevisions(projectId)) {
+      const identity = analysisIdentity(analysis);
+      const current = latestByCandidate.get(identity);
+      if (current === undefined || isNewerAnalysis(analysis, current)) {
+        latestByCandidate.set(identity, analysis);
+      }
+    }
+    return [...latestByCandidate.values()].filter((analysis) =>
+      ['SEMANTIC_UNAVAILABLE', 'FAILED_RETRYABLE', 'FAILED_TERMINAL'].includes(analysis.state),
+    );
   }
 
   private async recordsFor(
@@ -350,9 +375,9 @@ export class ComparisonActivityAdapter implements ActivityAdapterPort {
       return outcome === undefined ? false : this.blockedCanAccess(scope, outcome);
     }
     if (root.domainResourceKind === ANALYSIS_RESOURCE_KIND && this.terminal && this.candidates) {
-      const analysis = (
-        await this.terminal.listTerminalAnalysisRevisions(scope.activeProjectId)
-      ).find((item) => item.analysisRevisionId === root.domainResourceId);
+      const analysis = (await this.latestTerminalAnalyses(scope.activeProjectId)).find(
+        (item) => item.analysisRevisionId === root.domainResourceId,
+      );
       return analysis === undefined ? false : this.candidateCanAccess(scope, analysis);
     }
     return false;
@@ -400,9 +425,9 @@ export class ComparisonActivityAdapter implements ActivityAdapterPort {
       return { kind: 'BLOCKED', outcome };
     }
     if (root.domainResourceKind === ANALYSIS_RESOURCE_KIND && this.terminal && this.candidates) {
-      const analysis = (
-        await this.terminal.listTerminalAnalysisRevisions(scope.activeProjectId)
-      ).find((item) => item.analysisRevisionId === root.domainResourceId);
+      const analysis = (await this.latestTerminalAnalyses(scope.activeProjectId)).find(
+        (item) => item.analysisRevisionId === root.domainResourceId,
+      );
       if (!analysis || !(await this.candidateCanAccess(scope, analysis))) return notFound();
       return { kind: 'TERMINAL_ANALYSIS', analysis, projectId: scope.activeProjectId };
     }

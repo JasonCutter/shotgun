@@ -352,7 +352,6 @@ export const createComparisonV2Orchestrator = (
         phase,
         reason: input.reason,
         detail: input.detail ?? null,
-        attempt: input.request.attempt,
       }),
     );
     await repository.recordBlockedOutcome({

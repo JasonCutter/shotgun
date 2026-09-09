@@ -246,7 +246,7 @@ describe('Issue #245 durable Stage 5 blocked observability', () => {
     const memory = memoryBlockedRepository();
     const comparison = orchestrator(blockedShortlist(), memory.repository);
     await comparison.compare(request);
-    await comparison.compare(request);
+    await comparison.compare({ ...request, attempt: 2 });
     expect(memory.rows.size).toBe(1);
   });
 
@@ -538,6 +538,110 @@ describe('Issue #245 durable Stage 5 blocked observability', () => {
     expect(page.items).toHaveLength(1);
     expect(page.items[0]!.root.domainResourceKind).toBe('ComparisonAnalysisRevision');
     expect(page.items[0]!.dimensions.attention).toBe('NEEDS_ATTENTION');
+  });
+
+  it('does not resurrect an older retryable failure after a newer completion', async () => {
+    const memory = memoryBlockedRepository();
+    const baseAnalysis = {
+      analysisRevisionId: 'analysis-245-retryable',
+      candidate: {
+        id: candidate.candidateId,
+        revision: candidate.revisionNumber,
+        digest: candidateDigest,
+        sourceVersionId: candidate.sourceVersionId,
+        evidenceIds: [...candidate.evidenceIds],
+      },
+      startedAt: observedAt,
+      createdAt: observedAt,
+    } as const;
+    const terminal: ComparisonV2TerminalAnalysisReaderPort = {
+      async listTerminalAnalysisRevisions() {
+        return [
+          {
+            ...baseAnalysis,
+            state: 'FAILED_RETRYABLE',
+            safeFailureCode: 'RETRYABLE_DEPENDENCY',
+            attempt: 1,
+            completedAt: observedAt,
+          },
+          {
+            ...baseAnalysis,
+            analysisRevisionId: 'analysis-245-completed',
+            state: 'COMPLETED',
+            attempt: 2,
+            createdAt: '2026-09-09T12:01:00.000Z',
+            completedAt: '2026-09-09T12:01:00.000Z',
+          },
+        ] as unknown as AnalysisRevisionV2[];
+      },
+    };
+    const adapter = new ComparisonActivityAdapter(memory.repository, terminal, {
+      findById: async () => candidate,
+    });
+    const page = await adapter.readQueue(
+      {
+        principalId: 'owner-245',
+        activeProjectId: projectId,
+        accessRevision: 'access-1',
+        policyContextRevision: 'policy-1',
+        accessScope: ['owner'],
+        sensitivityClearance: 'private',
+      },
+      {},
+    );
+    expect(page.items).toHaveLength(0);
+  });
+
+  it('does not resurrect an older terminal failure after a newer policy block', async () => {
+    const memory = memoryBlockedRepository();
+    const baseAnalysis = {
+      analysisRevisionId: 'analysis-245-terminal',
+      candidate: {
+        id: candidate.candidateId,
+        revision: candidate.revisionNumber,
+        digest: candidateDigest,
+        sourceVersionId: candidate.sourceVersionId,
+        evidenceIds: [...candidate.evidenceIds],
+      },
+      startedAt: observedAt,
+      createdAt: observedAt,
+    } as const;
+    const terminal: ComparisonV2TerminalAnalysisReaderPort = {
+      async listTerminalAnalysisRevisions() {
+        return [
+          {
+            ...baseAnalysis,
+            state: 'FAILED_TERMINAL',
+            safeFailureCode: 'TERMINAL_FAILURE',
+            attempt: 1,
+            completedAt: observedAt,
+          },
+          {
+            ...baseAnalysis,
+            analysisRevisionId: 'analysis-245-policy',
+            state: 'POLICY_BLOCKED',
+            attempt: 2,
+            createdAt: '2026-09-09T12:01:00.000Z',
+            completedAt: '2026-09-09T12:01:00.000Z',
+          },
+        ] as unknown as AnalysisRevisionV2[];
+      },
+    };
+    const adapter = new ComparisonActivityAdapter(memory.repository, terminal, {
+      findById: async () => candidate,
+    });
+    const page = await adapter.readQueue(
+      {
+        principalId: 'owner-245',
+        activeProjectId: projectId,
+        accessRevision: 'access-1',
+        policyContextRevision: 'policy-1',
+        accessScope: ['owner'],
+        sensitivityClearance: 'private',
+      },
+      {},
+    );
+    expect(page.items).toHaveLength(0);
   });
 
   it('retains no aggregate or review side effect for a blocked outcome', async () => {

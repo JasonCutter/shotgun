@@ -446,6 +446,7 @@ export const createComparisonModule = (
         'comparison.results_v2',
         'comparison.analysis_revisions_v2',
         'comparison.relationships_v2',
+        'comparison.blocked_outcomes_v2',
       ],
       readsViaPorts: [
         'CanonicalSnapshotPort',

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import {
@@ -7,6 +8,9 @@ import {
   validateComparisonV2Aggregate,
   type AnalysisRevisionTransitionV2,
   type ComparisonV2Aggregate,
+  type ComparisonV2BlockedOutcome,
+  type ComparisonV2BlockedOutcomeRepositoryPort,
+  type ComparisonV2TerminalAnalysisReaderPort,
   type ComparisonV2RepositoryPort,
   type ComparisonV2StorageIdentity,
   type ComparisonRepositoryPort,
@@ -198,8 +202,46 @@ type RelationshipV2Row = QueryResultRow & {
   readonly relationship_json: SemanticRelationshipV2;
 };
 
+type BlockedOutcomeV2Row = QueryResultRow & {
+  readonly blocked_outcome_id: string;
+  readonly project_id: string;
+  readonly candidate_id: string;
+  readonly candidate_revision: number;
+  readonly candidate_digest: string;
+  readonly blocked_phase: ComparisonV2BlockedOutcome['blockedPhase'];
+  readonly reason: string;
+  readonly safe_code: string;
+  readonly governing_input_digest: string;
+  readonly access_scope: string[];
+  readonly sensitivity: ComparisonV2BlockedOutcome['sensitivity'];
+  readonly first_observed_at: string;
+  readonly last_observed_at: string;
+  readonly state: ComparisonV2BlockedOutcome['state'];
+  readonly resolved_at: string | null;
+  readonly resolution_identity: string | null;
+};
+
 const jsonValue = <T>(value: unknown): T =>
   typeof value === 'string' ? (JSON.parse(value) as T) : (value as T);
+
+const blockedOutcomeFromRow = (row: BlockedOutcomeV2Row): ComparisonV2BlockedOutcome => ({
+  blockedOutcomeId: row.blocked_outcome_id,
+  projectId: row.project_id,
+  candidateId: row.candidate_id,
+  candidateRevision: row.candidate_revision,
+  candidateDigest: row.candidate_digest,
+  blockedPhase: row.blocked_phase,
+  reason: row.reason,
+  safeCode: row.safe_code,
+  governingInputDigest: row.governing_input_digest,
+  accessScope: [...row.access_scope],
+  sensitivity: row.sensitivity,
+  firstObservedAt: new Date(row.first_observed_at).toISOString(),
+  lastObservedAt: new Date(row.last_observed_at).toISOString(),
+  state: row.state,
+  ...(row.resolved_at === null ? {} : { resolvedAt: new Date(row.resolved_at).toISOString() }),
+  ...(row.resolution_identity === null ? {} : { resolutionIdentity: row.resolution_identity }),
+});
 
 const normalizedAnalysis = (analysis: AnalysisRevisionV2): string =>
   stableJson({
@@ -701,6 +743,21 @@ export class PostgresComparisonV2Repository implements ComparisonV2RepositoryPor
       : undefined;
   }
 
+  readonly terminalAnalysis: ComparisonV2TerminalAnalysisReaderPort = {
+    listTerminalAnalysisRevisions: async (projectId) => {
+      const result = await this.pool.query<AnalysisV2Row>(
+        `SELECT analysis_json
+         FROM comparison.analysis_revisions_v2
+           WHERE project_id = $1
+         ORDER BY candidate_id, candidate_revision, candidate_digest, attempt DESC, created_at DESC`,
+        [projectId],
+      );
+      return result.rows.map((row) =>
+        validatedAnalysis(row.analysis_json, 'list-terminal-analysis-revisions-v2'),
+      );
+    },
+  };
+
   async saveCompletedAggregate(aggregate: ComparisonV2Aggregate): Promise<ComparisonV2Aggregate> {
     this.assertWriterEnabled('save-completed-comparison-v2');
     validateComparisonV2Aggregate(aggregate);
@@ -863,6 +920,95 @@ export class PostgresComparisonV2Repository implements ComparisonV2RepositoryPor
       return aggregate;
     });
   }
+
+  readonly blockedOutcomes: ComparisonV2BlockedOutcomeRepositoryPort = {
+    recordBlockedOutcome: async (input) => {
+      this.assertWriterEnabled('record-blocked-comparison-v2');
+      return this.withTransaction('record-blocked-comparison-v2', async (client) => {
+        const result = await client.query<BlockedOutcomeV2Row>(
+          `INSERT INTO comparison.blocked_outcomes_v2 (
+             blocked_outcome_id, project_id, candidate_id, candidate_revision,
+             candidate_digest, blocked_phase, reason, safe_code,
+             governing_input_digest, access_scope, sensitivity,
+             first_observed_at, last_observed_at, state
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, 'ACTIVE'
+           )
+           ON CONFLICT (
+             project_id, candidate_id, candidate_revision, candidate_digest,
+             blocked_phase, reason, governing_input_digest
+           ) DO UPDATE SET last_observed_at = GREATEST(
+             comparison.blocked_outcomes_v2.last_observed_at, EXCLUDED.last_observed_at
+           ), state = 'ACTIVE', resolved_at = NULL, resolution_identity = NULL
+           RETURNING *`,
+          [
+            `blocked:${randomUUID()}`,
+            input.projectId,
+            input.candidateId,
+            input.candidateRevision,
+            input.candidateDigest,
+            input.blockedPhase,
+            input.reason,
+            input.safeCode,
+            input.governingInputDigest,
+            [...input.accessScope],
+            input.sensitivity,
+            input.observedAt,
+          ],
+        );
+        const row = result.rows[0];
+        if (!row) {
+          throw new ShotgunError({
+            code: 'CONFLICT',
+            safeMessage: 'Blocked comparison outcome was not returned after persistence.',
+            module: 'postgres-stage5',
+            operation: 'record-blocked-comparison-v2',
+          });
+        }
+        return blockedOutcomeFromRow(row);
+      });
+    },
+    resolveBlockedOutcomes: async (input) => {
+      this.assertWriterEnabled('resolve-blocked-comparison-v2');
+      await this.withTransaction('resolve-blocked-comparison-v2', async (client) => {
+        await client.query(
+          `UPDATE comparison.blocked_outcomes_v2
+           SET state = $5, resolved_at = $6, resolution_identity = $7,
+               last_observed_at = GREATEST(last_observed_at, $6)
+           WHERE project_id = $1 AND candidate_id = $2 AND candidate_revision = $3
+             AND candidate_digest = $4 AND state = 'ACTIVE'`,
+          [
+            input.projectId,
+            input.candidateId,
+            input.candidateRevision,
+            input.candidateDigest,
+            input.state,
+            input.resolvedAt,
+            input.resolutionIdentity,
+          ],
+        );
+      });
+    },
+    findBlockedOutcome: async (projectId, blockedOutcomeId) => {
+      const result = await this.pool.query<BlockedOutcomeV2Row>(
+        `SELECT * FROM comparison.blocked_outcomes_v2
+         WHERE project_id = $1 AND blocked_outcome_id = $2`,
+        [projectId, blockedOutcomeId],
+      );
+      return result.rows[0] ? blockedOutcomeFromRow(result.rows[0]) : undefined;
+    },
+    listBlockedOutcomes: async (projectId, state) => {
+      const result = await this.pool.query<BlockedOutcomeV2Row>(
+        `SELECT * FROM comparison.blocked_outcomes_v2
+         WHERE project_id = $1 AND ($2::text IS NULL OR state = $2)
+         ORDER BY last_observed_at DESC, blocked_outcome_id`,
+        [projectId, state ?? null],
+      );
+      return result.rows.map(blockedOutcomeFromRow);
+    },
+    listActiveBlockedOutcomes: async (projectId) =>
+      this.blockedOutcomes.listBlockedOutcomes(projectId, 'ACTIVE'),
+  };
 
   async findComparisonById(
     projectId: string,

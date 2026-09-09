@@ -127,6 +127,11 @@ export type DiscoveryActivityAdapterPort = ActivityAdapterPort & {
   readonly domainKind: 'DISCOVERY';
 };
 
+/** Comparison adapter port (read-only Stage 5 blocked-outcome projection). */
+export type ComparisonActivityAdapterPort = ActivityAdapterPort & {
+  readonly domainKind: 'COMPARISON';
+};
+
 /**
  * Federated registry of Activity adapters. One adapter failure produces a
  * partial result with adapter health metadata and must not erase accessible

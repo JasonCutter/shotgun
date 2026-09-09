@@ -156,6 +156,7 @@ const requiredTables = [
   'comparison.results_v2',
   'comparison.analysis_revisions_v2',
   'comparison.relationships_v2',
+  'comparison.blocked_outcomes_v2',
   'review.change_sets',
   'review.decisions',
   'canonical.project_state',

@@ -20,6 +20,7 @@ export const ACTIVITY_DOMAIN_KIND_OPTIONS: readonly ActivityDomainKindV1[] = [
   'ASK',
   'EXTERNAL_ACTION',
   'DISCOVERY',
+  'COMPARISON',
 ];
 
 export const ACTIVITY_LIFECYCLE_STATE_OPTIONS: readonly ActivityLifecycleStateV1[] = [
@@ -49,6 +50,7 @@ export const activityDomainKindLabel: Record<ActivityDomainKindV1, string> = {
   ASK: 'Ask',
   EXTERNAL_ACTION: 'External actions',
   DISCOVERY: 'Discovery',
+  COMPARISON: 'Comparison',
   CONNECTOR_DIAGNOSTICS: 'Connector',
 };
 

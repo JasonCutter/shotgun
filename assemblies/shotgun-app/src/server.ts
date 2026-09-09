@@ -163,6 +163,7 @@ import {
   DiscoveryActivityAdapter,
   createInMemoryDiscoveryActivityRead,
 } from '../../../adapters/frontend-activity-discovery/src/index.js';
+import { ComparisonActivityAdapter } from '../../../adapters/frontend-activity-comparison/src/index.js';
 import type { ExternalActionRepositoryBoundaryPort } from '../../../modules/frontend-external-action/src/external-action-store-port.js';
 import { CoordinatorActionCenterAttentionProjection } from './action-center-attention-projection.js';
 import {
@@ -2277,12 +2278,21 @@ const createApplicationCore = async (
           new SourcesActivityAdapter(activitySourcesRead),
           new AskActivityAdapter(activityAskRead),
           new DiscoveryActivityAdapter(activityDiscoveryRead, activityDiscoveryFindingRead),
+          ...(options.comparisonV2Repository?.blockedOutcomes
+            ? [
+                new ComparisonActivityAdapter(
+                  options.comparisonV2Repository.blockedOutcomes,
+                  options.comparisonV2Repository.terminalAnalysis,
+                  candidateRepository,
+                ),
+              ]
+            : []),
           withActionReviewActivity(
             new ExternalActionActivityAdapter(externalActionStore),
             effectiveActionFeedbackReviewRepository,
           ),
         ],
-        adapterFor(domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY') {
+        adapterFor(domainKind: 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY' | 'COMPARISON') {
           return registry.adapters.find((adapter) => adapter.domainKind === domainKind);
         },
         healthSummaries() {

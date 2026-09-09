@@ -49,13 +49,14 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
     const suffix = randomUUID();
     const projectId = `issue-247-${suffix}`;
     const createdAt = '2026-09-09T00:00:00.000Z';
+    const canonicalVersion = 0;
     const snapshot = {
-      snapshotId: `snapshot:issue-247:${suffix}`,
+      snapshotId: `canonical:${projectId}:${canonicalVersion}`,
       projectId,
-      version: 0,
+      version: canonicalVersion,
       claims: [],
       createdAt,
-      digest: canonicalSnapshotDigest(projectId, 0, []),
+      digest: canonicalSnapshotDigest(projectId, canonicalVersion, []),
     };
     const lexicalReadiness: ProjectionReadiness = {
       status: 'READY',

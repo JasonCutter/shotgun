@@ -72,12 +72,25 @@ const analysisObservedAt = (analysis: AnalysisRevisionV2): string =>
 const analysisIdentity = (analysis: AnalysisRevisionV2): string =>
   `${analysis.candidate.id}|${analysis.candidate.revision}|${analysis.candidate.digest}`;
 
-const isNewerAnalysis = (candidate: AnalysisRevisionV2, current: AnalysisRevisionV2): boolean =>
-  candidate.attempt > current.attempt ||
-  (candidate.attempt === current.attempt &&
-    (candidate.createdAt > current.createdAt ||
-      (candidate.createdAt === current.createdAt &&
-        candidate.analysisRevisionId > current.analysisRevisionId)));
+const analysisInputIdentity = (analysis: AnalysisRevisionV2): string =>
+  `${analysis.canonicalSnapshot?.id ?? ''}|${analysis.canonicalSnapshot?.version ?? ''}|${analysis.canonicalSnapshot?.digest ?? ''}|${analysis.inputDigest ?? ''}`;
+
+const isNewerAnalysis = (candidate: AnalysisRevisionV2, current: AnalysisRevisionV2): boolean => {
+  // `attempt` is scoped to one governing snapshot/input identity.  It cannot
+  // outrank a later execution from a different input, so chronology is the
+  // primary ordering across all inputs.
+  if (candidate.createdAt !== current.createdAt) return candidate.createdAt > current.createdAt;
+
+  if (analysisInputIdentity(candidate) === analysisInputIdentity(current)) {
+    if (candidate.attempt !== current.attempt) return candidate.attempt > current.attempt;
+  }
+
+  return (
+    candidate.startedAt > current.startedAt ||
+    (candidate.startedAt === current.startedAt &&
+      candidate.analysisRevisionId > current.analysisRevisionId)
+  );
+};
 
 const rootFor = (record: ComparisonActivityRecord): ActivityRootReferenceV1 => {
   if (record.kind === 'BLOCKED') {

@@ -94,9 +94,9 @@ describe.runIf(databaseUrl)('Issue #245 PostgreSQL blocked outcome durability', 
       expect(reactivated).toMatchObject({
         blockedOutcomeId: created.blockedOutcomeId,
         state: 'ACTIVE',
-        resolvedAt: undefined,
-        resolutionIdentity: undefined,
       });
+      expect(reactivated.resolvedAt).toBeUndefined();
+      expect(reactivated.resolutionIdentity).toBeUndefined();
 
       const adapter = new ComparisonActivityAdapter(readRepository.blockedOutcomes, undefined, {
         findById: async () => candidate,

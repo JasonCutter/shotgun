@@ -39,6 +39,15 @@ const snapshot: CanonicalSnapshot = {
   createdAt: '2026-09-05T00:00:00.000Z',
 };
 
+const emptySnapshot: CanonicalSnapshot = {
+  snapshotId: 'snapshot-empty',
+  projectId,
+  version: 0,
+  digest: canonicalSnapshotDigest(projectId, 0, []),
+  claims: [],
+  createdAt: '2026-09-05T00:00:00.000Z',
+};
+
 const lexicalReadiness = (overrides: Partial<ProjectionReadiness> = {}): ProjectionReadiness => ({
   status: 'READY',
   projectedCanonicalVersion: snapshot.version,
@@ -87,6 +96,12 @@ const generation: SemanticProjectionGeneration = {
   normalizationPolicy: 'unit_length',
   buildStatus: 'READY',
   createdAt: '2026-09-05T00:00:00.000Z',
+};
+
+const emptyGeneration: SemanticProjectionGeneration = {
+  ...generation,
+  generationId: 'generation-empty',
+  canonicalBaseVersion: emptySnapshot.version,
 };
 
 const semanticReadiness = (overrides: Partial<SemanticReadiness> = {}): SemanticReadiness => ({
@@ -408,6 +423,56 @@ describe('ComparisonShortlistV2Service', () => {
       reason: 'INSUFFICIENT_CLAIM_COVERAGE',
     });
     expect(hybridRetrieval.search).toHaveBeenCalledWith(expect.objectContaining({ limit: 8 }));
+  });
+
+  it('allows a zero-target READY shortlist only for an empty Canonical snapshot', async () => {
+    const { deps } = dependencies();
+    const emptyLexicalReadiness: ProjectionReadiness = {
+      ...lexicalReadiness(),
+      projectedCanonicalVersion: emptySnapshot.version,
+      canonicalVersion: emptySnapshot.version,
+      projectedSnapshotDigest: emptySnapshot.digest,
+      canonicalSnapshotDigest: emptySnapshot.digest,
+    };
+    const emptySemanticReadiness: SemanticReadiness = {
+      ...semanticReadiness(),
+      activeGenerationId: emptyGeneration.generationId,
+    };
+    deps.canonicalSnapshot.getSnapshot = vi.fn(async () => structuredClone(emptySnapshot));
+    deps.lexicalRetriever.retrieve = vi.fn(async () => ({
+      items: [],
+      readiness: emptyLexicalReadiness,
+    }));
+    deps.hybridRetrieval.search = vi.fn(async () =>
+      hybridResponse([], {
+        readiness: {
+          lexical: emptyLexicalReadiness,
+          semantic: emptySemanticReadiness,
+          degraded: false,
+        },
+      }),
+    );
+    deps.activeGenerationReader.getActiveGeneration = vi.fn(async () => emptyGeneration);
+
+    const result = await new ComparisonShortlistV2Service(deps).build(request());
+
+    expect(result.status).toBe('READY');
+    if (result.status !== 'READY') return;
+    expect(result.shortlist.selectedTargetIdentities).toEqual([]);
+    expect(result.shortlist.coverageStatus).toBe('COMPLETE');
+    expect(result.shortlist.truncated).toBe(false);
+  });
+
+  it('keeps a non-empty Canonical snapshot fail-closed when retrieval has zero targets', async () => {
+    const { deps, hybridRetrieval } = dependencies();
+    hybridRetrieval.search.mockResolvedValue(hybridResponse([]));
+
+    const result = await new ComparisonShortlistV2Service(deps).build(request());
+
+    expect(result).toMatchObject({
+      status: 'BLOCKED',
+      reason: 'INSUFFICIENT_CLAIM_COVERAGE',
+    });
   });
 
   it('S3-10 blocks an unauthorized hybrid result without exposing its identity', async () => {

@@ -485,8 +485,16 @@ export class ComparisonShortlistV2Service implements ComparisonShortlistV2Port {
 
     const selectedTargetIdentities = [...selected.values()].slice(0, request.k);
     const retrievalSaturated = hybrid.items.length >= retrievalLimit;
+    if (snapshot.claims.length === 0 && Object.values(exclusionCounts).some((count) => count > 0)) {
+      return blocked('SNAPSHOT_INTEGRITY', hybridReadinessMetadata());
+    }
+    // An authoritatively empty Canonical snapshot is the only zero-target
+    // success case.  Readiness, snapshot identity, and active-generation
+    // checks above still run before this narrow bootstrap decision.  A
+    // non-empty snapshot remains fail-closed when retrieval yields no Claim
+    // targets (or cannot satisfy the requested coverage).
     if (
-      selectedTargetIdentities.length === 0 ||
+      (snapshot.claims.length > 0 && selectedTargetIdentities.length === 0) ||
       (retrievalSaturated && selectedTargetIdentities.length < request.k)
     ) {
       return blocked('INSUFFICIENT_CLAIM_COVERAGE', hybridReadinessMetadata());

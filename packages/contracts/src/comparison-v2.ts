@@ -321,6 +321,22 @@ export type ComparisonSemanticFreshnessIdentityV2 = ComparisonFreshnessIdentityC
   readonly semanticPolicyRevision: string;
 };
 
+/**
+ * Provider-free freshness identity for the first claim when the pinned
+ * Canonical snapshot is authoritatively empty.  This is deliberately a
+ * separate mode: no semantic execution occurred, so provider/model/prompt
+ * identities must not be fabricated into the review freshness contract.
+ */
+export type ComparisonEmptyCanonicalBootstrapFreshnessIdentityV2 =
+  ComparisonFreshnessIdentityCommonV2 & {
+    readonly mode: 'EMPTY_CANONICAL_BOOTSTRAP';
+    readonly shortlistDigest: ComparisonDigestV2;
+    readonly shortlistPolicyRevision: string;
+    readonly semanticGenerationId: string;
+    readonly semanticSourceProjectionDigest: string;
+    readonly semanticCanonicalBaseVersion: number;
+  };
+
 export type ComparisonDeterministicExactFreshnessIdentityV2 =
   ComparisonFreshnessIdentityCommonV2 & {
     readonly mode: 'DETERMINISTIC_EXACT';
@@ -328,7 +344,9 @@ export type ComparisonDeterministicExactFreshnessIdentityV2 =
   };
 
 export type ComparisonFreshnessIdentityV2 =
-  ComparisonSemanticFreshnessIdentityV2 | ComparisonDeterministicExactFreshnessIdentityV2;
+  | ComparisonSemanticFreshnessIdentityV2
+  | ComparisonEmptyCanonicalBootstrapFreshnessIdentityV2
+  | ComparisonDeterministicExactFreshnessIdentityV2;
 
 export type DraftChangeSetV2Status =
   'PENDING_REVIEW' | 'ON_HOLD' | 'APPROVED' | 'REJECTED' | 'STALE';
@@ -831,7 +849,11 @@ export const validateApprovedChangeSetManifestV2: (
 };
 
 const validateComparisonFreshnessIdentityV2 = (identity: ComparisonFreshnessIdentityV2): void => {
-  if (identity.mode !== 'SEMANTIC' && identity.mode !== 'DETERMINISTIC_EXACT') {
+  if (
+    identity.mode !== 'SEMANTIC' &&
+    identity.mode !== 'EMPTY_CANONICAL_BOOTSTRAP' &&
+    identity.mode !== 'DETERMINISTIC_EXACT'
+  ) {
     fail(
       'freshnessIdentity.mode must identify an active comparison path',
       'freshnessIdentity.mode',
@@ -846,7 +868,7 @@ const validateComparisonFreshnessIdentityV2 = (identity: ComparisonFreshnessIden
   if (identity.candidateRevision < 1 || identity.canonicalSnapshotVersion < 0) {
     fail('freshness identity versions must be valid');
   }
-  if (identity.mode === 'SEMANTIC') {
+  if (identity.mode === 'SEMANTIC' || identity.mode === 'EMPTY_CANONICAL_BOOTSTRAP') {
     nonEmpty(identity.shortlistDigest, 'freshnessIdentity.shortlistDigest');
     nonEmpty(identity.shortlistPolicyRevision, 'freshnessIdentity.shortlistPolicyRevision');
     nonEmpty(identity.semanticGenerationId, 'freshnessIdentity.semanticGenerationId');
@@ -854,15 +876,17 @@ const validateComparisonFreshnessIdentityV2 = (identity: ComparisonFreshnessIden
       identity.semanticSourceProjectionDigest,
       'freshnessIdentity.semanticSourceProjectionDigest',
     );
-    nonEmpty(
-      identity.providerModelCapabilityIdentity,
-      'freshnessIdentity.providerModelCapabilityIdentity',
-    );
-    nonEmpty(identity.promptTemplateRevision, 'freshnessIdentity.promptTemplateRevision');
-    nonEmpty(identity.outputSchemaRevision, 'freshnessIdentity.outputSchemaRevision');
-    nonEmpty(identity.semanticPolicyRevision, 'freshnessIdentity.semanticPolicyRevision');
     if (identity.semanticCanonicalBaseVersion < 0) {
       fail('freshness identity semantic base version must be valid');
+    }
+    if (identity.mode === 'SEMANTIC') {
+      nonEmpty(
+        identity.providerModelCapabilityIdentity,
+        'freshnessIdentity.providerModelCapabilityIdentity',
+      );
+      nonEmpty(identity.promptTemplateRevision, 'freshnessIdentity.promptTemplateRevision');
+      nonEmpty(identity.outputSchemaRevision, 'freshnessIdentity.outputSchemaRevision');
+      nonEmpty(identity.semanticPolicyRevision, 'freshnessIdentity.semanticPolicyRevision');
     }
     return;
   }
@@ -931,6 +955,21 @@ const assertDraftFreshnessBindingsV2 = (draft: DraftChangeSetV2): void => {
         'draftChangeSet.shortlistDigest',
       );
     }
+  } else if (freshness.mode === 'EMPTY_CANONICAL_BOOTSTRAP') {
+    if (
+      draft.shortlistDigest === undefined ||
+      freshness.shortlistDigest !== draft.shortlistDigest ||
+      draft.disposition !== 'NEW' ||
+      draft.operation !== 'ADD_CLAIM' ||
+      draft.reviewRecommendation !== 'ADD_CLAIM' ||
+      draft.analysisRevisionIds.length > 0 ||
+      draft.relationshipIds.length > 0
+    ) {
+      fail(
+        'Empty-Canonical bootstrap Draft must be a provider-free NEW ADD_CLAIM without analyses or relationships',
+        'draftChangeSet',
+      );
+    }
   } else {
     if (
       draft.shortlistDigest !== undefined ||
@@ -975,6 +1014,20 @@ const assertManifestFreshnessBindingsV2 = (manifest: ApprovedChangeSetManifestV2
       fail(
         'Semantic Manifest freshness must bind its shortlist digest',
         'manifest.shortlistDigest',
+      );
+    }
+  } else if (freshness.mode === 'EMPTY_CANONICAL_BOOTSTRAP') {
+    if (
+      manifest.shortlistDigest === undefined ||
+      freshness.shortlistDigest !== manifest.shortlistDigest ||
+      manifest.disposition !== 'NEW' ||
+      manifest.operation !== 'ADD_CLAIM' ||
+      manifest.analysisRevisionIds.length > 0 ||
+      manifest.relationshipIds.length > 0
+    ) {
+      fail(
+        'Empty-Canonical bootstrap Manifest must be a provider-free NEW ADD_CLAIM without analyses or relationships',
+        'manifest',
       );
     }
   } else if (
@@ -1151,6 +1204,20 @@ export const evaluateComparisonFreshnessV2 = (
   }
   if (expected.mode !== current.mode) {
     reasons.push('FRESHNESS_MODE_CHANGED');
+  } else if (
+    expected.mode === 'EMPTY_CANONICAL_BOOTSTRAP' &&
+    current.mode === 'EMPTY_CANONICAL_BOOTSTRAP'
+  ) {
+    if (expected.shortlistPolicyRevision !== current.shortlistPolicyRevision)
+      reasons.push('SHORTLIST_POLICY_CHANGED');
+    if (expected.shortlistDigest !== current.shortlistDigest)
+      reasons.push('SHORTLIST_POLICY_CHANGED');
+    if (expected.semanticGenerationId !== current.semanticGenerationId)
+      reasons.push('SEMANTIC_GENERATION_CHANGED');
+    if (expected.semanticSourceProjectionDigest !== current.semanticSourceProjectionDigest)
+      reasons.push('SEMANTIC_BASE_CHANGED');
+    if (expected.semanticCanonicalBaseVersion !== current.semanticCanonicalBaseVersion)
+      reasons.push('SEMANTIC_BASE_CHANGED');
   } else if (expected.mode === 'SEMANTIC' && current.mode === 'SEMANTIC') {
     if (expected.shortlistPolicyRevision !== current.shortlistPolicyRevision)
       reasons.push('SHORTLIST_POLICY_CHANGED');

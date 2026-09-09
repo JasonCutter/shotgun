@@ -255,21 +255,16 @@ const expectedFreshness = (input: {
     Object.values(shortlist.exclusionCounts).every((count) => count === 0)
   ) {
     // Empty-Canonical bootstrap has no provider analysis identity.  The
-    // shortlist and pinned generation still form the complete freshness
-    // identity, while stable bootstrap labels keep Review replay-safe.
-    const bootstrapIdentity = 'comparison-v2:empty-canonical-bootstrap:v1';
+    // shortlist and pinned generation are the complete freshness identity;
+    // do not fabricate provider/prompt/schema/policy execution inputs.
     return {
       ...common,
-      mode: 'SEMANTIC',
+      mode: 'EMPTY_CANONICAL_BOOTSTRAP',
       shortlistDigest: shortlistAuditDigestV2(shortlist),
       shortlistPolicyRevision: shortlist.policyRevision,
       semanticGenerationId: shortlist.semanticGenerationId,
       semanticSourceProjectionDigest: shortlist.semanticSourceProjectionDigest,
       semanticCanonicalBaseVersion: shortlist.semanticCanonicalBaseVersion,
-      providerModelCapabilityIdentity: bootstrapIdentity,
-      promptTemplateRevision: bootstrapIdentity,
-      outputSchemaRevision: bootstrapIdentity,
-      semanticPolicyRevision: bootstrapIdentity,
     };
   }
   const analysis = input.analyses[0];
@@ -312,7 +307,8 @@ const buildDraft = (input: {
   const semanticShortlistDigest =
     input.comparison.disposition === 'EXACT_DUPLICATE'
       ? undefined
-      : input.freshnessIdentity.mode === 'SEMANTIC'
+      : input.freshnessIdentity.mode === 'SEMANTIC' ||
+          input.freshnessIdentity.mode === 'EMPTY_CANONICAL_BOOTSTRAP'
         ? input.freshnessIdentity.shortlistDigest
         : undefined;
   const draftWithoutDigest: Omit<DraftChangeSetV2, 'contentDigest'> = {
@@ -525,7 +521,10 @@ export const createComparisonV2ReviewBridge = (
       } catch {
         return { status: 'BLOCKED', reason: 'FRESHNESS_UNAVAILABLE' };
       }
-      if (expected.mode === 'SEMANTIC' && current.shortlist === undefined) {
+      if (
+        (expected.mode === 'SEMANTIC' || expected.mode === 'EMPTY_CANONICAL_BOOTSTRAP') &&
+        current.shortlist === undefined
+      ) {
         return { status: 'BLOCKED', reason: 'FRESHNESS_UNAVAILABLE' };
       }
       const freshness: ComparisonFreshnessV2 = evaluateComparisonFreshnessV2(
@@ -701,7 +700,10 @@ export const createComparisonV2ReviewBridge = (
       } catch {
         return { status: 'BLOCKED', reason: 'FRESHNESS_UNAVAILABLE' };
       }
-      if (expected.mode === 'SEMANTIC' && current.shortlist === undefined) {
+      if (
+        (expected.mode === 'SEMANTIC' || expected.mode === 'EMPTY_CANONICAL_BOOTSTRAP') &&
+        current.shortlist === undefined
+      ) {
         return { status: 'BLOCKED', reason: 'FRESHNESS_UNAVAILABLE' };
       }
       const freshness = evaluateComparisonFreshnessV2(

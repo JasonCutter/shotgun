@@ -236,23 +236,23 @@ export const createComparisonV2ReviewFreshnessAdapter = (
       throw new Error('semantic generation unavailable');
     }
     const emptyCanonicalBootstrap =
+      snapshot.claims.length === 0 &&
       Array.isArray(comparison.shortlist?.selectedTargetIdentities) &&
       comparison.shortlist.selectedTargetIdentities.length === 0 &&
       input.aggregate.analyses.length === 0;
     if (emptyCanonicalBootstrap) {
+      if (input.expected.mode !== 'EMPTY_CANONICAL_BOOTSTRAP') {
+        throw new Error('empty Canonical bootstrap freshness mode mismatch');
+      }
       return {
         identity: {
           ...common,
-          mode: 'SEMANTIC',
+          mode: 'EMPTY_CANONICAL_BOOTSTRAP',
           shortlistDigest: input.expected.shortlistDigest,
           shortlistPolicyRevision: input.expected.shortlistPolicyRevision,
           semanticGenerationId: generation.generationId,
           semanticSourceProjectionDigest: generation.sourceProjectionDigest,
           semanticCanonicalBaseVersion: generation.canonicalBaseVersion,
-          providerModelCapabilityIdentity: input.expected.providerModelCapabilityIdentity,
-          promptTemplateRevision: input.expected.promptTemplateRevision,
-          outputSchemaRevision: input.expected.outputSchemaRevision,
-          semanticPolicyRevision: input.expected.semanticPolicyRevision,
         },
         shortlist: comparison.shortlist
           ? {
@@ -262,6 +262,9 @@ export const createComparisonV2ReviewFreshnessAdapter = (
             }
           : undefined,
       };
+    }
+    if (input.expected.mode !== 'SEMANTIC') {
+      throw new Error('semantic freshness mode mismatch');
     }
     const metadata = dependencies.readSemanticMetadata
       ? await dependencies.readSemanticMetadata({

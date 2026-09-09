@@ -443,7 +443,11 @@ describe('Comparison v2 Review bridge', () => {
     expect(result.draft.status).toBe('PENDING_REVIEW');
     expect(result.draft.analysisRevisionIds).toEqual([]);
     expect(result.draft.relationshipIds).toEqual([]);
-    expect(result.draft.freshnessIdentity.mode).toBe('SEMANTIC');
+    expect(result.draft.freshnessIdentity.mode).toBe('EMPTY_CANONICAL_BOOTSTRAP');
+    expect(result.draft.freshnessIdentity).not.toHaveProperty('providerModelCapabilityIdentity');
+    expect(result.draft.freshnessIdentity).not.toHaveProperty('promptTemplateRevision');
+    expect(result.draft.freshnessIdentity).not.toHaveProperty('outputSchemaRevision');
+    expect(result.draft.freshnessIdentity).not.toHaveProperty('semanticPolicyRevision');
   });
 
   it('blocks MODIFY_REVIEW approval before any decision or manifest write', async () => {

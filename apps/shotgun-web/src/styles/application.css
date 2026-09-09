@@ -2669,6 +2669,7 @@ tr.graph-item--discovery {
   border: 1px solid var(--border, #d0d7e2);
   border-radius: 0.5rem;
   background: var(--surface, #fff);
+  color: var(--ink, #17212b);
 }
 
 .review-queue button.selected,

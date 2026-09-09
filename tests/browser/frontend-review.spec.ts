@@ -253,6 +253,36 @@ test('Review Workspace renders the queue, opens a context and records an Approva
   await expect(liveRegion).toContainText('승인이 발급되었습니다: KNOWLEDGE_CANONICAL_CHANGE');
 });
 
+test('Review queue and item rows expose readable foreground/background contrast', async ({
+  page,
+}) => {
+  await stubSessionAndShell(page);
+  await page.goto('/review');
+
+  const queueRow = page.getByRole('button', { name: /Knowledge Draft draft-1/ });
+  await expect(queueRow).toBeVisible();
+  await expect
+    .poll(async () =>
+      queueRow.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { color: style.color, backgroundColor: style.backgroundColor };
+      }),
+    )
+    .toEqual({ color: 'rgb(23, 33, 43)', backgroundColor: 'rgb(255, 255, 255)' });
+
+  await queueRow.click();
+  const itemRow = page.getByRole('button', { name: /Add fact X/ });
+  await expect(itemRow).toBeVisible();
+  await expect
+    .poll(async () =>
+      itemRow.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { color: style.color, backgroundColor: style.backgroundColor };
+      }),
+    )
+    .toEqual({ color: 'rgb(23, 33, 43)', backgroundColor: 'rgb(255, 255, 255)' });
+});
+
 test('Review Workspace has zero axe critical violations', async ({ page }) => {
   await stubSessionAndShell(page);
   await page.goto('/review');

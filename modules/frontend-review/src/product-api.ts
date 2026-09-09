@@ -520,6 +520,7 @@ export class FrontendReviewProductCoordinator {
           const attention = deriveAttentionReasons(
             view.aggregateState,
             view.aggregateState === 'STALE',
+            adapter.targetKind,
           );
           if (
             request.attentionReasons &&

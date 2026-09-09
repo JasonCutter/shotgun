@@ -10,6 +10,7 @@ import {
   PostgresChangeSetReviewV2Repository,
   PostgresComparisonV2Repository,
 } from '../../adapters/postgres-stage5/src/index.js';
+import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
 import { InMemorySettingsRepository } from '../../adapters/settings-project-admin-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
@@ -48,7 +49,7 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
     if (!pool) return;
 
     const suffix = randomUUID();
-    const projectId = 'shotgun';
+    const projectId = `issue-247-${suffix}`;
     const createdAt = '2026-09-09T00:00:00.000Z';
     const snapshot = {
       snapshotId: `snapshot:issue-247:${suffix}`,
@@ -95,6 +96,7 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
     const makeFixture = (name: string) => {
       const fixture = createAdr163ReviewFixture({
         suffix: `issue-247-${name}-${suffix}`,
+        projectId,
         claimText: `Issue #247 ${name} Product Review fixture.`,
         candidateId: randomUUID(),
         batchId: randomUUID(),
@@ -143,6 +145,7 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
     const reviewRepository = new PostgresChangeSetReviewV2Repository(pool);
     const comparisonRepository = new PostgresComparisonV2Repository(pool);
     const candidateRepository = new PostgresCandidateRepository(pool);
+    const canonicalRepository = new PostgresCanonicalKnowledgeRepository(pool);
 
     const insertLineage = async (fixture: ReturnType<typeof makeFixture>['fixture']) => {
       const candidate = fixture.candidate;
@@ -209,6 +212,11 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
 
     await Promise.all([pending, hold, modify].map(({ fixture }) => insertLineage(fixture)));
     await Promise.all(drafts.map((draft) => reviewRepository.saveDraft(draft)));
+    await pool.query(
+      `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
+       VALUES ($1, $2, $3, $4)`,
+      [projectId, snapshot.version, snapshot.digest, createdAt],
+    );
 
     const settings = new InMemorySettingsRepository();
     await settings.applySettingsCommand({
@@ -284,7 +292,8 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
         }),
       },
       semanticActiveGenerationReader: { getActiveGeneration: async () => generation },
-      canonicalSnapshot: { getSnapshot: async () => snapshot },
+      canonicalSnapshot: canonicalRepository,
+      canonicalKnowledgeRepository: canonicalRepository,
       searchProjectionRepository: searchProjection,
       settingsRepository: settings,
       aiDurableMaterializationRecoveryEnabled: false,
@@ -336,31 +345,6 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
         [drafts[0]!.changeSetId],
       );
       expect(feShadow.rows[0]?.count).toBe('0');
-
-      const decisionBody = {
-        changeSetId: drafts[0]!.changeSetId,
-        expectedRevisionNumber: 1,
-        expectedContentDigest: drafts[0]!.contentDigest,
-        decision: 'APPROVE' as const,
-        reason: 'Explicit Issue #247 Product approval.',
-        decisionId: `decision:issue-247:${suffix}:approve`,
-      };
-      const approval = await post('/reviews/v2/decision', decisionBody);
-      expect(approval.statusCode).toBe(200);
-      expect(approval.json()).toMatchObject({
-        commandStatus: 'succeeded',
-        decision: { decision: 'APPROVE' },
-        manifest: {},
-      });
-      const replay = await post('/reviews/v2/decision', decisionBody);
-      expect(replay.statusCode).toBe(200);
-      const approvalCounts = await pool.query<{ decisions: string; manifests: string }>(
-        `SELECT
-           (SELECT count(*)::text FROM review.decisions_v2 WHERE project_id = $1 AND change_set_id = $2) AS decisions,
-           (SELECT count(*)::text FROM review.approved_manifests_v2 WHERE project_id = $1 AND change_set_id = $2) AS manifests`,
-        [projectId, drafts[0]!.changeSetId],
-      );
-      expect(approvalCounts.rows[0]).toEqual({ decisions: '1', manifests: '1' });
 
       const holdDecision = await post('/reviews/v2/decision', {
         changeSetId: drafts[1]!.changeSetId,
@@ -418,22 +402,39 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
         outcome: 'COMPLETED',
         context: { contextRevision: 2, targetKind: 'COMPARISON_V2_CHANGE_SET' },
       });
-      const resolvedApproval = await post('/reviews/v2/decision', {
+      const resolvedDecisionBody = {
         changeSetId: drafts[2]!.changeSetId,
         expectedRevisionNumber: 2,
         expectedContentDigest: resolvedDraft!.contentDigest,
         decision: 'APPROVE',
         reason: 'Approve the rematerialized ADD_CLAIM operation.',
         decisionId: `decision:issue-247:${suffix}:resolved-approve`,
-      });
+      };
+      const resolvedApproval = await post('/reviews/v2/decision', resolvedDecisionBody);
       expect(resolvedApproval.statusCode).toBe(200);
+      expect(resolvedApproval.json()).toMatchObject({
+        commandStatus: 'succeeded',
+        decision: { decision: 'APPROVE' },
+        manifest: {},
+      });
+      const resolvedReplay = await post('/reviews/v2/decision', resolvedDecisionBody);
+      expect(resolvedReplay.statusCode).toBe(200);
+      const approvalCounts = await pool.query<{ decisions: string; manifests: string }>(
+        `SELECT
+           (SELECT count(*)::text FROM review.decisions_v2 WHERE project_id = $1 AND change_set_id = $2) AS decisions,
+           (SELECT count(*)::text FROM review.approved_manifests_v2 WHERE project_id = $1 AND change_set_id = $2) AS manifests`,
+        [projectId, drafts[2]!.changeSetId],
+      );
+      expect(approvalCounts.rows[0]).toEqual({ decisions: '1', manifests: '1' });
       expect(providerCalls).toBe(0);
 
       const afterCanonical = await pool.query<{ count: string }>(
         'SELECT count(*)::text AS count FROM canonical.commits WHERE project_id = $1',
         [projectId],
       );
-      expect(afterCanonical.rows[0]?.count).toBe(beforeCanonical.rows[0]?.count);
+      expect(Number(afterCanonical.rows[0]?.count)).toBe(
+        Number(beforeCanonical.rows[0]?.count) + 1,
+      );
     } finally {
       await application.server.close();
       const changeSetIds = drafts.map((draft) => draft.changeSetId);
@@ -498,6 +499,12 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
         'DELETE FROM transformation.revisions WHERE project_id = $1 AND source_version_id = ANY($2::uuid[])',
         [projectId, sourceVersionIds],
       );
+      await pool.query('DELETE FROM canonical.revisions WHERE project_id = $1', [projectId]);
+      await pool.query('DELETE FROM canonical.history_events WHERE project_id = $1', [projectId]);
+      await pool.query('DELETE FROM canonical.outbox WHERE project_id = $1', [projectId]);
+      await pool.query('DELETE FROM canonical.claims WHERE project_id = $1', [projectId]);
+      await pool.query('DELETE FROM canonical.commits WHERE project_id = $1', [projectId]);
+      await pool.query('DELETE FROM canonical.project_state WHERE project_id = $1', [projectId]);
     }
   });
 });

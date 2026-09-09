@@ -257,13 +257,14 @@ export const deriveContextView = (input: {
 export const deriveAttentionReasons = (
   aggregateState: ReviewAggregateStateV1,
   stale: boolean,
+  targetKind?: ReviewTargetKindV1,
 ): readonly ReviewAttentionReasonV1[] => {
   const reasons: ReviewAttentionReasonV1[] = [];
   if (stale) reasons.push('STALE');
   if (
     aggregateState === 'PENDING' ||
     aggregateState === 'PARTIALLY_DECIDED' ||
-    aggregateState === 'ON_HOLD'
+    (aggregateState === 'ON_HOLD' && targetKind === 'COMPARISON_V2_CHANGE_SET')
   ) {
     reasons.push('REQUIRES_ACTION');
   }

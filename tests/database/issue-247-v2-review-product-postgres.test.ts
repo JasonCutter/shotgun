@@ -11,6 +11,7 @@ import {
   PostgresComparisonV2Repository,
 } from '../../adapters/postgres-stage5/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
+import { PostgresFrontendReviewRepository } from '../../adapters/frontend-review-postgres/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
 import { InMemorySettingsRepository } from '../../adapters/settings-project-admin-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
@@ -120,6 +121,7 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
     const modify = makeFixture('modify');
     const drafts = [pending.fixture.draft, hold.fixture.draft, modify.fixture.draft];
     const reviewRepository = new PostgresChangeSetReviewV2Repository(pool);
+    const frontendReviewStore = new PostgresFrontendReviewRepository(pool);
     const comparisonRepository = new PostgresComparisonV2Repository(pool);
     const candidateRepository = new PostgresCandidateRepository(pool);
     const canonicalRepository = new PostgresCanonicalKnowledgeRepository(pool);
@@ -268,6 +270,7 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
           },
         }),
       },
+      frontendReviewStore,
       semanticActiveGenerationReader: { getActiveGeneration: async () => generation },
       canonicalSnapshot: canonicalRepository,
       canonicalKnowledgeRepository: canonicalRepository,
@@ -431,6 +434,47 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
       const cleanupClient = await pool.connect();
       try {
         await cleanupClient.query('SET session_replication_role = replica');
+        await cleanupClient.query(
+          `DELETE FROM frontend_review.dependency
+           WHERE review_context_id IN (
+             SELECT review_context_id FROM frontend_review.context_revision
+             WHERE resource_project_id = $1
+           )`,
+          [projectId],
+        );
+        await cleanupClient.query(
+          `DELETE FROM frontend_review.item
+           WHERE review_context_id IN (
+             SELECT review_context_id FROM frontend_review.context_revision
+             WHERE resource_project_id = $1
+           )`,
+          [projectId],
+        );
+        await cleanupClient.query(
+          `DELETE FROM frontend_review.decision
+           WHERE review_context_id IN (
+             SELECT review_context_id FROM frontend_review.context_revision
+             WHERE resource_project_id = $1
+           )`,
+          [projectId],
+        );
+        await cleanupClient.query(
+          `DELETE FROM frontend_review.comment
+           WHERE review_context_id IN (
+             SELECT review_context_id FROM frontend_review.context_revision
+             WHERE resource_project_id = $1
+           )`,
+          [projectId],
+        );
+        await cleanupClient.query(
+          `DELETE FROM frontend_review.approval
+           WHERE project_id = $1`,
+          [projectId],
+        );
+        await cleanupClient.query(
+          `DELETE FROM frontend_review.context_revision WHERE resource_project_id = $1`,
+          [projectId],
+        );
         await cleanupClient.query(
           'DELETE FROM review.decisions_v2 WHERE project_id = $1 AND change_set_id = ANY($2::text[])',
           [projectId, changeSetIds],

@@ -703,7 +703,14 @@ export const validateComparisonResultV2: (value: unknown) => asserts value is Co
         'comparison.shortlist',
       );
     }
-    if (comparison.analysisRevisionIds.length === 0) {
+    const emptyCanonicalBootstrap = comparison.shortlist!.selectedTargetIdentities.length === 0;
+    if (emptyCanonicalBootstrap && comparison.relationshipIds.length > 0) {
+      fail(
+        'Empty-Canonical bootstrap NEW comparisons cannot contain relationships',
+        'comparison.relationshipIds',
+      );
+    }
+    if (comparison.analysisRevisionIds.length === 0 && !emptyCanonicalBootstrap) {
       fail('NEW requires completed analysis', 'comparison');
     }
   }

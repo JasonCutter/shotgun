@@ -13,6 +13,7 @@ import {
   draftChangeSetContentDigestV2,
   evaluateComparisonFreshnessV2,
   deriveAuthorizedSensitivities,
+  shortlistAuditDigestV2,
   validateComparisonChildrenV2,
   validateApprovedChangeSetManifestV2,
   validateDraftChangeSetV2,
@@ -242,6 +243,35 @@ const expectedFreshness = (input: {
     };
   }
   const shortlist = input.comparison.shortlist;
+  if (
+    shortlist &&
+    input.analyses.length === 0 &&
+    input.comparison.disposition === 'NEW' &&
+    input.comparison.reviewRecommendation === 'ADD_CLAIM' &&
+    shortlist.selectedTargetIdentities.length === 0 &&
+    shortlist.coverageStatus === 'COMPLETE' &&
+    shortlist.querySemanticReadiness === 'READY' &&
+    !shortlist.truncated &&
+    Object.values(shortlist.exclusionCounts).every((count) => count === 0)
+  ) {
+    // Empty-Canonical bootstrap has no provider analysis identity.  The
+    // shortlist and pinned generation still form the complete freshness
+    // identity, while stable bootstrap labels keep Review replay-safe.
+    const bootstrapIdentity = 'comparison-v2:empty-canonical-bootstrap:v1';
+    return {
+      ...common,
+      mode: 'SEMANTIC',
+      shortlistDigest: shortlistAuditDigestV2(shortlist),
+      shortlistPolicyRevision: shortlist.policyRevision,
+      semanticGenerationId: shortlist.semanticGenerationId,
+      semanticSourceProjectionDigest: shortlist.semanticSourceProjectionDigest,
+      semanticCanonicalBaseVersion: shortlist.semanticCanonicalBaseVersion,
+      providerModelCapabilityIdentity: bootstrapIdentity,
+      promptTemplateRevision: bootstrapIdentity,
+      outputSchemaRevision: bootstrapIdentity,
+      semanticPolicyRevision: bootstrapIdentity,
+    };
+  }
   const analysis = input.analyses[0];
   if (!shortlist || !analysis || input.analyses.length !== 1) {
     throw new Error('Semantic comparison must contain exactly one AnalysisRevision.');

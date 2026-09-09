@@ -147,6 +147,15 @@ const semanticFailureDetail = (
   outcome: Extract<ComparisonSemanticAnalysisV2Outcome, { status: 'BLOCKED' }>,
 ): string => `${outcome.reason}:${outcome.safeFailureCode}`;
 
+const isEmptyCanonicalBootstrapShortlist = (
+  shortlist: Extract<ComparisonShortlistV2Outcome, { status: 'READY' }>,
+): boolean =>
+  shortlist.shortlist.selectedTargetIdentities.length === 0 &&
+  shortlist.shortlist.coverageStatus === 'COMPLETE' &&
+  shortlist.shortlist.querySemanticReadiness === 'READY' &&
+  !shortlist.shortlist.truncated &&
+  Object.values(shortlist.shortlist.exclusionCounts).every((count) => count === 0);
+
 const isAmbiguousOrConflictOnly = (relationships: readonly SemanticRelationshipV2[]): boolean =>
   relationships.length > 0 &&
   relationships.every((relationship) =>
@@ -379,6 +388,40 @@ export const createComparisonV2Orchestrator = (
           contractVersion: COMPARISON_V2_CONTRACT_VERSION,
           comparison: stored.comparison,
           analysisRevisionIds: [...stored.comparison.analysisRevisionIds],
+          emittedAt: now(),
+        };
+        await publish(dependencies.events, event);
+        return { status: 'COMPLETED', aggregate: stored, event };
+      }
+
+      // A READY zero-target shortlist is valid only for the empty-Canonical
+      // bootstrap path established by the shortlist service.  It is a
+      // completed NEW comparison, but there is no Canonical target to analyze
+      // and therefore no AnalysisRevision or provider call to create.
+      if (isEmptyCanonicalBootstrapShortlist(shortlist)) {
+        const comparison: ComparisonResultV2 = {
+          comparisonId,
+          contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+          projectId: request.projectId,
+          candidate: candidateV2,
+          canonicalSnapshot: shortlist.shortlist.canonicalSnapshot,
+          disposition: 'NEW',
+          reviewRecommendation: 'ADD_CLAIM',
+          shortlist: shortlist.shortlist,
+          analysisRevisionIds: [],
+          relationshipIds: [],
+          accessScope: [...request.security.accessScope].sort(),
+          sensitivity: request.security.sensitivity,
+          createdAt,
+        };
+        const aggregate: ComparisonV2Aggregate = { comparison, analyses: [], relationships: [] };
+        validateComparisonV2Aggregate(aggregate);
+        const stored = await saveOrReuseCompletedAggregate(dependencies.repository, aggregate);
+        const event: ComparisonCompletedV2 = {
+          eventType: 'ComparisonCompletedV2',
+          contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+          comparison: stored.comparison,
+          analysisRevisionIds: [],
           emittedAt: now(),
         };
         await publish(dependencies.events, event);

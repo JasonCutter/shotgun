@@ -55,6 +55,15 @@ const snapshot: CanonicalSnapshot = {
   ),
 };
 
+const emptySnapshot: CanonicalSnapshot = {
+  snapshotId: 'snapshot-empty',
+  projectId,
+  version: 0,
+  claims: [],
+  createdAt: now,
+  digest: canonicalSnapshotDigest(projectId, 0, [], undefined),
+};
+
 const candidateText = 'A new claim from the source.';
 const candidate: ClaimCandidate = {
   candidateId: 'candidate-1',
@@ -81,21 +90,24 @@ const candidateV2: ComparisonCandidateV2 = {
   evidenceIds: [...candidate.evidenceIds],
 };
 
-const audit = (targets: readonly string[]): ShortlistAuditV2 => ({
+const audit = (
+  targets: readonly string[],
+  snapshotInput: CanonicalSnapshot = snapshot,
+): ShortlistAuditV2 => ({
   contractVersion: COMPARISON_V2_CONTRACT_VERSION,
   canonicalSnapshot: {
-    id: snapshot.snapshotId,
-    version: snapshot.version,
-    digest: snapshot.digest,
+    id: snapshotInput.snapshotId,
+    version: snapshotInput.version,
+    digest: snapshotInput.digest,
   },
   lexicalProjectionWatermark: sha256Text('watermark'),
   lexicalProjectionBase: sha256Text('lexical-base'),
   semanticGenerationId: 'generation-1',
   semanticSourceProjectionDigest: sha256Text('semantic-source'),
-  semanticCanonicalBaseVersion: snapshot.version,
+  semanticCanonicalBaseVersion: snapshotInput.version,
   querySemanticReadiness: 'READY',
   policyRevision: sha256Text('policy'),
-  k: targets.length,
+  k: Math.max(targets.length, 1),
   selectedTargetIdentities: targets.map((resourceId) => ({
     resourceType: 'CLAIM',
     resourceId,
@@ -457,6 +469,42 @@ describe('Comparison v2 orchestration', () => {
       expect(result.aggregate.comparison.reviewRecommendation).toBe('ADD_CLAIM');
       expect(result.aggregate.relationships).toHaveLength(2);
     }
+  });
+
+  it('completes an empty-Canonical bootstrap without semantic analysis or provider work', async () => {
+    const shortlistAudit = audit([], emptySnapshot);
+    let semanticCalls = 0;
+    const setup = baseDependencies(
+      {
+        async build() {
+          return {
+            status: 'READY' as const,
+            shortlist: shortlistAudit,
+            shortlistDigest: shortlistAuditDigestV2(shortlistAudit),
+          };
+        },
+      },
+      {
+        async analyze() {
+          semanticCalls += 1;
+          throw new Error('empty-Canonical bootstrap must not invoke semantic analysis');
+        },
+      },
+    );
+
+    const result = await createComparisonV2Orchestrator(setup.dependencies).compare(request);
+
+    expect(result.status).toBe('COMPLETED');
+    expect(semanticCalls).toBe(0);
+    expect(setup.stored.completed).toHaveLength(1);
+    if (result.status !== 'COMPLETED') return;
+    expect(result.aggregate.comparison.disposition).toBe('NEW');
+    expect(result.aggregate.comparison.reviewRecommendation).toBe('ADD_CLAIM');
+    expect(result.aggregate.comparison.analysisRevisionIds).toEqual([]);
+    expect(result.aggregate.comparison.relationshipIds).toEqual([]);
+    expect(result.aggregate.comparison.shortlist?.selectedTargetIdentities).toEqual([]);
+    expect(result.event.eventType).toBe('ComparisonCompletedV2');
+    expect(result.event.analysisRevisionIds).toEqual([]);
   });
 
   it('persists terminal provider failures but does not fabricate a completed aggregate', async () => {

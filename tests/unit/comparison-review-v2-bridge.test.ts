@@ -43,6 +43,14 @@ const snapshot = {
   digest: '',
 };
 snapshot.digest = canonicalSnapshotDigest(projectId, snapshot.version, snapshot.claims, undefined);
+const emptySnapshot = {
+  snapshotId: 'snapshot-empty',
+  projectId,
+  version: 0,
+  claims: [],
+  createdAt: now,
+  digest: canonicalSnapshotDigest(projectId, 0, [], undefined),
+};
 
 const candidate: ClaimCandidate = {
   candidateId: 'candidate-1',
@@ -260,6 +268,48 @@ const modifyReviewEvent: ComparisonCompletedV2 = {
   comparison: modifyReviewAggregate.comparison,
 };
 
+const emptyBootstrapShortlist = {
+  ...semanticShortlist,
+  canonicalSnapshot: {
+    id: emptySnapshot.snapshotId,
+    version: emptySnapshot.version,
+    digest: emptySnapshot.digest,
+  },
+  semanticCanonicalBaseVersion: emptySnapshot.version,
+  selectedTargetIdentities: [],
+  k: 1,
+};
+const emptyBootstrapAggregate: ComparisonV2AggregateForReview = {
+  comparison: {
+    comparisonId: 'comparison-empty-bootstrap-1',
+    contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+    projectId,
+    candidate: candidateV2,
+    canonicalSnapshot: {
+      id: emptySnapshot.snapshotId,
+      version: emptySnapshot.version,
+      digest: emptySnapshot.digest,
+    },
+    disposition: 'NEW',
+    reviewRecommendation: 'ADD_CLAIM',
+    shortlist: emptyBootstrapShortlist,
+    analysisRevisionIds: [],
+    relationshipIds: [],
+    accessScope: ['owner'],
+    sensitivity: 'private',
+    createdAt: now,
+  },
+  analyses: [],
+  relationships: [],
+};
+const emptyBootstrapEvent: ComparisonCompletedV2 = {
+  eventType: 'ComparisonCompletedV2',
+  contractVersion: COMPARISON_V2_CONTRACT_VERSION,
+  comparison: emptyBootstrapAggregate.comparison,
+  analysisRevisionIds: [],
+  emittedAt: now,
+};
+
 const setup = (
   current?: ComparisonFreshnessIdentityV2,
   aggregateInput: ComparisonV2AggregateForReview = aggregate,
@@ -376,6 +426,24 @@ describe('Comparison v2 Review bridge', () => {
       expect(result.draft.relationshipIds).toEqual(['relationship-1']);
       expect(result.draft.shortlistDigest).toBe(shortlistAuditDigestV2(semanticShortlist));
     }
+  });
+
+  it('materializes an empty-Canonical NEW comparison as a pending ADD_CLAIM review', async () => {
+    const setupValue = setup(undefined, emptyBootstrapAggregate);
+    const result = await setupValue.bridge.materializeDraft({
+      ...request,
+      event: emptyBootstrapEvent,
+      authority: authority('V2_ACTIVE'),
+    });
+
+    expect(result.status).toBe('DRAFT_CREATED');
+    if (result.status !== 'DRAFT_CREATED') return;
+    expect(result.draft.operation).toBe('ADD_CLAIM');
+    expect(result.draft.reviewRecommendation).toBe('ADD_CLAIM');
+    expect(result.draft.status).toBe('PENDING_REVIEW');
+    expect(result.draft.analysisRevisionIds).toEqual([]);
+    expect(result.draft.relationshipIds).toEqual([]);
+    expect(result.draft.freshnessIdentity.mode).toBe('SEMANTIC');
   });
 
   it('blocks MODIFY_REVIEW approval before any decision or manifest write', async () => {

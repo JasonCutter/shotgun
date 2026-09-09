@@ -66,6 +66,7 @@ export type {
   AskActivityAdapterPort,
   ExternalActionActivityAdapterPort,
   DiscoveryActivityAdapterPort,
+  ComparisonActivityAdapterPort,
   SourcesActivityAdapterPort,
 } from './activity-adapter-port.js';
 export {

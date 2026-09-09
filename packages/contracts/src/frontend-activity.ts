@@ -28,7 +28,7 @@ export const FRONTEND_ACTIVITY_API_VERSION = '1.0.0' as const;
 
 /** Federated projection domain kinds (Contract Snapshot §3). */
 export type ActivityDomainKindV1 =
-  'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY' | 'CONNECTOR_DIAGNOSTICS';
+  'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY' | 'COMPARISON' | 'CONNECTOR_DIAGNOSTICS';
 
 /** An Activity root is either a durable Job or a Run (ADR-130 §2). */
 export type ActivityRootKindV1 = 'JOB' | 'RUN';
@@ -149,7 +149,11 @@ export type ActivityAttentionStateV1 = 'NEEDS_ATTENTION' | 'RESOLVED' | 'NONE';
 
 /** Domain Attempt kinds by owning Domain (ADR-130 §2 mapping). */
 export type ActivityDomainAttemptKindV1 =
-  'SOURCES_INTAKE' | 'ASK_ANSWER' | 'EXTERNAL_ACTION_EXECUTION' | 'DISCOVERY_EXECUTION';
+  | 'SOURCES_INTAKE'
+  | 'ASK_ANSWER'
+  | 'EXTERNAL_ACTION_EXECUTION'
+  | 'DISCOVERY_EXECUTION'
+  | 'COMPARISON_STAGE5';
 
 export type ActivityStageStateV1 =
   'PENDING' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'SKIPPED' | 'OUTCOME_UNKNOWN';
@@ -1409,7 +1413,8 @@ export const decodeActivitySnapshotV1 = (value: unknown, path = 'activity'): Act
 // crosses into the domain module layer; the module re-exports them from here.
 
 /** Owning-Domain adapter kind exposed by the federated Activity projection. */
-export type ActivityAdapterKindV1 = 'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY';
+export type ActivityAdapterKindV1 =
+  'SOURCES' | 'ASK' | 'EXTERNAL_ACTION' | 'DISCOVERY' | 'COMPARISON';
 
 /** One queue row in the federated Activity Queue. */
 export type ActivityQueueItemV1 = {

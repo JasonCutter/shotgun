@@ -187,6 +187,20 @@ describe('Backup Bundle verification', () => {
     );
   });
 
+  it('includes Issue #245 blocked outcomes in authoritative backups only after its migration', () => {
+    expect(
+      authoritativeIntegrityTablesForMigrations([
+        '066_stage5_semantic_comparison_v2_persistence.sql',
+      ]),
+    ).not.toContain('comparison.blocked_outcomes_v2');
+    expect(
+      authoritativeIntegrityTablesForMigrations([
+        '066_stage5_semantic_comparison_v2_persistence.sql',
+        '071_stage5_blocked_outcome_observability.sql',
+      ]),
+    ).toEqual(expect.arrayContaining(['comparison.blocked_outcomes_v2']));
+  });
+
   it('fails closed when a referenced Original Asset is corrupt or missing', async () => {
     const corrupt = await fixture();
     const corruptAsset = path.join(corrupt.directory, corrupt.manifest.assets.files[0]!.backupPath);

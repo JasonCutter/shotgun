@@ -11,6 +11,70 @@ import {
   type SemanticRelationshipV2,
 } from '../../../packages/contracts/src/index.js';
 
+export type ComparisonV2BlockedPhase =
+  'CANDIDATE_RESOLUTION' | 'SHORTLIST' | 'SEMANTIC_IDENTITY' | 'SEMANTIC_ANALYSIS' | 'CONTRACT';
+
+export type ComparisonV2BlockedState = 'ACTIVE' | 'RESOLVED' | 'SUPERSEDED';
+
+/** Safe operational identity for a pre-terminal Stage 5 block. */
+export type ComparisonV2BlockedOutcome = {
+  readonly blockedOutcomeId: string;
+  readonly projectId: string;
+  readonly candidateId: string;
+  readonly candidateRevision: number;
+  readonly candidateDigest: string;
+  readonly blockedPhase: ComparisonV2BlockedPhase;
+  readonly reason: string;
+  readonly safeCode: string;
+  readonly governingInputDigest: string;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
+  readonly firstObservedAt: string;
+  readonly lastObservedAt: string;
+  readonly state: ComparisonV2BlockedState;
+  readonly resolvedAt?: string;
+  readonly resolutionIdentity?: string;
+};
+
+export type ComparisonV2BlockedOutcomeRepositoryPort = {
+  recordBlockedOutcome(input: {
+    readonly projectId: string;
+    readonly candidateId: string;
+    readonly candidateRevision: number;
+    readonly candidateDigest: string;
+    readonly blockedPhase: ComparisonV2BlockedPhase;
+    readonly reason: string;
+    readonly safeCode: string;
+    readonly governingInputDigest: string;
+    readonly accessScope: readonly string[];
+    readonly sensitivity: ComparisonV2BlockedOutcome['sensitivity'];
+    readonly observedAt: string;
+  }): Promise<ComparisonV2BlockedOutcome>;
+  resolveBlockedOutcomes(input: {
+    readonly projectId: string;
+    readonly candidateId: string;
+    readonly candidateRevision: number;
+    readonly candidateDigest: string;
+    readonly resolutionIdentity: string;
+    readonly resolvedAt: string;
+    readonly state: Extract<ComparisonV2BlockedState, 'RESOLVED' | 'SUPERSEDED'>;
+  }): Promise<void>;
+  findBlockedOutcome(
+    projectId: string,
+    blockedOutcomeId: string,
+  ): Promise<ComparisonV2BlockedOutcome | undefined>;
+  listBlockedOutcomes(
+    projectId: string,
+    state?: ComparisonV2BlockedState,
+  ): Promise<readonly ComparisonV2BlockedOutcome[]>;
+  listActiveBlockedOutcomes(projectId: string): Promise<readonly ComparisonV2BlockedOutcome[]>;
+};
+
+/** Read-only terminal AnalysisRevision source for federated Activity views. */
+export type ComparisonV2TerminalAnalysisReaderPort = {
+  listTerminalAnalysisRevisions(projectId: string): Promise<readonly AnalysisRevisionV2[]>;
+};
+
 /**
  * The WP2 aggregate is deliberately separate from the historical v1
  * ComparisonRepositoryPort.  The adapter owns the database representation;
@@ -97,6 +161,10 @@ export type ComparisonV2RepositoryPort = {
   findComparisonByIdentity(
     identity: ComparisonV2StorageIdentity,
   ): Promise<ComparisonV2Aggregate | undefined>;
+  /** Optional until every embedded test repository adopts the additive block store. */
+  readonly blockedOutcomes?: ComparisonV2BlockedOutcomeRepositoryPort;
+  /** Optional read source used by the additive Comparison Activity adapter. */
+  readonly terminalAnalysis?: ComparisonV2TerminalAnalysisReaderPort;
 };
 
 export const analysisInputSetDigestV2 = (

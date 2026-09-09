@@ -71,6 +71,7 @@ const CANONICAL_RELATION_MIGRATION = '059_akp8_canonical_relation_authority.sql'
 const WP10_ACTION_REVIEW_DIAGNOSTICS_MIGRATION =
   '065_runtime_data_integrity_wp10_action_review_discovery_diagnostics.sql';
 const STAGE5_COMPARISON_V2_MIGRATION = '066_stage5_semantic_comparison_v2_persistence.sql';
+const STAGE5_BLOCKED_OUTCOME_MIGRATION = '071_stage5_blocked_outcome_observability.sql';
 const STAGE5_COMPARISON_REVIEW_V2_MIGRATION = '067_stage5_comparison_review_v2_persistence.sql';
 const ADR163_REVIEW_OPERATION_RESOLUTION_V2_MIGRATION =
   '070_adr163_review_operation_resolution_v2.sql';
@@ -143,6 +144,7 @@ export const authoritativeIntegrityTablesForMigrations = (
     ...(applied.has(STAGE5_COMPARISON_V2_MIGRATION)
       ? ['comparison.results_v2', 'comparison.analysis_revisions_v2', 'comparison.relationships_v2']
       : []),
+    ...(applied.has(STAGE5_BLOCKED_OUTCOME_MIGRATION) ? ['comparison.blocked_outcomes_v2'] : []),
     ...(applied.has(STAGE5_COMPARISON_REVIEW_V2_MIGRATION)
       ? ['review.change_sets_v2', 'review.decisions_v2', 'review.approved_manifests_v2']
       : []),

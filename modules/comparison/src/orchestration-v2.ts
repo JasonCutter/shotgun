@@ -18,9 +18,12 @@ import {
   type SecurityContext,
   type SemanticRelationshipV2,
   type SemanticRelationshipTypeV2,
+  sha256Text,
+  stableJson,
 } from '../../../packages/contracts/src/index.js';
 import {
   type ComparisonV2Aggregate,
+  type ComparisonV2BlockedPhase,
   type ComparisonV2RepositoryPort,
   analysisInputSetDigestV2,
   comparisonV2StorageIdentity,
@@ -164,6 +167,38 @@ const isAmbiguousOrConflictOnly = (relationships: readonly SemanticRelationshipV
     ),
   );
 
+const attentionBlockedReason = (reason: string, detail?: string): boolean => {
+  if (reason === 'CANDIDATE_RESOLUTION_FAILED') return true;
+  if (reason === 'SHORTLIST_BLOCKED') {
+    return !detail?.match(
+      /INVALID_REQUEST|POLICY_DENIED|POLICY_INTEGRITY|SNAPSHOT_INTEGRITY|CONTRACT_INVALID/,
+    );
+  }
+  if (reason === 'SEMANTIC_BLOCKED') {
+    return !detail?.match(
+      /INVALID_REQUEST|POLICY_BLOCKED|SHORTLIST_INTEGRITY|SNAPSHOT_MISMATCH|RESOURCE_SCOPE_LEAK|RESOURCE_NOT_FOUND|RESOURCE_REVISION_MISMATCH|RESOURCE_ACCESS_REVOKED/,
+    );
+  }
+  return reason === 'CONTRACT_FAILURE';
+};
+
+const blockedPhaseFor = (
+  reason: ComparisonV2OrchestrationBlockedReason,
+): ComparisonV2BlockedPhase => {
+  switch (reason) {
+    case 'CANDIDATE_RESOLUTION_FAILED':
+      return 'CANDIDATE_RESOLUTION';
+    case 'SHORTLIST_BLOCKED':
+      return 'SHORTLIST';
+    case 'SEMANTIC_BLOCKED':
+      return 'SEMANTIC_ANALYSIS';
+    case 'CONTRACT_FAILURE':
+      return 'CONTRACT';
+    default:
+      return 'CANDIDATE_RESOLUTION';
+  }
+};
+
 const publish = async (
   publisher: ComparisonV2EventPublisherPort | undefined,
   event: ComparisonV2TerminalEvent,
@@ -297,6 +332,78 @@ export const createComparisonV2Orchestrator = (
   const now = dependencies.now ?? (() => new Date().toISOString());
   const nextId = dependencies.randomId ?? randomUUID;
 
+  const persistBlocked = async (input: {
+    readonly request: ComparisonV2OrchestrationRequest;
+    readonly candidate?: ComparisonCandidateV2;
+    readonly reason: ComparisonV2OrchestrationBlockedReason;
+    readonly phase?: ComparisonV2BlockedPhase;
+    readonly detail?: string;
+  }): Promise<void> => {
+    if (!attentionBlockedReason(input.reason, input.detail)) return;
+    const repository = dependencies.repository.blockedOutcomes;
+    if (!repository) return;
+    const candidateId = input.candidate?.id ?? input.request.candidateId;
+    const candidateRevision = input.candidate?.revision ?? 1;
+    const phase = input.phase ?? blockedPhaseFor(input.reason);
+    const candidateDigest =
+      input.candidate?.digest ?? sha256Text(stableJson({ candidateId, blockedPhase: phase }));
+    const governingInputDigest = sha256Text(
+      stableJson({
+        phase,
+        reason: input.reason,
+        detail: input.detail ?? null,
+        attempt: input.request.attempt,
+      }),
+    );
+    await repository.recordBlockedOutcome({
+      projectId: input.request.projectId,
+      candidateId,
+      candidateRevision,
+      candidateDigest,
+      blockedPhase: phase,
+      reason: input.reason,
+      safeCode: input.reason,
+      governingInputDigest,
+      accessScope: [...input.request.security.accessScope].sort(),
+      sensitivity: input.request.security.sensitivity,
+      observedAt: now(),
+    });
+  };
+
+  const blocked = async (input: {
+    readonly request: ComparisonV2OrchestrationRequest;
+    readonly candidate?: ComparisonCandidateV2;
+    readonly reason: ComparisonV2OrchestrationBlockedReason;
+    readonly phase?: ComparisonV2BlockedPhase;
+    readonly detail?: string;
+  }): Promise<Extract<ComparisonV2OrchestrationOutcome, { status: 'BLOCKED' }>> => {
+    await persistBlocked(input);
+    return {
+      status: 'BLOCKED',
+      reason: input.reason,
+      ...(input.detail === undefined ? {} : { detail: input.detail }),
+    };
+  };
+
+  const resolveBlocked = async (input: {
+    readonly request: ComparisonV2OrchestrationRequest;
+    readonly candidate: ComparisonCandidateV2;
+    readonly resolutionIdentity: string;
+    readonly state: 'RESOLVED' | 'SUPERSEDED';
+  }): Promise<void> => {
+    const repository = dependencies.repository.blockedOutcomes;
+    if (!repository) return;
+    await repository.resolveBlockedOutcomes({
+      projectId: input.request.projectId,
+      candidateId: input.candidate.id,
+      candidateRevision: input.candidate.revision,
+      candidateDigest: input.candidate.digest,
+      resolutionIdentity: input.resolutionIdentity,
+      resolvedAt: now(),
+      state: input.state,
+    });
+  };
+
   return {
     async compare(
       request: ComparisonV2OrchestrationRequest,
@@ -307,6 +414,10 @@ export const createComparisonV2Orchestrator = (
       try {
         candidate = await dependencies.candidate.findById(request.projectId, request.candidateId);
       } catch {
+        // No verified Candidate revision/digest exists at this boundary.  Do
+        // not fabricate an operational Attention identity from the request
+        // alone; preserve the fail-closed outcome until a trusted runtime
+        // event can supply the Candidate lineage.
         return { status: 'BLOCKED', reason: 'CANDIDATE_RESOLUTION_FAILED' };
       }
       if (!candidate) return { status: 'BLOCKED', reason: 'CANDIDATE_NOT_FOUND' };
@@ -357,14 +468,15 @@ export const createComparisonV2Orchestrator = (
           k: request.k,
         });
       } catch {
-        return { status: 'BLOCKED', reason: 'SHORTLIST_BLOCKED' };
+        return blocked({ request, candidate: candidateV2, reason: 'SHORTLIST_BLOCKED' });
       }
       if (shortlist.status === 'BLOCKED') {
-        return {
-          status: 'BLOCKED',
+        return blocked({
+          request,
+          candidate: candidateV2,
           reason: 'SHORTLIST_BLOCKED',
           detail: shortlistFailureDetail(shortlist),
-        };
+        });
       }
 
       const comparisonId = nextId();
@@ -383,6 +495,12 @@ export const createComparisonV2Orchestrator = (
         const aggregate: ComparisonV2Aggregate = { comparison, analyses: [], relationships: [] };
         validateComparisonV2Aggregate(aggregate);
         const stored = await saveOrReuseCompletedAggregate(dependencies.repository, aggregate);
+        await resolveBlocked({
+          request,
+          candidate: candidateV2,
+          resolutionIdentity: stored.comparison.comparisonId,
+          state: 'RESOLVED',
+        });
         const event: ComparisonCompletedV2 = {
           eventType: 'ComparisonCompletedV2',
           contractVersion: COMPARISON_V2_CONTRACT_VERSION,
@@ -417,6 +535,12 @@ export const createComparisonV2Orchestrator = (
         const aggregate: ComparisonV2Aggregate = { comparison, analyses: [], relationships: [] };
         validateComparisonV2Aggregate(aggregate);
         const stored = await saveOrReuseCompletedAggregate(dependencies.repository, aggregate);
+        await resolveBlocked({
+          request,
+          candidate: candidateV2,
+          resolutionIdentity: stored.comparison.comparisonId,
+          state: 'RESOLVED',
+        });
         const event: ComparisonCompletedV2 = {
           eventType: 'ComparisonCompletedV2',
           contractVersion: COMPARISON_V2_CONTRACT_VERSION,
@@ -452,19 +576,31 @@ export const createComparisonV2Orchestrator = (
             attempt: request.attempt,
           });
         } catch {
-          return { status: 'BLOCKED', reason: 'SEMANTIC_BLOCKED' };
+          return blocked({
+            request,
+            candidate: candidateV2,
+            reason: 'SEMANTIC_BLOCKED',
+            phase: 'SEMANTIC_IDENTITY',
+          });
         }
         if ('status' in identity) {
           if (identity.status === 'BLOCKED') {
-            return {
-              status: 'BLOCKED',
+            return blocked({
+              request,
+              candidate: candidateV2,
               reason: 'SEMANTIC_BLOCKED',
+              phase: 'SEMANTIC_IDENTITY',
               detail: `${identity.reason}:${identity.safeFailureCode}`,
-            };
+            });
           }
           // The pre-provider identity resolver must never produce a terminal
           // AnalysisRevision. Treat an unexpected outcome as a safe block.
-          return { status: 'BLOCKED', reason: 'SEMANTIC_BLOCKED' };
+          return blocked({
+            request,
+            candidate: candidateV2,
+            reason: 'SEMANTIC_BLOCKED',
+            phase: 'SEMANTIC_IDENTITY',
+          });
         }
         const existing = await dependencies.repository.findComparisonByIdentity({
           mode: 'SEMANTIC',
@@ -484,6 +620,12 @@ export const createComparisonV2Orchestrator = (
             analysisRevisionIds: [...existing.comparison.analysisRevisionIds],
             emittedAt: now(),
           };
+          await resolveBlocked({
+            request,
+            candidate: candidateV2,
+            resolutionIdentity: existing.comparison.comparisonId,
+            state: 'RESOLVED',
+          });
           await publish(dependencies.events, event);
           return { status: 'COMPLETED', aggregate: existing, event };
         }
@@ -519,15 +661,22 @@ export const createComparisonV2Orchestrator = (
               effectiveAttempt = latest.attempt + 1;
             } else {
               const terminal = existingFailedOutcome(latest, now());
+              await resolveBlocked({
+                request,
+                candidate: candidateV2,
+                resolutionIdentity: latest.analysisRevisionId,
+                state: 'SUPERSEDED',
+              });
               await publish(dependencies.events, terminal.event);
               return terminal;
             }
           } else if (latest.state === 'COMPLETED') {
-            return {
-              status: 'BLOCKED',
+            return blocked({
+              request,
+              candidate: candidateV2,
               reason: 'CONTRACT_FAILURE',
               detail: 'Completed analysis has no aggregate.',
-            };
+            });
           }
         }
 
@@ -548,14 +697,15 @@ export const createComparisonV2Orchestrator = (
           attempt: request.attempt,
         });
       } catch {
-        return { status: 'BLOCKED', reason: 'SEMANTIC_BLOCKED' };
+        return blocked({ request, candidate: candidateV2, reason: 'SEMANTIC_BLOCKED' });
       }
       if (semantic.status === 'BLOCKED') {
-        return {
-          status: 'BLOCKED',
+        return blocked({
+          request,
+          candidate: candidateV2,
           reason: 'SEMANTIC_BLOCKED',
           detail: semanticFailureDetail(semantic),
-        };
+        });
       }
       if (semantic.status === 'FAILED') {
         const stored = await dependencies.repository.saveAnalysisRevision({
@@ -564,6 +714,12 @@ export const createComparisonV2Orchestrator = (
         });
         validateAnalysisRevisionV2(stored);
         const event = failedEvent(stored, now());
+        await resolveBlocked({
+          request,
+          candidate: candidateV2,
+          resolutionIdentity: stored.analysisRevisionId,
+          state: 'SUPERSEDED',
+        });
         await publish(dependencies.events, event);
         if (event.eventType === 'ComparisonIncompleteV2') {
           return { status: 'INCOMPLETE', analysis: stored, event };
@@ -582,13 +738,20 @@ export const createComparisonV2Orchestrator = (
           createdAt,
         });
       } catch {
-        return {
-          status: 'BLOCKED',
+        return blocked({
+          request,
+          candidate: candidateV2,
           reason: 'CONTRACT_FAILURE',
           detail: 'semantic aggregate validation failed',
-        };
+        });
       }
       const stored = await saveOrReuseCompletedAggregate(dependencies.repository, aggregate);
+      await resolveBlocked({
+        request,
+        candidate: candidateV2,
+        resolutionIdentity: stored.comparison.comparisonId,
+        state: 'RESOLVED',
+      });
       const event: ComparisonCompletedV2 = {
         eventType: 'ComparisonCompletedV2',
         contractVersion: COMPARISON_V2_CONTRACT_VERSION,

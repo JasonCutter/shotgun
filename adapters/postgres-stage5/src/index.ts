@@ -19,6 +19,7 @@ import type {
   ChangeSetReviewRepositoryPort,
   ComparisonV2ReviewDecisionResult,
   ComparisonV2ReviewDecisionWrite,
+  ComparisonV2PersistedDecision,
   ReviewV2RepositoryPort,
   ReviewDecisionWrite,
   OperationResolutionV2,
@@ -72,6 +73,10 @@ const normalizeOperationResolution = (value: OperationResolutionV2): OperationRe
 });
 
 type DecisionV2Row = QueryResultRow & {
+  readonly project_id: string;
+  readonly change_set_id: string;
+  readonly expected_revision_number: number;
+  readonly expected_content_digest: string;
   readonly decision_json: ComparisonV2ReviewDecisionWrite['decision'];
 };
 
@@ -1527,6 +1532,46 @@ export class PostgresChangeSetReviewV2Repository
     const draft = result.rows[0]?.change_set_json;
     if (draft) validateDraftChangeSetV2(draft);
     return draft;
+  }
+
+  async findDecisionById(decisionId: string): Promise<ComparisonV2PersistedDecision | undefined> {
+    const result = await this.pool.query<DecisionV2Row>(
+      `
+        SELECT project_id, change_set_id, expected_revision_number,
+               expected_content_digest, decision_json
+        FROM review.decisions_v2
+        WHERE decision_id = $1
+      `,
+      [decisionId],
+    );
+    const row = result.rows[0];
+    if (!row) return undefined;
+    const draft = await this.findDraftById(row.project_id, row.change_set_id);
+    if (!draft) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'The persisted v2 review decision has no Draft Change Set.',
+        module: 'postgres-stage5',
+        operation: 'find-review-decision-v2',
+      });
+    }
+    const manifestResult = await this.pool.query<ManifestV2Row>(
+      `
+        SELECT manifest_json
+        FROM review.approved_manifests_v2
+        WHERE project_id = $1 AND change_set_id = $2
+      `,
+      [row.project_id, row.change_set_id],
+    );
+    return {
+      projectId: row.project_id,
+      changeSetId: row.change_set_id,
+      expectedRevisionNumber: row.expected_revision_number,
+      expectedContentDigest: row.expected_content_digest,
+      draft,
+      decision: row.decision_json,
+      ...(manifestResult.rows[0] ? { manifest: manifestResult.rows[0].manifest_json } : {}),
+    };
   }
 
   async listDrafts(projectId: string): Promise<readonly DraftChangeSetV2[]> {

@@ -511,7 +511,7 @@ export const ReviewWorkspace = () => {
             contextRevision: contextRequest.contextRevision,
             reason: 'Refresh the authoritative V2 decision after retry reconciliation.',
           });
-          adoptRevalidatedContext(refreshed);
+          await adoptRevalidatedContext(refreshed);
         }
         announce(REVIEW_ANNOUNCEMENTS.RECOVERY);
         dispatch({ type: 'DECISION_RESOLVED' });

@@ -11,6 +11,7 @@ import {
   type ReviewFailureReasonV1,
   type ReviewQueueItemV1,
   type ReviewTargetKindV1,
+  type RevalidateReviewContextResultV1,
 } from '@shotgun/api-client';
 
 import { EmptyState } from '../components/empty-state.js';
@@ -165,6 +166,7 @@ export const ReviewWorkspace = () => {
     if (!deepLinkContext || !deepLinkRevision) return;
     if (state.selectedContextId === deepLinkContext && state.contextRevision === deepLinkRevision)
       return;
+    setManualContext(null);
     dispatch({
       type: 'SELECT_CONTEXT',
       reviewContextId: deepLinkContext,
@@ -218,6 +220,30 @@ export const ReviewWorkspace = () => {
     ),
   );
   const currentContext = manualContext ?? contextQuery.data;
+
+  const adoptRevalidatedContext = useCallback(
+    async (revalidated: RevalidateReviewContextResultV1) => {
+      // Revalidation returns a command result whose context is authoritative,
+      // but the workspace query contract is the normal context-read shape.
+      // Read that exact revision before adopting it so the selected route and
+      // detail query cannot remain on the stale presentation context.
+      const nextContext = await reviewClient.getReviewContext({
+        schemaVersion: '1.0.0',
+        reviewContextId: revalidated.context.reviewContextId,
+        contextRevision: revalidated.context.contextRevision,
+      });
+      setManualContext(nextContext);
+      dispatch({
+        type: 'SELECT_CONTEXT',
+        reviewContextId: nextContext.context.reviewContextId,
+        contextRevision: nextContext.context.contextRevision,
+      });
+      dispatch({ type: 'CONTEXT_RESOLVED' });
+      const firstItem = nextContext.context.items[0];
+      if (firstItem) dispatch({ type: 'SELECT_ITEM', reviewItemId: firstItem.reviewItemId });
+    },
+    [reviewClient],
+  );
 
   useEffect(() => {
     if (!contextRequest) return;
@@ -278,6 +304,9 @@ export const ReviewWorkspace = () => {
 
   const selectContext = useCallback(
     (item: ReviewQueueItemV1) => {
+      // A manually adopted revision is only valid for its selected context;
+      // never let it shadow a different queue selection while that query loads.
+      setManualContext(null);
       dispatch({
         type: 'SELECT_CONTEXT',
         reviewContextId: item.reviewContextId,
@@ -306,6 +335,14 @@ export const ReviewWorkspace = () => {
       },
       semanticDigest: string,
       intent: ReviewDecisionIntentV1,
+      v2Recovery?: {
+        readonly changeSetId: string;
+        readonly expectedRevisionNumber: number;
+        readonly expectedContentDigest: string;
+        readonly decision: 'APPROVE' | 'HOLD' | 'REJECT';
+        readonly reason: string;
+        readonly decisionId: string;
+      },
     ) => {
       const failure = error as { code?: string; category?: string; retryability?: string };
       if (failure?.category === 'OUTCOME_UNKNOWN' || failure?.code === 'OUTCOME_INDETERMINATE') {
@@ -314,6 +351,8 @@ export const ReviewWorkspace = () => {
           clientRequestId: request.clientRequestId,
           idempotencyKey: request.idempotencyKey,
           semanticDigest,
+          authority: v2Recovery ? 'V2' : 'V1',
+          ...(v2Recovery === undefined ? {} : { v2: v2Recovery }),
         });
         announce(REVIEW_ANNOUNCEMENTS.OUTCOME_UNKNOWN);
         return;
@@ -339,6 +378,7 @@ export const ReviewWorkspace = () => {
   const decide = useCallback(
     async (intent: ReviewDecisionIntentV1, reason: string, itemId: string) => {
       if (!currentContext || !contextRequest) return;
+      const isV2Decision = currentContext.context.targetKind === 'COMPARISON_V2_CHANGE_SET';
       const request = {
         schemaVersion: '1.0.0' as const,
         clientRequestId: freshRequestId('review-decide'),
@@ -359,21 +399,20 @@ export const ReviewWorkspace = () => {
       const semanticDigest = frontendReviewRecordDecisionsDigest(request);
       dispatch({ type: 'DECISION_STARTED' });
       try {
-        const result =
-          currentContext.context.targetKind === 'COMPARISON_V2_CHANGE_SET'
-            ? await reviewClient.recordComparisonV2Decision({
-                changeSetId: currentContext.context.targetId,
-                expectedRevisionNumber: Number(currentContext.context.targetRevision),
-                expectedContentDigest: currentContext.context.targetDigest,
-                decision: intent as 'APPROVE' | 'HOLD' | 'REJECT',
-                reason: reason.trim(),
-                // The browser supplies only a stable retry identity. Actor,
-                // authority, token and manifest remain server-owned.
-                decisionId: request.clientRequestId,
-              })
-            : await reviewClient.recordReviewDecisions(request);
+        const result = isV2Decision
+          ? await reviewClient.recordComparisonV2Decision({
+              changeSetId: currentContext.context.targetId,
+              expectedRevisionNumber: Number(currentContext.context.targetRevision),
+              expectedContentDigest: currentContext.context.targetDigest,
+              decision: intent as 'APPROVE' | 'HOLD' | 'REJECT',
+              reason: reason.trim(),
+              // The browser supplies only a stable retry identity. Actor,
+              // authority, token and manifest remain server-owned.
+              decisionId: request.clientRequestId,
+            })
+          : await reviewClient.recordReviewDecisions(request);
         dispatch({ type: 'DECISION_RESOLVED' });
-        const v2Decision = currentContext.context.targetKind === 'COMPARISON_V2_CHANGE_SET';
+        const v2Decision = isV2Decision;
         const v1Result = v2Decision
           ? undefined
           : (result as Awaited<ReturnType<typeof reviewClient.recordReviewDecisions>>);
@@ -394,38 +433,62 @@ export const ReviewWorkspace = () => {
                 ? REVIEW_ANNOUNCEMENTS.REVISION_RETURN_TARGET
                 : aggregateAnnouncement(v1Result?.aggregateState ?? 'PENDING');
         announce(`${REVIEW_ANNOUNCEMENTS.DECISION_RECORDED(intent)} ${suffix}`);
-        setManualContext({
-          schemaVersion: '1.0.0',
-          context: {
-            ...currentContext.context,
-            items: currentContext.context.items.map((item) =>
-              item.reviewItemId === itemId
-                ? {
-                    ...item,
-                    decisionState:
-                      intent === 'APPROVE'
-                        ? 'APPROVED'
-                        : intent === 'REJECT'
-                          ? 'REJECTED'
-                          : intent === 'REQUEST_REVISION'
-                            ? 'REVISION_REQUESTED'
-                            : 'ON_HOLD',
-                  }
-                : item,
-            ),
-            aggregateState,
-          },
-          decisions: v2Decision
-            ? currentContext.decisions
-            : [...currentContext.decisions, ...(v1Result?.decisions ?? [])],
-          comments: currentContext.comments,
-        });
-        await reviewClient.getReviewContext(contextRequest);
+        if (v2Decision) {
+          const refreshed = await reviewClient.revalidateReviewContext({
+            schemaVersion: '1.0.0',
+            clientRequestId: freshRequestId('review-revalidate-v2-decision'),
+            idempotencyKey: freshRequestId('idem'),
+            reviewContextId: contextRequest.reviewContextId,
+            contextRevision: contextRequest.contextRevision,
+            reason: 'Refresh the authoritative V2 decision in the Review presentation.',
+          });
+          await adoptRevalidatedContext(refreshed);
+        } else {
+          setManualContext({
+            schemaVersion: '1.0.0',
+            context: {
+              ...currentContext.context,
+              items: currentContext.context.items.map((item) =>
+                item.reviewItemId === itemId
+                  ? {
+                      ...item,
+                      decisionState:
+                        intent === 'APPROVE'
+                          ? 'APPROVED'
+                          : intent === 'REJECT'
+                            ? 'REJECTED'
+                            : intent === 'REQUEST_REVISION'
+                              ? 'REVISION_REQUESTED'
+                              : 'ON_HOLD',
+                    }
+                  : item,
+              ),
+              aggregateState,
+            },
+            decisions: [...currentContext.decisions, ...(v1Result?.decisions ?? [])],
+            comments: currentContext.comments,
+          });
+        }
       } catch (error) {
-        handleDecisionFailure(error, request, semanticDigest, intent);
+        handleDecisionFailure(
+          error,
+          request,
+          semanticDigest,
+          intent,
+          isV2Decision
+            ? {
+                changeSetId: currentContext.context.targetId,
+                expectedRevisionNumber: Number(currentContext.context.targetRevision),
+                expectedContentDigest: currentContext.context.targetDigest,
+                decision: intent as 'APPROVE' | 'HOLD' | 'REJECT',
+                reason: reason.trim(),
+                decisionId: request.clientRequestId,
+              }
+            : undefined,
+        );
       }
     },
-    [currentContext, contextRequest, reviewClient, handleDecisionFailure],
+    [currentContext, contextRequest, reviewClient, handleDecisionFailure, adoptRevalidatedContext],
   );
 
   const recoverOutcomeUnknown = useCallback(async () => {
@@ -433,6 +496,27 @@ export const ReviewWorkspace = () => {
     if (phase.kind !== 'OUTCOME_UNKNOWN') return;
     dispatch({ type: 'RECOVERY_STARTED' });
     try {
+      if (phase.v2) {
+        // V2 is not a Frontend Command Ledger command. Re-submit the same
+        // decision identity to the existing V2 authority; its repository
+        // replay check returns the original decision/manifest and the
+        // canonical handoff remains idempotent by manifest identity.
+        await reviewClient.recordComparisonV2Decision(phase.v2);
+        if (currentContext && contextRequest) {
+          const refreshed = await reviewClient.revalidateReviewContext({
+            schemaVersion: '1.0.0',
+            clientRequestId: freshRequestId('review-revalidate-v2-recovery'),
+            idempotencyKey: freshRequestId('idem'),
+            reviewContextId: contextRequest.reviewContextId,
+            contextRevision: contextRequest.contextRevision,
+            reason: 'Refresh the authoritative V2 decision after retry reconciliation.',
+          });
+          adoptRevalidatedContext(refreshed);
+        }
+        announce(REVIEW_ANNOUNCEMENTS.RECOVERY);
+        dispatch({ type: 'DECISION_RESOLVED' });
+        return;
+      }
       const resolved = await reviewClient.resolveCommandOutcome({
         schemaVersion: '1.0.0',
         clientRequestId: phase.clientRequestId,
@@ -485,7 +569,14 @@ export const ReviewWorkspace = () => {
       announce(REVIEW_ANNOUNCEMENTS.OUTCOME_UNKNOWN);
       dispatch({ type: 'RECOVERY_FINISHED' });
     }
-  }, [state.phase, reviewClient, announce, currentContext]);
+  }, [
+    state.phase,
+    reviewClient,
+    announce,
+    currentContext,
+    contextRequest,
+    adoptRevalidatedContext,
+  ]);
 
   if (!shell.activeProject) {
     return <EmptyState title="Review를 열려면 먼저 프로젝트를 만들어 주세요." />;
@@ -600,10 +691,7 @@ export const ReviewWorkspace = () => {
               onSetComment={(comment) => dispatch({ type: 'SET_COMMENT', comment })}
               onDecide={decide}
               onRecover={recoverOutcomeUnknown}
-              onOperationResolved={() => {
-                setManualContext(null);
-                void contextQuery.refetch();
-              }}
+              onContextRevalidated={adoptRevalidatedContext}
               outcomePhase={state.phase}
               selectedItemDetail={selectedItemDetail}
             />
@@ -640,7 +728,7 @@ type ReviewContextDetailProps = {
     itemId: string,
   ) => Promise<void>;
   readonly onRecover: () => Promise<void>;
-  readonly onOperationResolved: () => void;
+  readonly onContextRevalidated: (context: RevalidateReviewContextResultV1) => Promise<void>;
   readonly outcomePhase: { kind: 'OUTCOME_UNKNOWN'; clientRequestId: string } | { kind: string };
   readonly selectedItemDetail: {
     data?: Awaited<
@@ -663,7 +751,7 @@ const ReviewContextDetail = ({
   onSetComment,
   onDecide,
   onRecover,
-  onOperationResolved,
+  onContextRevalidated,
   outcomePhase,
   selectedItemDetail,
 }: ReviewContextDetailProps) => {
@@ -684,12 +772,9 @@ const ReviewContextDetail = ({
         contextRevision: contextRequest.contextRevision,
         reason: 'Re-review after target change.',
       });
-      // Revalidation returns a new revision; refresh the read path.
-      await reviewClient.getReviewContext({
-        schemaVersion: '1.0.0',
-        reviewContextId: result.context.reviewContextId,
-        contextRevision: result.context.contextRevision,
-      });
+      // Revalidation returns the authoritative new presentation Context. Do
+      // not discard it or keep the selected route pinned to the old revision.
+      await onContextRevalidated(result);
     } catch (error) {
       // The context query will surface the typed failure.
       void error;
@@ -852,8 +937,9 @@ const ReviewContextDetail = ({
       {selectedItem?.sourceItemKind === 'COMPARISON_V2_OPERATION_RESOLUTION' ? (
         <ComparisonV2OperationResolutionControls
           context={currentContext}
+          contextRequest={contextRequest}
           reviewClient={reviewClient}
-          onResolved={onOperationResolved}
+          onResolved={onContextRevalidated}
         />
       ) : (
         <ReviewDecisionControls
@@ -883,14 +969,16 @@ const itemDecisionIntent = (decisionState: string): ReviewDecisionIntentV1 =>
 
 const ComparisonV2OperationResolutionControls = ({
   context,
+  contextRequest,
   reviewClient,
   onResolved,
 }: {
   readonly context: NonNullable<
     Awaited<ReturnType<ReturnType<typeof createFrontendReviewClient>['getReviewContext']>>
   >;
+  readonly contextRequest: { readonly reviewContextId: string; readonly contextRevision: number };
   readonly reviewClient: ReturnType<typeof createFrontendReviewClient>;
-  readonly onResolved: () => void;
+  readonly onResolved: (context: RevalidateReviewContextResultV1) => Promise<void>;
 }) => {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -906,7 +994,15 @@ const ComparisonV2OperationResolutionControls = ({
         clientRequestId: freshRequestId('review-operation'),
         idempotencyKey: freshRequestId('idem'),
       });
-      onResolved();
+      const nextContext = await reviewClient.revalidateReviewContext({
+        schemaVersion: '1.0.0',
+        clientRequestId: freshRequestId('review-revalidate-v2-operation'),
+        idempotencyKey: freshRequestId('idem'),
+        reviewContextId: contextRequest.reviewContextId,
+        contextRevision: contextRequest.contextRevision,
+        reason: 'Review V2 operation resolution produced a new Draft revision.',
+      });
+      await onResolved(nextContext);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '운영 해결을 기록하지 못했습니다.');
     } finally {
@@ -982,7 +1078,9 @@ const ReviewDecisionControls = ({
           const item = items.find((candidate) => candidate.reviewItemId === itemId);
           if (!item) return null;
           const terminal = INTENT_TERMINAL[draft.intent];
-          const canSubmit = !terminal || draft.reason.trim().length > 0;
+          const requiresReason =
+            terminal || context.context.targetKind === 'COMPARISON_V2_CHANGE_SET';
+          const canSubmit = !requiresReason || draft.reason.trim().length > 0;
           return (
             <li key={itemId} className={canSubmit ? undefined : 'review-invalid'}>
               <p>
@@ -997,8 +1095,12 @@ const ReviewDecisionControls = ({
                   aria-label={`${item.label} 사유`}
                 />
               </label>
-              {terminal && draft.reason.trim().length === 0 ? (
-                <p className="review-invalid-hint">종결 결정에는 사유가 필요합니다.</p>
+              {requiresReason && draft.reason.trim().length === 0 ? (
+                <p className="review-invalid-hint">
+                  {context.context.targetKind === 'COMPARISON_V2_CHANGE_SET'
+                    ? 'V2 결정에는 사유가 필요합니다.'
+                    : '종결 결정에는 사유가 필요합니다.'}
+                </p>
               ) : null}
               <div className="review-decision-actions">
                 <button

@@ -10,8 +10,8 @@ import type {
  * This machine owns only route selection, focus and UNSENT decision input
  * (item selections, reasons, comments). It never computes dependency graphs,
  * capabilities, Approval purpose or aggregate state — the server is the
- * Review authority. Recovery resolves by the original command identity and
- * never automatically resubmits a decision.
+ * Review authority. V1 recovery resolves the existing command outcome; V2
+ * recovery replays the original V2 decision identity through its own authority.
  */
 
 export type ReviewWorkspacePhase =
@@ -31,6 +31,15 @@ export type ReviewWorkspacePhase =
       clientRequestId: string;
       idempotencyKey: string;
       semanticDigest: string;
+      authority?: 'V1' | 'V2';
+      v2?: {
+        readonly changeSetId: string;
+        readonly expectedRevisionNumber: number;
+        readonly expectedContentDigest: string;
+        readonly decision: 'APPROVE' | 'HOLD' | 'REJECT';
+        readonly reason: string;
+        readonly decisionId: string;
+      };
     }
   | { kind: 'BLOCKED'; message: string };
 
@@ -79,6 +88,15 @@ export type ReviewWorkspaceAction =
       clientRequestId: string;
       idempotencyKey: string;
       semanticDigest: string;
+      authority?: 'V1' | 'V2';
+      v2?: {
+        readonly changeSetId: string;
+        readonly expectedRevisionNumber: number;
+        readonly expectedContentDigest: string;
+        readonly decision: 'APPROVE' | 'HOLD' | 'REJECT';
+        readonly reason: string;
+        readonly decisionId: string;
+      };
     }
   | { type: 'RECOVERY_STARTED' }
   | { type: 'RECOVERY_FINISHED' }
@@ -208,6 +226,8 @@ export const reduceReviewWorkspaceState = (
           clientRequestId: action.clientRequestId,
           idempotencyKey: action.idempotencyKey,
           semanticDigest: action.semanticDigest,
+          ...(action.authority === undefined ? {} : { authority: action.authority }),
+          ...(action.v2 === undefined ? {} : { v2: action.v2 }),
         },
         recovery: { kind: 'RESOLVING', clientRequestId: action.clientRequestId },
       };

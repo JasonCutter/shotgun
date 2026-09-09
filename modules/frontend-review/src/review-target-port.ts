@@ -2,6 +2,7 @@ import type {
   ReviewContextRevisionV1,
   ReviewEvidenceEntryV1,
   ReviewImpactEntryV1,
+  ReviewAggregateStateV1,
   ReviewSourceItemKindV1,
   ReviewTargetKindV1,
   DiscoveryReentryFreshnessAssessmentV1,
@@ -35,6 +36,8 @@ export type ReviewSourceTargetV1 = {
   readonly effectiveProjectId: string;
   readonly updatedAt: string;
   readonly source: ReviewSourceKindV1;
+  /** Optional owner-domain state used by authoritative non-V1 Review targets. */
+  readonly authoritativeAggregateState?: ReviewAggregateStateV1;
 };
 
 export type ReviewContextMaterializationInputV1 = {

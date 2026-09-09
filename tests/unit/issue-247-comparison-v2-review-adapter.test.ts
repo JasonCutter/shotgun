@@ -132,4 +132,55 @@ describe('Issue #247 Comparison V2 Review presentation', () => {
       }),
     ).rejects.toMatchObject({ apiCode: 'REVIEW_DECISION_NOT_ALLOWED' });
   });
+
+  it('keeps an authoritative V2 HOLD visible and actionable without a FE decision shadow', async () => {
+    const fixture = createAdr163ReviewFixture({
+      suffix: 'issue-247-hold',
+      claimText: 'A V2 draft explicitly placed on hold.',
+    });
+    let draft: DraftChangeSetV2 = {
+      ...fixture.draft,
+      operation: 'ADD_CLAIM',
+      reviewRecommendation: 'ADD_CLAIM',
+      status: 'ON_HOLD',
+    };
+    const reader: ComparisonV2ReviewSourceReader = {
+      async listDrafts(projectId) {
+        return projectId === draft.projectId ? [draft] : [];
+      },
+      async findDraft(projectId, changeSetId) {
+        return projectId === draft.projectId && changeSetId === draft.changeSetId
+          ? draft
+          : undefined;
+      },
+    };
+    const coordinator = new FrontendReviewProductCoordinator(
+      new InMemoryFrontendReviewStore(),
+      new InMemoryFrontendCommandGateway(),
+      [new ComparisonV2ReviewTargetAdapter(reader)],
+    );
+    const queue = await coordinator.listReviewQueue(scope, {
+      schemaVersion: '1.0.0',
+      pageSize: 10,
+      attentionReasons: ['REQUIRES_ACTION'],
+    });
+    expect(queue.items).toHaveLength(1);
+    expect(queue.items[0]?.aggregateState).toBe('ON_HOLD');
+
+    const context = await coordinator.getReviewContext(scope, {
+      schemaVersion: '1.0.0',
+      reviewContextId: queue.items[0]!.reviewContextId,
+      contextRevision: queue.items[0]!.contextRevision,
+    });
+    expect(context.context.aggregateState).toBe('ON_HOLD');
+    expect(context.decisions).toEqual([]);
+
+    draft = { ...draft, status: 'APPROVED' };
+    const approvedQueue = await coordinator.listReviewQueue(scope, {
+      schemaVersion: '1.0.0',
+      pageSize: 10,
+      attentionReasons: ['REQUIRES_ACTION'],
+    });
+    expect(approvedQueue.items).toEqual([]);
+  });
 });

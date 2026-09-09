@@ -627,6 +627,16 @@ export class ComparisonV2ReviewTargetAdapter implements ReviewTargetAdapterPort 
       effectiveProjectId: draft.projectId,
       updatedAt: draft.updatedAt,
       source: 'COMPARISON_V2_CHANGE_SET',
+      authoritativeAggregateState:
+        draft.status === 'APPROVED'
+          ? 'APPROVED_READY'
+          : draft.status === 'REJECTED'
+            ? 'REJECTED'
+            : draft.status === 'ON_HOLD'
+              ? 'ON_HOLD'
+              : draft.status === 'STALE'
+                ? 'STALE'
+                : 'PENDING',
     };
   }
 

@@ -67,6 +67,14 @@ export type FrontendReviewClient = {
     params: RecordReviewDecisionsRequestV1,
     options?: { readonly signal?: AbortSignal },
   ): Promise<RecordReviewDecisionsResultV1>;
+  recordComparisonV2Decision(
+    params: ComparisonV2DecisionRequest,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<ComparisonV2DecisionResult>;
+  resolveComparisonV2Operation(
+    params: ComparisonV2OperationResolutionRequest,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<ComparisonV2OperationResolutionResult>;
   addReviewComment(
     params: AddReviewCommentRequestV1,
     options?: { readonly signal?: AbortSignal },
@@ -91,6 +99,40 @@ export type FrontendReviewClient = {
   ): Promise<CreateReversalDraftChangeSetResultV1>;
 };
 
+export type ComparisonV2DecisionRequest = {
+  readonly changeSetId: string;
+  readonly expectedRevisionNumber: number;
+  readonly expectedContentDigest: string;
+  readonly decision: 'APPROVE' | 'HOLD' | 'REJECT';
+  readonly reason: string;
+  readonly decisionId: string;
+};
+
+export type ComparisonV2DecisionResult = {
+  readonly commandStatus: string;
+  readonly decision: {
+    readonly decision: 'APPROVE' | 'HOLD' | 'REJECT';
+    readonly decisionId: string;
+  };
+  readonly changeSet: unknown;
+  readonly manifest?: unknown;
+  readonly handoff?: unknown;
+};
+
+export type ComparisonV2OperationResolutionRequest = {
+  readonly changeSetId: string;
+  readonly expectedDraftRevision: number;
+  readonly expectedDraftDigest: string;
+  readonly chosenOperation: 'ADD_CLAIM' | 'NO_OP';
+  readonly clientRequestId: string;
+  readonly idempotencyKey: string;
+};
+
+export type ComparisonV2OperationResolutionResult = {
+  readonly commandStatus: string;
+  readonly resolution: unknown;
+};
+
 const readJson = async (response: Response): Promise<unknown> => {
   try {
     return await response.json();
@@ -113,6 +155,48 @@ const identityMismatch = (message: string): never => {
 
 const invalidReversalResponse = (message: string): never => {
   throw new FrontendContractError('UNSUPPORTED_SCHEMA', message);
+};
+
+const decodeComparisonV2DecisionResult = (value: unknown): ComparisonV2DecisionResult => {
+  if (!isRecord(value)) return identityMismatch('Comparison V2 decision result must be an object.');
+  const decision = value['decision'];
+  if (!isRecord(decision))
+    return identityMismatch('Comparison V2 decision result is missing its decision.');
+  const decisionKind = decision['decision'];
+  const decisionId = decision['decisionId'];
+  if (
+    !['APPROVE', 'HOLD', 'REJECT'].includes(String(decisionKind)) ||
+    typeof decisionId !== 'string' ||
+    decisionId.trim().length === 0
+  ) {
+    return identityMismatch('Comparison V2 decision result has an invalid decision identity.');
+  }
+  if (typeof value['commandStatus'] !== 'string' || value['changeSet'] === undefined) {
+    return identityMismatch('Comparison V2 decision result is incomplete.');
+  }
+  return {
+    commandStatus: value['commandStatus'],
+    decision: {
+      decision: decisionKind as ComparisonV2DecisionResult['decision']['decision'],
+      decisionId,
+    },
+    changeSet: value['changeSet'],
+    ...(value['manifest'] === undefined ? {} : { manifest: value['manifest'] }),
+    ...(value['handoff'] === undefined ? {} : { handoff: value['handoff'] }),
+  };
+};
+
+const decodeComparisonV2OperationResolutionResult = (
+  value: unknown,
+): ComparisonV2OperationResolutionResult => {
+  if (
+    !isRecord(value) ||
+    typeof value['commandStatus'] !== 'string' ||
+    value['resolution'] === undefined
+  ) {
+    return identityMismatch('Comparison V2 operation resolution result is incomplete.');
+  }
+  return { commandStatus: value['commandStatus'], resolution: value['resolution'] };
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -224,6 +308,20 @@ export const createFrontendReviewClient = (
         identityMismatch('Decisions result does not match the requested Review command.');
       }
       return result;
+    },
+    async recordComparisonV2Decision(params, requestOptions) {
+      const response = await mutate('/reviews/v2/decision', params, requestOptions?.signal);
+      const body = await assertOk(response);
+      return decodeComparisonV2DecisionResult(body);
+    },
+    async resolveComparisonV2Operation(params, requestOptions) {
+      const response = await mutate(
+        '/reviews/v2/resolve-operation',
+        params,
+        requestOptions?.signal,
+      );
+      const body = await assertOk(response);
+      return decodeComparisonV2OperationResolutionResult(body);
     },
     async addReviewComment(params, requestOptions) {
       const response = await mutate(

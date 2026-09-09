@@ -20,7 +20,10 @@ export type FrontendReviewScopeV1 = {
 };
 
 export type ReviewSourceKindV1 =
-  'FE_P3_S2_SUBMISSION' | 'DISCOVERY_CANDIDATE' | 'USER_DIRECTIVE_PROPOSAL';
+  | 'FE_P3_S2_SUBMISSION'
+  | 'DISCOVERY_CANDIDATE'
+  | 'USER_DIRECTIVE_PROPOSAL'
+  | 'COMPARISON_V2_CHANGE_SET';
 
 export type ReviewSourceTargetV1 = {
   readonly reviewResourceId: string;

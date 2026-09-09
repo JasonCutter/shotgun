@@ -14,6 +14,10 @@ import {
   type DiscoveryReviewEvidenceLineageRefV1,
   type DiscoveryReviewLineageV1,
   type DiscoveryReentryFreshnessAssessmentV1,
+  type DraftChangeSetV2,
+  type EvidenceSpan,
+  type SecuritySensitivity,
+  type ClaimCandidate,
 } from '../../../packages/contracts/src/index.js';
 import type {
   ReviewRepositoryBoundaryPort,
@@ -37,6 +41,9 @@ import {
 import type { InMemoryFrontendKnowledgeDraftRepository } from '../../frontend-knowledge-draft-in-memory/src/index.js';
 import type { FrontendKnowledgeDraftChangeSetV1 } from '../../../packages/contracts/src/index.js';
 import type { FrontendKnowledgeOperationV1 } from '../../../packages/contracts/src/index.js';
+import type { ReviewV2RepositoryPort } from '../../../modules/change-set-review/src/index.js';
+import type { CandidateRepositoryPort } from '../../../modules/candidate-generation/src/index.js';
+import type { EvidenceRepositoryPort } from '../../../modules/evidence/src/index.js';
 
 /**
  * FE-P4-S1 in-memory Review store and target adapters (ADR-128 parity
@@ -576,6 +583,310 @@ export class DraftReviewTargetAdapter implements ReviewTargetAdapterPort {
     };
   }
 }
+
+/** Read-only source boundary for authoritative Stage 5 V2 Review drafts. */
+export type ComparisonV2ReviewSourceReader = {
+  listDrafts(projectId: string): Promise<readonly DraftChangeSetV2[]>;
+  findDraft(projectId: string, changeSetId: string): Promise<DraftChangeSetV2 | undefined>;
+  findCandidate?(projectId: string, candidateId: string): Promise<ClaimCandidate | undefined>;
+  findEvidence?(projectId: string, evidenceId: string): Promise<EvidenceSpan | undefined>;
+};
+
+/**
+ * Product Review presentation for `review.change_sets_v2`. This adapter never
+ * writes or shadows the V2 draft: it projects the authoritative row into the
+ * existing queue/context/detail read surface only.
+ */
+export class ComparisonV2ReviewTargetAdapter implements ReviewTargetAdapterPort {
+  readonly targetKind = 'COMPARISON_V2_CHANGE_SET' as const;
+  readonly sourceItemKind = 'COMPARISON_V2_CHANGE_SET' as const;
+
+  constructor(private readonly reader: ComparisonV2ReviewSourceReader) {}
+
+  private visible(draft: DraftChangeSetV2, scope?: FrontendReviewScopeV1): boolean {
+    if (!scope) return true;
+    if (draft.projectId !== scope.activeProjectId) return false;
+    if (draft.accessScope.some((entry) => !scope.accessScope.includes(entry))) return false;
+    return sensitivityRank(scope.sensitivityClearance) >= sensitivityRank(draft.sensitivity);
+  }
+
+  private actionable(draft: DraftChangeSetV2): boolean {
+    return (
+      draft.status === 'PENDING_REVIEW' || draft.status === 'ON_HOLD' || draft.status === 'STALE'
+    );
+  }
+
+  private sourceFor(draft: DraftChangeSetV2): ReviewSourceTargetV1 {
+    return {
+      reviewResourceId: draft.changeSetId,
+      targetId: draft.changeSetId,
+      targetRevision: String(draft.revisionNumber),
+      targetDigest: draft.contentDigest,
+      targetLabel: `Comparison V2 ${draft.candidate.id} (revision ${draft.revisionNumber})`,
+      resourceProjectId: draft.projectId,
+      effectiveProjectId: draft.projectId,
+      updatedAt: draft.updatedAt,
+      source: 'COMPARISON_V2_CHANGE_SET',
+    };
+  }
+
+  async listSourceTargets(
+    projectId: string,
+    scope?: FrontendReviewScopeV1,
+  ): Promise<readonly ReviewSourceTargetV1[]> {
+    const drafts = await this.reader.listDrafts(projectId);
+    return drafts
+      .filter((draft) => this.actionable(draft) && this.visible(draft, scope))
+      .map((draft) => this.sourceFor(draft));
+  }
+
+  async findSourceTarget(
+    projectId: string,
+    reviewResourceId: string,
+    scope?: FrontendReviewScopeV1,
+  ): Promise<ReviewSourceTargetV1 | undefined> {
+    const draft = await this.reader.findDraft(projectId, reviewResourceId);
+    return draft && this.visible(draft, scope) ? this.sourceFor(draft) : undefined;
+  }
+
+  async materializeContext(
+    input: ReviewContextMaterializationInputV1,
+  ): Promise<ReviewMaterializedContextV1> {
+    const draft = await this.reader.findDraft(input.scope.activeProjectId, input.source.targetId);
+    if (!draft || !this.visible(draft, input.scope)) {
+      throw new FrontendContractError(
+        'REVIEW_CONTEXT_NOT_FOUND',
+        'The v2 Review target was not found.',
+      );
+    }
+    if (this.reader.findCandidate) {
+      const candidate = await this.reader.findCandidate(
+        input.scope.activeProjectId,
+        draft.candidate.id,
+      );
+      if (
+        !candidate ||
+        candidate.candidateId !== draft.candidate.id ||
+        candidate.revisionNumber !== draft.candidate.revision ||
+        candidate.sourceVersionId !== draft.candidate.sourceVersionId ||
+        candidate.evidenceIds.length !== draft.candidate.evidenceIds.length ||
+        candidate.evidenceIds.some((id, index) => id !== draft.candidate.evidenceIds[index])
+      ) {
+        throw new FrontendContractError(
+          'REVIEW_TARGET_CHANGED',
+          'The Comparison V2 Candidate lineage is no longer authoritative.',
+        );
+      }
+    }
+    const operationResolutionRequired = draft.operation === 'MODIFY_REVIEW';
+    const sourceItemKind = operationResolutionRequired
+      ? 'COMPARISON_V2_OPERATION_RESOLUTION'
+      : 'COMPARISON_V2_CHANGE_SET';
+    const reviewItemId = `comparison-v2:${draft.changeSetId}`;
+    const evidenceDigest = sha256Text(stableJson(draft.evidenceIds));
+    const item: ReviewItemV1 = {
+      schemaVersion: '1.0.0',
+      reviewItemId,
+      sourceItemKind,
+      sourceItemId: draft.changeSetId,
+      sourceItemRevision: String(draft.revisionNumber),
+      sourceItemDigest: draft.contentDigest,
+      targetRef: {
+        schemaVersion: '1.0.0',
+        targetKind: 'COMPARISON_V2_CHANGE_SET',
+        targetId: draft.changeSetId,
+        targetRevision: String(draft.revisionNumber),
+      },
+      label: `Candidate ${draft.candidate.id} · ${draft.reviewRecommendation}`,
+      after: {
+        schemaVersion: '1.0.0',
+        representationKind: 'OPAQUE_TEXT',
+        summary: `${draft.disposition} / ${draft.operation}`,
+        detailText: JSON.stringify({
+          comparisonId: draft.comparisonId,
+          candidateId: draft.candidate.id,
+          revision: draft.revisionNumber,
+          contentDigest: draft.contentDigest,
+          canonicalSnapshot: draft.canonicalSnapshot,
+          freshnessIdentity: draft.freshnessIdentity,
+        }),
+      },
+      rationale: operationResolutionRequired
+        ? 'ADR-163 operation resolution is required before V2 approval.'
+        : `Comparison V2 recommends ${draft.reviewRecommendation}.`,
+      expectedImpact: `Canonical operation ${draft.operation} for Candidate ${draft.candidate.id}.`,
+      artifactRefs: {
+        schemaVersion: '1.0.0',
+        evidence:
+          draft.evidenceIds.length === 0
+            ? undefined
+            : {
+                schemaVersion: '1.0.0',
+                artifactKind: 'EVIDENCE',
+                artifactId: draft.evidenceIds[0] ?? 'comparison-v2-evidence',
+                artifactRevision: String(draft.revisionNumber),
+                digest: evidenceDigest,
+              },
+      },
+      allowedDecisions: operationResolutionRequired
+        ? ['HOLD', 'REJECT']
+        : ['APPROVE', 'REJECT', 'HOLD'],
+      decisionState:
+        draft.status === 'APPROVED'
+          ? 'APPROVED'
+          : draft.status === 'REJECTED'
+            ? 'REJECTED'
+            : draft.status === 'ON_HOLD'
+              ? 'ON_HOLD'
+              : 'PENDING',
+      sensitivity: reviewSensitivity(draft.sensitivity),
+      maskedFields: [],
+      accessMasking: 'VISIBLE',
+    };
+    const context: ReviewContextRevisionV1 = {
+      schemaVersion: '1.0.0',
+      reviewContextId: input.reviewContextId,
+      contextRevision: input.contextRevision,
+      reviewResourceId: input.source.reviewResourceId,
+      targetKind: 'COMPARISON_V2_CHANGE_SET',
+      targetId: draft.changeSetId,
+      targetRevision: String(draft.revisionNumber),
+      targetDigest: draft.contentDigest,
+      resourceProjectId: draft.projectId,
+      effectiveProjectId: draft.projectId,
+      accessRevision: input.scope.accessRevision,
+      policyContextRevision: input.scope.policyContextRevision,
+      canonicalBase: {
+        schemaVersion: '1.0.0',
+        snapshotId: draft.canonicalSnapshot.id,
+        revision: String(draft.canonicalSnapshot.version),
+        digest: draft.canonicalSnapshot.digest,
+      },
+      artifactRefs: item.artifactRefs,
+      items: [item],
+      dependencies: [],
+      aggregateState:
+        draft.status === 'STALE'
+          ? 'STALE'
+          : draft.status === 'APPROVED'
+            ? 'APPROVED_READY'
+            : draft.status === 'REJECTED'
+              ? 'REJECTED'
+              : draft.status === 'ON_HOLD'
+                ? 'ON_HOLD'
+                : 'PENDING',
+      capabilities: reviewCapabilitiesFor('COMPARISON_V2_CHANGE_SET'),
+      generatedAt: input.generatedAt,
+    };
+    return { context };
+  }
+
+  async readEvidence(input: {
+    scope: FrontendReviewScopeV1;
+    source: ReviewSourceTargetV1;
+    reviewItemId: string;
+  }): Promise<readonly ReviewEvidenceEntryV1[]> {
+    if (!this.reader.findEvidence) return [];
+    const draft = await this.reader.findDraft(input.scope.activeProjectId, input.source.targetId);
+    if (!draft || !this.visible(draft, input.scope)) return [];
+    const evidence: ReviewEvidenceEntryV1[] = [];
+    for (const evidenceId of draft.evidenceIds) {
+      const span = await this.reader.findEvidence(input.scope.activeProjectId, evidenceId);
+      if (!span || span.projectId !== input.scope.activeProjectId) continue;
+      if (span.accessScope.some((entry) => !input.scope.accessScope.includes(entry))) continue;
+      if (sensitivityRank(input.scope.sensitivityClearance) < sensitivityRank(span.sensitivity))
+        continue;
+      evidence.push({
+        schemaVersion: '1.0.0',
+        sourceId: span.sourceId,
+        sourceVersionId: span.sourceVersionId,
+        evidenceSpanId: span.evidenceId,
+        snippet: span.quote.exact,
+      });
+    }
+    return evidence;
+  }
+
+  async readImpact(input: {
+    scope: FrontendReviewScopeV1;
+    source: ReviewSourceTargetV1;
+    reviewItemId: string;
+  }): Promise<readonly ReviewImpactEntryV1[]> {
+    const draft = await this.reader.findDraft(input.scope.activeProjectId, input.source.targetId);
+    if (!draft || !this.visible(draft, input.scope)) return [];
+    return [
+      {
+        schemaVersion: '1.0.0',
+        impactId: `comparison-v2-impact:${draft.changeSetId}:${draft.revisionNumber}`,
+        targetKind: 'COMPARISON_V2_CHANGE_SET',
+        targetId: draft.changeSetId,
+        description: `Canonical operation ${draft.operation} (${draft.reviewRecommendation}).`,
+      },
+    ];
+  }
+
+  async currentEvidenceDigest(input: {
+    scope: FrontendReviewScopeV1;
+    source: ReviewSourceTargetV1;
+  }): Promise<string | undefined> {
+    const draft = await this.reader.findDraft(input.scope.activeProjectId, input.source.targetId);
+    if (!draft || draft.evidenceIds.length === 0 || !this.visible(draft, input.scope))
+      return undefined;
+    return sha256Text(stableJson(draft.evidenceIds));
+  }
+}
+
+const sensitivityRank = (value: string | undefined): number => {
+  switch (value) {
+    case 'public':
+      return 0;
+    case 'internal':
+      return 1;
+    case 'private':
+      return 2;
+    case 'restricted':
+      return 3;
+    default:
+      return -1;
+  }
+};
+
+const reviewSensitivity = (value: SecuritySensitivity): ReviewItemV1['sensitivity'] => {
+  switch (value) {
+    case 'restricted':
+      return 'RESTRICTED';
+    case 'private':
+      return 'SENSITIVE';
+    default:
+      return 'NORMAL';
+  }
+};
+
+export const createInMemoryComparisonV2ReviewSourceReader = (
+  repository: Pick<ReviewV2RepositoryPort, 'listDrafts' | 'findDraftById'>,
+  evidence?: Pick<EvidenceRepositoryPort, 'findById'>,
+  candidate?: Pick<CandidateRepositoryPort, 'findById'>,
+): ComparisonV2ReviewSourceReader => ({
+  async listDrafts(projectId) {
+    if (!repository.listDrafts) return [];
+    return repository.listDrafts(projectId);
+  },
+  async findDraft(projectId, changeSetId) {
+    return repository.findDraftById?.(projectId, changeSetId);
+  },
+  ...(evidence
+    ? {
+        findEvidence: (projectId: string, evidenceId: string) =>
+          evidence.findById(projectId, evidenceId),
+      }
+    : {}),
+  ...(candidate
+    ? {
+        findCandidate: (projectId: string, candidateId: string) =>
+          candidate.findById(projectId, candidateId),
+      }
+    : {}),
+});
 
 // ---------------------------------------------------------------------------
 // Discovery Candidate target adapter

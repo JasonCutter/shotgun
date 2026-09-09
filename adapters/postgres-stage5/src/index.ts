@@ -1529,6 +1529,21 @@ export class PostgresChangeSetReviewV2Repository
     return draft;
   }
 
+  async listDrafts(projectId: string): Promise<readonly DraftChangeSetV2[]> {
+    const result = await this.pool.query<ChangeSetV2Row>(
+      `
+        SELECT change_set_json
+        FROM review.change_sets_v2
+        WHERE project_id = $1
+        ORDER BY updated_at, change_set_id
+      `,
+      [projectId],
+    );
+    const drafts = result.rows.map((row) => row.change_set_json);
+    for (const draft of drafts) validateDraftChangeSetV2(draft);
+    return drafts;
+  }
+
   async findDraftByComparisonId(
     projectId: string,
     comparisonId: string,

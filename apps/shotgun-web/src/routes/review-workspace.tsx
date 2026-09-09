@@ -46,6 +46,7 @@ const TARGET_KIND_LABELS: Record<ReviewTargetKindV1, string> = {
   KNOWLEDGE_DRAFT_CHANGE_SET: '지식 초안 변경 집합',
   DISCOVERY_CANDIDATE: '발견 후보',
   USER_DIRECTIVE_PROPOSAL: '사용자 지시 제안',
+  COMPARISON_V2_CHANGE_SET: '시맨틱 비교 V2 변경 집합',
 };
 
 const INTENT_LABELS: Record<ReviewDecisionIntentV1, string> = {
@@ -358,19 +359,41 @@ export const ReviewWorkspace = () => {
       const semanticDigest = frontendReviewRecordDecisionsDigest(request);
       dispatch({ type: 'DECISION_STARTED' });
       try {
-        const result = await reviewClient.recordReviewDecisions(request);
+        const result =
+          currentContext.context.targetKind === 'COMPARISON_V2_CHANGE_SET'
+            ? await reviewClient.recordComparisonV2Decision({
+                changeSetId: currentContext.context.targetId,
+                expectedRevisionNumber: Number(currentContext.context.targetRevision),
+                expectedContentDigest: currentContext.context.targetDigest,
+                decision: intent as 'APPROVE' | 'HOLD' | 'REJECT',
+                reason: reason.trim(),
+                // The browser supplies only a stable retry identity. Actor,
+                // authority, token and manifest remain server-owned.
+                decisionId: request.clientRequestId,
+              })
+            : await reviewClient.recordReviewDecisions(request);
         dispatch({ type: 'DECISION_RESOLVED' });
-        announce(
-          `${REVIEW_ANNOUNCEMENTS.DECISION_RECORDED(intent)} ${
-            result.acceptedForAuthoring
-              ? REVIEW_ANNOUNCEMENTS.ACCEPTED_FOR_AUTHORING
-              : result.approvals?.[0]
-                ? REVIEW_ANNOUNCEMENTS.APPROVAL_ISSUED(result.approvals[0].purpose)
-                : result.revisionRequestReturnTarget
-                  ? REVIEW_ANNOUNCEMENTS.REVISION_RETURN_TARGET
-                  : aggregateAnnouncement(result.aggregateState)
-          }`,
-        );
+        const v2Decision = currentContext.context.targetKind === 'COMPARISON_V2_CHANGE_SET';
+        const v1Result = v2Decision
+          ? undefined
+          : (result as Awaited<ReturnType<typeof reviewClient.recordReviewDecisions>>);
+        const aggregateState = v2Decision
+          ? intent === 'APPROVE'
+            ? 'APPROVED_READY'
+            : intent === 'REJECT'
+              ? 'REJECTED'
+              : 'ON_HOLD'
+          : (v1Result?.aggregateState ?? 'PENDING');
+        const suffix = v2Decision
+          ? aggregateAnnouncement(aggregateState)
+          : v1Result?.acceptedForAuthoring
+            ? REVIEW_ANNOUNCEMENTS.ACCEPTED_FOR_AUTHORING
+            : v1Result?.approvals?.[0]
+              ? REVIEW_ANNOUNCEMENTS.APPROVAL_ISSUED(v1Result.approvals[0].purpose)
+              : v1Result?.revisionRequestReturnTarget
+                ? REVIEW_ANNOUNCEMENTS.REVISION_RETURN_TARGET
+                : aggregateAnnouncement(v1Result?.aggregateState ?? 'PENDING');
+        announce(`${REVIEW_ANNOUNCEMENTS.DECISION_RECORDED(intent)} ${suffix}`);
         setManualContext({
           schemaVersion: '1.0.0',
           context: {
@@ -390,9 +413,11 @@ export const ReviewWorkspace = () => {
                   }
                 : item,
             ),
-            aggregateState: result.aggregateState,
+            aggregateState,
           },
-          decisions: [...currentContext.decisions, ...result.decisions],
+          decisions: v2Decision
+            ? currentContext.decisions
+            : [...currentContext.decisions, ...(v1Result?.decisions ?? [])],
           comments: currentContext.comments,
         });
         await reviewClient.getReviewContext(contextRequest);
@@ -575,6 +600,10 @@ export const ReviewWorkspace = () => {
               onSetComment={(comment) => dispatch({ type: 'SET_COMMENT', comment })}
               onDecide={decide}
               onRecover={recoverOutcomeUnknown}
+              onOperationResolved={() => {
+                setManualContext(null);
+                void contextQuery.refetch();
+              }}
               outcomePhase={state.phase}
               selectedItemDetail={selectedItemDetail}
             />
@@ -611,6 +640,7 @@ type ReviewContextDetailProps = {
     itemId: string,
   ) => Promise<void>;
   readonly onRecover: () => Promise<void>;
+  readonly onOperationResolved: () => void;
   readonly outcomePhase: { kind: 'OUTCOME_UNKNOWN'; clientRequestId: string } | { kind: string };
   readonly selectedItemDetail: {
     data?: Awaited<
@@ -633,6 +663,7 @@ const ReviewContextDetail = ({
   onSetComment,
   onDecide,
   onRecover,
+  onOperationResolved,
   outcomePhase,
   selectedItemDetail,
 }: ReviewContextDetailProps) => {
@@ -818,15 +849,23 @@ const ReviewContextDetail = ({
         </section>
       ) : null}
 
-      <ReviewDecisionControls
-        context={currentContext}
-        selectedItemId={selectedItemId}
-        drafts={drafts}
-        comment={comment}
-        onSetDraft={onSetDraft}
-        onSetComment={onSetComment}
-        onDecide={onDecide}
-      />
+      {selectedItem?.sourceItemKind === 'COMPARISON_V2_OPERATION_RESOLUTION' ? (
+        <ComparisonV2OperationResolutionControls
+          context={currentContext}
+          reviewClient={reviewClient}
+          onResolved={onOperationResolved}
+        />
+      ) : (
+        <ReviewDecisionControls
+          context={currentContext}
+          selectedItemId={selectedItemId}
+          drafts={drafts}
+          comment={comment}
+          onSetDraft={onSetDraft}
+          onSetComment={onSetComment}
+          onDecide={onDecide}
+        />
+      )}
 
       <ReviewHistory currentContext={currentContext} />
     </>
@@ -841,6 +880,55 @@ const itemDecisionIntent = (decisionState: string): ReviewDecisionIntentV1 =>
       : decisionState === 'REVISION_REQUESTED'
         ? 'REQUEST_REVISION'
         : 'HOLD';
+
+const ComparisonV2OperationResolutionControls = ({
+  context,
+  reviewClient,
+  onResolved,
+}: {
+  readonly context: NonNullable<
+    Awaited<ReturnType<ReturnType<typeof createFrontendReviewClient>['getReviewContext']>>
+  >;
+  readonly reviewClient: ReturnType<typeof createFrontendReviewClient>;
+  readonly onResolved: () => void;
+}) => {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const resolve = async (chosenOperation: 'ADD_CLAIM' | 'NO_OP') => {
+    setPending(true);
+    setError(null);
+    try {
+      await reviewClient.resolveComparisonV2Operation({
+        changeSetId: context.context.targetId,
+        expectedDraftRevision: Number(context.context.targetRevision),
+        expectedDraftDigest: context.context.targetDigest,
+        chosenOperation,
+        clientRequestId: freshRequestId('review-operation'),
+        idempotencyKey: freshRequestId('idem'),
+      });
+      onResolved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '운영 해결을 기록하지 못했습니다.');
+    } finally {
+      setPending(false);
+    }
+  };
+  return (
+    <section className="review-decision-controls" aria-label="V2 운영 해결">
+      <h2>운영 해결 필요</h2>
+      <p>수정 검토는 승인할 수 없습니다. ADD_CLAIM 또는 NO_OP를 선택하세요.</p>
+      {error ? <p role="alert">{error}</p> : null}
+      <div className="review-intent-buttons" role="group" aria-label="V2 운영 해결 선택">
+        <button type="button" disabled={pending} onClick={() => void resolve('ADD_CLAIM')}>
+          ADD_CLAIM
+        </button>
+        <button type="button" disabled={pending} onClick={() => void resolve('NO_OP')}>
+          NO_OP
+        </button>
+      </div>
+    </section>
+  );
+};
 
 type ReviewDecisionControlsProps = {
   readonly context: NonNullable<
@@ -872,6 +960,7 @@ const ReviewDecisionControls = ({
   onDecide,
 }: ReviewDecisionControlsProps) => {
   const items = context.context.items;
+  const selectedItem = items.find((item) => item.reviewItemId === selectedItemId);
   const pendingDrafts = Object.entries(drafts);
   const submittingDisabled =
     selectedItemId === null ||
@@ -951,25 +1040,29 @@ const ReviewDecisionControls = ({
         </select>
       </label>
       <div className="review-intent-buttons" role="group" aria-label="결정 종류">
-        {(Object.keys(INTENT_LABELS) as ReviewDecisionIntentV1[]).map((intent) => (
-          <button
-            key={intent}
-            type="button"
-            data-intent={intent}
-            disabled={selectedItemId === null}
-            onClick={() => {
-              if (!selectedItemId) return;
-              const current = drafts[selectedItemId];
-              onSetDraft(
-                selectedItemId,
-                current?.intent === intent ? 'HOLD' : intent,
-                current?.reason ?? '',
-              );
-            }}
-          >
-            {INTENT_LABELS[intent]}
-          </button>
-        ))}
+        {(
+          selectedItem?.allowedDecisions ?? (Object.keys(INTENT_LABELS) as ReviewDecisionIntentV1[])
+        )
+          .filter((intent) => intent in INTENT_LABELS)
+          .map((intent) => (
+            <button
+              key={intent}
+              type="button"
+              data-intent={intent}
+              disabled={selectedItemId === null}
+              onClick={() => {
+                if (!selectedItemId) return;
+                const current = drafts[selectedItemId];
+                onSetDraft(
+                  selectedItemId,
+                  current?.intent === intent ? 'HOLD' : intent,
+                  current?.reason ?? '',
+                );
+              }}
+            >
+              {INTENT_LABELS[intent]}
+            </button>
+          ))}
       </div>
       <label>
         댓글

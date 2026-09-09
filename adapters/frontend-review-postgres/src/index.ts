@@ -25,10 +25,14 @@ import type {
 } from '../../../modules/frontend-review/src/index.js';
 import {
   DraftReviewTargetAdapter,
+  ComparisonV2ReviewTargetAdapter,
+  type ComparisonV2ReviewSourceReader,
   type ReviewDiscoveryCandidateDerivedSourceV1,
   type ReviewDiscoveryCandidateReader,
   type ReviewDraftSourceReader,
 } from '../../frontend-review-in-memory/src/index.js';
+import type { ReviewV2RepositoryPort } from '../../../modules/change-set-review/src/index.js';
+import type { EvidenceRepositoryPort } from '../../../modules/evidence/src/index.js';
 import type { FrontendKnowledgeDraftChangeSetV1 } from '../../../packages/contracts/src/index.js';
 
 const JSONB_SNAPSHOT = (value: unknown): string => JSON.stringify(value);
@@ -761,6 +765,29 @@ export const createPostgresReviewDraftSourceReader = (pool: Pool): ReviewDraftSo
 /** Reuses the shared materialization logic with a PostgreSQL-backed reader. */
 export const createPostgresReviewDraftTargetAdapter = (pool: Pool): DraftReviewTargetAdapter =>
   new DraftReviewTargetAdapter(createPostgresReviewDraftSourceReader(pool));
+
+/** PostgreSQL-backed authoritative Stage 5 V2 Review presentation adapter. */
+export const createPostgresComparisonV2ReviewTargetAdapter = (
+  repository: Pick<ReviewV2RepositoryPort, 'listDrafts' | 'findDraftById'>,
+  evidenceRepository?: Pick<EvidenceRepositoryPort, 'findById'>,
+): ComparisonV2ReviewTargetAdapter => {
+  const reader: ComparisonV2ReviewSourceReader = {
+    async listDrafts(projectId) {
+      if (!repository.listDrafts) return [];
+      return repository.listDrafts(projectId);
+    },
+    async findDraft(projectId, changeSetId) {
+      return repository.findDraftById?.(projectId, changeSetId);
+    },
+    ...(evidenceRepository
+      ? {
+          findEvidence: (projectId: string, evidenceId: string) =>
+            evidenceRepository.findById(projectId, evidenceId),
+        }
+      : {}),
+  };
+  return new ComparisonV2ReviewTargetAdapter(reader);
+};
 
 type DiscoveryReviewResourceRow = {
   readonly resource: unknown;

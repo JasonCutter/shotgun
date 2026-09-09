@@ -68,6 +68,8 @@ export type ComparisonV2ReviewFreshnessPort = {
 
 export type ReviewV2RepositoryPort = {
   saveDraft(draft: DraftChangeSetV2): Promise<DraftChangeSetV2>;
+  /** Enumerates authoritative DraftChangeSetV2 rows for a project. */
+  listDrafts?(projectId: string): Promise<readonly DraftChangeSetV2[]>;
   findDraftById?: (projectId: string, changeSetId: string) => Promise<DraftChangeSetV2 | undefined>;
   findDraftByComparisonId(
     projectId: string,

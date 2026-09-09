@@ -44,10 +44,18 @@ export const REVIEW_DEPENDENCY_EDGE_MAX = 500;
 // ---------------------------------------------------------------------------
 
 export type ReviewTargetKindV1 =
-  'KNOWLEDGE_DRAFT_CHANGE_SET' | 'DISCOVERY_CANDIDATE' | 'USER_DIRECTIVE_PROPOSAL';
+  | 'KNOWLEDGE_DRAFT_CHANGE_SET'
+  | 'DISCOVERY_CANDIDATE'
+  | 'USER_DIRECTIVE_PROPOSAL'
+  /** Authoritative Stage 5 Comparison V2 DraftChangeSet presentation only. */
+  | 'COMPARISON_V2_CHANGE_SET';
 
 export type ReviewSourceItemKindV1 =
-  'KNOWLEDGE_OPERATION' | 'DISCOVERY_CANDIDATE' | 'USER_DIRECTIVE_CLAUSE';
+  | 'KNOWLEDGE_OPERATION'
+  | 'DISCOVERY_CANDIDATE'
+  | 'USER_DIRECTIVE_CLAUSE'
+  | 'COMPARISON_V2_CHANGE_SET'
+  | 'COMPARISON_V2_OPERATION_RESOLUTION';
 
 export type ReviewDependencyKindV1 = 'REQUIRES' | 'ATOMIC_WITH' | 'CONFLICTS_WITH';
 
@@ -115,12 +123,15 @@ export const REVIEW_TARGET_KINDS: readonly ReviewTargetKindV1[] = [
   'KNOWLEDGE_DRAFT_CHANGE_SET',
   'DISCOVERY_CANDIDATE',
   'USER_DIRECTIVE_PROPOSAL',
+  'COMPARISON_V2_CHANGE_SET',
 ];
 
 export const REVIEW_SOURCE_ITEM_KINDS: readonly ReviewSourceItemKindV1[] = [
   'KNOWLEDGE_OPERATION',
   'DISCOVERY_CANDIDATE',
   'USER_DIRECTIVE_CLAUSE',
+  'COMPARISON_V2_CHANGE_SET',
+  'COMPARISON_V2_OPERATION_RESOLUTION',
 ];
 
 export const REVIEW_DEPENDENCY_KINDS: readonly ReviewDependencyKindV1[] = [
@@ -2029,6 +2040,11 @@ export const validateReviewSourceItemKind = (
       return sourceItemKind === 'DISCOVERY_CANDIDATE';
     case 'USER_DIRECTIVE_PROPOSAL':
       return sourceItemKind === 'USER_DIRECTIVE_CLAUSE';
+    case 'COMPARISON_V2_CHANGE_SET':
+      return (
+        sourceItemKind === 'COMPARISON_V2_CHANGE_SET' ||
+        sourceItemKind === 'COMPARISON_V2_OPERATION_RESOLUTION'
+      );
   }
 };
 
@@ -2063,6 +2079,10 @@ export const validateReviewApprovalPurpose = (
       return purpose === 'USER_DIRECTIVE_CHANGE';
     case 'DISCOVERY_CANDIDATE':
       // Discovery Candidate approval creates no Approval Resource.
+      return false;
+    case 'COMPARISON_V2_CHANGE_SET':
+      // Stage 5 V2 owns its approval manifest/token and must never issue a
+      // FE-P4-S1 ReviewApprovalV1.
       return false;
   }
 };

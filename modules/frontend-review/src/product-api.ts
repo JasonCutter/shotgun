@@ -972,6 +972,15 @@ export class FrontendReviewProductCoordinator {
         if (record.context.resourceProjectId !== scope.activeProjectId) {
           reviewFailure('REVIEW_CONTEXT_NOT_FOUND', 'The Review Context was not found.');
         }
+        // Stage 5 Comparison V2 owns its decision, manifest and approval-token
+        // authority. The FE-P4-S1 command ledger must never append a V1
+        // decision or issue a ReviewApprovalV1 for that target.
+        if (record.context.targetKind === 'COMPARISON_V2_CHANGE_SET') {
+          reviewFailure(
+            'REVIEW_DECISION_NOT_ALLOWED',
+            'Comparison V2 decisions must use the authoritative V2 Review route.',
+          );
+        }
         this.assertContextBounds(record.context);
         // 2. expected context revision validation.
         if (record.context.contextRevision !== request.expectedContextRevision) {

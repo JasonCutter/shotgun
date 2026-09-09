@@ -18,10 +18,8 @@ import type { SearchProjectionRepositoryPort } from '../../modules/projection-se
 import { COMPARISON_ROLLOUT_SETTING_KEY } from '../../modules/settings-policy/src/index.js';
 import {
   canonicalSnapshotDigest,
-  draftChangeSetContentDigestV2,
   sha256Text,
   stableJson,
-  type DraftChangeSetV2,
   type ProjectionReadiness,
   type SemanticProjectionGeneration,
 } from '../../packages/contracts/src/index.js';
@@ -113,35 +111,13 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
           shortlistPolicyRevision: `shortlist-policy:issue-247:${suffix}`,
         },
       });
-      const makeDraft = (
-        operation: DraftChangeSetV2['operation'],
-        reviewRecommendation: DraftChangeSetV2['reviewRecommendation'],
-        status: DraftChangeSetV2['status'] = 'PENDING_REVIEW',
-        revisionNumber = 1,
-      ): DraftChangeSetV2 => {
-        const { contentDigest, ...withoutDigest } = fixture.draft;
-        void contentDigest;
-        const revision = {
-          ...withoutDigest,
-          operation,
-          reviewRecommendation,
-          status,
-          revisionNumber,
-          updatedAt: revisionNumber === 1 ? createdAt : '2026-09-09T00:00:01.000Z',
-        } satisfies Omit<DraftChangeSetV2, 'contentDigest'>;
-        return { ...revision, contentDigest: draftChangeSetContentDigestV2(revision) };
-      };
-      return { fixture, makeDraft };
+      return { fixture };
     };
 
     const pending = makeFixture('pending');
     const hold = makeFixture('hold');
     const modify = makeFixture('modify');
-    const drafts = [
-      pending.makeDraft('MODIFY_REVIEW', 'MODIFY_REVIEW'),
-      hold.makeDraft('MODIFY_REVIEW', 'MODIFY_REVIEW'),
-      modify.makeDraft('MODIFY_REVIEW', 'MODIFY_REVIEW'),
-    ];
+    const drafts = [pending.fixture.draft, hold.fixture.draft, modify.fixture.draft];
     const reviewRepository = new PostgresChangeSetReviewV2Repository(pool);
     const comparisonRepository = new PostgresComparisonV2Repository(pool);
     const candidateRepository = new PostgresCandidateRepository(pool);

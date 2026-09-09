@@ -138,8 +138,8 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
     const hold = makeFixture('hold');
     const modify = makeFixture('modify');
     const drafts = [
-      pending.makeDraft('ADD_CLAIM', 'ADD_CLAIM'),
-      hold.makeDraft('ADD_CLAIM', 'ADD_CLAIM'),
+      pending.makeDraft('MODIFY_REVIEW', 'MODIFY_REVIEW'),
+      hold.makeDraft('MODIFY_REVIEW', 'MODIFY_REVIEW'),
       modify.makeDraft('MODIFY_REVIEW', 'MODIFY_REVIEW'),
     ];
     const reviewRepository = new PostgresChangeSetReviewV2Repository(pool);

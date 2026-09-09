@@ -9,6 +9,7 @@ import {
   PostgresComparisonV2Repository,
 } from '../../adapters/postgres-stage5/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
+import { PostgresSearchProjectionRepository } from '../../adapters/postgres-stage7/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
@@ -114,6 +115,18 @@ describe.runIf(Boolean(databaseUrl))('Issue #241 empty Canonical PostgreSQL runt
       [projectId, snapshotDigest, now],
     );
 
+    const searchProjection = new PostgresSearchProjectionRepository(pool);
+    await searchProjection.rebuild(projectId, {
+      documents: [],
+      watermark: {
+        projectId,
+        canonicalVersion: 0,
+        snapshotDigest,
+        status: 'READY',
+        updatedAt: now,
+      },
+    });
+
     const canonical = new PostgresCanonicalKnowledgeRepository(pool);
     const generation: SemanticProjectionGeneration = {
       projectId,
@@ -143,7 +156,6 @@ describe.runIf(Boolean(databaseUrl))('Issue #241 empty Canonical PostgreSQL runt
       lag: 0,
       canonicalSnapshotDigest: snapshotDigest,
       projectedSnapshotDigest: snapshotDigest,
-      lastCommitId: `empty-${projectId}`,
     };
     const hybridRetrieval: HybridRetrievalCoordinatorPort = {
       async search(input) {
@@ -220,6 +232,7 @@ describe.runIf(Boolean(databaseUrl))('Issue #241 empty Canonical PostgreSQL runt
       changeSetReviewV2Repository: reviewRepository,
       canonicalSnapshot: canonical,
       canonicalKnowledgeRepository: canonical,
+      searchProjectionRepository: searchProjection,
       hybridRetrievalCoordinator: hybridRetrieval,
       semanticActiveGenerationReader: {
         getActiveGeneration: async () => generation,

@@ -935,12 +935,23 @@ const ReviewContextDetail = ({
       ) : null}
 
       {selectedItem?.sourceItemKind === 'COMPARISON_V2_OPERATION_RESOLUTION' ? (
-        <ComparisonV2OperationResolutionControls
-          context={currentContext}
-          contextRequest={contextRequest}
-          reviewClient={reviewClient}
-          onResolved={onContextRevalidated}
-        />
+        <>
+          <ComparisonV2OperationResolutionControls
+            context={currentContext}
+            contextRequest={contextRequest}
+            reviewClient={reviewClient}
+            onResolved={onContextRevalidated}
+          />
+          <ReviewDecisionControls
+            context={currentContext}
+            selectedItemId={selectedItemId}
+            drafts={drafts}
+            comment={comment}
+            onSetDraft={onSetDraft}
+            onSetComment={onSetComment}
+            onDecide={onDecide}
+          />
+        </>
       ) : (
         <ReviewDecisionControls
           context={currentContext}

@@ -330,7 +330,10 @@ const setup = (
     async findDraftByComparisonId(_projectId: string, comparisonId: string) {
       return saved?.comparisonId === comparisonId ? saved : undefined;
     },
-    async findDecisionById(decisionId: string): Promise<ComparisonV2PersistedDecision | undefined> {
+    async findDecisionById(
+      _projectId: string,
+      decisionId: string,
+    ): Promise<ComparisonV2PersistedDecision | undefined> {
       if (!savedDecision || savedDecision.decisionId !== decisionId || !saved) return undefined;
       return {
         projectId,

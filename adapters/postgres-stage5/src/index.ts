@@ -1534,15 +1534,18 @@ export class PostgresChangeSetReviewV2Repository
     return draft;
   }
 
-  async findDecisionById(decisionId: string): Promise<ComparisonV2PersistedDecision | undefined> {
+  async findDecisionById(
+    projectId: string,
+    decisionId: string,
+  ): Promise<ComparisonV2PersistedDecision | undefined> {
     const result = await this.pool.query<DecisionV2Row>(
       `
         SELECT project_id, change_set_id, expected_revision_number,
                expected_content_digest, decision_json
         FROM review.decisions_v2
-        WHERE decision_id = $1
+        WHERE project_id = $1 AND decision_id = $2
       `,
-      [decisionId],
+      [projectId, decisionId],
     );
     const row = result.rows[0];
     if (!row) return undefined;

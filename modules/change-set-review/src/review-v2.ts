@@ -72,7 +72,10 @@ export type ReviewV2RepositoryPort = {
   listDrafts?(projectId: string): Promise<readonly DraftChangeSetV2[]>;
   findDraftById?: (projectId: string, changeSetId: string) => Promise<DraftChangeSetV2 | undefined>;
   /** Read-only lookup used to converge an exact decision replay before freshness evaluation. */
-  findDecisionById?: (decisionId: string) => Promise<ComparisonV2PersistedDecision | undefined>;
+  findDecisionById?: (
+    projectId: string,
+    decisionId: string,
+  ) => Promise<ComparisonV2PersistedDecision | undefined>;
   findDraftByComparisonId(
     projectId: string,
     comparisonId: string,
@@ -623,7 +626,10 @@ export const createComparisonV2ReviewBridge = (
       let persistedDecision: ComparisonV2PersistedDecision | undefined;
       if (request.decisionId !== undefined && dependencies.repository.findDecisionById) {
         try {
-          persistedDecision = await dependencies.repository.findDecisionById(request.decisionId);
+          persistedDecision = await dependencies.repository.findDecisionById(
+            request.projectId,
+            request.decisionId,
+          );
         } catch {
           return { status: 'BLOCKED', reason: 'DECISION_UNAVAILABLE' };
         }

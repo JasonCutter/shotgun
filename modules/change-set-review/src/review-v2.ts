@@ -68,7 +68,14 @@ export type ComparisonV2ReviewFreshnessPort = {
 
 export type ReviewV2RepositoryPort = {
   saveDraft(draft: DraftChangeSetV2): Promise<DraftChangeSetV2>;
+  /** Enumerates authoritative DraftChangeSetV2 rows for a project. */
+  listDrafts?(projectId: string): Promise<readonly DraftChangeSetV2[]>;
   findDraftById?: (projectId: string, changeSetId: string) => Promise<DraftChangeSetV2 | undefined>;
+  /** Read-only lookup used to converge an exact decision replay before freshness evaluation. */
+  findDecisionById?: (
+    projectId: string,
+    decisionId: string,
+  ) => Promise<ComparisonV2PersistedDecision | undefined>;
   findDraftByComparisonId(
     projectId: string,
     comparisonId: string,
@@ -105,6 +112,16 @@ export type ComparisonV2ReviewDecisionWrite = {
 };
 
 export type ComparisonV2ReviewDecisionResult = {
+  readonly draft: DraftChangeSetV2;
+  readonly decision: ComparisonV2ReviewDecision;
+  readonly manifest?: ApprovedChangeSetManifestV2;
+};
+
+export type ComparisonV2PersistedDecision = {
+  readonly projectId: string;
+  readonly changeSetId: string;
+  readonly expectedRevisionNumber: number;
+  readonly expectedContentDigest: string;
   readonly draft: DraftChangeSetV2;
   readonly decision: ComparisonV2ReviewDecision;
   readonly manifest?: ApprovedChangeSetManifestV2;
@@ -172,6 +189,20 @@ export type ComparisonV2ReviewDecisionOutcome =
 
 const isNonEmpty = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
+
+const isExactDecisionReplay = (
+  request: ComparisonV2ReviewDecisionRequest,
+  persisted: ComparisonV2PersistedDecision,
+): boolean =>
+  persisted.projectId === request.projectId &&
+  persisted.changeSetId === request.changeSetId &&
+  persisted.expectedRevisionNumber === request.expectedRevisionNumber &&
+  persisted.expectedContentDigest === request.expectedContentDigest &&
+  persisted.decision.decisionId === request.decisionId &&
+  persisted.decision.decision === request.decision &&
+  persisted.decision.actor.type === request.actor.type &&
+  persisted.decision.actor.id === request.actor.id &&
+  persisted.decision.reason === request.reason.trim();
 
 const sameStringArray = (left: readonly string[], right: readonly string[]): boolean => {
   const a = [...left].sort();
@@ -592,6 +623,21 @@ export const createComparisonV2ReviewBridge = (
         return { status: 'BLOCKED', reason: 'DECISION_UNAVAILABLE' };
       }
 
+      let persistedDecision: ComparisonV2PersistedDecision | undefined;
+      if (request.decisionId !== undefined && dependencies.repository.findDecisionById) {
+        try {
+          persistedDecision = await dependencies.repository.findDecisionById(
+            request.projectId,
+            request.decisionId,
+          );
+        } catch {
+          return { status: 'BLOCKED', reason: 'DECISION_UNAVAILABLE' };
+        }
+        if (persistedDecision && !isExactDecisionReplay(request, persistedDecision)) {
+          return { status: 'BLOCKED', reason: 'DECISION_CONFLICT' };
+        }
+      }
+
       const draft = dependencies.repository.findDraftById
         ? await dependencies.repository.findDraftById(request.projectId, request.changeSetId)
         : await dependencies.repository.findDraftByComparisonId(
@@ -605,8 +651,17 @@ export const createComparisonV2ReviewBridge = (
         return { status: 'BLOCKED', reason: 'EVENT_LINEAGE_MISMATCH' };
       }
       if (
-        draft.revisionNumber !== request.expectedRevisionNumber ||
-        draft.contentDigest !== request.expectedContentDigest
+        persistedDecision &&
+        (draft.projectId !== persistedDecision.projectId ||
+          draft.changeSetId !== persistedDecision.changeSetId ||
+          draft.revisionNumber !== persistedDecision.draft.revisionNumber ||
+          draft.contentDigest !== persistedDecision.draft.contentDigest)
+      ) {
+        return { status: 'BLOCKED', reason: 'DECISION_CONFLICT' };
+      }
+      if (
+        (!persistedDecision && draft.revisionNumber !== request.expectedRevisionNumber) ||
+        (!persistedDecision && draft.contentDigest !== request.expectedContentDigest)
       ) {
         return { status: 'BLOCKED', reason: 'DECISION_STALE' };
       }
@@ -673,6 +728,17 @@ export const createComparisonV2ReviewBridge = (
         !isAuthorized(aggregate.comparison, request.security)
       ) {
         return { status: 'BLOCKED', reason: 'ACCESS_DENIED' };
+      }
+
+      if (persistedDecision) {
+        return {
+          status: 'DECISION_RECORDED',
+          draft: persistedDecision.draft,
+          decision: persistedDecision.decision,
+          ...(persistedDecision.manifest === undefined
+            ? {}
+            : { manifest: persistedDecision.manifest }),
+        };
       }
 
       let expected: ComparisonFreshnessIdentityV2;

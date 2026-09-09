@@ -76,9 +76,10 @@ type ReversalDraftScope = {
 /**
  * FE-P5-S2 WP5 (Round 3 Blocker 2): materialize a Reversal candidate as a
  * SUBMITTED Knowledge DraftChangeSet in the approved frontend-knowledge-draft
- * store (migration 025), so the EXISTING single `KNOWLEDGE_DRAFT_CHANGE_SET`
+ * store (migration 025), so the existing `KNOWLEDGE_DRAFT_CHANGE_SET`
  * Review adapter resolves it for Queue / Get Context / Record Decisions /
- * Approval — no new ReviewTargetKind, no adapter collision, no new migration.
+ * Approval. Authoritative Stage 5 Comparison V2 drafts use their separate
+ * `COMPARISON_V2_CHANGE_SET` presentation adapter and never enter this carrier.
  * The browser never authors any of these values; all authority is server-derived.
  */
 const materializeReversalAsKnowledgeDraft = async (input: {
@@ -297,9 +298,10 @@ export function registerFrontendReviewRoutes(
     /**
      * FE-P5-S2 WP5 (Round 3 Blocker 2): when a Reversal is created it is
      * materialized as a SUBMITTED Knowledge DraftChangeSet and persisted to the
-     * approved frontend-knowledge-draft store (migration 025), so the EXISTING
-     * single KNOWLEDGE_DRAFT_CHANGE_SET adapter resolves it for Queue / Get
-     * Context / Record Decisions / Approval without an adapter collision.
+     * approved frontend-knowledge-draft store (migration 025), so the existing
+     * KNOWLEDGE_DRAFT_CHANGE_SET adapter resolves it for Queue / Get Context /
+     * Record Decisions / Approval without colliding with the authoritative
+     * COMPARISON_V2_CHANGE_SET adapter.
      */
     readonly frontendKnowledgeDraftRepository?: FrontendKnowledgeDraftRepositoryBoundaryPort;
     readonly canonicalKnowledgeRepository?: CanonicalKnowledgeRepositoryPort;
@@ -508,10 +510,10 @@ export function registerFrontendReviewRoutes(
         });
         // FE-P5-S2 WP5 (Round 3 Blocker 2): persist the Reversal candidate as a
         // SUBMITTED Knowledge DraftChangeSet in the approved
-        // frontend-knowledge-draft store (migration 025). The existing single
+        // frontend-knowledge-draft store (migration 025). The existing
         // KNOWLEDGE_DRAFT_CHANGE_SET Review adapter then resolves it for
-        // Queue / Get Context / Record Decisions / Approval — no adapter
-        // collision, no new ReviewTargetKind, no new migration.
+        // Queue / Get Context / Record Decisions / Approval without colliding
+        // with the authoritative COMPARISON_V2_CHANGE_SET adapter.
         const draftRepository = options?.frontendKnowledgeDraftRepository;
         const canonical = options?.canonicalKnowledgeRepository;
         if (draftRepository && canonical) {

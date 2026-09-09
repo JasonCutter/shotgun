@@ -207,6 +207,8 @@ import {
   UserDirectiveReviewTargetAdapter,
   createEmptyReviewDraftSourceReader,
   createInMemoryReviewDraftSourceReader,
+  createInMemoryComparisonV2ReviewSourceReader,
+  ComparisonV2ReviewTargetAdapter,
   createInMemoryReviewDiscoveryCandidateReader,
   createInMemoryReviewUserDirectiveReader,
   type ReviewDiscoveryCandidateReader,
@@ -2211,6 +2213,18 @@ const createApplicationCore = async (
           options.discoveryReentryFreshnessEvaluator,
         ),
         new UserDirectiveReviewTargetAdapter(createInMemoryReviewUserDirectiveReader()),
+        ...(options.changeSetReviewV2Repository?.listDrafts &&
+        options.changeSetReviewV2Repository.findDraftById
+          ? [
+              new ComparisonV2ReviewTargetAdapter(
+                createInMemoryComparisonV2ReviewSourceReader(
+                  options.changeSetReviewV2Repository,
+                  evidenceRepository,
+                  candidateRepository,
+                ),
+              ),
+            ]
+          : []),
       ],
       undefined,
       options.frontendReviewAuthoringBridge,
@@ -2781,6 +2795,40 @@ const createApplicationCore = async (
       activityCoordinator,
     ),
   );
+  const reviewNavigationAvailability = async (input: {
+    readonly principalId: string;
+    readonly sessionId: string;
+    readonly activeProject: {
+      readonly id: string;
+      readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
+    } | null;
+    readonly accessRevision: string;
+    readonly policyContextRevision: string;
+    readonly accessScope?: readonly string[];
+  }): Promise<boolean> => {
+    if (!input.activeProject) return false;
+    try {
+      const queue = await frontendReviewCoordinator.listReviewQueue(
+        {
+          principalId: input.principalId,
+          sessionId: input.sessionId,
+          activeProjectId: input.activeProject.id,
+          accessRevision: input.accessRevision,
+          policyContextRevision: input.policyContextRevision,
+          sensitivityClearance: input.activeProject.sensitivityClearance,
+          accessScope: input.accessScope ?? [],
+        },
+        {
+          schemaVersion: '1.0.0',
+          pageSize: 1,
+          attentionReasons: ['REQUIRES_ACTION', 'STALE', 'OUTCOME_UNKNOWN', 'DEPENDENCY_BLOCKED'],
+        },
+      );
+      return queue.items.length > 0;
+    } catch {
+      return false;
+    }
+  };
   const frontendProductReadCoordinator =
     options.frontendProductReadCoordinator ??
     options.frontendProductReadCoordinatorFactory?.(
@@ -2789,12 +2837,12 @@ const createApplicationCore = async (
       frontendSourcesReadCoordinator,
     ) ??
     new FrontendProductReadCoordinator(
-      new InMemoryGlobalShellProjection(),
+      new InMemoryGlobalShellProjection(reviewNavigationAvailability),
       actionCenterProjection,
       new InMemoryBackgroundSummaryProjection(),
       new InMemoryNotificationSummaryProjection(),
       new PostgresSourceLibraryGlobalSearch(frontendSourcesReadCoordinator),
-      new InMemoryRouteGuardProjection(),
+      new InMemoryRouteGuardProjection(reviewNavigationAvailability),
       inMemoryAskWorkspace,
     );
   const frontendDiscoveryProductReadCoordinator =

@@ -70,11 +70,17 @@ const routes = {
   history: { routeId: 'history', href: '/history' },
 } as const satisfies Record<string, TargetRouteView>;
 
+export type ReviewNavigationAvailability = (input: FrontendReadScope) => Promise<boolean>;
+
 export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort {
+  constructor(private readonly reviewAvailability?: ReviewNavigationAvailability) {}
+
   async getShell(
     input: FrontendReadScope,
   ): Promise<Omit<GlobalShellView, 'background' | 'notifications'>> {
     const projectReady = input.activeProject !== null;
+    const reviewAvailable =
+      projectReady && this.reviewAvailability ? await this.reviewAvailability(input) : false;
     return {
       schemaVersion: '1.0.0',
       principalId: input.principalId,
@@ -101,6 +107,16 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
               availability: 'AVAILABLE',
               targetRoute: routes.ask,
             },
+            ...(reviewAvailable
+              ? [
+                  {
+                    id: 'review',
+                    label: 'Review',
+                    availability: 'AVAILABLE' as const,
+                    targetRoute: routes.review,
+                  },
+                ]
+              : []),
           ]
         : [],
       features: [
@@ -230,7 +246,11 @@ export class InMemoryGlobalSearch implements GlobalSearchPort {
   }
 }
 
+export type ReviewRouteAvailability = (input: FrontendReadScope) => Promise<boolean>;
+
 export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
+  constructor(private readonly reviewAvailability?: ReviewRouteAvailability) {}
+
   async decide(
     input: Parameters<RouteGuardProjectionPort['decide']>[0],
   ): Promise<ReturnType<RouteGuardProjectionPort['decide']> extends Promise<infer T> ? T : never> {
@@ -241,18 +261,23 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
       'home',
       'sources',
       'ask',
+      'review',
       'settings',
       'settings-projects',
       'external-action',
       'activity',
       'history',
     ]).has(input.requestedRoute.routeId);
+    const reviewAvailable =
+      input.requestedRoute.routeId !== 'review' ||
+      (input.activeProject !== null &&
+        (this.reviewAvailability ? await this.reviewAvailability(input) : false));
     return decodeRouteGuardDecisionView({
       schemaVersion: '1.0.0',
       decision:
         input.resourceProjectId && !resourceProject
           ? 'NOT_FOUND'
-          : !workspaceAvailable
+          : !workspaceAvailable || !reviewAvailable
             ? 'FEATURE_UNAVAILABLE'
             : input.requestedRoute.routeId === 'home' && !input.activeProject
               ? 'PROJECT_UNAVAILABLE'

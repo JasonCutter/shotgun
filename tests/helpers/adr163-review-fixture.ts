@@ -67,6 +67,7 @@ const providerCall = (createdAt: string) =>
 
 export const createAdr163ReviewFixture = (input: {
   readonly suffix: string;
+  readonly projectId?: string;
   readonly candidateId?: string;
   readonly batchId?: string;
   readonly evidenceId?: string;
@@ -83,16 +84,17 @@ export const createAdr163ReviewFixture = (input: {
     readonly shortlistPolicyRevision?: string;
   };
 }): Adr163ReviewFixture => {
+  const projectId = input.projectId ?? ADR163_FIXTURE_PROJECT;
   const createdAt = input.createdAt ?? '2026-09-08T12:00:00.000Z';
   const snapshot =
     input.snapshot ??
     ({
-      snapshotId: `snapshot:${ADR163_FIXTURE_PROJECT}:0`,
-      projectId: ADR163_FIXTURE_PROJECT,
+      snapshotId: `snapshot:${projectId}:0`,
+      projectId,
       version: 0,
       claims: [],
       createdAt,
-      digest: canonicalSnapshotDigest(ADR163_FIXTURE_PROJECT, 0, []),
+      digest: canonicalSnapshotDigest(projectId, 0, []),
     } satisfies CanonicalSnapshot);
   const evidenceId = input.evidenceId ?? `evidence:adr163:${input.suffix}`;
   const candidateId = input.candidateId ?? `candidate:adr163:${input.suffix}`;
@@ -103,7 +105,7 @@ export const createAdr163ReviewFixture = (input: {
     candidateId,
     batchId,
     revisionNumber: 1 as const,
-    projectId: ADR163_FIXTURE_PROJECT,
+    projectId,
     sourceVersionId,
     claimText: input.claimText,
     evidenceIds: [evidenceId] as [string],
@@ -242,7 +244,7 @@ export const createAdr163ReviewFixture = (input: {
   const comparison: ComparisonResultV2 = {
     comparisonId: comparisonId(input.suffix),
     contractVersion: '2.0',
-    projectId: ADR163_FIXTURE_PROJECT,
+    projectId,
     candidate: candidateIdentity,
     canonicalSnapshot: {
       id: snapshot.snapshotId,
@@ -309,7 +311,7 @@ export const createAdr163ReviewFixture = (input: {
     changeSetId: `change-set:adr163:${input.suffix}`,
     contractVersion: '2.0',
     revisionNumber: 1,
-    projectId: ADR163_FIXTURE_PROJECT,
+    projectId,
     candidate: candidateIdentity,
     comparisonId: comparison.comparisonId,
     comparisonDigest: comparisonResultDigestV2(comparison),
@@ -340,13 +342,13 @@ export const createAdr163ReviewFixture = (input: {
     aggregate,
     draft,
     authority: {
-      projectId: ADR163_FIXTURE_PROJECT,
+      projectId,
       candidateId,
       candidateRevision: 1,
       rollout: 'V2_ACTIVE',
       candidates: [
         {
-          projectId: ADR163_FIXTURE_PROJECT,
+          projectId,
           candidateId,
           candidateRevision: 1,
           contractVersion: '2.0',

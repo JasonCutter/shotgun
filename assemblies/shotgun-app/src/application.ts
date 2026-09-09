@@ -1119,12 +1119,34 @@ export const startShotgunApplication = async (
         frontendSourcesReadCoordinator,
       ) =>
         new FrontendProductReadCoordinator(
-          new InMemoryGlobalShellProjection(),
+          new InMemoryGlobalShellProjection(async (input) => {
+            if (!input.activeProject) return false;
+            try {
+              const home = await actionCenterProjection.getHome({
+                ...input,
+                activeProject: input.activeProject,
+              });
+              return home.attention.some((item) => item.kind === 'REVIEW_DECISION');
+            } catch {
+              return false;
+            }
+          }),
           actionCenterProjection,
           new InMemoryBackgroundSummaryProjection(),
           new InMemoryNotificationSummaryProjection(),
           new PostgresSourceLibraryGlobalSearch(frontendSourcesReadCoordinator),
-          new InMemoryRouteGuardProjection(),
+          new InMemoryRouteGuardProjection(async (input) => {
+            if (!input.activeProject) return false;
+            try {
+              const home = await actionCenterProjection.getHome({
+                ...input,
+                activeProject: input.activeProject,
+              });
+              return home.attention.some((item) => item.kind === 'REVIEW_DECISION');
+            } catch {
+              return false;
+            }
+          }),
           askWorkspaceProjection,
           new PostgresKnowledgeWorkspaceProjection({
             query: async <TResult>({

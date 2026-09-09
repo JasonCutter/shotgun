@@ -2,6 +2,7 @@ import type {
   ReviewContextRevisionV1,
   ReviewEvidenceEntryV1,
   ReviewImpactEntryV1,
+  ReviewAggregateStateV1,
   ReviewSourceItemKindV1,
   ReviewTargetKindV1,
   DiscoveryReentryFreshnessAssessmentV1,
@@ -20,7 +21,10 @@ export type FrontendReviewScopeV1 = {
 };
 
 export type ReviewSourceKindV1 =
-  'FE_P3_S2_SUBMISSION' | 'DISCOVERY_CANDIDATE' | 'USER_DIRECTIVE_PROPOSAL';
+  | 'FE_P3_S2_SUBMISSION'
+  | 'DISCOVERY_CANDIDATE'
+  | 'USER_DIRECTIVE_PROPOSAL'
+  | 'COMPARISON_V2_CHANGE_SET';
 
 export type ReviewSourceTargetV1 = {
   readonly reviewResourceId: string;
@@ -32,6 +36,8 @@ export type ReviewSourceTargetV1 = {
   readonly effectiveProjectId: string;
   readonly updatedAt: string;
   readonly source: ReviewSourceKindV1;
+  /** Optional owner-domain state used by authoritative non-V1 Review targets. */
+  readonly authoritativeAggregateState?: ReviewAggregateStateV1;
 };
 
 export type ReviewContextMaterializationInputV1 = {

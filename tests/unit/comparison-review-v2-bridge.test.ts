@@ -18,6 +18,7 @@ import {
 } from '../../packages/contracts/src/index.js';
 import {
   createComparisonV2ReviewBridge,
+  type ComparisonV2PersistedDecision,
   type ComparisonV2ReviewDecisionResult,
   type ComparisonV2ReviewDecisionWrite,
   type ComparisonV2AggregateForReview,
@@ -318,6 +319,7 @@ const setup = (
   let savedDecision: ComparisonV2ReviewDecisionWrite['decision'] | undefined;
   let savedManifest: ComparisonV2ReviewDecisionResult['manifest'];
   let recordDecisionCalls = 0;
+  let currentIdentity = current;
   const repository = {
     async saveDraft(
       draft: Parameters<ComparisonV2ReviewBridgeDependencies['repository']['saveDraft']>[0],
@@ -327,6 +329,21 @@ const setup = (
     },
     async findDraftByComparisonId(_projectId: string, comparisonId: string) {
       return saved?.comparisonId === comparisonId ? saved : undefined;
+    },
+    async findDecisionById(
+      _projectId: string,
+      decisionId: string,
+    ): Promise<ComparisonV2PersistedDecision | undefined> {
+      if (!savedDecision || savedDecision.decisionId !== decisionId || !saved) return undefined;
+      return {
+        projectId,
+        changeSetId: saved.changeSetId,
+        expectedRevisionNumber: saved.revisionNumber,
+        expectedContentDigest: saved.contentDigest,
+        draft: saved,
+        decision: savedDecision,
+        ...(savedManifest === undefined ? {} : { manifest: savedManifest }),
+      };
     },
     async recordDecision(
       write: ComparisonV2ReviewDecisionWrite,
@@ -365,7 +382,7 @@ const setup = (
     freshness: {
       async getCurrent(input) {
         return {
-          identity: current ?? input.expected,
+          identity: currentIdentity ?? input.expected,
           ...(aggregateInput.comparison.shortlist === undefined
             ? {}
             : { shortlist: aggregateInput.comparison.shortlist }),
@@ -379,6 +396,9 @@ const setup = (
     bridge: createComparisonV2ReviewBridge(dependencies),
     getSaved: () => saved,
     getRecordDecisionCalls: () => recordDecisionCalls,
+    setCurrent: (next: ComparisonFreshnessIdentityV2) => {
+      currentIdentity = next;
+    },
   };
 };
 
@@ -735,5 +755,78 @@ describe('Comparison v2 Review bridge', () => {
       expect(second.decision).toEqual(first.decision);
       expect(second.manifest).toEqual(first.manifest);
     }
+  });
+
+  it('replays an exact persisted decision before a later freshness change', async () => {
+    const setupValue = setup();
+    await setupValue.bridge.materializeDraft(request);
+    const draft = setupValue.getSaved()!;
+    const decision = {
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user' as const, id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'APPROVE' as const,
+      reason: 'replayed after freshness moved',
+      decisionId: 'decision-replay-after-freshness-1',
+      decidedAt: now,
+    };
+    const first = await setupValue.bridge.recordDecision(decision);
+    expect(first.status).toBe('DECISION_RECORDED');
+    expect(setupValue.getRecordDecisionCalls()).toBe(1);
+
+    setupValue.setCurrent({
+      ...draft.freshnessIdentity,
+      rolloutAuthorityRevision: 'rollout-revision-newer',
+    });
+    const replay = await setupValue.bridge.recordDecision(decision);
+    expect(replay.status).toBe('DECISION_RECORDED');
+    expect(setupValue.getRecordDecisionCalls()).toBe(1);
+    if (first.status === 'DECISION_RECORDED' && replay.status === 'DECISION_RECORDED') {
+      expect(replay.decision).toEqual(first.decision);
+      expect(replay.manifest).toEqual(first.manifest);
+    }
+  });
+
+  it('rejects reuse of a persisted decision id with different binding', async () => {
+    const setupValue = setup();
+    await setupValue.bridge.materializeDraft(request);
+    const draft = setupValue.getSaved()!;
+    const first = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'APPROVE',
+      reason: 'original binding',
+      decisionId: 'decision-reuse-conflict-1',
+      decidedAt: now,
+    });
+    expect(first.status).toBe('DECISION_RECORDED');
+
+    const conflict = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'APPROVE',
+      reason: 'different binding',
+      decisionId: 'decision-reuse-conflict-1',
+      decidedAt: now,
+    });
+    expect(conflict).toEqual({ status: 'BLOCKED', reason: 'DECISION_CONFLICT' });
+    expect(setupValue.getRecordDecisionCalls()).toBe(1);
   });
 });

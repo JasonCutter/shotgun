@@ -749,6 +749,12 @@ export class InMemoryReviewOperationResolutionStore implements ReviewOperationRe
     return draft === undefined ? undefined : clone(draft);
   }
 
+  async listDrafts(projectId: string): Promise<readonly DraftChangeSetV2[]> {
+    return [...this.drafts.values()]
+      .filter((draft) => draft.projectId === projectId)
+      .map((draft) => clone(draft));
+  }
+
   async findDraftRevision(
     projectId: string,
     changeSetId: string,

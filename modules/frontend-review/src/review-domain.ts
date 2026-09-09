@@ -226,6 +226,14 @@ export const deriveContextView = (input: {
     if (targetChanged) {
       aggregateState = 'STALE';
       staleReason = 'the reviewed target changed since this context was generated';
+    } else if (
+      context.targetKind === 'COMPARISON_V2_CHANGE_SET' &&
+      input.currentSource?.authoritativeAggregateState
+    ) {
+      // Comparison V2 owns its durable decision state. It intentionally does
+      // not append FE-P4-S1 decisions, so the normal V1 decision-derived
+      // aggregate would otherwise regress HOLD/APPROVED/REJECTED to PENDING.
+      aggregateState = input.currentSource.authoritativeAggregateState;
     } else {
       aggregateState = computeAggregateState({
         items: readableContext.items,
@@ -249,10 +257,15 @@ export const deriveContextView = (input: {
 export const deriveAttentionReasons = (
   aggregateState: ReviewAggregateStateV1,
   stale: boolean,
+  targetKind?: ReviewTargetKindV1,
 ): readonly ReviewAttentionReasonV1[] => {
   const reasons: ReviewAttentionReasonV1[] = [];
   if (stale) reasons.push('STALE');
-  if (aggregateState === 'PENDING' || aggregateState === 'PARTIALLY_DECIDED') {
+  if (
+    aggregateState === 'PENDING' ||
+    aggregateState === 'PARTIALLY_DECIDED' ||
+    (aggregateState === 'ON_HOLD' && targetKind === 'COMPARISON_V2_CHANGE_SET')
+  ) {
     reasons.push('REQUIRES_ACTION');
   }
   if (aggregateState === 'ACCESS_RESTRICTED') reasons.push('ACCESS_RESTRICTED');

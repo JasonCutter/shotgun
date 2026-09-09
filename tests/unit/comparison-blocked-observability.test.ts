@@ -86,6 +86,9 @@ const memoryBlockedRepository = () => {
           ...existing,
           lastObservedAt:
             existing.lastObservedAt > input.observedAt ? existing.lastObservedAt : input.observedAt,
+          state: 'ACTIVE' as const,
+          resolvedAt: undefined,
+          resolutionIdentity: undefined,
         };
         rows.set(key, updated);
         return updated;
@@ -299,6 +302,43 @@ describe('Issue #245 durable Stage 5 blocked observability', () => {
     expect([...memory.rows.values()]).toEqual([
       expect.objectContaining({ state: 'RESOLVED', resolutionIdentity: 'comparison-245' }),
     ]);
+  });
+
+  it('reactivates the same durable block after it was resolved', async () => {
+    const memory = memoryBlockedRepository();
+    const comparison = orchestrator(blockedShortlist(), memory.repository);
+    await comparison.compare(request);
+    await memory.repository.resolveBlockedOutcomes({
+      projectId,
+      candidateId: candidate.candidateId,
+      candidateRevision: candidate.revisionNumber,
+      candidateDigest,
+      resolutionIdentity: 'comparison-resolved-245',
+      resolvedAt: '2026-09-09T12:01:00.000Z',
+      state: 'RESOLVED',
+    });
+    await comparison.compare({ ...request, attempt: 2 });
+    const rows = [...memory.rows.values()];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      state: 'ACTIVE',
+      resolvedAt: undefined,
+      resolutionIdentity: undefined,
+    });
+    const adapter = new ComparisonActivityAdapter(memory.repository);
+    const page = await adapter.readQueue(
+      {
+        principalId: 'owner-245',
+        activeProjectId: projectId,
+        accessRevision: 'access-1',
+        policyContextRevision: 'policy-1',
+        accessScope: ['owner'],
+        sensitivityClearance: 'private',
+      },
+      {},
+    );
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]!.dimensions.attention).toBe('NEEDS_ATTENTION');
   });
 
   it('does not create a blocked row when candidate access is denied', async () => {

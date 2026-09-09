@@ -939,7 +939,7 @@ export class PostgresComparisonV2Repository implements ComparisonV2RepositoryPor
              blocked_phase, reason, governing_input_digest
            ) DO UPDATE SET last_observed_at = GREATEST(
              comparison.blocked_outcomes_v2.last_observed_at, EXCLUDED.last_observed_at
-           )
+           ), state = 'ACTIVE', resolved_at = NULL, resolution_identity = NULL
            RETURNING *`,
           [
             `blocked:${randomUUID()}`,

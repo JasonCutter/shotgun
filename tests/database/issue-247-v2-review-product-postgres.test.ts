@@ -428,60 +428,79 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
       const sourceVersionIds = [pending, hold, modify].map(
         ({ fixture }) => fixture.candidate.sourceVersionId,
       );
-      await pool.query(
-        'DELETE FROM review.decisions_v2 WHERE project_id = $1 AND change_set_id = ANY($2::text[])',
-        [projectId, changeSetIds],
-      );
-      await pool.query(
-        'DELETE FROM review.approved_manifests_v2 WHERE project_id = $1 AND change_set_id = ANY($2::text[])',
-        [projectId, changeSetIds],
-      );
-      await pool.query(
-        'DELETE FROM review.operation_resolutions_v2 WHERE project_id = $1 AND change_set_id = ANY($2::text[])',
-        [projectId, changeSetIds],
-      );
-      await pool.query(
-        'DELETE FROM review.change_set_revisions_v2 WHERE project_id = $1 AND change_set_id = ANY($2::text[])',
-        [projectId, changeSetIds],
-      );
-      await pool.query(
-        'DELETE FROM review.change_sets_v2 WHERE project_id = $1 AND change_set_id = ANY($2::text[])',
-        [projectId, changeSetIds],
-      );
-      await pool.query(
-        'DELETE FROM comparison.relationships_v2 WHERE project_id = $1 AND comparison_id = ANY($2::text[])',
-        [projectId, comparisonIds],
-      );
-      await pool.query(
-        'DELETE FROM comparison.results_v2 WHERE project_id = $1 AND comparison_id = ANY($2::text[])',
-        [projectId, comparisonIds],
-      );
-      await pool.query(
-        'DELETE FROM comparison.analysis_revisions_v2 WHERE project_id = $1 AND comparison_id = ANY($2::text[])',
-        [projectId, comparisonIds],
-      );
-      await pool.query(
-        'DELETE FROM candidate.claim_candidates WHERE project_id = $1 AND candidate_id = ANY($2::uuid[])',
-        [projectId, candidateIds],
-      );
-      await pool.query(
-        'DELETE FROM candidate.batches WHERE project_id = $1 AND batch_id = ANY($2::uuid[])',
-        [projectId, batchIds],
-      );
-      await pool.query(
-        'DELETE FROM evidence.spans WHERE project_id = $1 AND evidence_id = ANY($2::uuid[])',
-        [projectId, evidenceIds],
-      );
-      await pool.query(
-        'DELETE FROM transformation.revisions WHERE project_id = $1 AND source_version_id = ANY($2::uuid[])',
-        [projectId, sourceVersionIds],
-      );
-      await pool.query('DELETE FROM canonical.revisions WHERE project_id = $1', [projectId]);
-      await pool.query('DELETE FROM canonical.history_events WHERE project_id = $1', [projectId]);
-      await pool.query('DELETE FROM canonical.outbox WHERE project_id = $1', [projectId]);
-      await pool.query('DELETE FROM canonical.claims WHERE project_id = $1', [projectId]);
-      await pool.query('DELETE FROM canonical.commits WHERE project_id = $1', [projectId]);
-      await pool.query('DELETE FROM canonical.project_state WHERE project_id = $1', [projectId]);
+      const cleanupClient = await pool.connect();
+      try {
+        await cleanupClient.query('SET session_replication_role = replica');
+        await cleanupClient.query(
+          'DELETE FROM review.decisions_v2 WHERE project_id = $1 AND change_set_id = ANY($2::text[])',
+          [projectId, changeSetIds],
+        );
+        await cleanupClient.query(
+          'DELETE FROM review.approved_manifests_v2 WHERE project_id = $1 AND change_set_id = ANY($2::text[])',
+          [projectId, changeSetIds],
+        );
+        await cleanupClient.query(
+          'DELETE FROM review.operation_resolutions_v2 WHERE project_id = $1 AND change_set_id = ANY($2::text[])',
+          [projectId, changeSetIds],
+        );
+        await cleanupClient.query(
+          'DELETE FROM review.change_set_revisions_v2 WHERE project_id = $1 AND change_set_id = ANY($2::text[])',
+          [projectId, changeSetIds],
+        );
+        await cleanupClient.query(
+          'DELETE FROM review.change_sets_v2 WHERE project_id = $1 AND change_set_id = ANY($2::text[])',
+          [projectId, changeSetIds],
+        );
+        await cleanupClient.query(
+          'DELETE FROM comparison.relationships_v2 WHERE project_id = $1 AND comparison_id = ANY($2::text[])',
+          [projectId, comparisonIds],
+        );
+        await cleanupClient.query(
+          'DELETE FROM comparison.results_v2 WHERE project_id = $1 AND comparison_id = ANY($2::text[])',
+          [projectId, comparisonIds],
+        );
+        await cleanupClient.query(
+          'DELETE FROM comparison.analysis_revisions_v2 WHERE project_id = $1 AND comparison_id = ANY($2::text[])',
+          [projectId, comparisonIds],
+        );
+        await cleanupClient.query(
+          'DELETE FROM candidate.claim_candidates WHERE project_id = $1 AND candidate_id = ANY($2::uuid[])',
+          [projectId, candidateIds],
+        );
+        await cleanupClient.query(
+          'DELETE FROM candidate.batches WHERE project_id = $1 AND batch_id = ANY($2::uuid[])',
+          [projectId, batchIds],
+        );
+        await cleanupClient.query(
+          'DELETE FROM evidence.spans WHERE project_id = $1 AND evidence_id = ANY($2::uuid[])',
+          [projectId, evidenceIds],
+        );
+        await cleanupClient.query(
+          'DELETE FROM transformation.revisions WHERE project_id = $1 AND source_version_id = ANY($2::uuid[])',
+          [projectId, sourceVersionIds],
+        );
+        await cleanupClient.query('DELETE FROM canonical.revisions WHERE project_id = $1', [
+          projectId,
+        ]);
+        await cleanupClient.query('DELETE FROM canonical.history_events WHERE project_id = $1', [
+          projectId,
+        ]);
+        await cleanupClient.query('DELETE FROM canonical.outbox WHERE project_id = $1', [
+          projectId,
+        ]);
+        await cleanupClient.query('DELETE FROM canonical.claims WHERE project_id = $1', [
+          projectId,
+        ]);
+        await cleanupClient.query('DELETE FROM canonical.commits WHERE project_id = $1', [
+          projectId,
+        ]);
+        await cleanupClient.query('DELETE FROM canonical.project_state WHERE project_id = $1', [
+          projectId,
+        ]);
+      } finally {
+        await cleanupClient.query('SET session_replication_role = origin');
+        cleanupClient.release();
+      }
     }
   });
 });

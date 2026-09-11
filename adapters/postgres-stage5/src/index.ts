@@ -19,6 +19,7 @@ import type {
   ChangeSetReviewRepositoryPort,
   ComparisonV2ReviewDecisionResult,
   ComparisonV2ReviewDecisionWrite,
+  ComparisonV2DecisionHistoryRecord,
   ComparisonV2PersistedDecision,
   ReviewV2RepositoryPort,
   ReviewDecisionWrite,
@@ -1580,7 +1581,7 @@ export class PostgresChangeSetReviewV2Repository
   async listDecisions(
     projectId: string,
     changeSetId: string,
-  ): Promise<readonly ComparisonV2PersistedDecision[]> {
+  ): Promise<readonly ComparisonV2DecisionHistoryRecord[]> {
     const result = await this.pool.query<DecisionV2Row>(
       `
         SELECT project_id, change_set_id, expected_revision_number,
@@ -1592,31 +1593,12 @@ export class PostgresChangeSetReviewV2Repository
       [projectId, changeSetId],
     );
     if (result.rows.length === 0) return [];
-    const draft = await this.findDraftById(projectId, changeSetId);
-    if (!draft) {
-      throw new ShotgunError({
-        code: 'CONFLICT',
-        safeMessage: 'The persisted v2 review decision has no Draft Change Set.',
-        module: 'postgres-stage5',
-        operation: 'list-review-decisions-v2',
-      });
-    }
-    const manifestResult = await this.pool.query<ManifestV2Row>(
-      `
-        SELECT manifest_json
-        FROM review.approved_manifests_v2
-        WHERE project_id = $1 AND change_set_id = $2
-      `,
-      [projectId, changeSetId],
-    );
     return result.rows.map((row) => ({
       projectId: row.project_id,
       changeSetId: row.change_set_id,
       expectedRevisionNumber: row.expected_revision_number,
       expectedContentDigest: row.expected_content_digest,
-      draft,
       decision: row.decision_json,
-      ...(manifestResult.rows[0] ? { manifest: manifestResult.rows[0].manifest_json } : {}),
     }));
   }
 

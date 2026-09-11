@@ -42,7 +42,7 @@ import type { InMemoryFrontendKnowledgeDraftRepository } from '../../frontend-kn
 import type { FrontendKnowledgeDraftChangeSetV1 } from '../../../packages/contracts/src/index.js';
 import type { FrontendKnowledgeOperationV1 } from '../../../packages/contracts/src/index.js';
 import type {
-  ComparisonV2PersistedDecision,
+  ComparisonV2DecisionHistoryRecord,
   ReviewV2RepositoryPort,
 } from '../../../modules/change-set-review/src/index.js';
 import type { CandidateRepositoryPort } from '../../../modules/candidate-generation/src/index.js';
@@ -594,7 +594,7 @@ export type ComparisonV2ReviewSourceReader = {
   listDecisions?(
     projectId: string,
     changeSetId: string,
-  ): Promise<readonly ComparisonV2PersistedDecision[]>;
+  ): Promise<readonly ComparisonV2DecisionHistoryRecord[]>;
   findCandidate?(projectId: string, candidateId: string): Promise<ClaimCandidate | undefined>;
   findEvidence?(projectId: string, evidenceId: string): Promise<EvidenceSpan | undefined>;
 };
@@ -808,23 +808,32 @@ export class ComparisonV2ReviewTargetAdapter implements ReviewTargetAdapterPort 
       input.scope.activeProjectId,
       input.source.targetId,
     );
+    const targetRevision = Number(input.context.targetRevision);
     const reviewItemId = `comparison-v2:${input.source.targetId}`;
-    return decisions.map((decision) => ({
-      schemaVersion: '1.0.0',
-      decisionId: decision.decision.decisionId,
-      reviewContextId: input.context.reviewContextId,
-      contextRevision: input.context.contextRevision,
-      reviewItemId,
-      intent: decision.decision.decision,
-      reason: decision.decision.reason,
-      decidedBy: {
+    return decisions
+      .filter(
+        (decision) =>
+          decision.projectId === input.scope.activeProjectId &&
+          decision.changeSetId === input.source.targetId &&
+          decision.expectedRevisionNumber === targetRevision &&
+          decision.expectedContentDigest === input.context.targetDigest,
+      )
+      .map((decision) => ({
         schemaVersion: '1.0.0',
-        principalId: decision.decision.actor.id,
-        actorId: decision.decision.actor.id,
-      },
-      decidedAt: decision.decision.decidedAt,
-      terminal: decision.decision.decision !== 'HOLD',
-    }));
+        decisionId: decision.decision.decisionId,
+        reviewContextId: input.context.reviewContextId,
+        contextRevision: input.context.contextRevision,
+        reviewItemId,
+        intent: decision.decision.decision,
+        reason: decision.decision.reason,
+        decidedBy: {
+          schemaVersion: '1.0.0',
+          principalId: decision.decision.actor.id,
+          actorId: decision.decision.actor.id,
+        },
+        decidedAt: decision.decision.decidedAt,
+        terminal: decision.decision.decision !== 'HOLD',
+      }));
   }
 
   async readEvidence(input: {

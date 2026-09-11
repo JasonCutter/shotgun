@@ -8,6 +8,7 @@ import {
   frontendReviewAddCommentDigest,
   frontendReviewRecordDecisionsDigest,
   frontendReviewRevalidateDigest,
+  stableJson,
   type AcceptedPolicyContext,
   type AddReviewCommentRequestV1,
   type AddReviewCommentResultV1,
@@ -387,9 +388,24 @@ export class FrontendReviewProductCoordinator {
   ): Promise<readonly ReviewDecisionRecordV1[]> {
     if (!source || adapter.readDecisionHistory === undefined) return stored;
     const projected = await adapter.readDecisionHistory({ scope, source, context });
-    if (projected.length === 0) return stored;
-    const seen = new Set(stored.map((decision) => decision.decisionId));
-    return [...stored, ...projected.filter((decision) => !seen.has(decision.decisionId))];
+    if (stored.length > 0) {
+      reviewFailure(
+        'CONFLICT',
+        'An owning-domain Review history target has an unexpected Frontend Review decision.',
+      );
+    }
+    const seen = new Map<string, ReviewDecisionRecordV1>();
+    for (const decision of projected) {
+      const previous = seen.get(decision.decisionId);
+      if (previous && stableJson(previous) !== stableJson(decision)) {
+        reviewFailure(
+          'CONFLICT',
+          'An owning-domain Review history target contains conflicting decision identities.',
+        );
+      }
+      if (!previous) seen.set(decision.decisionId, decision);
+    }
+    return [...seen.values()];
   }
 
   /** Fail-closed Approval read revalidation shared by read and outcome paths. */

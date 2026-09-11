@@ -9,7 +9,7 @@ import { InMemoryFrontendCommandGateway } from '../../adapters/frontend-command-
 import { FrontendReviewProductCoordinator } from '../../modules/frontend-review/src/index.js';
 import { createAdr163ReviewFixture } from '../helpers/adr163-review-fixture.js';
 import type { DraftChangeSetV2 } from '../../packages/contracts/src/index.js';
-import type { ComparisonV2PersistedDecision } from '../../modules/change-set-review/src/index.js';
+import type { ComparisonV2DecisionHistoryRecord } from '../../modules/change-set-review/src/index.js';
 
 const scope = {
   principalId: 'owner-1',
@@ -190,12 +190,11 @@ describe('Issue #247 Comparison V2 Review presentation', () => {
       suffix: 'issue-251-history',
       claimText: 'A V2 decision whose history must remain authoritative.',
     });
-    const persisted: ComparisonV2PersistedDecision = {
+    const persisted: ComparisonV2DecisionHistoryRecord = {
       projectId: fixture.draft.projectId,
       changeSetId: fixture.draft.changeSetId,
       expectedRevisionNumber: fixture.draft.revisionNumber,
       expectedContentDigest: fixture.draft.contentDigest,
-      draft: fixture.draft,
       decision: {
         decisionId: 'issue-251-v2-decision',
         decision: 'REJECT',
@@ -244,5 +243,111 @@ describe('Issue #247 Comparison V2 Review presentation', () => {
       reviewItemId: `comparison-v2:${fixture.draft.changeSetId}`,
     });
     expect(itemDetail.decisions).toEqual(context.decisions);
+  });
+
+  it('does not project a V2 decision from a different Draft revision', async () => {
+    const fixture = createAdr163ReviewFixture({
+      suffix: 'issue-251-history-revision-mismatch',
+      claimText: 'A V2 decision bound to an older Draft revision.',
+    });
+    const reader: ComparisonV2ReviewSourceReader = {
+      ...readerFor(fixture.draft),
+      async listDecisions(projectId, changeSetId) {
+        return projectId === fixture.draft.projectId && changeSetId === fixture.draft.changeSetId
+          ? [
+              {
+                projectId,
+                changeSetId,
+                expectedRevisionNumber: fixture.draft.revisionNumber + 1,
+                expectedContentDigest: 'sha256:next-revision',
+                decision: {
+                  decisionId: 'issue-251-old-revision-decision',
+                  decision: 'REJECT',
+                  actor: { type: 'user', id: 'owner-1' },
+                  reason: 'This decision belongs to another Draft revision.',
+                  decidedAt: '2026-09-10T00:00:00.000Z',
+                },
+              },
+            ]
+          : [];
+      },
+    };
+    const coordinator = new FrontendReviewProductCoordinator(
+      new InMemoryFrontendReviewStore(),
+      new InMemoryFrontendCommandGateway(),
+      [new ComparisonV2ReviewTargetAdapter(reader)],
+    );
+    const queue = await coordinator.listReviewQueue(scope, {
+      schemaVersion: '1.0.0',
+      pageSize: 10,
+    });
+    const context = await coordinator.getReviewContext(scope, {
+      schemaVersion: '1.0.0',
+      reviewContextId: queue.items[0]!.reviewContextId,
+      contextRevision: queue.items[0]!.contextRevision,
+    });
+
+    expect(context.decisions).toEqual([]);
+  });
+
+  it('fails closed when a V2 context contains an unexpected frontend decision shadow', async () => {
+    const fixture = createAdr163ReviewFixture({
+      suffix: 'issue-251-history-authority-conflict',
+      claimText: 'A V2 context with an unexpected frontend shadow decision.',
+    });
+    const persisted: ComparisonV2DecisionHistoryRecord = {
+      projectId: fixture.draft.projectId,
+      changeSetId: fixture.draft.changeSetId,
+      expectedRevisionNumber: fixture.draft.revisionNumber,
+      expectedContentDigest: fixture.draft.contentDigest,
+      decision: {
+        decisionId: 'issue-251-authoritative-decision',
+        decision: 'REJECT',
+        actor: { type: 'user', id: 'owner-1' },
+        reason: 'The owning domain is authoritative.',
+        decidedAt: '2026-09-10T00:00:00.000Z',
+      },
+    };
+    const reader: ComparisonV2ReviewSourceReader = {
+      ...readerFor(fixture.draft),
+      async listDecisions() {
+        return [persisted];
+      },
+    };
+    const store = new InMemoryFrontendReviewStore();
+    const coordinator = new FrontendReviewProductCoordinator(
+      store,
+      new InMemoryFrontendCommandGateway(),
+      [new ComparisonV2ReviewTargetAdapter(reader)],
+    );
+    const queue = await coordinator.listReviewQueue(scope, {
+      schemaVersion: '1.0.0',
+      pageSize: 10,
+    });
+    const context = await coordinator.getReviewContext(scope, {
+      schemaVersion: '1.0.0',
+      reviewContextId: queue.items[0]!.reviewContextId,
+      contextRevision: queue.items[0]!.contextRevision,
+    });
+    store.decisions.push({
+      schemaVersion: '1.0.0',
+      decisionId: 'issue-251-frontend-shadow',
+      reviewContextId: context.context.reviewContextId,
+      contextRevision: context.context.contextRevision,
+      reviewItemId: context.context.items[0]!.reviewItemId,
+      intent: 'REJECT',
+      reason: 'Unexpected frontend shadow.',
+      decidedBy: { schemaVersion: '1.0.0', principalId: 'owner-1', actorId: 'owner-1' },
+      decidedAt: '2026-09-10T00:00:01.000Z',
+      terminal: true,
+    });
+
+    await expect(
+      coordinator.getReviewContext(scope, {
+        schemaVersion: '1.0.0',
+        reviewContextId: context.context.reviewContextId,
+        contextRevision: context.context.contextRevision,
+      }),
+    ).rejects.toMatchObject({ apiCode: 'CONFLICT' });
   });
 });

@@ -55,6 +55,16 @@ describe('LPA-WP4 Local Launch / Serving Usability', () => {
       expect(deep.headers['content-type']).toContain('text/html');
       expect(deep.body).toContain('<div id="root">');
 
+      // `/knowledge` is a Product SPA route. The legacy standalone Compiled
+      // Truth page must never win precedence over the SPA route guard.
+      const knowledge = await server.inject({ method: 'GET', url: '/knowledge' });
+      expect(knowledge.statusCode).toBe(200);
+      expect(knowledge.headers['content-type']).toContain('text/html');
+      expect(knowledge.body).toContain('<div id="root">');
+      expect(knowledge.body).not.toContain('Compiled Truth 그래프');
+      expect(knowledge.body).not.toContain('id="graph"');
+      expect(knowledge.body).not.toContain('/compiled-truth/query');
+
       // Product Ask and conversation deep links are SPA-owned, never legacy Ask HTML.
       for (const url of ['/ask', '/ask/conversations/conversation-direct-navigation']) {
         const ask = await server.inject({ method: 'GET', url });

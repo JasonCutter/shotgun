@@ -1477,42 +1477,6 @@ const askPage = (): string => `<!doctype html>
 </body>
 </html>`;
 
-const knowledgePage = (): string => `<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Shotgun Knowledge Graph</title>
-  <style>
-    body{font-family:system-ui,sans-serif;max-width:1000px;margin:40px auto;padding:0 20px;color:#172033}
-    #graph{height:420px;border:1px solid #d9e0ea;border-radius:10px;margin:20px 0;background:#fbfcfe}
-    table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #d9e0ea;padding:9px;text-align:left}
-    th{background:#f3f6fa}.warning{color:#9a5b00;font-weight:700}.muted{color:#526173}
-  </style>
-</head>
-<body>
-  <h1>Compiled Truth 그래프</h1>
-  <p>승인된 지식을 2D 그래프로 보고, 화면을 사용할 수 없을 때도 같은 데이터의 목록·표를 확인합니다.</p>
-  <p id="state" class="muted">불러오는 중…</p>
-  <div id="graph" role="img" aria-label="승인된 지식의 2D 관계 그래프"></div>
-  <h2>지식 목록·표 보기</h2>
-  <table aria-label="승인된 지식 항목">
-    <thead><tr><th>ID</th><th>유형</th><th>내용</th><th>시간 상태</th><th>근거</th></tr></thead>
-    <tbody id="rows"></tbody>
-  </table>
-  <script src="/vendor/cytoscape.min.js"></script>
-  <script>
-    const state=document.querySelector('#state');const rows=document.querySelector('#rows');
-    (async()=>{try{
-      const csrfRes=await fetch('/auth/csrf');if(!csrfRes.ok)throw new Error('CSRF 갱신 실패');const csrf=(await csrfRes.json()).csrfToken;
-      const response=await fetch('/compiled-truth/query',{method:'POST',headers:{'content-type':'application/json','x-csrf-token':csrf},body:'{}'});
-      const body=await response.json();if(!response.ok)throw new Error(body.message||'요청 실패');
-      const {projection,status}=body;const graph=projection.graph;state.textContent='상태 '+status.status+' / 지연 '+status.lag+' / 항목 '+projection.items.length+'개 / 관계 '+graph.edges.length+'개';projection.items.forEach(item=>{const row=document.createElement('tr');[item.id,item.type,item.label,item.state,String(item.evidenceIds.length)].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.append(cell);});rows.append(row);});window.cytoscape({container:document.querySelector('#graph'),elements:[...graph.nodes.map(node=>({data:{id:node.id,label:node.label,state:node.state}})),...graph.edges.map(edge=>({data:{id:edge.id,source:edge.from,target:edge.to,label:edge.relationType}}))],style:[{selector:'node',style:{label:'data(label)','background-color':'#4776e6','font-size':'11px','text-wrap':'wrap','text-max-width':'100px'}},{selector:'edge',style:{label:'data(label)','curve-style':'bezier','target-arrow-shape':'triangle','line-color':'#91a0b5','target-arrow-color':'#91a0b5','font-size':'9px'}}],layout:{name:'cose',animate:false}});
-    }catch(error){state.textContent=error.message;state.className='warning';}})();
-  </script>
-</body>
-</html>`;
-
 const requestContext = (headers: SecurityHeaders) => {
   const context = trustedRequestContexts.get(headers as object);
   if (!context) {
@@ -4663,16 +4627,6 @@ const createApplicationCore = async (
       );
       return { graph: delivery.result.payload };
     },
-  );
-
-  server.get('/knowledge', async (_request, reply) =>
-    reply.type('text/html; charset=utf-8').send(knowledgePage()),
-  );
-
-  server.get('/vendor/cytoscape.min.js', async (_request, reply) =>
-    reply
-      .type('application/javascript; charset=utf-8')
-      .send(await readFile(path.resolve('node_modules/cytoscape/dist/cytoscape.min.js'), 'utf8')),
   );
 
   server.post<{

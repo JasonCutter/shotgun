@@ -562,10 +562,15 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
     const fixture = createAdr163ReviewFixture({
       suffix: `issue-251-reject-${suffix}`,
       projectId,
+      candidateId: randomUUID(),
+      batchId: randomUUID(),
+      evidenceId: randomUUID(),
+      sourceVersionId: randomUUID(),
       claimText: 'A V2 rejection whose history must remain authoritative.',
       createdAt: '2026-09-10T00:00:00.000Z',
     });
     const reviewRepository = new PostgresChangeSetReviewV2Repository(pool);
+    const comparisonRepository = new PostgresComparisonV2Repository(pool);
     const frontendReviewStore = new PostgresFrontendReviewRepository(pool);
     const reader: ComparisonV2ReviewSourceReader = {
       async listDrafts(currentProjectId) {
@@ -598,9 +603,76 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
     } as const;
     const rejectDecisionId = `decision:issue-251:${suffix}:reject`;
     const rejectedAt = '2026-09-10T00:01:00.000Z';
+    const candidate = fixture.candidate;
 
-    await reviewRepository.saveDraft(fixture.draft);
     try {
+      const sourceHash = sha256Text(candidate.claimText);
+      const sourceId = randomUUID();
+      const revisionId = randomUUID();
+      await pool.query(
+        `INSERT INTO transformation.revisions (
+           revision_id, project_id, source_id, source_version_id, source_content_hash,
+           transformer_id, transformer_version, document_ir, source_map, document_hash,
+           source_map_hash, access_scope, sensitivity, created_at
+         ) VALUES ($1, $2, $3, $4, $5, 'fixture', '1', '{}', '{}', $5, $5, '{owner}', 'private', $6)`,
+        [
+          revisionId,
+          projectId,
+          sourceId,
+          candidate.sourceVersionId,
+          sourceHash,
+          fixture.draft.createdAt,
+        ],
+      );
+      await pool.query(
+        `INSERT INTO evidence.spans (
+           evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
+           node_kind, origin, position, quote, exact_hash, access_scope, sensitivity, created_at
+         ) VALUES ($1, $2, $3, $4, $5, '/claim', 'sentence', 'source',
+           '{"start":0,"end":1}', $6::jsonb, $7, '{owner}', 'private', $8)`,
+        [
+          candidate.evidenceIds[0],
+          revisionId,
+          projectId,
+          sourceId,
+          candidate.sourceVersionId,
+          JSON.stringify({ text: candidate.claimText }),
+          sourceHash,
+          fixture.draft.createdAt,
+        ],
+      );
+      await pool.query(
+        `INSERT INTO candidate.batches (
+           batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          candidate.batchId,
+          projectId,
+          candidate.sourceVersionId,
+          `batch:${candidate.batchId}`,
+          JSON.stringify(candidate.providerCall),
+          fixture.draft.createdAt,
+        ],
+      );
+      await pool.query(
+        `INSERT INTO candidate.claim_candidates (
+           candidate_id, batch_id, project_id, source_version_id, revision_number, claim_text,
+           evidence_id, evidence_mode, extraction_profile, status, provider_call,
+           access_scope, sensitivity, created_at
+         ) VALUES ($1, $2, $3, $4, 1, $5, $6, 'DIRECT_EVIDENCE', 'direct-only', 'READY', $7, '{owner}', 'private', $8)`,
+        [
+          candidate.candidateId,
+          candidate.batchId,
+          projectId,
+          candidate.sourceVersionId,
+          candidate.claimText,
+          candidate.evidenceIds[0],
+          JSON.stringify(candidate.providerCall),
+          fixture.draft.createdAt,
+        ],
+      );
+      await comparisonRepository.saveCompletedAggregate(fixture.aggregate);
+      await reviewRepository.saveDraft(fixture.draft);
       const queue = await coordinator.listReviewQueue(scope, {
         schemaVersion: '1.0.0',
         pageSize: 10,
@@ -729,6 +801,34 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
         await cleanupClient.query(
           'DELETE FROM review.change_sets_v2 WHERE project_id = $1 AND change_set_id = $2',
           [projectId, fixture.draft.changeSetId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM comparison.relationships_v2 WHERE project_id = $1 AND comparison_id = $2',
+          [projectId, fixture.draft.comparisonId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM comparison.results_v2 WHERE project_id = $1 AND comparison_id = $2',
+          [projectId, fixture.draft.comparisonId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM comparison.analysis_revisions_v2 WHERE project_id = $1 AND comparison_id = $2',
+          [projectId, fixture.draft.comparisonId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM candidate.claim_candidates WHERE project_id = $1 AND candidate_id = $2',
+          [projectId, candidate.candidateId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM candidate.batches WHERE project_id = $1 AND batch_id = $2',
+          [projectId, candidate.batchId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM evidence.spans WHERE project_id = $1 AND evidence_id = $2',
+          [projectId, candidate.evidenceIds[0]],
+        );
+        await cleanupClient.query(
+          'DELETE FROM transformation.revisions WHERE project_id = $1 AND source_version_id = $2',
+          [projectId, candidate.sourceVersionId],
         );
       } finally {
         await cleanupClient.query('SET session_replication_role = origin');

@@ -12,6 +12,8 @@ import {
 } from '../../adapters/postgres-stage5/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
 import { PostgresFrontendReviewRepository } from '../../adapters/frontend-review-postgres/src/index.js';
+import { PostgresPayloadStateStore } from '../../adapters/frontend-history-postgres/src/index.js';
+import { ReviewHistoryAdapter } from '../../adapters/frontend-history-review/src/index.js';
 import {
   ComparisonV2ReviewTargetAdapter,
   type ComparisonV2ReviewSourceReader,
@@ -715,6 +717,38 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
           decidedAt: rejectedAt,
         },
       });
+
+      // Issue #265: the same PostgreSQL V2 authority is projected directly
+      // into federated History. No V1 Review shadow is required or created.
+      const historyAdapter = new ReviewHistoryAdapter(
+        frontendReviewStore,
+        new PostgresPayloadStateStore(pool, 'REVIEW'),
+        () => new Date('2026-09-10T00:02:00.000Z'),
+        reviewRepository,
+      );
+      const historyEntries = await historyAdapter.readHistory(projectId);
+      const historyDecision = historyEntries.filter(
+        (entry) => entry.sourceEventId === rejectDecisionId,
+      );
+      expect(historyDecision).toHaveLength(1);
+      expect(historyDecision[0]).toMatchObject({
+        domainKind: 'REVIEW',
+        sourceEventKind: 'DECISION',
+        sourceEventId: rejectDecisionId,
+        domainResourceId: fixture.draft.changeSetId,
+        occurredAt: rejectedAt,
+      });
+      expect(historyDecision[0]!.payloadSnapshot).toMatchObject({
+        changeSetId: fixture.draft.changeSetId,
+        expectedRevisionNumber: fixture.draft.revisionNumber,
+        expectedContentDigest: fixture.draft.contentDigest,
+        intent: 'REJECT',
+        reason: 'The owner rejected this candidate after reviewing its evidence.',
+        owningV2Target: { comparisonId: fixture.draft.comparisonId },
+      });
+      await expect(
+        historyAdapter.resolveHistoryEntry(projectId, 'DECISION', rejectDecisionId),
+      ).resolves.toMatchObject({ sourceEventId: rejectDecisionId });
 
       const rejectedContext = await coordinator.getReviewContext(scope, {
         schemaVersion: '1.0.0',

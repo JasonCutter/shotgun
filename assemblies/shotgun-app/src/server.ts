@@ -2305,7 +2305,12 @@ const createApplicationCore = async (
       const reviewBoundary = options.historyReviewBoundary ?? new InMemoryFrontendReviewStore();
       const registry = createHistoryAdapterRegistry([
         new CanonicalHistoryAdapter(canonicalKnowledgeRepository, canonicalPayloadState),
-        new ReviewHistoryAdapter(reviewBoundary, reviewPayloadState),
+        new ReviewHistoryAdapter(
+          reviewBoundary,
+          reviewPayloadState,
+          undefined,
+          options.changeSetReviewV2Repository,
+        ),
         new ExternalActionHistoryAdapter(externalActionStore, externalActionPayloadState),
         new PolicyHistoryAdapter(policyHistoryRead, settingsPayloadState),
       ]);

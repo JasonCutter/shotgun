@@ -821,16 +821,16 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
         sourceEventId: rejectDecisionId,
         domainResourceId: fixture.draft.changeSetId,
         occurredAt: rejectedAt,
-        payloadSnapshot: expect.objectContaining({
-          changeSetId: fixture.draft.changeSetId,
-          expectedRevisionNumber: fixture.draft.revisionNumber,
-          expectedContentDigest: fixture.draft.contentDigest,
-          intent: 'REJECT',
-          actor: { type: 'user', id: scope.principalId },
-          reason: 'The owner rejected this candidate after reviewing its evidence.',
-          decidedAt: rejectedAt,
-          owningV2Target: { comparisonId: fixture.draft.comparisonId },
-        }),
+      });
+      expect(projectedHistoryEntry.payloadSnapshot).toMatchObject({
+        changeSetId: fixture.draft.changeSetId,
+        expectedRevisionNumber: fixture.draft.revisionNumber,
+        expectedContentDigest: fixture.draft.contentDigest,
+        intent: 'REJECT',
+        actor: { type: 'user', id: scope.principalId },
+        reason: 'The owner rejected this candidate after reviewing its evidence.',
+        decidedAt: rejectedAt,
+        owningV2Target: { comparisonId: fixture.draft.comparisonId },
       });
       expect(projectedHistoryEntry.sourceEventId).toBe(rejectDecisionId);
       const historyDetail = await historyProduct.getHistoryEntry(historyScope, {
@@ -843,13 +843,13 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
         domainKind: 'REVIEW',
         sourceEventKind: 'DECISION',
         sourceEventId: rejectDecisionId,
-        payloadSnapshot: expect.objectContaining({
-          changeSetId: fixture.draft.changeSetId,
-          intent: 'REJECT',
-          actor: { type: 'user', id: scope.principalId },
-          reason: 'The owner rejected this candidate after reviewing its evidence.',
-          decidedAt: rejectedAt,
-        }),
+      });
+      expect(historyDetail.entry.payloadSnapshot).toMatchObject({
+        changeSetId: fixture.draft.changeSetId,
+        intent: 'REJECT',
+        actor: { type: 'user', id: scope.principalId },
+        reason: 'The owner rejected this candidate after reviewing its evidence.',
+        decidedAt: rejectedAt,
       });
 
       const rejectedContext = await coordinator.getReviewContext(scope, {

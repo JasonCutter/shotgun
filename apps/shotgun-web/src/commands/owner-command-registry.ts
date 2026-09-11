@@ -53,7 +53,7 @@ export type OwnerCommandAction =
   | { readonly kind: 'NAVIGATE_PATH'; readonly href: '/settings/ai' | '/settings/privacy' }
   | { readonly kind: 'OPEN_COMMANDS' }
   | { readonly kind: 'OPEN_SEARCH' }
-  | { readonly kind: 'OPEN_PROJECT_FLOW'; readonly commandId: ProjectCommandId }
+  | { readonly kind: 'NAVIGATE_PROJECT'; readonly commandId: ProjectCommandId }
   | { readonly kind: 'OPEN_PREFERENCE_FLOW'; readonly commandId: PreferenceCommandId }
   | { readonly kind: 'OPEN_AI_FLOW'; readonly commandId: AICommandId }
   | { readonly kind: 'OPEN_SEMANTIC_FLOW'; readonly commandId: SemanticCommandId }
@@ -390,8 +390,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     aliases: ['project admin', 'projects', '프로젝트 관리'],
     keywords: ['project settings', 'project list', 'project details', '프로젝트'],
     risk: 'READ',
-    presentation: 'DRAWER',
-    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.manage' },
+    presentation: 'NAVIGATE',
+    action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.manage' },
     getAvailability: (shell, isOffline, projects) =>
       projectCommandAvailability('project.manage', shell, isOffline, projects),
   },
@@ -403,8 +403,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     aliases: ['new project', 'add project', '프로젝트 만들기'],
     keywords: ['project administration', 'project setup', '프로젝트 생성'],
     risk: 'WRITE',
-    presentation: 'DIALOG',
-    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.create' },
+    presentation: 'NAVIGATE',
+    action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.create' },
     getAvailability: (shell, isOffline, projects) =>
       projectCommandAvailability('project.create', shell, isOffline, projects),
   },
@@ -416,8 +416,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     aliases: ['rename project', '프로젝트 이름 변경'],
     keywords: ['project identity', '프로젝트'],
     risk: 'WRITE',
-    presentation: 'DIALOG',
-    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.rename' },
+    presentation: 'NAVIGATE',
+    action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.rename' },
     getAvailability: (shell, isOffline, projects) =>
       projectCommandAvailability('project.rename', shell, isOffline, projects),
   },
@@ -429,8 +429,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     aliases: ['archive project', '프로젝트 보관'],
     keywords: ['project lifecycle', '프로젝트'],
     risk: 'WRITE',
-    presentation: 'DIALOG',
-    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.archive' },
+    presentation: 'NAVIGATE',
+    action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.archive' },
     getAvailability: (shell, isOffline, projects) =>
       projectCommandAvailability('project.archive', shell, isOffline, projects),
   },
@@ -442,8 +442,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     aliases: ['restore project', '프로젝트 복원'],
     keywords: ['project lifecycle', '프로젝트'],
     risk: 'WRITE',
-    presentation: 'DIALOG',
-    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.restore' },
+    presentation: 'NAVIGATE',
+    action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.restore' },
     getAvailability: (shell, isOffline, projects) =>
       projectCommandAvailability('project.restore', shell, isOffline, projects),
   },
@@ -455,8 +455,8 @@ const HFM_COMMAND_TEMPLATES: readonly OwnerCommandTemplate[] = [
     aliases: ['delete project', 'remove project', '프로젝트 삭제 요청'],
     keywords: ['project lifecycle', 'destructive', '프로젝트'],
     risk: 'DESTRUCTIVE',
-    presentation: 'DIALOG',
-    action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.delete_request' },
+    presentation: 'NAVIGATE',
+    action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.delete_request' },
     getAvailability: (shell, isOffline, projects) =>
       projectCommandAvailability('project.delete_request', shell, isOffline, projects),
   },

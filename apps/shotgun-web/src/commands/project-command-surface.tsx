@@ -29,6 +29,7 @@ export type ProjectCommandSurfaceProps = {
   readonly shell: GlobalShellView;
   readonly invoker: HTMLElement | null;
   readonly onClose: () => void;
+  readonly presentation?: 'DIALOG' | 'WORKSPACE';
 };
 
 const flowStep = (commandId: ProjectCommandId): ProjectSurfaceStep => {
@@ -99,13 +100,14 @@ export const ProjectCommandSurface = ({
   shell,
   invoker,
   onClose,
+  presentation = 'DIALOG',
 }: ProjectCommandSurfaceProps) => {
   const { apiClient } = useAppRuntime();
   const { t } = useProductLocalization();
   const queryClient = useQueryClient();
   const titleId = useId();
-  const dialog = useAccessibleDialog({ open, onClose });
   const [step, setStep] = useState<ProjectSurfaceStep>('MANAGE');
+  const [activeCommandId, setActiveCommandId] = useState<ProjectCommandId | null>(commandId);
   const [selectedProjectId, setSelectedProjectId] = useState<string>();
   const [createId, setCreateId] = useState('');
   const [createName, setCreateName] = useState('');
@@ -115,6 +117,17 @@ export const ProjectCommandSurface = ({
   const [errorMessage, setErrorMessage] = useState<string>();
   const [outcomeRecovery, setOutcomeRecovery] = useState<OutcomeRecovery>();
   const [isResolvingOutcome, setIsResolvingOutcome] = useState(false);
+  const currentCommandId = activeCommandId ?? commandId;
+  const isWorkspace = presentation === 'WORKSPACE';
+  const isConfirmationDialog =
+    isWorkspace &&
+    step === 'CONFIRM' &&
+    (currentCommandId === 'project.archive' || currentCommandId === 'project.delete_request');
+  const dialog = useAccessibleDialog({
+    open,
+    onClose,
+    trapFocus: !isWorkspace || isConfirmationDialog,
+  });
 
   const projectsQuery = useQuery({
     queryKey: projectAdminQueryKey(shell.principalId),
@@ -124,9 +137,21 @@ export const ProjectCommandSurface = ({
   const projects = projectsQuery.data ?? [];
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
 
+  const resetToManage = () => {
+    setActiveCommandId('project.manage');
+    setStep('MANAGE');
+    setSelectedProjectId(undefined);
+  };
+
+  const handleClose = () => {
+    resetToManage();
+    onClose();
+  };
+
   useEffect(() => {
     if (!open || !commandId) return;
-    dialog.captureInvoker(invoker);
+    if (!isWorkspace) dialog.captureInvoker(invoker);
+    setActiveCommandId(commandId);
     setStep(flowStep(commandId));
     setSelectedProjectId(undefined);
     setMessage(undefined);
@@ -137,27 +162,40 @@ export const ProjectCommandSurface = ({
     setCreateName('');
     setCreateDescription('');
     setRenameValue('');
-  }, [commandId, invoker, open]);
+  }, [commandId, invoker, isWorkspace, open]);
 
   useEffect(() => {
-    if (!open || !commandId || commandId === 'project.manage' || commandId === 'project.create') {
+    if (
+      !open ||
+      !currentCommandId ||
+      currentCommandId === 'project.manage' ||
+      currentCommandId === 'project.create'
+    ) {
       return;
     }
     if (selectedProjectId) return;
-    const target = targetProject(projects, commandId, shell.activeProject?.id);
+    if (
+      isWorkspace &&
+      (currentCommandId === 'project.archive' || currentCommandId === 'project.delete_request')
+    ) {
+      if (!projectsQuery.isLoading) setStep('SELECT');
+      return;
+    }
+    const target = targetProject(projects, currentCommandId, shell.activeProject?.id);
     if (target) {
       setSelectedProjectId(target.id);
-      setStep(flowStep(commandId));
+      setStep(flowStep(currentCommandId));
     } else if (!projectsQuery.isLoading) {
       setStep('SELECT');
     }
   }, [
-    commandId,
+    currentCommandId,
     open,
     projects,
     projectsQuery.isLoading,
     selectedProjectId,
     shell.activeProject?.id,
+    isWorkspace,
   ]);
 
   const refreshProjects = async () => {
@@ -202,7 +240,7 @@ export const ProjectCommandSurface = ({
     },
     onSuccess: async () => {
       await refreshProjects();
-      setStep('MANAGE');
+      resetToManage();
       setMessage(t('project.created'));
       setCreateId('');
       setCreateName('');
@@ -231,7 +269,7 @@ export const ProjectCommandSurface = ({
       }),
     onSuccess: async () => {
       await refreshProjects();
-      setStep('MANAGE');
+      resetToManage();
       setMessage(t('project.name_updated'));
       setRenameValue('');
       setOutcomeRecovery(undefined);
@@ -266,7 +304,7 @@ export const ProjectCommandSurface = ({
     },
     onSuccess: async (_result, input) => {
       await refreshProjects();
-      setStep('MANAGE');
+      resetToManage();
       setMessage(
         input.commandId === 'project.archive'
           ? t('project.archived')
@@ -296,7 +334,7 @@ export const ProjectCommandSurface = ({
       if (outcome.outcomeState === 'COMPLETED') {
         await refreshProjects();
         setOutcomeRecovery(undefined);
-        setStep('MANAGE');
+        resetToManage();
         setMessage(
           outcomeRecovery.commandId === 'project.create'
             ? t('project.created')
@@ -323,6 +361,7 @@ export const ProjectCommandSurface = ({
 
   const selectProject = (project: ProjectListItemView, nextCommandId: ProjectCommandId) => {
     setSelectedProjectId(project.id);
+    setActiveCommandId(nextCommandId);
     setErrorMessage(undefined);
     setMessage(undefined);
     setRenameValue('');
@@ -355,16 +394,16 @@ export const ProjectCommandSurface = ({
   const handleLifecycleSubmit = () => {
     if (
       !selectedProject ||
-      !commandId ||
-      commandId === 'project.manage' ||
-      commandId === 'project.create'
+      !currentCommandId ||
+      currentCommandId === 'project.manage' ||
+      currentCommandId === 'project.create'
     ) {
       return;
     }
-    if (commandId === 'project.rename') return;
+    if (currentCommandId === 'project.rename') return;
     setErrorMessage(undefined);
     lifecycleMutation.mutate({
-      commandId,
+      commandId: currentCommandId,
       projectId: selectedProject.id,
       revision: selectedProject.revision,
       ...identity(),
@@ -372,37 +411,47 @@ export const ProjectCommandSurface = ({
   };
 
   const title =
-    commandId === 'project.manage'
+    currentCommandId === 'project.manage'
       ? t('project.manage')
-      : commandId === 'project.create'
+      : currentCommandId === 'project.create'
         ? t('project.create')
-        : commandId === 'project.rename'
+        : currentCommandId === 'project.rename'
           ? t('project.rename')
-          : commandId === 'project.restore'
+          : currentCommandId === 'project.restore'
             ? t('project.restore')
-            : commandId === 'project.archive'
+            : currentCommandId === 'project.archive'
               ? t('project.archive')
               : t('project.delete_request');
 
   const eligibleProjects = useMemo(
-    () => (commandId ? projects.filter((project) => isEligible(project, commandId)) : []),
-    [commandId, projects],
+    () =>
+      currentCommandId ? projects.filter((project) => isEligible(project, currentCommandId)) : [],
+    [currentCommandId, projects],
   );
 
-  if (!open || !commandId) return null;
+  if (!open || !currentCommandId) return null;
 
   return (
     <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
+      className={isWorkspace ? 'projects-workspace' : 'modal-backdrop'}
+      {...(isWorkspace && !isConfirmationDialog
+        ? { role: 'region' as const }
+        : { role: 'dialog' as const, 'aria-modal': true })}
       aria-labelledby={titleId}
       ref={dialog.dialogRef}
       tabIndex={-1}
       onKeyDown={dialog.onDialogKeyDown}
     >
-      <div className="modal-card project-command-surface hfm-command-surface">
-        <h2 id={titleId}>{title}</h2>
+      <div
+        className={
+          isWorkspace
+            ? 'project-command-surface project-workspace-surface'
+            : 'modal-card project-command-surface hfm-command-surface'
+        }
+      >
+        <h1 id={titleId} tabIndex={isWorkspace ? -1 : undefined}>
+          {title}
+        </h1>
         {message ? (
           <p className="project-command-message" role="status">
             {message}
@@ -489,6 +538,7 @@ export const ProjectCommandSurface = ({
                 className="hfm-action-primary"
                 type="button"
                 onClick={() => {
+                  setActiveCommandId('project.create');
                   setStep('CREATE');
                   setErrorMessage(undefined);
                 }}
@@ -533,7 +583,7 @@ export const ProjectCommandSurface = ({
               >
                 {pending ? t('project.creating') : t('project.create')}
               </button>
-              <button className="hfm-action-secondary" type="button" onClick={onClose}>
+              <button className="hfm-action-secondary" type="button" onClick={handleClose}>
                 {t('common.cancel')}
               </button>
             </div>
@@ -552,7 +602,7 @@ export const ProjectCommandSurface = ({
                   <button
                     className="hfm-action-selection"
                     type="button"
-                    onClick={() => selectProject(project, commandId)}
+                    onClick={() => selectProject(project, currentCommandId)}
                   >
                     {project.name} · {t(projectLifecyclePresentationKey(project.status))}
                   </button>
@@ -587,7 +637,7 @@ export const ProjectCommandSurface = ({
               >
                 {pending ? t('common.saving') : t('project.rename')}
               </button>
-              <button className="hfm-action-secondary" type="button" onClick={onClose}>
+              <button className="hfm-action-secondary" type="button" onClick={handleClose}>
                 {t('common.cancel')}
               </button>
             </div>
@@ -611,7 +661,7 @@ export const ProjectCommandSurface = ({
               >
                 {pending ? t('project.restoring') : t('project.restore')}
               </button>
-              <button className="hfm-action-secondary" type="button" onClick={onClose}>
+              <button className="hfm-action-secondary" type="button" onClick={handleClose}>
                 {t('common.cancel')}
               </button>
             </div>
@@ -624,7 +674,7 @@ export const ProjectCommandSurface = ({
         selectedProject ? (
           <>
             <p>
-              {commandId === 'project.archive' ? (
+              {currentCommandId === 'project.archive' ? (
                 <>
                   Archive <strong>{selectedProject.name}</strong>? It will no longer be available as
                   an active Project.
@@ -645,11 +695,11 @@ export const ProjectCommandSurface = ({
               >
                 {pending
                   ? t('project.submitting')
-                  : commandId === 'project.archive'
+                  : currentCommandId === 'project.archive'
                     ? t('project.confirm_archive')
                     : t('project.confirm_deletion')}
               </button>
-              <button className="hfm-action-secondary" type="button" onClick={onClose}>
+              <button className="hfm-action-secondary" type="button" onClick={handleClose}>
                 {t('common.cancel')}
               </button>
             </div>
@@ -657,11 +707,13 @@ export const ProjectCommandSurface = ({
         ) : null}
 
         {step === 'MANAGE' || step === 'SELECT' ? (
-          <div className="dialog-actions">
-            <button className="hfm-action-secondary" type="button" onClick={onClose}>
-              {t('common.close')}
-            </button>
-          </div>
+          !isWorkspace || step === 'SELECT' ? (
+            <div className="dialog-actions">
+              <button className="hfm-action-secondary" type="button" onClick={handleClose}>
+                {step === 'SELECT' && isWorkspace ? t('common.cancel') : t('common.close')}
+              </button>
+            </div>
+          ) : null
         ) : null}
       </div>
     </div>

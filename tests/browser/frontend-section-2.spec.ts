@@ -49,7 +49,9 @@ test('HFM-S3 replaces Settings IA with focused owner commands without browser au
   }
 
   await palette.getByRole('button', { name: /Manage Projects/ }).click();
-  await expect(page.getByRole('dialog', { name: 'Manage Projects' })).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\/projects$/);
+  await expect(page.getByRole('region', { name: 'Manage Projects' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Manage Projects' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: /settings/i })).toHaveCount(0);
 
   const storage = await page.evaluate(() => ({

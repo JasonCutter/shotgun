@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -111,20 +111,32 @@ const GlobalToolsHarness = () => (
         invoker: null,
       };
       return (
-        <OwnerCommandPalette
-          open={commandMode.open}
-          presentation="CENTER"
-          commands={controller.commands}
-          initialQuery={commandMode.initialQuery}
-          resetQuerySignal={commandMode.resetQuerySignal}
-          invoker={commandMode.invoker}
-          onClose={controller.closeCommandMode ?? (() => undefined)}
-          onSelect={(command) => controller.executeCommand(command, commandMode.invoker)}
-        />
+        <>
+          <LocationProbe />
+          <OwnerCommandPalette
+            open={commandMode.open}
+            presentation="CENTER"
+            commands={controller.commands}
+            initialQuery={commandMode.initialQuery}
+            resetQuerySignal={commandMode.resetQuerySignal}
+            invoker={commandMode.invoker}
+            onClose={controller.closeCommandMode ?? (() => undefined)}
+            onSelect={(command) => controller.executeCommand(command, commandMode.invoker)}
+          />
+        </>
       );
     }}
   </GlobalTools>
 );
+
+const LocationProbe = () => {
+  const location = useLocation();
+  const state =
+    typeof location.state === 'object' && location.state !== null
+      ? (location.state as { readonly projectCommandId?: string }).projectCommandId
+      : undefined;
+  return <output data-testid="location-probe">{`${location.pathname}:${state ?? ''}`}</output>;
+};
 
 const openCommandsWithKeyboard = async (user: ReturnType<typeof userEvent.setup>) => {
   expect(screen.queryByRole('button', { name: 'Commands' })).toBeNull();
@@ -290,7 +302,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Project switch failed');
   });
 
-  it('opens Project management as a focused surface from the shared registry', async () => {
+  it('navigates Project management to the guarded Center workspace from the shared registry', async () => {
     const user = userEvent.setup();
     render(
       <AppProviders runtime={runtime({ getProjects: vi.fn(async () => [project]) })}>
@@ -303,9 +315,29 @@ describe('GlobalTools HFM-S1 preservation', () => {
     await openCommandsWithKeyboard(user);
     await user.click(await screen.findByRole('button', { name: /^Manage Projects/ }));
 
-    expect(await screen.findByRole('dialog', { name: 'Manage Projects' })).toBeTruthy();
-    expect(screen.getByText('Current Project')).toBeTruthy();
-    expect(screen.queryByRole('link', { name: /settings/i })).toBeNull();
+    expect((await screen.findByTestId('location-probe')).textContent).toBe(
+      '/settings/projects:project.manage',
+    );
+    expect(screen.queryByRole('dialog', { name: 'Manage Projects' })).toBeNull();
+  });
+
+  it('routes Project create intent to the same Center workspace without a long-lived modal', async () => {
+    const user = userEvent.setup();
+    render(
+      <AppProviders runtime={runtime({ getProjects: vi.fn(async () => [project]) })}>
+        <MemoryRouter>
+          <GlobalToolsHarness />
+        </MemoryRouter>
+      </AppProviders>,
+    );
+
+    await openCommandsWithKeyboard(user);
+    await user.click(await screen.findByRole('button', { name: /^Create Project/ }));
+
+    expect((await screen.findByTestId('location-probe')).textContent).toBe(
+      '/settings/projects:project.create',
+    );
+    expect(screen.queryByRole('dialog', { name: 'Create Project' })).toBeNull();
   });
 
   it('opens Preferences through the same owner command registry as other focused flows', async () => {

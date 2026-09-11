@@ -63,21 +63,16 @@ const renderLayout = (initialUrl = '/settings') => {
 };
 
 describe('SettingsLayout (A7 Settings IA & Header)', () => {
-  it('exposes exactly the four primary owner categories: AI, Privacy, Preferences, and Project', async () => {
-    renderLayout();
+  it('renders the preferences child while omitting the duplicate Settings Categories navigation', async () => {
+    renderLayout('/settings/preferences');
 
     expect(await screen.findByRole('heading', { name: 'Settings & Preferences' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'AI' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Privacy' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Preferences' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Project' })).toBeTruthy();
-
-    // Verify absence of legacy tabs
-    expect(screen.queryByRole('link', { name: 'Audit' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Secrets' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Backup' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'System' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Capabilities' })).toBeNull();
+    expect(screen.getByText('Preferences Subpage')).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Settings Categories' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'AI' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Privacy' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Preferences' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Project' })).toBeNull();
   });
 
   it('does not render Settings-local ProjectSelector or project badges in header', async () => {
@@ -88,21 +83,5 @@ describe('SettingsLayout (A7 Settings IA & Header)', () => {
     expect(screen.queryByText(/Current project:/i)).toBeNull();
     expect(screen.queryByText(/Settings for:/i)).toBeNull();
     expect(screen.queryByText(/Resource project:/i)).toBeNull();
-  });
-
-  it('renders clean canonical category links without targetProjectId query parameter', async () => {
-    renderLayout('/settings');
-
-    expect(await screen.findByRole('heading', { name: 'Settings & Preferences' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'AI' }).getAttribute('href')).toBe('/settings/ai');
-    expect(screen.getByRole('link', { name: 'Privacy' }).getAttribute('href')).toBe(
-      '/settings/privacy',
-    );
-    expect(screen.getByRole('link', { name: 'Preferences' }).getAttribute('href')).toBe(
-      '/settings/preferences',
-    );
-    expect(screen.getByRole('link', { name: 'Project' }).getAttribute('href')).toBe(
-      '/settings/projects',
-    );
   });
 });

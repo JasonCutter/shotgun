@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { GlobalShellView } from '@shotgun/api-client';
-import { NavLink, Outlet, useOutletContext } from 'react-router';
+import { Outlet, useOutletContext } from 'react-router';
 import { useAccessibleDialog } from '../../app/use-accessible-dialog.js';
 
 export const SettingsLayout = () => {
@@ -57,60 +57,6 @@ export const SettingsLayout = () => {
             Settings & Preferences
           </h1>
         </div>
-
-        <nav aria-label="Settings Categories" style={{ marginTop: '16px' }}>
-          <ul
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '8px',
-              listStyle: 'none',
-              padding: 0,
-              margin: 0,
-            }}
-          >
-            <li>
-              <NavLink
-                to="/settings/ai"
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                AI
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to="/settings/privacy"
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                Privacy
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to="/settings/preferences"
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                Preferences
-              </NavLink>
-            </li>
-            <li>
-              <NavLink
-                to="/settings/projects"
-                className={({ isActive }: { isActive: boolean }) =>
-                  isActive ? 'nav-tab active' : 'nav-tab'
-                }
-              >
-                Project
-              </NavLink>
-            </li>
-          </ul>
-        </nav>
       </header>
 
       <main className="settings-content">

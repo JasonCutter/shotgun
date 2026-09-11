@@ -127,21 +127,11 @@ test('HFM-S7-C6 Settings privacy flow: AI review required -> Privacy proposal ->
   await page.goto('/settings');
   await expect(page.getByRole('heading', { name: 'Settings & Preferences' })).toBeVisible();
 
-  // Verify primary Settings navigation exposes ONLY the 4 primary categories
-  const settingsNav = page.getByRole('navigation', { name: /Settings Categories/i });
-  await expect(settingsNav.getByRole('link', { name: 'AI' })).toBeVisible();
-  await expect(settingsNav.getByRole('link', { name: 'Privacy' })).toBeVisible();
-  await expect(settingsNav.getByRole('link', { name: 'Preferences' })).toBeVisible();
-  await expect(settingsNav.getByRole('link', { name: 'Project' })).toBeVisible();
-
-  // Verify absence of legacy tabs
-  await expect(settingsNav.getByRole('link', { name: 'Audit' })).toHaveCount(0);
-  await expect(settingsNav.getByRole('link', { name: 'Secrets' })).toHaveCount(0);
-  await expect(settingsNav.getByRole('link', { name: 'Backup' })).toHaveCount(0);
-  await expect(settingsNav.getByRole('link', { name: 'Connectors' })).toHaveCount(0);
+  // SettingsLayout intentionally has no duplicate in-page category navigation.
+  await expect(page.getByRole('navigation', { name: /Settings Categories/i })).toHaveCount(0);
 
   // 2. Navigate to Settings > AI
-  await settingsNav.getByRole('link', { name: 'AI' }).click();
+  await page.goto('/settings/ai');
   await expect(page.getByRole('heading', { name: 'AI', level: 2 })).toBeVisible({
     timeout: 15_000,
   });

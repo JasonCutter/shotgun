@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   claimCandidateDigest,
+  decodeActivitySnapshotV1,
+  type ActivityDetailV1,
   type AnalysisRevisionV2,
   type ClaimCandidate,
   type SecurityContext,
@@ -21,9 +23,28 @@ import type {
 } from '../../modules/comparison/src/persistence-v2.js';
 import type { ComparisonShortlistV2Port } from '../../modules/comparison/src/shortlist-v2.js';
 import { ComparisonActivityAdapter } from '../../adapters/frontend-activity-comparison/src/index.js';
+import { createFrontendActivityClient } from '../../packages/shotgun-api-client/src/index.js';
 
 const projectId = 'project-245';
 const observedAt = '2026-09-09T12:00:00.000Z';
+
+const expectClientRoundTrip = async (detail: ActivityDetailV1): Promise<void> => {
+  const client = createFrontendActivityClient({
+    fetch: async (input) =>
+      String(input) === '/api/v1/security/csrf'
+        ? new Response(JSON.stringify({ csrfToken: 'test-csrf-token' }), { status: 200 })
+        : new Response(JSON.stringify(detail), { status: 200 }),
+  });
+  await expect(
+    client.getActivityDetail({
+      schemaVersion: '1.0.0',
+      domainKind: detail.root.domainKind,
+      activityId: detail.root.activityId,
+      domainResourceKind: detail.root.domainResourceKind,
+      domainResourceId: detail.root.domainResourceId,
+    }),
+  ).resolves.toEqual(detail);
+};
 const candidate: ClaimCandidate = {
   candidateId: 'candidate-245',
   batchId: 'batch-245',
@@ -393,6 +414,8 @@ describe('Issue #245 durable Stage 5 blocked observability', () => {
       },
       page.items[0]!.root,
     );
+    expect(decodeActivitySnapshotV1(detail)).toEqual(detail);
+    await expectClientRoundTrip(detail);
     expect(detail.availableActions).toEqual([]);
     expect(detail.root.domainResourceId).toBe(outcome.blockedOutcomeId);
   });

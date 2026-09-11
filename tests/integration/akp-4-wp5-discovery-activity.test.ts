@@ -6,6 +6,11 @@ import {
 } from '../../adapters/frontend-activity-discovery/src/index.js';
 import { createInMemoryActivityReadModelStore } from '../../adapters/frontend-activity-in-memory/src/index.js';
 import {
+  decodeActivitySnapshotV1,
+  type ActivityDetailV1,
+} from '../../packages/contracts/src/index.js';
+import { createFrontendActivityClient } from '../../packages/shotgun-api-client/src/index.js';
+import {
   ActivityProductCoordinator,
   ActivityProjectionBuilder,
   type ActivityAdapterRegistryPort,
@@ -332,6 +337,24 @@ const scope: ActivityProductScopeV1 = {
   sensitivityClearance: 'internal',
 };
 
+const expectClientRoundTrip = async (detail: ActivityDetailV1): Promise<void> => {
+  const client = createFrontendActivityClient({
+    fetch: async (input) =>
+      String(input) === '/api/v1/security/csrf'
+        ? new Response(JSON.stringify({ csrfToken: 'test-csrf-token' }), { status: 200 })
+        : new Response(JSON.stringify(detail), { status: 200 }),
+  });
+  await expect(
+    client.getActivityDetail({
+      schemaVersion: '1.0.0',
+      domainKind: detail.root.domainKind,
+      activityId: detail.root.activityId,
+      domainResourceKind: detail.root.domainResourceKind,
+      domainResourceId: detail.root.domainResourceId,
+    }),
+  ).resolves.toEqual(detail);
+};
+
 const readWithFixture = (): InMemoryDiscoveryActivityRead => {
   const read = new InMemoryDiscoveryActivityRead();
   read.seedJob(job);
@@ -381,6 +404,8 @@ describe('AKP-4 WP5 Discovery Activity adapter', () => {
       runId: run.runId,
     });
     const detail = await adapter.readDetail(scope, first.root);
+    expect(decodeActivitySnapshotV1(detail)).toEqual(detail);
+    await expectClientRoundTrip(detail);
     expect(detail.attempts.map((attempt) => attempt.attemptId)).toEqual(['attempt-1', 'attempt-2']);
     expect(detail.attempts[0]!.failure).toMatchObject({
       kind: 'TRANSIENT',

@@ -375,6 +375,7 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
     const attempts = await this.collectAttempts(scope, snapshot, DETAIL_EVENT_CAP);
     const projectedAt = new Date().toISOString();
     return {
+      schemaVersion: '1.0.0',
       root: submissionRoot({
         submissionId: snapshot.submissionId,
         projectId: snapshot.projectId,

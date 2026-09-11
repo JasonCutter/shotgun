@@ -374,6 +374,19 @@ describe('FE-P5-S1 ActivitySnapshotV1 composite', () => {
     expect(decodeActivitySnapshotV1(validSnapshot)).toEqual(validSnapshot);
   });
 
+  it('decodes the registered Comparison domain and Stage 5 attempt kind', () => {
+    expect(
+      decodeActivitySnapshotV1({
+        ...validSnapshot,
+        root: { ...sourcesRoot, domainKind: 'COMPARISON' },
+        attempts: [{ ...validAttempt, attemptKind: 'COMPARISON_STAGE5' }],
+      }),
+    ).toMatchObject({
+      root: { domainKind: 'COMPARISON' },
+      attempts: [{ attemptKind: 'COMPARISON_STAGE5' }],
+    });
+  });
+
   it('rejects a snapshot whose run.runId does not match root.runId', () => {
     expect(() =>
       decodeActivitySnapshotV1({

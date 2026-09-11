@@ -3,9 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   ASK_SCHEMA_VERSION,
   SOURCES_SCHEMA_VERSION,
+  decodeActivitySnapshotV1,
+  type ActivityDetailV1,
   type AskAnswerRunSnapshot,
   type IntakeSubmissionSnapshot,
 } from '../../packages/contracts/src/index.js';
+import { createFrontendActivityClient } from '../../packages/shotgun-api-client/src/index.js';
 import { InMemoryExternalActionStore } from '../../adapters/frontend-external-action-in-memory/src/index.js';
 import {
   SourcesActivityAdapter,
@@ -34,6 +37,24 @@ const ADAPTER_SCOPE = {
   policyContextRevision: 'policy-1',
   sensitivityClearance: 'private',
   accessScope: ['owner', 'activity:read', 'action:read', 'action:audit:read'],
+};
+
+const expectClientRoundTrip = async (detail: ActivityDetailV1): Promise<void> => {
+  const client = createFrontendActivityClient({
+    fetch: async (input) =>
+      String(input) === '/api/v1/security/csrf'
+        ? new Response(JSON.stringify({ csrfToken: 'test-csrf-token' }), { status: 200 })
+        : new Response(JSON.stringify(detail), { status: 200 }),
+  });
+  await expect(
+    client.getActivityDetail({
+      schemaVersion: '1.0.0',
+      domainKind: detail.root.domainKind,
+      activityId: detail.root.activityId,
+      domainResourceKind: detail.root.domainResourceKind,
+      domainResourceId: detail.root.domainResourceId,
+    }),
+  ).resolves.toEqual(detail);
 };
 
 describe('FE-P5-S1 SourcesActivityAdapter (concrete)', () => {
@@ -123,6 +144,8 @@ describe('FE-P5-S1 SourcesActivityAdapter (concrete)', () => {
     const adapter = makeAdapter();
     const page = await adapter.readQueue(ADAPTER_SCOPE, { limit: 10 });
     const detail = await adapter.readDetail(ADAPTER_SCOPE, page.items[0]!.root);
+    expect(decodeActivitySnapshotV1(detail)).toEqual(detail);
+    await expectClientRoundTrip(detail);
     expect(detail.root.domainResourceId).toBe('submission-1');
     expect(detail.run.state).toBe('RUNNING');
     // Items become stages.
@@ -235,6 +258,8 @@ describe('FE-P5-S1 AskActivityAdapter (concrete)', () => {
     const adapter = makeAdapter();
     const page = await adapter.readQueue(ADAPTER_SCOPE, { limit: 10 });
     const detail = await adapter.readDetail(ADAPTER_SCOPE, page.items[0]!.root);
+    expect(decodeActivitySnapshotV1(detail)).toEqual(detail);
+    await expectClientRoundTrip(detail);
     expect(detail.run.runId).toBe('run-1');
     expect(detail.attempts).toHaveLength(1);
     expect(detail.attempts[0]?.attemptKind).toBe('ASK_ANSWER');
@@ -339,6 +364,8 @@ describe('FE-P5-S1 ExternalActionActivityAdapter (concrete)', () => {
     const { adapter } = await makeStoreAndAdapter();
     const page = await adapter.readQueue(ADAPTER_SCOPE, { limit: 10 });
     const detail = await adapter.readDetail(ADAPTER_SCOPE, page.items[0]!.root);
+    expect(decodeActivitySnapshotV1(detail)).toEqual(detail);
+    await expectClientRoundTrip(detail);
     expect(detail.run.runId).toBe('execution-1');
     expect(detail.attempts).toHaveLength(1);
     expect(detail.attempts[0]?.attemptKind).toBe('EXTERNAL_ACTION_EXECUTION');

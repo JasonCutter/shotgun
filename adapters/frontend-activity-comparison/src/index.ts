@@ -459,6 +459,7 @@ export class ComparisonActivityAdapter implements ActivityAdapterPort {
         : analysisObservedAt(record.analysis);
     const now = new Date().toISOString();
     return {
+      schemaVersion: '1.0.0',
       root: item.root,
       run: {
         schemaVersion: '1.0.0',

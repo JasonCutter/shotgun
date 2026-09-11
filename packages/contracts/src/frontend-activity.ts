@@ -484,6 +484,7 @@ const ACTIVITY_DOMAIN_KINDS = [
   'ASK',
   'EXTERNAL_ACTION',
   'DISCOVERY',
+  'COMPARISON',
   'CONNECTOR_DIAGNOSTICS',
 ] as const;
 const ACTIVITY_ROOT_KINDS = ['JOB', 'RUN'] as const;
@@ -508,6 +509,7 @@ const ACTIVITY_ATTEMPT_KINDS = [
   'ASK_ANSWER',
   'EXTERNAL_ACTION_EXECUTION',
   'DISCOVERY_EXECUTION',
+  'COMPARISON_STAGE5',
 ] as const;
 const ACTIVITY_STAGE_STATES = [
   'PENDING',
@@ -1433,24 +1435,7 @@ export type ActivityQueuePageV1 = {
 };
 
 /** Detail combines the read model with the current authoritative snapshot. */
-export type ActivityDetailV1 = {
-  readonly root: ActivityRootReferenceV1;
-  readonly run: ActivityRunViewV1;
-  readonly attempts: readonly ActivityDomainAttemptViewV1[];
-  readonly stages: readonly ActivityStageViewV1[];
-  readonly events: readonly ActivityEventViewV1[];
-  readonly transportAttempts: readonly ActivityTransportAttemptViewV1[];
-  readonly metadata: ActivityProjectionMetadataV1;
-  readonly dimensions: ActivityDimensionsV1;
-  readonly presentation?: ActivityDomainPresentationV1;
-  /**
-   * Server-derived available action descriptors (WP5). Empty when the owning
-   * Domain does not allow Retry/Cancel for this Activity; the client only
-   * renders what the server returns and delegates execution to the
-   * owning-Domain command route.
-   */
-  readonly availableActions: readonly ActivityAvailableActionV1[];
-};
+export type ActivityDetailV1 = ActivitySnapshotV1;
 
 export type ActivityStageContinuationV1 = {
   readonly stages: readonly ActivityStageViewV1[];

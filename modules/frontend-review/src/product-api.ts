@@ -386,14 +386,15 @@ export class FrontendReviewProductCoordinator {
     context: ReviewContextRevisionV1,
     stored: readonly ReviewDecisionRecordV1[],
   ): Promise<readonly ReviewDecisionRecordV1[]> {
-    if (!source || adapter.readDecisionHistory === undefined) return stored;
-    const projected = await adapter.readDecisionHistory({ scope, source, context });
+    if (adapter.readDecisionHistory === undefined) return stored;
     if (stored.length > 0) {
       reviewFailure(
         'CONFLICT',
         'An owning-domain Review history target has an unexpected Frontend Review decision.',
       );
     }
+    if (!source) return [];
+    const projected = await adapter.readDecisionHistory({ scope, source, context });
     const seen = new Map<string, ReviewDecisionRecordV1>();
     for (const decision of projected) {
       const previous = seen.get(decision.decisionId);

@@ -350,4 +350,61 @@ describe('Issue #247 Comparison V2 Review presentation', () => {
       }),
     ).rejects.toMatchObject({ apiCode: 'CONFLICT' });
   });
+
+  it('does not fall back to a frontend shadow when the V2 source is unavailable', async () => {
+    const fixture = createAdr163ReviewFixture({
+      suffix: 'issue-251-history-source-unavailable',
+      claimText: 'A V2 context whose owning source becomes unavailable.',
+    });
+    let sourceAvailable = true;
+    const reader: ComparisonV2ReviewSourceReader = {
+      ...readerFor(fixture.draft),
+      async findDraft(projectId, changeSetId) {
+        return sourceAvailable
+          ? projectId === fixture.draft.projectId && changeSetId === fixture.draft.changeSetId
+            ? fixture.draft
+            : undefined
+          : undefined;
+      },
+      async listDecisions() {
+        return [];
+      },
+    };
+    const store = new InMemoryFrontendReviewStore();
+    const coordinator = new FrontendReviewProductCoordinator(
+      store,
+      new InMemoryFrontendCommandGateway(),
+      [new ComparisonV2ReviewTargetAdapter(reader)],
+    );
+    const queue = await coordinator.listReviewQueue(scope, {
+      schemaVersion: '1.0.0',
+      pageSize: 10,
+    });
+    const context = await coordinator.getReviewContext(scope, {
+      schemaVersion: '1.0.0',
+      reviewContextId: queue.items[0]!.reviewContextId,
+      contextRevision: queue.items[0]!.contextRevision,
+    });
+    store.decisions.push({
+      schemaVersion: '1.0.0',
+      decisionId: 'issue-251-source-unavailable-shadow',
+      reviewContextId: context.context.reviewContextId,
+      contextRevision: context.context.contextRevision,
+      reviewItemId: context.context.items[0]!.reviewItemId,
+      intent: 'REJECT',
+      reason: 'Must never be used as V2 fallback history.',
+      decidedBy: { schemaVersion: '1.0.0', principalId: 'owner-1', actorId: 'owner-1' },
+      decidedAt: '2026-09-10T00:00:01.000Z',
+      terminal: true,
+    });
+    sourceAvailable = false;
+
+    await expect(
+      coordinator.getReviewContext(scope, {
+        schemaVersion: '1.0.0',
+        reviewContextId: context.context.reviewContextId,
+        contextRevision: context.context.contextRevision,
+      }),
+    ).rejects.toMatchObject({ apiCode: 'CONFLICT' });
+  });
 });

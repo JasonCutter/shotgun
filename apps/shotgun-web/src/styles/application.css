@@ -53,7 +53,7 @@ button:disabled {
   height: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: auto minmax(9rem, 14rem) minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(9rem, 14rem) minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 1rem;
   padding: 0 1.25rem;
@@ -64,6 +64,7 @@ button:disabled {
 
 .instrument-panel__identity,
 .instrument-panel__breadcrumb,
+.instrument-panel__sources,
 .instrument-panel__ai {
   margin: 0;
   min-width: 0;
@@ -100,6 +101,25 @@ button:disabled {
   color: color-mix(in srgb, #ffffff 68%, transparent);
   font-size: 0.78rem;
   text-align: right;
+  text-decoration: none;
+}
+
+.instrument-panel__sources {
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  font-size: 0.78rem;
+  text-decoration: none;
+}
+
+.instrument-panel__sources:hover,
+.instrument-panel__ai:hover {
+  color: #ffffff;
+}
+
+.instrument-panel__sources:focus-visible,
+.instrument-panel__ai:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0.2rem;
+  border-radius: 0.2rem;
 }
 
 .instrument-panel__ai span {

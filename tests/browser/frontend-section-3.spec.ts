@@ -2,6 +2,15 @@ import { expect, test } from '@playwright/test';
 
 import { switchProject } from './helpers/hfm-commands.js';
 
+const forbiddenAuthorityHeaders = [
+  'x-project-id',
+  'x-actor-id',
+  'x-access-scope',
+  'x-sensitivity',
+  'x-shotgun-project',
+  'authorization',
+];
+
 const sessionView = (created: boolean) => ({
   session: {
     apiVersion: '2.0.0',
@@ -145,6 +154,85 @@ test('Section 3 renders the PC Global Shell foundation and a compact Home', asyn
   await page.keyboard.press('Control+k');
   await expect(page.getByRole('region', { name: 'Commands' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
+});
+
+test('Instrument Panel routes authoritative Source count and configured AI through the Center', async ({
+  page,
+}) => {
+  const forbiddenHeaderUses: string[] = [];
+  page.on('request', (request) => {
+    if (!request.url().includes('/api/v1/') && !request.url().includes('/product-api/')) {
+      return;
+    }
+    const headers = request.headers();
+    for (const name of forbiddenAuthorityHeaders) {
+      if (headers[name] !== undefined) forbiddenHeaderUses.push(name);
+    }
+  });
+
+  const aiSettings = {
+    projectId: 'shotgun',
+    mode: 'PROJECT_MANAGED',
+    defaultProviderId: 'deepseek',
+    currentConfiguration: {
+      projectId: 'shotgun',
+      activeProviderId: 'deepseek',
+      activeModelId: 'deepseek-chat',
+      credentialId: 'credential-browser-fixture',
+      credentialRevision: 1,
+      aiConfigurationRevision: 1,
+      updatedBy: 'browser-fixture',
+      updatedAt: '2026-07-31T10:00:00.000Z',
+    },
+    providers: [
+      {
+        providerId: 'deepseek',
+        displayName: 'DeepSeek',
+        status: 'active',
+        models: [
+          {
+            providerId: 'deepseek',
+            modelId: 'deepseek-chat',
+            displayName: 'DeepSeek-V3',
+            shotgunUsableCapabilities: ['general_reasoning'],
+            capabilityRevision: 'browser-fixture',
+          },
+        ],
+      },
+    ],
+    privacy: [],
+    credentialStatuses: [],
+    vaultAvailability: { state: 'AVAILABLE', keyVersion: 'browser-fixture' },
+    legacyGeminiCredentialConfigured: false,
+  };
+  await page.route('**/api/v1/settings/ai?*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ settings: aiSettings }),
+    });
+  });
+
+  await page.goto('/');
+  const sourceLink = page.getByRole('link', { name: 'Sources: 1' });
+  const aiLink = page.getByRole('link', { name: 'Configured AI provider and model' });
+  await expect(sourceLink).toBeVisible();
+  await expect(sourceLink).toHaveAttribute('href', '/sources');
+  await expect(aiLink).toBeVisible();
+  await expect(aiLink).toHaveAttribute('href', '/settings/ai');
+
+  await aiLink.press('Enter');
+  await expect(page).toHaveURL(/\/settings\/ai$/);
+  await expect(page.locator('[data-global-shell-region="instrument"]')).toBeVisible();
+  await expect(page.locator('[data-global-shell-region="conversation"]')).toBeVisible();
+  await expect(page.locator('[data-global-shell-region="composer"]')).toBeVisible();
+
+  await sourceLink.click();
+  await expect(page).toHaveURL(/\/sources$/);
+  await expect(page.locator('[data-global-shell-region="instrument"]')).toBeVisible();
+  await expect(page.locator('[data-global-shell-region="conversation"]')).toBeVisible();
+  await expect(page.locator('[data-global-shell-region="composer"]')).toBeVisible();
+  expect(forbiddenHeaderUses).toEqual([]);
 });
 
 test('Section 3 Search and Command Palette keep query transient and keyboard-safe', async ({

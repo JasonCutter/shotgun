@@ -2806,7 +2806,18 @@ const createApplicationCore = async (
       frontendSourcesReadCoordinator,
     ) ??
     new FrontendProductReadCoordinator(
-      new InMemoryGlobalShellProjection(reviewNavigationAvailability),
+      new InMemoryGlobalShellProjection(reviewNavigationAvailability, async (input) => {
+        if (!input.activeProject) return undefined;
+        return frontendSourcesReadCoordinator.countUniqueSources({
+          principalId: input.principalId,
+          sessionId: input.sessionId,
+          authorizedProjectId: input.activeProject.id,
+          accessScopes: input.accessScope ?? [],
+          sensitivityClearance: input.activeProject.sensitivityClearance,
+          accessRevision: input.accessRevision,
+          policyContextRevision: input.policyContextRevision,
+        });
+      }),
       actionCenterProjection,
       new InMemoryBackgroundSummaryProjection(),
       new InMemoryNotificationSummaryProjection(),

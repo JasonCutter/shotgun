@@ -23,6 +23,22 @@ const scope: FrontendReadScope = {
 };
 
 describe('Frontend Shell HFM-S3 persistent navigation', () => {
+  it('projects the server-authoritative Source count, including an explicit zero state', async () => {
+    const projection = new InMemoryGlobalShellProjection(undefined, async (input) =>
+      input.activeProject ? 0 : undefined,
+    );
+
+    const shell = await projection.getShell(scope);
+    expect(shell.sourceCount).toBe(0);
+
+    const noProjectShell = await projection.getShell({
+      ...scope,
+      activeProject: null,
+      accessibleProjects: [],
+    });
+    expect(noProjectShell.sourceCount).toBeUndefined();
+  });
+
   it('exposes exactly Home, Sources, and Ask when a Project is ready', async () => {
     const shell = await new InMemoryGlobalShellProjection().getShell(scope);
     expect(shell.navigation).toEqual([

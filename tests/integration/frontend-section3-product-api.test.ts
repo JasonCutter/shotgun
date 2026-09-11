@@ -57,8 +57,10 @@ describe('Frontend Section 3 Product API', () => {
           targetRoute?: unknown;
         }[];
         features: readonly { id: string; availability: string }[];
+        sourceCount: number;
       };
     }>().shell;
+    expect(shell.sourceCount).toBe(0);
     expect(shell.navigation.find((item) => item.id === 'home')).toMatchObject({
       availability: 'AVAILABLE',
     });

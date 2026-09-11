@@ -674,6 +674,8 @@ export type GlobalShellView = {
     readonly label: string;
     readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
   } | null;
+  /** Server-authorized unique Source identities for the active Project. */
+  readonly sourceCount?: number;
   readonly accessibleProjects: readonly {
     readonly id: string;
     readonly label: string;
@@ -961,6 +963,10 @@ export const decodeGlobalShellView = (input: unknown): GlobalShellView => {
             'activeProject.sensitivityClearance',
           ),
         };
+  const sourceCount =
+    value['sourceCount'] === undefined
+      ? undefined
+      : requireNonNegativeInteger(value['sourceCount'], 'sourceCount');
   if (
     (activeProject === null && accessibleProjects.length !== 0) ||
     (activeProject !== null &&
@@ -1023,6 +1029,7 @@ export const decodeGlobalShellView = (input: unknown): GlobalShellView => {
     principalId: requireString(value['principalId'], 'principalId'),
     sessionId: requireString(value['sessionId'], 'sessionId'),
     activeProject,
+    ...(sourceCount === undefined ? {} : { sourceCount }),
     accessibleProjects,
     navigation: value['navigation'].map((entry, index) =>
       decodeNavigationItem(entry, `navigation[${index}]`),

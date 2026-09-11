@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -41,6 +41,7 @@ const shell: GlobalShellView = {
     label: 'Project Alpha',
     sensitivityClearance: 'private',
   },
+  sourceCount: 2,
   accessibleProjects: [
     {
       id: 'project-private-id',
@@ -121,12 +122,19 @@ const baseAISettings = (): AISettingsReadModel => ({
   legacyGeminiCredentialConfigured: false,
 });
 
+const LocationProbe = () => {
+  const location = useLocation();
+  return <output data-testid="location-probe">{location.pathname}</output>;
+};
+
 const renderInstrument = ({
   sharedController = controller(),
   settings = baseAISettings(),
+  shellView = shell,
 }: {
   readonly sharedController?: OwnerCommandController;
   readonly settings?: AISettingsReadModel;
+  readonly shellView?: GlobalShellView;
 } = {}) => {
   const getAISettings = vi.fn(async () => settings);
   const testAIConnection = vi.fn();
@@ -144,7 +152,8 @@ const renderInstrument = ({
   render(
     <AppProviders runtime={runtime}>
       <MemoryRouter initialEntries={['/sources/source-private-id']}>
-        <InstrumentPanel shell={shell} controller={sharedController} />
+        <InstrumentPanel shell={shellView} controller={sharedController} />
+        <LocationProbe />
       </MemoryRouter>
     </AppProviders>,
   );
@@ -168,10 +177,32 @@ describe('InstrumentPanel HFM-S7-C2R authority', () => {
     expect(screen.getByLabelText('Workspace breadcrumb').textContent).toBe('Sources / Source');
     expect(await screen.findByText('Provider A / Model A')).toBeTruthy();
     expect(screen.getByText('Configured')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Sources: 2' }).getAttribute('href')).toBe('/sources');
+    expect(
+      screen.getByRole('link', { name: 'Configured AI provider and model' }).getAttribute('href'),
+    ).toBe('/settings/ai');
     expect(screen.queryByText('project-private-id')).toBeNull();
     expect(screen.queryByText('source-private-id')).toBeNull();
     expect(getAISettings).toHaveBeenCalledWith('project-private-id', expect.any(Object));
     expect(testAIConnection).not.toHaveBeenCalled();
+  });
+
+  it('routes the AI status and Source count through the Center while preserving both affordances', async () => {
+    const user = userEvent.setup();
+    renderInstrument();
+
+    await screen.findByText('Provider A / Model A');
+    await user.click(screen.getByRole('link', { name: 'Configured AI provider and model' }));
+    expect(screen.getByTestId('location-probe').textContent).toBe('/settings/ai');
+
+    await user.click(screen.getByRole('link', { name: 'Sources: 2' }));
+    expect(screen.getByTestId('location-probe').textContent).toBe('/sources');
+  });
+
+  it('renders an authoritative zero Source count instead of hiding the zero state', () => {
+    renderInstrument({ shellView: { ...shell, sourceCount: 0 } });
+
+    expect(screen.getByRole('link', { name: 'Sources: 0' })).toBeTruthy();
   });
 
   it('does not infer provider, model, or Configured state when currentConfiguration is absent', async () => {

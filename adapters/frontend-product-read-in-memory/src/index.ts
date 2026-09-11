@@ -272,32 +272,31 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
       input.requestedRoute.routeId !== 'review' ||
       (input.activeProject !== null &&
         (this.reviewAvailability ? await this.reviewAvailability(input) : false));
+    const decision =
+      input.resourceProjectId && !resourceProject
+        ? 'NOT_FOUND'
+        : !workspaceAvailable || !reviewAvailable
+          ? 'FEATURE_UNAVAILABLE'
+          : input.requestedRoute.routeId === 'home' && !input.activeProject
+            ? 'PROJECT_UNAVAILABLE'
+            : 'ALLOW';
     return decodeRouteGuardDecisionView({
       schemaVersion: '1.0.0',
-      decision:
-        input.resourceProjectId && !resourceProject
-          ? 'NOT_FOUND'
-          : !workspaceAvailable || !reviewAvailable
-            ? 'FEATURE_UNAVAILABLE'
-            : input.requestedRoute.routeId === 'home' && !input.activeProject
-              ? 'PROJECT_UNAVAILABLE'
-              : 'ALLOW',
-      ...(workspaceAvailable &&
-      !(input.requestedRoute.routeId === 'home' && !input.activeProject) &&
-      (!input.resourceProjectId || resourceProject)
-        ? { targetRoute: input.requestedRoute }
-        : {}),
+      decision,
+      ...(decision === 'ALLOW' ? { targetRoute: input.requestedRoute } : {}),
       ...(resourceProject
         ? { resourceProject: { id: resourceProject.id, label: resourceProject.label } }
         : {}),
       ...(input.activeProject ? { activeProjectId: input.activeProject.id } : {}),
       masked: Boolean(input.resourceProjectId && !resourceProject),
       message:
-        input.resourceProjectId && !resourceProject
+        decision === 'NOT_FOUND'
           ? 'The resource was not found.'
-          : workspaceAvailable
-            ? 'Route decision completed.'
-            : 'The requested workspace is not available in this Section.',
+          : decision === 'FEATURE_UNAVAILABLE'
+            ? 'The requested workspace is not available in this Section.'
+            : workspaceAvailable
+              ? 'Route decision completed.'
+              : 'The requested workspace is not available in this Section.',
       accessRevision: input.accessRevision,
       policyContextRevision: input.policyContextRevision,
     });

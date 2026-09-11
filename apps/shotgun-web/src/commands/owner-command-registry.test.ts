@@ -568,18 +568,39 @@ describe('owner command registry', () => {
         expect.objectContaining({
           id: 'project.manage',
           risk: 'READ',
-          presentation: 'DRAWER',
-          action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.manage' },
+          presentation: 'NAVIGATE',
+          action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.manage' },
         }),
         expect.objectContaining({
           id: 'project.create',
           risk: 'WRITE',
-          action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.create' },
+          presentation: 'NAVIGATE',
+          action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.create' },
         }),
-        expect.objectContaining({ id: 'project.rename', risk: 'WRITE' }),
-        expect.objectContaining({ id: 'project.archive', risk: 'WRITE' }),
-        expect.objectContaining({ id: 'project.restore', risk: 'WRITE' }),
-        expect.objectContaining({ id: 'project.delete_request', risk: 'DESTRUCTIVE' }),
+        expect.objectContaining({
+          id: 'project.rename',
+          risk: 'WRITE',
+          presentation: 'NAVIGATE',
+          action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.rename' },
+        }),
+        expect.objectContaining({
+          id: 'project.archive',
+          risk: 'WRITE',
+          presentation: 'NAVIGATE',
+          action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.archive' },
+        }),
+        expect.objectContaining({
+          id: 'project.restore',
+          risk: 'WRITE',
+          presentation: 'NAVIGATE',
+          action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.restore' },
+        }),
+        expect.objectContaining({
+          id: 'project.delete_request',
+          risk: 'DESTRUCTIVE',
+          presentation: 'NAVIGATE',
+          action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.delete_request' },
+        }),
       ]),
     );
 

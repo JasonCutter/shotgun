@@ -23,13 +23,11 @@ import {
   type OwnerCommandDefinition,
   type PreferenceCommandId,
   type PrivacyCommandId,
-  type ProjectCommandId,
   type SemanticCommandId,
 } from '../commands/owner-command-registry.js';
 import { useOptionalDiscoveryCommandContext } from '../commands/discovery-command-context.js';
 import { PreferencesCommandSurface } from '../commands/preferences-command-surface.js';
 import { PrivacyCommandSurface } from '../commands/privacy-command-surface.js';
-import { ProjectCommandSurface } from '../commands/project-command-surface.js';
 import { safeErrorMessage } from '../components/error-state.js';
 import { useOptionalTechnicalInspection } from '../components/technical-inspection-context.js';
 import { useProductLocalization } from '../localization/product-localization.js';
@@ -96,8 +94,6 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
   const [paletteResetSignal, setPaletteResetSignal] = useState(0);
   const [paletteInitialQuery, setPaletteInitialQuery] = useState('');
   const [paletteAnswerContext, setPaletteAnswerContext] = useState<AnswerCommandContext>();
-  const [projectCommand, setProjectCommand] = useState<ProjectCommandId | null>(null);
-  const [projectCommandInvoker, setProjectCommandInvoker] = useState<HTMLElement | null>(null);
   const [preferenceCommand, setPreferenceCommand] = useState<PreferenceCommandId | null>(null);
   const [preferenceCommandInvoker, setPreferenceCommandInvoker] = useState<HTMLElement | null>(
     null,
@@ -209,10 +205,11 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
       openCommandMode('', commandInvoker);
       return;
     }
-    if (command.action.kind === 'OPEN_PROJECT_FLOW') {
-      setProjectCommandInvoker(commandInvoker);
-      setProjectCommand(command.action.commandId);
+    if (command.action.kind === 'NAVIGATE_PROJECT') {
       closeCommandMode();
+      navigate('/settings/projects', {
+        state: { projectCommandId: command.action.commandId },
+      });
       return;
     }
     if (command.action.kind === 'OPEN_PREFERENCE_FLOW') {
@@ -332,13 +329,6 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
           open={searchOpen}
           invoker={searchInvoker}
           onClose={() => setSearchOpen(false)}
-        />
-        <ProjectCommandSurface
-          open={projectCommand !== null}
-          commandId={projectCommand}
-          shell={shell}
-          invoker={projectCommandInvoker}
-          onClose={() => setProjectCommand(null)}
         />
         <PreferencesCommandSurface
           open={preferenceCommand !== null}

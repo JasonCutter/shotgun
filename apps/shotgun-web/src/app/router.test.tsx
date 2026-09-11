@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
-import type { ProductSessionView, ShotgunApiClient } from '@shotgun/api-client';
+import type {
+  ProductSessionView,
+  ProjectListItemView,
+  ShotgunApiClient,
+} from '@shotgun/api-client';
 
 import { AppProviders, type AppRuntime } from './providers.js';
 import { createFrontendQueryClient } from './query-client.js';
@@ -189,6 +193,49 @@ describe('Product route guard authorization', () => {
       undefined,
       expect.any(Object),
     );
+  });
+
+  it('keeps an active session in the Project Center instead of redirecting to Home', async () => {
+    const getRouteGuardDecision = vi.fn().mockResolvedValue({
+      schemaVersion: '1.0.0',
+      decision: 'ALLOW',
+      masked: false,
+    });
+    const project: ProjectListItemView = {
+      id: 'project-1',
+      name: 'Shotgun',
+      description: '',
+      isOwner: true,
+      status: 'ACTIVE',
+      active: true,
+      createdAt: '2026-08-14T00:00:00.000Z',
+      updatedAt: '2026-08-14T00:00:00.000Z',
+      revision: 1,
+      capability: {
+        canRename: true,
+        canArchive: true,
+        canRestore: false,
+        canDelete: true,
+        canManagePolicies: true,
+      },
+    };
+    const runtime = createRuntime({
+      getRouteGuardDecision,
+      getProjects: vi.fn().mockResolvedValue([project]),
+    });
+    const router = createMemoryRouter(createAppRouteObjects(runtime), {
+      initialEntries: ['/settings/projects'],
+    });
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole('region', { name: 'Manage Projects' })).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(router.state.location.pathname).toBe('/settings/projects');
   });
 
   it('renders RouteError when specific settings-projects child guard is DENIed even if parent is ALLOWed', async () => {

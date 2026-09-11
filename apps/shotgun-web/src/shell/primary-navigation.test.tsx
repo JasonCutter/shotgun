@@ -114,7 +114,7 @@ const controller = (executeCommand = vi.fn()): OwnerCommandController => ({
       availability: 'AVAILABLE',
       risk: 'READ',
       presentation: 'DRAWER',
-      action: { kind: 'OPEN_PROJECT_FLOW', commandId: 'project.manage' },
+      action: { kind: 'NAVIGATE_PROJECT', commandId: 'project.manage' },
     },
   ],
 });

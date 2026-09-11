@@ -29,6 +29,7 @@ export type ProjectCommandSurfaceProps = {
   readonly shell: GlobalShellView;
   readonly invoker: HTMLElement | null;
   readonly onClose: () => void;
+  readonly presentation?: 'DIALOG' | 'WORKSPACE';
 };
 
 const flowStep = (commandId: ProjectCommandId): ProjectSurfaceStep => {
@@ -99,12 +100,12 @@ export const ProjectCommandSurface = ({
   shell,
   invoker,
   onClose,
+  presentation = 'DIALOG',
 }: ProjectCommandSurfaceProps) => {
   const { apiClient } = useAppRuntime();
   const { t } = useProductLocalization();
   const queryClient = useQueryClient();
   const titleId = useId();
-  const dialog = useAccessibleDialog({ open, onClose });
   const [step, setStep] = useState<ProjectSurfaceStep>('MANAGE');
   const [selectedProjectId, setSelectedProjectId] = useState<string>();
   const [createId, setCreateId] = useState('');
@@ -115,6 +116,16 @@ export const ProjectCommandSurface = ({
   const [errorMessage, setErrorMessage] = useState<string>();
   const [outcomeRecovery, setOutcomeRecovery] = useState<OutcomeRecovery>();
   const [isResolvingOutcome, setIsResolvingOutcome] = useState(false);
+  const isWorkspace = presentation === 'WORKSPACE';
+  const isConfirmationDialog =
+    isWorkspace &&
+    step === 'CONFIRM' &&
+    (commandId === 'project.archive' || commandId === 'project.delete_request');
+  const dialog = useAccessibleDialog({
+    open,
+    onClose,
+    trapFocus: !isWorkspace || isConfirmationDialog,
+  });
 
   const projectsQuery = useQuery({
     queryKey: projectAdminQueryKey(shell.principalId),
@@ -126,7 +137,7 @@ export const ProjectCommandSurface = ({
 
   useEffect(() => {
     if (!open || !commandId) return;
-    dialog.captureInvoker(invoker);
+    if (!isWorkspace) dialog.captureInvoker(invoker);
     setStep(flowStep(commandId));
     setSelectedProjectId(undefined);
     setMessage(undefined);
@@ -137,13 +148,20 @@ export const ProjectCommandSurface = ({
     setCreateName('');
     setCreateDescription('');
     setRenameValue('');
-  }, [commandId, invoker, open]);
+  }, [commandId, invoker, isWorkspace, open]);
 
   useEffect(() => {
     if (!open || !commandId || commandId === 'project.manage' || commandId === 'project.create') {
       return;
     }
     if (selectedProjectId) return;
+    if (
+      isWorkspace &&
+      (commandId === 'project.archive' || commandId === 'project.delete_request')
+    ) {
+      if (!projectsQuery.isLoading) setStep('SELECT');
+      return;
+    }
     const target = targetProject(projects, commandId, shell.activeProject?.id);
     if (target) {
       setSelectedProjectId(target.id);
@@ -158,6 +176,7 @@ export const ProjectCommandSurface = ({
     projectsQuery.isLoading,
     selectedProjectId,
     shell.activeProject?.id,
+    isWorkspace,
   ]);
 
   const refreshProjects = async () => {
@@ -393,16 +412,25 @@ export const ProjectCommandSurface = ({
 
   return (
     <div
-      className="modal-backdrop"
-      role="dialog"
-      aria-modal="true"
+      className={isWorkspace ? 'projects-workspace' : 'modal-backdrop'}
+      {...(isWorkspace && !isConfirmationDialog
+        ? { role: 'region' as const }
+        : { role: 'dialog' as const, 'aria-modal': true })}
       aria-labelledby={titleId}
       ref={dialog.dialogRef}
       tabIndex={-1}
       onKeyDown={dialog.onDialogKeyDown}
     >
-      <div className="modal-card project-command-surface hfm-command-surface">
-        <h2 id={titleId}>{title}</h2>
+      <div
+        className={
+          isWorkspace
+            ? 'project-command-surface project-workspace-surface'
+            : 'modal-card project-command-surface hfm-command-surface'
+        }
+      >
+        <h1 id={titleId} tabIndex={isWorkspace ? -1 : undefined}>
+          {title}
+        </h1>
         {message ? (
           <p className="project-command-message" role="status">
             {message}
@@ -657,11 +685,13 @@ export const ProjectCommandSurface = ({
         ) : null}
 
         {step === 'MANAGE' || step === 'SELECT' ? (
-          <div className="dialog-actions">
-            <button className="hfm-action-secondary" type="button" onClick={onClose}>
-              {t('common.close')}
-            </button>
-          </div>
+          !isWorkspace || step === 'SELECT' ? (
+            <div className="dialog-actions">
+              <button className="hfm-action-secondary" type="button" onClick={onClose}>
+                {step === 'SELECT' && isWorkspace ? t('common.cancel') : t('common.close')}
+              </button>
+            </div>
+          ) : null
         ) : null}
       </div>
     </div>

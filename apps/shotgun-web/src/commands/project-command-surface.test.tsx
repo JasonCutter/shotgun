@@ -100,6 +100,7 @@ const renderSurface = (
     | 'project.delete_request'
     | 'project.manage',
   apiClient: Partial<ShotgunApiClient>,
+  presentation: 'DIALOG' | 'WORKSPACE' = 'DIALOG',
 ) =>
   render(
     <AppProviders runtime={runtime(apiClient)}>
@@ -110,6 +111,7 @@ const renderSurface = (
           shell={shell}
           invoker={null}
           onClose={vi.fn()}
+          presentation={presentation}
         />
       </MemoryRouter>
     </AppProviders>,
@@ -217,6 +219,37 @@ describe('ProjectCommandSurface', () => {
     expect(requestDeleteProject).not.toHaveBeenCalled();
     await user.click(await screen.findByRole('button', { name: 'Confirm Deletion Request' }));
     expect(requestDeleteProject).toHaveBeenCalledWith(
+      'project-1',
+      expect.objectContaining({ expectedRevision: 3, targetProjectId: 'project-1' }),
+    );
+  });
+
+  it('renders normal Project administration as a Center region instead of a long-lived dialog', async () => {
+    renderSurface('project.manage', { getProjects: vi.fn(async () => [project]) }, 'WORKSPACE');
+
+    expect(await screen.findByRole('region', { name: 'Manage Projects' })).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+  });
+
+  it('requires Center selection before opening the final archive confirmation dialog', async () => {
+    const user = userEvent.setup();
+    const archiveProject = vi.fn<ShotgunApiClient['archiveProject']>(async () => mutationResult);
+    renderSurface(
+      'project.archive',
+      { getProjects: vi.fn(async () => [project]), archiveProject },
+      'WORKSPACE',
+    );
+
+    expect(await screen.findByText('Select the Project for this command.')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(archiveProject).not.toHaveBeenCalled();
+
+    await user.click(await screen.findByRole('button', { name: /Current Project/ }));
+    expect(await screen.findByRole('dialog', { name: 'Archive Project' })).toBeTruthy();
+    expect(archiveProject).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole('button', { name: 'Confirm Archive' }));
+    expect(archiveProject).toHaveBeenCalledWith(
       'project-1',
       expect.objectContaining({ expectedRevision: 3, targetProjectId: 'project-1' }),
     );

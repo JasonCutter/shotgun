@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { NavLink, Outlet } from 'react-router';
+import type { GlobalShellView } from '@shotgun/api-client';
+import { NavLink, Outlet, useOutletContext } from 'react-router';
 import { useAccessibleDialog } from '../../app/use-accessible-dialog.js';
 
 export const SettingsLayout = () => {
+  const parentOutlet = useOutletContext<{ readonly shell: GlobalShellView } | undefined>();
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
   const [confirmMessage, setConfirmMessage] = useState('');
@@ -112,7 +114,13 @@ export const SettingsLayout = () => {
       </header>
 
       <main className="settings-content">
-        <Outlet context={{ requestConfirmation }} />
+        <Outlet
+          context={
+            parentOutlet
+              ? { requestConfirmation, shell: parentOutlet.shell }
+              : { requestConfirmation }
+          }
+        />
       </main>
 
       {confirmModalOpen && (

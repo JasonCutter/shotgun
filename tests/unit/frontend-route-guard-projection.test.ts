@@ -45,6 +45,7 @@ describe('InMemoryRouteGuardProjection', () => {
     expect(decision).toMatchObject({
       decision: 'FEATURE_UNAVAILABLE',
       masked: false,
+      message: 'The requested workspace is not available in this Section.',
     });
     expect(decision).not.toHaveProperty('targetRoute');
   });

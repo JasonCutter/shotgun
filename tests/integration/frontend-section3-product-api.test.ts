@@ -187,6 +187,7 @@ describe('Frontend Section 3 Product API', () => {
       decision: {
         decision: 'FEATURE_UNAVAILABLE',
         masked: false,
+        message: 'The requested workspace is not available in this Section.',
       },
     });
     expect(response.json().decision).not.toHaveProperty('targetRoute');

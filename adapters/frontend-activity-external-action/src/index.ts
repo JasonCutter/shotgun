@@ -327,6 +327,7 @@ export class ExternalActionActivityAdapter implements ExternalActionActivityAdap
           attempt.status === 'CANCELLED',
       );
       return {
+        schemaVersion: '1.0.0',
         root: actionRoot(action),
         run: {
           schemaVersion: '1.0.0',

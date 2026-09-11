@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   claimCandidateDigest,
+  decodeActivitySnapshotV1,
   type AnalysisRevisionV2,
   type ClaimCandidate,
   type SecurityContext,
@@ -393,6 +394,7 @@ describe('Issue #245 durable Stage 5 blocked observability', () => {
       },
       page.items[0]!.root,
     );
+    expect(decodeActivitySnapshotV1(detail)).toEqual(detail);
     expect(detail.availableActions).toEqual([]);
     expect(detail.root.domainResourceId).toBe(outcome.blockedOutcomeId);
   });

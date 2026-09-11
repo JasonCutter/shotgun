@@ -105,6 +105,7 @@ const makeAdapter = (input: {
     },
     async readDetail(_scope, detailRoot) {
       return {
+        schemaVersion: '1.0.0',
         root: detailRoot,
         run: {
           schemaVersion: '1.0.0',

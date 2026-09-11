@@ -5,6 +5,7 @@ import {
   InMemoryDiscoveryActivityRead,
 } from '../../adapters/frontend-activity-discovery/src/index.js';
 import { createInMemoryActivityReadModelStore } from '../../adapters/frontend-activity-in-memory/src/index.js';
+import { decodeActivitySnapshotV1 } from '../../packages/contracts/src/index.js';
 import {
   ActivityProductCoordinator,
   ActivityProjectionBuilder,
@@ -381,6 +382,7 @@ describe('AKP-4 WP5 Discovery Activity adapter', () => {
       runId: run.runId,
     });
     const detail = await adapter.readDetail(scope, first.root);
+    expect(decodeActivitySnapshotV1(detail)).toEqual(detail);
     expect(detail.attempts.map((attempt) => attempt.attemptId)).toEqual(['attempt-1', 'attempt-2']);
     expect(detail.attempts[0]!.failure).toMatchObject({
       kind: 'TRANSIENT',

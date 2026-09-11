@@ -105,6 +105,7 @@ const makeSourcesAdapter = (opts: { fail?: boolean } = {}): SourcesActivityAdapt
       throw new Error('cross-project activity detail denied');
     }
     return {
+      schemaVersion: '1.0.0',
       root,
       run: {
         schemaVersion: '1.0.0',
@@ -170,6 +171,7 @@ const makeAskAdapter = (): AskActivityAdapterPort => ({
       throw new Error('cross-project activity detail denied');
     }
     return {
+      schemaVersion: '1.0.0',
       root,
       run: {
         schemaVersion: '1.0.0',

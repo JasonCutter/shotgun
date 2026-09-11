@@ -88,6 +88,7 @@ const queuePage = (
 
 const makeDetail = (r: ActivityRootReferenceV1): ActivityDetailV1 => {
   return {
+    schemaVersion: '1.0.0',
     root: r,
     run: {
       schemaVersion: '1.0.0',

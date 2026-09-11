@@ -266,6 +266,7 @@ export class AskActivityAdapter implements AskActivityAdapterPort {
     });
     const projectedAt = new Date().toISOString();
     return {
+      schemaVersion: '1.0.0',
       root: runRoot(run),
       run: {
         schemaVersion: '1.0.0',

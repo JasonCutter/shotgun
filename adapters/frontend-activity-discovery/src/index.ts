@@ -738,6 +738,7 @@ export class DiscoveryActivityAdapter implements DiscoveryActivityAdapterPort {
       .find((failure) => failure !== undefined);
     const activityRoot = jobRoot({ job, ...(run === undefined ? {} : { run }) }, runId);
     return {
+      schemaVersion: '1.0.0',
       root: activityRoot,
       run: {
         schemaVersion: '1.0.0',

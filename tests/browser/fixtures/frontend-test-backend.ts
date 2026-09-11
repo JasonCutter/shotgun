@@ -36,6 +36,10 @@ import {
 } from '../../../modules/frontend-ask-write/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import {
+  FrontendSourcesReadCoordinator,
+  type ServerAuthorizedProjectSourcesReadScope,
+} from '../../../modules/frontend-sources-product/src/index.js';
+import {
   DEFAULT_PROJECT_ID,
   LOCAL_OWNER_ACCOUNT_ID,
 } from '../../../packages/authentication/src/index.js';
@@ -235,15 +239,6 @@ export async function startFrontendTestBackend() {
   ]);
   askProjection.addConversation(conversation);
   askProjection.addConversation(inaccessibleConversation);
-  const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
-    new InMemoryGlobalShellProjection(),
-    new InMemoryActionCenterProjection(),
-    new InMemoryBackgroundSummaryProjection(),
-    new InMemoryNotificationSummaryProjection(),
-    new InMemoryGlobalSearch(),
-    new InMemoryRouteGuardProjection(),
-    askProjection,
-  );
   const sourcesProjectionRepository = {
     async listProjectSourceVersions(projectId: string) {
       if (projectId === DEFAULT_PROJECT_ID) {
@@ -283,6 +278,32 @@ export async function startFrontendTestBackend() {
       ];
     },
   };
+  const frontendSourcesReadCoordinator = new FrontendSourcesReadCoordinator(
+    sourcesProjectionRepository,
+    assetStorage,
+    evidenceRepository,
+  );
+  const frontendProductReadCoordinator = new FrontendProductReadCoordinator(
+    new InMemoryGlobalShellProjection(undefined, async (input) => {
+      if (!input.activeProject) return undefined;
+      const sourceScope: ServerAuthorizedProjectSourcesReadScope = {
+        principalId: input.principalId,
+        sessionId: input.sessionId,
+        authorizedProjectId: input.activeProject.id,
+        accessScopes: input.accessScope ?? [],
+        sensitivityClearance: input.activeProject.sensitivityClearance,
+        accessRevision: input.accessRevision,
+        policyContextRevision: input.policyContextRevision,
+      };
+      return frontendSourcesReadCoordinator.countUniqueSources(sourceScope);
+    }),
+    new InMemoryActionCenterProjection(),
+    new InMemoryBackgroundSummaryProjection(),
+    new InMemoryNotificationSummaryProjection(),
+    new InMemoryGlobalSearch(),
+    new InMemoryRouteGuardProjection(),
+    askProjection,
+  );
 
   const commandGateway = new PostgresFrontendCommandGateway(pool);
   const askGateway = new InMemoryFrontendCommandGateway();

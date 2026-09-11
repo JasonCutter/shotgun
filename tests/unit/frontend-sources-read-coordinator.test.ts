@@ -62,6 +62,41 @@ const seed = async (
 };
 
 describe('FrontendSourcesReadCoordinator', () => {
+  it('counts unique authorized Sources after collapsing versions and applying Project/sensitivity scope', async () => {
+    const repository = new InMemoryOriginalAssetRepository();
+    const storage = new InMemoryAssetStorage();
+    const evidence = new InMemoryEvidenceRepository();
+    const sourceA = await seed(repository, storage, {
+      submissionId: 'submission-a-v1',
+      text: 'Source A v1',
+    });
+    await seed(repository, storage, {
+      submissionId: 'submission-a-v2',
+      requestedSourceId: sourceA.sourceId,
+      text: 'Source A v2',
+    });
+    await seed(repository, storage, {
+      submissionId: 'submission-b-v1',
+      text: 'Source B v1',
+    });
+    await seed(repository, storage, {
+      submissionId: 'submission-hidden-sensitivity',
+      text: 'Restricted Source',
+      sensitivity: 'restricted',
+    });
+    await seed(repository, storage, {
+      submissionId: 'submission-other-project',
+      projectId: 'project-2',
+      text: 'Other Project Source',
+    });
+    const coordinator = new FrontendSourcesReadCoordinator(repository, storage, evidence);
+
+    await expect(coordinator.countUniqueSources(scope)).resolves.toBe(2);
+    await expect(
+      coordinator.countUniqueSources({ ...scope, sensitivityClearance: 'internal' }),
+    ).resolves.toBe(2);
+  });
+
   it('uses the persisted intake label as the human Source identity without an ID fallback', async () => {
     const record: SourcesProjectionRecord = {
       projectId: 'project-1',

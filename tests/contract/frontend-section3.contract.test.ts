@@ -170,6 +170,7 @@ describe('Frontend Phase 1 Section 3 contracts', () => {
         label: 'Project One',
         sensitivityClearance: 'private',
       },
+      sourceCount: 2,
       accessibleProjects: [
         {
           id: 'project-1',
@@ -196,6 +197,14 @@ describe('Frontend Phase 1 Section 3 contracts', () => {
       fetchedAt: '2026-07-29T00:00:00.000Z',
     });
     expect(shell.activeProject?.sensitivityClearance).toBe('private');
+    expect(shell.sourceCount).toBe(2);
+
+    expect(() => decodeGlobalShellView({ ...shell, sourceCount: -1 })).toThrow(
+      expect.objectContaining({ code: 'UNSUPPORTED_SCHEMA' }),
+    );
+    expect(() => decodeGlobalShellView({ ...shell, sourceCount: 1.5 })).toThrow(
+      expect.objectContaining({ code: 'UNSUPPORTED_SCHEMA' }),
+    );
 
     expect(() =>
       decodeGlobalShellView({

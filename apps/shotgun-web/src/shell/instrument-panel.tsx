@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { useLocation } from 'react-router';
+import { Link, useLocation } from 'react-router';
 
 import type { GlobalShellView } from '@shotgun/api-client';
 
@@ -118,10 +118,23 @@ export const InstrumentPanel = ({
       <p className="instrument-panel__breadcrumb" aria-label="Workspace breadcrumb">
         {breadcrumb}
       </p>
+      {shell.activeProject && shell.sourceCount !== undefined ? (
+        <Link
+          className="instrument-panel__sources"
+          to="/sources"
+          aria-label={`Sources: ${shell.sourceCount}`}
+        >
+          Sources: {shell.sourceCount}
+        </Link>
+      ) : null}
       {aiConfiguration ? (
-        <p className="instrument-panel__ai" aria-label="Configured AI provider and model">
+        <Link
+          className="instrument-panel__ai"
+          to="/settings/ai"
+          aria-label="Configured AI provider and model"
+        >
           {aiConfiguration} <span>Configured</span>
-        </p>
+        </Link>
       ) : null}
     </header>
   );

@@ -199,6 +199,16 @@ export class FrontendSourcesReadCoordinator {
     );
   }
 
+  /**
+   * Returns the server-authorized count of unique Source identities.
+   * SourceVersion rows are collapsed with the same latestBySource semantics
+   * used by the Source Library; no client pagination or browser authority is
+   * involved.
+   */
+  async countUniqueSources(scope: ServerAuthorizedProjectSourcesReadScope): Promise<number> {
+    return latestBySource(await this.authorizedRecords(scope)).length;
+  }
+
   async list(
     scope: ServerAuthorizedProjectSourcesReadScope,
     query: SourceLibraryQuery,

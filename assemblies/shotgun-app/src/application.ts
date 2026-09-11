@@ -1119,18 +1119,32 @@ export const startShotgunApplication = async (
         frontendSourcesReadCoordinator,
       ) =>
         new FrontendProductReadCoordinator(
-          new InMemoryGlobalShellProjection(async (input) => {
-            if (!input.activeProject) return false;
-            try {
-              const home = await actionCenterProjection.getHome({
-                ...input,
-                activeProject: input.activeProject,
+          new InMemoryGlobalShellProjection(
+            async (input) => {
+              if (!input.activeProject) return false;
+              try {
+                const home = await actionCenterProjection.getHome({
+                  ...input,
+                  activeProject: input.activeProject,
+                });
+                return home.attention.some((item) => item.kind === 'REVIEW_DECISION');
+              } catch {
+                return false;
+              }
+            },
+            async (input) => {
+              if (!input.activeProject) return undefined;
+              return frontendSourcesReadCoordinator.countUniqueSources({
+                principalId: input.principalId,
+                sessionId: input.sessionId,
+                authorizedProjectId: input.activeProject.id,
+                accessScopes: input.accessScope ?? [],
+                sensitivityClearance: input.activeProject.sensitivityClearance,
+                accessRevision: input.accessRevision,
+                policyContextRevision: input.policyContextRevision,
               });
-              return home.attention.some((item) => item.kind === 'REVIEW_DECISION');
-            } catch {
-              return false;
-            }
-          }),
+            },
+          ),
           actionCenterProjection,
           new InMemoryBackgroundSummaryProjection(),
           new InMemoryNotificationSummaryProjection(),

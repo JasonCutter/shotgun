@@ -71,9 +71,13 @@ const routes = {
 } as const satisfies Record<string, TargetRouteView>;
 
 export type ReviewNavigationAvailability = (input: FrontendReadScope) => Promise<boolean>;
+export type SourceCountProjection = (input: FrontendReadScope) => Promise<number | undefined>;
 
 export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort {
-  constructor(private readonly reviewAvailability?: ReviewNavigationAvailability) {}
+  constructor(
+    private readonly reviewAvailability?: ReviewNavigationAvailability,
+    private readonly sourceCountProjection?: SourceCountProjection,
+  ) {}
 
   async getShell(
     input: FrontendReadScope,
@@ -81,11 +85,16 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
     const projectReady = input.activeProject !== null;
     const reviewAvailable =
       projectReady && this.reviewAvailability ? await this.reviewAvailability(input) : false;
+    const sourceCount =
+      projectReady && this.sourceCountProjection
+        ? await this.sourceCountProjection(input)
+        : undefined;
     return {
       schemaVersion: '1.0.0',
       principalId: input.principalId,
       sessionId: input.sessionId,
       activeProject: input.activeProject,
+      ...(sourceCount === undefined ? {} : { sourceCount }),
       accessibleProjects: input.accessibleProjects,
       navigation: projectReady
         ? [

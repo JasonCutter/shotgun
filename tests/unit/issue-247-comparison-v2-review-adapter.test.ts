@@ -9,6 +9,7 @@ import { InMemoryFrontendCommandGateway } from '../../adapters/frontend-command-
 import { FrontendReviewProductCoordinator } from '../../modules/frontend-review/src/index.js';
 import { createAdr163ReviewFixture } from '../helpers/adr163-review-fixture.js';
 import type { DraftChangeSetV2 } from '../../packages/contracts/src/index.js';
+import type { ComparisonV2PersistedDecision } from '../../modules/change-set-review/src/index.js';
 
 const scope = {
   principalId: 'owner-1',
@@ -182,5 +183,66 @@ describe('Issue #247 Comparison V2 Review presentation', () => {
       attentionReasons: ['REQUIRES_ACTION'],
     });
     expect(approvedQueue.items).toEqual([]);
+  });
+
+  it('projects authoritative V2 decision history without appending a frontend shadow', async () => {
+    const fixture = createAdr163ReviewFixture({
+      suffix: 'issue-251-history',
+      claimText: 'A V2 decision whose history must remain authoritative.',
+    });
+    const persisted: ComparisonV2PersistedDecision = {
+      projectId: fixture.draft.projectId,
+      changeSetId: fixture.draft.changeSetId,
+      expectedRevisionNumber: fixture.draft.revisionNumber,
+      expectedContentDigest: fixture.draft.contentDigest,
+      draft: fixture.draft,
+      decision: {
+        decisionId: 'issue-251-v2-decision',
+        decision: 'REJECT',
+        actor: { type: 'user', id: 'owner-1' },
+        reason: 'Authoritative V2 rejection reason.',
+        decidedAt: '2026-09-10T00:00:00.000Z',
+      },
+    };
+    const reader: ComparisonV2ReviewSourceReader = {
+      ...readerFor(fixture.draft),
+      async listDecisions(projectId, changeSetId) {
+        return projectId === fixture.draft.projectId && changeSetId === fixture.draft.changeSetId
+          ? [persisted]
+          : [];
+      },
+    };
+    const store = new InMemoryFrontendReviewStore();
+    const coordinator = new FrontendReviewProductCoordinator(
+      store,
+      new InMemoryFrontendCommandGateway(),
+      [new ComparisonV2ReviewTargetAdapter(reader)],
+    );
+    const queue = await coordinator.listReviewQueue(scope, {
+      schemaVersion: '1.0.0',
+      pageSize: 10,
+    });
+    const context = await coordinator.getReviewContext(scope, {
+      schemaVersion: '1.0.0',
+      reviewContextId: queue.items[0]!.reviewContextId,
+      contextRevision: queue.items[0]!.contextRevision,
+    });
+
+    expect(store.decisions).toHaveLength(0);
+    expect(context.decisions).toEqual([
+      expect.objectContaining({
+        decisionId: 'issue-251-v2-decision',
+        intent: 'REJECT',
+        reason: 'Authoritative V2 rejection reason.',
+        reviewItemId: `comparison-v2:${fixture.draft.changeSetId}`,
+      }),
+    ]);
+    const itemDetail = await coordinator.getReviewItemDetail(scope, {
+      schemaVersion: '1.0.0',
+      reviewContextId: context.context.reviewContextId,
+      contextRevision: context.context.contextRevision,
+      reviewItemId: `comparison-v2:${fixture.draft.changeSetId}`,
+    });
+    expect(itemDetail.decisions).toEqual(context.decisions);
   });
 });

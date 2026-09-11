@@ -1,5 +1,6 @@
 import type {
   ReviewContextRevisionV1,
+  ReviewDecisionRecordV1,
   ReviewEvidenceEntryV1,
   ReviewImpactEntryV1,
   ReviewAggregateStateV1,
@@ -74,6 +75,16 @@ export type ReviewTargetAdapterPort = {
   materializeContext(
     input: ReviewContextMaterializationInputV1,
   ): Promise<ReviewMaterializedContextV1>;
+  /**
+   * Optional read-only projection of an owning domain's authoritative
+   * decision history. The returned records are a presentation view only; the
+   * adapter must not persist them through the Frontend Review decision store.
+   */
+  readDecisionHistory?(input: {
+    readonly scope: FrontendReviewScopeV1;
+    readonly source: ReviewSourceTargetV1;
+    readonly context: ReviewContextRevisionV1;
+  }): Promise<readonly ReviewDecisionRecordV1[]>;
   /** Lazy evidence detail for one Review Item. */
   readEvidence(input: {
     readonly scope: FrontendReviewScopeV1;

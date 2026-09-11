@@ -12,9 +12,15 @@ import {
 } from '../../adapters/postgres-stage5/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
 import { PostgresFrontendReviewRepository } from '../../adapters/frontend-review-postgres/src/index.js';
+import {
+  ComparisonV2ReviewTargetAdapter,
+  type ComparisonV2ReviewSourceReader,
+} from '../../adapters/frontend-review-in-memory/src/index.js';
+import { InMemoryFrontendCommandGateway } from '../../adapters/frontend-command-gateway-in-memory/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
 import { InMemorySettingsRepository } from '../../adapters/settings-project-admin-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
+import { FrontendReviewProductCoordinator } from '../../modules/frontend-review/src/index.js';
 import type { SearchProjectionRepositoryPort } from '../../modules/projection-search/src/index.js';
 import { COMPARISON_ROLLOUT_SETTING_KEY } from '../../modules/settings-policy/src/index.js';
 import {
@@ -541,6 +547,189 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
         await cleanupClient.query('DELETE FROM canonical.project_state WHERE project_id = $1', [
           projectId,
         ]);
+      } finally {
+        await cleanupClient.query('SET session_replication_role = origin');
+        cleanupClient.release();
+      }
+    }
+  });
+
+  it('projects a persisted V2 REJECT through PostgreSQL Review reads without a frontend shadow', async () => {
+    if (!pool) return;
+
+    const suffix = randomUUID();
+    const projectId = `issue-251-${suffix}`;
+    const fixture = createAdr163ReviewFixture({
+      suffix: `issue-251-reject-${suffix}`,
+      projectId,
+      claimText: 'A V2 rejection whose history must remain authoritative.',
+      createdAt: '2026-09-10T00:00:00.000Z',
+    });
+    const reviewRepository = new PostgresChangeSetReviewV2Repository(pool);
+    const frontendReviewStore = new PostgresFrontendReviewRepository(pool);
+    const reader: ComparisonV2ReviewSourceReader = {
+      async listDrafts(currentProjectId) {
+        return currentProjectId === projectId ? await reviewRepository.listDrafts(projectId) : [];
+      },
+      async findDraft(currentProjectId, changeSetId) {
+        return currentProjectId === projectId
+          ? await reviewRepository.findDraftById(projectId, changeSetId)
+          : undefined;
+      },
+      async listDecisions(currentProjectId, changeSetId) {
+        return currentProjectId === projectId
+          ? await reviewRepository.listDecisions(projectId, changeSetId)
+          : [];
+      },
+    };
+    const coordinator = new FrontendReviewProductCoordinator(
+      frontendReviewStore,
+      new InMemoryFrontendCommandGateway(),
+      [new ComparisonV2ReviewTargetAdapter(reader)],
+    );
+    const scope = {
+      principalId: `issue-251-owner:${suffix}`,
+      sessionId: `issue-251-session:${suffix}`,
+      activeProjectId: projectId,
+      accessRevision: `access:${suffix}`,
+      policyContextRevision: `policy:${suffix}`,
+      sensitivityClearance: 'private',
+      accessScope: ['owner'],
+    } as const;
+    const rejectDecisionId = `decision:issue-251:${suffix}:reject`;
+    const rejectedAt = '2026-09-10T00:01:00.000Z';
+
+    await reviewRepository.saveDraft(fixture.draft);
+    try {
+      const queue = await coordinator.listReviewQueue(scope, {
+        schemaVersion: '1.0.0',
+        pageSize: 10,
+        attentionReasons: ['REQUIRES_ACTION'],
+      });
+      expect(queue.items).toHaveLength(1);
+      const queueItem = queue.items[0]!;
+      const context = await coordinator.getReviewContext(scope, {
+        schemaVersion: '1.0.0',
+        reviewContextId: queueItem.reviewContextId,
+        contextRevision: queueItem.contextRevision,
+      });
+      const item = context.context.items[0]!;
+      const updated = { ...fixture.draft, status: 'REJECTED' as const, updatedAt: rejectedAt };
+      await reviewRepository.recordDecision({
+        projectId,
+        changeSetId: fixture.draft.changeSetId,
+        expectedRevisionNumber: fixture.draft.revisionNumber,
+        expectedContentDigest: fixture.draft.contentDigest,
+        decision: {
+          decisionId: rejectDecisionId,
+          decision: 'REJECT',
+          actor: { type: 'user', id: scope.principalId },
+          reason: 'The owner rejected this candidate after reviewing its evidence.',
+          decidedAt: rejectedAt,
+        },
+        updated,
+      });
+
+      const persisted = await reviewRepository.listDecisions(projectId, fixture.draft.changeSetId);
+      expect(persisted).toHaveLength(1);
+      expect(persisted[0]).toMatchObject({
+        projectId,
+        changeSetId: fixture.draft.changeSetId,
+        decision: {
+          decisionId: rejectDecisionId,
+          decision: 'REJECT',
+          actor: { type: 'user', id: scope.principalId },
+          reason: 'The owner rejected this candidate after reviewing its evidence.',
+          decidedAt: rejectedAt,
+        },
+      });
+
+      const rejectedContext = await coordinator.getReviewContext(scope, {
+        schemaVersion: '1.0.0',
+        reviewContextId: context.context.reviewContextId,
+        contextRevision: context.context.contextRevision,
+      });
+      expect(rejectedContext.decisions).toEqual([
+        expect.objectContaining({
+          decisionId: rejectDecisionId,
+          intent: 'REJECT',
+          reason: 'The owner rejected this candidate after reviewing its evidence.',
+          reviewItemId: item.reviewItemId,
+        }),
+      ]);
+      const itemDetail = await coordinator.getReviewItemDetail(scope, {
+        schemaVersion: '1.0.0',
+        reviewContextId: context.context.reviewContextId,
+        contextRevision: context.context.contextRevision,
+        reviewItemId: item.reviewItemId,
+      });
+      expect(itemDetail.decisions).toEqual(rejectedContext.decisions);
+
+      const freshQueue = await coordinator.listReviewQueue(scope, {
+        schemaVersion: '1.0.0',
+        pageSize: 10,
+        attentionReasons: ['REQUIRES_ACTION'],
+      });
+      expect(freshQueue.items).toEqual([]);
+      const counts = await pool.query<{ shadow: string; manifests: string; commits: string }>(
+        `SELECT
+           (SELECT count(*)::text FROM frontend_review.decision
+            WHERE review_context_id = $1) AS shadow,
+           (SELECT count(*)::text FROM review.approved_manifests_v2
+            WHERE project_id = $2 AND change_set_id = $3) AS manifests,
+           (SELECT count(*)::text FROM canonical.commits
+            WHERE project_id = $2) AS commits`,
+        [context.context.reviewContextId, projectId, fixture.draft.changeSetId],
+      );
+      expect(counts.rows[0]).toEqual({ shadow: '0', manifests: '0', commits: '0' });
+    } finally {
+      const cleanupClient = await pool.connect();
+      try {
+        await cleanupClient.query('SET session_replication_role = replica');
+        await cleanupClient.query(
+          `DELETE FROM frontend_review.dependency
+           WHERE review_context_id IN (
+             SELECT review_context_id FROM frontend_review.context_revision
+             WHERE resource_project_id = $1
+           )`,
+          [projectId],
+        );
+        await cleanupClient.query(
+          `DELETE FROM frontend_review.item
+           WHERE review_context_id IN (
+             SELECT review_context_id FROM frontend_review.context_revision
+             WHERE resource_project_id = $1
+           )`,
+          [projectId],
+        );
+        await cleanupClient.query(
+          `DELETE FROM frontend_review.decision
+           WHERE review_context_id IN (
+             SELECT review_context_id FROM frontend_review.context_revision
+             WHERE resource_project_id = $1
+           )`,
+          [projectId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM frontend_review.context_revision WHERE resource_project_id = $1',
+          [projectId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM review.decisions_v2 WHERE project_id = $1 AND change_set_id = $2',
+          [projectId, fixture.draft.changeSetId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM review.approved_manifests_v2 WHERE project_id = $1 AND change_set_id = $2',
+          [projectId, fixture.draft.changeSetId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM review.change_set_revisions_v2 WHERE project_id = $1 AND change_set_id = $2',
+          [projectId, fixture.draft.changeSetId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM review.change_sets_v2 WHERE project_id = $1 AND change_set_id = $2',
+          [projectId, fixture.draft.changeSetId],
+        );
       } finally {
         await cleanupClient.query('SET session_replication_role = origin');
         cleanupClient.release();

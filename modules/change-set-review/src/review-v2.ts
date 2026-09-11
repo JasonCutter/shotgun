@@ -76,6 +76,11 @@ export type ReviewV2RepositoryPort = {
     projectId: string,
     decisionId: string,
   ) => Promise<ComparisonV2PersistedDecision | undefined>;
+  /** Read-only authoritative decision history for Review presentation. */
+  listDecisions?: (
+    projectId: string,
+    changeSetId: string,
+  ) => Promise<readonly ComparisonV2PersistedDecision[]>;
   findDraftByComparisonId(
     projectId: string,
     comparisonId: string,

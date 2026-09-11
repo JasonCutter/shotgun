@@ -8,7 +8,7 @@ import { createFrontendQueryClient } from './query-client.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { createAppRouteObjects } from './router.js';
 
-describe('Settings Parent and Child Route Guard Authorization', () => {
+describe('Product route guard authorization', () => {
   const activeSession: ProductSessionView = {
     apiVersion: '2.0.0' as const,
     principal: {
@@ -218,6 +218,63 @@ describe('Settings Parent and Child Route Guard Authorization', () => {
     expect(screen.queryByRole('heading', { name: 'Create your first Project' })).toBeNull();
     expect(getRouteGuardDecision).toHaveBeenCalledWith(
       { routeId: 'settings-projects', href: '/settings/projects' },
+      undefined,
+      expect.any(Object),
+    );
+  });
+
+  it('fails closed for a direct /knowledge navigation when the Product guard denies it', async () => {
+    const getRouteGuardDecision = vi.fn().mockResolvedValue({
+      schemaVersion: '1.0.0',
+      decision: 'FEATURE_UNAVAILABLE',
+      masked: false,
+      message: 'Knowledge is not available in this workspace.',
+    });
+    const runtime = createRuntime({ getRouteGuardDecision });
+    const router = createMemoryRouter(createAppRouteObjects(runtime), {
+      initialEntries: ['/knowledge'],
+    });
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Request error' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Knowledge', level: 1 })).toBeNull();
+    expect(getRouteGuardDecision).toHaveBeenCalledWith(
+      { routeId: 'knowledge', href: '/knowledge' },
+      undefined,
+      expect.any(Object),
+    );
+  });
+
+  it('reaches the Product Knowledge workspace for a direct /knowledge navigation when allowed', async () => {
+    const getRouteGuardDecision = vi.fn().mockResolvedValue({
+      schemaVersion: '1.0.0',
+      decision: 'ALLOW',
+      masked: false,
+    });
+    const runtime = createRuntime({
+      getRouteGuardDecision,
+      getKnowledgeWorkspace: vi.fn().mockResolvedValue({ pages: [] }),
+      listKnowledgePages: vi.fn().mockResolvedValue({ pages: [] }),
+    });
+    const router = createMemoryRouter(createAppRouteObjects(runtime), {
+      initialEntries: ['/knowledge'],
+    });
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Knowledge', level: 1 })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Request error' })).toBeNull();
+    expect(getRouteGuardDecision).toHaveBeenCalledWith(
+      { routeId: 'knowledge', href: '/knowledge' },
       undefined,
       expect.any(Object),
     );

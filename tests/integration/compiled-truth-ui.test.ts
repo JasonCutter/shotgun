@@ -5,8 +5,8 @@ import { directTextCommand } from '../helpers/stage-3.js';
 import { compiledTruthReadSnapshotQuery } from '../helpers/stage-10.js';
 import type { GetCompiledTruthReadSnapshotResult } from '../../packages/contracts/src/index.js';
 
-describe('Stage 10 Compiled Truth graph UI', () => {
-  it('serves local Cytoscape and keeps the list/table fallback', async () => {
+describe('Stage 10 Compiled Truth read APIs', () => {
+  it('keeps the projection query contract after Knowledge moves to the Product SPA', async () => {
     const app = await createApplication();
     const build = await app.server.inject({
       method: 'POST',
@@ -14,19 +14,6 @@ describe('Stage 10 Compiled Truth graph UI', () => {
       payload: { mode: 'FULL_REBUILD' },
     });
     expect(build.statusCode).toBe(200);
-
-    const page = await app.server.inject({ method: 'GET', url: '/knowledge' });
-    expect(page.statusCode).toBe(200);
-    expect(page.body).toContain('Compiled Truth 그래프');
-    expect(page.body).toContain('id="graph"');
-    expect(page.body).toContain('지식 목록·표 보기');
-    expect(page.body).toContain('aria-label="승인된 지식 항목"');
-    expect(page.body).toContain('/vendor/cytoscape.min.js');
-
-    const vendor = await app.server.inject({ method: 'GET', url: '/vendor/cytoscape.min.js' });
-    expect(vendor.statusCode).toBe(200);
-    expect(vendor.headers['content-type']).toContain('application/javascript');
-    expect(vendor.body).toContain('cytoscape');
 
     const projection = await app.server.inject({
       method: 'POST',

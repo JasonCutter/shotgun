@@ -97,6 +97,7 @@ const renderSurface = (
     | 'project.create'
     | 'project.rename'
     | 'project.archive'
+    | 'project.restore'
     | 'project.delete_request'
     | 'project.manage',
   apiClient: Partial<ShotgunApiClient>,
@@ -221,6 +222,116 @@ describe('ProjectCommandSurface', () => {
     expect(requestDeleteProject).toHaveBeenCalledWith(
       'project-1',
       expect.objectContaining({ expectedRevision: 3, targetProjectId: 'project-1' }),
+    );
+  });
+
+  it('dispatches archive from the manage workspace only after final confirmation', async () => {
+    const user = userEvent.setup();
+    const archiveProject = vi.fn<ShotgunApiClient['archiveProject']>(async () => mutationResult);
+    renderSurface(
+      'project.manage',
+      { getProjects: vi.fn(async () => [project]), archiveProject },
+      'WORKSPACE',
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Archive' }));
+    expect(archiveProject).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole('button', { name: 'Confirm Archive' }));
+
+    expect(archiveProject).toHaveBeenCalledTimes(1);
+    expect(archiveProject).toHaveBeenCalledWith(
+      'project-1',
+      expect.objectContaining({ expectedRevision: 3, targetProjectId: 'project-1' }),
+    );
+  });
+
+  it('dispatches delete request from the manage workspace only after final confirmation', async () => {
+    const user = userEvent.setup();
+    const requestDeleteProject = vi.fn<ShotgunApiClient['requestDeleteProject']>(
+      async () => mutationResult,
+    );
+    renderSurface(
+      'project.manage',
+      { getProjects: vi.fn(async () => [project]), requestDeleteProject },
+      'WORKSPACE',
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Request deletion' }));
+    expect(requestDeleteProject).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole('button', { name: 'Confirm Deletion Request' }));
+
+    expect(requestDeleteProject).toHaveBeenCalledTimes(1);
+    expect(requestDeleteProject).toHaveBeenCalledWith(
+      'project-1',
+      expect.objectContaining({ expectedRevision: 3, targetProjectId: 'project-1' }),
+    );
+  });
+
+  it('dispatches restore from the manage workspace through the existing lifecycle authority', async () => {
+    const user = userEvent.setup();
+    const archivedProject: ProjectListItemView = {
+      ...project,
+      status: 'ARCHIVED',
+      active: false,
+      capability: { ...project.capability, canArchive: false, canRestore: true },
+    };
+    const restoreProject = vi.fn<ShotgunApiClient['restoreProject']>(async () => mutationResult);
+    renderSurface(
+      'project.manage',
+      { getProjects: vi.fn(async () => [archivedProject]), restoreProject },
+      'WORKSPACE',
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Restore' }));
+    await user.click(await screen.findByRole('button', { name: 'Restore Project' }));
+
+    expect(restoreProject).toHaveBeenCalledTimes(1);
+    expect(restoreProject).toHaveBeenCalledWith(
+      'project-1',
+      expect.objectContaining({ expectedRevision: 3, targetProjectId: 'project-1' }),
+    );
+  });
+
+  it('dispatches rename from the manage workspace and returns to management', async () => {
+    const user = userEvent.setup();
+    const updateProject = vi.fn<ShotgunApiClient['updateProject']>(async () => mutationResult);
+    renderSurface(
+      'project.manage',
+      { getProjects: vi.fn(async () => [project]), updateProject },
+      'WORKSPACE',
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Rename' }));
+    await user.type(await screen.findByRole('textbox', { name: 'New Project name' }), 'Renamed');
+    await user.click(await screen.findByRole('button', { name: 'Rename Project' }));
+
+    expect(updateProject).toHaveBeenCalledTimes(1);
+    expect(updateProject).toHaveBeenCalledWith(
+      'project-1',
+      expect.objectContaining({ expectedRevision: 3, targetProjectId: 'project-1' }),
+    );
+  });
+
+  it('dispatches create from the manage workspace through the same mutation authority', async () => {
+    const user = userEvent.setup();
+    const createProject = vi.fn<ShotgunApiClient['createProject']>(async () => mutationResult);
+    renderSurface(
+      'project.manage',
+      { getProjects: vi.fn(async () => [project]), createProject },
+      'WORKSPACE',
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Create Project' }));
+    await user.type(await screen.findByRole('textbox', { name: 'Project key' }), 'new-project');
+    await user.type(await screen.findByRole('textbox', { name: 'Project name' }), 'New Project');
+    await user.click(await screen.findByRole('button', { name: 'Create Project' }));
+
+    expect(createProject).toHaveBeenCalledTimes(1);
+    expect(createProject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeProjectId: 'project-1',
+        targetProjectId: 'project-1',
+      }),
     );
   });
 

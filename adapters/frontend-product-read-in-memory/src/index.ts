@@ -272,21 +272,18 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
       input.requestedRoute.routeId !== 'review' ||
       (input.activeProject !== null &&
         (this.reviewAvailability ? await this.reviewAvailability(input) : false));
+    const decision =
+      input.resourceProjectId && !resourceProject
+        ? 'NOT_FOUND'
+        : !workspaceAvailable || !reviewAvailable
+          ? 'FEATURE_UNAVAILABLE'
+          : input.requestedRoute.routeId === 'home' && !input.activeProject
+            ? 'PROJECT_UNAVAILABLE'
+            : 'ALLOW';
     return decodeRouteGuardDecisionView({
       schemaVersion: '1.0.0',
-      decision:
-        input.resourceProjectId && !resourceProject
-          ? 'NOT_FOUND'
-          : !workspaceAvailable || !reviewAvailable
-            ? 'FEATURE_UNAVAILABLE'
-            : input.requestedRoute.routeId === 'home' && !input.activeProject
-              ? 'PROJECT_UNAVAILABLE'
-              : 'ALLOW',
-      ...(workspaceAvailable &&
-      !(input.requestedRoute.routeId === 'home' && !input.activeProject) &&
-      (!input.resourceProjectId || resourceProject)
-        ? { targetRoute: input.requestedRoute }
-        : {}),
+      decision,
+      ...(decision === 'ALLOW' ? { targetRoute: input.requestedRoute } : {}),
       ...(resourceProject
         ? { resourceProject: { id: resourceProject.id, label: resourceProject.label } }
         : {}),

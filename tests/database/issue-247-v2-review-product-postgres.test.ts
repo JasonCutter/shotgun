@@ -13,6 +13,11 @@ import {
 import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
 import { PostgresFrontendReviewRepository } from '../../adapters/frontend-review-postgres/src/index.js';
 import {
+  createPostgresHistoryReadModelStore,
+  PostgresPayloadStateStore,
+} from '../../adapters/frontend-history-postgres/src/index.js';
+import { ReviewHistoryAdapter } from '../../adapters/frontend-history-review/src/index.js';
+import {
   ComparisonV2ReviewTargetAdapter,
   type ComparisonV2ReviewSourceReader,
 } from '../../adapters/frontend-review-in-memory/src/index.js';
@@ -21,6 +26,12 @@ import { InMemoryAuthRepository } from '../../packages/authentication/src/index.
 import { InMemorySettingsRepository } from '../../adapters/settings-project-admin-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import { FrontendReviewProductCoordinator } from '../../modules/frontend-review/src/index.js';
+import {
+  createHistoryAdapterRegistry,
+  HistoryProductCoordinator,
+  HistoryProjectionBuilder,
+  type HistoryAdapterPort,
+} from '../../modules/frontend-history/src/index.js';
 import type { SearchProjectionRepositoryPort } from '../../modules/projection-search/src/index.js';
 import { COMPARISON_ROLLOUT_SETTING_KEY } from '../../modules/settings-policy/src/index.js';
 import {
@@ -40,6 +51,14 @@ const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
 const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const describeDatabase = describe.runIf(Boolean(databaseUrl));
+
+const emptyHistoryAdapter = (domainKind: HistoryAdapterPort['domainKind']): HistoryAdapterPort => ({
+  adapterId: `issue-265-empty-${domainKind.toLowerCase()}`,
+  domainKind,
+  readHistory: async () => [],
+  resolveHistoryEntry: async () => undefined,
+  redactEntry: async (entry) => entry,
+});
 
 describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
   beforeAll(async () => {
@@ -441,6 +460,14 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
       try {
         await cleanupClient.query('SET session_replication_role = replica');
         await cleanupClient.query(
+          'DELETE FROM frontend_history.history_projection_index WHERE resource_project_id = $1',
+          [projectId],
+        );
+        await cleanupClient.query(
+          'DELETE FROM frontend_history.projection_watermarks WHERE resource_project_id = $1',
+          [projectId],
+        );
+        await cleanupClient.query(
           `DELETE FROM frontend_review.dependency
            WHERE review_context_id IN (
              SELECT review_context_id FROM frontend_review.context_revision
@@ -714,6 +741,115 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
           reason: 'The owner rejected this candidate after reviewing its evidence.',
           decidedAt: rejectedAt,
         },
+      });
+
+      // Issue #265: the same PostgreSQL V2 authority is projected directly
+      // into federated History. No V1 Review shadow is required or created.
+      const historyAdapter = new ReviewHistoryAdapter(
+        frontendReviewStore,
+        new PostgresPayloadStateStore(pool, 'REVIEW'),
+        () => new Date('2026-09-10T00:02:00.000Z'),
+        reviewRepository,
+      );
+      const historyEntries = await historyAdapter.readHistory(projectId);
+      const historyDecision = historyEntries.filter(
+        (entry) => entry.sourceEventId === rejectDecisionId,
+      );
+      expect(historyDecision).toHaveLength(1);
+      expect(historyDecision[0]).toMatchObject({
+        domainKind: 'REVIEW',
+        sourceEventKind: 'DECISION',
+        sourceEventId: rejectDecisionId,
+        domainResourceId: fixture.draft.changeSetId,
+        occurredAt: rejectedAt,
+      });
+      expect(historyDecision[0]!.payloadSnapshot).toMatchObject({
+        changeSetId: fixture.draft.changeSetId,
+        expectedRevisionNumber: fixture.draft.revisionNumber,
+        expectedContentDigest: fixture.draft.contentDigest,
+        intent: 'REJECT',
+        reason: 'The owner rejected this candidate after reviewing its evidence.',
+        owningV2Target: { comparisonId: fixture.draft.comparisonId },
+      });
+      await expect(
+        historyAdapter.resolveHistoryEntry(projectId, 'DECISION', rejectDecisionId),
+      ).resolves.toMatchObject({ sourceEventId: rejectDecisionId });
+
+      // Issue #265 full-path proof: the same authoritative V2 decision must
+      // survive the operator-rebuildable federated History projection and be
+      // readable through the real History Product coordinator. The remaining
+      // mandatory domains are deliberately empty test adapters; no unrelated
+      // authority fixtures are needed for this focused Review test.
+      const historyReadModelStore = createPostgresHistoryReadModelStore(pool);
+      const historyRegistry = createHistoryAdapterRegistry([
+        emptyHistoryAdapter('CANONICAL'),
+        historyAdapter,
+        emptyHistoryAdapter('EXTERNAL_ACTION'),
+        emptyHistoryAdapter('POLICY'),
+      ]);
+      const historyProjectionBuilder = new HistoryProjectionBuilder(
+        historyRegistry,
+        historyReadModelStore,
+        () => new Date('2026-09-10T00:03:00.000Z'),
+      );
+      const projection = await historyProjectionBuilder.buildProjectProjection(projectId);
+      expect(projection.partial).toBe(false);
+      expect(projection.indexCount).toBe(1);
+      const historyProduct = new HistoryProductCoordinator(
+        historyReadModelStore.index,
+        historyRegistry,
+      );
+      const historyScope = {
+        principalId: scope.principalId,
+        activeProjectId: projectId,
+        accessRevision: scope.accessRevision,
+        policyContextRevision: scope.policyContextRevision,
+        sensitivityClearance: scope.sensitivityClearance,
+        accessScope: scope.accessScope,
+      } as const;
+      const historyList = await historyProduct.listHistoryWorkspace(historyScope, {
+        schemaVersion: '1.0.0',
+        resourceProjectId: projectId,
+        domainKinds: ['REVIEW'],
+        limit: 20,
+      });
+      expect(historyList.entries).toHaveLength(1);
+      const projectedHistoryEntry = historyList.entries[0]!;
+      expect(projectedHistoryEntry).toMatchObject({
+        domainKind: 'REVIEW',
+        sourceEventKind: 'DECISION',
+        sourceEventId: rejectDecisionId,
+        domainResourceId: fixture.draft.changeSetId,
+        occurredAt: rejectedAt,
+      });
+      expect(projectedHistoryEntry.payloadSnapshot).toMatchObject({
+        changeSetId: fixture.draft.changeSetId,
+        expectedRevisionNumber: fixture.draft.revisionNumber,
+        expectedContentDigest: fixture.draft.contentDigest,
+        intent: 'REJECT',
+        actor: { type: 'user', id: scope.principalId },
+        reason: 'The owner rejected this candidate after reviewing its evidence.',
+        decidedAt: rejectedAt,
+        owningV2Target: { comparisonId: fixture.draft.comparisonId },
+      });
+      expect(projectedHistoryEntry.sourceEventId).toBe(rejectDecisionId);
+      const historyDetail = await historyProduct.getHistoryEntry(historyScope, {
+        schemaVersion: '1.0.0',
+        resourceProjectId: projectId,
+        historyEntryId: projectedHistoryEntry.historyEntryId,
+      });
+      expect(historyDetail.entry).toMatchObject({
+        historyEntryId: projectedHistoryEntry.historyEntryId,
+        domainKind: 'REVIEW',
+        sourceEventKind: 'DECISION',
+        sourceEventId: rejectDecisionId,
+      });
+      expect(historyDetail.entry.payloadSnapshot).toMatchObject({
+        changeSetId: fixture.draft.changeSetId,
+        intent: 'REJECT',
+        actor: { type: 'user', id: scope.principalId },
+        reason: 'The owner rejected this candidate after reviewing its evidence.',
+        decidedAt: rejectedAt,
       });
 
       const rejectedContext = await coordinator.getReviewContext(scope, {

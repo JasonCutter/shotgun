@@ -8,6 +8,7 @@ import {
   frontendReviewAddCommentDigest,
   frontendReviewRecordDecisionsDigest,
   frontendReviewRevalidateDigest,
+  stableJson,
   type AcceptedPolicyContext,
   type AddReviewCommentRequestV1,
   type AddReviewCommentResultV1,
@@ -373,6 +374,41 @@ export class FrontendReviewProductCoordinator {
     );
   }
 
+  /**
+   * Read owning-domain decision history as a presentation projection only.
+   * The Frontend Review decision store remains authoritative for V1 targets;
+   * an adapter-provided projection is never appended to that store.
+   */
+  private async decisionHistoryForContext(
+    adapter: ReviewTargetAdapterPort,
+    scope: FrontendReviewScopeV1,
+    source: ReviewSourceTargetV1 | undefined,
+    context: ReviewContextRevisionV1,
+    stored: readonly ReviewDecisionRecordV1[],
+  ): Promise<readonly ReviewDecisionRecordV1[]> {
+    if (adapter.readDecisionHistory === undefined) return stored;
+    if (stored.length > 0) {
+      reviewFailure(
+        'CONFLICT',
+        'An owning-domain Review history target has an unexpected Frontend Review decision.',
+      );
+    }
+    if (!source) return [];
+    const projected = await adapter.readDecisionHistory({ scope, source, context });
+    const seen = new Map<string, ReviewDecisionRecordV1>();
+    for (const decision of projected) {
+      const previous = seen.get(decision.decisionId);
+      if (previous && stableJson(previous) !== stableJson(decision)) {
+        reviewFailure(
+          'CONFLICT',
+          'An owning-domain Review history target contains conflicting decision identities.',
+        );
+      }
+      if (!previous) seen.set(decision.decisionId, decision);
+    }
+    return [...seen.values()];
+  }
+
   /** Fail-closed Approval read revalidation shared by read and outcome paths. */
   private assertApprovalReadable(approval: ReviewApprovalV1, scope: FrontendReviewScopeV1): void {
     if (
@@ -650,13 +686,23 @@ export class FrontendReviewProductCoordinator {
           };
         }
         const visible = this.visibleItemIds(historical, scope);
+        const adapter = this.adapterFor(historical.targetKind);
+        const source = await adapter.findSourceTarget(
+          scope.activeProjectId,
+          record.reviewResourceId,
+          scope,
+        );
+        const decisionsForContext = await this.decisionHistoryForContext(
+          adapter,
+          scope,
+          source,
+          historical,
+          this.decisionsForRevision(decisions, request.contextRevision),
+        );
         return {
           schemaVersion: '1.0.0',
           context: applySensitivityMasking(historical, scope),
-          decisions: this.filterDecisionsByVisibility(
-            this.decisionsForRevision(decisions, request.contextRevision),
-            visible,
-          ),
+          decisions: this.filterDecisionsByVisibility(decisionsForContext, visible),
           comments: this.filterCommentsByVisibility(
             this.commentsForRevision(comments, request.contextRevision),
             visible,
@@ -687,10 +733,17 @@ export class FrontendReviewProductCoordinator {
       );
       const view = deriveContextView({ record, currentSource, scope, decisions });
       const visible = this.visibleItemIds(view.context, scope);
+      const decisionsForContext = await this.decisionHistoryForContext(
+        adapter,
+        scope,
+        currentSource,
+        view.context,
+        decisions,
+      );
       return {
         schemaVersion: '1.0.0',
         context: view.context,
-        decisions: this.filterDecisionsByVisibility(decisions, visible),
+        decisions: this.filterDecisionsByVisibility(decisionsForContext, visible),
         comments: this.filterCommentsByVisibility(comments, visible),
       };
     });
@@ -779,6 +832,13 @@ export class FrontendReviewProductCoordinator {
             })
           : undefined;
       const decisions = await repositories.decisions.findDecisions(request.reviewContextId);
+      const decisionsForContext = await this.decisionHistoryForContext(
+        adapter,
+        scope,
+        source,
+        record.context,
+        this.decisionsForRevision(decisions, request.contextRevision),
+      );
       return {
         schemaVersion: '1.0.0',
         item: maskedItem,
@@ -791,10 +851,7 @@ export class FrontendReviewProductCoordinator {
         ),
         ...(evidence === undefined ? {} : { evidence }),
         ...(impact === undefined ? {} : { impact }),
-        decisions: this.filterDecisionsByVisibility(
-          this.decisionsForRevision(decisions, request.contextRevision),
-          visible,
-        ),
+        decisions: this.filterDecisionsByVisibility(decisionsForContext, visible),
       };
     });
   }
@@ -832,14 +889,24 @@ export class FrontendReviewProductCoordinator {
         visible.has(dependency.fromReviewItemId) && visible.has(dependency.toReviewItemId),
     );
     const decisions = await repositories.decisions.findDecisions(context.reviewContextId);
+    const adapter = this.adapterFor(context.targetKind);
+    const source = await adapter.findSourceTarget(
+      scope.activeProjectId,
+      context.reviewResourceId,
+      scope,
+    );
+    const decisionsForContext = await this.decisionHistoryForContext(
+      adapter,
+      scope,
+      source,
+      context,
+      this.decisionsForRevision(decisions, contextRevision),
+    );
     return {
       schemaVersion: '1.0.0',
       item: maskedItem,
       dependencies,
-      decisions: this.filterDecisionsByVisibility(
-        this.decisionsForRevision(decisions, contextRevision),
-        visible,
-      ),
+      decisions: this.filterDecisionsByVisibility(decisionsForContext, visible),
     };
   }
 

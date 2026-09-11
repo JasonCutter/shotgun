@@ -76,6 +76,11 @@ export type ReviewV2RepositoryPort = {
     projectId: string,
     decisionId: string,
   ) => Promise<ComparisonV2PersistedDecision | undefined>;
+  /** Read-only authoritative decision history for Review presentation. */
+  listDecisions?: (
+    projectId: string,
+    changeSetId: string,
+  ) => Promise<readonly ComparisonV2DecisionHistoryRecord[]>;
   findDraftByComparisonId(
     projectId: string,
     comparisonId: string,
@@ -125,6 +130,19 @@ export type ComparisonV2PersistedDecision = {
   readonly draft: DraftChangeSetV2;
   readonly decision: ComparisonV2ReviewDecision;
   readonly manifest?: ApprovedChangeSetManifestV2;
+};
+
+/**
+ * Narrow, immutable history projection for Review presentation. Unlike the
+ * replay-oriented persisted decision record above, this type deliberately
+ * carries no current Draft or approved manifest from the owning aggregate.
+ */
+export type ComparisonV2DecisionHistoryRecord = {
+  readonly projectId: string;
+  readonly changeSetId: string;
+  readonly expectedRevisionNumber: number;
+  readonly expectedContentDigest: string;
+  readonly decision: ComparisonV2ReviewDecision;
 };
 
 export type ComparisonV2ReviewBridgeRequest = {

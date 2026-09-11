@@ -241,8 +241,13 @@ export const ReviewWorkspace = () => {
       dispatch({ type: 'CONTEXT_RESOLVED' });
       const firstItem = nextContext.context.items[0];
       if (firstItem) dispatch({ type: 'SELECT_ITEM', reviewItemId: firstItem.reviewItemId });
+      // A V2 decision changes the owning draft and therefore the server-owned
+      // queue membership. Refetch the active queue after the authoritative
+      // context has been adopted so the same session cannot keep showing a
+      // terminal item as stale PENDING.
+      await queue.refetch();
     },
-    [reviewClient],
+    [reviewClient, queue.refetch],
   );
 
   useEffect(() => {

@@ -114,6 +114,138 @@ const contextResult = (reviewContextId: string, contextRevision: number) => ({
   comments: [],
 });
 
+const v2ReviewItem = (decisionState: 'PENDING' | 'APPROVED') => ({
+  schemaVersion: '1.0.0',
+  reviewItemId: 'comparison-v2:change-set-1',
+  sourceItemKind: 'COMPARISON_V2_CHANGE_SET',
+  sourceItemId: 'change-set-1',
+  sourceItemRevision: '1',
+  sourceItemDigest: 'sha256:change-set-1',
+  targetRef: {
+    schemaVersion: '1.0.0',
+    targetKind: 'COMPARISON_V2_CHANGE_SET',
+    targetId: 'change-set-1',
+    targetRevision: '1',
+  },
+  label: 'V2 candidate · ADD_CLAIM',
+  after: {
+    schemaVersion: '1.0.0',
+    representationKind: 'OPAQUE_TEXT',
+    summary: 'NEW / ADD_CLAIM',
+    detailText: 'authoritative V2 change set',
+  },
+  rationale: 'Comparison V2 recommends ADD_CLAIM.',
+  expectedImpact: 'Canonical operation ADD_CLAIM.',
+  artifactRefs: { schemaVersion: '1.0.0' },
+  allowedDecisions: ['APPROVE', 'REJECT', 'HOLD'],
+  decisionState,
+  sensitivity: 'NORMAL',
+  maskedFields: [],
+  accessMasking: 'VISIBLE',
+});
+
+const v2ContextResult = (contextRevision: number, approved = false) => ({
+  schemaVersion: '1.0.0',
+  context: {
+    schemaVersion: '1.0.0',
+    reviewContextId: 'review:comparison-v2:change-set-1',
+    contextRevision,
+    reviewResourceId: 'change-set-1',
+    targetKind: 'COMPARISON_V2_CHANGE_SET',
+    targetId: 'change-set-1',
+    targetRevision: '1',
+    targetDigest: 'sha256:change-set-1',
+    resourceProjectId: 'project-1',
+    effectiveProjectId: 'project-1',
+    accessRevision: 'access-1',
+    policyContextRevision: 'policy-1',
+    artifactRefs: { schemaVersion: '1.0.0' },
+    items: [v2ReviewItem(approved ? 'APPROVED' : 'PENDING')],
+    dependencies: [],
+    aggregateState: approved ? 'APPROVED_READY' : 'PENDING',
+    capabilities: [
+      'LIST_QUEUE',
+      'READ_CONTEXT',
+      'READ_ITEM',
+      'REVALIDATE',
+      'RECORD_DECISIONS',
+      'ADD_COMMENT',
+    ],
+    generatedAt: now,
+  },
+  decisions: [],
+  comments: [],
+});
+
+const createV2DecisionFetchMock = () => {
+  const queueRequests: ListReviewQueueRequestV1[] = [];
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const path = String(input);
+      if (path === '/api/v1/security/csrf') return responseJson({ csrfToken: 'csrf-test-token' });
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      if (path.endsWith('/review/queue')) {
+        const request = body as unknown as ListReviewQueueRequestV1;
+        queueRequests.push(request);
+        return responseJson(
+          queuePage(
+            queueRequests.length === 1
+              ? [
+                  {
+                    schemaVersion: '1.0.0',
+                    reviewContextId: 'review:comparison-v2:change-set-1',
+                    contextRevision: 1,
+                    targetKind: 'COMPARISON_V2_CHANGE_SET',
+                    targetId: 'change-set-1',
+                    targetLabel: 'V2 candidate · ADD_CLAIM',
+                    aggregateState: 'PENDING',
+                    itemCount: 1,
+                    updatedAt: now,
+                    attentionReasons: ['REQUIRES_ACTION'],
+                    capabilities: ['LIST_QUEUE', 'READ_CONTEXT', 'READ_ITEM', 'REVALIDATE'],
+                  },
+                ]
+              : [],
+          ),
+        );
+      }
+      if (path.endsWith('/review/contexts/read')) {
+        const revision = Number(body['contextRevision']);
+        return responseJson(v2ContextResult(revision, revision > 1));
+      }
+      if (path.endsWith('/review/items/read')) {
+        return responseJson({
+          schemaVersion: '1.0.0',
+          item: v2ReviewItem('PENDING'),
+          dependencies: [],
+          evidence: [],
+          impact: [],
+          decisions: [],
+        });
+      }
+      if (path === '/reviews/v2/decision') {
+        return responseJson({
+          commandStatus: 'COMPLETED',
+          decision: { decision: 'APPROVE', decisionId: 'review-decide-test' },
+          changeSet: { status: 'APPROVED' },
+        });
+      }
+      if (path.endsWith('/review/contexts/revalidate')) {
+        return responseJson({
+          schemaVersion: '1.0.0',
+          outcome: 'COMPLETED',
+          clientRequestId: body['clientRequestId'],
+          idempotencyKey: body['idempotencyKey'],
+          commandSemanticDigest: 'sha256:revalidate',
+          context: v2ContextResult(2, true).context,
+        });
+      }
+      throw new Error(`Unexpected fetch path: ${path}`);
+    },
+  );
+  return { fetchMock, queueRequests };
+};
+
 const createFetchMock = (options?: { readonly includeTarget: boolean }) => {
   const queueRequests: ListReviewQueueRequestV1[] = [];
   const contextRequests: Array<{ reviewContextId: string; contextRevision: number }> = [];
@@ -254,5 +386,27 @@ describe('Review Workspace deep links', () => {
     await waitFor(() => expect(contextRequests).toHaveLength(1));
     expect(contextRequests).toEqual([{ reviewContextId: 'explicit-context', contextRevision: 4 }]);
     expect(queueRequests.filter((request) => request.targetKinds !== undefined)).toHaveLength(0);
+  });
+
+  it('refreshes the queue after adopting an authoritative V2 decision', async () => {
+    const { fetchMock, queueRequests } = createV2DecisionFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute('/review');
+
+    await userEvent.click(await screen.findByRole('button', { name: /V2 candidate · ADD_CLAIM/ }));
+    await screen.findByRole('heading', { name: '검토 대상', level: 2 });
+    await userEvent.selectOptions(
+      screen.getByLabelText('항목 선택 및 결정 버튼'),
+      'comparison-v2:change-set-1',
+    );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /V2 candidate · ADD_CLAIM 사유/ }),
+      'Approved in the same session.',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^승인$/ }));
+    await userEvent.click(screen.getByRole('button', { name: '승인 기록' }));
+
+    await waitFor(() => expect(queueRequests).toHaveLength(2));
+    expect(await screen.findByText('검토 대기열이 비어 있습니다.')).toBeTruthy();
   });
 });

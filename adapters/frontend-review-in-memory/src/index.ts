@@ -41,7 +41,10 @@ import {
 import type { InMemoryFrontendKnowledgeDraftRepository } from '../../frontend-knowledge-draft-in-memory/src/index.js';
 import type { FrontendKnowledgeDraftChangeSetV1 } from '../../../packages/contracts/src/index.js';
 import type { FrontendKnowledgeOperationV1 } from '../../../packages/contracts/src/index.js';
-import type { ReviewV2RepositoryPort } from '../../../modules/change-set-review/src/index.js';
+import type {
+  ComparisonV2DecisionHistoryRecord,
+  ReviewV2RepositoryPort,
+} from '../../../modules/change-set-review/src/index.js';
 import type { CandidateRepositoryPort } from '../../../modules/candidate-generation/src/index.js';
 import type { EvidenceRepositoryPort } from '../../../modules/evidence/src/index.js';
 
@@ -588,6 +591,10 @@ export class DraftReviewTargetAdapter implements ReviewTargetAdapterPort {
 export type ComparisonV2ReviewSourceReader = {
   listDrafts(projectId: string): Promise<readonly DraftChangeSetV2[]>;
   findDraft(projectId: string, changeSetId: string): Promise<DraftChangeSetV2 | undefined>;
+  listDecisions?(
+    projectId: string,
+    changeSetId: string,
+  ): Promise<readonly ComparisonV2DecisionHistoryRecord[]>;
   findCandidate?(projectId: string, candidateId: string): Promise<ClaimCandidate | undefined>;
   findEvidence?(projectId: string, evidenceId: string): Promise<EvidenceSpan | undefined>;
 };
@@ -791,6 +798,44 @@ export class ComparisonV2ReviewTargetAdapter implements ReviewTargetAdapterPort 
     return { context };
   }
 
+  async readDecisionHistory(input: {
+    readonly scope: FrontendReviewScopeV1;
+    readonly source: ReviewSourceTargetV1;
+    readonly context: ReviewContextRevisionV1;
+  }): Promise<readonly ReviewDecisionRecordV1[]> {
+    if (!this.reader.listDecisions) return [];
+    const decisions = await this.reader.listDecisions(
+      input.scope.activeProjectId,
+      input.source.targetId,
+    );
+    const targetRevision = Number(input.context.targetRevision);
+    const reviewItemId = `comparison-v2:${input.source.targetId}`;
+    return decisions
+      .filter(
+        (decision) =>
+          decision.projectId === input.scope.activeProjectId &&
+          decision.changeSetId === input.source.targetId &&
+          decision.expectedRevisionNumber === targetRevision &&
+          decision.expectedContentDigest === input.context.targetDigest,
+      )
+      .map((decision) => ({
+        schemaVersion: '1.0.0',
+        decisionId: decision.decision.decisionId,
+        reviewContextId: input.context.reviewContextId,
+        contextRevision: input.context.contextRevision,
+        reviewItemId,
+        intent: decision.decision.decision,
+        reason: decision.decision.reason,
+        decidedBy: {
+          schemaVersion: '1.0.0',
+          principalId: decision.decision.actor.id,
+          actorId: decision.decision.actor.id,
+        },
+        decidedAt: decision.decision.decidedAt,
+        terminal: decision.decision.decision !== 'HOLD',
+      }));
+  }
+
   async readEvidence(input: {
     scope: FrontendReviewScopeV1;
     source: ReviewSourceTargetV1;
@@ -873,7 +918,7 @@ const reviewSensitivity = (value: SecuritySensitivity): ReviewItemV1['sensitivit
 };
 
 export const createInMemoryComparisonV2ReviewSourceReader = (
-  repository: Pick<ReviewV2RepositoryPort, 'listDrafts' | 'findDraftById'>,
+  repository: Pick<ReviewV2RepositoryPort, 'listDrafts' | 'findDraftById' | 'listDecisions'>,
   evidence?: Pick<EvidenceRepositoryPort, 'findById'>,
   candidate?: Pick<CandidateRepositoryPort, 'findById'>,
 ): ComparisonV2ReviewSourceReader => ({
@@ -884,6 +929,12 @@ export const createInMemoryComparisonV2ReviewSourceReader = (
   async findDraft(projectId, changeSetId) {
     return repository.findDraftById?.(projectId, changeSetId);
   },
+  ...(repository.listDecisions
+    ? {
+        listDecisions: (projectId: string, changeSetId: string) =>
+          repository.listDecisions!(projectId, changeSetId),
+      }
+    : {}),
   ...(evidence
     ? {
         findEvidence: (projectId: string, evidenceId: string) =>

@@ -325,6 +325,7 @@ import {
   type ReviewV2RepositoryPort,
   type ReviewOperationResolutionStorePort,
 } from '../../../modules/change-set-review/src/index.js';
+import { comparisonV2ReviewProductFailure } from './product-api/review-v2-failure.js';
 import {
   resolveReviewOperationV2CommandDigest,
   validateResolveReviewOperationV2Request,
@@ -4229,7 +4230,7 @@ const createApplicationCore = async (
    */
   server.post<{ Body: ComparisonV2ReviewDecisionRequest; Headers: SecurityHeaders }>(
     '/reviews/v2/decision',
-    async (request, reply) => {
+    async (request) => {
       const context = requestContext(request.headers);
       const body = request.body;
       if (
@@ -4290,7 +4291,13 @@ const createApplicationCore = async (
         ...(body.decisionId === undefined ? {} : { decisionId: body.decisionId }),
       });
       if (outcome.status === 'BLOCKED') {
-        return reply.code(409).send(outcome);
+        const failure = comparisonV2ReviewProductFailure(outcome.reason);
+        throw new ShotgunError({
+          code: failure.code,
+          safeMessage: failure.message,
+          module: 'product-api',
+          operation: 'record-review-decision-v2',
+        });
       }
       let handoff: { readonly status: string; readonly consumers?: readonly unknown[] } | undefined;
       if (outcome.decision.decision === 'APPROVE') {

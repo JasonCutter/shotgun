@@ -370,9 +370,11 @@ export const ReviewWorkspace = () => {
         type: 'FAILED',
         reason,
         message:
-          error instanceof Error
-            ? error.message
-            : `결정을 기록하지 못했습니다: ${INTENT_LABELS[intent]}`,
+          failure?.code === 'REVIEW_CONTEXT_STALE'
+            ? '이 검토는 최신 상태가 아닙니다. 승인하기 전에 새로고침하거나 Candidate를 재비교하세요.'
+            : error instanceof Error
+              ? error.message
+              : `결정을 기록하지 못했습니다: ${INTENT_LABELS[intent]}`,
         retryable: failure?.retryability === 'SAFE' || failure?.retryability === 'CONDITIONAL',
       });
       announce(REVIEW_ANNOUNCEMENTS.DECISION_REJECTED);

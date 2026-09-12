@@ -42,9 +42,9 @@ const createDraftFile = (file: File): SourceIntakeDraftFile => {
     configurable: false,
     enumerable: false,
     writable: false,
-    value: async () => {
+    value: () => {
       const backing = browserFileBacking.get(draftFile);
-      if (!backing) throw new Error('Selected file is no longer available.');
+      if (!backing) return Promise.reject(new Error('Selected file is no longer available.'));
       return backing.arrayBuffer();
     },
   });

@@ -4,6 +4,7 @@ import {
   claimCandidateDigest,
   sha256Text,
   stableJson,
+  ShotgunError,
   type Actor,
   type CanonicalSnapshot,
   type ClaimCandidate,
@@ -303,6 +304,18 @@ export const createComparisonV2ReviewFreshnessAdapter = (
   },
 });
 
+const requiredAckFailure = (input: {
+  readonly request: Parameters<ComparisonV2RuntimeBoundary['handleCandidateValidated']>[0];
+  readonly reason: string;
+}): ShotgunError =>
+  new ShotgunError({
+    code: 'VALIDATION_ERROR',
+    safeMessage: `Stage 5 V2 did not reach an authoritative Review terminal state (${input.reason}).`,
+    module: 'stage5.comparison',
+    operation: 'candidate-validated-v2-required-ack',
+    correlationId: input.request.correlationId,
+  });
+
 export const createComparisonV2Runtime = (input: {
   readonly candidate: ComparisonCandidateV2ResolverPort;
   readonly settings: Pick<SettingsRepositoryPort, 'getProjectSettingValue'>;
@@ -346,39 +359,43 @@ export const createComparisonV2Runtime = (input: {
           attempt: 1,
           executionTrigger: request.executionTrigger ?? 'INITIAL_OR_EVENT_REPLAY',
         });
-      } catch {
-        v2Outcome = { status: 'BLOCKED', reason: 'CONTRACT_FAILURE' };
+      } catch (error) {
+        if (authority.rollout === 'V2_SHADOW') {
+          v2Outcome = { status: 'BLOCKED', reason: 'CONTRACT_FAILURE' };
+        } else {
+          throw error;
+        }
       }
-      if (authority.rollout === 'V2_SHADOW' || v2Outcome.status !== 'COMPLETED') {
+      if (authority.rollout === 'V2_SHADOW') {
         return {
           rollout: authority.rollout,
           authority: authority.selection,
           authorityRevision: authority.authorityRevision,
-          v1Executed: authority.rollout === 'V2_SHADOW',
+          v1Executed: true,
           v2Outcome,
           review: { status: 'NOT_ATTEMPTED' },
         };
+      }
+      if (v2Outcome.status !== 'COMPLETED') {
+        throw requiredAckFailure({ request, reason: `V2_${v2Outcome.status}` });
       }
       const currentAuthority = await rollout.resolve({
         projectId: request.projectId,
         candidateId: request.candidateId,
         candidateRevision: request.candidate.revisionNumber,
       });
-      if (currentAuthority.rollout !== 'V2_ACTIVE' || !input.reviewBridge || !input.freshness) {
+      if (currentAuthority.rollout !== 'V2_ACTIVE') {
         return {
           rollout: authority.rollout,
           authority: authority.selection,
           authorityRevision: authority.authorityRevision,
           v1Executed: false,
           v2Outcome,
-          review: {
-            status: 'BLOCKED',
-            reason:
-              currentAuthority.rollout !== 'V2_ACTIVE'
-                ? 'ROLLOUT_DOWNGRADED'
-                : 'REVIEW_BRIDGE_UNAVAILABLE',
-          },
+          review: { status: 'BLOCKED', reason: 'ROLLOUT_DOWNGRADED' },
         };
+      }
+      if (!input.reviewBridge || !input.freshness) {
+        throw requiredAckFailure({ request, reason: 'REVIEW_BRIDGE_UNAVAILABLE' });
       }
       const bridgeOutcome = await input.reviewBridge.materializeDraft({
         event: v2Outcome.event,
@@ -387,16 +404,16 @@ export const createComparisonV2Runtime = (input: {
         authority: currentAuthority.selection,
         rolloutAuthorityRevision: currentAuthority.authorityRevision,
       });
+      if (bridgeOutcome.status !== 'DRAFT_CREATED') {
+        throw requiredAckFailure({ request, reason: `REVIEW_${bridgeOutcome.reason}` });
+      }
       return {
         rollout: authority.rollout,
         authority: currentAuthority.selection,
         authorityRevision: currentAuthority.authorityRevision,
         v1Executed: false,
         v2Outcome,
-        review:
-          bridgeOutcome.status === 'DRAFT_CREATED'
-            ? { status: 'DRAFT_CREATED' }
-            : { status: 'BLOCKED', reason: bridgeOutcome.reason },
+        review: { status: 'DRAFT_CREATED' },
       };
     },
   };

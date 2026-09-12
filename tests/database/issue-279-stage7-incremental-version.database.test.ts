@@ -12,11 +12,7 @@ const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const digest = (digit: string): string => `sha256:${digit.repeat(64)}`;
 
-const doc = (
-  projectId: string,
-  version: number,
-  text: string,
-): SearchProjectionDocument => ({
+const doc = (projectId: string, version: number, text: string): SearchProjectionDocument => ({
   projectId,
   claimId: `claim-${version}-${randomUUID()}`,
   commitId: `commit-${version}-${randomUUID()}`,

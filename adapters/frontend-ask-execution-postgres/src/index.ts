@@ -22,6 +22,7 @@ import {
   type AskTransitionSeedView,
   deriveAuthorizedSensitivities,
   type HybridCandidateResult,
+  type HybridCitation,
   type HybridRetrievalCoordinatorPort,
   sha256Text,
   stableJson,
@@ -169,12 +170,12 @@ const isAllowedSensitivity = (
   allowed: readonly AskExecutionScope['sensitivityClearance'][],
 ): boolean => allowed.includes(sensitivity);
 
-const canonicalEvidenceFromHybrid = (
+const canonicalCitationsFromHybrid = (
   response: { readonly items: readonly HybridCandidateResult[] },
   scope: AskExecutionScope,
-): AskExecutionEvidence[] => {
+): HybridCitation[] => {
   const allowedSensitivities = deriveAuthorizedSensitivities(scope.sensitivityClearance);
-  const evidenceById = new Map<string, AskExecutionEvidence>();
+  const citationById = new Map<string, HybridCitation>();
   for (const item of response.items) {
     // CANONICAL_ONLY is deliberately narrower than the general hybrid
     // Product search contract. Approved knowledge, compiled truth, source
@@ -185,27 +186,19 @@ const canonicalEvidenceFromHybrid = (
       continue;
     }
     for (const citation of item.citations) {
-      const evidence: AskExecutionEvidence = {
-        evidenceId: citation.evidenceId,
-        sourceId: citation.sourceId,
-        sourceVersionId: citation.sourceVersionId,
-        exactQuote: citation.exactQuote,
-        sensitivity: item.sensitivity,
-      };
-      const existing = evidenceById.get(evidence.evidenceId);
+      const existing = citationById.get(citation.evidenceId);
       if (
         existing &&
-        (existing.sourceId !== evidence.sourceId ||
-          existing.sourceVersionId !== evidence.sourceVersionId ||
-          existing.exactQuote !== evidence.exactQuote ||
-          existing.sensitivity !== evidence.sensitivity)
+        (existing.sourceId !== citation.sourceId ||
+          existing.sourceVersionId !== citation.sourceVersionId ||
+          existing.exactQuote !== citation.exactQuote)
       ) {
         throw invalid('Hybrid retrieval returned conflicting Evidence lineage.');
       }
-      evidenceById.set(evidence.evidenceId, evidence);
+      citationById.set(citation.evidenceId, citation);
     }
   }
-  return [...evidenceById.values()].sort((left, right) =>
+  return [...citationById.values()].sort((left, right) =>
     left.evidenceId.localeCompare(right.evidenceId),
   );
 };
@@ -560,30 +553,37 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     const automaticallyResolvedEvidenceIds = [...automaticEvidenceBySelection.values()].flatMap(
       (evidenceIds) => evidenceIds,
     );
-    const useHybridCanonicalContext =
-      snapshot.mode === 'CANONICAL_ONLY' && this.hybridRetrieval !== undefined;
-    let hybridCanonicalEvidence: readonly AskExecutionEvidence[] | undefined;
+    const useHybridCanonicalContext = snapshot.mode === 'CANONICAL_ONLY';
+    let hybridCanonicalCitations: readonly HybridCitation[] | undefined;
     let canonicalEvidenceIds: readonly string[] = [];
     if (snapshot.mode !== 'SOURCE_EXPLORATION') {
       if (useHybridCanonicalContext) {
-        // The coordinator owns lexical + semantic retrieval, freshness,
-        // security, authority and citation validation. Ask only narrows its
-        // typed results to Canonical Claim Evidence.
-        const response = await this.hybridRetrieval!.search({
-          projectId: scope.projectId,
-          query: snapshot.question,
-          accessScopes: scope.accessScope ?? [],
-          allowedSensitivities: deriveAuthorizedSensitivities(scope.sensitivityClearance),
-          actor: { type: 'user', id: scope.principalId },
-          security: {
-            accessScope: scope.accessScope ?? [],
-            sensitivity: scope.sensitivityClearance,
-            dataClassification: 'ask-canonical-only',
-          },
-          limit: 100,
-        });
-        hybridCanonicalEvidence = canonicalEvidenceFromHybrid(response, scope);
-        canonicalEvidenceIds = hybridCanonicalEvidence.map((item) => item.evidenceId);
+        if (this.hybridRetrieval) {
+          // The coordinator owns lexical + semantic retrieval, freshness,
+          // security, authority and citation validation. Ask only narrows its
+          // typed results to Canonical Claim Evidence.
+          const response = await this.hybridRetrieval.search({
+            projectId: scope.projectId,
+            query: snapshot.question,
+            accessScopes: scope.accessScope ?? [],
+            allowedSensitivities: deriveAuthorizedSensitivities(scope.sensitivityClearance),
+            actor: { type: 'user', id: scope.principalId },
+            security: {
+              accessScope: scope.accessScope ?? [],
+              sensitivity: scope.sensitivityClearance,
+              dataClassification: 'ask-canonical-only',
+            },
+            limit: 100,
+          });
+          hybridCanonicalCitations = canonicalCitationsFromHybrid(response, scope);
+          canonicalEvidenceIds = hybridCanonicalCitations.map((item) => item.evidenceId);
+        } else {
+          // A fresh CANONICAL_ONLY run has no safe legacy fallback. The old
+          // query-plan-v4 SQL is retained only by loadAttemptContext() for
+          // historical attempts; a missing production authority is a clean,
+          // fail-closed no-answer configuration state.
+          hybridCanonicalCitations = [];
+        }
       } else {
         canonicalEvidenceIds = (
           await this.pool.query<{ readonly evidence_id: string }>(
@@ -616,13 +616,43 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
               ]),
             ]
           : [...new Set([...selectedEvidenceIds, ...automaticallyResolvedEvidenceIds])];
-    const evidence: AskExecutionEvidence[] = hybridCanonicalEvidence
-      ? [...hybridCanonicalEvidence]
-      : evidenceIds.length === 0
-        ? []
-        : (
-            await this.pool.query<EvidenceRow>(
-              `SELECT
+    const evidence: AskExecutionEvidence[] =
+      hybridCanonicalCitations !== undefined
+        ? hybridCanonicalCitations.length === 0
+          ? []
+          : (
+              await this.pool.query<EvidenceRow>(
+                `SELECT
+                 spans.evidence_id::text,
+                 spans.source_id::text,
+                 spans.source_version_id::text,
+                 spans.quote ->> 'exact' AS exact_quote,
+                 spans.sensitivity
+               FROM evidence.spans AS spans
+                WHERE spans.project_id = $1
+                  AND spans.evidence_id::text = ANY($2::text[])
+                  AND spans.access_scope <@ $3::text[]
+                  AND spans.sensitivity = ANY($4::text[])
+               ORDER BY array_position($2::text[], spans.evidence_id::text)`,
+                [
+                  scope.projectId,
+                  hybridCanonicalCitations.map((item) => item.evidenceId),
+                  scope.accessScope ?? [],
+                  deriveAuthorizedSensitivities(scope.sensitivityClearance),
+                ],
+              )
+            ).rows.map((row) => ({
+              evidenceId: row.evidence_id,
+              sourceId: row.source_id,
+              sourceVersionId: row.source_version_id,
+              exactQuote: row.exact_quote,
+              sensitivity: row.sensitivity,
+            }))
+        : evidenceIds.length === 0
+          ? []
+          : (
+              await this.pool.query<EvidenceRow>(
+                `SELECT
                  spans.evidence_id::text,
                  spans.source_id::text,
                  spans.source_version_id::text,
@@ -633,16 +663,32 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
                   AND spans.evidence_id::text = ANY($2::text[])
                   AND spans.access_scope <@ $3::text[]
                 ORDER BY array_position($2::text[], spans.evidence_id::text)`,
-              [scope.projectId, evidenceIds, scope.accessScope ?? []],
-            )
-          ).rows.map((row) => ({
-            evidenceId: row.evidence_id,
-            sourceId: row.source_id,
-            sourceVersionId: row.source_version_id,
-            exactQuote: row.exact_quote,
-            sensitivity: row.sensitivity,
-          }));
+                [scope.projectId, evidenceIds, scope.accessScope ?? []],
+              )
+            ).rows.map((row) => ({
+              evidenceId: row.evidence_id,
+              sourceId: row.source_id,
+              sourceVersionId: row.source_version_id,
+              exactQuote: row.exact_quote,
+              sensitivity: row.sensitivity,
+            }));
     const evidenceById = new Map(evidence.map((row) => [row.evidenceId, row]));
+    if (hybridCanonicalCitations !== undefined) {
+      if (evidenceById.size !== hybridCanonicalCitations.length) {
+        throw invalid('Hybrid retrieval returned Evidence without an authorized persisted span.');
+      }
+      for (const citation of hybridCanonicalCitations) {
+        const materialized = evidenceById.get(citation.evidenceId);
+        if (
+          !materialized ||
+          materialized.sourceId !== citation.sourceId ||
+          materialized.sourceVersionId !== citation.sourceVersionId ||
+          materialized.exactQuote !== citation.exactQuote
+        ) {
+          throw invalid('Hybrid retrieval returned conflicting Evidence lineage.');
+        }
+      }
+    }
     for (const selection of selections.rows) {
       if (!selection.evidence_id) continue;
       const evidence = evidenceById.get(selection.evidence_id);

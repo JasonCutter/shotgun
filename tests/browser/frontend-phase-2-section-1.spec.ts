@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 
 import { expect, test } from '@playwright/test';
@@ -40,6 +41,28 @@ test('Sources stages and submits Direct Text, then releases Project switching af
 
   await switchProject(page, 'Project B');
   await expect(page.locator('.project-summary')).toContainText('Project B');
+});
+
+test('Sources keeps a real file draft renderer-safe before submit', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/sources');
+  await page.getByLabel('Source Library').getByRole('link', { name: 'Add Source' }).click();
+  await expect(page).toHaveURL(/\/sources\?view=add$/);
+
+  await page.getByLabel('Input type').selectOption('FILE');
+  await page.getByLabel('File').setInputFiles({
+    name: 'renderer-safe.md',
+    mimeType: 'text/markdown',
+    buffer: Buffer.from('# renderer-safe file draft\n', 'utf8'),
+  });
+  await page.getByRole('button', { name: 'Add intake draft' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Sources', level: 1 })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Intake drafts' })).toContainText('renderer-safe.md');
+  await expect(
+    page.getByText('Client preflight passed. The Server will verify bytes, type and filename.'),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Submit drafts' })).toBeEnabled();
 });
 
 test('Sources keeps Project switching blocked after a partial delete and releases it after the last delete', async ({

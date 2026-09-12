@@ -22,6 +22,36 @@ export type SourceIntakeDraftMessageCode =
   | 'URL_ACCEPTED'
   | 'URL_INVALID';
 
+type SourceIntakeDraftFile = {
+  readonly name: string;
+  readonly type: string;
+  readonly size: number;
+  arrayBuffer(): Promise<ArrayBuffer>;
+};
+
+const browserFileBacking = new WeakMap<SourceIntakeDraftFile, File>();
+
+const createDraftFile = (file: File): SourceIntakeDraftFile => {
+  const draftFile = {
+    name: file.name,
+    type: file.type,
+    size: file.size,
+  } as SourceIntakeDraftFile;
+
+  Object.defineProperty(draftFile, 'arrayBuffer', {
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: () => {
+      const backing = browserFileBacking.get(draftFile);
+      if (!backing) return Promise.reject(new Error('Selected file is no longer available.'));
+      return backing.arrayBuffer();
+    },
+  });
+  browserFileBacking.set(draftFile, file);
+  return draftFile;
+};
+
 export type SourceIntakeDraftItem =
   | {
       readonly draftItemId: string;
@@ -39,7 +69,7 @@ export type SourceIntakeDraftItem =
       readonly requestedClassification: SourcesSensitivity;
       readonly kind: 'FILE';
       readonly label: string;
-      readonly file: File;
+      readonly file: SourceIntakeDraftFile;
       readonly validation: 'READY' | 'INVALID';
       readonly messageCode: SourceIntakeDraftMessageCode;
     }
@@ -232,7 +262,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
         requestedClassification,
         kind: 'FILE',
         label: label.trim() || file.name,
-        file,
+        file: createDraftFile(file),
         validation: supported && sizeValid ? 'READY' : 'INVALID',
         messageCode: !supported
           ? 'FILE_UNSUPPORTED'

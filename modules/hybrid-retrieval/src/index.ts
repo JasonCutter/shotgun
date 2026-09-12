@@ -714,7 +714,7 @@ export class LexicalRetriever implements LexicalRetrieverPort {
       claimId: res.claimId,
       commitId: res.commitId,
       revisionId: res.revisionId,
-      canonicalVersion: res.canonicalVersion,
+      canonicalVersion: readiness.canonicalVersion,
       claimText: res.claimText,
       sourceVersionId: res.sourceVersionId,
       evidenceIds: [...res.evidenceIds],

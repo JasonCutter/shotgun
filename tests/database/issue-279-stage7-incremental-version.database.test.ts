@@ -4,6 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { PostgresSearchProjectionRepository } from '../../adapters/postgres-stage7/src/index.js';
+import { LexicalRetriever } from '../../modules/hybrid-retrieval/src/index.js';
 import type { SearchProjectionDocument } from '../../packages/contracts/src/index.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
@@ -35,7 +36,7 @@ describe.runIf(pool)('Issue #279 Stage 7 incremental lexical version semantics',
     await pool!.end();
   });
 
-  it('returns historical v1/v2 claims as members of the current v3 READY snapshot', async () => {
+  it('preserves row lineage while exposing current v3 identity through LexicalRetriever', async () => {
     const projectId = `issue-279-${randomUUID()}`;
     const repository = new PostgresSearchProjectionRepository(pool!);
     const backup = doc(projectId, 1, 'Orion 서비스는 매일 02:00에 백업을 시작한다.');
@@ -76,25 +77,60 @@ describe.runIf(pool)('Issue #279 Stage 7 incremental lexical version semantics',
     );
     expect(rawRows.rows.map((row) => row.canonical_version)).toEqual([1, 2, 3]);
 
-    const backupResults = await repository.search(projectId, '02:00', 10, ['owner']);
-    const stableResults = await repository.search(projectId, 'stable', 10, ['owner']);
-    const archiveResults = await repository.search(projectId, 'ArchiveDB', 10, ['owner']);
-
-    expect(backupResults).toEqual([
-      expect.objectContaining({ claimId: backup.claimId, canonicalVersion: 3 }),
+    const rawBackup = await repository.search(projectId, '02:00', 10, ['owner']);
+    const rawStable = await repository.search(projectId, 'stable', 10, ['owner']);
+    const rawArchive = await repository.search(projectId, 'ArchiveDB', 10, ['owner']);
+    expect(rawBackup).toEqual([
+      expect.objectContaining({ claimId: backup.claimId, canonicalVersion: 1 }),
     ]);
-    expect(stableResults).toEqual([
-      expect.objectContaining({ claimId: stable.claimId, canonicalVersion: 3 }),
+    expect(rawStable).toEqual([
+      expect.objectContaining({ claimId: stable.claimId, canonicalVersion: 2 }),
     ]);
-    expect(archiveResults).toEqual([
+    expect(rawArchive).toEqual([
       expect.objectContaining({ claimId: archive.claimId, canonicalVersion: 3 }),
     ]);
 
-    const watermark = await repository.findWatermark(projectId);
-    expect(watermark).toMatchObject({
+    const lexical = new LexicalRetriever(repository, async () => ({
+      snapshotId: `snapshot-${projectId}`,
+      projectId,
+      version: 3,
+      digest: digest('3'),
+      claims: [],
+      createdAt: '2026-09-12T14:03:00.000Z',
+    }));
+
+    const lexicalBackup = await lexical.retrieve({
+      projectId,
+      query: '02:00',
+      accessScopes: ['owner'],
+      limit: 10,
+    });
+    const lexicalStable = await lexical.retrieve({
+      projectId,
+      query: 'stable',
+      accessScopes: ['owner'],
+      limit: 10,
+    });
+    const lexicalArchive = await lexical.retrieve({
+      projectId,
+      query: 'ArchiveDB',
+      accessScopes: ['owner'],
+      limit: 10,
+    });
+
+    expect(lexicalBackup.readiness).toMatchObject({
       status: 'READY',
       canonicalVersion: 3,
-      snapshotDigest: digest('3'),
+      projectedCanonicalVersion: 3,
     });
+    expect(lexicalBackup.items).toEqual([
+      expect.objectContaining({ claimId: backup.claimId, canonicalVersion: 3 }),
+    ]);
+    expect(lexicalStable.items).toEqual([
+      expect.objectContaining({ claimId: stable.claimId, canonicalVersion: 3 }),
+    ]);
+    expect(lexicalArchive.items).toEqual([
+      expect.objectContaining({ claimId: archive.claimId, canonicalVersion: 3 }),
+    ]);
   });
 });

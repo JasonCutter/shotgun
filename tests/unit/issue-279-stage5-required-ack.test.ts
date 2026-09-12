@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ClaimCandidate } from '../../packages/contracts/src/index.js';
-import { createComparisonV2Runtime } from '../../assemblies/shotgun-app/src/comparison-v2-runtime.js';
+import {
+  createComparisonV2Runtime,
+} from '../../assemblies/shotgun-app/src/comparison-v2-runtime.js';
 import {
   createComparisonModule,
   type ComparisonV2OrchestrationOutcome,
@@ -125,10 +127,7 @@ describe('Issue #279 Stage 5 V2 REQUIRED_ACK terminalization', () => {
       const module = moduleFor(
         { compare: async () => completed() } as ComparisonV2OrchestratorPort,
         {
-          materializeDraft: async () => ({
-            status: 'BLOCKED',
-            reason: 'FRESHNESS_UNAVAILABLE',
-          }),
+          materializeDraft: async () => ({ status: 'BLOCKED', reason: 'FRESHNESS_UNAVAILABLE' }),
         },
       );
 

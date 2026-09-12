@@ -108,7 +108,6 @@ export class InMemorySearchProjectionRepository implements SearchProjectionRepos
   ): Promise<readonly CanonicalSearchResult[]> {
     const normalizedQuery = normalize(query);
     const queryTokens = normalizedQuery.split(/\s+/u).filter(Boolean);
-    const projectedCanonicalVersion = this.watermarks.get(projectId)?.canonicalVersion;
     return [...this.documents.values()]
       .filter(
         (document) =>
@@ -131,18 +130,7 @@ export class InMemorySearchProjectionRepository implements SearchProjectionRepos
             score = value;
           }
         }
-        return matchType
-          ? [
-              {
-                ...clone(document),
-                ...(projectedCanonicalVersion === undefined
-                  ? {}
-                  : { canonicalVersion: projectedCanonicalVersion }),
-                score,
-                matchType,
-              },
-            ]
-          : [];
+        return matchType ? [{ ...clone(document), score, matchType }] : [];
       })
       .sort((left, right) => right.score - left.score || left.claimId.localeCompare(right.claimId))
       .slice(0, limit);

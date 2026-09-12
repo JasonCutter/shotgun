@@ -10,6 +10,8 @@ import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.j
 const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
+const digest = (digit: string): string => `sha256:${digit.repeat(64)}`;
+
 const doc = (
   projectId: string,
   version: number,
@@ -49,7 +51,7 @@ describe.runIf(pool)('Issue #279 Stage 7 incremental lexical version semantics',
       commitId: backup.commitId,
       operation: 'ADD_CLAIM',
       canonicalVersion: 1,
-      snapshotDigest: 'sha256:v1',
+      snapshotDigest: digest('1'),
       projectedAt: backup.projectedAt,
     });
     await repository.applyCommit(projectId, {
@@ -57,7 +59,7 @@ describe.runIf(pool)('Issue #279 Stage 7 incremental lexical version semantics',
       commitId: stable.commitId,
       operation: 'ADD_CLAIM',
       canonicalVersion: 2,
-      snapshotDigest: 'sha256:v2',
+      snapshotDigest: digest('2'),
       projectedAt: stable.projectedAt,
     });
     await repository.applyCommit(projectId, {
@@ -65,7 +67,7 @@ describe.runIf(pool)('Issue #279 Stage 7 incremental lexical version semantics',
       commitId: archive.commitId,
       operation: 'ADD_CLAIM',
       canonicalVersion: 3,
-      snapshotDigest: 'sha256:v3',
+      snapshotDigest: digest('3'),
       projectedAt: archive.projectedAt,
     });
 
@@ -96,7 +98,7 @@ describe.runIf(pool)('Issue #279 Stage 7 incremental lexical version semantics',
     expect(watermark).toMatchObject({
       status: 'READY',
       canonicalVersion: 3,
-      snapshotDigest: 'sha256:v3',
+      snapshotDigest: digest('3'),
     });
   });
 });

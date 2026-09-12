@@ -348,6 +348,7 @@ export const createComparisonV2Runtime = (input: {
           review: { status: 'NOT_ATTEMPTED' },
         };
       }
+      const requiresPublisherAck = request.executionTrigger === 'INITIAL_OR_EVENT_REPLAY';
       let v2Outcome: ComparisonV2OrchestrationOutcome;
       try {
         v2Outcome = await input.orchestrator.compare({
@@ -360,7 +361,7 @@ export const createComparisonV2Runtime = (input: {
           executionTrigger: request.executionTrigger ?? 'INITIAL_OR_EVENT_REPLAY',
         });
       } catch (error) {
-        if (authority.rollout === 'V2_SHADOW') {
+        if (authority.rollout === 'V2_SHADOW' || !requiresPublisherAck) {
           v2Outcome = { status: 'BLOCKED', reason: 'CONTRACT_FAILURE' };
         } else {
           throw error;
@@ -377,7 +378,17 @@ export const createComparisonV2Runtime = (input: {
         };
       }
       if (v2Outcome.status !== 'COMPLETED') {
-        throw requiredAckFailure({ request, reason: `V2_${v2Outcome.status}` });
+        if (requiresPublisherAck) {
+          throw requiredAckFailure({ request, reason: `V2_${v2Outcome.status}` });
+        }
+        return {
+          rollout: authority.rollout,
+          authority: authority.selection,
+          authorityRevision: authority.authorityRevision,
+          v1Executed: false,
+          v2Outcome,
+          review: { status: 'NOT_ATTEMPTED' },
+        };
       }
       const currentAuthority = await rollout.resolve({
         projectId: request.projectId,
@@ -395,7 +406,17 @@ export const createComparisonV2Runtime = (input: {
         };
       }
       if (!input.reviewBridge || !input.freshness) {
-        throw requiredAckFailure({ request, reason: 'REVIEW_BRIDGE_UNAVAILABLE' });
+        if (requiresPublisherAck) {
+          throw requiredAckFailure({ request, reason: 'REVIEW_BRIDGE_UNAVAILABLE' });
+        }
+        return {
+          rollout: authority.rollout,
+          authority: currentAuthority.selection,
+          authorityRevision: currentAuthority.authorityRevision,
+          v1Executed: false,
+          v2Outcome,
+          review: { status: 'BLOCKED', reason: 'REVIEW_BRIDGE_UNAVAILABLE' },
+        };
       }
       const bridgeOutcome = await input.reviewBridge.materializeDraft({
         event: v2Outcome.event,
@@ -405,7 +426,17 @@ export const createComparisonV2Runtime = (input: {
         rolloutAuthorityRevision: currentAuthority.authorityRevision,
       });
       if (bridgeOutcome.status !== 'DRAFT_CREATED') {
-        throw requiredAckFailure({ request, reason: `REVIEW_${bridgeOutcome.reason}` });
+        if (requiresPublisherAck) {
+          throw requiredAckFailure({ request, reason: `REVIEW_${bridgeOutcome.reason}` });
+        }
+        return {
+          rollout: authority.rollout,
+          authority: currentAuthority.selection,
+          authorityRevision: currentAuthority.authorityRevision,
+          v1Executed: false,
+          v2Outcome,
+          review: { status: 'BLOCKED', reason: bridgeOutcome.reason },
+        };
       }
       return {
         rollout: authority.rollout,

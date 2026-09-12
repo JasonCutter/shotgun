@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { type ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { LeaveGuardProvider, useLeaveGuard } from '../session/leave-guard-context.js';
@@ -32,12 +33,11 @@ const DraftQueueGuardHarness = () => {
   );
 };
 
-const renderHarness = () =>
-  render(
-    <LeaveGuardProvider>
-      <DraftQueueGuardHarness />
-    </LeaveGuardProvider>,
-  );
+const wrapper = ({ children }: { readonly children: ReactNode }) => (
+  <LeaveGuardProvider>{children}</LeaveGuardProvider>
+);
+
+const renderHarness = () => render(<DraftQueueGuardHarness />, { wrapper });
 
 describe('useSourceIntakeDraftQueue Leave Guard', () => {
   it('releases the Guard synchronously when the only draft is removed', async () => {
@@ -73,5 +73,25 @@ describe('useSourceIntakeDraftQueue Leave Guard', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Remove first and inspect' }));
     expect(document.body.getAttribute('data-leave-state')).toContain('"hasUnsavedDraft":false');
     expect(screen.getByText('Draft count: 0')).toBeTruthy();
+  });
+
+  it('keeps the native File out of React draft state while preserving exact lazy bytes', async () => {
+    const { result } = renderHook(() => useSourceIntakeDraftQueue('project-a'), { wrapper });
+    const payload = '# renderer-safe file draft\n';
+    const nativeFile = new File([payload], 'renderer-safe.md', { type: 'text/markdown' });
+
+    act(() => result.current.addFile('', nativeFile));
+
+    const item = result.current.items[0];
+    expect(item?.kind).toBe('FILE');
+    if (!item || item.kind !== 'FILE') throw new Error('Expected a FILE draft.');
+
+    expect(item.file).not.toBe(nativeFile);
+    expect(item.file).not.toBeInstanceOf(File);
+    expect(Object.keys(item.file)).toEqual(['name', 'type', 'size']);
+    expect(item.file.name).toBe(nativeFile.name);
+    expect(item.file.type).toBe(nativeFile.type);
+    expect(item.file.size).toBe(nativeFile.size);
+    expect(new TextDecoder().decode(await item.file.arrayBuffer())).toBe(payload);
   });
 });

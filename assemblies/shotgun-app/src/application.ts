@@ -205,6 +205,8 @@ import {
 } from '../../../modules/semantic-generation/src/index.js';
 import {
   DeterministicSemanticQueryClassificationPolicy,
+  HybridRetrievalCoordinator,
+  LexicalRetriever,
   ProductKnowledgeResourceResolver,
   SemanticRetriever,
 } from '../../../modules/hybrid-retrieval/src/index.js';
@@ -398,6 +400,9 @@ export const startShotgunApplication = async (
     const assetStorage = new LocalAssetStorage(storageRoot);
     const originalAssetRepository = new PostgresOriginalAssetRepository(pool);
     const commandGateway = new PostgresFrontendCommandGateway(pool);
+    const compiledTruthRepository = new PostgresCompiledTruthRepository(pool);
+    const knowledgeModelRepository = new PostgresKnowledgeModelRepository(pool);
+    const searchProjectionRepository = new PostgresSearchProjectionRepository(pool);
     const urlAcquisition = new SecureUrlAcquisitionCoordinator(
       new NodeUrlResolver(),
       new NodeUrlHopTransport(),
@@ -551,6 +556,38 @@ export const startShotgunApplication = async (
         queryClassifier: new DeterministicSemanticQueryClassificationPolicy(),
       },
     );
+    // One production retrieval authority is shared by Product Search,
+    // Comparison and Ask. Ask's CANONICAL_ONLY path must not maintain a
+    // second full-question lexical implementation with different semantics.
+    const lexicalRetriever = new LexicalRetriever(searchProjectionRepository, async (projectId) =>
+      canonicalKnowledgeRepository.getSnapshot(projectId),
+    );
+    const knowledgeResourceResolver = new ProductKnowledgeResourceResolver(
+      canonicalKnowledgeRepository,
+      knowledgeModelRepository,
+      compiledTruthRepository,
+    );
+    const hybridRetrievalCoordinator = new HybridRetrievalCoordinator(
+      lexicalRetriever,
+      semanticRetriever,
+      knowledgeResourceResolver,
+      {
+        getEvidenceSpan: async (projectId, evidenceId) =>
+          evidenceRepository.findById(projectId, evidenceId),
+      },
+      {
+        getSourceVersion: async (projectId, sourceVersionId) => {
+          const original = await originalAssetRepository.findByVersion(projectId, sourceVersionId);
+          if (!original) return undefined;
+          return {
+            sourceVersionId,
+            projectId: original.projectId,
+            sourceId: original.sourceId,
+          };
+        },
+      },
+      semanticActiveGenerationReader,
+    );
     const semanticProjectionRefresh = new SemanticProjectionRefreshService(
       semanticProfileService,
       semanticGenerationBuilder,
@@ -671,6 +708,7 @@ export const startShotgunApplication = async (
         pool,
         askWorkspaceProjection,
         new OriginalAssetAskSourceVersionContextReader(originalAssetRepository, assetStorage),
+        hybridRetrievalCoordinator,
       ),
       askAnswerProvider,
       {
@@ -690,12 +728,10 @@ export const startShotgunApplication = async (
     );
     const disableAskWorker = options.disableAskWorker ?? recoveryHarness;
 
-    const compiledTruthRepository = new PostgresCompiledTruthRepository(pool);
     const graphReadAdapter = new PostgresCompiledTruthGraphReadAdapter(
       compiledTruthRepository,
       semanticCorpusSourceSnapshotReader,
     );
-    const knowledgeModelRepository = new PostgresKnowledgeModelRepository(pool);
     const typedPropositionConflictRuleRepository =
       new PostgresTypedPropositionConflictRuleRepository(pool);
     const typedPropositionConflictAssertionRepository =
@@ -1183,7 +1219,7 @@ export const startShotgunApplication = async (
       changeSetReviewV2Repository: new PostgresChangeSetReviewV2Repository(pool),
       canonicalSnapshot: canonicalKnowledgeRepository,
       canonicalKnowledgeRepository,
-      searchProjectionRepository: new PostgresSearchProjectionRepository(pool),
+      searchProjectionRepository,
       knowledgeModelRepository,
       compiledTruthRepository,
       semanticCorpusSourceSnapshotReader,
@@ -1196,6 +1232,7 @@ export const startShotgunApplication = async (
       semanticRetriever,
       semanticActiveGenerationReader,
       semanticProjectionRefresh,
+      hybridRetrievalCoordinator,
       actionCandidateRepository: new PostgresActionCandidateRepository(pool),
       actionExecutionRepository: new PostgresActionExecutionRepository(pool),
       authRepository,

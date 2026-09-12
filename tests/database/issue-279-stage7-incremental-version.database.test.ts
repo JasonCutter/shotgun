@@ -13,14 +13,26 @@ const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 const digest = (digit: string): string => `sha256:${digit.repeat(64)}`;
 
+const fixtureCommitIds = [
+  '00000000-0000-4000-8000-000000000001',
+  '00000000-0000-4000-8000-000000000002',
+  '00000000-0000-4000-8000-000000000003',
+] as const;
+
+const fixtureSourceVersionIds = [
+  '00000000-0000-4000-8000-000000000011',
+  '00000000-0000-4000-8000-000000000012',
+  '00000000-0000-4000-8000-000000000013',
+] as const;
+
 const doc = (projectId: string, version: number, text: string): SearchProjectionDocument => ({
   projectId,
   claimId: `claim-${version}-${randomUUID()}`,
-  commitId: `commit-${version}-${randomUUID()}`,
+  commitId: fixtureCommitIds[version - 1]!,
   revisionId: `revision-${version}-${randomUUID()}`,
   canonicalVersion: version,
   claimText: text,
-  sourceVersionId: `source-${version}-${randomUUID()}`,
+  sourceVersionId: fixtureSourceVersionIds[version - 1]!,
   evidenceIds: [`evidence-${version}-${randomUUID()}`],
   accessScope: ['owner'],
   sensitivity: 'private',

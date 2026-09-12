@@ -177,7 +177,7 @@ const v2ContextResult = (contextRevision: number, approved = false) => ({
   comments: [],
 });
 
-const createV2DecisionFetchMock = () => {
+const createV2DecisionFetchMock = (options?: { readonly staleOnDecision?: boolean }) => {
   const queueRequests: ListReviewQueueRequestV1[] = [];
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -224,6 +224,20 @@ const createV2DecisionFetchMock = () => {
         });
       }
       if (path === '/reviews/v2/decision') {
+        if (options?.staleOnDecision) {
+          return responseJson(
+            {
+              schemaVersion: '1.0.0',
+              code: 'REVIEW_CONTEXT_STALE',
+              category: 'CONFLICT',
+              retryability: 'CONDITIONAL',
+              recovery: 'REFRESH_AND_REAPPLY',
+              message:
+                'This Review is no longer fresh. Refresh or recompare the Candidate before approving it.',
+            },
+            409,
+          );
+        }
         return responseJson({
           commandStatus: 'COMPLETED',
           decision: { decision: 'APPROVE', decisionId: 'review-decide-test' },
@@ -408,5 +422,31 @@ describe('Review Workspace deep links', () => {
 
     await waitFor(() => expect(queueRequests).toHaveLength(2));
     expect(await screen.findByText('검토 대기열이 비어 있습니다.')).toBeTruthy();
+  });
+
+  it('shows actionable freshness guidance when V2 approval is rejected as stale', async () => {
+    const { fetchMock } = createV2DecisionFetchMock({ staleOnDecision: true });
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute('/review');
+
+    await userEvent.click(await screen.findByRole('button', { name: /V2 candidate · ADD_CLAIM/ }));
+    await screen.findByRole('heading', { name: '검토 대상', level: 2 });
+    await userEvent.selectOptions(
+      screen.getByLabelText('항목 선택 및 결정 버튼'),
+      'comparison-v2:change-set-1',
+    );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /V2 candidate · ADD_CLAIM 사유/ }),
+      'Approve after refresh.',
+    );
+    await userEvent.click(screen.getByRole('button', { name: /^승인$/ }));
+    await userEvent.click(screen.getByRole('button', { name: '승인 기록' }));
+
+    expect(
+      await screen.findByText(
+        '이 검토는 최신 상태가 아닙니다. 승인하기 전에 새로고침하거나 Candidate를 재비교하세요.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Remote Product API failure could not be decoded.')).toBeNull();
   });
 });

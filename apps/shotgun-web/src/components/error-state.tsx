@@ -7,6 +7,8 @@ const errorMessages: Readonly<Record<string, string>> = {
   REQUEST_ORIGIN_DENIED: 'The request origin was denied. Try again from this app.',
   INVALID_PRODUCT_API_RESPONSE:
     'The server response did not match the protected Product API contract.',
+  REVIEW_CONTEXT_STALE:
+    'This Review is no longer fresh. Refresh or recompare the Candidate before approving it.',
 };
 
 export const safeErrorMessage = (error: unknown): string => {

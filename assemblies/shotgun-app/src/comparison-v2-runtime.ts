@@ -396,6 +396,9 @@ export const createComparisonV2Runtime = (input: {
         candidateRevision: request.candidate.revisionNumber,
       });
       if (currentAuthority.rollout !== 'V2_ACTIVE') {
+        if (requiresPublisherAck) {
+          throw requiredAckFailure({ request, reason: 'ROLLOUT_DOWNGRADED' });
+        }
         return {
           rollout: authority.rollout,
           authority: authority.selection,

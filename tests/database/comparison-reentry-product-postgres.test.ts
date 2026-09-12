@@ -798,8 +798,12 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       const blockedModifyReview = await decideV2(modifyReviewDraft);
       expect(blockedModifyReview.statusCode).toBe(409);
       expect(blockedModifyReview.json()).toEqual({
-        status: 'BLOCKED',
-        reason: 'REVIEW_NOT_ELIGIBLE',
+        schemaVersion: '1.0.0',
+        code: 'REVIEW_DECISION_NOT_ALLOWED',
+        category: 'CONFLICT',
+        retryability: 'CONDITIONAL',
+        recovery: 'REFRESH_AND_REAPPLY',
+        message: 'The decision is not allowed for this Review item.',
       });
       const afterModifyDecision = await pool.query<{ decisions: string; manifests: string }>(
         `SELECT

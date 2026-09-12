@@ -219,28 +219,26 @@ export class PostgresSearchProjectionRepository implements SearchProjectionRepos
   ): Promise<readonly CanonicalSearchResult[]> {
     const result = await this.pool.query<SearchRow>(
       `WITH ranked AS (
-         SELECT d.project_id, d.claim_id, d.commit_id, d.revision_id,
-                w.canonical_version AS canonical_version,
-                d.claim_text, d.source_version_id, d.evidence_ids, d.access_scope, d.sensitivity,
-                d.projected_at,
+         SELECT project_id, claim_id, commit_id, revision_id, canonical_version,
+                claim_text, source_version_id, evidence_ids, access_scope, sensitivity,
+                projected_at,
                 GREATEST(
-                  ts_rank_cd(d.search_vector, websearch_to_tsquery('simple', $2)),
-                  similarity(d.claim_text, $2),
-                  CASE WHEN d.claim_text ILIKE '%' || $2 || '%' THEN 1.0 ELSE 0.0 END
+                  ts_rank_cd(search_vector, websearch_to_tsquery('simple', $2)),
+                  similarity(claim_text, $2),
+                  CASE WHEN claim_text ILIKE '%' || $2 || '%' THEN 1.0 ELSE 0.0 END
                 )::double precision AS score,
                 CASE
-                  WHEN d.claim_text ILIKE '%' || $2 || '%' THEN 'SUBSTRING'
-                  WHEN d.search_vector @@ websearch_to_tsquery('simple', $2) THEN 'FULL_TEXT'
+                  WHEN claim_text ILIKE '%' || $2 || '%' THEN 'SUBSTRING'
+                  WHEN search_vector @@ websearch_to_tsquery('simple', $2) THEN 'FULL_TEXT'
                   ELSE 'TRIGRAM'
                 END AS match_type
-         FROM projection.search_documents d
-         JOIN projection.watermarks w ON w.project_id = d.project_id
-         WHERE d.project_id = $1
-           AND d.access_scope <@ $3::text[]
+         FROM projection.search_documents
+         WHERE project_id = $1
+           AND access_scope <@ $3::text[]
            AND (
-             d.search_vector @@ websearch_to_tsquery('simple', $2)
-             OR d.claim_text % $2
-             OR d.claim_text ILIKE '%' || $2 || '%'
+             search_vector @@ websearch_to_tsquery('simple', $2)
+             OR claim_text % $2
+             OR claim_text ILIKE '%' || $2 || '%'
            )
        )
        SELECT * FROM ranked

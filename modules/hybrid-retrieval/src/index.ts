@@ -413,6 +413,9 @@ export class SemanticRetriever implements SemanticRetrieverPort {
       });
     }
 
+    // The legacy execution port remains a bounded test adapter for the
+    // pre-R4 unit/database invariants. Normal Product startup supplies the
+    // router branch below and never uses this authority path.
     if ('identity' in this.executionPort) {
       const highestSens = getHighestSensitivity(input.allowedSensitivities);
       const resolved = await this.resolver.resolveExecution({
@@ -491,6 +494,8 @@ export class SemanticRetriever implements SemanticRetrieverPort {
       });
     }
 
+    // R4 Product authority: the active pointer and generation are read before
+    // any mutable profile, policy, vault, provider, or vector work.
     const generation = await this.activeGenerationReader.getActiveGeneration(projectId);
     if (!generation || generation.buildStatus !== 'READY') {
       throw new SemanticEmbeddingError({
@@ -525,6 +530,8 @@ export class SemanticRetriever implements SemanticRetrieverPort {
       searchSurface: 'HYBRID_SEARCH',
     });
 
+    // Compatibility is current capability validation only. Historical build
+    // audit fields on the generation are intentionally not compared here.
     const compatibility = await this.resolver.resolveCompatibility({
       projectId,
       providerId: generation.providerId,
@@ -659,6 +666,7 @@ export class LexicalRetriever implements LexicalRetrieverPort {
       });
     }
 
+    // 1. Watermark Readiness Verification
     const watermark = await this.repository.findWatermark(projectId);
     const snapshot = await this.getCanonicalSnapshot(projectId);
 
@@ -706,7 +714,7 @@ export class LexicalRetriever implements LexicalRetrieverPort {
       claimId: res.claimId,
       commitId: res.commitId,
       revisionId: res.revisionId,
-      canonicalVersion: readiness.canonicalVersion,
+      canonicalVersion: res.canonicalVersion,
       claimText: res.claimText,
       sourceVersionId: res.sourceVersionId,
       evidenceIds: [...res.evidenceIds],
@@ -805,6 +813,7 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       });
     }
 
+    // 1. Lexical Retrieval
     const lexicalResult = await this.lexicalRetriever.retrieve({
       projectId,
       query,
@@ -812,6 +821,7 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       limit,
     });
 
+    // 2. Semantic Retrieval
     let semanticItems: readonly SemanticCandidateResult[] = [];
     let semanticReadiness: SemanticReadiness = {
       status: 'NOT_CONFIGURED',
@@ -918,22 +928,25 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
               semanticDegradedReason =
                 'Semantic projection is stale relative to current Product knowledge.';
               break;
-            case 'CAPABILITY_UNAVAILABLE': {
-              const credentialUnavailable =
-                err.operation.includes('credential') || err.operation.includes('vault');
-              semanticReadiness = {
-                status: 'UNAVAILABLE',
-                data: 'READY',
-                execution: credentialUnavailable ? 'CREDENTIAL_UNAVAILABLE' : 'PROVIDER_UNAVAILABLE',
-                reason: credentialUnavailable
+            case 'CAPABILITY_UNAVAILABLE':
+              {
+                const credentialUnavailable =
+                  err.operation.includes('credential') || err.operation.includes('vault');
+                semanticReadiness = {
+                  status: 'UNAVAILABLE',
+                  data: 'READY',
+                  execution: credentialUnavailable
+                    ? 'CREDENTIAL_UNAVAILABLE'
+                    : 'PROVIDER_UNAVAILABLE',
+                  reason: credentialUnavailable
+                    ? 'Pinned semantic credential revision is unavailable.'
+                    : 'Active semantic projection generation is unavailable.',
+                };
+                semanticDegradedReason = credentialUnavailable
                   ? 'Pinned semantic credential revision is unavailable.'
-                  : 'Active semantic projection generation is unavailable.',
-              };
-              semanticDegradedReason = credentialUnavailable
-                ? 'Pinned semantic credential revision is unavailable.'
-                : 'Active semantic projection generation is unavailable.';
+                  : 'Active semantic projection generation is unavailable.';
+              }
               break;
-            }
             case 'POLICY_DENIED':
               semanticReadiness = {
                 status: 'DEGRADED',
@@ -1216,6 +1229,9 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
             });
           }
 
+          // Compatibility for bounded legacy adapters that predate the
+          // explicit authority contract. New Product resolvers return typed
+          // authority and revision fields instead.
           if (
             resolved.authority === undefined &&
             resolved.canonicalVersion !== undefined &&

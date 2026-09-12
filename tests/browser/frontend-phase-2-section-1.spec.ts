@@ -58,9 +58,7 @@ test('Sources keeps a real file draft renderer-safe before submit', async ({ pag
   await page.getByRole('button', { name: 'Add intake draft' }).click();
 
   await expect(page.getByRole('heading', { name: 'Sources', level: 1 })).toBeVisible();
-  await expect(page.getByRole('list', { name: 'Intake drafts' })).toContainText(
-    'renderer-safe.md',
-  );
+  await expect(page.getByRole('list', { name: 'Intake drafts' })).toContainText('renderer-safe.md');
   await expect(
     page.getByText('Client preflight passed. The Server will verify bytes, type and filename.'),
   ).toBeVisible();

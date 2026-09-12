@@ -78,7 +78,12 @@ describe('useSourceIntakeDraftQueue Leave Guard', () => {
   it('keeps the native File out of React draft state while preserving exact lazy bytes', async () => {
     const { result } = renderHook(() => useSourceIntakeDraftQueue('project-a'), { wrapper });
     const payload = '# renderer-safe file draft\n';
+    const payloadBuffer = new TextEncoder().encode(payload).buffer as ArrayBuffer;
     const nativeFile = new File([payload], 'renderer-safe.md', { type: 'text/markdown' });
+    Object.defineProperty(nativeFile, 'arrayBuffer', {
+      configurable: true,
+      value: () => Promise.resolve(payloadBuffer.slice(0)),
+    });
 
     act(() => result.current.addFile('', nativeFile));
 

@@ -99,17 +99,19 @@ No external package, Adapter or Extract boundary is introduced.
    snapshot item. Existing Comparison V2 runtime tests prove `v1Executed=false`
    for V2_ACTIVE and preserve prior history.
 9. **Branch/base/head:** branch `codex/issue-276-recompare-product-ui`, based
-   on `main@293823e631ff0ba1db0c9d4fd124d7d1b1bb8744`. Final commit is recorded
-   in the PR/CI follow-up after local verification.
-10. **PR:** to be opened against `main` after the final local diff review,
-    referencing Issue #276; merge remains the controller's decision.
+   on `main@293823e631ff0ba1db0c9d4fd124d7d1b1bb8744`, exact HEAD
+   `6b1a977b1f3a3de8bd1f9363f7caa98f35a60ca3`.
+10. **PR:** [#291](https://github.com/JasonCutter/shotgun/pull/291) targets
+    `main`, references Issue #276, and remains unmerged for controller review.
 11. **Local gates:** root typecheck, web typecheck, lint, architecture,
     documentation validation, all 1121 unit tests, all 671 contract tests,
     focused integration tests and focused Review UI tests pass. Format check
     still reports two pre-existing unrelated files:
     `modules/frontend-knowledge-draft/src/product-api.ts` and
-    `tests/integration/connector-reliability.test.ts`.
+    `tests/integration/connector-reliability.test.ts`. Exact-head CI run
+    [34757894343](https://github.com/JasonCutter/shotgun/actions/runs/34757894343)
+    passed `Quality`, `Frontend`, and `Required Gates`.
 12. **Excluded follow-ups:** no Contract Snapshot/ADR migration, no V2 public
     capability addition, no browser retry, no Canonical write/approval, no
-    V1 fallback, and no unrelated cleanup were introduced. Exact-head CI and
-    controller review/merge remain after PR creation.
+    V1 fallback, and no unrelated cleanup were introduced. Controller
+    review/merge remains after the passing exact-head CI.

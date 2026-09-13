@@ -170,7 +170,7 @@ The server adapter maps Domain state into this view. The browser does not infer 
 Separate dimensions:
 
 - Progress.
-- Attention and an optional display-safe owning-Domain reason.
+- Attention.
 - Failure.
 - Retryability.
 - Projection Freshness.
@@ -178,12 +178,12 @@ Separate dimensions:
 
 ## 6. Domain mapping
 
-| Domain            | Job                     | Run/root                   | Domain Attempt               | Event               |
-| ----------------- | ----------------------- | -------------------------- | ---------------------------- | ------------------- |
-| Sources           | IntakeSubmission        | submission-item processing | IntakeAttempt                | processing evidence |
-| Ask               | none                    | AnswerRun                  | AnswerRunAttempt             | AnswerRunEvent      |
-| External Action   | Action aggregate        | Execution                  | ExecutionAttempt             | AuditEvent          |
-| Connector Runtime | internal diagnostic Job | none                       | none; transport attempt only | TraceRecord         |
+| Domain | Job | Run/root | Domain Attempt | Event |
+| --- | --- | --- | --- | --- |
+| Sources | IntakeSubmission | submission-item processing | IntakeAttempt | processing evidence |
+| Ask | none | AnswerRun | AnswerRunAttempt | AnswerRunEvent |
+| External Action | Action aggregate | Execution | ExecutionAttempt | AuditEvent |
+| Connector Runtime | internal diagnostic Job | none | none; transport attempt only | TraceRecord |
 
 No fake Job is created for Ask.
 

@@ -197,7 +197,7 @@ describe('FE-P5-S1 SourcesActivityAdapter (concrete)', () => {
     );
   });
 
-  it('carries a safe owner-action reason and normalizes a terminal attempt timestamp', async () => {
+  it('carries a safe owner-action reason and preserves terminal timestamps', async () => {
     const attentionReason = 'An exact-content match requires an explicit disposition.';
     const actionRequired: IntakeSubmissionSnapshot = {
       ...submission,
@@ -235,7 +235,7 @@ describe('FE-P5-S1 SourcesActivityAdapter (concrete)', () => {
       attention: 'NEEDS_ATTENTION',
       attentionReason,
     });
-    expect(detail.attempts[0]?.completedAt).toBe('2026-08-06T00:00:02.000Z');
+    expect(detail.attempts[0]?.completedAt).toBe('2026-08-06T00:00:01.000Z');
     expect(decodeActivitySnapshotV1(detail)).toEqual(detail);
     await expectClientRoundTrip(detail);
   });

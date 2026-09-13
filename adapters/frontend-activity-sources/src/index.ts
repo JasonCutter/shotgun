@@ -299,11 +299,6 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
     attempt: SourcesActivityAttemptRow,
     snapshot: IntakeSubmissionSnapshot,
   ): ActivityDomainAttemptViewV1 {
-    const completedAt =
-      attempt.completedAt === undefined ||
-      Date.parse(attempt.completedAt) >= Date.parse(attempt.updatedAt)
-        ? attempt.completedAt
-        : attempt.updatedAt;
     return {
       schemaVersion: '1.0.0',
       attemptId: attempt.intakeAttemptId,
@@ -314,7 +309,9 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
       retryability: activityRetryabilityFrom(attempt.state === 'FAILED'),
       startedAt: attempt.createdAt,
       updatedAt: attempt.updatedAt,
-      ...(completedAt === undefined ? {} : { completedAt }),
+      // Preserve the owning Domain's completion timestamp. `updatedAt` may
+      // represent a later reconciliation/update and must not overwrite it.
+      ...(attempt.completedAt === undefined ? {} : { completedAt: attempt.completedAt }),
       stageRefs: [
         {
           schemaVersion: '1.0.0',

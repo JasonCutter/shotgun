@@ -748,12 +748,11 @@ export const decodeActivityRunViewV1 = (value: unknown, path = 'run'): ActivityR
   const startedAt = isoTimestamp(required(object, 'startedAt', path), `${path}.startedAt`);
   const updatedAt = isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`);
   const completedAt = optionalIsoTimestamp(object.completedAt, `${path}.completedAt`);
-  if (completedAt !== undefined) {
-    assertNotAfter(startedAt, completedAt, path);
-    assertNotAfter(updatedAt, completedAt, path);
-  } else {
-    assertNotAfter(startedAt, updatedAt, path);
-  }
+  // `updatedAt` is the latest observation/update timestamp, not a completion
+  // boundary.  A later metadata update may legitimately occur after the
+  // domain completed, so only require both timestamps to follow start.
+  assertNotAfter(startedAt, updatedAt, path);
+  if (completedAt !== undefined) assertNotAfter(startedAt, completedAt, path);
   return {
     schemaVersion: '1.0.0',
     runId: text(required(object, 'runId', path), `${path}.runId`),
@@ -811,12 +810,10 @@ export const decodeActivityDomainAttemptViewV1 = (
   const startedAt = isoTimestamp(required(object, 'startedAt', path), `${path}.startedAt`);
   const updatedAt = isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`);
   const completedAt = optionalIsoTimestamp(object.completedAt, `${path}.completedAt`);
-  if (completedAt !== undefined) {
-    assertNotAfter(startedAt, completedAt, path);
-    assertNotAfter(updatedAt, completedAt, path);
-  } else {
-    assertNotAfter(startedAt, updatedAt, path);
-  }
+  // `updatedAt` can reflect a post-completion reconciliation/update.  Preserve
+  // that observation rather than requiring it to be no later than completion.
+  assertNotAfter(startedAt, updatedAt, path);
+  if (completedAt !== undefined) assertNotAfter(startedAt, completedAt, path);
   return {
     schemaVersion: '1.0.0',
     attemptId: text(required(object, 'attemptId', path), `${path}.attemptId`),
@@ -938,12 +935,11 @@ export const decodeActivityStageViewV1 = (value: unknown, path = 'stage'): Activ
   const startedAt = isoTimestamp(required(object, 'startedAt', path), `${path}.startedAt`);
   const updatedAt = isoTimestamp(required(object, 'updatedAt', path), `${path}.updatedAt`);
   const completedAt = optionalIsoTimestamp(object.completedAt, `${path}.completedAt`);
-  if (completedAt !== undefined) {
-    assertNotAfter(startedAt, completedAt, path);
-    assertNotAfter(updatedAt, completedAt, path);
-  } else {
-    assertNotAfter(startedAt, updatedAt, path);
-  }
+  // Stage updates may be observed after the domain completion timestamp.
+  // Both lifecycle timestamps must follow start, but they are not ordered
+  // relative to one another.
+  assertNotAfter(startedAt, updatedAt, path);
+  if (completedAt !== undefined) assertNotAfter(startedAt, completedAt, path);
   return {
     schemaVersion: '1.0.0',
     stageId: text(required(object, 'stageId', path), `${path}.stageId`),

@@ -2,6 +2,8 @@
 
 - Date: 2026-09-13
 - Canonical base: `acb438da1ce9e0b80b00bc6d996304afc1ae45fb`
+- Contract amendment proposal:
+  [FE-P5-S1 Activity Presentation Amendment](../architecture/contracts/snapshots/frontend-phase-5-section-1/frontend-phase-5-section-1-contract-amendment-260913001.md)
 - Target: Home `ActionCenterAttentionProjectionPort`, Activity Product API and
   Sources owner-workspace navigation
 
@@ -27,7 +29,7 @@ Included:
 - serialize the already accepted Activity identity into Home Attention links;
 - preserve the Sources attention reason through the Activity contract and
   projection snapshot;
-- normalize a Sources attempt completion timestamp at the presentation adapter
+- preserve the Sources attempt completion timestamp at the presentation adapter
   when a later row update follows terminal completion;
 - deep-link from Activity to the exact owning `IntakeSubmission` and load it
   through a typed, project-scoped query key.

@@ -13,6 +13,7 @@ import {
   type AskSourceSelectionView,
   type AskWorkspaceView,
 } from '../../../packages/contracts/src/index.js';
+import { askSucceededCapabilitiesForContextStatus } from '../../../modules/frontend-ask-execution/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   AskCommittedQuestion,
@@ -85,6 +86,7 @@ type AnswerRunRow = QueryResultRow & {
   readonly cost_micros: number | string | null;
   readonly attempt_number: number;
   readonly event_revision: number;
+  readonly latest_context_supported: boolean | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 };
@@ -654,8 +656,14 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
         [conversationId],
       ),
       this.pool.query<AnswerRunRow>(
-        `SELECT * FROM frontend_ask.answer_runs
-           WHERE conversation_id = $1`,
+        `SELECT run.*,
+                attempt.context_supported AS latest_context_supported
+           FROM frontend_ask.answer_runs AS run
+           LEFT JOIN frontend_ask.answer_run_attempts AS attempt
+             ON attempt.answer_run_id = run.answer_run_id
+            AND attempt.project_id = run.project_id
+            AND attempt.attempt_number = run.attempt_number
+           WHERE run.conversation_id = $1`,
         [conversationId],
       ),
       this.pool.query<SelectionRow>(
@@ -791,7 +799,14 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
           question: row.question,
           statements: statementsByRun.get(row.answer_run_id) ?? [],
           sourceSelections: selectionsByRun.get(row.answer_run_id) ?? [],
-          capabilities: row.failure_code === 'POLICY_DENIED' ? [] : row.capabilities,
+          capabilities:
+            row.failure_code === 'POLICY_DENIED'
+              ? []
+              : row.state === 'SUCCEEDED' && row.latest_context_supported !== true
+                ? askSucceededCapabilitiesForContextStatus('NO_SUPPORTED_ANSWER')
+                : row.state === 'SUCCEEDED'
+                  ? askSucceededCapabilitiesForContextStatus('SUPPORTED')
+                  : row.capabilities,
           answerRevision: row.answer_revision,
           conversationRevision: row.conversation_revision,
           accessRevision: row.access_revision,

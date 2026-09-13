@@ -28,7 +28,11 @@ import {
   AskCommandCoordinator,
   type AskReadScope,
 } from '../../modules/frontend-ask-write/src/index.js';
-import type { AskExecutionScope } from '../../modules/frontend-ask-execution/src/index.js';
+import {
+  AskAnswerExecutionService,
+  type AskExecutionScope,
+  type AskAnswerProviderPort,
+} from '../../modules/frontend-ask-execution/src/index.js';
 import {
   HybridRetrievalCoordinator,
   LexicalRetriever,
@@ -516,6 +520,18 @@ const sourceCitation = (input: {
   exactQuote: input.exactQuote ?? `Exact quote for ${input.evidenceId}.`,
 });
 
+const transitionTestProvider: AskAnswerProviderPort = {
+  identity: {
+    provider: 'issue-257-test-provider',
+    model: 'issue-257-test-model',
+    adapterVersion: '1.0.0',
+    dataPolicyVersion: 'issue-257-test-policy-v1',
+  },
+  execute: async () => {
+    throw new Error('Transition-only test provider must not execute.');
+  },
+};
+
 describe('Issue #277 Ask CANONICAL_ONLY hybrid retrieval boundary', () => {
   beforeAll(async () => {
     await migrateUpTo(undefined, databaseUrl);
@@ -585,6 +601,56 @@ describe('Issue #277 Ask CANONICAL_ONLY hybrid retrieval boundary', () => {
       sensitivity: 'private',
     });
     expect(context?.context.every((item) => item.kind === 'EVIDENCE')).toBe(true);
+
+    const claimed = await repository.claimInitial(
+      fixture.scope,
+      submission.answerRun.answerRunId,
+      'issue-257-supported-worker',
+    );
+    expect(claimed?.context.contextStatus).toBe('SUPPORTED');
+    const completed = await repository.complete({
+      scope: fixture.scope,
+      answerRunId: submission.answerRun.answerRunId,
+      attemptNumber: claimed!.attempt.attemptNumber,
+      answer: 'Supported answer',
+      citations: [],
+      provider: {
+        provider: 'issue-257-test-provider',
+        model: 'issue-257-test-model',
+        adapterVersion: '1.0.0',
+      },
+      workerId: 'issue-257-supported-worker',
+    });
+    expect(completed.capabilities).toEqual([
+      'EXPORT',
+      'CREATE_INTAKE_DRAFT',
+      'CREATE_DRAFT_CHANGE_SET',
+      'PROPOSE_DIRECTIVE',
+    ]);
+    const projectedConversation = await fixture.workspace.getConversation({
+      ...fixture.readScope,
+      conversationId: submission.answerRun.conversationId,
+    });
+    expect(projectedConversation.branches[0]?.turns[0]?.answerRun.capabilities).toEqual([
+      'EXPORT',
+      'CREATE_INTAKE_DRAFT',
+      'CREATE_DRAFT_CHANGE_SET',
+      'PROPOSE_DIRECTIVE',
+    ]);
+    const executionService = new AskAnswerExecutionService(repository, transitionTestProvider);
+    const seed = await executionService.transitionSeed(
+      fixture.scope,
+      submission.answerRun.answerRunId,
+      'DRAFT_CHANGE_SET',
+      'issue-257-supported-seed',
+    );
+    const replay = await executionService.transitionSeed(
+      fixture.scope,
+      submission.answerRun.answerRunId,
+      'DRAFT_CHANGE_SET',
+      'issue-257-supported-seed',
+    );
+    expect(replay.seedId).toBe(seed.seedId);
   });
 
   it('fails closed for non-Canonical resources and unauthorized scope or sensitivity', async () => {
@@ -651,6 +717,53 @@ describe('Issue #277 Ask CANONICAL_ONLY hybrid retrieval boundary', () => {
       evidence: [],
       context: [],
     });
+
+    const claimed = await repository.claimInitial(
+      fixture.scope,
+      submission.answerRun.answerRunId,
+      'issue-257-no-supported-worker',
+    );
+    const completed = await repository.complete({
+      scope: fixture.scope,
+      answerRunId: submission.answerRun.answerRunId,
+      attemptNumber: claimed!.attempt.attemptNumber,
+      answer: 'No supported answer was found in the authoritative context.',
+      citations: [],
+      provider: {
+        provider: 'shotgun-context-resolver',
+        model: 'no-supported-answer',
+        adapterVersion: '1.0.0',
+      },
+      workerId: 'issue-257-no-supported-worker',
+    });
+    expect(completed.capabilities).toEqual(['EXPORT']);
+    const projectedConversation = await fixture.workspace.getConversation({
+      ...fixture.readScope,
+      conversationId: submission.answerRun.conversationId,
+    });
+    expect(projectedConversation.branches[0]?.turns[0]?.answerRun.capabilities).toEqual(['EXPORT']);
+    const executionService = new AskAnswerExecutionService(repository, transitionTestProvider);
+    for (const [kind, requestId] of [
+      ['INTAKE_DRAFT', 'issue-257-no-supported-intake'],
+      ['DRAFT_CHANGE_SET', 'issue-257-no-supported-change'],
+      ['USER_DIRECTIVE', 'issue-257-no-supported-directive'],
+    ] as const) {
+      await expect(
+        executionService.transitionSeed(
+          fixture.scope,
+          submission.answerRun.answerRunId,
+          kind,
+          requestId,
+        ),
+      ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    }
+    const seeds = await pool.query(
+      `SELECT seed_id
+       FROM frontend_ask.transition_seeds
+       WHERE answer_run_id = $1 AND project_id = $2`,
+      [submission.answerRun.answerRunId, fixture.projectId],
+    );
+    expect(seeds.rows).toEqual([]);
   });
 
   it('fails closed when a fresh run has no shared coordinator instead of falling back to v4 SQL', async () => {

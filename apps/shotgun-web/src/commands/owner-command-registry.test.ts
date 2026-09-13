@@ -151,6 +151,25 @@ describe('owner command registry', () => {
     });
   });
 
+  it('keeps export visible but hides proposal transitions for NO_SUPPORTED_ANSWER', () => {
+    const commands = createOwnerCommandRegistry({
+      shell,
+      projects,
+      answerContext: { ...answerContext, capabilities: ['EXPORT'] },
+    });
+
+    expect(commands.find((command) => command.id === 'answer.export')?.availability).toBe(
+      'AVAILABLE',
+    );
+    for (const commandId of [
+      'answer.propose_intake',
+      'answer.propose_change',
+      'answer.propose_directive',
+    ] as const) {
+      expect(commands.find((command) => command.id === commandId)?.availability).toBe('HIDDEN');
+    }
+  });
+
   it('keeps stable IDs separate from localized discovery terms', () => {
     const commands = createOwnerCommandRegistry({ shell, projects });
 

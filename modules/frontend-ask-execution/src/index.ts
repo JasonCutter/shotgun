@@ -146,6 +146,26 @@ export type AskWorkerLeaseState = 'OWNED' | 'CANCEL_REQUESTED' | 'LEASE_LOST' | 
 
 export type AskExecutionContextStatus = 'SUPPORTED' | 'NO_SUPPORTED_ANSWER';
 
+/**
+ * Terminal AnswerRun capabilities are derived from the authoritative context
+ * support state, never from browser-visible proposal capabilities. A negative
+ * answer is exportable, but it must not seed any governed proposal transition.
+ */
+export const askSucceededCapabilitiesForContextStatus = (
+  contextStatus: AskExecutionContextStatus,
+): readonly AskCapability[] =>
+  contextStatus === 'NO_SUPPORTED_ANSWER'
+    ? ['EXPORT']
+    : ['EXPORT', 'CREATE_INTAKE_DRAFT', 'CREATE_DRAFT_CHANGE_SET', 'PROPOSE_DIRECTIVE'];
+
+export const normalizeAskAnswerRunCapabilities = (
+  snapshot: AskAnswerRunSnapshot,
+  contextStatus: AskExecutionContextStatus,
+): AskAnswerRunSnapshot =>
+  snapshot.state === 'SUCCEEDED'
+    ? { ...snapshot, capabilities: askSucceededCapabilitiesForContextStatus(contextStatus) }
+    : snapshot;
+
 export type AskExecutionRunContext = {
   readonly snapshot: AskAnswerRunSnapshot;
   readonly evidence: readonly AskExecutionEvidence[];
@@ -715,6 +735,13 @@ export class AskAnswerExecutionService {
       throw executionError(
         'INVALID_REQUEST',
         'Only a succeeded AnswerRun can create a transition seed.',
+        'transition-seed',
+      );
+    }
+    if (context.contextStatus === 'NO_SUPPORTED_ANSWER') {
+      throw executionError(
+        'INVALID_REQUEST',
+        'A NO_SUPPORTED_ANSWER AnswerRun cannot create a transition seed.',
         'transition-seed',
       );
     }

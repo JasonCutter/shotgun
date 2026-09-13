@@ -35,7 +35,9 @@ import type {
 import {
   askExecutionContextDigest,
   highestSensitivity,
+  askSucceededCapabilitiesForContextStatus,
   sameAIExecutionPin,
+  normalizeAskAnswerRunCapabilities,
   validateAIExecutionPin,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 import type {
@@ -355,8 +357,38 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       throw error;
     }
     const resolved = await this.resolveContext(scope, snapshot);
+    const contextStatus = await this.authoritativeContextStatus(
+      scope,
+      snapshot,
+      resolved.contextStatus,
+    );
     const pin = await this.readExecutionPin(scope, answerRunId);
-    return { snapshot, ...resolved, ...(pin ? { executionPin: pin } : {}) };
+    return {
+      snapshot: normalizeAskAnswerRunCapabilities(snapshot, contextStatus),
+      ...resolved,
+      contextStatus,
+      ...(pin ? { executionPin: pin } : {}),
+    };
+  }
+
+  private async authoritativeContextStatus(
+    scope: AskExecutionScope,
+    snapshot: AskAnswerRunSnapshot,
+    resolvedStatus: AskExecutionRunContext['contextStatus'],
+  ): Promise<AskExecutionRunContext['contextStatus']> {
+    if (snapshot.state !== 'SUCCEEDED' || snapshot.attemptNumber === undefined) {
+      return resolvedStatus;
+    }
+    const result = await this.pool.query<{ readonly context_supported: boolean }>(
+      `SELECT context_supported
+       FROM frontend_ask.answer_run_attempts
+       WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $3`,
+      [snapshot.answerRunId, scope.projectId, snapshot.attemptNumber],
+    );
+    const persistedSupported = result.rows[0]?.context_supported === true;
+    return persistedSupported && resolvedStatus === 'SUPPORTED'
+      ? 'SUPPORTED'
+      : 'NO_SUPPORTED_ANSWER';
   }
 
   async readExecutionPin(
@@ -1155,6 +1187,14 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         }))
       )
         return;
+      const contextResult = await client.query<{ readonly context_supported: boolean }>(
+        `SELECT context_supported
+         FROM frontend_ask.answer_run_attempts
+         WHERE attempt_id = $1 AND answer_run_id = $2 AND project_id = $3`,
+        [attemptId, input.answerRunId, input.scope.projectId],
+      );
+      const contextStatus =
+        contextResult.rows[0]?.context_supported === true ? 'SUPPORTED' : 'NO_SUPPORTED_ANSWER';
       const completedAt = new Date().toISOString();
       const attemptUpdate = await client.query(
         `UPDATE frontend_ask.answer_run_attempts
@@ -1210,12 +1250,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       const eventRevision = Number(row.event_revision) + 1;
       await this.updateRun(client, input.scope, input.answerRunId, {
         state: 'SUCCEEDED',
-        capabilities: [
-          'EXPORT',
-          'CREATE_INTAKE_DRAFT',
-          'CREATE_DRAFT_CHANGE_SET',
-          'PROPOSE_DIRECTIVE',
-        ],
+        capabilities: askSucceededCapabilitiesForContextStatus(contextStatus),
         failure: null,
         partialText: null,
         provider: input.provider,
@@ -1459,6 +1494,9 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   }): Promise<AskTransitionSeedView> {
     const context = await this.getRunContext(input.scope, input.answerRunId);
     if (!context) throw notFound();
+    if (context.snapshot.state !== 'SUCCEEDED' || context.contextStatus === 'NO_SUPPORTED_ANSWER') {
+      throw invalid('Only a supported succeeded AnswerRun can create a transition seed.');
+    }
     return this.saveTransitionSeedWithClient(undefined, input);
   }
 
@@ -1472,6 +1510,40 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       readonly requestId: string;
     },
   ): Promise<AskTransitionSeedView> {
+    const authority = client
+      ? await client.query<{
+          readonly state: AskAnswerRunState;
+          readonly context_supported: boolean | null;
+        }>(
+          `SELECT run.state,
+                  attempt.context_supported
+           FROM frontend_ask.answer_runs AS run
+           LEFT JOIN frontend_ask.answer_run_attempts AS attempt
+             ON attempt.answer_run_id = run.answer_run_id
+            AND attempt.project_id = run.project_id
+            AND attempt.attempt_number = run.attempt_number
+           WHERE run.answer_run_id = $1 AND run.project_id = $2`,
+          [input.answerRunId, input.scope.projectId],
+        )
+      : await this.pool.query<{
+          readonly state: AskAnswerRunState;
+          readonly context_supported: boolean | null;
+        }>(
+          `SELECT run.state,
+                  attempt.context_supported
+           FROM frontend_ask.answer_runs AS run
+           LEFT JOIN frontend_ask.answer_run_attempts AS attempt
+             ON attempt.answer_run_id = run.answer_run_id
+            AND attempt.project_id = run.project_id
+            AND attempt.attempt_number = run.attempt_number
+           WHERE run.answer_run_id = $1 AND run.project_id = $2`,
+          [input.answerRunId, input.scope.projectId],
+        );
+    const authorityRow = authority.rows[0];
+    if (!authorityRow) throw notFound();
+    if (authorityRow.state !== 'SUCCEEDED' || authorityRow.context_supported !== true) {
+      throw invalid('Only a supported succeeded AnswerRun can create a transition seed.');
+    }
     const sql = `INSERT INTO frontend_ask.transition_seeds (
          seed_id, answer_run_id, project_id, principal_id, kind, state, payload, request_id, created_at
        ) VALUES ($1, $2, $3, $4, $5, 'PROPOSED', $6::jsonb, $7, $8)

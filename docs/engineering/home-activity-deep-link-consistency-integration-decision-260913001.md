@@ -2,7 +2,7 @@
 
 - Date: 2026-09-13
 - Canonical base: `acb438da1ce9e0b80b00bc6d996304afc1ae45fb`
-- Contract amendment proposal:
+- Approved contract amendment:
   [FE-P5-S1 Activity Presentation Amendment](../architecture/contracts/snapshots/frontend-phase-5-section-1/frontend-phase-5-section-1-contract-amendment-260913001.md)
 - Target: Home `ActionCenterAttentionProjectionPort`, Activity Product API and
   Sources owner-workspace navigation
@@ -49,3 +49,7 @@ React Router, Query, Activity coordinator, and Sources Product ports remain the
 replacement boundaries. Migration is `NONE`; rollback is a code revert with no
 owner-data operation. The open-source role matrix is unchanged because every
 decision retains an already accepted role and pin.
+
+The Contract Amendment was explicitly approved by the user on 2026-09-13 and
+registered as `ACTIVE_ADDITIVE_AMENDMENT` against the immutable FE-P5-S1 base.
+Canonical publication remains pending PR #283 merge and post-merge verification.

@@ -19,6 +19,7 @@ This directory governs non-ADR Contract Snapshots and revisions. Snapshot files 
 - [Frontend Phase 1 Section 3 Contract Snapshot](snapshots/frontend-phase-1-section-3/frontend-phase-1-section-3-contract-snapshot-260726001.md)
 - [Frontend Phase 1 Section 3 Persistence Contract Revision](snapshots/frontend-phase-1-section-3/frontend-phase-1-section-3-persistence-contract-revision-260728001.md)
 - [Frontend Phase 2 Section 1 Sources Workspace Contract Snapshot](snapshots/frontend-phase-2-section-1/frontend-phase-2-section-1-contract-snapshot-260730001.md)
+- [Frontend Phase 5 Section 1 Activity Presentation Contract Amendment](snapshots/frontend-phase-5-section-1/frontend-phase-5-section-1-contract-amendment-260913001.md)
 - Machine-readable lineage: [`contract-snapshot-registry.json`](contract-snapshot-registry.json)
 
 ## Effective-contract rule
@@ -42,6 +43,18 @@ frontend-phase-2-section-1-contract-snapshot-260730001
 
 It freezes AC-01–AC-32 for Sources Workspace. Product implementation, Migration execution, Runtime Dependency addition, Ready transition and merge remain separate approval states.
 
+For Frontend Phase 5 Section 1, the effective contract is the immutable base
+snapshot plus its approved additive presentation amendment:
+
+```text
+frontend-phase-5-section-1-contract-snapshot-260806001
++ frontend-phase-5-section-1-contract-amendment-260913001
+```
+
+The amendment adds display-safe `attentionReason` and post-completion
+`updatedAt` observation semantics while preserving all FE-P5-S1 acceptance
+criteria. Product implementation and Canonical merge remain separate states.
+
 ## Change control
 
 1. Do not edit an approved Snapshot to incorporate later decisions.
@@ -53,4 +66,4 @@ It freezes AC-01–AC-32 for Sources Workspace. Product implementation, Migratio
 
 ## Current result
 
-Four approved non-ADR Snapshot records are registered. No duplicate Snapshot owner, whole-record supersession or unresolved authority conflict is present.
+Five approved non-ADR Snapshot records are registered. No duplicate Snapshot owner, whole-record supersession or unresolved authority conflict is present.

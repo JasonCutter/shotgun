@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "snapshotDate": "2026-07-30",
+  "snapshotDate": "2026-09-13",
   "rules": {
     "approvedSnapshotsAreImmutable": true,
     "laterDateImpliesSupersession": false,
@@ -52,7 +52,35 @@
       "supersedes": [],
       "duplicateOf": null,
       "effectiveOrder": 2,
-      "preserves": ["AC-01", "AC-02", "AC-03", "AC-04", "AC-05", "AC-06", "AC-07", "AC-08", "AC-09", "AC-10", "AC-11", "AC-12", "AC-13", "AC-14", "AC-15", "AC-16", "AC-17", "AC-18", "AC-19", "AC-20", "AC-21", "AC-22", "AC-23", "AC-24", "AC-25", "AC-26", "AC-27"],
+      "preserves": [
+        "AC-01",
+        "AC-02",
+        "AC-03",
+        "AC-04",
+        "AC-05",
+        "AC-06",
+        "AC-07",
+        "AC-08",
+        "AC-09",
+        "AC-10",
+        "AC-11",
+        "AC-12",
+        "AC-13",
+        "AC-14",
+        "AC-15",
+        "AC-16",
+        "AC-17",
+        "AC-18",
+        "AC-19",
+        "AC-20",
+        "AC-21",
+        "AC-22",
+        "AC-23",
+        "AC-24",
+        "AC-25",
+        "AC-26",
+        "AC-27"
+      ],
       "productImplementationAtApproval": "NOT_AUTHORIZED"
     },
     {
@@ -69,6 +97,39 @@
       "duplicateOf": null,
       "effectiveOrder": 1,
       "productImplementationAtApproval": "NOT_STARTED_SEPARATELY_UNAUTHORIZED"
+    },
+    {
+      "id": "frontend-phase-5-section-1-contract-amendment-260913001",
+      "path": "docs/architecture/contracts/snapshots/frontend-phase-5-section-1/frontend-phase-5-section-1-contract-amendment-260913001.md",
+      "scope": "frontend-phase-5-section-1-activity-presentation",
+      "classification": "ACTIVE_ADDITIVE_AMENDMENT",
+      "approvalDate": "2026-09-13",
+      "sourcePr": 283,
+      "mergeCommit": null,
+      "governingAdr": "ADR-130",
+      "base": "frontend-phase-5-section-1-contract-snapshot-260806001",
+      "supersedes": [],
+      "duplicateOf": null,
+      "effectiveOrder": 2,
+      "preserves": [
+        "FE-P5-S1-AC-01",
+        "FE-P5-S1-AC-02",
+        "FE-P5-S1-AC-03",
+        "FE-P5-S1-AC-04",
+        "FE-P5-S1-AC-05",
+        "FE-P5-S1-AC-06",
+        "FE-P5-S1-AC-07",
+        "FE-P5-S1-AC-08",
+        "FE-P5-S1-AC-09",
+        "FE-P5-S1-AC-10",
+        "FE-P5-S1-AC-11",
+        "FE-P5-S1-AC-12",
+        "FE-P5-S1-AC-13",
+        "FE-P5-S1-AC-14",
+        "FE-P5-S1-AC-15",
+        "FE-P5-S1-AC-16"
+      ],
+      "productImplementationAtApproval": "IMPLEMENTED_PENDING_CANONICAL_MERGE"
     }
   ],
   "effectiveContracts": [
@@ -86,13 +147,20 @@
     {
       "scope": "frontend-phase-2-section-1",
       "orderedRecords": ["frontend-phase-2-section-1-contract-snapshot-260730001"]
+    },
+    {
+      "scope": "frontend-phase-5-section-1",
+      "orderedRecords": [
+        "frontend-phase-5-section-1-contract-snapshot-260806001",
+        "frontend-phase-5-section-1-contract-amendment-260913001"
+      ]
     }
   ],
   "reviewResult": {
-    "registeredRecords": 4,
+    "registeredRecords": 5,
     "duplicates": 0,
     "supersededWholeRecords": 0,
-    "additiveAmendments": 1,
+    "additiveAmendments": 2,
     "unresolvedAuthorityConflicts": 0
   }
 }

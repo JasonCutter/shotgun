@@ -100,7 +100,7 @@ No external package, Adapter or Extract boundary is introduced.
    for V2_ACTIVE and preserve prior history.
 9. **Branch/base/head:** branch `codex/issue-276-recompare-product-ui`, based
    on `main@293823e631ff0ba1db0c9d4fd124d7d1b1bb8744`, exact HEAD
-   `6b1a977b1f3a3de8bd1f9363f7caa98f35a60ca3`.
+   `70eb428ad34f45300e7c643726c76fa3d4df889b`.
 10. **PR:** [#291](https://github.com/JasonCutter/shotgun/pull/291) targets
     `main`, references Issue #276, and remains unmerged for controller review.
 11. **Local gates:** root typecheck, web typecheck, lint, architecture,
@@ -109,7 +109,7 @@ No external package, Adapter or Extract boundary is introduced.
     still reports two pre-existing unrelated files:
     `modules/frontend-knowledge-draft/src/product-api.ts` and
     `tests/integration/connector-reliability.test.ts`. Exact-head CI run
-    [34757894343](https://github.com/JasonCutter/shotgun/actions/runs/34757894343)
+    [34758236757](https://github.com/JasonCutter/shotgun/actions/runs/34758236757)
     passed `Quality`, `Frontend`, and `Required Gates`.
 12. **Excluded follow-ups:** no Contract Snapshot/ADR migration, no V2 public
     capability addition, no browser retry, no Canonical write/approval, no

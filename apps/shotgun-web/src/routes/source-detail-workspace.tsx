@@ -314,6 +314,9 @@ export const SourceDetailWorkspace = () => {
                   <li
                     key={item.evidenceId}
                     id={`evidence-${targetMemberId}`}
+                    className={isCitationTarget ? 'cited-evidence' : undefined}
+                    data-citation-target={isCitationTarget ? 'true' : undefined}
+                    aria-current={isCitationTarget ? 'true' : undefined}
                     tabIndex={-1}
                     ref={isCitationTarget ? focusCitationEvidence : undefined}
                   >

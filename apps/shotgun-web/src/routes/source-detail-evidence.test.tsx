@@ -185,6 +185,9 @@ describe('SourceDetailWorkspace Evidence Presentation HFM-S7-C8-D3', () => {
     const card = items[0]!;
     expect(card.querySelector('p')?.textContent).toBe(quoteText);
     expect(card.querySelector('strong')).toBeNull();
+    expect(card.classList.contains('cited-evidence')).toBe(false);
+    expect(card.getAttribute('data-citation-target')).toBeNull();
+    expect(card.getAttribute('aria-current')).toBeNull();
   });
 
   it('shows a retry-safe status instead of hiding a Stage 3 failure as empty Evidence', async () => {
@@ -364,6 +367,24 @@ describe('SourceDetailWorkspace Evidence Presentation HFM-S7-C8-D3', () => {
         createdAt: now,
       },
       {
+        evidenceId: 'evi-other',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        revisionId: 'rev-1',
+        label: 'Different sentence',
+        origin: 'ORIGINAL',
+        exactText: 'Different sentence',
+        locators: [
+          {
+            type: 'TextPositionSelector',
+            start: 20,
+            end: 37,
+            unit: 'unicode-code-point',
+          },
+        ],
+        createdAt: now,
+      },
+      {
         evidenceId: 'evi-member-secondary',
         sourceId: 'source-1',
         sourceVersionId: 'version-1',
@@ -423,9 +444,16 @@ describe('SourceDetailWorkspace Evidence Presentation HFM-S7-C8-D3', () => {
 
     expect(await screen.findByRole('heading', { name: 'Evidence', level: 2 })).toBeTruthy();
     const items = screen.getAllByRole('listitem');
-    expect(items).toHaveLength(1);
+    expect(items).toHaveLength(2);
     expect(items[0]!.id).toBe('evidence-evi-member-secondary');
     expect(document.activeElement).toBe(items[0]);
+    expect(items[0]!.classList.contains('cited-evidence')).toBe(true);
+    expect(items[0]!.getAttribute('data-citation-target')).toBe('true');
+    expect(items[0]!.getAttribute('aria-current')).toBe('true');
+    expect(items[1]!.id).toBe('evidence-evi-other');
+    expect(items[1]!.classList.contains('cited-evidence')).toBe(false);
+    expect(items[1]!.getAttribute('data-citation-target')).toBeNull();
+    expect(items[1]!.getAttribute('aria-current')).toBeNull();
   });
 
   it('E. DISTINCT LABEL: preserves distinct semantic label when it is not a derived prefix of exactText', async () => {

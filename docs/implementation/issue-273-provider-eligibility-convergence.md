@@ -86,3 +86,13 @@ Excluded: client-synthesized eligibility, broad cross-Project invalidation,
 query-key refactors, retry changes, server/provider-policy changes, ADR or
 Product Contract Snapshot amendments, database migrations, unrelated cleanup,
 and automatic canonical/action behavior.
+
+## 6. Review handoff
+
+- Branch: `codex/issue-273-provider-eligibility-convergence`
+- Canonical base: `main@0f86373e3e8d5db3ddb236ed515b14676b2df3c0`
+- Final implementation head before CI: `c585a68f0`
+- Pull request: [#292](https://github.com/JasonCutter/shotgun/pull/292)
+- Merge: intentionally not performed; the controller must review the PR.
+- Exact-head CI run and Quality / Frontend / Required Gates results are
+  reported in the controller handoff after completion.

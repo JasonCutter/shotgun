@@ -825,6 +825,119 @@ describe('WP6 comparison rollout runtime', () => {
     expect(v1Saves).toBe(0);
   });
 
+  it('Issue #289 returns a bounded receipt only after authoritative V2 Review success', async () => {
+    const runtime = runtimeInput(
+      settingStore('V2_ACTIVE'),
+      { compare: async () => completedOutcome('comparison-issue-289') },
+      { materializeDraft: async () => ({ status: 'DRAFT_CREATED' }) },
+    );
+    const module = createComparisonModule(
+      {
+        save: async (result) => result,
+        findById: async () => undefined,
+        findByCandidateAndSnapshot: async () => undefined,
+      },
+      {
+        getSnapshot: async () => ({
+          snapshotId: 'snapshot-1',
+          projectId: 'project-1',
+          version: 1,
+          digest: 'digest-1',
+          claims: [],
+          createdAt: '2026-09-05T00:00:00.000Z',
+        }),
+      },
+      { identity: { id: 'text-diff', version: '1' }, diff: () => [] },
+      runtime,
+    );
+
+    const receipt = await module.handlers.events[0]!.handle(
+      {
+        messageType: 'CandidateValidated',
+        schemaVersion: '1.0.0',
+        correlationId: 'correlation-issue-289',
+        idempotencyKey: 'event-issue-289',
+        createdAt: '2026-09-05T00:00:00.000Z',
+        projectId: 'project-1',
+        actor,
+        security,
+        payload: { candidateId: 'candidate-1' },
+      } as never,
+      {
+        query: async () => ({ payload: candidate() }),
+        publish: async () => undefined,
+      } as never,
+    );
+
+    expect(receipt).toEqual({
+      kind: 'CANDIDATE_VALIDATED_COMPLETION',
+      version: 1,
+      rollout: 'V2_ACTIVE',
+      v1Executed: false,
+      v2Status: 'COMPLETED',
+      comparisonId: 'comparison-issue-289',
+      reviewStatus: 'DRAFT_CREATED',
+    });
+    expect(Object.keys(receipt as object).sort()).toEqual([
+      'comparisonId',
+      'kind',
+      'reviewStatus',
+      'rollout',
+      'v1Executed',
+      'v2Status',
+      'version',
+    ]);
+    expect(JSON.stringify(receipt)).not.toContain('A validated claim.');
+    expect(JSON.stringify(receipt)).not.toMatch(/evidence|rationale|prompt|provider|scope/i);
+  });
+
+  it('Issue #289 fails closed instead of producing a receipt without Review evidence', async () => {
+    const runtime = runtimeInput(
+      settingStore('V2_ACTIVE'),
+      { compare: async () => completedOutcome('comparison-without-review') },
+      { materializeDraft: async () => ({ status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' }) },
+    );
+    const module = createComparisonModule(
+      {
+        save: async (result) => result,
+        findById: async () => undefined,
+        findByCandidateAndSnapshot: async () => undefined,
+      },
+      {
+        getSnapshot: async () => ({
+          snapshotId: 'snapshot-1',
+          projectId: 'project-1',
+          version: 1,
+          digest: 'digest-1',
+          claims: [],
+          createdAt: '2026-09-05T00:00:00.000Z',
+        }),
+      },
+      { identity: { id: 'text-diff', version: '1' }, diff: () => [] },
+      runtime,
+    );
+
+    await expect(
+      module.handlers.events[0]!.handle(
+        {
+          messageType: 'CandidateValidated',
+          schemaVersion: '1.0.0',
+          correlationId: 'correlation-issue-289-blocked',
+          idempotencyKey: 'event-issue-289-blocked',
+          createdAt: '2026-09-05T00:00:00.000Z',
+          projectId: 'project-1',
+          actor,
+          security,
+          payload: { candidateId: 'candidate-1' },
+        } as never,
+        {
+          query: async () => ({ payload: candidate() }),
+          publish: async () => undefined,
+        } as never,
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('keeps event replay and operator re-entry as distinct server-owned triggers', async () => {
     const triggers: string[] = [];
     const runtime = runtimeInput(

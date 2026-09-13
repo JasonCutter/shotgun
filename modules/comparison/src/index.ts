@@ -141,6 +141,22 @@ export type ComparisonV2RuntimeBoundary = {
   }>;
 };
 
+/**
+ * Bounded operational evidence persisted as the durable result of a
+ * successful CandidateValidated V2 delivery. This is deliberately not a
+ * Comparison, Review, or Canonical contract and contains no content-bearing
+ * or provider-derived fields.
+ */
+export type CandidateValidatedCompletionReceipt = {
+  readonly kind: 'CANDIDATE_VALIDATED_COMPLETION';
+  readonly version: 1;
+  readonly rollout: 'V2_ACTIVE';
+  readonly v1Executed: false;
+  readonly v2Status: 'COMPLETED';
+  readonly comparisonId?: string;
+  readonly reviewStatus: 'DRAFT_CREATED';
+};
+
 const normalizeClaim = (value: string): string =>
   value.normalize('NFKC').trim().replace(/\s+/gu, ' ').toLocaleLowerCase('en-US');
 
@@ -291,6 +307,29 @@ type ComparisonExecution = {
     | { readonly status: 'DRAFT_CREATED' }
     | { readonly status: 'BLOCKED'; readonly reason: string }
     | { readonly status: 'NOT_ATTEMPTED' };
+};
+
+const candidateValidatedCompletionReceipt = (
+  execution: ComparisonExecution,
+): CandidateValidatedCompletionReceipt | undefined => {
+  if (execution.rollout !== 'V2_ACTIVE') return undefined;
+  if (execution.v2?.status !== 'COMPLETED' || execution.review?.status !== 'DRAFT_CREATED') {
+    throw new ShotgunError({
+      code: 'VALIDATION_ERROR',
+      safeMessage: 'A successful V2 CandidateValidated delivery lacks Review completion evidence.',
+      module: 'stage5.comparison',
+      operation: 'candidate-validated-completion-receipt',
+    });
+  }
+  return {
+    kind: 'CANDIDATE_VALIDATED_COMPLETION',
+    version: 1,
+    rollout: 'V2_ACTIVE',
+    v1Executed: false,
+    v2Status: 'COMPLETED',
+    ...(execution.v2.comparisonId ? { comparisonId: execution.v2.comparisonId } : {}),
+    reviewStatus: 'DRAFT_CREATED',
+  };
 };
 
 const normalizeV2Outcome = (
@@ -642,21 +681,24 @@ export const createComparisonModule = (
             snapshotProvider,
             textDiff,
           });
-          if (!execution.result) return;
-          const result = execution.result;
-          await context.publish({
-            messageType: 'ComparisonCompleted',
-            schemaVersion: '1.0.0',
-            idempotencyKey: `comparison-completed:${projectId}:${result.comparisonId}`,
-            payload: {
-              comparisonId: result.comparisonId,
-              candidateId: result.candidateId,
-              sourceVersionId: result.sourceVersionId,
-              classification: result.classification,
-              snapshotVersion: result.snapshotVersion,
-              snapshotDigest: result.snapshotDigest,
-            },
-          });
+          const completionReceipt = candidateValidatedCompletionReceipt(execution);
+          if (execution.result) {
+            const result = execution.result;
+            await context.publish({
+              messageType: 'ComparisonCompleted',
+              schemaVersion: '1.0.0',
+              idempotencyKey: `comparison-completed:${projectId}:${result.comparisonId}`,
+              payload: {
+                comparisonId: result.comparisonId,
+                candidateId: result.candidateId,
+                sourceVersionId: result.sourceVersionId,
+                classification: result.classification,
+                snapshotVersion: result.snapshotVersion,
+                snapshotDigest: result.snapshotDigest,
+              },
+            });
+          }
+          return completionReceipt;
         },
       },
     ],

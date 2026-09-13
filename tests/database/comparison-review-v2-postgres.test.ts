@@ -442,6 +442,16 @@ describe.runIf(databaseUrl)('WP5 v2 Review PostgreSQL persistence', () => {
       (await repository.findDraftByComparisonId(fixture.projectId, fixture.comparisonId))?.status,
     ).toBe('STALE');
 
+    const replay = await repository.markStaleIfCurrent({
+      projectId: fixture.projectId,
+      changeSetId: fixture.draft.changeSetId,
+      expectedRevisionNumber: stale.revisionNumber,
+      expectedContentDigest: stale.contentDigest,
+      updatedAt: '2026-09-05T12:00:03.000Z',
+    });
+    expect(replay).toEqual(stale);
+    expect(replay.updatedAt).toBe(stale.updatedAt);
+
     await expect(
       repository.markStaleIfCurrent({
         projectId: fixture.projectId,

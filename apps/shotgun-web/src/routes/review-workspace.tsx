@@ -415,12 +415,13 @@ export const ReviewWorkspace = () => {
           // adopts the server-returned STALE state; it never synthesizes a
           // stale state or retries the rejected decision.
           await queue.refetch();
-          const nextContext = await reviewClient.getReviewContext({
-            schemaVersion: '1.0.0',
-            reviewContextId: request.reviewContextId,
-            contextRevision: request.expectedContextRevision,
-          });
-          setManualContext(nextContext);
+          const refreshedContext = await contextQuery.refetch();
+          const nextContext = refreshedContext.data;
+          if (!nextContext) throw new Error('Authoritative Review context was not returned.');
+          // The recovery read is the source of truth. Clear the presentation-only
+          // shadow so the query-owned STALE aggregate cannot be hidden by a
+          // manually adopted context after the typed rejection.
+          setManualContext(null);
           dispatch({
             type: 'SELECT_CONTEXT',
             reviewContextId: nextContext.context.reviewContextId,
@@ -438,7 +439,7 @@ export const ReviewWorkspace = () => {
       }
       announce(REVIEW_ANNOUNCEMENTS.DECISION_REJECTED);
     },
-    [announce, queue.refetch, reviewClient],
+    [announce, contextQuery.refetch, queue.refetch],
   );
 
   const decide = useCallback(

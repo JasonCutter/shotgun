@@ -268,6 +268,7 @@ const createRecompareFetchMock = () => {
 
 const createV2DecisionFetchMock = (options?: { readonly staleOnDecision?: boolean }) => {
   const queueRequests: ListReviewQueueRequestV1[] = [];
+  const contextRequests: GetReviewContextRequestV1[] = [];
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const path = String(input);
@@ -301,9 +302,11 @@ const createV2DecisionFetchMock = (options?: { readonly staleOnDecision?: boolea
         );
       }
       if (path.endsWith('/review/contexts/read')) {
-        const revision = Number(body['contextRevision']);
+        const contextRequest = body as unknown as GetReviewContextRequestV1;
+        contextRequests.push(contextRequest);
+        const revision = Number(contextRequest.contextRevision);
         return responseJson(
-          options?.staleOnDecision
+          options?.staleOnDecision && contextRequests.length > 1
             ? staleV2ContextResult()
             : v2ContextResult(revision, revision > 1),
         );
@@ -352,7 +355,7 @@ const createV2DecisionFetchMock = (options?: { readonly staleOnDecision?: boolea
       throw new Error(`Unexpected fetch path: ${path}`);
     },
   );
-  return { fetchMock, queueRequests };
+  return { fetchMock, queueRequests, contextRequests };
 };
 
 const createFetchMock = (options?: {
@@ -544,7 +547,7 @@ describe('Review Workspace deep links', () => {
   });
 
   it('shows actionable freshness guidance when V2 approval is rejected as stale', async () => {
-    const { fetchMock } = createV2DecisionFetchMock({ staleOnDecision: true });
+    const { fetchMock, contextRequests } = createV2DecisionFetchMock({ staleOnDecision: true });
     vi.stubGlobal('fetch', fetchMock);
     renderRoute('/review');
 
@@ -561,10 +564,16 @@ describe('Review Workspace deep links', () => {
     await userEvent.click(screen.getByRole('button', { name: /^승인$/ }));
     await userEvent.click(screen.getByRole('button', { name: '승인 기록' }));
 
-    expect(
-      await screen.findByText('변경됨 · 검토 대상이 변경되었습니다. 재검증이 필요합니다.'),
-    ).toBeTruthy();
+    const reviewDetail = screen.getByRole('main', { name: '검토 상세' });
+    await waitFor(() =>
+      expect(reviewDetail.querySelector('[data-aggregate="STALE"]')).not.toBeNull(),
+    );
     expect(await screen.findByRole('button', { name: '재비교' })).toBeTruthy();
+    await waitFor(() => expect(contextRequests).toHaveLength(2));
+    expect(contextRequests[1]).toMatchObject({
+      reviewContextId: 'review:comparison-v2:change-set-1',
+      contextRevision: 1,
+    });
     expect(screen.queryByText('Remote Product API failure could not be decoded.')).toBeNull();
   });
 

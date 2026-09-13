@@ -619,6 +619,8 @@ describe('Issue #277 Ask CANONICAL_ONLY hybrid retrieval boundary', () => {
         model: 'issue-257-test-model',
         adapterVersion: '1.0.0',
       },
+      resolvedContextDigest: claimed!.attempt.resolvedContextDigest,
+      queryPlanRevision: claimed!.attempt.queryPlanRevision,
       workerId: 'issue-257-supported-worker',
     });
     expect(completed.capabilities).toEqual([
@@ -734,6 +736,8 @@ describe('Issue #277 Ask CANONICAL_ONLY hybrid retrieval boundary', () => {
         model: 'no-supported-answer',
         adapterVersion: '1.0.0',
       },
+      resolvedContextDigest: claimed!.attempt.resolvedContextDigest,
+      queryPlanRevision: claimed!.attempt.queryPlanRevision,
       workerId: 'issue-257-no-supported-worker',
     });
     expect(completed.capabilities).toEqual(['EXPORT']);

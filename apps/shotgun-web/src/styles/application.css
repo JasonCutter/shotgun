@@ -1901,6 +1901,14 @@ h2[tabindex='-1']:focus-visible,
   box-shadow: none;
   padding: 0.875rem 1rem;
 }
+.source-detail-evidence .source-evidence-list > li.cited-evidence {
+  border-color: var(--accent);
+  border-left: 0.4rem solid var(--accent);
+  background: color-mix(in srgb, var(--surface) 90%, var(--accent));
+  box-shadow:
+    0 0 0 0.15rem var(--accent),
+    var(--shadow);
+}
 .source-detail-evidence .source-evidence-list p {
   margin: 0.25rem 0;
 }

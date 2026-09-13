@@ -36,8 +36,11 @@ import type { SearchProjectionRepositoryPort } from '../../modules/projection-se
 import { COMPARISON_ROLLOUT_SETTING_KEY } from '../../modules/settings-policy/src/index.js';
 import {
   canonicalSnapshotDigest,
+  comparisonResultDigestV2,
+  draftChangeSetContentDigestV2,
   sha256Text,
   stableJson,
+  type ComparisonResultV2,
   type ProjectionReadiness,
   type SemanticProjectionGeneration,
 } from '../../packages/contracts/src/index.js';
@@ -118,7 +121,13 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
     const rolloutRevision = sha256Text(
       stableJson({ policy: 'comparison-stage5-rollout:v1', state: 'V2_ACTIVE' }),
     );
-    const makeFixture = (name: string) => {
+    const makeFixture = (
+      name: string,
+      options: {
+        readonly disposition?: ComparisonResultV2['disposition'];
+        readonly reviewRecommendation?: ComparisonResultV2['reviewRecommendation'];
+      } = {},
+    ) => {
       const fixture = createAdr163ReviewFixture({
         suffix: `issue-247-${name}-${suffix}`,
         projectId,
@@ -130,6 +139,7 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
         snapshot,
         createdAt,
         rolloutAuthorityRevision: rolloutRevision,
+        ...options,
         semanticFreshness: {
           lexicalReadiness,
           semanticGeneration: generation,
@@ -144,6 +154,26 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
     const pending = makeFixture('pending');
     const hold = makeFixture('hold');
     const modify = makeFixture('modify');
+    const staleBase = makeFixture('stale', {
+      disposition: 'NEW',
+      reviewRecommendation: 'ADD_CLAIM',
+    });
+    const { contentDigest: _staleBaseDigest, ...staleDraftLineage } = staleBase.fixture.draft;
+    const staleDraftWithoutDigest = {
+      ...staleDraftLineage,
+      comparisonDigest: comparisonResultDigestV2(staleBase.fixture.aggregate.comparison),
+    };
+    void _staleBaseDigest;
+    const staleDraft = {
+      ...staleDraftWithoutDigest,
+      contentDigest: draftChangeSetContentDigestV2(staleDraftWithoutDigest),
+    };
+    const stale = {
+      fixture: {
+        ...staleBase.fixture,
+        draft: staleDraft,
+      },
+    };
     const drafts = [pending.fixture.draft, hold.fixture.draft, modify.fixture.draft];
     const reviewRepository = new PostgresChangeSetReviewV2Repository(pool);
     const frontendReviewStore = new PostgresFrontendReviewRepository(pool);
@@ -214,14 +244,15 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
       await comparisonRepository.saveCompletedAggregate(fixture.aggregate);
     };
 
-    await Promise.all([pending, hold, modify].map(({ fixture }) => insertLineage(fixture)));
+    await Promise.all([pending, hold, modify, stale].map(({ fixture }) => insertLineage(fixture)));
+    await comparisonRepository.saveCompletedAggregate(stale.fixture.aggregate);
     await Promise.all(drafts.map((draft) => reviewRepository.saveDraft(draft)));
+    await reviewRepository.saveDraft(stale.fixture.draft);
     await pool.query(
       `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
        VALUES ($1, $2, $3, $4)`,
       [projectId, snapshot.version, snapshot.digest, createdAt],
     );
-
     const settings = new InMemorySettingsRepository();
     await settings.applySettingsCommand({
       commandId: `settings:${suffix}`,
@@ -407,6 +438,62 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
         outcome: 'COMPLETED',
         context: { contextRevision: 2, targetKind: 'COMPARISON_V2_CHANGE_SET' },
       });
+      // Issue #299 end-to-end proof: a PostgreSQL-backed Product approval sees
+      // candidate freshness drift as a typed 409, and the very next
+      // queue/context reads expose the repository's authoritative STALE head.
+      const staleQueueItem = queueItems.find(
+        (item) => item.targetId === stale.fixture.draft.changeSetId,
+      );
+      expect(staleQueueItem).toBeDefined();
+      await pool.query(
+        `UPDATE candidate.claim_candidates
+         SET claim_text = $3
+         WHERE project_id = $1 AND candidate_id = $2`,
+        [
+          projectId,
+          stale.fixture.candidate.candidateId,
+          `${stale.fixture.candidate.claimText} (authoritative candidate update)`,
+        ],
+      );
+      const staleApproval = await post('/reviews/v2/decision', {
+        changeSetId: stale.fixture.draft.changeSetId,
+        expectedRevisionNumber: stale.fixture.draft.revisionNumber,
+        expectedContentDigest: stale.fixture.draft.contentDigest,
+        decision: 'APPROVE',
+        reason: 'Must fail closed after candidate drift.',
+        decisionId: `decision:issue-247:${suffix}:canonical-stale`,
+      });
+      expect(staleApproval.statusCode).toBe(409);
+      expect(staleApproval.json()).toMatchObject({
+        schemaVersion: '1.0.0',
+        code: 'REVIEW_CONTEXT_STALE',
+        category: 'CONFLICT',
+        retryability: 'CONDITIONAL',
+        recovery: 'REFRESH_AND_REAPPLY',
+      });
+      const staleQueue = await post('/product-api/frontend/review/queue', {
+        schemaVersion: '1.0.0',
+        pageSize: 20,
+      });
+      expect(staleQueue.statusCode).toBe(200);
+      const staleQueueAfterDecision = staleQueue
+        .json<{ items: Array<{ targetId: string; aggregateState: string }> }>()
+        .items.find((item) => item.targetId === stale.fixture.draft.changeSetId);
+      expect(staleQueueAfterDecision).toMatchObject({
+        targetId: stale.fixture.draft.changeSetId,
+        aggregateState: 'STALE',
+      });
+      const staleContext = await post('/product-api/frontend/review/contexts/read', {
+        schemaVersion: '1.0.0',
+        reviewContextId: staleQueueItem!.reviewContextId,
+        contextRevision: staleQueueItem!.contextRevision,
+      });
+      expect(staleContext.statusCode).toBe(200);
+      expect(staleContext.json()).toMatchObject({ context: { aggregateState: 'STALE' } });
+      expect(
+        (await reviewRepository.findDraftById(projectId, stale.fixture.draft.changeSetId))?.status,
+      ).toBe('STALE');
+
       const resolvedDecisionBody = {
         changeSetId: drafts[2]!.changeSetId,
         expectedRevisionNumber: 2,
@@ -424,6 +511,7 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
       });
       const resolvedReplay = await post('/reviews/v2/decision', resolvedDecisionBody);
       expect(resolvedReplay.statusCode).toBe(200);
+
       const approvalCounts = await pool.query<{ decisions: string; manifests: string }>(
         `SELECT
            (SELECT count(*)::text FROM review.decisions_v2 WHERE project_id = $1 AND change_set_id = $2) AS decisions,
@@ -442,18 +530,23 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
       );
     } finally {
       await application.server.close();
-      const changeSetIds = drafts.map((draft) => draft.changeSetId);
-      const comparisonIds = [pending, hold, modify].map(
+      const changeSetIds = [
+        ...drafts.map((draft) => draft.changeSetId),
+        stale.fixture.draft.changeSetId,
+      ];
+      const comparisonIds = [pending, hold, modify, stale].map(
         ({ fixture }) => fixture.draft.comparisonId,
       );
-      const candidateIds = [pending, hold, modify].map(
+      const candidateIds = [pending, hold, modify, stale].map(
         ({ fixture }) => fixture.candidate.candidateId,
       );
-      const batchIds = [pending, hold, modify].map(({ fixture }) => fixture.candidate.batchId);
-      const evidenceIds = [pending, hold, modify].map(
+      const batchIds = [pending, hold, modify, stale].map(
+        ({ fixture }) => fixture.candidate.batchId,
+      );
+      const evidenceIds = [pending, hold, modify, stale].map(
         ({ fixture }) => fixture.candidate.evidenceIds[0],
       );
-      const sourceVersionIds = [pending, hold, modify].map(
+      const sourceVersionIds = [pending, hold, modify, stale].map(
         ({ fixture }) => fixture.candidate.sourceVersionId,
       );
       const cleanupClient = await pool.connect();

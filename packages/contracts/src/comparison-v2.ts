@@ -754,9 +754,10 @@ export const validateComparisonResultV2: (value: unknown) => asserts value is Co
   }
 };
 
-export const validateDraftChangeSetV2: (value: unknown) => asserts value is DraftChangeSetV2 = (
-  value,
-) => {
+export const validateDraftChangeSetV2: (
+  value: unknown,
+  options?: { readonly allowStale?: boolean },
+) => asserts value is DraftChangeSetV2 = (value, options) => {
   assertAjv(validateDraftSchema(value), validateDraftSchema.errors, 'draftChangeSet');
   const draft = value as DraftChangeSetV2;
   ensureVersion(draft.contractVersion, 'draftChangeSet.contractVersion');
@@ -777,7 +778,7 @@ export const validateDraftChangeSetV2: (value: unknown) => asserts value is Draf
     ['SEMANTIC_UNAVAILABLE', 'POLICY_BLOCKED', 'ANALYSIS_PENDING', 'STALE'].includes(
       draft.disposition,
     ) ||
-    draft.status === 'STALE'
+    (draft.status === 'STALE' && options?.allowStale !== true)
   ) {
     throw new ComparisonContractErrorV2(
       'REVIEW_NOT_ELIGIBLE',

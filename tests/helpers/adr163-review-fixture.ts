@@ -76,6 +76,8 @@ export const createAdr163ReviewFixture = (input: {
   readonly snapshot?: CanonicalSnapshot;
   readonly createdAt?: string;
   readonly freshnessMode?: 'SEMANTIC' | 'DETERMINISTIC_EXACT';
+  readonly disposition?: ComparisonResultV2['disposition'];
+  readonly reviewRecommendation?: ComparisonResultV2['reviewRecommendation'];
   readonly rolloutAuthorityRevision?: string;
   readonly semanticFreshness?: {
     readonly lexicalReadiness: ProjectionReadiness;
@@ -101,6 +103,8 @@ export const createAdr163ReviewFixture = (input: {
   const batchId = input.batchId ?? `batch:adr163:${input.suffix}`;
   const sourceVersionId = input.sourceVersionId ?? `source-version:adr163:${input.suffix}`;
   const semanticFreshness = input.semanticFreshness;
+  const disposition = input.disposition ?? 'REVIEW_REQUIRED';
+  const reviewRecommendation = input.reviewRecommendation ?? 'MODIFY_REVIEW';
   const candidateWithoutDigest = {
     candidateId,
     batchId,
@@ -251,8 +255,8 @@ export const createAdr163ReviewFixture = (input: {
       version: snapshot.version,
       digest: snapshot.digest,
     },
-    disposition: 'REVIEW_REQUIRED',
-    reviewRecommendation: 'MODIFY_REVIEW',
+    disposition,
+    reviewRecommendation,
     shortlist,
     analysisRevisionIds: [analysis.analysisRevisionId],
     relationshipIds: [relationship.relationshipId],
@@ -317,11 +321,16 @@ export const createAdr163ReviewFixture = (input: {
     comparisonDigest: comparisonResultDigestV2(comparison),
     canonicalSnapshot: comparison.canonicalSnapshot,
     analysisRevisionIds: [...comparison.analysisRevisionIds],
-    disposition: 'REVIEW_REQUIRED',
+    disposition,
     relationshipIds: [...comparison.relationshipIds],
     evidenceIds: [evidenceId],
-    operation: 'MODIFY_REVIEW',
-    reviewRecommendation: 'MODIFY_REVIEW',
+    operation:
+      disposition === 'NEW'
+        ? 'ADD_CLAIM'
+        : disposition === 'EXACT_DUPLICATE'
+          ? 'NO_OP'
+          : 'MODIFY_REVIEW',
+    reviewRecommendation,
     status: 'PENDING_REVIEW',
     expectedCanonicalVersion: snapshot.version,
     snapshotDigest: snapshot.digest,

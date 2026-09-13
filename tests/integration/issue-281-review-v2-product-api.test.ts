@@ -14,6 +14,7 @@ import type {
   DraftChangeSetV2,
   SemanticProjectionGeneration,
 } from '../../packages/contracts/src/index.js';
+import { draftChangeSetContentDigestV2 } from '../../packages/contracts/src/index.js';
 import { createAdr163ReviewFixture } from '../helpers/adr163-review-fixture.js';
 
 const PROJECT_ID = 'shotgun';
@@ -60,14 +61,56 @@ const createComparisonRepository = (aggregate: ComparisonV2Aggregate) => {
 };
 
 const createReviewRepository = (draft: DraftChangeSetV2) => {
+  let currentDraft = draft;
   let decisionWrites = 0;
   const repository = {
-    saveDraft: async (value: DraftChangeSetV2) => value,
+    saveDraft: async (value: DraftChangeSetV2) => {
+      currentDraft = value;
+      return value;
+    },
     findDraftById: async (projectId: string, changeSetId: string) =>
-      projectId === draft.projectId && changeSetId === draft.changeSetId ? draft : undefined,
-    listDrafts: async (projectId: string) => (projectId === draft.projectId ? [draft] : []),
+      projectId === currentDraft.projectId && changeSetId === currentDraft.changeSetId
+        ? currentDraft
+        : undefined,
+    listDrafts: async (projectId: string) =>
+      projectId === currentDraft.projectId ? [currentDraft] : [],
     findDraftByComparisonId: async (projectId: string, comparisonId: string) =>
-      projectId === draft.projectId && comparisonId === draft.comparisonId ? draft : undefined,
+      projectId === currentDraft.projectId && comparisonId === currentDraft.comparisonId
+        ? currentDraft
+        : undefined,
+    markStaleIfCurrent: async (input: {
+      readonly projectId: string;
+      readonly changeSetId: string;
+      readonly expectedRevisionNumber: number;
+      readonly expectedContentDigest: string;
+      readonly updatedAt: string;
+    }) => {
+      if (
+        input.projectId !== currentDraft.projectId ||
+        input.changeSetId !== currentDraft.changeSetId
+      )
+        throw Object.assign(new Error('Draft not found'), { code: 'NOT_FOUND' });
+      if (
+        input.expectedRevisionNumber !== currentDraft.revisionNumber ||
+        input.expectedContentDigest !== currentDraft.contentDigest
+      )
+        throw Object.assign(new Error('Draft changed'), { code: 'STALE_VERSION' });
+      if (currentDraft.status === 'STALE') return currentDraft;
+      if (currentDraft.status === 'APPROVED' || currentDraft.status === 'REJECTED')
+        throw Object.assign(new Error('Draft is final'), { code: 'CONFLICT' });
+      const { contentDigest: _contentDigest, ...withoutDigest } = currentDraft;
+      void _contentDigest;
+      const staleWithoutDigest = {
+        ...withoutDigest,
+        status: 'STALE' as const,
+        updatedAt: input.updatedAt,
+      };
+      currentDraft = {
+        ...staleWithoutDigest,
+        contentDigest: draftChangeSetContentDigestV2(staleWithoutDigest),
+      };
+      return currentDraft;
+    },
     recordDecision: async () => {
       decisionWrites += 1;
       throw new Error('recordDecision must not run after a freshness block');
@@ -194,5 +237,40 @@ describe('Issue #281 Review V2 Product failure boundary', () => {
     expect(body).not.toHaveProperty('manifest');
     expect(body).not.toHaveProperty('handoff');
     expect(review.decisionWrites).toBe(0);
+
+    const queue = await application.server.inject({
+      method: 'POST',
+      url: '/product-api/frontend/review/queue',
+      headers: {
+        cookie: `shotgun_session=${session.sessionToken}`,
+        'x-csrf-token': csrf.json<{ csrfToken: string }>().csrfToken,
+      },
+      payload: { schemaVersion: '1.0.0', pageSize: 50 },
+    });
+    expect(queue.statusCode).toBe(200);
+    const queueItem = queue
+      .json<{
+        items: Array<{ reviewContextId: string; contextRevision: number; aggregateState: string }>;
+      }>()
+      .items.find((item) => item.aggregateState === 'STALE');
+    expect(queueItem).toBeDefined();
+
+    const context = await application.server.inject({
+      method: 'POST',
+      url: '/product-api/frontend/review/contexts/read',
+      headers: {
+        cookie: `shotgun_session=${session.sessionToken}`,
+        'x-csrf-token': csrf.json<{ csrfToken: string }>().csrfToken,
+      },
+      payload: {
+        schemaVersion: '1.0.0',
+        reviewContextId: queueItem!.reviewContextId,
+        contextRevision: queueItem!.contextRevision,
+      },
+    });
+    expect(context.statusCode).toBe(200);
+    expect(context.json<{ context: { aggregateState: string } }>().context.aggregateState).toBe(
+      'STALE',
+    );
   });
 });

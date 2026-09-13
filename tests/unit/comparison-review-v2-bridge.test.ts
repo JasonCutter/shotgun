@@ -8,6 +8,7 @@ import {
   createExactDuplicateComparisonResultV2,
   validateApprovedChangeSetManifestV2,
   semanticRelationshipMaterialDigestV2,
+  draftChangeSetContentDigestV2,
   sha256Text,
   shortlistAuditDigestV2,
   type ClaimCandidate,
@@ -332,6 +333,43 @@ const setup = (
     async findDraftByComparisonId(_projectId: string, comparisonId: string) {
       return saved?.comparisonId === comparisonId ? saved : undefined;
     },
+    async markStaleIfCurrent(input: {
+      readonly projectId: string;
+      readonly changeSetId: string;
+      readonly expectedRevisionNumber: number;
+      readonly expectedContentDigest: string;
+      readonly updatedAt: string;
+    }) {
+      if (
+        !saved ||
+        saved.projectId !== input.projectId ||
+        saved.changeSetId !== input.changeSetId
+      ) {
+        throw Object.assign(new Error('Draft not found'), { code: 'NOT_FOUND' });
+      }
+      if (
+        saved.revisionNumber !== input.expectedRevisionNumber ||
+        saved.contentDigest !== input.expectedContentDigest
+      ) {
+        throw Object.assign(new Error('Draft changed'), { code: 'STALE_VERSION' });
+      }
+      if (saved.status === 'STALE') return saved;
+      if (saved.status === 'APPROVED' || saved.status === 'REJECTED') {
+        throw Object.assign(new Error('Draft is final'), { code: 'CONFLICT' });
+      }
+      const { contentDigest: _contentDigest, ...withoutDigest } = saved;
+      void _contentDigest;
+      const staleWithoutDigest = {
+        ...withoutDigest,
+        status: 'STALE' as const,
+        updatedAt: input.updatedAt,
+      };
+      saved = {
+        ...staleWithoutDigest,
+        contentDigest: draftChangeSetContentDigestV2(staleWithoutDigest),
+      };
+      return saved;
+    },
     async findDecisionById(
       _projectId: string,
       decisionId: string,
@@ -586,6 +624,82 @@ describe('Comparison v2 Review bridge', () => {
     const setupValue = setup(stale);
     const result = await setupValue.bridge.materializeDraft(request);
     expect(result).toEqual({ status: 'BLOCKED', reason: 'STALE_COMPARISON' });
+  });
+
+  it('converges an authoritative freshness rejection to a CAS-scoped STALE Draft', async () => {
+    const setupValue = setup();
+    await setupValue.bridge.materializeDraft(request);
+    const draft = setupValue.getSaved()!;
+    setupValue.setCurrent({
+      ...draft.freshnessIdentity,
+      rolloutAuthorityRevision: 'rollout-revision-newer',
+    });
+
+    const blocked = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'APPROVE',
+      reason: 'stale after Canonical freshness changed',
+      decisionId: 'decision-stale-transition-1',
+      decidedAt: now,
+    });
+
+    expect(blocked).toEqual({ status: 'BLOCKED', reason: 'STALE_COMPARISON' });
+    expect(setupValue.getRecordDecisionCalls()).toBe(0);
+    expect(setupValue.getSaved()).toMatchObject({
+      status: 'STALE',
+      revisionNumber: draft.revisionNumber,
+    });
+    expect(setupValue.getSaved()?.contentDigest).not.toBe(draft.contentDigest);
+  });
+
+  it('fails closed when a final Draft wins the stale-transition race', async () => {
+    const setupValue = setup();
+    await setupValue.bridge.materializeDraft(request);
+    const draft = setupValue.getSaved()!;
+    const approved = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'APPROVE',
+      reason: 'final decision wins the race',
+      decisionId: 'decision-final-race-1',
+      decidedAt: now,
+    });
+    expect(approved.status).toBe('DECISION_RECORDED');
+    setupValue.setCurrent({
+      ...draft.freshnessIdentity,
+      rolloutAuthorityRevision: 'rollout-revision-newer',
+    });
+
+    const blocked = await setupValue.bridge.recordDecision({
+      projectId,
+      changeSetId: draft.changeSetId,
+      actor: { type: 'user', id: 'owner-1' },
+      security,
+      authority: authority('V2_ACTIVE'),
+      rolloutAuthorityRevision: 'rollout-revision-1',
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      decision: 'REJECT',
+      reason: 'must not overwrite final decision',
+      decisionId: 'decision-final-race-2',
+      decidedAt: now,
+    });
+    expect(blocked).toEqual({ status: 'BLOCKED', reason: 'DECISION_CONFLICT' });
+    expect(setupValue.getRecordDecisionCalls()).toBe(1);
+    expect(setupValue.getSaved()).toMatchObject({ status: 'APPROVED' });
   });
 
   it('rejects non-user approval before any decision write', async () => {

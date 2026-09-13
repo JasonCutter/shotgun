@@ -368,6 +368,9 @@ const dimensionsFromRecord = (
       ? {}
       : { progress: snapshotItem.dimensions.progress }),
     attention: record.attention,
+    ...(snapshotItem?.dimensions?.attentionReason === undefined
+      ? {}
+      : { attentionReason: snapshotItem.dimensions.attentionReason }),
     ...(snapshotItem?.dimensions?.failure === undefined
       ? {}
       : { failure: snapshotItem.dimensions.failure }),

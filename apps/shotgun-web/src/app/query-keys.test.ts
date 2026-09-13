@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { convergeOwnerState, ownerStateQueryKeys } from './query-keys.js';
+import {
+  convergeOwnerState,
+  ownerStateQueryKeys,
+  sourceIntakeSubmissionQueryKey,
+  type SourcesQueryScope,
+} from './query-keys.js';
 
 describe('owner state convergence', () => {
   it('invalidates only the server-authoritative consumers for the target Project', async () => {
@@ -22,5 +27,23 @@ describe('owner state convergence', () => {
     const invalidateQueries = vi.fn();
     await convergeOwnerState({ invalidateQueries } as never, '');
     expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+});
+
+describe('Sources IntakeSubmission query identity', () => {
+  it('isolates exact submission identities even when one is a prefix of another', () => {
+    const scope: SourcesQueryScope = {
+      principalId: 'principal-1',
+      sessionId: 'session-1',
+      activeProjectId: 'project-1',
+      resourceProjectId: 'project-1',
+      projectionRevision: 'projection-1',
+      sensitivity: 'private',
+      policyContextRevision: 'policy-1',
+    };
+
+    expect(sourceIntakeSubmissionQueryKey(scope, 'submission-1')).not.toEqual(
+      sourceIntakeSubmissionQueryKey(scope, 'submission-10'),
+    );
   });
 });

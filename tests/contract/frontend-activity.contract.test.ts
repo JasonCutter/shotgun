@@ -244,6 +244,28 @@ describe('FE-P5-S1 ActivityRunViewV1', () => {
     ).toThrow(FrontendContractError);
   });
 
+  it('allows a post-completion update observation', () => {
+    expect(
+      decodeActivityRunViewV1({
+        ...validRun,
+        updatedAt: '2026-08-06T00:02:00.000Z',
+        completedAt: '2026-08-06T00:01:00.000Z',
+      }),
+    ).toMatchObject({
+      updatedAt: '2026-08-06T00:02:00.000Z',
+      completedAt: '2026-08-06T00:01:00.000Z',
+    });
+  });
+
+  it('still requires updatedAt to follow startedAt', () => {
+    expect(() =>
+      decodeActivityRunViewV1({
+        ...validRun,
+        updatedAt: '2026-08-05T23:59:00.000Z',
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
   it('rejects a non-ISO completedAt on a Run', () => {
     expect(() => decodeActivityRunViewV1({ ...validRun, completedAt: 'not-a-date' })).toThrow(
       FrontendContractError,
@@ -283,6 +305,30 @@ describe('FE-P5-S1 ActivityDomainAttemptViewV1 and TransportAttemptV1', () => {
   it('rejects a non-ISO completedAt on a Domain Attempt', () => {
     expect(() =>
       decodeActivityDomainAttemptViewV1({ ...validAttempt, completedAt: 'not-a-date' }),
+    ).toThrow(FrontendContractError);
+  });
+
+  it('allows a post-completion update observation on a Domain Attempt', () => {
+    expect(
+      decodeActivityDomainAttemptViewV1({
+        ...validAttempt,
+        state: 'SUCCEEDED',
+        updatedAt: '2026-08-06T00:00:30.000Z',
+        completedAt: '2026-08-06T00:00:25.000Z',
+      }),
+    ).toMatchObject({
+      updatedAt: '2026-08-06T00:00:30.000Z',
+      completedAt: '2026-08-06T00:00:25.000Z',
+    });
+  });
+
+  it('still requires Domain Attempt updatedAt to follow startedAt', () => {
+    expect(() =>
+      decodeActivityDomainAttemptViewV1({
+        ...validAttempt,
+        updatedAt: '2026-08-06T00:00:00.000Z',
+        completedAt: '2026-08-06T00:00:25.000Z',
+      }),
     ).toThrow(FrontendContractError);
   });
 
@@ -327,6 +373,30 @@ describe('FE-P5-S1 ActivityStageViewV1 and bounded progress', () => {
       FrontendContractError,
     );
   });
+
+  it('allows a post-completion update observation on a Stage', () => {
+    expect(
+      decodeActivityStageViewV1({
+        ...validStage,
+        state: 'SUCCEEDED',
+        updatedAt: '2026-08-06T00:00:30.000Z',
+        completedAt: '2026-08-06T00:00:25.000Z',
+      }),
+    ).toMatchObject({
+      updatedAt: '2026-08-06T00:00:30.000Z',
+      completedAt: '2026-08-06T00:00:25.000Z',
+    });
+  });
+
+  it('still requires Stage updatedAt to follow startedAt', () => {
+    expect(() =>
+      decodeActivityStageViewV1({
+        ...validStage,
+        updatedAt: '2026-08-06T00:00:00.000Z',
+        completedAt: '2026-08-06T00:00:25.000Z',
+      }),
+    ).toThrow(FrontendContractError);
+  });
 });
 
 describe('FE-P5-S1 ActivityEventViewV1', () => {
@@ -366,6 +436,22 @@ describe('FE-P5-S1 ActivityProjectionMetadataV1 and dimensions', () => {
 
   it('decodes separate projection dimensions', () => {
     expect(decodeActivityDimensionsV1(validDimensions)).toEqual(validDimensions);
+    expect(
+      decodeActivityDimensionsV1({
+        ...validDimensions,
+        attention: 'NEEDS_ATTENTION',
+        attentionReason: 'An exact-content match requires an explicit disposition.',
+      }),
+    ).toMatchObject({
+      attention: 'NEEDS_ATTENTION',
+      attentionReason: 'An exact-content match requires an explicit disposition.',
+    });
+  });
+
+  it('rejects an empty display-safe attention reason', () => {
+    expect(() => decodeActivityDimensionsV1({ ...validDimensions, attentionReason: ' ' })).toThrow(
+      FrontendContractError,
+    );
   });
 });
 

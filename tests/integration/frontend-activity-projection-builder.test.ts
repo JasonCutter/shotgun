@@ -49,7 +49,9 @@ const queuePage = (
     activityId: string;
     domainKind: ActivityRootReferenceV1['domainKind'];
     domainResourceId: string;
-    state: 'QUEUED' | 'RUNNING' | 'SUCCEEDED';
+    state: 'QUEUED' | 'RUNNING' | 'WAITING_FOR_USER' | 'SUCCEEDED';
+    attention?: 'NEEDS_ATTENTION' | 'NONE';
+    attentionReason?: string;
     updatedAt: string;
   }>,
 ): ActivityQueuePageV1 => ({
@@ -59,7 +61,8 @@ const queuePage = (
     state: item.state,
     dimensions: {
       schemaVersion: '1.0.0',
-      attention: 'NONE',
+      attention: item.attention ?? 'NONE',
+      ...(item.attentionReason === undefined ? {} : { attentionReason: item.attentionReason }),
       retryability: 'UNKNOWN',
       freshness: 'CURRENT',
       adapterStatus: 'AVAILABLE',
@@ -83,7 +86,9 @@ const makeAdapter = (input: {
   items: Array<{
     activityId: string;
     domainResourceId: string;
-    state: 'QUEUED' | 'RUNNING' | 'SUCCEEDED';
+    state: 'QUEUED' | 'RUNNING' | 'WAITING_FOR_USER' | 'SUCCEEDED';
+    attention?: 'NEEDS_ATTENTION' | 'NONE';
+    attentionReason?: string;
     updatedAt: string;
   }>;
   fail?: boolean;
@@ -256,6 +261,71 @@ describe('FE-P5-S1 ActivityProjectionBuilder', () => {
     expect(page.records[0]?.snapshotRevision).toBe(2);
     const watermarks = await readModel.watermarks.readByProject('project-1');
     expect(watermarks[0]?.snapshotRevision).toBe(2);
+  });
+
+  it('replaces stale attention after an authoritative state revision advances', async () => {
+    const readModel = store();
+    const items: Parameters<typeof makeAdapter>[0]['items'] = [
+      {
+        activityId: 'submission-1',
+        domainResourceId: 'submission-1',
+        state: 'WAITING_FOR_USER',
+        attention: 'NEEDS_ATTENTION',
+        attentionReason: 'An exact-content match requires an explicit disposition.',
+        updatedAt: '2026-08-06T00:00:01.000Z',
+      },
+    ];
+    const sources = makeAdapter({
+      adapterId: 'sources-adapter',
+      domainKind: 'SOURCES',
+      items,
+    });
+    const builder = new ActivityProjectionBuilder(makeRegistry([sources]), readModel);
+
+    const first = await builder.buildProjectProjection(SCOPE);
+    expect(first.snapshotRevision).toBe(1);
+    expect(
+      (
+        await readModel.index.queryProject({
+          resourceProjectId: 'project-1',
+          attention: 'NEEDS_ATTENTION',
+          limit: 10,
+        })
+      ).records,
+    ).toHaveLength(1);
+
+    items.splice(0, 1, {
+      activityId: 'submission-1',
+      domainResourceId: 'submission-1',
+      state: 'SUCCEEDED',
+      attention: 'NONE',
+      updatedAt: '2026-08-06T00:00:02.000Z',
+    });
+    const second = await builder.buildProjectProjection(SCOPE);
+    expect(second.snapshotRevision).toBe(2);
+
+    const current = await readModel.index.queryProject({
+      resourceProjectId: 'project-1',
+      limit: 10,
+    });
+    expect(current.records[0]).toMatchObject({
+      activityId: 'submission-1',
+      state: 'SUCCEEDED',
+      attention: 'NONE',
+      snapshotRevision: 2,
+    });
+    expect(
+      (
+        await readModel.index.queryProject({
+          resourceProjectId: 'project-1',
+          attention: 'NEEDS_ATTENTION',
+          limit: 10,
+        })
+      ).records,
+    ).toEqual([]);
+    expect(current.records[0]?.snapshot).not.toMatchObject({
+      dimensions: { attentionReason: expect.any(String) },
+    });
   });
 
   it('rejects a stale rebuild (lower revision) from the store guard', async () => {

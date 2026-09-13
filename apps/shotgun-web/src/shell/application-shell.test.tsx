@@ -108,6 +108,7 @@ const home: HomeActionCenterView = {
 const runtime = (
   locale: 'en-US' | 'ko-KR' = 'en-US',
   shellView: GlobalShellView = shell,
+  homeView: HomeActionCenterView = home,
 ): AppRuntime => {
   const queryClient = createFrontendQueryClient();
   const sessionCycleState = createSessionCycleState();
@@ -118,7 +119,7 @@ const runtime = (
     switchActiveProject: vi.fn(async () => session),
     logout: vi.fn(async () => undefined),
     getGlobalShell: vi.fn(async () => shellView),
-    getHomeActionCenter: vi.fn(async () => home),
+    getHomeActionCenter: vi.fn(async () => homeView),
     getProjects: vi.fn(async () => []),
     getAISettings: vi.fn(async () => ({
       projectId: 'project-a',
@@ -163,8 +164,12 @@ const runtime = (
   return { apiClient, queryClient, sessionCycleState };
 };
 
-const renderShell = (locale: 'en-US' | 'ko-KR' = 'en-US', shellView: GlobalShellView = shell) => {
-  const appRuntime = runtime(locale, shellView);
+const renderShell = (
+  locale: 'en-US' | 'ko-KR' = 'en-US',
+  shellView: GlobalShellView = shell,
+  homeView: HomeActionCenterView = home,
+) => {
+  const appRuntime = runtime(locale, shellView, homeView);
   const router = createMemoryRouter(
     [
       {
@@ -255,6 +260,35 @@ describe('ApplicationShell', () => {
   it('exposes the implemented Sources Library workspace as a registered Tree link', async () => {
     renderShell();
     expect((await screen.findAllByRole('link', { name: 'Library' })).length).toBeGreaterThan(0);
+  });
+
+  it('renders the exact server-provided Activity identity in a Home Attention link', async () => {
+    const href =
+      '/activity?domain=SOURCES&activity=submission-1&resource=IntakeSubmission&resourceId=submission-1' as const;
+    renderShell('en-US', shell, {
+      ...home,
+      attention: [
+        {
+          stableId: 'activity:SOURCES:submission-1',
+          kind: 'FAILED_OR_BLOCKED_WORK',
+          label: 'Sources intake submission submission-1',
+          priority: 70,
+          reason: 'An exact-content match requires an explicit disposition.',
+          projectId: 'project-a',
+          resourceId: 'submission-1',
+          targetRoute: { routeId: 'activity', href },
+          createdAt: '2026-07-29T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(
+      (
+        await screen.findByRole('link', {
+          name: 'Sources intake submission submission-1',
+        })
+      ).getAttribute('href'),
+    ).toBe(href);
   });
 
   it('shares the owner-command registry between the C2 Tree and Ctrl/Cmd+K without an AI connection test', async () => {

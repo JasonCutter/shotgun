@@ -10,6 +10,7 @@ import type {
 
 import {
   sourceDetailQueryKey,
+  sourceIntakeSubmissionQueryKey,
   askConversationSourceContextQueryKey,
   sourceEvidenceQueryKey,
   sourcePreviewQueryKey,
@@ -103,6 +104,24 @@ export const sourceDetailQueryOptions = (
       : (['project', 'source', 'no-project'] as const),
     queryFn: ({ signal }) => apiClient.getSourceDetail(sourceId, { signal }),
     enabled: scope !== null && sourceId.length > 0,
+    retry: false,
+    staleTime: 15_000,
+  });
+};
+
+export const sourceIntakeSubmissionQueryOptions = (
+  apiClient: ShotgunApiClient,
+  shell: GlobalShellView,
+  submissionId: string | null,
+) => {
+  const scope = sourcesScopeFromShell(shell);
+  return queryOptions({
+    queryKey:
+      scope && submissionId
+        ? sourceIntakeSubmissionQueryKey(scope, submissionId)
+        : (['project', 'source-intake-submission', 'unresolved'] as const),
+    queryFn: ({ signal }) => apiClient.getIntakeSubmission(submissionId!, { signal }),
+    enabled: scope !== null && submissionId !== null,
     retry: false,
     staleTime: 15_000,
   });

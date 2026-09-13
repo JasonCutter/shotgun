@@ -160,6 +160,30 @@ describe('Frontend Phase 1 Section 3 contracts', () => {
     ).toThrow(expect.objectContaining({ code: 'INVALID_REQUEST' }));
   });
 
+  it('accepts only the complete registered Activity deep-link identity', () => {
+    const href =
+      '/activity?domain=SOURCES&activity=submission-1&resource=IntakeSubmission&resourceId=submission-1';
+    expect(decodeTargetRouteView({ routeId: 'activity', href })).toEqual({
+      routeId: 'activity',
+      href,
+    });
+    expect(() =>
+      decodeTargetRouteView({
+        routeId: 'activity',
+        href: '/activity?domain=SOURCES&activity=submission-1&resource=IntakeSubmission',
+      }),
+    ).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_SCHEMA' }));
+    expect(() =>
+      decodeTargetRouteView({
+        routeId: 'activity',
+        href: `${href}&authority=owner`,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_SCHEMA' }));
+    expect(() => decodeTargetRouteView({ routeId: 'sources', href })).toThrow(
+      expect.objectContaining({ code: 'UNSUPPORTED_SCHEMA' }),
+    );
+  });
+
   it('deep-decodes Shell and Home projection bindings', () => {
     const shell = decodeGlobalShellView({
       schemaVersion: '1.0.0',

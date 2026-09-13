@@ -196,6 +196,49 @@ describe('FE-P5-S1 SourcesActivityAdapter (concrete)', () => {
       [],
     );
   });
+
+  it('carries a safe owner-action reason and preserves terminal timestamps', async () => {
+    const attentionReason = 'An exact-content match requires an explicit disposition.';
+    const actionRequired: IntakeSubmissionSnapshot = {
+      ...submission,
+      state: 'ACTION_REQUIRED',
+      submissionRevision: '2',
+      items: [
+        {
+          ...submission.items[0]!,
+          state: 'ACTION_REQUIRED',
+          duplicateDecisionId: 'decision-1',
+          attentionReason,
+          capabilities: [],
+        },
+      ],
+      capabilities: ['CANCEL'],
+      updatedAt: '2026-08-06T00:00:03.000Z',
+    };
+    const read = new InMemorySourcesActivityRead();
+    read.seedSubmission(actionRequired);
+    read.seedAttempt({
+      ...attempt,
+      updatedAt: '2026-08-06T00:00:02.000Z',
+      completedAt: '2026-08-06T00:00:01.000Z',
+    });
+    const adapter = new SourcesActivityAdapter(read);
+
+    const page = await adapter.readQueue(ADAPTER_SCOPE, { limit: 10 });
+    expect(page.items[0]).toMatchObject({
+      state: 'WAITING_FOR_USER',
+      dimensions: { attention: 'NEEDS_ATTENTION', attentionReason },
+    });
+
+    const detail = await adapter.readDetail(ADAPTER_SCOPE, page.items[0]!.root);
+    expect(detail.dimensions).toMatchObject({
+      attention: 'NEEDS_ATTENTION',
+      attentionReason,
+    });
+    expect(detail.attempts[0]?.completedAt).toBe('2026-08-06T00:00:01.000Z');
+    expect(decodeActivitySnapshotV1(detail)).toEqual(detail);
+    await expectClientRoundTrip(detail);
+  });
 });
 
 describe('FE-P5-S1 AskActivityAdapter (concrete)', () => {

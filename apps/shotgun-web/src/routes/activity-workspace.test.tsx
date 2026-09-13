@@ -237,7 +237,10 @@ const detailResult = {
     },
   ],
   metadata,
-  dimensions,
+  dimensions: {
+    ...dimensions,
+    attentionReason: 'An exact-content match requires an explicit disposition.',
+  },
   availableActions: [
     { schemaVersion: '1.0.0', kind: 'CANCEL' },
     { schemaVersion: '1.0.0', kind: 'RETRY', retryMode: 'SAME_CONTEXT' },
@@ -538,6 +541,18 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
     );
     const probe = screen.getByTestId('technical-inspection-probe');
     await waitFor(() => expect(probe.getAttribute('data-blocks')).toContain('attempt-1'));
+    const detailCall = calls.find((call) => call.url.includes('/activity/detail'));
+    expect(detailCall?.body).toEqual({
+      schemaVersion: '1.0.0',
+      domainKind: 'SOURCES',
+      activityId: 'submission-1',
+      domainResourceKind: 'IntakeSubmission',
+      domainResourceId: 'submission-1',
+    });
+    expect(
+      await screen.findByText('An exact-content match requires an explicit disposition.'),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Sources에서 필요한 조치 열기' })).toBeTruthy();
     expect(screen.queryByText('attempt-1')).toBeNull();
     vi.unstubAllGlobals();
   });
@@ -621,14 +636,14 @@ describe('ActivityWorkspace (FE-P5-S1 WP4)', () => {
 
     await screen.findByText('Source processing');
 
-    // Sources → /sources/:domainResourceId
+    // Sources IntakeSubmission → the exact owner-action view.
     await userEvent.click(screen.getByText('Source processing'));
-    await waitFor(() => screen.getByRole('link', { name: '도메인 워크스페이스에서 열기' }), {
+    await waitFor(() => screen.getByRole('link', { name: 'Sources에서 필요한 조치 열기' }), {
       timeout: 10000,
     });
     expect(
-      screen.getByRole('link', { name: '도메인 워크스페이스에서 열기' }).getAttribute('href'),
-    ).toBe('/sources/submission-1');
+      screen.getByRole('link', { name: 'Sources에서 필요한 조치 열기' }).getAttribute('href'),
+    ).toBe('/sources?view=add&submission=submission-1');
     // Server-returned resourceHref is rendered as a real link.
     expect(
       screen

@@ -152,7 +152,10 @@ describe.runIf(pool)('Issue #287 durable Comparison V2 required-ACK retry', () =
         }
         await dedup.complete({
           identity,
-          fenceToken: finalAttempt.fencingToken,
+          // Deduplication and job leases have separate fencing domains. The
+          // job's retry fence advances on each attempt, while the dedup fence
+          // remains the acquisition fence recorded by begin().
+          fenceToken: began.record.fenceToken,
           jobId,
           result: execution.result,
         });

@@ -32,8 +32,11 @@ import {
 import {
   type ComparisonShortlistV2Outcome,
   type ComparisonShortlistV2Port,
+  type ShortlistBlockedReasonV2,
+  type ShortlistReadinessMetadataV2,
 } from './shortlist-v2.js';
 import {
+  type ComparisonSemanticAnalysisV2BlockedReason,
   type ComparisonSemanticAnalysisV2Outcome,
   type ComparisonSemanticAnalysisV2Port,
 } from './semantic-analysis-v2.js';
@@ -89,6 +92,29 @@ export type ComparisonV2OrchestrationBlockedReason =
   | 'SEMANTIC_BLOCKED'
   | 'CONTRACT_FAILURE';
 
+/**
+ * Typed, internal-only evidence preserved alongside a blocked orchestration
+ * outcome.  `detail` remains a safe diagnostic projection, but is never an
+ * authority for retryability and is intentionally not parsed by the runtime.
+ */
+export type ComparisonV2OrchestrationBlockedEvidence =
+  | {
+      readonly source: 'SHORTLIST';
+      readonly reason: ShortlistBlockedReasonV2;
+      readonly readiness: ShortlistReadinessMetadataV2;
+    }
+  | {
+      readonly source: 'SEMANTIC';
+      readonly reason: ComparisonSemanticAnalysisV2BlockedReason;
+      readonly safeFailureCode:
+        | 'POLICY_DENIED'
+        | 'SEMANTIC_UNAVAILABLE'
+        | 'STALE_COMPARISON'
+        | 'RESOURCE_SCOPE_LEAK'
+        | 'CONTRACT_FAILURE';
+      readonly retryable?: boolean;
+    };
+
 export type ComparisonV2OrchestrationOutcome =
   | {
       readonly status: 'COMPLETED';
@@ -109,6 +135,8 @@ export type ComparisonV2OrchestrationOutcome =
       readonly status: 'BLOCKED';
       readonly reason: ComparisonV2OrchestrationBlockedReason;
       readonly detail?: string;
+      /** Internal-only typed recovery evidence; never a Product wire field. */
+      readonly evidence?: ComparisonV2OrchestrationBlockedEvidence;
     };
 
 const isNonEmpty = (value: unknown): value is string =>
@@ -149,6 +177,13 @@ const shortlistFailureDetail = (
 const semanticFailureDetail = (
   outcome: Extract<ComparisonSemanticAnalysisV2Outcome, { status: 'BLOCKED' }>,
 ): string => `${outcome.reason}:${outcome.safeFailureCode}`;
+
+const isPersistedRetryableAnalysis = (analysis: AnalysisRevisionV2): boolean =>
+  (analysis.state === 'FAILED_RETRYABLE' && analysis.safeFailureCode !== 'OUTCOME_UNKNOWN') ||
+  (analysis.state === 'SEMANTIC_UNAVAILABLE' &&
+    (analysis.safeFailureCode === 'PROVIDER_UNAVAILABLE' ||
+      analysis.safeFailureCode === 'ANALYSIS_TIMEOUT' ||
+      analysis.safeFailureCode === 'RETRYABLE_DEPENDENCY'));
 
 const isEmptyCanonicalBootstrapShortlist = (
   shortlist: Extract<ComparisonShortlistV2Outcome, { status: 'READY' }>,
@@ -375,12 +410,14 @@ export const createComparisonV2Orchestrator = (
     readonly reason: ComparisonV2OrchestrationBlockedReason;
     readonly phase?: ComparisonV2BlockedPhase;
     readonly detail?: string;
+    readonly evidence?: ComparisonV2OrchestrationBlockedEvidence;
   }): Promise<Extract<ComparisonV2OrchestrationOutcome, { status: 'BLOCKED' }>> => {
     await persistBlocked(input);
     return {
       status: 'BLOCKED',
       reason: input.reason,
       ...(input.detail === undefined ? {} : { detail: input.detail }),
+      ...(input.evidence === undefined ? {} : { evidence: input.evidence }),
     };
   };
 
@@ -475,6 +512,11 @@ export const createComparisonV2Orchestrator = (
           candidate: candidateV2,
           reason: 'SHORTLIST_BLOCKED',
           detail: shortlistFailureDetail(shortlist),
+          evidence: {
+            source: 'SHORTLIST',
+            reason: shortlist.reason,
+            readiness: shortlist.readiness,
+          },
         });
       }
 
@@ -590,6 +632,12 @@ export const createComparisonV2Orchestrator = (
               reason: 'SEMANTIC_BLOCKED',
               phase: 'SEMANTIC_IDENTITY',
               detail: `${identity.reason}:${identity.safeFailureCode}`,
+              evidence: {
+                source: 'SEMANTIC',
+                reason: identity.reason,
+                safeFailureCode: identity.safeFailureCode,
+                ...(identity.retryable === undefined ? {} : { retryable: identity.retryable }),
+              },
             });
           }
           // The pre-provider identity resolver must never produce a terminal
@@ -669,6 +717,11 @@ export const createComparisonV2Orchestrator = (
               await publish(dependencies.events, terminal.event);
               return terminal;
             }
+          } else if (isPersistedRetryableAnalysis(latest)) {
+            // A durable connector replay is the server-owned retry boundary;
+            // advance the immutable AnalysisRevision attempt without allowing
+            // the Product payload to supply an attempt number.
+            effectiveAttempt = latest.attempt + 1;
           } else if (latest.state === 'COMPLETED') {
             return blocked({
               request,
@@ -704,6 +757,12 @@ export const createComparisonV2Orchestrator = (
           candidate: candidateV2,
           reason: 'SEMANTIC_BLOCKED',
           detail: semanticFailureDetail(semantic),
+          evidence: {
+            source: 'SEMANTIC',
+            reason: semantic.reason,
+            safeFailureCode: semantic.safeFailureCode,
+            ...(semantic.retryable === undefined ? {} : { retryable: semantic.retryable }),
+          },
         });
       }
       if (semantic.status === 'FAILED') {

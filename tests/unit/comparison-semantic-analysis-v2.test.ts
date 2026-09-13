@@ -377,6 +377,31 @@ describe('WP4 governed semantic analysis v2', () => {
     }
   });
 
+  it('preserves typed retryable evidence when governed execution is temporarily unavailable', async () => {
+    const setup = makeDependencies(validRelationships, {
+      executionResolver: {
+        async resolve() {
+          throw new ShotgunError({
+            code: 'TIMEOUT',
+            safeMessage: 'execution timeout',
+            module: 'test',
+            operation: 'resolve',
+            retryable: true,
+          });
+        },
+      },
+    });
+    const result = await createComparisonSemanticAnalysisV2(setup.dependencies).analyze(
+      makeRequest(),
+    );
+    expect(result).toMatchObject({
+      status: 'BLOCKED',
+      reason: 'SEMANTIC_UNAVAILABLE',
+      safeFailureCode: 'SEMANTIC_UNAVAILABLE',
+      retryable: true,
+    });
+  });
+
   it('maps retryable provider failures to terminal retryable AnalysisRevision with no relationships', async () => {
     const setup = makeDependencies(validRelationships, {
       executionResolver: {

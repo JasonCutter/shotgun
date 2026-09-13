@@ -6,6 +6,8 @@ import {
 } from '../../modules/comparison/src/shortlist-v2.js';
 import {
   canonicalSnapshotDigest,
+  SemanticRetrievalError,
+  ShotgunError,
   type CanonicalSnapshot,
   type HybridCandidateResult,
   type HybridSearchResponse,
@@ -389,6 +391,55 @@ describe('ComparisonShortlistV2Service', () => {
     const result = await new ComparisonShortlistV2Service(deps).build(request());
 
     expect(result).toMatchObject({ status: 'BLOCKED', reason: 'SEMANTIC_UNAVAILABLE' });
+  });
+
+  it('preserves typed transient dependency evidence for shortlist recovery', async () => {
+    const lexicalSetup = dependencies();
+    lexicalSetup.lexicalRetriever.retrieve.mockRejectedValue(
+      new ShotgunError({
+        code: 'TIMEOUT',
+        safeMessage: 'lexical timeout',
+        module: 'test',
+        operation: 'lexical',
+        retryable: true,
+      }),
+    );
+    const lexical = await new ComparisonShortlistV2Service(lexicalSetup.deps).build(request());
+    expect(lexical).toMatchObject({
+      status: 'BLOCKED',
+      reason: 'LEXICAL_UNAVAILABLE',
+      readiness: { lexicalRetryable: true },
+    });
+
+    const semanticSetup = dependencies();
+    semanticSetup.hybridRetrieval.search.mockRejectedValue(
+      new SemanticRetrievalError({ degradationStage: 'QUERY_EXECUTION' }),
+    );
+    const semantic = await new ComparisonShortlistV2Service(semanticSetup.deps).build(request());
+    expect(semantic).toMatchObject({
+      status: 'BLOCKED',
+      reason: 'SEMANTIC_UNAVAILABLE',
+      readiness: { semanticRetryable: true },
+    });
+
+    const generationSetup = dependencies();
+    generationSetup.activeGenerationReader.getActiveGeneration.mockRejectedValue(
+      new ShotgunError({
+        code: 'RETRYABLE_DEPENDENCY',
+        safeMessage: 'generation refresh pending',
+        module: 'test',
+        operation: 'generation',
+        retryable: true,
+      }),
+    );
+    const generation = await new ComparisonShortlistV2Service(generationSetup.deps).build(
+      request(),
+    );
+    expect(generation).toMatchObject({
+      status: 'BLOCKED',
+      reason: 'GENERATION_UNAVAILABLE',
+      readiness: { semanticRetryable: true },
+    });
   });
 
   it('EMB-POL-8 keeps an OpenAI embedding generation READY under a DeepSeek generative policy topology', async () => {

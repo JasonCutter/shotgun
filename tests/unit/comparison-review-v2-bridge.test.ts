@@ -18,6 +18,7 @@ import {
 } from '../../packages/contracts/src/index.js';
 import {
   createComparisonV2ReviewBridge,
+  ComparisonV2ReviewFreshnessError,
   type ComparisonV2PersistedDecision,
   type ComparisonV2ReviewDecisionResult,
   type ComparisonV2ReviewDecisionWrite,
@@ -320,6 +321,7 @@ const setup = (
   let savedManifest: ComparisonV2ReviewDecisionResult['manifest'];
   let recordDecisionCalls = 0;
   let currentIdentity = current;
+  let freshnessError: unknown;
   const repository = {
     async saveDraft(
       draft: Parameters<ComparisonV2ReviewBridgeDependencies['repository']['saveDraft']>[0],
@@ -381,6 +383,7 @@ const setup = (
     },
     freshness: {
       async getCurrent(input) {
+        if (freshnessError) throw freshnessError;
         return {
           identity: currentIdentity ?? input.expected,
           ...(aggregateInput.comparison.shortlist === undefined
@@ -398,6 +401,9 @@ const setup = (
     getRecordDecisionCalls: () => recordDecisionCalls,
     setCurrent: (next: ComparisonFreshnessIdentityV2) => {
       currentIdentity = next;
+    },
+    setFreshnessError: (next: unknown) => {
+      freshnessError = next;
     },
   };
 };
@@ -430,6 +436,22 @@ describe('Comparison v2 Review bridge', () => {
       expect(result.draft.analysisRevisionIds).toEqual([]);
       expect(result.draft.freshnessIdentity.mode).toBe('DETERMINISTIC_EXACT');
     }
+  });
+
+  it('propagates retryability only from the typed freshness error', async () => {
+    const setupValue = setup();
+    setupValue.setFreshnessError(new ComparisonV2ReviewFreshnessError({ retryable: true }));
+    await expect(setupValue.bridge.materializeDraft(request)).resolves.toEqual({
+      status: 'BLOCKED',
+      reason: 'FRESHNESS_UNAVAILABLE',
+      retryable: true,
+    });
+
+    setupValue.setFreshnessError(new Error('temporary-looking message'));
+    await expect(setupValue.bridge.materializeDraft(request)).resolves.toEqual({
+      status: 'BLOCKED',
+      reason: 'FRESHNESS_UNAVAILABLE',
+    });
   });
 
   it('materializes NEW + ADD_CLAIM while retaining the semantic UNRELATED evidence', async () => {

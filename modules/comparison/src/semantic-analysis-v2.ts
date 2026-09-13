@@ -145,6 +145,13 @@ export type ComparisonSemanticAnalysisV2Outcome =
         | 'STALE_COMPARISON'
         | 'RESOURCE_SCOPE_LEAK'
         | 'CONTRACT_FAILURE';
+      /**
+       * Internal recovery evidence only.  This is deliberately not part of
+       * the Product event/schema; the ACK boundary may retry semantic
+       * unavailability only when the governed execution layer proves it is
+       * transient.
+       */
+      readonly retryable?: boolean;
     };
 
 type ComparisonSemanticAnalysisV2SafeFailureCode =
@@ -242,6 +249,9 @@ const isRetryableProviderCode = (code: string): boolean =>
   code === 'RATE_LIMITED' ||
   code === 'OUTCOME_UNKNOWN' ||
   code === 'OUTCOME_INDETERMINATE';
+
+const isRetryableExecutionCode = (code: string): boolean =>
+  isRetryableProviderCode(code) && code !== 'OUTCOME_UNKNOWN';
 
 const parseModelOutput = (rawText: string): readonly ModelRelationship[] => {
   const parsed: unknown = JSON.parse(rawText);
@@ -384,7 +394,13 @@ const executionErrorOutcome = (error: unknown): ComparisonSemanticAnalysisV2Outc
   if (normalized.code === 'POLICY_DENIED' || normalized.code === 'CAPABILITY_DENIED') {
     return blocked('POLICY_BLOCKED', 'POLICY_DENIED');
   }
-  return blocked('SEMANTIC_UNAVAILABLE', 'SEMANTIC_UNAVAILABLE');
+  return {
+    ...blocked('SEMANTIC_UNAVAILABLE', 'SEMANTIC_UNAVAILABLE'),
+    ...(normalized.code !== 'OUTCOME_UNKNOWN' &&
+    (normalized.retryable || isRetryableExecutionCode(normalized.code))
+      ? { retryable: true }
+      : {}),
+  };
 };
 
 export const createComparisonSemanticAnalysisV2 = (
@@ -628,7 +644,11 @@ export const createComparisonSemanticAnalysisV2 = (
                   ? 'ANALYSIS_TIMEOUT'
                   : 'RETRYABLE_DEPENDENCY'
               : state === 'SEMANTIC_UNAVAILABLE'
-                ? 'SEMANTIC_UNAVAILABLE'
+                ? normalized.retryable
+                  ? 'PROVIDER_UNAVAILABLE'
+                  : normalized.code === 'AI_CAPABILITY_UNAVAILABLE'
+                    ? 'CAPABILITY_UNAVAILABLE'
+                    : 'SEMANTIC_UNAVAILABLE'
                 : 'TERMINAL_FAILURE';
         const completedAt = now();
         const analysis: AnalysisRevisionV2 = {

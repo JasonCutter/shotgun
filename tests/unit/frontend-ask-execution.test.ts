@@ -17,7 +17,7 @@ const scope: AskExecutionScope = {
   sensitivityClearance: 'internal',
 };
 
-const snapshot = (): AskAnswerRunSnapshot => ({
+const snapshot = (patch: Partial<AskAnswerRunSnapshot> = {}): AskAnswerRunSnapshot => ({
   schemaVersion: '1.0.0',
   answerRunId: 'run-1',
   conversationId: 'conversation-1',
@@ -39,6 +39,7 @@ const snapshot = (): AskAnswerRunSnapshot => ({
   createdAt: '2026-08-01T00:00:00.000Z',
   updatedAt: '2026-08-01T00:00:00.000Z',
   stale: false,
+  ...patch,
 });
 
 const provider = (execute: AskAnswerProviderPort['execute']): AskAnswerProviderPort => ({
@@ -158,7 +159,16 @@ describe('AskAnswerExecutionService', () => {
 
   it('does not invoke the provider when authoritative context has no supported answer', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
-    repository.register(snapshot());
+    repository.register(
+      snapshot({
+        capabilities: [
+          'EXPORT',
+          'CREATE_INTAKE_DRAFT',
+          'CREATE_DRAFT_CHANGE_SET',
+          'PROPOSE_DIRECTIVE',
+        ],
+      }),
+    );
     let calls = 0;
     const service = new AskAnswerExecutionService(
       repository,
@@ -177,7 +187,29 @@ describe('AskAnswerExecutionService', () => {
     expect(result.state).toBe('SUCCEEDED');
     expect(result.statements[0]?.text).toContain('No supported answer');
     expect(result.provider?.provider).toBe('shotgun-context-resolver');
+    expect(result.capabilities).toEqual(['EXPORT']);
+    expect((await repository.getRunContext(scope, 'run-1'))?.snapshot.capabilities).toEqual([
+      'EXPORT',
+    ]);
     expect(calls).toBe(0);
+
+    for (const [kind, requestId] of [
+      ['INTAKE_DRAFT', 'no-supported-intake'],
+      ['DRAFT_CHANGE_SET', 'no-supported-change'],
+      ['USER_DIRECTIVE', 'no-supported-directive'],
+    ] as const) {
+      await expect(service.transitionSeed(scope, 'run-1', kind, requestId)).rejects.toMatchObject({
+        code: 'INVALID_REQUEST',
+      });
+      await expect(
+        repository.findTransitionSeedByRequestId({
+          scope,
+          answerRunId: 'run-1',
+          kind,
+          requestId,
+        }),
+      ).resolves.toBeUndefined();
+    }
   });
 
   it('executes with pinned SourceVersion context without fabricating Evidence citations', async () => {
@@ -389,7 +421,15 @@ describe('AskAnswerExecutionService', () => {
 
   it('creates export, feedback, and proposed transition seeds without Canonical writes', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
-    repository.register(snapshot());
+    repository.register(snapshot(), [
+      {
+        evidenceId: 'evidence-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        exactQuote: 'The source quote.',
+        sensitivity: 'internal',
+      },
+    ]);
     const service = new AskAnswerExecutionService(
       repository,
       provider(async () => ({
@@ -409,10 +449,23 @@ describe('AskAnswerExecutionService', () => {
       'feedback-request-1',
     );
     const seed = await service.transitionSeed(scope, 'run-1', 'DRAFT_CHANGE_SET', 'seed-request-1');
+    const replay = await service.transitionSeed(
+      scope,
+      'run-1',
+      'DRAFT_CHANGE_SET',
+      'seed-request-1',
+    );
 
     expect(exported.answerRunId).toBe('run-1');
     expect(feedback.kind).toBe('HELPFUL');
     expect(seed.state).toBe('PROPOSED');
     expect(seed.kind).toBe('DRAFT_CHANGE_SET');
+    expect(replay.seedId).toBe(seed.seedId);
+    expect((await repository.getRunContext(scope, 'run-1'))?.snapshot.capabilities).toEqual([
+      'EXPORT',
+      'CREATE_INTAKE_DRAFT',
+      'CREATE_DRAFT_CHANGE_SET',
+      'PROPOSE_DIRECTIVE',
+    ]);
   });
 });

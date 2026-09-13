@@ -24,7 +24,7 @@ const context: AnswerCommandContext = {
   ],
 };
 
-const renderSurface = (commandId: AnswerCommandId) => {
+const renderSurface = (commandId: AnswerCommandId, mountedContext = context) => {
   const callbacks = {
     onClose: vi.fn(),
     onExport: vi.fn(async () => undefined),
@@ -35,7 +35,7 @@ const renderSurface = (commandId: AnswerCommandId) => {
     <AnswerCommandSurface
       open
       commandId={commandId}
-      context={context}
+      context={mountedContext}
       pending={false}
       invoker={null}
       {...callbacks}
@@ -80,5 +80,16 @@ describe('AnswerCommandSurface', () => {
     expect(callbacks.onPropose).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: label }));
     await waitFor(() => expect(callbacks.onPropose).toHaveBeenCalledWith('historical-run', kind));
+  });
+
+  it.each([
+    ['answer.propose_intake', 'Propose Intake Draft'],
+    ['answer.propose_change', 'Propose Draft ChangeSet'],
+    ['answer.propose_directive', 'Propose Directive'],
+  ] as const)('hides %s for a NO_SUPPORTED_ANSWER capability projection', (commandId, label) => {
+    renderSurface(commandId, { ...context, capabilities: ['EXPORT'] });
+
+    expect(screen.queryByRole('button', { name: label })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
   });
 });

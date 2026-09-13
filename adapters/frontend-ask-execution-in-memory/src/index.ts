@@ -22,7 +22,9 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import {
   askExecutionContextDigest,
+  askSucceededCapabilitiesForContextStatus,
   highestSensitivity,
+  normalizeAskAnswerRunCapabilities,
   sameAIExecutionPin,
   validateAIExecutionPin,
 } from '../../../modules/frontend-ask-execution/src/index.js';
@@ -121,7 +123,18 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     answerRunId: string,
   ): Promise<AskExecutionRunContext | undefined> {
     const record = this.authorized(scope, answerRunId, false);
-    return record ? this.contextFor(record, record.evidence) : undefined;
+    if (!record) return undefined;
+    const resolved = this.contextFor(record, record.evidence);
+    const latestAttempt = record.attempts.at(-1);
+    const persisted = latestAttempt ? record.contexts.get(latestAttempt.attemptId) : undefined;
+    const contextStatus =
+      persisted?.contextStatus ??
+      (record.snapshot.state === 'SUCCEEDED' ? 'NO_SUPPORTED_ANSWER' : resolved.contextStatus);
+    return {
+      ...resolved,
+      contextStatus,
+      snapshot: normalizeAskAnswerRunCapabilities(record.snapshot, contextStatus),
+    };
   }
 
   async claimInitial(
@@ -346,12 +359,10 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     });
     this.update(record, {
       state: 'SUCCEEDED',
-      capabilities: [
-        'EXPORT',
-        'CREATE_INTAKE_DRAFT',
-        'CREATE_DRAFT_CHANGE_SET',
-        'PROPOSE_DIRECTIVE',
-      ],
+      capabilities: askSucceededCapabilitiesForContextStatus(
+        record.contexts.get(attempt.attemptId)?.contextStatus ??
+          this.contextFor(record, record.evidence).contextStatus,
+      ),
       statements: [
         {
           statementId: `statement-${randomUUID()}`,
@@ -468,6 +479,16 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly requestId: string;
   }): Promise<AskTransitionSeedView> {
     const record = this.authorized(input.scope, input.answerRunId);
+    const latestAttempt = record.attempts.at(-1);
+    const contextStatus = latestAttempt
+      ? (record.contexts.get(latestAttempt.attemptId)?.contextStatus ?? 'NO_SUPPORTED_ANSWER')
+      : 'NO_SUPPORTED_ANSWER';
+    if (record.snapshot.state !== 'SUCCEEDED' || contextStatus === 'NO_SUPPORTED_ANSWER') {
+      throw failure(
+        'INVALID_REQUEST',
+        'Only a supported succeeded AnswerRun can create a transition seed.',
+      );
+    }
     const key = `${input.scope.principalId}:${input.kind}:${input.requestId}`;
     const existing = record.transitionSeeds.get(key);
     if (existing) return existing;

@@ -288,15 +288,17 @@ describe('PostgreSQL Ask write and recovery boundary', () => {
       undefined,
       `ask-db-feedback-${suffix}`,
     );
-    const seed = await executionService.transitionSeed(
-      executionScope,
-      executionSubmission.answerRun.answerRunId,
-      'DRAFT_CHANGE_SET',
-      `ask-db-seed-${suffix}`,
-    );
     expect(exported.answerRunId).toBe(executionSubmission.answerRun.answerRunId);
     expect(feedback.answerRunId).toBe(executionSubmission.answerRun.answerRunId);
-    expect(seed.state).toBe('PROPOSED');
+    expect(executed.capabilities).toEqual(['EXPORT']);
+    await expect(
+      executionService.transitionSeed(
+        executionScope,
+        executionSubmission.answerRun.answerRunId,
+        'DRAFT_CHANGE_SET',
+        `ask-db-seed-${suffix}`,
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
   });
 
   it('serializes concurrent ACCEPTED replay execution with a PostgreSQL row lock', async () => {

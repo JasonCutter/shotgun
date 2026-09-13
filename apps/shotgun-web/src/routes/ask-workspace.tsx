@@ -601,7 +601,16 @@ export const AskShellProvider = ({
           });
         }
         if (ANSWER_RUN_POLLING_COMPLETE_STATES.has(current.state)) {
-          if (!ANSWER_RUN_POLLING_COMPLETE_STATES.has(answerRun.state)) {
+          const conversationSummaryState = activeConversationId
+            ? workspace?.conversations.find(
+                (conversationSummary) =>
+                  conversationSummary.conversationId === activeConversationId,
+              )?.latestRunState
+            : undefined;
+          const needsWorkspaceConvergence =
+            !ANSWER_RUN_POLLING_COMPLETE_STATES.has(answerRun.state) ||
+            conversationSummaryState !== current.state;
+          if (needsWorkspaceConvergence) {
             const refreshedWorkspace = await askClient.getWorkspace(activeConversationId, {
               signal: controller.signal,
             });

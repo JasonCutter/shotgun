@@ -840,6 +840,164 @@ describe('AskWorkspace', () => {
     },
   );
 
+  it('converges a stale queued summary when the mounted AnswerRun is already terminal', async () => {
+    const runtime = createRuntime();
+    const terminalWorkspace = workspaceWithRunState('SUCCEEDED');
+    const initiallyStaleWorkspace: AskWorkspaceView = {
+      ...terminalWorkspace,
+      conversations: terminalWorkspace.conversations.map((conversation) => ({
+        ...conversation,
+        latestRunState: 'QUEUED',
+      })),
+    };
+    const getWorkspace = vi
+      .fn()
+      .mockResolvedValueOnce(initiallyStaleWorkspace)
+      .mockResolvedValueOnce(terminalWorkspace);
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace,
+      getConversation: vi.fn().mockResolvedValue(terminalWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi
+        .fn()
+        .mockResolvedValue(
+          terminalWorkspace.selectedConversation!.branches[0]!.turns[0]!.answerRun,
+        ),
+      getAnswerRunEvents: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        answerRunId: 'run-1',
+        events: [],
+      }),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [
+            {
+              path: 'ask/conversations/:conversationId',
+              element: <AskWorkspace client={mockClient} />,
+            },
+          ],
+        },
+      ],
+      { initialEntries: ['/ask/conversations/conv-1'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const conversations = await screen.findByRole('list', { name: 'Conversations' });
+    await waitFor(() => expect(getWorkspace).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(within(conversations).queryByText('Queued')).toBeNull());
+    expect(within(conversations).queryByText('Failed')).toBeNull();
+    expect(screen.getByText('Canonical knowledge is authoritative.')).toBeTruthy();
+    expect(getWorkspace).toHaveBeenLastCalledWith(
+      'conv-1',
+      expect.objectContaining({ signal: expect.any(Object) }),
+    );
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+    expect(getWorkspace).toHaveBeenCalledTimes(2);
+  });
+
+  it('discards a terminal refresh that resolves after the active conversation changes', async () => {
+    const runtime = createRuntime();
+    const queuedWorkspace = workspaceWithRunState('QUEUED');
+    const terminalWorkspace = workspaceWithRunState('SUCCEEDED');
+    const conversationTwoWorkspace: AskWorkspaceView = {
+      ...mockWorkspace,
+      conversations: [
+        {
+          ...mockWorkspace.conversations[0]!,
+          conversationId: 'conv-2',
+          title: 'Second Conversation',
+          activeBranchId: 'branch-2',
+        },
+      ],
+      selectedConversation: {
+        ...mockWorkspace.selectedConversation!,
+        conversationId: 'conv-2',
+        title: 'Second Conversation',
+        activeBranchId: 'branch-2',
+        branches: [],
+      },
+    };
+    let convOneWorkspaceReads = 0;
+    let resolveStaleRefresh: (workspace: AskWorkspaceView) => void = () => {};
+    const staleRefresh = new Promise<AskWorkspaceView>((resolve) => {
+      resolveStaleRefresh = resolve;
+    });
+    const getWorkspace = vi.fn((conversationId?: string) => {
+      if (conversationId === 'conv-1') {
+        convOneWorkspaceReads += 1;
+        return convOneWorkspaceReads === 1 ? Promise.resolve(queuedWorkspace) : staleRefresh;
+      }
+      return Promise.resolve(conversationTwoWorkspace);
+    });
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace,
+      getConversation: vi.fn().mockResolvedValue(queuedWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi
+        .fn()
+        .mockResolvedValue(
+          terminalWorkspace.selectedConversation!.branches[0]!.turns[0]!.answerRun,
+        ),
+      getAnswerRunEvents: vi.fn().mockResolvedValue({
+        schemaVersion: '1.0.0',
+        answerRunId: 'run-1',
+        events: [],
+      }),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [
+            {
+              path: 'ask/conversations/:conversationId',
+              element: <AskWorkspace client={mockClient} />,
+            },
+          ],
+        },
+      ],
+      { initialEntries: ['/ask/conversations/conv-1'] },
+    );
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await screen.findByRole('list', { name: 'Conversations' });
+    await waitFor(() => expect(getWorkspace).toHaveBeenCalledTimes(2));
+    await router.navigate('/ask/conversations/conv-2');
+    await screen.findByRole('heading', { name: 'Second Conversation' });
+
+    resolveStaleRefresh(terminalWorkspace);
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
+    expect(screen.getByRole('heading', { name: 'Second Conversation' })).toBeTruthy();
+    expect(convOneWorkspaceReads).toBe(2);
+    expect(getWorkspace).toHaveBeenCalledWith(
+      'conv-2',
+      expect.objectContaining({ signal: expect.any(Object) }),
+    );
+  });
+
   it('opens exact per-turn Answer commands after answer content without feedback controls', async () => {
     const user = userEvent.setup();
     const runtime = createRuntime();

@@ -177,6 +177,95 @@ const v2ContextResult = (contextRevision: number, approved = false) => ({
   comments: [],
 });
 
+const staleV2ContextResult = () => {
+  const base = v2ContextResult(1, false);
+  return {
+    ...base,
+    context: {
+      ...base.context,
+      aggregateState: 'STALE' as const,
+      staleReason: 'Canonical snapshot changed.',
+    },
+  };
+};
+
+const recompareV2ContextResult = () => {
+  const base = v2ContextResult(1, false);
+  const item = v2ReviewItem('PENDING');
+  return {
+    ...base,
+    context: {
+      ...base.context,
+      reviewContextId: 'review:comparison-v2:comparison-2',
+      reviewResourceId: 'comparison-2',
+      targetId: 'comparison-v2:comparison-2',
+      items: [
+        {
+          ...item,
+          reviewItemId: 'comparison-v2:comparison-2',
+          sourceItemId: 'comparison-v2:comparison-2',
+          targetRef: { ...item.targetRef, targetId: 'comparison-v2:comparison-2' },
+        },
+      ],
+    },
+  };
+};
+
+const createRecompareFetchMock = () => {
+  let queueReads = 0;
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const path = String(input);
+      if (path === '/api/v1/security/csrf') return responseJson({ csrfToken: 'csrf-recompare' });
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      if (path.endsWith('/review/queue')) {
+        queueReads += 1;
+        const newQueueItem = {
+          schemaVersion: '1.0.0' as const,
+          reviewContextId: 'review:comparison-v2:comparison-2',
+          contextRevision: 1,
+          targetKind: 'COMPARISON_V2_CHANGE_SET' as const,
+          targetId: 'comparison-v2:comparison-2',
+          targetLabel: 'V2 candidate · ADD_CLAIM (latest)',
+          aggregateState: 'PENDING' as const,
+          itemCount: 1,
+          updatedAt: now,
+          attentionReasons: ['REQUIRES_ACTION'] as const,
+          capabilities: ['LIST_QUEUE', 'READ_CONTEXT', 'READ_ITEM', 'REVALIDATE'] as const,
+        };
+        const staleQueueItem = {
+          ...newQueueItem,
+          reviewContextId: 'review:comparison-v2:change-set-1',
+          targetId: 'change-set-1',
+          targetLabel: 'V2 candidate · misleading-candidate-id',
+          aggregateState: 'STALE' as const,
+        };
+        return responseJson(queuePage([queueReads === 1 ? staleQueueItem : newQueueItem]));
+      }
+      if (path.endsWith('/review/contexts/read')) {
+        return responseJson(
+          body['reviewContextId'] === 'review:comparison-v2:comparison-2'
+            ? recompareV2ContextResult()
+            : staleV2ContextResult(),
+        );
+      }
+      if (path.endsWith('/review/items/read')) {
+        return responseJson({
+          schemaVersion: '1.0.0',
+          item: v2ReviewItem('PENDING'),
+          dependencies: [],
+          evidence: [],
+          impact: [],
+          decisions: [],
+        });
+      }
+      void body;
+      throw new Error(`Unexpected fetch path: ${path}`);
+    },
+  );
+  return { fetchMock };
+};
+
 const createV2DecisionFetchMock = (options?: { readonly staleOnDecision?: boolean }) => {
   const queueRequests: ListReviewQueueRequestV1[] = [];
   const fetchMock = vi.fn(
@@ -260,7 +349,10 @@ const createV2DecisionFetchMock = (options?: { readonly staleOnDecision?: boolea
   return { fetchMock, queueRequests };
 };
 
-const createFetchMock = (options?: { readonly includeTarget: boolean }) => {
+const createFetchMock = (options?: {
+  readonly includeTarget: boolean;
+  readonly stale?: boolean;
+}) => {
   const queueRequests: ListReviewQueueRequestV1[] = [];
   const contextRequests: Array<{ reviewContextId: string; contextRevision: number }> = [];
   const nonTargetItems = Array.from({ length: 50 }, (_, index) => queueItem(`other-${index}`));
@@ -286,7 +378,19 @@ const createFetchMock = (options?: { readonly includeTarget: boolean }) => {
           reviewContextId: request.reviewContextId,
           contextRevision: request.contextRevision,
         });
-        return responseJson(contextResult(request.reviewContextId, request.contextRevision));
+        const context = contextResult(request.reviewContextId, request.contextRevision);
+        return responseJson(
+          options?.stale
+            ? {
+                ...context,
+                context: {
+                  ...context.context,
+                  aggregateState: 'STALE' as const,
+                  staleReason: 'Discovery target changed.',
+                },
+              }
+            : context,
+        );
       }
       throw new Error(`Unexpected fetch path: ${path}`);
     },
@@ -294,16 +398,16 @@ const createFetchMock = (options?: { readonly includeTarget: boolean }) => {
   return { fetchMock, queueRequests, contextRequests };
 };
 
-const createRuntime = (): AppRuntime =>
+const createRuntime = (apiClient: Partial<AppRuntime['apiClient']> = {}): AppRuntime =>
   ({
-    apiClient: {},
+    apiClient,
     queryClient: createFrontendQueryClient(),
     sessionCycleState: createSessionCycleState(),
   }) as AppRuntime;
 
 const ShellOutlet = () => <Outlet context={{ shell }} />;
 
-const renderRoute = (initialEntry: string) => {
+const renderRoute = (initialEntry: string, runtime = createRuntime()) => {
   const router = createMemoryRouter(
     [
       {
@@ -315,7 +419,7 @@ const renderRoute = (initialEntry: string) => {
     { initialEntries: [initialEntry] },
   );
   render(
-    <AppProviders runtime={createRuntime()}>
+    <AppProviders runtime={runtime}>
       <RouterProvider router={router} />
     </AppProviders>,
   );
@@ -402,6 +506,15 @@ describe('Review Workspace deep links', () => {
     expect(queueRequests.filter((request) => request.targetKinds !== undefined)).toHaveLength(0);
   });
 
+  it('does not offer Recompare for a stale non-V2 target', async () => {
+    const { fetchMock } = createFetchMock({ includeTarget: false, stale: true });
+    vi.stubGlobal('fetch', fetchMock);
+    renderRoute('/review?context=explicit-context&revision=4');
+
+    expect(await screen.findByRole('heading', { name: '검토 대상', level: 2 })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '재비교' })).toBeNull();
+  });
+
   it('refreshes the queue after adopting an authoritative V2 decision', async () => {
     const { fetchMock, queueRequests } = createV2DecisionFetchMock();
     vi.stubGlobal('fetch', fetchMock);
@@ -448,5 +561,92 @@ describe('Review Workspace deep links', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText('Remote Product API failure could not be decoded.')).toBeNull();
+  });
+
+  it('offers contextual recompare for stale V2 and selects the current-snapshot item', async () => {
+    const { fetchMock } = createRecompareFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const recompareCandidate = vi.fn(async () => ({
+      commandStatus: 'SUCCEEDED',
+      result: {
+        candidateId: 'candidate-1',
+        candidateRevisionNumber: 3,
+        rollout: 'V2_ACTIVE' as const,
+        v1Executed: false,
+        v2: {
+          status: 'COMPLETED' as const,
+          comparisonId: 'comparison-2',
+          snapshotVersion: 2,
+          snapshotDigest: 'sha256:snapshot-2',
+        },
+        review: { status: 'DRAFT_CREATED' as const },
+        comparisonId: 'comparison-2',
+      },
+      reviewChangeSetId: 'comparison-v2:comparison-2',
+    }));
+    renderRoute('/review', createRuntime({ recompareCandidate }));
+
+    await userEvent.click(await screen.findByRole('button', { name: /misleading-candidate-id/ }));
+    expect(await screen.findByRole('button', { name: '재비교' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: '재비교' }));
+
+    await waitFor(() => expect(recompareCandidate).toHaveBeenCalledTimes(1));
+    expect(recompareCandidate).toHaveBeenCalledWith(
+      expect.objectContaining({ changeSetId: 'change-set-1', idempotencyKey: expect.any(String) }),
+    );
+    expect(await screen.findByText('V2 candidate · ADD_CLAIM (latest)')).toBeTruthy();
+  });
+
+  it('uses one recompare identity while pending and blocks duplicate clicks', async () => {
+    const { fetchMock } = createRecompareFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    let release!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      release = resolve;
+    });
+    const recompareCandidate = vi.fn(async () => {
+      await pending;
+      return {
+        commandStatus: 'SUCCEEDED',
+        result: {
+          candidateId: 'candidate-1',
+          candidateRevisionNumber: 3,
+          rollout: 'V2_ACTIVE' as const,
+          v1Executed: false,
+          v2: { status: 'BLOCKED' as const, reason: 'SHORTLIST_BLOCKED' },
+          review: { status: 'NOT_ATTEMPTED' as const },
+        },
+      };
+    });
+    renderRoute('/review', createRuntime({ recompareCandidate }));
+    await userEvent.click(await screen.findByRole('button', { name: /misleading-candidate-id/ }));
+    const button = await screen.findByRole('button', { name: '재비교' });
+    await userEvent.click(button);
+    await userEvent.click(button);
+    expect(recompareCandidate).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '재비교 중…' }).hasAttribute('disabled')).toBe(true);
+    release(undefined);
+    expect(await screen.findByText(/재비교가 차단되었습니다/)).toBeTruthy();
+  });
+
+  it('keeps blocked V2 recompare in recovery state and never reports success', async () => {
+    const { fetchMock } = createRecompareFetchMock();
+    vi.stubGlobal('fetch', fetchMock);
+    const recompareCandidate = vi.fn(async () => ({
+      commandStatus: 'SUCCEEDED',
+      result: {
+        candidateId: 'candidate-1',
+        candidateRevisionNumber: 3,
+        rollout: 'V2_ACTIVE' as const,
+        v1Executed: false,
+        v2: { status: 'BLOCKED' as const, reason: 'SHORTLIST_BLOCKED' },
+        review: { status: 'NOT_ATTEMPTED' as const },
+      },
+    }));
+    renderRoute('/review', createRuntime({ recompareCandidate }));
+    await userEvent.click(await screen.findByRole('button', { name: /misleading-candidate-id/ }));
+    await userEvent.click(await screen.findByRole('button', { name: '재비교' }));
+    expect(await screen.findByText('재비교가 차단되었습니다: SHORTLIST_BLOCKED')).toBeTruthy();
+    expect(screen.queryByText(/최신 시맨틱 비교 검토 항목을 열었습니다/)).toBeNull();
   });
 });

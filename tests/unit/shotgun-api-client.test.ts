@@ -291,4 +291,114 @@ describe('shotgun-api-client', () => {
       ShotgunApiError,
     );
   });
+
+  it('strictly decodes the bounded recompare receipt and supports a Change Set locator', async () => {
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/security/csrf')) return json({ csrfToken: 'csrf-recompare' });
+      expect(url).toBe('/api/v1/comparisons/recompare');
+      expect(JSON.parse(String(init?.body))).toEqual({
+        changeSetId: 'change-set-1',
+        idempotencyKey: 'idem-1',
+      });
+      return json({
+        commandStatus: 'SUCCEEDED',
+        result: {
+          candidateId: 'candidate-1',
+          candidateRevisionNumber: 3,
+          rollout: 'V2_ACTIVE',
+          v1Executed: false,
+          v2: {
+            status: 'COMPLETED',
+            comparisonId: 'comparison-2',
+            snapshotVersion: 9,
+            snapshotDigest: 'sha256:snapshot-9',
+          },
+          review: { status: 'DRAFT_CREATED' },
+          comparisonId: 'comparison-2',
+          snapshotVersion: 9,
+          snapshotDigest: 'sha256:snapshot-9',
+        },
+        reviewChangeSetId: 'comparison-v2:comparison-2',
+        trace: { secret: 'must-not-be-consumed' },
+      });
+    });
+    const result = await createShotgunApiClient({ fetch }).recompareCandidate({
+      changeSetId: 'change-set-1',
+      idempotencyKey: 'idem-1',
+    });
+    expect(result).toEqual({
+      commandStatus: 'SUCCEEDED',
+      result: expect.objectContaining({
+        candidateId: 'candidate-1',
+        rollout: 'V2_ACTIVE',
+        v1Executed: false,
+        v2: expect.objectContaining({ status: 'COMPLETED' }),
+        review: { status: 'DRAFT_CREATED' },
+      }),
+      reviewChangeSetId: 'comparison-v2:comparison-2',
+    });
+    expect(result).not.toHaveProperty('trace');
+  });
+
+  it.each(['BLOCKED', 'INCOMPLETE', 'FAILED'] as const)(
+    'decodes V2 %s as a domain outcome rather than transport success',
+    async (status) => {
+      const fetch = vi.fn(async (input: string | URL | Request) => {
+        if (String(input).endsWith('/security/csrf')) return json({ csrfToken: 'csrf-recompare' });
+        const v2 =
+          status === 'BLOCKED'
+            ? { status, reason: 'SHORTLIST_BLOCKED' }
+            : {
+                status,
+                comparisonId: 'comparison-2',
+                snapshotVersion: 9,
+                snapshotDigest: 'sha256:snapshot-9',
+                analysisRevisionId: 'analysis-2',
+                analysisState: status === 'INCOMPLETE' ? 'SEMANTIC_UNAVAILABLE' : 'FAILED_TERMINAL',
+                safeFailureCode:
+                  status === 'INCOMPLETE' ? 'SEMANTIC_UNAVAILABLE' : 'TERMINAL_FAILURE',
+              };
+        return json({
+          commandStatus: 'SUCCEEDED',
+          result: {
+            candidateId: 'candidate-1',
+            candidateRevisionNumber: 3,
+            rollout: 'V2_ACTIVE',
+            v1Executed: false,
+            v2,
+            review: { status: 'NOT_ATTEMPTED' },
+          },
+        });
+      });
+      const result = await createShotgunApiClient({ fetch }).recompareCandidate({
+        candidateId: 'candidate-1',
+        idempotencyKey: 'idem-1',
+      });
+      expect(result.commandStatus).toBe('SUCCEEDED');
+      expect(result.result.v2?.status).toBe(status);
+    },
+  );
+
+  it('rejects a malformed nested recompare result', async () => {
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).endsWith('/security/csrf')) return json({ csrfToken: 'csrf-recompare' });
+      return json({
+        commandStatus: 'SUCCEEDED',
+        result: {
+          candidateId: 'candidate-1',
+          candidateRevisionNumber: 3,
+          rollout: 'V2_ACTIVE',
+          v1Executed: false,
+          v2: { status: 'INCOMPLETE', comparisonId: 'comparison-2' },
+        },
+      });
+    });
+    await expect(
+      createShotgunApiClient({ fetch }).recompareCandidate({
+        candidateId: 'candidate-1',
+        idempotencyKey: 'idem-1',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_PRODUCT_API_RESPONSE' });
+  });
 });

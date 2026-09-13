@@ -434,10 +434,9 @@ type ComparisonRequest = {
   readonly comparisonId: string;
 };
 
-type RecompareCandidateRequest = {
-  readonly candidateId: string;
-  readonly idempotencyKey: string;
-};
+type RecompareCandidateRequest =
+  | { readonly candidateId: string; readonly idempotencyKey: string }
+  | { readonly changeSetId: string; readonly idempotencyKey: string };
 
 type ChangeSetRequest = {
   readonly changeSetId: string;
@@ -462,26 +461,41 @@ const decodeRecompareCandidateRequest = (body: unknown): RecompareCandidateReque
   }
   const record = body as Record<string, unknown>;
   const keys = Object.keys(record).sort();
+  const hasCandidateId = typeof record.candidateId === 'string';
+  const hasChangeSetId = typeof record.changeSetId === 'string';
+  const validIdentity =
+    (hasCandidateId &&
+      keys.length === 2 &&
+      keys[0] === 'candidateId' &&
+      keys[1] === 'idempotencyKey') ||
+    (hasChangeSetId &&
+      keys.length === 2 &&
+      keys[0] === 'changeSetId' &&
+      keys[1] === 'idempotencyKey');
   if (
-    keys.length !== 2 ||
-    keys[0] !== 'candidateId' ||
-    keys[1] !== 'idempotencyKey' ||
-    typeof record.candidateId !== 'string' ||
+    !validIdentity ||
     typeof record.idempotencyKey !== 'string' ||
-    record.candidateId.trim().length === 0 ||
-    record.idempotencyKey.trim().length === 0
+    record.idempotencyKey.trim().length === 0 ||
+    (hasCandidateId
+      ? (record.candidateId as string).trim().length === 0
+      : (record.changeSetId as string).trim().length === 0)
   ) {
     throw new ShotgunError({
       code: 'VALIDATION_ERROR',
-      safeMessage: 'A candidateId and idempotencyKey are required.',
+      safeMessage: 'A candidateId or changeSetId and idempotencyKey are required.',
       module: 'shotgun-app',
       operation: 'decode-recompare-candidate',
     });
   }
-  return {
-    candidateId: record.candidateId.trim(),
-    idempotencyKey: record.idempotencyKey.trim(),
-  };
+  return hasCandidateId
+    ? {
+        candidateId: (record.candidateId as string).trim(),
+        idempotencyKey: record.idempotencyKey.trim(),
+      }
+    : {
+        changeSetId: (record.changeSetId as string).trim(),
+        idempotencyKey: record.idempotencyKey.trim(),
+      };
 };
 
 export const isLoopbackIp = (ipAddress: string | undefined): boolean => {
@@ -3940,6 +3954,37 @@ const createApplicationCore = async (
     async (request) => {
       const context = requestContext(request.headers);
       const body = decodeRecompareCandidateRequest(request.body);
+      let candidateId: string;
+      if ('candidateId' in body) {
+        candidateId = body.candidateId;
+      } else {
+        const draft = await options.changeSetReviewV2Repository?.findDraftById?.(
+          context.projectId,
+          body.changeSetId,
+        );
+        if (!draft) {
+          throw new ShotgunError({
+            code: 'NOT_FOUND',
+            safeMessage: 'The requested Review Change Set was not found.',
+            module: 'shotgun-app',
+            operation: 'resolve-recompare-candidate',
+          });
+        }
+        if (
+          draft.projectId !== context.projectId ||
+          draft.changeSetId !== body.changeSetId ||
+          typeof draft.candidate.id !== 'string' ||
+          draft.candidate.id.trim().length === 0
+        ) {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage: 'The requested Review Change Set is not valid for this project.',
+            module: 'shotgun-app',
+            operation: 'resolve-recompare-candidate',
+          });
+        }
+        candidateId = draft.candidate.id;
+      }
       const command = createCommand({
         messageType: 'RecompareClaimCandidate',
         schemaVersion: '1.0.0',
@@ -3947,12 +3992,37 @@ const createApplicationCore = async (
         producerVersion: '1.0.0',
         idempotencyKey: `recompare:${context.projectId}:${body.idempotencyKey}`,
         ...context,
-        payload: { candidateId: body.candidateId },
+        payload: { candidateId },
       });
       const delivery = await kernel.connector.sendCommand(command);
+      const result = delivery.result;
+      const resultRecord =
+        result && typeof result === 'object' && !Array.isArray(result)
+          ? (result as Record<string, unknown>)
+          : undefined;
+      const v2Record =
+        resultRecord?.v2 && typeof resultRecord.v2 === 'object' && !Array.isArray(resultRecord.v2)
+          ? (resultRecord.v2 as Record<string, unknown>)
+          : undefined;
+      const comparisonId =
+        typeof resultRecord?.comparisonId === 'string'
+          ? resultRecord.comparisonId
+          : typeof v2Record?.comparisonId === 'string'
+            ? v2Record.comparisonId
+            : undefined;
+      const reviewChangeSetId =
+        resultRecord?.rollout === 'V2_ACTIVE' &&
+        comparisonId &&
+        resultRecord.review &&
+        typeof resultRecord.review === 'object' &&
+        !Array.isArray(resultRecord.review) &&
+        (resultRecord.review as Record<string, unknown>).status === 'DRAFT_CREATED'
+          ? `comparison-v2:${comparisonId}`
+          : undefined;
       return {
         commandStatus: delivery.status,
-        result: delivery.result,
+        result,
+        ...(reviewChangeSetId ? { reviewChangeSetId } : {}),
         trace: traceView(kernel, command.traceId),
         audit: auditView(kernel, command.traceId),
       };

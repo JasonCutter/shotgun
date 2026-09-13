@@ -12,6 +12,7 @@ import type {
 } from '@shotgun/api-client';
 
 import { createFrontendQueryClient } from '../app/query-client.js';
+import { convergeOwnerState } from '../app/query-keys.js';
 import { AppProviders, type AppRuntime } from '../app/providers.js';
 import { AnswerCommandContextProvider } from '../commands/answer-command-context.js';
 import { OwnerCommandPalette } from '../commands/owner-command-palette.js';
@@ -373,6 +374,61 @@ const LocalizedShellOutlet = () => (
 );
 
 describe('AskWorkspace', () => {
+  it('converges the mounted Global Composer when standing policy toggles without reload', async () => {
+    const runtime = createRuntime();
+    let standingPolicyEnabled = false;
+    const getProviderEligibility = vi.fn(async () => ({
+      ...eligibleProvider,
+      eligible: standingPolicyEnabled,
+      reason: standingPolicyEnabled ? ('ELIGIBLE' as const) : ('STANDING_POLICY_DISABLED' as const),
+      requiredAction: standingPolicyEnabled
+        ? ('NONE' as const)
+        : ('ENABLE_STANDING_AI_PROCESSING' as const),
+    }));
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility,
+      getWorkspace: vi.fn().mockResolvedValue({
+        ...mockWorkspace,
+        capabilities: ['SUBMIT_QUESTION'] as const,
+      }),
+      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn(),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <LocalizedShellOutlet />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const disabledMessage = '이 프로젝트의 AI 자동 처리가 꺼져 있습니다.';
+    expect(await screen.findByText(disabledMessage)).toBeTruthy();
+    expect(getProviderEligibility).toHaveBeenCalledTimes(1);
+
+    standingPolicyEnabled = true;
+    await convergeOwnerState(runtime.queryClient, 'project-1');
+    await waitFor(() => expect(screen.queryByText(disabledMessage)).toBeNull());
+    expect(getProviderEligibility).toHaveBeenCalledTimes(2);
+
+    standingPolicyEnabled = false;
+    await convergeOwnerState(runtime.queryClient, 'project-1');
+    expect(await screen.findByText(disabledMessage)).toBeTruthy();
+    expect(getProviderEligibility).toHaveBeenCalledTimes(3);
+  });
+
   it('renders ko-KR owner controls while preserving Source and answer content', async () => {
     const runtime = createRuntime();
     const mockClient: AskWorkspaceClient = {

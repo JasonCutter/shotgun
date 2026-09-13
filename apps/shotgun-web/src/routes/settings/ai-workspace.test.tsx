@@ -467,6 +467,7 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
       JSON.stringify(input?.queryKey),
     );
     expect(invalidatedKeys).toContain(JSON.stringify(['settings', 'ai', 'project-1']));
+    expect(invalidatedKeys).toContain(JSON.stringify(['ask', 'provider-eligibility', 'project-1']));
     expect(invalidatedKeys).toContain(JSON.stringify(['protected', 'global-shell']));
     expect(invalidatedKeys).toContain(JSON.stringify(['project']));
   });

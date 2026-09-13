@@ -126,6 +126,7 @@ const snapshot = {
 const renderWorkspace = (
   apiClient: Partial<ShotgunApiClient> = {},
   initialUrl = '/settings/privacy',
+  queryClient = createFrontendQueryClient(),
 ) => {
   const api = {
     getSession: vi.fn().mockResolvedValue(session),
@@ -160,7 +161,6 @@ const renderWorkspace = (
     ...apiClient,
   } as unknown as ShotgunApiClient;
 
-  const queryClient = createFrontendQueryClient();
   queryClient.setDefaultOptions({ queries: { retry: false } });
 
   const router = createMemoryRouter(
@@ -207,7 +207,9 @@ describe('PrivacyWorkspace (A7 Settings → Privacy)', () => {
   it('performs AI provider proposal and approval for the exact selected provider', async () => {
     const user = userEvent.setup();
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const { api } = renderWorkspace();
+    const queryClient = createFrontendQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
+    const { api } = renderWorkspace({}, '/settings/privacy', queryClient);
 
     const providerSelect = await screen.findByLabelText('AI Provider');
     await user.selectOptions(providerSelect, 'openai');
@@ -239,6 +241,9 @@ describe('PrivacyWorkspace (A7 Settings → Privacy)', () => {
         expectedApprovalRevision: 3,
       }),
     );
+    expect(
+      invalidateQueries.mock.calls.map(([input]) => JSON.stringify(input?.queryKey)),
+    ).toContain(JSON.stringify(['ask', 'provider-eligibility', 'project-authoritative-99']));
   });
 
   it('rejects a proposal response when providerId does not match the requested provider', async () => {
@@ -279,7 +284,22 @@ describe('PrivacyWorkspace (A7 Settings → Privacy)', () => {
   it('uses applySettingsCommand for Project Privacy review and approval', async () => {
     const user = userEvent.setup();
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const { api } = renderWorkspace();
+    const queryClient = createFrontendQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
+    const applySettingsCommand = vi
+      .fn()
+      .mockResolvedValueOnce({
+        outcome: {} as never,
+        resource: {
+          status: 'REVIEW_REQUIRED',
+          reviewProposalId: 'project-review-prop-1',
+        },
+      })
+      .mockResolvedValueOnce({
+        outcome: {} as never,
+        resource: { status: 'APPLIED' },
+      });
+    const { api } = renderWorkspace({ applySettingsCommand }, '/settings/privacy', queryClient);
 
     const requestReviewButton = await screen.findByRole('button', {
       name: 'Request external AI transfer review',
@@ -313,6 +333,9 @@ describe('PrivacyWorkspace (A7 Settings → Privacy)', () => {
         }),
       ),
     );
+    expect(
+      invalidateQueries.mock.calls.map(([input]) => JSON.stringify(input?.queryKey)),
+    ).toContain(JSON.stringify(['ask', 'provider-eligibility', 'project-authoritative-99']));
   });
 
   it('handles AI settings failure gracefully without corrupting Project Privacy', async () => {

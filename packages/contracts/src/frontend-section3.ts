@@ -597,6 +597,8 @@ type TargetRouteBaseHref =
   | '/settings'
   | '/settings/projects';
 
+type SourceDetailTargetRouteHref = `/sources/${string}?version=${string}`;
+
 export type TargetRouteView = {
   readonly routeId:
     | 'home'
@@ -609,7 +611,7 @@ export type TargetRouteView = {
     | 'history'
     | 'settings'
     | 'settings-projects';
-  readonly href: TargetRouteBaseHref | `/activity?${string}`;
+  readonly href: TargetRouteBaseHref | `/activity?${string}` | SourceDetailTargetRouteHref;
 };
 
 const TARGET_ROUTES: Readonly<Record<TargetRouteView['routeId'], TargetRouteBaseHref>> = {
@@ -643,6 +645,53 @@ const isRegisteredActivityDeepLink = (href: string): href is `/activity?${string
   );
 };
 
+const isRegisteredSourceDetailDeepLink = (href: string): href is SourceDetailTargetRouteHref => {
+  const queryStart = href.indexOf('?');
+  if (!href.startsWith('/sources/') || queryStart <= '/sources/'.length || href.includes('#')) {
+    return false;
+  }
+  if (href.indexOf('?', queryStart + 1) !== -1) return false;
+
+  const encodedSourceId = href.slice('/sources/'.length, queryStart);
+  const query = href.slice(queryStart + 1);
+  if (encodedSourceId.includes('/') || query.length === 0) return false;
+  if (query.includes('&')) return false;
+  const separator = query.indexOf('=');
+  if (separator !== 'version'.length || query.slice(0, separator) !== 'version') return false;
+  const encodedVersionId = query.slice(separator + 1);
+  if (encodedVersionId.trim() === '') return false;
+
+  let sourceId: string;
+  let versionId: string;
+  try {
+    sourceId = decodeURIComponent(encodedSourceId);
+    versionId = decodeURIComponent(encodedVersionId);
+  } catch {
+    return false;
+  }
+  const hasPathSeparatorOrNul = (value: string): boolean =>
+    value.includes('/') || value.includes('\\') || value.includes(String.fromCharCode(0));
+  if (
+    sourceId.trim() === '' ||
+    versionId.trim() === '' ||
+    sourceId === '.' ||
+    sourceId === '..' ||
+    versionId === '.' ||
+    versionId === '..' ||
+    hasPathSeparatorOrNul(sourceId) ||
+    hasPathSeparatorOrNul(versionId)
+  ) {
+    return false;
+  }
+
+  // Require the canonical encoding emitted by the server. This rejects
+  // alternate encodings, malformed query forms, and traversal-like aliases.
+  return (
+    encodeURIComponent(sourceId) === encodedSourceId &&
+    encodeURIComponent(versionId) === encodedVersionId
+  );
+};
+
 export const decodeTargetRouteView = (value: unknown): TargetRouteView => {
   const route = requireRecord(value, 'targetRoute');
   const routeId = route['routeId'];
@@ -653,7 +702,16 @@ export const decodeTargetRouteView = (value: unknown): TargetRouteView => {
   const href = route['href'];
   if (
     href !== TARGET_ROUTES[typedRouteId] &&
-    !(typedRouteId === 'activity' && typeof href === 'string' && isRegisteredActivityDeepLink(href))
+    !(
+      typedRouteId === 'activity' &&
+      typeof href === 'string' &&
+      isRegisteredActivityDeepLink(href)
+    ) &&
+    !(
+      typedRouteId === 'sources' &&
+      typeof href === 'string' &&
+      isRegisteredSourceDetailDeepLink(href)
+    )
   ) {
     throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Target route is not registered.');
   }

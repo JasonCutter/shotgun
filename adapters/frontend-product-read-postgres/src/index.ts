@@ -106,7 +106,10 @@ export class PostgresSourceLibraryGlobalSearch implements GlobalSearchPort {
           label: source.label,
           projectId: project.id,
           projectLabel: project.label,
-          targetRoute: { routeId: 'sources' as const, href: '/sources' as const },
+          targetRoute: {
+            routeId: 'sources',
+            href: `/sources/${encodeURIComponent(source.sourceId)}?version=${encodeURIComponent(source.selectedSourceVersionId)}`,
+          },
         })),
       )
       .sort(

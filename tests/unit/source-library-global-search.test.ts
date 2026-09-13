@@ -35,6 +35,20 @@ const records: readonly SourcesProjectionRecord[] = [
     sensitivity: 'internal',
     createdAt: '2026-08-15T00:00:00.000Z',
   },
+  {
+    projectId: 'project-1',
+    sourceId: 'source opaque',
+    sourceVersionId: 'source version',
+    versionNumber: 1,
+    mediaType: 'text/plain',
+    contentHash: 'hash-3',
+    sizeBytes: 14,
+    displayLabel: 'Label with spaces',
+    storageKey: 'source-3',
+    accessScope: ['sources:read'],
+    sensitivity: 'private',
+    createdAt: '2026-08-15T00:00:00.000Z',
+  },
 ];
 
 const createSearch = () => {
@@ -121,7 +135,49 @@ describe('PostgresSourceLibraryGlobalSearch', () => {
         kind: 'SOURCE',
         label: 'JasonNote',
         projectId: 'project-1',
-        targetRoute: { routeId: 'sources', href: '/sources' },
+        targetRoute: {
+          routeId: 'sources',
+          href: '/sources/source-1?version=source-version-1',
+        },
+      }),
+    ]);
+  });
+
+  it('uses the typed Source and selected SourceVersion fields for the exact detail route', async () => {
+    const result = await createSearch().search({
+      ...scope,
+      request: {
+        schemaVersion: '1.0.0',
+        query: 'JasonNote',
+        scope: { kind: 'ACTIVE_PROJECT' },
+        limit: 20,
+      },
+    });
+
+    expect(result.results[0]?.targetRoute).toEqual({
+      routeId: 'sources',
+      href: '/sources/source-1?version=source-version-1',
+    });
+  });
+
+  it('percent-encodes opaque Source and SourceVersion identities from typed fields', async () => {
+    const result = await createSearch().search({
+      ...scope,
+      request: {
+        schemaVersion: '1.0.0',
+        query: 'label with spaces',
+        scope: { kind: 'ACTIVE_PROJECT' },
+        limit: 20,
+      },
+    });
+
+    expect(result.results).toEqual([
+      expect.objectContaining({
+        stableId: 'source:source opaque',
+        targetRoute: {
+          routeId: 'sources',
+          href: '/sources/source%20opaque?version=source%20version',
+        },
       }),
     ]);
   });

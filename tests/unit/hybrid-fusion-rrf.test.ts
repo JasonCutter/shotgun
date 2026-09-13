@@ -151,7 +151,8 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
         claimId: 'claim-1',
         commitId: 'commit-1',
         revisionId: 'rev-1',
-        canonicalVersion: 1,
+        projectionRowCanonicalVersion: 1,
+        resourceRevision: 1,
         claimText: 'Revenue reached 100M.',
         sourceVersionId: 'src-ver-1',
         evidenceIds: ['ev-1'],
@@ -165,7 +166,8 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
         claimId: 'claim-2',
         commitId: 'commit-2',
         revisionId: 'rev-2',
-        canonicalVersion: 1,
+        projectionRowCanonicalVersion: 1,
+        resourceRevision: 1,
         claimText: 'Operating margin expanded.',
         sourceVersionId: 'src-ver-2',
         evidenceIds: ['ev-2'],
@@ -263,6 +265,89 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     expect(response.items[2]!.fusionScore).toBeCloseTo(1 / 62, 6);
   });
 
+  it('keeps a historical lexical row valid when semantic and lexical share the current snapshot identity', async () => {
+    const lexicalItems: LexicalCandidateResult[] = [
+      {
+        claimId: 'claim-1',
+        commitId: 'commit-historical-row',
+        revisionId: 'rev-historical-row',
+        projectionRowCanonicalVersion: 1,
+        resourceRevision: 1,
+        claimText: 'Revenue reached 100M.',
+        sourceVersionId: 'src-ver-1',
+        evidenceIds: ['ev-1'],
+        accessScope: ['finance'],
+        sensitivity: 'internal',
+        score: 0.9,
+        matchType: 'FULL_TEXT',
+        rank: 1,
+      },
+    ];
+    const semanticItems: SemanticCandidateResult[] = [
+      {
+        semanticItemId: 'sem-claim-1-v3',
+        projectId: 'proj-alpha',
+        generationId: 'gen-003',
+        resourceType: 'CLAIM',
+        resourceId: 'claim-1',
+        sourceProjectionDigest: 'sha256:src-v3',
+        canonicalVersion: 3,
+        semanticTextDigest: 'sha256:text-claim-1-v3',
+        embeddingProfileId: 'prof-1',
+        embeddingProfileRevision: 1,
+        representationVersion: 'semantic-representation:v1',
+        distance: 0.1,
+        dimension: 768,
+        evidenceIds: ['ev-1'],
+        accessScope: ['finance'],
+        sensitivity: 'internal',
+        authority: 'CANONICAL',
+        provenance: {
+          authority: 'CANONICAL',
+          resourceBaseId: 'claim-1',
+          resourceRevision: 1,
+          baseCanonicalVersion: 3,
+          sourceVersionId: 'src-ver-1',
+          evidenceIds: ['ev-1'],
+          accessScope: ['finance'],
+          sensitivity: 'internal',
+        },
+        indexedAt: '2026-08-18T10:00:00.000Z',
+        createdAt: '2026-08-18T10:00:00.000Z',
+        updatedAt: '2026-08-18T10:00:00.000Z',
+      },
+    ];
+    const { coordinator } = createRig({
+      lexicalItems,
+      semanticItems,
+      lexicalReadiness: {
+        status: 'READY',
+        projectedCanonicalVersion: 3,
+        canonicalVersion: 3,
+        lag: 0,
+        canonicalSnapshotDigest: 'sha256:snap-v3',
+      },
+    });
+
+    const response = await coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'revenue',
+      accessScopes: ['finance'],
+      allowedSensitivities: ['internal'],
+    });
+
+    expect(response.items).toHaveLength(1);
+    expect(response.items[0]).toMatchObject({
+      resourceType: 'CLAIM',
+      resourceId: 'claim-1',
+      canonicalVersion: 3,
+      resourceRevision: 1,
+      signals: ['HYBRID', 'LEXICAL', 'SEMANTIC'],
+    });
+    expect(response.readiness.semantic.status).toBe('READY');
+    expect(response.readiness.degraded).toBe(false);
+  });
+
   it('performs deterministic locale-independent UTF-16 code-unit tie-breaking on score tie', async () => {
     // UTF-16 code unit ordering: 'B' (0x42) < 'a' (0x61), 'Z' (0x5A) < 'a' (0x61)
     // whereas in many natural language locales 'a' < 'B'
@@ -345,7 +430,8 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
         claimId: 'B-item',
         commitId: 'c-1',
         revisionId: 'r-1',
-        canonicalVersion: 1,
+        projectionRowCanonicalVersion: 1,
+        resourceRevision: 1,
         claimText: 'B item text',
         sourceVersionId: 'src-ver-1',
         evidenceIds: ['ev-upper'],
@@ -570,13 +656,14 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     expect(missingClaimRes).toBeUndefined();
   });
 
-  it('degrades semantic channel gracefully to healthy lexical results when duplicate candidates have version mismatch', async () => {
+  it('degrades semantic channel gracefully when canonical snapshot/base versions mismatch', async () => {
     const lexicalItems: LexicalCandidateResult[] = [
       {
         claimId: 'claim-1',
         commitId: 'commit-1',
         revisionId: 'rev-1',
-        canonicalVersion: 1, // Version 1 in Lexical
+        projectionRowCanonicalVersion: 1, // Stage 7 row version
+        resourceRevision: 1,
         claimText: 'Revenue was 100M.',
         sourceVersionId: 'src-ver-1',
         evidenceIds: ['ev-1'],
@@ -597,6 +684,17 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
         resourceId: 'claim-1',
         sourceProjectionDigest: 'sha256:src-digest',
         canonicalVersion: 2, // Incompatible Version 2 in Semantic!
+        authority: 'CANONICAL',
+        provenance: {
+          authority: 'CANONICAL',
+          resourceBaseId: 'claim-1',
+          resourceRevision: 1,
+          baseCanonicalVersion: 2,
+          sourceVersionId: 'src-ver-1',
+          evidenceIds: ['ev-1'],
+          accessScope: ['finance'],
+          sensitivity: 'internal',
+        },
         semanticTextDigest: 'sha256:text-1',
         embeddingProfileId: 'prof-1',
         embeddingProfileRevision: 1,
@@ -626,6 +724,38 @@ describe('Hybrid Fusion (RRF) & Coordinator Unit Tests', () => {
     expect(response.items[0]!.signals).toEqual(['LEXICAL']);
     expect(response.readiness.semantic.status).toBe('DEGRADED');
     expect(response.readiness.degraded).toBe(true);
+
+    const resourceRevisionMismatchItems: SemanticCandidateResult[] = [
+      {
+        ...semanticItems[0]!,
+        canonicalVersion: 1,
+        provenance: {
+          authority: 'CANONICAL',
+          resourceBaseId: 'claim-1',
+          baseCanonicalVersion: 1,
+          resourceRevision: 2,
+          sourceVersionId: 'src-ver-1',
+          evidenceIds: ['ev-1'],
+          accessScope: ['finance'],
+          sensitivity: 'internal',
+        },
+      },
+    ];
+    const mismatchRig = createRig({
+      lexicalItems,
+      semanticItems: resourceRevisionMismatchItems,
+    });
+    const mismatchResponse = await mismatchRig.coordinator.search({
+      projectId: 'proj-alpha',
+      query: 'revenue',
+      accessScopes: ['finance'],
+      allowedSensitivities: ['internal'],
+    });
+
+    expect(mismatchResponse.items).toHaveLength(1);
+    expect(mismatchResponse.items[0]!.signals).toEqual(['LEXICAL']);
+    expect(mismatchResponse.readiness.semantic.status).toBe('DEGRADED');
+    expect(mismatchResponse.readiness.degraded).toBe(true);
   });
 
   it('fails closed when semantic candidate version mismatches authoritative resolved resource version and lexical is stale', async () => {

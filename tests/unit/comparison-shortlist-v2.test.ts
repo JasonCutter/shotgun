@@ -64,7 +64,8 @@ const lexicalItem = (overrides: Partial<LexicalCandidateResult> = {}): LexicalCa
   claimId: claim.claimId,
   commitId: 'commit-7',
   revisionId: 'revision-2',
-  canonicalVersion: snapshot.version,
+  projectionRowCanonicalVersion: snapshot.version,
+  resourceRevision: claim.revisionNumber,
   claimText: claim.text,
   sourceVersionId: 'source-1',
   evidenceIds: [...claim.evidenceIds],
@@ -224,7 +225,7 @@ describe('ComparisonShortlistV2Service', () => {
   it('S3-01 returns an exact duplicate before any hybrid/semantic call', async () => {
     const { deps, lexicalRetriever, hybridRetrieval } = dependencies();
     lexicalRetriever.retrieve.mockResolvedValue({
-      items: [lexicalItem()],
+      items: [lexicalItem({ projectionRowCanonicalVersion: 1 })],
       readiness: lexicalReadiness(),
     });
     const service = new ComparisonShortlistV2Service(deps);
@@ -243,6 +244,55 @@ describe('ComparisonShortlistV2Service', () => {
           digest: snapshot.digest,
         },
       },
+    });
+    expect(hybridRetrieval.search).not.toHaveBeenCalled();
+  });
+
+  it('continues past a valid non-exact lexical row to find a later exact duplicate', async () => {
+    const { deps, lexicalRetriever, hybridRetrieval } = dependencies();
+    lexicalRetriever.retrieve.mockResolvedValue({
+      items: [
+        lexicalItem({ claimText: 'related wording', projectionRowCanonicalVersion: 1 }),
+        lexicalItem({ projectionRowCanonicalVersion: 1 }),
+      ],
+      readiness: lexicalReadiness(),
+    });
+
+    const result = await new ComparisonShortlistV2Service(deps).build(request(claim.text));
+
+    expect(result.status).toBe('EXACT_DUPLICATE');
+    expect(hybridRetrieval.search).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on orphan, future, or resource-revision-mismatched lexical rows', async () => {
+    const { deps, lexicalRetriever, hybridRetrieval } = dependencies();
+    const service = new ComparisonShortlistV2Service(deps);
+
+    lexicalRetriever.retrieve.mockResolvedValue({
+      items: [lexicalItem({ claimId: 'orphan-claim', projectionRowCanonicalVersion: 1 })],
+      readiness: lexicalReadiness(),
+    });
+    expect(await service.build(request(claim.text))).toMatchObject({
+      status: 'BLOCKED',
+      reason: 'SNAPSHOT_INTEGRITY',
+    });
+
+    lexicalRetriever.retrieve.mockResolvedValue({
+      items: [lexicalItem({ projectionRowCanonicalVersion: snapshot.version + 1 })],
+      readiness: lexicalReadiness(),
+    });
+    expect(await service.build(request(claim.text))).toMatchObject({
+      status: 'BLOCKED',
+      reason: 'SNAPSHOT_INTEGRITY',
+    });
+
+    lexicalRetriever.retrieve.mockResolvedValue({
+      items: [lexicalItem({ resourceRevision: claim.revisionNumber + 1 })],
+      readiness: lexicalReadiness(),
+    });
+    expect(await service.build(request(claim.text))).toMatchObject({
+      status: 'BLOCKED',
+      reason: 'SNAPSHOT_INTEGRITY',
     });
     expect(hybridRetrieval.search).not.toHaveBeenCalled();
   });

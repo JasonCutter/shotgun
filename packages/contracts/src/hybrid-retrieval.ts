@@ -41,7 +41,18 @@ export type LexicalCandidateResult = {
   readonly claimId: string;
   readonly commitId: string;
   readonly revisionId: string;
-  readonly canonicalVersion: number;
+  /**
+   * Canonical version at which this individual Stage 7 projection row was
+   * last written. This is row/commit lineage, not the current snapshot
+   * version and never a Claim resource revision.
+   */
+  readonly projectionRowCanonicalVersion: number;
+  /**
+   * Authoritative Claim resource revision resolved from the verified current
+   * Canonical snapshot. An absent value is an integrity failure and must not
+   * be replaced with a snapshot or projection version.
+   */
+  readonly resourceRevision?: number;
   readonly claimText: string;
   readonly sourceVersionId: string;
   readonly evidenceIds: readonly string[];

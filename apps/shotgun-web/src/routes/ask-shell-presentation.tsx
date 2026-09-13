@@ -478,7 +478,11 @@ export const ConversationPane = ({
           ))}
         </section>
       ) : null}
-      {exportedContent ? <pre>{exportedContent}</pre> : null}
+      {exportedContent ? (
+        <section className="ask-export-surface" aria-label={t('ask.answer_export')}>
+          <pre>{exportedContent}</pre>
+        </section>
+      ) : null}
     </section>
   );
 };

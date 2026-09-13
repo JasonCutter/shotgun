@@ -585,6 +585,18 @@ export const decodeProductSessionViewV2 = (input: unknown): ProductSessionViewV2
 export type NavigationAvailability =
   'AVAILABLE' | 'COMING_LATER' | 'TEMPORARILY_UNAVAILABLE' | 'ACCESS_RESTRICTED' | 'HIDDEN';
 
+type TargetRouteBaseHref =
+  | '/'
+  | '/sources'
+  | '/ask'
+  | '/knowledge'
+  | '/review'
+  | '/external-action'
+  | '/activity'
+  | '/history'
+  | '/settings'
+  | '/settings/projects';
+
 export type TargetRouteView = {
   readonly routeId:
     | 'home'
@@ -597,20 +609,10 @@ export type TargetRouteView = {
     | 'history'
     | 'settings'
     | 'settings-projects';
-  readonly href:
-    | '/'
-    | '/sources'
-    | '/ask'
-    | '/knowledge'
-    | '/review'
-    | '/external-action'
-    | '/activity'
-    | '/history'
-    | '/settings'
-    | '/settings/projects';
+  readonly href: TargetRouteBaseHref | `/activity?${string}`;
 };
 
-const TARGET_ROUTES: Readonly<Record<TargetRouteView['routeId'], TargetRouteView['href']>> = {
+const TARGET_ROUTES: Readonly<Record<TargetRouteView['routeId'], TargetRouteBaseHref>> = {
   home: '/',
   sources: '/sources',
   ask: '/ask',
@@ -623,6 +625,24 @@ const TARGET_ROUTES: Readonly<Record<TargetRouteView['routeId'], TargetRouteView
   'settings-projects': '/settings/projects',
 };
 
+const isRegisteredActivityDeepLink = (href: string): href is `/activity?${string}` => {
+  if (!href.startsWith('/activity?') || href.includes('#')) return false;
+  const parameters = new URLSearchParams(href.slice('/activity?'.length));
+  const entries = [...parameters.entries()];
+  const requiredKeys = ['domain', 'activity', 'resource', 'resourceId'] as const;
+  if (entries.length !== requiredKeys.length) return false;
+  if (
+    requiredKeys.some(
+      (key) => parameters.getAll(key).length !== 1 || parameters.get(key)?.trim() === '',
+    )
+  ) {
+    return false;
+  }
+  return ['SOURCES', 'ASK', 'EXTERNAL_ACTION', 'DISCOVERY', 'COMPARISON'].includes(
+    parameters.get('domain') ?? '',
+  );
+};
+
 export const decodeTargetRouteView = (value: unknown): TargetRouteView => {
   const route = requireRecord(value, 'targetRoute');
   const routeId = route['routeId'];
@@ -630,10 +650,14 @@ export const decodeTargetRouteView = (value: unknown): TargetRouteView => {
     throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Unknown target route.');
   }
   const typedRouteId = routeId as TargetRouteView['routeId'];
-  if (route['href'] !== TARGET_ROUTES[typedRouteId]) {
+  const href = route['href'];
+  if (
+    href !== TARGET_ROUTES[typedRouteId] &&
+    !(typedRouteId === 'activity' && typeof href === 'string' && isRegisteredActivityDeepLink(href))
+  ) {
     throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Target route is not registered.');
   }
-  return { routeId: typedRouteId, href: TARGET_ROUTES[typedRouteId] };
+  return { routeId: typedRouteId, href: href as TargetRouteView['href'] };
 };
 
 export type ReadinessStateView = {

@@ -176,6 +176,7 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
       dimensions: {
         schemaVersion: '1.0.0',
         attention: activityAttentionFrom(row.attentionReason),
+        ...(row.attentionReason === undefined ? {} : { attentionReason: row.attentionReason }),
         retryability: activityRetryabilityFrom(sourcesRetryable(row.state)),
         freshness: 'CURRENT',
         adapterStatus: 'AVAILABLE',
@@ -298,6 +299,11 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
     attempt: SourcesActivityAttemptRow,
     snapshot: IntakeSubmissionSnapshot,
   ): ActivityDomainAttemptViewV1 {
+    const completedAt =
+      attempt.completedAt === undefined ||
+      Date.parse(attempt.completedAt) >= Date.parse(attempt.updatedAt)
+        ? attempt.completedAt
+        : attempt.updatedAt;
     return {
       schemaVersion: '1.0.0',
       attemptId: attempt.intakeAttemptId,
@@ -308,7 +314,7 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
       retryability: activityRetryabilityFrom(attempt.state === 'FAILED'),
       startedAt: attempt.createdAt,
       updatedAt: attempt.updatedAt,
-      ...(attempt.completedAt === undefined ? {} : { completedAt: attempt.completedAt }),
+      ...(completedAt === undefined ? {} : { completedAt }),
       stageRefs: [
         {
           schemaVersion: '1.0.0',
@@ -374,6 +380,9 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
     if (snapshot === undefined) return notFound();
     const attempts = await this.collectAttempts(scope, snapshot, DETAIL_EVENT_CAP);
     const projectedAt = new Date().toISOString();
+    const attentionReason = snapshot.items.find(
+      (item) => item.attentionReason !== undefined,
+    )?.attentionReason;
     return {
       schemaVersion: '1.0.0',
       root: submissionRoot({
@@ -409,9 +418,8 @@ export class SourcesActivityAdapter implements SourcesActivityAdapterPort {
       metadata: metadataFor({ sourceUpdatedAt: snapshot.updatedAt, projectedAt }),
       dimensions: {
         schemaVersion: '1.0.0',
-        attention: activityAttentionFrom(
-          snapshot.items.find((item) => item.attentionReason !== undefined)?.attentionReason,
-        ),
+        attention: activityAttentionFrom(attentionReason),
+        ...(attentionReason === undefined ? {} : { attentionReason }),
         retryability: activityRetryabilityFrom(sourcesRetryable(snapshot.state)),
         freshness: 'CURRENT',
         adapterStatus: 'AVAILABLE',

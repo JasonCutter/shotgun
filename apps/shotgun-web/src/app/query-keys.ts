@@ -143,6 +143,9 @@ export const askConversationSourceContextQueryKey = (
 export const sourceDetailQueryKey = (scope: SourcesQueryScope, sourceId: string) =>
   [...sourcesScopeKey(scope), 'source', sourceId] as const;
 
+export const sourceIntakeSubmissionQueryKey = (scope: SourcesQueryScope, submissionId: string) =>
+  [...sourcesScopeKey(scope), 'intake-submission', submissionId] as const;
+
 export const sourceVersionHistoryQueryKey = (
   scope: SourcesQueryScope,
   sourceId: string,

@@ -80,7 +80,9 @@ const identityFromRoot = (root: ActivityRootReferenceV1): ActivityIdentity => ({
  */
 const domainWorkspaceHref = (identity: ActivityIdentity): string => {
   const resourceId = encodeURIComponent(identity.domainResourceId);
-  if (identity.domainKind === 'SOURCES') return `/sources/${resourceId}`;
+  if (identity.domainKind === 'SOURCES') {
+    return `/sources?view=add&submission=${resourceId}`;
+  }
   if (identity.domainKind === 'ASK') return `/ask/conversations/${resourceId}`;
   if (identity.domainKind === 'EXTERNAL_ACTION') {
     return `/external-action?action=${resourceId}`;
@@ -288,6 +290,7 @@ const DetailSection = ({
   const identity = identityFromRoot(detail.root);
   const resourceHref = detail.root.resourceHref;
   const actions = detail.availableActions;
+  const attentionReason = detail.dimensions.attentionReason;
   const inspectionStages = [...detail.stages, ...additionalStages];
   const inspectionEvents = [...detail.events, ...additionalEvents];
   return (
@@ -300,7 +303,9 @@ const DetailSection = ({
         {identity.domainKind === 'DISCOVERY' ? null : (
           <p>
             <Link to={domainWorkspaceHref(identity)} className="activity-domain-link">
-              도메인 워크스페이스에서 열기
+              {identity.domainKind === 'SOURCES' && attentionReason
+                ? 'Sources에서 필요한 조치 열기'
+                : '도메인 워크스페이스에서 열기'}
             </Link>
           </p>
         )}
@@ -372,6 +377,12 @@ const DetailSection = ({
           <dt>Attention</dt>
           <dd>{activityAttentionLabel[detail.dimensions.attention]}</dd>
         </div>
+        {attentionReason ? (
+          <div>
+            <dt>Attention reason</dt>
+            <dd>{attentionReason}</dd>
+          </div>
+        ) : null}
         {detail.presentation?.triggerLabel ? (
           <div>
             <dt>Trigger</dt>

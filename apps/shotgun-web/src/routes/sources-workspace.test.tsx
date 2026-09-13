@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type {
   EvidenceListView,
   GlobalShellView,
+  IntakeSubmissionSnapshot,
   ShotgunApiClient,
   SourceDetailView,
   SourceLibraryPageView,
@@ -169,9 +170,45 @@ const evidence: EvidenceListView = {
   fetchedAt: now,
 };
 
+const actionRequiredSubmission: IntakeSubmissionSnapshot = {
+  schemaVersion: '1.0.0',
+  submissionId: 'submission-1',
+  principalId: 'principal-1',
+  sessionId: 'session-1',
+  projectId: 'project-1',
+  state: 'ACTION_REQUIRED',
+  items: [
+    {
+      itemId: 'item-1',
+      manifest: {
+        kind: 'FILE',
+        itemId: 'item-1',
+        label: 'Exact duplicate note',
+        fileName: 'note.md',
+        mediaType: 'text/markdown',
+        sizeBytes: 42,
+      },
+      state: 'ACTION_REQUIRED',
+      validation: [],
+      duplicateDecisionId: 'decision-1',
+      capabilities: ['RESOLVE_DUPLICATE'],
+      attentionReason: 'An exact-content match requires an explicit disposition.',
+    },
+  ],
+  capabilities: ['CANCEL'],
+  acceptedPolicyContextId: 'policy-1',
+  submissionRevision: '2',
+  accessRevision: 'access-1',
+  policyContextRevision: 'policy-1',
+  createdAt: now,
+  updatedAt: now,
+  stale: false,
+};
+
 const createRuntime = (
   page: SourceLibraryPageView = libraryPage,
   locale: 'en-US' | 'ko-KR' = 'en-US',
+  intakeSubmission: IntakeSubmissionSnapshot = actionRequiredSubmission,
 ): AppRuntime => {
   const apiClient = {
     listSources: vi.fn(async () => page),
@@ -179,6 +216,7 @@ const createRuntime = (
     getSourceVersionHistory: vi.fn(async () => history),
     getSourcePreview: vi.fn(async () => preview),
     getSourceEvidence: vi.fn(async () => evidence),
+    getIntakeSubmission: vi.fn(async () => intakeSubmission),
     getExactDuplicateDecision: vi.fn(),
     getPrincipalPreferences: vi.fn(async () => ({ preferences: { locale }, revision: 1 })),
   } as unknown as ShotgunApiClient;
@@ -412,6 +450,39 @@ describe('Sources Workspace', () => {
     expect(
       (screen.getByRole('button', { name: 'Submit drafts' }) as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+
+  it('loads only the exact linked IntakeSubmission and exposes its owner action', async () => {
+    const runtime = createRuntime();
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources', element: <SourcesWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources?view=add&submission=submission-1'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(
+      await screen.findByText('An exact-content match requires an explicit disposition.'),
+    ).toBeTruthy();
+    expect(screen.getByText('Exact duplicate note')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Review duplicate' })).toBeTruthy();
+    expect(runtime.apiClient.getIntakeSubmission).toHaveBeenCalledWith(
+      'submission-1',
+      expect.any(Object),
+    );
+    expect(runtime.apiClient.getIntakeSubmission).not.toHaveBeenCalledWith(
+      'submission-10',
+      expect.anything(),
+    );
   });
 
   it('shows a concise problem only when Source readiness changes owner action', async () => {

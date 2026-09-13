@@ -319,6 +319,8 @@ export type ActivityDimensionsV1 = {
   readonly schemaVersion: FrontendActivitySchemaVersion;
   readonly progress?: ActivityBoundedProgressV1;
   readonly attention: ActivityAttentionStateV1;
+  /** Display-safe owning-Domain explanation for the current attention state. */
+  readonly attentionReason?: string;
   readonly failure?: ActivitySafeFailureV1;
   readonly retryability: ActivityRetryabilityV1;
   readonly freshness: ActivityProjectionFreshnessV1;
@@ -1073,6 +1075,7 @@ export const decodeActivityDimensionsV1 = (
       'schemaVersion',
       'progress',
       'attention',
+      'attentionReason',
       'failure',
       'retryability',
       'freshness',
@@ -1092,6 +1095,9 @@ export const decodeActivityDimensionsV1 = (
       ACTIVITY_ATTENTION,
       `${path}.attention`,
     ),
+    ...(object.attentionReason === undefined
+      ? {}
+      : { attentionReason: text(object.attentionReason, `${path}.attentionReason`) }),
     ...(object.failure === undefined
       ? {}
       : { failure: decodeActivitySafeFailureV1(object.failure, `${path}.failure`) }),

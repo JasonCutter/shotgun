@@ -29,6 +29,15 @@ const route = (
   href,
 });
 
+const activityRoute = (item: ActivityQueueItemV1): TargetRouteView => {
+  const parameters = new URLSearchParams();
+  parameters.set('domain', item.root.domainKind);
+  parameters.set('activity', item.root.activityId);
+  parameters.set('resource', item.root.domainResourceKind);
+  parameters.set('resourceId', item.root.domainResourceId);
+  return route('activity', `/activity?${parameters.toString()}`);
+};
+
 const reviewReason = (item: ReviewQueueItemV1): string => {
   if (item.attentionReasons.includes('OUTCOME_UNKNOWN')) {
     return 'The result is not known yet. Open Review to resolve it safely.';
@@ -102,6 +111,7 @@ const externalPresentation = (
 
 const activityReason = (item: ActivityQueueItemV1): string => {
   if (item.dimensions.failure) return item.dimensions.failure.message;
+  if (item.dimensions.attentionReason) return item.dimensions.attentionReason;
   if (item.state === 'OUTCOME_UNKNOWN') return 'The result is unknown and needs to be checked.';
   if (item.state === 'WAITING_FOR_USER') return 'This work is waiting for your input.';
   if (item.dimensions.freshness === 'STALE') return 'The status is stale and needs a refresh.';
@@ -211,7 +221,7 @@ export class CoordinatorActionCenterAttentionProjection implements ActionCenterA
         reason: activityReason(item),
         projectId: input.activeProject.id,
         resourceId: item.root.activityId,
-        targetRoute: route('activity', '/activity'),
+        targetRoute: activityRoute(item),
         createdAt: item.updatedAt,
       }));
 

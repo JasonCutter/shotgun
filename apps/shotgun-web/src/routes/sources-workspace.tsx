@@ -23,7 +23,10 @@ import {
   type ProductTranslator,
   useProductLocalization,
 } from '../localization/product-localization.js';
-import { sourcesLibraryQueryOptions } from '../sources/sources-queries.js';
+import {
+  sourceIntakeSubmissionQueryOptions,
+  sourcesLibraryQueryOptions,
+} from '../sources/sources-queries.js';
 import {
   type SourceIntakeDraftMessageCode,
   useSourceIntakeDraftQueue,
@@ -125,6 +128,7 @@ export const SourcesWorkspace = () => {
   const [decision, setDecision] = useState<ExactDuplicateDecisionView>();
   const [mutationState, setMutationState] = useState<'IDLE' | 'STAGING' | 'SUBMITTING'>('IDLE');
   const [mutationError, setMutationError] = useState<string>();
+  const linkedSubmissionId = searchParameters.get('submission')?.trim() || null;
   const query = useMemo<SourceLibraryQuery>(
     () => ({
       ...DEFAULT_QUERY,
@@ -133,6 +137,9 @@ export const SourcesWorkspace = () => {
     [appliedQuery],
   );
   const library = useQuery(sourcesLibraryQueryOptions(apiClient, shell, query));
+  const linkedSubmission = useQuery(
+    sourceIntakeSubmissionQueryOptions(apiClient, shell, linkedSubmissionId),
+  );
   const seed =
     typeof location.state === 'object' && location.state !== null
       ? (location.state as { readonly intakeDraftSeed?: unknown }).intakeDraftSeed
@@ -151,6 +158,12 @@ export const SourcesWorkspace = () => {
   const projectId = shell.activeProject.id;
   const requestedView = searchParameters.get('view');
   const showAddSource = requestedView === 'add' || (requestedView === null && seed !== undefined);
+  const displayedSubmission =
+    submission?.submissionId === linkedSubmissionId
+      ? submission
+      : linkedSubmissionId === null
+        ? submission
+        : linkedSubmission.data;
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
     if (!connectivity.isOffline) setAppliedQuery(searchInput);
@@ -322,7 +335,7 @@ export const SourcesWorkspace = () => {
   };
 
   const cancelSubmission = async () => {
-    if (!submission || connectivity.isOffline) return;
+    if (!displayedSubmission || connectivity.isOffline) return;
     setMutationState('SUBMITTING');
     try {
       const result = await writeClient.cancel({
@@ -330,7 +343,7 @@ export const SourcesWorkspace = () => {
         targetProjectId: projectId,
         clientRequestId: identity('sources-cancel-request'),
         idempotencyKey: identity('sources-cancel-idempotency'),
-        submissionId: submission.submissionId,
+        submissionId: displayedSubmission.submissionId,
       });
       setSubmission(result.resource);
     } catch (error) {
@@ -341,7 +354,7 @@ export const SourcesWorkspace = () => {
   };
 
   const retryItem = async (itemId: string, mode: 'SAME_CONTEXT' | 'CURRENT_POLICY') => {
-    if (!submission || connectivity.isOffline) return;
+    if (!displayedSubmission || connectivity.isOffline) return;
     setMutationState('SUBMITTING');
     try {
       const result = await writeClient.retry({
@@ -349,7 +362,7 @@ export const SourcesWorkspace = () => {
         targetProjectId: projectId,
         clientRequestId: identity('sources-retry-request'),
         idempotencyKey: identity('sources-retry-idempotency'),
-        submissionId: submission.submissionId,
+        submissionId: displayedSubmission.submissionId,
         itemIds: [itemId],
         mode,
       });
@@ -402,6 +415,11 @@ export const SourcesWorkspace = () => {
             <p className="warning-state hfm-status-error" role="alert">
               {mutationError}
             </p>
+          ) : null}
+          {linkedSubmissionId && linkedSubmission.isPending ? (
+            <LoadingState message="제출 상태를 불러오는 중…" />
+          ) : linkedSubmissionId && linkedSubmission.isError ? (
+            <ErrorState error={linkedSubmission.error} onRetry={() => linkedSubmission.refetch()} />
           ) : null}
           <form className="source-intake-form" onSubmit={onAddDraft}>
             <label htmlFor="source-intake-kind">{t('sources.input_type')}</label>
@@ -513,16 +531,19 @@ export const SourcesWorkspace = () => {
             </>
           ) : null}
 
-          {submission ? (
+          {displayedSubmission ? (
             <section aria-labelledby="submission-status-heading">
               <h3 id="submission-status-heading">
-                {t('sources.submission')} {hfmOwnerLabel(t, 'intakeState', submission.state)}
+                {t('sources.submission')}{' '}
+                {hfmOwnerLabel(t, 'intakeState', displayedSubmission.state)}
               </h3>
               <TechnicalDetails
-                items={[{ label: t('sources.submission_id'), value: submission.submissionId }]}
+                items={[
+                  { label: t('sources.submission_id'), value: displayedSubmission.submissionId },
+                ]}
               />
               <ul className="source-intake-list" aria-label={t('sources.submission_items')}>
-                {submission.items.map((item) => (
+                {displayedSubmission.items.map((item) => (
                   <li key={item.itemId}>
                     <div>
                       <strong>{item.manifest.label}</strong>
@@ -561,7 +582,7 @@ export const SourcesWorkspace = () => {
                   </li>
                 ))}
               </ul>
-              {submission.capabilities.includes('CANCEL') ? (
+              {displayedSubmission.capabilities.includes('CANCEL') ? (
                 <button
                   className="hfm-action-secondary"
                   type="button"

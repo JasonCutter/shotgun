@@ -146,7 +146,10 @@ describe('CoordinatorActionCenterAttentionProjection', () => {
     ]);
     expect(home.attention.map((item) => item.targetRoute)).toEqual([
       { routeId: 'external-action', href: '/external-action' },
-      { routeId: 'activity', href: '/activity' },
+      {
+        routeId: 'activity',
+        href: '/activity?domain=SOURCES&activity=activity-1&resource=IntakeSubmission&resourceId=submission-1',
+      },
       { routeId: 'review', href: '/review' },
     ]);
     expect(home.attention.some((item) => item.label === 'Must not disclose')).toBe(false);
@@ -158,6 +161,84 @@ describe('CoordinatorActionCenterAttentionProjection', () => {
       }),
     );
     expect(activity.listActivityQueue).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ attention: 'NEEDS_ATTENTION' }),
+    );
+  });
+
+  it('preserves an exact Activity identity and drops cleared attention on the next read', async () => {
+    const review = {
+      listReviewQueue: vi.fn(async () => ({ items: [] })),
+    };
+    const externalAction = {
+      listExternalActions: vi.fn(async () => ({ items: [] })),
+    };
+    const activityPage = (items: readonly unknown[], snapshotRevision: number) => ({
+      items,
+      metadata: {
+        schemaVersion: '1.0.0' as const,
+        snapshotRevision,
+        generatedAt: now,
+        sourceUpdatedAt: now,
+        freshness: 'CURRENT' as const,
+        adapterStatus: 'AVAILABLE' as const,
+        partial: false,
+      },
+    });
+    const requiringAction = {
+      root: {
+        schemaVersion: '1.0.0' as const,
+        rootKind: 'JOB' as const,
+        activityId: 'submission-1',
+        domainKind: 'SOURCES' as const,
+        domainResourceKind: 'IntakeSubmission',
+        domainResourceId: 'submission-1',
+        resourceProjectId: project.id,
+        resourceHref: '/product-api/frontend/sources/read?submissionId=submission-1',
+        jobId: 'submission-1',
+        runId: 'submission-1',
+      },
+      summary: 'Sources intake submission submission-1',
+      state: 'WAITING_FOR_USER' as const,
+      dimensions: {
+        schemaVersion: '1.0.0' as const,
+        attention: 'NEEDS_ATTENTION' as const,
+        attentionReason: 'An exact-content match requires an explicit disposition.',
+        retryability: 'NOT_RETRYABLE' as const,
+        freshness: 'CURRENT' as const,
+        adapterStatus: 'AVAILABLE' as const,
+      },
+      updatedAt: now,
+    };
+    const activity = {
+      listActivityQueue: vi
+        .fn()
+        .mockResolvedValueOnce(activityPage([requiringAction], 1))
+        .mockResolvedValueOnce(activityPage([], 2)),
+    };
+    const attention = new CoordinatorActionCenterAttentionProjection(
+      review as never,
+      externalAction as never,
+      activity as never,
+    );
+    const homeProjection = new InMemoryActionCenterProjection(attention);
+
+    const before = await homeProjection.getHome(scope);
+    expect(before.attention).toEqual([
+      expect.objectContaining({
+        stableId: 'activity:SOURCES:submission-1',
+        reason: 'An exact-content match requires an explicit disposition.',
+        targetRoute: {
+          routeId: 'activity',
+          href: '/activity?domain=SOURCES&activity=submission-1&resource=IntakeSubmission&resourceId=submission-1',
+        },
+      }),
+    ]);
+
+    const after = await homeProjection.getHome(scope);
+    expect(after.attention).toEqual([]);
+    expect(activity.listActivityQueue).toHaveBeenNthCalledWith(
+      2,
       expect.anything(),
       expect.objectContaining({ attention: 'NEEDS_ATTENTION' }),
     );

@@ -366,6 +366,22 @@ describe('FE-P5-S1 ActivityProjectionMetadataV1 and dimensions', () => {
 
   it('decodes separate projection dimensions', () => {
     expect(decodeActivityDimensionsV1(validDimensions)).toEqual(validDimensions);
+    expect(
+      decodeActivityDimensionsV1({
+        ...validDimensions,
+        attention: 'NEEDS_ATTENTION',
+        attentionReason: 'An exact-content match requires an explicit disposition.',
+      }),
+    ).toMatchObject({
+      attention: 'NEEDS_ATTENTION',
+      attentionReason: 'An exact-content match requires an explicit disposition.',
+    });
+  });
+
+  it('rejects an empty display-safe attention reason', () => {
+    expect(() => decodeActivityDimensionsV1({ ...validDimensions, attentionReason: ' ' })).toThrow(
+      FrontendContractError,
+    );
   });
 });
 

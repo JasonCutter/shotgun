@@ -5,7 +5,10 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { PostgresSearchProjectionRepository } from '../../adapters/postgres-stage7/src/index.js';
 import { LexicalRetriever } from '../../modules/hybrid-retrieval/src/index.js';
-import type { SearchProjectionDocument } from '../../packages/contracts/src/index.js';
+import type {
+  CanonicalSnapshot,
+  SearchProjectionDocument,
+} from '../../packages/contracts/src/index.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
 const databaseUrl = await requireTestDatabaseTarget();
@@ -102,14 +105,34 @@ describe.runIf(pool)('Issue #279 Stage 7 incremental lexical version semantics',
       expect.objectContaining({ claimId: archive.claimId, canonicalVersion: 3 }),
     ]);
 
-    const lexical = new LexicalRetriever(repository, async () => ({
+    const canonicalSnapshot: CanonicalSnapshot = {
       snapshotId: `snapshot-${projectId}`,
       projectId,
       version: 3,
       digest: digest('3'),
-      claims: [],
+      claims: [
+        {
+          claimId: backup.claimId,
+          text: backup.claimText,
+          revisionNumber: 1,
+          evidenceIds: backup.evidenceIds,
+        },
+        {
+          claimId: stable.claimId,
+          text: stable.claimText,
+          revisionNumber: 1,
+          evidenceIds: stable.evidenceIds,
+        },
+        {
+          claimId: archive.claimId,
+          text: archive.claimText,
+          revisionNumber: 1,
+          evidenceIds: archive.evidenceIds,
+        },
+      ],
       createdAt: '2026-09-12T14:03:00.000Z',
-    }));
+    };
+    const lexical = new LexicalRetriever(repository, async () => canonicalSnapshot);
 
     const lexicalBackup = await lexical.retrieve({
       projectId,
@@ -136,13 +159,25 @@ describe.runIf(pool)('Issue #279 Stage 7 incremental lexical version semantics',
       projectedCanonicalVersion: 3,
     });
     expect(lexicalBackup.items).toEqual([
-      expect.objectContaining({ claimId: backup.claimId, canonicalVersion: 3 }),
+      expect.objectContaining({
+        claimId: backup.claimId,
+        projectionRowCanonicalVersion: 1,
+        resourceRevision: 1,
+      }),
     ]);
     expect(lexicalStable.items).toEqual([
-      expect.objectContaining({ claimId: stable.claimId, canonicalVersion: 3 }),
+      expect.objectContaining({
+        claimId: stable.claimId,
+        projectionRowCanonicalVersion: 2,
+        resourceRevision: 1,
+      }),
     ]);
     expect(lexicalArchive.items).toEqual([
-      expect.objectContaining({ claimId: archive.claimId, canonicalVersion: 3 }),
+      expect.objectContaining({
+        claimId: archive.claimId,
+        projectionRowCanonicalVersion: 3,
+        resourceRevision: 1,
+      }),
     ]);
   });
 });

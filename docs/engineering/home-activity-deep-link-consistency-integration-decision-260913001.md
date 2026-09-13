@@ -52,4 +52,6 @@ decision retains an already accepted role and pin.
 
 The Contract Amendment was explicitly approved by the user on 2026-09-13 and
 registered as `ACTIVE_ADDITIVE_AMENDMENT` against the immutable FE-P5-S1 base.
-Canonical publication remains pending PR #283 merge and post-merge verification.
+Canonical publication completed with PR #283 merge commit
+`8a53b7119d96adc728faec492b451f5f05c83755`; post-merge main CI run
+`34743123181` passed all required gates.

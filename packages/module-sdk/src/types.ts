@@ -174,11 +174,11 @@ export type CommandHandlerDefinition<TPayload = unknown, TResult = unknown> = Ha
   handle(envelope: CommandEnvelope<TPayload>, context: HandlerContext): Promise<TResult> | TResult;
 };
 
-export type EventHandlerDefinition<TPayload = unknown> = HandlerSecurity & {
+export type EventHandlerDefinition<TPayload = unknown, TResult = unknown> = HandlerSecurity & {
   readonly messageType: string;
   readonly version: string;
   readonly requiredForPublisherAcknowledgement?: boolean;
-  handle(envelope: EventEnvelope<TPayload>, context: HandlerContext): Promise<void> | void;
+  handle(envelope: EventEnvelope<TPayload>, context: HandlerContext): Promise<TResult> | TResult;
 };
 
 export type QueryHandlerDefinition<TPayload = unknown, TResult = unknown> = HandlerSecurity & {

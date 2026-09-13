@@ -236,8 +236,8 @@ export class ConnectorRuntime {
     for (const route of routes) {
       try {
         const delivery = this.durableState
-          ? await this.executeDeduplicatedDurable<void>(envelope, route, 'event')
-          : await this.executeDeduplicated<void>(envelope, route, 'event');
+          ? await this.executeDeduplicatedDurable<unknown>(envelope, route, 'event')
+          : await this.executeDeduplicated<unknown>(envelope, route, 'event');
         consumers.push({
           consumerId: route.module.manifest.id,
           status: delivery.duplicate ? 'duplicate' : 'processed',

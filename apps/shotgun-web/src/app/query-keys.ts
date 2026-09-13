@@ -29,6 +29,11 @@ export const ownerStateQueryKeys = (projectId: string) =>
     ['settings', 'ai', 'semantic-comparison', projectId],
     ['settings', 'snapshot', projectId],
     ['settings', 'privacy', projectId],
+    // Ask provider eligibility has additional conversation/mode/source
+    // selection identity. Invalidate only this Project's prefix so mounted
+    // variants refetch the server-authoritative eligibility without changing
+    // their full query identity or touching another Project.
+    ['ask', 'provider-eligibility', projectId],
     ['protected', 'global-shell'],
     ['project'],
   ] as const;

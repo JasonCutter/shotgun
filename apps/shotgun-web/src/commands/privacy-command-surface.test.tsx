@@ -62,9 +62,12 @@ const privacyResponse = (
   data: privacyView(pendingReviewProposalId, overrides),
 });
 
-const runtime = (apiClient: Partial<ShotgunApiClient>): AppRuntime => ({
+const runtime = (
+  apiClient: Partial<ShotgunApiClient>,
+  queryClient = createFrontendQueryClient(),
+): AppRuntime => ({
   apiClient: apiClient as ShotgunApiClient,
-  queryClient: createFrontendQueryClient(),
+  queryClient,
   sessionCycleState: createSessionCycleState(),
 });
 
@@ -72,16 +75,21 @@ const renderSurface = (
   commandId: 'privacy.open' | 'privacy.review',
   apiClient: Partial<ShotgunApiClient>,
   locale: 'en-US' | 'ko-KR' = 'en-US',
-) =>
-  render(
+  queryClient = createFrontendQueryClient(),
+) => ({
+  queryClient,
+  ...render(
     <AppProviders
-      runtime={runtime({
-        getPrincipalPreferences: vi.fn(async () => ({
-          preferences: { locale },
-          revision: 1,
-        })),
-        ...apiClient,
-      })}
+      runtime={runtime(
+        {
+          getPrincipalPreferences: vi.fn(async () => ({
+            preferences: { locale },
+            revision: 1,
+          })),
+          ...apiClient,
+        },
+        queryClient,
+      )}
     >
       <ProductLocalizationProvider principalId="principal-1">
         <MemoryRouter>
@@ -95,7 +103,8 @@ const renderSurface = (
         </MemoryRouter>
       </ProductLocalizationProvider>
     </AppProviders>,
-  );
+  ),
+});
 const snapshot = {
   schemaVersion: '1.0.0',
   targetProjectId: 'project-1',
@@ -525,12 +534,19 @@ describe('PrivacyCommandSurface', () => {
       legacyGeminiCredentialConfigured: false,
     };
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    renderSurface('privacy.review', {
-      getPrivacyRetention: vi.fn(async () => privacyResponse()),
-      getAISettings: vi.fn(async () => aiSettings),
-      proposeAIProviderPrivacyApproval,
-      approveAIProviderPrivacyProposal,
-    });
+    const queryClient = createFrontendQueryClient();
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
+    renderSurface(
+      'privacy.review',
+      {
+        getPrivacyRetention: vi.fn(async () => privacyResponse()),
+        getAISettings: vi.fn(async () => aiSettings),
+        proposeAIProviderPrivacyApproval,
+        approveAIProviderPrivacyProposal,
+      },
+      'en-US',
+      queryClient,
+    );
 
     await user.click(
       await screen.findByRole('button', { name: 'Request provider privacy approval' }),
@@ -554,6 +570,9 @@ describe('PrivacyCommandSurface', () => {
       }),
     );
     expect(screen.queryByText('proposal-1')).toBeNull();
+    expect(
+      invalidateQueries.mock.calls.map(([input]) => JSON.stringify(input?.queryKey)),
+    ).toContain(JSON.stringify(['ask', 'provider-eligibility', 'project-1']));
   });
 
   it('renders localized ko-KR provider privacy review actions', async () => {

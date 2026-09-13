@@ -104,6 +104,19 @@ export type ReviewV2RepositoryPort = {
   recordDecision?: (
     write: ComparisonV2ReviewDecisionWrite,
   ) => Promise<ComparisonV2ReviewDecisionResult>;
+  /**
+   * Atomically converges the exact current V2 Draft to STALE after the
+   * authoritative freshness check rejects it.  The adapter must compare both
+   * revision and content digest while holding its owning-row lock; a newer or
+   * terminal Draft must never be overwritten.
+   */
+  markStaleIfCurrent?: (input: {
+    readonly projectId: string;
+    readonly changeSetId: string;
+    readonly expectedRevisionNumber: number;
+    readonly expectedContentDigest: string;
+    readonly updatedAt: string;
+  }) => Promise<DraftChangeSetV2>;
   findOperationResolutionForDraft?: (
     projectId: string,
     changeSetId: string,
@@ -241,6 +254,45 @@ const isExactDecisionReplay = (
   persisted.decision.actor.type === request.actor.type &&
   persisted.decision.actor.id === request.actor.id &&
   persisted.decision.reason === request.reason.trim();
+
+const staleDraftOutcome = async (
+  repository: ReviewV2RepositoryPort,
+  draft: DraftChangeSetV2,
+  request: ComparisonV2ReviewDecisionRequest,
+  now: () => string,
+): Promise<ComparisonV2ReviewDecisionOutcome> => {
+  // A freshness failure is only recoverable as a visible STALE Draft when the
+  // owning repository exposes the CAS transition.  Do not claim convergence
+  // from the browser or from a best-effort read/write pair.
+  if (!repository.markStaleIfCurrent) {
+    // Keep the established typed stale failure for read-only adapters that
+    // predate the additive transition port.  Production adapters implement
+    // the CAS method and therefore converge the authoritative queue/context.
+    return { status: 'BLOCKED', reason: 'STALE_COMPARISON' };
+  }
+  try {
+    await repository.markStaleIfCurrent({
+      projectId: request.projectId,
+      changeSetId: request.changeSetId,
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      updatedAt: now(),
+    });
+    return { status: 'BLOCKED', reason: 'STALE_COMPARISON' };
+  } catch (error) {
+    const code = (error as { readonly code?: string }).code;
+    if (code === 'STALE_VERSION') {
+      return { status: 'BLOCKED', reason: 'DECISION_STALE' };
+    }
+    if (code === 'CONFLICT') {
+      return { status: 'BLOCKED', reason: 'DECISION_CONFLICT' };
+    }
+    if (code === 'NOT_FOUND') {
+      return { status: 'BLOCKED', reason: 'AGGREGATE_NOT_FOUND' };
+    }
+    return { status: 'BLOCKED', reason: 'DECISION_UNAVAILABLE' };
+  }
+};
 
 const sameStringArray = (left: readonly string[], right: readonly string[]): boolean => {
   const a = [...left].sort();
@@ -797,7 +849,7 @@ export const createComparisonV2ReviewBridge = (
         return { status: 'BLOCKED', reason: 'AGGREGATE_INVALID' };
       }
       if (draft.freshnessDigest !== comparisonFreshnessDigestV2(expected)) {
-        return { status: 'BLOCKED', reason: 'STALE_COMPARISON' };
+        return staleDraftOutcome(dependencies.repository, draft, request, now);
       }
       let current: Awaited<ReturnType<ComparisonV2ReviewFreshnessPort['getCurrent']>>;
       try {
@@ -824,10 +876,9 @@ export const createComparisonV2ReviewBridge = (
       try {
         assertComparisonFreshForReviewV2(freshness, aggregate.comparison);
       } catch {
-        return {
-          status: 'BLOCKED',
-          reason: freshness.status === 'STALE' ? 'STALE_COMPARISON' : 'REVIEW_NOT_ELIGIBLE',
-        };
+        return freshness.status === 'STALE'
+          ? staleDraftOutcome(dependencies.repository, draft, request, now)
+          : { status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' };
       }
       if (request.decision === 'APPROVE') {
         if (

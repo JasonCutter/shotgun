@@ -422,6 +422,60 @@ describe.runIf(databaseUrl)('WP5 v2 Review PostgreSQL persistence', () => {
     }
   });
 
+  it('Issue #299: atomically converges only the exact Draft revision to STALE', async () => {
+    const fixture = await makeFixture(pool!);
+    const repository = new PostgresChangeSetReviewV2Repository(pool!);
+    await repository.saveDraft(fixture.draft);
+
+    const stale = await repository.markStaleIfCurrent({
+      projectId: fixture.projectId,
+      changeSetId: fixture.draft.changeSetId,
+      expectedRevisionNumber: fixture.draft.revisionNumber,
+      expectedContentDigest: fixture.draft.contentDigest,
+      updatedAt: '2026-09-05T12:00:02.000Z',
+    });
+    expect(stale.status).toBe('STALE');
+    expect(stale.revisionNumber).toBe(fixture.draft.revisionNumber);
+    expect(stale.contentDigest).not.toBe(fixture.draft.contentDigest);
+    expect(() => validateDraftChangeSetV2(stale, { allowStale: true })).not.toThrow();
+    expect(
+      (await repository.findDraftByComparisonId(fixture.projectId, fixture.comparisonId))?.status,
+    ).toBe('STALE');
+
+    await expect(
+      repository.markStaleIfCurrent({
+        projectId: fixture.projectId,
+        changeSetId: fixture.draft.changeSetId,
+        expectedRevisionNumber: fixture.draft.revisionNumber,
+        expectedContentDigest: fixture.draft.contentDigest,
+        updatedAt: '2026-09-05T12:00:03.000Z',
+      }),
+    ).rejects.toMatchObject({ code: 'STALE_VERSION' });
+    await expect(
+      repository.recordDecision({
+        projectId: fixture.projectId,
+        changeSetId: fixture.draft.changeSetId,
+        expectedRevisionNumber: stale.revisionNumber,
+        expectedContentDigest: stale.contentDigest,
+        decision: {
+          decisionId: `stale-decision-${fixture.projectId}`,
+          decision: 'APPROVE',
+          actor: { type: 'user', id: 'issue-299-owner' },
+          reason: 'must not approve stale Draft',
+          decidedAt: '2026-09-05T12:00:04.000Z',
+        },
+        updated: { ...stale, status: 'APPROVED' },
+      }),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    const counts = await pool!.query<{ decisions: string; manifests: string }>(
+      `SELECT
+         (SELECT count(*)::text FROM review.decisions_v2 WHERE project_id = $1) AS decisions,
+         (SELECT count(*)::text FROM review.approved_manifests_v2 WHERE project_id = $1) AS manifests`,
+      [fixture.projectId],
+    );
+    expect(counts.rows[0]).toEqual({ decisions: '0', manifests: '0' });
+  });
+
   it('ADR-163/R18: migration re-entry rejects a conflicting immutable snapshot', async () => {
     const fixture = await makeFixture(pool!);
     const repository = new PostgresChangeSetReviewV2Repository(pool!);

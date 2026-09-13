@@ -354,7 +354,7 @@ export const ReviewWorkspace = () => {
   );
 
   const handleDecisionFailure = useCallback(
-    (
+    async (
       error: unknown,
       request: {
         clientRequestId: string;
@@ -408,9 +408,37 @@ export const ReviewWorkspace = () => {
               : `결정을 기록하지 못했습니다: ${INTENT_LABELS[intent]}`,
         retryable: failure?.retryability === 'SAFE' || failure?.retryability === 'CONDITIONAL',
       });
+      if (failure?.code === 'REVIEW_CONTEXT_STALE' && v2Recovery) {
+        try {
+          // The server has already performed the authoritative freshness
+          // check.  Re-read only the queue and exact context so the browser
+          // adopts the server-returned STALE state; it never synthesizes a
+          // stale state or retries the rejected decision.
+          await queue.refetch();
+          const nextContext = await reviewClient.getReviewContext({
+            schemaVersion: '1.0.0',
+            reviewContextId: request.reviewContextId,
+            contextRevision: request.expectedContextRevision,
+          });
+          setManualContext(nextContext);
+          dispatch({
+            type: 'SELECT_CONTEXT',
+            reviewContextId: nextContext.context.reviewContextId,
+            contextRevision: nextContext.context.contextRevision,
+          });
+          dispatch({ type: 'CONTEXT_RESOLVED' });
+          const firstItem = nextContext.context.items[0];
+          if (firstItem) dispatch({ type: 'SELECT_ITEM', reviewItemId: firstItem.reviewItemId });
+          announce('검토 대상이 변경되어 최신 상태를 확인했습니다. 재비교가 필요합니다.');
+          return;
+        } catch {
+          // Keep the typed decision failure visible when the recovery read is
+          // itself unavailable; no local state is promoted to STALE.
+        }
+      }
       announce(REVIEW_ANNOUNCEMENTS.DECISION_REJECTED);
     },
-    [announce],
+    [announce, queue.refetch, reviewClient],
   );
 
   const decide = useCallback(
@@ -508,7 +536,7 @@ export const ReviewWorkspace = () => {
           });
         }
       } catch (error) {
-        handleDecisionFailure(
+        await handleDecisionFailure(
           error,
           request,
           semanticDigest,

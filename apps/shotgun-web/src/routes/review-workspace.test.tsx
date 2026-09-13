@@ -276,31 +276,37 @@ const createV2DecisionFetchMock = (options?: { readonly staleOnDecision?: boolea
       if (path.endsWith('/review/queue')) {
         const request = body as unknown as ListReviewQueueRequestV1;
         queueRequests.push(request);
+        const queuedV2Item = {
+          schemaVersion: '1.0.0' as const,
+          reviewContextId: 'review:comparison-v2:change-set-1',
+          contextRevision: 1,
+          targetKind: 'COMPARISON_V2_CHANGE_SET' as const,
+          targetId: 'change-set-1',
+          targetLabel: 'V2 candidate · ADD_CLAIM',
+          aggregateState: 'PENDING' as const,
+          itemCount: 1,
+          updatedAt: now,
+          attentionReasons: ['REQUIRES_ACTION'] as const,
+          capabilities: ['LIST_QUEUE', 'READ_CONTEXT', 'READ_ITEM', 'REVALIDATE'] as const,
+        };
+        const staleV2Item = { ...queuedV2Item, aggregateState: 'STALE' as const };
         return responseJson(
           queuePage(
             queueRequests.length === 1
-              ? [
-                  {
-                    schemaVersion: '1.0.0',
-                    reviewContextId: 'review:comparison-v2:change-set-1',
-                    contextRevision: 1,
-                    targetKind: 'COMPARISON_V2_CHANGE_SET',
-                    targetId: 'change-set-1',
-                    targetLabel: 'V2 candidate · ADD_CLAIM',
-                    aggregateState: 'PENDING',
-                    itemCount: 1,
-                    updatedAt: now,
-                    attentionReasons: ['REQUIRES_ACTION'],
-                    capabilities: ['LIST_QUEUE', 'READ_CONTEXT', 'READ_ITEM', 'REVALIDATE'],
-                  },
-                ]
-              : [],
+              ? [queuedV2Item]
+              : options?.staleOnDecision
+                ? [staleV2Item]
+                : [],
           ),
         );
       }
       if (path.endsWith('/review/contexts/read')) {
         const revision = Number(body['contextRevision']);
-        return responseJson(v2ContextResult(revision, revision > 1));
+        return responseJson(
+          options?.staleOnDecision
+            ? staleV2ContextResult()
+            : v2ContextResult(revision, revision > 1),
+        );
       }
       if (path.endsWith('/review/items/read')) {
         return responseJson({
@@ -556,10 +562,9 @@ describe('Review Workspace deep links', () => {
     await userEvent.click(screen.getByRole('button', { name: '승인 기록' }));
 
     expect(
-      await screen.findByText(
-        '이 검토는 최신 상태가 아닙니다. 승인하기 전에 새로고침하거나 Candidate를 재비교하세요.',
-      ),
+      await screen.findByText('변경됨 · 검토 대상이 변경되었습니다. 재검증이 필요합니다.'),
     ).toBeTruthy();
+    expect(await screen.findByRole('button', { name: '재비교' })).toBeTruthy();
     expect(screen.queryByText('Remote Product API failure could not be decoded.')).toBeNull();
   });
 

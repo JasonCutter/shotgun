@@ -701,6 +701,79 @@ export type SemanticComparisonStatusView = {
   >;
 };
 
+/**
+ * Bounded Product result for an explicit Stage 5 re-entry.  The browser may
+ * identify a stale review by its immutable Change Set identity; the server
+ * resolves that identity to the authoritative Candidate before issuing the
+ * existing RecompareClaimCandidate command.
+ */
+export type RecompareCandidateRequest =
+  | { readonly candidateId: string; readonly idempotencyKey: string }
+  | { readonly changeSetId: string; readonly idempotencyKey: string };
+
+export type RecompareCandidateV2Status = 'COMPLETED' | 'BLOCKED' | 'INCOMPLETE' | 'FAILED';
+
+export type RecompareCandidateV2Result =
+  | {
+      readonly status: 'COMPLETED';
+      readonly comparisonId?: string;
+      readonly snapshotVersion?: number;
+      readonly snapshotDigest?: string;
+    }
+  | { readonly status: 'BLOCKED'; readonly reason?: string; readonly detail?: string }
+  | {
+      readonly status: 'INCOMPLETE' | 'FAILED';
+      readonly comparisonId: string;
+      readonly snapshotVersion: number;
+      readonly snapshotDigest: string;
+      readonly analysisRevisionId: string;
+      readonly analysisState:
+        | 'PENDING'
+        | 'ANALYZING'
+        | 'COMPLETED'
+        | 'SEMANTIC_UNAVAILABLE'
+        | 'FAILED_RETRYABLE'
+        | 'FAILED_TERMINAL'
+        | 'POLICY_BLOCKED';
+      readonly safeFailureCode:
+        | 'SEMANTIC_UNAVAILABLE'
+        | 'POLICY_DENIED'
+        | 'RETRYABLE_DEPENDENCY'
+        | 'TERMINAL_FAILURE'
+        | 'OUTCOME_UNKNOWN'
+        | 'CONTRACT_FAILURE'
+        | 'STALE_COMPARISON'
+        | 'SHORTLIST_COVERAGE_FAILURE'
+        | 'RESOURCE_SCOPE_LEAK'
+        | 'PROVIDER_UNAVAILABLE'
+        | 'CAPABILITY_UNAVAILABLE'
+        | 'ANALYSIS_TIMEOUT';
+    };
+
+export type RecompareCandidateReviewResult =
+  | { readonly status: 'DRAFT_CREATED' }
+  | { readonly status: 'BLOCKED'; readonly reason: string }
+  | { readonly status: 'NOT_ATTEMPTED' };
+
+export type RecompareCandidateDomainResult = {
+  readonly candidateId: string;
+  readonly candidateRevisionNumber: number;
+  readonly rollout: 'V1_ONLY' | 'V2_SHADOW' | 'V2_ACTIVE';
+  readonly v1Executed: boolean;
+  readonly v2?: RecompareCandidateV2Result;
+  readonly review?: RecompareCandidateReviewResult;
+  readonly comparisonId?: string;
+  readonly snapshotVersion?: number;
+  readonly snapshotDigest?: string;
+};
+
+export type RecompareCandidateResponse = {
+  readonly commandStatus: string;
+  readonly result: RecompareCandidateDomainResult;
+  /** Present only when a V2 re-entry created a new Review Draft Change Set. */
+  readonly reviewChangeSetId?: string;
+};
+
 export type AIProviderPrivacyProposal = {
   readonly proposalId: string;
   readonly projectId: string;
@@ -908,12 +981,9 @@ export type ShotgunApiClient = {
     options?: RequestOptions,
   ): Promise<SemanticComparisonStatusView>;
   recompareCandidate(
-    params: { readonly candidateId: string; readonly idempotencyKey: string },
+    params: RecompareCandidateRequest,
     options?: RequestOptions,
-  ): Promise<{
-    readonly commandStatus: string;
-    readonly result: unknown;
-  }>;
+  ): Promise<RecompareCandidateResponse>;
   getAICredentialWriteOutcome(
     params:
       | {

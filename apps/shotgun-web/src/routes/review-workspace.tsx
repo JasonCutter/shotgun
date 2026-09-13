@@ -11,7 +11,9 @@ import {
   type ReviewFailureReasonV1,
   type ReviewQueueItemV1,
   type ReviewTargetKindV1,
+  type RecompareCandidateResponse,
   type RevalidateReviewContextResultV1,
+  type ShotgunApiClient,
 } from '@shotgun/api-client';
 
 import { EmptyState } from '../components/empty-state.js';
@@ -32,6 +34,7 @@ import {
   reduceReviewWorkspaceState,
 } from '../knowledge/review-workspace-state.js';
 import { reviewContextIdForResource } from '../knowledge/review-route-identity.js';
+import { useAppRuntime } from '../app/providers.js';
 
 /**
  * FE-P4-S1 Review Center Workspace (`/review`, guarded).
@@ -94,6 +97,7 @@ const statusLabel = (state: ReviewAggregateStateV1): string =>
 
 export const ReviewWorkspace = () => {
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
+  const { apiClient } = useAppRuntime();
   const reviewClient = useMemo(() => createFrontendReviewClient(), []);
   const [searchParameters] = useSearchParams();
   const [state, dispatch] = useReducer(
@@ -320,6 +324,33 @@ export const ReviewWorkspace = () => {
       announce(REVIEW_ANNOUNCEMENTS.CONTEXT_SELECTED(item.targetLabel));
     },
     [announce],
+  );
+
+  const adoptRecompareCompleted = useCallback(
+    async (result: RecompareCandidateResponse) => {
+      const refreshed = await queue.refetch();
+      const v2ComparisonId =
+        result.result.v2 && 'comparisonId' in result.result.v2
+          ? result.result.v2.comparisonId
+          : undefined;
+      const targetId =
+        result.reviewChangeSetId ??
+        (result.result.comparisonId
+          ? `comparison-v2:${result.result.comparisonId}`
+          : v2ComparisonId
+            ? `comparison-v2:${v2ComparisonId}`
+            : undefined);
+      const item = targetId
+        ? refreshed.data?.items.find((candidate) => candidate.targetId === targetId)
+        : undefined;
+      if (item) {
+        selectContext(item);
+        announce('재비교가 완료되어 최신 시맨틱 비교 검토 항목을 열었습니다.');
+      } else {
+        announce('재비교는 완료되었지만 최신 검토 항목을 대기열에서 확인하지 못했습니다.');
+      }
+    },
+    [announce, queue.refetch, selectContext],
   );
 
   const handleDecisionFailure = useCallback(
@@ -684,6 +715,7 @@ export const ReviewWorkspace = () => {
               comment={state.comment}
               contextRequest={contextRequest!}
               scope={scope}
+              apiClient={apiClient}
               reviewClient={reviewClient}
               onSelectItem={(reviewItemId) => {
                 dispatch({ type: 'SELECT_ITEM', reviewItemId });
@@ -699,6 +731,7 @@ export const ReviewWorkspace = () => {
               onDecide={decide}
               onRecover={recoverOutcomeUnknown}
               onContextRevalidated={adoptRevalidatedContext}
+              onRecompareCompleted={adoptRecompareCompleted}
               outcomePhase={state.phase}
               selectedItemDetail={selectedItemDetail}
             />
@@ -721,6 +754,7 @@ type ReviewContextDetailProps = {
     contextRevision: number;
   };
   readonly scope: ReturnType<typeof reviewScopeFromShellOrNull>;
+  readonly apiClient: ShotgunApiClient;
   readonly reviewClient: ReturnType<typeof createFrontendReviewClient>;
   readonly onSelectItem: (reviewItemId: string) => void;
   readonly onSetDraft: (
@@ -736,6 +770,7 @@ type ReviewContextDetailProps = {
   ) => Promise<void>;
   readonly onRecover: () => Promise<void>;
   readonly onContextRevalidated: (context: RevalidateReviewContextResultV1) => Promise<void>;
+  readonly onRecompareCompleted: (result: RecompareCandidateResponse) => Promise<void>;
   readonly outcomePhase: { kind: 'OUTCOME_UNKNOWN'; clientRequestId: string } | { kind: string };
   readonly selectedItemDetail: {
     data?: Awaited<
@@ -752,6 +787,7 @@ const ReviewContextDetail = ({
   drafts,
   comment,
   contextRequest,
+  apiClient,
   reviewClient,
   onSelectItem,
   onSetDraft,
@@ -759,6 +795,7 @@ const ReviewContextDetail = ({
   onDecide,
   onRecover,
   onContextRevalidated,
+  onRecompareCompleted,
   outcomePhase,
   selectedItemDetail,
 }: ReviewContextDetailProps) => {
@@ -766,7 +803,12 @@ const ReviewContextDetail = ({
   const stale = context.aggregateState === 'STALE';
   const restricted = context.aggregateState === 'ACCESS_RESTRICTED';
   const unavailable = context.aggregateState === 'UNAVAILABLE';
+  const recompareEligible =
+    stale && context.targetKind === 'COMPARISON_V2_CHANGE_SET' && !restricted && !unavailable;
   const selectedItem = context.items.find((item) => item.reviewItemId === selectedItemId);
+  const [recomparePending, setRecomparePending] = useState(false);
+  const [recompareError, setRecompareError] = useState<string | null>(null);
+  const [recompareOutcome, setRecompareOutcome] = useState<string | null>(null);
 
   const revalidate = async () => {
     if (!contextRequest) return;
@@ -785,6 +827,54 @@ const ReviewContextDetail = ({
     } catch (error) {
       // The context query will surface the typed failure.
       void error;
+    }
+  };
+
+  const recompare = async () => {
+    if (!recompareEligible || recomparePending) return;
+    setRecomparePending(true);
+    setRecompareError(null);
+    setRecompareOutcome(null);
+    try {
+      const result = await apiClient.recompareCandidate({
+        changeSetId: context.targetId,
+        idempotencyKey: freshRequestId('recompare'),
+      });
+      const domain = result.result;
+      const v2 = domain.v2;
+      const completed =
+        domain.rollout === 'V2_ACTIVE' &&
+        v2?.status === 'COMPLETED' &&
+        domain.review?.status === 'DRAFT_CREATED' &&
+        Boolean(
+          result.reviewChangeSetId ??
+          domain.comparisonId ??
+          (v2 && 'comparisonId' in v2 ? v2.comparisonId : undefined),
+        );
+      if (completed) {
+        await onRecompareCompleted(result);
+        return;
+      }
+      const v2Status = v2?.status;
+      const blockedReason = v2?.status === 'BLOCKED' ? v2.reason : undefined;
+      const reviewStatus = domain.review?.status;
+      setRecompareOutcome(
+        domain.rollout !== 'V2_ACTIVE'
+          ? '현재 비교 권한이 V2 활성 상태가 아니어서 재비교를 완료하지 못했습니다.'
+          : v2Status === 'BLOCKED'
+            ? `재비교가 차단되었습니다${blockedReason ? `: ${blockedReason}` : '.'}`
+            : v2Status === 'INCOMPLETE' || v2Status === 'FAILED'
+              ? `재비교가 완료되지 않았습니다 (${v2Status}). 복구 가능한 상태로 남아 있습니다.`
+              : reviewStatus === 'BLOCKED' || reviewStatus === 'NOT_ATTEMPTED'
+                ? '비교는 끝났지만 Review 초안을 만들지 못했습니다. 복구 가능한 상태로 남아 있습니다.'
+                : '재비교 결과를 완료로 확인하지 못했습니다. 복구 가능한 상태로 남아 있습니다.',
+      );
+    } catch (cause) {
+      setRecompareError(
+        cause instanceof Error ? cause.message : '재비교 요청을 처리하지 못했습니다.',
+      );
+    } finally {
+      setRecomparePending(false);
     }
   };
 
@@ -816,6 +906,17 @@ const ReviewContextDetail = ({
           <button type="button" onClick={() => void revalidate()}>
             새 리비전으로 재검증
           </button>
+        ) : null}
+        {recompareEligible ? (
+          <section className="review-recompare" aria-label="시맨틱 비교 재비교">
+            <h3>최신 Canonical 스냅샷으로 재비교</h3>
+            <p>오래된 V2 비교를 다시 실행하고 새 Review 초안을 대기열에 표시합니다.</p>
+            {recompareError ? <p role="alert">{recompareError}</p> : null}
+            {recompareOutcome ? <p role="status">{recompareOutcome}</p> : null}
+            <button type="button" disabled={recomparePending} onClick={() => void recompare()}>
+              {recomparePending ? '재비교 중…' : '재비교'}
+            </button>
+          </section>
         ) : null}
         {restricted || unavailable ? (
           <p className="status-message" role="status">

@@ -12,6 +12,8 @@ import type {
   ShotgunApiClient,
   FrontendCommandSubmission,
   FrontendCommandMutationResponse,
+  RecompareCandidateRequest,
+  RecompareCandidateResponse,
   SemanticComparisonStatusView,
 } from './contracts.js';
 import { getSharedCsrfMutationManager } from './csrf-manager.js';
@@ -26,6 +28,7 @@ import {
   decodeAITestConnectionResult,
   decodeLogoutEnvelope,
   decodeProductApiErrorBody,
+  decodeRecompareCandidateResponse,
   decodeSessionEnvelope,
 } from './decode.js';
 import {
@@ -1020,9 +1023,9 @@ export const createShotgunApiClient = (
     },
 
     async recompareCandidate(
-      params: { readonly candidateId: string; readonly idempotencyKey: string },
+      params: RecompareCandidateRequest,
       requestOptions?: RequestOptions,
-    ): Promise<{ readonly commandStatus: string; readonly result: unknown }> {
+    ): Promise<RecompareCandidateResponse> {
       return runMutation(requestOptions?.signal, async (csrfToken) => {
         const response = await request('/comparisons/recompare', {
           method: 'POST',
@@ -1030,10 +1033,8 @@ export const createShotgunApiClient = (
           body: JSON.stringify(params),
           signal: requestOptions?.signal,
         });
-        const body = (await assertOk(response)) as { commandStatus: unknown; result: unknown };
-        if (typeof body.commandStatus !== 'string')
-          throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Recompare response is invalid.');
-        return { commandStatus: body.commandStatus, result: body.result };
+        const body = await assertOk(response);
+        return decodeRecompareCandidateResponse(body);
       });
     },
 

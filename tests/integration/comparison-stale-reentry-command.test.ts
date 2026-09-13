@@ -6,6 +6,7 @@ import type { InMemoryComparisonRepository } from '../../adapters/stage5-in-memo
 import { createCommand, type ClaimCandidate } from '../../packages/contracts/src/index.js';
 import { hashPassword, InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
 import type { CandidateRepositoryPort } from '../../modules/candidate-generation/src/index.js';
+import type { ReviewV2RepositoryPort } from '../../modules/change-set-review/src/index.js';
 
 const projectId = 'project-stale-reentry-integration';
 const actor = { type: 'user' as const, id: 'owner-stale-reentry' };
@@ -212,6 +213,21 @@ describe('Stage 5 stale comparison re-entry command boundary', () => {
     const app = await createApplication({
       authRepository,
       candidateRepository: candidateRepository([candidate('candidate-route')]),
+      changeSetReviewV2Repository: {
+        findDraftById: async (requestedProjectId, requestedChangeSetId) =>
+          requestedProjectId === projectId &&
+          (requestedChangeSetId === 'comparison-v2:stale' ||
+            requestedChangeSetId === 'comparison-v2:mismatch')
+            ? ({
+                projectId:
+                  requestedChangeSetId === 'comparison-v2:mismatch' ? 'other-project' : projectId,
+                changeSetId: requestedChangeSetId,
+                candidate: { id: 'candidate-route' },
+              } as unknown as Awaited<
+                ReturnType<NonNullable<ReviewV2RepositoryPort['findDraftById']>>
+              >)
+            : undefined,
+      } as ReviewV2RepositoryPort,
       canonicalSnapshot: new InMemoryCanonicalSnapshotAdapter({ [projectId]: [] }),
       canonicalProjectionRecoveryIntervalMs: false,
       discoverySchedulerIntervalMs: false,
@@ -237,6 +253,45 @@ describe('Stage 5 stale comparison re-entry command boundary', () => {
         commandStatus: 'processed',
         result: { candidateId: 'candidate-route', snapshotVersion: 1 },
       });
+
+      const byChangeSet = await app.server.inject({
+        method: 'POST',
+        url: '/comparisons/recompare',
+        headers: { cookie, 'x-csrf-token': await csrf() },
+        payload: {
+          changeSetId: 'comparison-v2:stale',
+          idempotencyKey: 'route-recompare-change-set',
+        },
+      });
+      expect(byChangeSet.statusCode).toBe(200);
+      expect(byChangeSet.json()).toMatchObject({
+        commandStatus: 'processed',
+        result: { candidateId: 'candidate-route' },
+      });
+
+      const missingChangeSet = await app.server.inject({
+        method: 'POST',
+        url: '/comparisons/recompare',
+        headers: { cookie, 'x-csrf-token': await csrf() },
+        payload: {
+          changeSetId: 'comparison-v2:missing',
+          idempotencyKey: 'route-recompare-missing',
+        },
+      });
+      expect(missingChangeSet.statusCode).toBe(404);
+      expect(missingChangeSet.json()).toMatchObject({ code: 'NOT_FOUND' });
+
+      const mismatchedChangeSet = await app.server.inject({
+        method: 'POST',
+        url: '/comparisons/recompare',
+        headers: { cookie, 'x-csrf-token': await csrf() },
+        payload: {
+          changeSetId: 'comparison-v2:mismatch',
+          idempotencyKey: 'route-recompare-mismatch',
+        },
+      });
+      expect(mismatchedChangeSet.statusCode).toBe(400);
+      expect(mismatchedChangeSet.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
 
       const invalid = await app.server.inject({
         method: 'POST',

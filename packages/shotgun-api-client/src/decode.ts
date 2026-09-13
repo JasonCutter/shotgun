@@ -14,6 +14,9 @@ import type {
   AISettingsProvider,
   AISettingsProviderModel,
   AISettingsReadModel,
+  RecompareCandidateDomainResult,
+  RecompareCandidateResponse,
+  RecompareCandidateV2Result,
   SemanticComparisonStatusView,
   AIStandingProcessingPolicy,
   AITestConnectionResult,
@@ -89,6 +92,154 @@ export const decodeProductSessionView = (value: unknown): ProductSessionView => 
     session: { expiresAt: session.expiresAt },
   };
   */
+};
+
+const boundedString = (value: unknown, maxLength = 256): string | undefined => {
+  if (value === undefined) return undefined;
+  if (!nonEmptyString(value) || value.length > maxLength) throw invalidProductApiResponse();
+  return value;
+};
+
+const requiredString = (value: unknown, maxLength = 256): string => {
+  const result = boundedString(value, maxLength);
+  if (!result) throw invalidProductApiResponse();
+  return result;
+};
+
+const requiredSafeInteger = (value: unknown, minimum = 0): number => {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < minimum) {
+    throw invalidProductApiResponse();
+  }
+  return value;
+};
+
+const decodeRecompareV2Result = (value: unknown): RecompareCandidateV2Result => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  const status = value.status;
+  if (status === 'COMPLETED') {
+    return {
+      status,
+      ...(boundedString(value.comparisonId)
+        ? { comparisonId: boundedString(value.comparisonId) }
+        : {}),
+      ...(value.snapshotVersion === undefined
+        ? {}
+        : { snapshotVersion: requiredSafeInteger(value.snapshotVersion) }),
+      ...(boundedString(value.snapshotDigest)
+        ? { snapshotDigest: boundedString(value.snapshotDigest) }
+        : {}),
+    };
+  }
+  if (status === 'BLOCKED') {
+    return {
+      status,
+      ...(boundedString(value.reason) ? { reason: boundedString(value.reason) } : {}),
+      ...(boundedString(value.detail, 512) ? { detail: boundedString(value.detail, 512) } : {}),
+    };
+  }
+  if (status === 'INCOMPLETE' || status === 'FAILED') {
+    const analysisState = value.analysisState;
+    const safeFailureCode = value.safeFailureCode;
+    const analysisStates = [
+      'PENDING',
+      'ANALYZING',
+      'COMPLETED',
+      'SEMANTIC_UNAVAILABLE',
+      'FAILED_RETRYABLE',
+      'FAILED_TERMINAL',
+      'POLICY_BLOCKED',
+    ];
+    const safeFailureCodes = [
+      'SEMANTIC_UNAVAILABLE',
+      'POLICY_DENIED',
+      'RETRYABLE_DEPENDENCY',
+      'TERMINAL_FAILURE',
+      'OUTCOME_UNKNOWN',
+      'CONTRACT_FAILURE',
+      'STALE_COMPARISON',
+      'SHORTLIST_COVERAGE_FAILURE',
+      'RESOURCE_SCOPE_LEAK',
+      'PROVIDER_UNAVAILABLE',
+      'CAPABILITY_UNAVAILABLE',
+      'ANALYSIS_TIMEOUT',
+    ];
+    if (
+      !analysisStates.includes(String(analysisState)) ||
+      !safeFailureCodes.includes(String(safeFailureCode))
+    ) {
+      throw invalidProductApiResponse();
+    }
+    return {
+      status,
+      comparisonId: requiredString(value.comparisonId),
+      snapshotVersion: requiredSafeInteger(value.snapshotVersion),
+      snapshotDigest: requiredString(value.snapshotDigest),
+      analysisRevisionId: requiredString(value.analysisRevisionId),
+      analysisState: analysisState as Extract<
+        RecompareCandidateV2Result,
+        { status: 'INCOMPLETE' | 'FAILED' }
+      >['analysisState'],
+      safeFailureCode: safeFailureCode as Extract<
+        RecompareCandidateV2Result,
+        { status: 'INCOMPLETE' | 'FAILED' }
+      >['safeFailureCode'],
+    };
+  }
+  throw invalidProductApiResponse();
+};
+
+const decodeRecompareDomainResult = (value: unknown): RecompareCandidateDomainResult => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  const rollout = value.rollout;
+  if (rollout !== 'V1_ONLY' && rollout !== 'V2_SHADOW' && rollout !== 'V2_ACTIVE') {
+    throw invalidProductApiResponse();
+  }
+  const reviewValue = value.review;
+  let review: RecompareCandidateDomainResult['review'];
+  if (reviewValue !== undefined) {
+    if (!isRecord(reviewValue)) throw invalidProductApiResponse();
+    if (reviewValue.status === 'DRAFT_CREATED' || reviewValue.status === 'NOT_ATTEMPTED') {
+      review = { status: reviewValue.status };
+    } else if (reviewValue.status === 'BLOCKED') {
+      review = { status: 'BLOCKED', reason: requiredString(reviewValue.reason, 256) };
+    } else {
+      throw invalidProductApiResponse();
+    }
+  }
+  return {
+    candidateId: requiredString(value.candidateId),
+    candidateRevisionNumber: requiredSafeInteger(value.candidateRevisionNumber),
+    rollout,
+    v1Executed:
+      typeof value.v1Executed === 'boolean'
+        ? value.v1Executed
+        : (() => {
+            throw invalidProductApiResponse();
+          })(),
+    ...(value.v2 === undefined ? {} : { v2: decodeRecompareV2Result(value.v2) }),
+    ...(review === undefined ? {} : { review }),
+    ...(boundedString(value.comparisonId)
+      ? { comparisonId: boundedString(value.comparisonId) }
+      : {}),
+    ...(value.snapshotVersion === undefined
+      ? {}
+      : { snapshotVersion: requiredSafeInteger(value.snapshotVersion) }),
+    ...(boundedString(value.snapshotDigest)
+      ? { snapshotDigest: boundedString(value.snapshotDigest) }
+      : {}),
+  };
+};
+
+/** Decode only the safe, bounded domain receipt returned by Product re-entry. */
+export const decodeRecompareCandidateResponse = (value: unknown): RecompareCandidateResponse => {
+  if (!isRecord(value)) throw invalidProductApiResponse();
+  return {
+    commandStatus: requiredString(value.commandStatus, 64),
+    result: decodeRecompareDomainResult(value.result),
+    ...(value.reviewChangeSetId === undefined
+      ? {}
+      : { reviewChangeSetId: requiredString(value.reviewChangeSetId, 256) }),
+  };
 };
 
 export const decodeSessionEnvelope = (value: unknown): ProductSessionView => {

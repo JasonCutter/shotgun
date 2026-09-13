@@ -449,6 +449,13 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
           payload: { candidateId: requestCandidateId, idempotencyKey },
         });
       };
+      const invokeByChangeSet = async (changeSetId: string, idempotencyKey: string) =>
+        application.server.inject({
+          method: 'POST',
+          url: '/comparisons/recompare',
+          headers: { cookie, 'x-csrf-token': csrf },
+          payload: { changeSetId, idempotencyKey },
+        });
       const decideV1 = async (changeSet: {
         readonly changeSetId: string;
         readonly contentDigest: string;
@@ -563,6 +570,32 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       if (!reenteredDraft) throw new Error('V2 re-entry did not materialize a Review draft.');
       expect(reenteredDraft.expectedCanonicalVersion).toBe(1);
       expect((await canonical.getSnapshot(projectId)).version).toBe(1);
+
+      // The Product locator bridge resolves the persisted PostgreSQL Change Set
+      // to its Candidate without reading presentation text. It reuses the
+      // existing governed V2 identity and preserves the original draft.
+      const reenteredByChangeSet = await invokeByChangeSet(
+        reenteredDraft.changeSetId,
+        'product-key-b-by-change-set',
+      );
+      expect(reenteredByChangeSet.statusCode).toBe(200);
+      expect(reenteredByChangeSet.json()).toMatchObject({
+        result: {
+          candidateId,
+          rollout: 'V2_ACTIVE',
+          v1Executed: false,
+          v2: { status: 'COMPLETED', comparisonId: reenteredComparisonId },
+          review: { status: 'DRAFT_CREATED' },
+        },
+        reviewChangeSetId: reenteredDraft.changeSetId,
+      });
+      expect(providerCalls).toBe(1);
+      const missingByChangeSet = await invokeByChangeSet(
+        `comparison-v2:missing-${randomUUID()}`,
+        'product-key-b-missing-change-set',
+      );
+      expect(missingByChangeSet.statusCode).toBe(404);
+      expect(missingByChangeSet.json()).toMatchObject({ code: 'NOT_FOUND' });
 
       // G1 connector replay and G2 governed-identity replay are both exercised.
       const duplicateKey = await invoke('product-key-b-v1');

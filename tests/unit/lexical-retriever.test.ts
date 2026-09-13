@@ -191,13 +191,34 @@ describe('LexicalRetriever Unit Tests', () => {
   });
 
   it('delegates to Stage 7 repository when READY and maps to LexicalCandidateResult with ranks', async () => {
+    const currentSnapshot: CanonicalSnapshot = {
+      snapshotId: 'snap-3',
+      projectId: 'proj-alpha',
+      version: 3,
+      digest: 'sha256:snap-3',
+      claims: [
+        {
+          claimId: 'claim-1',
+          revisionNumber: 1,
+          text: 'Revenue grew 25% year-over-year.',
+          evidenceIds: ['ev-100'],
+        },
+        {
+          claimId: 'claim-2',
+          revisionNumber: 1,
+          text: 'Net profit increased by 15%.',
+          evidenceIds: ['ev-200'],
+        },
+      ],
+      createdAt: '2026-08-18T10:00:00.000Z',
+    };
     const sampleResults: CanonicalSearchResult[] = [
       {
         projectId: 'proj-alpha',
         claimId: 'claim-1',
         commitId: 'commit-1',
         revisionId: 'rev-1',
-        canonicalVersion: 2,
+        canonicalVersion: 1,
         claimText: 'Revenue grew 25% year-over-year.',
         sourceVersionId: 'src-ver-1',
         evidenceIds: ['ev-100'],
@@ -212,7 +233,7 @@ describe('LexicalRetriever Unit Tests', () => {
         claimId: 'claim-2',
         commitId: 'commit-2',
         revisionId: 'rev-2',
-        canonicalVersion: 2,
+        canonicalVersion: 1,
         claimText: 'Net profit increased by 15%.',
         sourceVersionId: 'src-ver-2',
         evidenceIds: ['ev-200'],
@@ -225,6 +246,14 @@ describe('LexicalRetriever Unit Tests', () => {
     ];
 
     const { retriever, recordedSearches } = createRig({
+      snapshot: currentSnapshot,
+      watermark: {
+        projectId: 'proj-alpha',
+        canonicalVersion: 3,
+        snapshotDigest: currentSnapshot.digest,
+        status: 'READY',
+        updatedAt: '2026-08-18T10:00:00.000Z',
+      },
       searchResults: sampleResults,
     });
 
@@ -242,7 +271,8 @@ describe('LexicalRetriever Unit Tests', () => {
       claimId: 'claim-1',
       commitId: 'commit-1',
       revisionId: 'rev-1',
-      canonicalVersion: 2,
+      projectionRowCanonicalVersion: 1,
+      resourceRevision: 1,
       claimText: 'Revenue grew 25% year-over-year.',
       sourceVersionId: 'src-ver-1',
       evidenceIds: ['ev-100'],
@@ -257,7 +287,8 @@ describe('LexicalRetriever Unit Tests', () => {
       claimId: 'claim-2',
       commitId: 'commit-2',
       revisionId: 'rev-2',
-      canonicalVersion: 2,
+      projectionRowCanonicalVersion: 1,
+      resourceRevision: 1,
       claimText: 'Net profit increased by 15%.',
       sourceVersionId: 'src-ver-2',
       evidenceIds: ['ev-200'],

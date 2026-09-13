@@ -158,18 +158,6 @@ const isLexicalReadyForSnapshot = (
   (readiness.projectedSnapshotDigest === undefined ||
     readiness.projectedSnapshotDigest === snapshot.digest);
 
-/**
- * Lexical projection rows historically use canonicalVersion as their resource
- * revision. Semantic rows resolved through the canonical reader carry the
- * claim revision. Accept both while pinning the emitted target to the
- * authoritative snapshot claim revision.
- */
-const isCompatibleClaimRevision = (
-  value: number | undefined,
-  claimRevision: number,
-  snapshotVersion: number,
-): boolean => value === undefined || value === claimRevision || value === snapshotVersion;
-
 export const comparisonLexicalProjectionWatermarkV2 = (
   readiness: ProjectionReadiness,
   snapshot: CanonicalSnapshot,
@@ -264,10 +252,11 @@ const isSnapshotCompatibleClaimResult = (
   ) {
     return false;
   }
-  if (!isCompatibleClaimRevision(item.authorityRevision, claim.revisionNumber, snapshot.version)) {
-    return false;
-  }
-  if (!isCompatibleClaimRevision(item.resourceRevision, claim.revisionNumber, snapshot.version)) {
+  if (
+    item.authority === 'CANONICAL' &&
+    (item.authorityRevision !== claim.revisionNumber ||
+      item.resourceRevision !== claim.revisionNumber)
+  ) {
     return false;
   }
   return item.resourceId === claim.claimId;
@@ -323,12 +312,20 @@ const findAuthorizedLexicalClaim = (
     if (
       !isNonEmpty(item.commitId) ||
       !isNonEmpty(item.revisionId) ||
-      item.canonicalVersion !== snapshot.version
+      !Number.isSafeInteger(item.projectionRowCanonicalVersion) ||
+      item.projectionRowCanonicalVersion < 1 ||
+      item.projectionRowCanonicalVersion > snapshot.version ||
+      item.resourceRevision === undefined ||
+      !Number.isSafeInteger(item.resourceRevision) ||
+      item.resourceRevision < 1
     ) {
       return { blocked: 'SNAPSHOT_INTEGRITY' };
     }
     const claim = snapshot.claims.find((entry) => entry.claimId === item.claimId);
     if (!claim) return { blocked: 'SNAPSHOT_INTEGRITY' };
+    if (item.resourceRevision !== claim.revisionNumber) {
+      return { blocked: 'SNAPSHOT_INTEGRITY' };
+    }
     if (isExactDuplicateV2(candidateText, claim.text)) return { claim };
   }
   return undefined;

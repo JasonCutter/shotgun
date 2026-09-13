@@ -201,6 +201,9 @@ export class DeterministicSemanticQueryClassificationPolicy implements SemanticQ
 const compareOrdinal = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 
+const isNonEmpty = (value: string | undefined): value is string =>
+  typeof value === 'string' && value.trim().length > 0;
+
 export class ProductKnowledgeResourceResolver implements KnowledgeResourceResolverPort {
   constructor(
     private readonly canonicalKnowledge: CanonicalClaimReaderPort,
@@ -710,20 +713,25 @@ export class LexicalRetriever implements LexicalRetrieverPort {
     }
 
     const results = await this.repository.search(projectId, query, limit, input.accessScopes);
-    const items: LexicalCandidateResult[] = results.map((res, index) => ({
-      claimId: res.claimId,
-      commitId: res.commitId,
-      revisionId: res.revisionId,
-      canonicalVersion: readiness.canonicalVersion,
-      claimText: res.claimText,
-      sourceVersionId: res.sourceVersionId,
-      evidenceIds: [...res.evidenceIds],
-      accessScope: [...res.accessScope],
-      sensitivity: res.sensitivity,
-      score: res.score,
-      matchType: res.matchType,
-      rank: index + 1,
-    }));
+    const claimsById = new Map((snapshot?.claims ?? []).map((claim) => [claim.claimId, claim]));
+    const items: LexicalCandidateResult[] = results.map((res, index) => {
+      const claim = claimsById.get(res.claimId);
+      return {
+        claimId: res.claimId,
+        commitId: res.commitId,
+        revisionId: res.revisionId,
+        projectionRowCanonicalVersion: res.canonicalVersion,
+        ...(claim === undefined ? {} : { resourceRevision: claim.revisionNumber }),
+        claimText: res.claimText,
+        sourceVersionId: res.sourceVersionId,
+        evidenceIds: [...res.evidenceIds],
+        accessScope: [...res.accessScope],
+        sensitivity: res.sensitivity,
+        score: res.score,
+        matchType: res.matchType,
+        rank: index + 1,
+      };
+    });
 
     return { items, readiness };
   }
@@ -1028,6 +1036,24 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
       const candidateMap = new Map<string, CandidateAccumulator>();
 
       for (const lex of lexItems) {
+        if (
+          !isNonEmpty(lex.commitId) ||
+          !isNonEmpty(lex.revisionId) ||
+          !Number.isSafeInteger(lex.projectionRowCanonicalVersion) ||
+          lex.projectionRowCanonicalVersion < 1 ||
+          lex.projectionRowCanonicalVersion > lexicalResult.readiness.canonicalVersion ||
+          lex.resourceRevision === undefined ||
+          !Number.isSafeInteger(lex.resourceRevision) ||
+          lex.resourceRevision < 1
+        ) {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage:
+              'Lexical projection row identity is not compatible with the current snapshot.',
+            module: 'hybrid-retrieval',
+            operation: 'fuse-candidates',
+          });
+        }
         const key = `CLAIM:${lex.claimId}`;
         const rrfScore = lexicalWeight / (rrfK + lex.rank);
         candidateMap.set(key, {
@@ -1035,9 +1061,9 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           resourceId: lex.claimId,
           text: lex.claimText,
           authority: 'CANONICAL',
-          authorityRevision: lex.canonicalVersion,
-          resourceRevision: lex.canonicalVersion,
-          canonicalVersion: lex.canonicalVersion,
+          authorityRevision: lex.resourceRevision,
+          resourceRevision: lex.resourceRevision,
+          canonicalVersion: lexicalResult.readiness.canonicalVersion,
           evidenceIds: [...lex.evidenceIds],
           accessScope: [...lex.accessScope],
           sensitivity: lex.sensitivity,
@@ -1067,14 +1093,16 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           (sem.resourceType === 'CLAIM' ? 'CANONICAL' : 'APPROVED_KNOWLEDGE');
         const hasExplicitAuthority =
           sem.authority !== undefined || sem.provenance?.authority !== undefined;
-        const canonicalVersion =
-          authority === 'CANONICAL' && hasExplicitAuthority ? sem.canonicalVersion : undefined;
-        const legacyCanonicalVersion = hasExplicitAuthority ? undefined : sem.canonicalVersion;
         const baseCanonicalVersion =
           sem.provenance?.authority === 'CANONICAL' ||
           sem.provenance?.authority === 'COMPILED_TRUTH'
             ? sem.provenance.baseCanonicalVersion
             : undefined;
+        const canonicalVersion =
+          authority === 'CANONICAL'
+            ? (baseCanonicalVersion ?? (hasExplicitAuthority ? sem.canonicalVersion : undefined))
+            : undefined;
+        const legacyCanonicalVersion = hasExplicitAuthority ? undefined : sem.canonicalVersion;
         const sourceProjectionDigest =
           sem.provenance?.authority === 'COMPILED_TRUTH'
             ? sem.provenance.sourceProjectionDigest
@@ -1083,17 +1111,33 @@ export class HybridRetrievalCoordinator implements HybridRetrievalCoordinatorPor
           sem.provenance?.authority === 'COMPILED_TRUTH'
             ? sem.provenance.projectionCanonicalVersion
             : (sem.provenance?.resourceRevision ?? sem.canonicalVersion);
+        const semanticResourceRevision = sem.provenance?.resourceRevision;
 
         const existing = candidateMap.get(key);
         if (existing) {
           if (
             existing.canonicalVersion !== undefined &&
-            (canonicalVersion ?? legacyCanonicalVersion) !== undefined &&
-            existing.canonicalVersion !== (canonicalVersion ?? legacyCanonicalVersion)
+            canonicalVersion !== undefined &&
+            existing.canonicalVersion !== canonicalVersion
           ) {
             throw new ShotgunError({
               code: 'VALIDATION_ERROR',
-              safeMessage: `Version mismatch for ${key}: lexical canonical version ${existing.canonicalVersion} !== semantic canonical version ${sem.canonicalVersion}.`,
+              safeMessage: `Canonical snapshot version mismatch for ${key}: lexical snapshot version ${existing.canonicalVersion} !== semantic base version ${canonicalVersion}.`,
+              module: 'hybrid-retrieval',
+              operation: 'fuse-candidates',
+            });
+          }
+
+          if (
+            existing.authority === 'CANONICAL' &&
+            authority === 'CANONICAL' &&
+            semanticResourceRevision !== undefined &&
+            existing.resourceRevision !== undefined &&
+            existing.resourceRevision !== semanticResourceRevision
+          ) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: `Claim resource revision mismatch for ${key}: lexical revision ${existing.resourceRevision} !== semantic revision ${semanticResourceRevision}.`,
               module: 'hybrid-retrieval',
               operation: 'fuse-candidates',
             });

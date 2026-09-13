@@ -63,7 +63,23 @@ providing a replaceable Port or a matching contract.
   validation.
 - Exact-head CI with Quality, Frontend, and Required Gates all `SUCCESS`.
 
-## 5. Migration, rollback and exclusions
+## 5. Verification results
+
+- Focused Ask workspace tests: 30 passed.
+- Frontend full suite: 49 files / 361 tests passed.
+- Root and Frontend typecheck: `SUCCESS`.
+- Changed-file ESLint and Prettier checks: `SUCCESS`.
+- Frontend build: `SUCCESS` (existing non-blocking bundle-size warning only).
+- Architecture test, `docs:validate`, Frontend Work Item, completion invariant,
+  projection drift, and OSS Gate checks: `SUCCESS`.
+- Exact-head CI run: [34775012382](https://github.com/JasonCutter/shotgun/actions/runs/34775012382).
+- CI head SHA: `65eb7037f44739030afdf2e64ebc420f5b1b68aa` (exact match).
+- Quality: `SUCCESS` (CI test suite and database tests included).
+- Frontend: `SUCCESS` (Frontend E2E included).
+- Required Gates: `SUCCESS`.
+- Node.js 20 deprecation annotations are non-blocking warnings.
+
+## 6. Migration, rollback and exclusions
 
 No migration or runtime dependency is introduced. Rollback is a normal code
 revert of the wrapper, regression, and this implementation record; existing
@@ -74,9 +90,9 @@ behavior, feedback, persistence, provider/model changes, Source/Evidence or
 Canonical mutations, ADR changes, Contract Snapshot changes, and Issue #256
 scope expansion.
 
-## 6. Review handoff
+## 7. Review handoff
 
 - Branch: `codex/issue-256-export-markdown-overflow`
 - Canonical base: `main@d07e5fe1fa12c905fca920f83666ad7da6a6896d`
-- Implementation head, PR number, and exact-head CI run are recorded after
-  final validation. Merge is intentionally not performed.
+- Implementation head: `65eb7037f44739030afdf2e64ebc420f5b1b68aa`
+- PR: [#297](https://github.com/JasonCutter/shotgun/pull/297), not merged.

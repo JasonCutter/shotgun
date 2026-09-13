@@ -1023,11 +1023,12 @@ describe('AskWorkspace', () => {
         })),
       },
     };
+    const exportedMarkdown = `# Exported answer\n\nOrdinary prose remains readable in a narrow pane.\n\n${'long-token-'.repeat(40)}`;
     const exportAnswerRun = vi.fn().mockResolvedValue({
       schemaVersion: '1.0.0',
       answerRunId: 'run-1',
       format: 'MARKDOWN',
-      content: 'exported answer',
+      content: exportedMarkdown,
     });
     const mockClient: AskWorkspaceClient = {
       getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
@@ -1085,7 +1086,9 @@ describe('AskWorkspace', () => {
       'run-1',
       expect.objectContaining({ format: 'MARKDOWN' }),
     );
-    expect(await screen.findByText('exported answer')).toBeTruthy();
+    const exportSurface = await screen.findByRole('region', { name: 'Answer export' });
+    expect(exportSurface.classList.contains('ask-export-surface')).toBe(true);
+    expect(exportSurface.querySelector('pre')?.textContent).toBe(exportedMarkdown);
   });
 
   it('targets the active-branch latest answer for default Ask slash discovery', async () => {

@@ -325,6 +325,206 @@ describe('WP6 comparison rollout runtime', () => {
     expect(outcome.review.status).toBe('NOT_ATTEMPTED');
   });
 
+  it('Issue #287 throws a typed retryable ACK failure for FAILED_RETRYABLE', async () => {
+    const runtime = runtimeInput(settingStore('V2_ACTIVE'), {
+      compare: async () =>
+        ({
+          status: 'FAILED',
+          analysis: { state: 'FAILED_RETRYABLE', safeFailureCode: 'RETRYABLE_DEPENDENCY' },
+          event: {},
+        }) as unknown as ComparisonV2OrchestrationOutcome,
+    });
+
+    await expect(
+      runtime.handleCandidateValidated({
+        projectId: 'project-1',
+        candidateId: 'candidate-1',
+        candidate: candidate(),
+        actor,
+        security,
+        executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+      }),
+    ).rejects.toMatchObject({ code: 'RETRYABLE_DEPENDENCY', retryable: true });
+  });
+
+  it('Issue #287 keeps terminal and policy failures non-retryable at the ACK boundary', async () => {
+    for (const outcome of [
+      {
+        status: 'FAILED',
+        analysis: { state: 'FAILED_TERMINAL', safeFailureCode: 'TERMINAL_FAILURE' },
+        event: {},
+      },
+      {
+        status: 'INCOMPLETE',
+        analysis: { state: 'POLICY_BLOCKED', safeFailureCode: 'POLICY_DENIED' },
+        event: {},
+      },
+    ]) {
+      const runtime = runtimeInput(settingStore('V2_ACTIVE'), {
+        compare: async () => outcome as unknown as ComparisonV2OrchestrationOutcome,
+      });
+      await expect(
+        runtime.handleCandidateValidated({
+          projectId: 'project-1',
+          candidateId: 'candidate-1',
+          candidate: candidate(),
+          actor,
+          security,
+          executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+        }),
+      ).rejects.toMatchObject({ retryable: false });
+    }
+  });
+
+  it('Issue #287 preserves OUTCOME_UNKNOWN as a non-ordinary retry boundary', async () => {
+    const runtime = runtimeInput(settingStore('V2_ACTIVE'), {
+      compare: async () =>
+        ({
+          status: 'FAILED',
+          analysis: { state: 'FAILED_RETRYABLE', safeFailureCode: 'OUTCOME_UNKNOWN' },
+          event: {},
+        }) as unknown as ComparisonV2OrchestrationOutcome,
+    });
+    await expect(
+      runtime.handleCandidateValidated({
+        projectId: 'project-1',
+        candidateId: 'candidate-1',
+        candidate: candidate(),
+        actor,
+        security,
+        executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+      }),
+    ).rejects.toMatchObject({ code: 'OUTCOME_UNKNOWN', retryable: false });
+  });
+
+  it('Issue #287 retries semantic unavailability only with typed provider evidence', async () => {
+    const retryable = runtimeInput(settingStore('V2_ACTIVE'), {
+      compare: async () =>
+        ({
+          status: 'INCOMPLETE',
+          analysis: { state: 'SEMANTIC_UNAVAILABLE', safeFailureCode: 'PROVIDER_UNAVAILABLE' },
+          event: {},
+        }) as unknown as ComparisonV2OrchestrationOutcome,
+    });
+    await expect(
+      retryable.handleCandidateValidated({
+        projectId: 'project-1',
+        candidateId: 'candidate-1',
+        candidate: candidate(),
+        actor,
+        security,
+        executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+      }),
+    ).rejects.toMatchObject({ retryable: true });
+
+    const terminal = runtimeInput(settingStore('V2_ACTIVE'), {
+      compare: async () =>
+        ({
+          status: 'INCOMPLETE',
+          analysis: { state: 'SEMANTIC_UNAVAILABLE', safeFailureCode: 'SEMANTIC_UNAVAILABLE' },
+          event: {},
+        }) as unknown as ComparisonV2OrchestrationOutcome,
+    });
+    await expect(
+      terminal.handleCandidateValidated({
+        projectId: 'project-1',
+        candidateId: 'candidate-1',
+        candidate: candidate(),
+        actor,
+        security,
+        executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+      }),
+    ).rejects.toMatchObject({ retryable: false });
+  });
+
+  it('Issue #287 classifies typed shortlist freshness and Review freshness evidence', async () => {
+    const shortlistRetryable = runtimeInput(settingStore('V2_ACTIVE'), {
+      compare: async () =>
+        ({
+          status: 'BLOCKED',
+          reason: 'SHORTLIST_BLOCKED',
+          evidence: {
+            source: 'SHORTLIST',
+            reason: 'LEXICAL_STALE',
+            readiness: { lexicalStatus: 'STALE' },
+          },
+        }) as unknown as ComparisonV2OrchestrationOutcome,
+    });
+    await expect(
+      shortlistRetryable.handleCandidateValidated({
+        projectId: 'project-1',
+        candidateId: 'candidate-1',
+        candidate: candidate(),
+        actor,
+        security,
+        executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+      }),
+    ).rejects.toMatchObject({ code: 'STALE_VERSION', retryable: true });
+
+    const reviewRetryable = runtimeInput(
+      settingStore('V2_ACTIVE'),
+      { compare: async () => completedOutcome() },
+      {
+        materializeDraft: async () => ({
+          status: 'BLOCKED',
+          reason: 'FRESHNESS_UNAVAILABLE',
+          retryable: true,
+        }),
+      },
+    );
+    await expect(
+      reviewRetryable.handleCandidateValidated({
+        projectId: 'project-1',
+        candidateId: 'candidate-1',
+        candidate: candidate(),
+        actor,
+        security,
+        executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+      }),
+    ).rejects.toMatchObject({ code: 'RETRYABLE_DEPENDENCY', retryable: true });
+  });
+
+  it('Issue #287 never derives retryability from a diagnostic detail string', async () => {
+    const runtime = runtimeInput(settingStore('V2_ACTIVE'), {
+      compare: async () =>
+        ({
+          status: 'BLOCKED',
+          reason: 'SHORTLIST_BLOCKED',
+          detail: 'LEXICAL_STALE:{"lexicalStatus":"STALE"}',
+        }) as unknown as ComparisonV2OrchestrationOutcome,
+    });
+    await expect(
+      runtime.handleCandidateValidated({
+        projectId: 'project-1',
+        candidateId: 'candidate-1',
+        candidate: candidate(),
+        actor,
+        security,
+        executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+      }),
+    ).rejects.toMatchObject({ retryable: false });
+  });
+
+  it('Issue #287 leaves explicit operator re-entry as a domain return', async () => {
+    const runtime = runtimeInput(settingStore('V2_ACTIVE'), {
+      compare: async () =>
+        ({
+          status: 'FAILED',
+          analysis: { state: 'FAILED_TERMINAL', safeFailureCode: 'TERMINAL_FAILURE' },
+          event: {},
+        }) as unknown as ComparisonV2OrchestrationOutcome,
+    });
+    const result = await runtime.handleCandidateValidated({
+      projectId: 'project-1',
+      candidateId: 'candidate-1',
+      candidate: candidate(),
+      actor,
+      security,
+      executionTrigger: 'EXPLICIT_OPERATOR_REENTRY',
+    });
+    expect(result.review).toEqual({ status: 'NOT_ATTEMPTED' });
+  });
+
   it('R6-07 blocks the Review bridge if authority downgrades mid-flight', async () => {
     const settings = settingStore('V2_ACTIVE');
     let reads = 0;

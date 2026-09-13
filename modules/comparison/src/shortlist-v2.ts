@@ -26,6 +26,8 @@ import {
   type ShortlistAuditV2,
   type ShortlistTargetIdentityV2,
 } from '../../../packages/contracts/src/index.js';
+import { SemanticRetrievalError } from '../../../packages/contracts/src/hybrid-retrieval.js';
+import { ShotgunError } from '../../../packages/contracts/src/errors.js';
 import type { CanonicalSnapshotPort } from './index.js';
 
 export const COMPARISON_SHORTLIST_POLICY_VERSION_V2 = 'comparison-shortlist-policy:v1' as const;
@@ -64,8 +66,12 @@ export type ShortlistBlockedReasonV2 =
 
 export type ShortlistReadinessMetadataV2 = {
   readonly lexicalStatus?: ProjectionReadiness['status'];
+  /** Internal-only evidence from a typed lexical dependency failure. */
+  readonly lexicalRetryable?: boolean;
   readonly semanticStatus?: SemanticReadinessStatus;
   readonly semanticExecution?: SemanticExecutionReadiness;
+  /** Internal-only evidence from a typed semantic dependency failure. */
+  readonly semanticRetryable?: boolean;
   readonly semanticDegradationStage?: SemanticDegradationStage;
   readonly semanticSafeFailureCode?: SemanticEmbeddingErrorCode;
 };
@@ -124,6 +130,19 @@ const semanticReadinessMetadata = (input: {
     ? {}
     : { semanticSafeFailureCode: input.semantic.safeFailureCode }),
 });
+
+const isRetryableDependencyError = (error: unknown): boolean => {
+  if (error instanceof SemanticRetrievalError) return true;
+  if (!(error instanceof ShotgunError)) return false;
+  if (error.code === 'OUTCOME_UNKNOWN') return false;
+  return (
+    error.retryable ||
+    error.code === 'RETRYABLE_DEPENDENCY' ||
+    error.code === 'TIMEOUT' ||
+    error.code === 'RATE_LIMITED' ||
+    error.code === 'OUTCOME_INDETERMINATE'
+  );
+};
 
 const isNonEmpty = (value: string | undefined): value is string =>
   typeof value === 'string' && value.trim().length > 0;
@@ -360,8 +379,10 @@ export class ComparisonShortlistV2Service implements ComparisonShortlistV2Port {
         accessScopes: request.security.accessScope,
         limit: retrievalLimit,
       });
-    } catch {
-      return blocked('LEXICAL_UNAVAILABLE');
+    } catch (error) {
+      return blocked('LEXICAL_UNAVAILABLE', {
+        ...(isRetryableDependencyError(error) ? { lexicalRetryable: true } : {}),
+      });
     }
 
     if (!isLexicalReadyForSnapshot(lexical.readiness, snapshot)) {
@@ -407,8 +428,11 @@ export class ComparisonShortlistV2Service implements ComparisonShortlistV2Port {
         security: request.security,
         limit: retrievalLimit,
       });
-    } catch {
-      return blocked('SEMANTIC_UNAVAILABLE', { lexicalStatus: lexical.readiness.status });
+    } catch (error) {
+      return blocked('SEMANTIC_UNAVAILABLE', {
+        lexicalStatus: lexical.readiness.status,
+        ...(isRetryableDependencyError(error) ? { semanticRetryable: true } : {}),
+      });
     }
 
     const hybridReadinessMetadata = (): ShortlistReadinessMetadataV2 =>
@@ -437,8 +461,11 @@ export class ComparisonShortlistV2Service implements ComparisonShortlistV2Port {
       generation = await this.dependencies.activeGenerationReader.getActiveGeneration(
         request.projectId,
       );
-    } catch {
-      return blocked('GENERATION_UNAVAILABLE', hybridReadinessMetadata());
+    } catch (error) {
+      return blocked('GENERATION_UNAVAILABLE', {
+        ...hybridReadinessMetadata(),
+        ...(isRetryableDependencyError(error) ? { semanticRetryable: true } : {}),
+      });
     }
     if (!isGenerationReady(generation, snapshot)) {
       return blocked('GENERATION_UNAVAILABLE', hybridReadinessMetadata());

@@ -66,6 +66,21 @@ export type ComparisonV2ReviewFreshnessPort = {
   }>;
 };
 
+/**
+ * Typed internal signal for a freshness read that may safely converge.  The
+ * Review bridge treats untyped exceptions as terminal evidence; callers must
+ * opt into retryability with this class rather than relying on message text.
+ */
+export class ComparisonV2ReviewFreshnessError extends Error {
+  readonly retryable: boolean;
+
+  constructor(input: { readonly retryable: boolean; readonly message?: string }) {
+    super(input.message ?? 'Comparison V2 freshness is unavailable.');
+    this.name = 'ComparisonV2ReviewFreshnessError';
+    this.retryable = input.retryable;
+  }
+}
+
 export type ReviewV2RepositoryPort = {
   saveDraft(draft: DraftChangeSetV2): Promise<DraftChangeSetV2>;
   /** Enumerates authoritative DraftChangeSetV2 rows for a project. */
@@ -178,7 +193,12 @@ export type ComparisonV2ReviewBridgeBlockedReason =
 
 export type ComparisonV2ReviewBridgeOutcome =
   | { readonly status: 'DRAFT_CREATED'; readonly draft: DraftChangeSetV2 }
-  | { readonly status: 'BLOCKED'; readonly reason: ComparisonV2ReviewBridgeBlockedReason };
+  | {
+      readonly status: 'BLOCKED';
+      readonly reason: ComparisonV2ReviewBridgeBlockedReason;
+      /** Present only for a typed, recoverable freshness read. */
+      readonly retryable?: boolean;
+    };
 
 export type ComparisonV2ReviewDecisionRequest = {
   readonly projectId: string;
@@ -567,8 +587,14 @@ export const createComparisonV2ReviewBridge = (
           authority: request.authority,
           security: request.security,
         });
-      } catch {
-        return { status: 'BLOCKED', reason: 'FRESHNESS_UNAVAILABLE' };
+      } catch (error) {
+        return {
+          status: 'BLOCKED',
+          reason: 'FRESHNESS_UNAVAILABLE',
+          ...(error instanceof ComparisonV2ReviewFreshnessError
+            ? { retryable: error.retryable }
+            : {}),
+        };
       }
       if (
         (expected.mode === 'SEMANTIC' || expected.mode === 'EMPTY_CANONICAL_BOOTSTRAP') &&

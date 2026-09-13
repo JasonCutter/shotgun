@@ -8,6 +8,7 @@ import {
   type Actor,
   type CanonicalSnapshot,
   type ClaimCandidate,
+  type ErrorCode,
   type ComparisonRolloutStateV2,
   type ReviewAuthoritySelectionV2,
   type SecurityContext,
@@ -19,6 +20,7 @@ import {
   COMPARISON_SEMANTIC_ANALYSIS_SCHEMA_REVISION_V2,
   type ComparisonCandidateV2ResolverPort,
   type ComparisonV2OrchestrationOutcome,
+  type ComparisonV2OrchestrationBlockedEvidence,
   type ComparisonV2OrchestratorPort,
   type ComparisonV2ExecutionTrigger,
   comparisonLexicalProjectionBaseV2,
@@ -26,6 +28,7 @@ import {
 } from '../../../modules/comparison/src/index.js';
 import type { LexicalRetrieverPort } from '../../../packages/contracts/src/hybrid-retrieval.js';
 import {
+  ComparisonV2ReviewFreshnessError,
   type ComparisonV2ReviewBridgePort,
   type ComparisonV2ReviewFreshnessPort,
 } from '../../../modules/change-set-review/src/index.js';
@@ -158,15 +161,33 @@ const canonicalIdentity = (snapshot: CanonicalSnapshot) => ({
   digest: snapshot.digest,
 });
 
+const retryableFreshnessCause = (error: unknown): boolean =>
+  error instanceof ShotgunError && error.retryable;
+
+const freshnessUnavailable = (input: {
+  readonly message: string;
+  readonly retryable: boolean;
+}): never => {
+  throw new ComparisonV2ReviewFreshnessError(input);
+};
+
 export const createComparisonV2ReviewFreshnessAdapter = (
   dependencies: FreshnessDependencies,
 ): ComparisonV2ReviewFreshnessPort => ({
   async getCurrent(input) {
     const { comparison } = input.aggregate;
-    const candidateRecord = await dependencies.candidate.findById(
-      comparison.projectId,
-      comparison.candidate.id,
-    );
+    let candidateRecord: Awaited<ReturnType<ComparisonCandidateV2ResolverPort['findById']>>;
+    try {
+      candidateRecord = await dependencies.candidate.findById(
+        comparison.projectId,
+        comparison.candidate.id,
+      );
+    } catch (error) {
+      return freshnessUnavailable({
+        message: 'candidate unavailable',
+        retryable: retryableFreshnessCause(error),
+      });
+    }
     if (
       !candidateRecord ||
       candidateRecord.projectId !== comparison.projectId ||
@@ -174,14 +195,30 @@ export const createComparisonV2ReviewFreshnessAdapter = (
       candidateRecord.revisionNumber !== comparison.candidate.revision ||
       candidateRecord.status !== 'READY'
     ) {
-      throw new Error('candidate unavailable');
+      return freshnessUnavailable({ message: 'candidate unavailable', retryable: false });
     }
-    const snapshot = await dependencies.canonicalSnapshot.getSnapshot(comparison.projectId);
-    const authority = await dependencies.rollout.resolve({
-      projectId: comparison.projectId,
-      candidateId: comparison.candidate.id,
-      candidateRevision: comparison.candidate.revision,
-    });
+    let snapshot: CanonicalSnapshot;
+    try {
+      snapshot = await dependencies.canonicalSnapshot.getSnapshot(comparison.projectId);
+    } catch (error) {
+      return freshnessUnavailable({
+        message: 'canonical snapshot unavailable',
+        retryable: retryableFreshnessCause(error),
+      });
+    }
+    let authority: ComparisonRolloutAuthority;
+    try {
+      authority = await dependencies.rollout.resolve({
+        projectId: comparison.projectId,
+        candidateId: comparison.candidate.id,
+        candidateRevision: comparison.candidate.revision,
+      });
+    } catch (error) {
+      return freshnessUnavailable({
+        message: 'rollout authority unavailable',
+        retryable: retryableFreshnessCause(error),
+      });
+    }
     const currentCandidate = candidateFromClaim(candidateRecord);
     const currentSnapshot = canonicalIdentity(snapshot);
     const common = {
@@ -204,12 +241,20 @@ export const createComparisonV2ReviewFreshnessAdapter = (
         },
       };
     }
-    const lexical = await dependencies.lexicalRetriever.retrieve({
-      projectId: comparison.projectId,
-      query: candidateRecord.claimText,
-      accessScopes: candidateRecord.accessScope,
-      limit: 100,
-    });
+    let lexical: Awaited<ReturnType<LexicalRetrieverPort['retrieve']>>;
+    try {
+      lexical = await dependencies.lexicalRetriever.retrieve({
+        projectId: comparison.projectId,
+        query: candidateRecord.claimText,
+        accessScopes: candidateRecord.accessScope,
+        limit: 100,
+      });
+    } catch (error) {
+      return freshnessUnavailable({
+        message: 'lexical projection unavailable',
+        retryable: retryableFreshnessCause(error),
+      });
+    }
     if (
       lexical.readiness.status !== 'READY' ||
       lexical.readiness.lag !== 0 ||
@@ -219,7 +264,10 @@ export const createComparisonV2ReviewFreshnessAdapter = (
       (lexical.readiness.projectedSnapshotDigest !== undefined &&
         lexical.readiness.projectedSnapshotDigest !== snapshot.digest)
     ) {
-      throw new Error('lexical projection unavailable');
+      return freshnessUnavailable({
+        message: 'lexical projection unavailable',
+        retryable: lexical.readiness.status === 'STALE',
+      });
     }
     if (
       comparison.shortlist &&
@@ -228,13 +276,23 @@ export const createComparisonV2ReviewFreshnessAdapter = (
         comparison.shortlist.lexicalProjectionBase !==
           comparisonLexicalProjectionBaseV2(lexical.readiness))
     ) {
-      throw new Error('lexical projection changed');
+      return freshnessUnavailable({ message: 'lexical projection changed', retryable: true });
     }
-    const generation = dependencies.activeGenerationReader
-      ? await dependencies.activeGenerationReader.getActiveGeneration(comparison.projectId)
-      : undefined;
+    let generation: Awaited<
+      ReturnType<NonNullable<SemanticActiveGenerationReaderPort['getActiveGeneration']>>
+    >;
+    try {
+      generation = dependencies.activeGenerationReader
+        ? await dependencies.activeGenerationReader.getActiveGeneration(comparison.projectId)
+        : undefined;
+    } catch (error) {
+      return freshnessUnavailable({
+        message: 'semantic generation unavailable',
+        retryable: retryableFreshnessCause(error),
+      });
+    }
     if (!generation || generation.buildStatus !== 'READY') {
-      throw new Error('semantic generation unavailable');
+      return freshnessUnavailable({ message: 'semantic generation unavailable', retryable: true });
     }
     const emptyCanonicalBootstrap =
       snapshot.claims.length === 0 &&
@@ -267,13 +325,21 @@ export const createComparisonV2ReviewFreshnessAdapter = (
     if (input.expected.mode !== 'SEMANTIC') {
       throw new Error('semantic freshness mode mismatch');
     }
-    const metadata = dependencies.readSemanticMetadata
-      ? await dependencies.readSemanticMetadata({
+    let metadata: FreshnessMetadata = {};
+    if (dependencies.readSemanticMetadata) {
+      try {
+        metadata = await dependencies.readSemanticMetadata({
           projectId: comparison.projectId,
           candidate: candidateRecord,
           security: input.security,
-        })
-      : {};
+        });
+      } catch (error) {
+        return freshnessUnavailable({
+          message: 'semantic metadata unavailable',
+          retryable: retryableFreshnessCause(error),
+        });
+      }
+    }
     return {
       identity: {
         ...common,
@@ -306,15 +372,136 @@ export const createComparisonV2ReviewFreshnessAdapter = (
 
 const requiredAckFailure = (input: {
   readonly request: Parameters<ComparisonV2RuntimeBoundary['handleCandidateValidated']>[0];
+  readonly classification: RequiredAckFailureClassification;
   readonly reason: string;
 }): ShotgunError =>
   new ShotgunError({
-    code: 'VALIDATION_ERROR',
+    code: input.classification.code,
     safeMessage: `Stage 5 V2 did not reach an authoritative Review terminal state (${input.reason}).`,
     module: 'stage5.comparison',
     operation: 'candidate-validated-v2-required-ack',
     correlationId: input.request.correlationId,
+    retryable: input.classification.retryable,
   });
+
+type RequiredAckFailureClassification = {
+  readonly code: ErrorCode;
+  readonly retryable: boolean;
+};
+
+const terminalClassification = (code: ErrorCode = 'VALIDATION_ERROR') =>
+  ({
+    code,
+    retryable: false,
+  }) satisfies RequiredAckFailureClassification;
+
+const retryableClassification = (code: ErrorCode = 'RETRYABLE_DEPENDENCY') =>
+  ({
+    code,
+    retryable: true,
+  }) satisfies RequiredAckFailureClassification;
+
+const classifyAnalysisFailure = (analysis: {
+  readonly state: string;
+  readonly safeFailureCode?: string;
+}): RequiredAckFailureClassification => {
+  if (analysis.state === 'FAILED_RETRYABLE') {
+    // Outcome-unknown is a reconciliation boundary, not an ordinary retry.
+    if (analysis.safeFailureCode === 'OUTCOME_UNKNOWN') {
+      return terminalClassification('OUTCOME_UNKNOWN');
+    }
+    return retryableClassification(
+      analysis.safeFailureCode === 'ANALYSIS_TIMEOUT' ? 'TIMEOUT' : 'RETRYABLE_DEPENDENCY',
+    );
+  }
+  if (analysis.state === 'SEMANTIC_UNAVAILABLE') {
+    switch (analysis.safeFailureCode) {
+      case 'PROVIDER_UNAVAILABLE':
+      case 'ANALYSIS_TIMEOUT':
+      case 'RETRYABLE_DEPENDENCY':
+        return retryableClassification(
+          analysis.safeFailureCode === 'ANALYSIS_TIMEOUT' ? 'TIMEOUT' : 'RETRYABLE_DEPENDENCY',
+        );
+      default:
+        return terminalClassification('AI_CAPABILITY_UNAVAILABLE');
+    }
+  }
+  if (analysis.state === 'POLICY_BLOCKED') return terminalClassification('POLICY_DENIED');
+  if (analysis.state === 'FAILED_TERMINAL') return terminalClassification('TERMINAL_FAILURE');
+  return terminalClassification();
+};
+
+const classifyShortlistFailure = (
+  evidence: Extract<ComparisonV2OrchestrationBlockedEvidence, { source: 'SHORTLIST' }>,
+): RequiredAckFailureClassification => {
+  switch (evidence.reason) {
+    case 'LEXICAL_UNAVAILABLE':
+      return evidence.readiness.lexicalRetryable === true
+        ? retryableClassification('RETRYABLE_DEPENDENCY')
+        : terminalClassification('VALIDATION_ERROR');
+    case 'LEXICAL_STALE':
+    case 'SEMANTIC_STALE':
+    case 'GENERATION_UNAVAILABLE':
+    case 'GENERATION_MISMATCH':
+      return retryableClassification('STALE_VERSION');
+    case 'SEMANTIC_UNAVAILABLE':
+    case 'SEMANTIC_DEGRADED': {
+      const execution = evidence.readiness.semanticExecution;
+      const safeCode = evidence.readiness.semanticSafeFailureCode;
+      if (
+        evidence.readiness.semanticRetryable === true ||
+        execution === 'PROVIDER_UNAVAILABLE' ||
+        execution === 'TEMPORARILY_UNAVAILABLE' ||
+        safeCode === 'TIMEOUT' ||
+        safeCode === 'PROVIDER_FAILURE'
+      ) {
+        return retryableClassification(safeCode === 'TIMEOUT' ? 'TIMEOUT' : 'RETRYABLE_DEPENDENCY');
+      }
+      return terminalClassification('AI_CAPABILITY_UNAVAILABLE');
+    }
+    default:
+      return terminalClassification(
+        evidence.reason === 'POLICY_DENIED' || evidence.reason === 'POLICY_INTEGRITY'
+          ? 'POLICY_DENIED'
+          : evidence.reason === 'SNAPSHOT_INTEGRITY'
+            ? 'STALE_VERSION'
+            : 'VALIDATION_ERROR',
+      );
+  }
+};
+
+const classifySemanticBlockedFailure = (
+  evidence: Extract<ComparisonV2OrchestrationBlockedEvidence, { source: 'SEMANTIC' }>,
+): RequiredAckFailureClassification => {
+  if (evidence.reason === 'SEMANTIC_UNAVAILABLE' && evidence.retryable === true) {
+    return retryableClassification('RETRYABLE_DEPENDENCY');
+  }
+  if (evidence.safeFailureCode === 'POLICY_DENIED') return terminalClassification('POLICY_DENIED');
+  if (evidence.safeFailureCode === 'STALE_COMPARISON')
+    return terminalClassification('STALE_VERSION');
+  if (evidence.safeFailureCode === 'RESOURCE_SCOPE_LEAK') {
+    return terminalClassification('RESOURCE_ACCESS_REVOKED');
+  }
+  return terminalClassification('VALIDATION_ERROR');
+};
+
+const classifyOrchestrationFailure = (
+  outcome: Extract<ComparisonV2OrchestrationOutcome, { status: 'BLOCKED' }>,
+): RequiredAckFailureClassification => {
+  if (outcome.evidence?.source === 'SHORTLIST') return classifyShortlistFailure(outcome.evidence);
+  if (outcome.evidence?.source === 'SEMANTIC')
+    return classifySemanticBlockedFailure(outcome.evidence);
+  switch (outcome.reason) {
+    case 'CANDIDATE_ACCESS_DENIED':
+      return terminalClassification('POLICY_DENIED');
+    case 'CANDIDATE_INTEGRITY':
+      return terminalClassification('STALE_VERSION');
+    case 'CANDIDATE_RESOLUTION_FAILED':
+      return terminalClassification('NOT_FOUND');
+    default:
+      return terminalClassification();
+  }
+};
 
 export const createComparisonV2Runtime = (input: {
   readonly candidate: ComparisonCandidateV2ResolverPort;
@@ -379,7 +566,15 @@ export const createComparisonV2Runtime = (input: {
       }
       if (v2Outcome.status !== 'COMPLETED') {
         if (requiresPublisherAck) {
-          throw requiredAckFailure({ request, reason: `V2_${v2Outcome.status}` });
+          const classification =
+            v2Outcome.status === 'BLOCKED'
+              ? classifyOrchestrationFailure(v2Outcome)
+              : classifyAnalysisFailure(v2Outcome.analysis);
+          throw requiredAckFailure({
+            request,
+            classification,
+            reason: `V2_${v2Outcome.status}`,
+          });
         }
         return {
           rollout: authority.rollout,
@@ -397,7 +592,11 @@ export const createComparisonV2Runtime = (input: {
       });
       if (currentAuthority.rollout !== 'V2_ACTIVE') {
         if (requiresPublisherAck) {
-          throw requiredAckFailure({ request, reason: 'ROLLOUT_DOWNGRADED' });
+          throw requiredAckFailure({
+            request,
+            classification: terminalClassification('POLICY_DENIED'),
+            reason: 'ROLLOUT_DOWNGRADED',
+          });
         }
         return {
           rollout: authority.rollout,
@@ -410,7 +609,11 @@ export const createComparisonV2Runtime = (input: {
       }
       if (!input.reviewBridge || !input.freshness) {
         if (requiresPublisherAck) {
-          throw requiredAckFailure({ request, reason: 'REVIEW_BRIDGE_UNAVAILABLE' });
+          throw requiredAckFailure({
+            request,
+            classification: terminalClassification('CONFIGURATION_REQUIRED'),
+            reason: 'REVIEW_BRIDGE_UNAVAILABLE',
+          });
         }
         return {
           rollout: authority.rollout,
@@ -430,7 +633,19 @@ export const createComparisonV2Runtime = (input: {
       });
       if (bridgeOutcome.status !== 'DRAFT_CREATED') {
         if (requiresPublisherAck) {
-          throw requiredAckFailure({ request, reason: `REVIEW_${bridgeOutcome.reason}` });
+          const classification =
+            bridgeOutcome.reason === 'FRESHNESS_UNAVAILABLE' && bridgeOutcome.retryable === true
+              ? retryableClassification('RETRYABLE_DEPENDENCY')
+              : bridgeOutcome.reason === 'STALE_COMPARISON'
+                ? terminalClassification('STALE_VERSION')
+                : bridgeOutcome.reason === 'ACCESS_DENIED'
+                  ? terminalClassification('POLICY_DENIED')
+                  : terminalClassification('VALIDATION_ERROR');
+          throw requiredAckFailure({
+            request,
+            classification,
+            reason: `REVIEW_${bridgeOutcome.reason}`,
+          });
         }
         return {
           rollout: authority.rollout,

@@ -413,6 +413,11 @@ describe('Comparison v2 orchestration', () => {
       status: 'BLOCKED',
       reason: 'SHORTLIST_BLOCKED',
       detail: 'SEMANTIC_DEGRADED:{"lexicalStatus":"READY","semanticStatus":"DEGRADED"}',
+      evidence: {
+        source: 'SHORTLIST',
+        reason: 'SEMANTIC_DEGRADED',
+        readiness: { lexicalStatus: 'READY', semanticStatus: 'DEGRADED' },
+      },
     });
     expect(semanticCalls).toBe(0);
   });
@@ -894,5 +899,103 @@ describe('Comparison v2 orchestration', () => {
     expect(providerCalls).toBe(2);
     expect(analyses).toHaveLength(2);
     expect(stored).toHaveLength(1);
+  });
+
+  it('advances a persisted FAILED_RETRYABLE attempt on the next event replay', async () => {
+    const shortlistAudit = audit(['claim-1']);
+    const shortlistDigest = shortlistAuditDigestV2(shortlistAudit);
+    const analyses: AnalysisRevisionV2[] = [];
+    const identity = analysis('retryable-identity', shortlistDigest, ['claim-1']);
+    let providerCalls = 0;
+    const repository: ComparisonV2RepositoryPort = {
+      async saveAnalysisRevision({ revision }) {
+        analyses.push(revision);
+        return revision;
+      },
+      async transitionAnalysisRevision() {
+        throw new Error('not used');
+      },
+      async findAnalysisRevision() {
+        return undefined;
+      },
+      async findAnalysisRevisionByInput() {
+        return undefined;
+      },
+      async findLatestAnalysisRevisionByInput() {
+        return analyses.at(-1);
+      },
+      async saveCompletedAggregate(aggregate) {
+        analyses.push(...aggregate.analyses);
+        return aggregate;
+      },
+      async findComparisonById() {
+        return undefined;
+      },
+      async findComparisonByIdentity() {
+        return undefined;
+      },
+    };
+    const semanticAnalysis: ComparisonV2OrchestratorDependencies['semanticAnalysis'] = {
+      async resolveInputIdentity() {
+        return {
+          inputDigest: identity.inputDigest,
+          providerIdentity: identity.providerIdentity,
+          credentialRevisionRef: identity.credentialRevisionRef,
+          promptTemplateRevision: identity.promptTemplateRevision,
+          outputSchemaRevision: identity.outputSchemaRevision,
+          semanticPolicyRevision: identity.semanticPolicyRevision,
+        };
+      },
+      async analyze(input) {
+        providerCalls += 1;
+        if (input.attempt === 1) {
+          const failed = {
+            ...analysis(input.comparisonId, input.shortlistDigest, ['claim-1'], 'FAILED_RETRYABLE'),
+            analysisRevisionId: 'analysis-retryable-1',
+            inputDigest: identity.inputDigest,
+            safeFailureCode: 'RETRYABLE_DEPENDENCY' as const,
+          };
+          return { status: 'FAILED' as const, analysis: failed, relationships: [] as const };
+        }
+        const completed = {
+          ...analysis(input.comparisonId, input.shortlistDigest, ['claim-1'], 'COMPLETED'),
+          analysisRevisionId: 'analysis-retryable-2',
+          attempt: input.attempt,
+          inputDigest: identity.inputDigest,
+        };
+        return {
+          status: 'COMPLETED' as const,
+          analysis: completed,
+          relationships: [
+            relationship(input.comparisonId, completed.analysisRevisionId, 'claim-1', 'UNRELATED'),
+          ],
+        };
+      },
+    };
+    const orchestrator = createComparisonV2Orchestrator({
+      candidate: { findById: async () => candidate },
+      shortlist: {
+        async build() {
+          return { status: 'READY' as const, shortlist: shortlistAudit, shortlistDigest };
+        },
+      },
+      semanticAnalysis,
+      repository,
+      now: () => now,
+      randomId: () => 'retryable-comparison',
+    });
+
+    const first = await orchestrator.compare({
+      ...request,
+      executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+    });
+    const replay = await orchestrator.compare({
+      ...request,
+      executionTrigger: 'INITIAL_OR_EVENT_REPLAY',
+    });
+    expect(first.status).toBe('FAILED');
+    expect(replay.status).toBe('COMPLETED');
+    expect(providerCalls).toBe(2);
+    expect(analyses.map((item) => item.attempt)).toEqual([1, 2]);
   });
 });

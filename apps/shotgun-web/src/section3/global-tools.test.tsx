@@ -197,6 +197,7 @@ describe('GlobalTools HFM-S1 preservation', () => {
     render(
       <AppProviders runtime={runtime({ searchGlobal })}>
         <MemoryRouter>
+          <LocationProbe />
           <GlobalSearchDialog shell={shell} open invoker={null} onClose={vi.fn()} />
         </MemoryRouter>
       </AppProviders>,
@@ -207,6 +208,45 @@ describe('GlobalTools HFM-S1 preservation', () => {
 
     expect(await screen.findByText('1 search results.')).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Search results' })).toBeTruthy();
+    const resultLink = screen.getByRole('link', { name: 'Matching source · Current Project' });
+    expect(resultLink.getAttribute('href')).toBe('/sources');
+    await user.click(resultLink);
+    expect(screen.getByTestId('location-probe').textContent).toBe('/sources:');
+  });
+
+  it('navigates Global Search results using the server-returned exact Source detail route', async () => {
+    const user = userEvent.setup();
+    const searchGlobal = vi.fn(async () => ({
+      ...searchResult,
+      results: [
+        {
+          ...searchResult.results[0]!,
+          targetRoute: {
+            routeId: 'sources' as const,
+            href: '/sources/source%20opaque?version=version%201' as const,
+          },
+        },
+      ],
+    }));
+
+    render(
+      <AppProviders runtime={runtime({ searchGlobal })}>
+        <MemoryRouter>
+          <LocationProbe />
+          <GlobalSearchDialog shell={shell} open invoker={null} onClose={vi.fn()} />
+        </MemoryRouter>
+      </AppProviders>,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: 'Search query' }), 'matching');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+
+    const resultLink = await screen.findByRole('link', {
+      name: 'Matching source · Current Project',
+    });
+    expect(resultLink.getAttribute('href')).toBe('/sources/source%20opaque?version=version%201');
+    await user.click(resultLink);
+    expect(screen.getByTestId('location-probe').textContent).toBe('/sources/source%20opaque:');
   });
 
   it('uses search.global from Ctrl/Cmd+K and has no permanent top Search button', async () => {

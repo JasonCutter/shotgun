@@ -184,6 +184,43 @@ describe('Frontend Phase 1 Section 3 contracts', () => {
     );
   });
 
+  it('accepts the registered Source detail deep-link and preserves the base route', () => {
+    expect(decodeTargetRouteView({ routeId: 'sources', href: '/sources' })).toEqual({
+      routeId: 'sources',
+      href: '/sources',
+    });
+    expect(
+      decodeTargetRouteView({
+        routeId: 'sources',
+        href: '/sources/source%20opaque?version=source-version%201',
+      }),
+    ).toEqual({
+      routeId: 'sources',
+      href: '/sources/source%20opaque?version=source-version%201',
+    });
+  });
+
+  it('fails closed for unsafe or malformed Source detail deep-links', () => {
+    const invalidHrefs = [
+      'https://evil.example/sources/source-1?version=version-1',
+      '/sources/../admin?version=version-1',
+      '/sources/%2e%2e%2Fadmin?version=version-1',
+      '/sources/?version=version-1',
+      '/sources/source-1#fragment?version=version-1',
+      '/sources/source-1?version=version-1&version=version-2',
+      '/sources/source-1?version=version-1&view=preview',
+      '/sources/source-1',
+      '/sources/source-1?version=%',
+      '/sources/source-1?version=version%2F1',
+      '/sources/source-1?version=version+1',
+    ];
+    for (const href of invalidHrefs) {
+      expect(() => decodeTargetRouteView({ routeId: 'sources', href }), href).toThrow(
+        expect.objectContaining({ code: 'UNSUPPORTED_SCHEMA' }),
+      );
+    }
+  });
+
   it('deep-decodes Shell and Home projection bindings', () => {
     const shell = decodeGlobalShellView({
       schemaVersion: '1.0.0',

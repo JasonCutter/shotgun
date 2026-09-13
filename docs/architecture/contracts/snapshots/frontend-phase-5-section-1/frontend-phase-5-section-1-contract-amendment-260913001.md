@@ -1,23 +1,25 @@
 ---
 id: FRONTEND-PHASE-5-SECTION-1-CONTRACT-AMENDMENT-260913001
-classification: CANDIDATE
-status: proposed_pending_user_approval
+classification: CANONICAL
+status: approved_frozen
 revision: 2
 created_at: 2026-09-13
+approved_at: 2026-09-13T15:20:00+09:00
+approved_by: user
 subject_base: 8c00519d7498ef1783de1a4e4e48da1a2b4bb8bd
 base_snapshot: frontend-phase-5-section-1-contract-snapshot-260806001
 governing_adr: ADR-130
 tracking_pr: https://github.com/JasonCutter/shotgun/pull/283
 ---
 
-# FE-P5-S1 — Activity Presentation Additive Contract Amendment (Proposal)
+# FE-P5-S1 — Activity Presentation Additive Contract Amendment r2
 
-This document records the additive contract clarification required by the
-Home Attention / Activity deep-link implementation. The approved r1 snapshot
+This approved additive amendment records the contract clarification required by
+the Home Attention / Activity deep-link implementation. The approved r1 snapshot
 at `frontend-phase-5-section-1-contract-snapshot-260806001.md` remains
 immutable and authoritative for every unamended clause.
 
-## 1. Proposed additive fields and semantics
+## 1. Approved additive fields and semantics
 
 ### Activity attention reason
 
@@ -50,7 +52,7 @@ This is an additive presentation clarification only. It does not change:
 - Domain resource identity, persistence ownership or migration requirements;
 - any FE-P5-S1 acceptance-criterion number or existing meaning.
 
-The amendment remains a Candidate pending explicit user approval. Once
-approved, it must be registered as an additive amendment in
-`docs/architecture/contracts/contract-snapshot-registry.json`; until then the
-base snapshot and this proposal are both retained without overwrite.
+This amendment was explicitly approved by the user on 2026-09-13. It is
+registered as an `ACTIVE_ADDITIVE_AMENDMENT` to the immutable r1 base snapshot.
+The base and this amendment are both retained; no earlier decision is silently
+overwritten.

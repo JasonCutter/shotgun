@@ -40,8 +40,8 @@ const makeAISettings = (overrides: Partial<AISettingsReadModel> = {}): AISetting
       models: [
         {
           providerId: 'deepseek',
-          modelId: 'deepseek-v4-flash',
-          displayName: 'DeepSeek V4 Flash',
+          modelId: 'deepseek-flash',
+          displayName: 'DeepSeek V4.1 Flash',
           shotgunUsableCapabilities: ['text'],
           capabilityRevision: 'model-catalog:v1',
         },

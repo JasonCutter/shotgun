@@ -173,7 +173,7 @@ describe('Ask provider policy and stream boundary', () => {
       deploymentPrivateTransferAllowed: false,
       providerPolicyIdentity: 'deepseek-policy-v1',
       providerDisplayName: 'DeepSeek',
-      providerModel: 'deepseek-v4-flash',
+      providerModel: 'deepseek-flash',
     });
     await expect(
       resolver.evaluateContext({
@@ -429,7 +429,7 @@ describe('Ask provider policy and stream boundary', () => {
       providerId: 'deepseek',
       providerPolicyIdentity: 'deepseek-policy-v1',
       providerDisplayName: 'DeepSeek',
-      providerModel: 'deepseek-v4-flash',
+      providerModel: 'deepseek-flash',
       deploymentPrivateTransferAllowed: true,
     });
 
@@ -442,7 +442,7 @@ describe('Ask provider policy and stream boundary', () => {
       eligible: true,
       reason: 'ELIGIBLE',
       policyContextRevision: '3',
-      provider: { displayName: 'DeepSeek', model: 'deepseek-v4-flash' },
+      provider: { displayName: 'DeepSeek', model: 'deepseek-flash' },
     });
   });
 

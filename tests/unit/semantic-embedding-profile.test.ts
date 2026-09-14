@@ -332,14 +332,14 @@ describe('AKP-1 WP1: SemanticEmbeddingProfile Authority', () => {
       projectId: 'project-akp-1',
       expectedRevision: 1,
       activeProviderId: 'deepseek',
-      activeModelId: 'deepseek-v4-flash',
+      activeModelId: 'deepseek-flash',
       credentialId: 'cred-deepseek',
       credentialRevision: 1,
       updatedBy: 'principal-owner',
     });
 
     const activeAskConfig = await aiConfigService.getCurrent('project-akp-1');
-    expect(activeAskConfig?.activeModelId).toBe('deepseek-v4-flash');
+    expect(activeAskConfig?.activeModelId).toBe('deepseek-flash');
 
     const activeEmbProfile = await embeddingProfileService.getActive('project-akp-1');
     expect(activeEmbProfile?.providerId).toBe('google-gemini');

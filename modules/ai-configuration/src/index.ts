@@ -2,6 +2,12 @@ export const A3_PROVIDER_REGISTRY_REVISION = 'provider-registry:v1';
 export const A3_MODEL_CATALOG_REVISION = 'model-catalog:v1';
 
 export {
+  HISTORICAL_GENERATIVE_AI_MODEL_ID,
+  GENERATIVE_AI_MODEL_ID,
+  GENERATIVE_AI_PROVIDER_ID,
+} from '../../../packages/contracts/src/index.js';
+import {
+  HISTORICAL_GENERATIVE_AI_MODEL_ID,
   GENERATIVE_AI_MODEL_ID,
   GENERATIVE_AI_PROVIDER_ID,
 } from '../../../packages/contracts/src/index.js';
@@ -43,6 +49,38 @@ export type ProviderRegistryPort = {
   listProviders(): readonly AIProviderDescriptor[];
   getProvider(providerId: string): AIProviderDescriptor | undefined;
   getModel(providerId: string, modelId: string): AIModelDescriptor | undefined;
+};
+
+/**
+ * Resolves a model for an already-pinned execution. Historical aliases are
+ * deliberately available only when the caller proves it is replaying an
+ * immutable historical pin; they are never returned by the catalog or normal
+ * model lookup used by configuration writes.
+ */
+export const resolveModelForExecution = (
+  registry: ProviderRegistryPort,
+  providerId: string,
+  modelId: string,
+  options: { readonly allowHistoricalAlias?: boolean } = {},
+): AIModelDescriptor | undefined => {
+  const normalizedProviderId = providerId.trim();
+  const normalizedModelId = modelId.trim();
+  const current = registry.getModel(normalizedProviderId, normalizedModelId);
+  if (current || options.allowHistoricalAlias !== true) return current;
+  if (
+    normalizedProviderId !== GENERATIVE_AI_PROVIDER_ID ||
+    normalizedModelId !== HISTORICAL_GENERATIVE_AI_MODEL_ID
+  ) {
+    return undefined;
+  }
+  const canonical = registry.getModel(normalizedProviderId, GENERATIVE_AI_MODEL_ID);
+  return canonical
+    ? {
+        ...canonical,
+        modelId: HISTORICAL_GENERATIVE_AI_MODEL_ID,
+        displayName: 'DeepSeek V4 Flash',
+      }
+    : undefined;
 };
 
 export type CredentialMetadataReference = {
@@ -187,8 +225,8 @@ const initialProviders: readonly AIProviderDescriptor[] = [
     'deepseek-data-policy',
     ['text', 'structuredOutput'],
     ['text', 'structuredOutput'],
-    'deepseek-v4-flash',
-    'DeepSeek V4 Flash',
+    GENERATIVE_AI_MODEL_ID,
+    'DeepSeek V4.1 Flash',
     ['text', 'structuredOutput'],
     ['text', 'structuredOutput'],
   ),
@@ -316,17 +354,23 @@ export class ProjectAIConfigurationService implements ProjectAIConfigurationPort
     if (!provider || provider.status !== 'active') {
       throw new AIConfigurationError('UNKNOWN_PROVIDER', 'Provider is not registered.');
     }
+    if (providerId === GENERATIVE_AI_PROVIDER_ID && modelId === HISTORICAL_GENERATIVE_AI_MODEL_ID) {
+      throw new AIConfigurationError(
+        'INVALID_INPUT',
+        'Historical DeepSeek model identities cannot be used for new configuration writes.',
+      );
+    }
     const model = this.registry.getModel(providerId, modelId);
     if (!model)
       throw new AIConfigurationError('UNKNOWN_MODEL', 'Model is not registered for provider.');
 
     if (
       this.options.enforceDeepSeekOnly === true &&
-      (providerId !== 'deepseek' || modelId !== 'deepseek-v4-flash')
+      (providerId !== GENERATIVE_AI_PROVIDER_ID || modelId !== GENERATIVE_AI_MODEL_ID)
     ) {
       throw new AIConfigurationError(
         'INVALID_INPUT',
-        'New generative AI configurations must use DeepSeek deepseek-v4-flash.',
+        `New generative AI configurations must use DeepSeek ${GENERATIVE_AI_MODEL_ID}.`,
       );
     }
 

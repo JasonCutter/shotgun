@@ -6,6 +6,7 @@ import { InMemoryProjectAIConfigurationRepository } from '../../adapters/ai-conf
 import {
   initialProviderRegistry,
   ProjectAIConfigurationService,
+  resolveModelForExecution,
   type ProjectAIConfiguration,
 } from '../../modules/ai-configuration/src/index.js';
 import { DiscoveryModelProfileService } from '../../modules/discovery-ai-generation/src/profile.js';
@@ -62,7 +63,7 @@ const policy = (): AskProviderPolicyResolverPort => ({
     requiredAction: 'NONE',
     policyFingerprint: 'policy-deepseek',
     policyContextRevision: 'standing-1',
-    provider: { displayName: 'DeepSeek', model: 'deepseek-v4-flash' },
+    provider: { displayName: 'DeepSeek', model: 'deepseek-flash' },
     message: 'eligible',
   }),
   evaluateContext: async () => ({
@@ -72,7 +73,7 @@ const policy = (): AskProviderPolicyResolverPort => ({
     requiredAction: 'NONE',
     policyFingerprint: 'policy-deepseek',
     policyContextRevision: 'standing-1',
-    provider: { displayName: 'DeepSeek', model: 'deepseek-v4-flash' },
+    provider: { displayName: 'DeepSeek', model: 'deepseek-flash' },
     message: 'eligible',
   }),
 });
@@ -150,7 +151,7 @@ const historicalMigrationFixture = (
   } = {},
 ) => {
   const current = {
-    ...configuration('deepseek', 'deepseek-v4-flash'),
+    ...configuration('deepseek', 'deepseek-flash'),
     aiConfigurationRevision: 3,
   };
   const historical = configuration('openai', 'gpt-5.6-luna');
@@ -178,6 +179,24 @@ const historicalMigrationFixture = (
 };
 
 describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
+  it('DSK-0 exposes only the canonical model while resolving the retired alias only for replay', () => {
+    const registry = initialProviderRegistry();
+    expect(registry.getProvider('deepseek')?.models.map((model) => model.modelId)).toEqual([
+      'deepseek-flash',
+    ]);
+    expect(registry.getModel('deepseek', 'deepseek-v4-flash')).toBeUndefined();
+    expect(resolveModelForExecution(registry, 'deepseek', 'deepseek-v4-flash')).toBeUndefined();
+    expect(
+      resolveModelForExecution(registry, 'deepseek', 'deepseek-v4-flash', {
+        allowHistoricalAlias: true,
+      }),
+    ).toMatchObject({
+      providerId: 'deepseek',
+      modelId: 'deepseek-v4-flash',
+      displayName: 'DeepSeek V4 Flash',
+    });
+  });
+
   it('DSK-1 rejects new OpenAI/Gemini configurations and accepts DeepSeek', async () => {
     const repository = new InMemoryProjectAIConfigurationRepository();
     const service = new ProjectAIConfigurationService(
@@ -207,12 +226,23 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
         projectId,
         expectedRevision: 0,
         activeProviderId: 'deepseek',
+        activeModelId: 'deepseek-flash',
+        credentialId: deepseekCredential.credentialId,
+        credentialRevision: 1,
+        updatedBy: 'owner',
+      }),
+    ).resolves.toMatchObject({ activeProviderId: 'deepseek', activeModelId: 'deepseek-flash' });
+    await expect(
+      service.save({
+        projectId,
+        expectedRevision: 0,
+        activeProviderId: 'deepseek',
         activeModelId: 'deepseek-v4-flash',
         credentialId: deepseekCredential.credentialId,
         credentialRevision: 1,
         updatedBy: 'owner',
       }),
-    ).resolves.toMatchObject({ activeProviderId: 'deepseek', activeModelId: 'deepseek-v4-flash' });
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });
 
   it('DSK-2 blocks a new Ask/Stage 4 pin for a stale non-DeepSeek current configuration', async () => {
@@ -246,7 +276,7 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
   it('DSK-3 and DSK-4 resolve new Ask and Source execution through DeepSeek', async () => {
     const resolver = new EffectiveAIConfigurationResolver(
       initialProviderRegistry(),
-      { getCurrent: async () => configuration('deepseek', 'deepseek-v4-flash') } as never,
+      { getCurrent: async () => configuration('deepseek', 'deepseek-flash') } as never,
       vaultFor(deepseekCredential),
       {
         enforceDeepSeekOnly: true,
@@ -267,7 +297,7 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
         queryPlanRevision: 'q',
       },
     });
-    expect(ask).toMatchObject({ providerId: 'deepseek', modelId: 'deepseek-v4-flash' });
+    expect(ask).toMatchObject({ providerId: 'deepseek', modelId: 'deepseek-flash' });
     const source = await resolver.resolveSourceAIExecutionIdentity({
       principalId: 'stage4',
       projectId,
@@ -279,7 +309,7 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
     });
     expect(source.executionIdentity).toMatchObject({
       providerId: 'deepseek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
     });
   });
 
@@ -316,7 +346,7 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
   it('DSK-6 keeps Comparison v2 provider identity on the shared DeepSeek execution identity', async () => {
     const resolver = new EffectiveAIConfigurationResolver(
       initialProviderRegistry(),
-      { getCurrent: async () => configuration('deepseek', 'deepseek-v4-flash') } as never,
+      { getCurrent: async () => configuration('deepseek', 'deepseek-flash') } as never,
       vaultFor(deepseekCredential),
       {
         enforceDeepSeekOnly: true,
@@ -334,7 +364,7 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
       dataClassification: 'candidate-content',
     });
     expect(identity.executionIdentity.providerId).toBe('deepseek');
-    expect(identity.executionIdentity.modelId).toBe('deepseek-v4-flash');
+    expect(identity.executionIdentity.modelId).toBe('deepseek-flash');
   });
 
   it('DSK-7 fails DeepSeek without routing the failure to OpenAI or Gemini', async () => {
@@ -365,7 +395,7 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
         answerRunId: 'source',
         projectId,
         providerId: 'deepseek',
-        modelId: 'deepseek-v4-flash',
+        modelId: 'deepseek-flash',
         aiConfigurationRevision: 2,
         credentialId: deepseekCredential.credentialId,
         credentialRevision: 1,
@@ -467,7 +497,80 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
         queryPlanRevision: 'q',
       },
     });
-    expect(fresh).toMatchObject({ providerId: 'deepseek', modelId: 'deepseek-v4-flash' });
+    expect(fresh).toMatchObject({ providerId: 'deepseek', modelId: 'deepseek-flash' });
+  });
+
+  it('DSK-8E reconstructs a historical DeepSeek alias and forwards that exact identity on replay', async () => {
+    const historical = configuration('deepseek', 'deepseek-v4-flash');
+    const current = configuration('deepseek', 'deepseek-flash');
+    const resolver = new EffectiveAIConfigurationResolver(
+      initialProviderRegistry(),
+      {
+        getCurrent: async () => current,
+        getRevision: async () => historical,
+      } as never,
+      {
+        getMetadata: async () => deepseekCredential,
+      } as unknown as CredentialVaultPort,
+      {
+        enforceDeepSeekOnly: true,
+        policy: policy(),
+        standingPolicyAuthority: standing('deepseek', current.aiConfigurationRevision),
+      },
+    );
+    const existingIdentity = {
+      providerId: 'deepseek',
+      modelId: 'deepseek-v4-flash',
+      aiConfigurationRevision: historical.aiConfigurationRevision,
+      credentialId: historical.credentialId,
+      credentialRevision: historical.credentialRevision,
+      policyContextRevision: 'standing-1',
+      providerPolicyFingerprint: 'policy-deepseek',
+    };
+    const retry = await resolver.resolveSourceAIExecutionIdentity({
+      principalId: 'stage4-recovery',
+      projectId,
+      requestId: 'historical-deepseek-retry',
+      sourceVersionId: 'source-version',
+      sensitivity: 'internal',
+      accessScope: ['owner'],
+      dataClassification: 'source-content',
+      existingIdentity,
+    });
+    expect(retry.executionIdentity).toEqual(existingIdentity);
+
+    const calls: string[] = [];
+    const router = new AIProviderRouter(
+      initialProviderRegistry(),
+      new StaticAIProviderConnectivityRegistry([
+        {
+          providerId: 'deepseek',
+          testConnection: async () => ({}),
+          generateStructured: async ({ modelId }) => {
+            calls.push(modelId);
+            return { rawText: '{}' };
+          },
+        },
+      ]),
+      {
+        withCredential: async (
+          _scope: unknown,
+          callback: (
+            secret: Uint8Array,
+            metadata: CredentialMetadata,
+          ) => Promise<{ readonly status: 'SUCCEEDED' | 'FAILED' }>,
+        ) => {
+          await callback(Buffer.from('secret'), deepseekCredential);
+          return { status: 'SUCCEEDED' };
+        },
+      } as unknown as CredentialVaultPort,
+    );
+    const adapter = await router.resolveStructured({
+      projectId,
+      executionPin: retry.pin,
+    });
+    await adapter.generateStructured({ systemInstruction: '', prompt: '', responseSchema: {} });
+    expect(calls).toEqual(['deepseek-v4-flash']);
   });
 
   it('DSK-8B preserves the private deployment veto during historical provider migration', async () => {
@@ -546,7 +649,7 @@ describe('DeepSeek-only generative AI execution policy (DSK-1..DSK-8)', () => {
 
   it('preserves non-strict resolver mismatch behavior without historical reconstruction', async () => {
     const current = {
-      ...configuration('deepseek', 'deepseek-v4-flash'),
+      ...configuration('deepseek', 'deepseek-flash'),
       aiConfigurationRevision: 3,
     };
     const historical = configuration('openai', 'gpt-5.6-luna');

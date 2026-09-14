@@ -1,11 +1,13 @@
 import {
   ShotgunError,
+  isHistoricalGenerativeAIExecution,
   isCanonicalGenerativeAIExecution,
   type AskContextSensitivity,
   type AIExecutionIdentity,
   type AskProviderPolicyResolverPort,
 } from '../../../packages/contracts/src/index.js';
 import {
+  resolveModelForExecution,
   type AIModelDescriptor,
   type AIProviderDescriptor,
   type CredentialMetadataReference,
@@ -114,6 +116,7 @@ const assertProviderAndModel = (
   registry: ProviderRegistryPort,
   providerId: string,
   modelId: string,
+  options: { readonly allowHistoricalAlias?: boolean } = {},
 ): { readonly provider: AIProviderDescriptor; readonly model: AIModelDescriptor } => {
   const provider = registry.getProvider(providerId);
   if (!provider || provider.status !== 'active') {
@@ -123,7 +126,7 @@ const assertProviderAndModel = (
       'resolve-provider',
     );
   }
-  const model = registry.getModel(providerId, modelId);
+  const model = resolveModelForExecution(registry, providerId, modelId, options);
   if (!model || !model.shotgunUsableCapabilities.includes('structuredOutput')) {
     throw resolutionError(
       'AI_CAPABILITY_UNAVAILABLE',
@@ -196,6 +199,7 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
       this.registry,
       input.executionPin.providerId,
       input.executionPin.modelId,
+      { allowHistoricalAlias: true },
     );
 
     if (this.isLegacyPin(input.executionPin)) {
@@ -318,6 +322,7 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
       this.registry,
       effectiveConfiguration.activeProviderId,
       effectiveConfiguration.activeModelId,
+      { allowHistoricalAlias: historicalRetry },
     );
     if (
       this.options.enforceDeepSeekOnly === true &&
@@ -479,10 +484,17 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
       this.registry,
       input.profile.providerId,
       input.profile.modelId,
+      {
+        allowHistoricalAlias: isHistoricalGenerativeAIExecution(
+          input.profile.providerId,
+          input.profile.modelId,
+        ),
+      },
     );
     if (
       this.options.enforceDeepSeekOnly === true &&
-      !isCanonicalGenerativeAIExecution(provider.providerId, model.modelId)
+      !isCanonicalGenerativeAIExecution(provider.providerId, model.modelId) &&
+      !isHistoricalGenerativeAIExecution(provider.providerId, model.modelId)
     ) {
       throw resolutionError(
         'CONFIGURATION_REQUIRED',
@@ -571,6 +583,16 @@ export class EffectiveAIConfigurationResolver implements AskExecutionIdentityRes
     current: ProjectAIConfiguration,
     authorizedContext: AskExecutionRunContext,
   ): Promise<EffectiveAIConfiguration> {
+    if (
+      this.options.enforceDeepSeekOnly === true &&
+      isHistoricalGenerativeAIExecution(current.activeProviderId, current.activeModelId)
+    ) {
+      throw resolutionError(
+        'CONFIGURATION_REQUIRED',
+        'The current Project configuration uses a historical DeepSeek model identity; save a new canonical configuration before starting a logical request.',
+        'resolve-managed-generative-policy',
+      );
+    }
     const { provider, model } = assertProviderAndModel(
       this.registry,
       current.activeProviderId,

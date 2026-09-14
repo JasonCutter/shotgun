@@ -3,12 +3,15 @@ import { randomUUID } from 'node:crypto';
 import {
   DISCOVERY_MODEL_PROFILE_SCHEMA_VERSION,
   DISCOVERY_MODEL_PROFILE_STATUSES,
+  HISTORICAL_GENERATIVE_AI_MODEL_ID,
   type DiscoveryAIConfigurationReaderPort,
   type DiscoveryAICredentialMetadataReaderPort,
   type DiscoveryAIProviderCapabilityRegistryPort,
   type DiscoveryModelProfileRepositoryPort,
   type DiscoveryModelProfileServicePort,
   type DiscoveryModelProfileV1,
+  GENERATIVE_AI_MODEL_ID,
+  GENERATIVE_AI_PROVIDER_ID,
 } from '../../../packages/contracts/src/index.js';
 
 export type DiscoveryModelProfileErrorCode =
@@ -110,6 +113,12 @@ export class DiscoveryModelProfileService implements DiscoveryModelProfileServic
     const createdBy = identifier('Created by', input.createdBy, 256);
 
     const provider = this.registry.getProvider(providerId);
+    if (providerId === GENERATIVE_AI_PROVIDER_ID && modelId === HISTORICAL_GENERATIVE_AI_MODEL_ID) {
+      throw new DiscoveryModelProfileError(
+        'CONFIGURATION_REQUIRED',
+        'Historical DeepSeek model identities cannot be used for new Discovery profiles.',
+      );
+    }
     const model = this.registry.getModel(providerId, modelId);
     if (!provider || provider.status !== 'active' || !model || !structuredOutputAvailable(model)) {
       throw new DiscoveryModelProfileError(
@@ -125,11 +134,11 @@ export class DiscoveryModelProfileService implements DiscoveryModelProfileServic
     }
     if (
       this.options.enforceDeepSeekOnly === true &&
-      (providerId !== 'deepseek' || modelId !== 'deepseek-v4-flash')
+      (providerId !== GENERATIVE_AI_PROVIDER_ID || modelId !== GENERATIVE_AI_MODEL_ID)
     ) {
       throw new DiscoveryModelProfileError(
         'CONFIGURATION_REQUIRED',
-        'New Discovery profiles must use DeepSeek deepseek-v4-flash.',
+        `New Discovery profiles must use DeepSeek ${GENERATIVE_AI_MODEL_ID}.`,
       );
     }
 

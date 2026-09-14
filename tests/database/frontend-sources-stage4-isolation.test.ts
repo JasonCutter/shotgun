@@ -218,7 +218,7 @@ const createStage3Pipeline = (
 
 const stage4Identity: AIExecutionIdentity = {
   providerId: 'deepseek',
-  modelId: 'deepseek-v4-flash',
+  modelId: 'deepseek-flash',
   aiConfigurationRevision: 1,
   credentialId: 'stage4-isolation-credential',
   credentialRevision: 1,
@@ -237,7 +237,7 @@ const createStage4Harness = async (options: { readonly enabled: boolean }) => {
   const provider: AIProviderAdapterPort = {
     identity: {
       provider: 'deepseek',
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-flash',
       adapterVersion: 'stage4-isolation-test-v1',
       dataPolicyVersion: 'stage4-isolation-policy-v1',
     },
@@ -528,7 +528,7 @@ describe.runIf(pool)('Source Product / Stage 4 failure isolation', () => {
       expect(candidate?.status).toBe('READY');
       expect(validation?.status).toBe('READY');
       expect(candidate?.providerCall.provider).toBe('deepseek');
-      expect(candidate?.providerCall.model).toBe('deepseek-v4-flash');
+      expect(candidate?.providerCall.model).toBe('deepseek-flash');
 
       const replay = await service.submit(prepared.input);
       const afterReplay = await pool!.query<{ batches: string; candidates: string; calls: string }>(

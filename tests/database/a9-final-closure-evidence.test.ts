@@ -483,14 +483,14 @@ describe('A9 final closure deterministic cross-boundary evidence', () => {
     expect(configuration.aiConfigurationRevision).toBe(1);
     expect(pin).toMatchObject({
       providerId: 'deepseek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
       aiConfigurationRevision: 1,
       credentialId: credential.credentialId,
       credentialRevision: 1,
     });
     expect(fixture.providerCalls.at(-1)).toMatchObject({
       providerId: 'deepseek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
     });
   });
 
@@ -561,7 +561,7 @@ describe('A9 final closure deterministic cross-boundary evidence', () => {
       projectId: fixture.projectId,
       expectedRevision: 1,
       activeProviderId: 'deepseek',
-      activeModelId: 'deepseek-v4-flash',
+      activeModelId: 'deepseek-flash',
       credentialId: rotated.credentialId,
       credentialRevision: rotated.credentialRevision,
       updatedBy: fixture.principalId,
@@ -623,7 +623,7 @@ describe('A9 final closure deterministic cross-boundary evidence', () => {
       projectId: fixture.projectId,
       expectedRevision: 1,
       activeProviderId: 'deepseek',
-      activeModelId: 'deepseek-v4-flash',
+      activeModelId: 'deepseek-flash',
       credentialId: replacement.credentialId,
       credentialRevision: replacement.credentialRevision,
       updatedBy: fixture.principalId,
@@ -871,7 +871,7 @@ describe('A9 final closure deterministic cross-boundary evidence', () => {
     expect(fixture.providerCalls.slice(providerCallsBeforeWorker)).toEqual([
       {
         providerId: 'deepseek',
-        modelId: 'deepseek-v4-flash',
+        modelId: 'deepseek-flash',
       },
     ]);
     expect(queuedPinA).toMatchObject({

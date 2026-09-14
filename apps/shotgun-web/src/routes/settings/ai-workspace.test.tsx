@@ -51,8 +51,8 @@ const makeSettings = (overrides: Partial<AISettingsReadModel> = {}): AISettingsR
       models: [
         {
           providerId: 'deepseek',
-          modelId: 'deepseek-v4-flash',
-          displayName: 'DeepSeek V4 Flash',
+          modelId: 'deepseek-flash',
+          displayName: 'DeepSeek V4.1 Flash',
           shotgunUsableCapabilities: ['text', 'structuredOutput'],
           capabilityRevision: 'model-catalog:v1',
         },
@@ -109,7 +109,7 @@ const renderWorkspace = (
     getAISettings: vi.fn().mockResolvedValue(settings),
     testAIConnection: vi.fn().mockResolvedValue({
       providerId: 'deepseek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
       status: 'CONNECTED' as const,
       checkedAt: now,
       safeMessage: 'Provider connection succeeded.',
@@ -138,7 +138,7 @@ const renderWorkspace = (
     saveAIConfiguration: vi.fn().mockResolvedValue({
       projectId: 'project-1',
       activeProviderId: 'deepseek',
-      activeModelId: 'deepseek-v4-flash',
+      activeModelId: 'deepseek-flash',
       credentialId: credential.credentialId,
       credentialRevision: credential.credentialRevision,
       aiConfigurationRevision: 1,
@@ -193,7 +193,7 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
     expect((screen.getByLabelText('AI Provider') as HTMLSelectElement).value).toBe('deepseek');
     expect(screen.getByRole('option', { name: 'OpenAI' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Google Gemini' })).toBeTruthy();
-    expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe('deepseek-v4-flash');
+    expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe('deepseek-flash');
     expect(screen.getByText('No Project credential configured')).toBeTruthy();
   });
 
@@ -247,7 +247,7 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
       projectId: 'project-1',
       expectedRevision: 0,
       providerId: 'deepseek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
       credentialId: credential.credentialId,
       credentialRevision: credential.credentialRevision,
     });
@@ -301,7 +301,7 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
       currentConfiguration: {
         projectId: 'project-1',
         activeProviderId: 'deepseek',
-        activeModelId: 'deepseek-v4-flash',
+        activeModelId: 'deepseek-flash',
         credentialId: credential.credentialId,
         credentialRevision: credential.credentialRevision,
         aiConfigurationRevision: 3,
@@ -377,7 +377,7 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
       currentConfiguration: {
         projectId: 'project-1',
         activeProviderId: 'deepseek',
-        activeModelId: 'deepseek-v4-flash',
+        activeModelId: 'deepseek-flash',
         credentialId: credential.credentialId,
         credentialRevision: 1,
         aiConfigurationRevision: 4,
@@ -408,7 +408,7 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
     expect(api.testAIConnection).toHaveBeenCalledWith({
       projectId: 'project-1',
       providerId: 'deepseek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
       credentialId: credential.credentialId,
       credentialRevision: 1,
     });
@@ -430,7 +430,7 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
         currentConfiguration: {
           projectId: 'project-1',
           activeProviderId: 'deepseek',
-          activeModelId: 'deepseek-v4-flash',
+          activeModelId: 'deepseek-flash',
           credentialId: credential.credentialId,
           credentialRevision: credential.credentialRevision,
           aiConfigurationRevision: 4,

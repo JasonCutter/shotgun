@@ -64,7 +64,7 @@ describe('A3 provider registry, model catalog, and project AI configuration', ()
       providerNativeCapabilities: ['text', 'image', 'audio', 'structuredOutput'],
       shotgunUsableCapabilities: ['text', 'structuredOutput'],
     });
-    expect(registry.getProvider('deepseek')?.models[0]?.modelId).toBe('deepseek-v4-flash');
+    expect(registry.getProvider('deepseek')?.models[0]?.modelId).toBe('deepseek-flash');
     expect(registry.getProvider('arbitrary-provider')).toBeUndefined();
 
     const returned = providers[0]!;
@@ -149,7 +149,7 @@ describe('A3 provider registry, model catalog, and project AI configuration', ()
       projectId: 'project-a',
       expectedRevision: first.aiConfigurationRevision,
       activeProviderId: 'deepseek',
-      activeModelId: 'deepseek-v4-flash',
+      activeModelId: 'deepseek-flash',
       credentialId: deepseek.credentialId,
       credentialRevision: deepseek.credentialRevision,
       updatedBy: 'owner',

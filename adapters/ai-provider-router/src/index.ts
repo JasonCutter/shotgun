@@ -19,7 +19,10 @@ import type {
   AskExecutionScope,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 import type { DiscoveryAIExecutionPinV1 } from '../../../packages/contracts/src/index.js';
-import type { ProviderRegistryPort } from '../../../modules/ai-configuration/src/index.js';
+import {
+  resolveModelForExecution,
+  type ProviderRegistryPort,
+} from '../../../modules/ai-configuration/src/index.js';
 import { StructuredAskAnswerProviderAdapter } from '../../ai-provider-ask/src/index.js';
 
 export type AIProviderRouterOptions = {
@@ -190,7 +193,12 @@ export class AIProviderRouter implements AskAnswerProviderRouterPort {
       );
     }
     const provider = this.registry.getProvider(input.executionPin.providerId);
-    const model = this.registry.getModel(input.executionPin.providerId, input.executionPin.modelId);
+    const model = resolveModelForExecution(
+      this.registry,
+      input.executionPin.providerId,
+      input.executionPin.modelId,
+      { allowHistoricalAlias: true },
+    );
     const connectivity = this.connectivity.get(input.executionPin.providerId);
     if (
       !provider ||
@@ -226,7 +234,12 @@ export class AIProviderRouter implements AskAnswerProviderRouterPort {
       );
     }
     const provider = this.registry.getProvider(input.executionPin.providerId);
-    const model = this.registry.getModel(input.executionPin.providerId, input.executionPin.modelId);
+    const model = resolveModelForExecution(
+      this.registry,
+      input.executionPin.providerId,
+      input.executionPin.modelId,
+      { allowHistoricalAlias: true },
+    );
     const connectivity = this.connectivity.get(input.executionPin.providerId);
     if (!provider || provider.status !== 'active' || !model || !connectivity) {
       throw routerError('The pinned provider route is unavailable.', 'resolve-provider-route');
@@ -263,7 +276,12 @@ export class AIProviderRouter implements AskAnswerProviderRouterPort {
       );
     }
     const provider = this.registry.getProvider(input.executionPin.providerId);
-    const model = this.registry.getModel(input.executionPin.providerId, input.executionPin.modelId);
+    const model = resolveModelForExecution(
+      this.registry,
+      input.executionPin.providerId,
+      input.executionPin.modelId,
+      { allowHistoricalAlias: true },
+    );
     const connectivity = this.connectivity.get(input.executionPin.providerId);
     if (!provider || provider.status !== 'active' || !model || !connectivity) {
       throw routerError(

@@ -55,7 +55,7 @@ const pin = (overrides: Partial<AIExecutionPin> = {}): AIExecutionPin => ({
   answerRunId: 'run-a5',
   projectId: scope.projectId,
   providerId: 'deepseek',
-  modelId: 'deepseek-v4-flash',
+  modelId: 'deepseek-flash',
   aiConfigurationRevision: 4,
   credentialId: 'credential-a5',
   credentialRevision: 2,
@@ -67,7 +67,7 @@ const pin = (overrides: Partial<AIExecutionPin> = {}): AIExecutionPin => ({
 const provider = (execute: AskAnswerProviderPort['execute']): AskAnswerProviderPort => ({
   identity: {
     provider: 'deepseek',
-    model: 'deepseek-v4-flash',
+    model: 'deepseek-flash',
     adapterVersion: 'contract-test',
     dataPolicyVersion: 'provider-default-policy',
   },
@@ -108,7 +108,7 @@ describe('A5 AnswerRun execution identity', () => {
         return {
           answer: 'Pinned answer',
           citations: [{ evidenceId: 'evidence-a5' }],
-          provider: { provider: 'deepseek', model: 'deepseek-v4-flash' },
+          provider: { provider: 'deepseek', model: 'deepseek-flash' },
         };
       }),
       { executionIdentityResolver: resolver() },
@@ -151,7 +151,7 @@ describe('A5 AnswerRun execution identity', () => {
         requiredAction: 'NONE' as const,
         policyFingerprint: `policy-${++policyCalls}`,
         policyContextRevision: `policy-context-${policyCalls}`,
-        provider: { displayName: 'DeepSeek', model: 'deepseek-v4-flash' },
+        provider: { displayName: 'DeepSeek', model: 'deepseek-flash' },
         message: 'eligible',
       }),
       evaluateContext: async () => ({
@@ -161,7 +161,7 @@ describe('A5 AnswerRun execution identity', () => {
         requiredAction: 'NONE' as const,
         policyFingerprint: `policy-${++policyCalls}`,
         policyContextRevision: `policy-context-${policyCalls}`,
-        provider: { displayName: 'DeepSeek', model: 'deepseek-v4-flash' },
+        provider: { displayName: 'DeepSeek', model: 'deepseek-flash' },
         message: 'eligible',
       }),
     };
@@ -182,7 +182,7 @@ describe('A5 AnswerRun execution identity', () => {
         return {
           answer: 'Current policy answer',
           citations: [{ evidenceId: 'evidence-a5' }],
-          provider: { provider: 'deepseek', model: 'deepseek-v4-flash' },
+          provider: { provider: 'deepseek', model: 'deepseek-flash' },
         };
       }),
       { executionIdentityResolver: resolver(), providerPolicy: policy },
@@ -251,7 +251,7 @@ describe('A5 AnswerRun execution identity', () => {
       return {
         answer: 'Recovered durable identity answer',
         citations: [{ evidenceId: 'evidence-a5' }],
-        provider: { provider: 'deepseek', model: 'deepseek-v4-flash' },
+        provider: { provider: 'deepseek', model: 'deepseek-flash' },
       };
     });
     const service = new AskAnswerExecutionService(
@@ -295,7 +295,7 @@ describe('A5 AnswerRun execution identity', () => {
       provider(async () => ({
         answer: 'Initial identity answer',
         citations: [{ evidenceId: 'evidence-a5' }],
-        provider: { provider: 'deepseek', model: 'deepseek-v4-flash' },
+        provider: { provider: 'deepseek', model: 'deepseek-flash' },
       })),
       {
         executionIdentityResolver: {

@@ -19,6 +19,8 @@ import {
   dispatchActionFeedbackOutbox,
   runActionFeedbackOutboxRecovery,
   type ActionExecutionRepositoryPort,
+  type ActionFeedbackOutboxRecord,
+  type ActionFeedbackOutboxRecoveryConnector,
   type ActionBindingReference,
 } from '../../modules/action-execution/src/index.js';
 import {
@@ -91,6 +93,85 @@ const prepareAndApprove = async (app: Awaited<ReturnType<typeof harness>>, suffi
       approveActionCommand(preview.actionId, preview.preview.previewDigest),
     )
   ).result;
+};
+
+const feedbackOutboxFixture = (
+  projectId: string,
+  actionId: string,
+): ActionFeedbackOutboxRecord => ({
+  outboxId: `outbox:${projectId}:${actionId}`,
+  projectId,
+  actionId,
+  semanticKey: `action-feedback:${actionId}:FAILED`,
+  status: 'pending',
+  feedbackStatus: 'FAILED',
+  reentryPhase: 'ACTION_REVIEW',
+  schemaVersion: '1.0.0',
+  payload: {
+    actionId,
+    status: 'FAILED',
+    reentryPhase: 'ACTION_REVIEW',
+    occurredAt: '2026-07-17T10:00:00.000Z',
+  },
+  occurredAt: '2026-07-17T10:00:00.000Z',
+  sourceUpdatedAt: '2026-07-17T10:00:00.000Z',
+  attempts: 0,
+  availableAt: '2026-07-17T10:00:00.000Z',
+});
+
+const outboxFixtureRepository = (initial: readonly ActionFeedbackOutboxRecord[]) => {
+  const rows = new Map(initial.map((record) => [record.outboxId, record]));
+  const releases: string[] = [];
+  return {
+    releases,
+    async listFeedbackOutboxProjectIds() {
+      return [...new Set([...rows.values()].map((row) => row.projectId))];
+    },
+    async findFeedbackOutbox(projectId: string, semanticKey: string) {
+      const row = [...rows.values()].find(
+        (candidate) => candidate.projectId === projectId && candidate.semanticKey === semanticKey,
+      );
+      return row ? structuredClone(row) : undefined;
+    },
+    async claimFeedbackOutbox(projectId: string, _semanticKey: string | undefined, limit: number) {
+      return [...rows.values()]
+        .filter((row) => row.projectId === projectId && row.status === 'pending')
+        .slice(0, limit)
+        .map((row) => {
+          const claimed = { ...row, status: 'processing' as const, attempts: row.attempts + 1 };
+          rows.set(row.outboxId, claimed);
+          return structuredClone(claimed);
+        });
+    },
+    async markFeedbackOutboxPublished(
+      _projectId: string,
+      outboxId: string,
+      _attempt: number,
+      publishedAt: string,
+    ) {
+      void _attempt;
+      const row = rows.get(outboxId);
+      if (row) rows.set(outboxId, { ...row, status: 'published', publishedAt });
+    },
+    async releaseFeedbackOutbox(
+      _projectId: string,
+      outboxId: string,
+      _attempt: number,
+      _error: string,
+    ) {
+      void _attempt;
+      void _error;
+      releases.push(outboxId);
+      const row = rows.get(outboxId);
+      if (row) rows.set(outboxId, { ...row, status: 'pending' });
+    },
+    async backfillFeedbackOutbox() {
+      return 0;
+    },
+    row(outboxId: string) {
+      return rows.get(outboxId);
+    },
+  };
 };
 
 describe('Stage 12.1 P0-2 server-bound Action contracts', () => {
@@ -302,6 +383,130 @@ describe('Stage 12.1 P0-2 server-bound Action contracts', () => {
       ),
     ).toMatchObject({ status: 'published', attempts: 1 });
     expect(app.connector.calls).toEqual({ preflight: 0, execute: 0, verify: 0 });
+    await app.kernel.shutdown();
+  });
+
+  it('isolates a poison row while allowing later healthy rows in the same batch to progress', async () => {
+    const poison = feedbackOutboxFixture('project-a', 'poison');
+    const healthy = feedbackOutboxFixture('project-a', 'healthy');
+    const repository = outboxFixtureRepository([poison, healthy]);
+    const attempted: string[] = [];
+
+    await expect(
+      dispatchActionFeedbackOutbox(
+        repository,
+        {
+          publish: async (event) => {
+            attempted.push(event.idempotencyKey);
+            if (event.idempotencyKey === poison.semanticKey) {
+              throw new ShotgunError({
+                code: 'RETRYABLE_DEPENDENCY',
+                safeMessage: 'Poison consumer is unavailable.',
+                module: 'test',
+                operation: 'publish-feedback',
+                retryable: true,
+              });
+            }
+          },
+        },
+        'project-a',
+        2,
+        '2026-07-17T10:01:00.000Z',
+      ),
+    ).rejects.toMatchObject({ code: 'RETRYABLE_DEPENDENCY' });
+
+    expect(attempted).toEqual([healthy.semanticKey, poison.semanticKey]);
+    expect(repository.releases).toEqual([poison.outboxId]);
+    expect(repository.row(healthy.outboxId)?.status).toBe('published');
+  });
+
+  it('stops producer redispatch after an accepted required-consumer dead-letter', async () => {
+    const row = feedbackOutboxFixture('project-a', 'governed-dlq');
+    const repository = outboxFixtureRepository([row]);
+    let publications = 0;
+    const context = {
+      publish: async () => undefined,
+      publishWithOutcome: async () => {
+        publications += 1;
+        return { requiredConsumerDeadLetter: true };
+      },
+    };
+
+    expect(
+      await dispatchActionFeedbackOutbox(
+        repository,
+        context,
+        'project-a',
+        1,
+        '2026-07-17T10:01:00.000Z',
+      ),
+    ).toBe(1);
+    expect(repository.row(row.outboxId)?.status).toBe('published');
+    expect(
+      await dispatchActionFeedbackOutbox(
+        repository,
+        context,
+        'project-a',
+        1,
+        '2026-07-17T10:02:00.000Z',
+      ),
+    ).toBe(0);
+    expect(publications).toBe(1);
+  });
+
+  it('continues recovery across projects after one project fails', async () => {
+    const repository = outboxFixtureRepository([
+      feedbackOutboxFixture('project-a', 'failure'),
+      feedbackOutboxFixture('project-b', 'healthy'),
+    ]);
+    const projects: string[] = [];
+    await expect(
+      runActionFeedbackOutboxRecovery(repository, {
+        async sendCommand<TPayload>(
+          command: Parameters<ActionFeedbackOutboxRecoveryConnector['sendCommand']>[0],
+        ) {
+          projects.push(command.projectId!);
+          if (command.projectId === 'project-a') {
+            throw new ShotgunError({
+              code: 'RETRYABLE_DEPENDENCY',
+              safeMessage: 'Project A is unavailable.',
+              module: 'test',
+              operation: 'dispatch-feedback',
+            });
+          }
+          return { result: { published: 1 } as TPayload };
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'RETRYABLE_DEPENDENCY' });
+    expect(projects).toEqual(['project-a', 'project-b']);
+  });
+
+  it('backfills unseen historical feedback beyond a small batch limit', async () => {
+    const app = await harness();
+    for (let index = 0; index < 5; index += 1) {
+      const approved = await prepareAndApprove(app, `feedback-forward-${index}`);
+      const claimed = await app.repository.claimForExecution(
+        approved.projectId,
+        approved.approval!.approvalId,
+        `2026-07-17T10:0${index + 1}:00.000Z`,
+        'worker',
+      );
+      await app.repository.transition(approved.projectId, approved.actionId, {
+        expectedStatus: 'EXECUTING',
+        next: {
+          ...claimed.record,
+          status: 'FAILED',
+          updatedAt: `2026-07-17T10:1${index}:00.000Z`,
+        },
+        category: 'ACTION_FAILED',
+        actorId: 'historical-worker',
+        details: { historical: true },
+      });
+    }
+    expect(await app.repository.backfillFeedbackOutbox(2, '2026-07-17T11:00:00.000Z')).toBe(2);
+    expect(await app.repository.backfillFeedbackOutbox(2, '2026-07-17T11:01:00.000Z')).toBe(2);
+    expect(await app.repository.backfillFeedbackOutbox(2, '2026-07-17T11:02:00.000Z')).toBe(1);
+    expect(await app.repository.backfillFeedbackOutbox(2, '2026-07-17T11:03:00.000Z')).toBe(0);
     await app.kernel.shutdown();
   });
 

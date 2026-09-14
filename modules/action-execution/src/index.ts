@@ -25,7 +25,11 @@ import {
   createCommand,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
-import type { HandlerContext, ShotgunModule } from '../../../packages/module-sdk/src/index.js';
+import type {
+  HandlerContext,
+  PublishEventInput,
+  ShotgunModule,
+} from '../../../packages/module-sdk/src/index.js';
 import {
   ACTION_RISK_POLICY_VERSION,
   decideActionRisk,
@@ -150,6 +154,10 @@ export type ActionFeedbackOutboxRepositoryPort = {
     outboxId: string,
     attempt: number,
     publishedAt: string,
+    expected?: Pick<
+      ActionFeedbackOutboxRecord,
+      'actionId' | 'semanticKey' | 'payload' | 'sourceUpdatedAt'
+    >,
   ): Promise<void>;
   releaseFeedbackOutbox(
     projectId: string,
@@ -973,11 +981,12 @@ const stale = (message: string, correlationId?: string): ShotgunError =>
 
 export const dispatchActionFeedbackOutbox = async (
   repository: ActionFeedbackOutboxRepositoryPort,
-  context: Pick<HandlerContext, 'publish'>,
+  context: Pick<HandlerContext, 'publish' | 'publishWithOutcome'>,
   projectId: string,
   limit: number,
   now: string,
   semanticKey?: string,
+  options: { readonly failOnRequiredConsumerDeadLetter?: boolean } = {},
 ): Promise<number> => {
   const staleBefore = new Date(Date.parse(now) - 5 * 60 * 1000).toISOString();
   const records = [
@@ -994,40 +1003,56 @@ export const dispatchActionFeedbackOutbox = async (
       left.outboxId.localeCompare(right.outboxId),
   );
   let published = 0;
-  for (const [index, record] of records.entries()) {
+  let firstError: unknown;
+  let requiredConsumerDeadLetter = false;
+  for (const record of records) {
+    let handoffAccepted = false;
     try {
-      await context.publish<ActionFeedback>({
+      const input: PublishEventInput<ActionFeedback> = {
         messageType: 'ActionFeedbackRecorded',
         schemaVersion: record.schemaVersion,
         idempotencyKey: record.semanticKey,
         payload: record.payload,
-      });
+      };
+      const outcome = context.publishWithOutcome
+        ? await context.publishWithOutcome(input)
+        : (await context.publish(input), { requiredConsumerDeadLetter: false });
+      handoffAccepted = true;
       await repository.markFeedbackOutboxPublished(
         projectId,
         record.outboxId,
         record.attempts,
         now,
+        record,
       );
       published += 1;
+      requiredConsumerDeadLetter ||= outcome.requiredConsumerDeadLetter;
     } catch (error) {
-      await Promise.all(
-        records
-          .slice(index)
-          .map((claimed) =>
-            repository.releaseFeedbackOutbox(
-              projectId,
-              claimed.outboxId,
-              claimed.attempts,
-              claimed.outboxId === record.outboxId
-                ? error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN'
-                  ? 'OUTCOME_UNKNOWN'
-                  : 'OUTBOX_PUBLICATION_FAILED'
-                : 'OUTBOX_BATCH_INTERRUPTED',
-            ),
-          ),
-      );
-      throw error;
+      // Once publishEvent returned, the Connector Runtime owns any required
+      // consumer dead-letter and governed replay.  Never release that row
+      // back to this producer outbox, including marker ACK ambiguity.
+      if (!handoffAccepted) {
+        await repository.releaseFeedbackOutbox(
+          projectId,
+          record.outboxId,
+          record.attempts,
+          error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN'
+            ? 'OUTCOME_UNKNOWN'
+            : 'OUTBOX_PUBLICATION_FAILED',
+        );
+      }
+      firstError ??= error;
     }
+  }
+  if (firstError) throw firstError;
+  if (requiredConsumerDeadLetter && options.failOnRequiredConsumerDeadLetter) {
+    throw new ShotgunError({
+      code: 'TERMINAL_FAILURE',
+      safeMessage:
+        'The feedback handoff was accepted but a required consumer is governed by dead-letter replay.',
+      module: 'stage11.action-execution',
+      operation: 'dispatch-action-feedback-outbox',
+    });
   }
   return published;
 };
@@ -1047,26 +1072,32 @@ export const runActionFeedbackOutboxRecovery = async (
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 100)
     throw new RangeError('Action feedback outbox batchSize must be an integer between 1 and 100.');
   let published = 0;
+  let firstError: unknown;
   for (const projectId of await repository.listFeedbackOutboxProjectIds()) {
-    const result = await connector.sendCommand<{ readonly published: number }>(
-      createCommand({
-        messageType: 'DispatchActionFeedbackOutbox',
-        schemaVersion: '1.1.0',
-        producerModule: 'stage11.action-execution',
-        producerVersion: '1.1.0',
-        projectId,
-        actor: { type: 'service', id: 'stage11-action-feedback-outbox' },
-        security: {
-          accessScope: ['owner'],
-          sensitivity: 'restricted',
-          dataClassification: 'action-feedback-recovery',
-        },
-        idempotencyKey: `action-feedback-recovery:${projectId}:${randomUUID()}`,
-        payload: { limit: batchSize },
-      }),
-    );
-    published += result.result.published;
+    try {
+      const result = await connector.sendCommand<{ readonly published: number }>(
+        createCommand({
+          messageType: 'DispatchActionFeedbackOutbox',
+          schemaVersion: '1.1.0',
+          producerModule: 'stage11.action-execution',
+          producerVersion: '1.1.0',
+          projectId,
+          actor: { type: 'service', id: 'stage11-action-feedback-outbox' },
+          security: {
+            accessScope: ['owner'],
+            sensitivity: 'restricted',
+            dataClassification: 'action-feedback-recovery',
+          },
+          idempotencyKey: `action-feedback-recovery:${projectId}:${randomUUID()}`,
+          payload: { limit: batchSize },
+        }),
+      );
+      published += result.result.published;
+    } catch (error) {
+      firstError ??= error;
+    }
   }
+  if (firstError) throw firstError;
   return published;
 };
 
@@ -1106,7 +1137,7 @@ export const startActionFeedbackOutboxWorker = (
 
 const publishFeedback = async (
   repository: ActionExecutionRepositoryPort,
-  context: Pick<HandlerContext, 'publish'>,
+  context: Pick<HandlerContext, 'publish' | 'publishWithOutcome'>,
   record: ActionExecutionRecord,
   now: string,
 ): Promise<void> => {
@@ -1119,6 +1150,7 @@ const publishFeedback = async (
     1,
     now,
     intent.semanticKey,
+    { failOnRequiredConsumerDeadLetter: true },
   );
   if (published > 0) return;
   const persisted = await repository.findFeedbackOutbox(record.projectId, intent.semanticKey);

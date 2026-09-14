@@ -559,25 +559,69 @@ export class PostgresActionExecutionRepository
     outboxId: string,
     attempt: number,
     publishedAt: string,
+    expected?: Pick<
+      ActionFeedbackOutboxRecord,
+      'actionId' | 'semanticKey' | 'payload' | 'sourceUpdatedAt'
+    >,
   ): Promise<void> {
-    const updated = await this.pool.query(
-      `UPDATE action.action_feedback_outbox
-       SET status = 'published', published_at = $4, claimed_at = NULL, last_error = NULL
-       WHERE project_id = $1 AND outbox_id = $2 AND status = 'processing' AND attempts = $3`,
-      [projectId, outboxId, attempt, publishedAt],
-    );
-    if ((updated.rowCount ?? 0) > 0) return;
-    const existing = await this.pool.query<{ readonly status: FeedbackOutboxRow['status'] }>(
-      'SELECT status FROM action.action_feedback_outbox WHERE project_id = $1 AND outbox_id = $2',
-      [projectId, outboxId],
-    );
-    if (existing.rows[0]?.status === 'published') return;
-    throw new ShotgunError({
-      code: 'CONFLICT',
-      safeMessage: 'Action feedback outbox claim is no longer current.',
-      module: 'postgres-stage11',
-      operation: 'mark-feedback-outbox-published',
-    });
+    const matches = (record: ActionFeedbackOutboxRecord | undefined): boolean =>
+      record !== undefined &&
+      record.projectId === projectId &&
+      record.outboxId === outboxId &&
+      record.status === 'published' &&
+      record.attempts === attempt &&
+      record.claimedAt === undefined &&
+      record.publishedAt !== undefined &&
+      sameTimestamp(record.publishedAt, publishedAt) &&
+      (expected === undefined ||
+        (record.actionId === expected.actionId &&
+          record.semanticKey === expected.semanticKey &&
+          stableJson(record.payload) === stableJson(expected.payload) &&
+          sameTimestamp(record.sourceUpdatedAt, expected.sourceUpdatedAt)));
+    let actionCompleted = false;
+    try {
+      await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const updated = await client.query(
+            `UPDATE action.action_feedback_outbox
+             SET status = 'published', published_at = $4, claimed_at = NULL, last_error = NULL
+             WHERE project_id = $1 AND outbox_id = $2 AND status = 'processing' AND attempts = $3`,
+            [projectId, outboxId, attempt, publishedAt],
+          );
+          if ((updated.rowCount ?? 0) === 0) {
+            const existing = await client.query<FeedbackOutboxRow>(
+              `${feedbackOutboxSelect} WHERE project_id = $1 AND outbox_id = $2`,
+              [projectId, outboxId],
+            );
+            if (!matches(existing.rows[0] ? mapFeedbackOutboxRow(existing.rows[0]) : undefined)) {
+              throw new ShotgunError({
+                code: 'CONFLICT',
+                safeMessage: 'Action feedback outbox claim is no longer current.',
+                module: 'postgres-stage11',
+                operation: 'mark-feedback-outbox-published',
+              });
+            }
+          }
+          actionCompleted = true;
+        },
+        { module: 'postgres-stage11', operation: 'mark-feedback-outbox-published' },
+      );
+    } catch (error) {
+      if (isOutcomeUnknown(error) && actionCompleted) {
+        try {
+          const readback = await this.pool.query<FeedbackOutboxRow>(
+            `${feedbackOutboxSelect} WHERE project_id = $1 AND outbox_id = $2`,
+            [projectId, outboxId],
+          );
+          if (matches(readback.rows[0] ? mapFeedbackOutboxRow(readback.rows[0]) : undefined))
+            return;
+        } catch {
+          // Preserve OUTCOME_UNKNOWN when authoritative marker read-back fails.
+        }
+      }
+      throw error;
+    }
   }
 
   async releaseFeedbackOutbox(
@@ -607,6 +651,17 @@ export class PostgresActionExecutionRepository
          'ACTION_FAILED', 'ACTION_OUTCOME_UNKNOWN', 'ACTION_VERIFIED',
          'ACTION_VERIFICATION_FAILED'
        )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM action.action_feedback_outbox AS existing
+           WHERE existing.project_id = audit.project_id
+             AND existing.semantic_key = 'action-feedback:' || audit.action_id::text || ':' ||
+               CASE
+                 WHEN audit.category = 'ACTION_VERIFIED' THEN 'VERIFIED'
+                 WHEN audit.category = 'ACTION_OUTCOME_UNKNOWN' THEN 'OUTCOME_UNKNOWN'
+                 ELSE 'FAILED'
+               END
+         )
        ORDER BY audit.project_id ASC, audit.action_id ASC, audit.sequence ASC
        LIMIT $1`,
       [Math.max(1, Math.min(1000, limit))],

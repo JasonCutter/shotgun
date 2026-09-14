@@ -1,6 +1,6 @@
 # ADR-166 — Stage 11 Durable Action Feedback Handoff
 
-_Status: Accepted for RUS-1D-C D11-4 (2026-09-15)_
+_Status: Accepted for RUS-1D-D D11-4 (2026-09-15)_
 
 ## Context
 

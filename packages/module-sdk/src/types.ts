@@ -148,6 +148,11 @@ export type PublishEventInput<TPayload> = {
   readonly sequence?: number;
 };
 
+/** A producer-visible result for distinguishing accepted handoff from a required consumer dead-letter. */
+export type PublishEventOutcome = {
+  readonly requiredConsumerDeadLetter: boolean;
+};
+
 export type DispatchQueryInput<TPayload> = {
   readonly messageType: string;
   readonly schemaVersion: string;
@@ -158,6 +163,9 @@ export type HandlerContext = {
   readonly moduleId: string;
   readonly attemptNumber: number;
   publish<TPayload>(input: PublishEventInput<TPayload>): Promise<void>;
+  readonly publishWithOutcome?: <TPayload>(
+    input: PublishEventInput<TPayload>,
+  ) => Promise<PublishEventOutcome>;
   query<TPayload, TResult>(
     input: DispatchQueryInput<TPayload>,
   ): Promise<QueryResultEnvelope<TResult>>;

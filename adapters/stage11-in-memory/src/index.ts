@@ -9,6 +9,7 @@ import type {
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
 import type {
   ActionCandidateRepositoryPort,
+  ActionFeedbackOutboxRepositoryPort,
   ActionFeedbackStatus,
   ActionFeedbackOutboxRecord,
   ActionExecutionRepositoryPort,
@@ -263,7 +264,9 @@ export class InMemoryActionExecutionRepository implements ActionExecutionReposit
     outboxId: string,
     attempt: number,
     publishedAt: string,
+    _expected?: Parameters<ActionFeedbackOutboxRepositoryPort['markFeedbackOutboxPublished']>[4],
   ): Promise<void> {
+    void _expected;
     const record = this.findOutboxById(projectId, outboxId);
     if (!record || record.status === 'published') return;
     if (record.status !== 'processing' || record.attempts !== attempt)
@@ -304,7 +307,15 @@ export class InMemoryActionExecutionRepository implements ActionExecutionReposit
     void now;
     const candidates = [...this.auditEvents.entries()]
       .flatMap(([actionId, events]) => events.map((event) => ({ actionId, event })))
-      .filter(({ event }) => feedbackStatusForAudit(event.category) !== undefined)
+      .filter(({ actionId, event }) => {
+        const status = feedbackStatusForAudit(event.category);
+        const record = this.records.get(actionId);
+        return (
+          record !== undefined &&
+          status !== undefined &&
+          !this.feedbackOutbox.has(`${event.projectId}:action-feedback:${actionId}:${status}`)
+        );
+      })
       .sort(
         (left, right) =>
           left.event.projectId.localeCompare(right.event.projectId) ||

@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
+import type { Pool, PoolClient } from 'pg';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
+import { FakeDraftActionConnector } from '../../adapters/action-connector-fake/src/index.js';
 import { PostgresActionExecutionRepository } from '../../adapters/postgres-stage11/src/index.js';
 import type {
   ActionAuditEvent,
@@ -10,9 +12,14 @@ import type {
 } from '../../packages/contracts/src/index.js';
 import { ShotgunError } from '../../packages/contracts/src/index.js';
 import {
+  createActionExecutionModule,
   createActionFeedbackIntent,
   dispatchActionFeedbackOutbox,
+  runActionFeedbackOutboxRecovery,
 } from '../../modules/action-execution/src/index.js';
+import { createActionFeedbackReviewModule } from '../../modules/action-feedback-review/src/index.js';
+import { InProcessTransport } from '../../adapters/transport-in-process/src/index.js';
+import { ShotgunKernel } from '../../packages/kernel/src/index.js';
 import { migrateUpTo } from '../../scripts/database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
@@ -23,6 +30,30 @@ const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 const projectId = 'project-stage11-feedback-outbox';
 const timestamp = '2026-09-15T10:00:00.000Z';
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
+
+const poolWithCommitAckLoss = (base: Pool): Pool =>
+  ({
+    connect: async (): Promise<PoolClient> => {
+      const client = await base.connect();
+      let released = false;
+      return {
+        query: async (sql: string, values?: readonly unknown[]) => {
+          if (sql.trim().toUpperCase() === 'COMMIT') {
+            await client.query(sql);
+            throw new Error('simulated lost COMMIT acknowledgement');
+          }
+          return values === undefined ? client.query(sql) : client.query(sql, values as unknown[]);
+        },
+        release: (error?: Error) => {
+          if (released) return;
+          released = true;
+          client.release(error);
+        },
+      } as unknown as PoolClient;
+    },
+    query: (sql: string, values?: readonly unknown[]) =>
+      values === undefined ? base.query(sql) : base.query(sql, values as unknown[]),
+  }) as unknown as Pool;
 
 const seedExecuting = async (suffix: string): Promise<ActionExecutionRecord> => {
   const actionId = randomUUID();
@@ -78,6 +109,24 @@ const transition = async (
     details: { test: true },
     feedbackIntent: withFeedback ? createActionFeedbackIntent(next) : undefined,
   });
+};
+
+const stage11Kernel = (
+  repository: PostgresActionExecutionRepository,
+  connector: FakeDraftActionConnector,
+) => {
+  const kernel = new ShotgunKernel(new InProcessTransport());
+  kernel.register(
+    createActionExecutionModule(
+      repository,
+      { find: async () => undefined },
+      { resolveCurrentBinding: async () => undefined },
+      connector,
+      { now: () => '2026-09-15T10:50:00.000Z' },
+    ),
+    createActionFeedbackReviewModule(repository, { now: () => '2026-09-15T10:50:00.000Z' }),
+  );
+  return kernel;
 };
 
 describe.runIf(pool)('ADR-166 Stage 11 Action feedback outbox PostgreSQL regressions', () => {
@@ -270,6 +319,37 @@ describe.runIf(pool)('ADR-166 Stage 11 Action feedback outbox PostgreSQL regress
     ).toMatchObject({ status: 'published', attempts: 2 });
   });
 
+  it('proves a published marker after COMMIT acknowledgement loss without redispatch', async () => {
+    const repository = new PostgresActionExecutionRepository(pool!);
+    const action = await seedExecuting('published-marker-ack-loss');
+    await transition(repository, action, 'FAILED', 'ACTION_FAILED', '2026-09-15T10:11:00.000Z');
+    const semanticKey = `action-feedback:${action.actionId}:FAILED`;
+    const claimed = await repository.claimFeedbackOutbox(
+      projectId,
+      semanticKey,
+      1,
+      '2026-09-15T10:12:00.000Z',
+      '2026-09-15T10:07:00.000Z',
+    );
+    expect(claimed).toHaveLength(1);
+
+    const ackLossRepository = new PostgresActionExecutionRepository(poolWithCommitAckLoss(pool!));
+    await expect(
+      ackLossRepository.markFeedbackOutboxPublished(
+        projectId,
+        claimed[0]!.outboxId,
+        claimed[0]!.attempts,
+        '2026-09-15T10:13:00.000Z',
+        claimed[0],
+      ),
+    ).resolves.toBeUndefined();
+    expect(await repository.findFeedbackOutbox(projectId, semanticKey)).toMatchObject({
+      status: 'published',
+      claimedAt: undefined,
+      publishedAt: '2026-09-15T10:13:00.000Z',
+    });
+  });
+
   it('I backfills all historical feedback categories additively without provider calls or duplicates', async () => {
     const repository = new PostgresActionExecutionRepository(pool!);
     const action = await seedExecuting('backfill');
@@ -319,5 +399,100 @@ describe.runIf(pool)('ADR-166 Stage 11 Action feedback outbox PostgreSQL regress
       'OUTCOME_UNKNOWN',
       'VERIFIED',
     ]);
+  });
+
+  it('backfill makes forward progress when the requested limit is smaller than history', async () => {
+    const repository = new PostgresActionExecutionRepository(pool!);
+    for (let index = 0; index < 5; index += 1) {
+      const action = await seedExecuting(`backfill-forward-${index}`);
+      await transition(
+        repository,
+        action,
+        'FAILED',
+        'ACTION_FAILED',
+        `2026-09-15T10:2${index}:00.000Z`,
+        false,
+      );
+    }
+    expect(await repository.backfillFeedbackOutbox(2, '2026-09-15T10:40:00.000Z')).toBe(2);
+    expect(await repository.backfillFeedbackOutbox(2, '2026-09-15T10:41:00.000Z')).toBe(2);
+    expect(await repository.backfillFeedbackOutbox(2, '2026-09-15T10:42:00.000Z')).toBe(1);
+    expect(await repository.backfillFeedbackOutbox(2, '2026-09-15T10:43:00.000Z')).toBe(0);
+  });
+
+  it('restarts the real Stage 11 kernel and materializes each committed feedback exactly once', async () => {
+    const repository = new PostgresActionExecutionRepository(pool!);
+    const connector = new FakeDraftActionConnector();
+    const failed = await seedExecuting('restart-failed');
+    await transition(repository, failed, 'FAILED', 'ACTION_FAILED', '2026-09-15T10:51:00.000Z');
+    const unknown = await seedExecuting('restart-unknown');
+    await transition(
+      repository,
+      unknown,
+      'OUTCOME_UNKNOWN',
+      'ACTION_OUTCOME_UNKNOWN',
+      '2026-09-15T10:52:00.000Z',
+    );
+    const verified = await seedExecuting('restart-verified');
+    await transition(
+      repository,
+      verified,
+      'VERIFIED',
+      'ACTION_VERIFIED',
+      '2026-09-15T10:53:00.000Z',
+    );
+    const verificationFailed = await seedExecuting('restart-verification-failed');
+    await transition(
+      repository,
+      verificationFailed,
+      'VERIFICATION_FAILED',
+      'ACTION_VERIFICATION_FAILED',
+      '2026-09-15T10:54:00.000Z',
+    );
+    const preflight = await seedExecuting('restart-preflight');
+    await transition(
+      repository,
+      preflight,
+      'PREFLIGHT_FAILED',
+      'ACTION_PREFLIGHT_FAILED',
+      '2026-09-15T10:55:00.000Z',
+      false,
+    );
+
+    const firstProcess = stage11Kernel(repository, connector);
+    await firstProcess.start();
+    await firstProcess.shutdown();
+
+    const restartedProcess = stage11Kernel(repository, connector);
+    await restartedProcess.start();
+    try {
+      expect(await runActionFeedbackOutboxRecovery(repository, restartedProcess.connector)).toBe(4);
+      const reviews = await pool!.query<{ readonly action_id: string; readonly outcome: string }>(
+        `SELECT action_id, outcome
+         FROM action.action_review_work_items
+         WHERE project_id = $1
+         ORDER BY action_id`,
+        [projectId],
+      );
+      expect(reviews.rows).toHaveLength(4);
+      expect(reviews.rows.map((row) => row.outcome).sort()).toEqual([
+        'FAILED',
+        'FAILED',
+        'OUTCOME_UNKNOWN',
+        'VERIFIED',
+      ]);
+      expect(await runActionFeedbackOutboxRecovery(repository, restartedProcess.connector)).toBe(0);
+      expect(
+        (
+          await pool!.query(
+            'SELECT count(*)::int AS count FROM action.action_review_work_items WHERE project_id = $1',
+            [projectId],
+          )
+        ).rows[0]?.count,
+      ).toBe(4);
+      expect(connector.calls).toEqual({ preflight: 0, execute: 0, verify: 0 });
+    } finally {
+      await restartedProcess.shutdown();
+    }
   });
 });

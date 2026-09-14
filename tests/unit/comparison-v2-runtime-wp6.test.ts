@@ -631,9 +631,9 @@ describe('WP6 comparison rollout runtime', () => {
       candidateSourceVersionId: currentCandidate.sourceVersionId,
       candidateDigest: claimCandidateDigest(currentCandidate),
       candidateEvidenceDigest: 'old-evidence',
-      canonicalSnapshotId: 'snapshot-1',
-      canonicalSnapshotDigest: 'digest-1',
-      canonicalSnapshotVersion: 1,
+      canonicalSnapshotId: 'snapshot-2',
+      canonicalSnapshotDigest: 'digest-2',
+      canonicalSnapshotVersion: 2,
       shortlistDigest: 'shortlist-1',
       shortlistPolicyRevision: 'policy-1',
       semanticGenerationId: 'generation-1',
@@ -723,6 +723,103 @@ describe('WP6 comparison rollout runtime', () => {
     await expect(adapter.getCurrent(freshnessRequest)).rejects.toThrow(
       'lexical projection unavailable',
     );
+  });
+
+  it('R6-10 canonical identity drift reaches the evaluator before projection reads', async () => {
+    const settings = settingStore('V2_ACTIVE');
+    const currentCandidate = candidate();
+    const currentSnapshot = {
+      snapshotId: 'snapshot-current',
+      projectId: 'project-1',
+      version: 3,
+      digest: 'digest-current',
+      claims: [
+        {
+          claimId: 'claim-current',
+          text: 'Current Canonical claim.',
+          revisionNumber: 1,
+          evidenceIds: [],
+        },
+      ],
+      createdAt: '2026-09-05T00:00:00.000Z',
+    };
+    let lexicalCalls = 0;
+    const adapter = createComparisonV2ReviewFreshnessAdapter({
+      candidate: { findById: async () => currentCandidate },
+      canonicalSnapshot: { getSnapshot: async () => currentSnapshot },
+      lexicalRetriever: {
+        retrieve: async () => {
+          lexicalCalls += 1;
+          throw new Error('lexical projection must not be read after Canonical drift');
+        },
+      },
+      activeGenerationReader: {
+        getActiveGeneration: async () => undefined,
+      } as never,
+      rollout: createComparisonRolloutAuthorityResolver(settings.repository),
+    });
+    const expected: ComparisonFreshnessIdentityV2 = {
+      mode: 'EMPTY_CANONICAL_BOOTSTRAP',
+      candidateId: currentCandidate.candidateId,
+      candidateRevision: currentCandidate.revisionNumber,
+      candidateSourceVersionId: currentCandidate.sourceVersionId,
+      candidateDigest: claimCandidateDigest(currentCandidate),
+      candidateEvidenceDigest: 'evidence-current',
+      canonicalSnapshotId: 'snapshot-old',
+      canonicalSnapshotDigest: 'digest-old',
+      canonicalSnapshotVersion: 2,
+      shortlistDigest: 'shortlist-old',
+      shortlistPolicyRevision: 'policy-old',
+      semanticGenerationId: 'generation-old',
+      semanticSourceProjectionDigest: 'projection-old',
+      semanticCanonicalBaseVersion: 2,
+      rolloutAuthorityRevision: 'rollout-old',
+    };
+    const authority = (
+      await createComparisonRolloutAuthorityResolver(settings.repository).resolve({
+        projectId: 'project-1',
+        candidateId: currentCandidate.candidateId,
+        candidateRevision: currentCandidate.revisionNumber,
+      })
+    ).selection;
+    const current = await adapter.getCurrent({
+      aggregate: {
+        comparison: {
+          projectId: 'project-1',
+          candidate: {
+            id: currentCandidate.candidateId,
+            revision: currentCandidate.revisionNumber,
+            sourceVersionId: currentCandidate.sourceVersionId,
+            digest: expected.candidateDigest,
+            evidenceIds: currentCandidate.evidenceIds,
+          },
+          shortlist: {
+            querySemanticReadiness: 'READY',
+            coverageStatus: 'COMPLETE',
+            truncated: false,
+            selectedTargetIdentities: [],
+          },
+        },
+        analyses: [],
+        relationships: [],
+      } as never,
+      expected,
+      authority,
+      security,
+    });
+    expect(lexicalCalls).toBe(0);
+    expect(current.identity).toMatchObject({
+      mode: 'EMPTY_CANONICAL_BOOTSTRAP',
+      canonicalSnapshotId: currentSnapshot.snapshotId,
+      canonicalSnapshotDigest: currentSnapshot.digest,
+      canonicalSnapshotVersion: currentSnapshot.version,
+      semanticGenerationId: expected.semanticGenerationId,
+    });
+    expect(current.shortlist).toEqual({
+      querySemanticReadiness: 'READY',
+      coverageStatus: 'COMPLETE',
+      truncated: false,
+    });
   });
 
   it('R6-10 accepts interchangeable fake orchestrators without vendor coupling', async () => {

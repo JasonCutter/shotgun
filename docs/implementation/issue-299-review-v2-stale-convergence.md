@@ -73,3 +73,29 @@ immutable revision table remains available for recovery and no Canonical data is
 changed by this path. PR #300 remains open and must not be merged automatically.
 Issue #298 remains STOP. Final owner/controller Review approval and merge
 decision remain outside this implementation.
+
+## Canonical-drift follow-up (2026-09-14)
+
+Implementation base: `main@f1a11a1be043917976e81eb88d76a55bf9b74937`.
+Target module/Port: Shotgun App Comparison V2 freshness adapter behind
+`ComparisonV2ReviewFreshnessPort`.
+
+The adapter now compares the authoritative Canonical snapshot identity
+(`snapshotId`, version, and digest) before reading lexical or semantic
+projection/provider readiness. When that identity has moved, it returns the
+current identity while preserving the expected freshness mode structure, so
+the existing `evaluateComparisonFreshnessV2` authority emits
+`CANONICAL_SNAPSHOT_CHANGED`, and the existing Review bridge performs the
+guarded `STALE_COMPARISON` → `markStaleIfCurrent` transition. A matching
+Canonical identity keeps the prior fail-closed `FRESHNESS_UNAVAILABLE`
+behavior; projection/provider failures are never promoted to `STALE`.
+The same early path covers `EMPTY_CANONICAL_BOOTSTRAP` becoming non-empty.
+
+No new OSS candidate is relevant (`NO_RELEVANT_OSS` remains the recorded
+decision); no dependency, frozen Contract Snapshot, migration, Canonical write,
+Approval write, or V1 fallback was added. The follow-up adds a runtime unit
+proof that projection reads are skipped after Canonical drift and extends the
+PostgreSQL-backed Product test to cover both Canonical advancement → APPROVE →
+409 → persisted queue/context `STALE` and the unchanged-Canonical provider
+unavailable negative path. Existing repository CAS and replay tests remain in
+force. Rollback is a normal revert of the follow-up commit.

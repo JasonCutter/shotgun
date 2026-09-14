@@ -8,6 +8,7 @@ import {
   type Actor,
   type CanonicalSnapshot,
   type ClaimCandidate,
+  type ComparisonFreshnessIdentityV2,
   type ErrorCode,
   type ComparisonRolloutStateV2,
   type ReviewAuthoritySelectionV2,
@@ -239,6 +240,53 @@ export const createComparisonV2ReviewFreshnessAdapter = (
           mode: 'DETERMINISTIC_EXACT',
           exactDuplicateTarget: input.expected.exactDuplicateTarget,
         },
+      };
+    }
+
+    // Canonical identity is the first authoritative freshness boundary.  If
+    // it moved, the existing evaluator already knows how to classify the
+    // comparison as CANONICAL_SNAPSHOT_CHANGED and the Review bridge will
+    // perform the guarded STALE transition.  Do this before reading lexical
+    // or semantic projections so a projection watermark/provider failure
+    // cannot mask a confirmed Canonical drift as FRESHNESS_UNAVAILABLE.
+    const canonicalSnapshotChanged =
+      input.expected.canonicalSnapshotId !== currentSnapshot.id ||
+      input.expected.canonicalSnapshotDigest !== currentSnapshot.digest ||
+      input.expected.canonicalSnapshotVersion !== currentSnapshot.version;
+    if (canonicalSnapshotChanged) {
+      const identity: ComparisonFreshnessIdentityV2 =
+        input.expected.mode === 'EMPTY_CANONICAL_BOOTSTRAP'
+          ? {
+              ...common,
+              mode: 'EMPTY_CANONICAL_BOOTSTRAP',
+              shortlistDigest: input.expected.shortlistDigest,
+              shortlistPolicyRevision: input.expected.shortlistPolicyRevision,
+              semanticGenerationId: input.expected.semanticGenerationId,
+              semanticSourceProjectionDigest: input.expected.semanticSourceProjectionDigest,
+              semanticCanonicalBaseVersion: input.expected.semanticCanonicalBaseVersion,
+            }
+          : {
+              ...common,
+              mode: 'SEMANTIC',
+              shortlistDigest: input.expected.shortlistDigest,
+              shortlistPolicyRevision: input.expected.shortlistPolicyRevision,
+              semanticGenerationId: input.expected.semanticGenerationId,
+              semanticSourceProjectionDigest: input.expected.semanticSourceProjectionDigest,
+              semanticCanonicalBaseVersion: input.expected.semanticCanonicalBaseVersion,
+              providerModelCapabilityIdentity: input.expected.providerModelCapabilityIdentity,
+              promptTemplateRevision: input.expected.promptTemplateRevision,
+              outputSchemaRevision: input.expected.outputSchemaRevision,
+              semanticPolicyRevision: input.expected.semanticPolicyRevision,
+            };
+      return {
+        identity,
+        shortlist: comparison.shortlist
+          ? {
+              querySemanticReadiness: comparison.shortlist.querySemanticReadiness,
+              coverageStatus: comparison.shortlist.coverageStatus,
+              truncated: comparison.shortlist.truncated,
+            }
+          : undefined,
       };
     }
     let lexical: Awaited<ReturnType<LexicalRetrieverPort['retrieve']>>;

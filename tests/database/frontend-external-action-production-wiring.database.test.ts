@@ -45,6 +45,12 @@ const parameterRef = {
   parameterDigest: `sha256:${'a'.repeat(64)}`,
 };
 
+const evidenceSetRef = {
+  schemaVersion: '1.0.0' as const,
+  evidenceSetId: 'production-wiring-evidence',
+  evidenceSetDigest: `sha256:${'b'.repeat(64)}`,
+};
+
 const credential = {
   schemaVersion: '1.0.0' as const,
   connectorId: 'fake-connector',
@@ -150,7 +156,7 @@ const createAction = async (server: FastifyInstance, cookie: string, actionId: s
     operation: 'UPDATE_REVERSIBLE',
     targetRef,
     parameterRef,
-    evidenceRefs: [`${prefix}-evidence`],
+    evidenceRefs: [evidenceSetRef],
   });
   const validatedDetail = await detail(server, cookie, actionId);
   const prepared = await post<{

@@ -23,6 +23,7 @@ import {
   sha256Text,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 type StateRow = QueryResultRow & {
   readonly version: number;
@@ -257,243 +258,241 @@ export class PostgresCanonicalKnowledgeRepository
   }
 
   async commit(write: CanonicalCommitWrite): Promise<CanonicalCommitResult> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query(
-        `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        await client.query(
+          `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
          VALUES ($1, 0, $2, '1970-01-01T00:00:00.000Z')
          ON CONFLICT (project_id) DO NOTHING`,
-        [write.manifest.projectId, canonicalSnapshotDigest(write.manifest.projectId, 0, [])],
-      );
-      const stateResult = await client.query<StateRow>(
-        `SELECT version, snapshot_digest, updated_at
+          [write.manifest.projectId, canonicalSnapshotDigest(write.manifest.projectId, 0, [])],
+        );
+        const stateResult = await client.query<StateRow>(
+          `SELECT version, snapshot_digest, updated_at
          FROM canonical.project_state
          WHERE project_id = $1
          FOR UPDATE`,
-        [write.manifest.projectId],
-      );
-      const existing = await client.query<CommitRow>(
-        `SELECT result_json
+          [write.manifest.projectId],
+        );
+        const existing = await client.query<CommitRow>(
+          `SELECT result_json
          FROM canonical.commits
          WHERE commit_id = $1`,
-        [write.commitId],
-      );
-      if (existing.rows[0]) {
-        const result = existing.rows[0].result_json;
+          [write.commitId],
+        );
+        if (existing.rows[0]) {
+          const result = existing.rows[0].result_json;
+          if (
+            result.projectId !== write.manifest.projectId ||
+            result.manifestDigest !== write.manifest.manifestDigest
+          ) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The Canonical Commit id was reused with different approved content.',
+              module: 'postgres-stage6',
+              operation: 'commit-canonical',
+            });
+          }
+          return result;
+        }
+
+        const state = stateResult.rows[0]!;
         if (
-          result.projectId !== write.manifest.projectId ||
-          result.manifestDigest !== write.manifest.manifestDigest
+          state.version !== write.manifest.expectedCanonicalVersion ||
+          state.snapshot_digest !== write.manifest.snapshotDigest
         ) {
           throw new ShotgunError({
-            code: 'CONFLICT',
-            safeMessage: 'The Canonical Commit id was reused with different approved content.',
+            code: 'STALE_APPROVAL',
+            safeMessage: 'The Canonical Snapshot changed after approval.',
             module: 'postgres-stage6',
             operation: 'commit-canonical',
           });
         }
-        await client.query('COMMIT');
-        return result;
-      }
-
-      const state = stateResult.rows[0]!;
-      if (
-        state.version !== write.manifest.expectedCanonicalVersion ||
-        state.snapshot_digest !== write.manifest.snapshotDigest
-      ) {
-        throw new ShotgunError({
-          code: 'STALE_APPROVAL',
-          safeMessage: 'The Canonical Snapshot changed after approval.',
-          module: 'postgres-stage6',
-          operation: 'commit-canonical',
-        });
-      }
-      let claim: CanonicalClaim | undefined;
-      if (write.manifest.operation === 'ADD_CLAIM' && write.claimId) {
-        claim = {
-          claimId: write.claimId,
-          projectId: write.manifest.projectId,
-          revisionNumber: 1,
-          claimText: write.manifest.claimText,
-          sourceVersionId: write.manifest.sourceVersionId,
-          evidenceIds: [...write.manifest.evidenceIds],
-          createdFromManifestId: write.manifest.manifestId,
-          authorityId: null,
-          authorityDigest: null,
-          accessScope: [...write.manifest.accessScope],
-          sensitivity: write.manifest.sensitivity,
-          createdAt: write.committedAt,
-        };
-        await client.query(
-          `INSERT INTO canonical.claims (
+        let claim: CanonicalClaim | undefined;
+        if (write.manifest.operation === 'ADD_CLAIM' && write.claimId) {
+          claim = {
+            claimId: write.claimId,
+            projectId: write.manifest.projectId,
+            revisionNumber: 1,
+            claimText: write.manifest.claimText,
+            sourceVersionId: write.manifest.sourceVersionId,
+            evidenceIds: [...write.manifest.evidenceIds],
+            createdFromManifestId: write.manifest.manifestId,
+            authorityId: null,
+            authorityDigest: null,
+            accessScope: [...write.manifest.accessScope],
+            sensitivity: write.manifest.sensitivity,
+            createdAt: write.committedAt,
+          };
+          await client.query(
+            `INSERT INTO canonical.claims (
              claim_id, project_id, source_version_id, manifest_id, claim_json, created_at
            )
            VALUES ($1, $2, $3, $4, $5, $6)`,
-          [
-            claim.claimId,
-            claim.projectId,
-            claim.sourceVersionId,
-            claim.createdFromManifestId,
-            JSON.stringify(claim),
-            claim.createdAt,
-          ],
-        );
-      }
+            [
+              claim.claimId,
+              claim.projectId,
+              claim.sourceVersionId,
+              claim.createdFromManifestId,
+              JSON.stringify(claim),
+              claim.createdAt,
+            ],
+          );
+        }
 
-      const afterVersion = claim ? state.version + 1 : state.version;
-      const afterClaims = snapshotClaims(await loadClaims(client, write.manifest.projectId));
-      const afterRelations = snapshotRelations(
-        await loadRelations(client, write.manifest.projectId),
-      );
-      const afterDigest = relationAwareDigest(
-        write.manifest.projectId,
-        afterVersion,
-        afterClaims,
-        afterRelations,
-      );
-      const result: CanonicalCommitResult = {
-        commitId: write.commitId,
-        projectId: write.manifest.projectId,
-        manifestId: write.manifest.manifestId,
-        manifestDigest: write.manifest.manifestDigest,
-        changeSetId: write.manifest.changeSetId,
-        authorityId: null,
-        authorityDigest: null,
-        operation: write.manifest.operation,
-        status: claim ? 'COMMITTED' : 'NO_OP',
-        beforeVersion: state.version,
-        afterVersion,
-        snapshotDigest: afterDigest,
-        claimId: claim?.claimId,
-        revisionId: write.revisionId,
-        historyEventId: write.historyEventId,
-        outboxId: write.outboxId,
-        committedAt: write.committedAt,
-      };
-      const revision: CanonicalRevision = {
-        revisionId: write.revisionId,
-        projectId: write.manifest.projectId,
-        commitId: write.commitId,
-        manifestId: write.manifest.manifestId,
-        operation: write.manifest.operation,
-        beforeVersion: state.version,
-        afterVersion,
-        claimId: claim?.claimId,
-        reason: write.manifest.reason,
-        actor: write.actor,
-        createdAt: write.committedAt,
-      };
-      const history: CanonicalHistoryEvent = {
-        historyEventId: write.historyEventId,
-        projectId: write.manifest.projectId,
-        commitId: write.commitId,
-        manifestId: write.manifest.manifestId,
-        changeSetId: write.manifest.changeSetId,
-        eventType: claim ? 'CANONICAL_CLAIM_ADDED' : 'CHANGESET_NO_OP',
-        beforeVersion: state.version,
-        afterVersion,
-        claimId: claim?.claimId,
-        reason: write.manifest.reason,
-        actor: write.actor,
-        createdAt: write.committedAt,
-      };
-      const outbox: CanonicalOutboxRecord = {
-        outboxId: write.outboxId,
-        projectId: write.manifest.projectId,
-        aggregateId: write.commitId,
-        eventType: 'CanonicalCommitted',
-        payload: {
+        const afterVersion = claim ? state.version + 1 : state.version;
+        const afterClaims = snapshotClaims(await loadClaims(client, write.manifest.projectId));
+        const afterRelations = snapshotRelations(
+          await loadRelations(client, write.manifest.projectId),
+        );
+        const afterDigest = relationAwareDigest(
+          write.manifest.projectId,
+          afterVersion,
+          afterClaims,
+          afterRelations,
+        );
+        const result: CanonicalCommitResult = {
+          commitId: write.commitId,
+          projectId: write.manifest.projectId,
+          manifestId: write.manifest.manifestId,
+          manifestDigest: write.manifest.manifestDigest,
+          changeSetId: write.manifest.changeSetId,
+          authorityId: null,
+          authorityDigest: null,
+          operation: write.manifest.operation,
+          status: claim ? 'COMMITTED' : 'NO_OP',
+          beforeVersion: state.version,
+          afterVersion,
+          snapshotDigest: afterDigest,
+          claimId: claim?.claimId,
+          revisionId: write.revisionId,
+          historyEventId: write.historyEventId,
+          outboxId: write.outboxId,
+          committedAt: write.committedAt,
+        };
+        const revision: CanonicalRevision = {
+          revisionId: write.revisionId,
+          projectId: write.manifest.projectId,
+          commitId: write.commitId,
+          manifestId: write.manifest.manifestId,
+          operation: write.manifest.operation,
+          beforeVersion: state.version,
+          afterVersion,
+          claimId: claim?.claimId,
+          reason: write.manifest.reason,
+          actor: write.actor,
+          createdAt: write.committedAt,
+        };
+        const history: CanonicalHistoryEvent = {
+          historyEventId: write.historyEventId,
+          projectId: write.manifest.projectId,
           commitId: write.commitId,
           manifestId: write.manifest.manifestId,
           changeSetId: write.manifest.changeSetId,
-          operation: write.manifest.operation,
-          status: result.status,
-          canonicalVersion: afterVersion,
-          snapshotDigest: afterDigest,
+          eventType: claim ? 'CANONICAL_CLAIM_ADDED' : 'CHANGESET_NO_OP',
+          beforeVersion: state.version,
+          afterVersion,
           claimId: claim?.claimId,
-          actorId: write.actor.id,
-          accessScope: [...write.manifest.accessScope],
-          sensitivity: write.manifest.sensitivity,
-        },
-        status: 'pending',
-        attempts: 0,
-        availableAt: write.committedAt,
-      };
+          reason: write.manifest.reason,
+          actor: write.actor,
+          createdAt: write.committedAt,
+        };
+        const outbox: CanonicalOutboxRecord = {
+          outboxId: write.outboxId,
+          projectId: write.manifest.projectId,
+          aggregateId: write.commitId,
+          eventType: 'CanonicalCommitted',
+          payload: {
+            commitId: write.commitId,
+            manifestId: write.manifest.manifestId,
+            changeSetId: write.manifest.changeSetId,
+            operation: write.manifest.operation,
+            status: result.status,
+            canonicalVersion: afterVersion,
+            snapshotDigest: afterDigest,
+            claimId: claim?.claimId,
+            actorId: write.actor.id,
+            accessScope: [...write.manifest.accessScope],
+            sensitivity: write.manifest.sensitivity,
+          },
+          status: 'pending',
+          attempts: 0,
+          availableAt: write.committedAt,
+        };
 
-      await client.query(
-        `INSERT INTO canonical.commits (
+        await client.query(
+          `INSERT INTO canonical.commits (
            commit_id, project_id, manifest_id, manifest_digest, change_set_id,
            result_json, committed_at
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          result.commitId,
-          result.projectId,
-          result.manifestId,
-          result.manifestDigest,
-          result.changeSetId,
-          JSON.stringify(result),
-          result.committedAt,
-        ],
-      );
-      await client.query(
-        `INSERT INTO canonical.revisions (
+          [
+            result.commitId,
+            result.projectId,
+            result.manifestId,
+            result.manifestDigest,
+            result.changeSetId,
+            JSON.stringify(result),
+            result.committedAt,
+          ],
+        );
+        await client.query(
+          `INSERT INTO canonical.revisions (
            revision_id, project_id, commit_id, revision_json, created_at
          )
          VALUES ($1, $2, $3, $4, $5)`,
-        [
-          revision.revisionId,
-          revision.projectId,
-          revision.commitId,
-          JSON.stringify(revision),
-          revision.createdAt,
-        ],
-      );
-      await client.query(
-        `INSERT INTO canonical.history_events (
+          [
+            revision.revisionId,
+            revision.projectId,
+            revision.commitId,
+            JSON.stringify(revision),
+            revision.createdAt,
+          ],
+        );
+        await client.query(
+          `INSERT INTO canonical.history_events (
            history_event_id, project_id, commit_id, event_json, created_at
          )
          VALUES ($1, $2, $3, $4, $5)`,
-        [
-          history.historyEventId,
-          history.projectId,
-          history.commitId,
-          JSON.stringify(history),
-          history.createdAt,
-        ],
-      );
-      if (this.options.failpoint === 'after-history') {
-        throw new Error('Stage 6 failpoint after history insert.');
-      }
-      await client.query(
-        `INSERT INTO canonical.outbox (
+          [
+            history.historyEventId,
+            history.projectId,
+            history.commitId,
+            JSON.stringify(history),
+            history.createdAt,
+          ],
+        );
+        if (this.options.failpoint === 'after-history') {
+          throw new Error('Stage 6 failpoint after history insert.');
+        }
+        await client.query(
+          `INSERT INTO canonical.outbox (
            outbox_id, project_id, aggregate_id, event_type, payload_json,
            status, attempts, available_at
          )
          VALUES ($1, $2, $3, $4, $5, 'pending', 0, $6)`,
-        [
-          outbox.outboxId,
-          outbox.projectId,
-          outbox.aggregateId,
-          outbox.eventType,
-          JSON.stringify(outbox.payload),
-          outbox.availableAt,
-        ],
-      );
-      await client.query(
-        `UPDATE canonical.project_state
+          [
+            outbox.outboxId,
+            outbox.projectId,
+            outbox.aggregateId,
+            outbox.eventType,
+            JSON.stringify(outbox.payload),
+            outbox.availableAt,
+          ],
+        );
+        await client.query(
+          `UPDATE canonical.project_state
          SET version = $2, snapshot_digest = $3, updated_at = $4
          WHERE project_id = $1`,
-        [write.manifest.projectId, afterVersion, afterDigest, write.committedAt],
-      );
-      await client.query('COMMIT');
-      return result;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+          [write.manifest.projectId, afterVersion, afterDigest, write.committedAt],
+        );
+        return result;
+      },
+      {
+        module: 'postgres-stage6',
+        operation: 'commit-canonical',
+      },
+    );
   }
 
   /**
@@ -502,274 +501,268 @@ export class PostgresCanonicalKnowledgeRepository
    * legacy Stage 5 manifest tables or digest contract.
    */
   async commitV2(write: CanonicalCommitV2Write): Promise<CanonicalCommitResult> {
-    const client = await this.pool.connect();
     const manifest = write.manifest;
     const authorityKind = 'V2_COMPARISON_REVIEW';
     const commitId = deterministicUuid(`canonical-v2-commit:${manifest.manifestId}`);
-    try {
-      await client.query('BEGIN');
-      await client.query(
-        `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        await client.query(
+          `INSERT INTO canonical.project_state (project_id, version, snapshot_digest, updated_at)
          VALUES ($1, 0, $2, '1970-01-01T00:00:00.000Z')
          ON CONFLICT (project_id) DO NOTHING`,
-        [manifest.projectId, canonicalSnapshotDigest(manifest.projectId, 0, [])],
-      );
-      const stateResult = await client.query<StateRow>(
-        `SELECT version, snapshot_digest, updated_at
+          [manifest.projectId, canonicalSnapshotDigest(manifest.projectId, 0, [])],
+        );
+        const stateResult = await client.query<StateRow>(
+          `SELECT version, snapshot_digest, updated_at
          FROM canonical.project_state
          WHERE project_id = $1
          FOR UPDATE`,
-        [manifest.projectId],
-      );
-      const existing = await client.query<CommitRow>(
-        `SELECT result_json
+          [manifest.projectId],
+        );
+        const existing = await client.query<CommitRow>(
+          `SELECT result_json
          FROM canonical.commits
          WHERE commit_id = $1
             OR (authority_kind = $2 AND authority_id = $3)`,
-        [commitId, authorityKind, manifest.manifestId],
-      );
-      if (existing.rows[0]) {
-        const result = existing.rows[0].result_json;
+          [commitId, authorityKind, manifest.manifestId],
+        );
+        if (existing.rows[0]) {
+          const result = existing.rows[0].result_json;
+          if (
+            result.projectId !== manifest.projectId ||
+            result.manifestDigest !== manifest.manifestDigest ||
+            result.authorityId !== manifest.manifestId
+          ) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The v2 Canonical Commit identity was reused with different authority.',
+              module: 'postgres-stage6',
+              operation: 'commit-canonical-v2',
+            });
+          }
+          return result;
+        }
+        const state = stateResult.rows[0]!;
         if (
-          result.projectId !== manifest.projectId ||
-          result.manifestDigest !== manifest.manifestDigest ||
-          result.authorityId !== manifest.manifestId
+          state.version !== manifest.expectedCanonicalVersion ||
+          state.snapshot_digest !== manifest.snapshotDigest
         ) {
           throw new ShotgunError({
-            code: 'CONFLICT',
-            safeMessage: 'The v2 Canonical Commit identity was reused with different authority.',
+            code: 'STALE_APPROVAL',
+            safeMessage: 'The v2 Canonical Snapshot changed after approval.',
             module: 'postgres-stage6',
             operation: 'commit-canonical-v2',
           });
         }
-        await client.query('COMMIT');
-        return result;
-      }
-      const state = stateResult.rows[0]!;
-      if (
-        state.version !== manifest.expectedCanonicalVersion ||
-        state.snapshot_digest !== manifest.snapshotDigest
-      ) {
-        throw new ShotgunError({
-          code: 'STALE_APPROVAL',
-          safeMessage: 'The v2 Canonical Snapshot changed after approval.',
-          module: 'postgres-stage6',
-          operation: 'commit-canonical-v2',
-        });
-      }
-      if (manifest.operation !== 'ADD_CLAIM' && manifest.operation !== 'NO_OP') {
-        throw new ShotgunError({
-          code: 'VALIDATION_ERROR',
-          safeMessage: 'The v2 Canonical handoff supports only ADD_CLAIM or NO_OP.',
-          module: 'postgres-stage6',
-          operation: 'commit-canonical-v2',
-        });
-      }
-      const claimId = write.claimId;
-      if (manifest.operation === 'ADD_CLAIM' && !claimId) {
-        throw new ShotgunError({
-          code: 'VALIDATION_ERROR',
-          safeMessage: 'An ADD_CLAIM Canonical handoff requires a Claim identity.',
-          module: 'postgres-stage6',
-          operation: 'commit-canonical-v2',
-        });
-      }
-      let claim: CanonicalClaim | undefined;
-      if (manifest.operation === 'ADD_CLAIM' && claimId) {
-        claim = {
-          claimId,
-          projectId: manifest.projectId,
-          revisionNumber: 1,
-          claimText: write.candidateClaimText,
-          sourceVersionId: manifest.candidate.sourceVersionId,
-          evidenceIds: [...manifest.evidenceIds],
-          createdFromManifestId: null,
-          authorityId: manifest.manifestId,
-          authorityDigest: manifest.manifestDigest,
-          accessScope: [...manifest.accessScope],
-          sensitivity: manifest.sensitivity,
-          createdAt: write.committedAt,
-        };
-        await client.query(
-          `INSERT INTO canonical.claims (
+        if (manifest.operation !== 'ADD_CLAIM' && manifest.operation !== 'NO_OP') {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage: 'The v2 Canonical handoff supports only ADD_CLAIM or NO_OP.',
+            module: 'postgres-stage6',
+            operation: 'commit-canonical-v2',
+          });
+        }
+        const claimId = write.claimId;
+        if (manifest.operation === 'ADD_CLAIM' && !claimId) {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage: 'An ADD_CLAIM Canonical handoff requires a Claim identity.',
+            module: 'postgres-stage6',
+            operation: 'commit-canonical-v2',
+          });
+        }
+        let claim: CanonicalClaim | undefined;
+        if (manifest.operation === 'ADD_CLAIM' && claimId) {
+          claim = {
+            claimId,
+            projectId: manifest.projectId,
+            revisionNumber: 1,
+            claimText: write.candidateClaimText,
+            sourceVersionId: manifest.candidate.sourceVersionId,
+            evidenceIds: [...manifest.evidenceIds],
+            createdFromManifestId: null,
+            authorityId: manifest.manifestId,
+            authorityDigest: manifest.manifestDigest,
+            accessScope: [...manifest.accessScope],
+            sensitivity: manifest.sensitivity,
+            createdAt: write.committedAt,
+          };
+          await client.query(
+            `INSERT INTO canonical.claims (
              claim_id, project_id, source_version_id, manifest_id, claim_json, created_at,
              authority_id, authority_digest
            )
            VALUES ($1, $2, $3, NULL, $4, $5, $6, $7)`,
-          [
-            claim.claimId,
-            claim.projectId,
-            claim.sourceVersionId,
-            JSON.stringify(claim),
-            claim.createdAt,
-            claim.authorityId,
-            claim.authorityDigest,
-          ],
+            [
+              claim.claimId,
+              claim.projectId,
+              claim.sourceVersionId,
+              JSON.stringify(claim),
+              claim.createdAt,
+              claim.authorityId,
+              claim.authorityDigest,
+            ],
+          );
+        }
+        const afterVersion = claim ? state.version + 1 : state.version;
+        const afterClaims = snapshotClaims(await loadClaims(client, manifest.projectId));
+        const afterRelations = snapshotRelations(await loadRelations(client, manifest.projectId));
+        const afterDigest = relationAwareDigest(
+          manifest.projectId,
+          afterVersion,
+          afterClaims,
+          afterRelations,
         );
-      }
-      const afterVersion = claim ? state.version + 1 : state.version;
-      const afterClaims = snapshotClaims(await loadClaims(client, manifest.projectId));
-      const afterRelations = snapshotRelations(await loadRelations(client, manifest.projectId));
-      const afterDigest = relationAwareDigest(
-        manifest.projectId,
-        afterVersion,
-        afterClaims,
-        afterRelations,
-      );
-      const result: CanonicalCommitResult = {
-        commitId,
-        projectId: manifest.projectId,
-        manifestId: manifest.manifestId,
-        manifestDigest: manifest.manifestDigest,
-        changeSetId: manifest.changeSetId,
-        authorityId: manifest.manifestId,
-        authorityDigest: manifest.manifestDigest,
-        operation: manifest.operation,
-        status: claim ? 'COMMITTED' : 'NO_OP',
-        beforeVersion: state.version,
-        afterVersion,
-        snapshotDigest: afterDigest,
-        claimId: claim?.claimId,
-        revisionId: write.revisionId,
-        historyEventId: write.historyEventId,
-        outboxId: write.outboxId,
-        committedAt: write.committedAt,
-      };
-      const revision: CanonicalRevision = {
-        revisionId: write.revisionId,
-        projectId: manifest.projectId,
-        commitId,
-        manifestId: manifest.manifestId,
-        operation: manifest.operation,
-        beforeVersion: state.version,
-        afterVersion,
-        claimId: claim?.claimId,
-        reason: manifest.userApproval.reason,
-        actor: write.actor,
-        createdAt: write.committedAt,
-      };
-      const history: CanonicalHistoryEvent = {
-        historyEventId: write.historyEventId,
-        projectId: manifest.projectId,
-        commitId,
-        manifestId: manifest.manifestId,
-        changeSetId: manifest.changeSetId,
-        eventType: claim ? 'CANONICAL_CLAIM_ADDED' : 'CHANGESET_NO_OP',
-        beforeVersion: state.version,
-        afterVersion,
-        claimId: claim?.claimId,
-        reason: manifest.userApproval.reason,
-        actor: write.actor,
-        createdAt: write.committedAt,
-      };
-      const outbox: CanonicalOutboxRecord = {
-        outboxId: write.outboxId,
-        projectId: manifest.projectId,
-        aggregateId: commitId,
-        eventType: 'CanonicalCommitted',
-        payload: {
+        const result: CanonicalCommitResult = {
+          commitId,
+          projectId: manifest.projectId,
+          manifestId: manifest.manifestId,
+          manifestDigest: manifest.manifestDigest,
+          changeSetId: manifest.changeSetId,
+          authorityId: manifest.manifestId,
+          authorityDigest: manifest.manifestDigest,
+          operation: manifest.operation,
+          status: claim ? 'COMMITTED' : 'NO_OP',
+          beforeVersion: state.version,
+          afterVersion,
+          snapshotDigest: afterDigest,
+          claimId: claim?.claimId,
+          revisionId: write.revisionId,
+          historyEventId: write.historyEventId,
+          outboxId: write.outboxId,
+          committedAt: write.committedAt,
+        };
+        const revision: CanonicalRevision = {
+          revisionId: write.revisionId,
+          projectId: manifest.projectId,
+          commitId,
+          manifestId: manifest.manifestId,
+          operation: manifest.operation,
+          beforeVersion: state.version,
+          afterVersion,
+          claimId: claim?.claimId,
+          reason: manifest.userApproval.reason,
+          actor: write.actor,
+          createdAt: write.committedAt,
+        };
+        const history: CanonicalHistoryEvent = {
+          historyEventId: write.historyEventId,
+          projectId: manifest.projectId,
           commitId,
           manifestId: manifest.manifestId,
           changeSetId: manifest.changeSetId,
-          operation: manifest.operation,
-          status: result.status,
-          canonicalVersion: afterVersion,
-          snapshotDigest: afterDigest,
+          eventType: claim ? 'CANONICAL_CLAIM_ADDED' : 'CHANGESET_NO_OP',
+          beforeVersion: state.version,
+          afterVersion,
           claimId: claim?.claimId,
-          actorId: write.actor.id,
-          accessScope: [...manifest.accessScope],
-          sensitivity: manifest.sensitivity,
-        },
-        status: 'pending',
-        attempts: 0,
-        availableAt: write.committedAt,
-      };
-      await client.query(
-        `INSERT INTO canonical.commits (
+          reason: manifest.userApproval.reason,
+          actor: write.actor,
+          createdAt: write.committedAt,
+        };
+        const outbox: CanonicalOutboxRecord = {
+          outboxId: write.outboxId,
+          projectId: manifest.projectId,
+          aggregateId: commitId,
+          eventType: 'CanonicalCommitted',
+          payload: {
+            commitId,
+            manifestId: manifest.manifestId,
+            changeSetId: manifest.changeSetId,
+            operation: manifest.operation,
+            status: result.status,
+            canonicalVersion: afterVersion,
+            snapshotDigest: afterDigest,
+            claimId: claim?.claimId,
+            actorId: write.actor.id,
+            accessScope: [...manifest.accessScope],
+            sensitivity: manifest.sensitivity,
+          },
+          status: 'pending',
+          attempts: 0,
+          availableAt: write.committedAt,
+        };
+        await client.query(
+          `INSERT INTO canonical.commits (
            commit_id, project_id, manifest_id, manifest_digest, change_set_id,
            result_json, committed_at, authority_kind, authority_id, authority_digest
          )
          VALUES ($1, $2, NULL, NULL, NULL, $3, $4, $5, $6, $7)`,
-        [
-          commitId,
-          manifest.projectId,
-          JSON.stringify(result),
-          result.committedAt,
-          authorityKind,
-          manifest.manifestId,
-          manifest.manifestDigest,
-        ],
-      );
-      await client.query(
-        `INSERT INTO canonical.revisions (
+          [
+            commitId,
+            manifest.projectId,
+            JSON.stringify(result),
+            result.committedAt,
+            authorityKind,
+            manifest.manifestId,
+            manifest.manifestDigest,
+          ],
+        );
+        await client.query(
+          `INSERT INTO canonical.revisions (
            revision_id, project_id, commit_id, revision_json, created_at
          ) VALUES ($1, $2, $3, $4, $5)`,
-        [
-          revision.revisionId,
-          revision.projectId,
-          commitId,
-          JSON.stringify(revision),
-          revision.createdAt,
-        ],
-      );
-      await client.query(
-        `INSERT INTO canonical.history_events (
+          [
+            revision.revisionId,
+            revision.projectId,
+            commitId,
+            JSON.stringify(revision),
+            revision.createdAt,
+          ],
+        );
+        await client.query(
+          `INSERT INTO canonical.history_events (
            history_event_id, project_id, commit_id, event_json, created_at
          ) VALUES ($1, $2, $3, $4, $5)`,
-        [
-          history.historyEventId,
-          history.projectId,
-          commitId,
-          JSON.stringify(history),
-          history.createdAt,
-        ],
-      );
-      if (this.options.failpoint === 'after-history') {
-        throw new Error('Stage 6 failpoint after history insert.');
-      }
-      await client.query(
-        `INSERT INTO canonical.outbox (
+          [
+            history.historyEventId,
+            history.projectId,
+            commitId,
+            JSON.stringify(history),
+            history.createdAt,
+          ],
+        );
+        if (this.options.failpoint === 'after-history') {
+          throw new Error('Stage 6 failpoint after history insert.');
+        }
+        await client.query(
+          `INSERT INTO canonical.outbox (
            outbox_id, project_id, aggregate_id, event_type, payload_json,
            status, attempts, available_at
          ) VALUES ($1, $2, $3, $4, $5, 'pending', 0, $6)`,
-        [
-          outbox.outboxId,
-          outbox.projectId,
-          outbox.aggregateId,
-          outbox.eventType,
-          JSON.stringify(outbox.payload),
-          outbox.availableAt,
-        ],
-      );
-      await client.query(
-        `UPDATE canonical.project_state
+          [
+            outbox.outboxId,
+            outbox.projectId,
+            outbox.aggregateId,
+            outbox.eventType,
+            JSON.stringify(outbox.payload),
+            outbox.availableAt,
+          ],
+        );
+        await client.query(
+          `UPDATE canonical.project_state
          SET version = $2, snapshot_digest = $3, updated_at = $4
          WHERE project_id = $1`,
-        [manifest.projectId, afterVersion, afterDigest, write.committedAt],
-      );
-      await client.query('COMMIT');
-      return result;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+          [manifest.projectId, afterVersion, afterDigest, write.committedAt],
+        );
+        return result;
+      },
+      {
+        module: 'postgres-stage6',
+        operation: 'commit-canonical-v2',
+      },
+    );
   }
 
   async commitFrontendDraft(write: FrontendCanonicalCommitWrite): Promise<CanonicalCommitResult> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const result = await this.commitFrontendDraftOnClient(client, write);
-      await client.query('COMMIT');
-      return result;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    return withSafePostgresTransaction(
+      this.pool,
+      (client) => this.commitFrontendDraftOnClient(client, write),
+      {
+        module: 'postgres-stage6',
+        operation: 'commit-frontend-draft',
+      },
+    );
   }
 
   /** Joins an already-open transaction; the caller owns BEGIN/COMMIT/ROLLBACK. */

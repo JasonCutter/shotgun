@@ -1,7 +1,7 @@
 # Issue #302 — Recompare Product route alignment
 
-Status: implementation in progress on the controller-approved correction
-branch.
+Status: implementation complete on the controller-approved correction branch;
+PR remains open for controller review (not merged).
 
 ## Scope and source audit
 
@@ -67,19 +67,28 @@ amendment, or database migration is introduced.
 
 ## Verification record
 
-Local verification on the correction branch:
+Local verification on the correction branch (`codex/issue-302-recompare-route`):
 
 - focused stale-reentry integration and API-client tests: 23 passed;
 - all unit tests: 1126 passed;
 - all contract tests: 673 passed;
 - root typecheck and changed-file ESLint: passed;
 - changed-file Prettier check and `git diff --check`: passed;
-- PostgreSQL Recompare regression: skipped because `TEST_DATABASE_URL` is not
-  configured in this environment;
+- PostgreSQL Recompare regression: 1 passed with the Docker test database and
+  `TEST_DATABASE_URL` configured;
 - full integration suite: 469 tests passed, with the database-backed
-  `recovery-harness-isolation.test.ts` suite blocked by the same missing
-  `TEST_DATABASE_URL` prerequisite.
+- `recovery-harness-isolation.test.ts` remains a local-only environment
+  limitation when `TEST_DATABASE_URL` is absent.
 
-The completion update must record the exact branch, head SHA, changed files,
-route-consumer audit, real client/server evidence, typed non-success evidence,
-and exact-head CI gates before this correction is reported complete.
+Controller review artifacts:
+
+- PR: https://github.com/JasonCutter/shotgun/pull/303
+- final reviewed head: `173b9e1fa722b52a3cbdcbc692ab13c49eb33065`;
+- exact-head CI run `34798427342`: Quality, Frontend, and Required Gates all
+  passed (including CI and PostgreSQL test jobs);
+- the real client/server regression captured
+  `POST /api/v1/security/csrf` then `POST /api/v1/comparisons/recompare`, proved
+  V2 `COMPLETED` + `DRAFT_CREATED`, and decoded a typed terminal failure without
+  V1 fallback or approval/Canonical side effects;
+- changed files are the authoritative server route, direct integration and
+  PostgreSQL route callers/regression harness, and this implementation record.

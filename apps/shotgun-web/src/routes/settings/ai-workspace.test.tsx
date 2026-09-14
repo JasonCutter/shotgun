@@ -420,6 +420,41 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
     expect(screen.queryByRole('button', { name: 'Approve provider review' })).toBeNull();
   });
 
+  it('falls back to the registered model when a current configuration uses a retired alias', async () => {
+    const storedSettings = makeSettings({
+      mode: 'PROJECT_MANAGED',
+      currentConfiguration: {
+        projectId: 'project-1',
+        activeProviderId: 'deepseek',
+        activeModelId: 'deepseek-v4-flash',
+        credentialId: credential.credentialId,
+        credentialRevision: credential.credentialRevision,
+        aiConfigurationRevision: 4,
+        updatedBy: 'principal-1',
+        updatedAt: now,
+      },
+      credentialStatuses: [credential],
+    });
+    const user = userEvent.setup();
+    const { api } = renderWorkspace({}, storedSettings);
+
+    const model = await screen.findByLabelText('Model');
+    await waitFor(() => expect((model as HTMLSelectElement).value).toBe('deepseek-flash'));
+    expect(
+      screen.queryByText('No server-enabled model is available for this provider.'),
+    ).toBeNull();
+
+    await user.click(await screen.findByRole('button', { name: 'Test Connection' }));
+    await screen.findByText('Connected');
+    expect(api.testAIConnection).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      providerId: 'deepseek',
+      modelId: 'deepseek-flash',
+      credentialId: credential.credentialId,
+      credentialRevision: credential.credentialRevision,
+    });
+  });
+
   it('enables Project-level automatic processing for the saved provider without a provider approval flow', async () => {
     const queryClient = createFrontendQueryClient();
     const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');

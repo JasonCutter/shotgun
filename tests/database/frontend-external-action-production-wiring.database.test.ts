@@ -224,6 +224,37 @@ const startForTest = (assetRoot: string) =>
     aiDurableMaterializationRecoveryEnabled: false,
   });
 
+const cleanupCanonicalRecoveryJobsCreatedByTest = async (
+  existingJobIds: readonly string[],
+): Promise<void> => {
+  const created = await pool!.query<{ job_id: string; dedup_record_id: string }>(
+    `SELECT j.job_id, j.dedup_record_id
+       FROM connector.jobs j
+       JOIN connector.dedup_records d ON d.dedup_record_id = j.dedup_record_id
+      WHERE d.semantic_key LIKE 'canonical-recovery:%'
+        AND NOT (j.job_id = ANY($1::uuid[]))`,
+    [existingJobIds],
+  );
+  if (created.rows.length === 0) return;
+  const jobIds = created.rows.map((row) => row.job_id);
+  const dedupRecordIds = created.rows.map((row) => row.dedup_record_id);
+  await pool!.query(
+    `DELETE FROM connector.replays
+      WHERE dead_letter_id IN (
+        SELECT dead_letter_id FROM connector.dead_letters
+         WHERE dedup_record_id = ANY($1::uuid[])
+      )`,
+    [dedupRecordIds],
+  );
+  await pool!.query('DELETE FROM connector.dead_letters WHERE dedup_record_id = ANY($1::uuid[])', [
+    dedupRecordIds,
+  ]);
+  await pool!.query('DELETE FROM connector.jobs WHERE job_id = ANY($1::uuid[])', [jobIds]);
+  await pool!.query('DELETE FROM connector.dedup_records WHERE dedup_record_id = ANY($1::uuid[])', [
+    dedupRecordIds,
+  ]);
+};
+
 afterAll(async () => {
   await pool?.end();
 });
@@ -237,6 +268,9 @@ describe.runIf(pool)('RUS-1D-A Product External Action production wiring', () =>
     const assetRoot = await mkdtemp(path.join(tmpdir(), 'shotgun-external-action-wiring-'));
     const session = await createProjectAndSession({ pool: pool!, suffix, projectId });
     await seedProductState(projectId);
+    const existingConnectorJobIds = (
+      await pool!.query<{ job_id: string }>('SELECT job_id FROM connector.jobs')
+    ).rows.map((row) => row.job_id);
 
     let firstApplication: Awaited<ReturnType<typeof startForTest>> | undefined;
     let secondApplication: Awaited<ReturnType<typeof startForTest>> | undefined;
@@ -244,7 +278,7 @@ describe.runIf(pool)('RUS-1D-A Product External Action production wiring', () =>
       firstApplication = await startForTest(assetRoot);
       const first = await createAction(firstApplication.server, session.cookie, actionId);
       const firstDetail = await detail(firstApplication.server, session.cookie, actionId);
-      expect(firstDetail.action).toMatchObject({ actionId, status: 'SUCCEEDED' });
+      expect(firstDetail.action).toMatchObject({ actionId, status: 'VERIFYING' });
 
       await post(
         firstApplication.server,
@@ -292,7 +326,7 @@ describe.runIf(pool)('RUS-1D-A Product External Action production wiring', () =>
       );
       expect(replayed).toEqual(first.executed);
       const restartedDetail = await detail(secondApplication.server, session.cookie, actionId);
-      expect(restartedDetail.action).toMatchObject({ actionId, status: 'SUCCEEDED' });
+      expect(restartedDetail.action).toMatchObject({ actionId, status: 'VERIFYING' });
 
       await post(
         secondApplication.server,
@@ -334,6 +368,7 @@ describe.runIf(pool)('RUS-1D-A Product External Action production wiring', () =>
     } finally {
       await secondApplication?.close();
       await firstApplication?.close();
+      await cleanupCanonicalRecoveryJobsCreatedByTest(existingConnectorJobIds);
       await rm(assetRoot, { recursive: true, force: true });
     }
   });

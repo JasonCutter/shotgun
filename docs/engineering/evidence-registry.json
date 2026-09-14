@@ -1323,7 +1323,7 @@
       "deployment": "NOT_AUTHORIZED",
       "productionVerification": "NOT_AUTHORIZED",
       "closurePullRequest": "https://github.com/JasonCutter/shotgun/pull/312",
-      "closureCandidateHead": "9a9f722bc",
+      "closureCandidateHead": "41247b730",
       "prState": "OPEN / UNMERGED",
       "merge": "NOT_AUTHORIZED",
       "postMergeAcceptance": "PENDING"

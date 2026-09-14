@@ -439,7 +439,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
             headers: { cookie: sessionCookie },
           })
         ).json<{ csrfToken: string }>().csrfToken;
-      const csrf = await csrfFor(cookie);
+      let csrf = await csrfFor(cookie);
       const clientRequestPaths: string[] = [];
       const clientFetch: typeof globalThis.fetch = async (input, init) => {
         const url =
@@ -457,6 +457,9 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
           headers: Object.fromEntries(headers.entries()),
           ...(payload === undefined ? {} : { payload }),
         });
+        if (url === '/api/v1/security/csrf' && response.statusCode === 200) {
+          csrf = response.json<{ csrfToken: string }>().csrfToken;
+        }
         return new Response(response.body, {
           status: response.statusCode,
           headers: { 'content-type': 'application/json' },

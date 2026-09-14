@@ -41,7 +41,7 @@ const targetRef = {
 const parameterRef = {
   schemaVersion: '1.0.0' as const,
   parameterId: 'production-wiring-parameters',
-  parameterRevision: 1,
+  parameterRevision: '1',
   parameterDigest: `sha256:${'a'.repeat(64)}`,
 };
 
@@ -215,6 +215,7 @@ const startForTest = (assetRoot: string) =>
     noSignals: true,
     disableAskWorker: true,
     recoveryIntervalMs: false,
+    aiDurableMaterializationRecoveryEnabled: false,
   });
 
 afterAll(async () => {

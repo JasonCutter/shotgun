@@ -200,25 +200,29 @@ describe.runIf(pool)('Stage 6 PostgreSQL COMMIT ambiguity recovery', () => {
   });
 
   it('returns OUTCOME_UNKNOWN, then resolves all three direct paths by deterministic replay', async () => {
-    const cases = [
+    type Stage6Write = CanonicalCommitWrite | CanonicalCommitV2Write | FrontendCanonicalCommitWrite;
+    type Stage6Case = {
+      readonly fixture: { readonly projectId: string; readonly write: Stage6Write };
+      readonly invoke: (
+        repository: PostgresCanonicalKnowledgeRepository,
+        write: Stage6Write,
+      ) => Promise<Awaited<ReturnType<PostgresCanonicalKnowledgeRepository['commit']>>>;
+    };
+    const cases: readonly Stage6Case[] = [
       {
         fixture: legacyFixture(),
-        invoke: (repository: PostgresCanonicalKnowledgeRepository, write: CanonicalCommitWrite) =>
-          repository.commit(write),
+        invoke: (repository, write) => repository.commit(write as CanonicalCommitWrite),
       },
       {
         fixture: v2Fixture(),
-        invoke: (repository: PostgresCanonicalKnowledgeRepository, write: CanonicalCommitV2Write) =>
-          repository.commitV2(write),
+        invoke: (repository, write) => repository.commitV2(write as CanonicalCommitV2Write),
       },
       {
         fixture: frontendFixture(),
-        invoke: (
-          repository: PostgresCanonicalKnowledgeRepository,
-          write: FrontendCanonicalCommitWrite,
-        ) => repository.commitFrontendDraft(write),
+        invoke: (repository, write) =>
+          repository.commitFrontendDraft(write as FrontendCanonicalCommitWrite),
       },
-    ] as const;
+    ];
 
     for (const testCase of cases) {
       const ambiguousRepository = new PostgresCanonicalKnowledgeRepository(

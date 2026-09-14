@@ -57,7 +57,7 @@ const createFakeTransaction = (
             version: 0,
             snapshot_digest: snapshotDigest,
             updated_at: new Date('2026-09-15T00:00:00.000Z'),
-          } as T,
+          } as unknown as T,
         ]);
       }
       if (
@@ -205,31 +205,39 @@ const frontendFixture = (): {
   };
 };
 
-const cases = [
+type Stage6Write = CanonicalCommitWrite | CanonicalCommitV2Write | FrontendCanonicalCommitWrite;
+
+type Stage6Case = {
+  readonly name: string;
+  readonly create: () => { readonly write: Stage6Write; readonly snapshotDigest: string };
+  readonly invoke: (
+    repository: PostgresCanonicalKnowledgeRepository,
+    write: Stage6Write,
+  ) => Promise<unknown>;
+  readonly operation: string;
+};
+
+const cases: readonly Stage6Case[] = [
   {
     name: 'legacy commit',
     create: legacyFixture,
-    invoke: (repository: PostgresCanonicalKnowledgeRepository, write: CanonicalCommitWrite) =>
-      repository.commit(write),
+    invoke: (repository, write) => repository.commit(write as CanonicalCommitWrite),
     operation: 'commit-canonical',
   },
   {
     name: 'v2 commit',
     create: v2Fixture,
-    invoke: (repository: PostgresCanonicalKnowledgeRepository, write: CanonicalCommitV2Write) =>
-      repository.commitV2(write),
+    invoke: (repository, write) => repository.commitV2(write as CanonicalCommitV2Write),
     operation: 'commit-canonical-v2',
   },
   {
     name: 'frontend direct commit',
     create: frontendFixture,
-    invoke: (
-      repository: PostgresCanonicalKnowledgeRepository,
-      write: FrontendCanonicalCommitWrite,
-    ) => repository.commitFrontendDraft(write),
+    invoke: (repository, write) =>
+      repository.commitFrontendDraft(write as FrontendCanonicalCommitWrite),
     operation: 'commit-frontend-draft',
   },
-] as const;
+];
 
 describe.each(cases)('$name transaction boundary', ({ create, invoke, operation }) => {
   it('maps COMMIT acknowledgement loss to OUTCOME_UNKNOWN without ROLLBACK', async () => {

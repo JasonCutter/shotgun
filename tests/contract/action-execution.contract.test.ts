@@ -13,7 +13,11 @@ import type {
 import { actionEvidenceSetDigest, ShotgunError } from '../../packages/contracts/src/index.js';
 import { ShotgunKernel } from '../../packages/kernel/src/index.js';
 import {
+  actionFeedbackStatusForExecution,
   createActionExecutionModule,
+  createActionFeedbackIntent,
+  dispatchActionFeedbackOutbox,
+  runActionFeedbackOutboxRecovery,
   type ActionExecutionRepositoryPort,
   type ActionBindingReference,
 } from '../../modules/action-execution/src/index.js';
@@ -90,6 +94,217 @@ const prepareAndApprove = async (app: Awaited<ReturnType<typeof harness>>, suffi
 };
 
 describe('Stage 12.1 P0-2 server-bound Action contracts', () => {
+  it('maps only feedback-producing terminal states and excludes PREFLIGHT_FAILED', () => {
+    expect(actionFeedbackStatusForExecution('VERIFIED')).toBe('VERIFIED');
+    expect(actionFeedbackStatusForExecution('OUTCOME_UNKNOWN')).toBe('OUTCOME_UNKNOWN');
+    expect(actionFeedbackStatusForExecution('FAILED')).toBe('FAILED');
+    expect(actionFeedbackStatusForExecution('VERIFICATION_FAILED')).toBe('FAILED');
+    expect(actionFeedbackStatusForExecution('PREFLIGHT_FAILED')).toBeUndefined();
+  });
+
+  it('persists and dispatches one deterministic feedback outbox record with ACK-loss retry', async () => {
+    const app = await harness();
+    const approved = await prepareAndApprove(app, 'feedback-outbox');
+    const claimed = await app.repository.claimForExecution(
+      approved.projectId,
+      approved.approval!.approvalId,
+      '2026-07-17T10:01:00.000Z',
+      'worker',
+    );
+    const failed = {
+      ...claimed.record,
+      status: 'FAILED' as const,
+      failureReason: 'provider failure',
+      updatedAt: '2026-07-17T10:02:00.000Z',
+    };
+    await app.repository.transition(approved.projectId, approved.actionId, {
+      expectedStatus: 'EXECUTING',
+      next: failed,
+      category: 'ACTION_FAILED',
+      actorId: 'worker',
+      details: { automaticRetry: false },
+      feedbackIntent: createActionFeedbackIntent(failed),
+    });
+    const semanticKey = `action-feedback:${approved.actionId}:FAILED`;
+    const pending = await app.repository.findFeedbackOutbox(approved.projectId, semanticKey);
+    expect(pending).toMatchObject({
+      semanticKey,
+      feedbackStatus: 'FAILED',
+      status: 'pending',
+      attempts: 0,
+      payload: {
+        actionId: approved.actionId,
+        status: 'FAILED',
+        reentryPhase: 'ACTION_REVIEW',
+      },
+    });
+
+    const attemptedKeys: string[] = [];
+    await expect(
+      dispatchActionFeedbackOutbox(
+        app.repository,
+        {
+          publish: async (event) => {
+            attemptedKeys.push(event.idempotencyKey!);
+            throw new ShotgunError({
+              code: 'OUTCOME_UNKNOWN',
+              safeMessage: 'publication ACK was lost',
+              module: 'test',
+              operation: 'publish',
+            });
+          },
+        },
+        approved.projectId,
+        1,
+        '2026-07-17T10:03:00.000Z',
+      ),
+    ).rejects.toMatchObject({ code: 'OUTCOME_UNKNOWN' });
+    await dispatchActionFeedbackOutbox(
+      app.repository,
+      {
+        publish: async (event) => {
+          attemptedKeys.push(event.idempotencyKey!);
+        },
+      },
+      approved.projectId,
+      1,
+      '2026-07-17T10:04:00.000Z',
+    );
+    expect(attemptedKeys).toEqual([semanticKey, semanticKey]);
+    expect(await app.repository.findFeedbackOutbox(approved.projectId, semanticKey)).toMatchObject({
+      status: 'published',
+      attempts: 2,
+    });
+    await app.kernel.shutdown();
+  });
+
+  it('keeps VERIFIED and FAILED verification feedback distinct and excludes preflight failure', async () => {
+    const app = await harness();
+    const approved = await prepareAndApprove(app, 'feedback-statuses');
+    const claimed = await app.repository.claimForExecution(
+      approved.projectId,
+      approved.approval!.approvalId,
+      '2026-07-17T10:01:00.000Z',
+      'worker',
+    );
+    const verificationFailed = {
+      ...claimed.record,
+      status: 'VERIFICATION_FAILED' as const,
+      updatedAt: '2026-07-17T10:02:00.000Z',
+    };
+    const verified = {
+      ...verificationFailed,
+      status: 'VERIFIED' as const,
+      updatedAt: '2026-07-17T10:03:00.000Z',
+    };
+    await app.repository.transition(approved.projectId, approved.actionId, {
+      expectedStatus: 'EXECUTING',
+      next: verificationFailed,
+      category: 'ACTION_VERIFICATION_FAILED',
+      actorId: 'worker',
+      details: { verificationStatus: 'MISMATCH' },
+      feedbackIntent: createActionFeedbackIntent(verificationFailed),
+    });
+    await app.repository.transition(approved.projectId, approved.actionId, {
+      expectedStatus: 'VERIFICATION_FAILED',
+      next: verified,
+      category: 'ACTION_VERIFIED',
+      actorId: 'worker',
+      details: { verificationStatus: 'APPLIED' },
+      feedbackIntent: createActionFeedbackIntent(verified),
+    });
+    expect(
+      await app.repository.findFeedbackOutbox(
+        approved.projectId,
+        `action-feedback:${approved.actionId}:FAILED`,
+      ),
+    ).toMatchObject({ feedbackStatus: 'FAILED' });
+    expect(
+      await app.repository.findFeedbackOutbox(
+        approved.projectId,
+        `action-feedback:${approved.actionId}:VERIFIED`,
+      ),
+    ).toMatchObject({ feedbackStatus: 'VERIFIED' });
+    const preflight = {
+      ...verified,
+      status: 'PREFLIGHT_FAILED' as const,
+      updatedAt: '2026-07-17T10:04:00.000Z',
+    };
+    expect(createActionFeedbackIntent(preflight)).toBeUndefined();
+    await app.kernel.shutdown();
+  });
+
+  it('backfills historical feedback categories additively and is repeat-safe', async () => {
+    const app = await harness();
+    const approved = await prepareAndApprove(app, 'feedback-backfill');
+    const claimed = await app.repository.claimForExecution(
+      approved.projectId,
+      approved.approval!.approvalId,
+      '2026-07-17T10:01:00.000Z',
+      'worker',
+    );
+    const transitions = [
+      ['FAILED', 'ACTION_FAILED', '2026-07-17T10:02:00.000Z'],
+      ['OUTCOME_UNKNOWN', 'ACTION_OUTCOME_UNKNOWN', '2026-07-17T10:03:00.000Z'],
+      ['VERIFICATION_FAILED', 'ACTION_VERIFICATION_FAILED', '2026-07-17T10:04:00.000Z'],
+      ['VERIFIED', 'ACTION_VERIFIED', '2026-07-17T10:05:00.000Z'],
+    ] as const;
+    let current = claimed.record;
+    for (const [status, category, updatedAt] of transitions) {
+      current = await app.repository.transition(approved.projectId, approved.actionId, {
+        expectedStatus: current.status,
+        next: { ...current, status, updatedAt },
+        category,
+        actorId: 'worker',
+        details: { historical: true },
+      });
+    }
+    expect(await app.repository.backfillFeedbackOutbox(100, '2026-07-17T10:06:00.000Z')).toBe(3);
+    expect(await app.repository.backfillFeedbackOutbox(100, '2026-07-17T10:07:00.000Z')).toBe(0);
+    await app.kernel.shutdown();
+  });
+
+  it('runs bounded feedback recovery through the existing command boundary without provider calls', async () => {
+    const app = await harness(new FakeDraftActionConnector(), {
+      now: () => '2026-07-17T10:05:00.000Z',
+    });
+    const approved = await prepareAndApprove(app, 'feedback-recovery');
+    const claimed = await app.repository.claimForExecution(
+      approved.projectId,
+      approved.approval!.approvalId,
+      '2026-07-17T10:03:00.000Z',
+      'worker',
+    );
+    const failed = {
+      ...claimed.record,
+      status: 'FAILED' as const,
+      failureReason: 'provider failure',
+      updatedAt: '2026-07-17T10:04:00.000Z',
+    };
+    await app.repository.transition(approved.projectId, approved.actionId, {
+      expectedStatus: 'EXECUTING',
+      next: failed,
+      category: 'ACTION_FAILED',
+      actorId: 'worker',
+      details: { automaticRetry: false },
+      feedbackIntent: createActionFeedbackIntent(failed),
+    });
+
+    expect(
+      await runActionFeedbackOutboxRecovery(app.repository, app.kernel.connector, {
+        batchSize: 1,
+      }),
+    ).toBe(1);
+    expect(
+      await app.repository.findFeedbackOutbox(
+        approved.projectId,
+        `action-feedback:${approved.actionId}:FAILED`,
+      ),
+    ).toMatchObject({ status: 'published', attempts: 1 });
+    expect(app.connector.calls).toEqual({ preflight: 0, execute: 0, verify: 0 });
+    await app.kernel.shutdown();
+  });
+
   it('uses only a stored Candidate, immutable Snapshot, server Approval Record, and approvalId execution', async () => {
     const secret = 'must-never-appear-in-action-records';
     const app = await harness(new FakeDraftActionConnector(secret));
@@ -121,6 +336,10 @@ describe('Stage 12.1 P0-2 server-bound Action contracts', () => {
         actionAuditQuery(completed.actionId),
       )
     ).result.payload.items;
+    const feedbackOutbox = await app.repository.findFeedbackOutbox(
+      completed.projectId,
+      `action-feedback:${completed.actionId}:VERIFIED`,
+    );
     expect(audit.map((event) => event.category)).toEqual([
       'ACTION_CANDIDATE_VALIDATED',
       'ACTION_RISK_DECIDED',
@@ -132,6 +351,7 @@ describe('Stage 12.1 P0-2 server-bound Action contracts', () => {
       'ACTION_VERIFIED',
     ]);
     expect(JSON.stringify({ completed, audit, connector: app.connector })).not.toContain(secret);
+    expect(JSON.stringify(feedbackOutbox)).not.toContain(secret);
     await app.kernel.shutdown();
   });
 
@@ -143,6 +363,12 @@ describe('Stage 12.1 P0-2 server-bound Action contracts', () => {
       claimForExecution: inner.claimForExecution.bind(inner),
       find: inner.find.bind(inner),
       listAudit: inner.listAudit.bind(inner),
+      listFeedbackOutboxProjectIds: inner.listFeedbackOutboxProjectIds.bind(inner),
+      findFeedbackOutbox: inner.findFeedbackOutbox.bind(inner),
+      claimFeedbackOutbox: inner.claimFeedbackOutbox.bind(inner),
+      markFeedbackOutboxPublished: inner.markFeedbackOutboxPublished.bind(inner),
+      releaseFeedbackOutbox: inner.releaseFeedbackOutbox.bind(inner),
+      backfillFeedbackOutbox: inner.backfillFeedbackOutbox.bind(inner),
       transition: async (projectId, actionId, transition) => {
         const persisted = await inner.transition(projectId, actionId, transition);
         if (transition.category === 'ACTION_EXECUTED')

@@ -16,6 +16,7 @@ import {
 import {
   actionServerCandidate,
   approveActionCommand,
+  executeActionCommand,
   prepareActionCommand,
   reconcileExecutingActionCommand,
 } from '../helpers/stage-11.js';
@@ -163,6 +164,44 @@ describe.runIf(pool)('Stage 12.1 P0-2 PostgreSQL Action persistence', () => {
     await kernel.shutdown();
   });
 
+  it('persists provider OUTCOME_UNKNOWN feedback through the Action outbox without replaying the provider', async () => {
+    const candidates = new PostgresActionCandidateRepository(pool!);
+    const repository = new PostgresActionExecutionRepository(pool!);
+    const connector = new FakeDraftActionConnector('secret', {
+      preflight: 'ready',
+      execute: 'unknown-after-effect',
+    });
+    const kernel = createActionKernel(repository, candidates, connector);
+    await kernel.start();
+    const candidate = actionServerCandidate('postgres-provider-unknown');
+    await candidates.stage(candidate);
+    const preview = (
+      await kernel.connector.sendCommand<ActionExecutionRecord>(prepareActionCommand(candidate))
+    ).result;
+    const approved = (
+      await kernel.connector.sendCommand<ActionExecutionRecord>(
+        approveActionCommand(preview.actionId, preview.preview.previewDigest),
+      )
+    ).result;
+    const unknown = (
+      await kernel.connector.sendCommand<ActionExecutionRecord>(
+        executeActionCommand(approved.approval!.approvalId),
+      )
+    ).result;
+
+    expect(unknown.status).toBe('OUTCOME_UNKNOWN');
+    expect(connector.calls).toEqual({ preflight: 1, execute: 1, verify: 0 });
+    const feedback = await repository.findFeedbackOutbox(
+      unknown.projectId,
+      `action-feedback:${unknown.actionId}:OUTCOME_UNKNOWN`,
+    );
+    expect(feedback).toMatchObject({ status: 'published', feedbackStatus: 'OUTCOME_UNKNOWN' });
+    expect((await repository.listAudit(unknown.projectId, unknown.actionId)).at(-1)?.category).toBe(
+      'ACTION_OUTCOME_UNKNOWN',
+    );
+    await kernel.shutdown();
+  });
+
   it('reconciles a persisted EXECUTING Action after repository restart without connector calls', async () => {
     const candidates = new PostgresActionCandidateRepository(pool!);
     const repository = new PostgresActionExecutionRepository(pool!);
@@ -223,6 +262,7 @@ describe.runIf(pool)('Stage 12.1 P0-2 PostgreSQL Action persistence', () => {
       snapshots: 1,
       approvals: 1,
       audits: 6,
+      feedback_outbox: 1,
     });
     await freshKernel.shutdown();
   });
@@ -304,12 +344,14 @@ const countPersistedActionRows = async (projectId: string, actionId: string) => 
     readonly snapshots: number;
     readonly approvals: number;
     readonly audits: number;
+    readonly feedback_outbox: number;
   }>(
     `SELECT
        (SELECT count(*)::int FROM action.executions WHERE project_id = $1 AND action_id = $2) AS executions,
        (SELECT count(*)::int FROM action.preview_snapshots WHERE project_id = $1 AND action_id = $2) AS snapshots,
        (SELECT count(*)::int FROM action.approval_records WHERE action_id = $2) AS approvals,
-       (SELECT count(*)::int FROM action.audit_events WHERE project_id = $1 AND action_id = $2) AS audits`,
+       (SELECT count(*)::int FROM action.audit_events WHERE project_id = $1 AND action_id = $2) AS audits,
+       (SELECT count(*)::int FROM action.action_feedback_outbox WHERE project_id = $1 AND action_id = $2) AS feedback_outbox`,
     [projectId, actionId],
   );
   return result.rows[0];

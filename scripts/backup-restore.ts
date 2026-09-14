@@ -57,6 +57,7 @@ const baseAuthoritativeTables = [
   'action.executions',
   'action.approvals',
   'action.audit_events',
+  'action.action_feedback_outbox',
 ] as const;
 
 const DISCOVERY_FINDING_MIGRATION = '045_akp_2_wp2_discovery_finding_persistence.sql';

@@ -19,6 +19,7 @@ import { actionEvidenceSetDigest } from '../../packages/contracts/src/index.js';
 import { ShotgunKernel } from '../../packages/kernel/src/index.js';
 import {
   createActionExecutionModule,
+  createActionFeedbackIntent,
   type ActionBindingReference,
 } from '../../modules/action-execution/src/index.js';
 import { actionServerCandidate, prepareActionCommand } from '../helpers/stage-11.js';
@@ -182,12 +183,14 @@ const countRows = async (projectId: string, actionId: string) => {
     readonly snapshots: number;
     readonly approvals: number;
     readonly audits: number;
+    readonly feedback_outbox: number;
   }>(
     `SELECT
        (SELECT count(*)::int FROM action.executions WHERE project_id = $1 AND action_id = $2) AS executions,
        (SELECT count(*)::int FROM action.preview_snapshots WHERE project_id = $1 AND action_id = $2) AS snapshots,
        (SELECT count(*)::int FROM action.approval_records WHERE action_id = $2) AS approvals,
-       (SELECT count(*)::int FROM action.audit_events WHERE project_id = $1 AND action_id = $2) AS audits`,
+       (SELECT count(*)::int FROM action.audit_events WHERE project_id = $1 AND action_id = $2) AS audits,
+       (SELECT count(*)::int FROM action.action_feedback_outbox WHERE project_id = $1 AND action_id = $2) AS feedback_outbox`,
     [projectId, actionId],
   );
   return result.rows[0];
@@ -261,28 +264,42 @@ describe.runIf(pool)('Stage 11 PostgreSQL transaction ambiguity reconciliation',
         },
       },
     );
+    const verifiedRecord = {
+      ...executed,
+      status: 'VERIFIED' as const,
+      updatedAt: '2026-09-15T10:05:00.000Z',
+    };
+    const verified = await repository.transition(executed.projectId, executed.actionId, {
+      expectedStatus: 'EXECUTED',
+      next: verifiedRecord,
+      category: 'ACTION_VERIFIED',
+      actorId: 'worker-1',
+      details: { verificationStatus: 'APPLIED' },
+      feedbackIntent: createActionFeedbackIntent(verifiedRecord),
+    });
     const feedback = await repository.upsertFromFeedback({
-      projectId: executed.projectId,
-      semanticKey: `action-feedback:${executed.actionId}:VERIFIED`,
-      actionId: executed.actionId,
+      projectId: verified.projectId,
+      semanticKey: `action-feedback:${verified.actionId}:VERIFIED`,
+      actionId: verified.actionId,
       outcome: 'VERIFIED',
       phase: 'ACTION_REVIEW',
-      evidenceRef: `action-audit:${executed.actionId}:VERIFIED`,
-      feedbackOccurredAt: '2026-09-15T10:05:00.000Z',
-      now: '2026-09-15T10:05:00.000Z',
+      evidenceRef: `action-audit:${verified.actionId}:VERIFIED`,
+      feedbackOccurredAt: verified.updatedAt,
+      now: '2026-09-15T10:06:00.000Z',
     });
 
     expect(approved.status).toBe('APPROVED');
-    expect(executed.status).toBe('EXECUTED');
-    expect(feedback.actionId).toBe(executed.actionId);
-    expect(await countRows(executed.projectId, executed.actionId)).toEqual({
+    expect(verified.status).toBe('VERIFIED');
+    expect(feedback.actionId).toBe(verified.actionId);
+    expect(await countRows(verified.projectId, verified.actionId)).toEqual({
       executions: 1,
       snapshots: 1,
       approvals: 1,
-      audits: 7,
+      audits: 8,
+      feedback_outbox: 1,
     });
     expect(ackLoss.commands.filter((command) => command === 'ROLLBACK')).toHaveLength(0);
-    expect(ackLoss.commands.filter((command) => command === 'COMMIT')).toHaveLength(6);
+    expect(ackLoss.commands.filter((command) => command === 'COMMIT')).toHaveLength(7);
   }, 60_000);
 
   it('keeps unresolved Claim COMMIT ambiguity unknown without rollback or fabricated EXECUTING', async () => {

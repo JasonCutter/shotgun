@@ -204,6 +204,7 @@ const requiredTables = [
   'action.preview_snapshots',
   'action.approval_records',
   'action.action_review_work_items',
+  'action.action_feedback_outbox',
   'discovery.semantic_essence_diagnostics',
   'auth.principals',
   'auth.credentials',

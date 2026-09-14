@@ -1,9 +1,15 @@
 {
   "id": "stage11.action-execution",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner": "Shotgun Risk-controlled External Action",
   "deployment": ["in_process", "worker"],
-  "dataOwnership": ["action.executions", "action.approvals", "action.audit_events"],
+  "dataOwnership": [
+    "action.executions",
+    "action.preview_snapshots",
+    "action.approval_records",
+    "action.audit_events",
+    "action.action_feedback_outbox"
+  ],
   "produces": {
     "events": [{ "name": "ActionFeedbackRecorded", "range": ">=1.0.0 <2.0.0" }],
     "handoffs": [
@@ -13,8 +19,13 @@
           "kind": "consumer",
           "moduleId": "stage11.action-feedback-review"
         },
-        "tags": ["DURABLE_OUTBOX", "REQUIRED_ACK"],
-        "authority": "stage11.action-execution.feedback-outbox"
+        "tags": ["DURABLE_OUTBOX", "RECONSTRUCTABLE", "REQUIRED_ACK"],
+        "authority": "stage11.action-execution.feedback-outbox",
+        "replayEvidence": {
+          "replaySource": "action.action_feedback_outbox",
+          "deterministicIdentity": "projectId:semanticKey",
+          "idempotencyEvidence": "ActionFeedbackRecorded.idempotencyKey=semanticKey"
+        }
       }
     ]
   },

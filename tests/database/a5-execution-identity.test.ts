@@ -122,7 +122,7 @@ describe('A5 execution identity PostgreSQL persistence', () => {
       answerRunId: submission.answerRun.answerRunId,
       projectId,
       providerId: 'deepseek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
       aiConfigurationRevision: 4,
       credentialId: 'credential-a5',
       credentialRevision: 2,
@@ -176,7 +176,7 @@ describe('A5 execution identity PostgreSQL persistence', () => {
     expect(exact).toMatchObject({
       kind: 'RETRY_SAME_CONTEXT',
       providerId: 'deepseek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
       aiConfigurationRevision: 4,
       credentialId: 'credential-a5',
       credentialRevision: 2,

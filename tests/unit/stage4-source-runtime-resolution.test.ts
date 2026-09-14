@@ -18,7 +18,7 @@ const projectId = 'stage4-source-runtime-project';
 const configuration: ProjectAIConfiguration = {
   projectId,
   activeProviderId: 'deepseek',
-  activeModelId: 'deepseek-v4-flash',
+  activeModelId: 'deepseek-flash',
   credentialId: 'credential-deepseek',
   credentialRevision: 2,
   aiConfigurationRevision: 4,
@@ -109,7 +109,7 @@ describe('Stage 4 Source AI execution authority', () => {
     expect(resolved.pin).toMatchObject({
       projectId,
       providerId: 'deepseek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
       aiConfigurationRevision: 4,
       credentialId: 'credential-deepseek',
       credentialRevision: 2,
@@ -117,7 +117,7 @@ describe('Stage 4 Source AI execution authority', () => {
     });
     expect(resolved.executionIdentity).toEqual({
       providerId: 'deepseek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
       aiConfigurationRevision: 4,
       credentialId: 'credential-deepseek',
       credentialRevision: 2,

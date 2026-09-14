@@ -227,7 +227,7 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
       backend.testConnection({
         projectId: 'project-a',
         providerId: 'deepseek',
-        modelId: 'deepseek-v4-flash',
+        modelId: 'deepseek-flash',
         credentialId: credential.credentialId,
         credentialRevision: credential.credentialRevision,
       }),
@@ -252,7 +252,7 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
       backend.testConnection({
         projectId: 'project-a',
         providerId: 'deepseek',
-        modelId: 'deepseek-v4-flash',
+        modelId: 'deepseek-flash',
         draftSecret: 'draft-only-secret',
       }),
     ).resolves.toMatchObject({ status: 'CONNECTED' });
@@ -348,7 +348,7 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
       openai.testConnection({ modelId: 'gpt-5.6-luna', apiKey: Buffer.from('secret') }),
     ).rejects.toMatchObject({ code: 'AUTHENTICATION_FAILED' });
     await expect(
-      deepseek.testConnection({ modelId: 'deepseek-v4-flash', apiKey: Buffer.from('secret') }),
+      deepseek.testConnection({ modelId: 'deepseek-flash', apiKey: Buffer.from('secret') }),
     ).rejects.toMatchObject({ code: 'RATE_LIMITED' });
     await expect(
       openai.testConnection({ modelId: 'gpt-5.6-luna', apiKey: Buffer.from('secret') }),
@@ -409,9 +409,9 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
       },
     });
     await openai.testConnection({ modelId: 'gpt-5.6-luna', apiKey: Buffer.from('secret') });
-    await deepseek.testConnection({ modelId: 'deepseek-v4-flash', apiKey: Buffer.from('secret') });
+    await deepseek.testConnection({ modelId: 'deepseek-flash', apiKey: Buffer.from('secret') });
     expect(openaiBody?.model).toBe('gpt-5.6-luna');
-    expect(deepseekBody?.model).toBe('deepseek-v4-flash');
+    expect(deepseekBody?.model).toBe('deepseek-flash');
     expect(JSON.stringify(openaiBody)).not.toContain('secret');
     expect(JSON.stringify(deepseekBody)).not.toContain('secret');
   });

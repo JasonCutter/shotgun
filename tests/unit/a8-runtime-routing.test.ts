@@ -205,7 +205,7 @@ describe('A8 effective runtime resolution and provider routing', () => {
       {
         projectId: scope.projectId,
         activeProviderId: 'deepseek',
-        activeModelId: 'deepseek-v4-flash',
+        activeModelId: 'deepseek-flash',
         credentialId: 'credential-deepseek',
         credentialRevision: 2,
         aiConfigurationRevision: 4,
@@ -247,7 +247,7 @@ describe('A8 effective runtime resolution and provider routing', () => {
 
     expect(pin).toMatchObject({
       providerId: 'deepseek',
-      modelId: 'deepseek-v4-flash',
+      modelId: 'deepseek-flash',
       aiConfigurationRevision: 4,
       credentialId: 'credential-deepseek',
       credentialRevision: 2,
@@ -315,7 +315,7 @@ describe('A8 effective runtime resolution and provider routing', () => {
     current.value = {
       projectId: scope.projectId,
       activeProviderId: 'deepseek',
-      activeModelId: 'deepseek-v4-flash',
+      activeModelId: 'deepseek-flash',
       credentialId: 'credential-managed',
       credentialRevision: 1,
       aiConfigurationRevision: 1,
@@ -376,7 +376,7 @@ describe('A8 effective runtime resolution and provider routing', () => {
     ];
 
     for (const [providerId, modelId, credentialId, revision] of [
-      ['deepseek', 'deepseek-v4-flash', 'credential-deepseek', 2],
+      ['deepseek', 'deepseek-flash', 'credential-deepseek', 2],
       ['openai', 'gpt-5.6-luna', 'credential-openai', 1],
       ['google-gemini', 'gemini-3.6-flash', 'credential-gemini', 1],
     ] as const) {
@@ -412,7 +412,7 @@ describe('A8 effective runtime resolution and provider routing', () => {
       value: {
         projectId: scope.projectId,
         activeProviderId: 'deepseek',
-        activeModelId: 'deepseek-v4-flash',
+        activeModelId: 'deepseek-flash',
         credentialId: 'credential-deepseek',
         credentialRevision: 2,
         aiConfigurationRevision: 4,
@@ -480,10 +480,7 @@ describe('A8 effective runtime resolution and provider routing', () => {
 
     const pin = await repository.readExecutionPin(scope, 'run-a8-route');
     expect(pin?.providerId).toBe('deepseek');
-    expect(routeCalls.providers).toEqual([
-      'deepseek:deepseek-v4-flash',
-      'deepseek:deepseek-v4-flash',
-    ]);
+    expect(routeCalls.providers).toEqual(['deepseek:deepseek-flash', 'deepseek:deepseek-flash']);
 
     const next = await service.execute(scope, 'run-a8-next');
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -525,7 +522,7 @@ describe('A8 effective runtime resolution and provider routing', () => {
         {
           projectId: scope.projectId,
           activeProviderId: 'deepseek',
-          activeModelId: 'deepseek-v4-flash',
+          activeModelId: 'deepseek-flash',
           credentialId: 'credential-deepseek',
           credentialRevision: 2,
           aiConfigurationRevision: 4,
@@ -554,7 +551,7 @@ describe('A8 effective runtime resolution and provider routing', () => {
           answerRunId: 'run-a8-route',
           projectId: scope.projectId,
           providerId: 'deepseek',
-          modelId: 'deepseek-v4-flash',
+          modelId: 'deepseek-flash',
           aiConfigurationRevision: 4,
           credentialId: 'credential-deepseek',
           credentialRevision: 2,
@@ -589,7 +586,7 @@ describe('A8 effective runtime resolution and provider routing', () => {
         answerRunId: 'run-a8-route',
         projectId: scope.projectId,
         providerId: 'deepseek',
-        modelId: 'deepseek-v4-flash',
+        modelId: 'deepseek-flash',
         aiConfigurationRevision: 4,
         credentialId: 'credential-deepseek',
         credentialRevision: 2,

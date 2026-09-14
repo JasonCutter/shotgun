@@ -49,7 +49,7 @@ const sourceInput = (contentHash: string, storageKey: string) => ({
 const provider: AIProviderAdapterPort = {
   identity: {
     provider: 'deepseek',
-    model: 'deepseek-v4-flash',
+    model: 'deepseek-flash',
     adapterVersion: 'stage4-source-test-v1',
     dataPolicyVersion: 'deepseek-source-test-policy-v1',
   },
@@ -84,7 +84,7 @@ const fallbackProvider: AIProviderAdapterPort = {
 
 const executionIdentity: AIExecutionIdentity = {
   providerId: 'deepseek',
-  modelId: 'deepseek-v4-flash',
+  modelId: 'deepseek-flash',
   aiConfigurationRevision: 4,
   credentialId: 'credential-deepseek',
   credentialRevision: 2,

@@ -118,6 +118,7 @@ import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/inde
 import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
 import {
   ShotgunError,
+  GENERATIVE_AI_MODEL_ID,
   type DiscoveryFindingEnvelopeV1,
 } from '../../../packages/contracts/src/index.js';
 import type { KnowledgeModelRepositoryPort } from '../../../modules/knowledge-model/src/index.js';
@@ -653,7 +654,7 @@ export const startShotgunApplication = async (
         },
         providerPolicyIdentity: askAnswerProvider.identity.dataPolicyVersion,
         providerDisplayName: 'DeepSeek',
-        providerModel: 'deepseek-v4-flash',
+        providerModel: GENERATIVE_AI_MODEL_ID,
       },
     );
     const executionIdentityResolver = new EffectiveAIConfigurationResolver(

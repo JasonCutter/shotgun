@@ -295,7 +295,7 @@ describe('A9 deterministic safety evidence', () => {
         projectId,
         expectedRevision: 0,
         activeProviderId: 'deepseek',
-        activeModelId: 'deepseek-v4-flash',
+        activeModelId: 'deepseek-flash',
         credentialId: authorizationCredential.credentialId,
         credentialRevision: authorizationCredential.credentialRevision,
         updatedBy: principal.principalId,
@@ -315,7 +315,7 @@ describe('A9 deterministic safety evidence', () => {
         answerRunId: runId,
         projectId,
         providerId: 'deepseek',
-        modelId: 'deepseek-v4-flash',
+        modelId: 'deepseek-flash',
         aiConfigurationRevision: configuration.aiConfigurationRevision,
         credentialId: authorizationCredential.credentialId,
         credentialRevision: authorizationCredential.credentialRevision,
@@ -473,7 +473,7 @@ describe('A9 deterministic safety evidence', () => {
     });
     await expect(
       adapter.testConnection({
-        modelId: 'deepseek-v4-flash',
+        modelId: 'deepseek-flash',
         apiKey: Buffer.from('synthetic-a9-secret'),
       }),
     ).rejects.toMatchObject({ code: 'TIMEOUT' });

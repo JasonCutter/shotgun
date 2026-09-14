@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import type { Pool, PoolClient } from 'pg';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
@@ -81,6 +82,46 @@ const documentFor = (
   sensitivity: 'private',
   projectedAt: new Date().toISOString(),
 });
+
+const withCommitAcknowledgementLoss = (
+  base: Pool,
+  mode: 'after-commit' | 'before-commit',
+): { readonly pool: Pool; readonly calls: readonly string[] } => {
+  const calls: string[] = [];
+  const pool = {
+    connect: async (): Promise<PoolClient> => {
+      const client = await base.connect();
+      const delegateQuery = client.query.bind(client) as unknown as (
+        ...args: readonly unknown[]
+      ) => Promise<unknown>;
+      return new Proxy(client, {
+        get(target, property, receiver) {
+          if (property === 'release' && mode === 'before-commit') {
+            return () => target.release(new Error('simulated lost database connection'));
+          }
+          if (property !== 'query') return Reflect.get(target, property, receiver);
+          return async (...args: readonly unknown[]) => {
+            const command =
+              typeof args[0] === 'string'
+                ? args[0]
+                : String((args[0] as { readonly text?: unknown }).text ?? '');
+            calls.push(command);
+            if (command.trim() === 'COMMIT' && mode === 'before-commit') {
+              throw new Error('simulated unresolved COMMIT acknowledgement');
+            }
+            const result = await delegateQuery(...args);
+            if (command.trim() === 'COMMIT') {
+              throw new Error('simulated lost COMMIT acknowledgement after server commit');
+            }
+            return result;
+          };
+        },
+      }) as PoolClient;
+    },
+    query: base.query.bind(base),
+  } as unknown as Pool;
+  return { pool, calls };
+};
 
 describe.runIf(pool)('Stage 7 PostgreSQL projection and search', () => {
   beforeEach(async () => {
@@ -181,6 +222,98 @@ describe.runIf(pool)('Stage 7 PostgreSQL projection and search', () => {
     });
     expect(await healthy.search(projectId, 'Milo', 10, ['owner'])).toHaveLength(1);
   });
+
+  it.each([['incremental apply', 'apply'] as const, ['full rebuild', 'rebuild'] as const])(
+    '%s remains READY after a real COMMIT acknowledgement loss',
+    async (_name, path) => {
+      const projectId = `stage7-db-ack-loss-${randomUUID()}`;
+      const document = documentFor(projectId);
+      const digest = `sha256:${'3'.repeat(64)}`;
+      const wrapped = withCommitAcknowledgementLoss(pool!, 'after-commit');
+      const repository = new PostgresSearchProjectionRepository(wrapped.pool);
+
+      if (path === 'apply') {
+        await expect(
+          repository.applyCommit(projectId, {
+            document,
+            commitId: document.commitId,
+            operation: 'ADD_CLAIM',
+            canonicalVersion: 1,
+            snapshotDigest: digest,
+            projectedAt: document.projectedAt,
+          }),
+        ).resolves.toBeUndefined();
+      } else {
+        await expect(
+          repository.rebuild(projectId, {
+            documents: [document],
+            watermark: {
+              projectId,
+              lastCommitId: document.commitId,
+              canonicalVersion: 1,
+              snapshotDigest: digest,
+              status: 'READY',
+              updatedAt: document.projectedAt,
+            },
+          }),
+        ).resolves.toBeUndefined();
+      }
+
+      expect(wrapped.calls.filter((call) => call.trim() === 'COMMIT')).toHaveLength(1);
+      expect(wrapped.calls.filter((call) => call.trim() === 'ROLLBACK')).toHaveLength(0);
+      expect(await repository.findWatermark(projectId)).toMatchObject({
+        lastCommitId: document.commitId,
+        canonicalVersion: 1,
+        snapshotDigest: digest,
+        status: 'READY',
+      });
+      const count = await pool!.query<{ count: string }>(
+        'SELECT count(*)::text AS count FROM projection.search_documents WHERE project_id = $1',
+        [projectId],
+      );
+      expect(count.rows[0]?.count).toBe('1');
+    },
+  );
+
+  it.each([['incremental apply', 'apply'] as const, ['full rebuild', 'rebuild'] as const])(
+    '%s preserves unresolved COMMIT acknowledgement as OUTCOME_UNKNOWN',
+    async (_name, path) => {
+      const projectId = `stage7-db-unknown-${randomUUID()}`;
+      const document = documentFor(projectId);
+      const digest = `sha256:${'4'.repeat(64)}`;
+      const wrapped = withCommitAcknowledgementLoss(pool!, 'before-commit');
+      const repository = new PostgresSearchProjectionRepository(wrapped.pool);
+      const operation =
+        path === 'apply'
+          ? repository.applyCommit(projectId, {
+              document,
+              commitId: document.commitId,
+              operation: 'ADD_CLAIM',
+              canonicalVersion: 1,
+              snapshotDigest: digest,
+              projectedAt: document.projectedAt,
+            })
+          : repository.rebuild(projectId, {
+              documents: [document],
+              watermark: {
+                projectId,
+                lastCommitId: document.commitId,
+                canonicalVersion: 1,
+                snapshotDigest: digest,
+                status: 'READY',
+                updatedAt: document.projectedAt,
+              },
+            });
+
+      await expect(operation).rejects.toMatchObject({
+        code: 'OUTCOME_UNKNOWN',
+        module: 'postgres-stage7',
+      });
+      expect(wrapped.calls.filter((call) => call.trim() === 'COMMIT')).toHaveLength(1);
+      expect(wrapped.calls.filter((call) => call.trim() === 'ROLLBACK')).toHaveLength(0);
+      expect(await repository.findWatermark(projectId)).toBeUndefined();
+    },
+  );
 
   it('runs the QX-01 handler on PostgreSQL with exact in-memory parity and boundary coverage', async () => {
     const dualRepository = new DualSearchProjectionRepository(

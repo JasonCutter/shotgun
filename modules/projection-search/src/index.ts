@@ -101,6 +101,9 @@ const workspaceAuthorityOrder: readonly KnowledgeWorkspaceQueryAuthority[] = [
   'DERIVED_INFERENCE',
 ];
 
+const isOutcomeUnknown = (error: unknown): boolean =>
+  error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
+
 type KnowledgeGroupListResult = { readonly items: readonly KnowledgeReviewGroup[] };
 type DerivedInferenceListResult = { readonly items: readonly DerivedInferenceCandidate[] };
 type WorkspaceCandidate = Omit<SearchKnowledgeWorkspaceMatch, 'rank'>;
@@ -1027,7 +1030,13 @@ export const createProjectionSearchModule = (
             });
             return { rebuilt: documents.length, canonicalVersion: snapshot.version };
           } catch (error) {
-            await repository.markDegraded(projectId, SEARCH_PROJECTION_UPDATE_FAILED, projectedAt);
+            if (!isOutcomeUnknown(error)) {
+              await repository.markDegraded(
+                projectId,
+                SEARCH_PROJECTION_UPDATE_FAILED,
+                projectedAt,
+              );
+            }
             throw error;
           }
         },
@@ -1061,7 +1070,13 @@ export const createProjectionSearchModule = (
               projectedAt,
             });
           } catch (error) {
-            await repository.markDegraded(projectId, SEARCH_PROJECTION_UPDATE_FAILED, projectedAt);
+            if (!isOutcomeUnknown(error)) {
+              await repository.markDegraded(
+                projectId,
+                SEARCH_PROJECTION_UPDATE_FAILED,
+                projectedAt,
+              );
+            }
             throw error;
           }
           await context.publish({

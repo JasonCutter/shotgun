@@ -76,15 +76,15 @@ Local verification on the correction branch (`codex/issue-302-recompare-route`):
 - changed-file Prettier check and `git diff --check`: passed;
 - PostgreSQL Recompare regression: 1 passed with the Docker test database and
   `TEST_DATABASE_URL` configured;
-- full integration suite: 469 tests passed, with the database-backed
-- `recovery-harness-isolation.test.ts` remains a local-only environment
-  limitation when `TEST_DATABASE_URL` is absent.
+- full integration suite: 469 tests passed; the database-backed
+  `recovery-harness-isolation.test.ts` is a local-only environment limitation
+  when `TEST_DATABASE_URL` is absent.
 
 Controller review artifacts:
 
 - PR: https://github.com/JasonCutter/shotgun/pull/303
-- final reviewed head: `173b9e1fa722b52a3cbdcbc692ab13c49eb33065`;
-- exact-head CI run `34798427342`: Quality, Frontend, and Required Gates all
+- final reviewed head: `b93b4c2811a3a33eeada7dd575e1a76335ce8320`;
+- exact-head CI run `34798867477`: Quality, Frontend, and Required Gates all
   passed (including CI and PostgreSQL test jobs);
 - the real client/server regression captured
   `POST /api/v1/security/csrf` then `POST /api/v1/comparisons/recompare`, proved

@@ -17,7 +17,6 @@ unresolved_canonical_blocker: NONE
 deployment: NOT_AUTHORIZED
 production_verification: NOT_AUTHORIZED
 closure_pull_request: https://github.com/JasonCutter/shotgun/pull/312
-closure_candidate_head: 41247b730
 ---
 
 # LPA-WP6 Current-Main Final Local Acceptance Closure Candidate
@@ -164,7 +163,9 @@ LPA-WP6 and the Local Project remain closure candidates, not COMPLETE.
 ## 7. Validation and lifecycle
 
 Governance/document validation for the changed record and registry must pass
-before PR creation. One governance-only PR, [#312](https://github.com/JasonCutter/shotgun/pull/312),
-was created from closure candidate head `41247b730` and is intentionally left
-unmerged for GPT exact-head closure review. No Product/runtime/DB/dependency
-mutation is part of this record.
+before PR creation. One governance-only PR,
+[#312](https://github.com/JasonCutter/shotgun/pull/312), is intentionally left
+unmerged for GPT exact-head closure review. The reviewed exact PR head is
+recorded externally by the controller/GitHub review evidence rather than
+self-pinned inside this commit. No Product/runtime/DB/dependency mutation is
+part of this record.

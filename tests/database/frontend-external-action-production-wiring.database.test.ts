@@ -71,10 +71,18 @@ const post = async <T>(
   url: string,
   payload: Record<string, unknown>,
 ): Promise<T> => {
+  const csrfResponse = await server.inject({
+    method: 'GET',
+    url: '/api/v1/security/csrf',
+    headers: { cookie },
+  });
+  expect(csrfResponse.statusCode, csrfResponse.body).toBe(200);
+  const csrfToken = csrfResponse.json<{ csrfToken: string }>().csrfToken;
+
   const response = await server.inject({
     method: 'POST',
     url,
-    headers: { cookie },
+    headers: { cookie, 'x-csrf-token': csrfToken },
     payload,
   });
   expect(response.statusCode, response.body).toBe(200);

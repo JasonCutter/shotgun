@@ -24,8 +24,21 @@ const scope = {
 };
 
 const reviewRoute = { routeId: 'review' as const, href: '/review' as const };
+const knowledgeRoute = { routeId: 'knowledge' as const, href: '/knowledge' as const };
 
 describe('InMemoryRouteGuardProjection', () => {
+  it('allows the established Knowledge workspace route for an active Project', async () => {
+    const projection = new InMemoryRouteGuardProjection();
+
+    await expect(
+      projection.decide({ ...scope, requestedRoute: knowledgeRoute }),
+    ).resolves.toMatchObject({
+      decision: 'ALLOW',
+      targetRoute: knowledgeRoute,
+      activeProjectId: scope.activeProject.id,
+    });
+  });
+
   it('allows Review and exposes its target route when review work is available', async () => {
     const projection = new InMemoryRouteGuardProjection(async () => true);
 

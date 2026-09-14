@@ -270,6 +270,7 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
       'home',
       'sources',
       'ask',
+      'knowledge',
       'review',
       'settings',
       'settings-projects',

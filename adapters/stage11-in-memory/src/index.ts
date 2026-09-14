@@ -146,6 +146,16 @@ export class InMemoryActionExecutionRepository implements ActionExecutionReposit
         operation: 'transition-action',
       });
     if (
+      transition.expectedUpdatedAt !== undefined &&
+      current.updatedAt !== transition.expectedUpdatedAt
+    )
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: `Action '${actionId}' changed after the reconciliation read.`,
+        module: 'stage11-in-memory',
+        operation: 'transition-action',
+      });
+    if (
       transition.next.actionId !== current.actionId ||
       transition.next.projectId !== current.projectId ||
       transition.next.preview.previewDigest !== current.preview.previewDigest

@@ -23,6 +23,7 @@ import {
   approveActionCommand,
   executeActionCommand,
   prepareActionCommand,
+  reconcileExecutingActionCommand,
   verifyActionCommand,
 } from '../helpers/stage-11.js';
 
@@ -224,6 +225,120 @@ describe('Stage 12.1 P0-2 server-bound Action contracts', () => {
     ]);
     expect(app.connector.calls.execute).toBe(1);
     expect([first.result.status, second.result.status]).toContain('VERIFIED');
+    await app.kernel.shutdown();
+  });
+
+  it('reconciles EXECUTING without invoking the connector and guards the exact timestamp', async () => {
+    const app = await harness();
+    const approved = await prepareAndApprove(app, 'reconcile');
+    const claimed = await app.repository.claimForExecution(
+      approved.projectId,
+      approved.approval!.approvalId,
+      '2026-07-17T10:01:00.000Z',
+      'owner',
+    );
+    expect(claimed.record.status).toBe('EXECUTING');
+    const expectedUpdatedAt = claimed.record.updatedAt;
+    const feedbackBefore = app.kernel.connector.traces
+      .list()
+      .filter((record) => record.messageType === 'ActionFeedbackRecorded').length;
+
+    await expect(
+      app.kernel.connector.sendCommand(
+        reconcileExecutingActionCommand(approved.actionId, '2026-07-17T10:00:59.000Z', 'stale'),
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect((await app.repository.find(approved.projectId, approved.actionId))?.status).toBe(
+      'EXECUTING',
+    );
+    expect(
+      (await app.repository.listAudit(approved.projectId, approved.actionId)).filter(
+        (event) => event.category === 'ACTION_OUTCOME_UNKNOWN',
+      ),
+    ).toHaveLength(0);
+
+    const reconciled = (
+      await app.kernel.connector.sendCommand<ActionExecutionRecord>(
+        reconcileExecutingActionCommand(approved.actionId, expectedUpdatedAt),
+      )
+    ).result;
+    expect(reconciled).toMatchObject({
+      actionId: approved.actionId,
+      projectId: approved.projectId,
+      status: 'OUTCOME_UNKNOWN',
+      preview: approved.preview,
+      approval: approved.approval,
+      failureReason:
+        'Execution was interrupted before a durable provider outcome was established. Automatic execution retry is forbidden.',
+    });
+    expect(app.connector.calls).toEqual({ preflight: 0, execute: 0, verify: 0 });
+    const audit = await app.repository.listAudit(approved.projectId, approved.actionId);
+    expect(audit.filter((event) => event.category === 'ACTION_OUTCOME_UNKNOWN')).toHaveLength(1);
+    expect(audit.at(-1)?.details).toMatchObject({
+      automaticRetry: false,
+      reconciliation: 'orphaned-executing',
+      expectedUpdatedAt,
+    });
+    const feedbackAfterFirst = app.kernel.connector.traces
+      .list()
+      .filter((record) => record.messageType === 'ActionFeedbackRecorded').length;
+    expect(feedbackAfterFirst).toBe(feedbackBefore + 1);
+
+    const replayed = (
+      await app.kernel.connector.sendCommand<ActionExecutionRecord>(
+        reconcileExecutingActionCommand(approved.actionId, expectedUpdatedAt, 'replay'),
+      )
+    ).result;
+    expect(replayed).toEqual(reconciled);
+    expect(
+      (await app.repository.listAudit(approved.projectId, approved.actionId)).filter(
+        (event) => event.category === 'ACTION_OUTCOME_UNKNOWN',
+      ),
+    ).toHaveLength(1);
+    expect(
+      app.kernel.connector.traces
+        .list()
+        .filter((record) => record.messageType === 'ActionFeedbackRecorded'),
+    ).toHaveLength(feedbackAfterFirst);
+    await app.kernel.shutdown();
+  });
+
+  it('rejects reconciliation for non-EXECUTING states and unauthorized system actors', async () => {
+    const app = await harness();
+    await expect(
+      app.kernel.connector.sendCommand(
+        reconcileExecutingActionCommand('missing-action', '2026-07-17T10:00:00.000Z'),
+      ),
+    ).rejects.toMatchObject({ code: 'ACTION_REFERENCE_NOT_FOUND' });
+    const approved = await prepareAndApprove(app, 'reconcile-conflicts');
+    await expect(
+      app.kernel.connector.sendCommand(
+        reconcileExecutingActionCommand(approved.actionId, approved.updatedAt, 'non-owner', {
+          type: 'user',
+          id: 'reviewer',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'ACTION_AUTHORIZATION_DENIED' });
+    await expect(
+      app.kernel.connector.sendCommand(
+        reconcileExecutingActionCommand(approved.actionId, approved.updatedAt, 'approved'),
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    const system = await app.repository.claimForExecution(
+      approved.projectId,
+      approved.approval!.approvalId,
+      '2026-07-17T10:01:00.000Z',
+      'system:worker',
+    );
+    await expect(
+      app.kernel.connector.sendCommand(
+        reconcileExecutingActionCommand(approved.actionId, system.record.updatedAt, 'system', {
+          type: 'system',
+          id: 'system:worker',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'ACTION_AUTHORIZATION_DENIED' });
     await app.kernel.shutdown();
   });
 

@@ -57,7 +57,6 @@ const baseAuthoritativeTables = [
   'action.executions',
   'action.approvals',
   'action.audit_events',
-  'action.action_feedback_outbox',
 ] as const;
 
 const DISCOVERY_FINDING_MIGRATION = '045_akp_2_wp2_discovery_finding_persistence.sql';
@@ -77,6 +76,7 @@ const STAGE5_COMPARISON_REVIEW_V2_MIGRATION = '067_stage5_comparison_review_v2_p
 const ADR163_REVIEW_OPERATION_RESOLUTION_V2_MIGRATION =
   '070_adr163_review_operation_resolution_v2.sql';
 const STAGE6_COMPARISON_REVIEW_V2_HANDOFF_MIGRATION = '068_stage6_comparison_review_v2_handoff.sql';
+const ACTION_FEEDBACK_OUTBOX_MIGRATION = '074_adr166_stage11_action_feedback_outbox.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
@@ -176,6 +176,7 @@ export const authoritativeIntegrityTablesForMigrations = (
     ...(applied.has(WP10_ACTION_REVIEW_DIAGNOSTICS_MIGRATION)
       ? ['action.action_review_work_items', 'discovery.semantic_essence_diagnostics']
       : []),
+    ...(applied.has(ACTION_FEEDBACK_OUTBOX_MIGRATION) ? ['action.action_feedback_outbox'] : []),
   ];
 };
 

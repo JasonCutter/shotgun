@@ -548,7 +548,7 @@ export class PostgresActionExecutionRepository
            claimed_at = $4, last_error = NULL
        FROM candidates
        WHERE outbox.outbox_id = candidates.outbox_id
-       RETURNING ${feedbackOutboxColumns}`,
+       RETURNING outbox.${feedbackOutboxColumns}`,
       [projectId, semanticKey ?? null, Math.max(1, Math.min(100, limit)), claimedAt, staleBefore],
     );
     return result.rows.map(mapFeedbackOutboxRow);

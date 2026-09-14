@@ -3,8 +3,8 @@
 - Status: **ACCEPTED**
 - Proposed at: 2026-09-14
 - Accepted at: 2026-09-14
-- Acceptance authority: Project Shotgun GPT/controller approval
-- Decision owner: Project Shotgun controller
+- Acceptance authority: USER (Project owner)
+- Decision owner: USER (Project owner)
 - Work item: Issue #306
 - Subject base: `main@28d0296e7e7dc0509b89f4077ecd6f7a565a3c5b`
 - Related decisions: ADR-133, ADR-143, ADR-161, ADR-162

@@ -196,6 +196,39 @@ describe('Frontend Section 3 Product API', () => {
     await application.server.close();
   });
 
+  it('allows the established Knowledge route without adding persistent navigation', async () => {
+    const { cookie } = await projectSession();
+    const application = await createApplication({ authRepository: auth });
+    const token = await csrf(application, cookie);
+    const response = await application.server.inject({
+      method: 'POST',
+      url: '/product-api/frontend/route-guard',
+      headers: { cookie, 'x-csrf-token': token },
+      payload: {
+        targetRoute: { routeId: 'knowledge', href: '/knowledge' },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      decision: {
+        decision: 'ALLOW',
+        targetRoute: { routeId: 'knowledge', href: '/knowledge' },
+        activeProjectId: 'shotgun',
+      },
+    });
+
+    const shell = (
+      await application.server.inject({
+        method: 'GET',
+        url: '/product-api/frontend/global-shell',
+        headers: { cookie },
+      })
+    ).json<{ shell: { navigation: readonly { targetRoute?: { routeId?: string } }[] } }>().shell;
+    expect(shell.navigation.some((item) => item.targetRoute?.routeId === 'knowledge')).toBe(false);
+    await application.server.close();
+  });
+
   it('treats zero-project as normal, omits persistent navigation, and exposes onboarding state', async () => {
     const principal = await auth.bootstrapLocalOwnerPrincipal({
       accountId: 'zero-project-owner',

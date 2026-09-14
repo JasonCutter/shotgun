@@ -5,12 +5,14 @@ import type {
   ProjectionRebuildWrite,
   SearchProjectionRepositoryPort,
 } from '../../../modules/projection-search/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import {
   canonicalSnapshotDigest,
   type CanonicalSearchMatch,
   type CanonicalSearchResult,
   type ProjectionWatermark,
   type SearchProjectionDocument,
+  ShotgunError,
 } from '../../../packages/contracts/src/index.js';
 
 type WatermarkRow = QueryResultRow & {
@@ -109,6 +111,21 @@ const upsertWatermark = async (client: PoolClient, watermark: ProjectionWatermar
   );
 };
 
+const matchesReadyWatermark = (
+  current: ProjectionWatermark | undefined,
+  expected: ProjectionWatermark,
+): boolean =>
+  expected.status === 'READY' &&
+  current !== undefined &&
+  current.projectId === expected.projectId &&
+  current.lastCommitId === expected.lastCommitId &&
+  current.canonicalVersion === expected.canonicalVersion &&
+  current.snapshotDigest === expected.snapshotDigest &&
+  current.status === 'READY';
+
+const isOutcomeUnknown = (error: unknown): error is ShotgunError =>
+  error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
+
 export class PostgresSearchProjectionRepository implements SearchProjectionRepositoryPort {
   constructor(
     private readonly pool: Pool,
@@ -116,69 +133,94 @@ export class PostgresSearchProjectionRepository implements SearchProjectionRepos
   ) {}
 
   async applyCommit(projectId: string, write: ProjectionCommitWrite): Promise<void> {
-    const client = await this.pool.connect();
     try {
-      await client.query('BEGIN');
-      const current = await client.query<WatermarkRow>(
-        `SELECT project_id, last_commit_id, canonical_version, snapshot_digest,
-                status, last_error, updated_at
-         FROM projection.watermarks
-         WHERE project_id = $1
-         FOR UPDATE`,
-        [projectId],
+      await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const current = await client.query<WatermarkRow>(
+            `SELECT project_id, last_commit_id, canonical_version, snapshot_digest,
+                    status, last_error, updated_at
+             FROM projection.watermarks
+             WHERE project_id = $1
+             FOR UPDATE`,
+            [projectId],
+          );
+          const existing = current.rows[0];
+          if (existing?.last_commit_id === write.commitId) return;
+          const projectedVersion = existing?.canonical_version ?? 0;
+          const expectedVersion =
+            write.operation === 'ADD_CLAIM' ? projectedVersion + 1 : projectedVersion;
+          if (write.canonicalVersion !== expectedVersion) {
+            throw new Error(
+              `Projection sequence gap: expected ${expectedVersion}, received ${write.canonicalVersion}.`,
+            );
+          }
+          if (write.document) await insertDocument(client, write.document);
+          if (this.options.failpoint === 'after-document') {
+            throw new Error('Stage 7 projection failpoint after document.');
+          }
+          await upsertWatermark(client, {
+            projectId,
+            lastCommitId: write.commitId,
+            canonicalVersion: write.canonicalVersion,
+            snapshotDigest: write.snapshotDigest,
+            status: 'READY',
+            updatedAt: write.projectedAt,
+          });
+        },
+        {
+          module: 'postgres-stage7',
+          operation: 'apply-canonical-projection',
+        },
       );
-      const existing = current.rows[0];
-      if (existing?.last_commit_id === write.commitId) {
-        await client.query('COMMIT');
+    } catch (error) {
+      if (
+        isOutcomeUnknown(error) &&
+        matchesReadyWatermark(await this.findWatermark(projectId).catch(() => undefined), {
+          projectId,
+          lastCommitId: write.commitId,
+          canonicalVersion: write.canonicalVersion,
+          snapshotDigest: write.snapshotDigest,
+          status: 'READY',
+          updatedAt: write.projectedAt,
+        })
+      ) {
         return;
       }
-      const projectedVersion = existing?.canonical_version ?? 0;
-      const expectedVersion =
-        write.operation === 'ADD_CLAIM' ? projectedVersion + 1 : projectedVersion;
-      if (write.canonicalVersion !== expectedVersion) {
-        throw new Error(
-          `Projection sequence gap: expected ${expectedVersion}, received ${write.canonicalVersion}.`,
-        );
-      }
-      if (write.document) await insertDocument(client, write.document);
-      if (this.options.failpoint === 'after-document') {
-        throw new Error('Stage 7 projection failpoint after document.');
-      }
-      await upsertWatermark(client, {
-        projectId,
-        lastCommitId: write.commitId,
-        canonicalVersion: write.canonicalVersion,
-        snapshotDigest: write.snapshotDigest,
-        status: 'READY',
-        updatedAt: write.projectedAt,
-      });
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
       throw error;
-    } finally {
-      client.release();
     }
   }
 
   async rebuild(projectId: string, write: ProjectionRebuildWrite): Promise<void> {
-    const client = await this.pool.connect();
     try {
-      await client.query('BEGIN');
-      await client.query('DELETE FROM projection.search_documents WHERE project_id = $1', [
-        projectId,
-      ]);
-      for (const document of write.documents) await insertDocument(client, document);
-      if (this.options.failpoint === 'after-document') {
-        throw new Error('Stage 7 projection failpoint after document.');
-      }
-      await upsertWatermark(client, write.watermark);
-      await client.query('COMMIT');
+      await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          await client.query('DELETE FROM projection.search_documents WHERE project_id = $1', [
+            projectId,
+          ]);
+          for (const document of write.documents) await insertDocument(client, document);
+          if (this.options.failpoint === 'after-document') {
+            throw new Error('Stage 7 projection failpoint after document.');
+          }
+          await upsertWatermark(client, write.watermark);
+        },
+        {
+          module: 'postgres-stage7',
+          operation: 'rebuild-canonical-projection',
+        },
+      );
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (
+        isOutcomeUnknown(error) &&
+        matchesReadyWatermark(
+          await this.findWatermark(projectId).catch(() => undefined),
+          write.watermark,
+        )
+      ) {
+        return;
+      }
       throw error;
-    } finally {
-      client.release();
     }
   }
 

@@ -316,6 +316,7 @@ const emptyBootstrapEvent: ComparisonCompletedV2 = {
 const setup = (
   current?: ComparisonFreshnessIdentityV2,
   aggregateInput: ComparisonV2AggregateForReview = aggregate,
+  storedStatus?: DraftChangeSetV2['status'],
 ) => {
   let saved: DraftChangeSetV2 | undefined;
   let savedDecision: ComparisonV2ReviewDecisionWrite['decision'] | undefined;
@@ -328,7 +329,7 @@ const setup = (
       draft: Parameters<ComparisonV2ReviewBridgeDependencies['repository']['saveDraft']>[0],
     ) {
       saved = draft;
-      return draft;
+      return storedStatus === undefined ? draft : { ...draft, status: storedStatus };
     },
     async findDraftByComparisonId(_projectId: string, comparisonId: string) {
       return saved?.comparisonId === comparisonId ? saved : undefined;
@@ -475,6 +476,24 @@ describe('Comparison v2 Review bridge', () => {
       expect(result.draft.freshnessIdentity.mode).toBe('DETERMINISTIC_EXACT');
     }
   });
+
+  it.each([
+    ['APPROVED', 'REVIEW_NOT_ELIGIBLE'],
+    ['REJECTED', 'REVIEW_NOT_ELIGIBLE'],
+    ['STALE', 'STALE_COMPARISON'],
+  ] as const)(
+    'does not report DRAFT_CREATED when saveDraft returns %s',
+    async (storedStatus, reason) => {
+      const setupValue = setup(undefined, aggregate, storedStatus);
+      await expect(setupValue.bridge.materializeDraft(request)).resolves.toEqual({
+        status: 'BLOCKED',
+        reason,
+      });
+      // The repository remains authoritative; the bridge must not reopen or
+      // manufacture a second Review Draft for a terminal replay.
+      expect(setupValue.getSaved()).toMatchObject({ status: 'PENDING_REVIEW' });
+    },
+  );
 
   it('propagates retryability only from the typed freshness error', async () => {
     const setupValue = setup();

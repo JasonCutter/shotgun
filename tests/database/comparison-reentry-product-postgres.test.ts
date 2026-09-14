@@ -499,10 +499,13 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
             reason: 'PostgreSQL sequential stale re-entry acceptance.',
           },
         });
-      const decideV2 = async (changeSet: {
-        readonly changeSetId: string;
-        readonly contentDigest: string;
-      }) =>
+      const decideV2 = async (
+        changeSet: {
+          readonly changeSetId: string;
+          readonly contentDigest: string;
+        },
+        decision: 'APPROVE' | 'REJECT' = 'APPROVE',
+      ) =>
         application.server.inject({
           method: 'POST',
           url: '/reviews/v2/decision',
@@ -511,8 +514,11 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
             changeSetId: changeSet.changeSetId,
             expectedRevisionNumber: 1,
             expectedContentDigest: changeSet.contentDigest,
-            decision: 'APPROVE',
-            reason: 'Approve the current V2 comparison after review.',
+            decision,
+            reason:
+              decision === 'REJECT'
+                ? 'Reject the current V2 comparison after review.'
+                : 'Approve the current V2 comparison after review.',
           },
         });
 
@@ -802,6 +808,56 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
         [projectId, failureCandidateId],
       );
       expect(noThirdAttempt.rows.map((row) => row.attempt)).toEqual([1, 2]);
+
+      // A terminal Review decision is authoritative for the immutable
+      // Comparison identity. Recompare may replay the Comparison, but must
+      // not manufacture a new pending Draft or report DRAFT_CREATED.
+      const rejectedTerminalReentry = await decideV2(terminalReentryDraft, 'REJECT');
+      expect(rejectedTerminalReentry.statusCode).toBe(200);
+      expect(rejectedTerminalReentry.json()).toMatchObject({ commandStatus: 'succeeded' });
+      const beforeTerminalReplay = await pool.query<{
+        reviews: string;
+        decisions: string;
+        canonicalVersion: string;
+      }>(
+        `SELECT
+           (SELECT count(*)::text FROM review.change_sets_v2 WHERE project_id = $1) AS reviews,
+           (SELECT count(*)::text FROM review.decisions_v2 WHERE project_id = $1) AS decisions,
+           (SELECT version::text FROM canonical.project_state WHERE project_id = $1) AS "canonicalVersion"`,
+        [projectId],
+      );
+      const terminalReplayAfterReject = await invoke(
+        failureCandidateId,
+        'product-key-v2-terminal-reentry-after-reject',
+      );
+      expect(terminalReplayAfterReject.statusCode).toBe(200);
+      expect(terminalReplayAfterReject.json()).toMatchObject({
+        result: {
+          rollout: 'V2_ACTIVE',
+          v1Executed: false,
+          v2: { status: 'COMPLETED', comparisonId: terminalReentryComparisonId },
+          review: { status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' },
+        },
+      });
+      expect(terminalReplayAfterReject.json()).not.toHaveProperty('reviewChangeSetId');
+      expect(providerCalls).toBe(4);
+      const persistedTerminal = await reviewV2.findDraftByComparisonId(
+        projectId,
+        terminalReentryComparisonId,
+      );
+      expect(persistedTerminal).toMatchObject({ status: 'REJECTED' });
+      const afterTerminalReplay = await pool.query<{
+        reviews: string;
+        decisions: string;
+        canonicalVersion: string;
+      }>(
+        `SELECT
+           (SELECT count(*)::text FROM review.change_sets_v2 WHERE project_id = $1) AS reviews,
+           (SELECT count(*)::text FROM review.decisions_v2 WHERE project_id = $1) AS decisions,
+           (SELECT version::text FROM canonical.project_state WHERE project_id = $1) AS "canonicalVersion"`,
+        [projectId],
+      );
+      expect(afterTerminalReplay.rows[0]).toEqual(beforeTerminalReplay.rows[0]);
 
       // A source-supported relationship produces a REVIEW_REQUIRED /
       // MODIFY_REVIEW Draft.  The Product Review route must fail closed for

@@ -678,7 +678,20 @@ export const createComparisonV2ReviewBridge = (
         changeSetId: `comparison-v2:${aggregate.comparison.comparisonId}`,
       });
       const stored = await dependencies.repository.saveDraft(draft);
-      return { status: 'DRAFT_CREATED', draft: stored };
+      // `saveDraft` is idempotent on the immutable Comparison identity and
+      // therefore may return an already-decided Draft from a replay.  The
+      // authoritative stored status, not the newly-built pending candidate,
+      // determines whether a draft is actually available for Review.
+      switch (stored.status) {
+        case 'PENDING_REVIEW':
+        case 'ON_HOLD':
+          return { status: 'DRAFT_CREATED', draft: stored };
+        case 'STALE':
+          return { status: 'BLOCKED', reason: 'STALE_COMPARISON' };
+        case 'APPROVED':
+        case 'REJECTED':
+          return { status: 'BLOCKED', reason: 'REVIEW_NOT_ELIGIBLE' };
+      }
     },
 
     async recordDecision(

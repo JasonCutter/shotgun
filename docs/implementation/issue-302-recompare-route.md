@@ -83,8 +83,8 @@ Local verification on the correction branch (`codex/issue-302-recompare-route`):
 Controller review artifacts:
 
 - PR: https://github.com/JasonCutter/shotgun/pull/303
-- final reviewed head: `b93b4c2811a3a33eeada7dd575e1a76335ce8320`;
-- exact-head CI run `34798867477`: Quality, Frontend, and Required Gates all
+- final reviewed head: `a49614bc1b7ea2eb030dbd27e0ab7338a8de33ab`;
+- exact-head CI run `34799376377`: Quality, Frontend, and Required Gates all
   passed (including CI and PostgreSQL test jobs);
 - the real client/server regression captured
   `POST /api/v1/security/csrf` then `POST /api/v1/comparisons/recompare`, proved

@@ -633,22 +633,12 @@ export const createActionExecutionModule = (
               duplicate: preflight.status === 'ALREADY_APPLIED',
             },
           });
+          let providerResult: ProviderActionResult;
           try {
-            const providerResult =
+            providerResult =
               preflight.status === 'ALREADY_APPLIED'
                 ? preflight.providerResult
                 : await connector.execute(current.preview, key);
-            current = await repository.transition(projectId, current.actionId, {
-              expectedStatus: 'EXECUTING',
-              next: { ...current, status: 'EXECUTED', providerResult, updatedAt: clock.now() },
-              category: 'ACTION_EXECUTED',
-              actorId: actor.id,
-              details: {
-                provider: providerResult.provider,
-                externalId: providerResult.externalId,
-                observedDigest: providerResult.observedDigest,
-              },
-            });
           } catch (error) {
             const unknown = error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
             const failed = await repository.transition(projectId, current.actionId, {
@@ -668,6 +658,17 @@ export const createActionExecutionModule = (
             await publishFeedback(context, failed, failed.updatedAt);
             return failed;
           }
+          current = await repository.transition(projectId, current.actionId, {
+            expectedStatus: 'EXECUTING',
+            next: { ...current, status: 'EXECUTED', providerResult, updatedAt: clock.now() },
+            category: 'ACTION_EXECUTED',
+            actorId: actor.id,
+            details: {
+              provider: providerResult.provider,
+              externalId: providerResult.externalId,
+              observedDigest: providerResult.observedDigest,
+            },
+          });
           return verifyRecord(repository, connector, current, 'system:worker', clock, context);
         },
       },

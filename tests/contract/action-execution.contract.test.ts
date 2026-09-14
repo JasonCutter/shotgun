@@ -10,10 +10,11 @@ import type {
   ActionAuditEvent,
   ActionExecutionRecord,
 } from '../../packages/contracts/src/index.js';
-import { actionEvidenceSetDigest } from '../../packages/contracts/src/index.js';
+import { actionEvidenceSetDigest, ShotgunError } from '../../packages/contracts/src/index.js';
 import { ShotgunKernel } from '../../packages/kernel/src/index.js';
 import {
   createActionExecutionModule,
+  type ActionExecutionRepositoryPort,
   type ActionBindingReference,
 } from '../../modules/action-execution/src/index.js';
 import {
@@ -28,9 +29,9 @@ import {
 const harness = async (
   connector = new FakeDraftActionConnector(),
   clock = { now: () => '2026-07-17T10:00:00.000Z' },
+  repository: ActionExecutionRepositoryPort = new InMemoryActionExecutionRepository(),
 ) => {
   const candidates = new InMemoryActionCandidateRepository();
-  const repository = new InMemoryActionExecutionRepository();
   const independentVerification = {
     getValidationDigest: async (p: string, c: string) =>
       (await candidates.find(p, c))?.validationDigest,
@@ -130,6 +131,42 @@ describe('Stage 12.1 P0-2 server-bound Action contracts', () => {
       'ACTION_VERIFIED',
     ]);
     expect(JSON.stringify({ completed, audit, connector: app.connector })).not.toContain(secret);
+    await app.kernel.shutdown();
+  });
+
+  it('does not classify a PostgreSQL ACTION_EXECUTED ambiguity as a provider failure', async () => {
+    const inner = new InMemoryActionExecutionRepository();
+    const repository: ActionExecutionRepositoryPort = {
+      createPreview: inner.createPreview.bind(inner),
+      approve: inner.approve.bind(inner),
+      claimForExecution: inner.claimForExecution.bind(inner),
+      find: inner.find.bind(inner),
+      listAudit: inner.listAudit.bind(inner),
+      transition: async (projectId, actionId, transition) => {
+        const persisted = await inner.transition(projectId, actionId, transition);
+        if (transition.category === 'ACTION_EXECUTED')
+          throw new ShotgunError({
+            code: 'OUTCOME_UNKNOWN',
+            safeMessage: 'The ACTION_EXECUTED database outcome could not be proven.',
+            module: 'postgres-stage11',
+            operation: 'transition-action',
+          });
+        return persisted;
+      },
+    };
+    const app = await harness(new FakeDraftActionConnector(), undefined, repository);
+    const approved = await prepareAndApprove(app, 'db-ambiguity');
+
+    await expect(
+      app.kernel.connector.sendCommand(executeActionCommand(approved.approval!.approvalId)),
+    ).rejects.toMatchObject({ code: 'OUTCOME_UNKNOWN' });
+    expect(app.connector.calls.execute).toBe(1);
+    expect((await app.repository.find(approved.projectId, approved.actionId))?.status).toBe(
+      'EXECUTED',
+    );
+    const audit = await app.repository.listAudit(approved.projectId, approved.actionId);
+    expect(audit.map((event) => event.category)).not.toContain('ACTION_FAILED');
+    expect(audit.map((event) => event.category)).not.toContain('ACTION_OUTCOME_UNKNOWN');
     await app.kernel.shutdown();
   });
 

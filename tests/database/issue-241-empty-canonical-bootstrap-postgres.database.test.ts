@@ -253,7 +253,7 @@ describe.runIf(Boolean(databaseUrl))('Issue #241 empty Canonical PostgreSQL runt
     const invoke = (idempotencyKey: string) =>
       application.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: { cookie, 'x-csrf-token': csrf },
         payload: { candidateId, idempotencyKey },
       });

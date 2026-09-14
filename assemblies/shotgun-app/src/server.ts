@@ -3950,7 +3950,7 @@ const createApplicationCore = async (
    * are resolved from the authenticated server context and runtime authority.
    */
   server.post<{ Body: unknown; Headers: SecurityHeaders }>(
-    '/comparisons/recompare',
+    '/api/v1/comparisons/recompare',
     async (request) => {
       const context = requestContext(request.headers);
       const body = decodeRecompareCandidateRequest(request.body);

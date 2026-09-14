@@ -119,23 +119,35 @@ export const AIWorkspace = () => {
   const credentialRequestIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (!settings || initializedProjectId === settings.projectId) return;
-    const configuredProvider = settings.currentConfiguration?.activeProviderId;
-    const providerId = configuredProvider ?? settings.defaultProviderId;
+    if (!settings) return;
+
+    const configuredProviderId = settings.currentConfiguration?.activeProviderId;
+    const configuredProvider = settings.providers.find(
+      (candidate) => candidate.providerId === configuredProviderId,
+    );
+    const selectedProvider = settings.providers.find(
+      (candidate) => candidate.providerId === selectedProviderId,
+    );
+    const providerId = selectedProvider
+      ? selectedProvider.providerId
+      : (configuredProvider?.providerId ?? settings.defaultProviderId);
     const provider = settings.providers.find((candidate) => candidate.providerId === providerId);
-    const configuredModel = settings.currentConfiguration?.activeModelId;
-    const modelId =
-      configuredModel ??
-      provider?.models.find((model) => model.modelId)?.modelId ??
-      provider?.models[0]?.modelId ??
-      '';
-    setSelectedProviderId(providerId);
-    setSelectedModelId(modelId);
-    setDraftSecret('');
-    setTestResult(null);
-    setFeedback(null);
-    setInitializedProjectId(settings.projectId);
-  }, [initializedProjectId, settings]);
+    const configuredModelId = settings.currentConfiguration?.activeModelId;
+    const modelId = provider?.models.some((model) => model.modelId === selectedModelId)
+      ? selectedModelId
+      : provider?.models.some((model) => model.modelId === configuredModelId)
+        ? (configuredModelId ?? '')
+        : (provider?.models[0]?.modelId ?? '');
+
+    if (initializedProjectId !== settings.projectId) {
+      setDraftSecret('');
+      setTestResult(null);
+      setFeedback(null);
+      setInitializedProjectId(settings.projectId);
+    }
+    if (selectedProviderId !== providerId) setSelectedProviderId(providerId);
+    if (selectedModelId !== modelId) setSelectedModelId(modelId);
+  }, [initializedProjectId, selectedModelId, selectedProviderId, settings]);
 
   useEffect(() => {
     if (feedback?.tone === 'error') feedbackRef.current?.focus();

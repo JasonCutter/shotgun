@@ -420,6 +420,112 @@ describe('AIWorkspace (A7 Settings → AI)', () => {
     expect(screen.queryByRole('button', { name: 'Approve provider review' })).toBeNull();
   });
 
+  it('falls back to the registered model when a current configuration uses a retired alias', async () => {
+    const storedSettings = makeSettings({
+      mode: 'PROJECT_MANAGED',
+      currentConfiguration: {
+        projectId: 'project-1',
+        activeProviderId: 'deepseek',
+        activeModelId: 'deepseek-v4-flash',
+        credentialId: credential.credentialId,
+        credentialRevision: credential.credentialRevision,
+        aiConfigurationRevision: 4,
+        updatedBy: 'principal-1',
+        updatedAt: now,
+      },
+      credentialStatuses: [credential],
+    });
+    const user = userEvent.setup();
+    const { api } = renderWorkspace({}, storedSettings);
+
+    const model = await screen.findByLabelText('Model');
+    await waitFor(() => expect((model as HTMLSelectElement).value).toBe('deepseek-flash'));
+    expect(
+      screen.queryByText('No server-enabled model is available for this provider.'),
+    ).toBeNull();
+
+    await user.click(await screen.findByRole('button', { name: 'Test Connection' }));
+    await screen.findByText('Connected');
+    expect(api.testAIConnection).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      providerId: 'deepseek',
+      modelId: 'deepseek-flash',
+      credentialId: credential.credentialId,
+      credentialRevision: credential.credentialRevision,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Save AI configuration' }));
+    await screen.findByText('AI configuration saved');
+    expect(api.saveAIConfiguration).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      expectedRevision: 4,
+      providerId: 'deepseek',
+      modelId: 'deepseek-flash',
+      credentialId: credential.credentialId,
+      credentialRevision: credential.credentialRevision,
+    });
+  });
+
+  it('reconciles a retired model when the same Project refreshes its catalog', async () => {
+    const legacySettings = makeSettings({
+      mode: 'PROJECT_MANAGED',
+      providers: makeSettings().providers.map((provider) =>
+        provider.providerId === 'deepseek'
+          ? {
+              ...provider,
+              models: provider.models.map((model) => ({
+                ...model,
+                modelId: 'deepseek-v4-flash',
+                displayName: 'DeepSeek V4 Flash',
+              })),
+            }
+          : provider,
+      ),
+      currentConfiguration: {
+        projectId: 'project-1',
+        activeProviderId: 'deepseek',
+        activeModelId: 'deepseek-v4-flash',
+        credentialId: credential.credentialId,
+        credentialRevision: credential.credentialRevision,
+        aiConfigurationRevision: 4,
+        updatedBy: 'principal-1',
+        updatedAt: now,
+      },
+      credentialStatuses: [credential],
+    });
+    const { queryClient } = renderWorkspace({}, legacySettings);
+    const model = await screen.findByLabelText('Model');
+    expect((model as HTMLSelectElement).value).toBe('deepseek-v4-flash');
+
+    queryClient.setQueryData(
+      ['settings', 'ai', 'project-1'],
+      makeSettings({
+        mode: 'PROJECT_MANAGED',
+        currentConfiguration: legacySettings.currentConfiguration,
+        credentialStatuses: [credential],
+      }),
+    );
+    await waitFor(() => expect((model as HTMLSelectElement).value).toBe('deepseek-flash'));
+  });
+
+  it('preserves a valid draft provider and model across a same-Project refresh', async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderWorkspace({});
+    const provider = await screen.findByLabelText('AI Provider');
+    await user.selectOptions(provider, 'openai');
+    expect((provider as HTMLSelectElement).value).toBe('openai');
+    expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe('gpt-5.6-luna');
+
+    queryClient.setQueryData(
+      ['settings', 'ai', 'project-1'],
+      makeSettings({
+        privacy: makeSettings().privacy,
+      }),
+    );
+    await waitFor(() => expect((provider as HTMLSelectElement).value).toBe('openai'));
+    expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe('gpt-5.6-luna');
+  });
+
   it('enables Project-level automatic processing for the saved provider without a provider approval flow', async () => {
     const queryClient = createFrontendQueryClient();
     const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');

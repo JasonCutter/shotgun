@@ -1322,7 +1322,9 @@
       },
       "deployment": "NOT_AUTHORIZED",
       "productionVerification": "NOT_AUTHORIZED",
-      "closurePullRequest": "PENDING",
+      "closurePullRequest": "https://github.com/JasonCutter/shotgun/pull/312",
+      "closureCandidateHead": "9a9f722bc",
+      "prState": "OPEN / UNMERGED",
       "merge": "NOT_AUTHORIZED",
       "postMergeAcceptance": "PENDING"
     }

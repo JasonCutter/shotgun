@@ -1287,6 +1287,44 @@
       "productionVerification": "NOT_STARTED",
       "ready": "NOT_AUTHORIZED",
       "merge": "NOT_AUTHORIZED"
+    },
+    {
+      "id": "FINAL-LOCAL-ACCEPTANCE-CURRENT-MAIN-CLOSURE-260914001",
+      "path": "docs/engineering/final-local-acceptance-current-main-closure-260914001.md",
+      "class": "COMPLETION_RECORD",
+      "scope": "lpa-wp6-final-local-acceptance-current-main",
+      "statusAuthority": "GPT_ACCEPTED_CANDIDATE_PENDING_GOVERNANCE_MERGE",
+      "acceptanceAuthority": "GPT Final Local Acceptance Review",
+      "acceptedAt": "2026-09-14",
+      "subjectBase": "24353223eed5b00ea461fb14095525fde7296f6e",
+      "subjectCanonicalMain": "02362ab1a8abc5c7b9e2b9a71ec97b3a4c122c9b",
+      "deltaCommits": 749,
+      "flaResult": "FLA-01_FLA-10_PASS_CURRENT_MAIN",
+      "unresolvedCanonicalBlocker": "NONE",
+      "verdict": "LOCAL_ACCEPTANCE_PASS_CURRENT_MAIN",
+      "focusedEvidence": {
+        "launchCoreContract": "19/19 PASS",
+        "backupRestoreUnit": "7/7 PASS",
+        "databaseVerify": "PASS",
+        "aiPolicyAndConfiguration": "30/30 PASS",
+        "exactMainCIRun": "34827681020 SUCCESS",
+        "runtimeReadiness": "HTTP 200 READY; canonical projection 2/2 succeeded",
+        "productFlow": "Issue #298 final stabilization evidence plus accepted derived fixes #299/#302/#304/#306/#308/#310"
+      },
+      "preservedHistoricalRecords": [
+        "FINAL-LOCAL-ACCEPTANCE-GAP-AUDIT-260811001",
+        "FINAL-LOCAL-ACCEPTANCE-IR-260811001",
+        "FINAL-LOCAL-ACCEPTANCE-VERIFICATION-260811001"
+      ],
+      "statusTransitionCandidate": {
+        "lpaWp6": "COMPLETE / FINAL_AFTER_MERGE",
+        "localScopeProject": "COMPLETE / FINAL_AFTER_MERGE"
+      },
+      "deployment": "NOT_AUTHORIZED",
+      "productionVerification": "NOT_AUTHORIZED",
+      "closurePullRequest": "PENDING",
+      "merge": "NOT_AUTHORIZED",
+      "postMergeAcceptance": "PENDING"
     }
   ],
   "rules": {

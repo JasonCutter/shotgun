@@ -244,7 +244,7 @@ describe('Stage 5 stale comparison re-entry command boundary', () => {
         ).json<{ csrfToken: string }>().csrfToken;
       const response = await app.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: { cookie, 'x-csrf-token': await csrf() },
         payload: { candidateId: 'candidate-route', idempotencyKey: 'route-recompare-1' },
       });
@@ -253,10 +253,17 @@ describe('Stage 5 stale comparison re-entry command boundary', () => {
         commandStatus: 'processed',
         result: { candidateId: 'candidate-route', snapshotVersion: 1 },
       });
+      const legacyRoute = await app.server.inject({
+        method: 'POST',
+        url: '/comparisons/recompare',
+        headers: { cookie, 'x-csrf-token': await csrf() },
+        payload: { candidateId: 'candidate-route', idempotencyKey: 'legacy-route-must-not-exist' },
+      });
+      expect(legacyRoute.statusCode).toBe(404);
 
       const byChangeSet = await app.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: { cookie, 'x-csrf-token': await csrf() },
         payload: {
           changeSetId: 'comparison-v2:stale',
@@ -271,7 +278,7 @@ describe('Stage 5 stale comparison re-entry command boundary', () => {
 
       const missingChangeSet = await app.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: { cookie, 'x-csrf-token': await csrf() },
         payload: {
           changeSetId: 'comparison-v2:missing',
@@ -283,7 +290,7 @@ describe('Stage 5 stale comparison re-entry command boundary', () => {
 
       const mismatchedChangeSet = await app.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: { cookie, 'x-csrf-token': await csrf() },
         payload: {
           changeSetId: 'comparison-v2:mismatch',
@@ -295,7 +302,7 @@ describe('Stage 5 stale comparison re-entry command boundary', () => {
 
       const invalid = await app.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: { cookie, 'x-csrf-token': await csrf() },
         payload: {
           candidateId: 'candidate-route',
@@ -353,7 +360,7 @@ describe('Stage 5 stale comparison re-entry command boundary', () => {
       const recompare = async (candidateId: string, idempotencyKey: string) =>
         app.server.inject({
           method: 'POST',
-          url: '/comparisons/recompare',
+          url: '/api/v1/comparisons/recompare',
           headers: { cookie, 'x-csrf-token': await csrf() },
           payload: { candidateId, idempotencyKey },
         });

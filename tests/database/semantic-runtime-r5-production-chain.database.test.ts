@@ -1940,7 +1940,7 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
 
       const response = await productApplication.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: {
           cookie: `shotgun_session=${fixture.sessionToken}`,
           'x-csrf-token': fixture.csrfToken,

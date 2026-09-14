@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
+import { createShotgunApiClient } from '../../packages/shotgun-api-client/src/index.js';
 import {
   canonicalSnapshotDigest,
   sha256Text,
@@ -438,13 +439,39 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
             headers: { cookie: sessionCookie },
           })
         ).json<{ csrfToken: string }>().csrfToken;
-      const csrf = await csrfFor(cookie);
+      let csrf = await csrfFor(cookie);
+      const clientRequestPaths: string[] = [];
+      const clientFetch: typeof globalThis.fetch = async (input, init) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+        clientRequestPaths.push(url);
+        const headers = new Headers(init?.headers);
+        headers.set('cookie', cookie);
+        const payload =
+          typeof init?.body === 'string' && init.body.length > 0
+            ? JSON.parse(init.body)
+            : undefined;
+        const response = await application.server.inject({
+          method: (init?.method ?? 'GET') as 'GET' | 'POST',
+          url,
+          headers: Object.fromEntries(headers.entries()),
+          ...(payload === undefined ? {} : { payload }),
+        });
+        if (url === '/api/v1/security/csrf' && response.statusCode === 200) {
+          csrf = response.json<{ csrfToken: string }>().csrfToken;
+        }
+        return new Response(response.body, {
+          status: response.statusCode,
+          headers: { 'content-type': 'application/json' },
+        });
+      };
+      const apiClient = createShotgunApiClient({ fetch: clientFetch });
       const invoke = async (candidateOrKey: string, maybeIdempotencyKey?: string) => {
         const requestCandidateId = maybeIdempotencyKey === undefined ? candidateId : candidateOrKey;
         const idempotencyKey = maybeIdempotencyKey ?? candidateOrKey;
         return application.server.inject({
           method: 'POST',
-          url: '/comparisons/recompare',
+          url: '/api/v1/comparisons/recompare',
           headers: { cookie, 'x-csrf-token': csrf },
           payload: { candidateId: requestCandidateId, idempotencyKey },
         });
@@ -452,7 +479,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       const invokeByChangeSet = async (changeSetId: string, idempotencyKey: string) =>
         application.server.inject({
           method: 'POST',
-          url: '/comparisons/recompare',
+          url: '/api/v1/comparisons/recompare',
           headers: { cookie, 'x-csrf-token': csrf },
           payload: { changeSetId, idempotencyKey },
         });
@@ -574,12 +601,16 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       // The Product locator bridge resolves the persisted PostgreSQL Change Set
       // to its Candidate without reading presentation text. It reuses the
       // existing governed V2 identity and preserves the original draft.
-      const reenteredByChangeSet = await invokeByChangeSet(
-        reenteredDraft.changeSetId,
-        'product-key-b-by-change-set',
-      );
-      expect(reenteredByChangeSet.statusCode).toBe(200);
-      expect(reenteredByChangeSet.json()).toMatchObject({
+      const reenteredByChangeSet = await apiClient.recompareCandidate({
+        changeSetId: reenteredDraft.changeSetId,
+        idempotencyKey: 'product-key-b-by-change-set',
+      });
+      expect(clientRequestPaths).toEqual([
+        '/api/v1/security/csrf',
+        '/api/v1/comparisons/recompare',
+      ]);
+      expect(reenteredByChangeSet).toMatchObject({
+        commandStatus: 'processed',
         result: {
           candidateId,
           rollout: 'V2_ACTIVE',
@@ -646,25 +677,11 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
         evidenceId: candidateEvidenceId,
       });
       semanticFailure = true;
-      const failedReentry = await invoke(failureCandidateId, 'product-key-v2-terminal-failure');
-      expect(failedReentry.statusCode).toBe(200);
-      const failedBody = failedReentry.json<{
-        result: {
-          rollout: string;
-          v1Executed: boolean;
-          v2: {
-            status: string;
-            comparisonId: string;
-            snapshotVersion: number;
-            snapshotDigest: string;
-            analysisRevisionId: string;
-            analysisState: string;
-            safeFailureCode: string;
-          };
-          review: { status: string };
-        };
-      }>();
-      expect(failedBody.result).toMatchObject({
+      const failedReentry = await apiClient.recompareCandidate({
+        candidateId: failureCandidateId,
+        idempotencyKey: 'product-key-v2-terminal-failure',
+      });
+      expect(failedReentry.result).toMatchObject({
         rollout: 'V2_ACTIVE',
         v1Executed: false,
         v2: {
@@ -690,7 +707,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       );
       expect(failedAnalysis.rows).toHaveLength(1);
       const durableFailure = failedAnalysis.rows[0]!;
-      expect(failedBody.result.v2).toEqual(
+      expect(failedReentry.result.v2).toEqual(
         expect.objectContaining({
           comparisonId: durableFailure.comparison_id,
           snapshotVersion: durableFailure.snapshot_version,
@@ -700,8 +717,8 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
           safeFailureCode: durableFailure.safe_failure_code,
         }),
       );
-      expect(failedBody.result).not.toHaveProperty('v2.rawText');
-      expect(failedBody.result).not.toHaveProperty('v2.providerError');
+      expect(failedReentry.result).not.toHaveProperty('v2.rawText');
+      expect(failedReentry.result).not.toHaveProperty('v2.providerError');
       const legacyFailureComparison = await pool.query(
         `SELECT comparison_id FROM comparison.results WHERE project_id = $1 AND candidate_id = $2`,
         [projectId, failureCandidateId],
@@ -715,7 +732,14 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       // normal V2 Comparison plus Review draft.
       const terminalReentry = await invoke(failureCandidateId, 'product-key-v2-terminal-reentry');
       expect(terminalReentry.statusCode).toBe(200);
-      const terminalReentryBody = terminalReentry.json<typeof failedBody>();
+      const terminalReentryBody = terminalReentry.json<{
+        result: {
+          rollout: string;
+          v1Executed: boolean;
+          v2?: { status: string; comparisonId?: string; snapshotVersion?: number };
+          review: { status: string };
+        };
+      }>();
       expect(terminalReentryBody.result).toMatchObject({
         rollout: 'V2_ACTIVE',
         v1Executed: false,
@@ -743,7 +767,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
         safe_failure_code: 'CONTRACT_FAILURE',
       });
       expect(reentryAnalyses.rows[1]).toMatchObject({ attempt: 2, state: 'COMPLETED' });
-      const terminalReentryComparisonId = terminalReentryBody.result.v2.comparisonId;
+      const terminalReentryComparisonId = terminalReentryBody.result.v2?.comparisonId;
       if (!terminalReentryComparisonId) {
         throw new Error('Terminal re-entry did not return a completed comparisonId.');
       }
@@ -908,14 +932,14 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       });
       const rejected = await application.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: { cookie, 'x-csrf-token': csrf },
         payload: { candidateId: rejectedId, idempotencyKey: 'rejected-candidate' },
       });
       expect(rejected.statusCode).not.toBe(200);
       const restricted = await application.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: { cookie, 'x-csrf-token': csrf },
         payload: { candidateId: restrictedId, idempotencyKey: 'restricted-candidate' },
       });
@@ -939,7 +963,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       );
       const crossProject = await application.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: {
           cookie: `shotgun_session=${otherSession.sessionToken}`,
           'x-csrf-token': await csrfFor(`shotgun_session=${otherSession.sessionToken}`),
@@ -965,7 +989,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       const publicCookie = `shotgun_session=${publicSession.sessionToken}`;
       const sensitivityMismatch = await application.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: {
           cookie: publicCookie,
           'x-csrf-token': await csrfFor(publicCookie),
@@ -976,7 +1000,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
 
       const malformed = await application.server.inject({
         method: 'POST',
-        url: '/comparisons/recompare',
+        url: '/api/v1/comparisons/recompare',
         headers: { cookie, 'x-csrf-token': csrf },
         payload: { candidateId, idempotencyKey: 'product-key-c', authority: 'V1' },
       });

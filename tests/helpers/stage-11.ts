@@ -100,6 +100,27 @@ export const verifyActionCommand = (actionId: string, suffix = 'verify') =>
     payload: { actionId },
   });
 
+export const reconcileExecutingActionCommand = (
+  actionId: string,
+  expectedUpdatedAt: string,
+  suffix = 'reconcile',
+  actor: Actor = { type: 'user', id: 'owner' },
+) =>
+  createCommand({
+    messageType: 'ReconcileExecutingAction',
+    schemaVersion: '1.1.0',
+    producerModule: 'stage11-test',
+    producerVersion: '1.0.0',
+    idempotencyKey: `stage11:${actionId}:${expectedUpdatedAt}:${suffix}`,
+    ...context(
+      actor.type === 'user' && actor.id === 'owner'
+        ? ['owner', 'action:execute']
+        : ['action:execute'],
+      actor,
+    ),
+    payload: { actionId, expectedUpdatedAt },
+  });
+
 export const actionAuditQuery = (actionId: string) =>
   createQuery({
     messageType: 'ListActionAudit',

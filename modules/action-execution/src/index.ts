@@ -98,6 +98,8 @@ export type IndependentVerificationPort = {
 
 export type ActionTransition = {
   readonly expectedStatus: ActionExecutionRecord['status'];
+  /** Optional exact optimistic-concurrency value checked after the repository locks the row. */
+  readonly expectedUpdatedAt?: string;
   readonly next: ActionExecutionRecord;
   readonly category: ActionAuditCategory;
   readonly actorId: string;
@@ -162,6 +164,15 @@ const executeSchema = {
   additionalProperties: false,
   required: ['approvalId'],
   properties: { approvalId: { type: 'string', minLength: 1 } },
+};
+const reconcileExecutingSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['actionId', 'expectedUpdatedAt'],
+  properties: {
+    actionId: { type: 'string', minLength: 1 },
+    expectedUpdatedAt: { type: 'string', minLength: 1 },
+  },
 };
 const actionIdSchema = {
   type: 'object',
@@ -270,6 +281,7 @@ export const createActionExecutionModule = (
         { name: 'ApproveActionPreview', range: '>=1.1.0 <2.0.0' },
         { name: 'ExecuteApprovedAction', range: '>=1.1.0 <2.0.0' },
         { name: 'VerifyActionOutcome', range: '>=1.1.0 <2.0.0' },
+        { name: 'ReconcileExecutingAction', range: '>=1.1.0 <2.0.0' },
         { name: 'GetActionExecution', range: '>=1.1.0 <2.0.0' },
         { name: 'ListActionAudit', range: '>=1.1.0 <2.0.0' },
       ],
@@ -291,6 +303,7 @@ export const createActionExecutionModule = (
         { name: 'ApproveActionPreview', range: '>=1.1.0 <2.0.0' },
         { name: 'ExecuteApprovedAction', range: '>=1.1.0 <2.0.0' },
         { name: 'VerifyActionOutcome', range: '>=1.1.0 <2.0.0' },
+        { name: 'ReconcileExecutingAction', range: '>=1.1.0 <2.0.0' },
       ],
       events: [],
     },
@@ -339,6 +352,12 @@ export const createActionExecutionModule = (
       inputSchema: executeSchema,
     },
     { name: 'VerifyActionOutcome', version: '1.1.0', kind: 'command', inputSchema: actionIdSchema },
+    {
+      name: 'ReconcileExecutingAction',
+      version: '1.1.0',
+      kind: 'command',
+      inputSchema: reconcileExecutingSchema,
+    },
     { name: 'GetActionExecution', version: '1.1.0', kind: 'query', inputSchema: actionIdSchema },
     { name: 'ListActionAudit', version: '1.1.0', kind: 'query', inputSchema: actionIdSchema },
     {
@@ -703,6 +722,60 @@ export const createActionExecutionModule = (
             });
           if (current.status === 'VERIFIED') return current;
           return verifyRecord(repository, connector, current, actor.id, clock, context);
+        },
+      },
+      {
+        messageType: 'ReconcileExecutingAction',
+        version: '1.1.0',
+        requiredAccessScopes: ['action:execute'],
+        async handle(envelope, context) {
+          const { projectId, actor, security } = assertContext(envelope);
+          if (
+            actor.type !== 'service' &&
+            (actor.type !== 'user' || !security.accessScope.includes('owner'))
+          )
+            throw new ShotgunError({
+              code: 'ACTION_AUTHORIZATION_DENIED',
+              safeMessage: 'Only an owner or service principal can reconcile an Action.',
+              module: 'stage11.action-execution',
+              operation: envelope.messageType,
+              correlationId: envelope.correlationId,
+            });
+          const { actionId, expectedUpdatedAt } = envelope.payload as {
+            actionId: string;
+            expectedUpdatedAt: string;
+          };
+          const current = await repository.find(projectId, actionId);
+          if (!current) throw notFound(actionId, envelope.correlationId);
+          if (current.status === 'OUTCOME_UNKNOWN') return current;
+          if (current.status !== 'EXECUTING')
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: `Action '${actionId}' is not executing and cannot be reconciled.`,
+              module: 'stage11.action-execution',
+              operation: envelope.messageType,
+              correlationId: envelope.correlationId,
+            });
+          const reconciled = await repository.transition(projectId, actionId, {
+            expectedStatus: 'EXECUTING',
+            expectedUpdatedAt,
+            next: {
+              ...current,
+              status: 'OUTCOME_UNKNOWN',
+              failureReason:
+                'Execution was interrupted before a durable provider outcome was established. Automatic execution retry is forbidden.',
+              updatedAt: clock.now(),
+            },
+            category: 'ACTION_OUTCOME_UNKNOWN',
+            actorId: actor.id,
+            details: {
+              automaticRetry: false,
+              reconciliation: 'orphaned-executing',
+              expectedUpdatedAt,
+            },
+          });
+          await publishFeedback(context, reconciled, reconciled.updatedAt);
+          return reconciled;
         },
       },
     ],

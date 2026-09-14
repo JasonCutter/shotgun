@@ -1735,6 +1735,26 @@ const requireActionExecuteRequest = (body: unknown): { readonly approvalId: stri
   return body as { readonly approvalId: string };
 };
 
+const requireActionReconcileRequest = (body: unknown): { readonly expectedUpdatedAt: string } => {
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    Array.isArray(body) ||
+    Object.keys(body).length !== 1 ||
+    !Object.hasOwn(body, 'expectedUpdatedAt') ||
+    typeof (body as { expectedUpdatedAt?: unknown }).expectedUpdatedAt !== 'string' ||
+    !(body as { expectedUpdatedAt: string }).expectedUpdatedAt
+  ) {
+    throw new ShotgunError({
+      code: 'ACTION_SERVER_BINDING_REQUIRED',
+      safeMessage: 'Action reconciliation accepts only expectedUpdatedAt.',
+      module: 'shotgun-app',
+      operation: 'validate-action-reconcile-request',
+    });
+  }
+  return body as { readonly expectedUpdatedAt: string };
+};
+
 const parseCookie = (header: string | undefined, name: string): string | undefined =>
   header
     ?.split(';')
@@ -4901,6 +4921,28 @@ const createApplicationCore = async (
         producerModule: 'shotgun-app',
         producerVersion: '1.0.0',
         idempotencyKey: `action-execute:${payload.approvalId}`,
+        ...context,
+        payload,
+      }),
+    );
+    return { action: delivery.result };
+  });
+
+  server.post<{
+    Params: { readonly actionId: string };
+    Body: unknown;
+    Headers: SecurityHeaders;
+  }>('/actions/:actionId/reconcile', async (request) => {
+    const context = requestContext(request.headers);
+    const body = requireActionReconcileRequest(request.body);
+    const payload = { actionId: request.params.actionId, ...body };
+    const delivery = await kernel.connector.sendCommand<ActionExecutionRecord>(
+      createCommand({
+        messageType: 'ReconcileExecutingAction',
+        schemaVersion: '1.1.0',
+        producerModule: 'shotgun-app',
+        producerVersion: '1.0.0',
+        idempotencyKey: `action-reconcile:${payload.actionId}:${payload.expectedUpdatedAt}:${context.actor.id}`,
         ...context,
         payload,
       }),

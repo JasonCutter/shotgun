@@ -19,6 +19,7 @@ import { PostgresStandingAIProcessingPolicyRepository } from '../../../adapters/
 import { PostgresProviderExternalTransferApprovalRepository } from '../../../adapters/provider-privacy-deployment-postgres/src/index.js';
 import { StructuredAskAnswerProviderAdapter } from '../../../adapters/ai-provider-ask/src/index.js';
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
+import { PostgresExternalActionStore } from '../../../adapters/frontend-external-action-postgres/src/index.js';
 import { PostgresFrontendKnowledgeDraftRepository } from '../../../adapters/frontend-knowledge-draft-postgres/src/index.js';
 import { PostgresFrontendKnowledgeDraftTargetResolver } from '../../../adapters/frontend-knowledge-draft-api-postgres/src/index.js';
 import {
@@ -1137,6 +1138,7 @@ export const startShotgunApplication = async (
       semanticEmbeddingResolver: recoveryHarness ? undefined : semanticAuthorityResolver,
       providerExternalTransferApprovals: recoveryHarness ? undefined : providerApprovalService,
       frontendCommandGateway: commandGateway,
+      activityExternalActionBoundary: new PostgresExternalActionStore(pool),
       typedPropositionConflictRuleRepository,
       typedPropositionConflictAssertionRepository,
       discoveryFeedbackRepository,

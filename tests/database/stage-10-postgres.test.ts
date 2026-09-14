@@ -1,3 +1,4 @@
+import type { Pool, PoolClient } from 'pg';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
@@ -17,6 +18,65 @@ import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.j
 
 const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+
+type CommitAckLossMode = 'after-commit' | 'before-commit';
+
+type CommitAckLossPool = {
+  readonly pool: Pool;
+  readonly commands: string[];
+  readonly delegatedCommitCount: () => number;
+  readonly connectionDiscarded: () => boolean;
+};
+
+const createCommitAckLossPool = (basePool: Pool, mode: CommitAckLossMode): CommitAckLossPool => {
+  const commands: string[] = [];
+  let delegatedCommitCount = 0;
+  let connectionDiscarded = false;
+  const query = async (
+    client: PoolClient,
+    queryText: string,
+    values?: readonly unknown[],
+  ): Promise<unknown> => client.query(queryText, values as unknown[]);
+  const wrappedPool = {
+    connect: async (): Promise<PoolClient> => {
+      const client = await basePool.connect();
+      let released = false;
+      return {
+        query: async (queryText: string, values?: readonly unknown[]) => {
+          const command = queryText.trim().toUpperCase();
+          if (command === 'BEGIN' || command === 'COMMIT' || command === 'ROLLBACK') {
+            commands.push(command);
+          }
+          if (command === 'COMMIT') {
+            if (mode === 'before-commit') {
+              connectionDiscarded = true;
+              released = true;
+              client.release(new Error('discarded before COMMIT outcome was proven'));
+              throw new Error('simulated unresolved COMMIT acknowledgement');
+            }
+            delegatedCommitCount += 1;
+            await query(client, queryText, values);
+            throw new Error('simulated lost COMMIT acknowledgement');
+          }
+          return query(client, queryText, values);
+        },
+        release: (error?: Error) => {
+          if (released) return;
+          released = true;
+          client.release(error);
+        },
+      } as unknown as PoolClient;
+    },
+    query: (queryText: string, values?: readonly unknown[]) =>
+      basePool.query(queryText, values as unknown[]),
+  };
+  return {
+    pool: wrappedPool as unknown as Pool,
+    commands,
+    delegatedCommitCount: () => delegatedCommitCount,
+    connectionDiscarded: () => connectionDiscarded,
+  };
+};
 
 const projection = (buildMode: 'FULL_REBUILD' | 'INCREMENTAL'): CompiledTruthProjection => ({
   projectId: 'project-stage10',
@@ -133,6 +193,147 @@ describe.runIf(pool)('Stage 10 PostgreSQL projection persistence', () => {
       suppressedFingerprints: [inference.fingerprint],
     });
     expect(await restarted.listInferences('project-stage10')).toEqual([inference]);
+  });
+
+  it('resolves a real Compiled Truth COMMIT acknowledgement loss from an exact READY read-back', async () => {
+    const expected = projection('FULL_REBUILD');
+    const ackLoss = createCommitAckLossPool(pool!, 'after-commit');
+    const repository = new PostgresCompiledTruthRepository(ackLoss.pool);
+
+    await expect(repository.synchronize(expected)).resolves.toEqual(expected);
+    expect(ackLoss.delegatedCommitCount()).toBe(1);
+    expect(ackLoss.commands.filter((command) => command === 'ROLLBACK')).toHaveLength(0);
+
+    const persisted = await pool!.query<{
+      status: string;
+      last_error: string | null;
+      projection: CompiledTruthProjection;
+    }>(
+      `SELECT status, last_error, projection
+       FROM projection.compiled_truth WHERE project_id = $1`,
+      [expected.projectId],
+    );
+    expect(persisted.rows).toHaveLength(1);
+    expect(persisted.rows[0]).toMatchObject({ status: 'READY', last_error: null });
+    expect(persisted.rows[0]!.projection).toEqual(expected);
+    const count = await pool!.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM projection.compiled_truth WHERE project_id = $1',
+      [expected.projectId],
+    );
+    expect(count.rows[0]!.count).toBe(1);
+  });
+
+  it('keeps an unresolved real Compiled Truth COMMIT outcome unknown after discarding the transaction connection', async () => {
+    const expected = projection('FULL_REBUILD');
+    const unresolved = createCommitAckLossPool(pool!, 'before-commit');
+    const repository = new PostgresCompiledTruthRepository(unresolved.pool);
+
+    await expect(repository.synchronize(expected)).rejects.toMatchObject({
+      code: 'OUTCOME_UNKNOWN',
+    });
+    expect(unresolved.delegatedCommitCount()).toBe(0);
+    expect(unresolved.connectionDiscarded()).toBe(true);
+    expect(unresolved.commands.filter((command) => command === 'ROLLBACK')).toHaveLength(0);
+
+    const persisted = await pool!.query(
+      'SELECT 1 FROM projection.compiled_truth WHERE project_id = $1',
+      [expected.projectId],
+    );
+    expect(persisted.rows).toHaveLength(0);
+  });
+
+  it('resolves a real inference COMMIT acknowledgement loss without recomputing accepted as suppressed', async () => {
+    const ackLoss = createCommitAckLossPool(pool!, 'after-commit');
+    const repository = new PostgresCompiledTruthRepository(ackLoss.pool);
+
+    await expect(repository.saveInferences('project-stage10', [inference])).resolves.toEqual({
+      accepted: [inference],
+      suppressedFingerprints: [],
+    });
+    expect(ackLoss.delegatedCommitCount()).toBe(1);
+    expect(ackLoss.commands.filter((command) => command === 'ROLLBACK')).toHaveLength(0);
+
+    const persisted = await pool!.query<{
+      project_id: string;
+      fingerprint: string;
+      candidate_id: string;
+      candidate: DerivedInferenceCandidate;
+      created_at: Date;
+    }>(
+      `SELECT project_id, fingerprint, candidate_id, candidate, created_at
+       FROM projection.discovery_inferences WHERE project_id = $1`,
+      ['project-stage10'],
+    );
+    expect(persisted.rows).toHaveLength(1);
+    expect(persisted.rows[0]).toMatchObject({
+      project_id: 'project-stage10',
+      fingerprint: inference.fingerprint,
+      candidate_id: inference.candidateId,
+      candidate: inference,
+    });
+    expect(persisted.rows[0]!.created_at.toISOString()).toBe(inference.createdAt);
+  });
+
+  it('preserves a real mixed accepted/suppressed inference batch after COMMIT acknowledgement loss', async () => {
+    const existingRepository = new PostgresCompiledTruthRepository(pool!);
+    await existingRepository.saveInferences('project-stage10', [inference]);
+    const newInference: DerivedInferenceCandidate = {
+      ...inference,
+      candidateId: 'inference:stage10-new',
+      fingerprint: `sha256:${'8'.repeat(64)}`,
+      question: 'What approved relationship is missing for New?',
+      createdAt: '2026-07-17T10:02:00.000Z',
+    };
+    const ackLoss = createCommitAckLossPool(pool!, 'after-commit');
+    const repository = new PostgresCompiledTruthRepository(ackLoss.pool);
+
+    await expect(
+      repository.saveInferences('project-stage10', [inference, newInference]),
+    ).resolves.toEqual({
+      accepted: [newInference],
+      suppressedFingerprints: [inference.fingerprint],
+    });
+    expect(ackLoss.delegatedCommitCount()).toBe(1);
+    expect(ackLoss.commands.filter((command) => command === 'ROLLBACK')).toHaveLength(0);
+
+    const count = await pool!.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM projection.discovery_inferences WHERE project_id = $1',
+      ['project-stage10'],
+    );
+    expect(count.rows[0]!.count).toBe(2);
+    const persisted = await pool!.query<{ fingerprint: string; candidate_id: string }>(
+      `SELECT fingerprint, candidate_id
+       FROM projection.discovery_inferences WHERE project_id = $1 ORDER BY candidate_id`,
+      ['project-stage10'],
+    );
+    expect(persisted.rows).toEqual([
+      { fingerprint: inference.fingerprint, candidate_id: inference.candidateId },
+      { fingerprint: newInference.fingerprint, candidate_id: newInference.candidateId },
+    ]);
+  });
+
+  it('keeps an unresolved real inference COMMIT outcome unknown after discarding the transaction connection', async () => {
+    const candidate: DerivedInferenceCandidate = {
+      ...inference,
+      candidateId: 'inference:stage10-unknown',
+      fingerprint: `sha256:${'9'.repeat(64)}`,
+    };
+    const unresolved = createCommitAckLossPool(pool!, 'before-commit');
+    const repository = new PostgresCompiledTruthRepository(unresolved.pool);
+
+    await expect(repository.saveInferences('project-stage10', [candidate])).rejects.toMatchObject({
+      code: 'OUTCOME_UNKNOWN',
+    });
+    expect(unresolved.delegatedCommitCount()).toBe(0);
+    expect(unresolved.connectionDiscarded()).toBe(true);
+    expect(unresolved.commands.filter((command) => command === 'ROLLBACK')).toHaveLength(0);
+
+    const persisted = await pool!.query(
+      `SELECT 1 FROM projection.discovery_inferences
+       WHERE project_id = $1 AND fingerprint = $2`,
+      ['project-stage10', candidate.fingerprint],
+    );
+    expect(persisted.rows).toHaveLength(0);
   });
 
   it('serves the persisted projection through the Stage 10 read snapshot handler', async () => {

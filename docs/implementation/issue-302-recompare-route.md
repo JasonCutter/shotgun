@@ -83,9 +83,9 @@ Local verification on the correction branch (`codex/issue-302-recompare-route`):
 Controller review artifacts:
 
 - PR: https://github.com/JasonCutter/shotgun/pull/303
-- final reviewed head: `a49614bc1b7ea2eb030dbd27e0ab7338a8de33ab`;
-- exact-head CI run `34799376377`: Quality, Frontend, and Required Gates all
-  passed (including CI and PostgreSQL test jobs);
+- The mutable branch head and its exact-head CI run are intentionally kept in
+  the controller completion report and live PR checks, so this implementation
+  record cannot become stale when documentation-only attestations are pushed.
 - the real client/server regression captured
   `POST /api/v1/security/csrf` then `POST /api/v1/comparisons/recompare`, proved
   V2 `COMPLETED` + `DRAFT_CREATED`, and decoded a typed terminal failure without

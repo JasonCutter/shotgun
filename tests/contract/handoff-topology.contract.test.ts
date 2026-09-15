@@ -57,6 +57,7 @@ import { createOriginalAssetModule } from '../../modules/original-asset/src/inde
 import { createPingModule } from '../../modules/ping/src/index.js';
 import { createPongModule } from '../../modules/pong/src/index.js';
 import { createProjectionSearchModule } from '../../modules/projection-search/src/index.js';
+import { createSemanticProjectionConvergenceModule } from '../../modules/semantic-generation/src/convergence.js';
 import { createTransformationModule } from '../../modules/transformation/src/index.js';
 import { createValidationModule } from '../../modules/validation/src/index.js';
 import {
@@ -134,6 +135,7 @@ const productionModules = (): readonly ShotgunModule[] => {
     createChangeSetReviewModule(new InMemoryChangeSetReviewRepository()),
     createCanonicalKnowledgeModule(new InMemoryCanonicalKnowledgeRepository()),
     createProjectionSearchModule(new InMemorySearchProjectionRepository()),
+    createSemanticProjectionConvergenceModule(),
     createCompiledTruthModule(new InMemoryCompiledTruthRepository()),
     createKnowledgeModelModule(new InMemoryKnowledgeModelRepository()),
     createDiscoveryTriggerCoordinatorModule(coordinator),

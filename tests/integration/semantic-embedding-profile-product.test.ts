@@ -9,6 +9,7 @@ import {
 } from '../../adapters/settings-project-admin-in-memory/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
+import { SEMANTIC_EMBEDDING_CATALOG_REVISION } from '../../packages/contracts/src/index.js';
 import {
   AISettingsBackendService,
   StaticAIProviderConnectivityRegistry,
@@ -143,7 +144,7 @@ const createFixture = async (options: { readonly refreshFails?: boolean } = {}) 
         embeddingProfileId: profile.profileId,
         embeddingProfileRevision: profile.profileRevision,
         providerRegistryRevision: 'registry',
-        capabilityCatalogRevision: 'capability',
+        capabilityCatalogRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
         representationVersion: profile.representationVersion,
         dimension: profile.dimension,
         distanceMetric: 'cosine',
@@ -208,7 +209,7 @@ const createFixture = async (options: { readonly refreshFails?: boolean } = {}) 
           credentialId: profile.credentialId,
           credentialRevision: profile.credentialRevision,
           providerRegistryRevision: 'registry',
-          capabilityCatalogRevision: 'capability',
+          capabilityCatalogRevision: SEMANTIC_EMBEDDING_CATALOG_REVISION,
           providerPolicyFingerprint: 'policy',
           representationVersion: profile.representationVersion,
           createdAt: new Date().toISOString(),

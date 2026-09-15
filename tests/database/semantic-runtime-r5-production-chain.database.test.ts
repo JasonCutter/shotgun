@@ -667,6 +667,7 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         port: 0,
         noSignals: true,
         disableAskWorker: true,
+        recoveryIntervalMs: false,
         semanticNearestNeighborObserver: () => {
           topKCalls += 1;
         },
@@ -1378,6 +1379,7 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
           port: 0,
           noSignals: true,
           disableAskWorker: true,
+          recoveryIntervalMs: false,
         });
       const request = async (
         method: 'GET' | 'POST',
@@ -1682,6 +1684,7 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         port: 0,
         noSignals: true,
         disableAskWorker: true,
+        recoveryIntervalMs: false,
       });
 
       const sourceBefore = await sourceReader.readSnapshot(fixture.projectId);
@@ -2249,6 +2252,10 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       aiSettingsBackend,
       settingsRepository,
       comparisonV2ExecutionResolver,
+      // This R5 case proves the explicit Product Prepare/recompare path. Keep
+      // automatic C7 startup/periodic recovery disabled so it cannot alter the
+      // controlled provider-call lifecycle under test.
+      canonicalProjectionRecoveryIntervalMs: false,
     });
     const headers = {
       cookie,

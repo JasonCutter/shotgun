@@ -59,6 +59,17 @@
         "target": { "kind": "consumer", "moduleId": "akp-4.discovery-trigger-coordinator" },
         "tags": ["DURABLE_OUTBOX", "REQUIRED_ACK"],
         "authority": "stage6.canonical-knowledge.outbox"
+      },
+      {
+        "event": { "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" },
+        "target": { "kind": "consumer", "moduleId": "stage7.semantic-projection-convergence" },
+        "tags": ["DURABLE_OUTBOX", "RECONSTRUCTABLE"],
+        "authority": "stage6.canonical-knowledge.outbox",
+        "replayEvidence": {
+          "replaySource": "canonical.outbox",
+          "deterministicIdentity": "projectId:commitId:outboxId",
+          "idempotencyEvidence": "semantic-convergence:projectId:canonicalVersion"
+        }
       }
     ]
   },

@@ -362,6 +362,13 @@ import {
   createCompiledTruthModule,
   type CompiledTruthRepositoryPort,
 } from '../../../modules/compiled-truth/src/index.js';
+import {
+  createSemanticProjectionConvergenceModule,
+  SemanticProjectionConvergenceCoordinator,
+  startSemanticProjectionConvergenceWorker,
+  type SemanticProjectionConvergencePort,
+  type SemanticProjectionConvergenceRecoveryResult,
+} from '../../../modules/semantic-generation/src/convergence.js';
 import { RepositorySemanticCorpusSourceSnapshotReader } from '../../../adapters/semantic-corpus-repository/src/index.js';
 import type { SemanticCorpusSourceSnapshotReaderPort } from '../../../packages/contracts/src/index.js';
 import type {
@@ -899,6 +906,9 @@ export type ApplicationOptions = {
   readonly spaDirectory?: string;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
   readonly canonicalProjectionRecoveryReporter?: CanonicalProjectionRecoveryReporterPort;
+  /** C7: bounded recovery for Canonical-driven semantic projection convergence. */
+  readonly semanticProjectionConvergence?: SemanticProjectionConvergencePort;
+  readonly semanticProjectionConvergenceIntervalMs?: number | false;
   /** Bounded Action feedback outbox dispatcher; disabled by recovery harnesses. */
   readonly actionFeedbackOutboxIntervalMs?: number | false;
   /**
@@ -955,6 +965,7 @@ export type PublicRecoveryStatus = Omit<
 export const RECOVERY_RUNNER_IDS = {
   AI_DURABLE_MATERIALIZATION: 'ai-durable-materialization',
   CANONICAL_PROJECTION: 'canonical-projection',
+  SEMANTIC_PROJECTION_CONVERGENCE: 'semantic-projection-convergence',
   SOURCES_STAGE3: 'sources-stage3',
 } as const;
 
@@ -1448,6 +1459,61 @@ export const startCanonicalProjectionRecoveryWorker = (
     },
   };
 };
+
+export const semanticConvergenceRecoveryStatusFromResult = (
+  result: SemanticProjectionConvergenceRecoveryResult,
+  startedAt: string,
+  completedAt: string,
+  previous?: RecoveryStatus,
+): RecoveryStatus => {
+  const retryableCount = result.recoveryPending;
+  const terminalCount = result.degraded;
+  const healthy = retryableCount === 0 && terminalCount === 0;
+  return {
+    runnerId: RECOVERY_RUNNER_IDS.SEMANTIC_PROJECTION_CONVERGENCE,
+    executionStatus: 'COMPLETED',
+    outcome: healthy ? 'HEALTHY' : 'DEGRADED',
+    freshness: healthy ? 'CURRENT' : 'STALE',
+    readinessImpact: healthy ? 'NONE' : 'DEGRADED',
+    startedAt,
+    completedAt,
+    ...(healthy
+      ? { lastSuccessAt: completedAt }
+      : previous?.lastSuccessAt
+        ? { lastSuccessAt: previous.lastSuccessAt }
+        : {}),
+    scannedCount: result.projects.length,
+    succeededCount: result.ready + result.notConfigured,
+    retryableCount,
+    terminalCount,
+    outcomeUnknownCount: 0,
+    safeCodes: [
+      ...(retryableCount > 0 ? ['SEMANTIC_PROJECTION_CONVERGENCE_PENDING'] : []),
+      ...(terminalCount > 0 ? ['SEMANTIC_PROJECTION_CONVERGENCE_DEGRADED'] : []),
+    ],
+  };
+};
+
+export const semanticConvergenceRecoveryFailureStatus = (
+  startedAt: string,
+  completedAt: string,
+  previous?: RecoveryStatus,
+): RecoveryStatus => ({
+  runnerId: RECOVERY_RUNNER_IDS.SEMANTIC_PROJECTION_CONVERGENCE,
+  executionStatus: 'FAILED_TO_RUN',
+  outcome: 'FAILED',
+  freshness: 'STALE',
+  readinessImpact: 'DEGRADED',
+  startedAt,
+  completedAt,
+  ...(previous?.lastSuccessAt ? { lastSuccessAt: previous.lastSuccessAt } : {}),
+  scannedCount: 0,
+  succeededCount: 0,
+  retryableCount: 0,
+  terminalCount: 0,
+  outcomeUnknownCount: 0,
+  safeCodes: ['SEMANTIC_PROJECTION_CONVERGENCE_FAILED'],
+});
 
 const trustedRequestContexts = new WeakMap<object, TrustedSecurityContext>();
 const trustedPrincipalContexts = new WeakMap<object, TrustedPrincipalContext>();
@@ -2040,6 +2106,35 @@ const createApplicationCore = async (
       await canonicalProjectionRecoveryReporter.report(value);
     },
   };
+  let latestSemanticProjectionConvergenceRecovery:
+    SemanticProjectionConvergenceRecoveryResult | undefined;
+  const recordSemanticProjectionConvergenceRecovery = (
+    result: SemanticProjectionConvergenceRecoveryResult,
+    startedAt: string,
+    completedAt: string,
+  ): void => {
+    latestSemanticProjectionConvergenceRecovery = result;
+    recoveryRegistry.record(
+      semanticConvergenceRecoveryStatusFromResult(
+        result,
+        startedAt,
+        completedAt,
+        recoveryRegistry.get(RECOVERY_RUNNER_IDS.SEMANTIC_PROJECTION_CONVERGENCE),
+      ),
+    );
+  };
+  const recordSemanticProjectionConvergenceFailure = (
+    startedAt: string,
+    completedAt: string,
+  ): void => {
+    recoveryRegistry.record(
+      semanticConvergenceRecoveryFailureStatus(
+        startedAt,
+        completedAt,
+        recoveryRegistry.get(RECOVERY_RUNNER_IDS.SEMANTIC_PROJECTION_CONVERGENCE),
+      ),
+    );
+  };
   const authRepository = options.authRepository ?? new InMemoryAuthRepository();
   // FE-P5-S2 WP2-C / WP5: ProjectTombstone + DeletedProjectAuditScope store for
   // authorized deleted-project audit reads.
@@ -2414,6 +2509,23 @@ const createApplicationCore = async (
   );
   const candidateGeneration = createCandidateGenerationModule(candidateRepository);
   const validation = createValidationModule(validationRepository);
+  const semanticProjectionConvergence =
+    options.semanticProjectionConvergence ??
+    (options.semanticEmbeddingProfile &&
+    options.semanticEmbeddingResolver &&
+    options.semanticActiveGenerationReader &&
+    options.semanticProjectionRefresh
+      ? new SemanticProjectionConvergenceCoordinator({
+          profileService: options.semanticEmbeddingProfile,
+          source: semanticCorpusSourceSnapshotReader,
+          activeGenerationReader: options.semanticActiveGenerationReader,
+          refresh: options.semanticProjectionRefresh,
+          semanticEmbeddingResolver: options.semanticEmbeddingResolver,
+        })
+      : undefined);
+  const semanticProjectionConvergenceModule = createSemanticProjectionConvergenceModule(
+    semanticProjectionConvergence,
+  );
   const canonicalKnowledge = createCanonicalKnowledgeModule(canonicalKnowledgeRepository);
   const projectionSearch = createProjectionSearchModule(searchProjectionRepository);
   const citedAnswer = createCitedAnswerModule();
@@ -2786,6 +2898,7 @@ const createApplicationCore = async (
     changeSetReview,
     canonicalKnowledge,
     projectionSearch,
+    semanticProjectionConvergenceModule,
     citedAnswer,
     knowledgeModel,
     compiledTruth,
@@ -2929,6 +3042,31 @@ const createApplicationCore = async (
   if (canonicalProjectionRecoveryWorker) {
     cleanupStack.add('canonical projection recovery worker', () =>
       canonicalProjectionRecoveryWorker.stop(),
+    );
+  }
+  const semanticProjectionConvergenceWorker =
+    semanticProjectionConvergence === undefined ||
+    options.semanticProjectionConvergenceIntervalMs === false ||
+    options.canonicalProjectionRecoveryIntervalMs === false
+      ? undefined
+      : startSemanticProjectionConvergenceWorker(
+          () => canonicalKnowledgeRepository.listProjectIds(),
+          semanticProjectionConvergence,
+          options.semanticProjectionConvergenceIntervalMs ??
+            options.canonicalProjectionRecoveryIntervalMs ??
+            30_000,
+          {
+            onResult: recordSemanticProjectionConvergenceRecovery,
+            onFailure: recordSemanticProjectionConvergenceFailure,
+            // Semantic projection is rebuildable derived state. Its startup
+            // reconciliation must be automatic, but it must not block the
+            // launcher or Product readiness on an embedding provider.
+            startImmediately: true,
+          },
+        );
+  if (semanticProjectionConvergenceWorker) {
+    cleanupStack.add('semantic projection convergence worker', () =>
+      semanticProjectionConvergenceWorker.stop(),
     );
   }
   if (discoveryScheduler && schedulerIntervalMs !== undefined && schedulerIntervalMs !== false) {
@@ -5135,6 +5273,13 @@ const createApplicationCore = async (
         },
       },
       canonicalProjectionRecoveryReporter,
+      semanticProjectionConvergence: {
+        latest: () => latestSemanticProjectionConvergenceRecovery,
+        observations: () => semanticProjectionConvergence?.observations?.() ?? [],
+        tick: async () => {
+          await semanticProjectionConvergenceWorker?.tick();
+        },
+      },
       recoveryRegistry,
       recovery: {
         list: () => recoveryRegistry.list(),

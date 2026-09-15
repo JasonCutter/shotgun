@@ -36,6 +36,8 @@ import type {
   SourceLibraryQuery,
   SourceLibraryPageView,
   SourceDetailView,
+  SourceCandidateView,
+  SourceCandidateListView,
   SourceVersionHistoryView,
   SourcePreviewView,
   EvidenceListView,
@@ -308,6 +310,8 @@ export type {
   SourceLibraryQuery,
   SourceLibraryPageView,
   SourceDetailView,
+  SourceCandidateView,
+  SourceCandidateListView,
   SourceVersionHistoryView,
   SourcePreviewView,
   EvidenceListView,
@@ -867,6 +871,11 @@ export type ShotgunApiClient = {
   ): Promise<RouteGuardDecisionView>;
   listSources(query: SourceLibraryQuery, options?: RequestOptions): Promise<SourceLibraryPageView>;
   getSourceDetail(sourceId: string, options?: RequestOptions): Promise<SourceDetailView>;
+  getSourceCandidates(
+    sourceId: string,
+    sourceVersionId: string,
+    options?: RequestOptions,
+  ): Promise<SourceCandidateListView>;
   getSourceVersionHistory(
     sourceId: string,
     selectedSourceVersionId: string,

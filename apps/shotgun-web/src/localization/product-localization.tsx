@@ -483,6 +483,32 @@ const enUS = {
   'source_detail.reprocess_ai_outcome_indeterminate':
     'The previous AI processing request could not be confirmed. Retry to resolve it safely.',
   'source_detail.reprocess_ai_configure': 'Open Settings → AI to configure processing.',
+  'source_detail.semantic_candidates_heading': 'Semantic comparison candidates',
+  'source_detail.semantic_candidates_explanation':
+    'These are non-Canonical Candidate claims from this Source version. Compare each Candidate explicitly after semantic comparison is enabled.',
+  'source_detail.semantic_candidates_loading': 'Loading Candidates…',
+  'source_detail.semantic_candidates_empty':
+    'No Candidate claims are available for this Source version.',
+  'source_detail.semantic_candidates_not_ready':
+    'Semantic comparison is not ready and remains unavailable for these Candidates.',
+  'source_detail.semantic_candidates_configure':
+    'Open Settings → AI to enable semantic comparison.',
+  'source_detail.semantic_candidate_noncanonical': 'Candidate · not Canonical',
+  'source_detail.semantic_candidate_status': 'Status',
+  'source_detail.semantic_candidate_compare': 'Run semantic comparison',
+  'source_detail.semantic_candidate_compare_pending': 'Running semantic comparison…',
+  'source_detail.semantic_candidate_compare_resolve': 'Resolve previous comparison request',
+  'source_detail.semantic_candidate_success':
+    'Semantic comparison completed and a Review draft is ready.',
+  'source_detail.semantic_candidate_failed': 'Semantic comparison did not complete.',
+  'source_detail.semantic_candidate_outcome_indeterminate':
+    'The previous comparison request could not be confirmed. Retry to resolve it safely.',
+  'source_detail.semantic_candidate_open_review': 'Open Review',
+  'source_detail.semantic_candidate_blocked': 'Semantic comparison was blocked.',
+  'source_detail.semantic_candidate_incomplete':
+    'Semantic comparison remains incomplete. The result is preserved for recovery.',
+  'source_detail.semantic_candidate_review_not_ready':
+    'Comparison completed, but a Review draft was not created. The result is preserved for recovery.',
   'discovery.eyebrow': 'Knowledge discovery',
   'discovery.title': 'Discovery Inbox',
   'discovery.intro': 'Review server-found signals before they enter governed knowledge workflows.',
@@ -1266,6 +1292,30 @@ const koKR: Record<ProductMessageKey, string> = {
   'source_detail.reprocess_ai_outcome_indeterminate':
     '이전 AI 처리 요청의 결과를 확인하지 못했습니다. 같은 요청을 안전하게 확인하려면 다시 시도하세요.',
   'source_detail.reprocess_ai_configure': '설정 → AI에서 처리를 구성하세요.',
+  'source_detail.semantic_candidates_heading': '시맨틱 비교 후보',
+  'source_detail.semantic_candidates_explanation':
+    '이 소스 버전의 비정본 Candidate 주장입니다. 시맨틱 비교를 활성화한 뒤 각 Candidate를 명시적으로 비교하세요.',
+  'source_detail.semantic_candidates_loading': 'Candidate를 불러오는 중…',
+  'source_detail.semantic_candidates_empty':
+    '이 소스 버전에서 사용할 수 있는 Candidate 주장이 없습니다.',
+  'source_detail.semantic_candidates_not_ready':
+    '시맨틱 비교가 준비되지 않아 Candidate를 비교할 수 없습니다.',
+  'source_detail.semantic_candidates_configure': '설정 → AI에서 시맨틱 비교를 활성화하세요.',
+  'source_detail.semantic_candidate_noncanonical': 'Candidate · 정본 아님',
+  'source_detail.semantic_candidate_status': '상태',
+  'source_detail.semantic_candidate_compare': '시맨틱 비교 실행',
+  'source_detail.semantic_candidate_compare_pending': '시맨틱 비교 실행 중…',
+  'source_detail.semantic_candidate_compare_resolve': '이전 비교 요청 확인',
+  'source_detail.semantic_candidate_success': '시맨틱 비교를 완료했고 Review 초안을 준비했습니다.',
+  'source_detail.semantic_candidate_failed': '시맨틱 비교를 완료하지 못했습니다.',
+  'source_detail.semantic_candidate_outcome_indeterminate':
+    '이전 비교 요청을 확인하지 못했습니다. 안전하게 확인하려면 다시 시도하세요.',
+  'source_detail.semantic_candidate_open_review': 'Review 열기',
+  'source_detail.semantic_candidate_blocked': '시맨틱 비교가 차단되었습니다.',
+  'source_detail.semantic_candidate_incomplete':
+    '시맨틱 비교가 아직 완료되지 않았습니다. 복구를 위해 결과를 보존했습니다.',
+  'source_detail.semantic_candidate_review_not_ready':
+    '비교는 완료했지만 Review 초안을 만들지 못했습니다. 복구를 위해 결과를 보존했습니다.',
   'discovery.eyebrow': '지식 발견',
   'discovery.title': '발견 Inbox',
   'discovery.intro': '서버가 찾은 신호를 관리되는 지식 흐름에 넣기 전에 검토합니다.',

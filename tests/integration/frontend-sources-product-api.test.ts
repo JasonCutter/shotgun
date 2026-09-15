@@ -15,7 +15,11 @@ import {
   InMemoryCandidateRepository,
 } from '../../adapters/stage4-in-memory/src/index.js';
 import { InMemoryAuthRepository } from '../../packages/authentication/src/index.js';
-import { sha256Text, ShotgunError } from '../../packages/contracts/src/index.js';
+import {
+  sha256Text,
+  ShotgunError,
+  type ClaimCandidate,
+} from '../../packages/contracts/src/index.js';
 import type { AIProviderExecutionResolverPort } from '../../modules/ai-provider/src/index.js';
 
 const createFixture = async (
@@ -152,6 +156,29 @@ const reextractRequest = (input: {
   },
 });
 
+const candidateFor = (
+  candidateId: string,
+  sourceVersionId: string,
+  overrides: Partial<ClaimCandidate> = {},
+): ClaimCandidate =>
+  ({
+    candidateId,
+    batchId: `batch-${candidateId}`,
+    revisionNumber: 1,
+    projectId: 'project-1',
+    sourceVersionId,
+    claimText: `Claim ${candidateId}`,
+    evidenceIds: [`evidence-${candidateId}`],
+    evidenceMode: 'DIRECT_EVIDENCE',
+    extractionProfile: 'direct-only',
+    status: 'READY',
+    providerCall: {} as ClaimCandidate['providerCall'],
+    accessScope: ['owner'],
+    sensitivity: 'internal',
+    createdAt: '2026-07-30T12:00:00.000Z',
+    ...overrides,
+  }) as ClaimCandidate;
+
 describe('Frontend Sources Product API', () => {
   it('serves protected bounded Library, detail, history and explicit Version Preview', async () => {
     const { application, cookie, csrf, stored } = await createFixture();
@@ -287,6 +314,69 @@ describe('Frontend Sources Product API', () => {
       },
     });
     await application.server.close();
+  });
+
+  it('returns only the bounded, authorized Candidate projection for an exact SourceVersion', async () => {
+    const fixture = await createFixture();
+    await fixture.candidateRepository.saveBatch({
+      batchId: 'candidate-batch-1',
+      projectId: 'project-1',
+      sourceVersionId: fixture.stored.sourceVersionId,
+      idempotencyKey: 'candidate-batch-1',
+      providerCall: {} as ClaimCandidate['providerCall'],
+      candidates: [
+        candidateFor('candidate-a', fixture.stored.sourceVersionId, {
+          claimText: 'Visible candidate A',
+        }),
+        candidateFor('candidate-pending', fixture.stored.sourceVersionId, {
+          status: 'PENDING_VALIDATION',
+          claimText: 'Pending candidate',
+        }),
+      ],
+      createdAt: '2026-07-30T12:00:00.000Z',
+    });
+
+    const response = await fixture.application.server.inject({
+      method: 'GET',
+      url: `/product-api/frontend/sources/${fixture.stored.sourceId}/versions/${fixture.stored.sourceVersionId}/candidates`,
+      headers: { cookie: fixture.cookie },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      candidates: {
+        projectId: 'project-1',
+        sourceId: fixture.stored.sourceId,
+        sourceVersionId: fixture.stored.sourceVersionId,
+        items: [
+          {
+            candidateId: 'candidate-a',
+            revisionNumber: 1,
+            status: 'READY',
+            claimText: 'Visible candidate A',
+            sourceVersionId: fixture.stored.sourceVersionId,
+          },
+          { candidateId: 'candidate-pending', status: 'PENDING_VALIDATION' },
+        ],
+      },
+    });
+    expect(response.json().candidates.items[0]).not.toHaveProperty('providerCall');
+    expect(response.json().candidates.items[0]).not.toHaveProperty('accessScope');
+    expect(response.json().candidates.items[0]).not.toHaveProperty('sensitivity');
+
+    const rebound = await fixture.application.server.inject({
+      method: 'GET',
+      url: `/product-api/frontend/sources/${fixture.stored.sourceId}/versions/not-this-version/candidates`,
+      headers: { cookie: fixture.cookie },
+    });
+    expect(rebound.statusCode).toBe(404);
+
+    const arbitrary = await fixture.application.server.inject({
+      method: 'GET',
+      url: '/product-api/frontend/sources/not-a-source/versions/not-a-version/candidates',
+      headers: { cookie: fixture.cookie },
+    });
+    expect(arbitrary.statusCode).toBe(404);
+    await fixture.application.server.close();
   });
 
   it('re-extracts the existing SourceVersion through Stage 4 with Product idempotency', async () => {

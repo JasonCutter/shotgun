@@ -10,15 +10,20 @@ import {
   type ConversationCitationReturnTarget,
   type EvidenceListView,
   type GlobalShellView,
+  type RecompareCandidateResponse,
+  type SemanticComparisonStatusView,
+  type SourceCandidateView,
 } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
+import { convergeOwnerState } from '../app/query-keys.js';
 import { ErrorState, safeErrorMessage } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
 import { hfmOwnerLabel, useProductLocalization } from '../localization/product-localization.js';
 import {
   sourceDetailQueryOptions,
+  sourceCandidatesQueryOptions,
   sourceEvidenceQueryOptions,
   sourcePreviewQueryOptions,
   sourceVersionHistoryQueryOptions,
@@ -34,6 +39,14 @@ import {
   writePendingSourceReextractCommandIdentity,
   type PendingSourceReextractCommandIdentityV1,
 } from './source-reextract-command-storage.js';
+import {
+  clearPendingSourceRecompareCommandIdentity,
+  getSourceRecompareCommandStorage,
+  newSourceRecompareIdentity,
+  readPendingSourceRecompareCommandIdentity,
+  writePendingSourceRecompareCommandIdentity,
+  type PendingSourceRecompareCommandIdentityV1,
+} from './source-recompare-command-storage.js';
 
 type SourceDetailViewName = 'preview' | 'evidence' | 'versions';
 
@@ -143,6 +156,197 @@ export const groupEvidenceCards = (
   return groups;
 };
 
+type CandidateComparisonFeedback = {
+  readonly kind: 'success' | 'error' | 'info';
+  readonly message: string;
+};
+
+const recompareSucceeded = (response: RecompareCandidateResponse): boolean => {
+  const result = response.result;
+  const v2 = result.v2;
+  return (
+    result.rollout === 'V2_ACTIVE' &&
+    result.v1Executed === false &&
+    v2?.status === 'COMPLETED' &&
+    result.review?.status === 'DRAFT_CREATED' &&
+    Boolean(
+      response.reviewChangeSetId ??
+      result.comparisonId ??
+      (v2 && 'comparisonId' in v2 ? v2.comparisonId : undefined),
+    )
+  );
+};
+
+const recompareOutcomeMessage = (
+  response: RecompareCandidateResponse,
+  t: ReturnType<typeof useProductLocalization>['t'],
+): string => {
+  const result = response.result;
+  if (result.rollout !== 'V2_ACTIVE') return t('source_detail.semantic_candidates_not_ready');
+  if (result.v2?.status === 'BLOCKED') return t('source_detail.semantic_candidate_blocked');
+  if (result.v2?.status === 'INCOMPLETE' || result.v2?.status === 'FAILED') {
+    return t('source_detail.semantic_candidate_incomplete');
+  }
+  if (result.review?.status !== 'DRAFT_CREATED') {
+    return t('source_detail.semantic_candidate_review_not_ready');
+  }
+  return t('source_detail.semantic_candidate_failed');
+};
+
+const SourceCandidateComparison = ({
+  candidate,
+  projectId,
+  sourceId,
+  sourceVersionId,
+  sourceVersionReady,
+  semanticStatus,
+}: {
+  readonly candidate: SourceCandidateView;
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly sourceVersionReady: boolean;
+  readonly semanticStatus: SemanticComparisonStatusView | undefined;
+}) => {
+  const { apiClient, queryClient } = useAppRuntime();
+  const { t } = useProductLocalization();
+  const [pendingIdentity, setPendingIdentity] = useState<
+    PendingSourceRecompareCommandIdentityV1 | undefined
+  >();
+  const [feedback, setFeedback] = useState<CandidateComparisonFeedback>();
+  const [reviewReady, setReviewReady] = useState(false);
+
+  useEffect(() => {
+    const storage = getSourceRecompareCommandStorage();
+    const identity = storage
+      ? readPendingSourceRecompareCommandIdentity(
+          storage,
+          projectId,
+          sourceId,
+          sourceVersionId,
+          candidate.candidateId,
+        )
+      : null;
+    setPendingIdentity(identity ?? undefined);
+    setFeedback(undefined);
+    setReviewReady(false);
+  }, [candidate.candidateId, projectId, sourceId, sourceVersionId]);
+
+  const mutation = useMutation({
+    mutationFn: (identity: PendingSourceRecompareCommandIdentityV1) =>
+      apiClient.recompareCandidate({
+        candidateId: identity.candidateId,
+        idempotencyKey: identity.idempotencyKey,
+      }),
+    onSuccess: async (response, identity) => {
+      const storage = getSourceRecompareCommandStorage();
+      if (storage) {
+        clearPendingSourceRecompareCommandIdentity(
+          storage,
+          identity.projectId,
+          identity.sourceId,
+          identity.sourceVersionId,
+          identity.candidateId,
+        );
+      }
+      setPendingIdentity(undefined);
+      if (recompareSucceeded(response)) {
+        await convergeOwnerState(queryClient, projectId);
+        setReviewReady(true);
+        setFeedback({ kind: 'success', message: t('source_detail.semantic_candidate_success') });
+      } else {
+        setFeedback({ kind: 'info', message: recompareOutcomeMessage(response, t) });
+      }
+    },
+    onError: (error, identity) => {
+      if (isOutcomeIndeterminateError(error)) {
+        const storage = getSourceRecompareCommandStorage();
+        if (storage) writePendingSourceRecompareCommandIdentity(storage, identity);
+        setPendingIdentity(identity);
+        setFeedback({
+          kind: 'error',
+          message: t('source_detail.semantic_candidate_outcome_indeterminate'),
+        });
+        return;
+      }
+      const storage = getSourceRecompareCommandStorage();
+      if (storage) {
+        clearPendingSourceRecompareCommandIdentity(
+          storage,
+          identity.projectId,
+          identity.sourceId,
+          identity.sourceVersionId,
+          identity.candidateId,
+        );
+      }
+      setPendingIdentity(undefined);
+      setFeedback({
+        kind: 'error',
+        message: `${t('source_detail.semantic_candidate_failed')} ${safeErrorMessage(error)}`,
+      });
+    },
+  });
+
+  const eligible =
+    candidate.status === 'READY' &&
+    sourceVersionReady &&
+    semanticStatus?.status === 'READY' &&
+    semanticStatus.rollout === 'V2_ACTIVE';
+
+  const handleCompare = () => {
+    if (!eligible || mutation.isPending) return;
+    const storage = getSourceRecompareCommandStorage();
+    const persisted = storage
+      ? readPendingSourceRecompareCommandIdentity(
+          storage,
+          projectId,
+          sourceId,
+          sourceVersionId,
+          candidate.candidateId,
+        )
+      : null;
+    const identity =
+      pendingIdentity ??
+      persisted ??
+      newSourceRecompareIdentity(projectId, sourceId, sourceVersionId, candidate.candidateId);
+    if (storage) writePendingSourceRecompareCommandIdentity(storage, identity);
+    setPendingIdentity(identity);
+    setFeedback(undefined);
+    setReviewReady(false);
+    mutation.mutate(identity);
+  };
+
+  return (
+    <li data-candidate-id={candidate.candidateId}>
+      <p>{candidate.claimText}</p>
+      <small>
+        {t('source_detail.semantic_candidate_noncanonical')} ·{' '}
+        {t('source_detail.semantic_candidate_status')}: {candidate.status}
+      </small>
+      {eligible ? (
+        <button type="button" onClick={handleCompare} disabled={mutation.isPending}>
+          {mutation.isPending
+            ? t('source_detail.semantic_candidate_compare_pending')
+            : pendingIdentity
+              ? t('source_detail.semantic_candidate_compare_resolve')
+              : t('source_detail.semantic_candidate_compare')}
+        </button>
+      ) : candidate.status === 'READY' && semanticStatus?.rollout !== 'V2_ACTIVE' ? (
+        <p role="status">
+          {t('source_detail.semantic_candidates_not_ready')}{' '}
+          <Link to="/settings/ai">{t('source_detail.semantic_candidates_configure')}</Link>
+        </p>
+      ) : null}
+      {feedback ? (
+        <p role={feedback.kind === 'error' ? 'alert' : 'status'}>{feedback.message}</p>
+      ) : null}
+      {reviewReady ? (
+        <Link to="/review">{t('source_detail.semantic_candidate_open_review')}</Link>
+      ) : null}
+    </li>
+  );
+};
+
 export const SourceDetailWorkspace = () => {
   const { apiClient } = useAppRuntime();
   const { t } = useProductLocalization();
@@ -166,6 +370,25 @@ export const SourceDetailWorkspace = () => {
     sourceEvidenceQueryOptions(apiClient, shell, sourceId, selectedVersionId),
   );
   const activeProjectId = shell.activeProject?.id;
+  const candidateReadAvailable = typeof apiClient.getSourceCandidates === 'function';
+  const candidatesOptions = sourceCandidatesQueryOptions(
+    apiClient,
+    shell,
+    sourceId,
+    selectedVersionId,
+  );
+  const candidates = useQuery({
+    ...candidatesOptions,
+    enabled: candidateReadAvailable && candidatesOptions.enabled,
+  });
+  const semanticReadAvailable = typeof apiClient.getSemanticComparisonStatus === 'function';
+  const semanticStatus = useQuery({
+    queryKey: ['settings', 'ai', 'semantic-comparison', activeProjectId ?? 'no-project'],
+    queryFn: ({ signal }) => apiClient.getSemanticComparisonStatus(activeProjectId!, { signal }),
+    enabled: Boolean(activeProjectId) && semanticReadAvailable,
+    retry: false,
+    staleTime: 15_000,
+  });
   const [pendingReextractIdentity, setPendingReextractIdentity] = useState<
     SourceReextractRequest | undefined
   >();
@@ -434,6 +657,41 @@ export const SourceDetailWorkspace = () => {
         <p role={reextractFeedback.kind === 'error' ? 'alert' : 'status'}>
           {reextractFeedback.message}
         </p>
+      ) : null}
+      {candidateReadAvailable ? (
+        <section
+          className="action-card source-detail-candidates"
+          aria-labelledby="source-candidates-heading"
+        >
+          <h2 id="source-candidates-heading">{t('source_detail.semantic_candidates_heading')}</h2>
+          <p>{t('source_detail.semantic_candidates_explanation')}</p>
+          {candidates.isPending ? (
+            <LoadingState message={t('source_detail.semantic_candidates_loading')} />
+          ) : null}
+          {candidates.error ? <p role="alert">{safeErrorMessage(candidates.error)}</p> : null}
+          {semanticStatus.isPending ? <p>{t('common.loading')}</p> : null}
+          {semanticStatus.error ? (
+            <p role="alert">{t('source_detail.semantic_candidates_not_ready')}</p>
+          ) : null}
+          {candidates.data?.items.length === 0 ? (
+            <p>{t('source_detail.semantic_candidates_empty')}</p>
+          ) : null}
+          {candidates.data && candidates.data.items.length > 0 ? (
+            <ul className="source-candidate-list">
+              {candidates.data.items.map((candidate) => (
+                <SourceCandidateComparison
+                  key={`${candidate.candidateId}:${candidate.revisionNumber}`}
+                  candidate={candidate}
+                  projectId={candidates.data!.projectId}
+                  sourceId={candidates.data!.sourceId}
+                  sourceVersionId={candidates.data!.sourceVersionId}
+                  sourceVersionReady={selectedVersionState === 'READY'}
+                  semanticStatus={semanticStatus.data}
+                />
+              ))}
+            </ul>
+          ) : null}
+        </section>
       ) : null}
       <nav className="source-detail-navigation" aria-label={t('source_detail.views')}>
         {(['preview', 'evidence', 'versions'] as const).map((view) => (

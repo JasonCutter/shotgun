@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import {
   decodeEvidenceListView,
+  decodeSourceCandidateListView,
   decodeSourceDetailView,
   decodeSourceLibraryPageView,
   decodeSourcePreviewView,
@@ -10,10 +11,12 @@ import {
   stableJson,
   type EvidenceListView,
   type EvidenceSpan,
+  type ClaimCandidate,
   type SourceDetailView,
   type SourceLibraryPageView,
   type SourceLibraryQuery,
   type SourcePreviewView,
+  type SourceCandidateListView,
   type SourcesSensitivity,
   type SourceVersionHistoryView,
 } from '../../../packages/contracts/src/index.js';
@@ -51,6 +54,14 @@ export type SourcesAssetReaderPort = {
 
 export type SourcesEvidenceReaderPort = {
   listBySourceVersion(projectId: string, sourceVersionId: string): Promise<readonly EvidenceSpan[]>;
+};
+
+/** Narrow Stage 4 read boundary used by the Source Detail Product surface. */
+export type SourcesCandidateReaderPort = {
+  listBySourceVersion(
+    projectId: string,
+    sourceVersionId: string,
+  ): Promise<readonly ClaimCandidate[]>;
 };
 
 export type ServerAuthorizedProjectSourcesReadScope = {
@@ -104,6 +115,22 @@ const projectionRevision = (records: readonly SourcesProjectionRecord[]): string
     ),
   );
 
+const candidateProjectionRevision = (
+  sourceVersionId: string,
+  candidates: readonly SourceCandidateListView['items'][number][],
+): string =>
+  sha256(
+    stableJson({
+      sourceVersionId,
+      candidates: candidates.map((candidate) => ({
+        candidateId: candidate.candidateId,
+        revisionNumber: candidate.revisionNumber,
+        status: candidate.status,
+        createdAt: candidate.createdAt,
+      })),
+    }),
+  );
+
 const assertAuthorized = (
   record: SourcesProjectionRecord,
   scope: ServerAuthorizedProjectSourcesReadScope,
@@ -114,6 +141,18 @@ const assertAuthorized = (
   }
   const available = new Set(scope.accessScopes);
   return record.accessScope.every((required) => available.has(required));
+};
+
+const candidateIsAuthorized = (
+  candidate: ClaimCandidate,
+  scope: ServerAuthorizedProjectSourcesReadScope,
+): boolean => {
+  if (candidate.projectId !== scope.authorizedProjectId) return false;
+  if (sensitivityRank[candidate.sensitivity] > sensitivityRank[scope.sensitivityClearance]) {
+    return false;
+  }
+  const available = new Set(scope.accessScopes);
+  return candidate.accessScope.every((required) => available.has(required));
 };
 
 const labelFor = (record: SourcesProjectionRecord): string =>
@@ -200,12 +239,58 @@ export class FrontendSourcesReadCoordinator {
     private readonly sources: SourcesProjectionRepositoryPort,
     private readonly storage: SourcesAssetReaderPort,
     private readonly evidence: SourcesEvidenceReaderPort,
+    private readonly candidates?: SourcesCandidateReaderPort,
   ) {}
 
   private async authorizedRecords(scope: ServerAuthorizedProjectSourcesReadScope) {
     return (await this.sources.listProjectSourceVersions(scope.authorizedProjectId)).filter(
       (record) => assertAuthorized(record, scope),
     );
+  }
+
+  async candidatesList(
+    scope: ServerAuthorizedProjectSourcesReadScope,
+    sourceId: string,
+    sourceVersionId: string,
+  ): Promise<SourceCandidateListView | null> {
+    const record = (await this.authorizedRecords(scope)).find(
+      (candidate) =>
+        candidate.sourceId === sourceId && candidate.sourceVersionId === sourceVersionId,
+    );
+    if (!record) return null;
+    if (!this.candidates) {
+      throw new ShotgunError({
+        code: 'CAPABILITY_DENIED',
+        safeMessage: 'Source Candidate Product reads are unavailable in this runtime.',
+        module: 'frontend-sources-product',
+        operation: 'list-source-candidates',
+      });
+    }
+    const items = (await this.candidates.listBySourceVersion(record.projectId, sourceVersionId))
+      .filter(
+        (candidate) =>
+          candidate.sourceVersionId === sourceVersionId && candidateIsAuthorized(candidate, scope),
+      )
+      .slice(0, 100)
+      .map((candidate) => ({
+        candidateId: candidate.candidateId,
+        revisionNumber: candidate.revisionNumber,
+        status: candidate.status,
+        claimText: candidate.claimText.slice(0, 20_000),
+        sourceVersionId: candidate.sourceVersionId,
+        createdAt: candidate.createdAt,
+      }));
+    return decodeSourceCandidateListView({
+      schemaVersion: '1.0.0',
+      projectId: record.projectId,
+      sourceId,
+      sourceVersionId,
+      items,
+      projectionRevision: candidateProjectionRevision(sourceVersionId, items),
+      accessRevision: scope.accessRevision,
+      policyContextRevision: scope.policyContextRevision,
+      fetchedAt: new Date().toISOString(),
+    });
   }
 
   /**

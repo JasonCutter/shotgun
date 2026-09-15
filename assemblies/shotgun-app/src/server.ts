@@ -2272,6 +2272,7 @@ const createApplicationCore = async (
     sourcesProjectionRepository,
     assetStorage,
     evidenceRepository,
+    candidateRepository,
   );
   // FE-P5-S1 WP3: the Activity Product API observes the owning Domains through
   // their concrete Activity adapters (Sources/Ask/External Action) into the

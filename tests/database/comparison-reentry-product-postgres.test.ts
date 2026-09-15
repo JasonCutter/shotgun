@@ -12,6 +12,7 @@ import {
 } from '../../packages/contracts/src/index.js';
 import type { SearchProjectionRepositoryPort } from '../../modules/projection-search/src/index.js';
 import type { CandidateRepositoryPort } from '../../modules/candidate-generation/src/index.js';
+import { InMemorySettingsRepository } from '../../adapters/settings-project-admin-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import { PostgresCandidateRepository } from '../../adapters/postgres-stage4/src/index.js';
 import {
@@ -21,7 +22,10 @@ import {
   PostgresComparisonV2Repository,
 } from '../../adapters/postgres-stage5/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
-import { createPostgresPool } from '../../adapters/postgres/src/index.js';
+import {
+  PostgresOriginalAssetRepository,
+  createPostgresPool,
+} from '../../adapters/postgres/src/index.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
@@ -405,6 +409,9 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
     );
     const cookie = `shotgun_session=${session.sessionToken}`;
     const candidateRepository: CandidateRepositoryPort = new PostgresCandidateRepository(pool);
+    const sourcesProjectionRepository = new PostgresOriginalAssetRepository(pool);
+    const settingsRepository = new InMemorySettingsRepository();
+    settingsRepository.getProjectSettingValue = async () => rolloutState;
     const generationReader = {
       async getActiveGeneration(project: string) {
         const current = await canonical.getSnapshot(project);
@@ -426,9 +433,8 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       hybridRetrievalCoordinator: hybridRetrieval,
       semanticActiveGenerationReader: generationReader,
       comparisonV2ExecutionResolver: executionResolver,
-      settingsRepository: {
-        getProjectSettingValue: async () => rolloutState,
-      } as never,
+      settingsRepository,
+      sourcesProjectionRepository,
     });
     try {
       const csrfFor = async (sessionCookie: string) =>
@@ -521,6 +527,42 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
                 : 'Approve the current V2 comparison after review.',
           },
         });
+
+      const candidatesRead = await application.server.inject({
+        method: 'GET',
+        url: `/product-api/frontend/sources/${candidateSourceId}/versions/${candidateSourceVersionId}/candidates`,
+        headers: { cookie },
+      });
+      expect(candidatesRead.statusCode).toBe(200);
+      expect(candidatesRead.json()).toEqual({
+        candidates: expect.objectContaining({
+          projectId,
+          sourceId: candidateSourceId,
+          sourceVersionId: candidateSourceVersionId,
+          items: [
+            expect.objectContaining({
+              candidateId,
+              revisionNumber: 1,
+              status: 'READY',
+              claimText: candidateText,
+              sourceVersionId: candidateSourceVersionId,
+              createdAt: now,
+            }),
+          ],
+        }),
+      });
+      const candidatePayload = candidatesRead.json() as {
+        readonly candidates: Record<string, unknown>;
+      };
+      expect(candidatePayload.candidates).not.toHaveProperty('providerCall');
+      expect(candidatePayload.candidates).not.toHaveProperty('accessScope');
+      expect(candidatePayload.candidates).not.toHaveProperty('sensitivity');
+      const mismatchedCandidatesRead = await application.server.inject({
+        method: 'GET',
+        url: `/product-api/frontend/sources/${candidateSourceId}/versions/${candidateASourceVersionId}/candidates`,
+        headers: { cookie },
+      });
+      expect(mismatchedCandidatesRead.statusCode).toBe(404);
 
       // A/B are first materialized by the normal legacy Product comparison and
       // review path while the Canonical authority is still V1_ONLY at version 0.

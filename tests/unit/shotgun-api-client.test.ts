@@ -380,6 +380,22 @@ describe('shotgun-api-client', () => {
     },
   );
 
+  it('classifies a lost recompare response as outcome indeterminate using the same key', async () => {
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).endsWith('/security/csrf')) return json({ csrfToken: 'csrf-recompare' });
+      throw new TypeError('response connection closed');
+    });
+    await expect(
+      createShotgunApiClient({ fetch }).recompareCandidate({
+        candidateId: 'candidate-a',
+        idempotencyKey: 'idem-recompare-a',
+      }),
+    ).rejects.toMatchObject({
+      code: 'OUTCOME_INDETERMINATE',
+      clientRequestId: 'idem-recompare-a',
+    });
+  });
+
   it('rejects a malformed nested recompare result', async () => {
     const fetch = vi.fn(async (input: string | URL | Request) => {
       if (String(input).endsWith('/security/csrf')) return json({ csrfToken: 'csrf-recompare' });

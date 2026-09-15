@@ -24,6 +24,7 @@ import {
 } from '../../adapters/semantic-index-postgres/src/index.js';
 import { PostgresSemanticCorpusSourceSnapshotReader } from '../../adapters/semantic-corpus-postgres/src/index.js';
 import { PostgresCandidateRepository } from '../../adapters/postgres-stage4/src/index.js';
+import { PostgresEvidenceRepository } from '../../adapters/postgres-stage3/src/index.js';
 import {
   PostgresChangeSetReviewRepository,
   PostgresChangeSetReviewV2Repository,
@@ -31,6 +32,7 @@ import {
   PostgresComparisonV2Repository,
 } from '../../adapters/postgres-stage5/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
+import { PostgresKnowledgeModelRepository } from '../../adapters/postgres-stage9/src/index.js';
 import {
   EnvironmentCredentialMasterKeyAuthority,
   CredentialVaultService,
@@ -50,6 +52,13 @@ import {
   SemanticProjectionRefreshService,
 } from '../../modules/semantic-generation/src/index.js';
 import { StandingAIProcessingPolicyService } from '../../packages/policy/src/index.js';
+import {
+  DeterministicSemanticQueryClassificationPolicy,
+  HybridRetrievalCoordinator,
+  LexicalRetriever,
+  ProductKnowledgeResourceResolver,
+  SemanticRetriever,
+} from '../../modules/hybrid-retrieval/src/index.js';
 import {
   SemanticEmbeddingProfileService,
   initialSemanticEmbeddingRegistry,
@@ -120,6 +129,7 @@ class DeterministicOpenAIProvider {
   private server: Server | undefined;
   private readonly releaseWaiters: Array<() => void> = [];
   private paused = false;
+  private failNextQueryWithAuthentication = false;
   private buildPhase: BuildPhase | undefined;
   private readonly requestObservations: ProviderRequestObservation[] = [];
 
@@ -165,6 +175,7 @@ class DeterministicOpenAIProvider {
     this.queryRequests = 0;
     this.buildPhase = undefined;
     this.requestObservations.length = 0;
+    this.failNextQueryWithAuthentication = false;
   }
 
   beginBuildPhase(build: BuildPhase): void {
@@ -182,6 +193,10 @@ class DeterministicOpenAIProvider {
   releaseBuilds(): void {
     this.paused = false;
     for (const release of this.releaseWaiters.splice(0)) release();
+  }
+
+  failNextQueryAsAuthenticationFailure(): void {
+    this.failNextQueryWithAuthentication = true;
   }
 
   async waitForBuildRequests(count: number): Promise<void> {
@@ -254,6 +269,11 @@ class DeterministicOpenAIProvider {
         if (this.paused) await new Promise<void>((resolve) => this.releaseWaiters.push(resolve));
       } else {
         this.queryRequests += 1;
+        if (this.failNextQueryWithAuthentication) {
+          this.failNextQueryWithAuthentication = false;
+          send(401, { error: 'authentication failed' });
+          return;
+        }
       }
 
       send(200, {
@@ -2024,6 +2044,14 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
     const fixture = await createFixture();
     const projectId = fixture.projectId;
     const cookie = `shotgun_session=${fixture.sessionToken}`;
+    // Keep this acceptance fixture focused on the canonical Claim path. The
+    // shared R5 fixture also seeds an approved ENTITY, which the normal
+    // shortlist records as an exclusion; NEW comparisons correctly fail
+    // closed when exclusions remain.
+    await pool!.query(
+      `DELETE FROM knowledge.review_groups WHERE project_id = $1 AND group_id = $2`,
+      [projectId, fixture.groupId],
+    );
     const registry = initialProviderRegistry();
     const embeddingRegistry = initialSemanticEmbeddingRegistry();
     const settingsRepository = new PostgresSettingsRepository(pool!);
@@ -2108,75 +2136,45 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       },
       search: async () => [],
     };
-    let semanticAvailable = false;
-    const hybridRetrieval: HybridRetrievalCoordinatorPort = {
-      async search(input) {
-        const snapshot = await canonical.getSnapshot(input.projectId);
-        const generation = await activeGenerationReader.getActiveGeneration(input.projectId);
-        if (!generation) throw new Error('C6 acceptance fixture has no active generation.');
-        const readiness = {
-          lexical: {
-            status: 'READY' as const,
-            projectedCanonicalVersion: snapshot.version,
-            canonicalVersion: snapshot.version,
-            lag: 0,
-            canonicalSnapshotDigest: snapshot.digest,
-            projectedSnapshotDigest: snapshot.digest,
-            lastCommitId: `c6-canonical-${input.projectId}-${snapshot.version}`,
-          },
-          semantic: semanticAvailable
-            ? {
-                status: 'READY' as const,
-                data: 'READY' as const,
-                execution: 'AVAILABLE' as const,
-                activeGenerationId: generation.generationId,
-                embeddingProfileId: generation.embeddingProfileId,
-                dimension: generation.dimension,
-              }
-            : {
-                status: 'UNAVAILABLE' as const,
-                data: 'READY' as const,
-                execution: 'CREDENTIAL_UNAVAILABLE' as const,
-                reason: 'Current semantic execution capability is unavailable.',
-                safeFailureCode: 'CONFIGURATION_REQUIRED' as const,
-                activeGenerationId: generation.generationId,
-                embeddingProfileId: generation.embeddingProfileId,
-                dimension: generation.dimension,
-              },
-          degraded: !semanticAvailable,
-        };
-        return {
-          schemaVersion: '1.0.0',
-          projectId: input.projectId,
-          query: input.query,
-          items: semanticAvailable
-            ? snapshot.claims.map((claim, index) => ({
-                resourceType: 'CLAIM' as const,
-                resourceId: claim.claimId,
-                text: claim.text,
-                authority: 'CANONICAL' as const,
-                authorityRevision: claim.revisionNumber,
-                resourceRevision: claim.revisionNumber,
-                canonicalVersion: snapshot.version,
-                baseCanonicalVersion: snapshot.version,
-                sourceSnapshotDigest: snapshot.digest,
-                sourceProjectionDigest: generation.sourceProjectionDigest,
-                evidenceIds: [...claim.evidenceIds],
-                citations: [],
-                accessScope: ['owner'],
-                sensitivity: 'private' as const,
-                signals: ['SEMANTIC' as const],
-                semanticRank: index + 1,
-                fusionRank: index + 1,
-                fusionScore: 1 / (index + 1),
-              }))
-            : [],
-          fusionPolicy: { version: 'rrf:v1' as const, k: 60 },
-          readiness,
-          generatedAt: new Date().toISOString(),
-        } satisfies HybridSearchResponse;
+    const lexicalRetriever = new LexicalRetriever(sourceProjection, async (requestedProjectId) =>
+      canonical.getSnapshot(requestedProjectId),
+    );
+    const semanticRetriever = new SemanticRetriever(
+      semanticRepository,
+      semanticAuthorityResolver,
+      semanticRouter,
+      activeGenerationReader,
+      {
+        sourceWatermarkReader: sourceReader,
+        queryClassifier: new DeterministicSemanticQueryClassificationPolicy(),
       },
-    };
+    );
+    const knowledgeModel = new PostgresKnowledgeModelRepository(pool!);
+    const hybridRetrieval = new HybridRetrievalCoordinator(
+      lexicalRetriever,
+      semanticRetriever,
+      new ProductKnowledgeResourceResolver(canonical, knowledgeModel),
+      {
+        getEvidenceSpan: async (projectId, evidenceId) =>
+          new PostgresEvidenceRepository(pool!).findById(projectId, evidenceId),
+      },
+      {
+        getSourceVersion: async (requestedProjectId, sourceVersionId) => {
+          const original = await new PostgresOriginalAssetRepository(pool!).findByVersion(
+            requestedProjectId,
+            sourceVersionId,
+          );
+          if (!original) return undefined;
+          return {
+            sourceVersionId,
+            projectId: original.projectId,
+            sourceId: original.sourceId,
+          };
+        },
+      },
+      activeGenerationReader,
+      fixture.profileService,
+    );
     let providerCalls = 0;
     const comparisonV2ExecutionResolver = {
       async resolve() {
@@ -2374,6 +2372,7 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
           privacy: unknown;
         };
       }>().settings;
+      provider.failNextQueryAsAuthenticationFailure();
       const blocked = await post('/api/v1/comparisons/recompare', {
         candidateId: candidateAId,
         idempotencyKey: `c6-blocked-${candidateAId}`,
@@ -2466,8 +2465,6 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         credentialRevision: 2,
         status: 'PREPARED',
       });
-
-      semanticAvailable = true;
       const completed = await post('/api/v1/comparisons/recompare', {
         candidateId: candidateAId,
         idempotencyKey: `c6-retry-${candidateAId}`,

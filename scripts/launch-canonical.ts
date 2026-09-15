@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -47,6 +47,10 @@ export type CanonicalLaunchDeps = {
     identityPath: string,
     identity: LauncherRuntimeIdentity,
   ) => Promise<void>;
+  readonly reserveIdentity: (
+    identityPath: string,
+    identity: LauncherRuntimeIdentity,
+  ) => Promise<boolean>;
   readonly removeIdentity: (identityPath: string) => Promise<void>;
   readonly inspectProcess: (pid: number) => Promise<ProcessInspection>;
   readonly terminateProcess: (pid: number) => Promise<void>;
@@ -235,6 +239,16 @@ const stopOwnedRuntime = async (
   await removeIfCurrent(identityPath, identity, deps);
 };
 
+const runtimeStartInProgress = (pid?: number): LaunchFailure =>
+  launchFailure(
+    'RUNTIME_START_IN_PROGRESS',
+    pid === undefined
+      ? 'Another canonical launcher is already reserving the runtime startup slot.'
+      : `The canonical launcher runtime PID ${pid} is still starting.`,
+    'Wait for the existing owner to become ready, then retry the launcher; do not terminate or replace it.',
+    'Retry npm run launch after the existing launcher reports READY.',
+  );
+
 const assertBranchAndWorktree = (rootDirectory: string, deps: CanonicalLaunchDeps): void => {
   const branch = deps.runGit(rootDirectory, ['branch', '--show-current']);
   if (branch.status !== 0 || branch.stdout.trim() !== 'main') {
@@ -316,22 +330,27 @@ export const runCanonicalLaunchPreflight = async (
 
   log(`[launch] CANONICAL branch=main sha=${remoteSha}`);
 
-  let reusable: LauncherRuntimeIdentity | undefined;
-  const existingRaw = await deps.readIdentity(identityPath);
-  if (existingRaw !== undefined) {
+  const classifyExistingRuntime = async (
+    existingRaw: unknown | undefined,
+  ): Promise<LauncherRuntimeIdentity | undefined> => {
+    if (existingRaw === undefined) return undefined;
     const existing = validateRuntimeIdentity(existingRaw);
     const inspection = await deps.inspectProcess(existing.pid);
     if (!inspection.alive) {
       await removeIfCurrent(identityPath, existing, deps);
       log(`[launch] STALE identity removed pid=${existing.pid}`);
-    } else if (!proveOwnership(existing, inspection, rootDirectory)) {
+      return undefined;
+    }
+    if (!proveOwnership(existing, inspection, rootDirectory)) {
       throw launchFailure(
         'RUNTIME_OWNERSHIP_UNVERIFIED',
         `The recorded runtime PID ${existing.pid} is live but ownership cannot be proven.`,
         'Do not terminate an unverified PID; inspect the process and retry after safe resolution.',
         `Inspect process PID ${existing.pid} without terminating it.`,
       );
-    } else if (
+    }
+    if (existing.phase === 'starting') throw runtimeStartInProgress(existing.pid);
+    if (
       existing.sha === remoteSha &&
       existing.repoRoot !== '' &&
       normalizePath(existing.repoRoot) === normalizePath(rootDirectory) &&
@@ -339,12 +358,14 @@ export const runCanonicalLaunchPreflight = async (
       existing.port === options.port &&
       (await deps.fetchReadiness(existing.url, 30_000))
     ) {
-      reusable = existing;
-    } else {
-      await stopOwnedRuntime(identityPath, existing, deps);
-      log(`[launch] STALE runtime stopped pid=${existing.pid} sha=${existing.sha}`);
+      return existing;
     }
-  }
+    await stopOwnedRuntime(identityPath, existing, deps);
+    log(`[launch] STALE runtime stopped pid=${existing.pid} sha=${existing.sha}`);
+    return undefined;
+  };
+
+  let reusable = await classifyExistingRuntime(await deps.readIdentity(identityPath));
 
   if (localShaBeforeFetch !== remoteSha) {
     const ancestor = deps.runGit(rootDirectory, [
@@ -440,7 +461,18 @@ export const runCanonicalLaunchPreflight = async (
     startedAt,
     ownershipNonce: deps.createNonce(),
   };
-  await deps.writeIdentity(identityPath, identity);
+  let reserved = await deps.reserveIdentity(identityPath, identity);
+  if (!reserved) {
+    reusable = await classifyExistingRuntime(await deps.readIdentity(identityPath));
+    if (reusable === undefined) {
+      reserved = await deps.reserveIdentity(identityPath, identity);
+      if (!reserved) throw runtimeStartInProgress();
+    }
+  }
+  if (reusable !== undefined) {
+    log(`[launch] REUSE pid=${reusable.pid} sha=${reusable.sha} url=${reusable.url}`);
+    return { kind: 'reuse', identity: reusable };
+  }
   log(`[launch] RUNTIME pid=${identity.pid} sha=${identity.sha} url=${identity.url}`);
 
   const markReady = async (): Promise<void> => {
@@ -504,6 +536,25 @@ export const createDefaultCanonicalLaunchDeps = (): CanonicalLaunchDeps => ({
     } catch (error) {
       await unlink(temporaryPath).catch(() => {});
       throw error;
+    }
+  },
+  reserveIdentity: async (identityPath, identity) => {
+    await mkdir(path.dirname(identityPath), { recursive: true });
+    const temporaryPath = `${identityPath}.${identity.ownershipNonce}.${randomUUID()}.reserve.tmp`;
+    await writeFile(temporaryPath, `${JSON.stringify(identity, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
+    try {
+      await link(temporaryPath, identityPath);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+      throw error;
+    } finally {
+      await unlink(temporaryPath).catch((error: unknown) => {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      });
     }
   },
   removeIdentity: async (identityPath) => {

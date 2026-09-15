@@ -40,8 +40,10 @@ process performs no SPA, DB or application startup work.
 
 ## Runtime identity
 
-The launcher atomically owns `.data/launcher/runtime.json`, which is ignored by
-Git. Its versioned record contains:
+The launcher exclusively reserves and then atomically owns
+`.data/launcher/runtime.json`, which is ignored by Git. Initial startup uses a
+create-only filesystem operation; it never uses read-then-replace as the
+reservation authority. Its versioned record contains:
 
 `schemaVersion`, `launcherId`, `phase`, `pid`, `processStartedAt`, `repoRoot`,
 `branch`, `sha`, `host`, `port`, `url`, `startedAt`, and `ownershipNonce`.
@@ -52,6 +54,13 @@ runtime only when the record is valid, the PID is live, the command/process
 identity proves the same launcher and repository, the SHA equals freshly
 fetched `origin/main`, host/port match, and the normal readiness check succeeds.
 Reuse starts no second application and does not rebuild or remigrate.
+
+If a proven live identity is still `starting`, a competing launcher fails with
+`RUNTIME_START_IN_PROGRESS`; it does not terminate the owner, replace the
+identity or start Product work. A reservation race loser re-reads and follows
+the existing runtime classification rules. A dead `starting` identity may be
+removed and replaced after ownership-safe validation. Ready promotion may use
+atomic replacement only after the create-only reservation has been acquired.
 
 A dead record removes only its own identity file. A live runtime with a
 different SHA is stopped only after ownership is proven, then its matching
@@ -66,8 +75,9 @@ The launcher retains its existing actionable `code`, `check` and `command`
 failure shape and adds narrow categories for non-main branch, unsafe tracked
 worktree, Git fetch, fast-forward-only update, final SHA mismatch, invalid
 identity, unverified ownership, stale stop failure and canonical reexec
-failure. Successful startup logs the canonical branch/SHA, runtime PID/SHA/URL
-and readiness. Fast-forward and reuse paths log their old/target identity.
+failure, plus live startup-in-progress. Successful startup logs the canonical
+branch/SHA, runtime PID/SHA/URL and readiness. Fast-forward and reuse paths log
+their old/target identity.
 
 ## OSS integration decision
 
@@ -81,11 +91,14 @@ Action, Canonical, Evidence and Approval ownership remains unchanged.
 ## Verification, migration and rollback
 
 The launcher contract tests cover preflight ordering, branch/worktree policy,
-fresh fetch, fast-forward-only update, self-reexec, runtime identity lifecycle,
+fresh fetch, fast-forward-only update, self-reexec, exclusive concurrent
+reservation, live-starting fail-closed behavior, runtime identity lifecycle,
 same-SHA reuse, stale cleanup, ownership safety and existing shutdown/readiness
-behavior. Real temporary bare-origin/clone tests cover remote fast-forward,
-dirty worktree refusal, ahead/diverged refusal, preserved untracked files and
-changed-SHA reexec. No database migration or Product data change is required.
+behavior. Real temporary filesystem tests prove one create-only winner and
+complete JSON contents; real temporary bare-origin/clone tests cover remote
+fast-forward, dirty worktree refusal, ahead/diverged refusal, preserved
+untracked files and changed-SHA reexec. No database migration or Product data
+change is required.
 
 Rollback removes the launcher preflight/runtime wiring and ADR reference while
 leaving Product and database schema state untouched. A replacement launcher

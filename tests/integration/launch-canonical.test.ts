@@ -114,6 +114,13 @@ const makeFakeDeps = (rootDirectory: string, overrides: Partial<CanonicalLaunchD
       written.push(identity);
       records.set('identity', identity);
     },
+    reserveIdentity: async (_identityPath, identity) => {
+      if (rawIdentity !== undefined) return false;
+      rawIdentity = identity;
+      written.push(identity);
+      records.set('identity', identity);
+      return true;
+    },
     removeIdentity: async (identityPath) => {
       rawIdentity = undefined;
       removed.push(identityPath);
@@ -158,10 +165,15 @@ const makeFakeDeps = (rootDirectory: string, overrides: Partial<CanonicalLaunchD
   };
 };
 
-const identityFor = (rootDirectory: string, sha: string): LauncherRuntimeIdentity => ({
+const identityFor = (
+  rootDirectory: string,
+  sha: string,
+  phase: 'starting' | 'ready' = 'ready',
+  ownershipNonce = 'old-nonce',
+): LauncherRuntimeIdentity => ({
   schemaVersion: 1,
   launcherId: LAUNCHER_ID,
-  phase: 'ready',
+  phase,
   pid: 4567,
   processStartedAt: 'process-start',
   repoRoot: rootDirectory,
@@ -171,7 +183,7 @@ const identityFor = (rootDirectory: string, sha: string): LauncherRuntimeIdentit
   port: 3300,
   url: 'http://127.0.0.1:3300',
   startedAt: '2026-09-15T11:00:00.000Z',
-  ownershipNonce: 'old-nonce',
+  ownershipNonce,
 });
 
 describe('RUS-2-C1 canonical repository preflight', () => {
@@ -228,6 +240,65 @@ describe('RUS-2-C1 canonical repository preflight', () => {
       await outcome.runtime.release();
     }
     expect(fixture.deps.runGit).toHaveBeenCalledWith(root, ['fetch', 'origin', 'main']);
+  });
+
+  it('allows exactly one of two simultaneous preflights to reserve startup', async () => {
+    const root = await makeRoot('shotgun-launch-concurrent-');
+    const fixture = makeFakeDeps(root);
+    let stored: unknown | undefined;
+    const deps: CanonicalLaunchDeps = {
+      ...fixture.deps,
+      readIdentity: async () => stored,
+      reserveIdentity: async (_identityPath, identity) => {
+        if (stored !== undefined) return false;
+        stored = identity;
+        return true;
+      },
+    };
+    const results = await Promise.allSettled([
+      runCanonicalLaunchPreflight(makeOptions(root), deps),
+      runCanonicalLaunchPreflight(makeOptions(root), deps),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'RUNTIME_START_IN_PROGRESS' },
+    });
+    const winner = results.find((result) => result.status === 'fulfilled');
+    if (winner?.status === 'fulfilled' && winner.value.kind === 'start') {
+      await winner.value.runtime.release();
+    }
+  });
+
+  it('uses a real create-only reservation with complete JSON contents', async () => {
+    const root = await makeRoot('shotgun-launch-reservation-fs-');
+    const identityPath = path.join(root, '.data', 'launcher', 'runtime.json');
+    const first = identityFor(
+      root,
+      '3333333333333333333333333333333333333333',
+      'starting',
+      'first-nonce',
+    );
+    const second = identityFor(
+      root,
+      '4444444444444444444444444444444444444444',
+      'starting',
+      'second-nonce',
+    );
+    const deps = createDefaultCanonicalLaunchDeps();
+    const reservations = await Promise.all([
+      deps.reserveIdentity(identityPath, first),
+      deps.reserveIdentity(identityPath, second),
+    ]);
+    expect(reservations.filter(Boolean)).toHaveLength(1);
+    const stored = JSON.parse(await readFile(identityPath, 'utf8')) as LauncherRuntimeIdentity;
+    expect([first.ownershipNonce, second.ownershipNonce]).toContain(stored.ownershipNonce);
+    expect(stored.phase).toBe('starting');
+    expect(stored.sha).toBe(
+      stored.ownershipNonce === first.ownershipNonce ? first.sha : second.sha,
+    );
   });
 
   it('fetches a new origin commit, fast-forwards, and requests self-reexec before startup', async () => {
@@ -329,6 +400,39 @@ describe('RUS-2-C1 runtime identity and ownership', () => {
     expect(fixture.terminated).toHaveLength(0);
   });
 
+  it('removes a dead starting identity and acquires a new reservation', async () => {
+    const root = await makeRoot('shotgun-launch-dead-starting-');
+    const fixture = makeFakeDeps(root, { inspectProcess: async () => ({ alive: false }) });
+    fixture.rawIdentity = identityFor(root, '3333333333333333333333333333333333333333', 'starting');
+    const outcome = await runCanonicalLaunchPreflight(makeOptions(root), fixture.deps);
+    expect(outcome.kind).toBe('start');
+    expect(fixture.removed).toHaveLength(1);
+    expect(fixture.written).toHaveLength(1);
+    expect(fixture.written[0]).toMatchObject({ phase: 'starting', sha: fixture.remoteSha });
+  });
+
+  it('does not terminate or replace a proven live starting owner', async () => {
+    const root = await makeRoot('shotgun-launch-starting-');
+    const fixture = makeFakeDeps(root);
+    fixture.rawIdentity = identityFor(root, fixture.remoteSha, 'starting');
+    await expect(
+      runCanonicalLaunchPreflight(makeOptions(root), fixture.deps),
+    ).rejects.toMatchObject({ code: 'RUNTIME_START_IN_PROGRESS' });
+    expect(fixture.terminated).toHaveLength(0);
+    expect(fixture.written).toHaveLength(0);
+  });
+
+  it('fails closed for a proven live different-SHA starting owner', async () => {
+    const root = await makeRoot('shotgun-launch-starting-stale-');
+    const fixture = makeFakeDeps(root);
+    fixture.rawIdentity = identityFor(root, '3333333333333333333333333333333333333333', 'starting');
+    await expect(
+      runCanonicalLaunchPreflight(makeOptions(root), fixture.deps),
+    ).rejects.toMatchObject({ code: 'RUNTIME_START_IN_PROGRESS' });
+    expect(fixture.terminated).toHaveLength(0);
+    expect(fixture.written).toHaveLength(0);
+  });
+
   it('reuses only an owned same-SHA runtime after readiness succeeds', async () => {
     const root = await makeRoot('shotgun-launch-reuse-');
     const fixture = makeFakeDeps(root);
@@ -414,5 +518,29 @@ describe('RUS-2-C1 runtime identity and ownership', () => {
     expect(fixture.written.at(-1)).toMatchObject({ phase: 'ready', ownershipNonce: 'nonce-1' });
     await outcome.runtime.release();
     expect(fixture.removed).toHaveLength(1);
+  });
+
+  it('reclassifies a reservation race loser without overwriting the winner', async () => {
+    const root = await makeRoot('shotgun-launch-race-loser-');
+    const fixture = makeFakeDeps(root);
+    let reads = 0;
+    let winner: LauncherRuntimeIdentity | undefined;
+    const deps: CanonicalLaunchDeps = {
+      ...fixture.deps,
+      readIdentity: async () => {
+        reads += 1;
+        return reads === 1 ? undefined : winner;
+      },
+      reserveIdentity: async (_identityPath, identity) => {
+        winner = identity;
+        return false;
+      },
+    };
+    await expect(runCanonicalLaunchPreflight(makeOptions(root), deps)).rejects.toMatchObject({
+      code: 'RUNTIME_START_IN_PROGRESS',
+    });
+    expect(winner).toMatchObject({ phase: 'starting', sha: fixture.remoteSha });
+    expect(fixture.written).toHaveLength(0);
+    expect(fixture.terminated).toHaveLength(0);
   });
 });

@@ -2045,6 +2045,10 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
   it('proves C6 semantic credential recovery through PostgreSQL and the normal Product recompare path', async () => {
     await migrateUpTo(undefined, databaseUrl!);
 
+    const previousCredentialMasterKey = process.env.SHOTGUN_CREDENTIAL_MASTER_KEY;
+    const previousCredentialMasterKeyVersion = process.env.SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION;
+    process.env.SHOTGUN_CREDENTIAL_MASTER_KEY = randomBytes(32).toString('base64url');
+    process.env.SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION = 'c6-test';
     const provider = new DeterministicOpenAIProvider();
     await provider.listen();
     const fixture = await createFixture();
@@ -2535,6 +2539,16 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
     } finally {
       await application.server.close();
       await provider.close();
+      if (previousCredentialMasterKey === undefined) {
+        delete process.env.SHOTGUN_CREDENTIAL_MASTER_KEY;
+      } else {
+        process.env.SHOTGUN_CREDENTIAL_MASTER_KEY = previousCredentialMasterKey;
+      }
+      if (previousCredentialMasterKeyVersion === undefined) {
+        delete process.env.SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION;
+      } else {
+        process.env.SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION = previousCredentialMasterKeyVersion;
+      }
     }
   });
 });

@@ -21,6 +21,17 @@ but existing READY Candidates had no initial Product entry point. The `/review`
 route correctly remained guarded until a real comparison produced Review
 attention, so a Source Detail action was required.
 
+The C5 correction also records the exact first CI failure. On reviewed head
+`0cb92d74b9cf3de5df3b1debce7e34688831f4b1`, CI `34965962023` failed in
+`tests/database/comparison-reentry-product-postgres.test.ts`, test
+`Stage 5 Product re-entry on PostgreSQL application composition > executes V2 through the authenticated Product route and reuses the persisted lineage before provider execution`.
+The assertion expected the Candidate Product GET to return `200` but received
+`500`. The fixture supplied an object with only `getProjectSettingValue`; the
+Sources Product route's authenticated scope builder also requires
+`getSettingsSnapshot`. This was classified as a test fixture/Product
+composition fixture defect, not a Product authority defect. The correction uses
+the normal `InMemorySettingsRepository` and overrides only its rollout getter.
+
 ## OSS integration decision
 
 `NO_RELEVANT_OSS` for the new bounded Product read/action entry and its
@@ -92,16 +103,45 @@ Observed focused gates on this branch:
 - `npm run frontend:typecheck`: passed;
 - `npm run frontend:test` baseline suite before the new file: 49 files, 376
   tests passed; the new focused file adds 2 passing tests;
-- PostgreSQL application-composition regression was updated to exercise the
-  live candidate projection ordering and exact-version masking. It requires
-  the repository's guarded `TEST_DATABASE_URL`; the guarded run is recorded
-  separately when the environment provides a test database.
+- the historical PostgreSQL re-entry regression remains covered, and the
+  separate `tests/database/rus-2-c5-initial-v2-product-postgres.test.ts` adds
+  the required fresh initial-entry lifecycle. It creates one active Project,
+  one Source/SourceVersion, three usable Evidence spans, exactly two READY
+  Candidates at revision 1, and starts with `comparison.results_v2 = 0` and
+  zero Review V2 drafts. The test uses the Product-returned Candidate list
+  identities for both actions; it does not look up Candidate identity from
+  PostgreSQL after that read.
+- the same fresh flow proves a READY/current deterministic semantic generation
+  and `V2_ACTIVE`, pre-action Home has no `REVIEW_DECISION` attention and
+  `/review` returns `FEATURE_UNAVAILABLE`, Candidate A returns the exact
+  `V2_ACTIVE` / `v1Executed: false` / `COMPLETED` / `DRAFT_CREATED` tuple,
+  authoritative Comparison V2 and Review V2 lineage binds Candidate revision,
+  Canonical version/digest, and semantic generation identity, and the post-A
+  Home projection exposes `REVIEW_DECISION` while `/review` returns `ALLOW`.
+  Candidate B then creates its own Comparison V2 and Review V2 draft with a
+  distinct key. A same-key A replay returns the duplicate logical outcome with
+  exactly two V2 comparisons and two Review V2 drafts, while Canonical version,
+  digest, claims, and commit count remain unchanged.
+- the repository's exact-head CI `34970226495` for
+  `9be4505a9e693e523affce6f499caf722b780d2d` passed Quality (including real
+  PostgreSQL DB tests), Frontend, Frontend E2E, and Required Gates. The CI
+  included the fresh regression; the local guarded run skips both PostgreSQL
+  tests when `TEST_DATABASE_URL` is absent.
 
 The full repository quality, documentation, secret-scan, OSS, frontend build,
 and CI-equivalent gates must pass before merge. This PR intentionally stops
 before merge and before resuming the live J4 owner journey.
 
 ## Limits and handoff
+
+Changed files since the reviewed C5 head are limited to the fixture-only
+settings correction in `tests/database/comparison-reentry-product-postgres.test.ts`,
+the fresh regression in
+`tests/database/rus-2-c5-initial-v2-product-postgres.test.ts`, and this
+validation record. No migration, dependency, ADR, Product authority, route
+guard policy, Canonical write, or live J4 state changed. The correction is
+reversible by reverting the three files; the existing durable data contracts
+and runtime remain unchanged.
 
 This is a narrow Product-entry correction, not a declaration that the full
 RUS-2 journey is complete. The branch must receive GPT review, pass post-merge

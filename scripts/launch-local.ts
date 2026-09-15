@@ -23,7 +23,11 @@ import { fileURLToPath } from 'node:url';
 import 'dotenv/config';
 
 import { LaunchFailure, runLaunch } from './launch-core.js';
-import { createDefaultLaunchDeps } from './launch-default-deps.js';
+import {
+  createDefaultCanonicalLaunchDeps,
+  runCanonicalLaunchPreflight,
+} from './launch-canonical.js';
+import { installSignalShutdown } from '../assemblies/shotgun-app/src/shutdown.js';
 
 const rootDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -31,20 +35,75 @@ const main = async (): Promise<void> => {
   const args = process.argv.slice(2);
   const noOpen = args.includes('--no-open');
   const spaDirectory = path.join(rootDirectory, 'apps', 'shotgun-web', 'dist');
-
-  const application = await runLaunch(
+  const canonical = await runCanonicalLaunchPreflight(
     {
-      noOpen,
-      port: Number.parseInt(process.env.PORT ?? '3000', 10),
-      host: process.env.HOST ?? '127.0.0.1',
-      spaDirectory,
       rootDirectory,
-      env: process.env,
-      environmentProfile: 'runtime-development',
+      host: process.env.HOST ?? '127.0.0.1',
+      port: Number.parseInt(process.env.PORT ?? '3000', 10),
+      reexecCount: Number.parseInt(process.env.SHOTGUN_LAUNCH_REEXEC_COUNT ?? '0', 10),
+      log: (message) => console.log(message),
     },
-    createDefaultLaunchDeps(),
+    createDefaultCanonicalLaunchDeps(),
   );
+
+  if (canonical.kind === 'reexec') {
+    process.exit(canonical.exitCode);
+    return;
+  }
+
+  if (canonical.kind === 'reuse') {
+    const { openBrowser } = await import('./launch-core.js');
+    if (!noOpen) {
+      const result = openBrowser(process.platform, canonical.identity.url);
+      if (!result.ok) {
+        console.warn(`[launch] WARN  could not open the browser automatically (${result.reason}).`);
+      }
+    } else {
+      console.log('[launch] --no-open: browser open skipped.');
+    }
+    console.log(`[launch] Open ${canonical.identity.url} manually if the browser did not open.`);
+    return;
+  }
+
+  const { createDefaultLaunchDeps } = await import('./launch-default-deps.js');
+
+  let application;
+  try {
+    application = await runLaunch(
+      {
+        noOpen,
+        noSignals: true,
+        onReady: canonical.runtime.markReady,
+        port: canonical.runtime.identity.port,
+        host: canonical.runtime.identity.host,
+        spaDirectory,
+        rootDirectory,
+        env: process.env,
+        environmentProfile: 'runtime-development',
+      },
+      createDefaultLaunchDeps(),
+    );
+  } catch (error) {
+    await canonical.runtime.release().catch(() => {});
+    throw error;
+  }
   if (!application) throw new Error('unreachable: launch returned without an application.');
+
+  let closed = false;
+  const close = async (): Promise<void> => {
+    if (closed) return;
+    closed = true;
+    try {
+      await application.close();
+    } finally {
+      await canonical.runtime.release();
+    }
+  };
+
+  installSignalShutdown({
+    close,
+    exit: (code) => process.exit(code),
+  });
 
   // 7. Keep the process alive; SIGINT/SIGTERM shutdown is handled by the
   //    runtime boundary (LPA-D09, idempotent). This await never resolves until

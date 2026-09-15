@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useOutletContext, useParams, useSearchParams } from 'react-router';
 
 import {
@@ -27,8 +27,40 @@ import {
   decodeKnowledgeEvidenceReturnState,
   knowledgeEvidenceReturnState,
 } from '../knowledge/knowledge-ui.js';
+import {
+  clearPendingSourceReextractCommandIdentity,
+  getSourceReextractCommandStorage,
+  readPendingSourceReextractCommandIdentity,
+  writePendingSourceReextractCommandIdentity,
+  type PendingSourceReextractCommandIdentityV1,
+} from './source-reextract-command-storage.js';
 
 type SourceDetailViewName = 'preview' | 'evidence' | 'versions';
+
+type SourceReextractRequest = PendingSourceReextractCommandIdentityV1;
+
+const isOutcomeIndeterminateError = (error: unknown): boolean => {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { readonly code?: unknown; readonly recovery?: unknown };
+  return (
+    candidate.code === 'OUTCOME_INDETERMINATE' ||
+    candidate.code === 'OUTCOME_UNKNOWN' ||
+    candidate.recovery === 'RESOLVE_EXISTING_OUTCOME'
+  );
+};
+
+const newSourceReextractIdentity = (
+  projectId: string,
+  sourceId: string,
+  sourceVersionId: string,
+): SourceReextractRequest => ({
+  schemaVersion: '1.0.0',
+  projectId,
+  sourceId,
+  sourceVersionId,
+  clientRequestId: globalThis.crypto.randomUUID(),
+  idempotencyKey: globalThis.crypto.randomUUID(),
+});
 
 const isSourceDetailViewName = (value: string | null): value is SourceDetailViewName =>
   value === 'preview' || value === 'evidence' || value === 'versions';
@@ -133,31 +165,97 @@ export const SourceDetailWorkspace = () => {
   const evidence = useQuery(
     sourceEvidenceQueryOptions(apiClient, shell, sourceId, selectedVersionId),
   );
+  const activeProjectId = shell.activeProject?.id;
+  const [pendingReextractIdentity, setPendingReextractIdentity] = useState<
+    SourceReextractRequest | undefined
+  >();
+  const pendingReextractIdentityRef = useRef<SourceReextractRequest | undefined>(undefined);
+  const reextractTarget = useMemo(
+    () =>
+      activeProjectId && sourceId && selectedVersionId
+        ? { projectId: activeProjectId, sourceId, sourceVersionId: selectedVersionId }
+        : undefined,
+    [activeProjectId, selectedVersionId, sourceId],
+  );
+  useEffect(() => {
+    const storage = getSourceReextractCommandStorage();
+    const identity =
+      storage && reextractTarget
+        ? readPendingSourceReextractCommandIdentity(
+            storage,
+            reextractTarget.projectId,
+            reextractTarget.sourceId,
+            reextractTarget.sourceVersionId,
+          )
+        : null;
+    pendingReextractIdentityRef.current = identity ?? undefined;
+    setPendingReextractIdentity(identity ?? undefined);
+  }, [reextractTarget]);
   const [reextractFeedback, setReextractFeedback] = useState<
     { readonly kind: 'success' | 'error'; readonly message: string } | undefined
   >();
   const reextractMutation = useMutation({
-    mutationFn: () => {
-      const activeProjectId = shell.activeProject?.id;
+    mutationFn: (request: SourceReextractRequest) => {
       if (!activeProjectId) throw new Error('An active Project is required.');
       return apiClient.reextractSourceVersionCandidates({
         activeProjectId,
         targetProjectId: activeProjectId,
         resourceProjectId: activeProjectId,
-        sourceId,
-        sourceVersionId: selectedVersionId,
-        clientRequestId: globalThis.crypto.randomUUID(),
-        idempotencyKey: globalThis.crypto.randomUUID(),
+        sourceId: request.sourceId,
+        sourceVersionId: request.sourceVersionId,
+        clientRequestId: request.clientRequestId,
+        idempotencyKey: request.idempotencyKey,
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (_response, request) => {
+      const storage = getSourceReextractCommandStorage();
+      if (storage) {
+        clearPendingSourceReextractCommandIdentity(
+          storage,
+          request.projectId,
+          request.sourceId,
+          request.sourceVersionId,
+        );
+      }
+      if (
+        reextractTarget?.projectId === request.projectId &&
+        reextractTarget.sourceId === request.sourceId &&
+        reextractTarget.sourceVersionId === request.sourceVersionId
+      ) {
+        pendingReextractIdentityRef.current = undefined;
+        setPendingReextractIdentity(undefined);
+      }
       setReextractFeedback({
         kind: 'success',
         message: t('source_detail.reprocess_ai_success'),
       });
       await Promise.all([history.refetch(), evidence.refetch()]);
     },
-    onError: (error) => {
+    onError: (error, request) => {
+      if (isOutcomeIndeterminateError(error)) {
+        setReextractFeedback({
+          kind: 'error',
+          message: t('source_detail.reprocess_ai_outcome_indeterminate'),
+        });
+        return;
+      }
+      const storage = getSourceReextractCommandStorage();
+      if (storage) {
+        clearPendingSourceReextractCommandIdentity(
+          storage,
+          request.projectId,
+          request.sourceId,
+          request.sourceVersionId,
+        );
+      }
+      if (
+        reextractTarget?.projectId === request.projectId &&
+        reextractTarget.sourceId === request.sourceId &&
+        reextractTarget.sourceVersionId === request.sourceVersionId
+      ) {
+        pendingReextractIdentityRef.current = undefined;
+        setPendingReextractIdentity(undefined);
+      }
       setReextractFeedback({
         kind: 'error',
         message: `${t('source_detail.reprocess_ai_failed')} ${safeErrorMessage(error)}`,
@@ -224,6 +322,43 @@ export const SourceDetailWorkspace = () => {
   const reextractNeedsConfiguration =
     reextractMutation.error instanceof ShotgunApiError &&
     reextractMutation.error.code === 'CONFIGURATION_REQUIRED';
+  const pendingReextractForTarget =
+    pendingReextractIdentity &&
+    reextractTarget &&
+    pendingReextractIdentity.projectId === reextractTarget.projectId &&
+    pendingReextractIdentity.sourceId === reextractTarget.sourceId &&
+    pendingReextractIdentity.sourceVersionId === reextractTarget.sourceVersionId
+      ? pendingReextractIdentity
+      : undefined;
+  const handleReextract = () => {
+    if (!reextractTarget || reextractMutation.isPending) return;
+    const storage = getSourceReextractCommandStorage();
+    const persisted = storage
+      ? readPendingSourceReextractCommandIdentity(
+          storage,
+          reextractTarget.projectId,
+          reextractTarget.sourceId,
+          reextractTarget.sourceVersionId,
+        )
+      : null;
+    const current = pendingReextractIdentityRef.current;
+    const request =
+      current?.projectId === reextractTarget.projectId &&
+      current.sourceId === reextractTarget.sourceId &&
+      current.sourceVersionId === reextractTarget.sourceVersionId
+        ? current
+        : (persisted ??
+          newSourceReextractIdentity(
+            reextractTarget.projectId,
+            reextractTarget.sourceId,
+            reextractTarget.sourceVersionId,
+          ));
+    if (storage) writePendingSourceReextractCommandIdentity(storage, request);
+    pendingReextractIdentityRef.current = request;
+    setPendingReextractIdentity(request);
+    setReextractFeedback(undefined);
+    reextractMutation.mutate(request);
+  };
 
   if (detail.isPending) return <LoadingState message={t('source_detail.loading')} />;
   if (detail.error) return <ErrorState error={detail.error} />;
@@ -279,14 +414,12 @@ export const SourceDetailWorkspace = () => {
         >
           <h2 id="source-ai-heading">{t('source_detail.reprocess_ai_heading')}</h2>
           <p>{t('source_detail.reprocess_ai_explanation')}</p>
-          <button
-            type="button"
-            onClick={() => reextractMutation.mutate()}
-            disabled={reextractMutation.isPending}
-          >
+          <button type="button" onClick={handleReextract} disabled={reextractMutation.isPending}>
             {reextractMutation.isPending
               ? t('source_detail.reprocess_ai_pending')
-              : t('source_detail.reprocess_ai')}
+              : pendingReextractForTarget
+                ? t('source_detail.reprocess_ai_resolve')
+                : t('source_detail.reprocess_ai')}
           </button>
           {reextractFeedback ? (
             <p role={reextractFeedback.kind === 'error' ? 'alert' : 'status'}>

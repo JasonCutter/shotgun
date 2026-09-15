@@ -460,9 +460,12 @@ const enUS = {
   'source_detail.reprocess_ai_explanation':
     'Restart AI processing for this Source version using the current Project configuration.',
   'source_detail.reprocess_ai': 'Retry AI processing',
+  'source_detail.reprocess_ai_resolve': 'Resolve previous AI processing request',
   'source_detail.reprocess_ai_pending': 'Restarting AI processing…',
   'source_detail.reprocess_ai_success': 'AI processing restarted for this Source version.',
   'source_detail.reprocess_ai_failed': 'AI processing could not be restarted.',
+  'source_detail.reprocess_ai_outcome_indeterminate':
+    'The previous AI processing request could not be confirmed. Retry to resolve it safely.',
   'source_detail.reprocess_ai_configure': 'Open Settings → AI to configure processing.',
   'discovery.eyebrow': 'Knowledge discovery',
   'discovery.title': 'Discovery Inbox',
@@ -1224,9 +1227,12 @@ const koKR: Record<ProductMessageKey, string> = {
   'source_detail.reprocess_ai_explanation':
     '현재 Project 설정으로 이 소스 버전의 AI 처리를 다시 시작합니다.',
   'source_detail.reprocess_ai': 'AI 처리 다시 시도',
+  'source_detail.reprocess_ai_resolve': '이전 AI 처리 요청 확인',
   'source_detail.reprocess_ai_pending': 'AI 처리를 다시 시작하는 중…',
   'source_detail.reprocess_ai_success': '이 소스 버전의 AI 처리를 다시 시작했습니다.',
   'source_detail.reprocess_ai_failed': 'AI 처리를 다시 시작하지 못했습니다.',
+  'source_detail.reprocess_ai_outcome_indeterminate':
+    '이전 AI 처리 요청의 결과를 확인하지 못했습니다. 같은 요청을 안전하게 확인하려면 다시 시도하세요.',
   'source_detail.reprocess_ai_configure': '설정 → AI에서 처리를 구성하세요.',
   'discovery.eyebrow': '지식 발견',
   'discovery.title': '발견 Inbox',

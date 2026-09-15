@@ -712,7 +712,6 @@ describe('RUS-2-C7 real PostgreSQL causal semantic convergence acceptance', () =
               {
                 evidenceId: fixture.evidenceId,
                 sourceVersionId: fixture.sourceVersionId,
-                sourceId: fixture.sourceId,
               },
             ],
           },

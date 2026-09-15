@@ -258,6 +258,8 @@ export type StartShotgunApplicationOptions = {
   readonly assetRoot?: string;
   /** LPA-WP5 (D12 recovery harness): disable the periodic recovery worker. */
   readonly recoveryIntervalMs?: number | false;
+  /** Disable or override the bounded Stage 11 Action feedback dispatcher. */
+  readonly actionFeedbackOutboxIntervalMs?: number | false;
   /** LPA-WP5 (D12 recovery harness): do not install SIGINT/SIGTERM handlers. */
   readonly noSignals?: boolean;
   /** LPA-WP5 (D12 recovery harness): do NOT start the Ask answer background
@@ -1277,6 +1279,11 @@ export const startShotgunApplication = async (
       ...(options.recoveryIntervalMs === undefined
         ? {}
         : { canonicalProjectionRecoveryIntervalMs: options.recoveryIntervalMs }),
+      ...(options.actionFeedbackOutboxIntervalMs === undefined
+        ? recoveryHarness
+          ? { actionFeedbackOutboxIntervalMs: false }
+          : {}
+        : { actionFeedbackOutboxIntervalMs: options.actionFeedbackOutboxIntervalMs }),
       // R3-1: recovery harness runs ONLY the Canonical Projection Recovery —
       // the AI Durable Materialization Recovery is disabled for recovery-only
       // composition. The normal launch keeps it enabled (default true).

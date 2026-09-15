@@ -138,6 +138,83 @@ const pongEvent = (requestId: string, sequence = 1) =>
     },
   });
 
+const publisherWithOutcome = (consumerId: string): ShotgunModule => ({
+  manifest: {
+    id: 'stage1.outcome-publisher',
+    version: '1.0.0',
+    owner: 'Reliability test',
+    compatibility: {
+      runtime: '>=1.0.0 <2.0.0',
+      contracts: [
+        { name: 'PublishPong', range: '>=1.0.0 <2.0.0' },
+        { name: 'PongEvent', range: '>=1.0.0 <2.0.0' },
+      ],
+    },
+    deployment: { modes: ['in_process'] },
+    dataOwnership: {
+      owns: ['stage1.outcome-publisher-state'],
+      readsViaPorts: [],
+      directSchemaAccess: false,
+    },
+    consumes: { commands: [{ name: 'PublishPong', range: '>=1.0.0 <2.0.0' }], events: [] },
+    produces: {
+      events: [{ name: 'PongEvent', range: '>=1.0.0 <2.0.0' }],
+      handoffs: [
+        {
+          event: { name: 'PongEvent', range: '>=1.0.0 <2.0.0' },
+          target: { kind: 'consumer', moduleId: consumerId },
+          tags: ['REQUIRED_ACK'],
+        },
+      ],
+    },
+    provides: { queries: [], capabilities: [] },
+    requires: { capabilities: [] },
+    security: {
+      requiredContext: ['actor', 'project', 'access_scope', 'sensitivity'],
+      defaultOnMissingContext: 'deny',
+    },
+    approvalPolicy: { canWriteCanonical: false, canExecuteExternalAction: false },
+  },
+  contracts: [
+    {
+      name: 'PublishPong',
+      version: '1.0.0',
+      kind: 'command',
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['requestId'],
+        properties: { requestId: { type: 'string', minLength: 1 } },
+      },
+    },
+    { name: 'PongEvent', version: '1.0.0', kind: 'event', inputSchema: pongEventSchema },
+  ],
+  handlers: {
+    commands: [
+      {
+        messageType: 'PublishPong',
+        version: '1.0.0',
+        requiredAccessScopes: ['owner'],
+        async handle(envelope, context) {
+          return context.publishWithOutcome!({
+            messageType: 'PongEvent',
+            schemaVersion: '1.0.0',
+            idempotencyKey: `pong:${(envelope.payload as { requestId: string }).requestId}`,
+            orderingKey: (envelope.payload as { requestId: string }).requestId,
+            sequence: 1,
+            payload: {
+              requestId: (envelope.payload as { requestId: string }).requestId,
+              reply: 'outcome-publisher',
+            },
+          });
+        },
+      },
+    ],
+    events: [],
+    queries: [],
+  },
+});
+
 describe('Connector reliability', () => {
   it('keeps a post-handler ordering ambiguity unknown and never re-enters the handler', async () => {
     class AmbiguousOrderingStore extends InMemoryOrderingStore {
@@ -525,6 +602,58 @@ describe('Connector reliability', () => {
         .list()
         .some((entry) => entry.consumerId === 'stage1.required-failure'),
     ).toBe(true);
+  });
+
+  it('exposes required dead-letter as accepted handoff and requires explicit governed replay', async () => {
+    let available = false;
+    let calls = 0;
+    const consumer = eventConsumer(
+      'stage1.governed-dlq',
+      () => {
+        calls += 1;
+        if (!available) {
+          throw new ShotgunError({
+            code: 'TERMINAL_FAILURE',
+            safeMessage: 'Governed consumer is unavailable.',
+            module: 'stage1.governed-dlq',
+            operation: 'PongEvent',
+          });
+        }
+      },
+      true,
+    );
+    const kernel = new ShotgunKernel(new InProcessTransport());
+    kernel.register(publisherWithOutcome('stage1.governed-dlq'), consumer);
+    await kernel.start();
+    const command = createCommand({
+      messageType: 'PublishPong',
+      schemaVersion: '1.0.0',
+      producerModule: 'reliability-test',
+      producerVersion: '1.0.0',
+      idempotencyKey: 'publish-governed-dlq',
+      projectId: 'project-governed-dlq',
+      actor: { type: 'service', id: 'owner' },
+      security: {
+        accessScope: ['owner'],
+        sensitivity: 'public',
+        dataClassification: 'reliability-test',
+      },
+      payload: { requestId: 'governed-dlq' },
+    });
+
+    await expect(kernel.connector.sendCommand(command)).resolves.toMatchObject({
+      result: { requiredConsumerDeadLetter: true },
+    });
+    expect(calls).toBe(1);
+    const deadLetterId = kernel.connector.deadLetters.list()[0]?.deadLetterId;
+    expect(deadLetterId).toBeDefined();
+    await kernel.connector.sendCommand(command);
+    expect(calls).toBe(1);
+
+    available = true;
+    await kernel.connector.replay(deadLetterId!, 'operator-approved governed replay');
+    expect(calls).toBe(2);
+    expect(kernel.connector.deadLetters.get(deadLetterId!).status).toBe('resolved');
   });
 
   it('does not retry a timed-out command with an unknown outcome', async () => {

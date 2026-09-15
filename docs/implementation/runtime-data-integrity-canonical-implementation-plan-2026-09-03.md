@@ -217,9 +217,11 @@ WP-00에서 번호를 예약한 뒤 아래 두 결정만 ADR 또는 기존 ADR a
 
 1. **Evidence indexing result와 Stage 4 continuation 소유권**: Evidence producer가 자기
    transaction에 producer outbox를 기록하고, Connector/dispatcher는 전달만 책임진다.
-2. **ActionFeedbackRecorded disposition**: 권고안은 최소 `ACTION_REVIEW` work item 생성
-   consumer다. 자동 Canonical write와 자동 재실행은 금지한다. 이를 연기한다면 manifest와
-   topology에 `DEFER` 및 활성화 조건을 명시해야 하며 orphan event로 방치할 수 없다.
+2. **ActionFeedbackRecorded disposition**: ADR-158에서 최소 `ACTION_REVIEW` work item
+   consumer를 채택했고, ADR-166에서 producer-owned `action.action_feedback_outbox`와
+   동일 트랜잭션 Action/audit handoff를 확정했다. 자동 Canonical write와 자동 재실행은
+   계속 금지한다. D11-4가 완료되기 전의 post-COMMIT gap은 ADR-166의 migration,
+   dispatcher, backfill, ACK-loss readback 계약으로 보정한다.
 
 ### 6.3 OSS Integration Decision
 
@@ -771,6 +773,10 @@ routes는 다시 구현하지 않는다.
 
 권고 구현은 `ActionFeedbackRecorded`를 소비해 durable `ACTION_REVIEW` work item을
 정확히 한 번 생성하는 최소 adapter다.
+
+D11-4 보정은 ADR-166에 따라 Action producer가 `action.action_feedback_outbox`를
+소유한다. `Action` projection·audit·feedback intent는 하나의 PostgreSQL transaction에
+기록되고, bounded dispatcher는 persisted intent만 기존 required-ack handoff로 전달한다.
 
 - idempotency key: action execution/verification/feedback semantic identity.
 - 저장 정보: canonical/action resource reference, outcome classification, safe evidence

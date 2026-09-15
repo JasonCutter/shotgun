@@ -16,6 +16,8 @@ import { InMemoryJobRuntime, type AttemptRecord } from '../../job-runtime/src/in
 import type {
   DispatchQueryInput,
   HandlerContext,
+  PublishEventInput,
+  PublishEventOutcome,
   RegisteredCommandHandler,
   RegisteredEventHandler,
   RegisteredQueryHandler,
@@ -1004,38 +1006,46 @@ export class ConnectorRuntime {
     attempt: AttemptRecord,
     isActive?: () => boolean,
   ): HandlerContext {
-    return {
-      moduleId: route.module.manifest.id,
-      attemptNumber: attempt.attemptNumber,
-      publish: async (input) => {
-        if (isActive && !isActive()) {
-          throw new ShotgunError({
-            code: 'OUTCOME_UNKNOWN',
-            safeMessage: 'The parent delivery outcome is unknown; child publication is fenced.',
-            module: route.module.manifest.id,
-            operation: input.messageType,
-            correlationId: parent.correlationId,
-          });
-        }
-        const event = {
-          ...createChildEvent(parent, {
-            ...input,
-            producerModule: route.module.manifest.id,
-            producerVersion: route.module.manifest.version,
-          }),
-          job: {
-            jobId: attempt.jobId,
-            attemptId: attempt.attemptId,
-            attemptNumber: attempt.attemptNumber,
-          },
-        };
-        const delivery = await this.publishEvent(event);
-        const requiredDeadLetter = delivery.consumers.find(
+    const publishChild = async <TPayload>(
+      input: PublishEventInput<TPayload>,
+    ): Promise<PublishEventOutcome> => {
+      if (isActive && !isActive()) {
+        throw new ShotgunError({
+          code: 'OUTCOME_UNKNOWN',
+          safeMessage: 'The parent delivery outcome is unknown; child publication is fenced.',
+          module: route.module.manifest.id,
+          operation: input.messageType,
+          correlationId: parent.correlationId,
+        });
+      }
+      const event = {
+        ...createChildEvent(parent, {
+          ...input,
+          producerModule: route.module.manifest.id,
+          producerVersion: route.module.manifest.version,
+        }),
+        job: {
+          jobId: attempt.jobId,
+          attemptId: attempt.attemptId,
+          attemptNumber: attempt.attemptNumber,
+        },
+      };
+      const delivery = await this.publishEvent(event);
+      return {
+        requiredConsumerDeadLetter: delivery.consumers.some(
           (consumer) =>
             consumer.status === 'dead-letter' &&
             consumer.requiredForPublisherAcknowledgement === true,
-        );
-        if (requiredDeadLetter) {
+        ),
+      };
+    };
+    return {
+      moduleId: route.module.manifest.id,
+      attemptNumber: attempt.attemptNumber,
+      publishWithOutcome: publishChild,
+      publish: async (input) => {
+        const outcome = await publishChild(input);
+        if (outcome.requiredConsumerDeadLetter) {
           throw new ShotgunError({
             code: 'TERMINAL_FAILURE',
             safeMessage:

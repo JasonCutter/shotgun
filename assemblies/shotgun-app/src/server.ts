@@ -392,6 +392,7 @@ import {
   type ActionCandidateRepositoryPort,
   type ActionExecutionRepositoryPort,
   createActionExecutionModule,
+  startActionFeedbackOutboxWorker,
 } from '../../../modules/action-execution/src/index.js';
 import {
   createActionFeedbackReviewModule,
@@ -898,6 +899,8 @@ export type ApplicationOptions = {
   readonly spaDirectory?: string;
   readonly canonicalProjectionRecoveryIntervalMs?: number | false;
   readonly canonicalProjectionRecoveryReporter?: CanonicalProjectionRecoveryReporterPort;
+  /** Bounded Action feedback outbox dispatcher; disabled by recovery harnesses. */
+  readonly actionFeedbackOutboxIntervalMs?: number | false;
   /**
    * Release-owned HTTP dates for legacy-route deprecation. Invalid or absent
    * values produce no Sunset header; the assembly never invents a date.
@@ -2792,6 +2795,17 @@ const createApplicationCore = async (
   );
   await kernel.start();
   cleanupStack.add('kernel connector runtime', () => kernel.shutdown());
+  const actionFeedbackOutboxWorker =
+    options.actionFeedbackOutboxIntervalMs === false
+      ? undefined
+      : startActionFeedbackOutboxWorker(
+          actionExecutionRepository,
+          kernel.connector,
+          options.actionFeedbackOutboxIntervalMs ?? 30_000,
+        );
+  if (actionFeedbackOutboxWorker) {
+    cleanupStack.add('action feedback outbox worker', () => actionFeedbackOutboxWorker.stop());
+  }
   const actionCenterProjection = new InMemoryActionCenterProjection(
     new CoordinatorActionCenterAttentionProjection(
       frontendReviewCoordinator,

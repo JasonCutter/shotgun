@@ -4,8 +4,8 @@ _Status: Accepted for WP-10 (RIC-N7/RIC-N8)_
 
 ## Context
 
-`ActionFeedbackRecorded` was emitted with a durable outbox identity but had no
-governed consumer. Separately, a Discovery quality-gate failure in
+`ActionFeedbackRecorded` had a governed consumer boundary but lacked a
+producer-owned durable handoff; ADR-166 closes that post-COMMIT gap. Separately, a Discovery quality-gate failure in
 `semanticEssenceForFinding` excluded one candidate and marked the run `PARTIAL`
 without leaving safe operational evidence. The existing Frontend Review V1
 contract is intentionally frozen and must not gain an external-action target.
@@ -40,8 +40,8 @@ value and is never emitted as one event per Finding or diagnostic row.
 
 ## Migration, disable, and rollback
 
-Migration `065_runtime_data_integrity_wp10_action_review_discovery_diagnostics.sql`
-is additive. Disabling the consumer stops new materialization; existing review
+Migrations `065_runtime_data_integrity_wp10_action_review_discovery_diagnostics.sql`
+and `074_adr166_stage11_action_feedback_outbox.sql` are additive. Disabling the consumer stops new materialization; existing review
 items remain durable and queryable. The Discovery diagnostic write can be
 disabled at the runtime adapter boundary while preserving candidate exclusion
 and `PARTIAL` semantics. Rollback removes the consumer registration only after

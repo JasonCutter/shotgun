@@ -5,6 +5,7 @@ import type {
   ActionAuditCategory,
   ActionAuditEvent,
   ActionExecutionRecord,
+  ActionExecutionStatus,
   ActionFeedback,
   ActionPreview,
   ActionVerification,
@@ -21,9 +22,14 @@ import {
   actionPayloadDigest,
   actionPreviewDigest,
   actionTargetDigest,
+  createCommand,
   ShotgunError,
 } from '../../../packages/contracts/src/index.js';
-import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
+import type {
+  HandlerContext,
+  PublishEventInput,
+  ShotgunModule,
+} from '../../../packages/module-sdk/src/index.js';
 import {
   ACTION_RISK_POLICY_VERSION,
   decideActionRisk,
@@ -96,6 +102,72 @@ export type IndependentVerificationPort = {
   ): Promise<CurrentActionBinding | undefined>;
 };
 
+export type ActionFeedbackStatus = ActionFeedback['status'];
+
+export type ActionFeedbackIntent = {
+  readonly projectId: string;
+  readonly actionId: string;
+  readonly semanticKey: string;
+  readonly status: ActionFeedbackStatus;
+  readonly reentryPhase: 'ACTION_REVIEW';
+  readonly occurredAt: string;
+  /** The exact Action.updatedAt value written by the transition. */
+  readonly sourceUpdatedAt: string;
+  readonly schemaVersion: '1.0.0';
+  readonly payload: ActionFeedback;
+};
+
+export type ActionFeedbackOutboxRecord = {
+  readonly outboxId: string;
+  readonly projectId: string;
+  readonly actionId: string;
+  readonly semanticKey: string;
+  readonly status: 'pending' | 'processing' | 'published';
+  readonly feedbackStatus: ActionFeedbackStatus;
+  readonly reentryPhase: 'ACTION_REVIEW';
+  readonly schemaVersion: '1.0.0';
+  readonly payload: ActionFeedback;
+  readonly occurredAt: string;
+  readonly sourceUpdatedAt: string;
+  readonly attempts: number;
+  readonly availableAt: string;
+  readonly claimedAt?: string;
+  readonly publishedAt?: string;
+  readonly lastError?: string;
+};
+
+export type ActionFeedbackOutboxRepositoryPort = {
+  listFeedbackOutboxProjectIds(): Promise<readonly string[]>;
+  findFeedbackOutbox(
+    projectId: string,
+    semanticKey: string,
+  ): Promise<ActionFeedbackOutboxRecord | undefined>;
+  claimFeedbackOutbox(
+    projectId: string,
+    semanticKey: string | undefined,
+    limit: number,
+    claimedAt: string,
+    staleBefore: string,
+  ): Promise<readonly ActionFeedbackOutboxRecord[]>;
+  markFeedbackOutboxPublished(
+    projectId: string,
+    outboxId: string,
+    attempt: number,
+    publishedAt: string,
+    expected?: Pick<
+      ActionFeedbackOutboxRecord,
+      'actionId' | 'semanticKey' | 'payload' | 'sourceUpdatedAt'
+    >,
+  ): Promise<void>;
+  releaseFeedbackOutbox(
+    projectId: string,
+    outboxId: string,
+    attempt: number,
+    error: string,
+  ): Promise<void>;
+  backfillFeedbackOutbox(limit: number, now: string): Promise<number>;
+};
+
 export type ActionTransition = {
   readonly expectedStatus: ActionExecutionRecord['status'];
   /** Optional exact optimistic-concurrency value checked after the repository locks the row. */
@@ -104,9 +176,10 @@ export type ActionTransition = {
   readonly category: ActionAuditCategory;
   readonly actorId: string;
   readonly details: ActionAuditEvent['details'];
+  readonly feedbackIntent?: ActionFeedbackIntent;
 };
 
-export type ActionExecutionRepositoryPort = {
+export type ActionExecutionRepositoryPort = ActionFeedbackOutboxRepositoryPort & {
   createPreview(
     record: ActionExecutionRecord,
     initialAudit: readonly Omit<ActionAuditEvent, 'auditEventId' | 'sequence'>[],
@@ -180,6 +253,12 @@ const actionIdSchema = {
   required: ['actionId'],
   properties: { actionId: { type: 'string', minLength: 1 } },
 };
+const dispatchFeedbackOutboxSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['limit'],
+  properties: { limit: { type: 'integer', minimum: 1, maximum: 100 } },
+};
 
 const assertContext = (envelope: CommandEnvelope | QueryEnvelope) => {
   if (!envelope.projectId || !envelope.actor || !envelope.security) {
@@ -214,6 +293,46 @@ const addMilliseconds = (iso: string, milliseconds: number): string =>
 const executeIdempotencyKey = (record: ActionExecutionRecord): string =>
   `action:${record.actionId}:${record.preview.previewDigest}`;
 const sensitivityRank = { public: 0, internal: 1, private: 2, restricted: 3 } as const;
+
+export const actionFeedbackStatusForExecution = (
+  status: ActionExecutionStatus,
+): ActionFeedbackStatus | undefined => {
+  switch (status) {
+    case 'VERIFIED':
+      return 'VERIFIED';
+    case 'OUTCOME_UNKNOWN':
+      return 'OUTCOME_UNKNOWN';
+    case 'FAILED':
+    case 'VERIFICATION_FAILED':
+      return 'FAILED';
+    default:
+      return undefined;
+  }
+};
+
+export const createActionFeedbackIntent = (
+  record: ActionExecutionRecord,
+): ActionFeedbackIntent | undefined => {
+  const status = actionFeedbackStatusForExecution(record.status);
+  if (status === undefined) return undefined;
+  const semanticKey = `action-feedback:${record.actionId}:${status}`;
+  return {
+    projectId: record.projectId,
+    actionId: record.actionId,
+    semanticKey,
+    status,
+    reentryPhase: 'ACTION_REVIEW',
+    occurredAt: record.updatedAt,
+    sourceUpdatedAt: record.updatedAt,
+    schemaVersion: '1.0.0',
+    payload: {
+      actionId: record.actionId,
+      status,
+      reentryPhase: 'ACTION_REVIEW',
+      occurredAt: record.updatedAt,
+    },
+  };
+};
 
 const requireCandidate = async (
   repository: ActionCandidateRepositoryPort,
@@ -282,6 +401,7 @@ export const createActionExecutionModule = (
         { name: 'ExecuteApprovedAction', range: '>=1.1.0 <2.0.0' },
         { name: 'VerifyActionOutcome', range: '>=1.1.0 <2.0.0' },
         { name: 'ReconcileExecutingAction', range: '>=1.1.0 <2.0.0' },
+        { name: 'DispatchActionFeedbackOutbox', range: '>=1.1.0 <2.0.0' },
         { name: 'GetActionExecution', range: '>=1.1.0 <2.0.0' },
         { name: 'ListActionAudit', range: '>=1.1.0 <2.0.0' },
       ],
@@ -293,6 +413,7 @@ export const createActionExecutionModule = (
         'action.preview_snapshots',
         'action.approval_records',
         'action.audit_events',
+        'action.action_feedback_outbox',
       ],
       readsViaPorts: [connector.identity.id, 'action-candidate-repository'],
       directSchemaAccess: false,
@@ -304,6 +425,7 @@ export const createActionExecutionModule = (
         { name: 'ExecuteApprovedAction', range: '>=1.1.0 <2.0.0' },
         { name: 'VerifyActionOutcome', range: '>=1.1.0 <2.0.0' },
         { name: 'ReconcileExecutingAction', range: '>=1.1.0 <2.0.0' },
+        { name: 'DispatchActionFeedbackOutbox', range: '>=1.1.0 <2.0.0' },
       ],
       events: [],
     },
@@ -313,8 +435,13 @@ export const createActionExecutionModule = (
         {
           event: { name: 'ActionFeedbackRecorded', range: '>=1.0.0 <2.0.0' },
           target: { kind: 'consumer', moduleId: 'stage11.action-feedback-review' },
-          tags: ['DURABLE_OUTBOX', 'REQUIRED_ACK'],
+          tags: ['DURABLE_OUTBOX', 'RECONSTRUCTABLE', 'REQUIRED_ACK'],
           authority: 'stage11.action-execution.feedback-outbox',
+          replayEvidence: {
+            replaySource: 'action.action_feedback_outbox',
+            deterministicIdentity: 'projectId:semanticKey',
+            idempotencyEvidence: 'ActionFeedbackRecorded.idempotencyKey=semanticKey',
+          },
         },
       ],
     },
@@ -358,6 +485,12 @@ export const createActionExecutionModule = (
       kind: 'command',
       inputSchema: reconcileExecutingSchema,
     },
+    {
+      name: 'DispatchActionFeedbackOutbox',
+      version: '1.1.0',
+      kind: 'command',
+      inputSchema: dispatchFeedbackOutboxSchema,
+    },
     { name: 'GetActionExecution', version: '1.1.0', kind: 'query', inputSchema: actionIdSchema },
     { name: 'ListActionAudit', version: '1.1.0', kind: 'query', inputSchema: actionIdSchema },
     {
@@ -379,6 +512,24 @@ export const createActionExecutionModule = (
   ],
   handlers: {
     commands: [
+      {
+        messageType: 'DispatchActionFeedbackOutbox',
+        version: '1.1.0',
+        requiredAccessScopes: ['owner'],
+        async handle(envelope, context) {
+          const { projectId } = assertContext(envelope);
+          const payload = envelope.payload as { readonly limit: number };
+          return {
+            published: await dispatchActionFeedbackOutbox(
+              repository,
+              context,
+              projectId,
+              payload.limit,
+              clock.now(),
+            ),
+          };
+        },
+      },
       {
         messageType: 'PrepareActionPreview',
         version: '1.1.0',
@@ -660,21 +811,23 @@ export const createActionExecutionModule = (
                 : await connector.execute(current.preview, key);
           } catch (error) {
             const unknown = error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
+            const next: ActionExecutionRecord = {
+              ...current,
+              status: unknown ? 'OUTCOME_UNKNOWN' : 'FAILED',
+              failureReason: unknown
+                ? 'Provider response was lost; automatic execution retry is forbidden.'
+                : 'Provider rejected the Action before a confirmed result.',
+              updatedAt: clock.now(),
+            };
             const failed = await repository.transition(projectId, current.actionId, {
               expectedStatus: 'EXECUTING',
-              next: {
-                ...current,
-                status: unknown ? 'OUTCOME_UNKNOWN' : 'FAILED',
-                failureReason: unknown
-                  ? 'Provider response was lost; automatic execution retry is forbidden.'
-                  : 'Provider rejected the Action before a confirmed result.',
-                updatedAt: clock.now(),
-              },
+              next,
               category: unknown ? 'ACTION_OUTCOME_UNKNOWN' : 'ACTION_FAILED',
               actorId: actor.id,
               details: { automaticRetry: false },
+              feedbackIntent: createActionFeedbackIntent(next),
             });
-            await publishFeedback(context, failed, failed.updatedAt);
+            await publishFeedback(repository, context, failed, failed.updatedAt);
             return failed;
           }
           current = await repository.transition(projectId, current.actionId, {
@@ -756,16 +909,17 @@ export const createActionExecutionModule = (
               operation: envelope.messageType,
               correlationId: envelope.correlationId,
             });
+          const next: ActionExecutionRecord = {
+            ...current,
+            status: 'OUTCOME_UNKNOWN',
+            failureReason:
+              'Execution was interrupted before a durable provider outcome was established. Automatic execution retry is forbidden.',
+            updatedAt: clock.now(),
+          };
           const reconciled = await repository.transition(projectId, actionId, {
             expectedStatus: 'EXECUTING',
             expectedUpdatedAt,
-            next: {
-              ...current,
-              status: 'OUTCOME_UNKNOWN',
-              failureReason:
-                'Execution was interrupted before a durable provider outcome was established. Automatic execution retry is forbidden.',
-              updatedAt: clock.now(),
-            },
+            next,
             category: 'ACTION_OUTCOME_UNKNOWN',
             actorId: actor.id,
             details: {
@@ -773,8 +927,9 @@ export const createActionExecutionModule = (
               reconciliation: 'orphaned-executing',
               expectedUpdatedAt,
             },
+            feedbackIntent: createActionFeedbackIntent(next),
           });
-          await publishFeedback(context, reconciled, reconciled.updatedAt);
+          await publishFeedback(repository, context, reconciled, reconciled.updatedAt);
           return reconciled;
         },
       },
@@ -824,22 +979,187 @@ const stale = (message: string, correlationId?: string): ShotgunError =>
     correlationId,
   });
 
+export const dispatchActionFeedbackOutbox = async (
+  repository: ActionFeedbackOutboxRepositoryPort,
+  context: Pick<HandlerContext, 'publish' | 'publishWithOutcome'>,
+  projectId: string,
+  limit: number,
+  now: string,
+  semanticKey?: string,
+  options: { readonly failOnRequiredConsumerDeadLetter?: boolean } = {},
+): Promise<number> => {
+  const staleBefore = new Date(Date.parse(now) - 5 * 60 * 1000).toISOString();
+  const records = [
+    ...(await repository.claimFeedbackOutbox(
+      projectId,
+      semanticKey,
+      Math.max(1, Math.min(100, limit)),
+      now,
+      staleBefore,
+    )),
+  ].sort(
+    (left, right) =>
+      left.availableAt.localeCompare(right.availableAt) ||
+      left.outboxId.localeCompare(right.outboxId),
+  );
+  let published = 0;
+  let firstError: unknown;
+  let requiredConsumerDeadLetter = false;
+  for (const record of records) {
+    let handoffAccepted = false;
+    try {
+      const input: PublishEventInput<ActionFeedback> = {
+        messageType: 'ActionFeedbackRecorded',
+        schemaVersion: record.schemaVersion,
+        idempotencyKey: record.semanticKey,
+        payload: record.payload,
+      };
+      const outcome = context.publishWithOutcome
+        ? await context.publishWithOutcome(input)
+        : (await context.publish(input), { requiredConsumerDeadLetter: false });
+      handoffAccepted = true;
+      await repository.markFeedbackOutboxPublished(
+        projectId,
+        record.outboxId,
+        record.attempts,
+        now,
+        record,
+      );
+      published += 1;
+      requiredConsumerDeadLetter ||= outcome.requiredConsumerDeadLetter;
+    } catch (error) {
+      // Once publishEvent returned, the Connector Runtime owns any required
+      // consumer dead-letter and governed replay.  Never release that row
+      // back to this producer outbox, including marker ACK ambiguity.
+      if (!handoffAccepted) {
+        await repository.releaseFeedbackOutbox(
+          projectId,
+          record.outboxId,
+          record.attempts,
+          error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN'
+            ? 'OUTCOME_UNKNOWN'
+            : 'OUTBOX_PUBLICATION_FAILED',
+        );
+      }
+      firstError ??= error;
+    }
+  }
+  if (firstError) throw firstError;
+  if (requiredConsumerDeadLetter && options.failOnRequiredConsumerDeadLetter) {
+    throw new ShotgunError({
+      code: 'TERMINAL_FAILURE',
+      safeMessage:
+        'The feedback handoff was accepted but a required consumer is governed by dead-letter replay.',
+      module: 'stage11.action-execution',
+      operation: 'dispatch-action-feedback-outbox',
+    });
+  }
+  return published;
+};
+
+export type ActionFeedbackOutboxRecoveryConnector = {
+  sendCommand<TPayload>(
+    command: ReturnType<typeof createCommand>,
+  ): Promise<{ readonly result: TPayload }>;
+};
+
+export const runActionFeedbackOutboxRecovery = async (
+  repository: ActionFeedbackOutboxRepositoryPort,
+  connector: ActionFeedbackOutboxRecoveryConnector,
+  options: { readonly batchSize?: number } = {},
+): Promise<number> => {
+  const batchSize = options.batchSize ?? 100;
+  if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 100)
+    throw new RangeError('Action feedback outbox batchSize must be an integer between 1 and 100.');
+  let published = 0;
+  let firstError: unknown;
+  for (const projectId of await repository.listFeedbackOutboxProjectIds()) {
+    try {
+      const result = await connector.sendCommand<{ readonly published: number }>(
+        createCommand({
+          messageType: 'DispatchActionFeedbackOutbox',
+          schemaVersion: '1.1.0',
+          producerModule: 'stage11.action-execution',
+          producerVersion: '1.1.0',
+          projectId,
+          actor: { type: 'service', id: 'stage11-action-feedback-outbox' },
+          security: {
+            accessScope: ['owner'],
+            sensitivity: 'restricted',
+            dataClassification: 'action-feedback-recovery',
+          },
+          idempotencyKey: `action-feedback-recovery:${projectId}:${randomUUID()}`,
+          payload: { limit: batchSize },
+        }),
+      );
+      published += result.result.published;
+    } catch (error) {
+      firstError ??= error;
+    }
+  }
+  if (firstError) throw firstError;
+  return published;
+};
+
+export const startActionFeedbackOutboxWorker = (
+  repository: ActionFeedbackOutboxRepositoryPort,
+  connector: ActionFeedbackOutboxRecoveryConnector,
+  intervalMs: number,
+  batchSize = 100,
+) => {
+  if (!Number.isFinite(intervalMs) || intervalMs < 1)
+    throw new RangeError('Action feedback outbox interval must be at least one millisecond.');
+  let active: Promise<void> | undefined;
+  let stopped = false;
+  const tick = (): Promise<void> => {
+    if (stopped) return Promise.resolve();
+    if (active) return active;
+    const execution = runActionFeedbackOutboxRecovery(repository, connector, { batchSize })
+      .then(() => undefined)
+      .catch(() => undefined)
+      .finally(() => {
+        if (active === execution) active = undefined;
+      });
+    active = execution;
+    return execution;
+  };
+  const timer = setInterval(() => void tick(), intervalMs);
+  timer.unref();
+  return {
+    tick,
+    async stop() {
+      stopped = true;
+      clearInterval(timer);
+      await active;
+    },
+  };
+};
+
 const publishFeedback = async (
-  context: Parameters<NonNullable<ShotgunModule['handlers']['commands'][number]['handle']>>[1],
+  repository: ActionExecutionRepositoryPort,
+  context: Pick<HandlerContext, 'publish' | 'publishWithOutcome'>,
   record: ActionExecutionRecord,
-  occurredAt: string,
+  now: string,
 ): Promise<void> => {
-  const status: ActionFeedback['status'] =
-    record.status === 'VERIFIED'
-      ? 'VERIFIED'
-      : record.status === 'OUTCOME_UNKNOWN'
-        ? 'OUTCOME_UNKNOWN'
-        : 'FAILED';
-  await context.publish<ActionFeedback>({
-    messageType: 'ActionFeedbackRecorded',
-    schemaVersion: '1.0.0',
-    idempotencyKey: `action-feedback:${record.actionId}:${status}`,
-    payload: { actionId: record.actionId, status, reentryPhase: 'ACTION_REVIEW', occurredAt },
+  const intent = createActionFeedbackIntent(record);
+  if (!intent) return;
+  const published = await dispatchActionFeedbackOutbox(
+    repository,
+    context,
+    record.projectId,
+    1,
+    now,
+    intent.semanticKey,
+    { failOnRequiredConsumerDeadLetter: true },
+  );
+  if (published > 0) return;
+  const persisted = await repository.findFeedbackOutbox(record.projectId, intent.semanticKey);
+  if (persisted?.status === 'published') return;
+  throw new ShotgunError({
+    code: 'OUTCOME_UNKNOWN',
+    safeMessage: 'Action feedback publication could not be proven.',
+    module: 'stage11.action-execution',
+    operation: 'publish-action-feedback',
   });
 };
 
@@ -858,15 +1178,16 @@ const verifyRecord = async (
     current.providerResult,
   );
   const applied = verification.status === 'APPLIED';
+  const nextRecord: ActionExecutionRecord = {
+    ...current,
+    status: applied ? 'VERIFIED' : 'VERIFICATION_FAILED',
+    verification: { ...verification, verifiedAt },
+    failureReason: applied ? undefined : `Provider verification returned ${verification.status}.`,
+    updatedAt: verifiedAt,
+  };
   const next = await repository.transition(current.projectId, current.actionId, {
     expectedStatus: current.status,
-    next: {
-      ...current,
-      status: applied ? 'VERIFIED' : 'VERIFICATION_FAILED',
-      verification: { ...verification, verifiedAt },
-      failureReason: applied ? undefined : `Provider verification returned ${verification.status}.`,
-      updatedAt: verifiedAt,
-    },
+    next: nextRecord,
     category: applied ? 'ACTION_VERIFIED' : 'ACTION_VERIFICATION_FAILED',
     actorId,
     details: {
@@ -874,7 +1195,8 @@ const verifyRecord = async (
       verificationStatus: verification.status,
       observedDigest: verification.observedDigest ?? 'none',
     },
+    feedbackIntent: createActionFeedbackIntent(nextRecord),
   });
-  await publishFeedback(context, next, verifiedAt);
+  await publishFeedback(repository, context, next, verifiedAt);
   return next;
 };

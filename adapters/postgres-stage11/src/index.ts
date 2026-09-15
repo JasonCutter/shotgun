@@ -17,6 +17,9 @@ import {
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   ActionCandidateRepositoryPort,
+  ActionFeedbackIntent,
+  ActionFeedbackOutboxRecord,
+  ActionFeedbackStatus,
   ActionExecutionRepositoryPort,
   ActionTransition,
 } from '../../../modules/action-execution/src/index.js';
@@ -60,6 +63,31 @@ type ApprovalReadbackRow = ExecutionReadbackRow & {
   readonly approval_expires_at: string | Date;
 };
 
+type FeedbackOutboxRow = {
+  readonly outbox_id: string;
+  readonly project_id: string;
+  readonly action_id: string;
+  readonly semantic_key: string;
+  readonly status: 'pending' | 'processing' | 'published';
+  readonly feedback_status: ActionFeedbackStatus;
+  readonly phase: 'ACTION_REVIEW';
+  readonly schema_version: '1.0.0';
+  readonly payload_json: ActionFeedbackOutboxRecord['payload'];
+  readonly occurred_at: string | Date;
+  readonly source_updated_at: string | Date;
+  readonly attempts: number;
+  readonly available_at: string | Date;
+  readonly claimed_at: string | Date | null;
+  readonly published_at: string | Date | null;
+  readonly last_error: string | null;
+};
+
+const feedbackOutboxColumns = `outbox_id, project_id, action_id, semantic_key, status,
+  feedback_status, phase, schema_version, payload_json, occurred_at, source_updated_at,
+  attempts, available_at, claimed_at, published_at, last_error`;
+const feedbackOutboxSelect = `SELECT ${feedbackOutboxColumns}
+  FROM action.action_feedback_outbox`;
+
 const normalizedTimestamp = (value: string | Date): string | undefined => {
   const timestamp = new Date(value);
   return Number.isNaN(timestamp.getTime()) ? undefined : timestamp.toISOString();
@@ -93,6 +121,55 @@ const isOutcomeUnknown = (error: unknown): error is ShotgunError =>
 const sameTimestamp = (left: string | Date, right: string | Date): boolean =>
   normalizedTimestamp(left) !== undefined &&
   normalizedTimestamp(left) === normalizedTimestamp(right);
+
+const feedbackStatusForAudit = (
+  category: ActionAuditEvent['category'],
+): ActionFeedbackStatus | undefined => {
+  switch (category) {
+    case 'ACTION_VERIFIED':
+      return 'VERIFIED';
+    case 'ACTION_OUTCOME_UNKNOWN':
+      return 'OUTCOME_UNKNOWN';
+    case 'ACTION_FAILED':
+    case 'ACTION_VERIFICATION_FAILED':
+      return 'FAILED';
+    default:
+      return undefined;
+  }
+};
+
+const mapFeedbackOutboxRow = (row: FeedbackOutboxRow): ActionFeedbackOutboxRecord => {
+  const occurredAt = normalizedTimestamp(row.occurred_at);
+  const sourceUpdatedAt = normalizedTimestamp(row.source_updated_at);
+  const availableAt = normalizedTimestamp(row.available_at);
+  const claimedAt = row.claimed_at === null ? undefined : normalizedTimestamp(row.claimed_at);
+  const publishedAt = row.published_at === null ? undefined : normalizedTimestamp(row.published_at);
+  if (!occurredAt || !sourceUpdatedAt || !availableAt || (row.claimed_at !== null && !claimedAt))
+    throw new Error('Action feedback outbox timestamps are invalid.');
+  if (row.published_at !== null && !publishedAt)
+    throw new Error('Action feedback outbox publication timestamp is invalid.');
+  return {
+    outboxId: row.outbox_id,
+    projectId: row.project_id,
+    actionId: row.action_id,
+    semanticKey: row.semantic_key,
+    status: row.status,
+    feedbackStatus: row.feedback_status,
+    reentryPhase: row.phase,
+    schemaVersion: row.schema_version,
+    payload: row.payload_json,
+    occurredAt,
+    sourceUpdatedAt,
+    attempts: row.attempts,
+    availableAt,
+    claimedAt,
+    publishedAt,
+    lastError: row.last_error ?? undefined,
+  };
+};
+
+const feedbackOutboxId = (intent: ActionFeedbackIntent): string =>
+  `action-feedback-outbox:${intent.projectId}:${intent.semanticKey}`;
 
 /** Trusted Candidate persistence. No HTTP adapter writes to this port. */
 export class PostgresActionCandidateRepository implements ActionCandidateRepositoryPort {
@@ -401,6 +478,8 @@ export class PostgresActionExecutionRepository
           details: transition.details,
           occurredAt: transition.next.updatedAt,
         });
+        if (transition.feedbackIntent)
+          await this.insertFeedbackOutbox(client, transition.feedbackIntent);
         return transition.next;
       },
       (observed) => this.reconcileTransition(projectId, actionId, transition, observed),
@@ -421,6 +500,216 @@ export class PostgresActionExecutionRepository
       [projectId, actionId],
     );
     return result.rows.map((row) => row.event_json);
+  }
+
+  async findFeedbackOutbox(
+    projectId: string,
+    semanticKey: string,
+  ): Promise<ActionFeedbackOutboxRecord | undefined> {
+    const result = await this.pool.query<FeedbackOutboxRow>(
+      `${feedbackOutboxSelect}
+       WHERE project_id = $1 AND semantic_key = $2`,
+      [projectId, semanticKey],
+    );
+    const row = result.rows[0];
+    return row ? mapFeedbackOutboxRow(row) : undefined;
+  }
+
+  async listFeedbackOutboxProjectIds(): Promise<readonly string[]> {
+    const result = await this.pool.query<{ readonly project_id: string }>(
+      'SELECT DISTINCT project_id FROM action.action_feedback_outbox ORDER BY project_id',
+    );
+    return result.rows.map((row) => row.project_id);
+  }
+
+  async claimFeedbackOutbox(
+    projectId: string,
+    semanticKey: string | undefined,
+    limit: number,
+    claimedAt: string,
+    staleBefore: string,
+  ): Promise<readonly ActionFeedbackOutboxRecord[]> {
+    const result = await this.pool.query<FeedbackOutboxRow>(
+      `WITH candidates AS (
+         SELECT outbox_id
+         FROM action.action_feedback_outbox
+         WHERE project_id = $1
+           AND ($2::text IS NULL OR semantic_key = $2)
+           AND (
+             (status = 'pending' AND available_at <= $4)
+             OR (status = 'processing' AND claimed_at IS NOT NULL AND claimed_at <= $5)
+           )
+         ORDER BY available_at ASC, outbox_id ASC
+         LIMIT $3
+         FOR UPDATE SKIP LOCKED
+       )
+       UPDATE action.action_feedback_outbox AS outbox
+       SET status = 'processing', attempts = outbox.attempts + 1,
+           claimed_at = $4, last_error = NULL
+       FROM candidates
+       WHERE outbox.outbox_id = candidates.outbox_id
+       RETURNING outbox.${feedbackOutboxColumns}`,
+      [projectId, semanticKey ?? null, Math.max(1, Math.min(100, limit)), claimedAt, staleBefore],
+    );
+    return result.rows.map(mapFeedbackOutboxRow);
+  }
+
+  async markFeedbackOutboxPublished(
+    projectId: string,
+    outboxId: string,
+    attempt: number,
+    publishedAt: string,
+    expected?: Pick<
+      ActionFeedbackOutboxRecord,
+      'actionId' | 'semanticKey' | 'payload' | 'sourceUpdatedAt'
+    >,
+  ): Promise<void> {
+    const matches = (record: ActionFeedbackOutboxRecord | undefined): boolean =>
+      record !== undefined &&
+      record.projectId === projectId &&
+      record.outboxId === outboxId &&
+      record.status === 'published' &&
+      record.attempts === attempt &&
+      record.claimedAt === undefined &&
+      record.publishedAt !== undefined &&
+      sameTimestamp(record.publishedAt, publishedAt) &&
+      (expected === undefined ||
+        (record.actionId === expected.actionId &&
+          record.semanticKey === expected.semanticKey &&
+          stableJson(record.payload) === stableJson(expected.payload) &&
+          sameTimestamp(record.sourceUpdatedAt, expected.sourceUpdatedAt)));
+    let actionCompleted = false;
+    try {
+      await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const updated = await client.query(
+            `UPDATE action.action_feedback_outbox
+             SET status = 'published', published_at = $4, claimed_at = NULL, last_error = NULL
+             WHERE project_id = $1 AND outbox_id = $2 AND status = 'processing' AND attempts = $3`,
+            [projectId, outboxId, attempt, publishedAt],
+          );
+          if ((updated.rowCount ?? 0) === 0) {
+            const existing = await client.query<FeedbackOutboxRow>(
+              `${feedbackOutboxSelect} WHERE project_id = $1 AND outbox_id = $2`,
+              [projectId, outboxId],
+            );
+            if (!matches(existing.rows[0] ? mapFeedbackOutboxRow(existing.rows[0]) : undefined)) {
+              throw new ShotgunError({
+                code: 'CONFLICT',
+                safeMessage: 'Action feedback outbox claim is no longer current.',
+                module: 'postgres-stage11',
+                operation: 'mark-feedback-outbox-published',
+              });
+            }
+          }
+          actionCompleted = true;
+        },
+        { module: 'postgres-stage11', operation: 'mark-feedback-outbox-published' },
+      );
+    } catch (error) {
+      if (isOutcomeUnknown(error) && actionCompleted) {
+        try {
+          const readback = await this.pool.query<FeedbackOutboxRow>(
+            `${feedbackOutboxSelect} WHERE project_id = $1 AND outbox_id = $2`,
+            [projectId, outboxId],
+          );
+          if (matches(readback.rows[0] ? mapFeedbackOutboxRow(readback.rows[0]) : undefined))
+            return;
+        } catch {
+          // Preserve OUTCOME_UNKNOWN when authoritative marker read-back fails.
+        }
+      }
+      throw error;
+    }
+  }
+
+  async releaseFeedbackOutbox(
+    projectId: string,
+    outboxId: string,
+    attempt: number,
+    error: string,
+  ): Promise<void> {
+    await this.pool.query(
+      `UPDATE action.action_feedback_outbox
+       SET status = 'pending', claimed_at = NULL, last_error = $4
+       WHERE project_id = $1 AND outbox_id = $2 AND status = 'processing' AND attempts = $3`,
+      [projectId, outboxId, attempt, error],
+    );
+  }
+
+  async backfillFeedbackOutbox(limit: number, now: string): Promise<number> {
+    void now;
+    const source = await this.pool.query<{
+      readonly event_json: ActionAuditEvent;
+    }>(
+      `SELECT audit.event_json
+       FROM action.audit_events AS audit
+       JOIN action.executions AS execution
+         ON execution.action_id = audit.action_id AND execution.project_id = audit.project_id
+       WHERE audit.category IN (
+         'ACTION_FAILED', 'ACTION_OUTCOME_UNKNOWN', 'ACTION_VERIFIED',
+         'ACTION_VERIFICATION_FAILED'
+       )
+         AND NOT EXISTS (
+           SELECT 1
+           FROM action.action_feedback_outbox AS existing
+           WHERE existing.project_id = audit.project_id
+             AND existing.semantic_key = 'action-feedback:' || audit.action_id::text || ':' ||
+               CASE
+                 WHEN audit.category = 'ACTION_VERIFIED' THEN 'VERIFIED'
+                 WHEN audit.category = 'ACTION_OUTCOME_UNKNOWN' THEN 'OUTCOME_UNKNOWN'
+                 ELSE 'FAILED'
+               END
+         )
+       ORDER BY audit.project_id ASC, audit.action_id ASC, audit.sequence ASC
+       LIMIT $1`,
+      [Math.max(1, Math.min(1000, limit))],
+    );
+    let inserted = 0;
+    for (const { event_json: event } of source.rows) {
+      const status = feedbackStatusForAudit(event.category);
+      const occurredAt = normalizedTimestamp(event.occurredAt);
+      if (!status || !occurredAt) continue;
+      const intent: ActionFeedbackIntent = {
+        projectId: event.projectId,
+        actionId: event.actionId,
+        semanticKey: `action-feedback:${event.actionId}:${status}`,
+        status,
+        reentryPhase: 'ACTION_REVIEW',
+        occurredAt,
+        sourceUpdatedAt: occurredAt,
+        schemaVersion: '1.0.0',
+        payload: {
+          actionId: event.actionId,
+          status,
+          reentryPhase: 'ACTION_REVIEW',
+          occurredAt,
+        },
+      };
+      const result = await this.pool.query(
+        `INSERT INTO action.action_feedback_outbox
+           (outbox_id, project_id, action_id, semantic_key, feedback_status, phase,
+            schema_version, payload_json, occurred_at, source_updated_at, status,
+            attempts, available_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, 'pending', 0, $9)
+         ON CONFLICT (project_id, semantic_key) DO NOTHING`,
+        [
+          feedbackOutboxId(intent),
+          intent.projectId,
+          intent.actionId,
+          intent.semanticKey,
+          intent.status,
+          intent.reentryPhase,
+          intent.schemaVersion,
+          JSON.stringify(intent.payload),
+          intent.occurredAt,
+          intent.sourceUpdatedAt,
+        ],
+      );
+      inserted += result.rowCount ?? 0;
+    }
+    return inserted;
   }
 
   async upsertFromFeedback(
@@ -506,6 +795,45 @@ export class PostgresActionExecutionRepository
       [input.projectId, input.actionId, Math.max(1, Math.min(100, input.limit))],
     );
     return result.rows.map(mapActionReviewRow);
+  }
+
+  private async insertFeedbackOutbox(
+    client: PoolClient,
+    intent: ActionFeedbackIntent,
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO action.action_feedback_outbox
+         (outbox_id, project_id, action_id, semantic_key, feedback_status, phase,
+          schema_version, payload_json, occurred_at, source_updated_at, status,
+          attempts, available_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, 'pending', 0, $9)
+       ON CONFLICT (project_id, semantic_key) DO NOTHING`,
+      [
+        feedbackOutboxId(intent),
+        intent.projectId,
+        intent.actionId,
+        intent.semanticKey,
+        intent.status,
+        intent.reentryPhase,
+        intent.schemaVersion,
+        JSON.stringify(intent.payload),
+        intent.occurredAt,
+        intent.sourceUpdatedAt,
+      ],
+    );
+    const result = await client.query<FeedbackOutboxRow>(
+      `${feedbackOutboxSelect}
+       WHERE project_id = $1 AND semantic_key = $2`,
+      [intent.projectId, intent.semanticKey],
+    );
+    const row = result.rows[0];
+    if (!row || !this.matchesFeedbackOutboxIntent(mapFeedbackOutboxRow(row), intent))
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'Action feedback semantic identity is already bound to different data.',
+        module: 'postgres-stage11',
+        operation: 'persist-feedback-outbox',
+      });
   }
 
   private async transaction<T>(
@@ -737,7 +1065,36 @@ export class PostgresActionExecutionRepository
       details: transition.details,
       occurredAt: observed.updatedAt,
     };
-    return (await this.hasExactAuditEvents(projectId, actionId, [event])) ? observed : undefined;
+    if (!(await this.hasExactAuditEvents(projectId, actionId, [event]))) return undefined;
+    if (
+      transition.feedbackIntent &&
+      !(await this.hasFeedbackOutboxIntent(transition.feedbackIntent))
+    )
+      return undefined;
+    return observed;
+  }
+
+  private async hasFeedbackOutboxIntent(intent: ActionFeedbackIntent): Promise<boolean> {
+    const persisted = await this.findFeedbackOutbox(intent.projectId, intent.semanticKey);
+    return persisted !== undefined && this.matchesFeedbackOutboxIntent(persisted, intent);
+  }
+
+  private matchesFeedbackOutboxIntent(
+    persisted: ActionFeedbackOutboxRecord,
+    intent: ActionFeedbackIntent,
+  ): boolean {
+    return (
+      persisted.outboxId === feedbackOutboxId(intent) &&
+      persisted.projectId === intent.projectId &&
+      persisted.actionId === intent.actionId &&
+      persisted.semanticKey === intent.semanticKey &&
+      persisted.feedbackStatus === intent.status &&
+      persisted.reentryPhase === intent.reentryPhase &&
+      persisted.schemaVersion === intent.schemaVersion &&
+      stableJson(persisted.payload) === stableJson(intent.payload) &&
+      sameTimestamp(persisted.occurredAt, intent.occurredAt) &&
+      sameTimestamp(persisted.sourceUpdatedAt, intent.sourceUpdatedAt)
+    );
   }
 
   private async hasExactAuditEvents(

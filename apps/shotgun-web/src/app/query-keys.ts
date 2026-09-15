@@ -180,6 +180,20 @@ export const sourceEvidenceQueryKey = (
 ) =>
   [...sourcesScopeKey(scope), 'source', sourceId, 'version', sourceVersionId, 'evidence'] as const;
 
+export const sourceCandidatesQueryKey = (
+  scope: SourcesQueryScope,
+  sourceId: string,
+  sourceVersionId: string,
+) =>
+  [
+    ...sourcesScopeKey(scope),
+    'source',
+    sourceId,
+    'version',
+    sourceVersionId,
+    'candidates',
+  ] as const;
+
 export type KnowledgeQueryScope = {
   readonly principalId: string;
   readonly sessionId: string;

@@ -316,6 +316,32 @@ export type EvidenceListView = {
   readonly fetchedAt: string;
 };
 
+/**
+ * Bounded, non-Canonical Candidate projection for Source Detail. The Product
+ * surface intentionally omits provider output, prompts, credentials, and
+ * internal materialization identities.
+ */
+export type SourceCandidateView = {
+  readonly candidateId: string;
+  readonly revisionNumber: number;
+  readonly status: 'PENDING_VALIDATION' | 'READY' | 'REJECTED';
+  readonly claimText: string;
+  readonly sourceVersionId: string;
+  readonly createdAt: string;
+};
+
+export type SourceCandidateListView = {
+  readonly schemaVersion: SourcesSchemaVersion;
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly items: readonly SourceCandidateView[];
+  readonly projectionRevision: string;
+  readonly accessRevision: string;
+  readonly policyContextRevision: string;
+  readonly fetchedAt: string;
+};
+
 export type CitationReturnTarget = {
   readonly schemaVersion: SourcesSchemaVersion;
   readonly originRoute: string;
@@ -982,6 +1008,54 @@ export const decodeSourceDetailView = (input: unknown): SourceDetailView => {
     ),
     createdAt: timestamp(value['createdAt'], 'SourceDetailView.createdAt'),
     updatedAt: timestamp(value['updatedAt'], 'SourceDetailView.updatedAt'),
+  };
+};
+
+const decodeSourceCandidate = (input: unknown, path: string): SourceCandidateView => {
+  const value = record(input, path);
+  return {
+    candidateId: stringValue(value['candidateId'], `${path}.candidateId`),
+    revisionNumber: integer(value['revisionNumber'], `${path}.revisionNumber`, 1),
+    status: enumValue(
+      value['status'],
+      ['PENDING_VALIDATION', 'READY', 'REJECTED'],
+      `${path}.status`,
+    ),
+    claimText: boundedString(value['claimText'], `${path}.claimText`, 20_000),
+    sourceVersionId: stringValue(value['sourceVersionId'], `${path}.sourceVersionId`),
+    createdAt: timestamp(value['createdAt'], `${path}.createdAt`),
+  };
+};
+
+export const decodeSourceCandidateListView = (input: unknown): SourceCandidateListView => {
+  const value = record(input, 'SourceCandidateListView');
+  schema(value, 'SourceCandidateListView');
+  const sourceVersionId = stringValue(
+    value['sourceVersionId'],
+    'SourceCandidateListView.sourceVersionId',
+  );
+  const items = boundedArray(value['items'], 'SourceCandidateListView.items', 100).map(
+    (entry, index) => decodeSourceCandidate(entry, `SourceCandidateListView.items[${index}]`),
+  );
+  if (items.some((item) => item.sourceVersionId !== sourceVersionId)) {
+    fail('SourceCandidateListView contains a Candidate for another SourceVersion.');
+  }
+  return {
+    schemaVersion: SOURCES_SCHEMA_VERSION,
+    projectId: stringValue(value['projectId'], 'SourceCandidateListView.projectId'),
+    sourceId: stringValue(value['sourceId'], 'SourceCandidateListView.sourceId'),
+    sourceVersionId,
+    items,
+    projectionRevision: stringValue(
+      value['projectionRevision'],
+      'SourceCandidateListView.projectionRevision',
+    ),
+    accessRevision: stringValue(value['accessRevision'], 'SourceCandidateListView.accessRevision'),
+    policyContextRevision: stringValue(
+      value['policyContextRevision'],
+      'SourceCandidateListView.policyContextRevision',
+    ),
+    fetchedAt: timestamp(value['fetchedAt'], 'SourceCandidateListView.fetchedAt'),
   };
 };
 

@@ -68,6 +68,7 @@ import {
   decodeKnowledgeCompareView,
   decodeSourceLibraryPageView,
   decodeSourceDetailView,
+  decodeSourceCandidateListView,
   decodeSourceVersionHistoryView,
   decodeSourcePreviewView,
   decodeEvidenceListView,
@@ -108,6 +109,7 @@ import {
   type SourceLibraryQuery,
   type SourceLibraryPageView,
   type SourceDetailView,
+  type SourceCandidateListView,
   type SourceVersionHistoryView,
   type SourcePreviewView,
   type EvidenceListView,
@@ -493,6 +495,21 @@ export const createShotgunApiClient = (
       });
       const body = (await assertOk(response)) as { source: unknown };
       return decodeMeasured('source-detail', () => decodeSourceDetailView(body.source));
+    },
+
+    async getSourceCandidates(
+      sourceId: string,
+      sourceVersionId: string,
+      requestOptions?: RequestOptions,
+    ): Promise<SourceCandidateListView> {
+      const response = await productRequest(
+        `/sources/${encodeURIComponent(sourceId)}/versions/${encodeURIComponent(sourceVersionId)}/candidates`,
+        { signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { candidates: unknown };
+      return decodeMeasured('source-candidates', () =>
+        decodeSourceCandidateListView(body.candidates),
+      );
     },
 
     async getSourceVersionHistory(
@@ -1117,14 +1134,19 @@ export const createShotgunApiClient = (
       requestOptions?: RequestOptions,
     ): Promise<RecompareCandidateResponse> {
       return runMutation(requestOptions?.signal, async (csrfToken) => {
-        const response = await request('/comparisons/recompare', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify(params),
-          signal: requestOptions?.signal,
-        });
-        const body = await assertOk(response);
-        return decodeRecompareCandidateResponse(body);
+        try {
+          const response = await request('/comparisons/recompare', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+            body: JSON.stringify(params),
+            signal: requestOptions?.signal,
+          });
+          const body = await assertOk(response);
+          return decodeRecompareCandidateResponse(body);
+        } catch (error) {
+          if (error instanceof ShotgunApiError) throw error;
+          throw outcomeIndeterminateApiError(params.idempotencyKey);
+        }
       });
     },
 

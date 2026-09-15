@@ -13,6 +13,7 @@ import {
   sourceIntakeSubmissionQueryKey,
   askConversationSourceContextQueryKey,
   sourceEvidenceQueryKey,
+  sourceCandidatesQueryKey,
   sourcePreviewQueryKey,
   sourcesLibraryQueryKey,
   sourceVersionHistoryQueryKey,
@@ -183,6 +184,24 @@ export const sourceEvidenceQueryOptions = (
       apiClient.getSourceEvidence(sourceId, sourceVersionId, undefined, {
         signal,
       }),
+    enabled: scope !== null && sourceId.length > 0 && sourceVersionId.length > 0,
+    retry: false,
+    staleTime: 15_000,
+  });
+};
+
+export const sourceCandidatesQueryOptions = (
+  apiClient: ShotgunApiClient,
+  shell: GlobalShellView,
+  sourceId: string,
+  sourceVersionId: string,
+) => {
+  const scope = sourcesScopeFromShell(shell);
+  return queryOptions({
+    queryKey: scope
+      ? sourceCandidatesQueryKey(scope, sourceId, sourceVersionId)
+      : (['project', 'source-candidates', 'no-project'] as const),
+    queryFn: ({ signal }) => apiClient.getSourceCandidates(sourceId, sourceVersionId, { signal }),
     enabled: scope !== null && sourceId.length > 0 && sourceVersionId.length > 0,
     retry: false,
     staleTime: 15_000,

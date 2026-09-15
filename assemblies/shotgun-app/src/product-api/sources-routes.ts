@@ -749,4 +749,21 @@ export const registerSourcesRoutes = (
       return { evidence };
     },
   );
+
+  server.get<{
+    Params: { sourceId: string; sourceVersionId: string };
+    Headers: SecurityHeaders;
+  }>(
+    '/product-api/frontend/sources/:sourceId/versions/:sourceVersionId/candidates',
+    async (request) => {
+      const scope = await buildScope(request.headers);
+      const candidates = await coordinator.candidatesList(
+        scope.read,
+        requireParameter(request.params.sourceId, 'sourceId'),
+        requireParameter(request.params.sourceVersionId, 'sourceVersionId'),
+      );
+      if (!candidates) throw maskedNotFound();
+      return { candidates };
+    },
+  );
 };

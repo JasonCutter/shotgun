@@ -101,6 +101,7 @@ const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : u
 const digest = (value: string): string => sha256Text(value);
 const P1_DIMENSION = 512;
 const P2_DIMENSION = 1536;
+const R5_FIXTURE_EMBEDDING_SECRET = 'r5-provider-fixture-token';
 
 type ProviderRequest = {
   readonly model: unknown;
@@ -129,7 +130,7 @@ class DeterministicOpenAIProvider {
   private server: Server | undefined;
   private readonly releaseWaiters: Array<() => void> = [];
   private paused = false;
-  private failNextQueryWithAuthentication = false;
+  private rejectedQueryBearerToken: string | undefined;
   private buildPhase: BuildPhase | undefined;
   private readonly requestObservations: ProviderRequestObservation[] = [];
 
@@ -137,6 +138,7 @@ class DeterministicOpenAIProvider {
   totalRequests = 0;
   buildRequests = 0;
   queryRequests = 0;
+  authenticationRejectedQueries = 0;
 
   get observations(): readonly ProviderRequestObservation[] {
     return [...this.requestObservations];
@@ -173,9 +175,10 @@ class DeterministicOpenAIProvider {
     this.totalRequests = 0;
     this.buildRequests = 0;
     this.queryRequests = 0;
+    this.authenticationRejectedQueries = 0;
     this.buildPhase = undefined;
     this.requestObservations.length = 0;
-    this.failNextQueryWithAuthentication = false;
+    this.rejectedQueryBearerToken = undefined;
   }
 
   beginBuildPhase(build: BuildPhase): void {
@@ -195,8 +198,8 @@ class DeterministicOpenAIProvider {
     for (const release of this.releaseWaiters.splice(0)) release();
   }
 
-  failNextQueryAsAuthenticationFailure(): void {
-    this.failNextQueryWithAuthentication = true;
+  rejectQueriesAuthenticatedWith(token: string): void {
+    this.rejectedQueryBearerToken = token;
   }
 
   async waitForBuildRequests(count: number): Promise<void> {
@@ -269,8 +272,11 @@ class DeterministicOpenAIProvider {
         if (this.paused) await new Promise<void>((resolve) => this.releaseWaiters.push(resolve));
       } else {
         this.queryRequests += 1;
-        if (this.failNextQueryWithAuthentication) {
-          this.failNextQueryWithAuthentication = false;
+        if (
+          this.rejectedQueryBearerToken !== undefined &&
+          request.headers.authorization === `Bearer ${this.rejectedQueryBearerToken}`
+        ) {
+          this.authenticationRejectedQueries += 1;
           send(401, { error: 'authentication failed' });
           return;
         }
@@ -539,7 +545,7 @@ const createFixture = async (
   const credential = await vault.create({
     projectId,
     providerId: 'openai',
-    secret: 'r5-provider-fixture-token',
+    secret: R5_FIXTURE_EMBEDDING_SECRET,
     now,
   });
   const approvalService = new ProviderExternalTransferApprovalService(
@@ -2285,7 +2291,9 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       expect(policyResponse.statusCode).toBe(200);
 
       provider.reset();
+      provider.beginBuildPhase({ model: 'text-embedding-3-small', dimension: P1_DIMENSION });
       const initialPrepare = await post('/api/v1/settings/ai/semantic-comparison/prepare', {});
+      provider.endBuildPhase();
       expect(initialPrepare.statusCode).toBe(200);
       expect(initialPrepare.json()).toMatchObject({
         status: {
@@ -2372,7 +2380,15 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
           privacy: unknown;
         };
       }>().settings;
-      provider.failNextQueryAsAuthenticationFailure();
+      expect(
+        await fixture.vault.getMetadata({
+          projectId,
+          providerId: 'openai',
+          credentialId: profileOne.credentialId,
+          credentialRevision: profileOne.credentialRevision,
+        }),
+      ).toMatchObject({ lifecycleState: 'active' });
+      provider.rejectQueriesAuthenticatedWith(R5_FIXTURE_EMBEDDING_SECRET);
       const blocked = await post('/api/v1/comparisons/recompare', {
         candidateId: candidateAId,
         idempotencyKey: `c6-blocked-${candidateAId}`,
@@ -2387,6 +2403,8 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         },
       });
       expect(JSON.stringify(blocked.json())).toContain('CREDENTIAL_UNAVAILABLE');
+      expect(provider.authenticationRejectedQueries).toBe(1);
+      expect(await reviewV2Repository.listDrafts(projectId)).toHaveLength(0);
 
       const replaced = await post(
         '/api/v1/settings/ai/semantic-comparison/embedding-credentials/replace',
@@ -2440,7 +2458,9 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         },
       });
 
+      provider.beginBuildPhase({ model: 'text-embedding-3-small', dimension: P1_DIMENSION });
       const preparedAgain = await post('/api/v1/settings/ai/semantic-comparison/prepare', {});
+      provider.endBuildPhase();
       expect(preparedAgain.statusCode).toBe(200);
       expect(preparedAgain.json()).toMatchObject({
         status: {
@@ -2462,9 +2482,15 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       );
       expect(await fixture.profileService.getCurrent(projectId)).toMatchObject({
         profileRevision: 2,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        credentialId: profileOne.credentialId,
         credentialRevision: 2,
         status: 'PREPARED',
       });
+      const queryObservationsBeforeRecovery = provider.observations.filter(
+        (observation) => observation.classification === 'QUERY',
+      ).length;
       const completed = await post('/api/v1/comparisons/recompare', {
         candidateId: candidateAId,
         idempotencyKey: `c6-retry-${candidateAId}`,
@@ -2480,6 +2506,11 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         },
       });
       expect(providerCalls).toBe(1);
+      expect(provider.authenticationRejectedQueries).toBe(1);
+      expect(
+        provider.observations.filter((observation) => observation.classification === 'QUERY')
+          .length,
+      ).toBeGreaterThan(queryObservationsBeforeRecovery);
       expect(await reviewV2Repository.listDrafts(projectId)).toHaveLength(1);
       const candidateB = await candidateRepository.findById(projectId, candidateBId);
       expect(candidateB).toMatchObject({ candidateId: candidateBId, status: 'READY' });

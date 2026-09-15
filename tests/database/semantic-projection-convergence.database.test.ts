@@ -617,13 +617,20 @@ describe('RUS-2-C7 real PostgreSQL causal semantic convergence acceptance', () =
         'periodic C7 recovery to G1',
       );
       expect(provider.totalRequests).toBeGreaterThan(providerRequestsBeforeRestore);
-      await waitFor(async () => {
-        const response = await application!.server.inject({ method: 'GET', url: '/health' });
-        const semantic = (
-          JSON.parse(response.body).recoveries as readonly Record<string, unknown>[]
-        ).find((item) => item.runnerId === 'semantic-projection-convergence');
-        return semantic?.outcome === 'HEALTHY';
-      }, 'healthy semantic recovery registry status');
+      try {
+        await waitFor(async () => {
+          const response = await application!.server.inject({ method: 'GET', url: '/health' });
+          const semantic = (
+            JSON.parse(response.body).recoveries as readonly Record<string, unknown>[]
+          ).find((item) => item.runnerId === 'semantic-projection-convergence');
+          return semantic?.outcome === 'HEALTHY';
+        }, 'healthy semantic recovery registry status');
+      } catch (error) {
+        const response = await application.server.inject({ method: 'GET', url: '/health' });
+        throw new Error(
+          `${error instanceof Error ? error.message : 'Semantic recovery did not converge'} Health=${response.body}`,
+        );
+      }
 
       const sourceReader = new PostgresSemanticCorpusSourceSnapshotReader(pool);
       const semanticRepository = new PostgresSemanticIndexRepository(pool);

@@ -14,6 +14,10 @@ import {
   ShotgunError,
   semanticGenerationMatchesSourceWatermark,
 } from '../../../../packages/contracts/src/index.js';
+import {
+  semanticGenerationMatchesCurrentExecution,
+  semanticSourceSensitivity,
+} from '../../../../modules/semantic-generation/src/compatibility.js';
 import type { SemanticEmbeddingProfilePort } from '../../../../packages/contracts/src/index.js';
 import type {
   SemanticActiveGenerationReaderPort,
@@ -552,19 +556,7 @@ export function registerAISettingsRoutes(
           return 'restricted';
         }
         const snapshot = await semanticCorpusSourceSnapshotReader.readSnapshot(projectId);
-        const rank: Record<'public' | 'internal' | 'private' | 'restricted', number> = {
-          public: 0,
-          internal: 1,
-          private: 2,
-          restricted: 3,
-        };
-        return snapshot.resources.reduce<'public' | 'internal' | 'private' | 'restricted'>(
-          (highest, resource) =>
-            rank[resource.provenance.sensitivity] > rank[highest]
-              ? resource.provenance.sensitivity
-              : highest,
-          'public',
-        );
+        return semanticSourceSensitivity(snapshot);
       };
 
       const generationMatchesCurrentExecution = async (
@@ -573,35 +565,12 @@ export function registerAISettingsRoutes(
         generation: Awaited<ReturnType<SemanticActiveGenerationReaderPort['getActiveGeneration']>>,
       ): Promise<boolean> => {
         if (!profile || !generation || !semanticEmbeddingResolver) return false;
-        try {
-          const resolved = await semanticEmbeddingResolver.resolveExecution({
-            projectId,
-            sensitivity: await sourceSensitivity(projectId),
-            profileRevision: profile.profileRevision,
-            credentialId: generation.credentialId,
-            credentialRevision: generation.credentialRevision,
-          });
-          return (
-            resolved.profile.profileId === profile.profileId &&
-            resolved.profile.profileRevision === profile.profileRevision &&
-            resolved.profile.providerId === generation.providerId &&
-            resolved.profile.embeddingModelId === generation.embeddingModelId &&
-            resolved.profile.dimension === generation.dimension &&
-            resolved.pin.providerId === generation.providerId &&
-            resolved.pin.embeddingModelId === generation.embeddingModelId &&
-            resolved.pin.embeddingProfileId === generation.embeddingProfileId &&
-            resolved.pin.embeddingProfileRevision === generation.embeddingProfileRevision &&
-            resolved.pin.credentialId === generation.credentialId &&
-            resolved.pin.credentialRevision === generation.credentialRevision &&
-            resolved.pin.providerRegistryRevision === generation.providerRegistryRevision &&
-            resolved.pin.capabilityCatalogRevision === generation.capabilityCatalogRevision &&
-            resolved.pin.providerPolicyFingerprint === generation.providerPolicyFingerprint &&
-            resolved.pin.representationVersion === generation.representationVersion &&
-            resolved.pin.dimension === generation.dimension
-          );
-        } catch {
-          return false;
-        }
+        return semanticGenerationMatchesCurrentExecution({
+          generation,
+          profile,
+          resolver: semanticEmbeddingResolver,
+          sensitivity: await sourceSensitivity(projectId),
+        });
       };
 
       const selectEmbeddingBinding = (

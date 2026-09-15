@@ -15,8 +15,13 @@ gap without replaying approval or mutating Canonical.
 `stage7.semantic-projection-convergence` consumes the existing
 `CanonicalCommitted@1.0.0` contract and compares the active READY generation
 with the current `SemanticCorpusSourceWatermark`. The exact-current predicate
-uses the existing `semanticGenerationMatchesSourceWatermark` contract and the
-current embedding profile identity. An exact-current generation is a `NO_OP`.
+uses the existing `semanticGenerationMatchesSourceWatermark` contract and one
+shared, server-authoritative execution-compatibility resolver also used by the
+Product status surface. Compatibility includes the provider/model/profile and
+credential revisions, provider registry and capability catalog revisions,
+provider policy fingerprint, representation version, dimension, distance
+metric, and normalization policy. An exact-current generation is a `NO_OP`;
+an unverifiable resolver result is stale/fail-closed.
 
 When the generation is absent or stale, the consumer calls the existing
 `SemanticProjectionRefreshPort.refresh(...)`. `SemanticGenerationBuilder`
@@ -37,10 +42,12 @@ Startup and periodic recovery scan the existing Canonical project identity
 list. This catches a historical event that was already published before the
 restart. Recovery calls the same convergence port, is bounded by the existing
 worker cadence, is independently retryable, and never replays a review,
-approval, Canonical commit, or new Canonical outbox record. Per-project
-convergence is serialized in-process; persistent generation activation retains
-the existing database CAS boundary for multi-process races and duplicate event
-delivery.
+approval, Canonical commit, or new Canonical outbox record. Startup and
+periodic outcomes use the same bounded operational recorder, including safe
+failure containment for periodic exceptions, so health and recovery state are
+not lost after a background failure. Per-project convergence is serialized
+in-process; persistent generation activation retains the existing database CAS
+boundary for multi-process races and duplicate event delivery.
 
 No semantic refresh is attempted when a project has no current profile. A
 non-refreshable profile, unavailable provider, denied policy, stale build, or
@@ -83,9 +90,10 @@ The reviewed references remain bounded as follows:
 
 ## Verification, migration, and rollback
 
-Focused Contract/Unit/Integration tests cover exact-current no-op, stale
-refresh through the existing port, no-profile no-op, safe failure state,
-best-effort event declaration, duplicate delivery, recovery/event race, and
+Focused Contract/Unit/Integration tests cover exact-current no-op across the
+full execution compatibility identity, stale refresh through the existing
+port, no-profile no-op, safe failure state, best-effort event declaration,
+duplicate delivery, recovery/event race, periodic failure recording, and
 bounded startup recovery. The PostgreSQL causal acceptance tests cover
 Canonical v1 commit → stale fail-closed semantic query → real
 `CanonicalCommitted` delivery → current generation → grounded Ask evidence and

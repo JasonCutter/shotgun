@@ -13,6 +13,7 @@
       "SemanticCorpusSourceSnapshotReaderPort",
       "SemanticActiveGenerationReaderPort",
       "SemanticEmbeddingProfilePort",
+      "SemanticEmbeddingResolverPort",
       "SemanticProjectionRefreshPort"
     ],
     "directSchemaAccess": false

@@ -2,6 +2,7 @@ import {
   createSemanticProjectionConvergenceModule,
   runSemanticProjectionConvergenceRecovery,
   SemanticProjectionConvergenceCoordinator,
+  startSemanticProjectionConvergenceWorker,
 } from '../../modules/semantic-generation/src/convergence.js';
 import {
   type SemanticCorpusSourceWatermark,
@@ -77,6 +78,37 @@ const createRig = (active: SemanticProjectionGeneration | undefined = generation
   const getCurrent = vi.fn(async (): Promise<SemanticEmbeddingProfile | undefined> => profile);
   const getWatermark = vi.fn(async () => watermark);
   const getActiveGeneration = vi.fn(async () => active);
+  const resolveExecution = vi.fn(async () => ({
+    pin: {
+      projectId,
+      providerId: profile.providerId,
+      embeddingModelId: profile.embeddingModelId,
+      embeddingProfileId: profile.profileId,
+      embeddingProfileRevision: profile.profileRevision,
+      credentialId: profile.credentialId,
+      credentialRevision: profile.credentialRevision,
+      providerRegistryRevision: 'providers:c7',
+      capabilityCatalogRevision: 'catalog:c7',
+      providerPolicyFingerprint: 'sha256:policy-c7',
+      representationVersion: profile.representationVersion,
+      dimension: profile.dimension,
+      createdAt: '2026-09-16T01:00:00.000Z',
+    },
+    profile,
+    model: {
+      providerId: profile.providerId,
+      modelId: profile.embeddingModelId,
+      displayName: 'C7 test model',
+      providerDefaultDimension: profile.dimension,
+      shotgunDefaultDimension: profile.dimension,
+      shotgunAllowedDimensions: [profile.dimension],
+      shotgunBatchLimit: 32,
+      capabilityRevision: 'catalog:c7',
+      supportedDistanceMetrics: [profile.distanceMetric],
+      defaultDistanceMetric: profile.distanceMetric,
+      defaultNormalizationPolicy: profile.normalizationPolicy,
+    },
+  }));
   const refresh = vi.fn(async () => ({
     projectId,
     profileRevision: profile.profileRevision,
@@ -88,14 +120,23 @@ const createRig = (active: SemanticProjectionGeneration | undefined = generation
   const coordinator = new SemanticProjectionConvergenceCoordinator({
     profileService: { getCurrent } as never,
     source: {
-      readSnapshot: vi.fn(),
+      readSnapshot: vi.fn(async () => ({
+        projectId,
+        canonicalVersion: watermark.canonicalVersion,
+        canonicalSnapshotDigest: watermark.canonicalSnapshotDigest,
+        approvedKnowledgeDigest: watermark.approvedKnowledgeDigest,
+        sourceSnapshotDigest: watermark.sourceSnapshotDigest,
+        effectiveAt: '2026-09-16T01:00:00.000Z',
+        resources: [],
+      })),
       readWatermark: getWatermark,
     },
     activeGenerationReader: { getActiveGeneration },
+    semanticEmbeddingResolver: { resolveExecution } as never,
     refresh: { refresh },
     now: () => '2026-09-16T01:00:00.000Z',
   });
-  return { coordinator, getCurrent, getWatermark, getActiveGeneration, refresh };
+  return { coordinator, getCurrent, getWatermark, getActiveGeneration, refresh, resolveExecution };
 };
 
 describe('C7 Canonical-driven semantic projection convergence', () => {
@@ -135,6 +176,47 @@ describe('C7 Canonical-driven semantic projection convergence', () => {
     expect(rig.refresh).toHaveBeenCalledTimes(1);
   });
 
+  it('refreshes when authoritative execution policy or registry identity changes', async () => {
+    const rig = createRig();
+    rig.resolveExecution.mockImplementationOnce(async () => ({
+      pin: {
+        projectId,
+        providerId: profile.providerId,
+        embeddingModelId: profile.embeddingModelId,
+        embeddingProfileId: profile.profileId,
+        embeddingProfileRevision: profile.profileRevision,
+        credentialId: profile.credentialId,
+        credentialRevision: profile.credentialRevision + 1,
+        providerRegistryRevision: 'providers:c7-changed',
+        capabilityCatalogRevision: 'catalog:c7-changed',
+        providerPolicyFingerprint: 'sha256:policy-c7-changed',
+        representationVersion: profile.representationVersion,
+        dimension: profile.dimension,
+        createdAt: '2026-09-16T01:00:00.000Z',
+      },
+      profile,
+      model: {
+        providerId: profile.providerId,
+        modelId: profile.embeddingModelId,
+        displayName: 'C7 test model',
+        providerDefaultDimension: profile.dimension,
+        shotgunDefaultDimension: profile.dimension,
+        shotgunAllowedDimensions: [profile.dimension],
+        shotgunBatchLimit: 32,
+        capabilityRevision: 'catalog:c7-changed',
+        supportedDistanceMetrics: [profile.distanceMetric],
+        defaultDistanceMetric: profile.distanceMetric,
+        defaultNormalizationPolicy: profile.normalizationPolicy,
+      },
+    }));
+
+    await expect(rig.coordinator.converge(input)).resolves.toMatchObject({
+      action: 'REFRESHED',
+      generationId: 'generation-c7',
+    });
+    expect(rig.refresh).toHaveBeenCalledTimes(1);
+  });
+
   it('treats no profile as a safe no-op and recovers a historical published gap', async () => {
     const rig = createRig(undefined);
     rig.getCurrent.mockResolvedValue(undefined);
@@ -158,5 +240,37 @@ describe('C7 Canonical-driven semantic projection convergence', () => {
     expect(handler?.requiredForPublisherAcknowledgement).not.toBe(true);
     expect(module.manifest.produces.events).toEqual([]);
     expect(module.manifest.produces.handoffs).toEqual([]);
+  });
+
+  it('records every periodic recovery result and contains runner failures', async () => {
+    const onResult = vi.fn();
+    const onFailure = vi.fn();
+    const notConfiguredRig = createRig();
+    notConfiguredRig.getCurrent.mockResolvedValue(undefined);
+    const worker = startSemanticProjectionConvergenceWorker(
+      async () => [projectId],
+      notConfiguredRig.coordinator,
+      60_000,
+      { onResult, onFailure },
+    );
+    await worker.tick();
+    await worker.stop();
+    expect(onResult).toHaveBeenCalledWith(
+      expect.objectContaining({ notConfigured: 1 }),
+      expect.any(String),
+      expect.any(String),
+    );
+
+    const failedWorker = startSemanticProjectionConvergenceWorker(
+      async () => {
+        throw new Error('periodic list failure');
+      },
+      createRig(undefined).coordinator,
+      60_000,
+      { onResult, onFailure },
+    );
+    await expect(failedWorker.tick()).resolves.toBeUndefined();
+    await failedWorker.stop();
+    expect(onFailure).toHaveBeenCalledTimes(1);
   });
 });

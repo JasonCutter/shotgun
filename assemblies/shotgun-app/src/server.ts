@@ -2124,6 +2124,18 @@ const createApplicationCore = async (
       ),
     );
   };
+  const recordSemanticProjectionConvergenceFailure = (
+    startedAt: string,
+    completedAt: string,
+  ): void => {
+    recoveryRegistry.record(
+      semanticConvergenceRecoveryFailureStatus(
+        startedAt,
+        completedAt,
+        recoveryRegistry.get(RECOVERY_RUNNER_IDS.SEMANTIC_PROJECTION_CONVERGENCE),
+      ),
+    );
+  };
   const authRepository = options.authRepository ?? new InMemoryAuthRepository();
   // FE-P5-S2 WP2-C / WP5: ProjectTombstone + DeletedProjectAuditScope store for
   // authorized deleted-project audit reads.
@@ -2501,6 +2513,7 @@ const createApplicationCore = async (
   const semanticProjectionConvergence =
     options.semanticProjectionConvergence ??
     (options.semanticEmbeddingProfile &&
+    options.semanticEmbeddingResolver &&
     options.semanticActiveGenerationReader &&
     options.semanticProjectionRefresh
       ? new SemanticProjectionConvergenceCoordinator({
@@ -2508,6 +2521,7 @@ const createApplicationCore = async (
           source: semanticCorpusSourceSnapshotReader,
           activeGenerationReader: options.semanticActiveGenerationReader,
           refresh: options.semanticProjectionRefresh,
+          semanticEmbeddingResolver: options.semanticEmbeddingResolver,
         })
       : undefined);
   const semanticProjectionConvergenceModule = createSemanticProjectionConvergenceModule(
@@ -3027,13 +3041,7 @@ const createApplicationCore = async (
       );
       recordSemanticProjectionConvergenceRecovery(result, startedAt, new Date().toISOString());
     } catch {
-      recoveryRegistry.record(
-        semanticConvergenceRecoveryFailureStatus(
-          startedAt,
-          new Date().toISOString(),
-          recoveryRegistry.get(RECOVERY_RUNNER_IDS.SEMANTIC_PROJECTION_CONVERGENCE),
-        ),
-      );
+      recordSemanticProjectionConvergenceFailure(startedAt, new Date().toISOString());
     }
   }
   const canonicalProjectionRecoveryWorker =
@@ -3061,6 +3069,10 @@ const createApplicationCore = async (
           options.semanticProjectionConvergenceIntervalMs ??
             options.canonicalProjectionRecoveryIntervalMs ??
             30_000,
+          {
+            onResult: recordSemanticProjectionConvergenceRecovery,
+            onFailure: recordSemanticProjectionConvergenceFailure,
+          },
         );
   if (semanticProjectionConvergenceWorker) {
     cleanupStack.add('semantic projection convergence worker', () =>

@@ -4,7 +4,15 @@
 - 기준: `main@7c3f02d67467fe1f4eb9343cc2503bcdb0d3aae6`
 - 대상: Semantic Projection Convergence, CanonicalCommitted handoff, bounded recovery
 - ADR: [`ADR-168`](../../architecture/adr/ADR-168-canonical-driven-semantic-projection-convergence.md)
-- 상태: 구현 완료, 로컬 게이트 검증 완료 (실 PostgreSQL/CI 증적은 환경 제한)
+- 상태: 보정 구현 완료, 로컬 정적·집중 게이트 통과 (실 PostgreSQL/CI 증적 대기)
+
+이번 보정은 PR #327 리뷰의 `CHANGES_REQUIRED` 항목을 반영한다. Semantic
+generation의 exact-current 판정은 source watermark/profile identity만 보지 않고
+기존 `SemanticEmbeddingResolverPort`를 통해 전체 실행 호환성 identity를 확인한다.
+Periodic recovery도 startup과 동일한 bounded recorder를 사용해 성공·실패 결과를
+health/recovery registry에 남기며, background exception을 격리한다. Canonical,
+Approval, outbox, refresh authority, generation CAS, Ask 및 lexical fallback의
+경계는 변경하지 않았다.
 
 ## 범위
 
@@ -79,6 +87,25 @@ handoff, existing Port, approval/evidence 경계에 한정된다. 교체 시
 `modules/frontend-knowledge-draft/src/product-api.ts` 경고가 남아 있다. C7 변경 파일은
 별도 targeted check를 통과했으며, 해당 기존 파일은 이 PR의 범위를 넓히지 않도록 수정하지 않았다.
 
+## 보정 반복 검증 결과 (2026-09-16)
+
+| 게이트                                 | 결과                                                                                                    |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`                    | PASS                                                                                                    |
+| 변경 파일 ESLint                       | PASS                                                                                                    |
+| C7 Unit + database-target guard        | PASS — 13 tests                                                                                         |
+| Semantic embedding Product integration | PASS — 13 tests                                                                                         |
+| `npm run test:integration`             | 65 suites / 504 tests PASS; `recovery-harness-isolation` 1 suite는 `TEST_DATABASE_URL` 부재로 실행 차단 |
+| Knowledge Model contract 재실행        | PASS — 12 tests (`--maxWorkers=1 --testTimeout=30000`)                                                  |
+| C7 PostgreSQL causal acceptance        | 1 test skip — `TEST_DATABASE_URL` 부재; CI에서 실행 필요                                                |
+| `git diff --check`                     | PASS                                                                                                    |
+
+전체 Contract 실행에서는 기존 Knowledge Model 두 테스트가 기본 5초 제한으로 timeout되었으나,
+단일 worker와 30초 제한 재실행에서는 12/12 통과했다. PostgreSQL acceptance는 실제
+Canonical repository commit, durable outbox, Stage 7 projection, restart recovery,
+provider 장애·복구, hybrid stale exclusion, normal Ask evidence/citation을 포함하며
+로컬 DB가 없어 skip되었다.
+
 ## Migration / Rollback
 
 DB migration은 없다. 변경을 revert하면 기존 Canonical, lexical projection, semantic
@@ -88,11 +115,14 @@ generation 및 Connector Runtime 상태를 유지한 채 C7 consumer와 recovery
 ## 변경 파일
 
 - `modules/semantic-generation/src/convergence.ts`
+- `modules/semantic-generation/src/compatibility.ts`
 - `modules/semantic-generation/src/index.ts`
 - `modules/canonical-knowledge/src/index.ts`
 - `assemblies/shotgun-app/src/server.ts`
+- `assemblies/shotgun-app/src/product-api/ai-settings-routes.ts`
 - `tests/unit/semantic-projection-convergence.test.ts`
 - `tests/integration/semantic-projection-convergence.test.ts`
+- `tests/integration/semantic-embedding-profile-product.test.ts`
 - `tests/database/semantic-projection-convergence.database.test.ts`
 - `tests/contract/handoff-topology.contract.test.ts`
 - `tests/unit/health.test.ts`

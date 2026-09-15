@@ -10,9 +10,14 @@ import {
   type SemanticCorpusSourceSnapshotReaderPort,
   type SemanticEmbeddingProfile,
   type SemanticEmbeddingProfilePort,
+  type SemanticEmbeddingResolverPort,
   type SemanticProjectionRefreshPort,
 } from '../../../packages/contracts/src/index.js';
 import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
+import {
+  semanticGenerationMatchesCurrentExecution,
+  semanticSourceSensitivity,
+} from './compatibility.js';
 
 export type SemanticProjectionConvergenceTrigger = 'EVENT' | 'STARTUP' | 'PERIODIC';
 
@@ -66,6 +71,7 @@ type ConvergenceDependencies = {
   readonly source: SemanticCorpusSourceSnapshotReaderPort;
   readonly activeGenerationReader: SemanticActiveGenerationReaderPort;
   readonly refresh: SemanticProjectionRefreshPort;
+  readonly semanticEmbeddingResolver: SemanticEmbeddingResolverPort;
   readonly now?: () => string;
 };
 
@@ -210,9 +216,11 @@ export class SemanticProjectionConvergenceCoordinator implements SemanticProject
     }
 
     let watermark: Awaited<ReturnType<SemanticCorpusSourceSnapshotReaderPort['readWatermark']>>;
+    let snapshot: Awaited<ReturnType<SemanticCorpusSourceSnapshotReaderPort['readSnapshot']>>;
     let active: Awaited<ReturnType<SemanticActiveGenerationReaderPort['getActiveGeneration']>>;
     try {
       watermark = await this.dependencies.source.readWatermark(input.projectId);
+      snapshot = await this.dependencies.source.readSnapshot(input.projectId);
       active = await this.dependencies.activeGenerationReader.getActiveGeneration(input.projectId);
     } catch (error) {
       const code = safeFailureCode(error);
@@ -228,8 +236,12 @@ export class SemanticProjectionConvergenceCoordinator implements SemanticProject
       active !== undefined &&
       active.buildStatus === 'READY' &&
       semanticGenerationMatchesSourceWatermark(active, watermark, input.projectId) &&
-      active.embeddingProfileId === profile.profileId &&
-      active.embeddingProfileRevision === profile.profileRevision;
+      (await semanticGenerationMatchesCurrentExecution({
+        generation: active,
+        profile,
+        resolver: this.dependencies.semanticEmbeddingResolver,
+        sensitivity: semanticSourceSensitivity(snapshot),
+      }));
 
     if (currentGeneration && active) {
       return this.record(input.projectId, {
@@ -269,6 +281,7 @@ export class SemanticProjectionConvergenceCoordinator implements SemanticProject
         input.projectId,
       );
       const postRefreshWatermark = await this.dependencies.source.readWatermark(input.projectId);
+      const postRefreshSnapshot = await this.dependencies.source.readSnapshot(input.projectId);
       if (
         !converged ||
         converged.buildStatus !== 'READY' ||
@@ -277,8 +290,12 @@ export class SemanticProjectionConvergenceCoordinator implements SemanticProject
           postRefreshWatermark,
           input.projectId,
         ) ||
-        converged.embeddingProfileId !== profile.profileId ||
-        converged.embeddingProfileRevision !== profile.profileRevision
+        !(await semanticGenerationMatchesCurrentExecution({
+          generation: converged,
+          profile,
+          resolver: this.dependencies.semanticEmbeddingResolver,
+          sensitivity: semanticSourceSensitivity(postRefreshSnapshot),
+        }))
       ) {
         return this.failRefresh({
           projectId: input.projectId,
@@ -380,6 +397,7 @@ export const createSemanticProjectionConvergenceModule = (
         'SemanticCorpusSourceSnapshotReaderPort',
         'SemanticActiveGenerationReaderPort',
         'SemanticEmbeddingProfilePort',
+        'SemanticEmbeddingResolverPort',
         'SemanticProjectionRefreshPort',
       ],
       directSchemaAccess: false,
@@ -504,10 +522,20 @@ export const runSemanticProjectionConvergenceRecovery = async (
   };
 };
 
+export type SemanticProjectionConvergenceWorkerOptions = {
+  readonly onResult?: (
+    result: SemanticProjectionConvergenceRecoveryResult,
+    startedAt: string,
+    completedAt: string,
+  ) => void | Promise<void>;
+  readonly onFailure?: (startedAt: string, completedAt: string) => void | Promise<void>;
+};
+
 export const startSemanticProjectionConvergenceWorker = (
   listProjectIds: () => Promise<readonly string[]>,
   convergence: SemanticProjectionConvergencePort,
   intervalMs: number,
+  options: SemanticProjectionConvergenceWorkerOptions = {},
 ) => {
   if (!Number.isFinite(intervalMs) || intervalMs < 1) {
     throw new RangeError('Semantic convergence interval must be at least one millisecond.');
@@ -517,11 +545,28 @@ export const startSemanticProjectionConvergenceWorker = (
   const tick = (): Promise<void> => {
     if (stopped) return Promise.resolve();
     if (active) return active;
+    const startedAt = new Date().toISOString();
+    const reportFailure = async (): Promise<void> => {
+      try {
+        await options.onFailure?.(startedAt, new Date().toISOString());
+      } catch {
+        // Recovery reporting is best effort and must not create an
+        // unhandled rejection in the background interval.
+      }
+    };
     const execution = runSemanticProjectionConvergenceRecovery(
       listProjectIds,
       convergence,
       'PERIODIC',
     )
+      .then(async (result) => {
+        try {
+          await options.onResult?.(result, startedAt, new Date().toISOString());
+        } catch {
+          await reportFailure();
+        }
+      })
+      .catch(() => reportFailure())
       .then(() => undefined)
       .finally(() => {
         if (active === execution) active = undefined;

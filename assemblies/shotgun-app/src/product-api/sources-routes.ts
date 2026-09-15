@@ -3,7 +3,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 
 import type { AuthRepositoryPort } from '../../../../packages/authentication/src/index.js';
+import type { ConnectorRuntime } from '../../../../packages/connector-runtime/src/index.js';
 import {
+  createCommand,
   FrontendContractError,
   SOURCES_FRONTEND_COMMAND_TYPES,
   ShotgunError,
@@ -69,6 +71,9 @@ export const registerSourcesRoutes = (
   authRepository: AuthRepositoryPort,
   settingsRepository: SettingsRepositoryPort,
   requirePrincipalBrowserSession: PrincipalSessionResolver,
+  dependencies: {
+    readonly connector: Pick<ConnectorRuntime, 'sendCommand'>;
+  },
 ): void => {
   if (!server.hasContentTypeParser('application/octet-stream')) {
     server.addContentTypeParser(
@@ -528,6 +533,144 @@ export const registerSourcesRoutes = (
         return { outcome, submission };
       } catch (error) {
         throw toProductApiCommandError(error, 'retry-sources-intake');
+      }
+    },
+  );
+
+  server.post<{
+    Params: { sourceId: string; sourceVersionId: string };
+    Body: unknown;
+    Headers: SecurityHeaders;
+  }>(
+    '/product-api/frontend/sources/:sourceId/versions/:sourceVersionId/reextract-candidates',
+    async (request) => {
+      const runtime = getSourcesWriteRuntime();
+      if (!runtime) throw writeUnavailable();
+      const scope = await buildScope(request.headers);
+      let accepted:
+        Awaited<ReturnType<typeof acceptCommand<SourcesFrontendCommandPayload>>> | undefined;
+      let commandSettled = false;
+      let internalDispatchCompleted = false;
+      const rejectIfNeeded = async (error: unknown): Promise<void> => {
+        if (
+          !accepted ||
+          commandSettled ||
+          internalDispatchCompleted ||
+          accepted.outcome.outcomeState !== 'ACCEPTED'
+        ) {
+          return;
+        }
+        commandSettled = true;
+        await rejectAcceptedCommand(runtime.commandGateway, accepted.outcome.commandId, error);
+      };
+
+      try {
+        const sourceId = requireParameter(request.params.sourceId, 'sourceId');
+        const sourceVersionId = requireParameter(request.params.sourceVersionId, 'sourceVersionId');
+        accepted = await acceptCommand(
+          request.body,
+          SOURCES_FRONTEND_COMMAND_TYPES.reextract,
+          scope.write,
+        );
+        const payload = accepted.request.payload as Extract<
+          SourcesFrontendCommandPayload,
+          { readonly sourceId: string; readonly sourceVersionId: string }
+        >;
+        if (payload.sourceId !== sourceId || payload.sourceVersionId !== sourceVersionId) {
+          throw new FrontendContractError(
+            'INVALID_REQUEST',
+            'The Source route target must match the command payload.',
+          );
+        }
+        const target = await coordinator.reextractTarget(scope.read, sourceId, sourceVersionId);
+        if (!target) throw maskedNotFound();
+        if (
+          accepted.outcome.outcomeState !== 'ACCEPTED' &&
+          accepted.outcome.outcomeState !== 'COMPLETED'
+        ) {
+          throw new ShotgunError({
+            code: accepted.outcome.rejection?.code ?? 'OUTCOME_INDETERMINATE',
+            safeMessage:
+              accepted.outcome.rejection?.message ??
+              'The original AI processing request is not available for retry.',
+            module: 'frontend-sources-product',
+            operation: 'replay-source-candidate-reextract',
+          });
+        }
+
+        if (accepted.outcome.outcomeState !== 'COMPLETED') {
+          const requestId = `source-candidate-reextract:${accepted.outcome.commandId}`;
+          try {
+            await dependencies.connector.sendCommand(
+              createCommand({
+                messageType: 'ReextractCandidateMaterialization',
+                schemaVersion: '1.0.0',
+                producerModule: 'frontend-sources-product',
+                producerVersion: '1.0.0',
+                idempotencyKey: requestId,
+                projectId: target.projectId,
+                principalId: scope.write.principalId,
+                actor: { type: 'user', id: scope.write.principalId },
+                security: {
+                  accessScope: target.accessScope,
+                  sensitivity: target.sensitivity,
+                  dataClassification: target.dataClassification,
+                },
+                provenance: {
+                  sourceVersionIds: [target.sourceVersionId],
+                  evidenceIds: [],
+                },
+                payload: {
+                  sourceVersionId: target.sourceVersionId,
+                  requestId,
+                },
+              }),
+            );
+            internalDispatchCompleted = true;
+          } catch (error) {
+            await rejectIfNeeded(error);
+            throw error;
+          }
+        }
+
+        let outcome;
+        try {
+          outcome = await runtime.commandGateway.complete({
+            commandId: accepted.outcome.commandId,
+            producedResources: [
+              {
+                resourceKind: 'source-version-candidate-reextract',
+                resourceId: target.sourceVersionId,
+                resourceRevision: accepted.request.clientRequestId,
+              },
+            ],
+            completedAt: new Date().toISOString(),
+          });
+          commandSettled = true;
+        } catch (error) {
+          throw new ShotgunError({
+            code: 'OUTCOME_INDETERMINATE',
+            safeMessage:
+              'AI processing was accepted. Resolve the original clientRequestId before retrying.',
+            module: 'frontend-sources-product',
+            operation: 'complete-source-candidate-reextract',
+            retryable: true,
+            cause: error,
+          });
+        }
+        return {
+          outcome,
+          reextract: {
+            schemaVersion: '1.0.0',
+            projectId: target.projectId,
+            sourceId: target.sourceId,
+            sourceVersionId: target.sourceVersionId,
+            status: 'ACCEPTED' as const,
+          },
+        };
+      } catch (error) {
+        await rejectIfNeeded(error);
+        throw toProductApiCommandError(error, 'reextract-source-candidates');
       }
     },
   );

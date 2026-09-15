@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -70,6 +71,16 @@ const createMockRuntime = (
   evidenceItems: EvidenceListView['items'],
   transformationState:
     'NOT_STARTED' | 'RUNNING' | 'RETRYING' | 'BLOCKED' | 'NO_EVIDENCE' | 'READY' = 'READY',
+  reextractSourceVersionCandidates: () => Promise<unknown> = async () => ({
+    outcome: { outcomeState: 'COMPLETED' },
+    resource: {
+      schemaVersion: '1.0.0',
+      projectId: 'project-1',
+      sourceId: 'source-1',
+      sourceVersionId: 'version-1',
+      status: 'ACCEPTED',
+    },
+  }),
 ): AppRuntime => {
   const evidenceList: EvidenceListView = {
     schemaVersion: '1.0.0',
@@ -125,6 +136,7 @@ const createMockRuntime = (
       fetchedAt: now,
     })),
     getSourceEvidence: vi.fn(async () => evidenceList),
+    reextractSourceVersionCandidates,
     getPrincipalPreferences: vi.fn(async () => ({ preferences: { locale: 'en-US' }, revision: 1 })),
   } as unknown as ShotgunApiClient;
 
@@ -138,6 +150,138 @@ const createMockRuntime = (
 const ShellOutlet = () => <Outlet context={{ shell: baseShell }} />;
 
 describe('SourceDetailWorkspace Evidence Presentation HFM-S7-C8-D3', () => {
+  it('offers contextual AI reprocessing for an evidence-ready version and does not resubmit on refresh', async () => {
+    const reextractSourceVersionCandidates = vi.fn(async () => ({
+      outcome: { outcomeState: 'COMPLETED' },
+      resource: {
+        schemaVersion: '1.0.0',
+        projectId: 'project-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        status: 'ACCEPTED',
+      },
+    }));
+    const runtime = createMockRuntime(
+      [
+        {
+          evidenceId: 'evi-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          revisionId: 'rev-1',
+          label: 'Evidence',
+          origin: 'ORIGINAL',
+          exactText: 'Evidence',
+          locators: [],
+          createdAt: now,
+        },
+      ],
+      'READY',
+      reextractSourceVersionCandidates,
+    );
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources/source-1?version=version-1&view=evidence'] },
+    );
+    const user = userEvent.setup();
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const retryButton = await screen.findByRole('button', { name: 'Retry AI processing' });
+    await user.click(retryButton);
+    await screen.findByText('AI processing restarted for this Source version.');
+    expect(reextractSourceVersionCandidates).toHaveBeenCalledTimes(1);
+    expect(reextractSourceVersionCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeProjectId: 'project-1',
+        targetProjectId: 'project-1',
+        resourceProjectId: 'project-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+      }),
+    );
+    expect(screen.queryByText('source-1')).toBeNull();
+    expect(screen.queryByText('version-1')).toBeNull();
+
+    await router.navigate('/sources/source-1?version=version-1&view=evidence');
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Evidence', level: 2 })).toBeTruthy(),
+    );
+    expect(reextractSourceVersionCandidates).toHaveBeenCalledTimes(1);
+  });
+
+  it('prevents a second contextual AI request while the first request is pending', async () => {
+    let resolveRequest: (() => void) | undefined;
+    const reextractSourceVersionCandidates = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveRequest = () =>
+            resolve({
+              outcome: { outcomeState: 'COMPLETED' },
+              resource: {
+                schemaVersion: '1.0.0',
+                projectId: 'project-1',
+                sourceId: 'source-1',
+                sourceVersionId: 'version-1',
+                status: 'ACCEPTED',
+              },
+            });
+        }),
+    );
+    const runtime = createMockRuntime(
+      [
+        {
+          evidenceId: 'evi-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          revisionId: 'rev-1',
+          label: 'Evidence',
+          origin: 'ORIGINAL',
+          exactText: 'Evidence',
+          locators: [],
+          createdAt: now,
+        },
+      ],
+      'READY',
+      reextractSourceVersionCandidates,
+    );
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources/source-1?version=version-1&view=evidence'] },
+    );
+    const user = userEvent.setup();
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const retryButton = await screen.findByRole('button', { name: 'Retry AI processing' });
+    await user.click(retryButton);
+    const pendingButton = await screen.findByRole('button', {
+      name: 'Restarting AI processing…',
+    });
+    expect(pendingButton).toHaveProperty('disabled', true);
+    expect(reextractSourceVersionCandidates).toHaveBeenCalledTimes(1);
+    resolveRequest?.();
+    await screen.findByText('AI processing restarted for this Source version.');
+  });
+
   it('A. WITHIN-CARD: renders the exact quote once without duplicate strong label when label is derived', async () => {
     const quoteText = '2026-08-11 Shotgun 로컬 실행을 처음 완료했다.';
     const runtime = createMockRuntime([

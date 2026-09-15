@@ -70,6 +70,7 @@ import {
   decodeSourceVersionHistoryView,
   decodeSourcePreviewView,
   decodeEvidenceListView,
+  decodeSourceCandidateReextractView,
   decodeIntakeSubmissionSnapshot,
   decodeExactDuplicateDecisionView,
   SOURCES_FRONTEND_COMMAND_TYPES,
@@ -109,6 +110,7 @@ import {
   type SourceVersionHistoryView,
   type SourcePreviewView,
   type EvidenceListView,
+  type SourceCandidateReextractView,
   type IntakeSubmissionSnapshot,
   type ExactDuplicateDecisionView,
   type SubmitSourcesIntakeCommandPayload,
@@ -538,6 +540,56 @@ export const createShotgunApiClient = (
       );
       const body = (await assertOk(response)) as { evidence: unknown };
       return decodeMeasured('source-evidence', () => decodeEvidenceListView(body.evidence));
+    },
+
+    async reextractSourceVersionCandidates(
+      params: FrontendCommandSubmission & {
+        readonly sourceId: string;
+        readonly sourceVersionId: string;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<FrontendCommandMutationResponse<SourceCandidateReextractView>> {
+      return runCommandMutation(
+        requestOptions?.signal,
+        params.clientRequestId,
+        async (csrfToken) => {
+          const response = await productRequest(
+            `/sources/${encodeURIComponent(params.sourceId)}/versions/${encodeURIComponent(params.sourceVersionId)}/reextract-candidates`,
+            {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                'x-csrf-token': csrfToken,
+              },
+              body: JSON.stringify(
+                createCommandRequest({
+                  commandType: SOURCES_FRONTEND_COMMAND_TYPES.reextract,
+                  activeProjectId: params.activeProjectId,
+                  targetProjectId: params.targetProjectId,
+                  resourceProjectId: params.resourceProjectId,
+                  clientRequestId: params.clientRequestId,
+                  idempotencyKey: params.idempotencyKey,
+                  clientIssuedAt: params.clientIssuedAt,
+                  preconditions: [],
+                  payload: {
+                    sourceId: params.sourceId,
+                    sourceVersionId: params.sourceVersionId,
+                  },
+                }),
+              ),
+              signal: requestOptions?.signal,
+            },
+          );
+          const body = (await assertOk(response)) as {
+            outcome: unknown;
+            reextract: unknown;
+          };
+          return {
+            outcome: decodeAnyFrontendCommandOutcomeView(body.outcome),
+            resource: decodeSourceCandidateReextractView(body.reextract),
+          };
+        },
+      );
     },
 
     async getIntakeSubmission(

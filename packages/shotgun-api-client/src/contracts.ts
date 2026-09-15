@@ -39,6 +39,7 @@ import type {
   SourceVersionHistoryView,
   SourcePreviewView,
   EvidenceListView,
+  SourceCandidateReextractView,
   IntakeSubmissionSnapshot,
   ExactDuplicateDecisionView,
   SubmitSourcesIntakeCommandPayload,
@@ -881,6 +882,13 @@ export type ShotgunApiClient = {
     params: FrontendCommandSubmission & SubmitSourcesIntakeCommandPayload,
     options?: RequestOptions,
   ): Promise<FrontendCommandMutationResponse<IntakeSubmissionSnapshot>>;
+  reextractSourceVersionCandidates(
+    params: FrontendCommandSubmission & {
+      readonly sourceId: string;
+      readonly sourceVersionId: string;
+    },
+    options?: RequestOptions,
+  ): Promise<FrontendCommandMutationResponse<SourceCandidateReextractView>>;
   createFirstProject(
     params: {
       readonly name: string;

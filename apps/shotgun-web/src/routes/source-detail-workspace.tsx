@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
-import { useCallback, useMemo } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
 import { Link, useLocation, useOutletContext, useParams, useSearchParams } from 'react-router';
 
 import {
   decodeCitationReturnTarget,
   decodeConversationCitationReturnTarget,
+  ShotgunApiError,
   type CitationReturnTarget,
   type ConversationCitationReturnTarget,
   type EvidenceListView,
@@ -12,7 +13,7 @@ import {
 } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
-import { ErrorState } from '../components/error-state.js';
+import { ErrorState, safeErrorMessage } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
 import { hfmOwnerLabel, useProductLocalization } from '../localization/product-localization.js';
@@ -132,6 +133,37 @@ export const SourceDetailWorkspace = () => {
   const evidence = useQuery(
     sourceEvidenceQueryOptions(apiClient, shell, sourceId, selectedVersionId),
   );
+  const [reextractFeedback, setReextractFeedback] = useState<
+    { readonly kind: 'success' | 'error'; readonly message: string } | undefined
+  >();
+  const reextractMutation = useMutation({
+    mutationFn: () => {
+      const activeProjectId = shell.activeProject?.id;
+      if (!activeProjectId) throw new Error('An active Project is required.');
+      return apiClient.reextractSourceVersionCandidates({
+        activeProjectId,
+        targetProjectId: activeProjectId,
+        resourceProjectId: activeProjectId,
+        sourceId,
+        sourceVersionId: selectedVersionId,
+        clientRequestId: globalThis.crypto.randomUUID(),
+        idempotencyKey: globalThis.crypto.randomUUID(),
+      });
+    },
+    onSuccess: async () => {
+      setReextractFeedback({
+        kind: 'success',
+        message: t('source_detail.reprocess_ai_success'),
+      });
+      await Promise.all([history.refetch(), evidence.refetch()]);
+    },
+    onError: (error) => {
+      setReextractFeedback({
+        kind: 'error',
+        message: `${t('source_detail.reprocess_ai_failed')} ${safeErrorMessage(error)}`,
+      });
+    },
+  });
   const citationReturnTarget = useMemo<CitationReturnTarget | undefined>(() => {
     const candidate =
       typeof location.state === 'object' && location.state !== null
@@ -183,6 +215,15 @@ export const SourceDetailWorkspace = () => {
     () => (evidence.data ? groupEvidenceCards(evidence.data.items) : []),
     [evidence.data],
   );
+  const reextractEligible =
+    selectedVersionState !== undefined &&
+    selectedVersionState !== 'RUNNING' &&
+    selectedVersionState !== 'RETRYING' &&
+    evidence.data !== undefined &&
+    evidence.data.items.length > 0;
+  const reextractNeedsConfiguration =
+    reextractMutation.error instanceof ShotgunApiError &&
+    reextractMutation.error.code === 'CONFIGURATION_REQUIRED';
 
   if (detail.isPending) return <LoadingState message={t('source_detail.loading')} />;
   if (detail.error) return <ErrorState error={detail.error} />;
@@ -229,6 +270,36 @@ export const SourceDetailWorkspace = () => {
           >
             {t('source_detail.return_knowledge')}
           </Link>
+        </p>
+      ) : null}
+      {reextractEligible ? (
+        <section
+          className="action-card source-detail-ai-action"
+          aria-labelledby="source-ai-heading"
+        >
+          <h2 id="source-ai-heading">{t('source_detail.reprocess_ai_heading')}</h2>
+          <p>{t('source_detail.reprocess_ai_explanation')}</p>
+          <button
+            type="button"
+            onClick={() => reextractMutation.mutate()}
+            disabled={reextractMutation.isPending}
+          >
+            {reextractMutation.isPending
+              ? t('source_detail.reprocess_ai_pending')
+              : t('source_detail.reprocess_ai')}
+          </button>
+          {reextractFeedback ? (
+            <p role={reextractFeedback.kind === 'error' ? 'alert' : 'status'}>
+              {reextractFeedback.message}
+            </p>
+          ) : null}
+          {reextractNeedsConfiguration ? (
+            <Link to="/settings/ai">{t('source_detail.reprocess_ai_configure')}</Link>
+          ) : null}
+        </section>
+      ) : reextractFeedback ? (
+        <p role={reextractFeedback.kind === 'error' ? 'alert' : 'status'}>
+          {reextractFeedback.message}
         </p>
       ) : null}
       <nav className="source-detail-navigation" aria-label={t('source_detail.views')}>

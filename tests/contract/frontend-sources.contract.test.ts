@@ -8,6 +8,7 @@ import {
   decodeIntakeSubmissionSnapshot,
   decodeIntakeDraftSeed,
   decodeSourceDetailView,
+  decodeSourceCandidateReextractView,
   decodeSourceLibraryPageView,
   decodeSourceLibraryQuery,
   decodeSourcePreviewView,
@@ -124,6 +125,51 @@ describe('Frontend Phase 2 Section 1 Sources contracts', () => {
         },
       }),
     ).toThrow(FrontendContractError);
+  });
+
+  it('validates the object-scoped SourceVersion re-extraction command without AI authority fields', () => {
+    const request = validateSourcesFrontendCommandRequest(
+      {
+        envelopeVersion: '1.0.0',
+        commandType: SOURCES_FRONTEND_COMMAND_TYPES.reextract,
+        commandSchemaVersion: '1.0.0',
+        clientRequestId: 'reextract-request',
+        idempotencyKey: 'reextract-idempotency',
+        projectContext: {
+          activeProjectId: 'project-1',
+          targetProjectId: 'project-1',
+          resourceProjectId: 'project-1',
+        },
+        policyBinding: { mode: 'CURRENT' },
+        preconditions: [],
+        clientIssuedAt: now,
+        payload: { sourceId: 'source-1', sourceVersionId: 'version-1' },
+      },
+      SOURCES_FRONTEND_COMMAND_TYPES.reextract,
+    );
+    expect(request.payload).toEqual({ sourceId: 'source-1', sourceVersionId: 'version-1' });
+    expect(() =>
+      validateSourcesFrontendCommandRequest(
+        {
+          ...request,
+          payload: {
+            ...request.payload,
+            providerId: 'browser-provider',
+          },
+        },
+        SOURCES_FRONTEND_COMMAND_TYPES.reextract,
+      ),
+    ).toThrow(/unsupported fields/);
+
+    expect(
+      decodeSourceCandidateReextractView({
+        schemaVersion: '1.0.0',
+        projectId: 'project-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        status: 'ACCEPTED',
+      }).status,
+    ).toBe('ACCEPTED');
   });
 
   it('rejects browser-created Source authority and invalid duplicate disposition shape', () => {

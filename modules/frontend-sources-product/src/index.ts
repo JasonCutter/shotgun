@@ -63,6 +63,15 @@ export type ServerAuthorizedProjectSourcesReadScope = {
   readonly policyContextRevision: string;
 };
 
+export type SourcesCandidateReextractTarget = {
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly accessScope: readonly string[];
+  readonly sensitivity: SourcesSensitivity;
+  readonly dataClassification: 'source-content';
+};
+
 type CursorPayload = {
   readonly projectId: string;
   readonly queryDigest: string;
@@ -197,6 +206,44 @@ export class FrontendSourcesReadCoordinator {
     return (await this.sources.listProjectSourceVersions(scope.authorizedProjectId)).filter(
       (record) => assertAuthorized(record, scope),
     );
+  }
+
+  /**
+   * Resolves a re-extraction target from the server-authorized Source
+   * projection. The browser supplies only the object identity; the internal
+   * command receives the SourceVersion's stored security context and never
+   * trusts browser Project, Principal, AI, or policy fields.
+   */
+  async reextractTarget(
+    scope: ServerAuthorizedProjectSourcesReadScope,
+    sourceId: string,
+    sourceVersionId: string,
+  ): Promise<SourcesCandidateReextractTarget | null> {
+    const record = (await this.authorizedRecords(scope)).find(
+      (candidate) =>
+        candidate.sourceId === sourceId && candidate.sourceVersionId === sourceVersionId,
+    );
+    if (!record) return null;
+
+    const usableEvidence = (
+      await this.evidence.listBySourceVersion(record.projectId, record.sourceVersionId)
+    ).filter((item) => item.nodeKind === 'sentence');
+    if (usableEvidence.length === 0) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'This Source version has no usable Evidence for AI processing.',
+        module: 'frontend-sources-product',
+        operation: 'reextract-source-candidates',
+      });
+    }
+    return {
+      projectId: record.projectId,
+      sourceId: record.sourceId,
+      sourceVersionId: record.sourceVersionId,
+      accessScope: [...record.accessScope],
+      sensitivity: record.sensitivity,
+      dataClassification: 'source-content',
+    };
   }
 
   /**

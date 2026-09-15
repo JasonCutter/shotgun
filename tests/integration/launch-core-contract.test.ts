@@ -118,6 +118,20 @@ describe('LPA-WP4 A2 Correction C3-A — Frozen failure taxonomy (8 kinds)', () 
     expect(calls).toEqual(['build', 'db-probe', 'db-verify', 'start', 'listen', 'readiness']);
     await handle.close();
   });
+
+  it('forwards noSignals to the real application boundary', async () => {
+    let observed: boolean | undefined;
+    const { deps } = makeDeps({
+      startApplication: async ({ noSignals }) => {
+        observed = noSignals;
+        return makeHandle([]);
+      },
+    });
+    const handle = await runLaunch(makeOptions({ noOpen: true, noSignals: true }), deps);
+    expect(observed).toBe(true);
+    await handle.close();
+  });
+
   it('classifies SPA_BUILD_FAILED when the build runner fails', async () => {
     const { deps, calls } = makeDeps({
       buildSpa: () => {

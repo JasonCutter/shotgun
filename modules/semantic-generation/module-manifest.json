@@ -1,0 +1,35 @@
+{
+  "id": "stage7.semantic-projection-convergence",
+  "version": "1.0.0",
+  "owner": "Shotgun Semantic Projection Convergence",
+  "compatibility": {
+    "runtime": ">=1.0.0 <2.0.0",
+    "contracts": [{ "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": [],
+    "readsViaPorts": [
+      "SemanticCorpusSourceSnapshotReaderPort",
+      "SemanticActiveGenerationReaderPort",
+      "SemanticEmbeddingProfilePort",
+      "SemanticProjectionRefreshPort"
+    ],
+    "directSchemaAccess": false
+  },
+  "consumes": {
+    "commands": [],
+    "events": [{ "name": "CanonicalCommitted", "range": ">=1.0.0 <2.0.0" }]
+  },
+  "produces": { "events": [], "handoffs": [] },
+  "provides": { "queries": [], "capabilities": [] },
+  "requires": { "capabilities": [] },
+  "security": {
+    "requiredContext": ["actor", "project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": {
+    "canWriteCanonical": false,
+    "canExecuteExternalAction": false
+  }
+}

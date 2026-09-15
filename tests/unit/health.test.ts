@@ -33,6 +33,7 @@ describe('Shotgun application', () => {
         'stage5.change-set-review',
         'stage6.canonical-knowledge',
         'stage7.projection-search',
+        'stage7.semantic-projection-convergence',
         'stage7.cited-answer',
         'stage9.knowledge-model',
         'stage10.compiled-truth',

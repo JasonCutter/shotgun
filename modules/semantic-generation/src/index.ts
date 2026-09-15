@@ -897,3 +897,5 @@ export class SemanticProjectionRefreshService implements SemanticProjectionRefre
     };
   }
 }
+
+export * from './convergence.js';

@@ -52,6 +52,30 @@ const status = (
   ...overrides,
 });
 
+const multiEmbeddingOptions = [
+  {
+    providerId: 'openai',
+    providerDisplayName: 'OpenAI',
+    embeddingModelId: 'text-embedding-3-small',
+    embeddingModelDisplayName: 'Text Embedding 3 Small',
+    hasActiveCredential: false,
+  },
+  {
+    providerId: 'openai',
+    providerDisplayName: 'OpenAI',
+    embeddingModelId: 'text-embedding-3-large',
+    embeddingModelDisplayName: 'Text Embedding 3 Large',
+    hasActiveCredential: false,
+  },
+  {
+    providerId: 'google-gemini',
+    providerDisplayName: 'Google Gemini',
+    embeddingModelId: 'gemini-embedding-001',
+    embeddingModelDisplayName: 'Gemini Embedding 001',
+    hasActiveCredential: false,
+  },
+] as const;
+
 const snapshot = {
   schemaVersion: '1.0.0',
   targetProjectId: 'project-1',
@@ -212,6 +236,112 @@ describe('SemanticCommandSurface', () => {
         'Embedding credential saved. The active generative AI configuration was not changed.',
       ),
     ).toBeTruthy();
+  });
+
+  it('preserves the exact selected embedding model across a multi-option credential refresh', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const getSemanticComparisonStatus = vi
+      .fn<ShotgunApiClient['getSemanticComparisonStatus']>()
+      .mockResolvedValueOnce(status({ embeddingOptions: multiEmbeddingOptions }))
+      .mockResolvedValue(
+        status({
+          embeddingOptions: multiEmbeddingOptions.map((option) => ({
+            ...option,
+            hasActiveCredential: option.providerId === 'openai',
+          })),
+        }),
+      );
+    const saveSemanticEmbeddingCredential = vi.fn<
+      ShotgunApiClient['saveSemanticEmbeddingCredential']
+    >(async () => ({}) as never);
+    const prepareSemanticComparison = vi.fn<ShotgunApiClient['prepareSemanticComparison']>(
+      async () => status({ status: 'READY' }),
+    );
+
+    renderSurface({
+      getPrincipalPreferences: vi.fn(async () => ({
+        preferences: { locale: 'en-US' },
+        revision: 1,
+      })),
+      getSemanticComparisonStatus,
+      saveSemanticEmbeddingCredential,
+      prepareSemanticComparison,
+    });
+
+    const select = await screen.findByRole('combobox', { name: 'Embedding provider and model' });
+    await userEvent.selectOptions(select, 'openai:text-embedding-3-small');
+    await userEvent.type(
+      screen.getByLabelText('Embedding provider API key (write-only)'),
+      'sk-test-embedding',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Save embedding credential' }));
+
+    await waitFor(() => expect(saveSemanticEmbeddingCredential).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect((select as HTMLSelectElement).value).toBe('openai:text-embedding-3-small'),
+    );
+    expect((select as HTMLSelectElement).value).not.toBe('google-gemini:gemini-embedding-001');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Prepare semantic comparison' }));
+    await waitFor(() => expect(prepareSemanticComparison).toHaveBeenCalledTimes(1));
+    expect(prepareSemanticComparison).toHaveBeenCalledWith('project-1', {
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+    });
+    expect(prepareSemanticComparison.mock.calls[0]?.[1]).not.toMatchObject({
+      providerId: 'google-gemini',
+    });
+  });
+
+  it('prefers an existing configured option if the selected option disappears after refresh', async () => {
+    const getSemanticComparisonStatus = vi
+      .fn<ShotgunApiClient['getSemanticComparisonStatus']>()
+      .mockResolvedValueOnce(
+        status({
+          embeddingOptions: multiEmbeddingOptions,
+        }),
+      )
+      .mockResolvedValue(
+        status({
+          embeddingOptions: [
+            {
+              ...multiEmbeddingOptions[1],
+              hasActiveCredential: true,
+            },
+            {
+              ...multiEmbeddingOptions[2],
+              hasActiveCredential: false,
+            },
+          ],
+        }),
+      );
+    const saveSemanticEmbeddingCredential = vi.fn<
+      ShotgunApiClient['saveSemanticEmbeddingCredential']
+    >(async () => ({}) as never);
+
+    renderSurface({
+      getPrincipalPreferences: vi.fn(async () => ({
+        preferences: { locale: 'en-US' },
+        revision: 1,
+      })),
+      getSemanticComparisonStatus,
+      saveSemanticEmbeddingCredential,
+      prepareSemanticComparison: vi.fn(),
+    });
+
+    const select = await screen.findByRole('combobox', { name: 'Embedding provider and model' });
+    await userEvent.selectOptions(select, 'openai:text-embedding-3-small');
+    await userEvent.type(
+      screen.getByLabelText('Embedding provider API key (write-only)'),
+      'sk-test-embedding',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Save embedding credential' }));
+
+    await waitFor(() => expect(saveSemanticEmbeddingCredential).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect((select as HTMLSelectElement).value).toBe('openai:text-embedding-3-large'),
+    );
+    expect((select as HTMLSelectElement).value).not.toBe('google-gemini:gemini-embedding-001');
   });
 
   it('projects typed configuration failures as an actionable semantic setup message', async () => {

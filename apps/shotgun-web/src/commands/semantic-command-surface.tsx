@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router';
 import {
   ShotgunApiError,
   type GlobalShellView,
+  type SemanticEmbeddingSetupSelection,
   type SemanticComparisonStatusView,
 } from '@shotgun/api-client';
 
@@ -37,6 +38,8 @@ const commandIdentity = (prefix: string): string =>
   typeof crypto.randomUUID === 'function'
     ? `${prefix}:${crypto.randomUUID()}`
     : `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+const embeddingOptionKey = (selection: SemanticEmbeddingSetupSelection): string =>
+  `${selection.providerId}:${selection.embeddingModelId}`;
 
 const semanticErrorMessage = (error: unknown, t: ProductTranslator): string => {
   if (error instanceof ShotgunApiError && error.code === 'CONFIGURATION_REQUIRED') {
@@ -77,17 +80,23 @@ export const SemanticCommandSurface = ({
   const [feedback, setFeedback] = useState<Feedback>();
   const [privacyBlocked, setPrivacyBlocked] = useState(false);
   const [embeddingSecret, setEmbeddingSecret] = useState('');
-  const [selectedEmbeddingOptionIndex, setSelectedEmbeddingOptionIndex] = useState<number>();
+  const [selectedEmbeddingIdentity, setSelectedEmbeddingIdentity] =
+    useState<SemanticEmbeddingSetupSelection>();
 
   const statusQuery = useQuery({
     queryKey: statusQueryKey(projectId),
     queryFn: ({ signal }) => apiClient.getSemanticComparisonStatus(projectId, { signal }),
     enabled: open && Boolean(projectId),
   });
+  const embeddingOptions = statusQuery.data?.embeddingOptions ?? [];
   const selectedEmbeddingOption =
-    selectedEmbeddingOptionIndex === undefined
+    selectedEmbeddingIdentity === undefined
       ? undefined
-      : statusQuery.data?.embeddingOptions[selectedEmbeddingOptionIndex];
+      : embeddingOptions.find(
+          (option) =>
+            option.providerId === selectedEmbeddingIdentity.providerId &&
+            option.embeddingModelId === selectedEmbeddingIdentity.embeddingModelId,
+        );
 
   useEffect(() => {
     if (!open || !commandId) return;
@@ -167,11 +176,7 @@ export const SemanticCommandSurface = ({
 
   const saveCredentialMutation = useMutation({
     mutationFn: async () => {
-      const options = statusQuery.data?.embeddingOptions ?? [];
-      const option =
-        selectedEmbeddingOptionIndex === undefined
-          ? undefined
-          : options[selectedEmbeddingOptionIndex];
+      const option = selectedEmbeddingOption;
       if (!option) throw new Error(t('semantic.no_embedding_options'));
       if (option.hasActiveCredential) throw new Error(t('semantic.credential_existing'));
       if (!embeddingSecret) throw new Error(t('semantic.embedding_credential'));
@@ -212,18 +217,27 @@ export const SemanticCommandSurface = ({
   });
 
   useEffect(() => {
-    const options = statusQuery.data?.embeddingOptions ?? [];
+    const preserved = selectedEmbeddingIdentity
+      ? embeddingOptions.find(
+          (option) =>
+            option.providerId === selectedEmbeddingIdentity.providerId &&
+            option.embeddingModelId === selectedEmbeddingIdentity.embeddingModelId,
+        )
+      : undefined;
+    const next =
+      preserved ??
+      embeddingOptions.find((option) => option.hasActiveCredential) ??
+      embeddingOptions[0];
+    const nextSelection = next
+      ? { providerId: next.providerId, embeddingModelId: next.embeddingModelId }
+      : undefined;
     if (
-      selectedEmbeddingOptionIndex === undefined ||
-      !options[selectedEmbeddingOptionIndex] ||
-      options[selectedEmbeddingOptionIndex]?.hasActiveCredential
+      nextSelection?.providerId !== selectedEmbeddingIdentity?.providerId ||
+      nextSelection?.embeddingModelId !== selectedEmbeddingIdentity?.embeddingModelId
     ) {
-      const preferredIndex = options.findIndex((option) => !option.hasActiveCredential);
-      setSelectedEmbeddingOptionIndex(
-        preferredIndex >= 0 ? preferredIndex : options.length ? 0 : undefined,
-      );
+      setSelectedEmbeddingIdentity(nextSelection);
     }
-  }, [selectedEmbeddingOptionIndex, statusQuery.data]);
+  }, [embeddingOptions, selectedEmbeddingIdentity]);
 
   if (!open || !commandId || !projectId) return null;
 
@@ -233,7 +247,6 @@ export const SemanticCommandSurface = ({
   const alreadyEnabled = status?.status === 'READY' && status.rollout === 'V2_ACTIVE';
   const canPrepare = !busy && !alreadyEnabled && status?.status !== 'PREPARING';
   const canEnable = !busy && status?.status === 'READY' && status.rollout !== 'V2_ACTIVE';
-  const embeddingOptions = status?.embeddingOptions ?? [];
   const showEmbeddingCredentialSetup = status?.status === 'NOT_CONFIGURED';
   const canSaveEmbeddingCredential = Boolean(
     showEmbeddingCredentialSetup &&
@@ -292,12 +305,24 @@ export const SemanticCommandSurface = ({
                 <select
                   id={`${titleId}-embedding-provider`}
                   aria-label={t('semantic.embedding_provider')}
-                  value={selectedEmbeddingOptionIndex ?? ''}
-                  onChange={(event) => setSelectedEmbeddingOptionIndex(Number(event.target.value))}
+                  value={selectedEmbeddingOption ? embeddingOptionKey(selectedEmbeddingOption) : ''}
+                  onChange={(event) => {
+                    const option = embeddingOptions.find(
+                      (candidate) => embeddingOptionKey(candidate) === event.target.value,
+                    );
+                    setSelectedEmbeddingIdentity(
+                      option
+                        ? {
+                            providerId: option.providerId,
+                            embeddingModelId: option.embeddingModelId,
+                          }
+                        : undefined,
+                    );
+                  }}
                   disabled={busy}
                 >
-                  {embeddingOptions.map((option, index) => (
-                    <option key={`${option.providerId}:${option.embeddingModelId}`} value={index}>
+                  {embeddingOptions.map((option) => (
+                    <option key={embeddingOptionKey(option)} value={embeddingOptionKey(option)}>
                       {option.providerDisplayName} · {option.embeddingModelDisplayName}
                       {option.hasActiveCredential
                         ? ` (${t('semantic.embedding_option_configured')})`

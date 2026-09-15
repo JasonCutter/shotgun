@@ -450,6 +450,15 @@ describe('RUS-2-C1 runtime identity and ownership', () => {
     expect(fixture.reexecCount).toBe(0);
   });
 
+  it('keeps command-line ownership proof case-stable across platforms', async () => {
+    const root = await makeRoot('shotgun-launch-case-');
+    const caseVariantRoot = root.replace(/[a-z]/gu, (letter) => letter.toUpperCase());
+    const fixture = makeFakeDeps(caseVariantRoot);
+    fixture.rawIdentity = identityFor(caseVariantRoot, fixture.remoteSha);
+    const outcome = await runCanonicalLaunchPreflight(makeOptions(caseVariantRoot), fixture.deps);
+    expect(outcome).toMatchObject({ kind: 'reuse', identity: { sha: fixture.remoteSha } });
+  });
+
   it('stops a proven stale-SHA runtime before reserving the target runtime', async () => {
     const root = await makeRoot('shotgun-launch-stale-');
     const fixture = makeFakeDeps(root);

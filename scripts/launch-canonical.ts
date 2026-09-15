@@ -199,7 +199,7 @@ const proveOwnership = (
   if (normalizePath(identity.repoRoot) !== normalizePath(rootDirectory)) return false;
   if (inspection.commandLine === undefined) return false;
   const commandLine = normalizeCommandLine(inspection.commandLine);
-  const expectedRoot = normalizePath(rootDirectory);
+  const expectedRoot = normalizePath(rootDirectory).toLowerCase();
   if (!commandLine.includes(expectedRoot)) return false;
   if (!commandLine.includes('launch-local')) return false;
   if (

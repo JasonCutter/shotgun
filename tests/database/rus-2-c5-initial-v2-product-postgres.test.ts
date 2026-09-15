@@ -474,8 +474,11 @@ describeDatabase('RUS-2 C5 fresh initial V2 Product PostgreSQL lifecycle', () =>
           review: { status: 'DRAFT_CREATED' },
         },
       });
-      const comparisonAId = resultA.result.v2.comparisonId;
-      if (!comparisonAId) throw new Error('Candidate A did not return a V2 Comparison ID.');
+      const v2A = resultA.result.v2;
+      if (v2A?.status !== 'COMPLETED' || !v2A.comparisonId) {
+        throw new Error('Candidate A did not return a completed V2 Comparison ID.');
+      }
+      const comparisonAId = v2A.comparisonId;
       const aggregateA = await comparisonV2Repository.findComparisonById(projectId, comparisonAId);
       if (!aggregateA) throw new Error('Candidate A V2 aggregate was not persisted.');
       expect(aggregateA.comparison.candidate).toMatchObject({
@@ -548,8 +551,11 @@ describeDatabase('RUS-2 C5 fresh initial V2 Product PostgreSQL lifecycle', () =>
         },
       });
       expect(keyB).not.toBe(keyA);
-      const comparisonBId = resultB.result.v2.comparisonId;
-      if (!comparisonBId) throw new Error('Candidate B did not return a V2 Comparison ID.');
+      const v2B = resultB.result.v2;
+      if (v2B?.status !== 'COMPLETED' || !v2B.comparisonId) {
+        throw new Error('Candidate B did not return a completed V2 Comparison ID.');
+      }
+      const comparisonBId = v2B.comparisonId;
       expect(comparisonBId).not.toBe(comparisonAId);
       const draftB = await reviewV2Repository.findDraftByComparisonId(projectId, comparisonBId);
       expect(draftB).toMatchObject({

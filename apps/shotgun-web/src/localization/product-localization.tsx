@@ -113,6 +113,22 @@ const enUS = {
   'semantic.refresh_blocked':
     'Semantic refresh did not reach readiness. Comparison remains disabled.',
   'semantic.credential_required': 'Add an OpenAI or supported embedding credential first.',
+  'semantic.configuration_required':
+    'Add an embedding provider credential before preparing semantic comparison.',
+  'semantic.credential_explanation':
+    'Semantic comparison uses a separate embedding provider credential. It does not change the active generative AI configuration.',
+  'semantic.embedding_provider': 'Embedding provider and model',
+  'semantic.embedding_credential': 'Embedding provider API key (write-only)',
+  'semantic.save_credential': 'Save embedding credential',
+  'semantic.credential_saved':
+    'Embedding credential saved. The active generative AI configuration was not changed.',
+  'semantic.credential_existing':
+    'An active credential already exists for this provider. Prepare semantic comparison or replace it in Settings → AI.',
+  'semantic.no_embedding_options': 'No registered embedding provider is available.',
+  'semantic.embedding_option_configured': 'configured',
+  'semantic.privacy_required':
+    'Semantic refresh is blocked by Project privacy policy. Review Settings → Privacy before continuing.',
+  'semantic.open_privacy': 'Open Privacy settings',
   'commands.unavailable.answer_offline': 'Answer actions are unavailable while offline.',
   'commands.unavailable.ai_configuration_offline': 'AI configuration is unavailable while offline.',
   'commands.unavailable.ai_test_offline': 'AI connection test is unavailable while offline.',
@@ -881,6 +897,22 @@ const koKR: Record<ProductMessageKey, string> = {
   'semantic.refresh_blocked':
     '의미 인덱스 갱신이 준비 상태에 도달하지 못했습니다. 비교는 비활성 상태입니다.',
   'semantic.credential_required': 'OpenAI 또는 지원되는 임베딩 자격 증명을 먼저 추가하세요.',
+  'semantic.configuration_required':
+    '의미 비교를 준비하기 전에 임베딩 공급자 자격 증명을 추가하세요.',
+  'semantic.credential_explanation':
+    '의미 비교는 생성형 AI 구성과 분리된 임베딩 공급자 자격 증명을 사용합니다. 현재 생성형 AI 구성은 변경되지 않습니다.',
+  'semantic.embedding_provider': '임베딩 공급자 및 모델',
+  'semantic.embedding_credential': '임베딩 공급자 API 키(쓰기 전용)',
+  'semantic.save_credential': '임베딩 자격 증명 저장',
+  'semantic.credential_saved':
+    '임베딩 자격 증명을 저장했습니다. 현재 생성형 AI 구성은 변경되지 않았습니다.',
+  'semantic.credential_existing':
+    '이 공급자에는 활성 자격 증명이 이미 있습니다. 의미 비교를 준비하거나 설정 → AI에서 교체하세요.',
+  'semantic.no_embedding_options': '등록된 임베딩 공급자를 사용할 수 없습니다.',
+  'semantic.embedding_option_configured': '구성됨',
+  'semantic.privacy_required':
+    '프로젝트 개인정보 정책으로 의미 인덱스 갱신이 차단되었습니다. 계속하기 전에 설정 → 개인정보를 검토하세요.',
+  'semantic.open_privacy': '개인정보 설정 열기',
   'commands.unavailable.answer_offline': '오프라인 상태에서는 답변 작업을 사용할 수 없습니다.',
   'commands.unavailable.ai_configuration_offline':
     '오프라인 상태에서는 AI 구성을 사용할 수 없습니다.',

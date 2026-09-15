@@ -672,11 +672,26 @@ export type AISettingsReadModel = {
 /** Owner-facing, non-secret semantic-comparison readiness projection. */
 export type SemanticComparisonStatus = 'NOT_CONFIGURED' | 'PREPARING' | 'READY' | 'NEEDS_ATTENTION';
 
+/** Server-authoritative, non-secret setup option for semantic embeddings. */
+export type SemanticEmbeddingSetupOption = {
+  readonly providerId: string;
+  readonly providerDisplayName: string;
+  readonly embeddingModelId: string;
+  readonly embeddingModelDisplayName: string;
+  readonly hasActiveCredential: boolean;
+};
+
+export type SemanticEmbeddingSetupSelection = Pick<
+  SemanticEmbeddingSetupOption,
+  'providerId' | 'embeddingModelId'
+>;
+
 export type SemanticComparisonStatusView = {
   readonly projectId: string;
   readonly status: SemanticComparisonStatus;
   readonly rollout: 'V1_ONLY' | 'V2_SHADOW' | 'V2_ACTIVE';
   readonly settingsRevision: number;
+  readonly embeddingOptions: readonly SemanticEmbeddingSetupOption[];
   readonly profile?: Pick<
     SemanticEmbeddingProfile,
     | 'profileId'
@@ -986,8 +1001,19 @@ export type ShotgunApiClient = {
   ): Promise<SemanticComparisonStatusView>;
   prepareSemanticComparison(
     targetProjectId?: string,
+    selection?: SemanticEmbeddingSetupSelection,
     options?: RequestOptions,
   ): Promise<SemanticComparisonStatusView>;
+  saveSemanticEmbeddingCredential(
+    params: {
+      readonly projectId: string;
+      readonly providerId: string;
+      readonly embeddingModelId: string;
+      readonly secret: string;
+      readonly clientRequestId: string;
+    },
+    options?: RequestOptions,
+  ): Promise<AICredentialMetadata>;
   recompareCandidate(
     params: RecompareCandidateRequest,
     options?: RequestOptions,

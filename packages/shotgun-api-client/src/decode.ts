@@ -13,6 +13,7 @@ import type {
   AISettingsPrivacyStatus,
   AISettingsProvider,
   AISettingsProviderModel,
+  SemanticEmbeddingSetupOption,
   AISettingsReadModel,
   RecompareCandidateDomainResult,
   RecompareCandidateResponse,
@@ -480,6 +481,17 @@ export const decodeSemanticComparisonStatusView = (
   if (!['V1_ONLY', 'V2_SHADOW', 'V2_ACTIVE'].includes(rollout)) {
     throw invalidProductApiResponse();
   }
+  if (!Array.isArray(value.embeddingOptions)) throw invalidProductApiResponse();
+  const embeddingOptions = value.embeddingOptions.map((option): SemanticEmbeddingSetupOption => {
+    if (!isRecord(option)) throw invalidProductApiResponse();
+    return {
+      providerId: aiString(option.providerId),
+      providerDisplayName: aiString(option.providerDisplayName),
+      embeddingModelId: aiString(option.embeddingModelId),
+      embeddingModelDisplayName: aiString(option.embeddingModelDisplayName),
+      hasActiveCredential: aiBoolean(option.hasActiveCredential),
+    };
+  });
   const decodeProfile = (profile: unknown): SemanticComparisonStatusView['profile'] => {
     if (profile === undefined || profile === null) return undefined;
     if (!isRecord(profile)) throw invalidProductApiResponse();
@@ -524,6 +536,7 @@ export const decodeSemanticComparisonStatusView = (
     status: status as SemanticComparisonStatusView['status'],
     rollout: rollout as SemanticComparisonStatusView['rollout'],
     settingsRevision: aiNumber(value.settingsRevision),
+    embeddingOptions,
     ...(value.profile === undefined || value.profile === null
       ? {}
       : { profile: decodeProfile(value.profile)! }),

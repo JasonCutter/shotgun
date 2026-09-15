@@ -831,6 +831,12 @@ describe('RUS-2-C7 real PostgreSQL causal semantic convergence acceptance', () =
       const health = await application.server.inject({ method: 'GET', url: '/health' });
       expect(health.statusCode).toBe(200);
       expect(await application.readCanonicalProjectIds()).toContain(fixture.projectId);
+      const shell = await application.server.inject({
+        method: 'GET',
+        url: '/product-api/frontend/global-shell',
+        headers: { cookie: `shotgun_session=${fixture.sessionToken}` },
+      });
+      expect(shell.statusCode).toBe(200);
 
       const lexical = await application.server.inject({
         method: 'POST',

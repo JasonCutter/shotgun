@@ -129,7 +129,9 @@ const makeFakeDeps = (rootDirectory: string, overrides: Partial<CanonicalLaunchD
     inspectProcess: async () => ({
       alive: true,
       commandLine: `${rootDirectory}/scripts/launch-local.ts --no-open`,
-      processStartedAt: 'process-start',
+      // The OS process-start token is optional and platform-specific. These
+      // fake ownership tests exercise the stable command-line/root proof;
+      // real runtime smoke covers the token when the OS exposes it.
     }),
     terminateProcess: async (pid) => {
       terminated.push(pid);

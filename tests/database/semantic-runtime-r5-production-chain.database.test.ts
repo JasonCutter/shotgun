@@ -2252,6 +2252,10 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       aiSettingsBackend,
       settingsRepository,
       comparisonV2ExecutionResolver,
+      // This R5 case proves the explicit Product Prepare/recompare path. Keep
+      // automatic C7 startup/periodic recovery disabled so it cannot alter the
+      // controlled provider-call lifecycle under test.
+      canonicalProjectionRecoveryIntervalMs: false,
     });
     const headers = {
       cookie,

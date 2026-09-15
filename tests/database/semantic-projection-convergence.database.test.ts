@@ -617,20 +617,26 @@ describe('RUS-2-C7 real PostgreSQL causal semantic convergence acceptance', () =
         'periodic C7 recovery to G1',
       );
       expect(provider.totalRequests).toBeGreaterThan(providerRequestsBeforeRestore);
-      try {
-        await waitFor(async () => {
-          const response = await application!.server.inject({ method: 'GET', url: '/health' });
-          const semantic = (
-            JSON.parse(response.body).recoveries as readonly Record<string, unknown>[]
-          ).find((item) => item.runnerId === 'semantic-projection-convergence');
-          return semantic?.outcome === 'HEALTHY';
-        }, 'healthy semantic recovery registry status');
-      } catch (error) {
-        const response = await application.server.inject({ method: 'GET', url: '/health' });
-        throw new Error(
-          `${error instanceof Error ? error.message : 'Semantic recovery did not converge'} Health=${response.body}`,
-        );
-      }
+      await waitFor(async () => {
+        const response = await application!.server.inject({
+          method: 'GET',
+          url: '/api/v1/settings/ai/semantic-comparison-status',
+          headers: { cookie: `shotgun_session=${fixture.sessionToken}` },
+        });
+        if (response.statusCode !== 200) return false;
+        const body = JSON.parse(response.body) as { status?: { status?: string } };
+        return body.status?.status === 'READY';
+      }, 'C7 project semantic Product status READY after recovery');
+      const recoveredHealth = await application.server.inject({ method: 'GET', url: '/health' });
+      expect(recoveredHealth.statusCode).toBe(200);
+      expect(JSON.parse(recoveredHealth.body).recoveries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            runnerId: 'semantic-projection-convergence',
+            executionStatus: 'COMPLETED',
+          }),
+        ]),
+      );
 
       const sourceReader = new PostgresSemanticCorpusSourceSnapshotReader(pool);
       const semanticRepository = new PostgresSemanticIndexRepository(pool);

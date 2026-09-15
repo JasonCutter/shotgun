@@ -33,6 +33,7 @@ export const createDefaultLaunchDeps = (): LaunchDeps => ({
     environment,
     stagingSecret,
     environmentProfile,
+    noSignals,
   }) =>
     startShotgunApplication({
       host,
@@ -41,6 +42,7 @@ export const createDefaultLaunchDeps = (): LaunchDeps => ({
       environment,
       stagingSecret,
       environmentProfile,
+      noSignals,
     }),
   fetchReadiness: async (url, timeoutMs) => {
     const deadline = Date.now() + timeoutMs;

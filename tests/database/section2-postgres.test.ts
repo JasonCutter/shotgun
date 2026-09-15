@@ -89,7 +89,14 @@ describe.runIf(pool)('Persistent PostgreSQL Section 2 Settings & Project Adminis
     expect(project.id).toBe(projId);
     expect(project.name).toBe('Persistent Test Project');
     expect(project.status).toBe('ACTIVE');
+    expect(project.active).toBe(true);
     expect(project.revision).toBe(1);
+
+    const persisted = await pool!.query<{ status: string; active: boolean; revision: number }>(
+      'SELECT status, active, revision FROM project_admin.projects WHERE id = $1',
+      [projId],
+    );
+    expect(persisted.rows[0]).toEqual({ status: 'ACTIVE', active: true, revision: 1 });
 
     // Verify initial settings snapshot
     const snapshot = await settingsRepo.getSettingsSnapshot(projId);
@@ -101,6 +108,58 @@ describe.runIf(pool)('Persistent PostgreSQL Section 2 Settings & Project Adminis
     const membership = await authRepo.findMembership(actorId, projId);
     expect(membership).not.toBeNull();
     expect(membership?.isOwner).toBe(true);
+  });
+
+  it('keeps PostgreSQL Project lifecycle status and active state in parity', async () => {
+    const projId = `pg-proj-${randomUUID().slice(0, 8)}`;
+    const actorId = randomUUID();
+    await pool!.query(
+      'INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, $2, $3, $4, now())',
+      [actorId, 'user', 'active', `user-${actorId.slice(0, 8)}`],
+    );
+
+    const created = await projectAdminRepo.createProject({
+      commandId: randomUUID(),
+      clientRequestId: `req-${randomUUID()}`,
+      idempotencyKey: `idem-${randomUUID()}`,
+      projectId: projId,
+      actorPrincipalId: actorId,
+      expectedProjectRevision: 0,
+      name: 'Lifecycle Parity Project',
+    });
+    expect(created).toMatchObject({ status: 'ACTIVE', active: true, revision: 1 });
+
+    const command = (suffix: string, expectedProjectRevision: number) => ({
+      commandId: randomUUID(),
+      clientRequestId: `req-${suffix}-${randomUUID()}`,
+      idempotencyKey: `idem-${suffix}-${randomUUID()}`,
+      projectId: projId,
+      actorPrincipalId: actorId,
+      expectedProjectRevision,
+    });
+    const archiveCommand = command('archive', 1);
+    const archived = await projectAdminRepo.archiveProject(archiveCommand);
+    expect(archived).toMatchObject({ status: 'ARCHIVED', active: false, revision: 2 });
+    const archivedReplay = await projectAdminRepo.archiveProject(archiveCommand);
+    expect(archivedReplay).toMatchObject({ status: 'ARCHIVED', active: false, revision: 2 });
+    const restored = await projectAdminRepo.restoreProject(command('restore', 2));
+    expect(restored).toMatchObject({ status: 'ACTIVE', active: true, revision: 3 });
+    const deletionRequested = await projectAdminRepo.requestDeleteProject(command('delete', 3));
+    expect(deletionRequested).toMatchObject({
+      status: 'DELETE_REQUESTED',
+      active: false,
+      revision: 4,
+    });
+
+    const persisted = await pool!.query<{ status: string; active: boolean; revision: number }>(
+      'SELECT status, active, revision FROM project_admin.projects WHERE id = $1',
+      [projId],
+    );
+    expect(persisted.rows[0]).toEqual({
+      status: 'DELETE_REQUESTED',
+      active: false,
+      revision: 4,
+    });
   });
 
   it('applies settings command, increments revisions, and persists across repository re-instantiation', async () => {

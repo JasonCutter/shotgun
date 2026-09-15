@@ -123,9 +123,13 @@ describe('Product Settings & Project Administration REST Endpoints', () => {
       headers: { cookie: cookieHeader },
     });
     expect(details.statusCode).toBe(200);
-    expect((JSON.parse(details.body) as { project: { isOwner: boolean } }).project.isOwner).toBe(
-      true,
-    );
+    expect(
+      (
+        JSON.parse(details.body) as {
+          project: { isOwner: boolean; status: string; active: boolean };
+        }
+      ).project,
+    ).toMatchObject({ isOwner: true, status: 'ACTIVE', active: true });
   });
 
   it('runs typed Project metadata and lifecycle preconditions through completion outcomes', async () => {
@@ -199,8 +203,12 @@ describe('Product Settings & Project Administration REST Endpoints', () => {
     );
     expect(archive.statusCode).toBe(200);
     expect(
-      (JSON.parse(archive.body) as { project: { revision: number; status: string } }).project,
-    ).toMatchObject({ revision: 3, status: 'ARCHIVED' });
+      (
+        JSON.parse(archive.body) as {
+          project: { revision: number; status: string; active: boolean };
+        }
+      ).project,
+    ).toMatchObject({ revision: 3, status: 'ARCHIVED', active: false });
 
     const restore = await mutate(
       'POST',
@@ -211,8 +219,12 @@ describe('Product Settings & Project Administration REST Endpoints', () => {
     );
     expect(restore.statusCode).toBe(200);
     expect(
-      (JSON.parse(restore.body) as { project: { revision: number; status: string } }).project,
-    ).toMatchObject({ revision: 4, status: 'ACTIVE' });
+      (
+        JSON.parse(restore.body) as {
+          project: { revision: number; status: string; active: boolean };
+        }
+      ).project,
+    ).toMatchObject({ revision: 4, status: 'ACTIVE', active: true });
 
     const deletion = await mutate(
       'POST',
@@ -224,9 +236,13 @@ describe('Product Settings & Project Administration REST Endpoints', () => {
     expect(deletion.statusCode).toBe(200);
     const deletionBody = JSON.parse(deletion.body) as {
       outcome: { outcomeState: string; producedResources: readonly unknown[] };
-      project: { revision: number; status: string };
+      project: { revision: number; status: string; active: boolean };
     };
-    expect(deletionBody.project).toMatchObject({ revision: 5, status: 'DELETE_REQUESTED' });
+    expect(deletionBody.project).toMatchObject({
+      revision: 5,
+      status: 'DELETE_REQUESTED',
+      active: false,
+    });
     expect(deletionBody.outcome.outcomeState).toBe('COMPLETED');
     expect(deletionBody.outcome.producedResources).toHaveLength(1);
   });

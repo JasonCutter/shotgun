@@ -122,9 +122,9 @@ const stage11Kernel = (
       { find: async () => undefined },
       { resolveCurrentBinding: async () => undefined },
       connector,
-      { now: () => '2026-09-15T10:50:00.000Z' },
+      { now: () => '2026-09-15T11:00:00.000Z' },
     ),
-    createActionFeedbackReviewModule(repository, { now: () => '2026-09-15T10:50:00.000Z' }),
+    createActionFeedbackReviewModule(repository, { now: () => '2026-09-15T11:00:00.000Z' }),
   );
   return kernel;
 };
@@ -316,7 +316,7 @@ describe.runIf(pool)('ADR-166 Stage 11 Action feedback outbox PostgreSQL regress
         projectId,
         `action-feedback:${secondFailed.actionId}:FAILED`,
       ),
-    ).toMatchObject({ status: 'published', attempts: 2 });
+    ).toMatchObject({ status: 'published', attempts: 3 });
   });
 
   it('proves a published marker after COMMIT acknowledgement loss without redispatch', async () => {

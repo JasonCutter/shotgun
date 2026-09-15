@@ -1,7 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { outcomeIndeterminateApiError, ShotgunApiError } from '@shotgun/api-client';
 import type {
   EvidenceListView,
   GlobalShellView,
@@ -13,8 +15,22 @@ import { AppProviders, type AppRuntime } from '../app/providers.js';
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { SourceDetailWorkspace } from './source-detail-workspace.js';
+import { pendingSourceReextractCommandStorageKey } from './source-reextract-command-storage.js';
 
 const now = '2026-08-17T09:00:00.000Z';
+
+type ReextractRequest = Parameters<ShotgunApiClient['reextractSourceVersionCandidates']>[0];
+
+const reextractResponse = (sourceVersionId = 'version-1'): unknown => ({
+  outcome: { outcomeState: 'COMPLETED' },
+  resource: {
+    schemaVersion: '1.0.0',
+    projectId: 'project-1',
+    sourceId: 'source-1',
+    sourceVersionId,
+    status: 'ACCEPTED',
+  },
+});
 
 const baseShell: GlobalShellView = {
   schemaVersion: '1.0.0',
@@ -70,12 +86,15 @@ const createMockRuntime = (
   evidenceItems: EvidenceListView['items'],
   transformationState:
     'NOT_STARTED' | 'RUNNING' | 'RETRYING' | 'BLOCKED' | 'NO_EVIDENCE' | 'READY' = 'READY',
+  reextractSourceVersionCandidates: (input: ReextractRequest) => Promise<unknown> = async () =>
+    reextractResponse(),
+  sourceVersionId = 'version-1',
 ): AppRuntime => {
   const evidenceList: EvidenceListView = {
     schemaVersion: '1.0.0',
     projectId: 'project-1',
     sourceId: 'source-1',
-    sourceVersionId: 'version-1',
+    sourceVersionId,
     items: evidenceItems,
     projectionRevision: 'proj-1',
     accessRevision: 'acc-1',
@@ -89,10 +108,10 @@ const createMockRuntime = (
       schemaVersion: '1.0.0',
       projectId: 'project-1',
       sourceId: 'source-1',
-      selectedSourceVersionId: 'version-1',
+      selectedSourceVersionId: sourceVersionId,
       versions: [
         {
-          sourceVersionId: 'version-1',
+          sourceVersionId,
           versionNumber: 1,
           contentHash: 'hash-1',
           mediaType: 'text/markdown',
@@ -110,7 +129,7 @@ const createMockRuntime = (
     getSourcePreview: vi.fn(async () => ({
       schemaVersion: '1.0.0',
       sourceId: 'source-1',
-      sourceVersionId: 'version-1',
+      sourceVersionId,
       projectId: 'project-1',
       mediaType: 'text/markdown',
       contentHash: 'hash-1',
@@ -125,6 +144,7 @@ const createMockRuntime = (
       fetchedAt: now,
     })),
     getSourceEvidence: vi.fn(async () => evidenceList),
+    reextractSourceVersionCandidates,
     getPrincipalPreferences: vi.fn(async () => ({ preferences: { locale: 'en-US' }, revision: 1 })),
   } as unknown as ShotgunApiClient;
 
@@ -138,6 +158,426 @@ const createMockRuntime = (
 const ShellOutlet = () => <Outlet context={{ shell: baseShell }} />;
 
 describe('SourceDetailWorkspace Evidence Presentation HFM-S7-C8-D3', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('offers contextual AI reprocessing for an evidence-ready version and does not resubmit on refresh', async () => {
+    const reextractSourceVersionCandidates = vi.fn(async () => reextractResponse());
+    const runtime = createMockRuntime(
+      [
+        {
+          evidenceId: 'evi-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          revisionId: 'rev-1',
+          label: 'Evidence',
+          origin: 'ORIGINAL',
+          exactText: 'Evidence',
+          locators: [],
+          createdAt: now,
+        },
+      ],
+      'READY',
+      reextractSourceVersionCandidates,
+    );
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources/source-1?version=version-1&view=evidence'] },
+    );
+    const user = userEvent.setup();
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const retryButton = await screen.findByRole('button', { name: 'Retry AI processing' });
+    await user.click(retryButton);
+    await screen.findByText('AI processing restarted for this Source version.');
+    expect(reextractSourceVersionCandidates).toHaveBeenCalledTimes(1);
+    expect(reextractSourceVersionCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeProjectId: 'project-1',
+        targetProjectId: 'project-1',
+        resourceProjectId: 'project-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+      }),
+    );
+    expect(screen.queryByText('source-1')).toBeNull();
+    expect(screen.queryByText('version-1')).toBeNull();
+
+    await router.navigate('/sources/source-1?version=version-1&view=evidence');
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Evidence', level: 2 })).toBeTruthy(),
+    );
+    expect(reextractSourceVersionCandidates).toHaveBeenCalledTimes(1);
+  });
+
+  it('prevents a second contextual AI request while the first request is pending', async () => {
+    let resolveRequest: (() => void) | undefined;
+    const reextractSourceVersionCandidates = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveRequest = () => resolve(reextractResponse());
+        }),
+    );
+    const runtime = createMockRuntime(
+      [
+        {
+          evidenceId: 'evi-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          revisionId: 'rev-1',
+          label: 'Evidence',
+          origin: 'ORIGINAL',
+          exactText: 'Evidence',
+          locators: [],
+          createdAt: now,
+        },
+      ],
+      'READY',
+      reextractSourceVersionCandidates,
+    );
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources/source-1?version=version-1&view=evidence'] },
+    );
+    const user = userEvent.setup();
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const retryButton = await screen.findByRole('button', { name: 'Retry AI processing' });
+    await user.click(retryButton);
+    const pendingButton = await screen.findByRole('button', {
+      name: 'Restarting AI processing…',
+    });
+    expect(pendingButton).toHaveProperty('disabled', true);
+    expect(reextractSourceVersionCandidates).toHaveBeenCalledTimes(1);
+    resolveRequest?.();
+    await screen.findByText('AI processing restarted for this Source version.');
+  });
+
+  it('A/B. retains the exact identity after response loss and reuses it on retry', async () => {
+    const randomUUID = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000001')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000002')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000003')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000004');
+    const reextractSourceVersionCandidates = vi
+      .fn<(_input: ReextractRequest) => Promise<unknown>>()
+      .mockRejectedValueOnce(outcomeIndeterminateApiError('00000000-0000-4000-8000-000000000001'))
+      .mockResolvedValueOnce(reextractResponse());
+    const runtime = createMockRuntime(
+      [
+        {
+          evidenceId: 'evi-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          revisionId: 'rev-1',
+          label: 'Evidence',
+          origin: 'ORIGINAL',
+          exactText: 'Evidence',
+          locators: [],
+          createdAt: now,
+        },
+      ],
+      'READY',
+      reextractSourceVersionCandidates,
+    );
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources/source-1?version=version-1&view=evidence'] },
+    );
+    const user = userEvent.setup();
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Retry AI processing' }));
+    await screen.findByText(
+      'The previous AI processing request could not be confirmed. Retry to resolve it safely.',
+    );
+    expect(
+      sessionStorage.getItem(
+        pendingSourceReextractCommandStorageKey('project-1', 'source-1', 'version-1'),
+      ),
+    ).toContain('00000000-0000-4000-8000-000000000001');
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Resolve previous AI processing request' }),
+    );
+    await screen.findByText('AI processing restarted for this Source version.');
+    expect(reextractSourceVersionCandidates).toHaveBeenCalledTimes(2);
+    expect(reextractSourceVersionCandidates.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        clientRequestId: '00000000-0000-4000-8000-000000000001',
+        idempotencyKey: '00000000-0000-4000-8000-000000000002',
+      }),
+    );
+    expect(reextractSourceVersionCandidates.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        clientRequestId: '00000000-0000-4000-8000-000000000001',
+        idempotencyKey: '00000000-0000-4000-8000-000000000002',
+      }),
+    );
+    expect(randomUUID).toHaveBeenCalledTimes(2);
+    expect(
+      sessionStorage.getItem(
+        pendingSourceReextractCommandStorageKey('project-1', 'source-1', 'version-1'),
+      ),
+    ).toBeNull();
+  });
+
+  it('C/D. recovers the identity after remount, then clears it and creates a new identity later', async () => {
+    const randomUUID = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000001')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000002')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000003')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000004');
+    const reextractSourceVersionCandidates = vi
+      .fn<(_input: ReextractRequest) => Promise<unknown>>()
+      .mockRejectedValueOnce(outcomeIndeterminateApiError('00000000-0000-4000-8000-000000000001'))
+      .mockResolvedValueOnce(reextractResponse())
+      .mockResolvedValueOnce(reextractResponse());
+    const runtime = createMockRuntime(
+      [
+        {
+          evidenceId: 'evi-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          revisionId: 'rev-1',
+          label: 'Evidence',
+          origin: 'ORIGINAL',
+          exactText: 'Evidence',
+          locators: [],
+          createdAt: now,
+        },
+      ],
+      'READY',
+      reextractSourceVersionCandidates,
+    );
+    const createRouter = () =>
+      createMemoryRouter(
+        [
+          {
+            path: '/',
+            element: <ShellOutlet />,
+            children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+          },
+        ],
+        { initialEntries: ['/sources/source-1?version=version-1&view=evidence'] },
+      );
+    const user = userEvent.setup();
+    const first = render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={createRouter()} />
+      </AppProviders>,
+    );
+    await user.click(await screen.findByRole('button', { name: 'Retry AI processing' }));
+    await screen.findByText(
+      'The previous AI processing request could not be confirmed. Retry to resolve it safely.',
+    );
+    first.unmount();
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={createRouter()} />
+      </AppProviders>,
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Resolve previous AI processing request' }),
+    );
+    await screen.findByText('AI processing restarted for this Source version.');
+    expect(
+      sessionStorage.getItem(
+        pendingSourceReextractCommandStorageKey('project-1', 'source-1', 'version-1'),
+      ),
+    ).toBeNull();
+
+    await user.click(await screen.findByRole('button', { name: 'Retry AI processing' }));
+    await waitFor(() => expect(reextractSourceVersionCandidates).toHaveBeenCalledTimes(3));
+    expect(reextractSourceVersionCandidates.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        clientRequestId: '00000000-0000-4000-8000-000000000001',
+        idempotencyKey: '00000000-0000-4000-8000-000000000002',
+      }),
+    );
+    expect(reextractSourceVersionCandidates.mock.calls[2]?.[0]).toEqual(
+      expect.objectContaining({
+        clientRequestId: '00000000-0000-4000-8000-000000000003',
+        idempotencyKey: '00000000-0000-4000-8000-000000000004',
+      }),
+    );
+    expect(randomUUID).toHaveBeenCalledTimes(4);
+  });
+
+  it('E. clears the identity after a definitive configuration rejection', async () => {
+    const randomUUID = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000001')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000002')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000003')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000004');
+    const reextractSourceVersionCandidates = vi
+      .fn<(_input: ReextractRequest) => Promise<unknown>>()
+      .mockRejectedValueOnce(
+        new ShotgunApiError({
+          status: 409,
+          code: 'CONFIGURATION_REQUIRED',
+          message: 'Configure AI before retrying.',
+        }),
+      )
+      .mockResolvedValueOnce(reextractResponse());
+    const runtime = createMockRuntime(
+      [
+        {
+          evidenceId: 'evi-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          revisionId: 'rev-1',
+          label: 'Evidence',
+          origin: 'ORIGINAL',
+          exactText: 'Evidence',
+          locators: [],
+          createdAt: now,
+        },
+      ],
+      'READY',
+      reextractSourceVersionCandidates,
+    );
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources/source-1?version=version-1&view=evidence'] },
+    );
+    const user = userEvent.setup();
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Retry AI processing' }));
+    await screen.findByText('Open Settings → AI to configure processing.');
+    expect(
+      sessionStorage.getItem(
+        pendingSourceReextractCommandStorageKey('project-1', 'source-1', 'version-1'),
+      ),
+    ).toBeNull();
+    await user.click(await screen.findByRole('button', { name: 'Retry AI processing' }));
+    await screen.findByText('AI processing restarted for this Source version.');
+    expect(reextractSourceVersionCandidates.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        clientRequestId: '00000000-0000-4000-8000-000000000003',
+        idempotencyKey: '00000000-0000-4000-8000-000000000004',
+      }),
+    );
+    expect(randomUUID).toHaveBeenCalledTimes(4);
+  });
+
+  it('F. isolates unresolved identity by the exact SourceVersion target', async () => {
+    sessionStorage.setItem(
+      pendingSourceReextractCommandStorageKey('project-1', 'source-1', 'version-1'),
+      JSON.stringify({
+        schemaVersion: '1.0.0',
+        projectId: 'project-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        clientRequestId: '00000000-0000-4000-8000-000000000001',
+        idempotencyKey: '00000000-0000-4000-8000-000000000002',
+      }),
+    );
+    const randomUUID = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000003')
+      .mockReturnValueOnce('00000000-0000-4000-8000-000000000004');
+    const reextractSourceVersionCandidates = vi
+      .fn<(_input: ReextractRequest) => Promise<unknown>>()
+      .mockResolvedValue(reextractResponse('version-2'));
+    const runtime = createMockRuntime(
+      [
+        {
+          evidenceId: 'evi-2',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-2',
+          revisionId: 'rev-2',
+          label: 'Evidence',
+          origin: 'ORIGINAL',
+          exactText: 'Evidence',
+          locators: [],
+          createdAt: now,
+        },
+      ],
+      'READY',
+      reextractSourceVersionCandidates,
+      'version-2',
+    );
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources/source-1?version=version-2&view=evidence'] },
+    );
+    const user = userEvent.setup();
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Retry AI processing' }));
+    await screen.findByText('AI processing restarted for this Source version.');
+    expect(reextractSourceVersionCandidates.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        sourceVersionId: 'version-2',
+        clientRequestId: '00000000-0000-4000-8000-000000000003',
+        idempotencyKey: '00000000-0000-4000-8000-000000000004',
+      }),
+    );
+    expect(randomUUID).toHaveBeenCalledTimes(2);
+  });
+
   it('A. WITHIN-CARD: renders the exact quote once without duplicate strong label when label is derived', async () => {
     const quoteText = '2026-08-11 Shotgun 로컬 실행을 처음 완료했다.';
     const runtime = createMockRuntime([

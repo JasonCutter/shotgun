@@ -366,6 +366,7 @@ export const SOURCES_FRONTEND_COMMAND_TYPES = {
   cancel: 'sources.intake.cancel.v1',
   retry: 'sources.intake.retry.v1',
   resolveDuplicate: 'sources.duplicate.resolve.v1',
+  reextract: 'sources.candidate.reextract.v1',
 } as const;
 
 export type SourcesFrontendCommandType =
@@ -413,11 +414,25 @@ export type ResolveSourcesDuplicateCommandPayload = {
   readonly targetSourceId?: string;
 };
 
+export type ReextractSourceCandidatesCommandPayload = {
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+};
+
+export type SourceCandidateReextractView = {
+  readonly schemaVersion: SourcesSchemaVersion;
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly status: 'ACCEPTED';
+};
+
 export type SourcesFrontendCommandPayload =
   | SubmitSourcesIntakeCommandPayload
   | CancelSourcesIntakeCommandPayload
   | RetrySourcesIntakeCommandPayload
-  | ResolveSourcesDuplicateCommandPayload;
+  | ResolveSourcesDuplicateCommandPayload
+  | ReextractSourceCandidatesCommandPayload;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -970,6 +985,23 @@ export const decodeSourceDetailView = (input: unknown): SourceDetailView => {
   };
 };
 
+export const decodeSourceCandidateReextractView = (
+  input: unknown,
+): SourceCandidateReextractView => {
+  const value = record(input, 'SourceCandidateReextractView');
+  schema(value, 'SourceCandidateReextractView');
+  return {
+    schemaVersion: SOURCES_SCHEMA_VERSION,
+    projectId: stringValue(value['projectId'], 'SourceCandidateReextractView.projectId'),
+    sourceId: stringValue(value['sourceId'], 'SourceCandidateReextractView.sourceId'),
+    sourceVersionId: stringValue(
+      value['sourceVersionId'],
+      'SourceCandidateReextractView.sourceVersionId',
+    ),
+    status: enumValue(value['status'], ['ACCEPTED'], 'SourceCandidateReextractView.status'),
+  };
+};
+
 const decodeHistoryItem = (input: unknown, path: string): SourceVersionHistoryItemView => {
   const value = record(input, path);
   return {
@@ -1290,6 +1322,12 @@ export const validateSourcesFrontendCommandRequest = (
       submissionId: requestString(rawPayload['submissionId'], 'payload.submissionId'),
       itemIds,
       mode: rawPayload['mode'],
+    };
+  } else if (expectedCommandType === SOURCES_FRONTEND_COMMAND_TYPES.reextract) {
+    onlyRequestKeys(rawPayload, ['sourceId', 'sourceVersionId'], `${expectedCommandType}.payload`);
+    payload = {
+      sourceId: requestString(rawPayload['sourceId'], 'payload.sourceId'),
+      sourceVersionId: requestString(rawPayload['sourceVersionId'], 'payload.sourceVersionId'),
     };
   } else {
     onlyRequestKeys(

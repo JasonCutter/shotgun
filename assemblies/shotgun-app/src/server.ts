@@ -3479,6 +3479,7 @@ const createApplicationCore = async (
     authRepository,
     settingsRepository,
     requirePrincipalBrowserSession,
+    { connector: kernel.connector },
   );
   registerSettingsRoutes(
     server,

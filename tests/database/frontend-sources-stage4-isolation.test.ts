@@ -4,6 +4,11 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { SealedSourcesStagingService } from '../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../adapters/frontend-sources-write-postgres/src/product-service.js';
+import { configureSourcesWriteRuntime } from '../../assemblies/shotgun-app/src/product-api/sources-write-runtime.js';
+import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
+import { PostgresFrontendCommandGateway } from '../../adapters/frontend-command-gateway-postgres/src/index.js';
+import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
+import { PostgresConnectorRuntimeState } from '../../adapters/connector-runtime-postgres/src/index.js';
 import {
   PostgresCandidateRepository,
   PostgresValidationRepository,
@@ -13,7 +18,10 @@ import {
   PostgresEvidenceRepository,
   PostgresTransformationRepository,
 } from '../../adapters/postgres-stage3/src/index.js';
-import { createPostgresPool } from '../../adapters/postgres/src/index.js';
+import {
+  createPostgresPool,
+  PostgresOriginalAssetRepository,
+} from '../../adapters/postgres/src/index.js';
 import { SourcesStage3TestPipeline } from '../../adapters/sources-stage3-pipeline/src/index.js';
 import {
   InMemoryAssetStorage,
@@ -38,7 +46,7 @@ import type {
   SubmitSourcesProductInput,
 } from '../../modules/frontend-sources-write/src/product-service.js';
 import { createValidationModule } from '../../modules/validation/src/index.js';
-import type { AIExecutionIdentity } from '../../packages/contracts/src/index.js';
+import { ShotgunError, type AIExecutionIdentity } from '../../packages/contracts/src/index.js';
 import { ShotgunKernel } from '../../packages/kernel/src/index.js';
 
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
@@ -95,6 +103,8 @@ const createContext = async () => {
   const sessionId = randomUUID();
   const projectId = `stage4-isolation-${randomUUID()}`;
   const now = new Date().toISOString();
+  const sessionToken = `session-${sessionId}`;
+  const csrfToken = `csrf-${sessionId}`;
   await pool!.query(
     `INSERT INTO auth.principals (
        principal_id, actor_type, status, account_id, created_at
@@ -120,8 +130,8 @@ const createContext = async () => {
      ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       sessionId,
-      hash(`session-${sessionId}`),
-      hash(`csrf-${sessionId}`),
+      hash(sessionToken),
+      hash(csrfToken),
       principalId,
       projectId,
       new Date(Date.now() + 60_000).toISOString(),
@@ -143,7 +153,7 @@ const createContext = async () => {
     acceptedPolicyContextId: `policy/${projectId}`,
     acceptedPolicyBinding: { mode: 'CURRENT', policyContextRevision: '1' },
   };
-  return { principalId, sessionId, projectId, now, scope };
+  return { principalId, sessionId, projectId, now, scope, sessionToken, csrfToken };
 };
 
 const prepareSubmission = async (
@@ -543,6 +553,214 @@ describe.runIf(pool)('Source Product / Stage 4 failure isolation', () => {
       expect(harness.providerCalls()).toBe(1);
     } finally {
       await harness.close();
+    }
+  });
+
+  it('re-extracts an existing PostgreSQL SourceVersion through the Product route after AI becomes available', async () => {
+    const context = await createContext();
+    const storage = new InMemoryAssetStorage();
+    const originalAssets = new PostgresOriginalAssetRepository(pool!);
+    const text = 'PostgreSQL Product re-extraction keeps the existing SourceVersion.';
+    const contentHash = hash(text);
+    const storageKey = await storage.put(contentHash, new TextEncoder().encode(text));
+    const stored = await originalAssets.store({
+      submissionId: `reextract-product-${context.projectId}`,
+      projectId: context.projectId,
+      actorId: context.principalId,
+      channel: 'file_upload',
+      materialKind: 'plain_text',
+      mediaType: 'text/plain',
+      originalFileName: 'reextract.txt',
+      contentHash,
+      sizeBytes: text.length,
+      storageKey,
+      accessScope: ['owner'],
+      sensitivity: 'internal',
+      createdAt: context.now,
+    });
+    const evidenceRepository = new PostgresEvidenceRepository(pool!);
+    const transformer = new LucasAugmentedPlainTextAdapter();
+    const transformed = transformer.transform({
+      sourceId: stored.sourceId,
+      sourceVersionId: stored.sourceVersionId,
+      sourceContentHash: contentHash,
+      mediaType: 'text/plain',
+      text,
+    });
+    const transformation = await new PostgresTransformationRepository(pool!).save({
+      projectId: context.projectId,
+      sourceId: stored.sourceId,
+      sourceVersionId: stored.sourceVersionId,
+      sourceContentHash: contentHash,
+      transformer: transformer.identity,
+      output: transformed,
+      accessScope: ['owner'],
+      sensitivity: 'internal',
+      createdAt: context.now,
+    });
+    const sentence = transformed.sourceMap.entries.find((entry) => entry.nodeKind === 'sentence');
+    if (!sentence || sentence.origin !== 'source') {
+      throw new Error('PostgreSQL Evidence fixture had no source sentence map entry.');
+    }
+    await evidenceRepository.index([
+      {
+        revisionId: transformation.revision.revisionId,
+        projectId: context.projectId,
+        sourceId: stored.sourceId,
+        sourceVersionId: stored.sourceVersionId,
+        pointer: sentence.pointer,
+        nodeKind: sentence.nodeKind,
+        origin: sentence.origin,
+        position: sentence.position,
+        quote: sentence.quote,
+        selectors: sentence.selectors ?? [],
+        exactHash: sentence.exactHash,
+        accessScope: ['owner'],
+        sensitivity: 'internal',
+        createdAt: context.now,
+      },
+    ]);
+
+    let aiEnabled = false;
+    let providerCalls = 0;
+    const provider: AIProviderAdapterPort = {
+      identity: {
+        provider: 'deepseek',
+        model: 'deepseek-flash',
+        adapterVersion: 'rus2-c3-postgres-test-v1',
+        dataPolicyVersion: 'rus2-c3-postgres-test-policy-v1',
+      },
+      async generateStructured(request) {
+        providerCalls += 1;
+        const parsed = JSON.parse(request.prompt) as {
+          readonly evidence?: readonly { readonly evidenceId: string; readonly text: string }[];
+        };
+        const first = parsed.evidence?.[0];
+        return {
+          rawText: JSON.stringify({
+            candidates: first ? [{ claimText: first.text, evidenceId: first.evidenceId }] : [],
+          }),
+          providerResponseId: `rus2-c3-postgres-provider-${providerCalls}`,
+        };
+      },
+    };
+    const auth = new PostgresAuthRepository(pool!);
+    const commandGateway = new PostgresFrontendCommandGateway(pool!);
+    const staging = new SealedSourcesStagingService(
+      storage,
+      'rus2-c3-postgres-staging-secret-32-characters',
+    );
+    const removeWriteRuntime = configureSourcesWriteRuntime({
+      commandGateway,
+      staging,
+      productService: new PostgresSourcesProductService(pool!, staging),
+    });
+    const application = await createApplication({
+      authRepository: auth,
+      originalAssetRepository: originalAssets,
+      sourcesProjectionRepository: originalAssets,
+      assetStorage: storage,
+      evidenceRepository,
+      aiProvider: provider,
+      aiProviderPolicy: { allowPrivate: true, allowRestricted: false, maxAttempts: 2 },
+      aiProviderExecutionResolver: {
+        resolve: async () => {
+          if (!aiEnabled) {
+            throw new ShotgunError({
+              code: 'CONFIGURATION_REQUIRED',
+              safeMessage: 'Project AI configuration is required.',
+              module: 'rus2-c3-postgres-test',
+              operation: 'resolve-ai',
+            });
+          }
+          return { adapter: provider, executionIdentity: stage4Identity };
+        },
+      },
+      aiProviderRepository: new PostgresAIProviderCallRepository(pool!),
+      candidateRepository: new PostgresCandidateRepository(pool!),
+      validationRepository: new PostgresValidationRepository(pool!),
+      frontendCommandGateway: commandGateway,
+      connectorRuntimeState: new PostgresConnectorRuntimeState(pool!),
+      canonicalProjectionRecoveryIntervalMs: false,
+      aiDurableMaterializationRecoveryEnabled: false,
+    });
+
+    try {
+      const cookie = `shotgun_session=${context.sessionToken}`;
+      const csrf = (
+        await application.server.inject({
+          method: 'GET',
+          url: '/api/v1/security/csrf',
+          headers: { cookie },
+        })
+      ).json<{ csrfToken: string }>().csrfToken;
+      const command = (clientRequestId: string, idempotencyKey: string) => ({
+        envelopeVersion: '1.0.0',
+        commandType: 'sources.candidate.reextract.v1',
+        commandSchemaVersion: '1.0.0',
+        clientRequestId,
+        idempotencyKey,
+        projectContext: {
+          activeProjectId: context.projectId,
+          targetProjectId: context.projectId,
+          resourceProjectId: context.projectId,
+        },
+        policyBinding: { mode: 'CURRENT' },
+        preconditions: [],
+        clientIssuedAt: context.now,
+        payload: { sourceId: stored.sourceId, sourceVersionId: stored.sourceVersionId },
+      });
+      const invoke = (body: ReturnType<typeof command>) =>
+        application.server.inject({
+          method: 'POST',
+          url: `/product-api/frontend/sources/${stored.sourceId}/versions/${stored.sourceVersionId}/reextract-candidates`,
+          headers: { cookie, 'x-csrf-token': csrf },
+          payload: body,
+        });
+
+      const unavailable = await invoke(command('c3-unavailable', 'c3-unavailable'));
+      expect(unavailable.statusCode).toBe(503);
+      expect(unavailable.json()).toMatchObject({ code: 'CONFIGURATION_REQUIRED' });
+      expect(providerCalls).toBe(0);
+
+      aiEnabled = true;
+      const first = await invoke(command('c3-retry-1', 'c3-retry-1'));
+      expect(first.statusCode, first.body).toBe(200);
+      expect(first.json()).toMatchObject({ outcome: { outcomeState: 'COMPLETED' } });
+      const replay = await invoke(command('c3-retry-1', 'c3-retry-1'));
+      expect(replay.statusCode, replay.body).toBe(200);
+      const second = await invoke(command('c3-retry-2', 'c3-retry-2'));
+      expect(second.statusCode, second.body).toBe(200);
+      expect(providerCalls).toBe(2);
+
+      const counts = await pool!.query<{
+        source_versions: string;
+        evidence: string;
+        candidates: string;
+        provider_calls: string;
+        ledger_commands: string;
+      }>(
+        `SELECT
+           (SELECT count(*)::text
+              FROM asset.source_versions AS version
+              JOIN asset.sources AS source ON source.source_id = version.source_id
+             WHERE source.project_id = $1 AND version.source_version_id = $2) AS source_versions,
+           (SELECT count(*)::text FROM evidence.spans WHERE project_id = $1 AND source_version_id = $2) AS evidence,
+           (SELECT count(*)::text FROM candidate.claim_candidates WHERE project_id = $1 AND source_version_id = $2) AS candidates,
+           (SELECT count(*)::text FROM ai.provider_calls WHERE project_id = $1 AND source_version_id = $2) AS provider_calls,
+           (SELECT count(*)::text FROM frontend_command.command_ledger WHERE principal_id = $3 AND command_type = 'sources.candidate.reextract.v1') AS ledger_commands`,
+        [context.projectId, stored.sourceVersionId, context.principalId],
+      );
+      expect(counts.rows[0]).toEqual({
+        source_versions: '1',
+        evidence: '1',
+        candidates: '2',
+        provider_calls: '2',
+        ledger_commands: '3',
+      });
+    } finally {
+      await application.server.close();
+      removeWriteRuntime();
     }
   });
 });

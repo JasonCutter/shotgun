@@ -5,13 +5,18 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 
 import { PostgresCredentialVaultRepository } from '../../adapters/credential-vault-postgres/src/index.js';
+import { PostgresProjectAIConfigurationRepository } from '../../adapters/ai-configuration-postgres/src/index.js';
 import {
   PostgresOriginalAssetRepository,
   PostgresSettingsRepository,
   createPostgresPool,
 } from '../../adapters/postgres/src/index.js';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
+import { PostgresStandingAIProcessingPolicyRepository } from '../../adapters/project-standing-ai-policy-postgres/src/index.js';
 import { PostgresProviderExternalTransferApprovalRepository } from '../../adapters/provider-privacy-deployment-postgres/src/index.js';
+import { OpenAIEmbeddingConnectivityAdapter } from '../../adapters/ai-provider-openai/src/embedding.js';
+import { SemanticEmbeddingAuthorityResolver } from '../../adapters/semantic-embedding-resolution/src/index.js';
+import { SemanticEmbeddingRouter } from '../../adapters/semantic-embedding-resolution/src/router.js';
 import { PostgresSemanticEmbeddingProfileRepository } from '../../adapters/semantic-embedding-postgres/src/index.js';
 import {
   PostgresSemanticActiveGenerationReader,
@@ -19,6 +24,7 @@ import {
 } from '../../adapters/semantic-index-postgres/src/index.js';
 import { PostgresSemanticCorpusSourceSnapshotReader } from '../../adapters/semantic-corpus-postgres/src/index.js';
 import { PostgresCandidateRepository } from '../../adapters/postgres-stage4/src/index.js';
+import { PostgresEvidenceRepository } from '../../adapters/postgres-stage3/src/index.js';
 import {
   PostgresChangeSetReviewRepository,
   PostgresChangeSetReviewV2Repository,
@@ -26,12 +32,33 @@ import {
   PostgresComparisonV2Repository,
 } from '../../adapters/postgres-stage5/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
+import { PostgresKnowledgeModelRepository } from '../../adapters/postgres-stage9/src/index.js';
 import {
   EnvironmentCredentialMasterKeyAuthority,
   CredentialVaultService,
 } from '../../modules/credential-vault/src/index.js';
-import { ProviderExternalTransferApprovalService } from '../../modules/provider-privacy-policy/src/index.js';
+import {
+  parseProviderDeploymentCeiling,
+  ProviderExternalTransferApprovalService,
+} from '../../modules/provider-privacy-policy/src/index.js';
 import { initialProviderRegistry } from '../../modules/ai-configuration/src/index.js';
+import { ProjectAIConfigurationService } from '../../modules/ai-configuration/src/index.js';
+import {
+  AISettingsBackendService,
+  StaticAIProviderConnectivityRegistry,
+} from '../../modules/ai-settings-backend/src/index.js';
+import {
+  SemanticGenerationBuilder,
+  SemanticProjectionRefreshService,
+} from '../../modules/semantic-generation/src/index.js';
+import { StandingAIProcessingPolicyService } from '../../packages/policy/src/index.js';
+import {
+  DeterministicSemanticQueryClassificationPolicy,
+  HybridRetrievalCoordinator,
+  LexicalRetriever,
+  ProductKnowledgeResourceResolver,
+  SemanticRetriever,
+} from '../../modules/hybrid-retrieval/src/index.js';
 import {
   SemanticEmbeddingProfileService,
   initialSemanticEmbeddingRegistry,
@@ -74,6 +101,7 @@ const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : u
 const digest = (value: string): string => sha256Text(value);
 const P1_DIMENSION = 512;
 const P2_DIMENSION = 1536;
+const R5_FIXTURE_EMBEDDING_SECRET = 'r5-provider-fixture-token';
 
 type ProviderRequest = {
   readonly model: unknown;
@@ -102,6 +130,7 @@ class DeterministicOpenAIProvider {
   private server: Server | undefined;
   private readonly releaseWaiters: Array<() => void> = [];
   private paused = false;
+  private rejectedQueryBearerToken: string | undefined;
   private buildPhase: BuildPhase | undefined;
   private readonly requestObservations: ProviderRequestObservation[] = [];
 
@@ -109,6 +138,7 @@ class DeterministicOpenAIProvider {
   totalRequests = 0;
   buildRequests = 0;
   queryRequests = 0;
+  authenticationRejectedQueries = 0;
 
   get observations(): readonly ProviderRequestObservation[] {
     return [...this.requestObservations];
@@ -145,8 +175,10 @@ class DeterministicOpenAIProvider {
     this.totalRequests = 0;
     this.buildRequests = 0;
     this.queryRequests = 0;
+    this.authenticationRejectedQueries = 0;
     this.buildPhase = undefined;
     this.requestObservations.length = 0;
+    this.rejectedQueryBearerToken = undefined;
   }
 
   beginBuildPhase(build: BuildPhase): void {
@@ -164,6 +196,10 @@ class DeterministicOpenAIProvider {
   releaseBuilds(): void {
     this.paused = false;
     for (const release of this.releaseWaiters.splice(0)) release();
+  }
+
+  rejectQueriesAuthenticatedWith(token: string): void {
+    this.rejectedQueryBearerToken = token;
   }
 
   async waitForBuildRequests(count: number): Promise<void> {
@@ -236,6 +272,14 @@ class DeterministicOpenAIProvider {
         if (this.paused) await new Promise<void>((resolve) => this.releaseWaiters.push(resolve));
       } else {
         this.queryRequests += 1;
+        if (
+          this.rejectedQueryBearerToken !== undefined &&
+          request.headers.authorization === `Bearer ${this.rejectedQueryBearerToken}`
+        ) {
+          this.authenticationRejectedQueries += 1;
+          send(401, { error: 'authentication failed' });
+          return;
+        }
       }
 
       send(200, {
@@ -501,7 +545,7 @@ const createFixture = async (
   const credential = await vault.create({
     projectId,
     providerId: 'openai',
-    secret: 'r5-provider-fixture-token',
+    secret: R5_FIXTURE_EMBEDDING_SECRET,
     now,
   });
   const approvalService = new ProviderExternalTransferApprovalService(
@@ -1994,6 +2038,516 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         const value = previousEnvironment[name];
         if (value === undefined) delete process.env[name];
         else process.env[name] = value;
+      }
+    }
+  });
+
+  it('proves C6 semantic credential recovery through PostgreSQL and the normal Product recompare path', async () => {
+    await migrateUpTo(undefined, databaseUrl!);
+
+    const previousCredentialMasterKey = process.env.SHOTGUN_CREDENTIAL_MASTER_KEY;
+    const previousCredentialMasterKeyVersion = process.env.SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION;
+    process.env.SHOTGUN_CREDENTIAL_MASTER_KEY = randomBytes(32).toString('base64url');
+    process.env.SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION = 'c6-test';
+    const provider = new DeterministicOpenAIProvider();
+    await provider.listen();
+    const fixture = await createFixture();
+    const projectId = fixture.projectId;
+    const cookie = `shotgun_session=${fixture.sessionToken}`;
+    // Keep this acceptance fixture focused on the canonical Claim path. The
+    // shared R5 fixture also seeds an approved ENTITY, which the normal
+    // shortlist records as an exclusion; NEW comparisons correctly fail
+    // closed when exclusions remain.
+    await pool!.query(
+      `DELETE FROM knowledge.review_groups WHERE project_id = $1 AND group_id = $2`,
+      [projectId, fixture.groupId],
+    );
+    const registry = initialProviderRegistry();
+    const embeddingRegistry = initialSemanticEmbeddingRegistry();
+    const settingsRepository = new PostgresSettingsRepository(pool!);
+    const standingPolicy = new StandingAIProcessingPolicyService(
+      new PostgresStandingAIProcessingPolicyRepository(pool!),
+      { enforceDeepSeekOnly: true },
+    );
+    const deployment = parseProviderDeploymentCeiling({
+      providerAllowlist: 'deepseek,openai',
+    });
+    const projectConfiguration = new ProjectAIConfigurationService(
+      registry,
+      new PostgresProjectAIConfigurationRepository(pool!),
+      fixture.vault,
+      undefined,
+      { enforceDeepSeekOnly: true },
+    );
+    const aiSettingsBackend = new AISettingsBackendService(
+      registry,
+      projectConfiguration,
+      fixture.vault,
+      new StaticAIProviderConnectivityRegistry([]),
+      deployment,
+      { getLegacyExternalTransferAllowed: async () => false },
+      fixture.approvalService,
+      () => new Date().toISOString(),
+      { isGeminiCredentialConfigured: () => false },
+      standingPolicy,
+    );
+    const semanticRepository = new PostgresSemanticIndexRepository(pool!);
+    const activeGenerationReader = new PostgresSemanticActiveGenerationReader(semanticRepository);
+    const sourceReader = new PostgresSemanticCorpusSourceSnapshotReader(pool!);
+    const semanticAuthorityResolver = new SemanticEmbeddingAuthorityResolver(
+      registry,
+      embeddingRegistry,
+      fixture.profileService,
+      fixture.vault,
+      {
+        deploymentCeiling: deployment,
+        approvalAuthority: fixture.approvalService,
+        standingPolicyAuthority: standingPolicy,
+      },
+    );
+    const semanticRouter = new SemanticEmbeddingRouter(
+      registry,
+      embeddingRegistry,
+      fixture.vault,
+      fixture.approvalService,
+      deployment,
+      [new OpenAIEmbeddingConnectivityAdapter({ baseUrl: provider.baseUrl })],
+      { standingPolicyAuthority: standingPolicy },
+    );
+    const semanticBuilder = new SemanticGenerationBuilder(
+      semanticRepository,
+      sourceReader,
+      semanticAuthorityResolver,
+      semanticRouter,
+      fixture.profileService,
+    );
+    const semanticProjectionRefresh = new SemanticProjectionRefreshService(
+      fixture.profileService,
+      semanticBuilder,
+    );
+    const canonical = new PostgresCanonicalKnowledgeRepository(pool!);
+    const candidateRepository = new PostgresCandidateRepository(pool!);
+    const comparisonV2Repository = new PostgresComparisonV2Repository(pool!);
+    const reviewV2Repository = new PostgresChangeSetReviewV2Repository(pool!);
+    const sourceProjection = {
+      applyCommit: async () => undefined,
+      rebuild: async () => undefined,
+      markDegraded: async () => undefined,
+      findWatermark: async (requestedProjectId: string) => {
+        const snapshot = await canonical.getSnapshot(requestedProjectId);
+        return {
+          projectId: requestedProjectId,
+          canonicalVersion: snapshot.version,
+          snapshotDigest: snapshot.digest,
+          status: 'READY' as const,
+          updatedAt: snapshot.createdAt,
+          lastCommitId: `c6-canonical-${requestedProjectId}-${snapshot.version}`,
+        };
+      },
+      search: async () => [],
+    };
+    const lexicalRetriever = new LexicalRetriever(sourceProjection, async (requestedProjectId) =>
+      canonical.getSnapshot(requestedProjectId),
+    );
+    const semanticRetriever = new SemanticRetriever(
+      semanticRepository,
+      semanticAuthorityResolver,
+      semanticRouter,
+      activeGenerationReader,
+      {
+        sourceWatermarkReader: sourceReader,
+        queryClassifier: new DeterministicSemanticQueryClassificationPolicy(),
+      },
+    );
+    const knowledgeModel = new PostgresKnowledgeModelRepository(pool!);
+    const hybridRetrieval = new HybridRetrievalCoordinator(
+      lexicalRetriever,
+      semanticRetriever,
+      new ProductKnowledgeResourceResolver(canonical, knowledgeModel),
+      {
+        getEvidenceSpan: async (projectId, evidenceId) =>
+          new PostgresEvidenceRepository(pool!).findById(projectId, evidenceId),
+      },
+      {
+        getSourceVersion: async (requestedProjectId, sourceVersionId) => {
+          const original = await new PostgresOriginalAssetRepository(pool!).findByVersion(
+            requestedProjectId,
+            sourceVersionId,
+          );
+          if (!original) return undefined;
+          return {
+            sourceVersionId,
+            projectId: original.projectId,
+            sourceId: original.sourceId,
+          };
+        },
+      },
+      activeGenerationReader,
+      fixture.profileService,
+    );
+    let providerCalls = 0;
+    const comparisonV2ExecutionResolver = {
+      async resolve() {
+        return {
+          executionIdentity: {
+            providerId: 'deepseek',
+            modelId: 'deepseek-flash',
+            aiConfigurationRevision: 1,
+            credentialId: `c6-deterministic-${projectId}`,
+            credentialRevision: 1,
+            policyContextRevision: `c6-policy-${projectId}`,
+            providerPolicyFingerprint: `c6-policy-fingerprint-${projectId}`,
+          },
+          adapter: {
+            identity: {
+              provider: 'deepseek',
+              model: 'deepseek-flash',
+              adapterVersion: 'c6-deterministic-adapter-v1',
+              dataPolicyVersion: 'c6-deterministic-policy-v1',
+            },
+            async generateStructured(request: { readonly prompt: string }) {
+              providerCalls += 1;
+              const parsed = JSON.parse(request.prompt) as {
+                readonly claims?: readonly {
+                  readonly resourceId: string;
+                  readonly resourceRevision: number;
+                }[];
+              };
+              return {
+                rawText: JSON.stringify({
+                  relationships: (parsed.claims ?? []).map((claim) => ({
+                    resourceId: claim.resourceId,
+                    resourceRevision: claim.resourceRevision,
+                    type: 'UNRELATED',
+                    rationale: 'Deterministic C6 PostgreSQL acceptance provider.',
+                  })),
+                }),
+                providerResponseId: `c6-provider-response-${providerCalls}`,
+              };
+            },
+          },
+        };
+      },
+    };
+    const application = await createApplication({
+      authRepository: new PostgresAuthRepository(pool!),
+      candidateRepository,
+      comparisonRepository: new PostgresComparisonRepository(pool!),
+      comparisonV2Repository,
+      changeSetReviewRepository: new PostgresChangeSetReviewRepository(pool!),
+      changeSetReviewV2Repository: reviewV2Repository,
+      canonicalSnapshot: canonical,
+      canonicalKnowledgeRepository: canonical,
+      searchProjectionRepository: sourceProjection,
+      hybridRetrievalCoordinator: hybridRetrieval,
+      semanticActiveGenerationReader: activeGenerationReader,
+      semanticProjectionRefresh,
+      semanticCorpusSourceSnapshotReader: sourceReader,
+      semanticEmbeddingProfile: fixture.profileService,
+      semanticEmbeddingRegistry: embeddingRegistry,
+      semanticEmbeddingResolver: semanticAuthorityResolver,
+      aiSettingsBackend,
+      settingsRepository,
+      comparisonV2ExecutionResolver,
+    });
+    const headers = {
+      cookie,
+      'x-csrf-token': fixture.csrfToken,
+      'content-type': 'application/json',
+    };
+    const post = async (url: string, payload: unknown) =>
+      await application.server.inject({
+        method: 'POST',
+        url,
+        headers,
+        payload: JSON.stringify(payload),
+      });
+    const get = async (url: string) =>
+      await application.server.inject({ method: 'GET', url, headers: { cookie } });
+
+    try {
+      const generativeCredentialResponse = await post('/api/v1/settings/ai/credentials', {
+        targetProjectId: projectId,
+        providerId: 'deepseek',
+        secret: `c6-generative-${projectId}`,
+        clientRequestId: `c6-generative-${randomUUID()}`,
+      });
+      expect(generativeCredentialResponse.statusCode).toBe(200);
+      const generativeCredential = generativeCredentialResponse.json<{
+        credential: { credentialId: string; credentialRevision: number };
+      }>().credential;
+      const configurationResponse = await post('/api/v1/settings/ai/configuration', {
+        targetProjectId: projectId,
+        expectedRevision: 0,
+        providerId: 'deepseek',
+        modelId: 'deepseek-flash',
+        credentialId: generativeCredential.credentialId,
+        credentialRevision: generativeCredential.credentialRevision,
+      });
+      expect(configurationResponse.statusCode).toBe(200);
+      const policyResponse = await post('/api/v1/settings/ai/standing-policy', {
+        targetProjectId: projectId,
+        expectedRevision: 0,
+        enabled: true,
+        providerId: 'deepseek',
+        aiConfigurationRevision: 1,
+      });
+      expect(policyResponse.statusCode).toBe(200);
+
+      provider.reset();
+      provider.beginBuildPhase({ model: 'text-embedding-3-small', dimension: P1_DIMENSION });
+      const initialPrepare = await post('/api/v1/settings/ai/semantic-comparison/prepare', {});
+      provider.endBuildPhase();
+      expect(initialPrepare.statusCode).toBe(200);
+      expect(initialPrepare.json()).toMatchObject({
+        status: {
+          status: 'READY',
+          profile: { profileRevision: 1, credentialRevision: 1 },
+          generation: { embeddingProfileRevision: 1, buildStatus: 'READY' },
+        },
+      });
+      const profileOne = await fixture.profileService.getRevision(projectId, 1);
+      const generationOne = await activeGenerationReader.getActiveGeneration(projectId);
+      if (!profileOne || !generationOne) throw new Error('C6 G1 was not created.');
+      expect(generationOne).toMatchObject({
+        buildStatus: 'READY',
+        embeddingProfileRevision: 1,
+        credentialRevision: 1,
+      });
+
+      const candidateAId = randomUUID();
+      const candidateBId = randomUUID();
+      const batchId = randomUUID();
+      await pool!.query(
+        `INSERT INTO candidate.batches
+           (batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at)
+         VALUES ($1, $2, $3, $4, '{}'::jsonb, now())`,
+        [batchId, projectId, fixture.sourceVersionId, `c6-batch-${batchId}`],
+      );
+      for (const [candidateId, textValue] of [
+        [candidateAId, 'C6 Candidate A requires semantic credential recovery.'],
+        [candidateBId, 'C6 Candidate B remains independently ready.'],
+      ] as const) {
+        await pool!.query(
+          `INSERT INTO candidate.claim_candidates
+             (candidate_id, batch_id, project_id, source_version_id, revision_number, claim_text,
+              evidence_id, evidence_mode, extraction_profile, status, provider_call,
+              access_scope, sensitivity, created_at)
+           VALUES ($1, $2, $3, $4, 1, $5, $6, 'DIRECT_EVIDENCE', 'direct-only', 'READY', '{}', $7, 'private', now())`,
+          [
+            candidateId,
+            batchId,
+            projectId,
+            fixture.sourceVersionId,
+            textValue,
+            fixture.evidenceId,
+            ['owner'],
+          ],
+        );
+      }
+
+      const rolloutSnapshot = {
+        settingsRevision:
+          (
+            await pool!.query<{ revision: number }>(
+              `SELECT COALESCE(MAX(revision), 0)::int AS revision
+                 FROM settings.settings_revisions WHERE project_id = $1`,
+              [projectId],
+            )
+          ).rows[0]?.revision ?? 0,
+        policyContextRevision:
+          (
+            await pool!.query<{ revision: number }>(
+              `SELECT COALESCE(MAX(revision), 0)::int AS revision
+                 FROM settings.policy_context_revisions WHERE project_id = $1`,
+              [projectId],
+            )
+          ).rows[0]?.revision ?? 0,
+      };
+      const rolloutResult = await settingsRepository.applySettingsCommand({
+        commandId: `c6-rollout-${randomUUID()}`,
+        clientRequestId: `c6-rollout-${randomUUID()}`,
+        idempotencyKey: `c6-rollout-${randomUUID()}`,
+        projectId,
+        expectedSettingsRevision: rolloutSnapshot.settingsRevision,
+        observedPolicyContextRevision: rolloutSnapshot.policyContextRevision,
+        settings: { [COMPARISON_ROLLOUT_SETTING_KEY]: 'V2_ACTIVE' },
+        actorId: fixture.principalId,
+      });
+      expect(rolloutResult.status).toBe('APPLIED');
+
+      const canonicalBefore = await canonical.getSnapshot(projectId);
+      const settingsBefore = (await get('/api/v1/settings/ai')).json<{
+        settings: {
+          currentConfiguration?: unknown;
+          standingPolicy?: unknown;
+          privacy: unknown;
+        };
+      }>().settings;
+      expect(
+        await fixture.vault.getMetadata({
+          projectId,
+          providerId: 'openai',
+          credentialId: profileOne.credentialId,
+          credentialRevision: profileOne.credentialRevision,
+        }),
+      ).toMatchObject({ lifecycleState: 'active' });
+      provider.rejectQueriesAuthenticatedWith(R5_FIXTURE_EMBEDDING_SECRET);
+      const blocked = await post('/api/v1/comparisons/recompare', {
+        candidateId: candidateAId,
+        idempotencyKey: `c6-blocked-${candidateAId}`,
+      });
+      expect(blocked.statusCode).toBe(200);
+      expect(blocked.json()).toMatchObject({
+        result: {
+          rollout: 'V2_ACTIVE',
+          v1Executed: false,
+          v2: { status: 'BLOCKED', reason: 'SHORTLIST_BLOCKED' },
+          review: { status: 'NOT_ATTEMPTED' },
+        },
+      });
+      expect(JSON.stringify(blocked.json())).toContain('CREDENTIAL_UNAVAILABLE');
+      expect(provider.authenticationRejectedQueries).toBe(1);
+      expect(await reviewV2Repository.listDrafts(projectId)).toHaveLength(0);
+
+      const replaced = await post(
+        '/api/v1/settings/ai/semantic-comparison/embedding-credentials/replace',
+        {
+          targetProjectId: projectId,
+          providerId: 'openai',
+          embeddingModelId: 'text-embedding-3-small',
+          secret: `c6-replacement-${projectId}`,
+          clientRequestId: `c6-replace-${randomUUID()}`,
+        },
+      );
+      expect(replaced.statusCode).toBe(200);
+      expect(replaced.json()).toMatchObject({
+        credential: {
+          credentialId: profileOne.credentialId,
+          credentialRevision: 2,
+          lifecycleState: 'active',
+        },
+      });
+      expect(JSON.stringify(replaced.json())).not.toContain(`c6-replacement-${projectId}`);
+      expect(
+        await fixture.vault.getMetadata({
+          projectId,
+          providerId: 'openai',
+          credentialId: profileOne.credentialId,
+          credentialRevision: 1,
+        }),
+      ).toMatchObject({ lifecycleState: 'superseded' });
+      expect(await fixture.profileService.getRevision(projectId, 1)).toEqual(profileOne);
+      expect(await semanticRepository.getGeneration(projectId, generationOne.generationId)).toEqual(
+        generationOne,
+      );
+      const settingsAfterReplacement = (await get('/api/v1/settings/ai')).json<{
+        settings: {
+          currentConfiguration?: unknown;
+          standingPolicy?: unknown;
+          privacy: unknown;
+        };
+      }>().settings;
+      expect(settingsAfterReplacement.currentConfiguration).toEqual(
+        settingsBefore.currentConfiguration,
+      );
+      expect(settingsAfterReplacement.standingPolicy).toEqual(settingsBefore.standingPolicy);
+      expect(settingsAfterReplacement.privacy).toEqual(settingsBefore.privacy);
+      expect((await get('/api/v1/settings/ai/semantic-comparison-status')).json()).toMatchObject({
+        status: {
+          status: 'NEEDS_ATTENTION',
+          rollout: 'V2_ACTIVE',
+          profile: { profileRevision: 1, credentialRevision: 1 },
+          generation: { embeddingProfileRevision: 1, buildStatus: 'READY' },
+        },
+      });
+
+      provider.beginBuildPhase({ model: 'text-embedding-3-small', dimension: P1_DIMENSION });
+      const preparedAgain = await post('/api/v1/settings/ai/semantic-comparison/prepare', {});
+      provider.endBuildPhase();
+      expect(preparedAgain.statusCode).toBe(200);
+      expect(preparedAgain.json()).toMatchObject({
+        status: {
+          status: 'READY',
+          rollout: 'V2_ACTIVE',
+          profile: { profileRevision: 2, credentialRevision: 2 },
+          generation: { embeddingProfileRevision: 2, buildStatus: 'READY' },
+        },
+      });
+      const generationTwo = await activeGenerationReader.getActiveGeneration(projectId);
+      expect(generationTwo).toMatchObject({
+        buildStatus: 'READY',
+        embeddingProfileRevision: 2,
+        credentialRevision: 2,
+      });
+      expect(await fixture.profileService.getRevision(projectId, 1)).toEqual(profileOne);
+      expect(await semanticRepository.getGeneration(projectId, generationOne.generationId)).toEqual(
+        generationOne,
+      );
+      expect(await fixture.profileService.getCurrent(projectId)).toMatchObject({
+        profileRevision: 2,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        credentialId: profileOne.credentialId,
+        credentialRevision: 2,
+        status: 'PREPARED',
+      });
+      const queryObservationsBeforeRecovery = provider.observations.filter(
+        (observation) => observation.classification === 'QUERY',
+      ).length;
+      const completed = await post('/api/v1/comparisons/recompare', {
+        candidateId: candidateAId,
+        idempotencyKey: `c6-retry-${candidateAId}`,
+      });
+      expect(completed.statusCode).toBe(200);
+      expect(completed.json()).toMatchObject({
+        result: {
+          candidateId: candidateAId,
+          rollout: 'V2_ACTIVE',
+          v1Executed: false,
+          v2: { status: 'COMPLETED' },
+          review: { status: 'DRAFT_CREATED' },
+        },
+      });
+      expect(providerCalls).toBe(1);
+      expect(provider.authenticationRejectedQueries).toBe(1);
+      expect(
+        provider.observations.filter((observation) => observation.classification === 'QUERY')
+          .length,
+      ).toBeGreaterThan(queryObservationsBeforeRecovery);
+      expect(await reviewV2Repository.listDrafts(projectId)).toHaveLength(1);
+      const candidateB = await candidateRepository.findById(projectId, candidateBId);
+      expect(candidateB).toMatchObject({ candidateId: candidateBId, status: 'READY' });
+
+      const candidateBExecutions = await pool!.query<{ count: string }>(
+        `SELECT count(*)::text AS count
+           FROM comparison.results_v2
+          WHERE project_id = $1 AND candidate_id = $2`,
+        [projectId, candidateBId],
+      );
+      expect(candidateBExecutions.rows[0]?.count).toBe('0');
+      const canonicalAfter = await canonical.getSnapshot(projectId);
+      expect({
+        version: canonicalAfter.version,
+        digest: canonicalAfter.digest,
+        claims: canonicalAfter.claims,
+      }).toEqual({
+        version: canonicalBefore.version,
+        digest: canonicalBefore.digest,
+        claims: canonicalBefore.claims,
+      });
+    } finally {
+      await application.server.close();
+      await provider.close();
+      if (previousCredentialMasterKey === undefined) {
+        delete process.env.SHOTGUN_CREDENTIAL_MASTER_KEY;
+      } else {
+        process.env.SHOTGUN_CREDENTIAL_MASTER_KEY = previousCredentialMasterKey;
+      }
+      if (previousCredentialMasterKeyVersion === undefined) {
+        delete process.env.SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION;
+      } else {
+        process.env.SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION = previousCredentialMasterKeyVersion;
       }
     }
   });

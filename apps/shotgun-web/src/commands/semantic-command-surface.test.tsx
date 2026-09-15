@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router';
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 
 import type {
   GlobalShellView,
@@ -15,6 +15,13 @@ import { createFrontendQueryClient } from '../app/query-client.js';
 import { ProductLocalizationProvider } from '../localization/product-localization.js';
 import { createSessionCycleState } from '../session/session-query.js';
 import { SemanticCommandSurface } from './semantic-command-surface.js';
+import {
+  clearPendingSemanticEmbeddingCredentialReplacement,
+  readPendingSemanticEmbeddingCredentialReplacement,
+  semanticEmbeddingCredentialReplacementStorageKey,
+  writePendingSemanticEmbeddingCredentialReplacement,
+  type PendingSemanticEmbeddingCredentialReplacementV1,
+} from './semantic-embedding-credential-storage.js';
 
 const shell: GlobalShellView = {
   schemaVersion: '1.0.0',
@@ -86,7 +93,7 @@ const snapshot = {
   fetchedAt: '2026-08-14T00:00:00.000Z',
 };
 
-const renderSurface = (apiClient: Partial<ShotgunApiClient>) => {
+const renderSurface = (apiClient: Partial<ShotgunApiClient>, projectId = 'project-1') => {
   const runtime: AppRuntime = {
     apiClient: apiClient as ShotgunApiClient,
     queryClient: createFrontendQueryClient(),
@@ -99,7 +106,10 @@ const renderSurface = (apiClient: Partial<ShotgunApiClient>) => {
           <SemanticCommandSurface
             open
             commandId="semantic.enable"
-            shell={shell}
+            shell={{
+              ...shell,
+              activeProject: { ...shell.activeProject!, id: projectId },
+            }}
             invoker={null}
             onClose={vi.fn()}
           />
@@ -109,9 +119,22 @@ const renderSurface = (apiClient: Partial<ShotgunApiClient>) => {
   );
 };
 
+const pendingReplacementStorageValues = (): string[] => {
+  const values: string[] = [];
+  for (let index = 0; index < sessionStorage.length; index += 1) {
+    const key = sessionStorage.key(index);
+    if (key?.startsWith(`${semanticEmbeddingCredentialReplacementStorageKey}:`)) {
+      const value = sessionStorage.getItem(key);
+      if (value) values.push(value);
+    }
+  }
+  return values;
+};
+
 const LocationProbe = () => <span data-testid="location-probe">{useLocation().pathname}</span>;
 
 afterEach(() => vi.restoreAllMocks());
+beforeEach(() => sessionStorage.clear());
 
 describe('SemanticCommandSurface', () => {
   it('prepares once and only offers activation after READY', async () => {
@@ -374,6 +397,283 @@ describe('SemanticCommandSurface', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText('The server request failed.')).toBeNull();
+  });
+
+  it('exposes semantic-only credential replacement while READY/V2_ACTIVE', async () => {
+    const initial = status({
+      status: 'READY',
+      rollout: 'V2_ACTIVE',
+      embeddingOptions: [
+        {
+          providerId: 'openai',
+          providerDisplayName: 'OpenAI',
+          embeddingModelId: 'text-embedding-3-small',
+          embeddingModelDisplayName: 'Text Embedding 3 Small',
+          hasActiveCredential: true,
+          activeCredentialId: 'embedding-credential',
+          activeCredentialRevision: 1,
+        },
+      ],
+      profile: {
+        profileId: 'profile-1',
+        profileRevision: 1,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        credentialId: 'embedding-credential',
+        credentialRevision: 1,
+        representationVersion: 'v2',
+        dimension: 1536,
+        status: 'ACTIVE',
+      },
+    });
+    const afterReplacement = status({
+      status: 'NEEDS_ATTENTION',
+      rollout: 'V2_ACTIVE',
+      embeddingOptions: [
+        {
+          ...initial.embeddingOptions[0]!,
+          activeCredentialRevision: 2,
+        },
+      ],
+      profile: initial.profile,
+    });
+    const getSemanticComparisonStatus = vi
+      .fn<ShotgunApiClient['getSemanticComparisonStatus']>()
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValue(afterReplacement);
+    const replaceSemanticEmbeddingCredential = vi.fn<
+      ShotgunApiClient['replaceSemanticEmbeddingCredential']
+    >(async () => ({}) as never);
+
+    renderSurface({
+      getPrincipalPreferences: vi.fn(async () => ({
+        preferences: { locale: 'en-US' },
+        revision: 1,
+      })),
+      getSemanticComparisonStatus,
+      replaceSemanticEmbeddingCredential,
+      prepareSemanticComparison: vi.fn(),
+    });
+
+    const secret = await screen.findByLabelText('Embedding provider API key (write-only)');
+    await userEvent.type(secret, 'replacement-secret');
+    await userEvent.click(screen.getByRole('button', { name: 'Replace embedding credential' }));
+
+    await waitFor(() => expect(replaceSemanticEmbeddingCredential).toHaveBeenCalledTimes(1));
+    expect(replaceSemanticEmbeddingCredential).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      secret: 'replacement-secret',
+      clientRequestId: expect.stringContaining('semantic-embedding-credential-replace:'),
+    });
+    expect(JSON.stringify(pendingReplacementStorageValues())).not.toContain('replacement-secret');
+    expect(
+      await screen.findByText(
+        'Embedding credential replaced. Prepare semantic comparison again to bind the new revision.',
+      ),
+    ).toBeTruthy();
+    expect(pendingReplacementStorageValues()).toHaveLength(0);
+  });
+
+  it('resolves a response-loss replacement without resending the secret', async () => {
+    const initial = status({
+      status: 'READY',
+      rollout: 'V2_ACTIVE',
+      embeddingOptions: [
+        {
+          providerId: 'openai',
+          providerDisplayName: 'OpenAI',
+          embeddingModelId: 'text-embedding-3-small',
+          embeddingModelDisplayName: 'Text Embedding 3 Small',
+          hasActiveCredential: true,
+          activeCredentialId: 'embedding-credential',
+          activeCredentialRevision: 1,
+        },
+      ],
+      profile: {
+        profileId: 'profile-1',
+        profileRevision: 1,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        credentialId: 'embedding-credential',
+        credentialRevision: 1,
+        representationVersion: 'v2',
+        dimension: 1536,
+        status: 'ACTIVE',
+      },
+    });
+    const getSemanticComparisonStatus = vi.fn<ShotgunApiClient['getSemanticComparisonStatus']>(
+      async () => initial,
+    );
+    const replaceSemanticEmbeddingCredential = vi.fn<
+      ShotgunApiClient['replaceSemanticEmbeddingCredential']
+    >(async () => {
+      throw new Error('response lost');
+    });
+    const getAICredentialWriteOutcome = vi
+      .fn<ShotgunApiClient['getAICredentialWriteOutcome']>()
+      .mockRejectedValueOnce(
+        new ShotgunApiError({
+          status: 404,
+          code: 'NOT_FOUND',
+          message: 'not found',
+        }),
+      )
+      .mockResolvedValue({} as never);
+
+    renderSurface({
+      getPrincipalPreferences: vi.fn(async () => ({
+        preferences: { locale: 'en-US' },
+        revision: 1,
+      })),
+      getSemanticComparisonStatus,
+      replaceSemanticEmbeddingCredential,
+      getAICredentialWriteOutcome,
+    });
+
+    await userEvent.type(
+      await screen.findByLabelText('Embedding provider API key (write-only)'),
+      'response-loss-secret',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Replace embedding credential' }));
+    expect(
+      await screen.findByText(
+        'The previous embedding credential replacement could not be confirmed. Resolve it before sending another key.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Resolve previous embedding credential replacement' }),
+    ).toBeTruthy();
+    const stored = pendingReplacementStorageValues();
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toContain('embedding-credential');
+    expect(stored[0]).not.toContain('response-loss-secret');
+    expect(replaceSemanticEmbeddingCredential).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Resolve previous embedding credential replacement' }),
+    );
+    await waitFor(() => expect(getAICredentialWriteOutcome).toHaveBeenCalledTimes(2));
+    expect(replaceSemanticEmbeddingCredential).toHaveBeenCalledTimes(1);
+    expect(pendingReplacementStorageValues()).toHaveLength(0);
+  });
+
+  it('isolates unresolved replacement identities by exact project target', () => {
+    const identity = (projectId: string): PendingSemanticEmbeddingCredentialReplacementV1 => ({
+      schemaVersion: 1,
+      projectId,
+      providerId: 'openai',
+      embeddingModelId: 'text-embedding-3-small',
+      clientRequestId: `replace-${projectId}`,
+      operation: 'REPLACE',
+      credentialId: `credential-${projectId}`,
+      expectedRevision: 1,
+    });
+    const projectA = identity('project-a');
+    const projectB = identity('project-b');
+
+    writePendingSemanticEmbeddingCredentialReplacement(projectA);
+    writePendingSemanticEmbeddingCredentialReplacement(projectB);
+    expect(readPendingSemanticEmbeddingCredentialReplacement('project-a')).toEqual(projectA);
+    expect(readPendingSemanticEmbeddingCredentialReplacement('project-b')).toEqual(projectB);
+
+    clearPendingSemanticEmbeddingCredentialReplacement(projectB);
+    expect(readPendingSemanticEmbeddingCredentialReplacement('project-a')).toEqual(projectA);
+    expect(readPendingSemanticEmbeddingCredentialReplacement('project-b')).toBeUndefined();
+  });
+
+  it('keeps Project A pending across a Project B remount and clears only Project B after submit', async () => {
+    const readyStatus = (projectId: string): SemanticComparisonStatusView =>
+      status({
+        projectId,
+        status: 'READY',
+        rollout: 'V2_ACTIVE',
+        embeddingOptions: [
+          {
+            providerId: 'openai',
+            providerDisplayName: 'OpenAI',
+            embeddingModelId: 'text-embedding-3-small',
+            embeddingModelDisplayName: 'Text Embedding 3 Small',
+            hasActiveCredential: true,
+            activeCredentialId: `credential-${projectId}`,
+            activeCredentialRevision: 1,
+          },
+        ],
+        profile: {
+          profileId: `profile-${projectId}`,
+          profileRevision: 1,
+          providerId: 'openai',
+          embeddingModelId: 'text-embedding-3-small',
+          credentialId: `credential-${projectId}`,
+          credentialRevision: 1,
+          representationVersion: 'v2',
+          dimension: 1536,
+          status: 'ACTIVE',
+        },
+      });
+    const projectA = 'project-a';
+    const projectB = 'project-b';
+    const projectAStatus = vi.fn<ShotgunApiClient['getSemanticComparisonStatus']>(async () =>
+      readyStatus(projectA),
+    );
+    const projectAReplace = vi.fn<ShotgunApiClient['replaceSemanticEmbeddingCredential']>(
+      async () => {
+        throw new Error('Project A response lost');
+      },
+    );
+    const projectAOutcome = vi
+      .fn<ShotgunApiClient['getAICredentialWriteOutcome']>()
+      .mockRejectedValue(
+        new ShotgunApiError({ status: 404, code: 'NOT_FOUND', message: 'not found' }),
+      );
+    const projectAView = renderSurface(
+      {
+        getPrincipalPreferences: vi.fn(async () => ({
+          preferences: { locale: 'en-US' },
+          revision: 1,
+        })),
+        getSemanticComparisonStatus: projectAStatus,
+        replaceSemanticEmbeddingCredential: projectAReplace,
+        getAICredentialWriteOutcome: projectAOutcome,
+      },
+      projectA,
+    );
+    await userEvent.type(
+      await screen.findByLabelText('Embedding provider API key (write-only)'),
+      'project-a-secret',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Replace embedding credential' }));
+    await screen.findByText(
+      'The previous embedding credential replacement could not be confirmed. Resolve it before sending another key.',
+    );
+    const pendingA = readPendingSemanticEmbeddingCredentialReplacement(projectA);
+    expect(pendingA).toBeDefined();
+    expect(JSON.stringify(pendingA)).not.toContain('project-a-secret');
+    projectAView.unmount();
+
+    const projectBReplace = vi.fn<ShotgunApiClient['replaceSemanticEmbeddingCredential']>(
+      async () => ({}) as never,
+    );
+    renderSurface(
+      {
+        getPrincipalPreferences: vi.fn(async () => ({
+          preferences: { locale: 'en-US' },
+          revision: 1,
+        })),
+        getSemanticComparisonStatus: vi.fn(async () => readyStatus(projectB)),
+        replaceSemanticEmbeddingCredential: projectBReplace,
+      },
+      projectB,
+    );
+    await userEvent.type(
+      await screen.findByLabelText('Embedding provider API key (write-only)'),
+      'project-b-secret',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Replace embedding credential' }));
+    await waitFor(() => expect(projectBReplace).toHaveBeenCalledTimes(1));
+    expect(readPendingSemanticEmbeddingCredentialReplacement(projectA)).toEqual(pendingA);
+    expect(readPendingSemanticEmbeddingCredentialReplacement(projectB)).toBeUndefined();
   });
 
   it('offers the Privacy settings route when semantic refresh is policy-blocked', async () => {

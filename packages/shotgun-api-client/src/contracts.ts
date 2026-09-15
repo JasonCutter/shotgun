@@ -683,6 +683,9 @@ export type SemanticEmbeddingSetupOption = {
   readonly embeddingModelId: string;
   readonly embeddingModelDisplayName: string;
   readonly hasActiveCredential: boolean;
+  /** Non-secret identity used only for response-loss recovery and display state. */
+  readonly activeCredentialId?: string;
+  readonly activeCredentialRevision?: number;
 };
 
 export type SemanticEmbeddingSetupSelection = Pick<
@@ -702,6 +705,7 @@ export type SemanticComparisonStatusView = {
     | 'profileRevision'
     | 'providerId'
     | 'embeddingModelId'
+    | 'credentialId'
     | 'credentialRevision'
     | 'representationVersion'
     | 'dimension'
@@ -1014,6 +1018,16 @@ export type ShotgunApiClient = {
     options?: RequestOptions,
   ): Promise<SemanticComparisonStatusView>;
   saveSemanticEmbeddingCredential(
+    params: {
+      readonly projectId: string;
+      readonly providerId: string;
+      readonly embeddingModelId: string;
+      readonly secret: string;
+      readonly clientRequestId: string;
+    },
+    options?: RequestOptions,
+  ): Promise<AICredentialMetadata>;
+  replaceSemanticEmbeddingCredential(
     params: {
       readonly projectId: string;
       readonly providerId: string;

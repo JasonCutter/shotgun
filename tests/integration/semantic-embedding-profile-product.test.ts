@@ -247,6 +247,8 @@ const createFixture = async (options: { readonly refreshFails?: boolean } = {}) 
     application,
     projectId,
     headers: { cookie, 'x-csrf-token': csrfToken, 'content-type': 'application/json' },
+    vault,
+    semanticProfile,
     settingsRepository,
     setSourceWatermark: (next: typeof sourceWatermark) => {
       sourceWatermark = next;
@@ -256,6 +258,7 @@ const createFixture = async (options: { readonly refreshFails?: boolean } = {}) 
       executionEligible = next;
     },
     getExecutionResolutionCount: () => executionResolutionCount,
+    getActiveGeneration: () => activeGeneration,
   };
 };
 
@@ -371,6 +374,321 @@ describe('Semantic embedding profile Product boundary', () => {
     });
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({ code: 'CONFIGURATION_REQUIRED' });
+  });
+
+  it('requires exactly one active credential for semantic replacement', async () => {
+    const emptyFixture = await createFixture();
+    const noActive = await emptyFixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/embedding-credentials/replace',
+      headers: emptyFixture.headers,
+      payload: {
+        targetProjectId: emptyFixture.projectId,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        secret: 'c6-no-active-secret',
+        clientRequestId: `c6-no-active-${crypto.randomUUID()}`,
+      },
+    });
+    expect(noActive.statusCode).toBe(503);
+    expect(noActive.json()).toMatchObject({ code: 'CONFIGURATION_REQUIRED' });
+    expect(JSON.stringify(noActive.json())).not.toContain('c6-no-active-secret');
+
+    const ambiguousFixture = await createFixture();
+    const firstCredential = await ambiguousFixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/credentials',
+      headers: ambiguousFixture.headers,
+      payload: {
+        targetProjectId: ambiguousFixture.projectId,
+        providerId: 'openai',
+        secret: 'c6-ambiguous-a',
+      },
+    });
+    expect(firstCredential.statusCode).toBe(200);
+    const prepared = await ambiguousFixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/prepare',
+      headers: ambiguousFixture.headers,
+      payload: {},
+    });
+    expect(prepared.statusCode).toBe(200);
+    const secondCredential = await ambiguousFixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/credentials',
+      headers: ambiguousFixture.headers,
+      payload: {
+        targetProjectId: ambiguousFixture.projectId,
+        providerId: 'openai',
+        secret: 'c6-ambiguous-b',
+      },
+    });
+    expect(secondCredential.statusCode).toBe(200);
+    const ambiguous = await ambiguousFixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/embedding-credentials/replace',
+      headers: ambiguousFixture.headers,
+      payload: {
+        targetProjectId: ambiguousFixture.projectId,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        secret: 'c6-ambiguous-replacement-secret',
+        clientRequestId: `c6-ambiguous-${crypto.randomUUID()}`,
+      },
+    });
+    expect(ambiguous.statusCode).toBe(409);
+    expect(ambiguous.json()).toMatchObject({ code: 'CONFLICT' });
+    expect(JSON.stringify(ambiguous.json())).not.toContain('c6-ambiguous-replacement-secret');
+  });
+
+  it('rebinds semantic embedding credentials without changing generative AI or rollout state', async () => {
+    const fixture = await createFixture();
+    const generativeCredentialResponse = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/credentials',
+      headers: fixture.headers,
+      payload: {
+        targetProjectId: fixture.projectId,
+        providerId: 'deepseek',
+        secret: 'c6-deepseek-generative',
+        clientRequestId: `c6-deepseek-${crypto.randomUUID()}`,
+      },
+    });
+    expect(generativeCredentialResponse.statusCode).toBe(200);
+    const generativeCredential = (
+      generativeCredentialResponse.json() as {
+        credential: { credentialId: string; credentialRevision: number };
+      }
+    ).credential;
+    const configurationResponse = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/configuration',
+      headers: fixture.headers,
+      payload: {
+        targetProjectId: fixture.projectId,
+        expectedRevision: 0,
+        providerId: 'deepseek',
+        modelId: 'deepseek-flash',
+        credentialId: generativeCredential.credentialId,
+        credentialRevision: generativeCredential.credentialRevision,
+      },
+    });
+    expect(configurationResponse.statusCode).toBe(200);
+
+    const standingPolicyResponse = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/standing-policy',
+      headers: fixture.headers,
+      payload: {
+        targetProjectId: fixture.projectId,
+        expectedRevision: 0,
+        enabled: true,
+        providerId: 'deepseek',
+        aiConfigurationRevision: 1,
+      },
+    });
+    expect(standingPolicyResponse.statusCode).toBe(200);
+
+    const embeddingCredentialResponse = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/embedding-credentials',
+      headers: fixture.headers,
+      payload: {
+        targetProjectId: fixture.projectId,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        secret: 'c6-openai-invalid-before-replacement',
+        clientRequestId: `c6-embedding-${crypto.randomUUID()}`,
+      },
+    });
+    expect(embeddingCredentialResponse.statusCode).toBe(200);
+    const initialEmbeddingCredential = (
+      embeddingCredentialResponse.json() as {
+        credential: { credentialId: string; credentialRevision: number };
+      }
+    ).credential;
+
+    const prepared = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/prepare',
+      headers: fixture.headers,
+      payload: {},
+    });
+    expect(prepared.statusCode).toBe(200);
+    const readyBefore = await fixture.application.server.inject({
+      method: 'GET',
+      url: '/api/v1/settings/ai/semantic-comparison-status',
+      headers: { cookie: fixture.headers.cookie },
+    });
+    expect(readyBefore.json()).toMatchObject({
+      status: {
+        status: 'READY',
+        rollout: 'V1_ONLY',
+        profile: {
+          credentialId: initialEmbeddingCredential.credentialId,
+          credentialRevision: 1,
+        },
+      },
+    });
+    const profileBefore = await fixture.semanticProfile.getCurrent(fixture.projectId);
+    const generationBefore = fixture.getActiveGeneration();
+    if (!profileBefore || !generationBefore) throw new Error('C6 fixture was not ready.');
+
+    const settingsSnapshot = await fixture.settingsRepository.getSettingsSnapshot(
+      fixture.projectId,
+    );
+    const activated = await fixture.settingsRepository.applySettingsCommand({
+      commandId: `c6-activation-${crypto.randomUUID()}`,
+      clientRequestId: `c6-activation-${crypto.randomUUID()}`,
+      idempotencyKey: `c6-activation-${crypto.randomUUID()}`,
+      projectId: fixture.projectId,
+      expectedSettingsRevision: settingsSnapshot.settingsRevision,
+      observedPolicyContextRevision: settingsSnapshot.policyContextRevision,
+      settings: { 'comparison.stage5.rollout': 'V2_ACTIVE' },
+      actorId: 'owner-1',
+    });
+    expect(activated.status).toBe('APPLIED');
+    const generativeBefore = (
+      await fixture.application.server.inject({
+        method: 'GET',
+        url: '/api/v1/settings/ai',
+        headers: { cookie: fixture.headers.cookie },
+      })
+    ).json() as {
+      settings: { currentConfiguration?: unknown; standingPolicy?: unknown };
+    };
+
+    const browserSuppliedCredentialIdentity = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/embedding-credentials/replace',
+      headers: fixture.headers,
+      payload: {
+        targetProjectId: fixture.projectId,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        credentialId: 'browser-must-not-select-this',
+        secret: 'c6-rejected-extra-field',
+        clientRequestId: `c6-extra-${crypto.randomUUID()}`,
+      },
+    });
+    expect(browserSuppliedCredentialIdentity.statusCode).toBe(400);
+    expect(browserSuppliedCredentialIdentity.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+
+    const unboundProvider = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/embedding-credentials/replace',
+      headers: fixture.headers,
+      payload: {
+        targetProjectId: fixture.projectId,
+        providerId: 'google-gemini',
+        embeddingModelId: 'gemini-embedding-001',
+        secret: 'c6-rejected-unbound-provider',
+        clientRequestId: `c6-unbound-${crypto.randomUUID()}`,
+      },
+    });
+    expect(unboundProvider.statusCode).toBe(409);
+    expect(unboundProvider.json()).toMatchObject({ code: 'CONFLICT' });
+    expect(JSON.stringify(unboundProvider.json())).not.toContain('c6-rejected-unbound-provider');
+
+    const replaced = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/embedding-credentials/replace',
+      headers: fixture.headers,
+      payload: {
+        targetProjectId: fixture.projectId,
+        providerId: 'openai',
+        embeddingModelId: 'text-embedding-3-small',
+        secret: 'c6-openai-replacement',
+        clientRequestId: `c6-replace-${crypto.randomUUID()}`,
+      },
+    });
+    expect(replaced.statusCode).toBe(200);
+    expect(replaced.json()).toMatchObject({
+      credential: {
+        credentialId: initialEmbeddingCredential.credentialId,
+        credentialRevision: 2,
+        lifecycleState: 'active',
+      },
+    });
+    expect(JSON.stringify(replaced.json())).not.toContain('c6-openai-replacement');
+
+    const settingsAfterReplacement = (
+      await fixture.application.server.inject({
+        method: 'GET',
+        url: '/api/v1/settings/ai',
+        headers: { cookie: fixture.headers.cookie },
+      })
+    ).json() as {
+      settings: {
+        currentConfiguration?: unknown;
+        standingPolicy?: unknown;
+        credentialStatuses: Array<{
+          credentialId: string;
+          credentialRevision: number;
+          lifecycleState: string;
+        }>;
+      };
+    };
+    expect(settingsAfterReplacement.settings.currentConfiguration).toEqual(
+      generativeBefore.settings.currentConfiguration,
+    );
+    expect(settingsAfterReplacement.settings.standingPolicy).toEqual(
+      generativeBefore.settings.standingPolicy,
+    );
+    expect(settingsAfterReplacement.settings.credentialStatuses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          credentialId: initialEmbeddingCredential.credentialId,
+          credentialRevision: 2,
+          lifecycleState: 'active',
+        }),
+      ]),
+    );
+    await expect(
+      fixture.vault.getMetadata({
+        projectId: fixture.projectId,
+        providerId: 'openai',
+        credentialId: initialEmbeddingCredential.credentialId,
+        credentialRevision: 1,
+      }),
+    ).resolves.toMatchObject({ lifecycleState: 'superseded' });
+    expect(await fixture.semanticProfile.getRevision(fixture.projectId, 1)).toEqual(profileBefore);
+    expect(fixture.getActiveGeneration()).toEqual(generationBefore);
+
+    const attention = await fixture.application.server.inject({
+      method: 'GET',
+      url: '/api/v1/settings/ai/semantic-comparison-status',
+      headers: { cookie: fixture.headers.cookie },
+    });
+    expect(attention.json()).toMatchObject({
+      status: {
+        status: 'NEEDS_ATTENTION',
+        rollout: 'V2_ACTIVE',
+        profile: { profileRevision: 1, credentialRevision: 1 },
+      },
+    });
+
+    const rebound = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/prepare',
+      headers: fixture.headers,
+      payload: {},
+    });
+    expect(rebound.statusCode).toBe(200);
+    expect(rebound.json()).toMatchObject({
+      status: {
+        status: 'READY',
+        rollout: 'V2_ACTIVE',
+        profile: { profileRevision: 2, credentialRevision: 2 },
+        generation: { embeddingProfileRevision: 2, buildStatus: 'READY' },
+      },
+    });
+    expect(await fixture.semanticProfile.getRevision(fixture.projectId, 1)).toEqual(profileBefore);
+    expect(await fixture.semanticProfile.getRevision(fixture.projectId, 2)).toMatchObject({
+      credentialId: initialEmbeddingCredential.credentialId,
+      credentialRevision: 2,
+      status: 'PREPARED',
+    });
   });
 
   it('configures a fresh DeepSeek Project embedding credential without mutating generative AI configuration', async () => {

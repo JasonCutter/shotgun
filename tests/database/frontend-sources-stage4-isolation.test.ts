@@ -741,7 +741,10 @@ describe.runIf(pool)('Source Product / Stage 4 failure isolation', () => {
         ledger_commands: string;
       }>(
         `SELECT
-           (SELECT count(*)::text FROM asset.source_versions WHERE project_id = $1 AND source_version_id = $2) AS source_versions,
+           (SELECT count(*)::text
+              FROM asset.source_versions AS version
+              JOIN asset.sources AS source ON source.source_id = version.source_id
+             WHERE source.project_id = $1 AND version.source_version_id = $2) AS source_versions,
            (SELECT count(*)::text FROM evidence.spans WHERE project_id = $1 AND source_version_id = $2) AS evidence,
            (SELECT count(*)::text FROM candidate.claim_candidates WHERE project_id = $1 AND source_version_id = $2) AS candidates,
            (SELECT count(*)::text FROM ai.provider_calls WHERE project_id = $1 AND source_version_id = $2) AS provider_calls,

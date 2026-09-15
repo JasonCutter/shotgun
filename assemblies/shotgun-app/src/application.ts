@@ -256,7 +256,11 @@ export type StartShotgunApplicationOptions = {
   readonly environmentProfile?: RuntimeConfigurationProfile;
   /** LPA-WP5 (D12 recovery harness): target asset root (defaults to `ASSET_STORAGE_ROOT`). */
   readonly assetRoot?: string;
-  /** LPA-WP5 (D12 recovery harness): disable the periodic recovery worker. */
+  /**
+   * LPA-WP5 (D12 recovery harness): disable bounded Canonical and semantic
+   * startup/periodic recovery for this application instance. Explicit Product
+   * semantic APIs and the CanonicalCommitted event consumer remain enabled.
+   */
   readonly recoveryIntervalMs?: number | false;
   /** Disable or override the bounded Stage 11 Action feedback dispatcher. */
   readonly actionFeedbackOutboxIntervalMs?: number | false;

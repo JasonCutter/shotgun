@@ -251,7 +251,7 @@ describe('C7 Canonical-driven semantic projection convergence', () => {
       async () => [projectId],
       notConfiguredRig.coordinator,
       60_000,
-      { onResult, onFailure },
+      { onResult, onFailure, startImmediately: false },
     );
     await worker.tick();
     await worker.stop();
@@ -272,5 +272,25 @@ describe('C7 Canonical-driven semantic projection convergence', () => {
     await expect(failedWorker.tick()).resolves.toBeUndefined();
     await failedWorker.stop();
     expect(onFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it('contains an immediate startup reconciliation without blocking worker creation', async () => {
+    const onResult = vi.fn();
+    const rig = createRig();
+    rig.getCurrent.mockResolvedValue(undefined);
+    const worker = startSemanticProjectionConvergenceWorker(
+      async () => [projectId],
+      rig.coordinator,
+      60_000,
+      { onResult, startImmediately: true },
+    );
+
+    await worker.stop();
+
+    expect(onResult).toHaveBeenCalledWith(
+      expect.objectContaining({ notConfigured: 1 }),
+      expect.any(String),
+      expect.any(String),
+    );
   });
 });

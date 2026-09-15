@@ -667,6 +667,7 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         port: 0,
         noSignals: true,
         disableAskWorker: true,
+        recoveryIntervalMs: false,
         semanticNearestNeighborObserver: () => {
           topKCalls += 1;
         },
@@ -1378,6 +1379,7 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
           port: 0,
           noSignals: true,
           disableAskWorker: true,
+          recoveryIntervalMs: false,
         });
       const request = async (
         method: 'GET' | 'POST',
@@ -1682,6 +1684,7 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
         port: 0,
         noSignals: true,
         disableAskWorker: true,
+        recoveryIntervalMs: false,
       });
 
       const sourceBefore = await sourceReader.readSnapshot(fixture.projectId);

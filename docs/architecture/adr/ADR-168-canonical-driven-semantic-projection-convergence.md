@@ -42,12 +42,18 @@ Startup and periodic recovery scan the existing Canonical project identity
 list. This catches a historical event that was already published before the
 restart. Recovery calls the same convergence port, is bounded by the existing
 worker cadence, is independently retryable, and never replays a review,
-approval, Canonical commit, or new Canonical outbox record. Startup and
-periodic outcomes use the same bounded operational recorder, including safe
+approval, Canonical commit, or new Canonical outbox record. Startup recovery is
+scheduled as an asynchronous initial tick of that existing worker and never
+blocks application/Product readiness on an external embedding provider. Startup
+and periodic outcomes use the same bounded operational recorder, including safe
 failure containment for periodic exceptions, so health and recovery state are
-not lost after a background failure. Per-project convergence is serialized
-in-process; persistent generation activation retains the existing database CAS
-boundary for multi-process races and duplicate event delivery.
+not lost after a background failure. The existing recovery interval boundary
+may be set to `false` by deterministic harnesses to disable automatic startup
+and periodic semantic reconciliation for that application instance; explicit
+semantic APIs, CanonicalCommitted consumer delivery, and freshness enforcement
+remain enabled. Per-project convergence is serialized in-process; persistent
+generation activation retains the existing database CAS boundary for
+multi-process races and duplicate event delivery.
 
 No semantic refresh is attempted when a project has no current profile. A
 non-refreshable profile, unavailable provider, denied policy, stale build, or

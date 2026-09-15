@@ -85,8 +85,11 @@ type ProviderBody = {
 class DeterministicOpenAIProvider {
   private server: Server | undefined;
   private available = true;
+  private paused = false;
+  private readonly pausedResolvers: Array<() => void> = [];
   baseUrl = '';
   totalRequests = 0;
+  pendingRequests = 0;
 
   async listen(): Promise<void> {
     this.server = createServer((request, response) => {
@@ -108,6 +111,13 @@ class DeterministicOpenAIProvider {
 
   setAvailable(value: boolean): void {
     this.available = value;
+  }
+
+  setPaused(value: boolean): void {
+    this.paused = value;
+    if (!value) {
+      while (this.pausedResolvers.length > 0) this.pausedResolvers.shift()?.();
+    }
   }
 
   async close(): Promise<void> {
@@ -132,11 +142,15 @@ class DeterministicOpenAIProvider {
       send(401, { error: 'authentication required' });
       return;
     }
-    if (!this.available) {
-      send(503, { error: 'provider temporarily unavailable' });
-      return;
-    }
+    this.pendingRequests += 1;
     try {
+      if (this.paused) {
+        await new Promise<void>((resolve) => this.pausedResolvers.push(resolve));
+      }
+      if (!this.available) {
+        send(503, { error: 'provider temporarily unavailable' });
+        return;
+      }
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as ProviderBody;
@@ -165,6 +179,8 @@ class DeterministicOpenAIProvider {
       });
     } catch {
       send(500, { error: 'provider harness failure' });
+    } finally {
+      this.pendingRequests -= 1;
     }
   }
 
@@ -599,16 +615,25 @@ describe('RUS-2-C7 real PostgreSQL causal semantic convergence acceptance', () =
         generation_id: generation0?.generation_id,
         canonical_base_version: 1,
       });
+      await waitFor(async () => {
+        const response = await application!.server.inject({ method: 'GET', url: '/health' });
+        if (response.statusCode !== 200) return false;
+        const body = JSON.parse(response.body) as {
+          readonly recoveries?: readonly {
+            readonly runnerId?: string;
+            readonly outcome?: string;
+          }[];
+        };
+        return (
+          body.recoveries?.some(
+            (recovery) =>
+              recovery.runnerId === 'semantic-projection-convergence' &&
+              /DEGRADED|FAILED/.test(recovery.outcome ?? ''),
+          ) === true
+        );
+      }, 'startup C7 provider failure observation');
       const failedHealth = await application.server.inject({ method: 'GET', url: '/health' });
       expect(failedHealth.statusCode).toBe(200);
-      expect(JSON.parse(failedHealth.body).recoveries).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            runnerId: 'semantic-projection-convergence',
-            outcome: expect.stringMatching(/DEGRADED|FAILED/),
-          }),
-        ]),
-      );
 
       const providerRequestsBeforeRestore = provider.totalRequests;
       provider.setAvailable(true);
@@ -719,6 +744,147 @@ describe('RUS-2-C7 real PostgreSQL causal semantic convergence acceptance', () =
       });
     } finally {
       await application?.close();
+      await provider.close();
+      for (const name of environmentNames) {
+        const value = previousEnvironment[name];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
+  it('keeps application readiness independent from a paused startup convergence provider', async () => {
+    const provider = new DeterministicOpenAIProvider();
+    await provider.listen();
+    const environmentNames = [
+      'DATABASE_URL',
+      'OPENAI_BASE_URL',
+      'AI_PRIVATE_EGRESS_ALLOWED_PROVIDERS',
+      'GEMINI_ALLOW_PRIVATE',
+      'SOURCES_STAGING_SECRET',
+      'SHOTGUN_CREDENTIAL_MASTER_KEY',
+      'SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION',
+      'NODE_ENV',
+    ] as const;
+    const previousEnvironment = Object.fromEntries(
+      environmentNames.map((name) => [name, process.env[name]]),
+    ) as Record<(typeof environmentNames)[number], string | undefined>;
+    const databaseEnvironmentName = ['DATABASE', '_URL'].join('');
+    let application: ShotgunApplicationHandle | undefined;
+    let setupApplication: ShotgunApplicationHandle | undefined;
+    try {
+      process.env[databaseEnvironmentName] = databaseUrl;
+      process.env.OPENAI_BASE_URL = provider.baseUrl;
+      process.env.AI_PRIVATE_EGRESS_ALLOWED_PROVIDERS = 'openai';
+      process.env.GEMINI_ALLOW_PRIVATE = 'false';
+      process.env.SOURCES_STAGING_SECRET = 'c7-startup-readiness-staging-secret-32-bytes';
+      process.env.SHOTGUN_CREDENTIAL_MASTER_KEY = randomBytes(32).toString('base64url');
+      process.env.SHOTGUN_CREDENTIAL_MASTER_KEY_VERSION = 'c7-startup-readiness';
+      process.env.NODE_ENV = 'test';
+
+      const fixture = await createFixture();
+      const canonical = new PostgresCanonicalKnowledgeRepository(pool);
+      const committed = await commitApprovedClaim(
+        fixture,
+        'C7 startup readiness keeps lexical knowledge available.',
+      );
+      expect(committed).toMatchObject({ status: 'COMMITTED', afterVersion: 1 });
+
+      // Publish the Canonical event before the real readiness assertion. The
+      // provider fails quickly here, leaving the already-published historical
+      // gap for the later automatic startup reconciliation to recover.
+      provider.setAvailable(false);
+      setupApplication = await startShotgunApplication({
+        host: '127.0.0.1',
+        port: 0,
+        noSignals: true,
+        disableAskWorker: true,
+        recoveryIntervalMs: false,
+      });
+      expect(await canonical.findOutbox(fixture.projectId, committed.outboxId)).toMatchObject({
+        status: 'published',
+      });
+      await setupApplication.close();
+      setupApplication = undefined;
+
+      provider.setPaused(true);
+      const startPromise = startShotgunApplication({
+        host: '127.0.0.1',
+        port: 0,
+        noSignals: true,
+        disableAskWorker: true,
+        recoveryIntervalMs: 50,
+      });
+      await waitFor(
+        async () => provider.pendingRequests > 0,
+        'paused startup convergence provider request',
+      );
+
+      const startupOutcome = await Promise.race([
+        startPromise.then(() => 'READY' as const),
+        new Promise<'BLOCKED'>((resolve) => setTimeout(() => resolve('BLOCKED'), 1_500)),
+      ]);
+      expect(startupOutcome).toBe('READY');
+      application = await startPromise;
+      expect(application.url).toContain('http://127.0.0.1:');
+
+      const health = await application.server.inject({ method: 'GET', url: '/health' });
+      expect(health.statusCode).toBe(200);
+      expect(await application.readCanonicalProjectIds()).toContain(fixture.projectId);
+
+      const lexical = await application.server.inject({
+        method: 'POST',
+        url: '/search/hybrid',
+        payload: JSON.stringify({
+          query: 'startup readiness keeps lexical knowledge available',
+          limit: 10,
+        }),
+        headers: {
+          cookie: `shotgun_session=${fixture.sessionToken}`,
+          'x-csrf-token': fixture.csrfToken,
+          'content-type': 'application/json',
+        },
+      });
+      expect(lexical.statusCode, lexical.body).toBe(200);
+      expect(
+        (JSON.parse(lexical.body) as InjectResponse).hybridSearch?.items.length,
+      ).toBeGreaterThan(0);
+
+      provider.setPaused(false);
+      await waitFor(async () => {
+        const response = await application!.server.inject({ method: 'GET', url: '/health' });
+        if (response.statusCode !== 200) return false;
+        const body = JSON.parse(response.body) as {
+          readonly recoveries?: readonly {
+            readonly runnerId?: string;
+            readonly outcome?: string;
+          }[];
+        };
+        return (
+          body.recoveries?.some(
+            (recovery) =>
+              recovery.runnerId === 'semantic-projection-convergence' &&
+              /DEGRADED|FAILED/.test(recovery.outcome ?? ''),
+          ) === true
+        );
+      }, 'startup provider failure recorded as degraded/pending');
+
+      provider.setAvailable(true);
+      await waitFor(async () => {
+        const row = await pool.query<{ canonical_base_version: number; build_status: string }>(
+          `SELECT g.canonical_base_version, g.build_status
+             FROM projection.semantic_generation_pointers p
+             JOIN projection.semantic_generations g
+               ON g.project_id = p.project_id AND g.generation_id = p.active_generation_id
+            WHERE p.project_id = $1`,
+          [fixture.projectId],
+        );
+        return row.rows[0]?.canonical_base_version === 1 && row.rows[0]?.build_status === 'READY';
+      }, 'provider restoration convergence');
+    } finally {
+      provider.setPaused(false);
+      await application?.close();
+      await setupApplication?.close();
       await provider.close();
       for (const name of environmentNames) {
         const value = previousEnvironment[name];

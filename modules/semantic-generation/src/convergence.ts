@@ -523,6 +523,12 @@ export const runSemanticProjectionConvergenceRecovery = async (
 };
 
 export type SemanticProjectionConvergenceWorkerOptions = {
+  /**
+   * Run one bounded STARTUP reconciliation immediately after the worker is
+   * created. The tick is deliberately fire-and-contained: application
+   * readiness must not wait for an external embedding provider.
+   */
+  readonly startImmediately?: boolean;
   readonly onResult?: (
     result: SemanticProjectionConvergenceRecoveryResult,
     startedAt: string,
@@ -542,7 +548,9 @@ export const startSemanticProjectionConvergenceWorker = (
   }
   let active: Promise<void> | undefined;
   let stopped = false;
-  const tick = (): Promise<void> => {
+  const tick = (
+    trigger: Exclude<SemanticProjectionConvergenceTrigger, 'EVENT'> = 'PERIODIC',
+  ): Promise<void> => {
     if (stopped) return Promise.resolve();
     if (active) return active;
     const startedAt = new Date().toISOString();
@@ -554,11 +562,7 @@ export const startSemanticProjectionConvergenceWorker = (
         // unhandled rejection in the background interval.
       }
     };
-    const execution = runSemanticProjectionConvergenceRecovery(
-      listProjectIds,
-      convergence,
-      'PERIODIC',
-    )
+    const execution = runSemanticProjectionConvergenceRecovery(listProjectIds, convergence, trigger)
       .then(async (result) => {
         try {
           await options.onResult?.(result, startedAt, new Date().toISOString());
@@ -576,6 +580,12 @@ export const startSemanticProjectionConvergenceWorker = (
   };
   const timer = setInterval(() => void tick(), intervalMs);
   timer.unref();
+  if (options.startImmediately) {
+    // tick() contains the full rejection boundary, including best-effort
+    // recovery reporting. Keeping the promise internally tracked also lets
+    // stop() await an in-flight startup reconciliation.
+    void tick('STARTUP');
+  }
   return {
     tick,
     async stop() {

@@ -365,7 +365,6 @@ import {
 import {
   createSemanticProjectionConvergenceModule,
   SemanticProjectionConvergenceCoordinator,
-  runSemanticProjectionConvergenceRecovery,
   startSemanticProjectionConvergenceWorker,
   type SemanticProjectionConvergencePort,
   type SemanticProjectionConvergenceRecoveryResult,
@@ -3031,19 +3030,6 @@ const createApplicationCore = async (
     'STARTUP',
     applicationCanonicalProjectionRecoveryReporter,
   );
-  if (semanticProjectionConvergence) {
-    const startedAt = new Date().toISOString();
-    try {
-      const result = await runSemanticProjectionConvergenceRecovery(
-        () => canonicalKnowledgeRepository.listProjectIds(),
-        semanticProjectionConvergence,
-        'STARTUP',
-      );
-      recordSemanticProjectionConvergenceRecovery(result, startedAt, new Date().toISOString());
-    } catch {
-      recordSemanticProjectionConvergenceFailure(startedAt, new Date().toISOString());
-    }
-  }
   const canonicalProjectionRecoveryWorker =
     options.canonicalProjectionRecoveryIntervalMs === false
       ? undefined
@@ -3072,6 +3058,10 @@ const createApplicationCore = async (
           {
             onResult: recordSemanticProjectionConvergenceRecovery,
             onFailure: recordSemanticProjectionConvergenceFailure,
+            // Semantic projection is rebuildable derived state. Its startup
+            // reconciliation must be automatic, but it must not block the
+            // launcher or Product readiness on an embedding provider.
+            startImmediately: true,
           },
         );
   if (semanticProjectionConvergenceWorker) {

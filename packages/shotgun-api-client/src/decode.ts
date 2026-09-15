@@ -484,12 +484,20 @@ export const decodeSemanticComparisonStatusView = (
   if (!Array.isArray(value.embeddingOptions)) throw invalidProductApiResponse();
   const embeddingOptions = value.embeddingOptions.map((option): SemanticEmbeddingSetupOption => {
     if (!isRecord(option)) throw invalidProductApiResponse();
+    const activeCredentialId =
+      option.activeCredentialId === undefined ? undefined : aiString(option.activeCredentialId);
+    const activeCredentialRevision =
+      option.activeCredentialRevision === undefined
+        ? undefined
+        : aiNumber(option.activeCredentialRevision);
     return {
       providerId: aiString(option.providerId),
       providerDisplayName: aiString(option.providerDisplayName),
       embeddingModelId: aiString(option.embeddingModelId),
       embeddingModelDisplayName: aiString(option.embeddingModelDisplayName),
       hasActiveCredential: aiBoolean(option.hasActiveCredential),
+      ...(activeCredentialId === undefined ? {} : { activeCredentialId }),
+      ...(activeCredentialRevision === undefined ? {} : { activeCredentialRevision }),
     };
   });
   const decodeProfile = (profile: unknown): SemanticComparisonStatusView['profile'] => {
@@ -504,6 +512,7 @@ export const decodeSemanticComparisonStatusView = (
       profileRevision: aiNumber(profile.profileRevision),
       providerId: aiString(profile.providerId),
       embeddingModelId: aiString(profile.embeddingModelId),
+      credentialId: aiString(profile.credentialId),
       credentialRevision: aiNumber(profile.credentialRevision),
       representationVersion: aiString(profile.representationVersion),
       dimension: aiNumber(profile.dimension),

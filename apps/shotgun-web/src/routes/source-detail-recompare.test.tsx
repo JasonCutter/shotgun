@@ -310,4 +310,36 @@ describe('Source Detail initial V2 Candidate re-entry', () => {
     ).toBeNull();
     await waitFor(() => expect(screen.getByRole('link', { name: 'Open Review' })).toBeTruthy());
   });
+
+  it('shows the semantic credential recovery path for a credential-unavailable block', async () => {
+    const recompareCandidate = vi.fn<ShotgunApiClient['recompareCandidate']>(
+      async () =>
+        ({
+          commandStatus: 'processed',
+          result: {
+            candidateId: 'candidate-a',
+            candidateRevisionNumber: 1,
+            rollout: 'V2_ACTIVE',
+            v1Executed: false,
+            v2: {
+              status: 'BLOCKED',
+              reason: 'SHORTLIST_BLOCKED',
+              detail:
+                'SEMANTIC_UNAVAILABLE:{"semanticExecution":"CREDENTIAL_UNAVAILABLE","semanticSafeFailureCode":"CONFIGURATION_REQUIRED"}',
+            },
+          },
+        }) as RecompareCandidateResponse,
+    );
+    renderDetail(createRuntime(recompareCandidate));
+    const user = userEvent.setup();
+
+    await user.click(
+      (await screen.findAllByRole('button', { name: 'Run semantic comparison' }))[0]!,
+    );
+    expect(
+      await screen.findByText(
+        'The embedding credential needs attention. Replace it in Semantic Comparison settings, then prepare semantic comparison again.',
+      ),
+    ).toBeTruthy();
+  });
 });

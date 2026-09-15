@@ -177,13 +177,26 @@ const recompareSucceeded = (response: RecompareCandidateResponse): boolean => {
   );
 };
 
+const semanticCredentialNeedsAttention = (response: RecompareCandidateResponse): boolean => {
+  const detail = response.result.v2?.status === 'BLOCKED' ? response.result.v2.detail : undefined;
+  return (
+    typeof detail === 'string' &&
+    detail.includes('CREDENTIAL_UNAVAILABLE') &&
+    detail.includes('CONFIGURATION_REQUIRED')
+  );
+};
+
 const recompareOutcomeMessage = (
   response: RecompareCandidateResponse,
   t: ReturnType<typeof useProductLocalization>['t'],
 ): string => {
   const result = response.result;
   if (result.rollout !== 'V2_ACTIVE') return t('source_detail.semantic_candidates_not_ready');
-  if (result.v2?.status === 'BLOCKED') return t('source_detail.semantic_candidate_blocked');
+  if (result.v2?.status === 'BLOCKED') {
+    return semanticCredentialNeedsAttention(response)
+      ? t('source_detail.semantic_candidate_credential_recovery')
+      : t('source_detail.semantic_candidate_blocked');
+  }
   if (result.v2?.status === 'INCOMPLETE' || result.v2?.status === 'FAILED') {
     return t('source_detail.semantic_candidate_incomplete');
   }

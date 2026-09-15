@@ -360,18 +360,29 @@ export function registerAISettingsRoutes(
             (provider) => provider.providerId === model.providerId && provider.status === 'active',
           ),
         )
-        .map((model) => ({
-          providerId: model.providerId,
-          providerDisplayName:
-            aiSettings.providers.find((provider) => provider.providerId === model.providerId)
-              ?.displayName ?? model.providerId,
-          embeddingModelId: model.modelId,
-          embeddingModelDisplayName: model.displayName,
-          hasActiveCredential: aiSettings.credentialStatuses.some(
+        .map((model) => {
+          const activeCredentials = aiSettings.credentialStatuses.filter(
             (credential) =>
               credential.providerId === model.providerId && credential.lifecycleState === 'active',
-          ),
-        }));
+          );
+          const activeCredential =
+            activeCredentials.length === 1 ? activeCredentials[0] : undefined;
+          return {
+            providerId: model.providerId,
+            providerDisplayName:
+              aiSettings.providers.find((provider) => provider.providerId === model.providerId)
+                ?.displayName ?? model.providerId,
+            embeddingModelId: model.modelId,
+            embeddingModelDisplayName: model.displayName,
+            hasActiveCredential: activeCredentials.length > 0,
+            ...(activeCredential
+              ? {
+                  activeCredentialId: activeCredential.credentialId,
+                  activeCredentialRevision: activeCredential.credentialRevision,
+                }
+              : {}),
+          };
+        });
 
     if (semanticEmbeddingRegistry) {
       server.post<{ Body: unknown; Headers: SecurityHeaders }>(
@@ -425,6 +436,79 @@ export function registerAISettingsRoutes(
             };
           } catch (error) {
             throw mapError(error, 'save-semantic-embedding-credential');
+          }
+        },
+      );
+
+      server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+        '/api/v1/settings/ai/semantic-comparison/embedding-credentials/replace',
+        async (request) => {
+          const body = objectBody(request.body);
+          assertAllowedFields(
+            body,
+            ['targetProjectId', 'providerId', 'embeddingModelId', 'secret', 'clientRequestId'],
+            'decode-semantic-embedding-credential-replacement-request',
+          );
+          const { context } = await requireBrowserSession(request.headers);
+          const projectId = projectFrom(body, context.projectId);
+          await access(request.headers, projectId, true);
+          try {
+            const providerId = requiredString(body, 'providerId');
+            const embeddingModelId = requiredString(body, 'embeddingModelId');
+            const model = semanticEmbeddingRegistry.getModel(providerId, embeddingModelId);
+            const aiSettings = await backend.getSettings(projectId);
+            const provider = aiSettings.providers.find(
+              (candidate) => candidate.providerId === providerId && candidate.status === 'active',
+            );
+            if (!model || !provider) {
+              throw new ShotgunError({
+                code: 'AI_CAPABILITY_UNAVAILABLE',
+                safeMessage: 'The selected semantic embedding provider is not available.',
+                module: 'ai-settings-api',
+                operation: 'replace-semantic-embedding-credential',
+              });
+            }
+            const activeCredentials = aiSettings.credentialStatuses.filter(
+              (credential) =>
+                credential.providerId === providerId && credential.lifecycleState === 'active',
+            );
+            if (activeCredentials.length === 0) {
+              throw new ShotgunError({
+                code: 'CONFIGURATION_REQUIRED',
+                safeMessage: 'An active embedding credential is required before replacement.',
+                module: 'ai-settings-api',
+                operation: 'replace-semantic-embedding-credential',
+              });
+            }
+            if (activeCredentials.length > 1) {
+              throw new ShotgunError({
+                code: 'CONFLICT',
+                safeMessage: 'Exactly one active embedding credential is required for replacement.',
+                module: 'ai-settings-api',
+                operation: 'replace-semantic-embedding-credential',
+              });
+            }
+            const activeCredential = activeCredentials[0];
+            if (!activeCredential) {
+              throw new ShotgunError({
+                code: 'CONFIGURATION_REQUIRED',
+                safeMessage: 'An active embedding credential is required before replacement.',
+                module: 'ai-settings-api',
+                operation: 'replace-semantic-embedding-credential',
+              });
+            }
+            return {
+              credential: await backend.replaceCredential({
+                projectId,
+                providerId,
+                credentialId: activeCredential.credentialId,
+                expectedRevision: activeCredential.credentialRevision,
+                secret: requiredString(body, 'secret'),
+                clientRequestId: requiredString(body, 'clientRequestId'),
+              }),
+            };
+          } catch (error) {
+            throw mapError(error, 'replace-semantic-embedding-credential');
           }
         },
       );
@@ -598,6 +682,7 @@ export function registerAISettingsRoutes(
                   profileRevision: profile.profileRevision,
                   providerId: profile.providerId,
                   embeddingModelId: profile.embeddingModelId,
+                  credentialId: profile.credentialId,
                   credentialRevision: profile.credentialRevision,
                   representationVersion: profile.representationVersion,
                   dimension: profile.dimension,

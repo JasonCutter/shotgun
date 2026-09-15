@@ -122,6 +122,16 @@ const enUS = {
   'semantic.save_credential': 'Save embedding credential',
   'semantic.credential_saved':
     'Embedding credential saved. The active generative AI configuration was not changed.',
+  'semantic.credential_replace_required': 'Replace embedding credential',
+  'semantic.credential_replace_explanation':
+    'Replace only the semantic embedding credential. The active generative AI configuration and rollout are unchanged.',
+  'semantic.replace_credential': 'Replace embedding credential',
+  'semantic.resolve_credential_replacement': 'Resolve previous embedding credential replacement',
+  'semantic.credential_replaced':
+    'Embedding credential replaced. Prepare semantic comparison again to bind the new revision.',
+  'semantic.credential_replacement_outcome_indeterminate':
+    'The previous embedding credential replacement could not be confirmed. Resolve it before sending another key.',
+  'semantic.credential_replacement_failed': 'Embedding credential replacement failed.',
   'semantic.credential_existing':
     'An active credential already exists for this provider. Prepare semantic comparison or replace it in Settings → AI.',
   'semantic.no_embedding_options': 'No registered embedding provider is available.',
@@ -505,6 +515,8 @@ const enUS = {
     'The previous comparison request could not be confirmed. Retry to resolve it safely.',
   'source_detail.semantic_candidate_open_review': 'Open Review',
   'source_detail.semantic_candidate_blocked': 'Semantic comparison was blocked.',
+  'source_detail.semantic_candidate_credential_recovery':
+    'The embedding credential needs attention. Replace it in Semantic Comparison settings, then prepare semantic comparison again.',
   'source_detail.semantic_candidate_incomplete':
     'Semantic comparison remains incomplete. The result is preserved for recovery.',
   'source_detail.semantic_candidate_review_not_ready':
@@ -932,6 +944,16 @@ const koKR: Record<ProductMessageKey, string> = {
   'semantic.save_credential': '임베딩 자격 증명 저장',
   'semantic.credential_saved':
     '임베딩 자격 증명을 저장했습니다. 현재 생성형 AI 구성은 변경되지 않았습니다.',
+  'semantic.credential_replace_required': '임베딩 자격 증명 교체',
+  'semantic.credential_replace_explanation':
+    '의미 비교 임베딩 자격 증명만 교체합니다. 현재 생성형 AI 구성과 롤아웃은 변경되지 않습니다.',
+  'semantic.replace_credential': '임베딩 자격 증명 교체',
+  'semantic.resolve_credential_replacement': '이전 임베딩 자격 증명 교체 확인',
+  'semantic.credential_replaced':
+    '임베딩 자격 증명을 교체했습니다. 새 리비전에 연결하려면 의미 비교를 다시 준비하세요.',
+  'semantic.credential_replacement_outcome_indeterminate':
+    '이전 임베딩 자격 증명 교체 결과를 확인하지 못했습니다. 새 키를 보내기 전에 먼저 확인하세요.',
+  'semantic.credential_replacement_failed': '임베딩 자격 증명 교체에 실패했습니다.',
   'semantic.credential_existing':
     '이 공급자에는 활성 자격 증명이 이미 있습니다. 의미 비교를 준비하거나 설정 → AI에서 교체하세요.',
   'semantic.no_embedding_options': '등록된 임베딩 공급자를 사용할 수 없습니다.',
@@ -1312,6 +1334,8 @@ const koKR: Record<ProductMessageKey, string> = {
     '이전 비교 요청을 확인하지 못했습니다. 안전하게 확인하려면 다시 시도하세요.',
   'source_detail.semantic_candidate_open_review': 'Review 열기',
   'source_detail.semantic_candidate_blocked': '시맨틱 비교가 차단되었습니다.',
+  'source_detail.semantic_candidate_credential_recovery':
+    '임베딩 자격 증명을 확인해야 합니다. 의미 비교 설정에서 자격 증명을 교체한 후 의미 비교를 다시 준비하세요.',
   'source_detail.semantic_candidate_incomplete':
     '시맨틱 비교가 아직 완료되지 않았습니다. 복구를 위해 결과를 보존했습니다.',
   'source_detail.semantic_candidate_review_not_ready':

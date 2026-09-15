@@ -15,6 +15,7 @@ import type {
   RecompareCandidateRequest,
   RecompareCandidateResponse,
   SemanticComparisonStatusView,
+  SemanticEmbeddingSetupSelection,
 } from './contracts.js';
 import { getSharedCsrfMutationManager } from './csrf-manager.js';
 import {
@@ -1060,17 +1061,54 @@ export const createShotgunApiClient = (
 
     async prepareSemanticComparison(
       targetProjectId?: string,
+      selection?: SemanticEmbeddingSetupSelection,
       requestOptions?: RequestOptions,
     ): Promise<SemanticComparisonStatusView> {
       return runMutation(requestOptions?.signal, async (csrfToken) => {
         const response = await request('/settings/ai/semantic-comparison/prepare', {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
-          body: JSON.stringify(targetProjectId ? { targetProjectId } : {}),
+          body: JSON.stringify({
+            ...(targetProjectId ? { targetProjectId } : {}),
+            ...(selection
+              ? {
+                  embeddingProviderId: selection.providerId,
+                  embeddingModelId: selection.embeddingModelId,
+                }
+              : {}),
+          }),
           signal: requestOptions?.signal,
         });
         const body = (await assertOk(response)) as { status: unknown };
         return decodeSemanticComparisonStatusView(body.status);
+      });
+    },
+
+    async saveSemanticEmbeddingCredential(
+      params: {
+        readonly projectId: string;
+        readonly providerId: string;
+        readonly embeddingModelId: string;
+        readonly secret: string;
+        readonly clientRequestId: string;
+      },
+      requestOptions?: RequestOptions,
+    ): Promise<AICredentialMetadata> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await request('/settings/ai/semantic-comparison/embedding-credentials', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-csrf-token': csrfToken },
+          body: JSON.stringify({
+            targetProjectId: params.projectId,
+            providerId: params.providerId,
+            embeddingModelId: params.embeddingModelId,
+            secret: params.secret,
+            clientRequestId: params.clientRequestId,
+          }),
+          signal: requestOptions?.signal,
+        });
+        const body = (await assertOk(response)) as { credential: unknown };
+        return decodeAICredentialMetadataEnvelope(body.credential);
       });
     },
 

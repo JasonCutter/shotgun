@@ -1,7 +1,13 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
+import { useNavigate } from 'react-router';
 
-import type { GlobalShellView, SemanticComparisonStatusView } from '@shotgun/api-client';
+import {
+  ShotgunApiError,
+  type GlobalShellView,
+  type SemanticEmbeddingSetupSelection,
+  type SemanticComparisonStatusView,
+} from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
 import { convergeOwnerState } from '../app/query-keys.js';
@@ -32,6 +38,15 @@ const commandIdentity = (prefix: string): string =>
   typeof crypto.randomUUID === 'function'
     ? `${prefix}:${crypto.randomUUID()}`
     : `${prefix}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+const embeddingOptionKey = (selection: SemanticEmbeddingSetupSelection): string =>
+  `${selection.providerId}:${selection.embeddingModelId}`;
+
+const semanticErrorMessage = (error: unknown, t: ProductTranslator): string => {
+  if (error instanceof ShotgunApiError && error.code === 'CONFIGURATION_REQUIRED') {
+    return t('semantic.configuration_required');
+  }
+  return safeErrorMessage(error);
+};
 
 const statusLabel = (
   status: SemanticComparisonStatusView['status'],
@@ -58,21 +73,36 @@ export const SemanticCommandSurface = ({
 }: SemanticCommandSurfaceProps) => {
   const { apiClient, queryClient } = useAppRuntime();
   const { t } = useProductLocalization();
+  const navigate = useNavigate();
   const titleId = useId();
   const dialog = useAccessibleDialog({ open, onClose });
   const projectId = shell.activeProject?.id ?? '';
   const [feedback, setFeedback] = useState<Feedback>();
+  const [privacyBlocked, setPrivacyBlocked] = useState(false);
+  const [embeddingSecret, setEmbeddingSecret] = useState('');
+  const [selectedEmbeddingIdentity, setSelectedEmbeddingIdentity] =
+    useState<SemanticEmbeddingSetupSelection>();
 
   const statusQuery = useQuery({
     queryKey: statusQueryKey(projectId),
     queryFn: ({ signal }) => apiClient.getSemanticComparisonStatus(projectId, { signal }),
     enabled: open && Boolean(projectId),
   });
+  const embeddingOptions = statusQuery.data?.embeddingOptions ?? [];
+  const selectedEmbeddingOption =
+    selectedEmbeddingIdentity === undefined
+      ? undefined
+      : embeddingOptions.find(
+          (option) =>
+            option.providerId === selectedEmbeddingIdentity.providerId &&
+            option.embeddingModelId === selectedEmbeddingIdentity.embeddingModelId,
+        );
 
   useEffect(() => {
     if (!open || !commandId) return;
     dialog.captureInvoker(invoker);
     setFeedback(undefined);
+    setPrivacyBlocked(false);
   }, [commandId, invoker, open]);
 
   const refresh = async () => {
@@ -81,8 +111,18 @@ export const SemanticCommandSurface = ({
   };
 
   const prepareMutation = useMutation({
-    mutationFn: () => apiClient.prepareSemanticComparison(projectId),
+    mutationFn: () =>
+      apiClient.prepareSemanticComparison(
+        projectId,
+        statusQuery.data?.status === 'NOT_CONFIGURED' && selectedEmbeddingOption
+          ? {
+              providerId: selectedEmbeddingOption.providerId,
+              embeddingModelId: selectedEmbeddingOption.embeddingModelId,
+            }
+          : undefined,
+      ),
     onSuccess: async (status) => {
+      setPrivacyBlocked(false);
       await refresh();
       if (status.status === 'READY') {
         setFeedback({ tone: 'info', message: t('semantic.status_ready') });
@@ -91,7 +131,14 @@ export const SemanticCommandSurface = ({
       }
     },
     onError: (error) => {
-      setFeedback({ tone: 'error', message: safeErrorMessage(error) || t('semantic.failed') });
+      const isPrivacyBlocker = error instanceof ShotgunApiError && error.code === 'POLICY_DENIED';
+      setPrivacyBlocked(isPrivacyBlocker);
+      setFeedback({
+        tone: 'error',
+        message: isPrivacyBlocker
+          ? t('semantic.privacy_required')
+          : semanticErrorMessage(error, t) || t('semantic.failed'),
+      });
     },
   });
 
@@ -127,13 +174,87 @@ export const SemanticCommandSurface = ({
     },
   });
 
+  const saveCredentialMutation = useMutation({
+    mutationFn: async () => {
+      const option = selectedEmbeddingOption;
+      if (!option) throw new Error(t('semantic.no_embedding_options'));
+      if (option.hasActiveCredential) throw new Error(t('semantic.credential_existing'));
+      if (!embeddingSecret) throw new Error(t('semantic.embedding_credential'));
+
+      const clientRequestId = commandIdentity('semantic-embedding-credential');
+      try {
+        return await apiClient.saveSemanticEmbeddingCredential({
+          projectId,
+          providerId: option.providerId,
+          embeddingModelId: option.embeddingModelId,
+          secret: embeddingSecret,
+          clientRequestId,
+        });
+      } catch (error) {
+        try {
+          return await apiClient.getAICredentialWriteOutcome({
+            projectId,
+            providerId: option.providerId,
+            operation: 'CREATE',
+            clientRequestId,
+          });
+        } catch {
+          throw error;
+        }
+      }
+    },
+    onSuccess: async () => {
+      setEmbeddingSecret('');
+      await refresh();
+      setFeedback({ tone: 'success', message: t('semantic.credential_saved') });
+    },
+    onError: (error) => {
+      setFeedback({
+        tone: 'error',
+        message: semanticErrorMessage(error, t) || t('semantic.failed'),
+      });
+    },
+  });
+
+  useEffect(() => {
+    const preserved = selectedEmbeddingIdentity
+      ? embeddingOptions.find(
+          (option) =>
+            option.providerId === selectedEmbeddingIdentity.providerId &&
+            option.embeddingModelId === selectedEmbeddingIdentity.embeddingModelId,
+        )
+      : undefined;
+    const next =
+      preserved ??
+      embeddingOptions.find((option) => option.hasActiveCredential) ??
+      embeddingOptions[0];
+    const nextSelection = next
+      ? { providerId: next.providerId, embeddingModelId: next.embeddingModelId }
+      : undefined;
+    if (
+      nextSelection?.providerId !== selectedEmbeddingIdentity?.providerId ||
+      nextSelection?.embeddingModelId !== selectedEmbeddingIdentity?.embeddingModelId
+    ) {
+      setSelectedEmbeddingIdentity(nextSelection);
+    }
+  }, [embeddingOptions, selectedEmbeddingIdentity]);
+
   if (!open || !commandId || !projectId) return null;
 
   const status = statusQuery.data;
-  const busy = prepareMutation.isPending || activationMutation.isPending;
+  const busy =
+    prepareMutation.isPending || activationMutation.isPending || saveCredentialMutation.isPending;
   const alreadyEnabled = status?.status === 'READY' && status.rollout === 'V2_ACTIVE';
   const canPrepare = !busy && !alreadyEnabled && status?.status !== 'PREPARING';
   const canEnable = !busy && status?.status === 'READY' && status.rollout !== 'V2_ACTIVE';
+  const showEmbeddingCredentialSetup = status?.status === 'NOT_CONFIGURED';
+  const canSaveEmbeddingCredential = Boolean(
+    showEmbeddingCredentialSetup &&
+    selectedEmbeddingOption &&
+    !selectedEmbeddingOption.hasActiveCredential &&
+    embeddingSecret &&
+    !busy,
+  );
 
   const handlePrepare = () => {
     if (!window.confirm(t('semantic.prepare'))) return;
@@ -166,8 +287,89 @@ export const SemanticCommandSurface = ({
             {alreadyEnabled ? ` · ${t('semantic.already_enabled')}` : null}
           </p>
         ) : null}
+        {showEmbeddingCredentialSetup ? (
+          <section aria-labelledby={`${titleId}-embedding-credential`}>
+            <h3 id={`${titleId}-embedding-credential`}>{t('semantic.credential_required')}</h3>
+            <p>{t('semantic.credential_explanation')}</p>
+            {embeddingOptions.length ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  if (!canSaveEmbeddingCredential) return;
+                  saveCredentialMutation.mutate();
+                }}
+              >
+                <label htmlFor={`${titleId}-embedding-provider`}>
+                  {t('semantic.embedding_provider')}
+                </label>
+                <select
+                  id={`${titleId}-embedding-provider`}
+                  aria-label={t('semantic.embedding_provider')}
+                  value={selectedEmbeddingOption ? embeddingOptionKey(selectedEmbeddingOption) : ''}
+                  onChange={(event) => {
+                    const option = embeddingOptions.find(
+                      (candidate) => embeddingOptionKey(candidate) === event.target.value,
+                    );
+                    setSelectedEmbeddingIdentity(
+                      option
+                        ? {
+                            providerId: option.providerId,
+                            embeddingModelId: option.embeddingModelId,
+                          }
+                        : undefined,
+                    );
+                  }}
+                  disabled={busy}
+                >
+                  {embeddingOptions.map((option) => (
+                    <option key={embeddingOptionKey(option)} value={embeddingOptionKey(option)}>
+                      {option.providerDisplayName} · {option.embeddingModelDisplayName}
+                      {option.hasActiveCredential
+                        ? ` (${t('semantic.embedding_option_configured')})`
+                        : ''}
+                    </option>
+                  ))}
+                </select>
+                {selectedEmbeddingOption?.hasActiveCredential ? (
+                  <p>{t('semantic.credential_existing')}</p>
+                ) : (
+                  <>
+                    <label htmlFor={`${titleId}-embedding-secret`}>
+                      {t('semantic.embedding_credential')}
+                    </label>
+                    <input
+                      id={`${titleId}-embedding-secret`}
+                      aria-label={t('semantic.embedding_credential')}
+                      type="password"
+                      autoComplete="new-password"
+                      value={embeddingSecret}
+                      onChange={(event) => setEmbeddingSecret(event.target.value)}
+                      disabled={busy}
+                    />
+                    <button type="submit" disabled={!canSaveEmbeddingCredential}>
+                      {t('semantic.save_credential')}
+                    </button>
+                  </>
+                )}
+              </form>
+            ) : (
+              <p>{t('semantic.no_embedding_options')}</p>
+            )}
+          </section>
+        ) : null}
         {feedback ? (
           <p role={feedback.tone === 'error' ? 'alert' : 'status'}>{feedback.message}</p>
+        ) : null}
+        {privacyBlocked ? (
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              navigate('/settings/privacy');
+            }}
+          >
+            {t('semantic.open_privacy')}
+          </button>
         ) : null}
         {status?.status === 'NEEDS_ATTENTION' ? <p>{t('semantic.refresh_blocked')}</p> : null}
         <div className="hfm-command-actions">

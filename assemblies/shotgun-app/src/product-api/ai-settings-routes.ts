@@ -338,6 +338,98 @@ export function registerAISettingsRoutes(
       },
     );
 
+    const orderedEmbeddingModels = () =>
+      semanticEmbeddingRegistry
+        ? [...semanticEmbeddingRegistry.listModels()].sort((left, right) => {
+            const rank = (model: { providerId: string; modelId: string }): string =>
+              model.providerId === 'openai' && model.modelId === 'text-embedding-3-small'
+                ? '0'
+                : `1:${model.providerId}:${model.modelId}`;
+            const leftRank = rank(left);
+            const rightRank = rank(right);
+            return leftRank < rightRank ? -1 : leftRank > rightRank ? 1 : 0;
+          })
+        : [];
+
+    const embeddingSetupOptions = (
+      aiSettings: Awaited<ReturnType<AISettingsBackendPort['getSettings']>>,
+    ) =>
+      orderedEmbeddingModels()
+        .filter((model) =>
+          aiSettings.providers.some(
+            (provider) => provider.providerId === model.providerId && provider.status === 'active',
+          ),
+        )
+        .map((model) => ({
+          providerId: model.providerId,
+          providerDisplayName:
+            aiSettings.providers.find((provider) => provider.providerId === model.providerId)
+              ?.displayName ?? model.providerId,
+          embeddingModelId: model.modelId,
+          embeddingModelDisplayName: model.displayName,
+          hasActiveCredential: aiSettings.credentialStatuses.some(
+            (credential) =>
+              credential.providerId === model.providerId && credential.lifecycleState === 'active',
+          ),
+        }));
+
+    if (semanticEmbeddingRegistry) {
+      server.post<{ Body: unknown; Headers: SecurityHeaders }>(
+        '/api/v1/settings/ai/semantic-comparison/embedding-credentials',
+        async (request) => {
+          const body = objectBody(request.body);
+          assertAllowedFields(
+            body,
+            ['targetProjectId', 'providerId', 'embeddingModelId', 'secret', 'clientRequestId'],
+            'decode-semantic-embedding-credential-request',
+          );
+          const { context } = await requireBrowserSession(request.headers);
+          const projectId = projectFrom(body, context.projectId);
+          await access(request.headers, projectId, true);
+          try {
+            const providerId = requiredString(body, 'providerId');
+            const embeddingModelId = requiredString(body, 'embeddingModelId');
+            const model = semanticEmbeddingRegistry.getModel(providerId, embeddingModelId);
+            const aiSettings = await backend.getSettings(projectId);
+            const provider = aiSettings.providers.find(
+              (candidate) => candidate.providerId === providerId && candidate.status === 'active',
+            );
+            if (!model || !provider) {
+              throw new ShotgunError({
+                code: 'AI_CAPABILITY_UNAVAILABLE',
+                safeMessage: 'The selected semantic embedding provider is not available.',
+                module: 'ai-settings-api',
+                operation: 'save-semantic-embedding-credential',
+              });
+            }
+            const activeCredentials = aiSettings.credentialStatuses.filter(
+              (credential) =>
+                credential.providerId === providerId && credential.lifecycleState === 'active',
+            );
+            if (activeCredentials.length > 0) {
+              throw new ShotgunError({
+                code: 'CONFIGURATION_REQUIRED',
+                safeMessage:
+                  'An active embedding credential already exists. Prepare semantic comparison or replace it in Settings → AI.',
+                module: 'ai-settings-api',
+                operation: 'save-semantic-embedding-credential',
+              });
+            }
+            return {
+              credential: await backend.createCredential({
+                projectId,
+                providerId,
+                secret: requiredString(body, 'secret'),
+                clientRequestId: requiredString(body, 'clientRequestId'),
+              }),
+            };
+          } catch (error) {
+            throw mapError(error, 'save-semantic-embedding-credential');
+          }
+        },
+      );
+    }
+
     if (semanticEmbeddingRegistry && semanticActiveGenerationReader) {
       const generationMatchesSource = async (
         projectId: string,
@@ -407,21 +499,18 @@ export function registerAISettingsRoutes(
         }
       };
 
-      const orderedEmbeddingModels = () =>
-        [...semanticEmbeddingRegistry.listModels()].sort((left, right) => {
-          const rank = (model: { providerId: string; modelId: string }): string =>
-            model.providerId === 'openai' && model.modelId === 'text-embedding-3-small'
-              ? '0'
-              : `1:${model.providerId}:${model.modelId}`;
-          const leftRank = rank(left);
-          const rightRank = rank(right);
-          return leftRank < rightRank ? -1 : leftRank > rightRank ? 1 : 0;
-        });
-
       const selectEmbeddingBinding = (
         aiSettings: Awaited<ReturnType<AISettingsBackendPort['getSettings']>>,
+        requested?: { readonly providerId: string; readonly embeddingModelId: string },
       ) => {
-        for (const model of orderedEmbeddingModels()) {
+        const models = requested
+          ? orderedEmbeddingModels().filter(
+              (model) =>
+                model.providerId === requested.providerId &&
+                model.modelId === requested.embeddingModelId,
+            )
+          : orderedEmbeddingModels();
+        for (const model of models) {
           const credentials = aiSettings.credentialStatuses.filter(
             (credential) =>
               credential.providerId === model.providerId && credential.lifecycleState === 'active',
@@ -501,6 +590,7 @@ export function registerAISettingsRoutes(
           status,
           rollout,
           settingsRevision: settings?.settingsRevision ?? 0,
+          embeddingOptions: embeddingSetupOptions(aiSettings),
           ...(profile
             ? {
                 profile: {
@@ -552,13 +642,24 @@ export function registerAISettingsRoutes(
           '/api/v1/settings/ai/semantic-comparison/prepare',
           async (request) => {
             const body = objectBody(request.body ?? {});
-            assertAllowedFields(body, ['targetProjectId'], 'decode-semantic-comparison-prepare');
+            assertAllowedFields(
+              body,
+              ['targetProjectId', 'embeddingProviderId', 'embeddingModelId'],
+              'decode-semantic-comparison-prepare',
+            );
             const { context } = await requireBrowserSession(request.headers);
             const projectId = projectFrom(body, context.projectId);
             await access(request.headers, projectId, true);
             try {
               let profile = await semanticEmbeddingProfile.getCurrent(projectId);
               const aiSettings = await backend.getSettings(projectId);
+              const requestedEmbeddingBinding =
+                body.embeddingProviderId === undefined && body.embeddingModelId === undefined
+                  ? undefined
+                  : {
+                      providerId: requiredString(body, 'embeddingProviderId'),
+                      embeddingModelId: requiredString(body, 'embeddingModelId'),
+                    };
               const currentCredential = profile
                 ? aiSettings.credentialStatuses.find(
                     (credential) =>
@@ -578,7 +679,7 @@ export function registerAISettingsRoutes(
                 ['PREPARED', 'ACTIVE'].includes(profile.status),
               );
               if (!currentEligible) {
-                const selected = selectEmbeddingBinding(aiSettings);
+                const selected = selectEmbeddingBinding(aiSettings, requestedEmbeddingBinding);
                 if (!selected) {
                   throw new ShotgunError({
                     code: 'CONFIGURATION_REQUIRED',

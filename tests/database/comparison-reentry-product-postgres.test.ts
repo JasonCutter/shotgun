@@ -12,6 +12,7 @@ import {
 } from '../../packages/contracts/src/index.js';
 import type { SearchProjectionRepositoryPort } from '../../modules/projection-search/src/index.js';
 import type { CandidateRepositoryPort } from '../../modules/candidate-generation/src/index.js';
+import { InMemorySettingsRepository } from '../../adapters/settings-project-admin-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import { PostgresCandidateRepository } from '../../adapters/postgres-stage4/src/index.js';
 import {
@@ -409,6 +410,8 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
     const cookie = `shotgun_session=${session.sessionToken}`;
     const candidateRepository: CandidateRepositoryPort = new PostgresCandidateRepository(pool);
     const sourcesProjectionRepository = new PostgresOriginalAssetRepository(pool);
+    const settingsRepository = new InMemorySettingsRepository();
+    settingsRepository.getProjectSettingValue = async () => rolloutState;
     const generationReader = {
       async getActiveGeneration(project: string) {
         const current = await canonical.getSnapshot(project);
@@ -430,9 +433,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       hybridRetrievalCoordinator: hybridRetrieval,
       semanticActiveGenerationReader: generationReader,
       comparisonV2ExecutionResolver: executionResolver,
-      settingsRepository: {
-        getProjectSettingValue: async () => rolloutState,
-      } as never,
+      settingsRepository,
       sourcesProjectionRepository,
     });
     try {

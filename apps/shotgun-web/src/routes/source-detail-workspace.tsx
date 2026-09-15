@@ -21,6 +21,7 @@ import { ErrorState, safeErrorMessage } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { TechnicalDetails } from '../components/technical-details.js';
 import { hfmOwnerLabel, useProductLocalization } from '../localization/product-localization.js';
+import { useOwnerCommandController } from '../section3/global-tools.js';
 import {
   sourceDetailQueryOptions,
   sourceCandidatesQueryOptions,
@@ -223,11 +224,16 @@ const SourceCandidateComparison = ({
 }) => {
   const { apiClient, queryClient } = useAppRuntime();
   const { t } = useProductLocalization();
+  const commandController = useOwnerCommandController();
+  const semanticEnableCommand = commandController?.commands.find(
+    (command) => command.id === 'semantic.enable',
+  );
   const [pendingIdentity, setPendingIdentity] = useState<
     PendingSourceRecompareCommandIdentityV1 | undefined
   >();
   const [feedback, setFeedback] = useState<CandidateComparisonFeedback>();
   const [reviewReady, setReviewReady] = useState(false);
+  const [semanticRecoveryRequired, setSemanticRecoveryRequired] = useState(false);
 
   useEffect(() => {
     const storage = getSourceRecompareCommandStorage();
@@ -243,6 +249,7 @@ const SourceCandidateComparison = ({
     setPendingIdentity(identity ?? undefined);
     setFeedback(undefined);
     setReviewReady(false);
+    setSemanticRecoveryRequired(false);
   }, [candidate.candidateId, projectId, sourceId, sourceVersionId]);
 
   const mutation = useMutation({
@@ -264,10 +271,12 @@ const SourceCandidateComparison = ({
       }
       setPendingIdentity(undefined);
       if (recompareSucceeded(response)) {
+        setSemanticRecoveryRequired(false);
         await convergeOwnerState(queryClient, projectId);
         setReviewReady(true);
         setFeedback({ kind: 'success', message: t('source_detail.semantic_candidate_success') });
       } else {
+        setSemanticRecoveryRequired(semanticCredentialNeedsAttention(response));
         setFeedback({ kind: 'info', message: recompareOutcomeMessage(response, t) });
       }
     },
@@ -293,6 +302,7 @@ const SourceCandidateComparison = ({
         );
       }
       setPendingIdentity(undefined);
+      setSemanticRecoveryRequired(false);
       setFeedback({
         kind: 'error',
         message: `${t('source_detail.semantic_candidate_failed')} ${safeErrorMessage(error)}`,
@@ -326,6 +336,7 @@ const SourceCandidateComparison = ({
     setPendingIdentity(identity);
     setFeedback(undefined);
     setReviewReady(false);
+    setSemanticRecoveryRequired(false);
     mutation.mutate(identity);
   };
 
@@ -352,6 +363,20 @@ const SourceCandidateComparison = ({
       ) : null}
       {feedback ? (
         <p role={feedback.kind === 'error' ? 'alert' : 'status'}>{feedback.message}</p>
+      ) : null}
+      {semanticRecoveryRequired ? (
+        semanticEnableCommand && commandController ? (
+          <button
+            type="button"
+            onClick={(event) =>
+              commandController.executeCommand(semanticEnableCommand, event.currentTarget)
+            }
+          >
+            {t('source_detail.semantic_candidate_open_settings')}
+          </button>
+        ) : (
+          <Link to="/settings/ai">{t('source_detail.semantic_candidate_open_settings')}</Link>
+        )
       ) : null}
       {reviewReady ? (
         <Link to="/review">{t('source_detail.semantic_candidate_open_review')}</Link>

@@ -1,6 +1,22 @@
 export const semanticEmbeddingCredentialReplacementStorageKey =
   'shotgun:semantic-embedding-credential-replacement:v1';
 
+export const semanticEmbeddingCredentialReplacementStorageKeyFor = (
+  identity: Pick<
+    PendingSemanticEmbeddingCredentialReplacementV1,
+    'projectId' | 'providerId' | 'embeddingModelId' | 'credentialId' | 'expectedRevision'
+  >,
+): string =>
+  `${semanticEmbeddingCredentialReplacementStorageKey}:${[
+    identity.projectId,
+    identity.providerId,
+    identity.embeddingModelId,
+    identity.credentialId,
+    String(identity.expectedRevision),
+  ]
+    .map((part) => encodeURIComponent(part))
+    .join(':')}`;
+
 export type PendingSemanticEmbeddingCredentialReplacementV1 = {
   readonly schemaVersion: 1;
   readonly projectId: string;
@@ -18,6 +34,17 @@ const storage = (): Storage | undefined => {
   } catch {
     return undefined;
   }
+};
+
+const pendingStorageKeys = (target: Storage): string[] => {
+  const keys: string[] = [];
+  for (let index = 0; index < target.length; index += 1) {
+    const key = target.key(index);
+    if (key?.startsWith(`${semanticEmbeddingCredentialReplacementStorageKey}:`)) {
+      keys.push(key);
+    }
+  }
+  return keys;
 };
 
 const nonEmptyString = (value: unknown): value is string =>
@@ -47,10 +74,13 @@ export const readPendingSemanticEmbeddingCredentialReplacement = (
   const target = storage();
   if (!target) return undefined;
   try {
-    const raw = target.getItem(semanticEmbeddingCredentialReplacementStorageKey);
-    if (!raw) return undefined;
-    const parsed: unknown = JSON.parse(raw);
-    return isPendingIdentity(parsed) && parsed.projectId === projectId ? parsed : undefined;
+    for (const key of pendingStorageKeys(target)) {
+      const raw = target.getItem(key);
+      if (!raw) continue;
+      const parsed: unknown = JSON.parse(raw);
+      if (isPendingIdentity(parsed) && parsed.projectId === projectId) return parsed;
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -62,7 +92,10 @@ export const writePendingSemanticEmbeddingCredentialReplacement = (
   const target = storage();
   if (!target) return;
   try {
-    target.setItem(semanticEmbeddingCredentialReplacementStorageKey, JSON.stringify(identity));
+    target.setItem(
+      semanticEmbeddingCredentialReplacementStorageKeyFor(identity),
+      JSON.stringify(identity),
+    );
   } catch {
     // Recovery remains best-effort when the browser disables session storage.
   }
@@ -75,13 +108,10 @@ export const clearPendingSemanticEmbeddingCredentialReplacement = (
   if (!target) return;
   try {
     if (!identity) {
-      target.removeItem(semanticEmbeddingCredentialReplacementStorageKey);
+      for (const key of pendingStorageKeys(target)) target.removeItem(key);
       return;
     }
-    const current = readPendingSemanticEmbeddingCredentialReplacement(identity.projectId);
-    if (current?.clientRequestId === identity.clientRequestId) {
-      target.removeItem(semanticEmbeddingCredentialReplacementStorageKey);
-    }
+    target.removeItem(semanticEmbeddingCredentialReplacementStorageKeyFor(identity));
   } catch {
     // Clearing is best-effort; no secret is stored in this record.
   }

@@ -39,9 +39,9 @@ License·security·maintenance 관점에서 새 OSS dependency 또는 runtime을
 5. 기존 `replaceCredential(projectId, providerId, credentialId, expectedRevision, secret, clientRequestId)` Port를 통해 revision replacement를 수행한다.
 6. API client contract/decode에 semantic replacement과 비밀정보가 아닌 active credential identity를 추가한다.
 7. READY/V2_ACTIVE에서도 semantic-only `Replace embedding credential` 명령을 노출한다.
-8. submit 전에 sessionStorage에는 project/provider/model/request/operation/credential identity와 expected revision만 저장한다. secret은 메모리 입력에만 존재한다.
+8. submit 전에 sessionStorage에는 project/provider/model/request/operation/credential identity와 expected revision만 저장한다. project/provider/model/credential/revision별 key를 사용해 서로 다른 Project의 pending identity가 덮어쓰이지 않으며, secret은 메모리 입력에만 존재한다.
 9. 응답 손실 시 동일 `clientRequestId`의 outcome 조회만 제공하고 secret을 재전송하지 않는다.
-10. Source Detail의 `CREDENTIAL_UNAVAILABLE` + `CONFIGURATION_REQUIRED` blocked 상태에 semantic credential recovery 안내를 제공한다.
+10. Source Detail의 `CREDENTIAL_UNAVAILABLE` + `CONFIGURATION_REQUIRED` blocked 상태에 semantic credential recovery 안내를 제공하고, 기존 `semantic.enable` command controller를 통해 Semantic Comparison 설정 flow를 연다.
 11. replacement는 기존 credential/profile/generation을 변경하지 않고, Prepare가 새 credential revision으로 profile/generation을 생성·cutover한다.
 
 ### 제외
@@ -59,7 +59,7 @@ License·security·maintenance 관점에서 새 OSS dependency 또는 runtime을
 ### Contract/UI/semantic tests
 
 - `npm --workspace @shotgun/web run test -- src/commands/semantic-command-surface.test.tsx src/routes/source-detail-recompare.test.tsx`
-  - 2 files, 13 tests passed
+  - 2 files, 15 tests passed
   - READY/V2_ACTIVE replacement visibility and exact secret-safe request body
   - response-loss recovery, identity-only persistence, no second secret submission
   - Source Detail credential-unavailable message
@@ -73,6 +73,8 @@ License·security·maintenance 관점에서 새 OSS dependency 또는 runtime을
   - no secret in replacement response
 - `npm run typecheck` passed.
 - `npm run frontend:typecheck` passed.
+- `node --env-file-if-exists=.env node_modules/vitest/vitest.mjs run tests/database/semantic-runtime-r5-production-chain.database.test.ts --maxWorkers=1 --fileParallelism=false --testTimeout=60000 --hookTimeout=60000 -t "C6 semantic credential recovery"`
+  - isolated PostgreSQL acceptance passed: Project/Auth, DeepSeek configuration, standing policy, V2_ACTIVE, OpenAI credential rev1, G1 READY, Candidate A blocked/recovered, rev2/G2 READY, Candidate B untouched, Canonical unchanged.
 
 Golden corpus/search/benchmark 결과에는 영향이 없다. 이 slice는 semantic execution credential control plane만 변경하며, corpus transformation·Evidence span·query ranking을 변경하지 않는다.
 
@@ -83,6 +85,8 @@ Golden corpus/search/benchmark 결과에는 영향이 없다. 이 slice는 seman
 - 4xx authoritative rejection clears pending identity; unknown outcome preserves only identity for resolution.
 - Resolve path performs outcome lookup only and never resends a secret.
 - Existing profile/generation revisions remain readable and immutable after replacement.
+- Source Detail recovery uses the existing semantic command/controller; no duplicate recovery dialog or generic AI save path was added.
+- UI remount regression proves a pending Project A replacement survives a Project B submit/clear cycle and never leaks the Project A secret or identity into Project B.
 - Rollback is a normal PR revert; no data migration is required. If a replacement has already occurred, vault lifecycle/profile history remains append-only and the previous credential revision is not deleted.
 
 ## 5. 남은 Gate와 제한

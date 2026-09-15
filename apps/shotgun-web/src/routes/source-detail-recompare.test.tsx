@@ -15,6 +15,11 @@ import {
 import { AppProviders, type AppRuntime } from '../app/providers.js';
 import { createFrontendQueryClient } from '../app/query-client.js';
 import { createSessionCycleState } from '../session/session-query.js';
+import {
+  OwnerCommandControllerProvider,
+  type OwnerCommandController,
+} from '../section3/global-tools.js';
+import type { OwnerCommandDefinition } from '../commands/owner-command-registry.js';
 import { SourceDetailWorkspace } from './source-detail-workspace.js';
 import { pendingSourceRecompareCommandStorageKey } from './source-recompare-command-storage.js';
 
@@ -46,6 +51,19 @@ const shell = {
   policyContextRevision: 'policy-1',
   projectionRevision: 'projection-1',
   fetchedAt: now,
+};
+
+const semanticCommand: OwnerCommandDefinition = {
+  id: 'semantic.enable',
+  category: 'AI',
+  label: 'Enable semantic comparison',
+  description: 'Prepare semantic comparison and enable it after confirmation',
+  aliases: [],
+  keywords: ['semantic'],
+  availability: 'AVAILABLE',
+  risk: 'WRITE',
+  presentation: 'DIALOG',
+  action: { kind: 'OPEN_SEMANTIC_FLOW', commandId: 'semantic.enable' },
 };
 
 const detail: SourceDetailView = {
@@ -186,7 +204,10 @@ const createRuntime = (recompareCandidate: ShotgunApiClient['recompareCandidate'
   };
 };
 
-const renderDetail = (runtime: AppRuntime) => {
+const renderDetail = (
+  runtime: AppRuntime,
+  controller: OwnerCommandController = { commands: [], executeCommand: vi.fn() },
+) => {
   const router = createMemoryRouter(
     [
       {
@@ -203,7 +224,9 @@ const renderDetail = (runtime: AppRuntime) => {
   );
   render(
     <AppProviders runtime={runtime}>
-      <RouterProvider router={router} />
+      <OwnerCommandControllerProvider controller={controller}>
+        <RouterProvider router={router} />
+      </OwnerCommandControllerProvider>
     </AppProviders>,
   );
   return router;
@@ -330,7 +353,11 @@ describe('Source Detail initial V2 Candidate re-entry', () => {
           },
         }) as RecompareCandidateResponse,
     );
-    renderDetail(createRuntime(recompareCandidate));
+    const executeCommand = vi.fn();
+    renderDetail(createRuntime(recompareCandidate), {
+      commands: [semanticCommand],
+      executeCommand,
+    });
     const user = userEvent.setup();
 
     await user.click(
@@ -341,5 +368,10 @@ describe('Source Detail initial V2 Candidate re-entry', () => {
         'The embedding credential needs attention. Replace it in Semantic Comparison settings, then prepare semantic comparison again.',
       ),
     ).toBeTruthy();
+    const openSettings = screen.getByRole('button', {
+      name: 'Open Semantic Comparison settings',
+    });
+    await user.click(openSettings);
+    expect(executeCommand).toHaveBeenCalledWith(semanticCommand, openSettings);
   });
 });

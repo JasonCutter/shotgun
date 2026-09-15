@@ -517,6 +517,7 @@ const enUS = {
   'source_detail.semantic_candidate_blocked': 'Semantic comparison was blocked.',
   'source_detail.semantic_candidate_credential_recovery':
     'The embedding credential needs attention. Replace it in Semantic Comparison settings, then prepare semantic comparison again.',
+  'source_detail.semantic_candidate_open_settings': 'Open Semantic Comparison settings',
   'source_detail.semantic_candidate_incomplete':
     'Semantic comparison remains incomplete. The result is preserved for recovery.',
   'source_detail.semantic_candidate_review_not_ready':
@@ -1336,6 +1337,7 @@ const koKR: Record<ProductMessageKey, string> = {
   'source_detail.semantic_candidate_blocked': '시맨틱 비교가 차단되었습니다.',
   'source_detail.semantic_candidate_credential_recovery':
     '임베딩 자격 증명을 확인해야 합니다. 의미 비교 설정에서 자격 증명을 교체한 후 의미 비교를 다시 준비하세요.',
+  'source_detail.semantic_candidate_open_settings': '의미 비교 설정 열기',
   'source_detail.semantic_candidate_incomplete':
     '시맨틱 비교가 아직 완료되지 않았습니다. 복구를 위해 결과를 보존했습니다.',
   'source_detail.semantic_candidate_review_not_ready':

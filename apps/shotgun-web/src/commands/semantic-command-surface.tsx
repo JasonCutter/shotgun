@@ -322,8 +322,8 @@ export const SemanticCommandSurface = ({
         throw error;
       }
     },
-    onSuccess: async () => {
-      clearPendingSemanticEmbeddingCredentialReplacement();
+    onSuccess: async (_, identity) => {
+      clearPendingSemanticEmbeddingCredentialReplacement(identity);
       setPendingCredentialReplacement(undefined);
       await refresh();
       setFeedback({ tone: 'success', message: t('semantic.credential_replaced') });

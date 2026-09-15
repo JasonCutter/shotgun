@@ -579,24 +579,42 @@ describe.runIf(pool)('Source Product / Stage 4 failure isolation', () => {
       createdAt: context.now,
     });
     const evidenceRepository = new PostgresEvidenceRepository(pool!);
+    const transformer = new LucasAugmentedPlainTextAdapter();
+    const transformed = transformer.transform({
+      sourceId: stored.sourceId,
+      sourceVersionId: stored.sourceVersionId,
+      sourceContentHash: contentHash,
+      mediaType: 'text/plain',
+      text,
+    });
+    const transformation = await new PostgresTransformationRepository(pool!).save({
+      projectId: context.projectId,
+      sourceId: stored.sourceId,
+      sourceVersionId: stored.sourceVersionId,
+      sourceContentHash: contentHash,
+      transformer: transformer.identity,
+      output: transformed,
+      accessScope: ['owner'],
+      sensitivity: 'internal',
+      createdAt: context.now,
+    });
+    const sentence = transformed.sourceMap.entries.find((entry) => entry.nodeKind === 'sentence');
+    if (!sentence || sentence.origin !== 'source') {
+      throw new Error('PostgreSQL Evidence fixture had no source sentence map entry.');
+    }
     await evidenceRepository.index([
       {
-        revisionId: randomUUID(),
+        revisionId: transformation.revision.revisionId,
         projectId: context.projectId,
         sourceId: stored.sourceId,
         sourceVersionId: stored.sourceVersionId,
-        pointer: 'document.sentence[0]',
-        nodeKind: 'sentence',
-        origin: 'source',
-        position: {
-          type: 'TextPositionSelector',
-          start: 0,
-          end: text.length,
-          unit: 'unicode-code-point',
-        },
-        quote: { type: 'TextQuoteSelector', exact: text },
-        selectors: [],
-        exactHash: hash(text),
+        pointer: sentence.pointer,
+        nodeKind: sentence.nodeKind,
+        origin: sentence.origin,
+        position: sentence.position,
+        quote: sentence.quote,
+        selectors: sentence.selectors ?? [],
+        exactHash: sentence.exactHash,
         accessScope: ['owner'],
         sensitivity: 'internal',
         createdAt: context.now,

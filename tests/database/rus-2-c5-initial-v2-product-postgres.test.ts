@@ -17,7 +17,10 @@ import {
   PostgresOriginalAssetRepository,
   createPostgresPool,
 } from '../../adapters/postgres/src/index.js';
-import { InMemorySettingsRepository } from '../../adapters/settings-project-admin-in-memory/src/index.js';
+import {
+  InMemoryProjectAdministrationRepository,
+  InMemorySettingsRepository,
+} from '../../adapters/settings-project-admin-in-memory/src/index.js';
 import { createApplication } from '../../assemblies/shotgun-app/src/server.js';
 import type { CandidateRepositoryPort } from '../../modules/candidate-generation/src/index.js';
 import type { SearchProjectionRepositoryPort } from '../../modules/projection-search/src/index.js';
@@ -358,6 +361,16 @@ describeDatabase('RUS-2 C5 fresh initial V2 Product PostgreSQL lifecycle', () =>
     });
     const principal = await auth.findPrincipalByAccountId(`account:${projectId}`);
     if (!principal) throw new Error('Fresh C5 Product fixture principal was not created.');
+    const projectAdminRepository = new InMemoryProjectAdministrationRepository(undefined, false);
+    await projectAdminRepository.createProject({
+      commandId: `create:${projectId}`,
+      clientRequestId: `create:${projectId}`,
+      idempotencyKey: `create:${projectId}`,
+      actorPrincipalId: principal.principalId,
+      projectId,
+      expectedProjectRevision: 0,
+      name: `Fresh C5 ${suffix}`,
+    });
     const session = await auth.createSession(
       principal.principalId,
       projectId,
@@ -371,6 +384,7 @@ describeDatabase('RUS-2 C5 fresh initial V2 Product PostgreSQL lifecycle', () =>
     const reviewV2Repository = new PostgresChangeSetReviewV2Repository(pool);
     const application = await createApplication({
       authRepository: auth,
+      projectAdminRepository,
       candidateRepository,
       evidenceRepository: new PostgresEvidenceRepository(pool),
       comparisonRepository: new PostgresComparisonRepository(pool),

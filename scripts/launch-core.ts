@@ -34,7 +34,16 @@ export type LaunchFailureCode =
   | 'SPA_BUILD_FAILED'
   | 'SPA_ASSETS_UNAVAILABLE'
   | 'BACKEND_START_FAILED'
-  | 'READINESS_TIMEOUT';
+  | 'READINESS_TIMEOUT'
+  | 'CANONICAL_BRANCH_INVALID'
+  | 'LAUNCHER_WORKTREE_UNSAFE'
+  | 'GIT_FETCH_FAILED'
+  | 'GIT_FF_ONLY_FAILED'
+  | 'CANONICAL_SHA_MISMATCH'
+  | 'RUNTIME_IDENTITY_INVALID'
+  | 'RUNTIME_OWNERSHIP_UNVERIFIED'
+  | 'STALE_RUNTIME_STOP_FAILED'
+  | 'CANONICAL_REEXEC_FAILED';
 
 export class LaunchFailure extends Error {
   constructor(
@@ -58,6 +67,8 @@ export interface ShotgunLaunchOptions {
   readonly rootDirectory: string;
   readonly env: NodeJS.ProcessEnv;
   readonly environmentProfile?: RuntimeConfigurationProfile;
+  readonly noSignals?: boolean;
+  readonly onReady?: () => Promise<void> | void;
 }
 
 export interface ApplicationHandleLike {
@@ -100,6 +111,7 @@ export interface LaunchDeps {
     environment: NodeJS.ProcessEnv;
     stagingSecret: string;
     environmentProfile: RuntimeConfigurationProfile;
+    noSignals?: boolean;
   }): Promise<ApplicationHandleLike>;
   fetchReadiness(url: string, timeoutMs: number): Promise<boolean>;
   openBrowser(platform: NodeJS.Platform, url: string): BrowserOpenResult;
@@ -229,6 +241,7 @@ export const runLaunch = async (
       environment: env,
       stagingSecret,
       environmentProfile,
+      noSignals: options.noSignals,
     });
     await application.listen();
   } catch (error) {
@@ -265,6 +278,12 @@ export const runLaunch = async (
       'Check backend logs for startup failures.',
       'npm run launch (again) or npm run start',
     );
+  }
+  try {
+    await options.onReady?.();
+  } catch (error) {
+    await application.close().catch(() => {});
+    throw error;
   }
   deps.log(`[launch] READY Shotgun is running at ${url}`);
 

@@ -395,19 +395,35 @@ describe('Semantic embedding profile Product boundary', () => {
     expect(JSON.stringify(noActive.json())).not.toContain('c6-no-active-secret');
 
     const ambiguousFixture = await createFixture();
-    for (const secret of ['c6-ambiguous-a', 'c6-ambiguous-b']) {
-      const credential = await ambiguousFixture.application.server.inject({
-        method: 'POST',
-        url: '/api/v1/settings/ai/credentials',
-        headers: ambiguousFixture.headers,
-        payload: {
-          targetProjectId: ambiguousFixture.projectId,
-          providerId: 'openai',
-          secret,
-        },
-      });
-      expect(credential.statusCode).toBe(200);
-    }
+    const firstCredential = await ambiguousFixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/credentials',
+      headers: ambiguousFixture.headers,
+      payload: {
+        targetProjectId: ambiguousFixture.projectId,
+        providerId: 'openai',
+        secret: 'c6-ambiguous-a',
+      },
+    });
+    expect(firstCredential.statusCode).toBe(200);
+    const prepared = await ambiguousFixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/prepare',
+      headers: ambiguousFixture.headers,
+      payload: {},
+    });
+    expect(prepared.statusCode).toBe(200);
+    const secondCredential = await ambiguousFixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/credentials',
+      headers: ambiguousFixture.headers,
+      payload: {
+        targetProjectId: ambiguousFixture.projectId,
+        providerId: 'openai',
+        secret: 'c6-ambiguous-b',
+      },
+    });
+    expect(secondCredential.statusCode).toBe(200);
     const ambiguous = await ambiguousFixture.application.server.inject({
       method: 'POST',
       url: '/api/v1/settings/ai/semantic-comparison/embedding-credentials/replace',
@@ -557,6 +573,22 @@ describe('Semantic embedding profile Product boundary', () => {
     });
     expect(browserSuppliedCredentialIdentity.statusCode).toBe(400);
     expect(browserSuppliedCredentialIdentity.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+
+    const unboundProvider = await fixture.application.server.inject({
+      method: 'POST',
+      url: '/api/v1/settings/ai/semantic-comparison/embedding-credentials/replace',
+      headers: fixture.headers,
+      payload: {
+        targetProjectId: fixture.projectId,
+        providerId: 'google-gemini',
+        embeddingModelId: 'gemini-embedding-001',
+        secret: 'c6-rejected-unbound-provider',
+        clientRequestId: `c6-unbound-${crypto.randomUUID()}`,
+      },
+    });
+    expect(unboundProvider.statusCode).toBe(409);
+    expect(unboundProvider.json()).toMatchObject({ code: 'CONFLICT' });
+    expect(JSON.stringify(unboundProvider.json())).not.toContain('c6-rejected-unbound-provider');
 
     const replaced = await fixture.application.server.inject({
       method: 'POST',

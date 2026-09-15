@@ -455,6 +455,27 @@ export function registerAISettingsRoutes(
           try {
             const providerId = requiredString(body, 'providerId');
             const embeddingModelId = requiredString(body, 'embeddingModelId');
+            const currentProfile = await semanticEmbeddingProfile.getCurrent(projectId);
+            if (!currentProfile) {
+              throw new ShotgunError({
+                code: 'CONFIGURATION_REQUIRED',
+                safeMessage: 'A current semantic embedding profile is required before replacement.',
+                module: 'ai-settings-api',
+                operation: 'replace-semantic-embedding-credential',
+              });
+            }
+            if (
+              currentProfile.providerId !== providerId ||
+              currentProfile.embeddingModelId !== embeddingModelId
+            ) {
+              throw new ShotgunError({
+                code: 'CONFLICT',
+                safeMessage:
+                  'The replacement target must match the current semantic embedding profile.',
+                module: 'ai-settings-api',
+                operation: 'replace-semantic-embedding-credential',
+              });
+            }
             const model = semanticEmbeddingRegistry.getModel(providerId, embeddingModelId);
             const aiSettings = await backend.getSettings(projectId);
             const provider = aiSettings.providers.find(

@@ -34,7 +34,7 @@ License·security·maintenance 관점에서 새 OSS dependency 또는 runtime을
 
 1. `POST /api/v1/settings/ai/semantic-comparison/embedding-credentials/replace` 추가.
 2. 요청 허용 필드는 `targetProjectId`, `providerId`, `embeddingModelId`, `secret`, `clientRequestId`뿐이다.
-3. 서버가 선택 provider의 active credential을 조회해 exactly-one을 검증하고 credential ID/revision을 파생한다.
+3. 서버가 현재 semantic profile의 provider/model binding을 먼저 검증한 뒤 해당 provider의 active credential을 조회해 exactly-one을 검증하고 credential ID/revision을 파생한다.
 4. active credential 0개는 `CONFIGURATION_REQUIRED`, 2개 이상은 `CONFLICT`로 fail closed한다.
 5. 기존 `replaceCredential(projectId, providerId, credentialId, expectedRevision, secret, clientRequestId)` Port를 통해 revision replacement를 수행한다.
 6. API client contract/decode에 semantic replacement과 비밀정보가 아닌 active credential identity를 추가한다.

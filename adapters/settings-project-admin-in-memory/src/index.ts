@@ -122,7 +122,7 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
       description: input.description,
       isOwner: true,
       status: 'ACTIVE',
-      active: false,
+      active: true,
       createdAt: now,
       updatedAt: now,
       revision: 1,
@@ -217,6 +217,7 @@ export class InMemoryProjectAdministrationRepository implements ProjectAdministr
     const updated: ProjectListItemView = Object.freeze({
       ...existing,
       status: 'ACTIVE',
+      active: true,
       updatedAt: new Date().toISOString(),
       revision: existing.revision + 1,
       capability: Object.freeze({

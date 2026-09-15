@@ -779,7 +779,7 @@ export class PostgresProjectAdministrationRepository implements ProjectAdministr
         revision: number;
       }>(
         `INSERT INTO project_admin.projects (id, name, description, status, active, created_at, updated_at, revision)
-         VALUES ($1, $2, $3, 'ACTIVE', false, $4, $4, 1)
+         VALUES ($1, $2, $3, 'ACTIVE', true, $4, $4, 1)
          RETURNING id, name, description, status, active, created_at, updated_at, revision`,
         [input.projectId, input.name, input.description ?? null, now],
       );
@@ -1071,6 +1071,7 @@ export class PostgresProjectAdministrationRepository implements ProjectAdministr
       }
 
       const nextRev = currentRev + 1;
+      const nextActive = newStatus === 'ACTIVE';
       const updateRes = await client.query<{
         id: string;
         name: string;
@@ -1082,10 +1083,10 @@ export class PostgresProjectAdministrationRepository implements ProjectAdministr
         revision: number;
       }>(
         `UPDATE project_admin.projects
-         SET status = $1, revision = $2, updated_at = $3
-         WHERE id = $4
+         SET status = $1, active = $2, revision = $3, updated_at = $4
+         WHERE id = $5
          RETURNING id, name, description, status, active, created_at, updated_at, revision`,
-        [newStatus, nextRev, now, input.projectId],
+        [newStatus, nextActive, nextRev, now, input.projectId],
       );
 
       await client.query(

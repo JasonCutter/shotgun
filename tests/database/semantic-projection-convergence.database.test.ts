@@ -351,8 +351,8 @@ const commitApprovedClaim = async (fixture: Fixture, claimText: string) => {
   const canonical = new PostgresCanonicalKnowledgeRepository(pool);
   const before = await canonical.getSnapshot(fixture.projectId);
   const suffix = randomUUID();
-  const manifestId = `c7-manifest-${suffix}`;
-  const changeSetId = `c7-change-set-${suffix}`;
+  const manifestId = randomUUID();
+  const changeSetId = randomUUID();
   const candidateId = `c7-candidate-${suffix}`;
   const candidateDigest = claimCandidateDigest({
     candidateId,
@@ -417,7 +417,7 @@ const commitApprovedClaim = async (fixture: Fixture, claimText: string) => {
     manifestDigest: approvedChangeSetManifestDigest(unsignedManifest),
   };
   return canonical.commit({
-    commitId: `c7-commit-${suffix}`,
+    commitId: randomUUID(),
     revisionId: `c7-revision-${suffix}`,
     historyEventId: `c7-history-${suffix}`,
     outboxId: `c7-outbox-${suffix}`,

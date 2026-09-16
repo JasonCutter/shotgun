@@ -106,6 +106,78 @@ describe('AI Durable Materialization Recovery convergence classification', () =>
     expect(reconciledCommands[0]).toEqual(sentCommands[0]);
   });
 
+  it('reconciles the second OUTCOME_UNKNOWN after the same Resume converges the Provider', async () => {
+    let current = makeRecord('MATERIALIZATION_FAILED');
+    const repository = repositoryFor(current, () => current);
+    const sentCommands: unknown[] = [];
+    const reconciledCalls: Array<{ readonly command: unknown; readonly input: unknown }> = [];
+    let sends = 0;
+    const connector = {
+      sendCommand: vi.fn(async (command: unknown) => {
+        sentCommands.push(command);
+        if (sends++ === 0) throw { code: 'OUTCOME_UNKNOWN' };
+        current = makeRecord('COMPLETED');
+        throw { code: 'OUTCOME_UNKNOWN' };
+      }),
+      reconcileCommandOutcome: vi.fn(async (command: unknown, input: unknown) => {
+        reconciledCalls.push({ command, input });
+        return reconciledCalls.length === 1 ? { state: 'FAILED' } : { state: 'COMPLETED' };
+      }),
+    };
+
+    await expect(runAIDurableMaterializationRecovery(repository, connector)).resolves.toEqual({
+      attempted: 1,
+      resumed: 1,
+      failed: 0,
+    });
+    expect(connector.sendCommand).toHaveBeenCalledTimes(2);
+    expect(sentCommands[1]).toBe(sentCommands[0]);
+    expect(connector.reconcileCommandOutcome).toHaveBeenCalledTimes(2);
+    expect(reconciledCalls[0]).toMatchObject({
+      command: sentCommands[0],
+      input: {
+        safeErrorCode: 'RETRYABLE_DEPENDENCY',
+        safeErrorMessage:
+          'Authoritative AI materialization state remains non-completed; the exact Resume command may be retried.',
+      },
+    });
+    expect(reconciledCalls[1]).toEqual({ command: sentCommands[0], input: { result: null } });
+  });
+
+  it.each(['returns undefined', 'returns non-COMPLETED', 'throws'] as const)(
+    'fails closed when second OUTCOME_UNKNOWN reconciliation %s',
+    async (failureMode) => {
+      let current = makeRecord('MATERIALIZATION_FAILED');
+      const repository = repositoryFor(current, () => current);
+      const sentCommands: unknown[] = [];
+      let reconciliations = 0;
+      let sends = 0;
+      const connector = {
+        sendCommand: vi.fn(async (command: unknown) => {
+          sentCommands.push(command);
+          if (sends++ === 0) throw { code: 'OUTCOME_UNKNOWN' };
+          current = makeRecord('COMPLETED');
+          throw { code: 'OUTCOME_UNKNOWN' };
+        }),
+        reconcileCommandOutcome: vi.fn(async () => {
+          reconciliations += 1;
+          if (reconciliations === 1) return { state: 'FAILED' };
+          if (failureMode === 'throws') throw new Error('final reconciliation unavailable');
+          return failureMode === 'returns undefined' ? undefined : { state: 'FAILED' };
+        }),
+      };
+
+      await expect(runAIDurableMaterializationRecovery(repository, connector)).resolves.toEqual({
+        attempted: 1,
+        resumed: 0,
+        failed: 1,
+      });
+      expect(connector.sendCommand).toHaveBeenCalledTimes(2);
+      expect(sentCommands[1]).toBe(sentCommands[0]);
+      expect(connector.reconcileCommandOutcome).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it.each([
     ['returns no record', async () => undefined],
     ['returns a non-failed record', async () => ({ state: 'COMPLETED' })],

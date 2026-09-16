@@ -1123,12 +1123,18 @@ export const runAIDurableMaterializationRecovery = async (
           await connector.sendCommand(command);
           resumed += 1;
           continue;
-        } catch {
+        } catch (secondError) {
           const retryConverged = await aiProviderRepository.findByRequestId(
             record.projectId,
             record.requestId,
           );
           if (isConverged(retryConverged)) {
+            if (isOutcomeUnknown(secondError)) {
+              const reconciled = await connector.reconcileCommandOutcome(command, {
+                result: null,
+              });
+              if (reconciledState(reconciled) !== 'COMPLETED') continue;
+            }
             resumed += 1;
           }
         }

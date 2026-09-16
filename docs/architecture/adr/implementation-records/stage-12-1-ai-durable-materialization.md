@@ -255,3 +255,54 @@ durable dedup/dead-letter semantics도 변경하지 않는다.
   **NO**. Live recovery performed: **NO**.
 
 이 보정은 GPT의 exact-head review와 전체 CI 확인 전까지 병합하지 않는다.
+
+## 11. Second `OUTCOME_UNKNOWN` final reconciliation correction (pending GPT review)
+
+2026-09-16에 `main@e7b773c52b44b8a93cddf1a101942a140ced4da`에서
+`codex/ai-durable-resume-final-reconciliation` 전용 보정 브랜치를 만들었다.
+GPT가 승인한 운영 검증에서 Provider와 Materialization은 수렴했지만, 두 번째
+Resume 전송이 handler 이후 `OUTCOME_UNKNOWN`으로 끝날 때
+`connector.dedup_records`의 exact Resume tombstone이 `OUTCOME_UNKNOWN`으로
+남는 결함을 확인했다. Provider는 `COMPLETED`/`succeeded`, Materialization은
+동일 ID의 `COMPLETED`, recoverable set은 `0`, health/readiness는
+`HEALTHY`/`READY`였으며, Provider recall·SQL repair·추가 recovery는 수행하지
+않았다.
+
+### 보정 범위와 권위 경계
+
+두 번째 `sendCommand()`가 예외를 내면 기존 exact Provider identity를 먼저
+재조회한다. 수렴하지 않았으면 기존 fail-closed 결과를 유지한다. 수렴했고
+예외가 `OUTCOME_UNKNOWN`이면 같은 command object와 semantic identity로
+기존 `reconcileCommandOutcome(command, { result: null })`을 호출하고, 반환된
+authoritative dedup state가 `COMPLETED`일 때만 `resumed`로 계수한다. 반환값이
+없거나 `COMPLETED`가 아니거나 예외가 발생하면 `failed`로 남기며 세 번째
+Resume은 절대 전송하지 않는다.
+
+이 수정은 ADR-155의 권위 분리를 유지한다. `connector.dedup_records`만 최종
+semantic outcome을 소유하고, `connector.jobs`의 `outcome-unknown`은 해당
+실행의 이력·처리 중단 상태로 남을 수 있다. Historical job을 재작성하거나
+새 Job reconciliation authority를 추가하지 않는다. Provider recall, Candidate
+재생성, Batch·Candidate 수정, migration과 직접 SQL 수정도 없다.
+
+### OSS·교체·Rollback 결정
+
+새 OSS나 Package를 추가하지 않는다. 기존 PostgreSQL `ADOPT` pin과 Connector
+Port/Adapter Contract, `Ajv` `ADOPT` pin 및 gbrain `REFERENCE_ONLY`의
+retry/idempotency/recovery 패턴을 재사용한다. 이번 변경은 Shotgun이 소유한
+semantic dedup authority와 Provider exact-identity 경계를 보완하는 Assembly
+runner 보정이므로 범용 OSS Runtime을 도입하는 것은 범위를 넓히고 권위 경계를
+흐린다. 기존 Connector Runtime Adapter는 그대로 교체 가능하며, application
+commit revert로 rollback할 수 있고 Schema down migration은 필요하지 않다.
+
+### Regression evidence (pending exact-head verification)
+
+- Unit: 첫 `OUTCOME_UNKNOWN` → `FAILED` reconcile → 동일 Resume 1회 재전송 →
+  handler 이후 두 번째 `OUTCOME_UNKNOWN` → `{ result: null }` reconcile 경로와
+  undefined·non-`COMPLETED`·throw fail-closed 변형을 검증한다.
+- PostgreSQL: 실제 `connector.dedup_records`, `connector.jobs`,
+  `connector.job_attempts`에서 handler 이후 acknowledgement ambiguity를
+  재현해 dedup은 `COMPLETED`, historical job은 `outcome-unknown`으로 허용되는
+  상태를 검증한다. Provider call/attempt/output, Batch, Candidate ID/revision,
+  Materialization ID와 recoverable count 불변도 확인한다.
+- Exact-head CI, Quality, Frontend, Required Gates는 GPT review 이후 실행하며,
+  그 전까지 이 보정은 병합하지 않는다.

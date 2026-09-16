@@ -364,6 +364,35 @@ const outcomeUnknownConnectorState = (): ConnectorRuntimeStatePort => {
   };
 };
 
+const outcomeUnknownAfterHandlerConnectorState = (): ConnectorRuntimeStatePort => {
+  const state = new PostgresConnectorRuntimeState(pool!);
+  const jobs = new PostgresJobRuntime(pool!);
+  const faultingJobs = {
+    run: async (...args: Parameters<JobRuntimePort['run']>) => {
+      const [identity, correlationId, operation] = args;
+      if (identity.messageType !== 'ResumeCandidateMaterialization') {
+        return jobs.run(identity, correlationId, operation);
+      }
+      return jobs.run(identity, correlationId, async (attempt) => {
+        await operation(attempt);
+        throw new ShotgunError({
+          code: 'OUTCOME_UNKNOWN',
+          safeMessage: 'The test post-handler Resume acknowledgement was intentionally lost.',
+          module: 'stage12-1-test',
+          operation: 'post-handler-outcome-unknown-resume',
+        });
+      });
+    },
+    find: jobs.find.bind(jobs),
+  } as unknown as JobRuntimePort;
+  return {
+    dedup: state.dedup,
+    jobs: faultingJobs,
+    deadLetters: state.deadLetters,
+    ordering: state.ordering,
+  };
+};
+
 describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
   beforeEach(resetDatabase);
   afterAll(async () => await pool!.end());
@@ -837,7 +866,7 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
     await seed.kernel.shutdown();
 
     const recovery = await createHarness(new InMemoryAssetStorage(), new FakeAIProviderAdapter(), {
-      connectorRuntimeState: new PostgresConnectorRuntimeState(pool!),
+      connectorRuntimeState: outcomeUnknownAfterHandlerConnectorState(),
     });
     const sendSpy = vi.spyOn(recovery.kernel.connector, 'sendCommand');
     const reconcileSpy = vi.spyOn(recovery.kernel.connector, 'reconcileCommandOutcome');
@@ -894,8 +923,13 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
     expect(recoveryResult).toEqual({ attempted: 1, resumed: 1, failed: 0 });
     expect(sendSpy).toHaveBeenCalledTimes(2);
     expect(sendSpy.mock.calls[1]?.[0]).toBe(sendSpy.mock.calls[0]?.[0]);
-    expect(reconcileSpy).toHaveBeenCalledTimes(1);
+    expect(reconcileSpy).toHaveBeenCalledTimes(2);
     expect(reconcileSpy.mock.calls[0]?.[0]).toBe(sendSpy.mock.calls[0]?.[0]);
+    expect(reconcileSpy.mock.calls[0]?.[1]).toMatchObject({
+      safeErrorCode: 'RETRYABLE_DEPENDENCY',
+    });
+    expect(reconcileSpy.mock.calls[1]?.[0]).toBe(sendSpy.mock.calls[0]?.[0]);
+    expect(reconcileSpy.mock.calls[1]?.[1]).toEqual({ result: null });
     expect(after.rows[0]).toMatchObject({
       call_id: before.rows[0]?.call_id,
       output_id: before.rows[0]?.output_id,
@@ -911,7 +945,7 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
     });
     expect(finalResume.rows[0]).toMatchObject({
       state: 'COMPLETED',
-      job_status: 'succeeded',
+      job_status: 'outcome-unknown',
       attempt_count: 1,
       attempts: '1',
     });

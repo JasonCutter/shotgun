@@ -1055,7 +1055,31 @@ export const runAIDurableMaterializationRecovery = async (
       );
       resumed += 1;
     } catch {
-      // Recovery is fail-closed per item; no Provider call is made by Resume.
+      // Resume may have committed the durable state before a later handoff
+      // failed. Re-read the exact Provider record before deciding that this
+      // recovery item failed; an exception alone is never success.
+      try {
+        const converged = await aiProviderRepository.findByRequestId(
+          record.projectId,
+          record.requestId,
+        );
+        const acceptedOutputId = record.output?.outputId;
+        if (
+          acceptedOutputId !== undefined &&
+          converged?.projectId === record.projectId &&
+          converged.requestId === record.requestId &&
+          converged.callId === record.callId &&
+          converged.output?.projectId === record.projectId &&
+          converged.output.callId === record.callId &&
+          converged.output?.outputId === acceptedOutputId &&
+          converged.state === 'COMPLETED' &&
+          converged.status === 'succeeded'
+        ) {
+          resumed += 1;
+        }
+      } catch {
+        // Recovery is fail-closed per item; no Provider call is made by Resume.
+      }
     }
   }
   return { attempted: records.length, resumed, failed: records.length - resumed };

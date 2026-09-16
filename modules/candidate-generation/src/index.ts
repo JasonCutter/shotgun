@@ -255,6 +255,7 @@ export const createCandidateGenerationModule = (
       inputSnapshotDigest: generated.output.inputSnapshotDigest,
       materializerVersion: 'stage12-1-v1' as const,
     };
+    let batch: CandidateBatch;
     try {
       const allowedEvidence = new Set(evidence.map((item) => item.evidenceId));
       const seen = new Set<string>();
@@ -292,7 +293,7 @@ export const createCandidateGenerationModule = (
         ];
       });
       const batchId = existing?.batchId ?? randomUUID();
-      const batch = await repository.saveBatch({
+      batch = await repository.saveBatch({
         batchId,
         projectId,
         sourceVersionId: payload.sourceVersionId,
@@ -302,17 +303,6 @@ export const createCandidateGenerationModule = (
         candidates:
           existing?.candidates ?? candidates.map((candidate) => ({ ...candidate, batchId })),
         createdAt: existing?.createdAt ?? envelope.createdAt,
-      });
-      await publishGenerated(context, batch);
-      await context.publish({
-        messageType: 'CandidateMaterialized',
-        schemaVersion: '1.0.0',
-        idempotencyKey: `candidate-materialized:${projectId}:${generated.output.outputId}`,
-        payload: {
-          requestId: generationRequestId,
-          outputId: generated.output.outputId,
-          batchId: batch.batchId,
-        },
       });
     } catch (error) {
       const code = error instanceof ShotgunError ? error.code : 'TERMINAL_FAILURE';
@@ -329,6 +319,21 @@ export const createCandidateGenerationModule = (
       });
       throw error;
     }
+
+    // saveBatch is the authoritative materialization commit. Downstream
+    // handoff failures must not retroactively turn that committed state into
+    // CandidateMaterializationFailed.
+    await context.publish({
+      messageType: 'CandidateMaterialized',
+      schemaVersion: '1.0.0',
+      idempotencyKey: `candidate-materialized:${projectId}:${generated.output.outputId}`,
+      payload: {
+        requestId: generationRequestId,
+        outputId: generated.output.outputId,
+        batchId: batch.batchId,
+      },
+    });
+    await publishGenerated(context, batch);
   };
 
   return {

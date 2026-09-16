@@ -33,7 +33,10 @@ import { createEvidenceModule } from '../../modules/evidence/src/index.js';
 import { createIntakeModule } from '../../modules/intake/src/index.js';
 import { createOriginalAssetModule } from '../../modules/original-asset/src/index.js';
 import { createTransformationModule } from '../../modules/transformation/src/index.js';
-import { createValidationModule } from '../../modules/validation/src/index.js';
+import {
+  createValidationModule,
+  type ValidationRepositoryPort,
+} from '../../modules/validation/src/index.js';
 import {
   type AIProviderOutput,
   type AIProviderOutputReference,
@@ -42,6 +45,7 @@ import {
   createCommand,
   type EvidenceSpan,
   type GeneratedClaim,
+  type ValidationResult,
   ShotgunError,
   ShotgunKernel,
 } from '../../packages/kernel/src/index.js';
@@ -173,7 +177,27 @@ class AcceptanceInvariantProbeRepository extends PostgresAIProviderCallRepositor
 type HarnessOptions = {
   readonly aiRepository?: PostgresAIProviderCallRepository;
   readonly candidateRepository?: CandidateRepositoryPort | false;
+  readonly validationRepository?: ValidationRepositoryPort;
 };
+
+class CandidateGeneratedAckFailureValidationRepository implements ValidationRepositoryPort {
+  async save(result: ValidationResult): Promise<ValidationResult> {
+    return result;
+  }
+
+  async findByCandidateId(): Promise<undefined> {
+    throw new ShotgunError({
+      code: 'TERMINAL_FAILURE',
+      safeMessage: 'The test CandidateGenerated required acknowledgement failed.',
+      module: 'stage12-1-test',
+      operation: 'candidate-generated-ack',
+    });
+  }
+
+  async findByValidationId(): Promise<ValidationResult | undefined> {
+    return undefined;
+  }
+}
 
 const createHarness = async (
   storage: InMemoryAssetStorage,
@@ -202,7 +226,9 @@ const createHarness = async (
     kernel.register(
       ...baseModules,
       createCandidateGenerationModule(candidateRepository),
-      createValidationModule(new PostgresValidationRepository(pool!)),
+      createValidationModule(
+        options.validationRepository ?? new PostgresValidationRepository(pool!),
+      ),
     );
   } else {
     kernel.register(...baseModules);
@@ -526,7 +552,72 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
     await recovery.kernel.shutdown();
   });
 
-  it('recovers a failed Materialization by binding the existing Batch without Provider recall', async () => {
+  it('keeps committed materialization authoritative after CandidateGenerated required ack failure', async () => {
+    const provider = new FakeAIProviderAdapter();
+    const first = await createHarness(new InMemoryAssetStorage(), provider, {
+      validationRepository: new CandidateGeneratedAckFailureValidationRepository(),
+    });
+    const command = directTextCommand('stage12-ack-after-commit', 'Milo weighs 5 kg.');
+    await first.kernel.connector.sendCommand(command);
+
+    const state = await pool!.query<{
+      durable_state: string;
+      provider_status: string;
+      materialization_state: string;
+      materialization_failures: string;
+      provider_calls: string;
+      attempts: string;
+      outputs: string;
+      batches: string;
+      candidates: string;
+      revisions: string;
+    }>(`SELECT call.durable_state, call.status AS provider_status,
+      materialization.state AS materialization_state,
+      (SELECT count(*)::text FROM candidate.materializations WHERE state = 'MATERIALIZATION_FAILED') AS materialization_failures,
+      (SELECT count(*)::text FROM ai.provider_calls) AS provider_calls,
+      (SELECT count(*)::text FROM ai.provider_attempts) AS attempts,
+      (SELECT count(*)::text FROM ai.provider_outputs) AS outputs,
+      (SELECT count(*)::text FROM candidate.batches) AS batches,
+      (SELECT count(*)::text FROM candidate.claim_candidates) AS candidates,
+      (SELECT count(*)::text FROM candidate.claim_candidates WHERE revision_number <> 1) AS revisions
+      FROM ai.provider_calls call
+      JOIN candidate.materializations materialization ON materialization.output_id = call.accepted_output_id`);
+    expect(state.rows[0]).toMatchObject({
+      durable_state: 'COMPLETED',
+      provider_status: 'succeeded',
+      materialization_state: 'COMPLETED',
+      materialization_failures: '0',
+      provider_calls: '1',
+      attempts: '1',
+      outputs: '1',
+      batches: '1',
+      candidates: '1',
+      revisions: '0',
+    });
+    const published = first.kernel.connector.traces
+      .list()
+      .filter(
+        (record) =>
+          record.status === 'published' &&
+          (record.messageType === 'CandidateMaterialized' ||
+            record.messageType === 'CandidateGenerated'),
+      )
+      .map((record) => record.messageType);
+    expect(published).toEqual(['CandidateMaterialized', 'CandidateGenerated']);
+    expect(
+      first.kernel.connector.traces
+        .list()
+        .filter(
+          (record) =>
+            record.messageType === 'CandidateMaterializationFailed' &&
+            record.status === 'published',
+        ),
+    ).toHaveLength(0);
+    expect(await first.aiRepository.listRecoverableMaterializations()).toHaveLength(0);
+    await first.kernel.shutdown();
+  });
+
+  it('recovers a contradictory Provider failure by binding the existing Batch without Provider recall', async () => {
     const first = await createHarness(new InMemoryAssetStorage(), new FakeAIProviderAdapter());
     const command = directTextCommand('stage12-bind-existing', 'Milo weighs 5 kg.');
     await first.kernel.connector.sendCommand(command);
@@ -540,12 +631,6 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
       FROM candidate.batches batch
       JOIN candidate.claim_candidates candidate ON candidate.batch_id = batch.batch_id
       CROSS JOIN ai.provider_calls call`);
-    await pool!.query(
-      `UPDATE candidate.materializations
-       SET state = 'MATERIALIZATION_FAILED', failure_code = 'RETRYABLE_DEPENDENCY', completed_at = NULL
-       WHERE output_id = $1`,
-      [existing.rows[0]?.output_id],
-    );
     const record = (await first.aiRepository.list())[0]!;
     await first.aiRepository.failMaterialization(
       record.projectId,
@@ -581,7 +666,7 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
       batch_id: existing.rows[0]?.batch_id,
       candidate_id: existing.rows[0]?.candidate_id,
       output_id: existing.rows[0]?.output_id,
-      materialization_state: 'MATERIALIZATION_FAILED',
+      materialization_state: 'COMPLETED',
       durable_state: 'MATERIALIZATION_FAILED',
       provider_status: 'failed',
       provider_calls: '1',

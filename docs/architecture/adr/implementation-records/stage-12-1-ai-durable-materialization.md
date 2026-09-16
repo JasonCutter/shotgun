@@ -143,3 +143,56 @@ Merge SHA에 연결된 GitHub Actions 실행 기록은 없다. 위 결과는 동
 - `06ce9b48328296856fc2eb70e6ef1a4a329243b6`을 `main`에 fast-forward 병합하고 `origin/main`에 푸시했다.
 - 병합 뒤 별도 사용자 승인을 받아 2026-07-21에 Durability Gate Section 1을 `COMPLETE`로 확정했다.
 - 이 승인은 Stage 12.1 전체 완료, Release Readiness 또는 후속 Section 자동 착수를 승인하지 않는다.
+
+## 9. Post-approval convergence correction (pending GPT review)
+
+2026-09-16에 `main`의 기준 SHA `4ed5db7616432b6b75e121e5243b8eca220bd5ad`에서
+`codex/ai-durable-materialization-convergence` 보정 브랜치를 만들었다. 라이브
+Durable Materialization Recovery는 추가 실행하지 않았고, 기존 라이브 DB도 이
+보정 작업으로 변경하지 않았다.
+
+### 결함과 경계 보정
+
+기존 `candidate-generation.materialize()`는 candidate 구성, PostgreSQL
+`repository.saveBatch()`의 authoritative commit, `CandidateGenerated`
+(`DURABLE_JOB` + `REQUIRED_ACK`)와 `CandidateMaterialized` 발행을 하나의
+`try/catch`로 감싸고 있었다. `saveBatch()`가 Batch·Candidate·Materialization을
+완료한 뒤 Validation required acknowledgement가 실패하면 같은 catch가
+`failMaterialization()`과 `CandidateMaterializationFailed`를 발행해 Provider call을
+실패 상태로 되돌리는 모순이 발생했다. Startup Resume은 저장 Output을 재사용해도
+같은 경계를 반복하므로 상태가 수렴하지 않았다.
+
+보정은 pre-commit 단계에만 `failMaterialization()` 및
+`CandidateMaterializationFailed`를 허용한다. `saveBatch()` 성공 후에는
+`CandidateMaterialized`를 먼저 발행하고 `CandidateGenerated`를 이어서 발행한다.
+따라서 정식 순서는 `persistence commit → CandidateMaterialized →
+CandidateGenerated → Validation/Comparison handoffs`이며, downstream 실패는
+각자의 durable handoff에서 관찰하고 이미 완료된 Materialization을 소급 변경하지
+않는다. `CandidateGenerated`와 Validation/Comparison의 required acknowledgement,
+idempotency, immutable Output, uniqueness와 attempt budget은 그대로 유지한다.
+
+Recovery가 Resume 예외를 받는 경우에는 동일 project/request/call/output identity와
+`COMPLETED`/`succeeded` 상태를 Provider Repository에서 다시 확인할 때만 성공으로
+계수한다. 재조회가 실패하거나 exact convergence가 아니면 기존 fail-closed 결과를
+유지한다.
+
+### Integration·Regression evidence
+
+새 OSS·Package·Migration·Lockfile 변경은 없다. 기존 PostgreSQL `ADOPT` pin,
+Ajv `ADOPT` pin과 gbrain `REFERENCE_ONLY`의 retry/idempotency/recovery 패턴을
+재사용하고, 새 권한·scheduler·queue·Provider recall을 추가하지 않았다.
+
+보정 브랜치에서 다음 focused 검증을 통과했다.
+
+- `npm run typecheck`
+- AI Durable Materialization recovery convergence unit tests: `2 passed`
+- `tests/contract/ai-candidate-validation.contract.test.ts`: `14 passed`
+- `tests/database/stage12-1-ai-durable-materialization.test.ts`: `9 passed`
+- targeted ESLint와 Prettier check
+- PostgreSQL test DB에서 required-ack-after-commit, CandidateMaterialized 선행
+  ordering, contradictory Provider failure 재기동 복구를 검증했다. Provider 호출은
+  재실행되지 않았고 Batch·Candidate ID 및 Revision은 유지됐다.
+
+전체 exact-head CI/Quality/Frontend/Required Gates와 GPT 최종 승인은 아직
+보류 중이다. 이 보정은 `main`에 병합하지 않았으며, live recovery는 GPT가 정확한
+head를 검토·승인한 뒤에만 재개한다.

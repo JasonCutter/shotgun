@@ -151,7 +151,10 @@ describe.runIf(hasDb)('LPA-WP5 D12 recovery harness isolation (C2 + R3)', () => 
     const pool = createPostgresPool(databaseUrl as string);
     const { callId, attemptId } = await seedExpiredRunningAttempt(pool);
     try {
-      const connector = { sendCommand: vi.fn(async () => ({})) };
+      const connector = {
+        sendCommand: vi.fn(async () => ({})),
+        reconcileCommandOutcome: vi.fn(async () => undefined),
+      };
       // Same primitive createApplication runs when
       // aiDurableMaterializationRecoveryEnabled !== false (the default).
       await runAIDurableMaterializationRecovery(

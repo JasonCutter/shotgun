@@ -196,3 +196,62 @@ Ajv `ADOPT` pin과 gbrain `REFERENCE_ONLY`의 retry/idempotency/recovery 패턴�
 전체 exact-head CI/Quality/Frontend/Required Gates와 GPT 최종 승인은 아직
 보류 중이다. 이 보정은 `main`에 병합하지 않았으며, live recovery는 GPT가 정확한
 head를 검토·승인한 뒤에만 재개한다.
+
+## 10. Durable Resume OUTCOME_UNKNOWN reconciliation correction (pending GPT review)
+
+2026-09-16에 `main@b7c052d8aaf3efa468047a42bfa4cfaf65d85ff5`에서
+`codex/ai-durable-resume-reconciliation` 전용 보정 브랜치를 만들었다. 라이브
+DB와 런타임은 변경하지 않았고, 앞선 PR #328의 materialization boundary 보정은
+그대로 유지한다.
+
+### 확인된 원인과 보정 경계
+
+라이브 read-only audit에서 현재 accepted Output에 대한
+`CandidateMaterialized` dedup은 존재하지 않았지만, 정확한
+`ResumeCandidateMaterialization` semantic delivery는
+`OUTCOME_UNKNOWN` tombstone으로 남아 있었다. 해당 record의 job도
+`outcome-unknown`이며 safe error는 dead-letter를 semantic identity에 바인딩할 수
+없었다는 내용이었다. 따라서 recovery runner는 Candidate handler 재진입 전에
+Connector Runtime에서 중단되었고, Provider는 `MATERIALIZATION_FAILED`인 반면
+Candidate materialization은 이미 `COMPLETED`인 상태가 지속됐다.
+
+Recovery는 이제 각 recoverable record에 대해 정확한 Resume command를 한 번만
+구성하고 같은 command object와 semantic key를 모든 단계에서 재사용한다.
+
+1. 첫 `sendCommand()`가 정상 완료하면 즉시 `resumed += 1`이다.
+2. 예외 후 기존 AI Provider Repository에서 project/request/call/accepted output
+   identity를 다시 확인한다.
+3. exact Provider state가 `COMPLETED`/`succeeded`이면 기존 command-specific
+   `reconcileCommandOutcome()`으로 void command의 명시적 JSON `null` 결과를
+   `COMPLETED`로 정식 확정하고 재전송하지 않는다.
+4. Provider가 exact identity이지만 아직 수렴하지 않았고 예외가
+   `OUTCOME_UNKNOWN`이면 `RETRYABLE_DEPENDENCY` safe failure로 같은 command를
+   기존 Connector Runtime authority를 통해 `FAILED`로 reconciliation한다.
+5. reconciliation 반환값이 실제 `FAILED`임을 확인한 경우에만 같은 Resume을
+   정확히 한 번 재전송한다. 두 번째 전송도 예외이면 Provider state를 한 번
+   재조회하고 exact `COMPLETED`/`succeeded`일 때만 성공으로 계수한다.
+
+reconcile가 record를 반환하지 않거나 `FAILED`가 아니거나 예외를 내면 fail-closed
+하며 재전송하지 않는다. 새로운 dedup authority·queue·epoch·Product API·직접 SQL
+수정은 추가하지 않는다. downstream `CandidateGenerated`/Validation handoff와
+durable dedup/dead-letter semantics도 변경하지 않는다.
+
+### Regression evidence
+
+- Unit recovery regressions: 8 passed. OUTCOME_UNKNOWN + non-converged provider,
+  reconciliation unavailable/non-FAILED/throws, already-converged provider,
+  bounded second attempt non-convergence와 기존 convergence/fail-closed 경계를
+  포함한다.
+- PostgreSQL Stage 12.1 suite: 10 passed. 실제
+  `connector.dedup_records`, `connector.jobs`, `connector.job_attempts`에 exact
+  Resume identity와 OUTCOME_UNKNOWN 상태를 만들고 production
+  `reconcileCommandOutcome()`을 통해 retry eligibility를 회복했다. handler는
+  한 번만 재진입했고 current-output `CandidateMaterialized`가 정상 처리됐다.
+- PostgreSQL 결과: Provider call/attempt/output 각 `1` 유지, Provider는
+  `COMPLETED`/`succeeded`, Candidate materialization은 `COMPLETED`, 기존 Batch와
+  Candidate ID/revision 유지, recoverable set `0`, recovery result
+  `{ attempted: 1, resumed: 1, failed: 0 }`.
+- Migrations: **NONE**. Provider behavior: **NO**. Live DB touched:
+  **NO**. Live recovery performed: **NO**.
+
+이 보정은 GPT의 exact-head review와 전체 CI 확인 전까지 병합하지 않는다.

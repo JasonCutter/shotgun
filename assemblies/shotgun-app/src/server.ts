@@ -293,6 +293,7 @@ import {
   createAIProviderModule,
   type AIProviderAdapterPort,
   type AIProviderCallRepositoryPort,
+  type AIProviderExecutionRecord,
   type AIProviderExecutionResolverPort,
   type AIProviderPolicy,
 } from '../../../modules/ai-provider/src/index.js';
@@ -931,6 +932,14 @@ export type ApplicationOptions = {
 
 type AIDurableRecoveryConnector = {
   sendCommand(command: ReturnType<typeof createCommand>): Promise<unknown>;
+  reconcileCommandOutcome(
+    command: ReturnType<typeof createCommand>,
+    input: {
+      readonly result?: unknown;
+      readonly safeErrorCode?: string;
+      readonly safeErrorMessage?: string;
+    },
+  ): Promise<unknown>;
 };
 
 export type RecoveryExecutionStatus = 'COMPLETED' | 'FAILED_TO_RUN';
@@ -1035,26 +1044,49 @@ export const runAIDurableMaterializationRecovery = async (
   const records = await aiProviderRepository.listRecoverableMaterializations();
   let resumed = 0;
   for (const record of records) {
+    const outputId = record.output?.outputId;
+    const command = createCommand({
+      messageType: 'ResumeCandidateMaterialization',
+      schemaVersion: '1.0.0',
+      producerModule: 'shotgun-app',
+      producerVersion: '1.0.0',
+      idempotencyKey: `resume-candidate-materialization:${record.projectId}:${record.requestId}:${outputId}`,
+      projectId: record.projectId,
+      actor: { type: 'service', id: 'stage12-1-durable-materialization-recovery' },
+      security: {
+        accessScope: record.accessScope,
+        sensitivity: record.sensitivity,
+        dataClassification: record.dataClassification,
+      },
+      payload: { sourceVersionId: record.sourceVersionId, requestId: record.requestId },
+    });
+
+    const isExactProviderRecord = (
+      current: AIProviderExecutionRecord | undefined,
+    ): current is AIProviderExecutionRecord =>
+      outputId !== undefined &&
+      current?.projectId === record.projectId &&
+      current.requestId === record.requestId &&
+      current.callId === record.callId &&
+      current.output?.projectId === record.projectId &&
+      current.output.callId === record.callId &&
+      current.output.outputId === outputId;
+    const isConverged = (current: AIProviderExecutionRecord | undefined): boolean =>
+      isExactProviderRecord(current) &&
+      current.state === 'COMPLETED' &&
+      current.status === 'succeeded';
+    const isOutcomeUnknown = (error: unknown): boolean =>
+      (error as { readonly code?: unknown }).code === 'OUTCOME_UNKNOWN';
+    const reconciledState = (value: unknown): string | undefined => {
+      if (typeof value !== 'object' || value === null || !('state' in value)) return undefined;
+      const state = (value as { readonly state?: unknown }).state;
+      return typeof state === 'string' ? state : undefined;
+    };
+
     try {
-      await connector.sendCommand(
-        createCommand({
-          messageType: 'ResumeCandidateMaterialization',
-          schemaVersion: '1.0.0',
-          producerModule: 'shotgun-app',
-          producerVersion: '1.0.0',
-          idempotencyKey: `resume-candidate-materialization:${record.projectId}:${record.requestId}:${record.output?.outputId}`,
-          projectId: record.projectId,
-          actor: { type: 'service', id: 'stage12-1-durable-materialization-recovery' },
-          security: {
-            accessScope: record.accessScope,
-            sensitivity: record.sensitivity,
-            dataClassification: record.dataClassification,
-          },
-          payload: { sourceVersionId: record.sourceVersionId, requestId: record.requestId },
-        }),
-      );
+      await connector.sendCommand(command);
       resumed += 1;
-    } catch {
+    } catch (firstError) {
       // Resume may have committed the durable state before a later handoff
       // failed. Re-read the exact Provider record before deciding that this
       // recovery item failed; an exception alone is never success.
@@ -1063,22 +1095,46 @@ export const runAIDurableMaterializationRecovery = async (
           record.projectId,
           record.requestId,
         );
-        const acceptedOutputId = record.output?.outputId;
-        if (
-          acceptedOutputId !== undefined &&
-          converged?.projectId === record.projectId &&
-          converged.requestId === record.requestId &&
-          converged.callId === record.callId &&
-          converged.output?.projectId === record.projectId &&
-          converged.output.callId === record.callId &&
-          converged.output?.outputId === acceptedOutputId &&
-          converged.state === 'COMPLETED' &&
-          converged.status === 'succeeded'
-        ) {
+        if (isConverged(converged)) {
+          if (!isOutcomeUnknown(firstError)) {
+            resumed += 1;
+            continue;
+          }
+
+          // Resume has a void command result. PostgreSQL persists that result
+          // as JSON null, so null is the explicit non-business acknowledgement
+          // used to reconcile the command without inventing domain data.
+          const reconciled = await connector.reconcileCommandOutcome(command, { result: null });
+          if (reconciledState(reconciled) !== 'COMPLETED') continue;
           resumed += 1;
+          continue;
+        }
+
+        if (!isExactProviderRecord(converged) || !isOutcomeUnknown(firstError)) continue;
+
+        const reconciled = await connector.reconcileCommandOutcome(command, {
+          safeErrorCode: 'RETRYABLE_DEPENDENCY',
+          safeErrorMessage:
+            'Authoritative AI materialization state remains non-completed; the exact Resume command may be retried.',
+        });
+        if (reconciledState(reconciled) !== 'FAILED') continue;
+
+        try {
+          await connector.sendCommand(command);
+          resumed += 1;
+          continue;
+        } catch {
+          const retryConverged = await aiProviderRepository.findByRequestId(
+            record.projectId,
+            record.requestId,
+          );
+          if (isConverged(retryConverged)) {
+            resumed += 1;
+          }
         }
       } catch {
-        // Recovery is fail-closed per item; no Provider call is made by Resume.
+        // Recovery is fail-closed per item. Reconciliation must be confirmed
+        // by the existing Connector Runtime authority before any retry.
       }
     }
   }

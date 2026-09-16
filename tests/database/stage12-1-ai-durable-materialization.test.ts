@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Focused Stage 12.1 durability recovery contracts.
 
@@ -18,6 +18,14 @@ import {
   PostgresCandidateRepository,
   PostgresValidationRepository,
 } from '../../adapters/postgres-stage4/src/index.js';
+import {
+  PostgresConnectorRuntimeState,
+  PostgresJobRuntime,
+} from '../../adapters/connector-runtime-postgres/src/index.js';
+import type {
+  ConnectorRuntimeStatePort,
+  JobRuntimePort,
+} from '../../packages/connector-runtime/src/index.js';
 import { InMemoryAssetStorage } from '../../adapters/stage2-in-memory/src/index.js';
 import { InProcessTransport } from '../../adapters/transport-in-process/src/index.js';
 import { runAIDurableMaterializationRecovery } from '../../assemblies/shotgun-app/src/server.js';
@@ -178,6 +186,7 @@ type HarnessOptions = {
   readonly aiRepository?: PostgresAIProviderCallRepository;
   readonly candidateRepository?: CandidateRepositoryPort | false;
   readonly validationRepository?: ValidationRepositoryPort;
+  readonly connectorRuntimeState?: ConnectorRuntimeStatePort;
 };
 
 class CandidateGeneratedAckFailureValidationRepository implements ValidationRepositoryPort {
@@ -209,7 +218,9 @@ const createHarness = async (
     options.candidateRepository === undefined
       ? new PostgresCandidateRepository(pool!)
       : options.candidateRepository;
-  const kernel = new ShotgunKernel(new InProcessTransport());
+  const kernel = new ShotgunKernel(new InProcessTransport(), {
+    connectorRuntimeState: options.connectorRuntimeState,
+  });
   const text = new LucasAugmentedPlainTextAdapter();
   const baseModules = [
     createIntakeModule(new PostgresIntakeRepository(pool!)),
@@ -238,8 +249,8 @@ const createHarness = async (
 };
 
 const resetDatabase = async () => {
-  await pool!
-    .query(`TRUNCATE validation.results, candidate.materializations, candidate.claim_candidates,
+  await pool!.query(`TRUNCATE connector.dead_letters, connector.job_attempts, connector.jobs,
+      connector.dedup_records, validation.results, candidate.materializations, candidate.claim_candidates,
       candidate.batches, ai.provider_outputs, ai.provider_attempts, ai.provider_calls, evidence.spans,
       transformation.attempts, transformation.revisions, intake.submissions, asset.storage_receipts,
       asset.source_versions, asset.sources, asset.original_assets CASCADE`);
@@ -315,11 +326,11 @@ const resumeCommand = (record: AIProviderExecutionRecord) =>
   createCommand({
     messageType: 'ResumeCandidateMaterialization',
     schemaVersion: '1.0.0',
-    producerModule: 'stage12-1-test',
+    producerModule: 'shotgun-app',
     producerVersion: '1.0.0',
     idempotencyKey: `resume-candidate-materialization:${record.projectId}:${record.requestId}:${record.output?.outputId ?? 'missing'}`,
     projectId: record.projectId,
-    actor: { type: 'service', id: 'stage12-1-test-recovery' },
+    actor: { type: 'service', id: 'stage12-1-durable-materialization-recovery' },
     security: {
       accessScope: record.accessScope,
       sensitivity: record.sensitivity,
@@ -327,6 +338,31 @@ const resumeCommand = (record: AIProviderExecutionRecord) =>
     },
     payload: { sourceVersionId: record.sourceVersionId, requestId: record.requestId },
   });
+
+const outcomeUnknownConnectorState = (): ConnectorRuntimeStatePort => {
+  const state = new PostgresConnectorRuntimeState(pool!);
+  const jobs = new PostgresJobRuntime(pool!);
+  const faultingJobs = {
+    run: async (...args: Parameters<JobRuntimePort['run']>) => {
+      const [identity, correlationId] = args;
+      return jobs.run(identity, correlationId, async () => {
+        throw new ShotgunError({
+          code: 'OUTCOME_UNKNOWN',
+          safeMessage: 'The test Resume acknowledgement was intentionally lost.',
+          module: 'stage12-1-test',
+          operation: 'seed-outcome-unknown-resume',
+        });
+      });
+    },
+    find: jobs.find.bind(jobs),
+  } as unknown as JobRuntimePort;
+  return {
+    dedup: state.dedup,
+    jobs: faultingJobs,
+    deadLetters: state.deadLetters,
+    ordering: state.ordering,
+  };
+};
 
 describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
   beforeEach(resetDatabase);
@@ -720,6 +756,167 @@ describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
       batches: '1',
       candidates: '1',
     });
+    await recovery.kernel.shutdown();
+  });
+
+  it('reconciles a durable Resume OUTCOME_UNKNOWN tombstone and re-enters once', async () => {
+    const first = await createHarness(new InMemoryAssetStorage(), new FakeAIProviderAdapter());
+    const command = directTextCommand('stage12-durable-resume-tombstone', 'Milo weighs 5 kg.');
+    await first.kernel.connector.sendCommand(command);
+    const record = (await first.aiRepository.list())[0]!;
+    const acceptedOutputId = record.output!.outputId;
+    await first.aiRepository.failMaterialization(
+      record.projectId,
+      record.requestId,
+      acceptedOutputId,
+      'RETRYABLE_DEPENDENCY',
+    );
+    const before = await pool!.query<{
+      call_id: string;
+      output_id: string;
+      durable_state: string;
+      provider_status: string;
+      materialization_state: string;
+      batch_id: string;
+      candidate_id: string;
+      revision_number: number;
+      provider_attempts: string;
+      provider_outputs: string;
+      provider_calls: string;
+    }>(`SELECT call.call_id::text, call.accepted_output_id::text AS output_id,
+      call.durable_state, call.status AS provider_status,
+      materialization.state AS materialization_state,
+      batch.batch_id::text, candidate.candidate_id::text, candidate.revision_number,
+      (SELECT count(*)::text FROM ai.provider_attempts) AS provider_attempts,
+      (SELECT count(*)::text FROM ai.provider_outputs) AS provider_outputs,
+      (SELECT count(*)::text FROM ai.provider_calls) AS provider_calls
+      FROM ai.provider_calls call
+      JOIN candidate.materializations materialization
+        ON materialization.output_id = call.accepted_output_id
+      JOIN candidate.batches batch ON batch.batch_id = materialization.batch_id
+      JOIN candidate.claim_candidates candidate ON candidate.batch_id = batch.batch_id`);
+    expect(before.rows[0]).toMatchObject({
+      call_id: record.callId,
+      output_id: acceptedOutputId,
+      durable_state: 'MATERIALIZATION_FAILED',
+      provider_status: 'failed',
+      materialization_state: 'COMPLETED',
+      provider_attempts: '1',
+      provider_outputs: '1',
+      provider_calls: '1',
+    });
+    await first.kernel.shutdown();
+
+    const seed = await createHarness(new InMemoryAssetStorage(), new FakeAIProviderAdapter(), {
+      connectorRuntimeState: outcomeUnknownConnectorState(),
+    });
+    await expect(seed.kernel.connector.sendCommand(resumeCommand(record))).rejects.toMatchObject({
+      code: 'OUTCOME_UNKNOWN',
+    });
+    const resumeSemanticKey = `resume-candidate-materialization:${record.projectId}:${record.requestId}:${acceptedOutputId}`;
+    const seeded = await pool!.query<{
+      state: string;
+      job_status: string;
+      attempt_count: number;
+      attempts: string;
+    }>(
+      `SELECT dedup.state, job.status AS job_status, job.attempt_count,
+      (SELECT count(*)::text FROM connector.job_attempts attempt
+       WHERE attempt.job_id = job.job_id) AS attempts
+      FROM connector.dedup_records dedup
+      JOIN connector.jobs job ON job.job_id = dedup.job_id
+      WHERE dedup.project_id = $1 AND dedup.semantic_key = $2`,
+      [record.projectId, resumeSemanticKey],
+    );
+    expect(seeded.rows[0]).toMatchObject({
+      state: 'OUTCOME_UNKNOWN',
+      job_status: 'outcome-unknown',
+      attempt_count: 1,
+      attempts: '1',
+    });
+    await seed.kernel.shutdown();
+
+    const recovery = await createHarness(new InMemoryAssetStorage(), new FakeAIProviderAdapter(), {
+      connectorRuntimeState: new PostgresConnectorRuntimeState(pool!),
+    });
+    const sendSpy = vi.spyOn(recovery.kernel.connector, 'sendCommand');
+    const reconcileSpy = vi.spyOn(recovery.kernel.connector, 'reconcileCommandOutcome');
+    const recoveryResult = await runAIDurableMaterializationRecovery(
+      recovery.aiRepository,
+      recovery.kernel.connector,
+    );
+    const after = await pool!.query<{
+      call_id: string;
+      output_id: string;
+      durable_state: string;
+      provider_status: string;
+      materialization_state: string;
+      batch_id: string;
+      candidate_id: string;
+      revision_number: number;
+      provider_attempts: string;
+      provider_outputs: string;
+      provider_calls: string;
+    }>(`SELECT call.call_id::text, call.accepted_output_id::text AS output_id,
+      call.durable_state, call.status AS provider_status,
+      materialization.state AS materialization_state,
+      batch.batch_id::text, candidate.candidate_id::text, candidate.revision_number,
+      (SELECT count(*)::text FROM ai.provider_attempts) AS provider_attempts,
+      (SELECT count(*)::text FROM ai.provider_outputs) AS provider_outputs,
+      (SELECT count(*)::text FROM ai.provider_calls) AS provider_calls
+      FROM ai.provider_calls call
+      JOIN candidate.materializations materialization
+        ON materialization.output_id = call.accepted_output_id
+      JOIN candidate.batches batch ON batch.batch_id = materialization.batch_id
+      JOIN candidate.claim_candidates candidate ON candidate.batch_id = batch.batch_id`);
+    const finalResume = await pool!.query<{
+      state: string;
+      job_status: string;
+      attempt_count: number;
+      attempts: string;
+    }>(
+      `SELECT dedup.state, job.status AS job_status, job.attempt_count,
+      (SELECT count(*)::text FROM connector.job_attempts attempt
+       WHERE attempt.job_id = job.job_id) AS attempts
+      FROM connector.dedup_records dedup
+      JOIN connector.jobs job ON job.job_id = dedup.job_id
+      WHERE dedup.project_id = $1 AND dedup.semantic_key = $2`,
+      [record.projectId, resumeSemanticKey],
+    );
+    const materializedEvent = await pool!.query<{ state: string }>(
+      `SELECT state FROM connector.dedup_records
+       WHERE project_id = $1 AND consumer_id = 'stage4.ai-provider:event:CandidateMaterialized'
+         AND message_type = 'CandidateMaterialized'
+         AND semantic_key = $2`,
+      [record.projectId, `candidate-materialized:${record.projectId}:${acceptedOutputId}`],
+    );
+
+    expect(recoveryResult).toEqual({ attempted: 1, resumed: 1, failed: 0 });
+    expect(sendSpy).toHaveBeenCalledTimes(2);
+    expect(sendSpy.mock.calls[1]?.[0]).toBe(sendSpy.mock.calls[0]?.[0]);
+    expect(reconcileSpy).toHaveBeenCalledTimes(1);
+    expect(reconcileSpy.mock.calls[0]?.[0]).toBe(sendSpy.mock.calls[0]?.[0]);
+    expect(after.rows[0]).toMatchObject({
+      call_id: before.rows[0]?.call_id,
+      output_id: before.rows[0]?.output_id,
+      durable_state: 'COMPLETED',
+      provider_status: 'succeeded',
+      materialization_state: 'COMPLETED',
+      batch_id: before.rows[0]?.batch_id,
+      candidate_id: before.rows[0]?.candidate_id,
+      revision_number: before.rows[0]?.revision_number,
+      provider_attempts: '1',
+      provider_outputs: '1',
+      provider_calls: '1',
+    });
+    expect(finalResume.rows[0]).toMatchObject({
+      state: 'COMPLETED',
+      job_status: 'succeeded',
+      attempt_count: 1,
+      attempts: '1',
+    });
+    expect(materializedEvent.rows[0]).toEqual({ state: 'COMPLETED' });
+    expect(await recovery.aiRepository.listRecoverableMaterializations()).toHaveLength(0);
     await recovery.kernel.shutdown();
   });
 

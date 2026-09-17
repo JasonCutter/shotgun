@@ -5,6 +5,8 @@ import type {
   DiscoveryModelProfileStatus,
   DiscoveryModelProfileV1,
 } from '../../../packages/contracts/src/index.js';
+import { ShotgunError } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 type ProfileRow = QueryResultRow & {
   readonly schema_version: string;
@@ -51,6 +53,34 @@ const mapRow = (row: ProfileRow): DiscoveryModelProfileV1 => ({
 
 const project = (projectId: string): string => projectId.trim();
 
+const isOutcomeUnknown = (error: unknown): error is ShotgunError =>
+  error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
+
+const sameTimestamp = (left: string | undefined, right: string | undefined): boolean =>
+  left === right;
+
+const matchesProfile = (
+  actual: DiscoveryModelProfileV1 | undefined,
+  expected: DiscoveryModelProfileV1,
+): boolean =>
+  actual !== undefined &&
+  actual.schemaVersion === expected.schemaVersion &&
+  actual.profileId === expected.profileId &&
+  actual.projectId === expected.projectId &&
+  actual.profileRevision === expected.profileRevision &&
+  actual.aiConfigurationRevision === expected.aiConfigurationRevision &&
+  actual.providerId === expected.providerId &&
+  actual.modelId === expected.modelId &&
+  actual.providerRegistryRevision === expected.providerRegistryRevision &&
+  actual.modelCapabilityRevision === expected.modelCapabilityRevision &&
+  actual.promptVersion === expected.promptVersion &&
+  actual.outputSchemaVersion === expected.outputSchemaVersion &&
+  actual.status === expected.status &&
+  actual.createdBy === expected.createdBy &&
+  sameTimestamp(actual.createdAt, expected.createdAt) &&
+  sameTimestamp(actual.activatedAt, expected.activatedAt) &&
+  sameTimestamp(actual.retiredAt, expected.retiredAt);
+
 export class PostgresDiscoveryModelProfileRepository implements DiscoveryModelProfileRepositoryPort {
   constructor(private readonly pool: Pool) {}
 
@@ -92,61 +122,77 @@ export class PostgresDiscoveryModelProfileRepository implements DiscoveryModelPr
     readonly expectedRevision: number;
     readonly next: DiscoveryModelProfileV1;
   }): Promise<'CREATED' | 'UPDATED' | 'CONFLICT'> {
-    const client = await this.pool.connect();
     try {
-      await client.query('BEGIN');
-      const current = await client.query<{ profile_revision: number }>(
-        `SELECT profile_revision
-         FROM discovery.model_profiles
-         WHERE project_id = $1
-         ORDER BY profile_revision DESC
-         LIMIT 1
-         FOR UPDATE`,
-        [input.next.projectId],
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const current = await client.query<{ profile_revision: number }>(
+            `SELECT profile_revision
+             FROM discovery.model_profiles
+             WHERE project_id = $1
+             ORDER BY profile_revision DESC
+             LIMIT 1
+             FOR UPDATE`,
+            [input.next.projectId],
+          );
+          const currentRevision = Number(current.rows[0]?.profile_revision ?? 0);
+          if (
+            currentRevision !== input.expectedRevision ||
+            input.next.profileRevision !== input.expectedRevision + 1
+          ) {
+            return 'CONFLICT';
+          }
+          await client.query(
+            `INSERT INTO discovery.model_profiles (
+               schema_version, project_id, profile_id, profile_revision,
+               ai_configuration_revision, provider_id, model_id,
+               provider_registry_revision, model_capability_revision,
+               prompt_version, output_schema_version, status, created_by,
+               created_at, activated_at, retired_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+            [
+              input.next.schemaVersion,
+              input.next.projectId,
+              input.next.profileId,
+              input.next.profileRevision,
+              input.next.aiConfigurationRevision,
+              input.next.providerId,
+              input.next.modelId,
+              input.next.providerRegistryRevision,
+              input.next.modelCapabilityRevision,
+              input.next.promptVersion,
+              input.next.outputSchemaVersion,
+              input.next.status,
+              input.next.createdBy,
+              input.next.createdAt,
+              input.next.activatedAt ?? null,
+              input.next.retiredAt ?? null,
+            ],
+          );
+          return input.expectedRevision === 0 ? 'CREATED' : 'UPDATED';
+        },
+        { module: 'discovery-model-profile-postgres', operation: 'save-revision' },
       );
-      const currentRevision = Number(current.rows[0]?.profile_revision ?? 0);
-      if (
-        currentRevision !== input.expectedRevision ||
-        input.next.profileRevision !== input.expectedRevision + 1
-      ) {
-        await client.query('ROLLBACK');
-        return 'CONFLICT';
-      }
-      await client.query(
-        `INSERT INTO discovery.model_profiles (
-           schema_version, project_id, profile_id, profile_revision,
-           ai_configuration_revision, provider_id, model_id,
-           provider_registry_revision, model_capability_revision,
-           prompt_version, output_schema_version, status, created_by,
-           created_at, activated_at, retired_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
-        [
-          input.next.schemaVersion,
-          input.next.projectId,
-          input.next.profileId,
-          input.next.profileRevision,
-          input.next.aiConfigurationRevision,
-          input.next.providerId,
-          input.next.modelId,
-          input.next.providerRegistryRevision,
-          input.next.modelCapabilityRevision,
-          input.next.promptVersion,
-          input.next.outputSchemaVersion,
-          input.next.status,
-          input.next.createdBy,
-          input.next.createdAt,
-          input.next.activatedAt ?? null,
-          input.next.retiredAt ?? null,
-        ],
-      );
-      await client.query('COMMIT');
-      return input.expectedRevision === 0 ? 'CREATED' : 'UPDATED';
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (isOutcomeUnknown(error)) {
+        const persisted = await this.findRevision(
+          input.next.projectId,
+          input.next.profileRevision,
+        ).catch(() => undefined);
+        if (persisted !== undefined) {
+          return matchesProfile(persisted, input.next)
+            ? input.expectedRevision === 0
+              ? 'CREATED'
+              : 'UPDATED'
+            : 'CONFLICT';
+        }
+        const current = await this.findCurrent(input.next.projectId).catch(() => undefined);
+        if (current && current.profileRevision > input.expectedRevision) {
+          return 'CONFLICT';
+        }
+      }
       if (isUniqueViolation(error)) return 'CONFLICT';
       throw error;
-    } finally {
-      client.release();
     }
   }
 
@@ -158,67 +204,100 @@ export class PostgresDiscoveryModelProfileRepository implements DiscoveryModelPr
     readonly status: DiscoveryModelProfileStatus;
     readonly updatedAt: string;
   }): Promise<DiscoveryModelProfileV1 | 'NOT_FOUND' | 'CONFLICT'> {
-    const client = await this.pool.connect();
+    const retiredProfiles: Array<{ profileId: string; profileRevision: number }> = [];
     try {
-      await client.query('BEGIN');
-      const target = await client.query<ProfileRow>(
-        `SELECT * FROM discovery.model_profiles
-         WHERE project_id = $1 AND profile_id = $2 AND profile_revision = $3
-         FOR UPDATE`,
-        [input.projectId, input.profileId, input.profileRevision],
-      );
-      const row = target.rows[0];
-      if (!row) {
-        await client.query('ROLLBACK');
-        return 'NOT_FOUND';
-      }
-      if (row.status !== input.expectedStatus) {
-        await client.query('ROLLBACK');
-        return 'CONFLICT';
-      }
-      if (input.status === 'ACTIVE' && row.status !== 'PREPARED') {
-        await client.query('ROLLBACK');
-        return 'CONFLICT';
-      }
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const target = await client.query<ProfileRow>(
+            `SELECT * FROM discovery.model_profiles
+             WHERE project_id = $1 AND profile_id = $2 AND profile_revision = $3
+             FOR UPDATE`,
+            [input.projectId, input.profileId, input.profileRevision],
+          );
+          const row = target.rows[0];
+          if (!row) return 'NOT_FOUND';
+          if (row.status !== input.expectedStatus) return 'CONFLICT';
+          if (input.status === 'ACTIVE' && row.status !== 'PREPARED') return 'CONFLICT';
 
-      if (input.status === 'ACTIVE') {
-        await client.query(
-          `UPDATE discovery.model_profiles
-           SET status = 'RETIRED', retired_at = $2
-           WHERE project_id = $1 AND status = 'ACTIVE' AND profile_id <> $3`,
-          [input.projectId, input.updatedAt, input.profileId],
-        );
-        await client.query(
-          `UPDATE discovery.model_profiles
-           SET status = 'ACTIVE', activated_at = $4, retired_at = NULL
-           WHERE project_id = $1 AND profile_id = $2 AND profile_revision = $3`,
-          [input.projectId, input.profileId, input.profileRevision, input.updatedAt],
-        );
-      } else if (input.status === 'RETIRED') {
-        await client.query(
-          `UPDATE discovery.model_profiles
-           SET status = 'RETIRED', retired_at = $4
-           WHERE project_id = $1 AND profile_id = $2 AND profile_revision = $3`,
-          [input.projectId, input.profileId, input.profileRevision, input.updatedAt],
-        );
-      } else {
-        await client.query('ROLLBACK');
-        return 'CONFLICT';
-      }
+          if (input.status === 'ACTIVE') {
+            const retired = await client.query<{ profile_id: string; profile_revision: number }>(
+              `UPDATE discovery.model_profiles
+               SET status = 'RETIRED', retired_at = $2
+               WHERE project_id = $1 AND status = 'ACTIVE' AND profile_id <> $3
+               RETURNING profile_id, profile_revision`,
+              [input.projectId, input.updatedAt, input.profileId],
+            );
+            retiredProfiles.push(
+              ...retired.rows.map((retiredRow) => ({
+                profileId: retiredRow.profile_id,
+                profileRevision: Number(retiredRow.profile_revision),
+              })),
+            );
+            await client.query(
+              `UPDATE discovery.model_profiles
+               SET status = 'ACTIVE', activated_at = $4, retired_at = NULL
+               WHERE project_id = $1 AND profile_id = $2 AND profile_revision = $3`,
+              [input.projectId, input.profileId, input.profileRevision, input.updatedAt],
+            );
+          } else if (input.status === 'RETIRED') {
+            await client.query(
+              `UPDATE discovery.model_profiles
+               SET status = 'RETIRED', retired_at = $4
+               WHERE project_id = $1 AND profile_id = $2 AND profile_revision = $3`,
+              [input.projectId, input.profileId, input.profileRevision, input.updatedAt],
+            );
+          } else {
+            return 'CONFLICT';
+          }
 
-      const updated = await client.query<ProfileRow>(
-        `SELECT * FROM discovery.model_profiles
-         WHERE project_id = $1 AND profile_id = $2 AND profile_revision = $3`,
-        [input.projectId, input.profileId, input.profileRevision],
+          const updated = await client.query<ProfileRow>(
+            `SELECT * FROM discovery.model_profiles
+             WHERE project_id = $1 AND profile_id = $2 AND profile_revision = $3`,
+            [input.projectId, input.profileId, input.profileRevision],
+          );
+          return updated.rows[0] ? mapRow(updated.rows[0]) : 'NOT_FOUND';
+        },
+        { module: 'discovery-model-profile-postgres', operation: 'update-status' },
       );
-      await client.query('COMMIT');
-      return updated.rows[0] ? mapRow(updated.rows[0]) : 'NOT_FOUND';
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (isOutcomeUnknown(error)) {
+        const target = await this.findRevision(input.projectId, input.profileRevision).catch(
+          () => undefined,
+        );
+        const targetMatches =
+          target?.profileId === input.profileId &&
+          target.status === input.status &&
+          (input.status === 'ACTIVE'
+            ? target.activatedAt === input.updatedAt && target.retiredAt === undefined
+            : target.retiredAt === input.updatedAt);
+        const retiredMatches = await Promise.all(
+          retiredProfiles.map(async (retired) => {
+            const persisted = await this.findRevision(
+              input.projectId,
+              retired.profileRevision,
+            ).catch(() => undefined);
+            return (
+              persisted?.profileId === retired.profileId &&
+              persisted.status === 'RETIRED' &&
+              persisted.retiredAt === input.updatedAt
+            );
+          }),
+        );
+        const activeRows = await this.pool
+          .query<{ profile_id: string }>(
+            `SELECT profile_id FROM discovery.model_profiles
+             WHERE project_id = $1 AND status = 'ACTIVE'`,
+            [input.projectId],
+          )
+          .catch(() => undefined);
+        const singleTargetActive =
+          input.status !== 'ACTIVE' ||
+          (activeRows?.rows.length === 1 && activeRows.rows[0]?.profile_id === input.profileId);
+        if (targetMatches && retiredMatches.every(Boolean) && singleTargetActive) return target!;
+      }
       if (isUniqueViolation(error)) return 'CONFLICT';
       throw error;
-    } finally {
-      client.release();
     }
   }
 }

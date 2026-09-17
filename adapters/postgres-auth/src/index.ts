@@ -11,10 +11,14 @@ import {
   hashSecuritySecret,
   verifyPassword,
 } from '../../../packages/authentication/src/index.js';
-import type { SecurityContext } from '../../../packages/contracts/src/index.js';
+import { ShotgunError, type SecurityContext } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 const secret = (bytes = 32): string => randomBytes(bytes).toString('base64url');
 const now = (): string => new Date().toISOString();
+
+const isOutcomeUnknown = (error: unknown): error is ShotgunError =>
+  error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
 
 type PrincipalRow = QueryResultRow & {
   principal_id: string;
@@ -120,65 +124,122 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
   }
 
   async bootstrapOwner(input: Parameters<AuthRepositoryPort['bootstrapOwner']>[0]): Promise<void> {
-    const client = await this.pool.connect();
     const accountId = input.accountId.trim().toLowerCase();
     if (!accountId) throw new Error('Account ID is required.');
+    const principalId = randomUUID();
+    const credentialId =
+      input.passwordHash && input.passwordHash.trim() !== '' ? randomUUID() : undefined;
     try {
-      await client.query('BEGIN');
-      const existingAccount = await client.query<{ principal_id: string }>(
-        'SELECT principal_id::text FROM auth.principals WHERE account_id = $1 FOR UPDATE',
-        [accountId],
+      await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const existingAccount = await client.query<{ principal_id: string }>(
+            'SELECT principal_id::text FROM auth.principals WHERE account_id = $1 FOR UPDATE',
+            [accountId],
+          );
+          const existingAccountRow = existingAccount.rows[0];
+          if (existingAccountRow) {
+            const existingMembership = await client.query<{ is_owner: boolean }>(
+              'SELECT is_owner FROM auth.project_memberships WHERE principal_id = $1 AND project_id = $2',
+              [existingAccountRow.principal_id, input.projectId],
+            );
+            if (existingMembership.rows[0]?.is_owner) {
+              throw new Error('An active Owner already exists.');
+            }
+            throw new Error('Account ID is already in use.');
+          }
+          const existingOwner = await client.query(
+            'SELECT 1 FROM auth.project_memberships WHERE is_owner AND project_id = $1 AND (expires_at IS NULL OR expires_at > now()) FOR UPDATE',
+            [input.projectId],
+          );
+          if (existingOwner.rowCount && existingOwner.rowCount > 0) {
+            throw new Error('An active Owner already exists.');
+          }
+          await client.query(
+            'INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, $2, $3, $4, $5)',
+            [principalId, 'user', 'active', accountId, now()],
+          );
+          if (credentialId) {
+            await client.query(
+              'INSERT INTO auth.credentials (credential_id, principal_id, credential_type, account_id, password_hash, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6)',
+              [credentialId, principalId, 'local_password', accountId, input.passwordHash, now()],
+            );
+          }
+          await client.query(
+            'UPDATE auth.project_memberships SET is_owner = false WHERE is_owner AND project_id = $1 AND expires_at IS NOT NULL AND expires_at <= now()',
+            [input.projectId],
+          );
+          await client.query(
+            'INSERT INTO auth.project_memberships (principal_id, project_id, scopes, sensitivity_clearance, is_owner) VALUES ($1, $2, $3, $4, true)',
+            [principalId, input.projectId, input.scopes, input.sensitivityClearance],
+          );
+        },
+        { module: 'postgres-auth', operation: 'bootstrap-owner' },
       );
-      const existingAccountRow = existingAccount.rows[0];
-      if (existingAccountRow) {
-        const existingMembership = await client.query<{ is_owner: boolean }>(
-          'SELECT is_owner FROM auth.project_memberships WHERE principal_id = $1 AND project_id = $2',
-          [existingAccountRow.principal_id, input.projectId],
-        );
-        if (existingMembership.rows[0]?.is_owner) {
-          throw new Error('An active Owner already exists.');
-        }
-        throw new Error('Account ID is already in use.');
-      }
-      const existingOwner = await client.query(
-        'SELECT 1 FROM auth.project_memberships WHERE is_owner AND project_id = $1 AND (expires_at IS NULL OR expires_at > now()) FOR UPDATE',
-        [input.projectId],
-      );
-      if (existingOwner.rowCount && existingOwner.rowCount > 0) {
-        throw new Error('An active Owner already exists.');
-      }
-      const principalId = randomUUID();
-      await client.query(
-        'INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, $2, $3, $4, $5)',
-        [principalId, 'user', 'active', input.accountId.trim().toLowerCase(), now()],
-      );
-      if (input.passwordHash && input.passwordHash.trim() !== '') {
-        await client.query(
-          'INSERT INTO auth.credentials (credential_id, principal_id, credential_type, account_id, password_hash, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6)',
-          [
-            randomUUID(),
-            principalId,
-            'local_password',
-            input.accountId.trim().toLowerCase(),
-            input.passwordHash,
-            now(),
-          ],
-        );
-      }
-      await client.query(
-        'UPDATE auth.project_memberships SET is_owner = false WHERE is_owner AND project_id = $1 AND expires_at IS NOT NULL AND expires_at <= now()',
-        [input.projectId],
-      );
-      await client.query(
-        'INSERT INTO auth.project_memberships (principal_id, project_id, scopes, sensitivity_clearance, is_owner) VALUES ($1, $2, $3, $4, true)',
-        [principalId, input.projectId, input.scopes, input.sensitivityClearance],
-      );
-      await client.query('COMMIT');
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (isOutcomeUnknown(error)) {
+        const persisted = await this.pool
+          .query<{
+            principal_id: string;
+            actor_type: string;
+            status: string;
+            account_id: string;
+          }>(
+            `SELECT principal_id::text, actor_type, status, account_id
+             FROM auth.principals
+             WHERE principal_id = $1 AND account_id = $2`,
+            [principalId, accountId],
+          )
+          .catch(() => undefined);
+        const membership = await this.pool
+          .query<{ scopes: string[]; sensitivity_clearance: string; is_owner: boolean }>(
+            `SELECT scopes, sensitivity_clearance, is_owner
+             FROM auth.project_memberships
+             WHERE principal_id = $1 AND project_id = $2`,
+            [principalId, input.projectId],
+          )
+          .catch(() => undefined);
+        const credential = credentialId
+          ? await this.pool
+              .query<{
+                credential_id: string;
+                principal_id: string;
+                credential_type: string;
+                account_id: string;
+                password_hash: string;
+              }>(
+                `SELECT credential_id::text, principal_id::text, credential_type,
+                        account_id, password_hash
+                 FROM auth.credentials
+                 WHERE credential_id = $1`,
+                [credentialId],
+              )
+              .catch(() => undefined)
+          : undefined;
+        const principalRow = persisted?.rows[0];
+        const membershipRow = membership?.rows[0];
+        const credentialRow = credential?.rows[0];
+        const scopesMatch =
+          membershipRow?.scopes.length === input.scopes.length &&
+          membershipRow.scopes.every((scope) => input.scopes.includes(scope));
+        if (
+          principalRow?.principal_id === principalId &&
+          principalRow.actor_type === 'user' &&
+          principalRow.status === 'active' &&
+          membershipRow?.is_owner === true &&
+          membershipRow.sensitivity_clearance === input.sensitivityClearance &&
+          scopesMatch &&
+          (credentialId === undefined ||
+            (credentialRow?.credential_id === credentialId &&
+              credentialRow.principal_id === principalId &&
+              credentialRow.credential_type === 'local_password' &&
+              credentialRow.account_id === accountId &&
+              credentialRow.password_hash === input.passwordHash))
+        ) {
+          return;
+        }
+      }
       throw error;
-    } finally {
-      client.release();
     }
   }
 

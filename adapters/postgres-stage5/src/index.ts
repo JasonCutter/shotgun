@@ -1720,7 +1720,7 @@ export class PostgresChangeSetReviewV2Repository
           });
         }
       }
-      throw error;
+      throw dbError(error, operation);
     }
   }
 

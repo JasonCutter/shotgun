@@ -728,6 +728,31 @@ export class PostgresSourcesStage3AtomicPersistence implements SourcesStage3Atom
         revision.transformer_version === intendedResult.saved.revision.transformer.version &&
         revision.document_hash === intendedResult.saved.revision.documentHash &&
         revision.source_map_hash === intendedResult.saved.revision.sourceMapHash;
+      const attemptResult = await this.pool.query<{
+        attempt_id: string;
+        project_id: string;
+        source_version_id: string;
+        transformer_id: string;
+        transformer_version: string;
+        revision_id: string;
+        reused_revision: boolean;
+      }>(
+        `SELECT attempt_id::text, project_id, source_version_id::text,
+                transformer_id, transformer_version, revision_id::text, reused_revision
+           FROM transformation.attempts
+          WHERE attempt_id = $1`,
+        [intendedResult.saved.attemptId],
+      );
+      const attempt = attemptResult.rows[0];
+      const attemptMatches =
+        attempt !== undefined &&
+        attempt.attempt_id === intendedResult.saved.attemptId &&
+        attempt.project_id === intendedResult.saved.revision.projectId &&
+        attempt.source_version_id === intendedResult.saved.revision.sourceVersionId &&
+        attempt.transformer_id === intendedResult.saved.revision.transformer.id &&
+        attempt.transformer_version === intendedResult.saved.revision.transformer.version &&
+        attempt.revision_id === intendedResult.saved.revision.revisionId &&
+        attempt.reused_revision === intendedResult.saved.reusedRevision;
       const evidenceResult = await this.pool.query<{
         evidence_id: string;
         revision_id: string;
@@ -827,6 +852,7 @@ export class PostgresSourcesStage3AtomicPersistence implements SourcesStage3Atom
       }
       if (
         revisionMatches &&
+        attemptMatches &&
         evidenceMatches &&
         indexingMatches &&
         progressMatches &&

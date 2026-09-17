@@ -48,7 +48,8 @@ type CommitAckLossTrace = {
   commitSucceeded: boolean;
   acknowledgementLost: boolean;
   postCommitRollbackAttempts: number;
-  authoritativeReadbacks: number;
+  productionReconciliationReadbacks: number;
+  testVerificationReadbacks: number;
 };
 
 const createCommitAckLossPool = (
@@ -59,11 +60,16 @@ const createCommitAckLossPool = (
     commitSucceeded: false,
     acknowledgementLost: false,
     postCommitRollbackAttempts: 0,
-    authoritativeReadbacks: 0,
+    productionReconciliationReadbacks: 0,
+    testVerificationReadbacks: 0,
   };
   const faultPool = {
-    query: async (sql: string, values?: readonly unknown[]) =>
-      values === undefined ? realPool.query(sql) : realPool.query(sql, [...values]),
+    query: async (sql: string, values?: readonly unknown[]) => {
+      if (trace.commitSucceeded && trace.acknowledgementLost) {
+        trace.productionReconciliationReadbacks += 1;
+      }
+      return values === undefined ? realPool.query(sql) : realPool.query(sql, [...values]);
+    },
     connect: async (): Promise<PoolClient> => {
       const realClient = await realPool.connect();
       const client = {
@@ -89,8 +95,8 @@ const createCommitAckLossPool = (
   return { pool: faultPool, trace };
 };
 
-const authoritativeReadback = (trace: CommitAckLossTrace): void => {
-  trace.authoritativeReadbacks += 1;
+const testVerificationReadback = (trace: CommitAckLossTrace): void => {
+  trace.testVerificationReadbacks += 1;
 };
 
 const expectAckLossTrace = (
@@ -102,8 +108,49 @@ const expectAckLossTrace = (
     commitSucceeded: true,
     acknowledgementLost: true,
     postCommitRollbackAttempts: expectedPostCommitRollbackAttempts,
-    authoritativeReadbacks: 1,
+    testVerificationReadbacks: 1,
   });
+};
+
+const expectSafeAckLossTrace = (trace: CommitAckLossTrace): void => {
+  expectAckLossTrace(trace);
+  expect(trace.productionReconciliationReadbacks).toBe(0);
+};
+
+const expectCorrectedAckLossTrace = (trace: CommitAckLossTrace): void => {
+  expectAckLossTrace(trace, 0);
+  expect(trace.productionReconciliationReadbacks).toBeGreaterThan(0);
+};
+
+const createPreCommitDatabaseErrorPool = (
+  realPool: Pool,
+  code: string,
+): { readonly pool: Pool } => {
+  let injected = false;
+  const faultPool = {
+    query: async (sql: string, values?: readonly unknown[]) =>
+      values === undefined ? realPool.query(sql) : realPool.query(sql, [...values]),
+    connect: async (): Promise<PoolClient> => {
+      const realClient = await realPool.connect();
+      const client = {
+        query: async (sql: string, values?: readonly unknown[]) => {
+          const command = sql.trim().toUpperCase();
+          if (!injected && command !== 'BEGIN') {
+            injected = true;
+            const error = new Error('synthetic pre-COMMIT database failure') as Error & {
+              code?: string;
+            };
+            error.code = code;
+            throw error;
+          }
+          return values === undefined ? realClient.query(sql) : realClient.query(sql, [...values]);
+        },
+        release: () => realClient.release(),
+      };
+      return client as unknown as PoolClient;
+    },
+  } as unknown as Pool;
+  return { pool: faultPool };
 };
 
 const seedMaterialized = async (prefix: string) => {
@@ -527,7 +574,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
          WHERE project_id = $1 AND source_version_id = $2`,
         [ids.projectId, ids.sourceVersionId],
       );
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(row.rows[0]).toMatchObject({
         state: 'STAGE3_RUNNING',
         attempt_count: 1,
@@ -543,7 +590,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
           now: ids.now,
         }),
       ).resolves.toEqual({ status: 'DEFERRED', reason: 'ACTIVE_LEASE' });
-      expectAckLossTrace(injected.trace, 0);
+      expectCorrectedAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -601,6 +648,31 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
       );
       expect(persisted.saved.revision.sourceVersionId).toBe(ids.sourceVersionId);
       expect(persisted.indexingResultId).toBeDefined();
+      const attempt = await pool.query<{
+        attempt_id: string;
+        project_id: string;
+        source_version_id: string;
+        transformer_id: string;
+        transformer_version: string;
+        revision_id: string;
+        reused_revision: boolean;
+      }>(
+        `SELECT attempt_id::text, project_id, source_version_id::text,
+                transformer_id, transformer_version, revision_id::text, reused_revision
+           FROM transformation.attempts
+          WHERE attempt_id = $1`,
+        [persisted.saved.attemptId],
+      );
+      testVerificationReadback(injected.trace);
+      expect(attempt.rows[0]).toEqual({
+        attempt_id: persisted.saved.attemptId,
+        project_id: persisted.saved.revision.projectId,
+        source_version_id: persisted.saved.revision.sourceVersionId,
+        transformer_id: persisted.saved.revision.transformer.id,
+        transformer_version: persisted.saved.revision.transformer.version,
+        revision_id: persisted.saved.revision.revisionId,
+        reused_revision: persisted.saved.reusedRevision,
+      });
       const counts = await pool.query<{
         attempts: string;
         revisions: string;
@@ -618,7 +690,6 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
            (SELECT state FROM source_product.source_stage3_progress WHERE project_id = $1 AND source_version_id = $2) AS state`,
         [ids.projectId, ids.sourceVersionId],
       );
-      authoritativeReadback(injected.trace);
       expect(counts.rows[0]).toMatchObject({
         attempts: '1',
         revisions: '1',
@@ -632,7 +703,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
       ).rejects.toMatchObject({
         code: 'CONFLICT',
       });
-      expectAckLossTrace(injected.trace, 0);
+      expectCorrectedAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -661,7 +732,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
           WHERE continuation_id = $1`,
         [ids.continuationId],
       );
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(row.rows[0]).toMatchObject({
         state: 'RUNNING',
         attempt_count: 1,
@@ -676,7 +747,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
           now: ids.now,
         }),
       ).resolves.toEqual({ status: 'EMPTY' });
-      expectAckLossTrace(injected.trace, 0);
+      expectCorrectedAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -690,7 +761,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
       await expect(
         new PostgresAIProviderCallRepository(injected.pool).ensure(record),
       ).rejects.toThrow('synthetic commit acknowledgement loss');
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(
         await new PostgresAIProviderCallRepository(pool).findByRequestId(
           ids.projectId,
@@ -698,7 +769,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         ),
       ).toEqual(record);
       expect(await new PostgresAIProviderCallRepository(pool).ensure(record)).toEqual(record);
-      expectAckLossTrace(injected.trace);
+      expectSafeAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -718,7 +789,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
       expect(claimed).toBeDefined();
       if (!claimed) return;
       const durable = await clean.findByRequestId(ids.projectId, record.requestId);
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(durable?.state).toBe('PROVIDER_RUNNING');
       expect(durable?.attempts).toHaveLength(1);
       expect(claimed.record).toEqual(durable);
@@ -726,7 +797,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
       await expect(
         clean.claimNextAttempt(ids.projectId, record.requestId),
       ).resolves.toBeUndefined();
-      expectAckLossTrace(injected.trace, 0);
+      expectCorrectedAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -750,7 +821,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         ),
       ).rejects.toThrow('synthetic commit acknowledgement loss');
       const durable = await clean.findByRequestId(ids.projectId, record.requestId);
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(durable?.state).toBe('OUTCOME_UNKNOWN');
       expect(durable?.attempts[0]?.status).toBe('outcome_unknown');
       expect(
@@ -762,7 +833,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
           )
         ).state,
       ).toBe('OUTCOME_UNKNOWN');
-      expectAckLossTrace(injected.trace);
+      expectSafeAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -798,14 +869,14 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         ),
       ).rejects.toThrow('synthetic commit acknowledgement loss');
       const durable = await clean.findByRequestId(ids.projectId, record.requestId);
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(durable?.state).toBe('OUTPUT_MATERIALIZED');
       expect(durable?.output?.outputId).toBe(output.outputId);
       expect(
         (await clean.acceptOutput(ids.projectId, record.requestId, output.outputId, call)).output
           ?.outputId,
       ).toBe(output.outputId);
-      expectAckLossTrace(injected.trace);
+      expectSafeAckLossTrace(injected.trace);
     } finally {
       // Provider output provenance is append-only by contract. Leave this
       // uniquely identified proof history in the isolated db-test database.
@@ -850,7 +921,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         'synthetic commit acknowledgement loss',
       );
       const clean = new PostgresCandidateRepository(pool);
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(await clean.findBatchByIdempotencyKey(ids.projectId, batch.idempotencyKey)).toEqual(
         batch,
       );
@@ -860,7 +931,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         [ids.projectId, batch.batchId],
       );
       expect(count.rows[0]?.count).toBe('1');
-      expectAckLossTrace(injected.trace);
+      expectSafeAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -875,12 +946,12 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
       await expect(
         new PostgresChangeSetReviewV2Repository(injected.pool).saveDraft(ids.fixture.draft),
       ).rejects.toThrow('synthetic commit acknowledgement loss');
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(await repository.findDraftById(ids.projectId, ids.fixture.draft.changeSetId)).toEqual(
         ids.fixture.draft,
       );
       expect(await repository.saveDraft(ids.fixture.draft)).toEqual(ids.fixture.draft);
-      expectAckLossTrace(injected.trace);
+      expectSafeAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -903,7 +974,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         },
       );
       const durable = await repository.findDraftById(ids.projectId, ids.fixture.draft.changeSetId);
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(durable?.status).toBe('STALE');
       expect(stale).toEqual(durable);
       await expect(
@@ -915,7 +986,34 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
           updatedAt: '2026-09-17T08:00:03.000Z',
         }),
       ).rejects.toMatchObject({ code: 'STALE_VERSION' });
-      expectAckLossTrace(injected.trace, 0);
+      expectCorrectedAckLossTrace(injected.trace);
+    } finally {
+      await cleanupSource(ids);
+    }
+  });
+
+  it('Stage 5 stale transition: preserves database error mapping before COMMIT', async () => {
+    const ids = await seedStage5Fixture('post-tf-s5-stale-db-error');
+    try {
+      const repository = new PostgresChangeSetReviewV2Repository(pool);
+      await new PostgresComparisonV2Repository(pool).saveCompletedAggregate(ids.fixture.aggregate);
+      await repository.saveDraft(ids.fixture.draft);
+      const injected = createPreCommitDatabaseErrorPool(pool, '23505');
+      await expect(
+        new PostgresChangeSetReviewV2Repository(injected.pool).markStaleIfCurrent({
+          projectId: ids.projectId,
+          changeSetId: ids.fixture.draft.changeSetId,
+          expectedRevisionNumber: ids.fixture.draft.revisionNumber,
+          expectedContentDigest: ids.fixture.draft.contentDigest,
+          updatedAt: '2026-09-17T08:00:03.000Z',
+        }),
+      ).rejects.toMatchObject({
+        code: 'CONFLICT',
+        operation: 'mark-review-draft-v2-stale',
+      });
+      expect(await repository.findDraftById(ids.projectId, ids.fixture.draft.changeSetId)).toEqual(
+        ids.fixture.draft,
+      );
     } finally {
       await cleanupSource(ids);
     }
@@ -939,7 +1037,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         new PostgresChangeSetReviewV2Repository(injected.pool).resolveOperation(write),
       ).rejects.toThrow('synthetic commit acknowledgement loss');
       const durable = await repository.findDraftById(ids.projectId, ids.fixture.draft.changeSetId);
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(durable).toEqual(resolvedDraft);
       expect(
         await repository.findOperationResolutionByClientRequest(
@@ -949,7 +1047,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         ),
       ).toEqual(resolution);
       expect((await repository.resolveOperation(write)).status).toBe('IDEMPOTENT_REPLAY');
-      expectAckLossTrace(injected.trace);
+      expectSafeAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -981,11 +1079,11 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         new PostgresChangeSetReviewV2Repository(injected.pool).recordDecision(write),
       ).rejects.toThrow('synthetic commit acknowledgement loss');
       const durable = await repository.findDecisionById(ids.projectId, write.decision.decisionId);
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(durable?.draft).toEqual(updated);
       expect(durable?.decision).toEqual(write.decision);
       expect((await repository.recordDecision(write)).decision).toEqual(write.decision);
-      expectAckLossTrace(injected.trace);
+      expectSafeAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -1005,12 +1103,12 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         ids.projectId,
         ids.fixture.aggregate.comparison.comparisonId,
       );
-      authoritativeReadback(injected.trace);
+      testVerificationReadback(injected.trace);
       expect(stableJson(durable)).toBe(stableJson(ids.fixture.aggregate));
       expect(stableJson(await repository.saveCompletedAggregate(ids.fixture.aggregate))).toBe(
         stableJson(ids.fixture.aggregate),
       );
-      expectAckLossTrace(injected.trace);
+      expectSafeAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }

@@ -99,7 +99,7 @@ describe('database target guard', () => {
     const guardedFixtures = [
       path.resolve('tests/browser/fixtures/frontend-test-backend.ts'),
       path.resolve('tests/browser/fixtures/frontend-cross-phase-backend.ts'),
-      path.resolve('tests/integration/recovery-harness-isolation.test.ts'),
+      path.resolve('tests/database/recovery-harness-isolation.database.test.ts'),
       path.resolve('scripts/quality-search-baseline.ts'),
     ];
 

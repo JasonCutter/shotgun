@@ -912,10 +912,76 @@ describe('A9 final closure deterministic cross-boundary evidence', () => {
       [poison.answerRunId, fixture.projectId],
     );
     expect(selection.rows).toHaveLength(1);
+
+    // Keep the poison relationship fixture-owned. The reset database is
+    // intentionally empty, so an arbitrary global EvidenceSpan cannot be used
+    // as a stable source for this cross-boundary validation.
+    const unrelatedSourceId = randomUUID();
+    const unrelatedSourceVersionId = randomUUID();
+    const unrelatedAssetId = randomUUID();
+    const unrelatedRevisionId = randomUUID();
+    const unrelatedEvidenceId = randomUUID();
+    const unrelatedText = `A9 unrelated evidence ${fixture.suffix}`;
+    const unrelatedContentHash = contentHash(unrelatedText);
+    await pool.query(
+      `INSERT INTO asset.original_assets (asset_id, content_hash, size_bytes, storage_key, created_at)
+       VALUES ($1, $2, 64, $3, now())`,
+      [unrelatedAssetId, unrelatedContentHash, `a9-unrelated-evidence-${fixture.suffix}`],
+    );
+    await pool.query(
+      `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+       VALUES ($1, $2, $3, now())`,
+      [unrelatedSourceId, fixture.projectId, fixture.principalId],
+    );
+    await pool.query(
+      `INSERT INTO asset.source_versions (
+         source_version_id, source_id, version_number, original_asset_id,
+         media_type, access_scope, sensitivity, created_at
+       ) VALUES ($1, $2, 1, $3, 'text/plain', '{owner}', 'public', now())`,
+      [unrelatedSourceVersionId, unrelatedSourceId, unrelatedAssetId],
+    );
+    await pool.query(
+      `INSERT INTO transformation.revisions (
+         revision_id, project_id, source_id, source_version_id, source_content_hash,
+         transformer_id, transformer_version, document_ir, source_map, document_hash,
+         source_map_hash, access_scope, sensitivity, created_at
+       ) VALUES ($1, $2, $3, $4, $5, 'a9-e2e-o-fixture', '1', '{}', '{}', $5, $6,
+                 '{owner}', 'public', now())`,
+      [
+        unrelatedRevisionId,
+        fixture.projectId,
+        unrelatedSourceId,
+        unrelatedSourceVersionId,
+        unrelatedContentHash,
+        contentHash(`a9-e2e-o-source-map-${fixture.suffix}`),
+      ],
+    );
+    await pool.query(
+      `INSERT INTO evidence.spans (
+         evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
+         node_kind, origin, position, quote, selectors, exact_hash, access_scope,
+         sensitivity, created_at
+       ) VALUES ($1, $2, $3, $4, $5, '/paragraphs/1', 'paragraph', 'source', $6::jsonb,
+                 $7::jsonb, '[]'::jsonb, $8, '{owner}', 'public', now())`,
+      [
+        unrelatedEvidenceId,
+        unrelatedRevisionId,
+        fixture.projectId,
+        unrelatedSourceId,
+        unrelatedSourceVersionId,
+        JSON.stringify({ start: 0, end: unrelatedText.length }),
+        JSON.stringify({ type: 'TextQuoteSelector', exact: unrelatedText }),
+        unrelatedContentHash,
+      ],
+    );
     const unrelatedEvidence = await pool.query<{ readonly evidence_id: string }>(
       `SELECT evidence_id::text
        FROM evidence.spans
-       LIMIT 1`,
+       WHERE project_id = $1
+         AND source_id = $2
+         AND source_version_id = $3
+         AND pointer = $4`,
+      [fixture.projectId, unrelatedSourceId, unrelatedSourceVersionId, '/paragraphs/1'],
     );
     expect(unrelatedEvidence.rows).toHaveLength(1);
     await pool.query(

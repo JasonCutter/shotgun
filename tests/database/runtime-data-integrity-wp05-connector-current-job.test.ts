@@ -286,7 +286,13 @@ describe.runIf(pool)('WP-05 connector current-job identity authority', () => {
       expect(firstJobId).toBeTruthy();
 
       const firstIdentity = await makeIdentity(projectId);
-      const firstDeadLetter = (await state.deadLetters.list())[0];
+      const firstDeadLetter = (await state.deadLetters.list()).find(
+        (entry) =>
+          entry.projectId === projectId &&
+          entry.identity.consumerId === firstIdentity.consumerId &&
+          entry.identity.semanticKey === firstIdentity.semanticKey &&
+          entry.job?.jobId === firstJobId,
+      );
       expect(firstDeadLetter?.job?.jobId).toBe(firstJobId);
       expect((await state.jobs.find(firstIdentity))?.jobId).toBe(firstJobId);
 
@@ -302,9 +308,21 @@ describe.runIf(pool)('WP-05 connector current-job identity authority', () => {
 
       const secondIdentity = await makeIdentity(projectId);
       expect((await state.jobs.find(secondIdentity))?.jobId).toBe(secondRow?.job_id);
-      const jobs = await state.jobs.list();
+      const jobs = (await state.jobs.list()).filter(
+        (job) =>
+          job.consumerId === secondIdentity.consumerId &&
+          job.idempotencyKey === secondIdentity.semanticKey,
+      );
       expect(jobs.map((job) => job.jobId)).toEqual([firstJobId, secondRow?.job_id]);
-      expect((await state.deadLetters.list())[0]?.job?.jobId).toBe(firstJobId);
+      const deadLetters = (await state.deadLetters.list()).filter(
+        (entry) =>
+          entry.projectId === projectId &&
+          entry.identity.consumerId === secondIdentity.consumerId &&
+          entry.identity.semanticKey === secondIdentity.semanticKey &&
+          entry.job?.jobId === firstJobId,
+      );
+      expect(deadLetters).toHaveLength(1);
+      expect(deadLetters[0]?.job?.jobId).toBe(firstJobId);
     } finally {
       await kernel.shutdown();
       await cleanup(projectId);

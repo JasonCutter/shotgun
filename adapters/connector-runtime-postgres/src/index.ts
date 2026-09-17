@@ -475,16 +475,18 @@ export class PostgresJobRuntime implements JobRuntimePort {
 
   async complete(input: {
     readonly jobId: string;
+    readonly leaseOwner: string;
     readonly fencingToken: number;
     readonly result: unknown;
   }): Promise<boolean> {
     try {
       const result = await this.pool.query(
-        `UPDATE connector.jobs SET status='succeeded', result=$3::jsonb,
+        `UPDATE connector.jobs SET status='succeeded', result=$4::jsonb,
          attempt_count=attempt_count+1, safe_error_code=NULL, safe_error_message=NULL,
          lease_owner=NULL, lease_expires_at=NULL, updated_at=clock_timestamp()
-         WHERE job_id=$1 AND fencing_token=$2 AND status='running'`,
-        [input.jobId, input.fencingToken, json(input.result)],
+         WHERE job_id=$1 AND lease_owner=$2 AND fencing_token=$3 AND status='running'
+           AND lease_expires_at IS NOT NULL AND lease_expires_at > clock_timestamp()`,
+        [input.jobId, input.leaseOwner, input.fencingToken, json(input.result)],
       );
       if (result.rowCount === 1) return true;
     } catch (error) {
@@ -517,19 +519,22 @@ export class PostgresJobRuntime implements JobRuntimePort {
 
   async retry(input: {
     readonly jobId: string;
+    readonly leaseOwner: string;
     readonly fencingToken: number;
     readonly nextAttemptAt: string;
     readonly safeErrorCode: string;
     readonly safeErrorMessage: string;
   }): Promise<boolean> {
     const result = await this.pool.query(
-      `UPDATE connector.jobs SET status='retryable', next_attempt_at=$3,
+      `UPDATE connector.jobs SET status='retryable', next_attempt_at=$4,
        attempt_count=attempt_count+1,
-       safe_error_code=$4, safe_error_message=$5,
+       safe_error_code=$5, safe_error_message=$6,
        lease_owner=NULL, lease_expires_at=NULL, updated_at=clock_timestamp()
-       WHERE job_id=$1 AND fencing_token=$2 AND status='running'`,
+       WHERE job_id=$1 AND lease_owner=$2 AND fencing_token=$3 AND status='running'
+         AND lease_expires_at IS NOT NULL AND lease_expires_at > clock_timestamp()`,
       [
         input.jobId,
+        input.leaseOwner,
         input.fencingToken,
         input.nextAttemptAt,
         input.safeErrorCode,
@@ -541,18 +546,27 @@ export class PostgresJobRuntime implements JobRuntimePort {
 
   async terminal(input: {
     readonly jobId: string;
+    readonly leaseOwner: string;
     readonly fencingToken: number;
     readonly status: 'failed' | 'outcome-unknown' | 'dead-letter';
     readonly safeErrorCode: string;
     readonly safeErrorMessage: string;
   }): Promise<boolean> {
     const result = await this.pool.query(
-      `UPDATE connector.jobs SET status=$3, attempt_count=attempt_count+1,
-       safe_error_code=$4,
-       safe_error_message=$5, lease_owner=NULL, lease_expires_at=NULL,
+      `UPDATE connector.jobs SET status=$4, attempt_count=attempt_count+1,
+       safe_error_code=$5,
+       safe_error_message=$6, lease_owner=NULL, lease_expires_at=NULL,
        updated_at=clock_timestamp()
-       WHERE job_id=$1 AND fencing_token=$2 AND status='running'`,
-      [input.jobId, input.fencingToken, input.status, input.safeErrorCode, input.safeErrorMessage],
+       WHERE job_id=$1 AND lease_owner=$2 AND fencing_token=$3 AND status='running'
+         AND lease_expires_at IS NOT NULL AND lease_expires_at > clock_timestamp()`,
+      [
+        input.jobId,
+        input.leaseOwner,
+        input.fencingToken,
+        input.status,
+        input.safeErrorCode,
+        input.safeErrorMessage,
+      ],
     );
     return result.rowCount === 1;
   }
@@ -673,12 +687,30 @@ export class PostgresJobRuntime implements JobRuntimePort {
       try {
         const result = await operation(attempt);
         operationSucceeded = true;
-        await this.pool.query(
-          `UPDATE connector.job_attempts SET status='succeeded', finished_at=clock_timestamp()
-           WHERE attempt_id=$1`,
-          [attempt.attemptId],
+        const attemptCompletion = await this.pool.query(
+          `UPDATE connector.job_attempts AS a
+           SET status='succeeded', finished_at=clock_timestamp()
+           WHERE a.attempt_id=$1 AND a.job_id=$2 AND a.worker_id=$3
+             AND a.fencing_token=$4 AND a.status='running'
+             AND EXISTS (
+               SELECT 1 FROM connector.jobs AS j
+               WHERE j.job_id=a.job_id AND j.status='running'
+                 AND j.lease_owner=$3 AND j.fencing_token=$4
+                 AND j.lease_expires_at IS NOT NULL
+                 AND j.lease_expires_at > clock_timestamp()
+             )`,
+          [attempt.attemptId, jobId, this.workerId, fencingToken],
         );
-        if (!(await this.complete({ jobId, fencingToken, result }))) {
+        if (attemptCompletion.rowCount !== 1) {
+          throw new ShotgunError({
+            code: 'OUTCOME_UNKNOWN',
+            safeMessage: 'The current worker could not acknowledge its attempt completion.',
+            module: 'connector-runtime-postgres',
+            operation: 'job-attempt-success',
+            correlationId,
+          });
+        }
+        if (!(await this.complete({ jobId, leaseOwner: this.workerId, fencingToken, result }))) {
           throw new ShotgunError({
             code: 'OUTCOME_UNKNOWN',
             safeMessage: 'The job lease was lost before completion was acknowledged.',
@@ -718,16 +750,36 @@ export class PostgresJobRuntime implements JobRuntimePort {
             })
           : observedError;
         if (!operationSucceeded) {
-          await this.pool.query(
-            `UPDATE connector.job_attempts SET status='failed', error_code=$2,
-             finished_at=clock_timestamp() WHERE attempt_id=$1`,
-            [attempt.attemptId, shotgunError.code],
+          const attemptFailure = await this.pool.query(
+            `UPDATE connector.job_attempts AS a
+             SET status='failed', error_code=$5, finished_at=clock_timestamp()
+             WHERE a.attempt_id=$1 AND a.job_id=$2 AND a.worker_id=$3
+               AND a.fencing_token=$4 AND a.status='running'
+               AND EXISTS (
+                 SELECT 1 FROM connector.jobs AS j
+                 WHERE j.job_id=a.job_id AND j.status='running'
+                   AND j.lease_owner=$3 AND j.fencing_token=$4
+                   AND j.lease_expires_at IS NOT NULL
+                   AND j.lease_expires_at > clock_timestamp()
+               )`,
+            [attempt.attemptId, jobId, this.workerId, fencingToken, shotgunError.code],
           );
+          if (attemptFailure.rowCount !== 1) {
+            throw new ShotgunError({
+              code: 'OUTCOME_UNKNOWN',
+              safeMessage: 'The job lease was lost before failure evidence was acknowledged.',
+              module: 'connector-runtime-postgres',
+              operation: 'job-attempt-failure',
+              correlationId,
+              cause: shotgunError,
+            });
+          }
         }
         if (operationSucceeded) {
           try {
             await this.terminal({
               jobId,
+              leaseOwner: this.workerId,
               fencingToken,
               status: 'outcome-unknown',
               safeErrorCode: 'OUTCOME_UNKNOWN',
@@ -744,6 +796,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
           const nextDelayMs = this.baseDelayMs * 2 ** index;
           const retained = await this.retry({
             jobId,
+            leaseOwner: this.workerId,
             fencingToken,
             nextAttemptAt: new Date(Date.now() + nextDelayMs).toISOString(),
             safeErrorCode: shotgunError.code,
@@ -762,6 +815,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
         }
         const terminal = await this.terminal({
           jobId,
+          leaseOwner: this.workerId,
           fencingToken,
           status: shotgunError.code === 'OUTCOME_UNKNOWN' ? 'outcome-unknown' : 'failed',
           safeErrorCode: shotgunError.code,
@@ -1335,16 +1389,29 @@ export class PostgresConnectorRuntimeState implements ConnectorRuntimeStatePort 
       await withSafePostgresTransaction(
         this.pool,
         async (client) => {
-          const result = await client.query<{ dedup_record_id: string }>(
+          const result = await client.query<{
+            job_id: string;
+            dedup_record_id: string;
+            fencing_token: number | string;
+          }>(
             `UPDATE connector.jobs
              SET status='outcome-unknown', safe_error_code='OUTCOME_UNKNOWN',
                  safe_error_message='Worker lease expired before completion was acknowledged.',
                  lease_owner=NULL, lease_expires_at=NULL, updated_at=clock_timestamp()
              WHERE status='running' AND lease_expires_at IS NOT NULL
                AND lease_expires_at < clock_timestamp()
-             RETURNING dedup_record_id`,
+             RETURNING job_id, dedup_record_id, fencing_token`,
           );
           if (result.rows.length > 0) {
+            await client.query(
+              `UPDATE connector.job_attempts AS a
+               SET status='failed', error_code='OUTCOME_UNKNOWN', finished_at=clock_timestamp()
+               FROM connector.jobs AS j
+               WHERE j.job_id=a.job_id AND j.status='outcome-unknown'
+                 AND j.job_id = ANY($1::uuid[])
+                 AND a.fencing_token=j.fencing_token AND a.status='running'`,
+              [result.rows.map((row) => row.job_id)],
+            );
             await client.query(
               `UPDATE connector.dedup_records
                SET state='OUTCOME_UNKNOWN', safe_error_code='OUTCOME_UNKNOWN',

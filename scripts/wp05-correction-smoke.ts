@@ -115,6 +115,7 @@ const main = async (): Promise<void> => {
   if (
     !(await retryJobs.retry({
       jobId: retryBegin.record.jobId!,
+      leaseOwner: 'smoke-worker',
       fencingToken: retryLease.fencingToken,
       nextAttemptAt: new Date(Date.now() + 1).toISOString(),
       safeErrorCode: 'RETRYABLE_DEPENDENCY',

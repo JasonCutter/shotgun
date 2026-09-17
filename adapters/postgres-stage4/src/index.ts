@@ -24,6 +24,7 @@ import {
   ShotgunError,
   type ValidationResult,
 } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 type ProviderCallRow = QueryResultRow & {
   readonly call_id: string;
@@ -92,6 +93,9 @@ type BatchRow = QueryResultRow & {
   readonly provider_call: AIProviderCall;
   readonly created_at: Date;
 };
+
+const isOutcomeUnknown = (error: unknown): error is ShotgunError =>
+  error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
 
 type CandidateRow = QueryResultRow & {
   readonly candidate_id: string;
@@ -365,45 +369,70 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
     projectId: string,
     requestId: string,
   ): Promise<ClaimedProviderAttempt | undefined> {
-    const client = await this.pool.connect();
+    const attemptId = randomUUID();
+    let intendedClaim:
+      | {
+          readonly callId: string;
+          readonly attempt: AIProviderAttempt;
+        }
+      | undefined;
     try {
-      await client.query('BEGIN');
-      const record = await loadProviderRecord(client, projectId, requestId, true);
-      if (
-        !record ||
-        !(
-          record.state === 'REQUESTED' ||
-          (record.state === 'PROVIDER_FAILED' &&
-            isRetryableAIProviderErrorCode(record.attempts.at(-1)?.errorCode ?? 'TERMINAL_FAILURE'))
-        ) ||
-        record.attempts.length >= record.maxAttempts
-      ) {
-        await client.query('COMMIT');
-        return undefined;
-      }
-      const attempt: AIProviderAttempt = {
-        attemptId: randomUUID(),
-        attemptNumber: record.attempts.length + 1,
-        status: 'running',
-        latencyMs: 0,
-      };
-      await client.query(
-        `INSERT INTO ai.provider_attempts (attempt_id, call_id, attempt_number, status, latency_ms, started_at, lease_expires_at)
-         VALUES ($1,$2,$3,'running',0,now(),now() + interval '5 minutes')`,
-        [attempt.attemptId, record.callId, attempt.attemptNumber],
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const record = await loadProviderRecord(client, projectId, requestId, true);
+          if (
+            !record ||
+            !(
+              record.state === 'REQUESTED' ||
+              (record.state === 'PROVIDER_FAILED' &&
+                isRetryableAIProviderErrorCode(
+                  record.attempts.at(-1)?.errorCode ?? 'TERMINAL_FAILURE',
+                ))
+            ) ||
+            record.attempts.length >= record.maxAttempts
+          ) {
+            return undefined;
+          }
+          const attempt: AIProviderAttempt = {
+            attemptId,
+            attemptNumber: record.attempts.length + 1,
+            status: 'running',
+            latencyMs: 0,
+          };
+          intendedClaim = { callId: record.callId, attempt };
+          await client.query(
+            `INSERT INTO ai.provider_attempts (attempt_id, call_id, attempt_number, status, latency_ms, started_at, lease_expires_at)
+             VALUES ($1,$2,$3,'running',0,now(),now() + interval '5 minutes')`,
+            [attempt.attemptId, record.callId, attempt.attemptNumber],
+          );
+          await client.query(
+            `UPDATE ai.provider_calls SET durable_state = 'PROVIDER_RUNNING', status = 'failed', updated_at = now() WHERE call_id = $1`,
+            [record.callId],
+          );
+          const claimed = await loadProviderRecord(client, projectId, requestId);
+          return claimed ? { record: claimed, attempt } : undefined;
+        },
+        { module: 'postgres-stage4', operation: 'claim-provider-attempt' },
       );
-      await client.query(
-        `UPDATE ai.provider_calls SET durable_state = 'PROVIDER_RUNNING', status = 'failed', updated_at = now() WHERE call_id = $1`,
-        [record.callId],
-      );
-      const claimed = await loadProviderRecord(client, projectId, requestId);
-      await client.query('COMMIT');
-      return claimed ? { record: claimed, attempt } : undefined;
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (!isOutcomeUnknown(error) || !intendedClaim) throw error;
+      const durable = await loadProviderRecord(this.pool, projectId, requestId);
+      const durableAttempt = durable?.attempts.find(
+        (attempt) =>
+          attempt.attemptId === intendedClaim!.attempt.attemptId &&
+          attempt.attemptNumber === intendedClaim!.attempt.attemptNumber &&
+          attempt.status === 'running',
+      );
+      if (
+        durable?.callId === intendedClaim.callId &&
+        durable.state === 'PROVIDER_RUNNING' &&
+        durableAttempt &&
+        !durable.output
+      ) {
+        return { record: durable, attempt: intendedClaim.attempt };
+      }
       throw error;
-    } finally {
-      client.release();
     }
   }
 

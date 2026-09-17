@@ -179,8 +179,16 @@ export class PostgresDiscoveryModelProfileRepository implements DiscoveryModelPr
           input.next.projectId,
           input.next.profileRevision,
         ).catch(() => undefined);
-        if (matchesProfile(persisted, input.next)) {
-          return input.expectedRevision === 0 ? 'CREATED' : 'UPDATED';
+        if (persisted !== undefined) {
+          return matchesProfile(persisted, input.next)
+            ? input.expectedRevision === 0
+              ? 'CREATED'
+              : 'UPDATED'
+            : 'CONFLICT';
+        }
+        const current = await this.findCurrent(input.next.projectId).catch(() => undefined);
+        if (current && current.profileRevision > input.expectedRevision) {
+          return 'CONFLICT';
         }
       }
       if (isUniqueViolation(error)) return 'CONFLICT';

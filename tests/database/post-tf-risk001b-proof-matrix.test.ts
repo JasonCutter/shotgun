@@ -24,6 +24,7 @@ import {
   DISCOVERY_MODEL_PROFILE_SCHEMA_VERSION,
   type DiscoveryModelProfileV1,
 } from '../../packages/contracts/src/index.js';
+import { hashPassword } from '../../packages/authentication/src/index.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
 /**
@@ -112,7 +113,17 @@ const expectAckLoss = (trace: AckLossTrace): void => {
     commitAttempts: 1,
     commitSucceeded: true,
     acknowledgementLost: true,
+    postCommitRollbackAttempts: 0,
   });
+};
+
+const expectLegacyAckLoss = (trace: AckLossTrace): void => {
+  expect(trace).toMatchObject({
+    commitAttempts: 1,
+    commitSucceeded: true,
+    acknowledgementLost: true,
+  });
+  expect(trace.postCommitRollbackAttempts).toBeGreaterThan(0);
 };
 
 const sha256 = (value: string): string =>
@@ -438,7 +449,7 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
         authority(),
       ).replace(input),
     ).rejects.toThrow('synthetic commit acknowledgement loss');
-    expectAckLoss(injected.trace);
+    expectLegacyAckLoss(injected.trace);
     const recovered = await cleanVault.replace(input);
     expect(recovered).toMatchObject({
       credentialId: first.credentialId,
@@ -490,6 +501,67 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
 
   it('discovery model profile updateStatus: durable activation recovers with a full witness', async () => {
     const projectId = `post-tf-risk001b-profile-status-${randomUUID()}`;
+    const existingActive = makeDiscoveryProfile(projectId, randomUUID());
+    const target = { ...makeDiscoveryProfile(projectId, randomUUID()), profileRevision: 2 };
+    const clean = new PostgresDiscoveryModelProfileRepository(pool);
+    await expect(clean.saveRevision({ expectedRevision: 0, next: existingActive })).resolves.toBe(
+      'CREATED',
+    );
+    await expect(
+      clean.updateStatus({
+        projectId,
+        profileId: existingActive.profileId,
+        profileRevision: existingActive.profileRevision,
+        expectedStatus: 'PREPARED',
+        status: 'ACTIVE',
+        updatedAt: '2026-09-17T08:00:01.000Z',
+      }),
+    ).resolves.toMatchObject({ profileId: existingActive.profileId, status: 'ACTIVE' });
+    await expect(clean.saveRevision({ expectedRevision: 1, next: target })).resolves.toBe(
+      'UPDATED',
+    );
+    const input = {
+      projectId,
+      profileId: target.profileId,
+      profileRevision: target.profileRevision,
+      expectedStatus: 'PREPARED' as const,
+      status: 'ACTIVE' as const,
+      updatedAt: '2026-09-17T08:00:02.000Z',
+    };
+    const injected = createCommitAckLossPool(pool);
+    const recovered = await new PostgresDiscoveryModelProfileRepository(injected.pool).updateStatus(
+      input,
+    );
+    expect(recovered).toMatchObject({
+      profileId: target.profileId,
+      status: 'ACTIVE',
+      activatedAt: input.updatedAt,
+    });
+    expect(await clean.findRevision(projectId, existingActive.profileRevision)).toMatchObject({
+      profileId: existingActive.profileId,
+      status: 'RETIRED',
+      retiredAt: input.updatedAt,
+    });
+    expect(
+      await pool.query<{ profile_id: string }>(
+        `SELECT profile_id FROM discovery.model_profiles
+         WHERE project_id = $1 AND status = 'ACTIVE'`,
+        [projectId],
+      ),
+    ).toMatchObject({ rows: [{ profile_id: target.profileId }] });
+    expectAckLoss(injected.trace);
+    await expect(clean.updateStatus(input)).resolves.toBe('CONFLICT');
+    recordProof({
+      surface: 'Discovery model profile',
+      operation: 'updateStatus ACTIVE',
+      classification: 'GREEN_RECOVERED',
+      observed:
+        'COMMIT durable; target ACTIVE, prior ACTIVE retired, exactly one ACTIVE remains, and stale PREPARED retry is CONFLICT',
+    });
+  });
+
+  it('discovery model profile updateStatus RETIRED: ambiguous commit recovers the target witness', async () => {
+    const projectId = `post-tf-risk001b-profile-retired-${randomUUID()}`;
     const profile = makeDiscoveryProfile(projectId, randomUUID());
     const clean = new PostgresDiscoveryModelProfileRepository(pool);
     await expect(clean.saveRevision({ expectedRevision: 0, next: profile })).resolves.toBe(
@@ -498,24 +570,33 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
     const input = {
       projectId,
       profileId: profile.profileId,
-      profileRevision: 1,
+      profileRevision: profile.profileRevision,
       expectedStatus: 'PREPARED' as const,
-      status: 'ACTIVE' as const,
-      updatedAt: '2026-09-17T08:00:01.000Z',
+      status: 'RETIRED' as const,
+      updatedAt: '2026-09-17T08:00:03.000Z',
     };
     const injected = createCommitAckLossPool(pool);
-    await expect(
-      new PostgresDiscoveryModelProfileRepository(injected.pool).updateStatus(input),
-    ).resolves.toMatchObject({ profileId: profile.profileId, status: 'ACTIVE' });
+    const recovered = await new PostgresDiscoveryModelProfileRepository(injected.pool).updateStatus(
+      input,
+    );
+    expect(recovered).toMatchObject({
+      profileId: profile.profileId,
+      status: 'RETIRED',
+      retiredAt: input.updatedAt,
+    });
+    expect(await clean.findRevision(projectId, profile.profileRevision)).toMatchObject({
+      profileId: profile.profileId,
+      status: 'RETIRED',
+      retiredAt: input.updatedAt,
+    });
     expectAckLoss(injected.trace);
-    expect(await clean.findRevision(projectId, 1)).toMatchObject({ status: 'ACTIVE' });
     await expect(clean.updateStatus(input)).resolves.toBe('CONFLICT');
     recordProof({
       surface: 'Discovery model profile',
-      operation: 'updateStatus',
+      operation: 'updateStatus RETIRED',
       classification: 'GREEN_RECOVERED',
       observed:
-        'COMMIT durable; target ACTIVE plus all retired witnesses are verified; stale PREPARED retry remains CONFLICT',
+        'COMMIT durable; exact RETIRED target readback recovers success; stale retry is CONFLICT',
     });
   });
 
@@ -527,7 +608,7 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
     await expect(
       new PostgresSourcesIntakeUnitOfWork(injected.pool).createSubmission(input),
     ).rejects.toThrow('synthetic commit acknowledgement loss');
-    expectAckLoss(injected.trace);
+    expectLegacyAckLoss(injected.trace);
     const replayed = await clean.createSubmission(input);
     expect(replayed).toMatchObject({
       submissionId: input.submissionId,
@@ -609,7 +690,7 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
     await expect(
       new PostgresSourcesProductService(injected.pool, {} as never).submit(input),
     ).rejects.toThrow('synthetic commit acknowledgement loss');
-    expectAckLoss(injected.trace);
+    expectLegacyAckLoss(injected.trace);
     const retried = await new PostgresSourcesProductService(pool, {} as never).submit(input);
     expect(retried).toMatchObject({ state: 'ACTION_REQUIRED' });
     expect(
@@ -645,7 +726,7 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
     await expect(
       new PostgresPayloadStateStore(injected.pool, 'SETTINGS').setPayloadState(input),
     ).rejects.toThrow('synthetic commit acknowledgement loss');
-    expectAckLoss(injected.trace);
+    expectLegacyAckLoss(injected.trace);
     expect(
       await new PostgresPayloadStateStore(pool, 'SETTINGS').getPayloadState(
         input.resourceProjectId,
@@ -673,7 +754,7 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
     await expect(new PostgresActivityIndexStore(injected.pool).upsert(record)).rejects.toThrow(
       'synthetic commit acknowledgement loss',
     );
-    expectAckLoss(injected.trace);
+    expectLegacyAckLoss(injected.trace);
     const clean = new PostgresActivityIndexStore(pool);
     await expect(
       clean.findByIdentity({
@@ -700,6 +781,7 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
       projectId,
       scopes: ['owner'] as const,
       sensitivityClearance: 'private' as const,
+      passwordHash: await hashPassword('post-tf-risk001b-password'),
     };
     const injected = createCommitAckLossPool(pool);
     await expect(
@@ -709,6 +791,51 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
     expect(
       await new PostgresAuthRepository(pool).findOwnerMembership(accountId, projectId),
     ).toBeDefined();
+    const credentialWitness = await pool.query<{
+      credential_id: string;
+      principal_id: string;
+      account_id: string;
+      credential_type: string;
+      password_hash: string;
+      project_id: string;
+      is_owner: boolean;
+    }>(
+      `SELECT c.credential_id::text, c.principal_id::text, c.account_id,
+              c.credential_type, c.password_hash, m.project_id, m.is_owner
+       FROM auth.credentials c
+       JOIN auth.project_memberships m ON m.principal_id = c.principal_id
+       WHERE c.account_id = $1 AND m.project_id = $2`,
+      [accountId.toLowerCase(), projectId],
+    );
+    const credentialRow = credentialWitness.rows[0];
+    expect(credentialRow).toMatchObject({
+      principal_id: expect.any(String),
+      account_id: accountId.toLowerCase(),
+      credential_type: 'local_password',
+      password_hash: input.passwordHash,
+      project_id: projectId,
+      is_owner: true,
+    });
+    expect(credentialRow?.credential_id).toEqual(expect.any(String));
+    expect(
+      await pool.query(
+        `SELECT credential_id::text, principal_id::text, account_id,
+                credential_type, password_hash
+         FROM auth.credentials
+         WHERE credential_id = $1`,
+        [credentialRow?.credential_id],
+      ),
+    ).toMatchObject({
+      rows: [
+        {
+          credential_id: credentialRow?.credential_id,
+          principal_id: credentialRow?.principal_id,
+          account_id: accountId.toLowerCase(),
+          credential_type: 'local_password',
+          password_hash: input.passwordHash,
+        },
+      ],
+    });
     await expect(new PostgresAuthRepository(pool).bootstrapOwner(input)).rejects.toThrow(
       /active Owner already exists|already in use/,
     );
@@ -728,7 +855,7 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
     await expect(
       new PostgresAuthRepository(injected.pool).bootstrapLocalOwnerPrincipal(input),
     ).rejects.toThrow('synthetic commit acknowledgement loss');
-    expectAckLoss(injected.trace);
+    expectLegacyAckLoss(injected.trace);
     const clean = new PostgresAuthRepository(pool);
     const durable = await clean.findPrincipalByAccountId(accountId);
     expect(durable).toBeDefined();

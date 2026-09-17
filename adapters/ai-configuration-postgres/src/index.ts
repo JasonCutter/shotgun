@@ -169,8 +169,16 @@ export class PostgresProjectAIConfigurationRepository implements ProjectAIConfig
           input.next.projectId,
           input.next.aiConfigurationRevision,
         ).catch(() => undefined);
-        if (matchesConfiguration(persisted, input.next)) {
-          return input.expectedRevision === 0 ? 'CREATED' : 'UPDATED';
+        if (persisted !== undefined) {
+          return matchesConfiguration(persisted, input.next)
+            ? input.expectedRevision === 0
+              ? 'CREATED'
+              : 'UPDATED'
+            : 'CONFLICT';
+        }
+        const current = await this.findCurrent(input.next.projectId).catch(() => undefined);
+        if (current && current.aiConfigurationRevision > input.expectedRevision) {
+          return 'CONFLICT';
         }
       }
       if ((error as { code?: string }).code === '23505') return 'CONFLICT';

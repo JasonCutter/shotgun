@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 
 import { PostgresComparisonV2Repository } from '../../adapters/postgres-stage5/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
@@ -28,6 +28,54 @@ import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.j
 
 const databaseUrl = await requireTestDatabaseTarget();
 const pool: Pool = createPostgresPool(databaseUrl);
+
+type CommitAckLossTrace = {
+  commitAttempts: number;
+  commitSucceeded: boolean;
+  acknowledgementLost: boolean;
+  rollbackAttempts: number;
+  authoritativeReadbacks: number;
+};
+
+const createCommitAckLossPool = (
+  realPool: Pool,
+): { readonly pool: Pool; readonly trace: CommitAckLossTrace } => {
+  const trace: CommitAckLossTrace = {
+    commitAttempts: 0,
+    commitSucceeded: false,
+    acknowledgementLost: false,
+    rollbackAttempts: 0,
+    authoritativeReadbacks: 0,
+  };
+  const readPool = async (sql: string, values?: readonly unknown[]) => {
+    if (sql.includes('FROM comparison.analysis_revisions_v2') && !sql.includes('FOR UPDATE')) {
+      trace.authoritativeReadbacks += 1;
+    }
+    return values === undefined ? realPool.query(sql) : realPool.query(sql, [...values]);
+  };
+  const faultPool = {
+    query: readPool,
+    connect: async (): Promise<PoolClient> => {
+      const realClient = await realPool.connect();
+      const client = {
+        query: async (sql: string, values?: readonly unknown[]) => {
+          if (sql === 'COMMIT') {
+            trace.commitAttempts += 1;
+            await realClient.query('COMMIT');
+            trace.commitSucceeded = true;
+            trace.acknowledgementLost = true;
+            throw new Error('synthetic commit acknowledgement loss');
+          }
+          if (sql === 'ROLLBACK') trace.rollbackAttempts += 1;
+          return values === undefined ? realClient.query(sql) : realClient.query(sql, [...values]);
+        },
+        release: () => realClient.release(),
+      };
+      return client as unknown as PoolClient;
+    },
+  } as unknown as Pool;
+  return { pool: faultPool, trace };
+};
 
 const digest = (value: unknown): string => sha256Text(stableJson(value));
 
@@ -593,6 +641,82 @@ describe.runIf(pool)('Stage 5 WP2 PostgreSQL Comparison v2 persistence', () => {
     expect(
       (await repository.findAnalysisRevision(projectId, analysis.analysisRevisionId))?.state,
     ).toBe('ANALYZING');
+  });
+
+  it('WP2 GREEN reconciles a durable commit with lost acknowledgement and protects exact retry', async () => {
+    const projectId = `wp2-red-${randomUUID()}`;
+    const fixture = makeCandidate(projectId);
+    await insertCandidate(pool!, projectId, fixture);
+    const analysis = makeAnalysis({
+      comparisonId: randomUUID(),
+      candidate: fixture.candidate,
+      snapshot: makeSnapshot(projectId),
+      resourceIds: ['claim-red'],
+      state: 'ANALYZING',
+    });
+    const cleanRepository = new PostgresComparisonV2Repository(pool!);
+    await cleanRepository.saveAnalysisRevision({ projectId, revision: analysis });
+    expect(
+      await cleanRepository.findAnalysisRevision(projectId, analysis.analysisRevisionId),
+    ).toEqual(analysis);
+
+    const injected = createCommitAckLossPool(pool!);
+    const faultyRepository = new PostgresComparisonV2Repository(injected.pool);
+    const transition = {
+      projectId,
+      analysisRevisionId: analysis.analysisRevisionId,
+      expectedState: 'ANALYZING' as const,
+      nextState: 'COMPLETED' as const,
+      updates: {
+        completedAt: '2026-09-05T00:00:02.000Z',
+        durationMs: 2000,
+        outputDigest: digest('red-output'),
+        materialDigest: digest('red-material'),
+      },
+    };
+
+    const reconciled = await faultyRepository.transitionAnalysisRevision(transition);
+    const intended = {
+      ...analysis,
+      ...transition.updates,
+      state: 'COMPLETED' as const,
+      outcome: 'COMPLETED' as const,
+    };
+    expect(reconciled).toEqual(intended);
+    expect(injected.trace).toEqual({
+      commitAttempts: 1,
+      commitSucceeded: true,
+      acknowledgementLost: true,
+      rollbackAttempts: 0,
+      authoritativeReadbacks: 1,
+    });
+
+    expect(
+      await cleanRepository.findAnalysisRevision(projectId, analysis.analysisRevisionId),
+    ).toEqual(intended);
+    await expect(cleanRepository.transitionAnalysisRevision(transition)).rejects.toMatchObject({
+      code: 'STALE_VERSION',
+    });
+    expect(
+      (
+        await pool!.query(
+          'SELECT count(*)::int AS count FROM comparison.analysis_revisions_v2 WHERE project_id = $1 AND analysis_revision_id = $2',
+          [projectId, analysis.analysisRevisionId],
+        )
+      ).rows[0].count,
+    ).toBe(1);
+  });
+
+  it('WP2 preserves NOT_FOUND for a missing AnalysisRevision', async () => {
+    const repository = new PostgresComparisonV2Repository(pool!);
+    await expect(
+      repository.transitionAnalysisRevision({
+        projectId: `wp2-missing-${randomUUID()}`,
+        analysisRevisionId: randomUUID(),
+        expectedState: 'ANALYZING',
+        nextState: 'COMPLETED',
+      }),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
   it('P2-10 preserves an unresolved ANALYZING attempt across repository restart', async () => {

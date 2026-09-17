@@ -50,6 +50,7 @@ import {
   validateApprovedChangeSetManifestV2,
   shortlistAuditDigestV2,
 } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 type ComparisonRow = QueryResultRow & {
   readonly result_json: ComparisonResult;
@@ -265,6 +266,20 @@ const normalizedAnalysis = (analysis: AnalysisRevisionV2): string =>
     ),
   });
 
+const normalizedAnalysisMaterial = (analysis: AnalysisRevisionV2): string =>
+  stableJson({
+    ...analysis,
+    candidate: {
+      ...analysis.candidate,
+      evidenceIds: [...analysis.candidate.evidenceIds].sort(),
+    },
+    comparedResourceIdentities: [...analysis.comparedResourceIdentities].sort((left, right) =>
+      `${left.resourceType}:${left.resourceId}:${left.resourceRevision}`.localeCompare(
+        `${right.resourceType}:${right.resourceId}:${right.resourceRevision}`,
+      ),
+    ),
+  });
+
 const normalizedRelationship = (relationship: SemanticRelationshipV2): string =>
   stableJson({
     ...relationship,
@@ -345,6 +360,9 @@ const dbError = (error: unknown, operation: string): ShotgunError => {
         cause: error,
       });
 };
+
+const isOutcomeUnknown = (error: unknown): error is ShotgunError =>
+  error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
 
 type PostgresComparisonV2RepositoryOptions = {
   readonly writeEnabled?: boolean;
@@ -610,74 +628,125 @@ export class PostgresComparisonV2Repository implements ComparisonV2RepositoryPor
     transition: AnalysisRevisionTransitionV2,
   ): Promise<AnalysisRevisionV2> {
     this.assertWriterEnabled('transition-analysis-revision-v2');
-    return this.withTransaction('transition-analysis-revision-v2', async (client) => {
-      const result = await client.query<AnalysisV2Row>(
-        `SELECT analysis_json
-         FROM comparison.analysis_revisions_v2
-         WHERE project_id = $1 AND analysis_revision_id = $2
-         FOR UPDATE`,
-        [transition.projectId, transition.analysisRevisionId],
+    const operation = 'transition-analysis-revision-v2';
+    let expected: AnalysisRevisionV2 | undefined;
+    let intended: AnalysisRevisionV2 | undefined;
+    try {
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const result = await client.query<AnalysisV2Row>(
+            `SELECT analysis_json
+             FROM comparison.analysis_revisions_v2
+             WHERE project_id = $1 AND analysis_revision_id = $2
+             FOR UPDATE`,
+            [transition.projectId, transition.analysisRevisionId],
+          );
+          const currentRow = result.rows[0];
+          if (!currentRow) {
+            throw new ShotgunError({
+              code: 'NOT_FOUND',
+              safeMessage: 'The AnalysisRevision was not found.',
+              module: 'postgres-stage5',
+              operation,
+            });
+          }
+          const current = validatedAnalysis(currentRow.analysis_json, operation);
+          validateAnalysisRevisionV2(current);
+          if (current.state !== transition.expectedState) {
+            throw new ShotgunError({
+              code: 'STALE_VERSION',
+              safeMessage: 'The AnalysisRevision state changed before transition.',
+              module: 'postgres-stage5',
+              operation,
+            });
+          }
+          expected = current;
+          assertAnalysisStateTransitionV2(current.state, transition.nextState);
+          const updates = transition.updates ?? {};
+          const terminal = !['PENDING', 'ANALYZING'].includes(transition.nextState);
+          const updated: AnalysisRevisionV2 = {
+            ...current,
+            ...updates,
+            state: transition.nextState,
+            outcome: terminal ? (transition.nextState as AnalysisOutcomeV2) : undefined,
+            completedAt: terminal ? (updates.completedAt ?? current.completedAt) : undefined,
+            safeFailureCode:
+              terminal && transition.nextState !== 'COMPLETED'
+                ? (updates.safeFailureCode ?? current.safeFailureCode)
+                : undefined,
+          };
+          validateAnalysisRevisionV2(updated);
+          intended = updated;
+          await client.query(
+            `UPDATE comparison.analysis_revisions_v2
+             SET state = $3, outcome = $4, started_at = $5, completed_at = $6,
+                 duration_ms = $7, output_digest = $8, material_digest = $9,
+                 safe_failure_code = $10, analysis_json = $11
+             WHERE project_id = $1 AND analysis_revision_id = $2 AND state = $12`,
+            [
+              transition.projectId,
+              transition.analysisRevisionId,
+              updated.state,
+              updated.outcome ?? null,
+              updated.startedAt,
+              updated.completedAt ?? null,
+              updated.durationMs ?? null,
+              updated.outputDigest ?? null,
+              updated.materialDigest ?? null,
+              updated.safeFailureCode ?? null,
+              JSON.stringify(updated),
+              transition.expectedState,
+            ],
+          );
+          return updated;
+        },
+        { module: 'postgres-stage5', operation },
       );
-      const currentRow = result.rows[0];
-      if (!currentRow) {
-        throw new ShotgunError({
-          code: 'NOT_FOUND',
-          safeMessage: 'The AnalysisRevision was not found.',
-          module: 'postgres-stage5',
-          operation: 'transition-analysis-revision-v2',
-        });
-      }
-      const current = validatedAnalysis(
-        currentRow.analysis_json,
-        'transition-analysis-revision-v2',
-      );
-      validateAnalysisRevisionV2(current);
-      if (current.state !== transition.expectedState) {
-        throw new ShotgunError({
-          code: 'STALE_VERSION',
-          safeMessage: 'The AnalysisRevision state changed before transition.',
-          module: 'postgres-stage5',
-          operation: 'transition-analysis-revision-v2',
-        });
-      }
-      assertAnalysisStateTransitionV2(current.state, transition.nextState);
-      const updates = transition.updates ?? {};
-      const terminal = !['PENDING', 'ANALYZING'].includes(transition.nextState);
-      const updated: AnalysisRevisionV2 = {
-        ...current,
-        ...updates,
-        state: transition.nextState,
-        outcome: terminal ? (transition.nextState as AnalysisOutcomeV2) : undefined,
-        completedAt: terminal ? (updates.completedAt ?? current.completedAt) : undefined,
-        safeFailureCode:
-          terminal && transition.nextState !== 'COMPLETED'
-            ? (updates.safeFailureCode ?? current.safeFailureCode)
-            : undefined,
-      };
-      validateAnalysisRevisionV2(updated);
-      await client.query(
-        `UPDATE comparison.analysis_revisions_v2
-         SET state = $3, outcome = $4, started_at = $5, completed_at = $6,
-             duration_ms = $7, output_digest = $8, material_digest = $9,
-             safe_failure_code = $10, analysis_json = $11
-         WHERE project_id = $1 AND analysis_revision_id = $2 AND state = $12`,
-        [
+    } catch (error) {
+      if (isOutcomeUnknown(error) && expected && intended) {
+        const authoritative = await this.findAnalysisRevision(
           transition.projectId,
           transition.analysisRevisionId,
-          updated.state,
-          updated.outcome ?? null,
-          updated.startedAt,
-          updated.completedAt ?? null,
-          updated.durationMs ?? null,
-          updated.outputDigest ?? null,
-          updated.materialDigest ?? null,
-          updated.safeFailureCode ?? null,
-          JSON.stringify(updated),
-          transition.expectedState,
-        ],
-      );
-      return updated;
-    });
+        ).catch(() => undefined);
+        if (
+          authoritative &&
+          normalizedAnalysisMaterial(authoritative) === normalizedAnalysisMaterial(intended)
+        ) {
+          return authoritative;
+        }
+        if (
+          authoritative &&
+          normalizedAnalysisMaterial(authoritative) === normalizedAnalysisMaterial(expected)
+        ) {
+          throw new ShotgunError({
+            code: 'OUTCOME_UNKNOWN',
+            safeMessage: 'The AnalysisRevision transition did not become durable.',
+            module: 'postgres-stage5',
+            operation,
+            cause: error,
+          });
+        }
+        if (authoritative) {
+          throw new ShotgunError({
+            code: 'STALE_VERSION',
+            safeMessage: 'The AnalysisRevision changed while transition outcome was unresolved.',
+            module: 'postgres-stage5',
+            operation,
+            cause: error,
+          });
+        }
+        throw new ShotgunError({
+          code: 'OUTCOME_UNKNOWN',
+          safeMessage: 'The AnalysisRevision transition outcome could not be validated.',
+          module: 'postgres-stage5',
+          operation,
+          cause: error,
+        });
+      }
+      if ((error as { readonly code?: string }).code === 'INVALID_TRANSITION') throw error;
+      throw dbError(error, operation);
+    }
   }
 
   async findAnalysisRevision(

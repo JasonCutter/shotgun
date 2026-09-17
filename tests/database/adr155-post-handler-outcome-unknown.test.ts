@@ -132,7 +132,7 @@ describe('ADR-155 post-handler outcome-unknown conformance', () => {
     const jobId = randomUUID();
     const faultPool = poolThatFailsAfterMatchingQuery(
       pool,
-      (sql) => sql.includes("SET status='succeeded'") && sql.includes('connector.jobs'),
+      (sql) => sql.includes('UPDATE connector.jobs') && sql.includes("SET status='succeeded'"),
     );
     const jobs = new PostgresJobRuntime(faultPool);
     let invocations = 0;
@@ -181,6 +181,7 @@ describe('ADR-155 post-handler outcome-unknown conformance', () => {
       await expect(
         jobs.complete({
           jobId: execution.job.jobId,
+          leaseOwner: 'adr155-stale-worker',
           fencingToken: fencingToken! + 1,
           result: execution.result,
         }),
@@ -197,7 +198,9 @@ describe('ADR-155 post-handler outcome-unknown conformance', () => {
     const jobId = randomUUID();
     const faultPool = poolThatFailsAfterMatchingQuery(
       pool,
-      (sql) => sql.includes("SET status='succeeded'") && sql.includes('connector.job_attempts'),
+      (sql) =>
+        sql.includes('UPDATE connector.job_attempts AS a') &&
+        sql.includes("SET status='succeeded'"),
     );
     const jobs = new PostgresJobRuntime(faultPool);
     let invocations = 0;

@@ -95,11 +95,13 @@ export type JobRuntimePort = {
   }): Promise<boolean>;
   complete(input: {
     readonly jobId: string;
+    readonly leaseOwner: string;
     readonly fencingToken: number;
     readonly result: unknown;
   }): Promise<boolean>;
   retry(input: {
     readonly jobId: string;
+    readonly leaseOwner: string;
     readonly fencingToken: number;
     readonly nextAttemptAt: string;
     readonly safeErrorCode: string;
@@ -107,6 +109,7 @@ export type JobRuntimePort = {
   }): Promise<boolean>;
   terminal(input: {
     readonly jobId: string;
+    readonly leaseOwner: string;
     readonly fencingToken: number;
     readonly status: 'failed' | 'outcome-unknown' | 'dead-letter';
     readonly safeErrorCode: string;

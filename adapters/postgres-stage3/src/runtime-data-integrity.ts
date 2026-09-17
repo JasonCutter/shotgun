@@ -21,11 +21,28 @@ import type {
   SourcesStage4ContinuationStorePort,
 } from '../../../modules/frontend-sources-write/src/index.js';
 import type { SaveTransformationInput } from '../../../modules/transformation/src/index.js';
-import { sha256Text, ShotgunError, stableJson } from '../../../packages/contracts/src/index.js';
+import type { SavedTransformation } from '../../../modules/transformation/src/index.js';
+import {
+  sha256Text,
+  ShotgunError,
+  stableJson,
+  type EvidenceSpan,
+} from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import { PostgresEvidenceRepository, PostgresTransformationRepository } from './index.js';
 
 const nowIso = (): string => new Date().toISOString();
 const MAX_STAGE3_LEASE_DURATION_MS = 5 * 60_000;
+
+type Stage3AtomicPersistenceResult = {
+  readonly saved: SavedTransformation;
+  readonly indexed: { readonly items: readonly EvidenceSpan[]; readonly reusedCount: number };
+  readonly indexingResultId: string;
+  readonly continuationId?: string;
+};
+
+const isOutcomeUnknown = (error: unknown): error is ShotgunError =>
+  error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
 
 const validateLeaseInput = (now: string | undefined, leaseDurationMs: number): string => {
   const resolvedNow = now ?? nowIso();
@@ -94,147 +111,170 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
     readonly now?: string;
   }): Promise<SourcesStage3ClaimResult> {
     const now = validateLeaseInput(input.now, input.leaseDurationMs);
-    const client = await this.pool.connect();
-    let active = false;
+    const leaseToken = randomUUID();
+    let intendedClaim:
+      | {
+          readonly fencingToken: number;
+          readonly leaseToken: string;
+        }
+      | undefined;
     try {
-      await client.query('BEGIN');
-      active = true;
-      const row = await client.query<{
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const row = await client.query<{
+            state: SourcesStage3ProgressState;
+            fencing_token: string;
+            lease_expires_at: Date | null;
+            next_attempt_at: Date | null;
+            indexing_result_id: string | null;
+            safe_failure_code: string | null;
+          }>(
+            `SELECT state, fencing_token::text, lease_expires_at, next_attempt_at,
+                    indexing_result_id::text, safe_failure_code
+               FROM source_product.source_stage3_progress
+              WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
+              FOR UPDATE`,
+            [input.projectId, input.sourceId, input.sourceVersionId],
+          );
+          const current = row.rows[0];
+          if (!current) {
+            throw new ShotgunError({
+              code: 'NOT_FOUND',
+              safeMessage: 'Source Stage 3 progress was not materialized.',
+              module: 'postgres-stage3',
+              operation: 'claim-source-stage3',
+            });
+          }
+          if (current.state === 'STAGE3_COMPLETED' || current.state === 'NO_EVIDENCE') {
+            const result = await client.query<{
+              revision_id: string;
+              indexing_result_id: string;
+              evidence_count: number;
+              reused_count: number;
+            }>(
+              `SELECT revision_id::text, indexing_result_id::text, evidence_count, reused_count
+                 FROM evidence.indexing_results
+                WHERE indexing_result_id = $1`,
+              [current.indexing_result_id],
+            );
+            const completed = result.rows[0];
+            if (!completed) throw new Error('Completed Stage 3 progress has no indexing result.');
+            return {
+              status: 'COMPLETED' as const,
+              state: current.state,
+              revisionId: completed.revision_id,
+              indexingResultId: completed.indexing_result_id,
+              evidenceCount: completed.evidence_count,
+              reusedCount: completed.reused_count,
+            };
+          }
+          if (current.state === 'RECONCILIATION_REQUIRED') {
+            return {
+              status: 'BLOCKED' as const,
+              reason:
+                current.safe_failure_code === HISTORICAL_RECONCILIATION_REQUIRED_CODE
+                  ? 'HISTORICAL_RECONCILIATION'
+                  : current.safe_failure_code === STAGE3_RUNTIME_CONTRACT_ERROR_CODE
+                    ? 'RUNTIME_CONTRACT'
+                    : 'TERMINAL_FAILURE',
+            };
+          }
+          if (
+            current.state === 'STAGE3_RUNNING' &&
+            current.lease_expires_at &&
+            current.lease_expires_at.getTime() > Date.parse(now)
+          ) {
+            return { status: 'DEFERRED' as const, reason: 'ACTIVE_LEASE' as const };
+          }
+          if (
+            current.state === 'STAGE3_RETRYABLE' &&
+            current.next_attempt_at &&
+            current.next_attempt_at.getTime() > Date.parse(now)
+          ) {
+            return { status: 'DEFERRED' as const, reason: 'RETRY_NOT_DUE' as const };
+          }
+          if (current.state === 'STAGE3_RUNNING') {
+            await client.query(
+              `UPDATE source_product.source_stage3_progress
+                  SET state = 'STAGE3_RETRYABLE', lease_owner = NULL, lease_token = NULL,
+                      lease_acquired_at = NULL, lease_expires_at = NULL, next_attempt_at = $4::timestamptz,
+                      safe_failure_code = 'LEASE_EXPIRED',
+                      safe_failure_message = 'The previous Stage 3 lease expired.'
+                WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3`,
+              [input.projectId, input.sourceId, input.sourceVersionId, now],
+            );
+          }
+          const updated = await client.query<{ fencing_token: string }>(
+            `UPDATE source_product.source_stage3_progress
+                SET state = 'STAGE3_RUNNING', attempt_count = attempt_count + 1,
+                    next_attempt_at = NULL, lease_owner = $4, lease_token = $5,
+                    lease_acquired_at = $6::timestamptz,
+                    lease_expires_at = $6::timestamptz + ($7::bigint * interval '1 millisecond'),
+                    fencing_token = fencing_token + 1, safe_failure_code = NULL,
+                    safe_failure_message = NULL
+              WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
+                AND state IN ('MATERIALIZED', 'STAGE3_RETRYABLE', 'RECONCILIATION_REQUIRED')
+             RETURNING fencing_token::text`,
+            [
+              input.projectId,
+              input.sourceId,
+              input.sourceVersionId,
+              input.workerId,
+              leaseToken,
+              now,
+              input.leaseDurationMs,
+            ],
+          );
+          const claimed = updated.rows[0];
+          if (!claimed) return { status: 'DEFERRED' as const, reason: 'ACTIVE_LEASE' as const };
+          const fencingToken = Number(claimed.fencing_token);
+          intendedClaim = { fencingToken, leaseToken };
+          return {
+            status: 'CLAIMED' as const,
+            lease: {
+              projectId: input.projectId,
+              sourceId: input.sourceId,
+              sourceVersionId: input.sourceVersionId,
+              fencingToken,
+              leaseToken,
+            },
+          };
+        },
+        { module: 'postgres-stage3', operation: 'claim-source-stage3' },
+      );
+    } catch (error) {
+      if (!isOutcomeUnknown(error) || !intendedClaim) throw error;
+      const result = await this.pool.query<{
         state: SourcesStage3ProgressState;
+        lease_owner: string | null;
+        lease_token: string | null;
         fencing_token: string;
-        lease_expires_at: Date | null;
-        next_attempt_at: Date | null;
-        indexing_result_id: string | null;
-        safe_failure_code: string | null;
       }>(
-        `SELECT state, fencing_token::text, lease_expires_at, next_attempt_at,
-                indexing_result_id::text, safe_failure_code
+        `SELECT state, lease_owner, lease_token, fencing_token::text
            FROM source_product.source_stage3_progress
-          WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
-          FOR UPDATE`,
+          WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3`,
         [input.projectId, input.sourceId, input.sourceVersionId],
       );
-      const current = row.rows[0];
-      if (!current) {
-        throw new ShotgunError({
-          code: 'NOT_FOUND',
-          safeMessage: 'Source Stage 3 progress was not materialized.',
-          module: 'postgres-stage3',
-          operation: 'claim-source-stage3',
-        });
-      }
-      if (current.state === 'STAGE3_COMPLETED' || current.state === 'NO_EVIDENCE') {
-        const result = await client.query<{
-          revision_id: string;
-          indexing_result_id: string;
-          evidence_count: number;
-          reused_count: number;
-        }>(
-          `SELECT revision_id::text, indexing_result_id::text, evidence_count, reused_count
-             FROM evidence.indexing_results
-            WHERE indexing_result_id = $1`,
-          [current.indexing_result_id],
-        );
-        const completed = result.rows[0];
-        if (!completed) throw new Error('Completed Stage 3 progress has no indexing result.');
-        await client.query('COMMIT');
-        active = false;
+      const current = result.rows[0];
+      if (
+        current?.state === 'STAGE3_RUNNING' &&
+        current.lease_owner === input.workerId &&
+        current.lease_token === intendedClaim.leaseToken &&
+        Number(current.fencing_token) === intendedClaim.fencingToken
+      ) {
         return {
-          status: 'COMPLETED',
-          state: current.state,
-          revisionId: completed.revision_id,
-          indexingResultId: completed.indexing_result_id,
-          evidenceCount: completed.evidence_count,
-          reusedCount: completed.reused_count,
+          status: 'CLAIMED',
+          lease: {
+            projectId: input.projectId,
+            sourceId: input.sourceId,
+            sourceVersionId: input.sourceVersionId,
+            fencingToken: intendedClaim.fencingToken,
+            leaseToken: intendedClaim.leaseToken,
+          },
         };
       }
-      if (current.state === 'RECONCILIATION_REQUIRED') {
-        await client.query('COMMIT');
-        active = false;
-        return {
-          status: 'BLOCKED',
-          reason:
-            current.safe_failure_code === HISTORICAL_RECONCILIATION_REQUIRED_CODE
-              ? 'HISTORICAL_RECONCILIATION'
-              : current.safe_failure_code === STAGE3_RUNTIME_CONTRACT_ERROR_CODE
-                ? 'RUNTIME_CONTRACT'
-                : 'TERMINAL_FAILURE',
-        };
-      }
-      if (
-        current.state === 'STAGE3_RUNNING' &&
-        current.lease_expires_at &&
-        current.lease_expires_at.getTime() > Date.parse(now)
-      ) {
-        await client.query('COMMIT');
-        active = false;
-        return { status: 'DEFERRED', reason: 'ACTIVE_LEASE' };
-      }
-      if (
-        current.state === 'STAGE3_RETRYABLE' &&
-        current.next_attempt_at &&
-        current.next_attempt_at.getTime() > Date.parse(now)
-      ) {
-        await client.query('COMMIT');
-        active = false;
-        return { status: 'DEFERRED', reason: 'RETRY_NOT_DUE' };
-      }
-      if (current.state === 'STAGE3_RUNNING') {
-        await client.query(
-          `UPDATE source_product.source_stage3_progress
-              SET state = 'STAGE3_RETRYABLE', lease_owner = NULL, lease_token = NULL,
-                  lease_acquired_at = NULL, lease_expires_at = NULL, next_attempt_at = $4::timestamptz,
-                  safe_failure_code = 'LEASE_EXPIRED',
-                  safe_failure_message = 'The previous Stage 3 lease expired.'
-            WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3`,
-          [input.projectId, input.sourceId, input.sourceVersionId, now],
-        );
-      }
-      const leaseToken = randomUUID();
-      const updated = await client.query<{ fencing_token: string }>(
-        `UPDATE source_product.source_stage3_progress
-            SET state = 'STAGE3_RUNNING', attempt_count = attempt_count + 1,
-                next_attempt_at = NULL, lease_owner = $4, lease_token = $5,
-                lease_acquired_at = $6::timestamptz,
-                lease_expires_at = $6::timestamptz + ($7::bigint * interval '1 millisecond'),
-                fencing_token = fencing_token + 1, safe_failure_code = NULL,
-                safe_failure_message = NULL
-          WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
-            AND state IN ('MATERIALIZED', 'STAGE3_RETRYABLE', 'RECONCILIATION_REQUIRED')
-         RETURNING fencing_token::text`,
-        [
-          input.projectId,
-          input.sourceId,
-          input.sourceVersionId,
-          input.workerId,
-          leaseToken,
-          now,
-          input.leaseDurationMs,
-        ],
-      );
-      const claimed = updated.rows[0];
-      if (!claimed) {
-        await client.query('COMMIT');
-        active = false;
-        return { status: 'DEFERRED', reason: 'ACTIVE_LEASE' };
-      }
-      await client.query('COMMIT');
-      active = false;
-      return {
-        status: 'CLAIMED',
-        lease: {
-          projectId: input.projectId,
-          sourceId: input.sourceId,
-          sourceVersionId: input.sourceVersionId,
-          fencingToken: Number(claimed.fencing_token),
-          leaseToken,
-        },
-      };
-    } catch (error) {
-      if (active) await client.query('ROLLBACK');
       throw error;
-    } finally {
-      client.release();
     }
   }
 
@@ -446,51 +486,51 @@ export class PostgresSourcesStage3AtomicPersistence implements SourcesStage3Atom
     readonly continuation: SourcesStage3EvidenceIndexedInput;
     readonly lease: SourcesStage3ProgressLease;
   }) {
-    const client = await this.pool.connect();
-    let active = false;
+    let intendedResult: Stage3AtomicPersistenceResult | undefined;
     try {
-      await client.query('BEGIN');
-      active = true;
-      const progress = await client.query<{
-        state: SourcesStage3ProgressState;
-        lease_token: string | null;
-        fencing_token: string;
-      }>(
-        `SELECT state, lease_token, fencing_token::text
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const progress = await client.query<{
+            state: SourcesStage3ProgressState;
+            lease_token: string | null;
+            fencing_token: string;
+          }>(
+            `SELECT state, lease_token, fencing_token::text
            FROM source_product.source_stage3_progress
           WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
           FOR UPDATE`,
-        [input.lease.projectId, input.lease.sourceId, input.lease.sourceVersionId],
-      );
-      const progressRow = progress.rows[0];
-      if (
-        !progressRow ||
-        progressRow.state !== 'STAGE3_RUNNING' ||
-        progressRow.lease_token !== input.lease.leaseToken ||
-        Number(progressRow.fencing_token) !== input.lease.fencingToken
-      ) {
-        throw new ShotgunError({
-          code: 'CONFLICT',
-          safeMessage: 'The Stage 3 lease is no longer valid.',
-          module: 'postgres-stage3',
-          operation: 'persist-stage3-atomic',
-        });
-      }
-      const saved = await this.transformations.saveInTransaction(client, input.transformation);
-      const candidates = buildEvidenceCandidates(saved.revision, input.locator);
-      const indexed = await this.evidence.indexInTransaction(client, candidates);
-      const evidenceIds = indexed.items.map((item) => item.evidenceId).sort();
-      const evidenceSetDigest = sha256Text(stableJson(evidenceIds));
-      const securityScopeDigest = sha256Text(
-        stableJson({
-          accessScope: input.continuation.accessScope,
-          sensitivity: input.continuation.sensitivity,
-        }),
-      );
-      const status = indexed.items.length === 0 ? 'NO_EVIDENCE' : 'INDEXED';
-      const resultId = randomUUID();
-      await client.query(
-        `INSERT INTO evidence.indexing_results (
+            [input.lease.projectId, input.lease.sourceId, input.lease.sourceVersionId],
+          );
+          const progressRow = progress.rows[0];
+          if (
+            !progressRow ||
+            progressRow.state !== 'STAGE3_RUNNING' ||
+            progressRow.lease_token !== input.lease.leaseToken ||
+            Number(progressRow.fencing_token) !== input.lease.fencingToken
+          ) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The Stage 3 lease is no longer valid.',
+              module: 'postgres-stage3',
+              operation: 'persist-stage3-atomic',
+            });
+          }
+          const saved = await this.transformations.saveInTransaction(client, input.transformation);
+          const candidates = buildEvidenceCandidates(saved.revision, input.locator);
+          const indexed = await this.evidence.indexInTransaction(client, candidates);
+          const evidenceIds = indexed.items.map((item) => item.evidenceId).sort();
+          const evidenceSetDigest = sha256Text(stableJson(evidenceIds));
+          const securityScopeDigest = sha256Text(
+            stableJson({
+              accessScope: input.continuation.accessScope,
+              sensitivity: input.continuation.sensitivity,
+            }),
+          );
+          const status = indexed.items.length === 0 ? 'NO_EVIDENCE' : 'INDEXED';
+          const resultId = randomUUID();
+          await client.query(
+            `INSERT INTO evidence.indexing_results (
            indexing_result_id, project_id, source_id, source_version_id, revision_id,
            transformer_id, transformer_version, status, evidence_count, reused_count,
            evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at
@@ -499,88 +539,88 @@ export class PostgresSourcesStage3AtomicPersistence implements SourcesStage3Atom
          ON CONFLICT (project_id, source_version_id, revision_id, transformer_id, transformer_version)
          DO NOTHING
          RETURNING indexing_result_id::text`,
-        [
-          resultId,
-          input.transformation.projectId,
-          input.transformation.sourceId,
-          input.transformation.sourceVersionId,
-          saved.revision.revisionId,
-          input.transformation.transformer.id,
-          input.transformation.transformer.version,
-          status,
-          indexed.items.length,
-          indexed.reusedCount,
-          evidenceSetDigest,
-          securityScopeDigest,
-          input.transformation.createdAt,
-        ],
-      );
-      const result = await client.query<{
-        indexing_result_id: string;
-        project_id: string;
-        source_id: string;
-        source_version_id: string;
-        revision_id: string;
-        transformer_id: string;
-        transformer_version: string;
-        status: 'INDEXED' | 'NO_EVIDENCE';
-        evidence_count: number;
-        reused_count: number;
-        evidence_set_digest: string;
-        contract_version: string;
-        security_scope_digest: string;
-      }>(
-        `SELECT indexing_result_id::text, project_id, source_id::text,
+            [
+              resultId,
+              input.transformation.projectId,
+              input.transformation.sourceId,
+              input.transformation.sourceVersionId,
+              saved.revision.revisionId,
+              input.transformation.transformer.id,
+              input.transformation.transformer.version,
+              status,
+              indexed.items.length,
+              indexed.reusedCount,
+              evidenceSetDigest,
+              securityScopeDigest,
+              input.transformation.createdAt,
+            ],
+          );
+          const indexingResultQuery = await client.query<{
+            indexing_result_id: string;
+            project_id: string;
+            source_id: string;
+            source_version_id: string;
+            revision_id: string;
+            transformer_id: string;
+            transformer_version: string;
+            status: 'INDEXED' | 'NO_EVIDENCE';
+            evidence_count: number;
+            reused_count: number;
+            evidence_set_digest: string;
+            contract_version: string;
+            security_scope_digest: string;
+          }>(
+            `SELECT indexing_result_id::text, project_id, source_id::text,
                 source_version_id::text, revision_id::text, transformer_id,
                 transformer_version, status, evidence_count, reused_count,
                 evidence_set_digest, contract_version, security_scope_digest
            FROM evidence.indexing_results
           WHERE project_id = $1 AND source_version_id = $2 AND revision_id = $3
             AND transformer_id = $4 AND transformer_version = $5`,
-        [
-          input.transformation.projectId,
-          input.transformation.sourceVersionId,
-          saved.revision.revisionId,
-          input.transformation.transformer.id,
-          input.transformation.transformer.version,
-        ],
-      );
-      const storedResult = result.rows[0];
-      const indexingResultId = storedResult?.indexing_result_id;
-      if (!indexingResultId) throw new Error('Indexing result was not stored.');
-      if (
-        storedResult.project_id !== input.transformation.projectId ||
-        storedResult.source_id !== input.transformation.sourceId ||
-        storedResult.source_version_id !== input.transformation.sourceVersionId ||
-        storedResult.revision_id !== saved.revision.revisionId ||
-        storedResult.transformer_id !== input.transformation.transformer.id ||
-        storedResult.transformer_version !== input.transformation.transformer.version ||
-        storedResult.status !== status ||
-        storedResult.evidence_count !== indexed.items.length ||
-        storedResult.evidence_set_digest !== evidenceSetDigest ||
-        storedResult.contract_version !== 'stage3-evidence-index.v1' ||
-        storedResult.security_scope_digest !== securityScopeDigest
-      ) {
-        throw new ShotgunError({
-          code: 'CONFLICT',
-          safeMessage: 'The existing Evidence indexing result conflicts with this replay.',
-          module: 'postgres-stage3',
-          operation: 'persist-stage3-indexing-result',
-        });
-      }
-      // `reused_count` is an execution metric, so a replay can observe a
-      // different local upsert count. Return the durable result's value to
-      // keep the idempotent outcome stable across retries.
-      const persistedIndexed = {
-        items: indexed.items,
-        reusedCount: storedResult.reused_count,
-      };
-      let continuationId: string | undefined;
-      if (indexed.items.length > 0) {
-        continuationId = randomUUID();
-        const continuationKey = `evidence-indexed:${input.transformation.projectId}:${saved.revision.revisionId}`;
-        await client.query(
-          `INSERT INTO evidence.stage4_continuations (
+            [
+              input.transformation.projectId,
+              input.transformation.sourceVersionId,
+              saved.revision.revisionId,
+              input.transformation.transformer.id,
+              input.transformation.transformer.version,
+            ],
+          );
+          const storedResult = indexingResultQuery.rows[0];
+          const indexingResultId = storedResult?.indexing_result_id;
+          if (!indexingResultId) throw new Error('Indexing result was not stored.');
+          if (
+            storedResult.project_id !== input.transformation.projectId ||
+            storedResult.source_id !== input.transformation.sourceId ||
+            storedResult.source_version_id !== input.transformation.sourceVersionId ||
+            storedResult.revision_id !== saved.revision.revisionId ||
+            storedResult.transformer_id !== input.transformation.transformer.id ||
+            storedResult.transformer_version !== input.transformation.transformer.version ||
+            storedResult.status !== status ||
+            storedResult.evidence_count !== indexed.items.length ||
+            storedResult.evidence_set_digest !== evidenceSetDigest ||
+            storedResult.contract_version !== 'stage3-evidence-index.v1' ||
+            storedResult.security_scope_digest !== securityScopeDigest
+          ) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The existing Evidence indexing result conflicts with this replay.',
+              module: 'postgres-stage3',
+              operation: 'persist-stage3-indexing-result',
+            });
+          }
+          // `reused_count` is an execution metric, so a replay can observe a
+          // different local upsert count. Return the durable result's value to
+          // keep the idempotent outcome stable across retries.
+          const persistedIndexed = {
+            items: indexed.items,
+            reusedCount: storedResult.reused_count,
+          };
+          let continuationId: string | undefined;
+          if (indexed.items.length > 0) {
+            continuationId = randomUUID();
+            const continuationKey = `evidence-indexed:${input.transformation.projectId}:${saved.revision.revisionId}`;
+            await client.query(
+              `INSERT INTO evidence.stage4_continuations (
              continuation_id, project_id, source_id, source_version_id, revision_id,
              indexing_result_id, continuation_key, evidence_snapshot, evidence_set_digest,
              evidence_count, access_scope, sensitivity, data_classification, state,
@@ -588,68 +628,213 @@ export class PostgresSourcesStage3AtomicPersistence implements SourcesStage3Atom
            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13,
                      'PENDING', $14, $14)
            ON CONFLICT (project_id, continuation_key) DO NOTHING`,
-          [
-            continuationId,
-            input.transformation.projectId,
-            input.transformation.sourceId,
-            input.transformation.sourceVersionId,
-            saved.revision.revisionId,
-            indexingResultId,
-            continuationKey,
-            JSON.stringify({
-              evidenceIds,
-              revisionId: saved.revision.revisionId,
-              sourceVersionId: input.transformation.sourceVersionId,
-            }),
-            evidenceSetDigest,
-            indexed.items.length,
-            input.continuation.accessScope,
-            input.continuation.sensitivity,
-            input.continuation.dataClassification,
-            input.transformation.createdAt,
-          ],
-        );
-        const existing = await client.query<{ continuation_id: string }>(
-          `SELECT continuation_id::text
+              [
+                continuationId,
+                input.transformation.projectId,
+                input.transformation.sourceId,
+                input.transformation.sourceVersionId,
+                saved.revision.revisionId,
+                indexingResultId,
+                continuationKey,
+                JSON.stringify({
+                  evidenceIds,
+                  revisionId: saved.revision.revisionId,
+                  sourceVersionId: input.transformation.sourceVersionId,
+                }),
+                evidenceSetDigest,
+                indexed.items.length,
+                input.continuation.accessScope,
+                input.continuation.sensitivity,
+                input.continuation.dataClassification,
+                input.transformation.createdAt,
+              ],
+            );
+            const existing = await client.query<{ continuation_id: string }>(
+              `SELECT continuation_id::text
              FROM evidence.stage4_continuations
             WHERE project_id = $1 AND continuation_key = $2`,
-          [input.transformation.projectId, continuationKey],
-        );
-        continuationId = existing.rows[0]?.continuation_id;
-      }
-      const finalized = await client.query(
-        `UPDATE source_product.source_stage3_progress
+              [input.transformation.projectId, continuationKey],
+            );
+            continuationId = existing.rows[0]?.continuation_id;
+          }
+          const finalized = await client.query(
+            `UPDATE source_product.source_stage3_progress
             SET state = $5, indexing_result_id = $6, lease_owner = NULL,
                 lease_token = NULL, lease_acquired_at = NULL, lease_expires_at = NULL,
                 next_attempt_at = NULL, safe_failure_code = NULL, safe_failure_message = NULL
           WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3
             AND lease_token = $4 AND fencing_token = $7 AND state = 'STAGE3_RUNNING'`,
+            [
+              input.lease.projectId,
+              input.lease.sourceId,
+              input.lease.sourceVersionId,
+              input.lease.leaseToken,
+              status === 'NO_EVIDENCE' ? 'NO_EVIDENCE' : 'STAGE3_COMPLETED',
+              indexingResultId,
+              input.lease.fencingToken,
+            ],
+          );
+          if (finalized.rowCount !== 1) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The Stage 3 lease was lost before finalization.',
+              module: 'postgres-stage3',
+              operation: 'finalize-stage3-atomic',
+            });
+          }
+          const result: Stage3AtomicPersistenceResult = {
+            saved,
+            indexed: persistedIndexed,
+            indexingResultId,
+            ...(continuationId === undefined ? {} : { continuationId }),
+          };
+          intendedResult = result;
+          return result;
+        },
+        { module: 'postgres-stage3', operation: 'persist-stage3-atomic' },
+      );
+    } catch (error) {
+      if (!isOutcomeUnknown(error) || !intendedResult) throw error;
+      const revisionResult = await this.pool.query<{
+        revision_id: string;
+        project_id: string;
+        source_id: string;
+        source_version_id: string;
+        source_content_hash: string;
+        transformer_id: string;
+        transformer_version: string;
+        document_hash: string;
+        source_map_hash: string;
+      }>(
+        `SELECT revision_id::text, project_id, source_id::text, source_version_id::text,
+                source_content_hash, transformer_id, transformer_version, document_hash, source_map_hash
+           FROM transformation.revisions
+          WHERE revision_id = $1 AND project_id = $2 AND source_id = $3 AND source_version_id = $4`,
         [
-          input.lease.projectId,
-          input.lease.sourceId,
-          input.lease.sourceVersionId,
-          input.lease.leaseToken,
-          status === 'NO_EVIDENCE' ? 'NO_EVIDENCE' : 'STAGE3_COMPLETED',
-          indexingResultId,
-          input.lease.fencingToken,
+          intendedResult.saved.revision.revisionId,
+          input.transformation.projectId,
+          input.transformation.sourceId,
+          input.transformation.sourceVersionId,
         ],
       );
-      if (finalized.rowCount !== 1) {
-        throw new ShotgunError({
-          code: 'CONFLICT',
-          safeMessage: 'The Stage 3 lease was lost before finalization.',
-          module: 'postgres-stage3',
-          operation: 'finalize-stage3-atomic',
-        });
+      const revision = revisionResult.rows[0];
+      const revisionMatches =
+        revision !== undefined &&
+        revision.project_id === intendedResult.saved.revision.projectId &&
+        revision.source_id === intendedResult.saved.revision.sourceId &&
+        revision.source_version_id === intendedResult.saved.revision.sourceVersionId &&
+        revision.source_content_hash === intendedResult.saved.revision.sourceContentHash &&
+        revision.transformer_id === intendedResult.saved.revision.transformer.id &&
+        revision.transformer_version === intendedResult.saved.revision.transformer.version &&
+        revision.document_hash === intendedResult.saved.revision.documentHash &&
+        revision.source_map_hash === intendedResult.saved.revision.sourceMapHash;
+      const evidenceResult = await this.pool.query<{
+        evidence_id: string;
+        revision_id: string;
+        project_id: string;
+        source_id: string;
+        source_version_id: string;
+      }>(
+        `SELECT evidence_id::text, revision_id::text, project_id, source_id::text, source_version_id::text
+           FROM evidence.spans
+          WHERE revision_id = $1
+          ORDER BY evidence_id`,
+        [intendedResult.saved.revision.revisionId],
+      );
+      const expectedEvidenceIds = intendedResult.indexed.items
+        .map((item) => item.evidenceId)
+        .sort();
+      const actualEvidenceIds = evidenceResult.rows.map((row) => row.evidence_id).sort();
+      const evidenceMatches =
+        stableJson(actualEvidenceIds) === stableJson(expectedEvidenceIds) &&
+        evidenceResult.rows.every(
+          (row) =>
+            row.revision_id === intendedResult!.saved.revision.revisionId &&
+            row.project_id === intendedResult!.saved.revision.projectId &&
+            row.source_id === intendedResult!.saved.revision.sourceId &&
+            row.source_version_id === intendedResult!.saved.revision.sourceVersionId,
+        );
+      const indexingResult = await this.pool.query<{
+        indexing_result_id: string;
+        project_id: string;
+        source_id: string;
+        source_version_id: string;
+        revision_id: string;
+        status: 'INDEXED' | 'NO_EVIDENCE';
+        evidence_count: number;
+        evidence_set_digest: string;
+        contract_version: string;
+      }>(
+        `SELECT indexing_result_id::text, project_id, source_id::text, source_version_id::text,
+                revision_id::text, status, evidence_count, evidence_set_digest, contract_version
+           FROM evidence.indexing_results
+          WHERE indexing_result_id = $1`,
+        [intendedResult.indexingResultId],
+      );
+      const storedIndex = indexingResult.rows[0];
+      const expectedStatus = intendedResult.indexed.items.length === 0 ? 'NO_EVIDENCE' : 'INDEXED';
+      const indexingMatches =
+        storedIndex !== undefined &&
+        storedIndex.project_id === intendedResult.saved.revision.projectId &&
+        storedIndex.source_id === intendedResult.saved.revision.sourceId &&
+        storedIndex.source_version_id === intendedResult.saved.revision.sourceVersionId &&
+        storedIndex.revision_id === intendedResult.saved.revision.revisionId &&
+        storedIndex.status === expectedStatus &&
+        storedIndex.evidence_count === intendedResult.indexed.items.length &&
+        storedIndex.evidence_set_digest === sha256Text(stableJson(expectedEvidenceIds)) &&
+        storedIndex.contract_version === 'stage3-evidence-index.v1';
+      const progressResult = await this.pool.query<{
+        state: SourcesStage3ProgressState;
+        indexing_result_id: string | null;
+      }>(
+        `SELECT state, indexing_result_id::text
+           FROM source_product.source_stage3_progress
+          WHERE project_id = $1 AND source_id = $2 AND source_version_id = $3`,
+        [input.lease.projectId, input.lease.sourceId, input.lease.sourceVersionId],
+      );
+      const progressMatches =
+        progressResult.rows[0]?.state ===
+          (expectedStatus === 'NO_EVIDENCE' ? 'NO_EVIDENCE' : 'STAGE3_COMPLETED') &&
+        progressResult.rows[0]?.indexing_result_id === intendedResult.indexingResultId;
+      let continuationMatches = intendedResult.continuationId === undefined;
+      if (intendedResult.continuationId !== undefined) {
+        const continuationResult = await this.pool.query<{
+          continuation_id: string;
+          project_id: string;
+          source_id: string;
+          source_version_id: string;
+          revision_id: string;
+          indexing_result_id: string;
+          evidence_set_digest: string;
+          evidence_count: number;
+        }>(
+          `SELECT continuation_id::text, project_id, source_id::text, source_version_id::text,
+                  revision_id::text, indexing_result_id::text, evidence_set_digest, evidence_count
+             FROM evidence.stage4_continuations
+            WHERE continuation_id = $1`,
+          [intendedResult.continuationId],
+        );
+        const continuation = continuationResult.rows[0];
+        continuationMatches =
+          continuation !== undefined &&
+          continuation.project_id === intendedResult.saved.revision.projectId &&
+          continuation.source_id === intendedResult.saved.revision.sourceId &&
+          continuation.source_version_id === intendedResult.saved.revision.sourceVersionId &&
+          continuation.revision_id === intendedResult.saved.revision.revisionId &&
+          continuation.indexing_result_id === intendedResult.indexingResultId &&
+          continuation.evidence_set_digest === sha256Text(stableJson(expectedEvidenceIds)) &&
+          continuation.evidence_count === intendedResult.indexed.items.length;
       }
-      await client.query('COMMIT');
-      active = false;
-      return { saved, indexed: persistedIndexed, indexingResultId, continuationId };
-    } catch (error) {
-      if (active) await client.query('ROLLBACK');
+      if (
+        revisionMatches &&
+        evidenceMatches &&
+        indexingMatches &&
+        progressMatches &&
+        continuationMatches
+      ) {
+        return intendedResult;
+      }
       throw error;
-    } finally {
-      client.release();
     }
   }
 }
@@ -663,26 +848,42 @@ export class PostgresSourcesStage4ContinuationStore implements SourcesStage4Cont
     readonly now?: string;
   }) {
     const now = validateLeaseInput(input.now, input.leaseDurationMs);
-    const client = await this.pool.connect();
     const leaseToken = randomUUID();
-    let active = false;
+    let intendedClaim:
+      | {
+          readonly continuation: {
+            readonly projectId: string;
+            readonly sourceId: string;
+            readonly sourceVersionId: string;
+            readonly revisionId: string;
+            readonly evidenceCount: number;
+            readonly reusedCount: number;
+            readonly accessScope: readonly string[];
+            readonly sensitivity: SourcesStage3EvidenceIndexedInput['sensitivity'];
+            readonly dataClassification: string;
+          };
+          readonly continuationId: string;
+          readonly fencingToken: number;
+        }
+      | undefined;
     try {
-      await client.query('BEGIN');
-      active = true;
-      const result = await client.query<{
-        continuation_id: string;
-        project_id: string;
-        source_id: string;
-        source_version_id: string;
-        revision_id: string;
-        evidence_count: number;
-        reused_count: number;
-        access_scope: string[];
-        sensitivity: SourcesStage3EvidenceIndexedInput['sensitivity'];
-        data_classification: string;
-        fencing_token: string;
-      }>(
-        `SELECT continuation.continuation_id::text, continuation.project_id,
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const result = await client.query<{
+            continuation_id: string;
+            project_id: string;
+            source_id: string;
+            source_version_id: string;
+            revision_id: string;
+            evidence_count: number;
+            reused_count: number;
+            access_scope: string[];
+            sensitivity: SourcesStage3EvidenceIndexedInput['sensitivity'];
+            data_classification: string;
+            fencing_token: string;
+          }>(
+            `SELECT continuation.continuation_id::text, continuation.project_id,
                 continuation.source_id::text, continuation.source_version_id::text,
                 continuation.revision_id::text, continuation.evidence_count,
                 result.reused_count, continuation.access_scope, continuation.sensitivity,
@@ -696,48 +897,78 @@ export class PostgresSourcesStage4ContinuationStore implements SourcesStage4Cont
                    continuation.continuation_id
           FOR UPDATE OF continuation SKIP LOCKED
           LIMIT 1`,
-        [now],
-      );
-      const row = result.rows[0];
-      if (!row) {
-        await client.query('COMMIT');
-        active = false;
-        return { status: 'EMPTY' } as const;
-      }
-      const updated = await client.query<{ fencing_token: string }>(
-        `UPDATE evidence.stage4_continuations
+            [now],
+          );
+          const row = result.rows[0];
+          if (!row) return { status: 'EMPTY' } as const;
+          const updated = await client.query<{ fencing_token: string }>(
+            `UPDATE evidence.stage4_continuations
             SET state = 'RUNNING', attempt_count = attempt_count + 1,
                 lease_owner = $2, lease_token = $3, lease_acquired_at = $4::timestamptz,
                 lease_expires_at = $4::timestamptz + ($5::bigint * interval '1 millisecond'),
                 fencing_token = fencing_token + 1, updated_at = clock_timestamp()
           WHERE continuation_id = $1
          RETURNING fencing_token::text`,
-        [row.continuation_id, input.workerId, leaseToken, now, input.leaseDurationMs],
-      );
-      await client.query('COMMIT');
-      active = false;
-      return {
-        status: 'CLAIMED' as const,
-        continuationId: row.continuation_id,
-        leaseToken,
-        fencingToken: Number(updated.rows[0]?.fencing_token ?? Number(row.fencing_token) + 1),
-        continuation: {
-          projectId: row.project_id,
-          sourceId: row.source_id,
-          sourceVersionId: row.source_version_id,
-          revisionId: row.revision_id,
-          evidenceCount: row.evidence_count,
-          reusedCount: row.reused_count,
-          accessScope: row.access_scope,
-          sensitivity: row.sensitivity,
-          dataClassification: row.data_classification,
+            [row.continuation_id, input.workerId, leaseToken, now, input.leaseDurationMs],
+          );
+          const fencingToken = Number(
+            updated.rows[0]?.fencing_token ?? Number(row.fencing_token) + 1,
+          );
+          const continuation = {
+            projectId: row.project_id,
+            sourceId: row.source_id,
+            sourceVersionId: row.source_version_id,
+            revisionId: row.revision_id,
+            evidenceCount: row.evidence_count,
+            reusedCount: row.reused_count,
+            accessScope: row.access_scope,
+            sensitivity: row.sensitivity,
+            dataClassification: row.data_classification,
+          };
+          intendedClaim = {
+            continuation,
+            continuationId: row.continuation_id,
+            fencingToken,
+          };
+          return {
+            status: 'CLAIMED' as const,
+            continuationId: row.continuation_id,
+            leaseToken,
+            fencingToken,
+            continuation,
+          };
         },
-      };
+        { module: 'postgres-stage3', operation: 'claim-stage3-continuation' },
+      );
     } catch (error) {
-      if (active) await client.query('ROLLBACK');
+      if (!isOutcomeUnknown(error) || !intendedClaim) throw error;
+      const result = await this.pool.query<{
+        state: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'RETRYABLE_FAILED';
+        lease_owner: string | null;
+        lease_token: string | null;
+        fencing_token: string;
+      }>(
+        `SELECT state, lease_owner, lease_token, fencing_token::text
+           FROM evidence.stage4_continuations
+          WHERE continuation_id = $1`,
+        [intendedClaim.continuationId],
+      );
+      const current = result.rows[0];
+      if (
+        current?.state === 'RUNNING' &&
+        current.lease_owner === input.workerId &&
+        current.lease_token === leaseToken &&
+        Number(current.fencing_token) === intendedClaim.fencingToken
+      ) {
+        return {
+          status: 'CLAIMED' as const,
+          continuationId: intendedClaim.continuationId,
+          leaseToken,
+          fencingToken: intendedClaim.fencingToken,
+          continuation: intendedClaim.continuation,
+        };
+      }
       throw error;
-    } finally {
-      client.release();
     }
   }
 

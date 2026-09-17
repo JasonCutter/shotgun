@@ -1611,85 +1611,116 @@ export class PostgresChangeSetReviewV2Repository
     readonly expectedContentDigest: string;
     readonly updatedAt: string;
   }): Promise<DraftChangeSetV2> {
-    const client = await this.pool.connect();
+    const operation = 'mark-review-draft-v2-stale';
+    let expected: DraftChangeSetV2 | undefined;
+    let intended: DraftChangeSetV2 | undefined;
     try {
-      await client.query('BEGIN');
-      const result = await client.query<ChangeSetV2Row>(
-        `
-          SELECT change_set_json
-          FROM review.change_sets_v2
-          WHERE project_id = $1 AND change_set_id = $2
-          FOR UPDATE
-        `,
-        [input.projectId, input.changeSetId],
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const result = await client.query<ChangeSetV2Row>(
+            `
+              SELECT change_set_json
+              FROM review.change_sets_v2
+              WHERE project_id = $1 AND change_set_id = $2
+              FOR UPDATE
+            `,
+            [input.projectId, input.changeSetId],
+          );
+          const current = result.rows[0]?.change_set_json;
+          if (!current) {
+            throw new ShotgunError({
+              code: 'NOT_FOUND',
+              safeMessage: 'The v2 Draft Change Set was not found.',
+              module: 'postgres-stage5',
+              operation,
+            });
+          }
+          validateDraftChangeSetV2(current, { allowStale: true });
+          if (
+            current.revisionNumber !== input.expectedRevisionNumber ||
+            current.contentDigest !== input.expectedContentDigest
+          ) {
+            throw new ShotgunError({
+              code: 'STALE_VERSION',
+              safeMessage: 'The v2 Draft Change Set changed before it could be marked stale.',
+              module: 'postgres-stage5',
+              operation,
+            });
+          }
+          expected = current;
+          if (current.status === 'STALE') return current;
+          if (current.status === 'APPROVED' || current.status === 'REJECTED') {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'A final v2 Draft Change Set cannot be marked stale.',
+              module: 'postgres-stage5',
+              operation,
+            });
+          }
+          const { contentDigest: _contentDigest, ...withoutDigest } = current;
+          void _contentDigest;
+          const staleWithoutDigest = {
+            ...withoutDigest,
+            status: 'STALE' as const,
+            updatedAt: input.updatedAt,
+          };
+          const stale: DraftChangeSetV2 = {
+            ...staleWithoutDigest,
+            contentDigest: draftChangeSetContentDigestV2(staleWithoutDigest),
+          };
+          validateDraftChangeSetV2(stale, { allowStale: true });
+          intended = stale;
+          await client.query(
+            `
+              UPDATE review.change_sets_v2
+              SET status = $3, content_digest = $4, change_set_json = $5, updated_at = $6
+              WHERE project_id = $1 AND change_set_id = $2
+            `,
+            [
+              input.projectId,
+              input.changeSetId,
+              stale.status,
+              stale.contentDigest,
+              JSON.stringify(stale),
+              stale.updatedAt,
+            ],
+          );
+          return stale;
+        },
+        { module: 'postgres-stage5', operation },
       );
-      const current = result.rows[0]?.change_set_json;
-      if (!current) {
-        throw new ShotgunError({
-          code: 'NOT_FOUND',
-          safeMessage: 'The v2 Draft Change Set was not found.',
-          module: 'postgres-stage5',
-          operation: 'mark-review-draft-v2-stale',
-        });
-      }
-      validateDraftChangeSetV2(current, { allowStale: true });
-      if (
-        current.revisionNumber !== input.expectedRevisionNumber ||
-        current.contentDigest !== input.expectedContentDigest
-      ) {
-        throw new ShotgunError({
-          code: 'STALE_VERSION',
-          safeMessage: 'The v2 Draft Change Set changed before it could be marked stale.',
-          module: 'postgres-stage5',
-          operation: 'mark-review-draft-v2-stale',
-        });
-      }
-      if (current.status === 'STALE') {
-        await client.query('COMMIT');
-        return current;
-      }
-      if (current.status === 'APPROVED' || current.status === 'REJECTED') {
-        throw new ShotgunError({
-          code: 'CONFLICT',
-          safeMessage: 'A final v2 Draft Change Set cannot be marked stale.',
-          module: 'postgres-stage5',
-          operation: 'mark-review-draft-v2-stale',
-        });
-      }
-      const { contentDigest: _contentDigest, ...withoutDigest } = current;
-      void _contentDigest;
-      const staleWithoutDigest = {
-        ...withoutDigest,
-        status: 'STALE' as const,
-        updatedAt: input.updatedAt,
-      };
-      const stale: DraftChangeSetV2 = {
-        ...staleWithoutDigest,
-        contentDigest: draftChangeSetContentDigestV2(staleWithoutDigest),
-      };
-      validateDraftChangeSetV2(stale, { allowStale: true });
-      await client.query(
-        `
-          UPDATE review.change_sets_v2
-          SET status = $3, content_digest = $4, change_set_json = $5, updated_at = $6
-          WHERE project_id = $1 AND change_set_id = $2
-        `,
-        [
-          input.projectId,
-          input.changeSetId,
-          stale.status,
-          stale.contentDigest,
-          JSON.stringify(stale),
-          stale.updatedAt,
-        ],
-      );
-      await client.query('COMMIT');
-      return stale;
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (isOutcomeUnknown(error) && expected && intended) {
+        const authoritative = await this.findDraftById(input.projectId, input.changeSetId).catch(
+          () => undefined,
+        );
+        if (authoritative && stableJson(authoritative) === stableJson(intended)) {
+          return authoritative;
+        }
+        if (authoritative && stableJson(authoritative) === stableJson(expected)) {
+          throw new ShotgunError({
+            code: 'OUTCOME_UNKNOWN',
+            safeMessage: 'The v2 Draft stale transition did not become durable.',
+            module: 'postgres-stage5',
+            operation,
+            cause: error,
+          });
+        }
+        if (authoritative) {
+          throw new ShotgunError({
+            code:
+              authoritative.status === 'APPROVED' || authoritative.status === 'REJECTED'
+                ? 'CONFLICT'
+                : 'STALE_VERSION',
+            safeMessage: 'The v2 Draft changed while its stale transition was unresolved.',
+            module: 'postgres-stage5',
+            operation,
+            cause: error,
+          });
+        }
+      }
       throw error;
-    } finally {
-      client.release();
     }
   }
 

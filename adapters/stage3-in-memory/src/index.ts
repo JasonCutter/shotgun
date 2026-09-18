@@ -90,6 +90,19 @@ export class InMemoryTransformationRepository implements TransformationRepositor
     );
   }
 
+  async findByRevision(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+  ): Promise<TransformationRevision | undefined> {
+    return [...this.revisions.values()].find(
+      (revision) =>
+        revision.projectId === projectId &&
+        revision.sourceVersionId === sourceVersionId &&
+        revision.revisionId === revisionId,
+    );
+  }
+
   async findTransformationRevisionSecurity(
     projectId: string,
     revisionId: string,
@@ -163,6 +176,24 @@ export class InMemoryEvidenceRepository implements EvidenceRepositoryPort {
   ): Promise<readonly EvidenceSpan[]> {
     return [...this.evidence.values()]
       .filter((item) => item.projectId === projectId && item.sourceVersionId === sourceVersionId)
+      .sort((left, right) => {
+        const byStart = left.position.start - right.position.start;
+        return byStart === 0 ? left.pointer.localeCompare(right.pointer) : byStart;
+      });
+  }
+
+  async listByRevision(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+  ): Promise<readonly EvidenceSpan[]> {
+    return [...this.evidence.values()]
+      .filter(
+        (item) =>
+          item.projectId === projectId &&
+          item.sourceVersionId === sourceVersionId &&
+          item.revisionId === revisionId,
+      )
       .sort((left, right) => {
         const byStart = left.position.start - right.position.start;
         return byStart === 0 ? left.pointer.localeCompare(right.pointer) : byStart;

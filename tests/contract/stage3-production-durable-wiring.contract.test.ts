@@ -22,6 +22,7 @@ describe('Stage 3 production durability contract', () => {
         },
         findTransformationRevisionSecurity: async () => undefined,
         findBySourceVersion: async () => undefined,
+        findByRevision: async () => undefined,
       },
       evidenceRepository: {
         index: async () => ({ items: [], reusedCount: 0 }),

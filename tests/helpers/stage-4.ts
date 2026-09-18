@@ -16,7 +16,10 @@ import type {
 } from '../../modules/ai-provider/src/index.js';
 import { createAIProviderModule } from '../../modules/ai-provider/src/index.js';
 import { createCandidateGenerationModule } from '../../modules/candidate-generation/src/index.js';
-import { createEvidenceModule } from '../../modules/evidence/src/index.js';
+import {
+  createEvidenceModule,
+  type EvidenceRepositoryPort,
+} from '../../modules/evidence/src/index.js';
 import { createIntakeModule } from '../../modules/intake/src/index.js';
 import { createOriginalAssetModule } from '../../modules/original-asset/src/index.js';
 import { createTransformationModule } from '../../modules/transformation/src/index.js';
@@ -42,6 +45,7 @@ type HarnessOptions = {
   readonly aiProviderRepository?: InMemoryAIProviderCallRepository;
   readonly candidateRepository?: InMemoryCandidateRepository;
   readonly validationRepository?: InMemoryValidationRepository;
+  readonly evidenceRepository?: EvidenceRepositoryPort;
 };
 
 export const createStage4Harness = async (options: HarnessOptions = {}) => {
@@ -49,7 +53,7 @@ export const createStage4Harness = async (options: HarnessOptions = {}) => {
   const originalAssetRepository = new InMemoryOriginalAssetRepository();
   const storage = new InMemoryAssetStorage();
   const transformationRepository = new InMemoryTransformationRepository();
-  const evidenceRepository = new InMemoryEvidenceRepository();
+  const evidenceRepository = options.evidenceRepository ?? new InMemoryEvidenceRepository();
   const aiProviderRepository =
     options.aiProviderRepository ?? new InMemoryAIProviderCallRepository();
   const candidateRepository = options.candidateRepository ?? new InMemoryCandidateRepository();
@@ -80,6 +84,7 @@ export const createStage4Harness = async (options: HarnessOptions = {}) => {
     aiProvider,
     aiProviderRepository,
     candidateRepository,
+    evidenceRepository,
     validationRepository,
   };
 };

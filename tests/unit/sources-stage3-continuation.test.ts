@@ -192,6 +192,7 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
         },
         findTransformationRevisionSecurity: async () => undefined,
         findBySourceVersion: async () => undefined,
+        findByRevision: async () => undefined,
       },
       evidenceRepository: {
         index: async () => {
@@ -237,6 +238,7 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
         save: async () => undefined as never,
         findTransformationRevisionSecurity: async () => undefined,
         findBySourceVersion: async () => undefined,
+        findByRevision: async () => undefined,
       },
       evidenceRepository: {
         index: async () => ({ items: [], reusedCount: 0 }),
@@ -299,6 +301,7 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
         save: async () => undefined as never,
         findTransformationRevisionSecurity: async () => undefined,
         findBySourceVersion: async () => undefined,
+        findByRevision: async () => undefined,
       },
       evidenceRepository: {
         index: async () => ({ items: [], reusedCount: 0 }),

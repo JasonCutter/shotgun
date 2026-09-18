@@ -7,6 +7,7 @@ import {
   FakeAIProviderAdapter,
   type FakeAIProviderStep,
 } from '../../adapters/ai-provider-fake/src/index.js';
+import { InMemoryEvidenceRepository } from '../../adapters/stage3-in-memory/src/index.js';
 import { InMemoryTransport } from '../../adapters/transport-in-memory/src/index.js';
 import { InProcessTransport } from '../../adapters/transport-in-process/src/index.js';
 import type { ClaimCandidate, ValidationResult } from '../../packages/contracts/src/index.js';
@@ -23,22 +24,30 @@ const transports = [
   ['in-process', () => new InProcessTransport()],
 ] as const;
 
+class MismatchedEvidenceRepository extends InMemoryEvidenceRepository {
+  override async findById(projectId: string, evidenceId: string) {
+    const item = await super.findById(projectId, evidenceId);
+    return item ? { ...item, revisionId: randomUUID() } : undefined;
+  }
+}
+
 const reextractCommand = (
   parent: ReturnType<typeof directTextCommand>,
   sourceVersionId: string,
+  revisionId: string,
   requestId: string,
   idempotencyKey: string,
 ) =>
   createCommand({
     messageType: 'ReextractCandidateMaterialization',
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     producerModule: 'stage4-contract-test',
     producerVersion: '1.0.0',
     idempotencyKey,
     projectId: parent.projectId!,
     actor: parent.actor!,
     security: parent.security!,
-    payload: { sourceVersionId, requestId },
+    payload: { sourceVersionId, revisionId, requestId },
   });
 
 const resumeCommand = (
@@ -192,6 +201,27 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
     );
   });
 
+  it('stops candidate materialization when full Evidence revalidation mismatches the pinned revision', async () => {
+    const { kernel, candidateRepository } = await createStage4Harness({
+      transport: createTransport(),
+      evidenceRepository: new MismatchedEvidenceRepository(),
+    });
+    const command = directTextCommand(
+      'stage4-full-evidence-revision-mismatch',
+      'Milo weighs 5 kg.',
+    );
+
+    await kernel.connector.sendCommand(command);
+
+    expect(kernel.connector.deadLetters.list()).toContainEqual(
+      expect.objectContaining({
+        consumerId: 'stage4.candidate-generation',
+        error: expect.objectContaining({ code: 'VALIDATION_ERROR', retryable: false }),
+      }),
+    );
+    expect(candidateRepository.counts()).toEqual({ batches: 0, candidates: 0 });
+  });
+
   it('reuses the persisted batch when EvidenceIndexed is replayed', async () => {
     const provider = new FakeAIProviderAdapter();
     const { kernel, candidateRepository, validationRepository } = await createStage4Harness({
@@ -244,10 +274,15 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
     ).result.payload.items;
     const historicalCandidateId = historical[0]!.candidateId;
     const historicalBatchId = historical[0]!.batchId;
-    const historicalRequestId = `${command.projectId}:${sourceVersionId}:candidate-extraction:direct-claim-v1:direct-only-v1`;
+    const activeRevisionId = candidateRepository.revisionForSourceVersion(
+      command.projectId!,
+      sourceVersionId,
+    );
+    expect(activeRevisionId).toBeTruthy();
+    const historicalRequestId = `${command.projectId}:${sourceVersionId}:${activeRevisionId}:candidate-extraction:direct-claim-v1:direct-only-v1`;
 
     await kernel.connector.sendCommand(
-      reextractCommand(command, sourceVersionId, 'R2', 'reextract-command-r2'),
+      reextractCommand(command, sourceVersionId, activeRevisionId!, 'R2', 'reextract-command-r2'),
     );
     const afterR2 = (
       await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
@@ -271,13 +306,19 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
     ).toHaveLength(2);
 
     await kernel.connector.sendCommand(
-      reextractCommand(command, sourceVersionId, 'R2', 'reextract-command-r2-replay'),
+      reextractCommand(
+        command,
+        sourceVersionId,
+        activeRevisionId!,
+        'R2',
+        'reextract-command-r2-replay',
+      ),
     );
     expect(provider.calls()).toBe(2);
     expect(candidateRepository.counts()).toEqual({ batches: 2, candidates: 2 });
 
     await kernel.connector.sendCommand(
-      reextractCommand(command, sourceVersionId, 'R3', 'reextract-command-r3'),
+      reextractCommand(command, sourceVersionId, activeRevisionId!, 'R3', 'reextract-command-r3'),
     );
     expect(provider.calls()).toBe(3);
     expect(candidateRepository.counts()).toEqual({ batches: 3, candidates: 3 });
@@ -290,7 +331,13 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
 
     await expect(
       kernel.connector.sendCommand({
-        ...reextractCommand(command, sourceVersionId, 'R4', 'reextract-command-r4-denied'),
+        ...reextractCommand(
+          command,
+          sourceVersionId,
+          activeRevisionId!,
+          'R4',
+          'reextract-command-r4-denied',
+        ),
         actor: undefined,
         security: undefined,
       }),

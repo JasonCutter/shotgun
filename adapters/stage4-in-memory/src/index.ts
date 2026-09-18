@@ -313,6 +313,14 @@ export class InMemoryValidationRepository implements ValidationRepositoryPort {
 export class InMemoryCandidateRepository implements CandidateRepositoryPort {
   private readonly batches = new Map<string, CandidateBatch>();
   private readonly candidates = new Map<string, ClaimCandidate>();
+  private readonly providerPins = new Map<
+    string,
+    { readonly sourceVersionId: string; readonly revisionId: string }
+  >();
+  private readonly evidencePins = new Map<
+    string,
+    { readonly projectId: string; readonly sourceVersionId: string; readonly revisionId: string }
+  >();
   private readonly materializations = new Map<
     string,
     { readonly batchId?: string; readonly state: 'MATERIALIZATION_FAILED' | 'COMPLETED' }
@@ -332,6 +340,7 @@ export class InMemoryCandidateRepository implements CandidateRepositoryPort {
   }
 
   async saveBatch(batch: CandidateBatch): Promise<CandidateBatch> {
+    this.assertProviderPin(batch);
     const key = `${batch.projectId}:${batch.idempotencyKey}`;
     const existing = this.batches.get(key);
     if (existing) {
@@ -373,6 +382,110 @@ export class InMemoryCandidateRepository implements CandidateRepositoryPort {
     return batch;
   }
 
+  async recordProviderPin(
+    projectId: string,
+    requestId: string,
+    pin: { readonly sourceVersionId: string; readonly revisionId: string },
+  ): Promise<void> {
+    const key = `${projectId}:${requestId}`;
+    const existing = this.providerPins.get(key);
+    if (existing && stableJson(existing) !== stableJson(pin)) {
+      throw new ShotgunError({
+        code: 'REVISION_CONFLICT',
+        safeMessage: 'The durable Provider call is pinned to a different revision.',
+        module: 'stage4-in-memory',
+        operation: 'record-provider-revision-pin',
+        retryable: false,
+      });
+    }
+    this.providerPins.set(key, pin);
+  }
+
+  private assertProviderPin(batch: CandidateBatch): void {
+    if (!batch.revisionId || !batch.materialization) return;
+    const pin = this.providerPins.get(`${batch.projectId}:${batch.materialization.requestId}`);
+    if (
+      !pin ||
+      pin.sourceVersionId !== batch.sourceVersionId ||
+      pin.revisionId !== batch.revisionId
+    ) {
+      throw new ShotgunError({
+        code: 'REVISION_CONFLICT',
+        safeMessage: 'The Candidate Batch does not match the durable Provider revision pin.',
+        module: 'stage4-in-memory',
+        operation: 'verify-candidate-revision-pin',
+        retryable: false,
+      });
+    }
+  }
+
+  async recordEvidencePins(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+    evidenceIds: readonly string[],
+  ): Promise<void> {
+    for (const evidenceId of evidenceIds) {
+      const key = `${projectId}:${evidenceId}`;
+      const existing = this.evidencePins.get(key);
+      const next = { projectId, sourceVersionId, revisionId };
+      if (existing && stableJson(existing) !== stableJson(next)) {
+        throw new ShotgunError({
+          code: 'FORMAT_CORRUPT',
+          safeMessage: 'Evidence is pinned to a different project or revision.',
+          module: 'stage4-in-memory',
+          operation: 'record-evidence-revision-pin',
+          retryable: false,
+        });
+      }
+      this.evidencePins.set(key, next);
+    }
+  }
+
+  async validateRevisionScope(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+    candidates: readonly ClaimCandidate[],
+  ): Promise<void> {
+    for (const candidate of candidates) {
+      const batch = [...this.batches.values()].find((item) => item.batchId === candidate.batchId);
+      if (
+        !batch ||
+        batch.projectId !== projectId ||
+        batch.sourceVersionId !== sourceVersionId ||
+        batch.revisionId !== revisionId ||
+        candidate.projectId !== projectId ||
+        candidate.sourceVersionId !== sourceVersionId
+      ) {
+        throw new ShotgunError({
+          code: 'FORMAT_CORRUPT',
+          safeMessage: 'Candidate Batch lineage does not match the requested revision.',
+          module: 'stage4-in-memory',
+          operation: 'validate-candidate-batch-revision',
+          retryable: false,
+        });
+      }
+      for (const evidenceId of candidate.evidenceIds) {
+        const pin = this.evidencePins.get(`${projectId}:${evidenceId}`);
+        if (
+          !pin ||
+          pin.projectId !== projectId ||
+          pin.sourceVersionId !== sourceVersionId ||
+          pin.revisionId !== revisionId
+        ) {
+          throw new ShotgunError({
+            code: 'FORMAT_CORRUPT',
+            safeMessage: 'Candidate Evidence lineage does not match the requested revision.',
+            module: 'stage4-in-memory',
+            operation: 'validate-candidate-evidence-revision',
+            retryable: false,
+          });
+        }
+      }
+    }
+  }
+
   private bindMaterialization(batch: CandidateBatch, batchId: string) {
     if (!batch.materialization) return;
     const existing = this.materializations.get(
@@ -399,6 +512,27 @@ export class InMemoryCandidateRepository implements CandidateRepositoryPort {
     return this.batches.get(`${projectId}:${idempotencyKey}`);
   }
 
+  async findMaterializationRevision(
+    projectId: string,
+    requestId: string,
+  ): Promise<{ readonly sourceVersionId: string; readonly revisionId: string } | undefined> {
+    const providerPin = this.providerPins.get(`${projectId}:${requestId}`);
+    if (providerPin) return providerPin;
+    const batch = [...this.batches.values()].find(
+      (item) => item.projectId === projectId && item.idempotencyKey === requestId,
+    );
+    return batch?.revisionId
+      ? { sourceVersionId: batch.sourceVersionId, revisionId: batch.revisionId }
+      : undefined;
+  }
+
+  /** Test/adapter inspection hook for server-derived re-extraction authority. */
+  revisionForSourceVersion(projectId: string, sourceVersionId: string): string | undefined {
+    return [...this.batches.values()].find(
+      (batch) => batch.projectId === projectId && batch.sourceVersionId === sourceVersionId,
+    )?.revisionId;
+  }
+
   async findById(projectId: string, candidateId: string): Promise<ClaimCandidate | undefined> {
     return this.candidates.get(`${projectId}:${candidateId}`);
   }
@@ -410,6 +544,29 @@ export class InMemoryCandidateRepository implements CandidateRepositoryPort {
     return [...this.candidates.values()].filter(
       (candidate) =>
         candidate.projectId === projectId && candidate.sourceVersionId === sourceVersionId,
+    );
+  }
+
+  async listByRevision(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+  ): Promise<readonly ClaimCandidate[]> {
+    const batchIds = new Set(
+      [...this.batches.values()]
+        .filter(
+          (batch) =>
+            batch.projectId === projectId &&
+            batch.sourceVersionId === sourceVersionId &&
+            batch.revisionId === revisionId,
+        )
+        .map((batch) => batch.batchId),
+    );
+    return [...this.candidates.values()].filter(
+      (candidate) =>
+        candidate.projectId === projectId &&
+        candidate.sourceVersionId === sourceVersionId &&
+        batchIds.has(candidate.batchId),
     );
   }
 

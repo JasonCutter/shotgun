@@ -94,6 +94,8 @@ export type AIProviderExecutionRecord = {
   readonly requestId: string;
   readonly projectId: string;
   readonly sourceVersionId: string;
+  /** Exact Stage 3 transformation revision used by Candidate extraction. */
+  readonly revisionId?: string;
   readonly provider: string;
   readonly model: string;
   readonly promptVersion: AIProviderCall['promptVersion'];
@@ -484,6 +486,39 @@ export const createAIProviderModule = (
             });
           }
           const existing = await repository.findByRequestId(projectId, payload.requestId);
+          const requestedRevisionIds = [
+            ...new Set(payload.evidence.map((item) => item.revisionId)),
+          ];
+          if (requestedRevisionIds.length !== 1 || !requestedRevisionIds[0]) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: 'Candidate AI execution requires one exact Evidence revision.',
+              module: 'stage4.ai-provider',
+              operation: 'validate-input-revision',
+              correlationId: envelope.correlationId,
+              retryable: false,
+            });
+          }
+          if (existing && existing.revisionId === undefined) {
+            throw new ShotgunError({
+              code: 'REVISION_CONFLICT',
+              safeMessage: 'The legacy AI request has no exact Evidence revision pin.',
+              module: 'stage4.ai-provider',
+              operation: 'verify-legacy-input-revision',
+              correlationId: envelope.correlationId,
+              retryable: false,
+            });
+          }
+          if (existing && existing.revisionId !== requestedRevisionIds[0]) {
+            throw new ShotgunError({
+              code: 'REVISION_CONFLICT',
+              safeMessage: 'The durable AI request is pinned to a different Evidence revision.',
+              module: 'stage4.ai-provider',
+              operation: 'verify-input-revision',
+              correlationId: envelope.correlationId,
+              retryable: false,
+            });
+          }
           // A completed output is already the durable authority. Replaying
           // materialization must never re-resolve current configuration or
           // recall an external provider.
@@ -562,11 +597,34 @@ export const createAIProviderModule = (
           }
           const inputSnapshotDigest = snapshotDigest(projectId, payload);
           const durableRequestDigest = requestDigest(payload, inputSnapshotDigest);
+          const revisionIds = [...new Set(payload.evidence.map((item) => item.revisionId))];
+          if (revisionIds.length !== 1 || !revisionIds[0]) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: 'Candidate AI execution requires one exact Evidence revision.',
+              module: 'stage4.ai-provider',
+              operation: 'pin-input-revision',
+              correlationId: envelope.correlationId,
+              retryable: false,
+            });
+          }
+          const revisionId = revisionIds[0];
+          if (existing?.revisionId !== undefined && existing.revisionId !== revisionId) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The durable AI request is pinned to a different Evidence revision.',
+              module: 'stage4.ai-provider',
+              operation: 'verify-input-revision',
+              correlationId: envelope.correlationId,
+              retryable: false,
+            });
+          }
           let record = await repository.ensure({
             callId: randomUUID(),
             requestId: payload.requestId,
             projectId,
             sourceVersionId: payload.sourceVersionId,
+            revisionId,
             provider: activeAdapter.identity.provider,
             model: activeAdapter.identity.model,
             promptVersion: 'direct-claim-v1',
@@ -595,6 +653,16 @@ export const createAIProviderModule = (
               module: 'stage4.ai-provider',
               operation: 'verify-request-identity',
               correlationId: envelope.correlationId,
+            });
+          }
+          if (record.revisionId !== revisionId) {
+            throw new ShotgunError({
+              code: 'REVISION_CONFLICT',
+              safeMessage: 'The durable AI Provider record is pinned to a different revision.',
+              module: 'stage4.ai-provider',
+              operation: 'verify-durable-input-revision',
+              correlationId: envelope.correlationId,
+              retryable: false,
             });
           }
           if (

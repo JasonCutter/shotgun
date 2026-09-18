@@ -604,7 +604,7 @@ export const registerSourcesRoutes = (
             await dependencies.connector.sendCommand(
               createCommand({
                 messageType: 'ReextractCandidateMaterialization',
-                schemaVersion: '1.0.0',
+                schemaVersion: '1.1.0',
                 producerModule: 'frontend-sources-product',
                 producerVersion: '1.0.0',
                 idempotencyKey: requestId,
@@ -622,6 +622,7 @@ export const registerSourcesRoutes = (
                 },
                 payload: {
                   sourceVersionId: target.sourceVersionId,
+                  revisionId: target.revisionId,
                   requestId,
                 },
               }),

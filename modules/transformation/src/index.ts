@@ -1,6 +1,7 @@
 import documentTransformedSchema from '../../../packages/contracts/schemas/document-transformed.v1.schema.json';
 import getDocumentRevisionOutputSchema from '../../../packages/contracts/schemas/get-document-revision-output.v1.schema.json';
 import getDocumentRevisionSchema from '../../../packages/contracts/schemas/get-document-revision.v1.schema.json';
+import getDocumentRevisionByRevisionSchema from '../../../packages/contracts/schemas/get-document-revision-by-revision.v1.schema.json';
 import originalAssetStoredSchema from '../../../packages/contracts/schemas/original-asset-stored.v1.schema.json';
 import resolveAssetOutputSchema from '../../../packages/contracts/schemas/resolve-asset-output.v1.schema.json';
 import resolveAssetSchema from '../../../packages/contracts/schemas/resolve-asset.v1.schema.json';
@@ -99,6 +100,11 @@ export type TransformationRepositoryPort = TransformationRevisionSecurityReposit
     transformerId: string,
     transformerVersion: string,
   ): Promise<TransformationRevision | undefined>;
+  findByRevision(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+  ): Promise<TransformationRevision | undefined>;
 };
 
 type OriginalAssetStoredPayload = {
@@ -161,6 +167,7 @@ export const createTransformationModule = (
         { name: 'ResolveAsset', range: '>=1.0.0 <2.0.0' },
         { name: 'DocumentTransformed', range: '>=1.0.0 <2.0.0' },
         { name: 'GetDocumentRevision', range: '>=1.0.0 <2.0.0' },
+        { name: 'GetDocumentRevisionByRevision', range: '>=1.0.0 <2.0.0' },
       ],
     },
     deployment: { modes: ['in_process', 'worker'] },
@@ -189,7 +196,10 @@ export const createTransformationModule = (
       ],
     },
     provides: {
-      queries: [{ name: 'GetDocumentRevision', range: '>=1.0.0 <2.0.0' }],
+      queries: [
+        { name: 'GetDocumentRevision', range: '>=1.0.0 <2.0.0' },
+        { name: 'GetDocumentRevisionByRevision', range: '>=1.0.0 <2.0.0' },
+      ],
       capabilities: [
         { name: 'plain-text-transformation', priority: 100 },
         { name: 'document-format-transformation', priority: 100 },
@@ -231,6 +241,13 @@ export const createTransformationModule = (
       version: '1.0.0',
       kind: 'query',
       inputSchema: getDocumentRevisionSchema,
+      outputSchema: getDocumentRevisionOutputSchema,
+    },
+    {
+      name: 'GetDocumentRevisionByRevision',
+      version: '1.0.0',
+      kind: 'query',
+      inputSchema: getDocumentRevisionByRevisionSchema,
       outputSchema: getDocumentRevisionOutputSchema,
     },
   ],
@@ -345,6 +362,34 @@ export const createTransformationModule = (
               safeMessage: 'The Document Revision was not found.',
               module: 'stage3.transformation',
               operation: 'get-document-revision',
+              correlationId: envelope.correlationId,
+            });
+          }
+          assertScope(revision, security.accessScope, envelope.correlationId);
+          return revision;
+        },
+      },
+      {
+        messageType: 'GetDocumentRevisionByRevision',
+        version: '1.0.0',
+        requiredAccessScopes: ['owner'],
+        async handle(envelope) {
+          const { projectId, security } = assertContext(envelope);
+          const payload = envelope.payload as {
+            readonly sourceVersionId: string;
+            readonly revisionId: string;
+          };
+          const revision = await repository.findByRevision(
+            projectId,
+            payload.sourceVersionId,
+            payload.revisionId,
+          );
+          if (!revision) {
+            throw new ShotgunError({
+              code: 'NOT_FOUND',
+              safeMessage: 'The exact Document Revision was not found.',
+              module: 'stage3.transformation',
+              operation: 'get-document-revision-by-revision',
               correlationId: envelope.correlationId,
             });
           }

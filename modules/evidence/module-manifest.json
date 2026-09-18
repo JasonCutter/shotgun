@@ -7,15 +7,17 @@
     "contracts": [
       { "name": "DocumentTransformed", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetDocumentRevision", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetDocumentRevisionByRevision", "range": ">=1.0.0 <2.0.0" },
       { "name": "EvidenceIndexed", "range": ">=1.0.0 <2.0.0" },
       { "name": "ListEvidenceSpans", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListEvidenceSpansByRevision", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetEvidenceSpan", "range": ">=1.0.0 <2.0.0" }
     ]
   },
   "deployment": { "modes": ["in_process", "worker"] },
   "dataOwnership": {
     "owns": ["evidence.spans"],
-    "readsViaPorts": ["EvidenceLocatorPort", "GetDocumentRevision query"],
+    "readsViaPorts": ["EvidenceLocatorPort", "GetDocumentRevisionByRevision query"],
     "directSchemaAccess": false
   },
   "consumes": {
@@ -36,6 +38,7 @@
   "provides": {
     "queries": [
       { "name": "ListEvidenceSpans", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListEvidenceSpansByRevision", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetEvidenceSpan", "range": ">=1.0.0 <2.0.0" }
     ],
     "capabilities": [

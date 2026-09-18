@@ -270,6 +270,21 @@ export class PostgresTransformationRepository implements TransformationRepositor
     return result.rows[0] ? mapRevision(result.rows[0]) : undefined;
   }
 
+  async findByRevision(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+  ): Promise<TransformationRevision | undefined> {
+    const result = await this.pool.query<RevisionRow>(
+      `${revisionSelect}
+       WHERE project_id = $1
+         AND source_version_id = $2
+         AND revision_id = $3`,
+      [projectId, sourceVersionId, revisionId],
+    );
+    return result.rows[0] ? mapRevision(result.rows[0]) : undefined;
+  }
+
   async findTransformationRevisionSecurity(
     projectId: string,
     revisionId: string,
@@ -379,6 +394,20 @@ export class PostgresEvidenceRepository implements EvidenceRepositoryPort {
        WHERE project_id = $1 AND source_version_id = $2
        ORDER BY (position ->> 'start')::integer, pointer`,
       [projectId, sourceVersionId],
+    );
+    return result.rows.map(mapEvidence);
+  }
+
+  async listByRevision(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+  ): Promise<readonly EvidenceSpan[]> {
+    const result = await this.pool.query<EvidenceRow>(
+      `${evidenceSelect}
+       WHERE project_id = $1 AND source_version_id = $2 AND revision_id = $3
+       ORDER BY (position ->> 'start')::integer, pointer`,
+      [projectId, sourceVersionId, revisionId],
     );
     return result.rows.map(mapEvidence);
   }

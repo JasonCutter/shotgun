@@ -74,6 +74,19 @@ export const documentRevisionQuery = (command: IntakeCommand, sourceVersionId: s
     payload: { sourceVersionId },
   });
 
+export const documentRevisionByRevisionQuery = (
+  command: IntakeCommand,
+  sourceVersionId: string,
+  revisionId: string,
+) =>
+  createChildQuery(command, {
+    messageType: 'GetDocumentRevisionByRevision',
+    schemaVersion: '1.0.0',
+    producerModule: 'stage3-test',
+    producerVersion: '1.0.0',
+    payload: { sourceVersionId, revisionId },
+  });
+
 export const evidenceListQuery = (command: IntakeCommand, sourceVersionId: string) =>
   createChildQuery(command, {
     messageType: 'ListEvidenceSpans',

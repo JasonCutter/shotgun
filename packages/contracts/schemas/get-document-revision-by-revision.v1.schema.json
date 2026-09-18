@@ -1,0 +1,11 @@
+{
+  "$id": "https://shotgun.local/contracts/get-document-revision-by-revision.v1.schema.json",
+  "title": "Get Document Revision By Revision v1",
+  "type": "object",
+  "required": ["sourceVersionId", "revisionId"],
+  "properties": {
+    "sourceVersionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "revisionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" }
+  },
+  "additionalProperties": false
+}

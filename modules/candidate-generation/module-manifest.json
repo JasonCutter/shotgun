@@ -6,10 +6,12 @@
     "runtime": ">=1.0.0 <2.0.0",
     "contracts": [
       { "name": "EvidenceIndexed", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListEvidenceSpansByRevision", "range": ">=1.0.0 <2.0.0" },
       { "name": "GenerateStructured", "range": ">=1.0.0 <2.0.0" },
       { "name": "CandidateGenerated", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetClaimCandidate", "range": ">=1.0.0 <2.0.0" },
-      { "name": "ListClaimCandidates", "range": ">=1.0.0 <2.0.0" }
+      { "name": "ListClaimCandidates", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListClaimCandidatesByRevision", "range": ">=1.0.0 <2.0.0" }
     ]
   },
   "deployment": { "modes": ["in_process", "worker"] },
@@ -59,7 +61,8 @@
   "provides": {
     "queries": [
       { "name": "GetClaimCandidate", "range": ">=1.0.0 <2.0.0" },
-      { "name": "ListClaimCandidates", "range": ">=1.0.0 <2.0.0" }
+      { "name": "ListClaimCandidates", "range": ">=1.0.0 <2.0.0" },
+      { "name": "ListClaimCandidatesByRevision", "range": ">=1.0.0 <2.0.0" }
     ],
     "capabilities": [{ "name": "claim-candidate-provider", "priority": 100 }]
   },

@@ -186,7 +186,25 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
       const candidate = fixture.candidate;
       const sourceHash = sha256Text(candidate.claimText);
       const sourceId = randomUUID();
+      const assetId = randomUUID();
       const revisionId = randomUUID();
+      await pool.query(
+        `INSERT INTO asset.original_assets (asset_id, content_hash, size_bytes, storage_key, created_at)
+         VALUES ($1, $2, 100, $3, $4)`,
+        [assetId, sourceHash, `issue-247-${assetId}`, createdAt],
+      );
+      await pool.query(
+        `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+         VALUES ($1, $2, 'owner', $3)`,
+        [sourceId, projectId, createdAt],
+      );
+      await pool.query(
+        `INSERT INTO asset.source_versions (
+           source_version_id, source_id, version_number, original_asset_id,
+           media_type, access_scope, sensitivity, created_at
+         ) VALUES ($1, $2, 1, $3, 'text/plain', '{owner}', 'private', $4)`,
+        [candidate.sourceVersionId, sourceId, assetId, createdAt],
+      );
       await pool.query(
         `INSERT INTO transformation.revisions (
            revision_id, project_id, source_id, source_version_id, source_content_hash,
@@ -212,14 +230,46 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
           createdAt,
         ],
       );
+      const indexingResultId = randomUUID();
+      const evidenceSetDigest = sha256Text(JSON.stringify(candidate.evidenceIds));
+      const securityScopeDigest = sha256Text(
+        JSON.stringify({ accessScope: ['owner'], sensitivity: 'private' }),
+      );
+      await pool.query(
+        `INSERT INTO evidence.indexing_results (
+           indexing_result_id, project_id, source_id, source_version_id, revision_id,
+           transformer_id, transformer_version, status, evidence_count, reused_count,
+           evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, 'fixture', '1', 'INDEXED', 1, 0,
+           $6, 'stage3-evidence-index.v1', $7, $8, $8)`,
+        [
+          indexingResultId,
+          projectId,
+          sourceId,
+          candidate.sourceVersionId,
+          revisionId,
+          evidenceSetDigest,
+          securityScopeDigest,
+          createdAt,
+        ],
+      );
+      await pool.query(
+        `INSERT INTO source_product.source_stage3_progress (
+           project_id, source_id, source_version_id, state, indexing_result_id,
+           created_at, updated_at
+         ) VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, $5, $5)`,
+        [projectId, sourceId, candidate.sourceVersionId, indexingResultId, createdAt],
+      );
       await pool.query(
         `INSERT INTO candidate.batches (
-           batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at
-         ) VALUES ($1, $2, $3, $4, $5, $6)`,
+           batch_id, project_id, source_version_id, revision_id, idempotency_key,
+           provider_call, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           candidate.batchId,
           projectId,
           candidate.sourceVersionId,
+          revisionId,
           `batch:${candidate.batchId}`,
           JSON.stringify(candidate.providerCall),
           createdAt,
@@ -704,6 +754,13 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
           [projectId, batchIds],
         );
         await cleanupClient.query(
+          'DELETE FROM source_product.source_stage3_progress WHERE project_id = $1',
+          [projectId],
+        );
+        await cleanupClient.query('DELETE FROM evidence.indexing_results WHERE project_id = $1', [
+          projectId,
+        ]);
+        await cleanupClient.query(
           'DELETE FROM evidence.spans WHERE project_id = $1 AND evidence_id = ANY($2::uuid[])',
           [projectId, evidenceIds],
         );
@@ -729,6 +786,17 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
         await cleanupClient.query('DELETE FROM canonical.project_state WHERE project_id = $1', [
           projectId,
         ]);
+        await cleanupClient.query(
+          `WITH deleted_versions AS (
+             DELETE FROM asset.source_versions
+              WHERE source_id IN (SELECT source_id FROM asset.sources WHERE project_id = $1)
+              RETURNING original_asset_id
+           )
+           DELETE FROM asset.original_assets
+            WHERE asset_id IN (SELECT original_asset_id FROM deleted_versions)`,
+          [projectId],
+        );
+        await cleanupClient.query('DELETE FROM asset.sources WHERE project_id = $1', [projectId]);
       } finally {
         await cleanupClient.query('SET session_replication_role = origin');
         cleanupClient.release();
@@ -790,7 +858,25 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
     try {
       const sourceHash = sha256Text(candidate.claimText);
       const sourceId = randomUUID();
+      const assetId = randomUUID();
       const revisionId = randomUUID();
+      await pool.query(
+        `INSERT INTO asset.original_assets (asset_id, content_hash, size_bytes, storage_key, created_at)
+         VALUES ($1, $2, 100, $3, $4)`,
+        [assetId, sourceHash, `issue-247-reject-${assetId}`, fixture.draft.createdAt],
+      );
+      await pool.query(
+        `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+         VALUES ($1, $2, 'owner', $3)`,
+        [sourceId, projectId, fixture.draft.createdAt],
+      );
+      await pool.query(
+        `INSERT INTO asset.source_versions (
+           source_version_id, source_id, version_number, original_asset_id,
+           media_type, access_scope, sensitivity, created_at
+         ) VALUES ($1, $2, 1, $3, 'text/plain', '{owner}', 'private', $4)`,
+        [candidate.sourceVersionId, sourceId, assetId, fixture.draft.createdAt],
+      );
       await pool.query(
         `INSERT INTO transformation.revisions (
            revision_id, project_id, source_id, source_version_id, source_content_hash,
@@ -823,14 +909,46 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
           fixture.draft.createdAt,
         ],
       );
+      const indexingResultId = randomUUID();
+      const evidenceSetDigest = sha256Text(JSON.stringify(candidate.evidenceIds));
+      const securityScopeDigest = sha256Text(
+        JSON.stringify({ accessScope: ['owner'], sensitivity: 'private' }),
+      );
+      await pool.query(
+        `INSERT INTO evidence.indexing_results (
+           indexing_result_id, project_id, source_id, source_version_id, revision_id,
+           transformer_id, transformer_version, status, evidence_count, reused_count,
+           evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, 'fixture', '1', 'INDEXED', 1, 0,
+           $6, 'stage3-evidence-index.v1', $7, $8, $8)`,
+        [
+          indexingResultId,
+          projectId,
+          sourceId,
+          candidate.sourceVersionId,
+          revisionId,
+          evidenceSetDigest,
+          securityScopeDigest,
+          fixture.draft.createdAt,
+        ],
+      );
+      await pool.query(
+        `INSERT INTO source_product.source_stage3_progress (
+           project_id, source_id, source_version_id, state, indexing_result_id,
+           created_at, updated_at
+         ) VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, $5, $5)`,
+        [projectId, sourceId, candidate.sourceVersionId, indexingResultId, fixture.draft.createdAt],
+      );
       await pool.query(
         `INSERT INTO candidate.batches (
-           batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at
-         ) VALUES ($1, $2, $3, $4, $5, $6)`,
+           batch_id, project_id, source_version_id, revision_id, idempotency_key,
+           provider_call, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           candidate.batchId,
           projectId,
           candidate.sourceVersionId,
+          revisionId,
           `batch:${candidate.batchId}`,
           JSON.stringify(candidate.providerCall),
           fixture.draft.createdAt,
@@ -1114,6 +1232,13 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
           [projectId, candidate.batchId],
         );
         await cleanupClient.query(
+          'DELETE FROM source_product.source_stage3_progress WHERE project_id = $1',
+          [projectId],
+        );
+        await cleanupClient.query('DELETE FROM evidence.indexing_results WHERE project_id = $1', [
+          projectId,
+        ]);
+        await cleanupClient.query(
           'DELETE FROM evidence.spans WHERE project_id = $1 AND evidence_id = $2',
           [projectId, candidate.evidenceIds[0]],
         );
@@ -1121,6 +1246,17 @@ describeDatabase('Issue #247 V2 Review Product PostgreSQL contract', () => {
           'DELETE FROM transformation.revisions WHERE project_id = $1 AND source_version_id = $2',
           [projectId, candidate.sourceVersionId],
         );
+        await cleanupClient.query(
+          `WITH deleted_versions AS (
+             DELETE FROM asset.source_versions
+              WHERE source_id IN (SELECT source_id FROM asset.sources WHERE project_id = $1)
+              RETURNING original_asset_id
+           )
+           DELETE FROM asset.original_assets
+            WHERE asset_id IN (SELECT original_asset_id FROM deleted_versions)`,
+          [projectId],
+        );
+        await cleanupClient.query('DELETE FROM asset.sources WHERE project_id = $1', [projectId]);
       } finally {
         await cleanupClient.query('SET session_replication_role = origin');
         cleanupClient.release();

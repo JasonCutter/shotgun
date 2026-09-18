@@ -57,6 +57,7 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
     const evidenceId = randomUUID();
     const sourceVersionId = randomUUID();
     const sourceId = randomUUID();
+    const assetId = randomUUID();
     const revisionId = randomUUID();
     const snapshot: CanonicalSnapshot = {
       snapshotId: `snapshot:adr163-product:${suffix}`,
@@ -116,6 +117,23 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
     });
     const fixtureHash = sha256Text(fixture.candidate.claimText);
     await pool!.query(
+      `INSERT INTO asset.original_assets (asset_id, content_hash, size_bytes, storage_key, created_at)
+       VALUES ($1, $2, 100, $3, $4)`,
+      [assetId, fixtureHash, `adr163-product-${assetId}`, snapshot.createdAt],
+    );
+    await pool!.query(
+      `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+       VALUES ($1, $2, 'owner', $3)`,
+      [sourceId, fixture.draft.projectId, snapshot.createdAt],
+    );
+    await pool!.query(
+      `INSERT INTO asset.source_versions (
+         source_version_id, source_id, version_number, original_asset_id,
+         media_type, access_scope, sensitivity, created_at
+       ) VALUES ($1, $2, 1, $3, 'text/plain', '{owner}', 'private', $4)`,
+      [sourceVersionId, sourceId, assetId, snapshot.createdAt],
+    );
+    await pool!.query(
       `INSERT INTO transformation.revisions (
          revision_id, project_id, source_id, source_version_id, source_content_hash,
          transformer_id, transformer_version, document_ir, source_map, document_hash,
@@ -147,11 +165,49 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
         snapshot.createdAt,
       ],
     );
+    const indexingResultId = randomUUID();
+    const evidenceSetDigest = sha256Text(JSON.stringify([evidenceId]));
+    const securityScopeDigest = sha256Text(
+      JSON.stringify({ accessScope: ['owner'], sensitivity: 'private' }),
+    );
+    await pool!.query(
+      `INSERT INTO evidence.indexing_results (
+         indexing_result_id, project_id, source_id, source_version_id, revision_id,
+         transformer_id, transformer_version, status, evidence_count, reused_count,
+         evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, 'test', '1', 'INDEXED', 1, 0,
+         $6, 'stage3-evidence-index.v1', $7, $8, $8)`,
+      [
+        indexingResultId,
+        fixture.draft.projectId,
+        sourceId,
+        sourceVersionId,
+        revisionId,
+        evidenceSetDigest,
+        securityScopeDigest,
+        snapshot.createdAt,
+      ],
+    );
+    await pool!.query(
+      `INSERT INTO source_product.source_stage3_progress (
+         project_id, source_id, source_version_id, state, indexing_result_id,
+         created_at, updated_at
+       ) VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, $5, $5)`,
+      [fixture.draft.projectId, sourceId, sourceVersionId, indexingResultId, snapshot.createdAt],
+    );
     await pool!.query(
       `INSERT INTO candidate.batches (
-         batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at
-       ) VALUES ($1, $2, $3, $4, '{}', $5)`,
-      [batchId, fixture.draft.projectId, sourceVersionId, `batch:${batchId}`, snapshot.createdAt],
+         batch_id, project_id, source_version_id, revision_id, idempotency_key,
+         provider_call, created_at
+       ) VALUES ($1, $2, $3, $4, $5, '{}', $6)`,
+      [
+        batchId,
+        fixture.draft.projectId,
+        sourceVersionId,
+        revisionId,
+        `batch:${batchId}`,
+        snapshot.createdAt,
+      ],
     );
     await pool!.query(
       `INSERT INTO candidate.claim_candidates (
@@ -444,9 +500,22 @@ describe.runIf(databaseUrl)('ADR-163 Product R19 PostgreSQL route', () => {
         evidenceId,
       ]);
       await pool!.query(
+        'DELETE FROM source_product.source_stage3_progress WHERE project_id = $1 AND source_version_id = $2',
+        [fixture.draft.projectId, sourceVersionId],
+      );
+      await pool!.query(
+        'DELETE FROM evidence.indexing_results WHERE project_id = $1 AND source_version_id = $2',
+        [fixture.draft.projectId, sourceVersionId],
+      );
+      await pool!.query(
         'DELETE FROM transformation.revisions WHERE project_id = $1 AND revision_id = $2',
         [fixture.draft.projectId, revisionId],
       );
+      await pool!.query('DELETE FROM asset.source_versions WHERE source_version_id = $1', [
+        sourceVersionId,
+      ]);
+      await pool!.query('DELETE FROM asset.sources WHERE source_id = $1', [sourceId]);
+      await pool!.query('DELETE FROM asset.original_assets WHERE asset_id = $1', [assetId]);
     }
   });
 });

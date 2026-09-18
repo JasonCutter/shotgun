@@ -45,6 +45,10 @@ type Fixture = {
   readonly projectId: string;
   readonly comparisonId: string;
   readonly draft: DraftChangeSetV2;
+  readonly sourceId: string;
+  readonly sourceVersionId: string;
+  readonly assetId: string;
+  readonly indexingResultId: string;
 };
 
 const makeResolutionDrafts = (
@@ -138,6 +142,7 @@ const makeFixture = async (database: Pool): Promise<Fixture> => {
   const evidenceId = randomUUID();
   const sourceVersionId = randomUUID();
   const sourceId = randomUUID();
+  const assetId = randomUUID();
   const revisionId = randomUUID();
   const comparisonId = `comparison-v2-db-${randomUUID()}`;
   const createdAt = '2026-09-05T12:00:00.000Z';
@@ -160,6 +165,23 @@ const makeFixture = async (database: Pool): Promise<Fixture> => {
   };
 
   await database.query(
+    `INSERT INTO asset.original_assets (asset_id, content_hash, size_bytes, storage_key, created_at)
+     VALUES ($1, $2, 100, $3, $4)`,
+    [assetId, sourceDigest, `comparison-review-${assetId}`, createdAt],
+  );
+  await database.query(
+    `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+     VALUES ($1, $2, 'owner', $3)`,
+    [sourceId, projectId, createdAt],
+  );
+  await database.query(
+    `INSERT INTO asset.source_versions (
+       source_version_id, source_id, version_number, original_asset_id,
+       media_type, access_scope, sensitivity, created_at
+     ) VALUES ($1, $2, 1, $3, 'text/plain', '{owner}', 'public', $4)`,
+    [sourceVersionId, sourceId, assetId, createdAt],
+  );
+  await database.query(
     `INSERT INTO transformation.revisions (
        revision_id, project_id, source_id, source_version_id, source_content_hash,
        transformer_id, transformer_version, document_ir, source_map, document_hash,
@@ -175,11 +197,42 @@ const makeFixture = async (database: Pool): Promise<Fixture> => {
        '{"start":0,"end":1}', '{"text":"claim"}', $6, '{owner}', 'public', $7)`,
     [evidenceId, revisionId, projectId, sourceId, sourceVersionId, sourceDigest, createdAt],
   );
+  const indexingResultId = randomUUID();
+  const evidenceSetDigest = sha256Text(JSON.stringify([evidenceId]));
+  const securityScopeDigest = sha256Text(
+    JSON.stringify({ accessScope: ['owner'], sensitivity: 'public' }),
+  );
+  await database.query(
+    `INSERT INTO evidence.indexing_results (
+       indexing_result_id, project_id, source_id, source_version_id, revision_id,
+       transformer_id, transformer_version, status, evidence_count, reused_count,
+       evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at
+     ) VALUES ($1, $2, $3, $4, $5, 'test', '1', 'INDEXED', 1, 0,
+       $6, 'stage3-evidence-index.v1', $7, $8, $8)`,
+    [
+      indexingResultId,
+      projectId,
+      sourceId,
+      sourceVersionId,
+      revisionId,
+      evidenceSetDigest,
+      securityScopeDigest,
+      createdAt,
+    ],
+  );
+  await database.query(
+    `INSERT INTO source_product.source_stage3_progress (
+       project_id, source_id, source_version_id, state, indexing_result_id,
+       created_at, updated_at
+     ) VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, $5, $5)`,
+    [projectId, sourceId, sourceVersionId, indexingResultId, createdAt],
+  );
   await database.query(
     `INSERT INTO candidate.batches (
-       batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at
-     ) VALUES ($1, $2, $3, $4, '{}', $5)`,
-    [batchId, projectId, sourceVersionId, `batch:${batchId}`, createdAt],
+       batch_id, project_id, source_version_id, revision_id, idempotency_key,
+       provider_call, created_at
+     ) VALUES ($1, $2, $3, $4, $5, '{}', $6)`,
+    [batchId, projectId, sourceVersionId, revisionId, `batch:${batchId}`, createdAt],
   );
   await database.query(
     `INSERT INTO candidate.claim_candidates (
@@ -281,7 +334,7 @@ const makeFixture = async (database: Pool): Promise<Fixture> => {
     contentDigest: draftChangeSetContentDigestV2(draftWithoutDigest),
   };
   validateDraftChangeSetV2(draft);
-  return { projectId, comparisonId, draft };
+  return { projectId, comparisonId, draft, sourceId, sourceVersionId, assetId, indexingResultId };
 };
 
 const makeApproval = (draft: DraftChangeSetV2) => {
@@ -705,10 +758,21 @@ describe.runIf(databaseUrl)('WP5 v2 Review PostgreSQL persistence', () => {
         fixture.projectId,
       ]);
       await pool!.query('DELETE FROM candidate.batches WHERE project_id = $1', [fixture.projectId]);
+      await pool!.query('DELETE FROM source_product.source_stage3_progress WHERE project_id = $1', [
+        fixture.projectId,
+      ]);
+      await pool!.query('DELETE FROM evidence.indexing_results WHERE project_id = $1', [
+        fixture.projectId,
+      ]);
       await pool!.query('DELETE FROM evidence.spans WHERE project_id = $1', [fixture.projectId]);
       await pool!.query('DELETE FROM transformation.revisions WHERE project_id = $1', [
         fixture.projectId,
       ]);
+      await pool!.query('DELETE FROM asset.source_versions WHERE source_id = $1', [
+        fixture.sourceId,
+      ]);
+      await pool!.query('DELETE FROM asset.sources WHERE source_id = $1', [fixture.sourceId]);
+      await pool!.query('DELETE FROM asset.original_assets WHERE asset_id = $1', [fixture.assetId]);
     }
   });
 });

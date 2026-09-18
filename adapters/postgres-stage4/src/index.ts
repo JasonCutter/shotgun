@@ -192,20 +192,20 @@ const mapValidation = (row: ValidationRow): ValidationResult => ({
 
 const candidateSelect = `
   SELECT
-    candidate_id::text,
-    batch_id::text,
-    project_id,
-    source_version_id::text,
-    revision_number,
-    claim_text,
-    evidence_id::text,
-    evidence_mode,
-    extraction_profile,
-    status,
-    provider_call,
-    access_scope,
-    sensitivity,
-    created_at
+    candidate.claim_candidates.candidate_id::text,
+    candidate.claim_candidates.batch_id::text,
+    candidate.claim_candidates.project_id,
+    candidate.claim_candidates.source_version_id::text,
+    candidate.claim_candidates.revision_number,
+    candidate.claim_candidates.claim_text,
+    candidate.claim_candidates.evidence_id::text,
+    candidate.claim_candidates.evidence_mode,
+    candidate.claim_candidates.extraction_profile,
+    candidate.claim_candidates.status,
+    candidate.claim_candidates.provider_call,
+    candidate.claim_candidates.access_scope,
+    candidate.claim_candidates.sensitivity,
+    candidate.claim_candidates.created_at
   FROM candidate.claim_candidates
 `;
 

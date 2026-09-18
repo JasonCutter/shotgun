@@ -190,6 +190,18 @@ const sameRuntime = (left: LauncherRuntimeIdentity, right: LauncherRuntimeIdenti
   left.launcherId === right.launcherId &&
   left.ownershipNonce === right.ownershipNonce;
 
+const provesSameRepoLaunchLocalCommand = (
+  commandLine: string | undefined,
+  rootDirectory: string,
+): boolean => {
+  if (commandLine === undefined || commandLine.trim().length === 0) return false;
+  const normalizedCommandLine = normalizeCommandLine(commandLine);
+  const expectedRoot = normalizePath(rootDirectory).toLowerCase();
+  return (
+    normalizedCommandLine.includes(expectedRoot) && normalizedCommandLine.includes('launch-local')
+  );
+};
+
 const proveOwnership = (
   identity: LauncherRuntimeIdentity,
   inspection: ProcessInspection,
@@ -197,11 +209,7 @@ const proveOwnership = (
 ): boolean => {
   if (!inspection.alive || identity.launcherId !== LAUNCHER_ID) return false;
   if (normalizePath(identity.repoRoot) !== normalizePath(rootDirectory)) return false;
-  if (inspection.commandLine === undefined) return false;
-  const commandLine = normalizeCommandLine(inspection.commandLine);
-  const expectedRoot = normalizePath(rootDirectory).toLowerCase();
-  if (!commandLine.includes(expectedRoot)) return false;
-  if (!commandLine.includes('launch-local')) return false;
+  if (!provesSameRepoLaunchLocalCommand(inspection.commandLine, rootDirectory)) return false;
   if (
     inspection.processStartedAt !== undefined &&
     inspection.processStartedAt !== identity.processStartedAt
@@ -339,6 +347,22 @@ export const runCanonicalLaunchPreflight = async (
     if (!inspection.alive) {
       await removeIfCurrent(identityPath, existing, deps);
       log(`[launch] STALE identity removed pid=${existing.pid}`);
+      return undefined;
+    }
+    if (
+      inspection.processStartedAt !== undefined &&
+      inspection.processStartedAt.length > 0 &&
+      inspection.processStartedAt !== existing.processStartedAt &&
+      inspection.commandLine !== undefined &&
+      inspection.commandLine.trim().length > 0 &&
+      !provesSameRepoLaunchLocalCommand(inspection.commandLine, rootDirectory)
+    ) {
+      await removeIfCurrent(identityPath, existing, deps);
+      log(
+        `[launch] PID_REUSE_STALE_IDENTITY_REMOVED pid=${existing.pid}` +
+          ` recordedProcessStartedAt=${existing.processStartedAt}` +
+          ` currentProcessStartedAt=${inspection.processStartedAt}`,
+      );
       return undefined;
     }
     if (!proveOwnership(existing, inspection, rootDirectory)) {

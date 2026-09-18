@@ -104,3 +104,18 @@ Rollback removes the launcher preflight/runtime wiring and ADR reference while
 leaving Product and database schema state untouched. A replacement launcher
 implementation must pass the same contract, real-Git and runtime-ownership
 tests before adoption.
+
+## Amendment history
+
+### 2026-09-18 — Proven PID-reuse recovery
+
+The original fail-closed rule remains valid whenever ownership is genuinely
+unverified. The launcher now distinguishes a proven Windows PID reuse from
+that case only when the live process has a different OS process-start token
+and its available command line does not prove same-repository `launch-local`
+ownership. In that narrow case, the launcher removes only the matching stale
+runtime identity through the existing nonce/identity-safe removal path,
+records the recorded and current start tokens, and reserves a fresh identity.
+The reused live PID is never terminated. This is a recovery clarification
+within the existing local launcher boundary and does not create a new Product
+or runtime authority.

@@ -482,6 +482,119 @@ describe('RUS-2-C1 runtime identity and ownership', () => {
       code: 'RUNTIME_OWNERSHIP_UNVERIFIED',
     });
     expect(fixture.terminated).toHaveLength(0);
+    expect(fixture.removed).toHaveLength(0);
+  });
+
+  it('recovers a proven PID reuse by removing only the stale identity', async () => {
+    const root = await makeRoot('shotgun-launch-pid-reuse-');
+    const logs: string[] = [];
+    const fixture = makeFakeDeps(root, {
+      inspectProcess: async () => ({
+        alive: true,
+        processStartedAt: 'reused-process-start',
+        commandLine: 'unrelated.exe --pid 4567',
+      }),
+    });
+    fixture.rawIdentity = identityFor(root, '3333333333333333333333333333333333333333');
+    const outcome = await runCanonicalLaunchPreflight(
+      { ...makeOptions(root), log: (message: string) => logs.push(message) },
+      fixture.deps,
+    );
+    expect(outcome.kind).toBe('start');
+    expect(fixture.terminated).toHaveLength(0);
+    expect(fixture.removed).toHaveLength(1);
+    expect(fixture.written[0]).toMatchObject({ phase: 'starting', sha: fixture.remoteSha });
+    expect(logs).toContain(
+      '[launch] PID_REUSE_STALE_IDENTITY_REMOVED pid=4567' +
+        ' recordedProcessStartedAt=process-start' +
+        ' currentProcessStartedAt=reused-process-start',
+    );
+  });
+
+  it('fails closed when the process-start token matches an unrelated live process', async () => {
+    const root = await makeRoot('shotgun-launch-pid-reuse-same-token-');
+    const fixture = makeFakeDeps(root, {
+      inspectProcess: async () => ({
+        alive: true,
+        processStartedAt: 'process-start',
+        commandLine: 'unrelated.exe --pid 4567',
+      }),
+    });
+    fixture.rawIdentity = identityFor(root, '3333333333333333333333333333333333333333');
+    await expect(
+      runCanonicalLaunchPreflight(makeOptions(root), fixture.deps),
+    ).rejects.toMatchObject({ code: 'RUNTIME_OWNERSHIP_UNVERIFIED' });
+    expect(fixture.terminated).toHaveLength(0);
+    expect(fixture.removed).toHaveLength(0);
+  });
+
+  it('fails closed when the current process-start token is unavailable', async () => {
+    const root = await makeRoot('shotgun-launch-pid-reuse-missing-token-');
+    const fixture = makeFakeDeps(root, {
+      inspectProcess: async () => ({ alive: true, commandLine: 'unrelated.exe --pid 4567' }),
+    });
+    fixture.rawIdentity = identityFor(root, '3333333333333333333333333333333333333333');
+    await expect(
+      runCanonicalLaunchPreflight(makeOptions(root), fixture.deps),
+    ).rejects.toMatchObject({ code: 'RUNTIME_OWNERSHIP_UNVERIFIED' });
+    expect(fixture.terminated).toHaveLength(0);
+    expect(fixture.removed).toHaveLength(0);
+  });
+
+  it('fails closed when the current command line is unavailable', async () => {
+    const root = await makeRoot('shotgun-launch-pid-reuse-missing-command-');
+    const fixture = makeFakeDeps(root, {
+      inspectProcess: async () => ({
+        alive: true,
+        processStartedAt: 'different-process-start',
+      }),
+    });
+    fixture.rawIdentity = identityFor(root, '3333333333333333333333333333333333333333');
+    await expect(
+      runCanonicalLaunchPreflight(makeOptions(root), fixture.deps),
+    ).rejects.toMatchObject({ code: 'RUNTIME_OWNERSHIP_UNVERIFIED' });
+    expect(fixture.terminated).toHaveLength(0);
+    expect(fixture.removed).toHaveLength(0);
+  });
+
+  it('fails closed when a different token still has same-repo launch-local ownership', async () => {
+    const root = await makeRoot('shotgun-launch-pid-reuse-owned-command-');
+    const fixture = makeFakeDeps(root, {
+      inspectProcess: async () => ({
+        alive: true,
+        processStartedAt: 'different-process-start',
+        commandLine: `${root}${path.sep}scripts${path.sep}launch-local.ts --no-open`,
+      }),
+    });
+    fixture.rawIdentity = identityFor(root, '3333333333333333333333333333333333333333');
+    await expect(
+      runCanonicalLaunchPreflight(makeOptions(root), fixture.deps),
+    ).rejects.toMatchObject({ code: 'RUNTIME_OWNERSHIP_UNVERIFIED' });
+    expect(fixture.terminated).toHaveLength(0);
+    expect(fixture.removed).toHaveLength(0);
+  });
+
+  it('preserves a replacement identity written after PID reuse inspection', async () => {
+    const root = await makeRoot('shotgun-launch-pid-reuse-race-');
+    const stale = identityFor(root, '3333333333333333333333333333333333333333');
+    const replacement = { ...stale, ownershipNonce: 'replacement-nonce' };
+    const fixture = makeFakeDeps(root, {
+      readIdentity: vi.fn().mockResolvedValueOnce(stale).mockResolvedValueOnce(replacement),
+      inspectProcess: async () => ({
+        alive: true,
+        processStartedAt: 'reused-process-start',
+        commandLine: 'unrelated.exe --pid 4567',
+      }),
+      reserveIdentity: async (_identityPath, identity) => {
+        fixture.written.push(identity);
+        return true;
+      },
+    });
+    const outcome = await runCanonicalLaunchPreflight(makeOptions(root), fixture.deps);
+    expect(outcome.kind).toBe('start');
+    expect(fixture.removed).toHaveLength(0);
+    expect(fixture.terminated).toHaveLength(0);
+    expect(fixture.written[0]).toMatchObject({ phase: 'starting', sha: fixture.remoteSha });
   });
 
   it('blocks when a proven stale runtime cannot be stopped', async () => {

@@ -274,6 +274,15 @@ export async function startFrontendTestBackend() {
           accessScope: ['owner'],
           sensitivity: 'private' as const,
           createdAt: '2026-07-31T10:00:00.000Z',
+          stage3State: 'STAGE3_COMPLETED' as const,
+          activeEvidenceRevision: {
+            indexingResultId: 'ask-fixture-indexing-result-1',
+            sourceId: ASK_FIXTURE.sourceId,
+            sourceVersionId: ASK_FIXTURE.sourceVersionId,
+            revisionId: 'ask-fixture-revision-1',
+            status: 'INDEXED' as const,
+            evidenceCount: indexedEvidence.items.length,
+          },
         },
       ];
     },

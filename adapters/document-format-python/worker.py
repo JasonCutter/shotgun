@@ -18,6 +18,7 @@ MAX_RAW_BYTES = 10 * 1024 * 1024
 MAX_HTML_TRACKED = 512
 MAX_PDF_PAGES = 1000
 MAX_PDF_BLOCKS = 8192
+MAX_CSV_BLOCKS = 8192
 MAX_SELECTORS = 16384
 MAX_IMAGE_DESCRIPTION = 128000
 MAX_IMAGE_DIMENSION = 8192
@@ -564,6 +565,8 @@ def csv_blocks(data: bytes) -> list[dict[str, Any]]:
             )
             if item:
                 output.append(item)
+                if len(output) > MAX_CSV_BLOCKS:
+                    raise ValidationOverflow("VALIDATION_ERROR: CSV logical block budget exceeded")
     return output
 
 

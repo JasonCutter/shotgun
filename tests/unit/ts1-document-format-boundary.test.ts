@@ -277,6 +277,17 @@ describe('TS-1 document-format safety boundaries', () => {
     );
   });
 
+  it('keeps 1600-cell CSV valid and rejects excessive logical cardinality', async () => {
+    const valid = await transform(highCardinality[2], 'text/csv');
+    expect(valid.documentIR.blocks).toHaveLength(1600);
+
+    const tooManyCells = Buffer.from(Array.from({ length: 8193 }, () => 'x').join(','), 'utf8');
+    await expect(transform(tooManyCells, 'text/csv')).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      retryable: false,
+    });
+  });
+
   it('maps PDF physical line segments to only the overlapping sentence', async () => {
     const output = await transform(twoLinePdf(), 'application/pdf');
     const paragraphs = output.sourceMap.entries.filter((entry) => entry.nodeKind === 'paragraph');

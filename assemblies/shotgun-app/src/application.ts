@@ -244,6 +244,7 @@ import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
 import { createApplication, RECOVERY_RUNNER_IDS } from './server.js';
 import { installSignalShutdown } from './shutdown.js';
 import { AsyncCleanupStack } from './cleanup-stack.js';
+import { createMaintenanceSessionGuard } from './runtime-maintenance-session.js';
 
 export type StartShotgunApplicationOptions = {
   /** Override HOST (defaults to the `HOST` env or `127.0.0.1`). */
@@ -397,9 +398,27 @@ export const startShotgunApplication = async (
   const cleanupStack = new AsyncCleanupStack();
   const pool = createPostgresPool(databaseUrl);
   cleanupStack.add('database pool', () => pool.end());
-  const runtimeMaintenanceClient = new Client({ connectionString: databaseUrl });
+  const runtimeMaintenanceClient = new Client({
+    connectionString: databaseUrl,
+    application_name: `shotgun-runtime-maintenance:${process.pid}`,
+  });
   let runtimeMaintenanceClientConnected = false;
   let runtimeMaintenanceLockHeld = false;
+  const runtimeMaintenanceSession = createMaintenanceSessionGuard({
+    onUnexpectedLoss: ({ reason, error }) => {
+      console.error(
+        `Shotgun runtime maintenance lock session lost unexpectedly (${reason}); fail-stopping.`,
+        error,
+      );
+      process.exit(1);
+    },
+  });
+  runtimeMaintenanceClient.on('error', (error: unknown) => {
+    runtimeMaintenanceSession.observeError(error);
+  });
+  runtimeMaintenanceClient.on('end', () => {
+    runtimeMaintenanceSession.observeEnd();
+  });
   let application: Awaited<ReturnType<typeof createApplication>> | undefined;
   try {
     await runtimeMaintenanceClient.connect();
@@ -411,7 +430,9 @@ export const startShotgunApplication = async (
       );
     }
     runtimeMaintenanceLockHeld = true;
+    runtimeMaintenanceSession.arm();
     cleanupStack.add('runtime shared maintenance lock', async () => {
+      runtimeMaintenanceSession.beginExpectedShutdown();
       if (runtimeMaintenanceLockHeld) {
         await releaseMaintenanceLock(runtimeMaintenanceClient, 'shared');
         runtimeMaintenanceLockHeld = false;
@@ -1485,6 +1506,7 @@ export const startShotgunApplication = async (
     // R3-4: startup failure and normal close share the exact same cleanup
     // authority. Preserve the original error while keeping cleanup safe.
     try {
+      runtimeMaintenanceSession.beginExpectedShutdown();
       if (application !== undefined) {
         await application.server.close();
       }

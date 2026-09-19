@@ -36,3 +36,8 @@ export type QueryDelivery<TResult = unknown> = {
   readonly result: QueryResultEnvelope<TResult>;
   readonly jobId: string;
 };
+
+/** Non-serialized execution controls for a request-scoped query. */
+export type QueryExecutionOptions = {
+  readonly signal?: AbortSignal;
+};

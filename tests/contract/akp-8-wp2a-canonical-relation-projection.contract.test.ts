@@ -125,6 +125,7 @@ const canonical: CanonicalSnapshot = {
 const context: HandlerContext = {
   moduleId: 'stage10.compiled-truth',
   attemptNumber: 1,
+  signal: new AbortController().signal,
   publish: async () => undefined,
   query: async <TPayload, TResult>(input: DispatchQueryInput<TPayload>) => {
     const payload =

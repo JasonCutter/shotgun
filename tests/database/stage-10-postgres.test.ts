@@ -359,6 +359,7 @@ describe.runIf(pool)('Stage 10 PostgreSQL projection persistence', () => {
     const context: HandlerContext = {
       moduleId: module.manifest.id,
       attemptNumber: 1,
+      signal: new AbortController().signal,
       publish: async () => undefined,
       query: async <TPayload, TResult>(input: DispatchQueryInput<TPayload>) => {
         const payload =
@@ -434,6 +435,7 @@ describe.runIf(pool)('Stage 10 PostgreSQL projection persistence', () => {
     const context: HandlerContext = {
       moduleId: module.manifest.id,
       attemptNumber: 1,
+      signal: new AbortController().signal,
       publish: async () => undefined,
       query: async <TPayload, TResult>(input: DispatchQueryInput<TPayload>) => {
         const payload =

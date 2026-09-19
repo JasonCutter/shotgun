@@ -537,6 +537,7 @@ describe('FE-P5-XP Correction B: Approval -> Canonical commit consumer', () => {
     const context: HandlerContext = {
       moduleId: 'frontend-knowledge-draft-correction-test',
       attemptNumber: 1,
+      signal: new AbortController().signal,
       async publish() {},
       async query<TPayload, TResult>(input: {
         readonly messageType: string;

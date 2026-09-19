@@ -11,6 +11,10 @@ import 'dotenv/config';
 import { Client } from 'pg';
 
 import { sha256Text, stableJson } from '../packages/contracts/src/index.js';
+import {
+  acquireMaintenanceLock,
+  releaseMaintenanceLock,
+} from '../adapters/postgres-maintenance-lock/src/index.js';
 
 export const BACKUP_FORMAT_VERSION = 'shotgun-backup-v1';
 const DATABASE_DUMP_FILE = 'database.dump';
@@ -77,6 +81,7 @@ const ADR163_REVIEW_OPERATION_RESOLUTION_V2_MIGRATION =
   '070_adr163_review_operation_resolution_v2.sql';
 const STAGE6_COMPARISON_REVIEW_V2_HANDOFF_MIGRATION = '068_stage6_comparison_review_v2_handoff.sql';
 const ACTION_FEEDBACK_OUTBOX_MIGRATION = '074_adr166_stage11_action_feedback_outbox.sql';
+const TS5_STAGING_LEASE_MIGRATION = '077_ts5_asset_cas_lifecycle.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
@@ -177,6 +182,7 @@ export const authoritativeIntegrityTablesForMigrations = (
       ? ['action.action_review_work_items', 'discovery.semantic_essence_diagnostics']
       : []),
     ...(applied.has(ACTION_FEEDBACK_OUTBOX_MIGRATION) ? ['action.action_feedback_outbox'] : []),
+    ...(applied.has(TS5_STAGING_LEASE_MIGRATION) ? ['asset.staging_asset_leases'] : []),
   ];
 };
 
@@ -444,23 +450,45 @@ const assertPostgresMajorVersion = async (databaseUrl: string, expected = 16): P
     }
   });
 
-const listReferencedAssets = async (
+export const listReferencedAssets = async (
   databaseUrl: string,
+  migrations: readonly string[],
 ): Promise<readonly { storageKey: string; contentHash: string; sizeBytes: number }[]> =>
   withClient(databaseUrl, async (client) => {
+    const query = migrations.includes(TS5_STAGING_LEASE_MIGRATION)
+      ? `SELECT storage_key, content_hash, size_bytes::text
+         FROM asset.original_assets
+         UNION ALL
+         SELECT storage_key, content_hash, size_bytes::text
+         FROM asset.staging_asset_leases
+         WHERE expires_at > clock_timestamp()
+         ORDER BY storage_key, content_hash`
+      : `SELECT storage_key, content_hash, size_bytes::text
+         FROM asset.original_assets ORDER BY storage_key`;
     const result = await client.query<{
       storage_key: string;
       content_hash: string;
       size_bytes: string;
-    }>(
-      `SELECT storage_key, content_hash, size_bytes::text
-       FROM asset.original_assets ORDER BY storage_key`,
+    }>(query);
+    const deduplicated = new Map<
+      string,
+      { storageKey: string; contentHash: string; sizeBytes: number }
+    >();
+    for (const row of result.rows) {
+      const next = {
+        storageKey: row.storage_key,
+        contentHash: row.content_hash,
+        sizeBytes: Number(row.size_bytes),
+      };
+      const prior = deduplicated.get(next.storageKey);
+      if (prior && (prior.contentHash !== next.contentHash || prior.sizeBytes !== next.sizeBytes)) {
+        throw new Error(`Backup asset authority disagrees for storage key: ${next.storageKey}`);
+      }
+      deduplicated.set(next.storageKey, next);
+    }
+    return [...deduplicated.values()].sort((left, right) =>
+      left.storageKey.localeCompare(right.storageKey),
     );
-    return result.rows.map((row) => ({
-      storageKey: row.storage_key,
-      contentHash: row.content_hash,
-      sizeBytes: Number(row.size_bytes),
-    }));
   });
 
 const walkFiles = async (directory: string): Promise<readonly string[]> => {
@@ -511,13 +539,14 @@ const copyContracts = async (backupRoot: string): Promise<readonly BackupFileEnt
   return files;
 };
 
-const copyAssets = async (
+export const copyAssets = async (
   databaseUrl: string,
   assetRoot: string,
   backupRoot: string,
+  migrations: readonly string[],
 ): Promise<readonly BackupAssetEntry[]> => {
   const files: BackupAssetEntry[] = [];
-  for (const asset of await listReferencedAssets(databaseUrl)) {
+  for (const asset of await listReferencedAssets(databaseUrl, migrations)) {
     const source = resolveWithin(assetRoot, asset.storageKey);
     const bytes = await readFile(source);
     const digest = sha256Bytes(bytes);
@@ -537,7 +566,7 @@ const copyAssets = async (
   return files;
 };
 
-export const createBackup = async (options: CreateBackupOptions): Promise<BackupManifest> => {
+const createBackupUnlocked = async (options: CreateBackupOptions): Promise<BackupManifest> => {
   const outputDirectory = path.resolve(options.outputDirectory);
   await ensureEmptyDirectory(outputDirectory, 'Backup output directory');
   await assertPostgresMajorVersion(options.databaseUrl);
@@ -560,6 +589,7 @@ export const createBackup = async (options: CreateBackupOptions): Promise<Backup
     options.databaseUrl,
     path.resolve(options.assetRoot),
     outputDirectory,
+    migrations,
   );
   const contracts = await copyContracts(outputDirectory);
   const final = await snapshotAuthoritativeIntegrity(options.databaseUrl, migrations);
@@ -592,6 +622,20 @@ export const createBackup = async (options: CreateBackupOptions): Promise<Backup
     { flag: 'wx' },
   );
   return manifest;
+};
+
+export const createBackup = async (options: CreateBackupOptions): Promise<BackupManifest> => {
+  const client = new Client({ connectionString: options.databaseUrl });
+  await client.connect();
+  let acquired = false;
+  try {
+    acquired = await acquireMaintenanceLock(client, 'shared', true);
+    if (!acquired) throw new Error('Backup cannot start while exclusive maintenance is active.');
+    return await createBackupUnlocked(options);
+  } finally {
+    if (acquired) await releaseMaintenanceLock(client, 'shared');
+    await client.end();
+  }
 };
 
 export const readManifest = async (backupDirectory: string): Promise<BackupManifest> => {
@@ -640,7 +684,7 @@ const assertEmptyTargetDatabase = async (databaseUrl: string): Promise<void> =>
     }
   });
 
-const copyRestoredAssets = async (
+export const copyRestoredAssets = async (
   manifest: BackupManifest,
   backupRoot: string,
   targetRoot: string,
@@ -657,7 +701,7 @@ const copyRestoredAssets = async (
   }
 };
 
-export const restoreBackup = async (options: RestoreBackupOptions): Promise<BackupManifest> => {
+const restoreBackupUnlocked = async (options: RestoreBackupOptions): Promise<BackupManifest> => {
   if (sameDatabase(options.sourceDatabaseUrl, options.targetDatabaseUrl)) {
     throw new Error('Restore target must not be the source Database.');
   }
@@ -695,6 +739,23 @@ export const restoreBackup = async (options: RestoreBackupOptions): Promise<Back
     await client.query('ANALYZE');
   });
   return manifest;
+};
+
+export const restoreBackup = async (options: RestoreBackupOptions): Promise<BackupManifest> => {
+  if (sameDatabase(options.sourceDatabaseUrl, options.targetDatabaseUrl)) {
+    throw new Error('Restore target must not be the source Database.');
+  }
+  const client = new Client({ connectionString: options.targetDatabaseUrl });
+  await client.connect();
+  let acquired = false;
+  try {
+    acquired = await acquireMaintenanceLock(client, 'exclusive', true);
+    if (!acquired) throw new Error('Restore cannot start while runtime or backup is active.');
+    return await restoreBackupUnlocked(options);
+  } finally {
+    if (acquired) await releaseMaintenanceLock(client, 'exclusive');
+    await client.end();
+  }
 };
 
 export const createIsolatedRestoreDatabase = async (

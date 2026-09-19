@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import type { AssetStoragePort } from '../../../modules/original-asset/src/index.js';
 import type {
@@ -16,6 +16,11 @@ import type {
   ResolvedSourcesStagingArtifact,
   SourcesStagingServicePort,
 } from '../../../modules/frontend-sources-write/src/product-service.js';
+import type {
+  MaintenanceBarrierPort,
+  StagingAssetLeasePersistencePort,
+  StagingTimeAuthorityPort,
+} from '../../../modules/frontend-sources-staging/src/index.js';
 import type { SourcesUrlSuccessProvenance } from '../../../modules/frontend-sources-write/src/index.js';
 
 export const DEFAULT_SOURCES_URL_LIMITS: UrlAcquisitionLimits = {
@@ -109,6 +114,9 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
     secret: string,
     private readonly urlAcquisition?: SecureUrlAcquisitionCoordinator,
     private readonly now: () => Date = () => new Date(),
+    private readonly leasePersistence?: StagingAssetLeasePersistencePort,
+    private readonly maintenanceBarrier?: MaintenanceBarrierPort,
+    private readonly timeAuthority?: StagingTimeAuthorityPort,
   ) {
     if (secret.trim().length < 32) {
       throw new Error('SOURCES_STAGING_SECRET must contain at least 32 characters.');
@@ -127,37 +135,39 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
     readonly fileName?: string;
     readonly bytes: Uint8Array;
   }): Promise<SourcesStagingReceipt> {
-    this.assertCommon(input);
-    if (input.bytes.byteLength <= 0 || input.bytes.byteLength > MAX_BYTES) {
-      return fail('VALIDATION_ERROR', 'Sources staging accepts between 1 byte and one MiB.');
-    }
-    if (input.kind === 'DIRECT_TEXT' && input.mediaType !== 'text/plain') {
-      return fail('VALIDATION_ERROR', 'Direct Text staging requires text/plain.');
-    }
-    if (input.kind === 'FILE' && input.fileName === undefined) {
-      return fail('VALIDATION_ERROR', 'File staging requires a filename.');
-    }
-    const contentHash = sha256(input.bytes);
-    const storageKey = await this.storage.put(contentHash, input.bytes);
-    const issuedAt = this.now().toISOString();
-    const expiresAt = new Date(Date.parse(issuedAt) + 30 * 24 * 60 * 60 * 1_000).toISOString();
-    const artifact: ResolvedSourcesStagingArtifact = {
-      draftId: input.draftId,
-      itemId: input.itemId,
-      projectId: input.projectId,
-      principalId: input.principalId,
-      kind: input.kind,
-      label: input.label,
-      channel: input.kind === 'DIRECT_TEXT' ? 'direct_text' : 'file_upload',
-      mediaType: input.mediaType,
-      contentHash,
-      sizeBytes: input.bytes.byteLength,
-      storageKey,
-      ...(input.fileName === undefined ? {} : { fileName: input.fileName }),
-      issuedAt,
-      expiresAt,
-    };
-    return this.receipt(artifact);
+    return this.withShared(async () => {
+      this.assertCommon(input);
+      if (input.bytes.byteLength <= 0 || input.bytes.byteLength > MAX_BYTES) {
+        return fail('VALIDATION_ERROR', 'Sources staging accepts between 1 byte and one MiB.');
+      }
+      if (input.kind === 'DIRECT_TEXT' && input.mediaType !== 'text/plain') {
+        return fail('VALIDATION_ERROR', 'Direct Text staging requires text/plain.');
+      }
+      if (input.kind === 'FILE' && input.fileName === undefined) {
+        return fail('VALIDATION_ERROR', 'File staging requires a filename.');
+      }
+      const contentHash = sha256(input.bytes);
+      const storageKey = await this.storage.put(contentHash, input.bytes);
+      const issuedAt = (await this.authoritativeNow()).toISOString();
+      const expiresAt = new Date(Date.parse(issuedAt) + 720 * 60 * 60 * 1_000).toISOString();
+      const artifact: ResolvedSourcesStagingArtifact = {
+        draftId: input.draftId,
+        itemId: input.itemId,
+        projectId: input.projectId,
+        principalId: input.principalId,
+        kind: input.kind,
+        label: input.label,
+        channel: input.kind === 'DIRECT_TEXT' ? 'direct_text' : 'file_upload',
+        mediaType: input.mediaType,
+        contentHash,
+        sizeBytes: input.bytes.byteLength,
+        storageKey,
+        ...(input.fileName === undefined ? {} : { fileName: input.fileName }),
+        issuedAt,
+        expiresAt,
+      };
+      return this.receiptWithLease(artifact);
+    });
   }
 
   async stageUrl(input: {
@@ -168,41 +178,43 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
     readonly label: string;
     readonly requestedUrl: string;
   }): Promise<SourcesStagingReceipt> {
-    this.assertCommon(input);
-    if (!this.urlAcquisition) {
-      throw new ShotgunError({
-        code: 'CAPABILITY_DENIED',
-        safeMessage: 'Production URL acquisition is not configured.',
-        module: 'frontend-sources-staging-sealed',
-        operation: 'stage-url',
+    return this.withShared(async () => {
+      this.assertCommon(input);
+      if (!this.urlAcquisition) {
+        throw new ShotgunError({
+          code: 'CAPABILITY_DENIED',
+          safeMessage: 'Production URL acquisition is not configured.',
+          module: 'frontend-sources-staging-sealed',
+          operation: 'stage-url',
+        });
+      }
+      const limits = DEFAULT_SOURCES_URL_LIMITS;
+      const acquired = await this.urlAcquisition.acquire({
+        requestedUrl: bounded(input.requestedUrl, 8_192, 'requestedUrl'),
+        limits,
       });
-    }
-    const limits = DEFAULT_SOURCES_URL_LIMITS;
-    const acquired = await this.urlAcquisition.acquire({
-      requestedUrl: bounded(input.requestedUrl, 8_192, 'requestedUrl'),
-      limits,
+      const storageKey = await this.storage.put(acquired.contentHash, acquired.body);
+      const issuedAt = (await this.authoritativeNow()).toISOString();
+      const expiresAt = new Date(Date.parse(issuedAt) + 720 * 60 * 60 * 1_000).toISOString();
+      const artifact: ResolvedSourcesStagingArtifact = {
+        draftId: input.draftId,
+        itemId: input.itemId,
+        projectId: input.projectId,
+        principalId: input.principalId,
+        kind: 'URL',
+        label: input.label,
+        channel: 'url_acquisition',
+        mediaType: acquired.responseContentType,
+        contentHash: acquired.contentHash,
+        sizeBytes: acquired.body.byteLength,
+        storageKey,
+        redactedRequestedUrl: acquired.redactedRequestedUrl,
+        urlProvenance: toUrlProvenance(acquired, issuedAt, limits),
+        issuedAt,
+        expiresAt,
+      };
+      return this.receiptWithLease(artifact);
     });
-    const storageKey = await this.storage.put(acquired.contentHash, acquired.body);
-    const issuedAt = this.now().toISOString();
-    const expiresAt = new Date(Date.parse(issuedAt) + 30 * 24 * 60 * 60 * 1_000).toISOString();
-    const artifact: ResolvedSourcesStagingArtifact = {
-      draftId: input.draftId,
-      itemId: input.itemId,
-      projectId: input.projectId,
-      principalId: input.principalId,
-      kind: 'URL',
-      label: input.label,
-      channel: 'url_acquisition',
-      mediaType: acquired.responseContentType,
-      contentHash: acquired.contentHash,
-      sizeBytes: acquired.body.byteLength,
-      storageKey,
-      redactedRequestedUrl: acquired.redactedRequestedUrl,
-      urlProvenance: toUrlProvenance(acquired, issuedAt, limits),
-      issuedAt,
-      expiresAt,
-    };
-    return this.receipt(artifact);
   }
 
   async resolve(input: {
@@ -226,7 +238,7 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
         'The Sources staging reference does not match this request context.',
       );
     }
-    if (Date.parse(artifact.expiresAt) <= this.now().getTime()) {
+    if (Date.parse(artifact.expiresAt) <= (await this.authoritativeNow()).getTime()) {
       return fail('RETENTION_EXPIRED', 'The Sources staging reference has expired.');
     }
     return { ...artifact, stagingReference: input.stagingReference };
@@ -246,8 +258,10 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
     bounded(input.label, 500, 'label');
   }
 
-  private receipt(artifact: ResolvedSourcesStagingArtifact): SourcesStagingReceipt {
-    return {
+  private async receiptWithLease(
+    artifact: ResolvedSourcesStagingArtifact,
+  ): Promise<SourcesStagingReceipt> {
+    const receipt: SourcesStagingReceipt = {
       schemaVersion: SOURCES_SCHEMA_VERSION,
       draftId: artifact.draftId,
       itemId: artifact.itemId,
@@ -263,6 +277,39 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
         : { redactedRequestedUrl: artifact.redactedRequestedUrl }),
       expiresAt: artifact.expiresAt,
     };
+    if (this.leasePersistence) {
+      await this.leasePersistence.createLease({
+        leaseId: randomUUID(),
+        referenceDigest: sha256(Buffer.from(receipt.stagingReference, 'utf8')),
+        projectId: artifact.projectId,
+        draftId: artifact.draftId,
+        itemId: artifact.itemId,
+        principalId: artifact.principalId,
+        inputKind: artifact.kind,
+        storageKey: artifact.storageKey,
+        contentHash: artifact.contentHash,
+        sizeBytes: artifact.sizeBytes,
+        issuedAt: artifact.issuedAt,
+        expiresAt: artifact.expiresAt,
+      });
+    }
+    return receipt;
+  }
+
+  private async withShared<T>(action: () => Promise<T>): Promise<T> {
+    return this.maintenanceBarrier ? this.maintenanceBarrier.runShared(action) : action();
+  }
+
+  private async authoritativeNow(): Promise<Date> {
+    try {
+      const value = this.timeAuthority ? await this.timeAuthority.now() : this.now();
+      if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+        throw new Error('Invalid staging time.');
+      }
+      return value;
+    } catch {
+      return fail('POLICY_DENIED', 'The Sources staging time authority is unavailable.');
+    }
   }
 
   private seal(artifact: ResolvedSourcesStagingArtifact): string {

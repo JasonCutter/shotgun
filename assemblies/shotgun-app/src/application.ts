@@ -43,6 +43,7 @@ import {
 } from '../../../adapters/frontend-product-read-postgres/src/index.js';
 import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
+import { PostgresStagingAssetLeaseRepository } from '../../../adapters/frontend-sources-staging-postgres/src/index.js';
 import { PostgresSourcesActivityRead } from '../../../adapters/frontend-sources-write-postgres/src/activity-read.js';
 import { PostgresAskActivityRead } from '../../../adapters/frontend-ask-execution-postgres/src/activity-read.js';
 import { createPostgresActivityReadModelStore } from '../../../adapters/frontend-activity-postgres/src/index.js';
@@ -106,6 +107,11 @@ import {
 import { PostgresSemanticEmbeddingProfileRepository } from '../../../adapters/semantic-embedding-postgres/src/index.js';
 import { PostgresDiscoveryRuntimeRepository } from '../../../adapters/discovery-runtime-postgres/src/index.js';
 import { PostgresConnectorRuntimeState } from '../../../adapters/connector-runtime-postgres/src/index.js';
+import { Client } from 'pg';
+import {
+  acquireMaintenanceLock,
+  releaseMaintenanceLock,
+} from '../../../adapters/postgres-maintenance-lock/src/index.js';
 import {
   PostgresDiscoveryApprovedResourceRevisionResolver,
   PostgresDiscoveryReentryFreshnessAuthority,
@@ -238,6 +244,7 @@ import { assertRuntimeSecurityConfiguration } from './runtime-security.js';
 import { createApplication, RECOVERY_RUNNER_IDS } from './server.js';
 import { installSignalShutdown } from './shutdown.js';
 import { AsyncCleanupStack } from './cleanup-stack.js';
+import { createMaintenanceSessionGuard } from './runtime-maintenance-session.js';
 
 export type StartShotgunApplicationOptions = {
   /** Override HOST (defaults to the `HOST` env or `127.0.0.1`). */
@@ -391,8 +398,63 @@ export const startShotgunApplication = async (
   const cleanupStack = new AsyncCleanupStack();
   const pool = createPostgresPool(databaseUrl);
   cleanupStack.add('database pool', () => pool.end());
+  const runtimeMaintenanceClient = new Client({
+    connectionString: databaseUrl,
+    application_name: `shotgun-runtime-maintenance:${process.pid}`,
+  });
+  let runtimeMaintenanceClientConnected = false;
+  let runtimeMaintenanceLockHeld = false;
+  const runtimeMaintenanceSession = createMaintenanceSessionGuard({
+    onUnexpectedLoss: ({ reason, error }) => {
+      console.error(
+        `Shotgun runtime maintenance lock session lost unexpectedly (${reason}); fail-stopping.`,
+        error,
+      );
+      process.exit(1);
+    },
+  });
+  runtimeMaintenanceClient.on('error', (error: unknown) => {
+    // A client error means the dedicated session is no longer a safe target
+    // for release/end cleanup. Unexpected errors fail-stop through the guard;
+    // expected-shutdown errors simply let cleanup skip the dead session.
+    runtimeMaintenanceClientConnected = false;
+    runtimeMaintenanceSession.observeError(error);
+  });
+  runtimeMaintenanceClient.on('end', () => {
+    runtimeMaintenanceClientConnected = false;
+    runtimeMaintenanceSession.observeEnd();
+  });
   let application: Awaited<ReturnType<typeof createApplication>> | undefined;
   try {
+    await runtimeMaintenanceClient.connect();
+    runtimeMaintenanceClientConnected = true;
+    const acquired = await acquireMaintenanceLock(runtimeMaintenanceClient, 'shared', true);
+    if (!acquired) {
+      throw new Error(
+        'Shotgun runtime cannot start while exclusive asset-CAS maintenance is active.',
+      );
+    }
+    runtimeMaintenanceLockHeld = true;
+    runtimeMaintenanceSession.arm();
+    cleanupStack.add('runtime shared maintenance lock', async () => {
+      runtimeMaintenanceSession.beginExpectedShutdown();
+      if (runtimeMaintenanceLockHeld) {
+        try {
+          await releaseMaintenanceLock(runtimeMaintenanceClient, 'shared');
+        } catch (error) {
+          if (!runtimeMaintenanceSession.shutdownExpected) throw error;
+        }
+        runtimeMaintenanceLockHeld = false;
+      }
+      if (runtimeMaintenanceClientConnected) {
+        try {
+          await runtimeMaintenanceClient.end();
+        } catch (error) {
+          if (!runtimeMaintenanceSession.shutdownExpected) throw error;
+        }
+        runtimeMaintenanceClientConnected = false;
+      }
+    });
     const port = options.port ?? Number.parseInt(process.env.PORT ?? '3000', 10);
     const host = options.host ?? process.env.HOST ?? '127.0.0.1';
     const production = environment.NODE_ENV === 'production';
@@ -415,7 +477,16 @@ export const startShotgunApplication = async (
       new NodeUrlResolver(),
       new NodeUrlHopTransport(),
     );
-    const staging = new SealedSourcesStagingService(assetStorage, stagingSecret, urlAcquisition);
+    const stagingLeaseRepository = new PostgresStagingAssetLeaseRepository(pool);
+    const staging = new SealedSourcesStagingService(
+      assetStorage,
+      stagingSecret,
+      urlAcquisition,
+      () => new Date(),
+      stagingLeaseRepository,
+      undefined,
+      stagingLeaseRepository,
+    );
     const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
     // FE-P5-XP Correction C: Source Intake → Stage 3 Transformation/Evidence
     // production wiring (real path — the product service runs this pipeline after
@@ -1416,6 +1487,10 @@ export const startShotgunApplication = async (
     const close = async (): Promise<void> => {
       if (closed) return;
       closed = true;
+      // Mark intent before server.close() begins waiting on in-flight work.
+      // The maintenance session may disconnect while that async shutdown is
+      // still draining, and that disconnect is expected rather than fatal.
+      runtimeMaintenanceSession.beginExpectedShutdown();
       await server.close();
     };
     const listen = async (): Promise<void> => {
@@ -1448,10 +1523,15 @@ export const startShotgunApplication = async (
     // R3-4: startup failure and normal close share the exact same cleanup
     // authority. Preserve the original error while keeping cleanup safe.
     try {
+      runtimeMaintenanceSession.beginExpectedShutdown();
       if (application !== undefined) {
         await application.server.close();
       }
       await cleanupStack.close();
+      if (runtimeMaintenanceClientConnected) {
+        await runtimeMaintenanceClient.end();
+        runtimeMaintenanceClientConnected = false;
+      }
     } catch {
       // CleanupAggregateError is intentionally not chained into the startup
       // error because it may contain implementation-specific details.

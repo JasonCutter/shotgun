@@ -201,6 +201,18 @@ describe('Backup Bundle verification', () => {
     ).toEqual(expect.arrayContaining(['comparison.blocked_outcomes_v2']));
   });
 
+  it('includes staging lease authority only after migration 077', () => {
+    expect(
+      authoritativeIntegrityTablesForMigrations(['076_stage4_candidate_revision_lineage.sql']),
+    ).not.toContain('asset.staging_asset_leases');
+    expect(
+      authoritativeIntegrityTablesForMigrations([
+        '076_stage4_candidate_revision_lineage.sql',
+        '077_ts5_asset_cas_lifecycle.sql',
+      ]),
+    ).toContain('asset.staging_asset_leases');
+  });
+
   it('fails closed when a referenced Original Asset is corrupt or missing', async () => {
     const corrupt = await fixture();
     const corruptAsset = path.join(corrupt.directory, corrupt.manifest.assets.files[0]!.backupPath);

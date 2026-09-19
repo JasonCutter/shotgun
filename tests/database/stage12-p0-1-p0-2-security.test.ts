@@ -351,9 +351,9 @@ const seedCandidate = async (
   );
   await pool.query(
     `INSERT INTO candidate.batches
-       (batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at)
-     VALUES ($1, $2, $3, $4, '{}'::jsonb, now())`,
-    [batchId, projectId, sourceVersionId, randomUUID()],
+       (batch_id, project_id, source_version_id, revision_id, idempotency_key, provider_call, created_at)
+     VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, now())`,
+    [batchId, projectId, sourceVersionId, revisionId, randomUUID()],
   );
   await pool.query(
     `INSERT INTO candidate.claim_candidates

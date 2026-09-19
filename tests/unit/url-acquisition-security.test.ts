@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isPublicAcquisitionAddress,
   SecureUrlAcquisitionCoordinator,
   type UrlHopResponse,
   type UrlHopTransportPort,
@@ -60,6 +61,13 @@ const coordinator = (
 };
 
 describe('secure URL acquisition policy', () => {
+  it('parses compressed and case-insensitive embedded IPv4 forms', () => {
+    expect(isPublicAcquisitionAddress('::FFFF:0808:0808')).toBe(true);
+    expect(isPublicAcquisitionAddress('::ffff:192.0.2.1')).toBe(false);
+    expect(isPublicAcquisitionAddress('2002:0808:0808::1')).toBe(true);
+    expect(isPublicAcquisitionAddress('64:FF9B::0808:0808')).toBe(true);
+  });
+
   it('returns redacted safe provenance and omits credentials and arbitrary headers', async () => {
     const { service, transport } = coordinator(
       { 'example.com': [['93.184.216.34'], ['93.184.216.34']] },
@@ -104,8 +112,24 @@ describe('secure URL acquisition policy', () => {
     'fc00::1',
     'fe80::1',
     '2001:db8::1',
+    '::ffff:7f00:1',
+    '::7f00:1',
+    '2002:7f00:1::1',
+    '64:ff9b::7f00:1',
+    '64:ff9b:1::7f00:1',
   ])('rejects prohibited address %s before transport', async (address) => {
     const { service, transport } = coordinator({ 'example.com': [[address]] }, []);
+    await expect(service.acquire({ requestedUrl: 'https://example.com/', limits })).rejects.toThrow(
+      /prohibited or empty address set/,
+    );
+    expect(transport.requests).toHaveLength(0);
+  });
+
+  it('rejects a mixed public and embedded-prohibited record before transport', async () => {
+    const { service, transport } = coordinator(
+      { 'example.com': [['93.184.216.34', '::ffff:7f00:1']] },
+      [],
+    );
     await expect(service.acquire({ requestedUrl: 'https://example.com/', limits })).rejects.toThrow(
       /prohibited or empty address set/,
     );
@@ -129,6 +153,26 @@ describe('secure URL acquisition policy', () => {
     await expect(
       service.acquire({ requestedUrl: 'https://example.com/start', limits }),
     ).rejects.toThrow(/prohibited or empty address set/);
+  });
+
+  it('rejects a redirect to an embedded-prohibited DNS result before the second transport', async () => {
+    const { service, transport } = coordinator(
+      {
+        'public.example': [['93.184.216.34'], ['93.184.216.34']],
+        'blocked.example': [['64:ff9b::7f00:1']],
+      },
+      [
+        response({
+          status: 302,
+          redirectLocation: 'https://blocked.example/private',
+          body: new Uint8Array(),
+        }),
+      ],
+    );
+    await expect(
+      service.acquire({ requestedUrl: 'https://public.example/start', limits }),
+    ).rejects.toThrow(/prohibited or empty address set/);
+    expect(transport.requests).toHaveLength(1);
   });
 
   it('rejects DNS rebinding and transport address escape', async () => {

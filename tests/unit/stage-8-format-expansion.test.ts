@@ -4,11 +4,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import {
-  PythonDocumentFormatAdapter,
-  NodeSafeUrlFetchAdapter,
-  SafeUrlTextAdapter,
-} from '../../adapters/document-format-python/src/index.js';
+import { PythonDocumentFormatAdapter } from '../../adapters/document-format-python/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../adapters/plain-text-lucas-augmented/src/index.js';
 import {
   sha256Text,
@@ -182,70 +178,24 @@ describe('Stage 8 format Golden Corpus', () => {
     expect(candidates[0]?.pointer).toBe('');
   });
 
-  it('reuses HTML extraction for accessible video-page text and blocks private URLs', async () => {
+  it('extracts accessible text from stored HTML and ignores video sources', async () => {
     const transformer = new PythonDocumentFormatAdapter({ pythonExecutable });
-    const adapter = new SafeUrlTextAdapter(
-      {
-        async fetch(url) {
-          expect(url.hostname).toBe('video.example.com');
-          return {
-            mediaType: 'text/html',
-            contentBase64: Buffer.from(
-              '<main><h1>Video title</h1><section aria-label="Transcript"><p>Accessible transcript text.</p></section><video src="ignored.mp4"></video></main>',
-            ).toString('base64'),
-          };
-        },
-      },
-      transformer,
+    const bytes = Buffer.from(
+      '<main><h1>Video title</h1><section aria-label="Transcript"><p>Accessible transcript text.</p></section><video src="ignored.mp4"></video></main>',
     );
-    const base = {
+    const output = await transformer.transform({
       sourceId: randomUUID(),
       sourceVersionId: randomUUID(),
-      sourceContentHash: hashBytes(Buffer.from('page')),
-    };
-    const output = await adapter.transform({ ...base, url: 'https://video.example.com/watch/1' });
+      sourceContentHash: hashBytes(bytes),
+      mediaType: 'text/html',
+      contentBase64: bytes.toString('base64'),
+    });
     expect(output.documentIR.blocks.map((item) => item.text).join(' ')).toContain(
       'Accessible transcript text.',
     );
     expect(output.documentIR.blocks.map((item) => item.text).join(' ')).not.toContain(
       'ignored.mp4',
     );
-    await expect(
-      adapter.transform({ ...base, url: 'https://127.0.0.1/private' }),
-    ).rejects.toMatchObject({
-      code: 'POLICY_DENIED',
-    });
-  });
-
-  it('fetches public HTML with redirect, DNS, timeout, and size policy boundaries', async () => {
-    const requested: string[] = [];
-    const fetcher = new NodeSafeUrlFetchAdapter({
-      resolve: async () => [{ address: '93.184.216.34', family: 4 }],
-      fetch: async (url) => {
-        requested.push(url);
-        if (url.endsWith('/start')) {
-          return new Response(null, {
-            status: 302,
-            headers: { location: '/final' },
-          });
-        }
-        return new Response('<main><p>Public HTML</p></main>', {
-          status: 200,
-          headers: { 'content-type': 'text/html; charset=utf-8' },
-        });
-      },
-    });
-    const fetched = await fetcher.fetch(new URL('https://example.com/start'));
-    expect(Buffer.from(fetched.contentBase64, 'base64').toString()).toContain('Public HTML');
-    expect(requested).toEqual(['https://example.com/start', 'https://example.com/final']);
-
-    const privateFetcher = new NodeSafeUrlFetchAdapter({
-      resolve: async () => [{ address: '10.0.0.2', family: 4 }],
-      fetch: async () => new Response('never'),
-    });
-    await expect(privateFetcher.fetch(new URL('https://private.example/'))).rejects.toMatchObject({
-      code: 'POLICY_DENIED',
-    });
   });
 
   it('allows a format adapter replacement without changing the upper contract shape', async () => {

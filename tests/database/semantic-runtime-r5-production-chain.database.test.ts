@@ -316,6 +316,7 @@ type Fixture = {
   readonly csrfToken: string;
   readonly sourceId: string;
   readonly sourceVersionId: string;
+  readonly revisionId: string;
   readonly evidenceId: string;
   readonly claimId: string;
   readonly groupId: string;
@@ -605,6 +606,7 @@ const createFixture = async (
     csrfToken: session.csrfToken,
     sourceId: stored.sourceId,
     sourceVersionId: stored.sourceVersionId,
+    revisionId,
     evidenceId,
     claimId,
     groupId,
@@ -1787,9 +1789,15 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       const candidateText = 'A non-exact candidate for authority collision re-entry.';
       await pool!.query(
         `INSERT INTO candidate.batches
-           (batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at)
-         VALUES ($1, $2, $3, $4, '{}'::jsonb, now())`,
-        [batchId, fixture.projectId, fixture.sourceVersionId, `authority-batch-${candidateId}`],
+           (batch_id, project_id, source_version_id, revision_id, idempotency_key, provider_call, created_at)
+         VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, now())`,
+        [
+          batchId,
+          fixture.projectId,
+          fixture.sourceVersionId,
+          fixture.revisionId,
+          `authority-batch-${candidateId}`,
+        ],
       );
       await pool!.query(
         `INSERT INTO candidate.claim_candidates
@@ -2327,9 +2335,9 @@ describe('AKP-1R R5: real PostgreSQL cross-WP semantic production-chain proof', 
       const batchId = randomUUID();
       await pool!.query(
         `INSERT INTO candidate.batches
-           (batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at)
-         VALUES ($1, $2, $3, $4, '{}'::jsonb, now())`,
-        [batchId, projectId, fixture.sourceVersionId, `c6-batch-${batchId}`],
+           (batch_id, project_id, source_version_id, revision_id, idempotency_key, provider_call, created_at)
+         VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, now())`,
+        [batchId, projectId, fixture.sourceVersionId, fixture.revisionId, `c6-batch-${batchId}`],
       );
       for (const [candidateId, textValue] of [
         [candidateAId, 'C6 Candidate A requires semantic credential recovery.'],

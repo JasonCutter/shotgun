@@ -76,21 +76,43 @@ describe.runIf(pool)('Stage 8 PostgreSQL format persistence', () => {
     const stored = await pool!.query<{
       media_type: string;
       material_kind: string;
+      node_kind: string;
+      pointer: string;
       selectors: unknown;
     }>(
       `
-        SELECT v.media_type, r.material_kind, e.selectors
+        SELECT v.media_type, r.material_kind, e.node_kind, e.pointer, e.selectors
         FROM asset.source_versions v
         JOIN asset.storage_receipts r ON r.source_version_id = v.source_version_id
         JOIN evidence.spans e ON e.source_version_id = v.source_version_id
         WHERE e.selectors @> '[{"type":"CellSelector","cell":"B2"}]'::jsonb
-      `,
+        `,
     );
-    expect(stored.rows).toHaveLength(1);
-    expect(stored.rows[0]).toMatchObject({
-      media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      material_kind: 'document',
-    });
+    expect(stored.rows).toHaveLength(2);
+    const representations = new Map(
+      stored.rows.map((row) => [`${row.node_kind}:${row.pointer}`, row]),
+    );
+    expect([...representations.keys()].sort()).toEqual([
+      'paragraph:/blocks/3',
+      'sentence:/blocks/3/sentences/0',
+    ]);
+    for (const [key, nodeKind, pointer] of [
+      ['paragraph:/blocks/3', 'paragraph', '/blocks/3'],
+      ['sentence:/blocks/3/sentences/0', 'sentence', '/blocks/3/sentences/0'],
+    ] as const) {
+      const row = representations.get(key);
+      expect(row).toMatchObject({
+        media_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        material_kind: 'document',
+        node_kind: nodeKind,
+        pointer,
+      });
+      expect(row?.selectors).toEqual(
+        expect.arrayContaining([
+          { type: 'CellSelector', sheet: 'Golden', cell: 'B2', row: 2, column: 2 },
+        ]),
+      );
+    }
     await kernel.shutdown();
   }, 20_000);
 });

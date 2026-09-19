@@ -25,6 +25,16 @@ const transports = [
 ] as const;
 
 class MismatchedEvidenceRepository extends InMemoryEvidenceRepository {
+  override async findManyByIds(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+    evidenceIds: readonly string[],
+  ) {
+    const items = await super.findManyByIds(projectId, sourceVersionId, revisionId, evidenceIds);
+    return items.map((item) => ({ ...item, revisionId: randomUUID() }));
+  }
+
   override async findById(projectId: string, evidenceId: string) {
     const item = await super.findById(projectId, evidenceId);
     return item ? { ...item, revisionId: randomUUID() } : undefined;

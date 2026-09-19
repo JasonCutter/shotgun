@@ -60,7 +60,7 @@ const provider: AIProviderAdapterPort = {
         candidates: [
           {
             claimText: 'Shotgun stores Evidence.',
-            evidenceId: '55555555-5555-4555-8555-555555555555',
+            evidenceId: '66666666-6666-4666-8666-666666666666',
           },
         ],
       }),
@@ -145,8 +145,14 @@ const publishEvidenceIndexed = async (
 describe('Stage 3 → Stage 4 production continuation', () => {
   it('starts one routed DeepSeek structured call after durable Evidence and reaches READY', async () => {
     const storage = new InMemoryAssetStorage();
+    const evidenceIds = [
+      '55555555-5555-4555-8555-555555555555',
+      '66666666-6666-4666-8666-666666666666',
+      '77777777-7777-4777-8777-777777777777',
+    ];
+    let evidenceIdIndex = 0;
     const evidenceRepository = new InMemoryEvidenceRepository(
-      () => '55555555-5555-4555-8555-555555555555',
+      () => evidenceIds[evidenceIdIndex++] ?? '88888888-8888-4888-8888-888888888888',
     );
     const transformationRepository = new InMemoryTransformationRepository();
     const aiRepository = new InMemoryAIProviderCallRepository();

@@ -199,6 +199,7 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
           throw new Error('must not be called');
         },
         listBySourceVersion: async () => [],
+        findManyByIds: async () => [],
         findById: async () => undefined,
       },
     });
@@ -243,6 +244,7 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
       evidenceRepository: {
         index: async () => ({ items: [], reusedCount: 0 }),
         listBySourceVersion: async () => [],
+        findManyByIds: async () => [],
         findById: async () => undefined,
       },
       progress: {
@@ -306,6 +308,7 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
       evidenceRepository: {
         index: async () => ({ items: [], reusedCount: 0 }),
         listBySourceVersion: async () => [],
+        findManyByIds: async () => [],
         findById: async () => undefined,
       },
       progress: {

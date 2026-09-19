@@ -5,6 +5,8 @@ import getDocumentRevisionOutputSchema from '../../../packages/contracts/schemas
 import getDocumentRevisionSchema from '../../../packages/contracts/schemas/get-document-revision.v1.schema.json';
 import getDocumentRevisionByRevisionSchema from '../../../packages/contracts/schemas/get-document-revision-by-revision.v1.schema.json';
 import getEvidenceSpanSchema from '../../../packages/contracts/schemas/get-evidence-span.v1.schema.json';
+import getEvidenceSpansByIdsOutputSchema from '../../../packages/contracts/schemas/get-evidence-spans-by-ids-output.v1.schema.json';
+import getEvidenceSpansByIdsSchema from '../../../packages/contracts/schemas/get-evidence-spans-by-ids.v1.schema.json';
 import listEvidenceSpansOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-output.v1.schema.json';
 import listEvidenceSpansSchema from '../../../packages/contracts/schemas/list-evidence-spans.v1.schema.json';
 import listEvidenceSpansByRevisionOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-by-revision-output.v1.schema.json';
@@ -41,6 +43,12 @@ export type EvidenceRepositoryPort = {
     projectId: string,
     sourceVersionId: string,
     revisionId: string,
+  ): Promise<readonly EvidenceSpan[]>;
+  findManyByIds(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+    evidenceIds: readonly string[],
   ): Promise<readonly EvidenceSpan[]>;
   findById(projectId: string, evidenceId: string): Promise<EvidenceSpan | undefined>;
 };
@@ -117,6 +125,81 @@ const invalidRevision = (message: string): never => {
     module: 'stage3.evidence',
     operation: 'validate-document-revision',
   });
+};
+
+const invalidBulkEvidence = (message: string, correlationId?: string): never => {
+  throw new ShotgunError({
+    code: 'VALIDATION_ERROR',
+    safeMessage: message,
+    module: 'stage3.evidence',
+    operation: 'get-evidence-spans-by-ids',
+    ...(correlationId ? { correlationId } : {}),
+    retryable: false,
+  });
+};
+
+const assertUniqueEvidenceIds = (evidenceIds: readonly string[], correlationId: string) => {
+  if (evidenceIds.length === 0) {
+    invalidBulkEvidence('Bulk Evidence lookup requires at least one Evidence ID.', correlationId);
+  }
+  if (new Set(evidenceIds).size !== evidenceIds.length) {
+    invalidBulkEvidence('Bulk Evidence lookup requires unique Evidence IDs.', correlationId);
+  }
+};
+
+const orderBulkEvidence = (
+  items: readonly EvidenceSpan[],
+  evidenceIds: readonly string[],
+  projectId: string,
+  sourceVersionId: string,
+  revisionId: string,
+  security: { readonly accessScope: readonly string[] },
+  correlationId: string,
+): readonly EvidenceSpan[] => {
+  const requested = new Set(evidenceIds);
+  const byId = new Map<string, EvidenceSpan>();
+  for (const item of items) {
+    if (!requested.has(item.evidenceId)) {
+      invalidBulkEvidence(
+        'Bulk Evidence lookup returned an unexpected Evidence ID.',
+        correlationId,
+      );
+    }
+    if (byId.has(item.evidenceId)) {
+      invalidBulkEvidence('Bulk Evidence lookup returned a duplicate Evidence ID.', correlationId);
+    }
+    if (
+      item.projectId !== projectId ||
+      item.sourceVersionId !== sourceVersionId ||
+      item.revisionId !== revisionId
+    ) {
+      invalidBulkEvidence(
+        'Bulk Evidence lookup returned a different project or revision.',
+        correlationId,
+      );
+    }
+    assertScope(item.accessScope, security.accessScope, correlationId);
+    byId.set(item.evidenceId, item);
+  }
+  if (byId.size !== evidenceIds.length) {
+    invalidBulkEvidence(
+      'Bulk Evidence lookup did not return every requested Evidence ID.',
+      correlationId,
+    );
+  }
+  const ordered: EvidenceSpan[] = [];
+  for (const evidenceId of evidenceIds) {
+    const item = byId.get(evidenceId);
+    if (!item) {
+      invalidBulkEvidence(
+        'Bulk Evidence lookup did not return every requested Evidence ID.',
+        correlationId,
+      );
+      continue;
+    }
+    ordered.push(item);
+  }
+  return ordered;
 };
 
 const markdownStructuralLine = /^(?:#{1,6}|[-+*]|(?:[-*_]){3,}|#{1,6}\s*\d+[.)]|\d+[.)])$/u;
@@ -236,6 +319,7 @@ export const createEvidenceModule = (
         { name: 'ListEvidenceSpans', range: '>=1.0.0 <2.0.0' },
         { name: 'ListEvidenceSpansByRevision', range: '>=1.0.0 <2.0.0' },
         { name: 'GetEvidenceSpan', range: '>=1.0.0 <2.0.0' },
+        { name: 'GetEvidenceSpansByIds', range: '>=1.0.0 <2.0.0' },
       ],
     },
     deployment: { modes: ['in_process', 'worker'] },
@@ -264,6 +348,7 @@ export const createEvidenceModule = (
         { name: 'ListEvidenceSpans', range: '>=1.0.0 <2.0.0' },
         { name: 'ListEvidenceSpansByRevision', range: '>=1.0.0 <2.0.0' },
         { name: 'GetEvidenceSpan', range: '>=1.0.0 <2.0.0' },
+        { name: 'GetEvidenceSpansByIds', range: '>=1.0.0 <2.0.0' },
       ],
       capabilities: [
         { name: 'evidence-index', priority: 100 },
@@ -327,6 +412,13 @@ export const createEvidenceModule = (
       kind: 'query',
       inputSchema: getEvidenceSpanSchema,
       outputSchema: evidenceSpanSchema,
+    },
+    {
+      name: 'GetEvidenceSpansByIds',
+      version: '1.0.0',
+      kind: 'query',
+      inputSchema: getEvidenceSpansByIdsSchema,
+      outputSchema: getEvidenceSpansByIdsOutputSchema,
     },
   ],
   handlers: {
@@ -474,6 +566,39 @@ export const createEvidenceModule = (
           }
           assertScope(evidence.accessScope, security.accessScope, envelope.correlationId);
           return evidence;
+        },
+      },
+      {
+        messageType: 'GetEvidenceSpansByIds',
+        version: '1.0.0',
+        requiredAccessScopes: ['owner'],
+        async handle(envelope) {
+          const { projectId, security } = assertContext(envelope);
+          const payload = envelope.payload as {
+            readonly sourceVersionId: string;
+            readonly revisionId: string;
+            readonly evidenceIds: readonly string[];
+          };
+          assertUniqueEvidenceIds(payload.evidenceIds, envelope.correlationId);
+          const items = await repository.findManyByIds(
+            projectId,
+            payload.sourceVersionId,
+            payload.revisionId,
+            payload.evidenceIds,
+          );
+          return {
+            sourceVersionId: payload.sourceVersionId,
+            revisionId: payload.revisionId,
+            items: orderBulkEvidence(
+              items,
+              payload.evidenceIds,
+              projectId,
+              payload.sourceVersionId,
+              payload.revisionId,
+              security,
+              envelope.correlationId,
+            ),
+          };
         },
       },
     ],

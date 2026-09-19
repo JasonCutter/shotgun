@@ -7,6 +7,7 @@
     "contracts": [
       { "name": "EvidenceIndexed", "range": ">=1.0.0 <2.0.0" },
       { "name": "ListEvidenceSpansByRevision", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetEvidenceSpansByIds", "range": ">=1.0.0 <2.0.0" },
       { "name": "GenerateStructured", "range": ">=1.0.0 <2.0.0" },
       { "name": "CandidateGenerated", "range": ">=1.0.0 <2.0.0" },
       { "name": "GetClaimCandidate", "range": ">=1.0.0 <2.0.0" },

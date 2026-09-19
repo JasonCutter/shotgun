@@ -11,7 +11,8 @@
       { "name": "EvidenceIndexed", "range": ">=1.0.0 <2.0.0" },
       { "name": "ListEvidenceSpans", "range": ">=1.0.0 <2.0.0" },
       { "name": "ListEvidenceSpansByRevision", "range": ">=1.0.0 <2.0.0" },
-      { "name": "GetEvidenceSpan", "range": ">=1.0.0 <2.0.0" }
+      { "name": "GetEvidenceSpan", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetEvidenceSpansByIds", "range": ">=1.0.0 <2.0.0" }
     ]
   },
   "deployment": { "modes": ["in_process", "worker"] },
@@ -39,7 +40,8 @@
     "queries": [
       { "name": "ListEvidenceSpans", "range": ">=1.0.0 <2.0.0" },
       { "name": "ListEvidenceSpansByRevision", "range": ">=1.0.0 <2.0.0" },
-      { "name": "GetEvidenceSpan", "range": ">=1.0.0 <2.0.0" }
+      { "name": "GetEvidenceSpan", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetEvidenceSpansByIds", "range": ">=1.0.0 <2.0.0" }
     ],
     "capabilities": [
       { "name": "evidence-index", "priority": 100 },

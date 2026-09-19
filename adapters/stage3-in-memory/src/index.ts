@@ -206,6 +206,22 @@ export class InMemoryEvidenceRepository implements EvidenceRepositoryPort {
     );
   }
 
+  async findManyByIds(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+    evidenceIds: readonly string[],
+  ): Promise<readonly EvidenceSpan[]> {
+    const requested = new Set(evidenceIds);
+    return [...this.evidence.values()].filter(
+      (item) =>
+        item.projectId === projectId &&
+        item.sourceVersionId === sourceVersionId &&
+        item.revisionId === revisionId &&
+        requested.has(item.evidenceId),
+    );
+  }
+
   count(): number {
     return this.evidence.size;
   }

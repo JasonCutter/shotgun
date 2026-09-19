@@ -106,6 +106,7 @@ describe('Stage 12.1 P0-2 external Action API vertical slice', () => {
     const evidenceRepository: EvidenceRepositoryPort = {
       index: async () => ({ items: [evidenceMock], reusedCount: 0 }),
       listBySourceVersion: async () => [evidenceMock],
+      findManyByIds: async () => [evidenceMock],
       findById: async (_projectId, evidenceId) =>
         evidenceId === evidenceMock.evidenceId ? evidenceMock : undefined,
     };

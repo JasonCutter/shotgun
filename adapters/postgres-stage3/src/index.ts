@@ -419,4 +419,22 @@ export class PostgresEvidenceRepository implements EvidenceRepositoryPort {
     );
     return result.rows[0] ? mapEvidence(result.rows[0]) : undefined;
   }
+
+  async findManyByIds(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+    evidenceIds: readonly string[],
+  ): Promise<readonly EvidenceSpan[]> {
+    if (evidenceIds.length === 0) return [];
+    const result = await this.pool.query<EvidenceRow>(
+      `${evidenceSelect}
+       WHERE project_id = $1
+         AND source_version_id = $2
+         AND revision_id = $3
+         AND evidence_id = ANY($4::uuid[])`,
+      [projectId, sourceVersionId, revisionId, evidenceIds],
+    );
+    return result.rows.map(mapEvidence);
+  }
 }

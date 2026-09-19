@@ -27,10 +27,15 @@ import { createIntakeModule } from '../../modules/intake/src/index.js';
 import { createOriginalAssetModule } from '../../modules/original-asset/src/index.js';
 import { createTransformationModule } from '../../modules/transformation/src/index.js';
 import { createValidationModule } from '../../modules/validation/src/index.js';
-import { createCommand, type ClaimCandidate } from '../../packages/contracts/src/index.js';
+import {
+  createCommand,
+  type ClaimCandidate,
+  type EvidenceSpan,
+} from '../../packages/contracts/src/index.js';
 import type { AIProviderExecutionRecord } from '../../modules/ai-provider/src/index.js';
-import { ShotgunKernel } from '../../packages/kernel/src/index.js';
+import { createChildQuery, ShotgunKernel } from '../../packages/kernel/src/index.js';
 import { candidatesQuery, directTextCommand, intakeResultQuery } from '../helpers/stage-4.js';
+import { documentRevisionQuery } from '../helpers/stage-3.js';
 
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
@@ -99,6 +104,73 @@ describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
 
   afterAll(async () => {
     await pool!.end();
+  });
+
+  it('bulk-resolves exact Evidence IDs with requested ordering and revision scope', async () => {
+    const kernel = await createHarness(new InMemoryAssetStorage(), new FakeAIProviderAdapter());
+    const command = directTextCommand(
+      'stage4-postgres-bulk-evidence',
+      'Milo weighs 5 kg. Milo is seven years old.',
+    );
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const revision = (
+      await kernel.connector.query<{ readonly revisionId: string }>(
+        documentRevisionQuery(command, sourceVersionId),
+      )
+    ).result.payload;
+    const evidenceRepository = new PostgresEvidenceRepository(pool!);
+    const sentences = (
+      await evidenceRepository.listByRevision(
+        command.projectId!,
+        sourceVersionId,
+        revision.revisionId,
+      )
+    ).filter((item) => item.nodeKind === 'sentence');
+    expect(sentences).toHaveLength(2);
+    const requestedIds = [sentences[1]!.evidenceId, sentences[0]!.evidenceId];
+
+    const bulk = (
+      await kernel.connector.query<{
+        readonly sourceVersionId: string;
+        readonly revisionId: string;
+        readonly items: readonly EvidenceSpan[];
+      }>(
+        createChildQuery(command, {
+          messageType: 'GetEvidenceSpansByIds',
+          schemaVersion: '1.0.0',
+          producerModule: 'stage4-postgres-test',
+          producerVersion: '1.0.0',
+          payload: {
+            sourceVersionId,
+            revisionId: revision.revisionId,
+            evidenceIds: requestedIds,
+          },
+        }),
+      )
+    ).result.payload;
+    expect(bulk.sourceVersionId).toBe(sourceVersionId);
+    expect(bulk.revisionId).toBe(revision.revisionId);
+    expect(bulk.items.map((item) => item.evidenceId)).toEqual(requestedIds);
+
+    await expect(
+      kernel.connector.query(
+        createChildQuery(command, {
+          messageType: 'GetEvidenceSpansByIds',
+          schemaVersion: '1.0.0',
+          producerModule: 'stage4-postgres-test',
+          producerVersion: '1.0.0',
+          payload: {
+            sourceVersionId,
+            revisionId: revision.revisionId,
+            evidenceIds: [requestedIds[0]!, randomUUID()],
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await kernel.shutdown();
   });
 
   it('reuses provider call, candidate revision and validation after a runtime restart', async () => {

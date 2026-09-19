@@ -1,0 +1,18 @@
+{
+  "$id": "https://shotgun.local/contracts/get-evidence-spans-by-ids-output.v1.schema.json",
+  "title": "Get Evidence Spans By IDs Output v1",
+  "type": "object",
+  "required": ["sourceVersionId", "revisionId", "items"],
+  "properties": {
+    "sourceVersionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "revisionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://shotgun.local/contracts/evidence-span.v1.schema.json"
+      }
+    }
+  },
+  "additionalProperties": false
+}

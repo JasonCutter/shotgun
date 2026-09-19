@@ -6,11 +6,11 @@ import candidateMaterializedSchema from '../../../packages/contracts/schemas/can
 import candidateValidationEventSchema from '../../../packages/contracts/schemas/candidate-validation-event.v1.schema.json';
 import claimCandidateSchema from '../../../packages/contracts/schemas/claim-candidate.v1.schema.json';
 import evidenceIndexedSchema from '../../../packages/contracts/schemas/evidence-indexed.v1.schema.json';
-import evidenceSpanSchema from '../../../packages/contracts/schemas/evidence-span.v1.schema.json';
 import generateStructuredOutputSchema from '../../../packages/contracts/schemas/generate-structured-output.v1.schema.json';
 import generateStructuredSchema from '../../../packages/contracts/schemas/generate-structured.v1.schema.json';
 import getClaimCandidateSchema from '../../../packages/contracts/schemas/get-claim-candidate.v1.schema.json';
-import getEvidenceSpanSchema from '../../../packages/contracts/schemas/get-evidence-span.v1.schema.json';
+import getEvidenceSpansByIdsOutputSchema from '../../../packages/contracts/schemas/get-evidence-spans-by-ids-output.v1.schema.json';
+import getEvidenceSpansByIdsSchema from '../../../packages/contracts/schemas/get-evidence-spans-by-ids.v1.schema.json';
 import listClaimCandidatesOutputSchema from '../../../packages/contracts/schemas/list-claim-candidates-output.v1.schema.json';
 import listClaimCandidatesSchema from '../../../packages/contracts/schemas/list-claim-candidates.v1.schema.json';
 import listClaimCandidatesByRevisionOutputSchema from '../../../packages/contracts/schemas/list-claim-candidates-by-revision-output.v1.schema.json';
@@ -281,33 +281,75 @@ export const createCandidateGenerationModule = (
         });
       }
     });
-    const evidence = await Promise.all(
-      summaries.map(async (summary) => {
-        const item = (
-          await context.query<{ evidenceId: string }, EvidenceSpan>({
-            messageType: 'GetEvidenceSpan',
-            schemaVersion: '1.0.0',
-            payload: { evidenceId: summary.evidenceId },
-          })
-        ).payload;
-        if (
-          item.evidenceId !== summary.evidenceId ||
-          item.projectId !== projectId ||
-          item.sourceVersionId !== payload.sourceVersionId ||
-          item.revisionId !== revisionId
-        ) {
-          throw new ShotgunError({
-            code: 'VALIDATION_ERROR',
-            safeMessage: 'Evidence query returned a different evidence or revision.',
-            module: 'stage4.candidate-generation',
-            operation: 'verify-evidence-revision',
-            correlationId: envelope.correlationId,
-            retryable: false,
-          });
+    const evidenceIds = summaries.map((summary) => summary.evidenceId);
+    if (evidenceIds.length === 0) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'Direct claim extraction requires sentence Evidence Spans.',
+        module: 'stage4.candidate-generation',
+        operation: 'load-evidence',
+        correlationId: envelope.correlationId,
+      });
+    }
+    const bulkEvidence = (
+      await context.query<
+        {
+          readonly sourceVersionId: string;
+          readonly revisionId: string;
+          readonly evidenceIds: readonly string[];
+        },
+        {
+          readonly sourceVersionId: string;
+          readonly revisionId: string;
+          readonly items: readonly EvidenceSpan[];
         }
-        return item;
-      }),
-    );
+      >({
+        messageType: 'GetEvidenceSpansByIds',
+        schemaVersion: '1.0.0',
+        payload: {
+          sourceVersionId: payload.sourceVersionId,
+          revisionId,
+          evidenceIds,
+        },
+      })
+    ).payload;
+    if (
+      bulkEvidence.sourceVersionId !== payload.sourceVersionId ||
+      bulkEvidence.revisionId !== revisionId ||
+      bulkEvidence.items.length !== evidenceIds.length
+    ) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'Bulk Evidence query returned a different project or revision.',
+        module: 'stage4.candidate-generation',
+        operation: 'verify-bulk-evidence-revision',
+        correlationId: envelope.correlationId,
+        retryable: false,
+      });
+    }
+    const seenEvidenceIds = new Set<string>();
+    const evidence = bulkEvidence.items.map((item, index) => {
+      const expectedEvidenceId = evidenceIds[index];
+      if (
+        !expectedEvidenceId ||
+        item.evidenceId !== expectedEvidenceId ||
+        seenEvidenceIds.has(item.evidenceId) ||
+        item.projectId !== projectId ||
+        item.sourceVersionId !== payload.sourceVersionId ||
+        item.revisionId !== revisionId
+      ) {
+        throw new ShotgunError({
+          code: 'VALIDATION_ERROR',
+          safeMessage: 'Bulk Evidence query returned a different evidence or revision.',
+          module: 'stage4.candidate-generation',
+          operation: 'verify-bulk-evidence-revision',
+          correlationId: envelope.correlationId,
+          retryable: false,
+        });
+      }
+      seenEvidenceIds.add(item.evidenceId);
+      return item;
+    });
     if (evidence.length === 0) {
       throw new ShotgunError({
         code: 'VALIDATION_ERROR',
@@ -470,7 +512,7 @@ export const createCandidateGenerationModule = (
           { name: 'EvidenceIndexed', range: '>=1.0.0 <2.0.0' },
           { name: 'ListEvidenceSpans', range: '>=1.0.0 <2.0.0' },
           { name: 'ListEvidenceSpansByRevision', range: '>=1.0.0 <2.0.0' },
-          { name: 'GetEvidenceSpan', range: '>=1.0.0 <2.0.0' },
+          { name: 'GetEvidenceSpansByIds', range: '>=1.0.0 <2.0.0' },
           { name: 'GenerateStructured', range: '>=1.0.0 <2.0.0' },
           { name: 'CandidateGenerated', range: '>=1.0.0 <2.0.0' },
           { name: 'CandidateValidated', range: '>=1.0.0 <2.0.0' },
@@ -569,11 +611,11 @@ export const createCandidateGenerationModule = (
         outputSchema: listEvidenceSpansByRevisionOutputSchema,
       },
       {
-        name: 'GetEvidenceSpan',
+        name: 'GetEvidenceSpansByIds',
         version: '1.0.0',
         kind: 'query',
-        inputSchema: getEvidenceSpanSchema,
-        outputSchema: evidenceSpanSchema,
+        inputSchema: getEvidenceSpansByIdsSchema,
+        outputSchema: getEvidenceSpansByIdsOutputSchema,
       },
       {
         name: 'GenerateStructured',

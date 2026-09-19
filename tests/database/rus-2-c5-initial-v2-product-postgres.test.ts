@@ -162,7 +162,14 @@ describeDatabase('RUS-2 C5 fresh initial V2 Product PostgreSQL lifecycle', () =>
         `INSERT INTO candidate.batches (
            batch_id, project_id, source_version_id, revision_id, idempotency_key, provider_call, created_at
          ) VALUES ($1, $2, $3, $4, $5, '{}', $6)`,
-        [input.batchId, projectId, sourceVersionId, transformationRevisionId, `batch-${input.candidateId}`, now],
+        [
+          input.batchId,
+          projectId,
+          sourceVersionId,
+          transformationRevisionId,
+          `batch-${input.candidateId}`,
+          now,
+        ],
       );
       await pool.query(
         `INSERT INTO candidate.claim_candidates (

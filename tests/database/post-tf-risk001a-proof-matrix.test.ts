@@ -429,7 +429,9 @@ const makeProviderOutput = (
   };
 };
 
-const makeCandidateBatch = (ids: Awaited<ReturnType<typeof seedProviderLineage>>): CandidateBatch => {
+const makeCandidateBatch = (
+  ids: Awaited<ReturnType<typeof seedProviderLineage>>,
+): CandidateBatch => {
   const record = makeAIRecord(ids, `candidate:${randomUUID()}`);
   const call = makeProviderCall(record, []);
   const evidenceId = ids.evidenceId;

@@ -143,7 +143,13 @@ const insertCandidate = async (
     `INSERT INTO candidate.batches (
        batch_id, project_id, source_version_id, revision_id, idempotency_key, provider_call, created_at
      ) VALUES ($1, $2, $3, $4, $5, '{}', now())`,
-    [fixture.batchId, projectId, fixture.sourceVersionId, fixture.revisionId, `batch:${fixture.batchId}`],
+    [
+      fixture.batchId,
+      projectId,
+      fixture.sourceVersionId,
+      fixture.revisionId,
+      `batch:${fixture.batchId}`,
+    ],
   );
   await database.query(
     `INSERT INTO candidate.claim_candidates (

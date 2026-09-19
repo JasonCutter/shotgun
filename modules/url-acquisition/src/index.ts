@@ -110,21 +110,103 @@ const publicIpv4 = (address: string): boolean => {
   ].some(([base, prefix]) => ipv4In(value, base as string, prefix as number));
 };
 
-const publicIpv6 = (address: string): boolean => {
-  const normalized = address.toLocaleLowerCase();
+const parseIpv4Tail = (value: string): readonly [number, number] | undefined => {
+  const octets = value.split('.');
   if (
-    normalized === '::' ||
-    normalized === '::1' ||
-    normalized.startsWith('fc') ||
-    normalized.startsWith('fd') ||
-    /^fe[89ab]/.test(normalized) ||
-    normalized.startsWith('ff') ||
-    normalized.startsWith('2001:db8:')
+    octets.length !== 4 ||
+    octets.some((octet) => !/^\d{1,3}$/.test(octet) || Number(octet) > 255)
+  ) {
+    return undefined;
+  }
+  const first = Number(octets[0]);
+  const second = Number(octets[1]);
+  const third = Number(octets[2]);
+  const fourth = Number(octets[3]);
+  return [(first << 8) | second, (third << 8) | fourth];
+};
+
+const parseIpv6Hextets = (address: string): readonly number[] | undefined => {
+  const parts = address.toLowerCase().split('::');
+  if (parts.length > 2) return undefined;
+
+  const parseSide = (side: string, allowIpv4Tail: boolean): readonly number[] | undefined => {
+    if (!side) return [];
+    const tokens = side.split(':');
+    const hextets: number[] = [];
+    for (const [index, token] of tokens.entries()) {
+      if (token.includes('.')) {
+        if (!allowIpv4Tail || index !== tokens.length - 1) return undefined;
+        const ipv4 = parseIpv4Tail(token);
+        if (!ipv4) return undefined;
+        hextets.push(...ipv4);
+        continue;
+      }
+      if (!/^[0-9a-f]{1,4}$/.test(token)) return undefined;
+      hextets.push(Number.parseInt(token, 16));
+    }
+    return hextets;
+  };
+
+  if (parts.length === 1) {
+    const hextets = parseSide(parts[0] ?? '', true);
+    return hextets?.length === 8 ? hextets : undefined;
+  }
+
+  const left = parseSide(parts[0] ?? '', false);
+  const right = parseSide(parts[1] ?? '', true);
+  if (!left || !right) return undefined;
+  const omitted = 8 - left.length - right.length;
+  if (omitted < 1) return undefined;
+  return [...left, ...Array.from({ length: omitted }, () => 0), ...right];
+};
+
+const ipv4FromHextets = (high: number, low: number): string =>
+  `${high >>> 8}.${high & 0xff}.${low >>> 8}.${low & 0xff}`;
+
+const publicIpv6 = (address: string): boolean => {
+  const hextets = parseIpv6Hextets(address);
+  if (!hextets) return false;
+
+  if (
+    hextets.every((value) => value === 0) ||
+    (hextets.slice(0, 7).every((value) => value === 0) && hextets[7] === 1)
   ) {
     return false;
   }
-  const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
-  return mapped ? publicIpv4(mapped) : true;
+
+  if (hextets[0] === 0x0064 && hextets[1] === 0xff9b && hextets[2] === 0x0001) {
+    return false;
+  }
+
+  if (
+    hextets[0] === 0x0064 &&
+    hextets[1] === 0xff9b &&
+    hextets.slice(2, 6).every((value) => value === 0)
+  ) {
+    return publicIpv4(ipv4FromHextets(hextets[6] ?? 0, hextets[7] ?? 0));
+  }
+
+  if (hextets[0] === 0x2002) {
+    return publicIpv4(ipv4FromHextets(hextets[1] ?? 0, hextets[2] ?? 0));
+  }
+
+  if (
+    hextets.slice(0, 5).every((value) => value === 0) &&
+    (hextets[5] === 0 || hextets[5] === 0xffff)
+  ) {
+    return publicIpv4(ipv4FromHextets(hextets[6] ?? 0, hextets[7] ?? 0));
+  }
+
+  const first = hextets[0] ?? 0;
+  if (
+    (first & 0xfe00) === 0xfc00 ||
+    (first & 0xffc0) === 0xfe80 ||
+    (first & 0xff00) === 0xff00 ||
+    (first === 0x2001 && hextets[1] === 0x0db8)
+  ) {
+    return false;
+  }
+  return true;
 };
 
 export const isPublicAcquisitionAddress = (address: string): boolean => {

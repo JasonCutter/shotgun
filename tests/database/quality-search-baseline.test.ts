@@ -76,6 +76,7 @@ describe.runIf(pool)('Quality Section 3 PostgreSQL search baseline', () => {
       const context: HandlerContext = {
         moduleId: 'quality-baseline-test',
         attemptNumber: 1,
+        signal: new AbortController().signal,
         async publish() {},
         async query<TPayload, TResult>(input: {
           readonly messageType: string;

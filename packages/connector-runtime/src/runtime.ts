@@ -38,6 +38,7 @@ import type {
   EventDelivery,
   MessageTransport,
   QueryDelivery,
+  QueryExecutionOptions,
 } from './types.js';
 import type {
   ConnectorRuntimeStatePort,
@@ -112,39 +113,81 @@ const securityScopeFor = (envelope: AnyEnvelope): string => {
 };
 
 const withTimeout = async <TResult>(
-  operation: () => Promise<TResult>,
+  operation: (signal: AbortSignal) => Promise<TResult>,
   timeoutMs: number | undefined,
   envelope: AnyEnvelope,
   moduleId: string,
   onTimeout?: () => void,
+  parentSignal?: AbortSignal,
 ): Promise<TResult> => {
-  if (!timeoutMs) {
-    return operation();
-  }
-
+  const controller = new AbortController();
   let timer: NodeJS.Timeout | undefined;
+  let removeParentListener: (() => void) | undefined;
+  let rejectCancellation: ((error: ShotgunError) => void) | undefined;
+  let executionFenceClosed = false;
+  const cancellation = new Promise<never>((_resolve, reject) => {
+    rejectCancellation = reject;
+  });
+  const cancellationError = () =>
+    new ShotgunError({
+      code: 'OUTCOME_UNKNOWN',
+      safeMessage: 'The handler was cancelled and its final outcome is unknown.',
+      module: moduleId,
+      operation: envelope.messageType,
+      correlationId: envelope.correlationId,
+    });
+  const abortFromParent = () => {
+    if (!executionFenceClosed) {
+      executionFenceClosed = true;
+      onTimeout?.();
+    }
+    controller.abort(parentSignal?.reason ?? 'SHOTGUN_HANDLER_CANCELLED');
+    rejectCancellation?.(cancellationError());
+  };
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      abortFromParent();
+    } else {
+      parentSignal.addEventListener('abort', abortFromParent, { once: true });
+      removeParentListener = () => parentSignal.removeEventListener('abort', abortFromParent);
+    }
+  }
+  const operationPromise = parentSignal?.aborted
+    ? undefined
+    : Promise.resolve().then(() => operation(controller.signal));
+  const timeout =
+    timeoutMs && timeoutMs > 0
+      ? new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            if (!executionFenceClosed) {
+              executionFenceClosed = true;
+              onTimeout?.();
+            }
+            controller.abort('SHOTGUN_HANDLER_TIMEOUT');
+            reject(
+              new ShotgunError({
+                code: 'OUTCOME_UNKNOWN',
+                safeMessage: 'The handler timed out and its final outcome is unknown.',
+                module: moduleId,
+                operation: envelope.messageType,
+                correlationId: envelope.correlationId,
+              }),
+            );
+          }, timeoutMs);
+        })
+      : undefined;
   try {
-    return await Promise.race([
-      operation(),
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => {
-          onTimeout?.();
-          reject(
-            new ShotgunError({
-              code: 'OUTCOME_UNKNOWN',
-              safeMessage: 'The handler timed out and its final outcome is unknown.',
-              module: moduleId,
-              operation: envelope.messageType,
-              correlationId: envelope.correlationId,
-            }),
-          );
-        }, timeoutMs);
-      }),
-    ]);
+    if (!operationPromise) {
+      return await cancellation;
+    }
+    const racers: Promise<TResult | never>[] = [operationPromise, cancellation];
+    if (timeout) racers.push(timeout);
+    return await Promise.race(racers);
   } finally {
     if (timer) {
       clearTimeout(timer);
     }
+    removeParentListener?.();
   }
 };
 
@@ -266,7 +309,10 @@ export class ConnectorRuntime {
     return { envelope, consumers };
   }
 
-  async query<TResult = unknown>(envelope: QueryEnvelope): Promise<QueryDelivery<TResult>> {
+  async query<TResult = unknown>(
+    envelope: QueryEnvelope,
+    options: QueryExecutionOptions = {},
+  ): Promise<QueryDelivery<TResult>> {
     validateEnvelope(envelope);
     this.registry.schemas.validateInput(
       envelope.messageType,
@@ -276,7 +322,7 @@ export class ConnectorRuntime {
     const route = this.registry.getQueryHandler(envelope.messageType, envelope.schemaVersion);
     this.authorize(envelope, route);
     if (this.durableState) {
-      return this.queryDurable<TResult>(envelope, route);
+      return this.queryDurable<TResult>(envelope, route, options.signal);
     }
     const id = consumerId(route.module.manifest.id, 'query', envelope.messageType);
 
@@ -293,8 +339,17 @@ export class ConnectorRuntime {
             attemptNumber: attempt.attemptNumber,
           },
         };
-        const result = await this.invoke(route, deliveredEnvelope, attempt, () =>
-          route.handler.handle(deliveredEnvelope, this.context(route, deliveredEnvelope, attempt)),
+        const result = await this.invoke(
+          route,
+          deliveredEnvelope,
+          attempt,
+          (signal) =>
+            route.handler.handle(
+              deliveredEnvelope,
+              this.context(route, deliveredEnvelope, attempt, signal),
+            ),
+          undefined,
+          options.signal,
         );
         this.registry.schemas.validateOutput(envelope.messageType, envelope.schemaVersion, result);
         return result as TResult;
@@ -519,21 +574,17 @@ export class ConnectorRuntime {
               attemptNumber: attempt.attemptNumber,
             },
           };
-          const handlerOperation =
+          const handlerOperation = (signal: AbortSignal) =>
             kind === 'command'
-              ? () =>
-                  (route as RegisteredCommandHandler).handler.handle(
-                    deliveredEnvelope as CommandEnvelope,
-                    this.context(route, deliveredEnvelope, attempt),
-                  )
-              : () =>
-                  (route as RegisteredEventHandler).handler.handle(
-                    deliveredEnvelope as EventEnvelope,
-                    this.context(route, deliveredEnvelope, attempt),
-                  );
-          const result = await this.invoke(route, deliveredEnvelope, attempt, () =>
-            handlerOperation(),
-          );
+              ? (route as RegisteredCommandHandler).handler.handle(
+                  deliveredEnvelope as CommandEnvelope,
+                  this.context(route, deliveredEnvelope, attempt, signal),
+                )
+              : (route as RegisteredEventHandler).handler.handle(
+                  deliveredEnvelope as EventEnvelope,
+                  this.context(route, deliveredEnvelope, attempt, signal),
+                );
+          const result = await this.invoke(route, deliveredEnvelope, attempt, handlerOperation);
           this.ordering.commitLegacy(id, envelope);
           return result as TResult;
         },
@@ -648,18 +699,16 @@ export class ConnectorRuntime {
             attemptNumber: attempt.attemptNumber,
           },
         };
-        const operation =
+        const operation = (signal: AbortSignal) =>
           kind === 'command'
-            ? () =>
-                (route as RegisteredCommandHandler).handler.handle(
-                  deliveredEnvelope as CommandEnvelope,
-                  this.context(route, deliveredEnvelope, attempt, () => active),
-                )
-            : () =>
-                (route as RegisteredEventHandler).handler.handle(
-                  deliveredEnvelope as EventEnvelope,
-                  this.context(route, deliveredEnvelope, attempt, () => active),
-                );
+            ? (route as RegisteredCommandHandler).handler.handle(
+                deliveredEnvelope as CommandEnvelope,
+                this.context(route, deliveredEnvelope, attempt, signal, () => active),
+              )
+            : (route as RegisteredEventHandler).handler.handle(
+                deliveredEnvelope as EventEnvelope,
+                this.context(route, deliveredEnvelope, attempt, signal, () => active),
+              );
         try {
           const result = await this.invoke(route, deliveredEnvelope, attempt, operation, () => {
             active = false;
@@ -777,6 +826,7 @@ export class ConnectorRuntime {
   private async queryDurable<TResult>(
     envelope: QueryEnvelope,
     route: RegisteredQueryHandler,
+    parentSignal?: AbortSignal,
   ): Promise<QueryDelivery<TResult>> {
     const state = this.durableState!;
     const id = consumerId(route.module.manifest.id, 'query', envelope.messageType);
@@ -827,14 +877,15 @@ export class ConnectorRuntime {
               route,
               deliveredEnvelope,
               attempt,
-              () =>
+              (signal) =>
                 route.handler.handle(
                   deliveredEnvelope,
-                  this.context(route, deliveredEnvelope, attempt, () => active),
+                  this.context(route, deliveredEnvelope, attempt, signal, () => active),
                 ),
               () => {
                 active = false;
               },
+              parentSignal,
             );
             active = false;
             this.registry.schemas.validateOutput(
@@ -955,8 +1006,9 @@ export class ConnectorRuntime {
     route: RegisteredCommandHandler | RegisteredEventHandler | RegisteredQueryHandler,
     envelope: CommandEnvelope | EventEnvelope | QueryEnvelope,
     attempt: AttemptRecord,
-    operation: () => Promise<TResult> | TResult,
+    operation: (signal: AbortSignal) => Promise<TResult> | TResult,
     onTimeout?: () => void,
+    parentSignal?: AbortSignal,
   ): Promise<TResult> {
     this.traces.record(envelope, {
       consumerModule: route.module.manifest.id,
@@ -967,11 +1019,12 @@ export class ConnectorRuntime {
     try {
       const result = await this.transport.execute(() =>
         withTimeout(
-          async () => operation(),
+          async (signal) => operation(signal),
           route.handler.timeoutMs,
           envelope,
           route.module.manifest.id,
           onTimeout,
+          parentSignal,
         ),
       );
       this.traces.record(envelope, {
@@ -1004,20 +1057,23 @@ export class ConnectorRuntime {
     route: RegisteredCommandHandler | RegisteredEventHandler | RegisteredQueryHandler,
     parent: CommandEnvelope | EventEnvelope | QueryEnvelope,
     attempt: AttemptRecord,
+    signal: AbortSignal,
     isActive?: () => boolean,
   ): HandlerContext {
+    const assertExecutionActive = (operation: string): void => {
+      if (!signal.aborted && (!isActive || isActive())) return;
+      throw new ShotgunError({
+        code: 'OUTCOME_UNKNOWN',
+        safeMessage: 'The handler execution is cancelled; the child operation is fenced.',
+        module: route.module.manifest.id,
+        operation,
+        correlationId: parent.correlationId,
+      });
+    };
     const publishChild = async <TPayload>(
       input: PublishEventInput<TPayload>,
     ): Promise<PublishEventOutcome> => {
-      if (isActive && !isActive()) {
-        throw new ShotgunError({
-          code: 'OUTCOME_UNKNOWN',
-          safeMessage: 'The parent delivery outcome is unknown; child publication is fenced.',
-          module: route.module.manifest.id,
-          operation: input.messageType,
-          correlationId: parent.correlationId,
-        });
-      }
+      assertExecutionActive(input.messageType);
       const event = {
         ...createChildEvent(parent, {
           ...input,
@@ -1030,6 +1086,7 @@ export class ConnectorRuntime {
           attemptNumber: attempt.attemptNumber,
         },
       };
+      assertExecutionActive(input.messageType);
       const delivery = await this.publishEvent(event);
       return {
         requiredConsumerDeadLetter: delivery.consumers.some(
@@ -1042,6 +1099,7 @@ export class ConnectorRuntime {
     return {
       moduleId: route.module.manifest.id,
       attemptNumber: attempt.attemptNumber,
+      signal,
       publishWithOutcome: publishChild,
       publish: async (input) => {
         const outcome = await publishChild(input);
@@ -1057,21 +1115,14 @@ export class ConnectorRuntime {
         }
       },
       query: async <TPayload, TResult>(input: DispatchQueryInput<TPayload>) => {
-        if (isActive && !isActive()) {
-          throw new ShotgunError({
-            code: 'OUTCOME_UNKNOWN',
-            safeMessage: 'The parent delivery outcome is unknown; child query is fenced.',
-            module: route.module.manifest.id,
-            operation: input.messageType,
-            correlationId: parent.correlationId,
-          });
-        }
+        assertExecutionActive(input.messageType);
         const query = createChildQuery(parent, {
           ...input,
           producerModule: route.module.manifest.id,
           producerVersion: route.module.manifest.version,
         });
-        const delivery = await this.query<TResult>(query);
+        assertExecutionActive(input.messageType);
+        const delivery = await this.query<TResult>(query, { signal });
         return delivery.result;
       },
     };

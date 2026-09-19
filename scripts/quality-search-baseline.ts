@@ -104,6 +104,7 @@ try {
       const context: HandlerContext = {
         moduleId: 'quality-baseline-runner',
         attemptNumber: 1,
+        signal: new AbortController().signal,
         async publish() {},
         async query<TPayload, TResult>(input: {
           readonly messageType: string;

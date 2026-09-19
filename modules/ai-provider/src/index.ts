@@ -21,7 +21,7 @@ import {
   stableJson,
   toShotgunError,
 } from '../../../packages/contracts/src/index.js';
-import type { ShotgunModule } from '../../../packages/module-sdk/src/index.js';
+import type { HandlerContext, ShotgunModule } from '../../../packages/module-sdk/src/index.js';
 
 export type StructuredGenerationRequest = {
   readonly systemInstruction: string;
@@ -466,9 +466,29 @@ export const createAIProviderModule = (
         version: '1.0.0',
         requiredAccessScopes: ['owner'],
         timeoutMs: 60_000,
-        async handle(envelope) {
+        async handle(envelope, context: HandlerContext) {
           const payload = envelope.payload as GenerateStructuredPayload;
           const { projectId, security } = assertContext(envelope);
+          const cancellationError = () =>
+            new ShotgunError({
+              code: 'OUTCOME_UNKNOWN',
+              safeMessage: 'The AI provider request was cancelled before durable acceptance.',
+              module: 'stage4.ai-provider',
+              operation: 'invoke-provider',
+              correlationId: envelope.correlationId,
+              retryable: false,
+            });
+          const markCancellationAndThrow = async (attemptId: string): Promise<never> => {
+            try {
+              await repository.markAttemptOutcomeUnknown(projectId, payload.requestId, attemptId);
+            } catch {
+              // The running provider claim remains the recovery authority.
+            }
+            throw cancellationError();
+          };
+          if (context.signal.aborted) {
+            throw cancellationError();
+          }
           if (
             security.sensitivity !== payload.sensitivity ||
             security.dataClassification !== payload.dataClassification ||
@@ -708,19 +728,28 @@ export const createAIProviderModule = (
             record = claimed.record;
             const startedAt = Date.now();
             let response: StructuredGenerationResponse;
+            if (context.signal.aborted) {
+              await markCancellationAndThrow(claimed.attempt.attemptId);
+            }
             try {
               response = await (activeAdapter.generateStructuredWithSignal
-                ? activeAdapter.generateStructuredWithSignal({
-                    systemInstruction,
-                    prompt: promptFor(payload),
-                    responseSchema: candidateBatchSchema,
-                  })
+                ? activeAdapter.generateStructuredWithSignal(
+                    {
+                      systemInstruction,
+                      prompt: promptFor(payload),
+                      responseSchema: candidateBatchSchema,
+                    },
+                    context.signal,
+                  )
                 : activeAdapter.generateStructured({
                     systemInstruction,
                     prompt: promptFor(payload),
                     responseSchema: candidateBatchSchema,
                   }));
             } catch (error) {
+              if (context.signal.aborted) {
+                await markCancellationAndThrow(claimed.attempt.attemptId);
+              }
               lastError = toShotgunError(error, {
                 code: 'TERMINAL_FAILURE',
                 safeMessage: 'The AI provider call failed.',
@@ -737,6 +766,10 @@ export const createAIProviderModule = (
               );
               if (!isRetryable(lastError)) break;
               continue;
+            }
+
+            if (context.signal.aborted) {
+              await markCancellationAndThrow(claimed.attempt.attemptId);
             }
 
             const inputTokens = response.inputTokens ?? 0;
@@ -772,6 +805,9 @@ export const createAIProviderModule = (
 
             let stored: AIProviderExecutionRecord;
             try {
+              if (context.signal.aborted) {
+                await markCancellationAndThrow(claimed.attempt.attemptId);
+              }
               stored = await repository.storeOutput(projectId, payload.requestId, {
                 ...draft,
                 contentDigest: outputDigest(draft),
@@ -796,6 +832,10 @@ export const createAIProviderModule = (
                 retryable: false,
                 cause: error,
               });
+            }
+
+            if (context.signal.aborted) {
+              await markCancellationAndThrow(claimed.attempt.attemptId);
             }
 
             let parsed: CandidateBatch;
@@ -856,6 +896,9 @@ export const createAIProviderModule = (
 
             let accepted: AIProviderExecutionRecord;
             try {
+              if (context.signal.aborted) {
+                await markCancellationAndThrow(claimed.attempt.attemptId);
+              }
               accepted = await repository.acceptOutput(
                 projectId,
                 payload.requestId,

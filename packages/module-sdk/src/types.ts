@@ -162,6 +162,8 @@ export type DispatchQueryInput<TPayload> = {
 export type HandlerContext = {
   readonly moduleId: string;
   readonly attemptNumber: number;
+  /** Request-scoped cancellation for the current handler execution. */
+  readonly signal: AbortSignal;
   publish<TPayload>(input: PublishEventInput<TPayload>): Promise<void>;
   readonly publishWithOutcome?: <TPayload>(
     input: PublishEventInput<TPayload>,

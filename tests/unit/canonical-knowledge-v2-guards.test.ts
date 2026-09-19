@@ -168,6 +168,7 @@ const invoke = async (repository: InMemoryCanonicalKnowledgeRepository, event: E
   await handler.handle(event, {
     moduleId: 'stage6.canonical-knowledge',
     attemptNumber: 1,
+    signal: new AbortController().signal,
     query: async () => ({ payload: candidate }) as never,
     publish: async () => undefined,
   });

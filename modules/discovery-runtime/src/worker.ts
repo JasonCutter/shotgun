@@ -19,6 +19,8 @@ import type {
   DiscoveryRuntimeStageOutputV1,
 } from './index.js';
 
+type DiscoveryLeaseState = 'ACTIVE' | 'UNCERTAIN' | 'LOST';
+
 export type DiscoveryExecutionContextV1 = {
   readonly claim: DiscoveryRuntimeClaimV1;
   /** Claim-scoped cancellation owned by PersistentDiscoveryWorker. */
@@ -929,33 +931,85 @@ export class PersistentDiscoveryWorker {
           continue;
         }
 
-        let leaseLost = false;
-        let heartbeatInFlight = false;
+        let leaseState: DiscoveryLeaseState = 'ACTIVE';
+        let heartbeatInFlight: Promise<void> | undefined;
+        let uncertaintyDeadline: NodeJS.Timeout | undefined;
+        const clearUncertaintyDeadline = () => {
+          if (uncertaintyDeadline) {
+            clearTimeout(uncertaintyDeadline);
+            uncertaintyDeadline = undefined;
+          }
+        };
+        const loseLeaseAuthority = () => {
+          if (leaseState === 'LOST') return;
+          leaseState = 'LOST';
+          clearUncertaintyDeadline();
+          controller.abort('SHOTGUN_DISCOVERY_LEASE_LOST');
+        };
+        const scheduleUncertaintyDeadline = () => {
+          clearUncertaintyDeadline();
+          const expiresAt = Date.parse(lease.expiresAt);
+          const now = this.clock().getTime();
+          const remainingMs = expiresAt - now;
+          if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+            loseLeaseAuthority();
+            return;
+          }
+          // Node timers are signed 32-bit; a far-future fixture or malformed
+          // lease must not overflow into an immediate authority loss.
+          uncertaintyDeadline = setTimeout(
+            () => {
+              if (leaseState === 'UNCERTAIN') loseLeaseAuthority();
+            },
+            Math.min(remainingMs, 2_147_483_647),
+          );
+          uncertaintyDeadline.unref?.();
+        };
+        const renewHeartbeat = async (): Promise<void> => {
+          if (leaseState === 'LOST') return;
+          try {
+            const renewed = await this.repository.renewLease({
+              ...lease,
+              now: nowIso(this.clock),
+              leaseDurationMs: this.leaseDurationMs,
+            });
+            if (renewed === 'STALE' || renewed === 'NOT_FOUND') {
+              loseLeaseAuthority();
+              return;
+            }
+            lease = renewed;
+            leaseState = 'ACTIVE';
+            clearUncertaintyDeadline();
+          } catch {
+            // A transport failure is uncertainty, not proof of lease loss.
+            // Retry while the previously authoritative lease remains valid.
+            if ((leaseState as DiscoveryLeaseState) !== 'LOST') {
+              leaseState = 'UNCERTAIN';
+              scheduleUncertaintyDeadline();
+            }
+          }
+        };
+        const synchronizeLease = async (): Promise<boolean> => {
+          const inFlight = heartbeatInFlight;
+          if (inFlight) await inFlight;
+          if (leaseState === 'LOST') return false;
+          if (leaseState === 'UNCERTAIN') {
+            await renewHeartbeat();
+            if ((leaseState as DiscoveryLeaseState) !== 'ACTIVE') {
+              loseLeaseAuthority();
+              return false;
+            }
+          }
+          return leaseState === 'ACTIVE';
+        };
         const heartbeatInterval = setInterval(
           () => {
-            if (heartbeatInFlight || leaseLost) return;
-            heartbeatInFlight = true;
-            void this.repository
-              .renewLease({
-                ...lease,
-                now: nowIso(this.clock),
-                leaseDurationMs: this.leaseDurationMs,
-              })
-              .then((renewed) => {
-                if (renewed === 'STALE' || renewed === 'NOT_FOUND') {
-                  leaseLost = true;
-                } else {
-                  lease = renewed;
-                }
-              })
-              .catch(() => {
-                // A failed heartbeat cannot authorize a provider result. The
-                // stage is discarded unless a later heartbeat recovers it.
-                leaseLost = true;
-              })
-              .finally(() => {
-                heartbeatInFlight = false;
-              });
+            if (heartbeatInFlight || leaseState === 'LOST') return;
+            const inFlight = renewHeartbeat();
+            heartbeatInFlight = inFlight;
+            void inFlight.finally(() => {
+              if (heartbeatInFlight === inFlight) heartbeatInFlight = undefined;
+            });
           },
           Math.max(1_000, Math.floor(this.leaseDurationMs / 3)),
         );
@@ -1028,7 +1082,10 @@ export class PersistentDiscoveryWorker {
               }
               break;
           }
-          if (leaseLost) return 'STALE';
+          // The result cannot cross an in-flight renewal or UNCERTAIN state.
+          // This awaits the renewal promise instead of relying on clearing the
+          // interval, closing the completion/heartbeat race.
+          if (!(await synchronizeLease())) return 'STALE';
           if (this.stopping && controller.signal.aborted) return 'STOPPED';
           if (result.completion === 'PARTIAL') completion = 'PARTIAL';
           if (result.budgetSnapshot !== undefined) {
@@ -1119,6 +1176,7 @@ export class PersistentDiscoveryWorker {
           if (typeof finished === 'string')
             return finished === 'STALE' ? 'STALE' : 'FAILED_TERMINAL';
         } catch (error) {
+          if (!(await synchronizeLease())) return 'STALE';
           if (this.stopping && (controller.signal.aborted || shutdownAbort(error))) {
             return 'STOPPED';
           }
@@ -1132,11 +1190,34 @@ export class PersistentDiscoveryWorker {
           );
         } finally {
           clearInterval(heartbeatInterval);
+          clearUncertaintyDeadline();
         }
       }
 
       const target = completion === 'PARTIAL' ? 'PARTIAL' : 'SUCCEEDED';
       if (this.stopping && controller.signal.aborted) return 'STOPPED';
+      // Final authority revalidation uses the same fail-closed rule as the
+      // stage heartbeat. A transport error is UNCERTAIN, never a Product
+      // failure, so it must not enter the outer failClaim() path.
+      let finalLeaseState: DiscoveryLeaseState = 'ACTIVE';
+      let finalLease: DiscoveryRuntimeLeaseV1 | 'STALE' | 'NOT_FOUND';
+      try {
+        finalLease = await this.repository.renewLease({
+          ...lease,
+          now: nowIso(this.clock),
+          leaseDurationMs: this.leaseDurationMs,
+        });
+      } catch {
+        finalLeaseState = 'UNCERTAIN';
+        return 'STALE';
+      }
+      if (finalLease === 'STALE' || finalLease === 'NOT_FOUND') {
+        finalLeaseState = 'LOST';
+        controller.abort('SHOTGUN_DISCOVERY_LEASE_LOST');
+        return 'STALE';
+      }
+      if (finalLeaseState !== 'ACTIVE') return 'STALE';
+      lease = finalLease;
       const finalized = await this.repository.finalizeClaimWithLease({
         ...lease,
         expectedAttemptLifecycleRevision: claim.attempt.lifecycleRevision,

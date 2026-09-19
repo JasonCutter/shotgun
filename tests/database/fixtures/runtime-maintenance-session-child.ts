@@ -10,6 +10,7 @@ if (databaseUrl === undefined || assetRoot === undefined) {
 }
 
 let closing = false;
+let releaseShutdownHold: (() => void) | undefined;
 const application = await startShotgunApplication({
   databaseUrl,
   assetRoot,
@@ -28,9 +29,19 @@ const application = await startShotgunApplication({
   aiDurableMaterializationRecoveryEnabled: false,
 });
 
+application.server.addHook('preHandler', async (request) => {
+  const [urlPath, query] = request.url.split('?');
+  if (urlPath !== '/health' || query !== 'c4_hold=1') return;
+  process.stdout.write('HOLDING\n');
+  await new Promise<void>((resolve) => {
+    releaseShutdownHold = resolve;
+  });
+});
+
 const close = async (): Promise<void> => {
   if (closing) return;
   closing = true;
+  process.stdout.write('CLOSE_STARTED\n');
   try {
     await application.close();
     process.exit(0);
@@ -43,6 +54,7 @@ process.once('SIGINT', () => void close());
 process.once('SIGTERM', () => void close());
 createInterface({ input: process.stdin }).on('line', (line) => {
   if (line.trim() === 'CLOSE') void close();
+  if (line.trim() === 'RELEASE') releaseShutdownHold?.();
 });
 
 await application.listen();

@@ -31,6 +31,29 @@ const waitForChild = (child: ChildProcess): Promise<ChildResult> =>
     child.once('exit', (code, signal) => resolve({ code, signal }));
   });
 
+const waitForChildMessage = (child: ChildProcess, expected: string): Promise<void> =>
+  new Promise((resolve, reject) => {
+    if (child.stdout === null) {
+      reject(new Error('C4 child stdout was not piped.'));
+      return;
+    }
+    let buffered = '';
+    const timer = setTimeout(() => {
+      child.stdout?.off('data', onData);
+      reject(new Error(`C4 child did not emit ${expected}.`));
+    }, 10_000);
+    const onData = (chunk: Buffer | string): void => {
+      buffered += chunk.toString();
+      const lines = buffered.split(/\r?\n/);
+      buffered = lines.pop() ?? '';
+      if (!lines.some((line) => line === expected)) return;
+      clearTimeout(timer);
+      child.stdout?.off('data', onData);
+      resolve();
+    };
+    child.stdout.on('data', onData);
+  });
+
 const waitForReady = (child: ChildProcess): Promise<ReadyMessage> =>
   new Promise((resolve, reject) => {
     if (child.stdout === null || child.stderr === null) {
@@ -41,6 +64,7 @@ const waitForReady = (child: ChildProcess): Promise<ReadyMessage> =>
     const output = createInterface({ input: child.stdout });
     const timer = setTimeout(() => {
       output.close();
+      child.stdout?.resume();
       reject(new Error(`C4 child did not become ready. stderr=${stderr}`));
     }, 30_000);
     child.stderr.on('data', (chunk: Buffer | string) => {
@@ -50,6 +74,7 @@ const waitForReady = (child: ChildProcess): Promise<ReadyMessage> =>
       if (!line.startsWith('READY ')) return;
       clearTimeout(timer);
       output.close();
+      child.stdout?.resume();
       try {
         resolve(JSON.parse(line.slice('READY '.length)) as ReadyMessage);
       } catch (error) {
@@ -59,6 +84,7 @@ const waitForReady = (child: ChildProcess): Promise<ReadyMessage> =>
     child.once('exit', (code, signal) => {
       clearTimeout(timer);
       output.close();
+      child.stdout?.resume();
       reject(
         new Error(`C4 child exited before ready: code=${code} signal=${signal} stderr=${stderr}`),
       );
@@ -189,12 +215,69 @@ describe.runIf(pool)('TS-5 runtime maintenance session loss', () => {
 
       child.stdin?.write('CLOSE\n');
       const result = await waitForChild(child);
-      expect(result.code).toBe(0);
+      expect(result.code, launched.stderr()).toBe(0);
       expect(result.signal).toBeNull();
       await expectExclusiveAvailable();
       expect(launched.stderr()).not.toContain('fail-stopping');
     } finally {
       if (child !== undefined && child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGTERM');
+        await waitForChild(child);
+      }
+      await rm(assetRoot, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('marks shutdown intent before an in-flight request drains', async () => {
+    const assetRoot = await mkdtemp(path.join(os.tmpdir(), 'shotgun-ts5-c4-overlap-'));
+    let child: ChildProcess | undefined;
+    let holdRequest: Promise<Response> | undefined;
+    try {
+      const launched = await launchChild(assetRoot);
+      child = launched.child;
+      await expectHealth(launched.ready.port);
+
+      let holdFailure: string | undefined;
+      holdRequest = fetch(`http://127.0.0.1:${launched.ready.port}/health?c4_hold=1`, {
+        headers: { connection: 'close' },
+      }).then((response) => {
+        if (!response.ok) throw new Error(`hold request returned ${response.status}`);
+        return response;
+      });
+      void holdRequest.catch((error: unknown) => {
+        holdFailure = error instanceof Error ? error.message : String(error);
+      });
+      try {
+        await waitForChildMessage(child, 'HOLDING');
+      } catch (error) {
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)} ${holdFailure ?? ''}`,
+        );
+      }
+      child.stdin?.write('CLOSE\n');
+      await waitForChildMessage(child, 'CLOSE_STARTED');
+
+      const backendPid = await findMaintenanceBackend(launched.ready.pid);
+      const terminated = await pool!.query<{ terminated: boolean }>(
+        'SELECT pg_terminate_backend($1) AS terminated',
+        [backendPid],
+      );
+      expect(terminated.rows[0]?.terminated).toBe(true);
+      await wait(300);
+      expect(child.exitCode).toBeNull();
+      expect(child.signalCode).toBeNull();
+
+      const childExit = waitForChild(child);
+      child.stdin?.write('RELEASE\n');
+      await expect(holdRequest).resolves.toMatchObject({ ok: true });
+      const result = await childExit;
+      expect(result.code, launched.stderr()).toBe(0);
+      expect(result.signal).toBeNull();
+      await expectExclusiveAvailable();
+      expect(launched.stderr()).not.toContain('fail-stopping');
+    } finally {
+      if (child !== undefined && child.exitCode === null && child.signalCode === null) {
+        child.stdin?.write('RELEASE\n');
         child.kill('SIGTERM');
         await waitForChild(child);
       }

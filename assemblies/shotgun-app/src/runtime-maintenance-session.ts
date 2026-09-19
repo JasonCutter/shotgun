@@ -24,6 +24,7 @@ export type MaintenanceSessionGuard = {
   /** Observe a PostgreSQL client end event. */
   observeEnd(): void;
   readonly fatalTransitionTriggered: boolean;
+  readonly shutdownExpected: boolean;
 };
 
 type GuardState = 'STARTING' | 'HELD' | 'EXPECTED_SHUTDOWN' | 'LOST';
@@ -68,6 +69,9 @@ export const createMaintenanceSessionGuard = (input: {
     observeEnd: () => triggerLoss('end'),
     get fatalTransitionTriggered() {
       return fatalTransitionTriggered;
+    },
+    get shutdownExpected() {
+      return state === 'EXPECTED_SHUTDOWN';
     },
   };
 };

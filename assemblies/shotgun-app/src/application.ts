@@ -414,9 +414,14 @@ export const startShotgunApplication = async (
     },
   });
   runtimeMaintenanceClient.on('error', (error: unknown) => {
+    // A client error means the dedicated session is no longer a safe target
+    // for release/end cleanup. Unexpected errors fail-stop through the guard;
+    // expected-shutdown errors simply let cleanup skip the dead session.
+    runtimeMaintenanceClientConnected = false;
     runtimeMaintenanceSession.observeError(error);
   });
   runtimeMaintenanceClient.on('end', () => {
+    runtimeMaintenanceClientConnected = false;
     runtimeMaintenanceSession.observeEnd();
   });
   let application: Awaited<ReturnType<typeof createApplication>> | undefined;
@@ -434,11 +439,19 @@ export const startShotgunApplication = async (
     cleanupStack.add('runtime shared maintenance lock', async () => {
       runtimeMaintenanceSession.beginExpectedShutdown();
       if (runtimeMaintenanceLockHeld) {
-        await releaseMaintenanceLock(runtimeMaintenanceClient, 'shared');
+        try {
+          await releaseMaintenanceLock(runtimeMaintenanceClient, 'shared');
+        } catch (error) {
+          if (!runtimeMaintenanceSession.shutdownExpected) throw error;
+        }
         runtimeMaintenanceLockHeld = false;
       }
       if (runtimeMaintenanceClientConnected) {
-        await runtimeMaintenanceClient.end();
+        try {
+          await runtimeMaintenanceClient.end();
+        } catch (error) {
+          if (!runtimeMaintenanceSession.shutdownExpected) throw error;
+        }
         runtimeMaintenanceClientConnected = false;
       }
     });
@@ -1474,6 +1487,10 @@ export const startShotgunApplication = async (
     const close = async (): Promise<void> => {
       if (closed) return;
       closed = true;
+      // Mark intent before server.close() begins waiting on in-flight work.
+      // The maintenance session may disconnect while that async shutdown is
+      // still draining, and that disconnect is expected rather than fatal.
+      runtimeMaintenanceSession.beginExpectedShutdown();
       await server.close();
     };
     const listen = async (): Promise<void> => {

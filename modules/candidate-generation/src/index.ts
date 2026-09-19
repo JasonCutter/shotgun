@@ -13,9 +13,14 @@ import getClaimCandidateSchema from '../../../packages/contracts/schemas/get-cla
 import getEvidenceSpanSchema from '../../../packages/contracts/schemas/get-evidence-span.v1.schema.json';
 import listClaimCandidatesOutputSchema from '../../../packages/contracts/schemas/list-claim-candidates-output.v1.schema.json';
 import listClaimCandidatesSchema from '../../../packages/contracts/schemas/list-claim-candidates.v1.schema.json';
+import listClaimCandidatesByRevisionOutputSchema from '../../../packages/contracts/schemas/list-claim-candidates-by-revision-output.v1.schema.json';
+import listClaimCandidatesByRevisionSchema from '../../../packages/contracts/schemas/list-claim-candidates-by-revision.v1.schema.json';
 import listEvidenceSpansOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-output.v1.schema.json';
 import listEvidenceSpansSchema from '../../../packages/contracts/schemas/list-evidence-spans.v1.schema.json';
+import listEvidenceSpansByRevisionOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-by-revision-output.v1.schema.json';
+import listEvidenceSpansByRevisionSchema from '../../../packages/contracts/schemas/list-evidence-spans-by-revision.v1.schema.json';
 import reextractCandidateMaterializationSchema from '../../../packages/contracts/schemas/reextract-candidate-materialization.v1.schema.json';
+import reextractCandidateMaterializationV11Schema from '../../../packages/contracts/schemas/reextract-candidate-materialization.v1.1.schema.json';
 import resumeCandidateMaterializationSchema from '../../../packages/contracts/schemas/resume-candidate-materialization.v1.schema.json';
 import {
   type AIProviderCall,
@@ -39,6 +44,7 @@ export type CandidateBatch = {
   readonly batchId: string;
   readonly projectId: string;
   readonly sourceVersionId: string;
+  readonly revisionId?: string;
   readonly idempotencyKey: string;
   readonly providerCall: AIProviderCall;
   readonly materialization?: CandidateMaterializationRef & { readonly requestId: string };
@@ -63,6 +69,39 @@ export type CandidateRepositoryPort = {
     projectId: string,
     sourceVersionId: string,
   ): Promise<readonly ClaimCandidate[]>;
+  listByRevision?(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+  ): Promise<readonly ClaimCandidate[]>;
+  findMaterializationRevision?(
+    projectId: string,
+    requestId: string,
+  ): Promise<
+    | {
+        readonly sourceVersionId: string;
+        readonly revisionId: string;
+      }
+    | undefined
+  >;
+  /** Records the durable provider-call pin before materialization can fail. */
+  recordProviderPin?(
+    projectId: string,
+    requestId: string,
+    pin: { readonly sourceVersionId: string; readonly revisionId: string },
+  ): Promise<void>;
+  recordEvidencePins?(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+    evidenceIds: readonly string[],
+  ): Promise<void>;
+  validateRevisionScope?(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+    candidates: readonly ClaimCandidate[],
+  ): Promise<void>;
   updateStatus(
     projectId: string,
     candidateId: string,
@@ -72,6 +111,7 @@ export type CandidateRepositoryPort = {
 
 type EvidenceIndexedPayload = {
   readonly sourceVersionId: string;
+  readonly revisionId: string;
 };
 
 type EvidenceSummary = {
@@ -118,11 +158,16 @@ const assertScope = (
   }
 };
 
-const batchKey = (projectId: string, sourceVersionId: string) =>
-  `${projectId}:${sourceVersionId}:candidate-extraction:direct-claim-v1:direct-only-v1`;
+const batchKey = (projectId: string, sourceVersionId: string, revisionId: string) =>
+  `${projectId}:${sourceVersionId}:${revisionId}:candidate-extraction:direct-claim-v1:direct-only-v1`;
 
-const reextractBatchKey = (projectId: string, sourceVersionId: string, requestId: string) =>
-  `${projectId}:${sourceVersionId}:candidate-reextract:${requestId}:direct-claim-v1:direct-only-v1`;
+const reextractBatchKey = (
+  projectId: string,
+  sourceVersionId: string,
+  revisionId: string,
+  requestId: string,
+) =>
+  `${projectId}:${sourceVersionId}:${revisionId}:candidate-reextract:${requestId}:direct-claim-v1:direct-only-v1`;
 
 const publishGenerated = async (
   context: Parameters<NonNullable<ShotgunModule['handlers']['events'][number]['handle']>>[1],
@@ -152,17 +197,49 @@ export const createCandidateGenerationModule = (
   const materialize = async (
     envelope: EventEnvelope | CommandEnvelope,
     context: HandlerContext,
-    payload: EvidenceIndexedPayload & { readonly requestId?: string },
+    payload: {
+      readonly sourceVersionId: string;
+      readonly revisionId?: string;
+      readonly requestId?: string;
+    },
     mode: 'event' | 'resume' | 'reextract',
   ) => {
     const { projectId, security } = assertContext(envelope);
-    const requestId = payload.requestId ?? batchKey(projectId, payload.sourceVersionId);
+    let revisionId = payload.revisionId;
+    if (mode === 'resume') {
+      const pinned = await repository.findMaterializationRevision?.(
+        projectId,
+        payload.requestId ?? '',
+      );
+      if (!pinned || pinned.sourceVersionId !== payload.sourceVersionId) {
+        throw new ShotgunError({
+          code: 'REVISION_CONFLICT',
+          safeMessage: 'Resume requires the original durable Provider revision pin.',
+          module: 'stage4.candidate-generation',
+          operation: 'resolve-resume-revision',
+          correlationId: envelope.correlationId,
+          retryable: false,
+        });
+      }
+      revisionId = pinned.revisionId;
+    }
+    if (!revisionId) {
+      throw new ShotgunError({
+        code: 'REVISION_CONFLICT',
+        safeMessage: 'Candidate materialization requires an exact active Evidence revision.',
+        module: 'stage4.candidate-generation',
+        operation: 'resolve-materialization-revision',
+        correlationId: envelope.correlationId,
+        retryable: false,
+      });
+    }
+    const requestId = payload.requestId ?? batchKey(projectId, payload.sourceVersionId, revisionId);
     const idempotencyKey =
       mode === 'reextract'
-        ? reextractBatchKey(projectId, payload.sourceVersionId, requestId)
-        : batchKey(projectId, payload.sourceVersionId);
+        ? reextractBatchKey(projectId, payload.sourceVersionId, revisionId, requestId)
+        : batchKey(projectId, payload.sourceVersionId, revisionId);
     const generationRequestId = mode === 'reextract' ? idempotencyKey : requestId;
-    if (mode !== 'reextract' && requestId !== idempotencyKey) {
+    if (mode === 'event' && requestId !== idempotencyKey) {
       throw new ShotgunError({
         code: 'CONFLICT',
         safeMessage: 'The durable materialization request does not match this source version.',
@@ -178,23 +255,58 @@ export const createCandidateGenerationModule = (
     }
 
     const summaries = (
-      await context.query<{ sourceVersionId: string }, { items: readonly EvidenceSummary[] }>({
-        messageType: 'ListEvidenceSpans',
+      await context.query<
+        { sourceVersionId: string; revisionId: string },
+        {
+          items: readonly (EvidenceSummary & {
+            readonly sourceVersionId: string;
+            readonly revisionId: string;
+          })[];
+        }
+      >({
+        messageType: 'ListEvidenceSpansByRevision',
         schemaVersion: '1.0.0',
-        payload: { sourceVersionId: payload.sourceVersionId },
+        payload: { sourceVersionId: payload.sourceVersionId, revisionId },
       })
     ).payload.items.filter((item) => item.nodeKind === 'sentence');
+    summaries.forEach((item) => {
+      if (item.sourceVersionId !== payload.sourceVersionId || item.revisionId !== revisionId) {
+        throw new ShotgunError({
+          code: 'VALIDATION_ERROR',
+          safeMessage: 'Evidence query returned a different SourceVersion or revision.',
+          module: 'stage4.candidate-generation',
+          operation: 'verify-evidence-revision',
+          correlationId: envelope.correlationId,
+          retryable: false,
+        });
+      }
+    });
     const evidence = await Promise.all(
-      summaries.map(
-        async (summary) =>
-          (
-            await context.query<{ evidenceId: string }, EvidenceSpan>({
-              messageType: 'GetEvidenceSpan',
-              schemaVersion: '1.0.0',
-              payload: { evidenceId: summary.evidenceId },
-            })
-          ).payload,
-      ),
+      summaries.map(async (summary) => {
+        const item = (
+          await context.query<{ evidenceId: string }, EvidenceSpan>({
+            messageType: 'GetEvidenceSpan',
+            schemaVersion: '1.0.0',
+            payload: { evidenceId: summary.evidenceId },
+          })
+        ).payload;
+        if (
+          item.evidenceId !== summary.evidenceId ||
+          item.projectId !== projectId ||
+          item.sourceVersionId !== payload.sourceVersionId ||
+          item.revisionId !== revisionId
+        ) {
+          throw new ShotgunError({
+            code: 'VALIDATION_ERROR',
+            safeMessage: 'Evidence query returned a different evidence or revision.',
+            module: 'stage4.candidate-generation',
+            operation: 'verify-evidence-revision',
+            correlationId: envelope.correlationId,
+            retryable: false,
+          });
+        }
+        return item;
+      }),
     );
     if (evidence.length === 0) {
       throw new ShotgunError({
@@ -205,6 +317,12 @@ export const createCandidateGenerationModule = (
         correlationId: envelope.correlationId,
       });
     }
+    await repository.recordEvidencePins?.(
+      projectId,
+      payload.sourceVersionId,
+      revisionId,
+      evidence.map((item) => item.evidenceId),
+    );
 
     const generated = (
       await context.query<
@@ -255,6 +373,10 @@ export const createCandidateGenerationModule = (
       inputSnapshotDigest: generated.output.inputSnapshotDigest,
       materializerVersion: 'stage12-1-v1' as const,
     };
+    await repository.recordProviderPin?.(projectId, generationRequestId, {
+      sourceVersionId: payload.sourceVersionId,
+      revisionId,
+    });
     let batch: CandidateBatch;
     try {
       const allowedEvidence = new Set(evidence.map((item) => item.evidenceId));
@@ -297,6 +419,7 @@ export const createCandidateGenerationModule = (
         batchId,
         projectId,
         sourceVersionId: payload.sourceVersionId,
+        revisionId,
         idempotencyKey,
         providerCall: generated.call,
         materialization,
@@ -346,6 +469,7 @@ export const createCandidateGenerationModule = (
         contracts: [
           { name: 'EvidenceIndexed', range: '>=1.0.0 <2.0.0' },
           { name: 'ListEvidenceSpans', range: '>=1.0.0 <2.0.0' },
+          { name: 'ListEvidenceSpansByRevision', range: '>=1.0.0 <2.0.0' },
           { name: 'GetEvidenceSpan', range: '>=1.0.0 <2.0.0' },
           { name: 'GenerateStructured', range: '>=1.0.0 <2.0.0' },
           { name: 'CandidateGenerated', range: '>=1.0.0 <2.0.0' },
@@ -353,6 +477,7 @@ export const createCandidateGenerationModule = (
           { name: 'CandidateRejected', range: '>=1.0.0 <2.0.0' },
           { name: 'GetClaimCandidate', range: '>=1.0.0 <2.0.0' },
           { name: 'ListClaimCandidates', range: '>=1.0.0 <2.0.0' },
+          { name: 'ListClaimCandidatesByRevision', range: '>=1.0.0 <2.0.0' },
         ],
       },
       deployment: { modes: ['in_process', 'worker'] },
@@ -406,6 +531,7 @@ export const createCandidateGenerationModule = (
         queries: [
           { name: 'GetClaimCandidate', range: '>=1.0.0 <2.0.0' },
           { name: 'ListClaimCandidates', range: '>=1.0.0 <2.0.0' },
+          { name: 'ListClaimCandidatesByRevision', range: '>=1.0.0 <2.0.0' },
         ],
         capabilities: [{ name: 'claim-candidate-provider', priority: 100 }],
       },
@@ -434,6 +560,13 @@ export const createCandidateGenerationModule = (
         kind: 'query',
         inputSchema: listEvidenceSpansSchema,
         outputSchema: listEvidenceSpansOutputSchema,
+      },
+      {
+        name: 'ListEvidenceSpansByRevision',
+        version: '1.0.0',
+        kind: 'query',
+        inputSchema: listEvidenceSpansByRevisionSchema,
+        outputSchema: listEvidenceSpansByRevisionOutputSchema,
       },
       {
         name: 'GetEvidenceSpan',
@@ -480,6 +613,12 @@ export const createCandidateGenerationModule = (
         inputSchema: reextractCandidateMaterializationSchema,
       },
       {
+        name: 'ReextractCandidateMaterialization',
+        version: '1.1.0',
+        kind: 'command',
+        inputSchema: reextractCandidateMaterializationV11Schema,
+      },
+      {
         name: 'CandidateValidated',
         version: '1.0.0',
         kind: 'event',
@@ -505,6 +644,13 @@ export const createCandidateGenerationModule = (
         inputSchema: listClaimCandidatesSchema,
         outputSchema: listClaimCandidatesOutputSchema,
       },
+      {
+        name: 'ListClaimCandidatesByRevision',
+        version: '1.0.0',
+        kind: 'query',
+        inputSchema: listClaimCandidatesByRevisionSchema,
+        outputSchema: listClaimCandidatesByRevisionOutputSchema,
+      },
     ],
     handlers: {
       commands: [
@@ -516,6 +662,7 @@ export const createCandidateGenerationModule = (
             const payload = envelope.payload as {
               readonly sourceVersionId: string;
               readonly requestId: string;
+              readonly revisionId?: string;
             };
             await materialize(envelope, context, payload, 'resume');
           },
@@ -528,6 +675,7 @@ export const createCandidateGenerationModule = (
             const payload = envelope.payload as {
               readonly sourceVersionId: string;
               readonly requestId: string;
+              readonly revisionId?: string;
             };
             await materialize(envelope, context, payload, 'reextract');
           },
@@ -590,6 +738,46 @@ export const createCandidateGenerationModule = (
             }
             assertScope(candidate, security.accessScope, envelope.correlationId);
             return candidate;
+          },
+        },
+        {
+          messageType: 'ListClaimCandidatesByRevision',
+          version: '1.0.0',
+          requiredAccessScopes: ['owner'],
+          async handle(envelope) {
+            const { projectId, security } = assertContext(envelope);
+            if (!repository.listByRevision) {
+              throw new ShotgunError({
+                code: 'CAPABILITY_DENIED',
+                safeMessage: 'Exact Candidate revision reads are unavailable in this runtime.',
+                module: 'stage4.candidate-generation',
+                operation: 'list-candidates-by-revision',
+                correlationId: envelope.correlationId,
+              });
+            }
+            const payload = envelope.payload as {
+              readonly sourceVersionId: string;
+              readonly revisionId: string;
+            };
+            const items = await repository.listByRevision(
+              projectId,
+              payload.sourceVersionId,
+              payload.revisionId,
+            );
+            await repository.validateRevisionScope?.(
+              projectId,
+              payload.sourceVersionId,
+              payload.revisionId,
+              items,
+            );
+            items.forEach((candidate) =>
+              assertScope(candidate, security.accessScope, envelope.correlationId),
+            );
+            return {
+              sourceVersionId: payload.sourceVersionId,
+              revisionId: payload.revisionId,
+              items,
+            };
           },
         },
         {

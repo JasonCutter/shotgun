@@ -8,7 +8,8 @@
       { "name": "OriginalAssetStored", "range": ">=1.0.0 <2.0.0" },
       { "name": "ResolveAsset", "range": ">=1.0.0 <2.0.0" },
       { "name": "DocumentTransformed", "range": ">=1.0.0 <2.0.0" },
-      { "name": "GetDocumentRevision", "range": ">=1.0.0 <2.0.0" }
+      { "name": "GetDocumentRevision", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetDocumentRevisionByRevision", "range": ">=1.0.0 <2.0.0" }
     ]
   },
   "deployment": { "modes": ["in_process", "worker"] },
@@ -37,7 +38,10 @@
     ]
   },
   "provides": {
-    "queries": [{ "name": "GetDocumentRevision", "range": ">=1.0.0 <2.0.0" }],
+    "queries": [
+      { "name": "GetDocumentRevision", "range": ">=1.0.0 <2.0.0" },
+      { "name": "GetDocumentRevisionByRevision", "range": ">=1.0.0 <2.0.0" }
+    ],
     "capabilities": [
       { "name": "plain-text-transformation", "priority": 100 },
       { "name": "document-format-transformation", "priority": 100 },

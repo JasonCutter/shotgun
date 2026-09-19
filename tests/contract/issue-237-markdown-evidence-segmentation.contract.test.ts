@@ -93,7 +93,7 @@ describe('Issue #237 Markdown segmentation', () => {
   it('publishes the production transformer identity and delegates corrected Markdown behavior', async () => {
     expect(productionAdapter.identity).toEqual({
       id: 'shotgun.document-formats',
-      version: '1.0.1',
+      version: '1.1.0',
     });
 
     const text = ['---', '', '## 1. Heading', '', '1. Meaningful sentence.'].join('\n');

@@ -3,9 +3,12 @@ import evidenceIndexedSchema from '../../../packages/contracts/schemas/evidence-
 import evidenceSpanSchema from '../../../packages/contracts/schemas/evidence-span.v1.schema.json';
 import getDocumentRevisionOutputSchema from '../../../packages/contracts/schemas/get-document-revision-output.v1.schema.json';
 import getDocumentRevisionSchema from '../../../packages/contracts/schemas/get-document-revision.v1.schema.json';
+import getDocumentRevisionByRevisionSchema from '../../../packages/contracts/schemas/get-document-revision-by-revision.v1.schema.json';
 import getEvidenceSpanSchema from '../../../packages/contracts/schemas/get-evidence-span.v1.schema.json';
 import listEvidenceSpansOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-output.v1.schema.json';
 import listEvidenceSpansSchema from '../../../packages/contracts/schemas/list-evidence-spans.v1.schema.json';
+import listEvidenceSpansByRevisionOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-by-revision-output.v1.schema.json';
+import listEvidenceSpansByRevisionSchema from '../../../packages/contracts/schemas/list-evidence-spans-by-revision.v1.schema.json';
 import {
   type EvidenceSpan,
   type EventEnvelope,
@@ -34,6 +37,11 @@ export type EvidenceRepositoryPort = {
     readonly reusedCount: number;
   }>;
   listBySourceVersion(projectId: string, sourceVersionId: string): Promise<readonly EvidenceSpan[]>;
+  listByRevision?(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+  ): Promise<readonly EvidenceSpan[]>;
   findById(projectId: string, evidenceId: string): Promise<EvidenceSpan | undefined>;
 };
 
@@ -223,15 +231,17 @@ export const createEvidenceModule = (
       contracts: [
         { name: 'DocumentTransformed', range: '>=1.0.0 <2.0.0' },
         { name: 'GetDocumentRevision', range: '>=1.0.0 <2.0.0' },
+        { name: 'GetDocumentRevisionByRevision', range: '>=1.0.0 <2.0.0' },
         { name: 'EvidenceIndexed', range: '>=1.0.0 <2.0.0' },
         { name: 'ListEvidenceSpans', range: '>=1.0.0 <2.0.0' },
+        { name: 'ListEvidenceSpansByRevision', range: '>=1.0.0 <2.0.0' },
         { name: 'GetEvidenceSpan', range: '>=1.0.0 <2.0.0' },
       ],
     },
     deployment: { modes: ['in_process', 'worker'] },
     dataOwnership: {
       owns: ['evidence.spans'],
-      readsViaPorts: ['EvidenceLocatorPort', 'GetDocumentRevision query'],
+      readsViaPorts: ['EvidenceLocatorPort', 'GetDocumentRevisionByRevision query'],
       directSchemaAccess: false,
     },
     consumes: {
@@ -252,6 +262,7 @@ export const createEvidenceModule = (
     provides: {
       queries: [
         { name: 'ListEvidenceSpans', range: '>=1.0.0 <2.0.0' },
+        { name: 'ListEvidenceSpansByRevision', range: '>=1.0.0 <2.0.0' },
         { name: 'GetEvidenceSpan', range: '>=1.0.0 <2.0.0' },
       ],
       capabilities: [
@@ -284,6 +295,13 @@ export const createEvidenceModule = (
       outputSchema: getDocumentRevisionOutputSchema,
     },
     {
+      name: 'GetDocumentRevisionByRevision',
+      version: '1.0.0',
+      kind: 'query',
+      inputSchema: getDocumentRevisionByRevisionSchema,
+      outputSchema: getDocumentRevisionOutputSchema,
+    },
+    {
       name: 'EvidenceIndexed',
       version: '1.0.0',
       kind: 'event',
@@ -295,6 +313,13 @@ export const createEvidenceModule = (
       kind: 'query',
       inputSchema: listEvidenceSpansSchema,
       outputSchema: listEvidenceSpansOutputSchema,
+    },
+    {
+      name: 'ListEvidenceSpansByRevision',
+      version: '1.0.0',
+      kind: 'query',
+      inputSchema: listEvidenceSpansByRevisionSchema,
+      outputSchema: listEvidenceSpansByRevisionOutputSchema,
     },
     {
       name: 'GetEvidenceSpan',
@@ -318,10 +343,16 @@ export const createEvidenceModule = (
           };
           assertContext(envelope);
           const revision = (
-            await context.query<{ sourceVersionId: string }, TransformationRevision>({
-              messageType: 'GetDocumentRevision',
+            await context.query<
+              { readonly sourceVersionId: string; readonly revisionId: string },
+              TransformationRevision
+            >({
+              messageType: 'GetDocumentRevisionByRevision',
               schemaVersion: '1.0.0',
-              payload: { sourceVersionId: payload.sourceVersionId },
+              payload: {
+                sourceVersionId: payload.sourceVersionId,
+                revisionId: payload.revisionId,
+              },
             })
           ).payload;
           if (revision.revisionId !== payload.revisionId) {
@@ -366,6 +397,55 @@ export const createEvidenceModule = (
           return {
             items: items.map((item) => ({
               evidenceId: item.evidenceId,
+              pointer: item.pointer,
+              nodeKind: item.nodeKind,
+              position: item.position,
+              selectors: item.selectors ?? [],
+              exactHash: item.exactHash,
+            })),
+          };
+        },
+      },
+      {
+        messageType: 'ListEvidenceSpansByRevision',
+        version: '1.0.0',
+        requiredAccessScopes: ['owner'],
+        async handle(envelope) {
+          const { projectId, security } = assertContext(envelope);
+          const payload = envelope.payload as {
+            readonly sourceVersionId: string;
+            readonly revisionId: string;
+          };
+          if (!repository.listByRevision) {
+            throw new ShotgunError({
+              code: 'CAPABILITY_DENIED',
+              safeMessage: 'Exact Evidence revision reads are unavailable in this runtime.',
+              module: 'stage3.evidence',
+              operation: 'list-evidence-spans-by-revision',
+              correlationId: envelope.correlationId,
+            });
+          }
+          const items = await repository.listByRevision(
+            projectId,
+            payload.sourceVersionId,
+            payload.revisionId,
+          );
+          items.forEach((item) => {
+            if (
+              item.sourceVersionId !== payload.sourceVersionId ||
+              item.revisionId !== payload.revisionId
+            ) {
+              invalidRevision('Evidence query returned a different SourceVersion or revision.');
+            }
+            assertScope(item.accessScope, security.accessScope, envelope.correlationId);
+          });
+          return {
+            sourceVersionId: payload.sourceVersionId,
+            revisionId: payload.revisionId,
+            items: items.map((item) => ({
+              evidenceId: item.evidenceId,
+              sourceVersionId: item.sourceVersionId,
+              revisionId: item.revisionId,
               pointer: item.pointer,
               nodeKind: item.nodeKind,
               position: item.position,

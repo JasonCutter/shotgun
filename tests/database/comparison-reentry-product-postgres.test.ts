@@ -127,6 +127,36 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
           now,
         ],
       );
+      const indexingResultId = randomUUID();
+      const evidenceSetDigest = sha256Text(JSON.stringify([input.evidenceId]));
+      const securityScopeDigest = sha256Text(
+        JSON.stringify({ accessScope: ['owner'], sensitivity: 'private' }),
+      );
+      await pool.query(
+        `INSERT INTO evidence.indexing_results (
+           indexing_result_id, project_id, source_id, source_version_id, revision_id,
+           transformer_id, transformer_version, status, evidence_count, reused_count,
+           evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, 'test', '1', 'INDEXED', 1, 0,
+           $6, 'stage3-evidence-index.v1', $7, $8, $8)`,
+        [
+          indexingResultId,
+          projectId,
+          input.sourceId,
+          input.sourceVersionId,
+          input.revisionId,
+          evidenceSetDigest,
+          securityScopeDigest,
+          now,
+        ],
+      );
+      await pool.query(
+        `INSERT INTO source_product.source_stage3_progress (
+           project_id, source_id, source_version_id, state, indexing_result_id,
+           created_at, updated_at
+         ) VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, $5, $5)`,
+        [projectId, input.sourceId, input.sourceVersionId, indexingResultId, now],
+      );
     };
 
     await insertSource({
@@ -157,6 +187,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       readonly candidateId: string;
       readonly batchId: string;
       readonly sourceVersionId: string;
+      readonly revisionId: string;
       readonly claimText: string;
       readonly evidenceId: string;
       readonly status?: 'READY' | 'REJECTED';
@@ -164,9 +195,18 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       readonly sensitivity?: 'public' | 'internal' | 'private';
     }) => {
       await pool.query(
-        `INSERT INTO candidate.batches (batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at)
-         VALUES ($1, $2, $3, $4, '{}', $5)`,
-        [input.batchId, projectId, input.sourceVersionId, `batch-${input.candidateId}`, now],
+        `INSERT INTO candidate.batches (
+           batch_id, project_id, source_version_id, revision_id, idempotency_key,
+           provider_call, created_at
+         ) VALUES ($1, $2, $3, $4, $5, '{}', $6)`,
+        [
+          input.batchId,
+          projectId,
+          input.sourceVersionId,
+          input.revisionId,
+          `batch-${input.candidateId}`,
+          now,
+        ],
       );
       await pool.query(
         `INSERT INTO candidate.claim_candidates (
@@ -192,6 +232,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       candidateId: candidateAId,
       batchId: candidateABatchId,
       sourceVersionId: candidateASourceVersionId,
+      revisionId: candidateARevisionId,
       claimText: candidateAText,
       evidenceId: candidateAEvidenceId,
     });
@@ -199,6 +240,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       candidateId,
       batchId: candidateBatchId,
       sourceVersionId: candidateSourceVersionId,
+      revisionId: candidateRevisionId,
       claimText: candidateText,
       evidenceId: candidateEvidenceId,
     });
@@ -721,6 +763,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
         candidateId: failureCandidateId,
         batchId: randomUUID(),
         sourceVersionId: candidateSourceVersionId,
+        revisionId: candidateRevisionId,
         claimText: 'Candidate that deterministically fails at V2 provider execution.',
         evidenceId: candidateEvidenceId,
       });
@@ -909,6 +952,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
         candidateId: modifyReviewCandidateId,
         batchId: randomUUID(),
         sourceVersionId: candidateSourceVersionId,
+        revisionId: candidateRevisionId,
         claimText: 'Candidate requiring a governed review-only resolution.',
         evidenceId: candidateEvidenceId,
       });
@@ -1016,6 +1060,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
         candidateId: rejectedId,
         batchId: randomUUID(),
         sourceVersionId: candidateSourceVersionId,
+        revisionId: candidateRevisionId,
         claimText: 'Rejected candidate must not re-enter.',
         evidenceId: candidateEvidenceId,
         status: 'REJECTED',
@@ -1024,6 +1069,7 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
         candidateId: restrictedId,
         batchId: randomUUID(),
         sourceVersionId: candidateSourceVersionId,
+        revisionId: candidateRevisionId,
         claimText: 'Restricted candidate must fail access closed.',
         evidenceId: candidateEvidenceId,
         accessScope: ['finance'],
@@ -1128,6 +1174,10 @@ describeDatabase('Stage 5 Product re-entry on PostgreSQL application composition
       ]);
       await pool.query('DELETE FROM candidate.claim_candidates WHERE project_id = $1', [projectId]);
       await pool.query('DELETE FROM candidate.batches WHERE project_id = $1', [projectId]);
+      await pool.query('DELETE FROM source_product.source_stage3_progress WHERE project_id = $1', [
+        projectId,
+      ]);
+      await pool.query('DELETE FROM evidence.indexing_results WHERE project_id = $1', [projectId]);
       await pool.query('DELETE FROM evidence.spans WHERE project_id = $1', [projectId]);
       await pool.query('DELETE FROM transformation.revisions WHERE project_id = $1', [projectId]);
       await pool.query(

@@ -1,0 +1,39 @@
+{
+  "$id": "https://shotgun.local/contracts/list-evidence-spans-by-revision-output.v1.schema.json",
+  "title": "List Evidence Spans By Revision Output v1",
+  "type": "object",
+  "required": ["sourceVersionId", "revisionId", "items"],
+  "properties": {
+    "sourceVersionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "revisionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "evidenceId",
+          "sourceVersionId",
+          "revisionId",
+          "pointer",
+          "nodeKind",
+          "position",
+          "exactHash"
+        ],
+        "properties": {
+          "evidenceId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+          "sourceVersionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+          "revisionId": { "type": "string", "pattern": "^[0-9a-f-]{36}$" },
+          "pointer": { "type": "string", "pattern": "^(|/.*)$" },
+          "nodeKind": { "enum": ["document", "paragraph", "sentence"] },
+          "position": {
+            "$ref": "https://shotgun.local/contracts/list-evidence-spans-output.v1.schema.json#/properties/items/items/properties/position"
+          },
+          "selectors": { "type": "array" },
+          "exactHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

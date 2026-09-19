@@ -523,6 +523,10 @@ export class PostgresOriginalAssetRepository
       sensitivity: SourcesProjectionRecord['sensitivity'];
       created_at: Date;
       stage3_state: SourcesProjectionRecord['stage3State'] | null;
+      active_indexing_result_id: string | null;
+      active_revision_id: string | null;
+      active_evidence_status: 'INDEXED' | 'NO_EVIDENCE' | null;
+      active_evidence_count: number | null;
     }>(
       `SELECT source.project_id,
               source.source_id::text,
@@ -537,7 +541,11 @@ export class PostgresOriginalAssetRepository
               version.access_scope,
               version.sensitivity,
               version.created_at,
-              progress.state AS stage3_state
+              progress.state AS stage3_state,
+              indexing.indexing_result_id::text AS active_indexing_result_id,
+              indexing.revision_id::text AS active_revision_id,
+              indexing.status AS active_evidence_status,
+              indexing.evidence_count AS active_evidence_count
        FROM asset.source_versions AS version
        JOIN asset.sources AS source ON source.source_id = version.source_id
        JOIN asset.original_assets AS original ON original.asset_id = version.original_asset_id
@@ -564,6 +572,11 @@ export class PostgresOriginalAssetRepository
          ON progress.project_id = source.project_id
         AND progress.source_id = source.source_id
         AND progress.source_version_id = version.source_version_id
+       LEFT JOIN evidence.indexing_results AS indexing
+         ON indexing.indexing_result_id = progress.indexing_result_id
+        AND indexing.project_id = source.project_id
+        AND indexing.source_id = source.source_id
+        AND indexing.source_version_id = version.source_version_id
        WHERE source.project_id = $1
        ORDER BY source.source_id, version.version_number`,
       [projectId],
@@ -583,7 +596,69 @@ export class PostgresOriginalAssetRepository
       sensitivity: row.sensitivity,
       createdAt: row.created_at.toISOString(),
       ...(row.stage3_state === null ? {} : { stage3State: row.stage3_state }),
+      ...(row.active_indexing_result_id !== null &&
+      row.active_revision_id !== null &&
+      row.active_evidence_status !== null &&
+      row.active_evidence_count !== null
+        ? {
+            activeEvidenceRevision: {
+              indexingResultId: row.active_indexing_result_id,
+              sourceId: row.source_id,
+              sourceVersionId: row.source_version_id,
+              revisionId: row.active_revision_id,
+              status: row.active_evidence_status,
+              evidenceCount: row.active_evidence_count,
+            },
+          }
+        : {}),
     }));
+  }
+
+  async getActiveEvidenceRevision(
+    projectId: string,
+    sourceVersionId: string,
+  ): Promise<SourcesProjectionRecord['activeEvidenceRevision']> {
+    const records = await this.listProjectSourceVersions(projectId);
+    return records.find((record) => record.sourceVersionId === sourceVersionId)
+      ?.activeEvidenceRevision;
+  }
+
+  async validateActiveEvidenceRevision(input: {
+    readonly projectId: string;
+    readonly sourceId: string;
+    readonly sourceVersionId: string;
+    readonly indexingResultId: string;
+    readonly revisionId: string;
+  }): Promise<boolean> {
+    const result = await this.pool.query(
+      `SELECT 1
+       FROM source_product.source_stage3_progress AS progress
+       JOIN evidence.indexing_results AS indexing
+         ON indexing.indexing_result_id = progress.indexing_result_id
+       JOIN transformation.revisions AS revision
+         ON revision.revision_id = indexing.revision_id
+       WHERE progress.project_id = $1
+         AND progress.source_id = $2
+         AND progress.source_version_id = $3
+         AND progress.indexing_result_id = $4
+         AND indexing.project_id = $1
+         AND indexing.source_id = $2
+         AND indexing.source_version_id = $3
+         AND indexing.revision_id = $5
+         AND revision.project_id = $1
+         AND revision.source_id = $2
+         AND revision.source_version_id = $3
+         AND revision.revision_id = $5
+       LIMIT 1`,
+      [
+        input.projectId,
+        input.sourceId,
+        input.sourceVersionId,
+        input.indexingResultId,
+        input.revisionId,
+      ],
+    );
+    return result.rowCount === 1;
   }
 
   private async resolveSource(client: PoolClient, input: StoreOriginalAssetInput): Promise<string> {

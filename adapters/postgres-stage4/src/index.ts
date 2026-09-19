@@ -38,6 +38,7 @@ type ProviderCallRow = QueryResultRow & {
   readonly data_classification: string;
   readonly input_evidence_ids: string[];
   readonly source_version_id: string | null;
+  readonly revision_id: string | null;
   readonly access_scope: string[];
   readonly sensitivity: AIProviderExecutionRecord['sensitivity'];
   readonly input_snapshot_digest: string | null;
@@ -89,6 +90,7 @@ type BatchRow = QueryResultRow & {
   readonly batch_id: string;
   readonly project_id: string;
   readonly source_version_id: string;
+  readonly revision_id: string | null;
   readonly idempotency_key: string;
   readonly provider_call: AIProviderCall;
   readonly created_at: Date;
@@ -190,20 +192,20 @@ const mapValidation = (row: ValidationRow): ValidationResult => ({
 
 const candidateSelect = `
   SELECT
-    candidate_id::text,
-    batch_id::text,
-    project_id,
-    source_version_id::text,
-    revision_number,
-    claim_text,
-    evidence_id::text,
-    evidence_mode,
-    extraction_profile,
-    status,
-    provider_call,
-    access_scope,
-    sensitivity,
-    created_at
+    candidate.claim_candidates.candidate_id::text,
+    candidate.claim_candidates.batch_id::text,
+    candidate.claim_candidates.project_id,
+    candidate.claim_candidates.source_version_id::text,
+    candidate.claim_candidates.revision_number,
+    candidate.claim_candidates.claim_text,
+    candidate.claim_candidates.evidence_id::text,
+    candidate.claim_candidates.evidence_mode,
+    candidate.claim_candidates.extraction_profile,
+    candidate.claim_candidates.status,
+    candidate.claim_candidates.provider_call,
+    candidate.claim_candidates.access_scope,
+    candidate.claim_candidates.sensitivity,
+    candidate.claim_candidates.created_at
   FROM candidate.claim_candidates
 `;
 
@@ -218,6 +220,7 @@ const loadBatch = async (
         batch_id::text,
         project_id,
         source_version_id::text,
+        revision_id::text,
         idempotency_key,
         provider_call,
         created_at
@@ -238,6 +241,7 @@ const loadBatch = async (
     batchId: row.batch_id,
     projectId: row.project_id,
     sourceVersionId: row.source_version_id,
+    ...(row.revision_id === null ? {} : { revisionId: row.revision_id }),
     idempotencyKey: row.idempotency_key,
     providerCall: row.provider_call,
     candidates: candidates.rows.map(mapCandidate),
@@ -254,7 +258,7 @@ const loadProviderRecord = async (
   const result = await client.query<ProviderCallRow>(
     `SELECT call_id::text, project_id, request_id, provider, model, prompt_version, policy_version,
       schema_name, data_classification, ARRAY(SELECT value::text FROM unnest(input_evidence_ids) value) AS input_evidence_ids,
-      source_version_id::text, access_scope, sensitivity, input_snapshot_digest, request_digest,
+      source_version_id::text, revision_id::text, access_scope, sensitivity, input_snapshot_digest, request_digest,
       durable_state, max_attempts, status, call_json, execution_identity, created_at
      FROM ai.provider_calls WHERE project_id = $1 AND request_id = $2 ${lock ? 'FOR UPDATE' : ''}`,
     [projectId, requestId],
@@ -279,6 +283,7 @@ const loadProviderRecord = async (
     requestId: row.request_id,
     projectId: row.project_id,
     sourceVersionId: row.source_version_id ?? '',
+    ...(row.revision_id === null ? {} : { revisionId: row.revision_id }),
     provider: row.provider,
     model: row.model,
     promptVersion: row.prompt_version,
@@ -310,9 +315,9 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
       await client.query('BEGIN');
       await client.query(
         `INSERT INTO ai.provider_calls (call_id, project_id, request_id, provider, model, prompt_version, policy_version,
-          schema_name, data_classification, input_evidence_ids, source_version_id, access_scope, sensitivity,
+          schema_name, data_classification, input_evidence_ids, source_version_id, revision_id, access_scope, sensitivity,
           input_snapshot_digest, request_digest, execution_identity, durable_state, max_attempts, status, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'REQUESTED',$17,'failed',$18,$18)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'REQUESTED',$18,'failed',$19,$19)
          ON CONFLICT (project_id, request_id) DO NOTHING`,
         [
           record.callId,
@@ -326,6 +331,7 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
           record.dataClassification,
           record.inputEvidenceIds,
           record.sourceVersionId,
+          record.revisionId ?? null,
           record.accessScope,
           record.sensitivity,
           record.inputSnapshotDigest,
@@ -800,14 +806,15 @@ export class PostgresCandidateRepository implements CandidateRepositoryPort {
       await client.query(
         `
           INSERT INTO candidate.batches (
-            batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at
+            batch_id, project_id, source_version_id, revision_id, idempotency_key, provider_call, created_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
         `,
         [
           batch.batchId,
           batch.projectId,
           batch.sourceVersionId,
+          batch.revisionId ?? null,
           batch.idempotencyKey,
           batch.providerCall,
           batch.createdAt,
@@ -859,6 +866,46 @@ export class PostgresCandidateRepository implements CandidateRepositoryPort {
   ): Promise<void> {
     if (!batch.materialization) return;
     const materialization = batch.materialization;
+    const lineage = await client.query<{
+      readonly call_revision_id: string | null;
+      readonly batch_revision_id: string | null;
+      readonly call_source_version_id: string | null;
+      readonly batch_source_version_id: string;
+      readonly call_project_id: string;
+      readonly batch_project_id: string;
+    }>(
+      `SELECT
+         provider_call.revision_id::text AS call_revision_id,
+         batch.revision_id::text AS batch_revision_id,
+         provider_call.source_version_id::text AS call_source_version_id,
+         batch.source_version_id::text AS batch_source_version_id,
+         provider_call.project_id AS call_project_id,
+         batch.project_id AS batch_project_id
+       FROM ai.provider_outputs AS output
+       JOIN ai.provider_calls AS provider_call ON provider_call.call_id = output.call_id
+       JOIN candidate.batches AS batch ON batch.batch_id = $2
+       WHERE output.output_id = $1
+       FOR SHARE OF provider_call, batch`,
+      [materialization.outputId, batchId],
+    );
+    const lineageRow = lineage.rows[0];
+    if (
+      !lineageRow ||
+      lineageRow.call_revision_id === null ||
+      lineageRow.batch_revision_id === null ||
+      lineageRow.call_revision_id !== lineageRow.batch_revision_id ||
+      lineageRow.call_source_version_id !== lineageRow.batch_source_version_id ||
+      lineageRow.call_project_id !== lineageRow.batch_project_id ||
+      lineageRow.call_revision_id !== batch.revisionId
+    ) {
+      throw new ShotgunError({
+        code: 'CONFLICT',
+        safeMessage: 'Provider output and Candidate Batch are pinned to different revisions.',
+        module: 'postgres-stage4',
+        operation: 'verify-candidate-lineage',
+        retryable: false,
+      });
+    }
     const bound = await client.query<{ batch_id: string | null }>(
       `INSERT INTO candidate.materializations (
          materialization_id, project_id, output_id, output_digest, input_snapshot_digest,
@@ -918,6 +965,85 @@ export class PostgresCandidateRepository implements CandidateRepositoryPort {
       [projectId, sourceVersionId],
     );
     return result.rows.map(mapCandidate);
+  }
+
+  async listByRevision(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+  ): Promise<readonly ClaimCandidate[]> {
+    const integrity = await this.pool.query<{
+      readonly candidate_id: string;
+      readonly batch_project_id: string;
+      readonly batch_source_version_id: string;
+      readonly batch_revision_id: string | null;
+      readonly evidence_project_id: string | null;
+      readonly evidence_source_version_id: string | null;
+      readonly evidence_revision_id: string | null;
+    }>(
+      `SELECT candidate.claim_candidates.candidate_id::text,
+              batch.project_id AS batch_project_id,
+              batch.source_version_id::text AS batch_source_version_id,
+              batch.revision_id::text AS batch_revision_id,
+              evidence.project_id AS evidence_project_id,
+              evidence.source_version_id::text AS evidence_source_version_id,
+              evidence.revision_id::text AS evidence_revision_id
+       FROM candidate.claim_candidates
+       JOIN candidate.batches AS batch ON batch.batch_id = candidate.claim_candidates.batch_id
+       LEFT JOIN evidence.spans AS evidence ON evidence.evidence_id = candidate.claim_candidates.evidence_id
+       WHERE candidate.claim_candidates.project_id = $1
+         AND candidate.claim_candidates.source_version_id = $2
+         AND batch.revision_id = $3`,
+      [projectId, sourceVersionId, revisionId],
+    );
+    if (
+      integrity.rows.some(
+        (row) =>
+          row.batch_project_id !== projectId ||
+          row.batch_source_version_id !== sourceVersionId ||
+          row.batch_revision_id !== revisionId ||
+          row.evidence_project_id !== projectId ||
+          row.evidence_source_version_id !== sourceVersionId ||
+          row.evidence_revision_id !== revisionId,
+      )
+    ) {
+      throw new ShotgunError({
+        code: 'FORMAT_CORRUPT',
+        safeMessage: 'Candidate Evidence lineage does not match the requested revision.',
+        module: 'postgres-stage4',
+        operation: 'validate-candidate-evidence-revision',
+        retryable: false,
+      });
+    }
+    const result = await this.pool.query<CandidateRow>(
+      `${candidateSelect}
+       JOIN candidate.batches AS batch ON batch.batch_id = candidate.claim_candidates.batch_id
+       WHERE candidate.claim_candidates.project_id = $1
+         AND candidate.claim_candidates.source_version_id = $2
+         AND batch.revision_id = $3
+       ORDER BY candidate.claim_candidates.created_at, candidate.claim_candidates.candidate_id`,
+      [projectId, sourceVersionId, revisionId],
+    );
+    return result.rows.map(mapCandidate);
+  }
+
+  async findMaterializationRevision(
+    projectId: string,
+    requestId: string,
+  ): Promise<{ readonly sourceVersionId: string; readonly revisionId: string } | undefined> {
+    const result = await this.pool.query<{
+      source_version_id: string;
+      revision_id: string | null;
+    }>(
+      `SELECT source_version_id::text, revision_id::text
+       FROM ai.provider_calls
+       WHERE project_id = $1 AND request_id = $2 AND schema_name = 'ClaimCandidateBatch.v1'`,
+      [projectId, requestId],
+    );
+    const row = result.rows[0];
+    return row?.revision_id
+      ? { sourceVersionId: row.source_version_id, revisionId: row.revision_id }
+      : undefined;
   }
 
   async updateStatus(

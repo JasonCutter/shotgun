@@ -108,7 +108,7 @@ describe('Stage 8 format Golden Corpus', () => {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
     const cells = selectorsOf(output).filter((selector) => selector.type === 'CellSelector');
-    expect(cells).toHaveLength(6);
+    expect(cells).toHaveLength(12);
     expect(cells).toContainEqual(
       expect.objectContaining({ type: 'CellSelector', sheet: 'Golden', cell: 'B2' }),
     );

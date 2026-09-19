@@ -52,7 +52,11 @@ const knownDatabaseTransientCodes = new Set([
 export const classifySourcesStage3Failure = (
   error: unknown,
 ): SourcesStage3FailureClassification => {
-  const candidate = error as { readonly code?: unknown; readonly safeMessage?: unknown };
+  const candidate = error as {
+    readonly code?: unknown;
+    readonly safeMessage?: unknown;
+    readonly retryable?: unknown;
+  };
   const code = typeof candidate.code === 'string' ? candidate.code : undefined;
   const message =
     typeof candidate.safeMessage === 'string'
@@ -60,6 +64,13 @@ export const classifySourcesStage3Failure = (
       : error instanceof Error
         ? error.message
         : 'Stage 3 processing failed.';
+  if (candidate.retryable === false) {
+    return {
+      retryable: false,
+      code: code ?? STAGE3_UNKNOWN_FAILURE_CODE,
+      message,
+    };
+  }
   if (code === 'VALIDATION_ERROR' || code === 'POLICY_DENIED' || code === 'TERMINAL_FAILURE') {
     return { retryable: false, code, message };
   }

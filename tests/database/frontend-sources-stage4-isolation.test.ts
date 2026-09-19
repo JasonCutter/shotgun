@@ -602,7 +602,7 @@ describe.runIf(pool)('Source Product / Stage 4 failure isolation', () => {
     if (!sentence || sentence.origin !== 'source') {
       throw new Error('PostgreSQL Evidence fixture had no source sentence map entry.');
     }
-    await evidenceRepository.index([
+    const indexedEvidence = await evidenceRepository.index([
       {
         revisionId: transformation.revision.revisionId,
         projectId: context.projectId,
@@ -620,6 +620,41 @@ describe.runIf(pool)('Source Product / Stage 4 failure isolation', () => {
         createdAt: context.now,
       },
     ]);
+    const indexingResultId = randomUUID();
+    const evidenceSetDigest = hash(
+      indexedEvidence.items
+        .map((item) => item.evidenceId)
+        .sort()
+        .join('|'),
+    );
+    await pool!.query(
+      `INSERT INTO evidence.indexing_results (
+         indexing_result_id, project_id, source_id, source_version_id, revision_id,
+         transformer_id, transformer_version, status, evidence_count, reused_count,
+         evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'INDEXED', $8, 0, $9,
+                 'stage3-evidence-index.v1', $10, $11, $11)`,
+      [
+        indexingResultId,
+        context.projectId,
+        stored.sourceId,
+        stored.sourceVersionId,
+        transformation.revision.revisionId,
+        transformer.identity.id,
+        transformer.identity.version,
+        indexedEvidence.items.length,
+        evidenceSetDigest,
+        hash(JSON.stringify({ accessScope: ['owner'], sensitivity: 'internal' })),
+        context.now,
+      ],
+    );
+    await pool!.query(
+      `INSERT INTO source_product.source_stage3_progress (
+         project_id, source_id, source_version_id, state, indexing_result_id,
+         created_at, updated_at
+       ) VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, $5, $5)`,
+      [context.projectId, stored.sourceId, stored.sourceVersionId, indexingResultId, context.now],
+    );
 
     let aiEnabled = false;
     let providerCalls = 0;

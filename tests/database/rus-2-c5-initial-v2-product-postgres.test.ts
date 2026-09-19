@@ -59,6 +59,7 @@ describeDatabase('RUS-2 C5 fresh initial V2 Product PostgreSQL lifecycle', () =>
     const sourceVersionId = randomUUID();
     const assetId = randomUUID();
     const transformationRevisionId = randomUUID();
+    const indexingResultId = randomUUID();
     const candidateAId = randomUUID();
     const candidateBId = randomUUID();
     const candidateABatchId = randomUUID();
@@ -124,6 +125,33 @@ describeDatabase('RUS-2 C5 fresh initial V2 Product PostgreSQL lifecycle', () =>
     await insertEvidence(candidateAEvidenceId, candidateAText, 1);
     await insertEvidence(candidateBEvidenceId, candidateBText, 2);
 
+    const evidenceSetDigest = hash(
+      [canonicalEvidenceId, candidateAEvidenceId, candidateBEvidenceId].join(':'),
+    );
+    await pool.query(
+      `INSERT INTO evidence.indexing_results (
+         indexing_result_id, project_id, source_id, source_version_id, revision_id,
+         transformer_id, transformer_version, status, evidence_count, reused_count,
+         evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, 'c5-fresh-fixture', '1', 'INDEXED', 3, 0,
+                 $6, 'stage3-evidence-index.v1', $6, $7, $7)`,
+      [
+        indexingResultId,
+        projectId,
+        sourceId,
+        sourceVersionId,
+        transformationRevisionId,
+        evidenceSetDigest,
+        now,
+      ],
+    );
+    await pool.query(
+      `INSERT INTO source_product.source_stage3_progress (
+         project_id, source_id, source_version_id, state, indexing_result_id, created_at, updated_at
+       ) VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, $5, $5)`,
+      [projectId, sourceId, sourceVersionId, indexingResultId, now],
+    );
+
     const insertCandidate = async (input: {
       readonly candidateId: string;
       readonly batchId: string;
@@ -131,9 +159,17 @@ describeDatabase('RUS-2 C5 fresh initial V2 Product PostgreSQL lifecycle', () =>
       readonly evidenceId: string;
     }) => {
       await pool.query(
-        `INSERT INTO candidate.batches (batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at)
-         VALUES ($1, $2, $3, $4, '{}', $5)`,
-        [input.batchId, projectId, sourceVersionId, `batch-${input.candidateId}`, now],
+        `INSERT INTO candidate.batches (
+           batch_id, project_id, source_version_id, revision_id, idempotency_key, provider_call, created_at
+         ) VALUES ($1, $2, $3, $4, $5, '{}', $6)`,
+        [
+          input.batchId,
+          projectId,
+          sourceVersionId,
+          transformationRevisionId,
+          `batch-${input.candidateId}`,
+          now,
+        ],
       );
       await pool.query(
         `INSERT INTO candidate.claim_candidates (

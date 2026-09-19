@@ -1,6 +1,6 @@
 # Stage 8 OSS Integration Review
 
-- 검토일: 2026-07-17
+- 검토일: 2026-09-18 (Phase B revalidation)
 - 대상: HTML, PDF, DOCX, CSV, XLSX, PPTX, 이미지, 공개 HTTPS 페이지
 - OSS Gate: **COMPLETE**
 - 상세 등록부: [oss-source-registry.json](../oss-source-registry.json)
@@ -70,3 +70,26 @@ PDFium·각 OOXML 공식 라이브러리로 대체 검증했다.
 - 스캔 PDF, 복합 표, 수식, 차트 손실이 Golden 허용치를 넘을 때 Docling 재평가
 - 레거시 Office·광범위 MIME 감지가 필요할 때 Tika 재평가
 - OCR은 별도 승인과 개인정보·정확도 정책이 생긴 뒤에만 평가
+
+## Phase B revalidation
+
+Phase B는 기존 결정을 바꾸지 않고 Adapter 뒤의 경계를 보완했다.
+
+| 후보/부품             | 결정                          | 고정 버전·범위                             | 제외·교체 경계                                      |
+| --------------------- | ----------------------------- | ------------------------------------------ | --------------------------------------------------- |
+| pdfplumber            | `ADOPT` behind Python adapter | `0.11.10`, lockfile                        | PyMuPDF 1.28.0은 AGPL로 `REJECT`; Docling은 `DEFER` |
+| python-docx           | `ADOPT` behind Python adapter | `1.2.0`, lockfile                          | 전체 Office runtime·DB는 제외                       |
+| openpyxl              | `ADOPT` behind Python adapter | `3.1.5`, lockfile                          | workbook 외부 상태·watcher는 제외                   |
+| python-pptx           | `ADOPT` behind Python adapter | `1.0.2`, lockfile                          | 전체 presentation runtime은 제외                    |
+| Beautiful Soup        | `AUGMENT`                     | `4.15.0`, lockfile                         | HTML semantic cleanup과 selector round-trip만 사용  |
+| lucasastorian/llmwiki | `EXTRACT/AUGMENT`             | `ad626a3d81be1480e35ef4e94234de8dbb27a61e` | SQLite·VaultFS·MCP·전체 runtime 제외                |
+
+Phase B Golden 재검증은 Page·여러 physical BBox·Cell·Shape·CSS selector와
+sentence selector 상속을 확인한다. PDF는 word 단위 block을 폐기하고 geometry 기반
+paragraph로 재구성한다. worker는 raw 10 MiB, stdout 8 MiB, stderr 1 MiB,
+normalized 4 MiB, HTML 512 tracked element, PDF 1000 pages/8192 blocks,
+selector 16384, SourceMap 200000, image description 128000 code point 한도를
+적용하며 overflow는 자르지 않고 non-retryable `VALIDATION_ERROR`로 거부한다.
+Migration·Contract·Golden·Replacement 검증은 Stage 8 Adapter 경계에서 수행하고,
+active revision authority·Candidate lineage는 TS-1 Phase B 보고서의 별도 계약으로
+검증한다.

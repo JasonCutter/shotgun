@@ -60,19 +60,20 @@ const createHarness = async (storage: InMemoryAssetStorage, provider: FakeAIProv
 const reextractCommand = (
   parent: ReturnType<typeof directTextCommand>,
   sourceVersionId: string,
+  revisionId: string,
   requestId: string,
   idempotencyKey: string,
 ) =>
   createCommand({
     messageType: 'ReextractCandidateMaterialization',
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     producerModule: 'stage4-postgres-test',
     producerVersion: '1.0.0',
     idempotencyKey,
     projectId: parent.projectId!,
     actor: parent.actor!,
     security: parent.security!,
-    payload: { sourceVersionId, requestId },
+    payload: { sourceVersionId, revisionId, requestId },
   });
 
 describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
@@ -171,9 +172,19 @@ describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
         candidatesQuery(command, sourceVersionId),
       )
     ).result.payload.items;
+    const revision = await pool!.query<{ revision_id: string }>(
+      `SELECT revision_id::text
+       FROM candidate.batches
+       WHERE project_id = $1 AND source_version_id = $2
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [command.projectId, sourceVersionId],
+    );
+    const revisionId = revision.rows[0]?.revision_id;
+    expect(revisionId).toBeTruthy();
 
     await kernel.connector.sendCommand(
-      reextractCommand(command, sourceVersionId, 'R2', 'postgres-reextract-r2'),
+      reextractCommand(command, sourceVersionId, revisionId!, 'R2', 'postgres-reextract-r2'),
     );
     const afterR2 = (
       await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
@@ -185,7 +196,7 @@ describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
     expect(afterR2[0]!.batchId).not.toBe(afterR2[1]!.batchId);
 
     await kernel.connector.sendCommand(
-      reextractCommand(command, sourceVersionId, 'R2', 'postgres-reextract-r2-replay'),
+      reextractCommand(command, sourceVersionId, revisionId!, 'R2', 'postgres-reextract-r2-replay'),
     );
     expect(provider.calls()).toBe(2);
 
@@ -221,6 +232,7 @@ describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
       requestId,
       projectId: 'stage4-retry-contract-postgres',
       sourceVersionId: randomUUID(),
+      revisionId: randomUUID(),
       provider: 'fake',
       model: 'fake-model',
       promptVersion: 'direct-claim-v1',
@@ -243,7 +255,24 @@ describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
     const retryableRequestId = 'retryable-restart-request';
     try {
       for (const requestId of [terminalRequestId, retryableRequestId]) {
-        await repository.ensure(baseRecord(requestId));
+        const record = baseRecord(requestId);
+        await pool!.query(
+          `INSERT INTO transformation.revisions (
+             revision_id, project_id, source_id, source_version_id, source_content_hash,
+             transformer_id, transformer_version, document_ir, source_map, document_hash,
+             source_map_hash, access_scope, sensitivity, created_at
+           ) VALUES ($1, $2, $3, $4, $5, 'stage4-retry-test', '1.0.0', '{}'::jsonb, '{}'::jsonb,
+                     $5, $5, '{owner}', 'private', $6)`,
+          [
+            record.revisionId,
+            record.projectId,
+            randomUUID(),
+            record.sourceVersionId,
+            `sha256:${'a'.repeat(64)}`,
+            record.createdAt,
+          ],
+        );
+        await repository.ensure(record);
         const first = await repository.claimNextAttempt(
           'stage4-retry-contract-postgres',
           requestId,
@@ -272,6 +301,9 @@ describe.runIf(pool)('Stage 4 PostgreSQL persistence', () => {
       expect(retry!.record.requestId).toBe(retryableRequestId);
     } finally {
       await pool!.query('DELETE FROM ai.provider_calls WHERE project_id = $1', [
+        'stage4-retry-contract-postgres',
+      ]);
+      await pool!.query('DELETE FROM transformation.revisions WHERE project_id = $1', [
         'stage4-retry-contract-postgres',
       ]);
     }

@@ -94,11 +94,42 @@ describe.runIf(Boolean(databaseUrl))('Issue #241 empty Canonical PostgreSQL runt
         now,
       ],
     );
+    const indexingResultId = randomUUID();
+    const evidenceSetDigest = sha256Text(JSON.stringify([evidenceId]));
+    const securityScopeDigest = sha256Text(
+      JSON.stringify({ accessScope: ['owner'], sensitivity: 'private' }),
+    );
+    await pool.query(
+      `INSERT INTO evidence.indexing_results (
+         indexing_result_id, project_id, source_id, source_version_id, revision_id,
+         transformer_id, transformer_version, status, evidence_count, reused_count,
+         evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, 'issue-241-test', '1', 'INDEXED', 1, 0,
+         $6, 'stage3-evidence-index.v1', $7, $8, $8)`,
+      [
+        indexingResultId,
+        projectId,
+        sourceId,
+        sourceVersionId,
+        revisionId,
+        evidenceSetDigest,
+        securityScopeDigest,
+        now,
+      ],
+    );
+    await pool.query(
+      `INSERT INTO source_product.source_stage3_progress (
+         project_id, source_id, source_version_id, state, indexing_result_id,
+         created_at, updated_at
+       ) VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, $5, $5)`,
+      [projectId, sourceId, sourceVersionId, indexingResultId, now],
+    );
     await pool.query(
       `INSERT INTO candidate.batches (
-         batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at
-       ) VALUES ($1, $2, $3, $4, '{}', $5)`,
-      [batchId, projectId, sourceVersionId, `issue-241-batch-${batchId}`, now],
+         batch_id, project_id, source_version_id, revision_id, idempotency_key,
+         provider_call, created_at
+       ) VALUES ($1, $2, $3, $4, $5, '{}', $6)`,
+      [batchId, projectId, sourceVersionId, revisionId, `issue-241-batch-${batchId}`, now],
     );
     await pool.query(
       `INSERT INTO candidate.claim_candidates (

@@ -211,7 +211,26 @@ describe('FrontendSourcesReadCoordinator', () => {
         createdAt: now,
       },
     ]);
-    const coordinator = new FrontendSourcesReadCoordinator(repository, storage, evidence);
+    const sources = {
+      listProjectSourceVersions: async () =>
+        (await repository.listProjectSourceVersions('project-1')).map((record) => ({
+          ...record,
+          activeEvidenceRevision: {
+            indexingResultId: 'indexing-result-1',
+            sourceId: record.sourceId,
+            sourceVersionId: record.sourceVersionId,
+            revisionId: 'revision-1',
+            status: 'INDEXED' as const,
+            evidenceCount: 1,
+          },
+        })),
+    };
+    const coordinator = new FrontendSourcesReadCoordinator(sources, storage, {
+      listBySourceVersion: async () =>
+        evidence.listBySourceVersion('project-1', stored.sourceVersionId),
+      listByRevision: async () =>
+        evidence.listByRevision('project-1', stored.sourceVersionId, 'revision-1'),
+    });
 
     const preview = await coordinator.preview(
       scope,
@@ -231,6 +250,36 @@ describe('FrontendSourcesReadCoordinator', () => {
       origin: 'ORIGINAL',
       exactText: 'Original evidence',
     });
+  });
+
+  it('allows ORIGINAL preview without Stage3 authority and keeps TRANSFORMED fail-closed', async () => {
+    const repository = new InMemoryOriginalAssetRepository();
+    const storage = new InMemoryAssetStorage();
+    const stored = await seed(repository, storage, {
+      submissionId: 'submission-original-without-authority',
+      text: 'Original without Stage3 authority',
+    });
+    const coordinator = new FrontendSourcesReadCoordinator(repository, storage, {
+      listBySourceVersion: async () => [],
+      listByRevision: async () => [],
+    });
+
+    const preview = await coordinator.preview(
+      scope,
+      stored.sourceId,
+      stored.sourceVersionId,
+      'ORIGINAL',
+    );
+    expect(preview).toMatchObject({
+      mode: 'ORIGINAL',
+      readiness: 'READY',
+      text: 'Original without Stage3 authority',
+      locators: [],
+    });
+
+    await expect(
+      coordinator.preview(scope, stored.sourceId, stored.sourceVersionId, 'TRANSFORMED'),
+    ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
   });
 
   it('masks cross-project, missing-scope and over-clearance Sources', async () => {

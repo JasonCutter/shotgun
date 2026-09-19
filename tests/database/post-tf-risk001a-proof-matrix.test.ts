@@ -188,6 +188,40 @@ const seedMaterialized = async (prefix: string) => {
   return { projectId, sourceId, sourceVersionId, assetId, content, contentHash, now };
 };
 
+const seedProviderLineage = async (prefix: string) => {
+  const ids = await seedMaterialized(prefix);
+  const revisionId = randomUUID();
+  const evidenceId = randomUUID();
+  await pool.query(
+    `INSERT INTO transformation.revisions (
+       revision_id, project_id, source_id, source_version_id, source_content_hash,
+       transformer_id, transformer_version, document_ir, source_map, document_hash,
+       source_map_hash, access_scope, sensitivity, created_at
+     ) VALUES ($1, $2, $3, $4, $5, 'post-tf-proof', '1', '{}'::jsonb, '{}'::jsonb,
+               $5, $5, '{owner}', 'public', $6)`,
+    [revisionId, ids.projectId, ids.sourceId, ids.sourceVersionId, ids.contentHash, ids.now],
+  );
+  await pool.query(
+    `INSERT INTO evidence.spans (
+       evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
+       node_kind, origin, position, quote, exact_hash, access_scope, sensitivity, created_at
+     ) VALUES ($1, $2, $3, $4, $5, '/post-tf-provider-input', 'paragraph', 'source',
+               $6::jsonb, $7::jsonb, $8, '{owner}', 'public', $9)`,
+    [
+      evidenceId,
+      revisionId,
+      ids.projectId,
+      ids.sourceId,
+      ids.sourceVersionId,
+      JSON.stringify({ start: 0, end: Array.from(ids.content).length }),
+      JSON.stringify({ text: ids.content }),
+      ids.contentHash,
+      ids.now,
+    ],
+  );
+  return { ...ids, revisionId, evidenceId };
+};
+
 const seedContinuation = async (prefix: string) => {
   const ids = await seedMaterialized(prefix);
   const revisionId = randomUUID();
@@ -281,6 +315,7 @@ const cleanupSource = async (
     );
     await pool.query('DELETE FROM ai.provider_calls WHERE project_id = $1', [ids.projectId]);
   }
+  if (options.preserveProviderHistory) return;
   await pool.query('DELETE FROM evidence.stage4_continuations WHERE project_id = $1', [
     ids.projectId,
   ]);
@@ -305,11 +340,20 @@ const cleanupSourceWithoutProviderHistory = async (ids: {
   readonly assetId: string;
 }) => cleanupSource(ids, { preserveProviderHistory: true });
 
-const makeAIRecord = (projectId: string, requestId: string): AIProviderExecutionRecord => ({
+const makeAIRecord = (
+  lineage: {
+    readonly projectId: string;
+    readonly sourceVersionId: string;
+    readonly revisionId: string;
+    readonly evidenceId: string;
+  },
+  requestId: string,
+): AIProviderExecutionRecord => ({
   callId: randomUUID(),
   requestId,
-  projectId,
-  sourceVersionId: randomUUID(),
+  projectId: lineage.projectId,
+  sourceVersionId: lineage.sourceVersionId,
+  revisionId: lineage.revisionId,
   provider: 'fake',
   model: 'fake-model',
   promptVersion: 'direct-claim-v1',
@@ -318,7 +362,7 @@ const makeAIRecord = (projectId: string, requestId: string): AIProviderExecution
   dataClassification: 'private',
   accessScope: ['owner'],
   sensitivity: 'private',
-  inputEvidenceIds: [randomUUID()],
+  inputEvidenceIds: [lineage.evidenceId],
   inputSnapshotDigest: sha256Text(`snapshot:${requestId}`),
   requestDigest: sha256Text(`request:${requestId}`),
   state: 'REQUESTED',
@@ -385,10 +429,12 @@ const makeProviderOutput = (
   };
 };
 
-const makeCandidateBatch = (ids: Awaited<ReturnType<typeof seedMaterialized>>): CandidateBatch => {
-  const record = makeAIRecord(ids.projectId, `candidate:${randomUUID()}`);
+const makeCandidateBatch = (
+  ids: Awaited<ReturnType<typeof seedProviderLineage>>,
+): CandidateBatch => {
+  const record = makeAIRecord(ids, `candidate:${randomUUID()}`);
   const call = makeProviderCall(record, []);
-  const evidenceId = randomUUID();
+  const evidenceId = ids.evidenceId;
   const candidate: ClaimCandidate = {
     candidateId: randomUUID(),
     batchId: randomUUID(),
@@ -409,6 +455,7 @@ const makeCandidateBatch = (ids: Awaited<ReturnType<typeof seedMaterialized>>): 
     batchId: candidate.batchId,
     projectId: ids.projectId,
     sourceVersionId: ids.sourceVersionId,
+    revisionId: ids.revisionId,
     idempotencyKey: `post-tf-batch:${randomUUID()}`,
     providerCall: call,
     candidates: [candidate],
@@ -457,12 +504,13 @@ const seedStage5Fixture = async (prefix: string) => {
   );
   await pool.query(
     `INSERT INTO candidate.batches (
-       batch_id, project_id, source_version_id, idempotency_key, provider_call, created_at
-     ) VALUES ($1, $2, $3, $4, $5, $6)`,
+       batch_id, project_id, source_version_id, revision_id, idempotency_key, provider_call, created_at
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       fixture.candidate.batchId,
       ids.projectId,
       ids.sourceVersionId,
+      revisionId,
       `post-tf-stage5:${fixture.candidate.batchId}`,
       JSON.stringify(fixture.candidate.providerCall),
       ids.now,
@@ -486,7 +534,7 @@ const seedStage5Fixture = async (prefix: string) => {
       ids.now,
     ],
   );
-  return { ...ids, fixture };
+  return { ...ids, fixture, revisionId };
 };
 
 const updatedDraft = (
@@ -754,8 +802,8 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
   });
 
   it('Stage 4 ensure: exact retry converges to the committed provider call', async () => {
-    const ids = await seedMaterialized('post-tf-s4-ensure');
-    const record = makeAIRecord(ids.projectId, `ensure:${randomUUID()}`);
+    const ids = await seedProviderLineage('post-tf-s4-ensure');
+    const record = makeAIRecord(ids, `ensure:${randomUUID()}`);
     try {
       const injected = createCommitAckLossPool(pool);
       await expect(
@@ -776,8 +824,8 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
   });
 
   it('Stage 4 provider claim: reconciles a committed attempt after ACK loss', async () => {
-    const ids = await seedMaterialized('post-tf-s4-claim');
-    const record = makeAIRecord(ids.projectId, `claim:${randomUUID()}`);
+    const ids = await seedProviderLineage('post-tf-s4-claim');
+    const record = makeAIRecord(ids, `claim:${randomUUID()}`);
     try {
       const clean = new PostgresAIProviderCallRepository(pool);
       await clean.ensure(record);
@@ -804,8 +852,8 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
   });
 
   it('Stage 4 provider outcome-unknown: exact retry returns the same safe durable state', async () => {
-    const ids = await seedMaterialized('post-tf-s4-unknown');
-    const record = makeAIRecord(ids.projectId, `unknown:${randomUUID()}`);
+    const ids = await seedProviderLineage('post-tf-s4-unknown');
+    const record = makeAIRecord(ids, `unknown:${randomUUID()}`);
     try {
       const clean = new PostgresAIProviderCallRepository(pool);
       await clean.ensure(record);
@@ -840,8 +888,8 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
   });
 
   it('Stage 4 provider output acceptance: exact retry is idempotent after durable acceptance', async () => {
-    const ids = await seedMaterialized('post-tf-s4-accept');
-    const record = makeAIRecord(ids.projectId, `accept:${randomUUID()}`);
+    const ids = await seedProviderLineage('post-tf-s4-accept');
+    const record = makeAIRecord(ids, `accept:${randomUUID()}`);
     try {
       const clean = new PostgresAIProviderCallRepository(pool);
       await clean.ensure(record);
@@ -885,37 +933,11 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
   });
 
   it('Stage 4 candidate batch persistence: exact retry converges without duplicate candidates', async () => {
-    const ids = await seedMaterialized('post-tf-s4-batch');
+    const ids = await seedProviderLineage('post-tf-s4-batch');
     const batch = makeCandidateBatch(ids);
     try {
-      const revisionId = randomUUID();
       const evidenceId = batch.candidates[0]!.evidenceIds[0];
-      await pool.query(
-        `INSERT INTO transformation.revisions (
-           revision_id, project_id, source_id, source_version_id, source_content_hash,
-           transformer_id, transformer_version, document_ir, source_map, document_hash,
-           source_map_hash, access_scope, sensitivity, created_at
-         ) VALUES ($1, $2, $3, $4, $5, 'post-tf-proof', '1', '{}'::jsonb, '{}'::jsonb,
-                   $5, $5, '{owner}', 'public', $6)`,
-        [revisionId, ids.projectId, ids.sourceId, ids.sourceVersionId, ids.contentHash, ids.now],
-      );
-      await pool.query(
-        `INSERT INTO evidence.spans (
-           evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
-           node_kind, origin, position, quote, exact_hash, access_scope, sensitivity, created_at
-         ) VALUES ($1, $2, $3, $4, $5, '/post-tf-candidate', 'sentence', 'source',
-                   '{"start":0,"end":1}', '{"text":"POST-TF candidate fixture."}'::jsonb,
-                   $6, '{owner}', 'public', $7)`,
-        [
-          evidenceId,
-          revisionId,
-          ids.projectId,
-          ids.sourceId,
-          ids.sourceVersionId,
-          sha256Text('POST-TF candidate fixture.'),
-          ids.now,
-        ],
-      );
+      expect(evidenceId).toBe(ids.evidenceId);
       const injected = createCommitAckLossPool(pool);
       await expect(new PostgresCandidateRepository(injected.pool).saveBatch(batch)).rejects.toThrow(
         'synthetic commit acknowledgement loss',

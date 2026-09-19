@@ -42,10 +42,27 @@ export type SourcesProjectionRecord = {
     | 'NO_EVIDENCE'
     | 'STAGE3_RETRYABLE'
     | 'RECONCILIATION_REQUIRED';
+  /** Server-owned Stage 3 authority. Never infer this from evidence counts. */
+  readonly activeEvidenceRevision?: {
+    readonly indexingResultId: string;
+    readonly sourceId: string;
+    readonly sourceVersionId: string;
+    readonly revisionId: string;
+    readonly status: 'INDEXED' | 'NO_EVIDENCE';
+    readonly evidenceCount: number;
+  };
 };
 
 export type SourcesProjectionRepositoryPort = {
   listProjectSourceVersions(projectId: string): Promise<readonly SourcesProjectionRecord[]>;
+  /** Revalidates the active authority through progress → indexing → revision. */
+  validateActiveEvidenceRevision?(input: {
+    readonly projectId: string;
+    readonly sourceId: string;
+    readonly sourceVersionId: string;
+    readonly indexingResultId: string;
+    readonly revisionId: string;
+  }): Promise<boolean>;
 };
 
 export type SourcesAssetReaderPort = {
@@ -54,6 +71,11 @@ export type SourcesAssetReaderPort = {
 
 export type SourcesEvidenceReaderPort = {
   listBySourceVersion(projectId: string, sourceVersionId: string): Promise<readonly EvidenceSpan[]>;
+  listByRevision?(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+  ): Promise<readonly EvidenceSpan[]>;
 };
 
 /** Narrow Stage 4 read boundary used by the Source Detail Product surface. */
@@ -62,6 +84,18 @@ export type SourcesCandidateReaderPort = {
     projectId: string,
     sourceVersionId: string,
   ): Promise<readonly ClaimCandidate[]>;
+  listByRevision?(
+    projectId: string,
+    sourceVersionId: string,
+    revisionId: string,
+  ): Promise<readonly ClaimCandidate[]>;
+};
+
+export type SourcesActiveEvidenceRevisionReaderPort = {
+  getActiveEvidenceRevision(
+    projectId: string,
+    sourceVersionId: string,
+  ): Promise<SourcesProjectionRecord['activeEvidenceRevision']>;
 };
 
 export type ServerAuthorizedProjectSourcesReadScope = {
@@ -78,6 +112,7 @@ export type SourcesCandidateReextractTarget = {
   readonly projectId: string;
   readonly sourceId: string;
   readonly sourceVersionId: string;
+  readonly revisionId: string;
   readonly accessScope: readonly string[];
   readonly sensitivity: SourcesSensitivity;
   readonly dataClassification: 'source-content';
@@ -111,6 +146,7 @@ const projectionRevision = (records: readonly SourcesProjectionRecord[]): string
         versionNumber: record.versionNumber,
         contentHash: record.contentHash,
         createdAt: record.createdAt,
+        activeEvidenceRevision: record.activeEvidenceRevision,
       })),
     ),
   );
@@ -162,13 +198,14 @@ const labelFor = (record: SourcesProjectionRecord): string =>
 
 const transformationStateFor = (
   stage3State: SourcesProjectionRecord['stage3State'],
-  evidenceCount: number,
+  authority: SourcesProjectionRecord['activeEvidenceRevision'],
 ): 'NOT_STARTED' | 'RUNNING' | 'RETRYING' | 'BLOCKED' | 'NO_EVIDENCE' | 'READY' => {
   if (stage3State === 'STAGE3_RUNNING') return 'RUNNING';
   if (stage3State === 'STAGE3_RETRYABLE') return 'RETRYING';
   if (stage3State === 'RECONCILIATION_REQUIRED') return 'BLOCKED';
-  if (stage3State === 'NO_EVIDENCE') return 'NO_EVIDENCE';
-  if (stage3State === 'STAGE3_COMPLETED' || evidenceCount > 0) return 'READY';
+  if (stage3State === 'NO_EVIDENCE' && authority?.status === 'NO_EVIDENCE') return 'NO_EVIDENCE';
+  if (stage3State === 'STAGE3_COMPLETED' && authority?.status === 'INDEXED') return 'READY';
+  if (stage3State === 'STAGE3_COMPLETED' || stage3State === 'NO_EVIDENCE') return 'BLOCKED';
   if (stage3State === 'MATERIALIZED') return 'RUNNING';
   return 'NOT_STARTED';
 };
@@ -243,8 +280,87 @@ export class FrontendSourcesReadCoordinator {
   ) {}
 
   private async authorizedRecords(scope: ServerAuthorizedProjectSourcesReadScope) {
-    return (await this.sources.listProjectSourceVersions(scope.authorizedProjectId)).filter(
-      (record) => assertAuthorized(record, scope),
+    const records = (
+      await this.sources.listProjectSourceVersions(scope.authorizedProjectId)
+    ).filter((record) => assertAuthorized(record, scope));
+    if (this.sources.validateActiveEvidenceRevision) {
+      await Promise.all(
+        records
+          .filter((record) => record.activeEvidenceRevision)
+          .map(async (record) => {
+            const authority = record.activeEvidenceRevision!;
+            const valid = await this.sources.validateActiveEvidenceRevision!({
+              projectId: record.projectId,
+              sourceId: record.sourceId,
+              sourceVersionId: record.sourceVersionId,
+              indexingResultId: authority.indexingResultId,
+              revisionId: authority.revisionId,
+            });
+            if (!valid) {
+              throw new ShotgunError({
+                code: 'REVISION_CONFLICT',
+                safeMessage: 'The active Evidence revision tuple failed integrity validation.',
+                module: 'frontend-sources-product',
+                operation: 'validate-source-projection-authority',
+                retryable: false,
+              });
+            }
+          }),
+      );
+    }
+    return records;
+  }
+
+  private async activeRevision(record: SourcesProjectionRecord) {
+    const authority = record.activeEvidenceRevision;
+    if (
+      !authority ||
+      authority.sourceId !== record.sourceId ||
+      authority.sourceVersionId !== record.sourceVersionId ||
+      !authority.revisionId
+    ) {
+      throw new ShotgunError({
+        code: 'REVISION_CONFLICT',
+        safeMessage: 'The active Evidence revision authority is unavailable.',
+        module: 'frontend-sources-product',
+        operation: 'resolve-active-evidence-revision',
+      });
+    }
+    if (this.sources.validateActiveEvidenceRevision) {
+      const valid = await this.sources.validateActiveEvidenceRevision({
+        projectId: record.projectId,
+        sourceId: record.sourceId,
+        sourceVersionId: record.sourceVersionId,
+        indexingResultId: authority.indexingResultId,
+        revisionId: authority.revisionId,
+      });
+      if (!valid) {
+        throw new ShotgunError({
+          code: 'REVISION_CONFLICT',
+          safeMessage: 'The active Evidence revision tuple failed integrity validation.',
+          module: 'frontend-sources-product',
+          operation: 'validate-active-evidence-revision',
+          retryable: false,
+        });
+      }
+    }
+    return authority;
+  }
+
+  private async activeEvidence(record: SourcesProjectionRecord): Promise<readonly EvidenceSpan[]> {
+    const authority = await this.activeRevision(record);
+    if (!this.evidence.listByRevision) {
+      throw new ShotgunError({
+        code: 'CAPABILITY_DENIED',
+        safeMessage: 'Exact active Evidence reads are unavailable in this runtime.',
+        module: 'frontend-sources-product',
+        operation: 'list-active-evidence',
+      });
+    }
+    return this.evidence.listByRevision(
+      record.projectId,
+      record.sourceVersionId,
+      authority.revisionId,
     );
   }
 
@@ -266,7 +382,18 @@ export class FrontendSourcesReadCoordinator {
         operation: 'list-source-candidates',
       });
     }
-    const items = (await this.candidates.listBySourceVersion(record.projectId, sourceVersionId))
+    const authority = await this.activeRevision(record);
+    if (!this.candidates.listByRevision) {
+      throw new ShotgunError({
+        code: 'CAPABILITY_DENIED',
+        safeMessage: 'Exact active Candidate reads are unavailable in this runtime.',
+        module: 'frontend-sources-product',
+        operation: 'list-active-candidates',
+      });
+    }
+    const items = (
+      await this.candidates.listByRevision(record.projectId, sourceVersionId, authority.revisionId)
+    )
       .filter(
         (candidate) =>
           candidate.sourceVersionId === sourceVersionId && candidateIsAuthorized(candidate, scope),
@@ -310,9 +437,9 @@ export class FrontendSourcesReadCoordinator {
     );
     if (!record) return null;
 
-    const usableEvidence = (
-      await this.evidence.listBySourceVersion(record.projectId, record.sourceVersionId)
-    ).filter((item) => item.nodeKind === 'sentence');
+    const usableEvidence = (await this.activeEvidence(record)).filter(
+      (item) => item.nodeKind === 'sentence',
+    );
     if (usableEvidence.length === 0) {
       throw new ShotgunError({
         code: 'VALIDATION_ERROR',
@@ -325,6 +452,7 @@ export class FrontendSourcesReadCoordinator {
       projectId: record.projectId,
       sourceId: record.sourceId,
       sourceVersionId: record.sourceVersionId,
+      revisionId: (await this.activeRevision(record)).revisionId,
       accessScope: [...record.accessScope],
       sensitivity: record.sensitivity,
       dataClassification: 'source-content',
@@ -398,7 +526,7 @@ export class FrontendSourcesReadCoordinator {
         label: labelFor(record),
         mediaType: record.mediaType,
         lifecycle: 'ACTIVE',
-        previewReadiness: 'READY',
+        previewReadiness: record.activeEvidenceRevision ? 'READY' : 'NOT_READY',
         askUsageState: 'SOURCE_VERSION_READY',
         askUsageExplanation: 'The immutable SourceVersion is available for selection.',
         selectedSourceVersionId: record.sourceVersionId,
@@ -447,7 +575,7 @@ export class FrontendSourcesReadCoordinator {
       sensitivity: latest.sensitivity,
       currentSourceVersionId: latest.sourceVersionId,
       versionCount: records.length,
-      previewReadiness: 'READY',
+      previewReadiness: latest.activeEvidenceRevision ? 'READY' : 'NOT_READY',
       askUsageState: 'SOURCE_VERSION_READY',
       askUsageExplanation: 'The immutable SourceVersion is available for selection.',
       capabilities: ['PREVIEW', 'DOWNLOAD_ORIGINAL', 'SELECT_FOR_ASK'],
@@ -476,13 +604,28 @@ export class FrontendSourcesReadCoordinator {
       return null;
     }
     const evidenceCounts = new Map<string, number>();
+    const evidenceAuthorities = new Map<
+      string,
+      SourcesProjectionRecord['activeEvidenceRevision']
+    >();
     await Promise.all(
       records.map(async (record) => {
-        evidenceCounts.set(
-          record.sourceVersionId,
-          (await this.evidence.listBySourceVersion(record.projectId, record.sourceVersionId))
-            .length,
-        );
+        const authority = record.activeEvidenceRevision;
+        evidenceAuthorities.set(record.sourceVersionId, authority);
+        if (authority?.status === 'INDEXED' && this.evidence.listByRevision) {
+          evidenceCounts.set(
+            record.sourceVersionId,
+            (
+              await this.evidence.listByRevision(
+                record.projectId,
+                record.sourceVersionId,
+                authority.revisionId,
+              )
+            ).length,
+          );
+        } else {
+          evidenceCounts.set(record.sourceVersionId, 0);
+        }
       }),
     );
     return decodeSourceVersionHistoryView({
@@ -499,7 +642,7 @@ export class FrontendSourcesReadCoordinator {
         createdAt: record.createdAt,
         transformationState: transformationStateFor(
           record.stage3State,
-          evidenceCounts.get(record.sourceVersionId) ?? 0,
+          evidenceAuthorities.get(record.sourceVersionId),
         ),
         evidenceCount: evidenceCounts.get(record.sourceVersionId) ?? 0,
       })),
@@ -521,10 +664,12 @@ export class FrontendSourcesReadCoordinator {
         candidate.sourceId === sourceId && candidate.sourceVersionId === sourceVersionId,
     );
     if (!record) return null;
-    const evidence = await this.evidence.listBySourceVersion(
-      record.projectId,
-      record.sourceVersionId,
-    );
+    const evidence =
+      mode === 'TRANSFORMED'
+        ? await this.activeEvidence(record)
+        : record.activeEvidenceRevision && this.evidence.listByRevision
+          ? await this.activeEvidence(record)
+          : [];
     const bytes = mode === 'ORIGINAL' ? await this.storage.read(record.storageKey) : undefined;
     const text =
       bytes && record.mediaType.startsWith('text/')
@@ -559,7 +704,7 @@ export class FrontendSourcesReadCoordinator {
         candidate.sourceId === sourceId && candidate.sourceVersionId === sourceVersionId,
     );
     if (!record) return null;
-    const items = await this.evidence.listBySourceVersion(record.projectId, sourceVersionId);
+    const items = await this.activeEvidence(record);
     return decodeEvidenceListView({
       schemaVersion: '1.0.0',
       projectId: record.projectId,

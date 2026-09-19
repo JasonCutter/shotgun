@@ -4,31 +4,42 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Pool } from 'pg';
 
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import {
   copyAssets,
   copyRestoredAssets,
+  createIsolatedRestoreDatabase,
+  dropIsolatedRestoreDatabase,
   listReferencedAssets,
   type BackupManifest,
 } from '../../scripts/backup-restore.js';
 import { migrateUpTo } from '../../scripts/database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
-const databaseUrl = await requireTestDatabaseTarget();
-const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+const parentDatabaseUrl = await requireTestDatabaseTarget();
+let isolatedDatabase: Awaited<ReturnType<typeof createIsolatedRestoreDatabase>> | undefined;
+let isolatedDatabaseUrl: string | undefined;
+let pool: Pool | undefined;
 const stagingMigration = '077_ts5_asset_cas_lifecycle.sql';
 
 const digest = (value: string): string =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`;
 
-describe.runIf(pool)('TS-5 backup and restore asset authority', () => {
+describe.runIf(parentDatabaseUrl)('TS-5 backup and restore asset authority', () => {
   beforeAll(async () => {
-    await migrateUpTo(undefined, databaseUrl!);
+    isolatedDatabase = await createIsolatedRestoreDatabase(parentDatabaseUrl);
+    isolatedDatabaseUrl = isolatedDatabase.databaseUrl;
+    await migrateUpTo(undefined, isolatedDatabaseUrl);
+    pool = createPostgresPool(isolatedDatabaseUrl);
   });
 
   afterAll(async () => {
     await pool?.end();
+    if (isolatedDatabase) {
+      await dropIsolatedRestoreDatabase(parentDatabaseUrl, isolatedDatabase.databaseName);
+    }
   });
 
   it('includes active staging-only bytes, deduplicates final and staging authority, and restores them', async () => {
@@ -67,14 +78,16 @@ describe.runIf(pool)('TS-5 backup and restore asset authority', () => {
         ],
       );
 
-      const stagingOnly = await listReferencedAssets(databaseUrl!, [stagingMigration]);
+      const stagingOnly = await listReferencedAssets(isolatedDatabaseUrl!, [stagingMigration]);
       expect(stagingOnly).toContainEqual({
         storageKey,
         contentHash,
         sizeBytes: Buffer.byteLength(bytes),
       });
 
-      const copied = await copyAssets(databaseUrl!, assetRoot, backupRoot, [stagingMigration]);
+      const copied = await copyAssets(isolatedDatabaseUrl!, assetRoot, backupRoot, [
+        stagingMigration,
+      ]);
       expect(copied).toHaveLength(1);
       expect(copied[0]).toMatchObject({ storageKey, contentHash });
 
@@ -83,7 +96,7 @@ describe.runIf(pool)('TS-5 backup and restore asset authority', () => {
          VALUES ($1, $2, $3, $4, clock_timestamp())`,
         [assetId, contentHash, Buffer.byteLength(bytes), storageKey],
       );
-      const deduplicated = await listReferencedAssets(databaseUrl!, [stagingMigration]);
+      const deduplicated = await listReferencedAssets(isolatedDatabaseUrl!, [stagingMigration]);
       expect(deduplicated.filter((asset) => asset.storageKey === storageKey)).toHaveLength(1);
 
       const manifest = {
@@ -129,7 +142,7 @@ describe.runIf(pool)('TS-5 backup and restore asset authority', () => {
           expiresAt.toISOString(),
         ],
       );
-      await expect(listReferencedAssets(databaseUrl!, [stagingMigration])).rejects.toThrow(
+      await expect(listReferencedAssets(isolatedDatabaseUrl!, [stagingMigration])).rejects.toThrow(
         `Backup asset authority disagrees for storage key: ${storageKey}`,
       );
     } finally {

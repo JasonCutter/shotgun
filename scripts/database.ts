@@ -137,6 +137,7 @@ const requiredTables = [
   'connector.ordering_checkpoints',
   'intake.submissions',
   'asset.source_versions',
+  'asset.staging_asset_leases',
   'transformation.revisions',
   'evidence.spans',
   'evidence.indexing_results',

@@ -43,6 +43,7 @@ import {
 } from '../../../adapters/frontend-product-read-postgres/src/index.js';
 import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
+import { PostgresStagingAssetLeaseRepository } from '../../../adapters/frontend-sources-staging-postgres/src/index.js';
 import { PostgresSourcesActivityRead } from '../../../adapters/frontend-sources-write-postgres/src/activity-read.js';
 import { PostgresAskActivityRead } from '../../../adapters/frontend-ask-execution-postgres/src/activity-read.js';
 import { createPostgresActivityReadModelStore } from '../../../adapters/frontend-activity-postgres/src/index.js';
@@ -106,6 +107,11 @@ import {
 import { PostgresSemanticEmbeddingProfileRepository } from '../../../adapters/semantic-embedding-postgres/src/index.js';
 import { PostgresDiscoveryRuntimeRepository } from '../../../adapters/discovery-runtime-postgres/src/index.js';
 import { PostgresConnectorRuntimeState } from '../../../adapters/connector-runtime-postgres/src/index.js';
+import { Client } from 'pg';
+import {
+  acquireMaintenanceLock,
+  releaseMaintenanceLock,
+} from '../../../adapters/postgres-maintenance-lock/src/index.js';
 import {
   PostgresDiscoveryApprovedResourceRevisionResolver,
   PostgresDiscoveryReentryFreshnessAuthority,
@@ -391,8 +397,30 @@ export const startShotgunApplication = async (
   const cleanupStack = new AsyncCleanupStack();
   const pool = createPostgresPool(databaseUrl);
   cleanupStack.add('database pool', () => pool.end());
+  const runtimeMaintenanceClient = new Client({ connectionString: databaseUrl });
+  let runtimeMaintenanceClientConnected = false;
+  let runtimeMaintenanceLockHeld = false;
   let application: Awaited<ReturnType<typeof createApplication>> | undefined;
   try {
+    await runtimeMaintenanceClient.connect();
+    runtimeMaintenanceClientConnected = true;
+    const acquired = await acquireMaintenanceLock(runtimeMaintenanceClient, 'shared', true);
+    if (!acquired) {
+      throw new Error(
+        'Shotgun runtime cannot start while exclusive asset-CAS maintenance is active.',
+      );
+    }
+    runtimeMaintenanceLockHeld = true;
+    cleanupStack.add('runtime shared maintenance lock', async () => {
+      if (runtimeMaintenanceLockHeld) {
+        await releaseMaintenanceLock(runtimeMaintenanceClient, 'shared');
+        runtimeMaintenanceLockHeld = false;
+      }
+      if (runtimeMaintenanceClientConnected) {
+        await runtimeMaintenanceClient.end();
+        runtimeMaintenanceClientConnected = false;
+      }
+    });
     const port = options.port ?? Number.parseInt(process.env.PORT ?? '3000', 10);
     const host = options.host ?? process.env.HOST ?? '127.0.0.1';
     const production = environment.NODE_ENV === 'production';
@@ -415,7 +443,16 @@ export const startShotgunApplication = async (
       new NodeUrlResolver(),
       new NodeUrlHopTransport(),
     );
-    const staging = new SealedSourcesStagingService(assetStorage, stagingSecret, urlAcquisition);
+    const stagingLeaseRepository = new PostgresStagingAssetLeaseRepository(pool);
+    const staging = new SealedSourcesStagingService(
+      assetStorage,
+      stagingSecret,
+      urlAcquisition,
+      () => new Date(),
+      stagingLeaseRepository,
+      undefined,
+      stagingLeaseRepository,
+    );
     const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
     // FE-P5-XP Correction C: Source Intake → Stage 3 Transformation/Evidence
     // production wiring (real path — the product service runs this pipeline after
@@ -1452,6 +1489,10 @@ export const startShotgunApplication = async (
         await application.server.close();
       }
       await cleanupStack.close();
+      if (runtimeMaintenanceClientConnected) {
+        await runtimeMaintenanceClient.end();
+        runtimeMaintenanceClientConnected = false;
+      }
     } catch {
       // CleanupAggregateError is intentionally not chained into the startup
       // error because it may contain implementation-specific details.

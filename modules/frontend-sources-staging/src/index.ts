@@ -77,3 +77,37 @@ export type SourcesStagingServicePort = {
     readonly kind: SourcesStagingInputKind;
   }): Promise<ResolvedSourcesStagingArtifact>;
 };
+
+export type StagingAssetLeaseInput = {
+  readonly leaseId: string;
+  readonly referenceDigest: string;
+  readonly projectId: string;
+  readonly draftId: string;
+  readonly itemId: string;
+  readonly principalId: string;
+  readonly inputKind: 'DIRECT_TEXT' | 'FILE' | 'URL';
+  readonly storageKey: string;
+  readonly contentHash: string;
+  readonly sizeBytes: number;
+  readonly issuedAt: string;
+  readonly expiresAt: string;
+};
+
+/** Durable staging authority used by maintenance GC; absent in test-only memory composition. */
+export type StagingAssetLeasePersistencePort = {
+  createLease(input: StagingAssetLeaseInput): Promise<void>;
+};
+
+/**
+ * Authoritative time for staging receipt issuance and expiry validation.
+ * Production composition must source this from the same database authority
+ * used by maintenance GC; deterministic unit composition may inject a clock.
+ */
+export type StagingTimeAuthorityPort = {
+  now(): Promise<Date>;
+};
+
+/** All runtime writers and maintenance tools use the same PostgreSQL advisory lock. */
+export type MaintenanceBarrierPort = {
+  runShared<T>(action: () => Promise<T>): Promise<T>;
+};

@@ -13,6 +13,24 @@ import {
 const successfulProbe = (database = 'shotgun_test'): DatabaseTargetProbe =>
   vi.fn(async () => ({ database, serverAddress: '127.0.0.1', serverPort: 5432 }));
 
+const hasCanonicalDirectDatabaseGuard = (source: string): boolean =>
+  /import\s*{[\s\S]*?\brequireTestDatabaseTarget\b[\s\S]*?}\s*from\s*['"][^'"]*database-target-guard\.js['"]/.test(
+    source,
+  ) && /\brequireTestDatabaseTarget\s*\(/.test(source);
+
+const hasCanonicalIsolatedDatabaseHelper = (source: string): boolean =>
+  /import\s*{[\s\S]*?\bcreateIsolatedPostgresTestDatabase\b[\s\S]*?}\s*from\s*['"][^'"]*isolated-postgres-test-database\.js['"]/.test(
+    source,
+  ) && /\bcreateIsolatedPostgresTestDatabase\s*\(/.test(source);
+
+const isGuardedDatabaseEntrypoint = (source: string): boolean => {
+  if (source.includes('process.env.DATABASE_URL')) {
+    return false;
+  }
+
+  return hasCanonicalDirectDatabaseGuard(source) || hasCanonicalIsolatedDatabaseHelper(source);
+};
+
 describe('database target guard', () => {
   it('fails closed when TEST_DATABASE_URL is missing without probing DATABASE_URL', async () => {
     const probe = successfulProbe();
@@ -91,6 +109,24 @@ describe('database target guard', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('accepts only canonical direct or delegated database guards', () => {
+    expect(
+      isGuardedDatabaseEntrypoint(
+        "import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';\nawait requireTestDatabaseTarget();",
+      ),
+    ).toBe(true);
+    expect(
+      isGuardedDatabaseEntrypoint(
+        "import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres-test-database.js';\nawait createIsolatedPostgresTestDatabase();",
+      ),
+    ).toBe(true);
+    expect(isGuardedDatabaseEntrypoint('const databaseUrl = process.env.DATABASE_URL;')).toBe(
+      false,
+    );
+    expect(isGuardedDatabaseEntrypoint('// requireTestDatabaseTarget()')).toBe(false);
+    expect(isGuardedDatabaseEntrypoint('await createIsolatedPostgresTestDatabase();')).toBe(false);
+  });
+
   it('keeps every database-backed test entrypoint off raw DATABASE_URL', async () => {
     const databaseDirectory = path.resolve('tests/database');
     const databaseFiles = (await readdir(databaseDirectory))
@@ -103,7 +139,19 @@ describe('database target guard', () => {
       path.resolve('scripts/quality-search-baseline.ts'),
     ];
 
-    for (const file of [...databaseFiles, ...guardedFixtures]) {
+    const helperSource = await readFile(
+      path.resolve('tests/helpers/isolated-postgres-test-database.ts'),
+      'utf8',
+    );
+    expect(hasCanonicalDirectDatabaseGuard(helperSource)).toBe(true);
+    expect(helperSource).not.toContain('process.env.DATABASE_URL');
+
+    for (const file of databaseFiles) {
+      const source = await readFile(file, 'utf8');
+      expect(isGuardedDatabaseEntrypoint(source), file).toBe(true);
+    }
+
+    for (const file of guardedFixtures) {
       const source = await readFile(file, 'utf8');
       expect(source, file).toContain('requireTestDatabaseTarget');
       expect(source, file).not.toContain('process.env.DATABASE_URL');

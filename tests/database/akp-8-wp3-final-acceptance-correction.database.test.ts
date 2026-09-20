@@ -21,7 +21,10 @@ import {
   createPostgresReviewDiscoveryCandidateReader,
 } from '../../adapters/frontend-review-postgres/src/index.js';
 import { PostgresProviderExternalTransferApprovalRepository } from '../../adapters/provider-privacy-deployment-postgres/src/index.js';
-import { createPostgresPool } from '../../adapters/postgres/src/index.js';
+import {
+  createIsolatedPostgresTestDatabase,
+  type IsolatedPostgresTestDatabase,
+} from '../helpers/isolated-postgres-test-database.js';
 import {
   CredentialVaultService,
   StaticCredentialMasterKeyAuthority,
@@ -53,13 +56,13 @@ import {
   type DiscoveryStructuredGenerationRequestV1,
   type DiscoveryStructuredProviderPort,
 } from '../../packages/contracts/src/index.js';
-import { migrateUpTo } from '../../scripts/database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
-const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
+const databaseAvailable = process.env.TEST_DATABASE_URL?.trim()
   ? await requireTestDatabaseTarget()
   : undefined;
-const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+let isolatedTestDatabase: IsolatedPostgresTestDatabase | undefined;
+let pool: Pool | undefined;
 const now = '2026-09-02T05:00:00.000Z';
 const digest = (value: string): `sha256:${string}` => sha256Text(value) as `sha256:${string}`;
 
@@ -469,17 +472,18 @@ const createPolicyFixture = async (input: { approve: boolean }) => {
 };
 
 describe('AKP-8 WP3 final correction: durable Action and production policy authority', () => {
-  if (!pool) {
+  if (!databaseAvailable) {
     it.skip('TEST_DATABASE_URL is unavailable; correction proof is deferred to automatic CI.', () => {});
     return;
   }
 
   beforeAll(async () => {
-    await migrateUpTo(undefined, databaseUrl!);
+    isolatedTestDatabase = await createIsolatedPostgresTestDatabase();
+    pool = isolatedTestDatabase.createPool();
   });
 
   afterAll(async () => {
-    await pool!.end();
+    await isolatedTestDatabase?.dispose();
   });
 
   it('persists the actual ACTION_SUGGESTION generation through FindingReady, re-entry and Review', async () => {

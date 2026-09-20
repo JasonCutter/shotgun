@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Pool, PoolClient } from 'pg';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { LucasAugmentedPlainTextAdapter } from '../../adapters/plain-text-lucas-augmented/src/index.js';
-import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import {
   PostgresSourcesStage3AtomicPersistence,
   PostgresSourcesStage3ProgressRepository,
@@ -37,11 +36,13 @@ import type {
   ReviewOperationResolutionWrite,
 } from '../../modules/change-set-review/src/index.js';
 import { createAdr163ReviewFixture } from '../helpers/adr163-review-fixture.js';
+import {
+  createIsolatedPostgresTestDatabase,
+  type IsolatedPostgresTestDatabase,
+} from '../helpers/isolated-postgres-test-database.js';
 
-import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
-
-const databaseUrl = await requireTestDatabaseTarget();
-const pool: Pool = createPostgresPool(databaseUrl);
+let isolatedTestDatabase: IsolatedPostgresTestDatabase | undefined;
+let pool: Pool;
 
 type CommitAckLossTrace = {
   commitAttempts: number;
@@ -593,8 +594,13 @@ const makeResolution = (
 };
 
 describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', () => {
+  beforeAll(async () => {
+    isolatedTestDatabase = await createIsolatedPostgresTestDatabase();
+    pool = isolatedTestDatabase.createPool();
+  });
+
   afterAll(async () => {
-    await pool.end();
+    await isolatedTestDatabase?.dispose();
   });
 
   it('Stage 3 progress claim: reconciles a committed claim after ACK loss', async () => {

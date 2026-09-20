@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 
 import { PostgresCredentialVaultRepository } from '../../adapters/credential-vault-postgres/src/index.js';
@@ -31,10 +31,7 @@ import {
 } from '../../adapters/discovery-reentry-postgres/src/index.js';
 import { PostgresDiscoveryRuntimeRepository } from '../../adapters/discovery-runtime-postgres/src/index.js';
 import { PostgresDiscoveryFeedbackRepository } from '../../adapters/discovery-feedback-postgres/src/index.js';
-import {
-  createPostgresPool,
-  PostgresOriginalAssetRepository,
-} from '../../adapters/postgres/src/index.js';
+import { PostgresOriginalAssetRepository } from '../../adapters/postgres/src/index.js';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
 import { PostgresCanonicalKnowledgeRepository } from '../../adapters/postgres-stage6/src/index.js';
 import { PostgresCompiledTruthRepository } from '../../adapters/postgres-stage10/src/index.js';
@@ -135,13 +132,14 @@ import {
   type SemanticEmbeddingRouterPort,
   decodeDiscoveryFeedbackProductCommandRequestV1,
 } from '../../packages/contracts/src/index.js';
-import { migrateUpTo } from '../../scripts/database.js';
-import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import {
+  createIsolatedPostgresTestDatabase,
+  type IsolatedPostgresTestDatabase,
+} from '../helpers/isolated-postgres-test-database.js';
 
-const databaseUrl = process.env.TEST_DATABASE_URL?.trim()
-  ? await requireTestDatabaseTarget()
-  : undefined;
-const pool: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+const dbConfigured = Boolean(process.env.TEST_DATABASE_URL?.trim());
+let isolatedTestDatabase: IsolatedPostgresTestDatabase | undefined;
+let pool: Pool | undefined;
 const now = '2026-09-01T03:00:00.000Z';
 const digest = (value: string): string => sha256Text(value);
 
@@ -351,15 +349,19 @@ const cleanupProject = async (database: Pool, projectId: string): Promise<void> 
   }
 };
 
-describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptance', () => {
+describe.runIf(dbConfigured)('AKP-8 WP2 cross-section causal PostgreSQL acceptance', () => {
   const projectId = `akp-8-wp2-causal-${randomUUID()}`;
   let sourceId: string;
   let sourceVersionId: string;
   let evidenceIds: readonly [string, string];
   let principalId: string;
 
+  beforeAll(async () => {
+    isolatedTestDatabase = await createIsolatedPostgresTestDatabase();
+    pool = isolatedTestDatabase.createPool();
+  });
+
   it('proves the production Canonical → Discovery → Review → Draft → Canonical journey', async () => {
-    await migrateUpTo(undefined, databaseUrl!);
     const auth = new PostgresAuthRepository(pool!);
     const principal = await auth.bootstrapLocalOwnerPrincipal({ accountId: `${projectId}:owner` });
     principalId = principal.principalId;
@@ -1870,9 +1872,12 @@ describe.runIf(databaseUrl)('AKP-8 WP2 cross-section causal PostgreSQL acceptanc
   });
 
   afterAll(async () => {
-    if (pool) {
-      await cleanupProject(pool, projectId);
-      await pool.end();
+    try {
+      if (pool) {
+        await cleanupProject(pool, projectId);
+      }
+    } finally {
+      await isolatedTestDatabase?.dispose();
     }
   });
 });

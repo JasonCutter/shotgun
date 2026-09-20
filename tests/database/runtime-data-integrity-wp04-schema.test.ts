@@ -1,22 +1,33 @@
 import { randomUUID } from 'node:crypto';
 
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Pool } from 'pg';
 
 import {
   PostgresSourcesStage3ProgressRepository,
   PostgresSourcesStage4ContinuationStore,
 } from '../../adapters/postgres-stage3/src/runtime-data-integrity.js';
-import { createPostgresPool } from '../../adapters/postgres/src/index.js';
+import {
+  createIsolatedPostgresTestDatabase,
+  type IsolatedPostgresTestDatabase,
+} from '../helpers/isolated-postgres-test-database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
-const databaseUrl = await requireTestDatabaseTarget();
-const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+await requireTestDatabaseTarget();
 
-afterAll(async () => {
-  await pool?.end();
+let isolatedTestDatabase: IsolatedPostgresTestDatabase | undefined;
+let pool: Pool | undefined;
+
+beforeAll(async () => {
+  isolatedTestDatabase = await createIsolatedPostgresTestDatabase();
+  pool = isolatedTestDatabase.createPool();
 });
 
-describe.runIf(pool)('WP-04 runtime data-integrity schema', () => {
+afterAll(async () => {
+  await isolatedTestDatabase?.dispose();
+});
+
+describe('WP-04 runtime data-integrity schema', () => {
   it('T01 claims a MATERIALIZED Stage 3 progress row with the injected lease timestamp', async () => {
     const projectId = `wp04-t01-${randomUUID()}`;
     const sourceId = randomUUID();

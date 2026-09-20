@@ -4,7 +4,6 @@ import type { Pool } from 'pg';
 
 import { PostgresDiscoveryFindingRepository } from '../../adapters/discovery-finding-postgres/src/index.js';
 import { PostgresDiscoveryRuntimeRepository } from '../../adapters/discovery-runtime-postgres/src/index.js';
-import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { PostgresSemanticCorpusSourceSnapshotReader } from '../../adapters/semantic-corpus-postgres/src/index.js';
 import { PostgresSemanticIndexRepository } from '../../adapters/semantic-index-postgres/src/index.js';
 import { PostgresSemanticActiveGenerationReader } from '../../adapters/semantic-index-postgres/src/index.js';
@@ -31,13 +30,17 @@ import {
   type SemanticEmbeddingRouterPort,
   knowledgeCandidateDigest,
 } from '../../packages/contracts/src/index.js';
-import { migrateUpTo } from '../../scripts/database.js';
+import {
+  createIsolatedPostgresTestDatabase,
+  type IsolatedPostgresTestDatabase,
+} from '../helpers/isolated-postgres-test-database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
-let databaseUrl: string | undefined;
+let databaseAvailable = false;
 if (process.env.TEST_DATABASE_URL?.trim()) {
   try {
-    databaseUrl = await requireTestDatabaseTarget();
+    await requireTestDatabaseTarget();
+    databaseAvailable = true;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (/ECONNREFUSED|ENOTFOUND|timeout|connect/i.test(message)) {
@@ -48,8 +51,9 @@ if (process.env.TEST_DATABASE_URL?.trim()) {
   }
 }
 
-const poolA: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
-const poolB: Pool | undefined = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+let isolatedTestDatabase: IsolatedPostgresTestDatabase | undefined;
+let poolA: Pool | undefined;
+let poolB: Pool | undefined;
 
 const executionProjectId = 'akp-8-wp3-execution-acceptance';
 const semanticProjectId = 'akp-8-wp3-semantic-acceptance';
@@ -419,13 +423,15 @@ const cleanupProject = async (projectId: string): Promise<void> => {
 };
 
 describe('AKP-8 WP3 remaining E/N PostgreSQL end-to-end acceptance', () => {
-  if (!poolA || !poolB) {
+  if (!databaseAvailable) {
     it.skip('PostgreSQL test database not available; WP3 database proof is deferred to CI.', () => {});
     return;
   }
 
   beforeAll(async () => {
-    await migrateUpTo(undefined, databaseUrl!);
+    isolatedTestDatabase = await createIsolatedPostgresTestDatabase();
+    poolA = isolatedTestDatabase.createPool();
+    poolB = isolatedTestDatabase.createPool();
     await poolA!.query(
       `INSERT INTO project_admin.projects (id, name, status, active, created_at, updated_at, revision)
        VALUES ($1, $2, 'ACTIVE', true, now(), now(), 1)
@@ -475,14 +481,18 @@ describe('AKP-8 WP3 remaining E/N PostgreSQL end-to-end acceptance', () => {
   });
 
   afterAll(async () => {
-    await cleanupProject(executionProjectId);
-    await cleanupProject(semanticProjectId);
-    await poolA!.query('DELETE FROM project_admin.projects WHERE id IN ($1, $2)', [
-      executionProjectId,
-      semanticProjectId,
-    ]);
-    await poolA!.end();
-    await poolB!.end();
+    try {
+      if (poolA) {
+        await cleanupProject(executionProjectId);
+        await cleanupProject(semanticProjectId);
+        await poolA.query('DELETE FROM project_admin.projects WHERE id IN ($1, $2)', [
+          executionProjectId,
+          semanticProjectId,
+        ]);
+      }
+    } finally {
+      await isolatedTestDatabase?.dispose();
+    }
   });
 
   it('reclaims an expired lease through the real worker and publishes one durable Finding', async () => {

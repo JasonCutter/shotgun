@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { Pool } from 'pg';
 
 import { SealedSourcesStagingService } from '../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../adapters/frontend-sources-write-postgres/src/product-service.js';
@@ -18,10 +19,7 @@ import {
   PostgresEvidenceRepository,
   PostgresTransformationRepository,
 } from '../../adapters/postgres-stage3/src/index.js';
-import {
-  createPostgresPool,
-  PostgresOriginalAssetRepository,
-} from '../../adapters/postgres/src/index.js';
+import { PostgresOriginalAssetRepository } from '../../adapters/postgres/src/index.js';
 import { SourcesStage3TestPipeline } from '../../adapters/sources-stage3-pipeline/src/index.js';
 import {
   InMemoryAssetStorage,
@@ -49,10 +47,16 @@ import { createValidationModule } from '../../modules/validation/src/index.js';
 import { ShotgunError, type AIExecutionIdentity } from '../../packages/contracts/src/index.js';
 import { ShotgunKernel } from '../../packages/kernel/src/index.js';
 
+import {
+  createIsolatedPostgresTestDatabase,
+  type IsolatedPostgresTestDatabase,
+} from '../helpers/isolated-postgres-test-database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
-const databaseUrl = await requireTestDatabaseTarget();
-const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+await requireTestDatabaseTarget();
+
+let isolatedTestDatabase: IsolatedPostgresTestDatabase | undefined;
+let pool: Pool | undefined;
 const hash = (value: string): string =>
   `sha256:${createHash('sha256').update(value).digest('hex')}`;
 
@@ -351,11 +355,16 @@ class GenuineStage3Failure implements SourcesStage3PipelinePort {
   }
 }
 
-afterAll(async () => {
-  await pool?.end();
+beforeAll(async () => {
+  isolatedTestDatabase = await createIsolatedPostgresTestDatabase();
+  pool = isolatedTestDatabase.createPool();
 });
 
-describe.runIf(pool)('Source Product / Stage 4 failure isolation', () => {
+afterAll(async () => {
+  await isolatedTestDatabase?.dispose();
+});
+
+describe('Source Product / Stage 4 failure isolation', () => {
   beforeEach(async () => {
     await pool!.query(`
       TRUNCATE

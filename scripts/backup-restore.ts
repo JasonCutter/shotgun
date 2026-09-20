@@ -15,6 +15,10 @@ import {
   acquireMaintenanceLock,
   releaseMaintenanceLock,
 } from '../adapters/postgres-maintenance-lock/src/index.js';
+import {
+  createIsolatedPostgresDatabase,
+  dropIsolatedPostgresDatabase,
+} from './isolated-postgres-database.js';
 
 export const BACKUP_FORMAT_VERSION = 'shotgun-backup-v1';
 const DATABASE_DUMP_FILE = 'database.dump';
@@ -760,35 +764,13 @@ export const restoreBackup = async (options: RestoreBackupOptions): Promise<Back
 
 export const createIsolatedRestoreDatabase = async (
   sourceDatabaseUrl: string,
-): Promise<{ readonly databaseName: string; readonly databaseUrl: string }> => {
-  const source = new URL(sourceDatabaseUrl);
-  const databaseName = `shotgun_restore_${Date.now()}_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
-  const admin = new URL(sourceDatabaseUrl);
-  admin.pathname = '/postgres';
-  await withClient(admin.toString(), async (client) => {
-    await client.query(`CREATE DATABASE "${databaseName}" WITH TEMPLATE template0`);
-  });
-  source.pathname = `/${databaseName}`;
-  return { databaseName, databaseUrl: source.toString() };
-};
+): Promise<{ readonly databaseName: string; readonly databaseUrl: string }> =>
+  createIsolatedPostgresDatabase(sourceDatabaseUrl, 'restore');
 
 export const dropIsolatedRestoreDatabase = async (
   sourceDatabaseUrl: string,
   databaseName: string,
-): Promise<void> => {
-  if (!/^shotgun_restore_[a-z0-9_]+$/u.test(databaseName)) {
-    throw new Error('Refusing to drop a Database outside the restore-drill namespace.');
-  }
-  const admin = new URL(sourceDatabaseUrl);
-  admin.pathname = '/postgres';
-  await withClient(admin.toString(), async (client) => {
-    await client.query(
-      'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
-      [databaseName],
-    );
-    await client.query(`DROP DATABASE "${databaseName}"`);
-  });
-};
+): Promise<void> => dropIsolatedPostgresDatabase(sourceDatabaseUrl, 'restore', databaseName);
 
 const argument = (name: string): string | undefined => {
   const index = process.argv.indexOf(name);

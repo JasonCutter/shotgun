@@ -10,29 +10,29 @@ import {
   PostgresAskSourceSelectionValidator,
   PostgresAskWorkspaceProjection,
 } from '../../adapters/frontend-ask-write-postgres/src/index.js';
-import {
-  createPostgresPool,
-  PostgresProjectAdministrationRepository,
-} from '../../adapters/postgres/src/index.js';
+import { PostgresProjectAdministrationRepository } from '../../adapters/postgres/src/index.js';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
 import { AskCommandCoordinator } from '../../modules/frontend-ask-write/src/index.js';
 import type { AskExecutionScope } from '../../modules/frontend-ask-execution/src/index.js';
 import { ASK_SCHEMA_VERSION } from '../../packages/contracts/src/index.js';
-import { migrateUpTo } from '../../scripts/database.js';
-import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import {
+  createIsolatedPostgresTestDatabase,
+  type IsolatedPostgresTestDatabase,
+} from '../helpers/isolated-postgres-test-database.js';
 
-const databaseUrl = await requireTestDatabaseTarget();
-const pool: Pool = createPostgresPool(databaseUrl);
+let isolatedTestDatabase: IsolatedPostgresTestDatabase | undefined;
+let pool: Pool;
 
 const hash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 
 describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
   beforeAll(async () => {
-    await migrateUpTo(undefined, databaseUrl);
+    isolatedTestDatabase = await createIsolatedPostgresTestDatabase();
+    pool = isolatedTestDatabase.createPool();
   });
 
   afterAll(async () => {
-    await pool.end();
+    await isolatedTestDatabase?.dispose();
   });
 
   it('resolves bounded Evidence for the Browser source-only selection without calling the original reader', async () => {

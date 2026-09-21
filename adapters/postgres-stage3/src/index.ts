@@ -18,6 +18,7 @@ import type {
   TransformationRevisionSecurityRecord,
   TransformationRepositoryPort,
 } from '../../../modules/transformation/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 type RevisionRow = QueryResultRow & {
   readonly revision_id: string;
@@ -144,21 +145,11 @@ export class PostgresTransformationRepository implements TransformationRepositor
   constructor(private readonly pool: Pool) {}
 
   async save(input: SaveTransformationInput): Promise<SavedTransformation> {
-    const client = await this.pool.connect();
-    let active = false;
-    try {
-      await client.query('BEGIN');
-      active = true;
-      const result = await this.saveInTransaction(client, input);
-      await client.query('COMMIT');
-      active = false;
-      return result;
-    } catch (error) {
-      if (active) await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    return withSafePostgresTransaction(
+      this.pool,
+      (client) => this.saveInTransaction(client, input),
+      { module: 'postgres-stage3', operation: 'save-transformation' },
+    );
   }
 
   async saveInTransaction(
@@ -302,21 +293,11 @@ export class PostgresEvidenceRepository implements EvidenceRepositoryPort {
   constructor(private readonly pool: Pool) {}
 
   async index(candidates: readonly EvidenceCandidate[]) {
-    const client = await this.pool.connect();
-    let active = false;
-    try {
-      await client.query('BEGIN');
-      active = true;
-      const result = await this.indexInTransaction(client, candidates);
-      await client.query('COMMIT');
-      active = false;
-      return result;
-    } catch (error) {
-      if (active) await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    return withSafePostgresTransaction(
+      this.pool,
+      (client) => this.indexInTransaction(client, candidates),
+      { module: 'postgres-stage3', operation: 'index-evidence' },
+    );
   }
 
   async indexInTransaction(

@@ -162,6 +162,15 @@ The Browser:
 
 The Server masks inaccessible command outcomes as `NOT_FOUND` and does not reveal cross-Project or cross-Principal command existence.
 
+For a PostgreSQL completion whose `COMMIT` acknowledgement is uncertain, a
+readback is a reconciliation read, not a retry. It may return success only
+when the same `commandId` is durably `COMPLETED`, has
+`completion_disposition = 'SUCCEEDED'`, and has `produced_resources` exactly
+equal to the requested completion material. A command identity alone, an
+`ACCEPTED` pre-state, `OUTCOME_UNKNOWN`, `REJECTED`, a different disposition,
+different resources, an absent row, or a failed readback must preserve the
+original `OUTCOME_UNKNOWN`; no second completion mutation is permitted.
+
 ### 8. SourceSelections are validated Server-side
 
 A SourceSelection is optional, but when present the Server validates that:

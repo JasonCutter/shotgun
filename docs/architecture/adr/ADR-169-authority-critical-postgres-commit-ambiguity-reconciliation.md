@@ -88,3 +88,53 @@ authorizes publication.
 - ADR-154 — Source/Evidence progress and Stage 4 continuation boundary
 - ADR-155 — Connector durable state and `OUTCOME_UNKNOWN` recovery boundary
 - ADR-163 — Explicit V2 `MODIFY_REVIEW` operation resolution
+
+## TS-6 Amendment — 2026-09-20
+
+Phase A/C3 evidence extended the review surface without changing the original
+ADR decision. Phase B applies the same transaction-outcome contract to the
+following corrected functions using existing domain authority only:
+
+- `PostgresAIProviderCallRepository.ensure`: request/input identity readback
+  by `projectId + requestId`.
+- `PostgresCandidateRepository.saveBatch`: existing batch and materialization
+  lineage readback by `projectId + idempotencyKey`.
+- `PostgresChangeSetReviewV2Repository.resolveOperation`: existing operation
+  resolution readback by client request, idempotency, and semantic command
+  identity; exact replay remains `IDEMPOTENT_REPLAY`.
+- `PostgresCredentialVaultRepository.advanceRevision`: non-secret
+  `CredentialWriteSemanticBinding` readback when `clientRequestId` exists.
+- `PostgresSemanticEmbeddingProfileRepository.saveRevision`: complete target
+  profile revision material readback.
+
+The Stage 4 `acceptOutput` and `markAttemptOutcomeUnknown` paths remain
+unchanged controls. The C2 caller closure adds no transaction authority: the
+Project, Settings, and Sources Product API routes preserve accepted-command
+`OUTCOME_UNKNOWN` with `markOutcomeUnknown`, while deterministic failures still
+use the existing rejection path. The Frontend Command Gateway uses exact
+`clientRequestId`/`commandId` readback after an ambiguous accept/complete.
+
+The 51 safe-helper rows are closed with 49 caller-reviewed rows plus the two
+accepted C1 positive controls. The 38 remaining raw caller rows have explicit
+receiver/Port/constructor/assembly evidence and caller dispositions. Discovery
+worker ambiguity preserves the lease/fence for the existing recovery runner;
+connector recovery remains scheduled, fenced, deduplicated, and durable. Ask,
+Typed Conflict, Draft, Review, External Action, and Canonical callers retain
+their existing typed ambiguity or outbox/recovery boundaries.
+
+The C2 Golden Corpus is 112 rows: 16 owner-reconciled, 51 safe-helper, and 45
+raw. Caller review is complete for 87 rows with unresolved, blocked, and
+architecture-review-before-fix counts at zero. No helper, migration, schema,
+dependency, Port, Canonical, Evidence, Approval, or shared retry authority is
+introduced.
+
+Rejected alternatives are unchanged: blanket raw-transaction conversion,
+automatic COMMIT retry, a second transaction helper, a generic outcome ledger,
+schema migration, or promotion of an OSS runtime to Shotgun authority.
+
+Migration status is `NO`; rollback is a source revert before publication or a
+source commit revert after publication. The OSS Integration Decision is
+`KEEP_EXISTING_RUNTIME` for pinned `pg` 8.22.0 (MIT, commit
+`b617619f9fb6fbd231731823e2732a2927ded4be`) and `REFERENCE_ONLY` for the
+reviewed alternatives. No dependency, Canonical, Evidence, Approval, Port, or
+shared-helper ownership changes are made.

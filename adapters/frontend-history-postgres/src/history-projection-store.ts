@@ -29,6 +29,7 @@ import {
   validateHistoryRebuildBatch,
 } from '../../../modules/frontend-history/src/index.js';
 import type { HistoryCursorV1 } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 // Re-exported so the adapter package surface mirrors the module boundary.
 export type {
@@ -116,20 +117,19 @@ async function withHistoryProjectWriteLock<T>(
   projectId: string,
   action: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
-  const client = 'query' in clientOrPool ? await (clientOrPool as Pool).connect() : clientOrPool;
-  const ownsClient = client === clientOrPool;
-  try {
-    if (ownsClient) await client.query('BEGIN');
-    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [projectId]);
-    const result = await action(client);
-    if (ownsClient) await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    if (ownsClient) await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    if (ownsClient) client.release();
+  if (!('release' in clientOrPool)) {
+    return withSafePostgresTransaction(
+      clientOrPool as Pool,
+      async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [projectId]);
+        return action(client);
+      },
+      { module: 'frontend-history-postgres', operation: 'project-write-lock' },
+    );
   }
+  const client = clientOrPool as PoolClient;
+  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [projectId]);
+  return action(client);
 }
 
 export class PostgresHistoryIndexStore implements HistoryIndexStorePort {
@@ -391,54 +391,54 @@ export const createPostgresHistoryReadModelStore = (pool: Pool): HistoryReadMode
           );
         }
       }
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-          input.resourceProjectId,
-        ]);
-        // Revision CAS lives on the WATERMARKS (migration 030 design): the
-        // projection index has no snapshot_revision column, so a concurrent
-        // build that already committed this revision — even with an empty
-        // index — is rejected by the watermark revision guard.
-        const existingWatermarks = await client.query<{ snapshot_revision: string }>(
-          `SELECT snapshot_revision::text AS snapshot_revision
+      await withSafePostgresTransaction(
+        pool,
+        async (client) => {
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+            input.resourceProjectId,
+          ]);
+          // Revision CAS lives on the WATERMARKS (migration 030 design): the
+          // projection index has no snapshot_revision column, so a concurrent
+          // build that already committed this revision — even with an empty
+          // index — is rejected by the watermark revision guard.
+          const existingWatermarks = await client.query<{ snapshot_revision: string }>(
+            `SELECT snapshot_revision::text AS snapshot_revision
            FROM frontend_history.projection_watermarks
            WHERE resource_project_id = $1`,
-          [input.resourceProjectId],
-        );
-        const existingWatermarkRevisions = existingWatermarks.rows.map((row) =>
-          Number(row.snapshot_revision),
-        );
-        const committedMax = Math.max(...existingWatermarkRevisions, 0);
-        if (committedMax >= input.snapshotRevision) {
-          throw new Error(
-            `HISTORY_INDEX_STALE_REBUILD: ${input.resourceProjectId}/ALL already has snapshot revision >= ${input.snapshotRevision}`,
+            [input.resourceProjectId],
           );
-        }
-        assertHistoryRebuildRevisionNotLower(
-          existingWatermarkRevisions.map((snapshotRevision) => ({ snapshotRevision })),
-          input.snapshotRevision,
-          `${input.resourceProjectId}/ALL`,
-        );
-        await client.query(
-          'DELETE FROM frontend_history.history_projection_index WHERE resource_project_id = $1',
-          [input.resourceProjectId],
-        );
-        for (const record of input.records) {
+          const existingWatermarkRevisions = existingWatermarks.rows.map((row) =>
+            Number(row.snapshot_revision),
+          );
+          const committedMax = Math.max(...existingWatermarkRevisions, 0);
+          if (committedMax >= input.snapshotRevision) {
+            throw new Error(
+              `HISTORY_INDEX_STALE_REBUILD: ${input.resourceProjectId}/ALL already has snapshot revision >= ${input.snapshotRevision}`,
+            );
+          }
+          assertHistoryRebuildRevisionNotLower(
+            existingWatermarkRevisions.map((snapshotRevision) => ({ snapshotRevision })),
+            input.snapshotRevision,
+            `${input.resourceProjectId}/ALL`,
+          );
           await client.query(
-            `INSERT INTO frontend_history.history_projection_index ${HISTORY_INDEX_COLUMNS}
+            'DELETE FROM frontend_history.history_projection_index WHERE resource_project_id = $1',
+            [input.resourceProjectId],
+          );
+          for (const record of input.records) {
+            await client.query(
+              `INSERT INTO frontend_history.history_projection_index ${HISTORY_INDEX_COLUMNS}
              VALUES ${HISTORY_INDEX_VALUES}`,
-            historyRecordToParams(record),
-          );
-        }
-        await client.query(
-          'DELETE FROM frontend_history.projection_watermarks WHERE resource_project_id = $1',
-          [input.resourceProjectId],
-        );
-        for (const watermark of input.watermarks) {
+              historyRecordToParams(record),
+            );
+          }
           await client.query(
-            `INSERT INTO frontend_history.projection_watermarks (
+            'DELETE FROM frontend_history.projection_watermarks WHERE resource_project_id = $1',
+            [input.resourceProjectId],
+          );
+          for (const watermark of input.watermarks) {
+            await client.query(
+              `INSERT INTO frontend_history.projection_watermarks (
                resource_project_id, adapter_id, domain_kind, source_updated_at,
                projected_at, adapter_status, snapshot_revision, last_source_position
              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
@@ -450,25 +450,21 @@ export const createPostgresHistoryReadModelStore = (pool: Pool): HistoryReadMode
                snapshot_revision = EXCLUDED.snapshot_revision,
                last_source_position = EXCLUDED.last_source_position
              WHERE frontend_history.projection_watermarks.snapshot_revision <= EXCLUDED.snapshot_revision`,
-            [
-              watermark.resourceProjectId,
-              watermark.adapterId,
-              watermark.domainKind,
-              watermark.sourceUpdatedAt ?? null,
-              watermark.projectedAt,
-              watermark.adapterStatus,
-              watermark.snapshotRevision,
-              watermark.lastSourcePosition ?? null,
-            ],
-          );
-        }
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
+              [
+                watermark.resourceProjectId,
+                watermark.adapterId,
+                watermark.domainKind,
+                watermark.sourceUpdatedAt ?? null,
+                watermark.projectedAt,
+                watermark.adapterStatus,
+                watermark.snapshotRevision,
+                watermark.lastSourcePosition ?? null,
+              ],
+            );
+          }
+        },
+        { module: 'frontend-history-postgres', operation: 'commit-project-projection' },
+      );
     },
   };
 };

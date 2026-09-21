@@ -26,7 +26,11 @@ import type {
 } from '../../../../modules/frontend-sources-product/src/index.js';
 import type { SourcesProductWriteScope } from '../../../../modules/frontend-sources-write/src/product-service.js';
 import type { SecurityHeaders } from '../server.js';
-import { rejectAcceptedCommand, toProductApiCommandError } from './frontend-command-route.js';
+import {
+  markAcceptedCommandOutcomeUnknown,
+  rejectAcceptedCommand,
+  toProductApiCommandError,
+} from './frontend-command-route.js';
 import { getSourcesWriteRuntime } from './sources-write-runtime.js';
 
 type PrincipalSessionResolver = (
@@ -354,7 +358,19 @@ export const registerSourcesRoutes = (
               createdAt: new Date().toISOString(),
             });
           } catch (error) {
-            await rejectAcceptedCommand(runtime.commandGateway, accepted.outcome.commandId, error);
+            if (
+              !(await markAcceptedCommandOutcomeUnknown(
+                runtime.commandGateway,
+                accepted.outcome.commandId,
+                error,
+              ))
+            ) {
+              await rejectAcceptedCommand(
+                runtime.commandGateway,
+                accepted.outcome.commandId,
+                error,
+              );
+            }
             throw error;
           }
         }
@@ -436,7 +452,19 @@ export const registerSourcesRoutes = (
               createdAt: new Date().toISOString(),
             });
           } catch (error) {
-            await rejectAcceptedCommand(runtime.commandGateway, accepted.outcome.commandId, error);
+            if (
+              !(await markAcceptedCommandOutcomeUnknown(
+                runtime.commandGateway,
+                accepted.outcome.commandId,
+                error,
+              ))
+            ) {
+              await rejectAcceptedCommand(
+                runtime.commandGateway,
+                accepted.outcome.commandId,
+                error,
+              );
+            }
             throw error;
           }
         }
@@ -479,7 +507,19 @@ export const registerSourcesRoutes = (
               createdAt: new Date().toISOString(),
             });
           } catch (error) {
-            await rejectAcceptedCommand(runtime.commandGateway, accepted.outcome.commandId, error);
+            if (
+              !(await markAcceptedCommandOutcomeUnknown(
+                runtime.commandGateway,
+                accepted.outcome.commandId,
+                error,
+              ))
+            ) {
+              await rejectAcceptedCommand(
+                runtime.commandGateway,
+                accepted.outcome.commandId,
+                error,
+              );
+            }
             throw error;
           }
         }
@@ -524,7 +564,19 @@ export const registerSourcesRoutes = (
               createdAt: new Date().toISOString(),
             });
           } catch (error) {
-            await rejectAcceptedCommand(runtime.commandGateway, accepted.outcome.commandId, error);
+            if (
+              !(await markAcceptedCommandOutcomeUnknown(
+                runtime.commandGateway,
+                accepted.outcome.commandId,
+                error,
+              ))
+            ) {
+              await rejectAcceptedCommand(
+                runtime.commandGateway,
+                accepted.outcome.commandId,
+                error,
+              );
+            }
             throw error;
           }
         }
@@ -561,7 +613,15 @@ export const registerSourcesRoutes = (
           return;
         }
         commandSettled = true;
-        await rejectAcceptedCommand(runtime.commandGateway, accepted.outcome.commandId, error);
+        if (
+          !(await markAcceptedCommandOutcomeUnknown(
+            runtime.commandGateway,
+            accepted.outcome.commandId,
+            error,
+          ))
+        ) {
+          await rejectAcceptedCommand(runtime.commandGateway, accepted.outcome.commandId, error);
+        }
       };
 
       try {

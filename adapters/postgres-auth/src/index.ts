@@ -64,62 +64,74 @@ export class PostgresAuthRepository implements AuthRepositoryPort {
     readonly accountId: string;
     readonly passwordHash?: string;
   }): Promise<AuthenticatedPrincipal> {
-    const client = await this.pool.connect();
     const accountId = input.accountId.trim().toLowerCase();
     if (!accountId) throw new Error('Account ID is required.');
     try {
-      await client.query('BEGIN');
-      const existing = await client.query<PrincipalRow>(
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const existing = await client.query<PrincipalRow>(
+            `SELECT p.principal_id::text, p.actor_type, p.status,
+                      COALESCE(c.credential_id::text, p.principal_id::text) AS credential_id
+               FROM auth.principals p
+               LEFT JOIN auth.credentials c
+                 ON c.principal_id = p.principal_id
+                AND c.disabled_at IS NULL
+               WHERE p.account_id = $1
+               FOR UPDATE OF p`,
+            [accountId],
+          );
+          const existingRow = existing.rows[0];
+          if (existingRow) {
+            if (existingRow.status !== 'active') {
+              throw new Error('Local Owner principal is unavailable.');
+            }
+            return principal(existingRow, 'session');
+          }
+          const principalId = randomUUID();
+          await client.query(
+            `INSERT INTO auth.principals (
+                 principal_id, actor_type, status, account_id, created_at
+               ) VALUES ($1, 'user', 'active', $2, $3)`,
+            [principalId, accountId, now()],
+          );
+          let credentialId = principalId;
+          if (input.passwordHash) {
+            credentialId = randomUUID();
+            await client.query(
+              `INSERT INTO auth.credentials (
+                   credential_id, principal_id, credential_type, account_id,
+                   password_hash, password_changed_at
+                 ) VALUES ($1, $2, 'local_password', $3, $4, $5)`,
+              [credentialId, principalId, accountId, input.passwordHash, now()],
+            );
+          }
+          return {
+            principalId,
+            actor: { type: 'user', id: principalId },
+            kind: 'user',
+            status: 'active',
+            authenticationMethod: 'session',
+            credentialId,
+          };
+        },
+        { module: 'postgres-auth', operation: 'bootstrap-local-owner-principal' },
+      );
+    } catch (error) {
+      if (!isOutcomeUnknown(error)) throw error;
+      const persisted = await this.pool.query<PrincipalRow>(
         `SELECT p.principal_id::text, p.actor_type, p.status,
                 COALESCE(c.credential_id::text, p.principal_id::text) AS credential_id
          FROM auth.principals p
          LEFT JOIN auth.credentials c
            ON c.principal_id = p.principal_id
           AND c.disabled_at IS NULL
-         WHERE p.account_id = $1
-         FOR UPDATE OF p`,
+         WHERE p.account_id = $1`,
         [accountId],
       );
-      const existingRow = existing.rows[0];
-      if (existingRow) {
-        if (existingRow.status !== 'active') {
-          throw new Error('Local Owner principal is unavailable.');
-        }
-        await client.query('COMMIT');
-        return principal(existingRow, 'session');
-      }
-      const principalId = randomUUID();
-      await client.query(
-        `INSERT INTO auth.principals (
-           principal_id, actor_type, status, account_id, created_at
-         ) VALUES ($1, 'user', 'active', $2, $3)`,
-        [principalId, accountId, now()],
-      );
-      let credentialId = principalId;
-      if (input.passwordHash) {
-        credentialId = randomUUID();
-        await client.query(
-          `INSERT INTO auth.credentials (
-             credential_id, principal_id, credential_type, account_id,
-             password_hash, password_changed_at
-           ) VALUES ($1, $2, 'local_password', $3, $4, $5)`,
-          [credentialId, principalId, accountId, input.passwordHash, now()],
-        );
-      }
-      await client.query('COMMIT');
-      return {
-        principalId,
-        actor: { type: 'user', id: principalId },
-        kind: 'user',
-        status: 'active',
-        authenticationMethod: 'session',
-        credentialId,
-      };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+      const persistedRow = persisted.rows[0];
+      if (!persistedRow || persistedRow.status !== 'active') throw error;
+      return principal(persistedRow, 'session');
     }
   }
 

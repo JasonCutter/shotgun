@@ -99,6 +99,38 @@ type BatchRow = QueryResultRow & {
 const isOutcomeUnknown = (error: unknown): error is ShotgunError =>
   error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
 
+const sameProviderExecutionIntent = (
+  expected: AIProviderExecutionRecord,
+  actual: AIProviderExecutionRecord,
+): boolean =>
+  actual.projectId === expected.projectId &&
+  actual.requestId === expected.requestId &&
+  actual.sourceVersionId === expected.sourceVersionId &&
+  actual.revisionId === expected.revisionId &&
+  actual.provider === expected.provider &&
+  actual.model === expected.model &&
+  actual.promptVersion === expected.promptVersion &&
+  actual.policyVersion === expected.policyVersion &&
+  actual.schemaName === expected.schemaName &&
+  actual.dataClassification === expected.dataClassification &&
+  stableJson(actual.accessScope) === stableJson(expected.accessScope) &&
+  actual.sensitivity === expected.sensitivity &&
+  stableJson(actual.inputEvidenceIds) === stableJson(expected.inputEvidenceIds) &&
+  actual.inputSnapshotDigest === expected.inputSnapshotDigest &&
+  actual.requestDigest === expected.requestDigest &&
+  stableJson(actual.executionIdentity) === stableJson(expected.executionIdentity) &&
+  actual.maxAttempts === expected.maxAttempts;
+
+const sameCandidateBatchIntent = (expected: CandidateBatch, actual: CandidateBatch): boolean =>
+  stableJson({
+    ...actual,
+    materialization: undefined,
+  }) ===
+  stableJson({
+    ...expected,
+    materialization: undefined,
+  });
+
 type CandidateRow = QueryResultRow & {
   readonly candidate_id: string;
   readonly batch_id: string;
@@ -310,46 +342,68 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
   constructor(private readonly pool: Pool) {}
 
   async ensure(record: AIProviderExecutionRecord): Promise<AIProviderExecutionRecord> {
-    const client = await this.pool.connect();
     try {
-      await client.query('BEGIN');
-      await client.query(
-        `INSERT INTO ai.provider_calls (call_id, project_id, request_id, provider, model, prompt_version, policy_version,
-          schema_name, data_classification, input_evidence_ids, source_version_id, revision_id, access_scope, sensitivity,
-          input_snapshot_digest, request_digest, execution_identity, durable_state, max_attempts, status, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'REQUESTED',$18,'failed',$19,$19)
-         ON CONFLICT (project_id, request_id) DO NOTHING`,
-        [
-          record.callId,
-          record.projectId,
-          record.requestId,
-          record.provider,
-          record.model,
-          record.promptVersion,
-          record.policyVersion,
-          record.schemaName,
-          record.dataClassification,
-          record.inputEvidenceIds,
-          record.sourceVersionId,
-          record.revisionId ?? null,
-          record.accessScope,
-          record.sensitivity,
-          record.inputSnapshotDigest,
-          record.requestDigest,
-          record.executionIdentity ? JSON.stringify(record.executionIdentity) : null,
-          record.maxAttempts,
-          record.createdAt,
-        ],
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          await client.query(
+            `INSERT INTO ai.provider_calls (call_id, project_id, request_id, provider, model, prompt_version, policy_version,
+              schema_name, data_classification, input_evidence_ids, source_version_id, revision_id, access_scope, sensitivity,
+              input_snapshot_digest, request_digest, execution_identity, durable_state, max_attempts, status, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'REQUESTED',$18,'failed',$19,$19)
+             ON CONFLICT (project_id, request_id) DO NOTHING`,
+            [
+              record.callId,
+              record.projectId,
+              record.requestId,
+              record.provider,
+              record.model,
+              record.promptVersion,
+              record.policyVersion,
+              record.schemaName,
+              record.dataClassification,
+              record.inputEvidenceIds,
+              record.sourceVersionId,
+              record.revisionId ?? null,
+              record.accessScope,
+              record.sensitivity,
+              record.inputSnapshotDigest,
+              record.requestDigest,
+              record.executionIdentity ? JSON.stringify(record.executionIdentity) : null,
+              record.maxAttempts,
+              record.createdAt,
+            ],
+          );
+          const stored = await loadProviderRecord(client, record.projectId, record.requestId, true);
+          if (!stored) throw new Error('AI Provider Call was not stored.');
+          if (!sameProviderExecutionIntent(record, stored)) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage:
+                'The AI generation request identity is already bound to different durable material.',
+              module: 'postgres-stage4',
+              operation: 'ensure-provider-call',
+            });
+          }
+          return stored;
+        },
+        { module: 'postgres-stage4', operation: 'ensure-provider-call' },
       );
-      const stored = await loadProviderRecord(client, record.projectId, record.requestId, true);
-      await client.query('COMMIT');
-      if (!stored) throw new Error('AI Provider Call was not stored.');
-      return stored;
     } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+      if (!isOutcomeUnknown(error)) throw error;
+      const durable = await loadProviderRecord(this.pool, record.projectId, record.requestId);
+      if (!durable) throw error;
+      if (!sameProviderExecutionIntent(record, durable)) {
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage:
+            'The AI generation request identity is already bound to different durable material.',
+          module: 'postgres-stage4',
+          operation: 'reconcile-provider-call',
+          cause: error,
+        });
+      }
+      return durable;
     }
   }
 
@@ -447,70 +501,66 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
     requestId: string,
     output: AIProviderOutput,
   ): Promise<AIProviderExecutionRecord> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const record = await loadProviderRecord(client, projectId, requestId, true);
-      if (
-        !record ||
-        output.projectId !== projectId ||
-        record.callId !== output.callId ||
-        record.requestDigest !== output.requestDigest ||
-        record.inputSnapshotDigest !== output.inputSnapshotDigest ||
-        !record.attempts.some(
-          (attempt) =>
-            attempt.attemptId === output.attemptId &&
-            (attempt.status === 'running' || attempt.status === 'outcome_unknown'),
-        ) ||
-        record.output
-      )
-        throw new ShotgunError({
-          code: 'CONFLICT',
-          safeMessage: 'The provider output does not belong to the claimed durable attempt.',
-          module: 'postgres-stage4',
-          operation: 'store-provider-output',
-        });
-      await client.query(
-        `INSERT INTO ai.provider_outputs (output_id, project_id, call_id, attempt_id, envelope_version, provider,
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const record = await loadProviderRecord(client, projectId, requestId, true);
+        if (
+          !record ||
+          output.projectId !== projectId ||
+          record.callId !== output.callId ||
+          record.requestDigest !== output.requestDigest ||
+          record.inputSnapshotDigest !== output.inputSnapshotDigest ||
+          !record.attempts.some(
+            (attempt) =>
+              attempt.attemptId === output.attemptId &&
+              (attempt.status === 'running' || attempt.status === 'outcome_unknown'),
+          ) ||
+          record.output
+        )
+          throw new ShotgunError({
+            code: 'CONFLICT',
+            safeMessage: 'The provider output does not belong to the claimed durable attempt.',
+            module: 'postgres-stage4',
+            operation: 'store-provider-output',
+          });
+        await client.query(
+          `INSERT INTO ai.provider_outputs (output_id, project_id, call_id, attempt_id, envelope_version, provider,
           adapter_version, model, schema_name, schema_version, prompt_version, policy_version, data_policy_version,
           output_text, content_digest, request_digest, input_snapshot_digest, provider_response_id, model_version,
           finish_reason, usage_json, cost_json, structured_output_valid, received_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
-        [
-          output.outputId,
-          projectId,
-          output.callId,
-          output.attemptId,
-          output.envelopeVersion,
-          output.provider,
-          output.adapterVersion,
-          output.model,
-          output.schemaName,
-          output.schemaVersion,
-          output.promptVersion,
-          output.policyVersion,
-          output.dataPolicyVersion,
-          output.rawText,
-          output.contentDigest,
-          output.requestDigest,
-          output.inputSnapshotDigest,
-          output.providerResponseId ?? null,
-          output.modelVersion,
-          output.finishReason ?? null,
-          output.usage,
-          output.cost,
-          false,
-          output.receivedAt,
-        ],
-      );
-      await client.query('COMMIT');
-      return { ...record, output };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+          [
+            output.outputId,
+            projectId,
+            output.callId,
+            output.attemptId,
+            output.envelopeVersion,
+            output.provider,
+            output.adapterVersion,
+            output.model,
+            output.schemaName,
+            output.schemaVersion,
+            output.promptVersion,
+            output.policyVersion,
+            output.dataPolicyVersion,
+            output.rawText,
+            output.contentDigest,
+            output.requestDigest,
+            output.inputSnapshotDigest,
+            output.providerResponseId ?? null,
+            output.modelVersion,
+            output.finishReason ?? null,
+            output.usage,
+            output.cost,
+            false,
+            output.receivedAt,
+          ],
+        );
+        return { ...record, output };
+      },
+      { module: 'postgres-stage4', operation: 'store-provider-output' },
+    );
   }
 
   async acceptOutput(
@@ -643,35 +693,31 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
     attemptId: string,
     code: ErrorCode,
   ): Promise<AIProviderExecutionRecord> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const record = await loadProviderRecord(client, projectId, requestId, true);
-      if (!record)
-        throw new ShotgunError({
-          code: 'NOT_FOUND',
-          safeMessage: 'The AI generation request was not found.',
-          module: 'postgres-stage4',
-          operation: 'fail-provider-attempt',
-        });
-      await client.query(
-        `UPDATE ai.provider_attempts SET status = 'failed', error_code = $1, finished_at = now() WHERE attempt_id = $2 AND call_id = $3`,
-        [code, attemptId, record.callId],
-      );
-      await client.query(
-        `UPDATE ai.provider_calls SET durable_state = 'PROVIDER_FAILED', status = 'failed', updated_at = now() WHERE call_id = $1`,
-        [record.callId],
-      );
-      const failed = await loadProviderRecord(client, projectId, requestId);
-      await client.query('COMMIT');
-      if (!failed) throw new Error('AI Provider Call disappeared after failure.');
-      return failed;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const record = await loadProviderRecord(client, projectId, requestId, true);
+        if (!record)
+          throw new ShotgunError({
+            code: 'NOT_FOUND',
+            safeMessage: 'The AI generation request was not found.',
+            module: 'postgres-stage4',
+            operation: 'fail-provider-attempt',
+          });
+        await client.query(
+          `UPDATE ai.provider_attempts SET status = 'failed', error_code = $1, finished_at = now() WHERE attempt_id = $2 AND call_id = $3`,
+          [code, attemptId, record.callId],
+        );
+        await client.query(
+          `UPDATE ai.provider_calls SET durable_state = 'PROVIDER_FAILED', status = 'failed', updated_at = now() WHERE call_id = $1`,
+          [record.callId],
+        );
+        const failed = await loadProviderRecord(client, projectId, requestId);
+        if (!failed) throw new Error('AI Provider Call disappeared after failure.');
+        return failed;
+      },
+      { module: 'postgres-stage4', operation: 'fail-provider-attempt' },
+    );
   }
 
   async markAttemptOutcomeUnknown(
@@ -791,71 +837,91 @@ export class PostgresCandidateRepository implements CandidateRepositoryPort {
   }
 
   async saveBatch(batch: CandidateBatch): Promise<CandidateBatch> {
-    const client = await this.pool.connect();
     try {
-      await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-        `${batch.projectId}:${batch.idempotencyKey}`,
-      ]);
-      const existing = await loadBatch(client, batch.projectId, batch.idempotencyKey);
-      if (existing) {
-        await this.bindMaterialization(client, batch, existing.batchId);
-        await client.query('COMMIT');
-        return existing;
-      }
-      await client.query(
-        `
-          INSERT INTO candidate.batches (
-            batch_id, project_id, source_version_id, revision_id, idempotency_key, provider_call, created_at
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
-        `,
-        [
-          batch.batchId,
-          batch.projectId,
-          batch.sourceVersionId,
-          batch.revisionId ?? null,
-          batch.idempotencyKey,
-          batch.providerCall,
-          batch.createdAt,
-        ],
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+            `${batch.projectId}:${batch.idempotencyKey}`,
+          ]);
+          const existing = await loadBatch(client, batch.projectId, batch.idempotencyKey);
+          if (existing) {
+            if (!sameCandidateBatchIntent(batch, existing)) {
+              throw new ShotgunError({
+                code: 'CONFLICT',
+                safeMessage:
+                  'The Candidate idempotency key is already bound to different material.',
+                module: 'postgres-stage4',
+                operation: 'save-candidate-batch',
+              });
+            }
+            await this.bindMaterialization(client, batch, existing.batchId);
+            return existing;
+          }
+          await client.query(
+            `
+              INSERT INTO candidate.batches (
+                batch_id, project_id, source_version_id, revision_id, idempotency_key, provider_call, created_at
+              )
+              VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `,
+            [
+              batch.batchId,
+              batch.projectId,
+              batch.sourceVersionId,
+              batch.revisionId ?? null,
+              batch.idempotencyKey,
+              batch.providerCall,
+              batch.createdAt,
+            ],
+          );
+          for (const candidate of batch.candidates) {
+            await client.query(
+              `
+                INSERT INTO candidate.claim_candidates (
+                  candidate_id, batch_id, project_id, source_version_id, revision_number,
+                  claim_text, evidence_id, evidence_mode, extraction_profile, status,
+                  provider_call, access_scope, sensitivity, created_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+              `,
+              [
+                candidate.candidateId,
+                candidate.batchId,
+                candidate.projectId,
+                candidate.sourceVersionId,
+                candidate.revisionNumber,
+                candidate.claimText,
+                candidate.evidenceIds[0],
+                candidate.evidenceMode,
+                candidate.extractionProfile,
+                candidate.status,
+                candidate.providerCall,
+                candidate.accessScope,
+                candidate.sensitivity,
+                candidate.createdAt,
+              ],
+            );
+          }
+          await this.bindMaterialization(client, batch, batch.batchId);
+          return batch;
+        },
+        { module: 'postgres-stage4', operation: 'save-candidate-batch' },
       );
-      for (const candidate of batch.candidates) {
-        await client.query(
-          `
-            INSERT INTO candidate.claim_candidates (
-              candidate_id, batch_id, project_id, source_version_id, revision_number,
-              claim_text, evidence_id, evidence_mode, extraction_profile, status,
-              provider_call, access_scope, sensitivity, created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-          `,
-          [
-            candidate.candidateId,
-            candidate.batchId,
-            candidate.projectId,
-            candidate.sourceVersionId,
-            candidate.revisionNumber,
-            candidate.claimText,
-            candidate.evidenceIds[0],
-            candidate.evidenceMode,
-            candidate.extractionProfile,
-            candidate.status,
-            candidate.providerCall,
-            candidate.accessScope,
-            candidate.sensitivity,
-            candidate.createdAt,
-          ],
-        );
-      }
-      await this.bindMaterialization(client, batch, batch.batchId);
-      await client.query('COMMIT');
-      return batch;
     } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+      if (!isOutcomeUnknown(error)) throw error;
+      const durable = await loadBatch(this.pool, batch.projectId, batch.idempotencyKey);
+      if (!durable) throw error;
+      if (!sameCandidateBatchIntent(batch, durable)) {
+        throw new ShotgunError({
+          code: 'CONFLICT',
+          safeMessage: 'The Candidate idempotency key is already bound to different material.',
+          module: 'postgres-stage4',
+          operation: 'reconcile-candidate-batch',
+          cause: error,
+        });
+      }
+      return durable;
     }
   }
 

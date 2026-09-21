@@ -7,6 +7,8 @@ import type {
   CredentialVaultRepositoryPort,
   StoredCredentialRevision,
 } from '../../../modules/credential-vault/src/index.js';
+import { ShotgunError } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 type CredentialRow = QueryResultRow & {
   credential_id: string;
@@ -61,6 +63,25 @@ const findExactQuery = `
   SELECT ${selectColumns}
   WHERE project_id = $1 AND provider_id = $2
     AND credential_id = $3 AND credential_revision = $4`;
+
+const isOutcomeUnknown = (error: unknown): error is ShotgunError =>
+  error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
+
+const sameReplaceRequest = (
+  record: StoredCredentialRevision,
+  expected: StoredCredentialRevision,
+): boolean =>
+  record.projectId === expected.projectId &&
+  record.clientRequestId !== undefined &&
+  record.clientRequestId === expected.clientRequestId &&
+  record.clientRequestOperation === 'REPLACE' &&
+  expected.clientRequestOperation === 'REPLACE' &&
+  record.clientRequestProviderId === expected.clientRequestProviderId &&
+  record.clientRequestCredentialId === expected.clientRequestCredentialId &&
+  record.clientRequestExpectedRevision === expected.clientRequestExpectedRevision &&
+  record.providerId === expected.providerId &&
+  record.credentialId === expected.credentialId &&
+  record.credentialRevision === expected.credentialRevision;
 
 export class PostgresCredentialVaultRepository implements CredentialVaultRepositoryPort {
   constructor(private readonly pool: Pool) {}
@@ -136,52 +157,91 @@ export class PostgresCredentialVaultRepository implements CredentialVaultReposit
     readonly expectedRevision: number;
     readonly next: StoredCredentialRevision;
   }): Promise<'UPDATED' | 'NOT_FOUND' | 'CONFLICT'> {
-    const client = await this.pool.connect();
     try {
-      await client.query('BEGIN');
-      const current = await client.query<CredentialRow>(`${findExactQuery} FOR UPDATE`, [
-        input.projectId,
-        input.providerId,
-        input.credentialId,
-        input.expectedRevision,
-      ]);
-      const currentRow = current.rows[0];
-      if (!currentRow) {
-        await client.query('ROLLBACK');
-        return 'NOT_FOUND';
-      }
-      if (currentRow.lifecycle_state !== 'active') {
-        await client.query('ROLLBACK');
-        return 'CONFLICT';
-      }
-      if (
-        input.next.credentialId !== input.credentialId ||
-        input.next.projectId !== input.projectId ||
-        input.next.providerId !== input.providerId ||
-        input.next.credentialRevision !== input.expectedRevision + 1
-      ) {
-        await client.query('ROLLBACK');
-        return 'CONFLICT';
-      }
+      return await withSafePostgresTransaction<'UPDATED'>(
+        this.pool,
+        async (client) => {
+          const current = await client.query<CredentialRow>(`${findExactQuery} FOR UPDATE`, [
+            input.projectId,
+            input.providerId,
+            input.credentialId,
+            input.expectedRevision,
+          ]);
+          const currentRow = current.rows[0];
+          if (!currentRow) {
+            throw new ShotgunError({
+              code: 'NOT_FOUND',
+              safeMessage: 'Credential revision was not found.',
+              module: 'credential-vault-postgres',
+              operation: 'advance-credential-revision',
+            });
+          }
+          if (currentRow.lifecycle_state !== 'active') {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'Credential revision is not active.',
+              module: 'credential-vault-postgres',
+              operation: 'advance-credential-revision',
+            });
+          }
+          if (
+            input.next.credentialId !== input.credentialId ||
+            input.next.projectId !== input.projectId ||
+            input.next.providerId !== input.providerId ||
+            input.next.credentialRevision !== input.expectedRevision + 1
+          ) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'Credential revision identity is invalid.',
+              module: 'credential-vault-postgres',
+              operation: 'advance-credential-revision',
+            });
+          }
 
-      await client.query(
-        `UPDATE ai.provider_credentials
-         SET lifecycle_state = 'superseded', updated_at = $1
-         WHERE credential_id = $2 AND credential_revision = $3`,
-        [input.next.updatedAt, input.credentialId, input.expectedRevision],
+          await client.query(
+            `UPDATE ai.provider_credentials
+             SET lifecycle_state = 'superseded', updated_at = $1
+             WHERE credential_id = $2 AND credential_revision = $3`,
+            [input.next.updatedAt, input.credentialId, input.expectedRevision],
+          );
+          const inserted = await insertRevision(client, input.next);
+          if (!inserted) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'Credential revision already exists.',
+              module: 'credential-vault-postgres',
+              operation: 'advance-credential-revision',
+            });
+          }
+          return 'UPDATED';
+        },
+        { module: 'credential-vault-postgres', operation: 'advance-credential-revision' },
       );
-      const inserted = await insertRevision(client, input.next);
-      if (!inserted) {
-        await client.query('ROLLBACK');
-        return 'CONFLICT';
-      }
-      await client.query('COMMIT');
-      return 'UPDATED';
     } catch (error) {
-      await client.query('ROLLBACK');
+      if (isOutcomeUnknown(error)) {
+        const clientRequestId = input.next.clientRequestId;
+        if (clientRequestId) {
+          const durable = await this.findByClientRequestId({
+            projectId: input.projectId,
+            clientRequestId,
+          });
+          if (durable) {
+            if (sameReplaceRequest(durable, input.next)) return 'UPDATED';
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage:
+                'Credential write request identity is already bound to different material.',
+              module: 'credential-vault-postgres',
+              operation: 'reconcile-credential-revision',
+              cause: error,
+            });
+          }
+        }
+        throw error;
+      }
+      if (error instanceof ShotgunError && error.code === 'NOT_FOUND') return 'NOT_FOUND';
+      if (error instanceof ShotgunError && error.code === 'CONFLICT') return 'CONFLICT';
       throw error;
-    } finally {
-      client.release();
     }
   }
 

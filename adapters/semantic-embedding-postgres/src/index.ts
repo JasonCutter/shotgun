@@ -7,6 +7,8 @@ import type {
   SemanticEmbeddingProfileStatus,
   SemanticNormalizationPolicy,
 } from '../../../packages/contracts/src/index.js';
+import { ShotgunError, stableJson } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 type ProfileRow = QueryResultRow & {
   readonly project_id: string;
@@ -53,6 +55,38 @@ const mapRow = (row: ProfileRow): SemanticEmbeddingProfile => ({
   ...(row.activated_at ? { activatedAt: toIso(row.activated_at) } : {}),
 });
 
+const sameProfileMaterial = (
+  expected: SemanticEmbeddingProfile,
+  actual: SemanticEmbeddingProfile,
+): boolean =>
+  stableJson({
+    ...expected,
+    projectId: expected.projectId.trim(),
+    profileId: expected.profileId.trim(),
+    providerId: expected.providerId.trim(),
+    embeddingModelId: expected.embeddingModelId.trim(),
+    credentialId: expected.credentialId.trim(),
+    representationVersion: expected.representationVersion.trim(),
+    createdBy: expected.createdBy ?? expected.updatedBy,
+    updatedBy: expected.updatedBy,
+    activatedAt: expected.activatedAt ?? undefined,
+  }) ===
+  stableJson({
+    ...actual,
+    projectId: actual.projectId.trim(),
+    profileId: actual.profileId.trim(),
+    providerId: actual.providerId.trim(),
+    embeddingModelId: actual.embeddingModelId.trim(),
+    credentialId: actual.credentialId.trim(),
+    representationVersion: actual.representationVersion.trim(),
+    createdBy: actual.createdBy,
+    updatedBy: actual.updatedBy,
+    activatedAt: actual.activatedAt ?? undefined,
+  });
+
+const isOutcomeUnknown = (error: unknown): error is ShotgunError =>
+  error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
+
 export class PostgresSemanticEmbeddingProfileRepository implements SemanticEmbeddingProfileRepositoryPort {
   constructor(private readonly pool: Pool) {}
 
@@ -94,62 +128,80 @@ export class PostgresSemanticEmbeddingProfileRepository implements SemanticEmbed
     readonly expectedRevision: number;
     readonly next: SemanticEmbeddingProfile;
   }): Promise<'CREATED' | 'UPDATED' | 'CONFLICT'> {
-    const client = await this.pool.connect();
     try {
-      await client.query('BEGIN');
-      const currentRes = await client.query<{ max_rev: number | null }>(
-        `SELECT MAX(profile_revision) AS max_rev
-         FROM projection.semantic_embedding_profiles
-         WHERE project_id = $1`,
-        [input.next.projectId.trim()],
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const currentRes = await client.query<{ max_rev: number | null }>(
+            `SELECT MAX(profile_revision) AS max_rev
+             FROM projection.semantic_embedding_profiles
+             WHERE project_id = $1`,
+            [input.next.projectId.trim()],
+          );
+          const currentMax = currentRes.rows[0]?.max_rev ?? 0;
+          if (
+            currentMax !== input.expectedRevision ||
+            input.next.profileRevision !== input.expectedRevision + 1
+          ) {
+            throw new ShotgunError({
+              code: 'CONFLICT',
+              safeMessage: 'The semantic embedding profile revision changed.',
+              module: 'semantic-embedding-postgres',
+              operation: 'save-semantic-embedding-profile-revision',
+            });
+          }
+          await client.query(
+            `INSERT INTO projection.semantic_embedding_profiles (
+              project_id, profile_id, profile_revision, provider_id, embedding_model_id,
+              credential_id, credential_revision, representation_version, dimension,
+              distance_metric, normalization_policy, status, created_at, created_by,
+              updated_at, updated_by, activated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+            [
+              input.next.projectId.trim(),
+              input.next.profileId.trim(),
+              input.next.profileRevision,
+              input.next.providerId.trim(),
+              input.next.embeddingModelId.trim(),
+              input.next.credentialId.trim(),
+              input.next.credentialRevision,
+              input.next.representationVersion.trim(),
+              input.next.dimension,
+              input.next.distanceMetric,
+              input.next.normalizationPolicy,
+              input.next.status,
+              input.next.createdAt,
+              input.next.createdBy ?? input.next.updatedBy,
+              input.next.updatedAt,
+              input.next.updatedBy,
+              input.next.activatedAt ?? null,
+            ],
+          );
+          return input.expectedRevision === 0 ? 'CREATED' : 'UPDATED';
+        },
+        {
+          module: 'semantic-embedding-postgres',
+          operation: 'save-semantic-embedding-profile-revision',
+        },
       );
-      const currentMax = currentRes.rows[0]?.max_rev ?? 0;
-      if (currentMax !== input.expectedRevision) {
-        await client.query('ROLLBACK');
-        return 'CONFLICT';
-      }
-      if (input.next.profileRevision !== input.expectedRevision + 1) {
-        await client.query('ROLLBACK');
-        return 'CONFLICT';
-      }
-      await client.query(
-        `INSERT INTO projection.semantic_embedding_profiles (
-          project_id, profile_id, profile_revision, provider_id, embedding_model_id,
-          credential_id, credential_revision, representation_version, dimension,
-          distance_metric, normalization_policy, status, created_at, created_by,
-          updated_at, updated_by, activated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
-        [
-          input.next.projectId.trim(),
-          input.next.profileId.trim(),
-          input.next.profileRevision,
-          input.next.providerId.trim(),
-          input.next.embeddingModelId.trim(),
-          input.next.credentialId.trim(),
-          input.next.credentialRevision,
-          input.next.representationVersion.trim(),
-          input.next.dimension,
-          input.next.distanceMetric,
-          input.next.normalizationPolicy,
-          input.next.status,
-          input.next.createdAt,
-          input.next.createdBy ?? input.next.updatedBy,
-          input.next.updatedAt,
-          input.next.updatedBy,
-          input.next.activatedAt ?? null,
-        ],
-      );
-      await client.query('COMMIT');
-      return input.expectedRevision === 0 ? 'CREATED' : 'UPDATED';
     } catch (error) {
-      await client.query('ROLLBACK').catch(() => {});
       const pgError = error as { code?: string };
       if (pgError.code === '23505') {
         return 'CONFLICT';
       }
+      if (isOutcomeUnknown(error)) {
+        const durable = await this.findByRevision(
+          input.next.projectId.trim(),
+          input.next.profileRevision,
+        );
+        if (!durable) throw error;
+        if (sameProfileMaterial(input.next, durable)) {
+          return input.expectedRevision === 0 ? 'CREATED' : 'UPDATED';
+        }
+        return 'CONFLICT';
+      }
+      if (error instanceof ShotgunError && error.code === 'CONFLICT') return 'CONFLICT';
       throw error;
-    } finally {
-      client.release();
     }
   }
 

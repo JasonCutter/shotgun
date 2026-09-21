@@ -20,6 +20,7 @@ import type { SecurityHeaders } from '../server.js';
 import {
   acceptPrincipalProjectCreateCommand,
   acceptSection2Command,
+  markAcceptedCommandOutcomeUnknown,
   rejectAcceptedCommand,
   requireRevisionPrecondition,
   toProductApiCommandError,
@@ -180,7 +181,15 @@ export function registerProjectRoutes(
             committedProject = result.project;
           }
         } catch (error) {
-          await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+          if (
+            !(await markAcceptedCommandOutcomeUnknown(
+              commandGateway,
+              accepted.outcome.commandId,
+              error,
+            ))
+          ) {
+            await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+          }
           throw error;
         }
         try {
@@ -271,7 +280,15 @@ export function registerProjectRoutes(
         });
         return { outcome, project };
       } catch (error) {
-        await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+        if (
+          !(await markAcceptedCommandOutcomeUnknown(
+            commandGateway,
+            accepted.outcome.commandId,
+            error,
+          ))
+        ) {
+          await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+        }
         throw error;
       }
     } catch (error) {
@@ -462,7 +479,15 @@ const registerExistingProjectCommand = (input: {
           });
           return { outcome, project };
         } catch (error) {
-          await rejectAcceptedCommand(input.commandGateway, accepted.outcome.commandId, error);
+          if (
+            !(await markAcceptedCommandOutcomeUnknown(
+              input.commandGateway,
+              accepted.outcome.commandId,
+              error,
+            ))
+          ) {
+            await rejectAcceptedCommand(input.commandGateway, accepted.outcome.commandId, error);
+          }
           throw error;
         }
       } catch (error) {

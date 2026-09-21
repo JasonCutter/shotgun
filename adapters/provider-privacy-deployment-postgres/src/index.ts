@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 import {
   ProviderExternalTransferPolicyError,
@@ -86,71 +87,67 @@ export class PostgresProviderExternalTransferApprovalRepository implements Provi
     readonly expectedApprovalRevision: number;
     readonly proposedBy: string;
   }): Promise<ProviderExternalTransferApprovalProposal> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      await this.assertOwner(client, input.projectId, input.proposedBy);
-      const current = await this.currentRevision(client, input.projectId, input.providerId, true);
-      if (current !== input.expectedApprovalRevision) {
-        throw new ProviderExternalTransferPolicyError(
-          'REVISION_CONFLICT',
-          `Expected provider approval revision ${input.expectedApprovalRevision} but current is ${current}.`,
-        );
-      }
-      const proposalId = `provider-transfer-review-${randomUUID()}`;
-      const createdAt = new Date();
-      await client.query(
-        `INSERT INTO settings.settings_review_proposals
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        await this.assertOwner(client, input.projectId, input.proposedBy);
+        const current = await this.currentRevision(client, input.projectId, input.providerId, true);
+        if (current !== input.expectedApprovalRevision) {
+          throw new ProviderExternalTransferPolicyError(
+            'REVISION_CONFLICT',
+            `Expected provider approval revision ${input.expectedApprovalRevision} but current is ${current}.`,
+          );
+        }
+        const proposalId = `provider-transfer-review-${randomUUID()}`;
+        const createdAt = new Date();
+        await client.query(
+          `INSERT INTO settings.settings_review_proposals
            (proposal_id, project_id, resource_id, directive_type, description, status, payload, created_at)
          VALUES ($1, $2, $3, 'PROVIDER_EXTERNAL_TRANSFER_APPROVAL', $4, 'PROPOSED', $5, $6)`,
-        [
-          proposalId,
-          input.projectId,
-          `provider/${input.providerId}/external-transfer`,
-          `Review private Project context transfer to ${input.providerId}.`,
-          JSON.stringify({
-            providerId: input.providerId,
-            approved: input.approved,
-            expectedApprovalRevision: input.expectedApprovalRevision,
-            proposedBy: input.proposedBy,
-          }),
-          createdAt,
-        ],
-      );
-      await client.query(
-        `INSERT INTO settings.settings_audit_events
+          [
+            proposalId,
+            input.projectId,
+            `provider/${input.providerId}/external-transfer`,
+            `Review private Project context transfer to ${input.providerId}.`,
+            JSON.stringify({
+              providerId: input.providerId,
+              approved: input.approved,
+              expectedApprovalRevision: input.expectedApprovalRevision,
+              proposedBy: input.proposedBy,
+            }),
+            createdAt,
+          ],
+        );
+        await client.query(
+          `INSERT INTO settings.settings_audit_events
            (event_id, project_id, actor_id, action_name, risk_level, details, timestamp)
          VALUES ($1, $2, $3, 'PROVIDER_EXTERNAL_TRANSFER_REVIEW_PROPOSED', 'HIGH', $4, $5)`,
-        [
-          randomUUID(),
-          input.projectId,
-          input.proposedBy,
-          JSON.stringify({
-            proposalId,
-            providerId: input.providerId,
-            approved: input.approved,
-            expectedApprovalRevision: input.expectedApprovalRevision,
-          }),
-          createdAt,
-        ],
-      );
-      await client.query('COMMIT');
-      return Object.freeze({
-        proposalId,
-        projectId: input.projectId,
-        providerId: input.providerId,
-        approved: input.approved,
-        expectedApprovalRevision: input.expectedApprovalRevision,
-        proposedBy: input.proposedBy,
-        status: 'PROPOSED' as const,
-        createdAt: createdAt.toISOString(),
-      });
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+          [
+            randomUUID(),
+            input.projectId,
+            input.proposedBy,
+            JSON.stringify({
+              proposalId,
+              providerId: input.providerId,
+              approved: input.approved,
+              expectedApprovalRevision: input.expectedApprovalRevision,
+            }),
+            createdAt,
+          ],
+        );
+        return Object.freeze({
+          proposalId,
+          projectId: input.projectId,
+          providerId: input.providerId,
+          approved: input.approved,
+          expectedApprovalRevision: input.expectedApprovalRevision,
+          proposedBy: input.proposedBy,
+          status: 'PROPOSED' as const,
+          createdAt: createdAt.toISOString(),
+        });
+      },
+      { module: 'provider-privacy-deployment-postgres', operation: 'create-proposal' },
+    );
   }
 
   async approveProposal(input: {
@@ -160,146 +157,142 @@ export class PostgresProviderExternalTransferApprovalRepository implements Provi
     readonly reviewedBy: string;
     readonly expectedApprovalRevision: number;
   }): Promise<ProviderExternalTransferApproval> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      await this.assertOwner(client, input.projectId, input.reviewedBy);
-      const proposal = await client.query<ProposalRow>(
-        `SELECT proposal_id, project_id, directive_type, status, payload, created_at
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        await this.assertOwner(client, input.projectId, input.reviewedBy);
+        const proposal = await client.query<ProposalRow>(
+          `SELECT proposal_id, project_id, directive_type, status, payload, created_at
          FROM settings.settings_review_proposals
          WHERE proposal_id = $1
          FOR UPDATE`,
-        [input.proposalId],
-      );
-      const row = proposal.rows[0];
-      if (
-        !row ||
-        row.project_id !== input.projectId ||
-        row.directive_type !== 'PROVIDER_EXTERNAL_TRANSFER_APPROVAL' ||
-        row.status !== 'PROPOSED' ||
-        row.payload.providerId !== input.providerId ||
-        row.payload.expectedApprovalRevision !== input.expectedApprovalRevision
-      ) {
-        throw new ProviderExternalTransferPolicyError(
-          'PROPOSAL_STALE',
-          'The provider external transfer review proposal is stale or does not match this approval.',
+          [input.proposalId],
         );
-      }
+        const row = proposal.rows[0];
+        if (
+          !row ||
+          row.project_id !== input.projectId ||
+          row.directive_type !== 'PROVIDER_EXTERNAL_TRANSFER_APPROVAL' ||
+          row.status !== 'PROPOSED' ||
+          row.payload.providerId !== input.providerId ||
+          row.payload.expectedApprovalRevision !== input.expectedApprovalRevision
+        ) {
+          throw new ProviderExternalTransferPolicyError(
+            'PROPOSAL_STALE',
+            'The provider external transfer review proposal is stale or does not match this approval.',
+          );
+        }
 
-      const currentResult = await client.query<ApprovalRow>(
-        `SELECT ${approvalColumns}
+        const currentResult = await client.query<ApprovalRow>(
+          `SELECT ${approvalColumns}
          FROM settings.provider_external_transfer_approvals
          WHERE project_id = $1 AND provider_id = $2
          FOR UPDATE`,
-        [input.projectId, input.providerId],
-      );
-      const current = currentResult.rows[0];
-      const currentRevision = current ? Number(current.approval_revision) : 0;
-      if (currentRevision !== input.expectedApprovalRevision) {
-        throw new ProviderExternalTransferPolicyError(
-          'REVISION_CONFLICT',
-          `Expected provider approval revision ${input.expectedApprovalRevision} but current is ${currentRevision}.`,
+          [input.projectId, input.providerId],
         );
-      }
-      if (typeof row.payload.approved !== 'boolean') {
-        throw new ProviderExternalTransferPolicyError(
-          'PROPOSAL_STALE',
-          'The approval proposal payload is invalid.',
-        );
-      }
+        const current = currentResult.rows[0];
+        const currentRevision = current ? Number(current.approval_revision) : 0;
+        if (currentRevision !== input.expectedApprovalRevision) {
+          throw new ProviderExternalTransferPolicyError(
+            'REVISION_CONFLICT',
+            `Expected provider approval revision ${input.expectedApprovalRevision} but current is ${currentRevision}.`,
+          );
+        }
+        if (typeof row.payload.approved !== 'boolean') {
+          throw new ProviderExternalTransferPolicyError(
+            'PROPOSAL_STALE',
+            'The approval proposal payload is invalid.',
+          );
+        }
 
-      const reviewedAt = new Date();
-      const nextRevision = currentRevision + 1;
-      await client.query(
-        `INSERT INTO settings.provider_external_transfer_approval_revisions
+        const reviewedAt = new Date();
+        const nextRevision = currentRevision + 1;
+        await client.query(
+          `INSERT INTO settings.provider_external_transfer_approval_revisions
            (project_id, provider_id, approved, approval_revision, reviewed_by, reviewed_at)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          input.projectId,
-          input.providerId,
-          row.payload.approved,
-          nextRevision,
-          input.reviewedBy,
-          reviewedAt,
-        ],
-      );
-      if (current) {
-        await client.query(
-          `UPDATE settings.provider_external_transfer_approvals
+          [
+            input.projectId,
+            input.providerId,
+            row.payload.approved,
+            nextRevision,
+            input.reviewedBy,
+            reviewedAt,
+          ],
+        );
+        if (current) {
+          await client.query(
+            `UPDATE settings.provider_external_transfer_approvals
            SET approved = $3, approval_revision = $4, reviewed_by = $5, reviewed_at = $6
            WHERE project_id = $1 AND provider_id = $2`,
-          [
-            input.projectId,
-            input.providerId,
-            row.payload.approved,
-            nextRevision,
-            input.reviewedBy,
-            reviewedAt,
-          ],
-        );
-      } else {
-        await client.query(
-          `INSERT INTO settings.provider_external_transfer_approvals
+            [
+              input.projectId,
+              input.providerId,
+              row.payload.approved,
+              nextRevision,
+              input.reviewedBy,
+              reviewedAt,
+            ],
+          );
+        } else {
+          await client.query(
+            `INSERT INTO settings.provider_external_transfer_approvals
              (project_id, provider_id, approved, approval_revision, reviewed_by, reviewed_at)
            VALUES ($1, $2, $3, $4, $5, $6)`,
-          [
-            input.projectId,
-            input.providerId,
-            row.payload.approved,
-            nextRevision,
-            input.reviewedBy,
-            reviewedAt,
-          ],
-        );
-      }
-      await client.query(
-        `UPDATE settings.settings_review_proposals
+            [
+              input.projectId,
+              input.providerId,
+              row.payload.approved,
+              nextRevision,
+              input.reviewedBy,
+              reviewedAt,
+            ],
+          );
+        }
+        await client.query(
+          `UPDATE settings.settings_review_proposals
          SET status = 'APPROVED'
          WHERE proposal_id = $1`,
-        [input.proposalId],
-      );
-      await client.query(
-        `UPDATE settings.settings_review_proposals
+          [input.proposalId],
+        );
+        await client.query(
+          `UPDATE settings.settings_review_proposals
          SET status = 'REJECTED'
          WHERE project_id = $1
            AND directive_type = 'PROVIDER_EXTERNAL_TRANSFER_APPROVAL'
            AND resource_id = $2
            AND status = 'PROPOSED'
            AND proposal_id <> $3`,
-        [input.projectId, `provider/${input.providerId}/external-transfer`, input.proposalId],
-      );
-      await client.query(
-        `INSERT INTO settings.settings_audit_events
+          [input.projectId, `provider/${input.providerId}/external-transfer`, input.proposalId],
+        );
+        await client.query(
+          `INSERT INTO settings.settings_audit_events
            (event_id, project_id, actor_id, action_name, risk_level, details, timestamp)
          VALUES ($1, $2, $3, 'PROVIDER_EXTERNAL_TRANSFER_REVIEW_APPROVED', 'HIGH', $4, $5)`,
-        [
-          randomUUID(),
-          input.projectId,
-          input.reviewedBy,
-          JSON.stringify({
-            proposalId: input.proposalId,
-            providerId: input.providerId,
-            approved: row.payload.approved,
-            approvalRevision: nextRevision,
-          }),
-          reviewedAt,
-        ],
-      );
-      await client.query('COMMIT');
-      return {
-        projectId: input.projectId,
-        providerId: input.providerId,
-        approved: row.payload.approved,
-        approvalRevision: nextRevision,
-        reviewedBy: input.reviewedBy,
-        reviewedAt: reviewedAt.toISOString(),
-      };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+          [
+            randomUUID(),
+            input.projectId,
+            input.reviewedBy,
+            JSON.stringify({
+              proposalId: input.proposalId,
+              providerId: input.providerId,
+              approved: row.payload.approved,
+              approvalRevision: nextRevision,
+            }),
+            reviewedAt,
+          ],
+        );
+        return {
+          projectId: input.projectId,
+          providerId: input.providerId,
+          approved: row.payload.approved,
+          approvalRevision: nextRevision,
+          reviewedBy: input.reviewedBy,
+          reviewedAt: reviewedAt.toISOString(),
+        };
+      },
+      { module: 'provider-privacy-deployment-postgres', operation: 'approve-proposal' },
+    );
   }
 
   async isProjectOwner(input: {

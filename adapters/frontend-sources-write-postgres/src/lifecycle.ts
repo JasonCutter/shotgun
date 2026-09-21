@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   CancelSourcesSubmissionInput,
   MarkSourcesOutcomeIndeterminateInput,
@@ -197,34 +198,30 @@ export class PostgresSourcesIntakeLifecycle implements SourcesIntakeLifecyclePor
     submissionId: string,
     action: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-        `${projectId}:${submissionId}`,
-      ]);
-      const submission = await client.query(
-        `SELECT 1 FROM source_product.intake_submissions
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+          `${projectId}:${submissionId}`,
+        ]);
+        const submission = await client.query(
+          `SELECT 1 FROM source_product.intake_submissions
          WHERE project_id = $1 AND submission_id = $2 FOR UPDATE`,
-        [projectId, submissionId],
-      );
-      if (submission.rowCount !== 1) {
-        throw new ShotgunError({
-          code: 'NOT_FOUND',
-          safeMessage: 'The Sources submission is not available in this Project.',
-          module: 'frontend-sources-write-postgres',
-          operation: 'lock-submission',
-        });
-      }
-      const result = await action(client);
-      await client.query('COMMIT');
-      return result;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+          [projectId, submissionId],
+        );
+        if (submission.rowCount !== 1) {
+          throw new ShotgunError({
+            code: 'NOT_FOUND',
+            safeMessage: 'The Sources submission is not available in this Project.',
+            module: 'frontend-sources-write-postgres',
+            operation: 'lock-submission',
+          });
+        }
+        const result = await action(client);
+        return result;
+      },
+      { module: 'frontend-sources-write-postgres', operation: 'sources-lifecycle-transaction' },
+    );
   }
 
   private async lockItems(

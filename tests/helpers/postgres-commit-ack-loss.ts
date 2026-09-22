@@ -1,4 +1,7 @@
 import type { Pool } from 'pg';
+import { expect } from 'vitest';
+
+import { ShotgunError } from '../../packages/contracts/src/index.js';
 
 export const POST_COMMIT_ACK_LOSS = 'DETERMINISTIC_POST_COMMIT_ACK_LOSS_FAULT_INJECTION';
 
@@ -72,4 +75,36 @@ export const createPostCommitAckLossPool = (
     },
   } as Pool;
   return { pool: injectedPool, trace };
+};
+
+/**
+ * Test-only assertion proving that an operation surfaces structured OUTCOME_UNKNOWN
+ * when a post-COMMIT acknowledgement is lost, preserving the underlying fault as cause.
+ */
+export const expectCommitAckLossOutcomeUnknown = async (
+  operation: Promise<unknown> | (() => Promise<unknown>),
+  expectedCauseMessage = 'synthetic commit acknowledgement loss',
+): Promise<ShotgunError> => {
+  let thrown: unknown;
+  try {
+    if (typeof operation === 'function') {
+      await operation();
+    } else {
+      await operation;
+    }
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(ShotgunError);
+  const error = thrown as ShotgunError;
+  expect(error).toMatchObject({
+    code: 'OUTCOME_UNKNOWN',
+  });
+  expect(error.safeMessage).toMatch(
+    /The PostgreSQL transaction outcome could not be resolved after COMMIT was attempted/i,
+  );
+  expect((error.cause as { message?: string } | undefined)?.message).toContain(
+    expectedCauseMessage,
+  );
+  return error;
 };

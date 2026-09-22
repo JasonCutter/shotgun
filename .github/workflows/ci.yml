@@ -80,6 +80,8 @@ jobs:
         run: npm run lint
       - name: Typecheck
         run: npm run typecheck
+      - name: Verify TS-6 C2 reachability authority and derived lineage
+        run: npm run verify:ts6-c2
       - name: Audit dependencies
         run: npm run oss:audit
       - name: Generate SBOM

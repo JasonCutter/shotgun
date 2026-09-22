@@ -1,0 +1,1586 @@
+{
+  "generatedAt": "2026-09-21T05:30:02.396Z",
+  "note": "Coverage authority operates on RELATIONS (boundaryId, testEvidenceId), not on evidence records. golden.v2 was not modified.",
+  "totals": {
+    "evidenceRecords": 69,
+    "boundaryToEvidenceEdges": 112,
+    "provenEdges": 100,
+    "nonProvenEdges": 12
+  },
+  "classification": {
+    "BIDIRECTIONAL/RELATION_RESOLVED": 43,
+    "BIDIRECTIONAL/RELATION_UNRESOLVED": 26,
+    "STALE_BACKREF/RELATION_RESOLVED": 19,
+    "STALE_BACKREF/RELATION_UNRESOLVED": 24
+  },
+  "edges": [
+    {
+      "boundaryId": "raw:adapters/postgres-stage4/src/index.ts:574",
+      "evidenceId": "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 4 provider output acceptance: exact retry is idempotent after durable acceptance",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "raw:adapters/postgres-stage4/src/index.ts:574"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "raw:adapters/postgres-stage4/src/index.ts:730",
+      "evidenceId": "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 4 provider outcome-unknown: exact retry returns the same safe durable state",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "raw:adapters/postgres-stage4/src/index.ts:730"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "raw:adapters/semantic-corpus-postgres/src/index.ts:151",
+      "evidenceId": "test:tests/database/akp-8-wp3-remaining-e2e-acceptance.database.test.ts:removes an obsolete resource from active semantic membership and proves incremental/full equivalence",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "raw:adapters/semantic-corpus-postgres/src/index.ts:151"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/ai-configuration-postgres/src/index.ts:106",
+      "evidenceId": "test:tests/database/akp-2-wp4-discovery-backup-restore.database.test.ts:backs up and restores the durable finding and complete lifecycle history",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/ai-configuration-postgres/src/index.ts:106"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+      "evidenceId": "test:tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts:re-enters the same durable event on a rotated job and snapshots the current DLQ job",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/connector-runtime-postgres/src/index.ts:1199"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "PATH_NOT_RESOLVED",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "PATH_NOT_RESOLVED"
+    },
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284",
+      "evidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/connector-runtime-postgres/src/index.ts:1284"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "CALL_OUTSIDE_TARGET_BLOCK",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "CALL_OUTSIDE_TARGET_BLOCK"
+    },
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "evidenceId": "test:tests/database/post-tf-risk002-connector-fencing-proof.test.ts:Scenario A: production recovery leaves a real running attempt behind",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/connector-runtime-postgres/src/index.ts:1389"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "NO_QUALIFIED_CALL",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "NO_QUALIFIED_CALL"
+    },
+    {
+      "boundaryId": "safe:adapters/credential-vault-postgres/src/index.ts:161",
+      "evidenceId": "test:tests/database/a2-credential-vault.test.ts:rolls back replace when the next revision insert loses a request-identity conflict",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/credential-vault-postgres/src/index.ts:161"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-feedback-postgres/src/index.ts:444",
+      "evidenceId": "test:tests/contract/akp-7-wp3-discovery-presentation.contract.test.ts:keeps utility and suppression principal-scoped and rejects cursor replay",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:444"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-feedback-postgres/src/index.ts:727",
+      "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:360",
+      "evidenceId": "test:tests/contract/ai-configuration.contract.test.ts:returns registry descriptors and saves only a validated exact credential reference",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-finding-postgres/src/index.ts:360"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:385",
+      "evidenceId": "test:tests/database/akp-8-wp3-final-acceptance-correction.database.test.ts:persists the actual ACTION_SUGGESTION generation through FindingReady, re-entry and Review",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-finding-postgres/src/index.ts:385"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:736",
+      "evidenceId": "test:tests/database/akp-2-wp4-discovery-backup-restore.database.test.ts:backs up and restores the durable finding and complete lifecycle history",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/ai-configuration-postgres/src/index.ts:106"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-model-profile-postgres/src/index.ts:126",
+      "evidenceId": "test:tests/database/akp-2-wp4-discovery-backup-restore.database.test.ts:backs up and restores the durable finding and complete lifecycle history",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/ai-configuration-postgres/src/index.ts:106"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-model-profile-postgres/src/index.ts:209",
+      "evidenceId": "test:tests/database/akp-3-wp3-discovery-model-profile-postgres.database.test.ts:retire/activate is transactional and leaves at most one active profile",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-model-profile-postgres/src/index.ts:209"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:567",
+      "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:777",
+      "evidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:durably defers retryable failures, advances the retry boundary, and transitions to processed",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-reentry-postgres/src/index.ts:777"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "PATH_NOT_RESOLVED",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "PATH_NOT_RESOLVED"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:987",
+      "evidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:creates one manifest/candidate atomically and resolves a production-shaped unversioned ref",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-reentry-postgres/src/index.ts:987"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "PATH_NOT_RESOLVED",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "PATH_NOT_RESOLVED"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1050",
+      "evidenceId": "test:tests/database/akp-4-wp1-discovery-runtime-postgres.database.test.ts:persists the full trigger/job binding and prevents duplicate logical jobs across instances",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:1050"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1155",
+      "evidenceId": "test:tests/database/akp-4-wp1-discovery-runtime-postgres.database.test.ts:persists projection waiting, clears it on transition, and retains run/attempt history",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:1155"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1232",
+      "evidenceId": "test:tests/database/akp-4-wp1-discovery-runtime-postgres.database.test.ts:persists projection waiting, clears it on transition, and retains run/attempt history",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:1155"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1298",
+      "evidenceId": "test:tests/database/akp-4-wp1-discovery-runtime-postgres.database.test.ts:persists projection waiting, clears it on transition, and retains run/attempt history",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:1155"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1393",
+      "evidenceId": "test:tests/database/akp-4-wp1-discovery-runtime-postgres.database.test.ts:persists projection waiting, clears it on transition, and retains run/attempt history",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:1155"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1488",
+      "evidenceId": "test:tests/database/akp-4-wp1-discovery-runtime-postgres.database.test.ts:persists projection waiting, clears it on transition, and retains run/attempt history",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:1155"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1554",
+      "evidenceId": "test:tests/database/akp-4-wp1-discovery-runtime-postgres.database.test.ts:retains typed stage history and rejects cross-project job/run/attempt attachment",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:1554"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1617",
+      "evidenceId": "test:tests/database/akp-4-wp1-discovery-runtime-postgres.database.test.ts:retains typed stage history and rejects cross-project job/run/attempt attachment",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:1554"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1689",
+      "evidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:converges concurrent claimers to one Run and seven durable stages",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:1689"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2051",
+      "evidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:does not claim WAITING_FOR_PROJECTION and rejects stale fences after reclaim",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2051"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2093",
+      "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "NO_QUALIFIED_CALL",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "NO_QUALIFIED_CALL"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2123",
+      "evidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:does not claim WAITING_FOR_PROJECTION and rejects stale fences after reclaim",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2051"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2190",
+      "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "NO_QUALIFIED_CALL",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "NO_QUALIFIED_CALL"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2257",
+      "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "NO_QUALIFIED_CALL",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "NO_QUALIFIED_CALL"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2353",
+      "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "NO_QUALIFIED_CALL",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "NO_QUALIFIED_CALL"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2435",
+      "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "NO_QUALIFIED_CALL",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "NO_QUALIFIED_CALL"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2608",
+      "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "NO_QUALIFIED_CALL",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "NO_QUALIFIED_CALL"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2844",
+      "evidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:persists retryable failure context for the claimed runtime lease",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2844"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2959",
+      "evidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:continues budget checkpoints under the active fence",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2959"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3053",
+      "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "NO_QUALIFIED_CALL",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "NO_QUALIFIED_CALL"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3144",
+      "evidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:releases a crashed provider reservation slot after reclaim while retaining cumulative admission",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:3144"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3209",
+      "evidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:releases a crashed provider reservation slot after reclaim while retaining cumulative admission",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:3144"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3302",
+      "evidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:replays FindingReady after save/publication crashes and across DOMAIN_RETRY without duplication",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:3302"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:439",
+      "evidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity)",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-activity-postgres/src/index.ts:439"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "CALL_OUTSIDE_TARGET_BLOCK",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "CALL_OUTSIDE_TARGET_BLOCK"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:91",
+      "evidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:serializes a concurrent upsert and rebuild so a lower revision never wins",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-activity-postgres/src/index.ts:91"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_OWNER_ATOMICITY",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_OWNER_ATOMICITY"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:1751",
+      "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2421",
+      "evidenceId": "test:tests/database/frontend-ask-write-postgres.database.test.ts:commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2421"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_OWNER_ATOMICITY",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_OWNER_ATOMICITY"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:173",
+      "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:110",
+      "evidenceId": "test:tests/browser/frontend-settings-privacy-flow.spec.ts:HFM-S7-C6 Settings privacy flow: AI review required -> Privacy proposal -> Approval",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-command-gateway-postgres/src/index.ts:110"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "UNQUALIFIED_RECEIVER",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "UNQUALIFIED_RECEIVER"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:279",
+      "evidenceId": "test:tests/database/adr155-post-handler-outcome-unknown.test.ts:converges a committed dedup completion when its acknowledgement is lost",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-command-gateway-postgres/src/index.ts:279"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:104",
+      "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:114",
+      "evidenceId": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-external-action-postgres/src/index.ts:114"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-history-postgres/src/history-projection-store.ts:394",
+      "evidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity)",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/frontend-activity-postgres/src/index.ts:439"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "CALL_OUTSIDE_TARGET_BLOCK",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "CALL_OUTSIDE_TARGET_BLOCK"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-history-postgres/src/index.ts:127",
+      "evidenceId": "test:tests/database/frontend-history-payload-state-postgres.test.ts:flips the sidecar to PURGED_BY_POLICY and appends the owner-local purge audit atomically (canonical)",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-history-postgres/src/index.ts:127"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-history-postgres/src/index.ts:208",
+      "evidenceId": "test:tests/database/frontend-history-payload-state-postgres.test.ts:flips the sidecar to PURGED_BY_POLICY and appends the owner-local purge audit atomically (canonical)",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/frontend-history-postgres/src/index.ts:127"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:55",
+      "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:65",
+      "evidenceId": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/frontend-external-action-postgres/src/index.ts:114"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:162",
+      "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:172",
+      "evidenceId": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/frontend-external-action-postgres/src/index.ts:114"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:811",
+      "evidenceId": "test:tests/contract/ai-configuration.contract.test.ts:returns registry descriptors and saves only a validated exact credential reference",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-finding-postgres/src/index.ts:360"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/index.ts:128",
+      "evidenceId": "test:tests/database/frontend-phase-2-section-1-sources-persistence.test.ts:commits Product and Stage 2 owners atomically and replays the accepted command",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-sources-write-postgres/src/index.ts:128"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/index.ts:209",
+      "evidenceId": "test:tests/database/frontend-phase-2-section-1-duplicate-persistence.test.ts:rejects a stale Decision and accepts only one concurrent Disposition",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-sources-write-postgres/src/index.ts:209"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/index.ts:280",
+      "evidenceId": "test:tests/database/frontend-phase-2-section-1-duplicate-persistence.test.ts:rejects a stale Decision and accepts only one concurrent Disposition",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/frontend-sources-write-postgres/src/index.ts:209"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/lifecycle.ts:201",
+      "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485",
+      "evidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "MISSING_TEST_BLOCK",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "MISSING_TEST_BLOCK"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:272",
+      "evidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:E2E-A: persists a fresh DeepSeek Product configuration and routes a new durable Ask through its exact pin",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:272"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "UNQUALIFIED_RECEIVER",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "UNQUALIFIED_RECEIVER"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:467",
+      "evidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:Stage3 first attempt throws → retry → same SourceId/SourceVersionId → Stage3 completes → Evidence exists → no duplicate SourceVersion",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:467"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_OWNER_ATOMICITY",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_OWNER_ATOMICITY"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:508",
+      "evidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:508"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_OWNER_ATOMICITY",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_OWNER_ATOMICITY"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:751",
+      "evidenceId": "test:tests/database/frontend-phase-2-section-1-product-write.test.ts:creates one Source, requires an exact-duplicate decision, and reuses the pinned Version",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:751"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941",
+      "evidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:E2E-D: routes a new credential revision while an older failed Run retries with its original revision",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "UNQUALIFIED_RECEIVER",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "UNQUALIFIED_RECEIVER"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-auth/src/index.ts:145",
+      "evidenceId": "test:tests/database/adr163-product-r19-postgres.test.ts:reconciles Product route ack loss without replaying the resolver",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-auth/src/index.ts:145"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-auth/src/index.ts:70",
+      "evidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/connector-runtime-postgres/src/index.ts:1284"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "CALL_OUTSIDE_TARGET_BLOCK"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage10/src/index.ts:167",
+      "evidenceId": "test:tests/contract/knowledge-workspace-search.contract.test.ts:rejects Derived Inference correlation outside visible graph nodes and evidence",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage10/src/index.ts:167"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "UNQUALIFIED_RECEIVER",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "UNQUALIFIED_RECEIVER"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage10/src/index.ts:85",
+      "evidenceId": "test:tests/contract/compiled-truth.contract.test.ts:serves the additive read snapshot with status fallback and security filtering",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage10/src/index.ts:85"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "UNQUALIFIED_RECEIVER",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "UNQUALIFIED_RECEIVER"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage11/src/index.ts:583",
+      "evidenceId": "test:tests/database/stage-11-action-feedback-outbox.test.ts:proves a published marker after COMMIT acknowledgement loss without redispatch",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage11/src/index.ts:583"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage11/src/index.ts:847",
+      "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage3/src/index.ts:148",
+      "evidenceId": "test:tests/contract/ai-configuration.contract.test.ts:returns registry descriptors and saves only a validated exact credential reference",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-finding-postgres/src/index.ts:360"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage3/src/index.ts:296",
+      "evidenceId": "test:tests/database/frontend-sources-stage4-isolation.test.ts:re-extracts an existing PostgreSQL SourceVersion through the Product route after AI becomes available",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage3/src/index.ts:296"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122",
+      "evidenceId": "test:tests/browser/frontend-cross-phase-negative.spec.ts:Cross-Phase negative deltas CP-NEG-01~06 (no authority, switch isolation, non-disclosure, no auto-canonical, no approval bypass, no approval/commit/execute mix)",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "NO_QUALIFIED_CALL",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "NO_QUALIFIED_CALL"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:491",
+      "evidenceId": "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 3 atomic persistence: reconciles all authorities after ACK loss",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:491"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896",
+      "evidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:converges concurrent claimers to one Run and seven durable stages",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:1689"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:346",
+      "evidenceId": "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 4 ensure: exact retry converges to the committed provider call",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage4/src/index.ts:346"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:440",
+      "evidenceId": "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 4 provider claim: reconciles a committed attempt after ACK loss",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage4/src/index.ts:440"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:504",
+      "evidenceId": "test:tests/database/post-tf-risk001a-proof-matrix.test.ts:Stage 4 provider output acceptance: exact retry is idempotent after durable acceptance",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "raw:adapters/postgres-stage4/src/index.ts:574"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:696",
+      "evidenceId": "test:tests/database/stage-4-postgres.test.ts:does not reclaim terminal failures after restart, but preserves retryable reclaim",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage4/src/index.ts:696"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:841",
+      "evidenceId": "test:tests/contract/adr163-stage6-integrated.contract.test.ts:runs resolved ADD_CLAIM through approval and Stage 6 Canonical +1",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage4/src/index.ts:841"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "UNQUALIFIED_RECEIVER",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "UNQUALIFIED_RECEIVER"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1239",
+      "evidenceId": "test:tests/database/comparison-review-v2-postgres.test.ts:Issue #299: atomically converges only the exact Draft revision to STALE",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage5/src/index.ts:1239"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1340",
+      "evidenceId": "test:tests/database/comparison-reentry-product-postgres.test.ts:executes V2 through the authenticated Product route and reuses the persisted lineage before provider execution",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage5/src/index.ts:1340"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "PATH_NOT_RESOLVED",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "PATH_NOT_RESOLVED"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1458",
+      "evidenceId": "test:tests/database/adr163-product-r19-postgres.test.ts:reconciles Product route ack loss without replaying the resolver",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/postgres-auth/src/index.ts:145"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1611",
+      "evidenceId": "test:tests/database/comparison-review-v2-postgres.test.ts:Issue #299: atomically converges only the exact Draft revision to STALE",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/postgres-stage5/src/index.ts:1239"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1896",
+      "evidenceId": "test:tests/database/comparison-review-v2-postgres.test.ts:ADR-163/R19: reconciles an unknown connector outcome from one immutable resolution",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage5/src/index.ts:1896"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:2131",
+      "evidenceId": "test:tests/database/comparison-review-v2-postgres.test.ts:Issue #299: atomically converges only the exact Draft revision to STALE",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/postgres-stage5/src/index.ts:1239"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:418",
+      "evidenceId": "test:tests/database/stage-5-comparison-v2-postgres.test.ts:P2-01 persists a semantic aggregate with two analyses and two relationships and reloads it",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage5/src/index.ts:418"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_OWNER_ATOMICITY",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_OWNER_ATOMICITY"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:643",
+      "evidenceId": "test:tests/database/stage-5-comparison-v2-postgres.test.ts:P2-08 preserves a legitimate retry as a separate AnalysisRevision attempt",
+      "boundaryStatus": "TEST_ONLY_OR_DEAD",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage5/src/index.ts:643"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage6/src/index.ts:261",
+      "evidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/connector-runtime-postgres/src/index.ts:1284"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "CALL_OUTSIDE_TARGET_BLOCK",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "CALL_OUTSIDE_TARGET_BLOCK"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage6/src/index.ts:507",
+      "evidenceId": "test:tests/database/stage-6-commit-ambiguity.test.ts:returns OUTCOME_UNKNOWN, then resolves all three direct paths by deterministic replay",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage6/src/index.ts:507"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage6/src/index.ts:758",
+      "evidenceId": "test:tests/contract/akp-8-wp2a-canonical-relation-projection.contract.test.ts:keeps the in-memory replacement adapter relation-aware and replay-safe",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage6/src/index.ts:758"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage7/src/index.ts:137",
+      "evidenceId": "test:tests/database/issue-279-stage7-incremental-version.database.test.ts:preserves row lineage while exposing current v3 identity through LexicalRetriever",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage7/src/index.ts:137"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage7/src/index.ts:196",
+      "evidenceId": "test:tests/database/issue-241-empty-canonical-bootstrap-postgres.database.test.ts:durably persists NEW/ADD_CLAIM and one pending Review without semantic execution",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage7/src/index.ts:196"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:114",
+      "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:221",
+      "evidenceId": "test:tests/database/akp-8-wp2r-typed-proposition-conflict.database.test.ts:uses normal application composition and the real Postgres authority to reach Conflict selection",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:221"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1106",
+      "evidenceId": "test:tests/database/akp-3-wp3-discovery-model-profile-postgres.database.test.ts:retire/activate is transactional and leaves at most one active profile",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/discovery-model-profile-postgres/src/index.ts:209"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1229",
+      "evidenceId": "test:tests/database/frontend-section3-bootstrap-postgres.test.ts:persists Project, one Owner, active Session, operation binding, and recoverable outcome",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres/src/index.ts:1229"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1500",
+      "evidenceId": "test:tests/database/section2-postgres.test.ts:updates PostgreSQL principal preferences through the transaction owner",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres/src/index.ts:1500"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1813",
+      "evidenceId": "test:tests/database/adr163-product-r19-postgres.test.ts:reconciles Product route ack loss without replaying the resolver",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/postgres-auth/src/index.ts:145"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:311",
+      "evidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/connector-runtime-postgres/src/index.ts:1284"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "CALL_OUTSIDE_TARGET_BLOCK"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:818",
+      "evidenceId": "test:tests/database/frontend-ask-uploaded-source-resolution.database.test.ts:resolves bounded Evidence for the Browser source-only selection without calling the original reader",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres/src/index.ts:818"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:971",
+      "evidenceId": "test:tests/database/section2-postgres.test.ts:updates PostgreSQL project metadata through the transaction owner",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/postgres/src/index.ts:971"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/project-standing-ai-policy-postgres/src/index.ts:75",
+      "evidenceId": "test:tests/database/akp-2-wp4-discovery-backup-restore.database.test.ts:backs up and restores the durable finding and complete lifecycle history",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/ai-configuration-postgres/src/index.ts:106"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:160",
+      "evidenceId": "test:tests/database/a4-provider-external-transfer-authority.test.ts:fails closed on stale and concurrent approvals while keeping one current revision",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:160"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "PATH_NOT_RESOLVED",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "PATH_NOT_RESOLVED"
+    },
+    {
+      "boundaryId": "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:90",
+      "evidenceId": "test:tests/database/a4-provider-external-transfer-authority.test.ts:adds provider/project authority without rewriting historical Settings and preserves immutable history",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:90"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": false,
+      "resolutionStatus": "PATH_NOT_RESOLVED",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "PATH_NOT_RESOLVED"
+    },
+    {
+      "boundaryId": "safe:adapters/semantic-embedding-postgres/src/index.ts:132",
+      "evidenceId": "test:tests/database/akp-2-wp4-discovery-backup-restore.database.test.ts:backs up and restores the durable finding and complete lifecycle history",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": false,
+      "coversTargets": [
+        "safe:adapters/ai-configuration-postgres/src/index.ts:106"
+      ],
+      "class": "STALE_BACKREF",
+      "relationResolved": false,
+      "resolutionStatus": "TARGET_MISMATCH",
+      "evidenceResolvesOwnTarget": false,
+      "evidenceOwnTargetStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/semantic-index-postgres/src/index.ts:454",
+      "evidenceId": "test:tests/database/hybrid-retrieval.database.test.ts:performs end-to-end Hybrid retrieval with PostgreSQL persistence, Security-before-Top-K, and RRF fusion",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/semantic-index-postgres/src/index.ts:454"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    },
+    {
+      "boundaryId": "safe:adapters/semantic-index-postgres/src/index.ts:926",
+      "evidenceId": "test:tests/database/semantic-generation-lifecycle-postgres.database.test.ts:performs real concurrent first activation CAS with one winner and one typed conflict",
+      "boundaryStatus": "PROVEN",
+      "evidenceDeclaresThisBoundary": true,
+      "coversTargets": [
+        "safe:adapters/semantic-index-postgres/src/index.ts:926"
+      ],
+      "class": "BIDIRECTIONAL",
+      "relationResolved": true,
+      "resolutionStatus": "RESOLVED_DIRECT",
+      "evidenceResolvesOwnTarget": true,
+      "evidenceOwnTargetStatus": "RESOLVED_DIRECT"
+    }
+  ]
+}

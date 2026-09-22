@@ -323,6 +323,48 @@ describe.runIf(databaseUrl)('AKP-4 WP4 durable execution PostgreSQL authority', 
     ).toBe('STALE');
   });
 
+  it('persists retryable failure context for the claimed runtime lease', async () => {
+    const repository = new PostgresDiscoveryRuntimeRepository(poolA!);
+    const queued = job('wp4-save-failure-context-job');
+    await repository.saveJob(queued);
+    const claim = (await repository.claimNext({
+      projectId,
+      workerId: 'worker-failure-context',
+      now: '2026-08-30T01:00:00.000Z',
+      leaseDurationMs: 30_000,
+    }))!;
+    const stage = (await repository.listStages(claim))[0]!;
+    const failure = {
+      schemaVersion: '1.0.0' as const,
+      code: 'TEST_FAILURE_CONTEXT',
+      classification: 'RETRYABLE' as const,
+      retryable: true,
+      safeMessage: 'A bounded retryable failure context.',
+      failedStage: stage.stageType,
+      occurredAt: '2026-08-30T01:00:01.000Z',
+      retryNotBefore: '2026-08-30T01:00:02.000Z',
+    };
+
+    await expect(repository.saveFailureContext({ ...claim, failure })).resolves.toBe('SAVED');
+    await expect(
+      poolA!.query(
+        `SELECT failure_code, failure_classification, failure_retryable, failure_stage
+           FROM discovery.attempts
+          WHERE project_id = $1 AND attempt_id = $2`,
+        [projectId, claim.attemptId],
+      ),
+    ).resolves.toMatchObject({
+      rows: [
+        {
+          failure_code: 'TEST_FAILURE_CONTEXT',
+          failure_classification: 'RETRYABLE',
+          failure_retryable: true,
+          failure_stage: stage.stageType,
+        },
+      ],
+    });
+  });
+
   it('continues budget checkpoints under the active fence', async () => {
     const repository = new PostgresDiscoveryRuntimeRepository(poolA!);
     const queued = job('wp4-budget-job');

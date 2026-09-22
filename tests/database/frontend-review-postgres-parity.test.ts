@@ -294,4 +294,42 @@ describe.runIf(pool)('FE-P4-S1 in-memory vs PostgreSQL review store parity (AC-1
       finalStatus: 'CONSUMED',
     });
   });
+
+  // C2-R15 minimal proof for the registered
+  // `PostgresFrontendReviewRepository.transactionWithHandle` boundary. The earlier
+  // relation reached the knowledge-draft repository's same-named method, which is
+  // a different registered boundary. This drives the real class and asserts the
+  // handle grants the transaction-bound repositories AND that its writes commit.
+  it('exposes transaction-bound repositories and commits their writes (PostgresFrontendReviewRepository)', async () => {
+    const repository = new PostgresFrontendReviewRepository(pool!);
+    await repository.transactionWithHandle(async (handle) => {
+      expect(handle.raw).toBeDefined();
+      expect(handle.repositories.decisions).toBeDefined();
+      await handle.repositories.contexts.insertContext(contextRecord(1));
+      await handle.repositories.decisions.appendDecisions([
+        {
+          schemaVersion: '1.0.0',
+          decisionId: 'c2r15-boundary-decision',
+          reviewContextId: 'context-1',
+          contextRevision: 1,
+          reviewItemId: 'item-1',
+          intent: 'HOLD',
+          reason: 'C2-R15 transaction handle boundary proof.',
+          decidedBy: {
+            schemaVersion: '1.0.0',
+            principalId: 'principal-1',
+            actorId: 'principal-1',
+          },
+          decidedAt: '2026-08-04T09:00:00.000Z',
+          terminal: false,
+        },
+      ]);
+    });
+
+    // Durable only if the handle's transaction committed.
+    const persisted = await repository.transaction((repositories) =>
+      repositories.decisions.findDecisions('context-1'),
+    );
+    expect(persisted.map((decision) => decision.decisionId)).toContain('c2r15-boundary-decision');
+  });
 });

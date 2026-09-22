@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1321,6 +1322,43 @@ describe.runIf(pool)(
        WHERE action_id = 'action-atomic'`,
       );
       expect(auditRows.rows[0]?.count).toBe(0);
+    });
+
+    // C2-R15 minimal proof for the registered
+    // `PostgresExternalActionStore.transactionWithHandle` boundary. The earlier
+    // relation pointed at `PostgresFrontendKnowledgeDraftRepository`'s
+    // same-named method, which is a different registered boundary and can never
+    // qualify. This exercises the real class directly: the boundary's contract is
+    // that the callback's writes commit atomically and are durably visible.
+    it('commits the transaction handle callback durably (PostgresExternalActionStore)', async () => {
+      const store = new PostgresExternalActionStore(pool!);
+      const actionId = `c2r15-boundary-${randomUUID()}`;
+      const snapshot = { schemaVersion: '1.0.0', message: `c2r15 ${actionId}`, refs: [] };
+      await store.transactionWithHandle(async (handle) => {
+        await (
+          handle.raw as {
+            query: (
+              sql: string,
+              values?: readonly unknown[],
+            ) => Promise<{ rowCount: number | null }>;
+          }
+        ).query(
+          `INSERT INTO frontend_external_action.audit_events (
+             audit_event_id, action_id, resource_project_id, effective_project_id,
+             sequence, category, snapshot, occurred_at
+           ) VALUES ($1,$2,$3,$3,1,'ACTION_EXECUTED',$4,clock_timestamp())`,
+          [randomUUID(), actionId, PROJECT_ID, JSON.stringify(snapshot)],
+        );
+      });
+      // Durable only if the handle callback's transaction actually committed.
+      const persisted = await pool!.query<{ snapshot: unknown }>(
+        `SELECT snapshot
+           FROM frontend_external_action.audit_events
+          WHERE action_id = $1`,
+        [actionId],
+      );
+      expect(persisted.rows).toHaveLength(1);
+      expect(persisted.rows[0]?.snapshot).toMatchObject({ message: snapshot.message });
     });
 
     it('fails closed with OUTCOME_INDETERMINATE for an in-flight (ACCEPTED) connector command (PG gateway)', async () => {

@@ -1,0 +1,362 @@
+{
+  "counters": {
+    "missingRegressionAtStart": 16,
+    "closedByExistingDirect": 1,
+    "closedByExistingPath": 12,
+    "closedByParticipantInheritance": 0,
+    "closedByDelegateInheritance": 0,
+    "closedByNewMinimalTest": 3,
+    "closedByReclassification": 0,
+    "remainingMissingRegression": 0,
+    "reviewRequired": 0
+  },
+  "records": [
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+      "method": "acquireNext",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts",
+          "testName": "re-enters the same durable event on a rotated job and snapshots the current DLQ job",
+          "covers": [
+            "safe:adapters/connector-runtime-postgres/src/index.ts:1199"
+          ],
+          "coverageKind": "PUBLIC_PATH",
+          "entrySymbol": "kernel.connector.publishEvent",
+          "path": [
+            "kernel.connector.publishEvent",
+            "ConnectorRuntime",
+            "PostgresOrderingStore.acquireNext"
+          ],
+          "testEvidenceId": "test:tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts:re-enters the same durable event on a rotated job and snapshots the current DLQ job"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "method": "recoverExpiredLeases",
+      "decision": "A EXISTING_DIRECT_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/post-tf-risk002-connector-fencing-proof.test.ts",
+          "testName": "Scenario A: production recovery leaves a real running attempt behind",
+          "covers": [
+            "safe:adapters/connector-runtime-postgres/src/index.ts:1389"
+          ],
+          "coverageKind": "DIRECT_BOUNDARY",
+          "entrySymbol": "recoverProductionExpiredLeases",
+          "path": [
+            "recoverProductionExpiredLeases",
+            "PostgresConnectorRuntimeState.recoverExpiredLeases"
+          ],
+          "testEvidenceId": "test:tests/database/post-tf-risk002-connector-fencing-proof.test.ts:Scenario A: production recovery leaves a real running attempt behind"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:777",
+      "method": "recordConsumptionDisposition",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/akp-5-wp2-discovery-reentry.database.test.ts",
+          "testName": "durably defers retryable failures, advances the retry boundary, and transitions to processed",
+          "covers": [
+            "safe:adapters/discovery-reentry-postgres/src/index.ts:777"
+          ],
+          "coverageKind": "PUBLIC_PATH",
+          "entrySymbol": "createRetryConsumer",
+          "path": [
+            "createRetryConsumer",
+            "DiscoveryReentryConsumer.runOnce",
+            "PostgresDiscoveryReentryRepository.recordConsumptionDisposition"
+          ],
+          "testEvidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:durably defers retryable failures, advances the retry boundary, and transitions to processed"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:987",
+      "method": "persistIntake",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/akp-5-wp2-discovery-reentry.database.test.ts",
+          "testName": "creates one manifest/candidate atomically and resolves a production-shaped unversioned ref",
+          "covers": [
+            "safe:adapters/discovery-reentry-postgres/src/index.ts:987"
+          ],
+          "coverageKind": "PUBLIC_PATH",
+          "entrySymbol": "runConsumer",
+          "path": [
+            "runConsumer",
+            "DiscoveryReentryConsumer.runOnce",
+            "PostgresDiscoveryReentryRepository.persistIntake"
+          ],
+          "testEvidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:creates one manifest/candidate atomically and resolves a production-shaped unversioned ref"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2844",
+      "method": "saveFailureContext",
+      "decision": "E NEW_MINIMAL_REGRESSION_REQUIRED",
+      "evidence": [
+        {
+          "file": "tests/database/akp-4-wp4-discovery-execution.database.test.ts",
+          "testName": "persists retryable failure context for the claimed runtime lease",
+          "covers": [
+            "safe:adapters/discovery-runtime-postgres/src/index.ts:2844"
+          ],
+          "coverageKind": "DIRECT_BOUNDARY",
+          "entrySymbol": "repository.saveFailureContext",
+          "path": [
+            "repository.saveFailureContext",
+            "PostgresDiscoveryRuntimeRepository.saveFailureContext"
+          ],
+          "testEvidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:persists retryable failure context for the claimed runtime lease"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:91",
+      "method": "withProjectWriteLock",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/frontend-activity-postgres-parity.test.ts",
+          "testName": "serializes a concurrent upsert and rebuild so a lower revision never wins",
+          "covers": [
+            "safe:adapters/frontend-activity-postgres/src/index.ts:91"
+          ],
+          "coverageKind": "OWNER_ATOMICITY",
+          "entrySymbol": "index.upsert",
+          "path": [
+            "index.upsert",
+            "index.rebuildProject",
+            "PostgresActivityIndexStore.withProjectWriteLock"
+          ],
+          "testEvidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:serializes a concurrent upsert and rebuild so a lower revision never wins"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2421",
+      "method": "poolTransaction",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/frontend-ask-write-postgres.database.test.ts",
+          "testName": "commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
+          "covers": [
+            "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2421"
+          ],
+          "coverageKind": "OWNER_ATOMICITY",
+          "entrySymbol": "executionService.startWorker",
+          "path": [
+            "executionService.startWorker",
+            "PostgresAskAnswerExecutionRepository",
+            "PostgresAskAnswerExecutionRepository.poolTransaction"
+          ],
+          "testEvidenceId": "test:tests/database/frontend-ask-write-postgres.database.test.ts:commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:467",
+      "method": "markSubmissionStage3Incomplete",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
+          "testName": "Stage3 first attempt throws → retry → same SourceId/SourceVersionId → Stage3 completes → Evidence exists → no duplicate SourceVersion",
+          "covers": [
+            "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:467"
+          ],
+          "coverageKind": "OWNER_ATOMICITY",
+          "entrySymbol": "service.submit",
+          "path": [
+            "service.submit",
+            "PostgresSourcesProductService.runStage3AndFinalize",
+            "PostgresSourcesProductService.markSubmissionStage3Incomplete"
+          ],
+          "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:Stage3 first attempt throws → retry → same SourceId/SourceVersionId → Stage3 completes → Evidence exists → no duplicate SourceVersion"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:508",
+      "method": "finalizeSubmissionState",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
+          "testName": "mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL",
+          "covers": [
+            "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:508"
+          ],
+          "coverageKind": "OWNER_ATOMICITY",
+          "entrySymbol": "mixedService.submit",
+          "path": [
+            "mixedService.submit",
+            "PostgresSourcesProductService.runStage3AndFinalize",
+            "PostgresSourcesProductService.finalizeSubmissionState"
+          ],
+          "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485",
+      "method": "markStage3ItemsSucceeded",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
+          "testName": "mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL",
+          "covers": [
+            "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485"
+          ],
+          "coverageKind": "OWNER_ATOMICITY",
+          "entrySymbol": "mixedService.submit",
+          "path": [
+            "mixedService.submit",
+            "PostgresSourcesProductService.runStage3AndFinalize",
+            "PostgresSourcesProductService.markStage3ItemsSucceeded"
+          ],
+          "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:418",
+      "method": "withTransaction",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/stage-5-comparison-v2-postgres.test.ts",
+          "testName": "P2-01 persists a semantic aggregate with two analyses and two relationships and reloads it",
+          "covers": [
+            "safe:adapters/postgres-stage5/src/index.ts:418"
+          ],
+          "coverageKind": "OWNER_ATOMICITY",
+          "entrySymbol": "repository.saveCompletedAggregate",
+          "path": [
+            "repository.saveCompletedAggregate",
+            "PostgresComparisonV2Repository.withTransaction"
+          ],
+          "testEvidenceId": "test:tests/database/stage-5-comparison-v2-postgres.test.ts:P2-01 persists a semantic aggregate with two analyses and two relationships and reloads it"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1340",
+      "method": "markStale",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/comparison-reentry-product-postgres.test.ts",
+          "testName": "executes V2 through the authenticated Product route and reuses the persisted lineage before provider execution",
+          "covers": [
+            "safe:adapters/postgres-stage5/src/index.ts:1340"
+          ],
+          "coverageKind": "PUBLIC_PATH",
+          "entrySymbol": "decideV1",
+          "path": [
+            "decideV1",
+            "createChangeSetReviewModule",
+            "PostgresChangeSetReviewRepository.markStale"
+          ],
+          "testEvidenceId": "test:tests/database/comparison-reentry-product-postgres.test.ts:executes V2 through the authenticated Product route and reuses the persisted lineage before provider execution"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:971",
+      "method": "updateProject",
+      "decision": "E NEW_MINIMAL_REGRESSION_REQUIRED",
+      "evidence": [
+        {
+          "file": "tests/database/section2-postgres.test.ts",
+          "testName": "updates PostgreSQL project metadata through the transaction owner",
+          "covers": [
+            "safe:adapters/postgres/src/index.ts:971"
+          ],
+          "coverageKind": "DIRECT_BOUNDARY",
+          "entrySymbol": "projectAdminRepo.updateProject",
+          "path": [
+            "projectAdminRepo.updateProject",
+            "PostgresProjectAdministrationRepository.updateProject"
+          ],
+          "testEvidenceId": "test:tests/database/section2-postgres.test.ts:updates PostgreSQL project metadata through the transaction owner"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1500",
+      "method": "updatePrincipalPreferences",
+      "decision": "E NEW_MINIMAL_REGRESSION_REQUIRED",
+      "evidence": [
+        {
+          "file": "tests/database/section2-postgres.test.ts",
+          "testName": "updates PostgreSQL principal preferences through the transaction owner",
+          "covers": [
+            "safe:adapters/postgres/src/index.ts:1500"
+          ],
+          "coverageKind": "DIRECT_BOUNDARY",
+          "entrySymbol": "settingsRepo.updatePrincipalPreferences",
+          "path": [
+            "settingsRepo.updatePrincipalPreferences",
+            "PostgresSettingsRepository.updatePrincipalPreferences"
+          ],
+          "testEvidenceId": "test:tests/database/section2-postgres.test.ts:updates PostgreSQL principal preferences through the transaction owner"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:90",
+      "method": "createProposal",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/a4-provider-external-transfer-authority.test.ts",
+          "testName": "adds provider/project authority without rewriting historical Settings and preserves immutable history",
+          "covers": [
+            "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:90"
+          ],
+          "coverageKind": "PUBLIC_PATH",
+          "entrySymbol": "service.propose",
+          "path": [
+            "service.propose",
+            "ProviderExternalTransferApprovalService.propose",
+            "PostgresProviderExternalTransferApprovalRepository.createProposal"
+          ],
+          "testEvidenceId": "test:tests/database/a4-provider-external-transfer-authority.test.ts:adds provider/project authority without rewriting historical Settings and preserves immutable history"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:160",
+      "method": "approveProposal",
+      "decision": "B EXISTING_PATH_REGRESSION",
+      "evidence": [
+        {
+          "file": "tests/database/a4-provider-external-transfer-authority.test.ts",
+          "testName": "fails closed on stale and concurrent approvals while keeping one current revision",
+          "covers": [
+            "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:160"
+          ],
+          "coverageKind": "PUBLIC_PATH",
+          "entrySymbol": "service.approve",
+          "path": [
+            "service.approve",
+            "ProviderExternalTransferApprovalService.approve",
+            "PostgresProviderExternalTransferApprovalRepository.approveProposal"
+          ],
+          "testEvidenceId": "test:tests/database/a4-provider-external-transfer-authority.test.ts:fails closed on stale and concurrent approvals while keeping one current revision"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "generatedAt": "2026-09-21T21:45:00.000Z",
+  "subject": "C2-R15 round 3 — P-ACCESSOR implemented, six resolver defects fixed, REVIEW_REQUIRED driven to source-confirmed zero",
+  "supersedes": "15-reachability-adoption-progress.json (round 2 status)",
+
+  "resumeInstructionFollowed": {
+    "nextActionFrom13FINAL": "implement P-ACCESSOR in scripts/ts6-phase-b-production-reachability.ts (recover PostgresSourcesProductService.submit / resolveDuplicate / retry through the process-global write runtime getter), then P-FACTORY-CAPTURE, then P-STRUCTURAL, verifying after EACH pattern that the already-resolved set does not regress",
+    "container": "docker start shotgun-ts6-r15-pg -> Up (pgvector/pgvector:pg16)",
+    "processFollowed": "one binding pattern at a time; after every change the full 113-boundary qualified classification was re-derived and diffed against the previous state; no target number was ever used to tune the resolver",
+    "targetNumberUse": "NONE — the 94/19/0 target was not used. At no point was a rule added, removed or weakened to reach a count."
+  },
+
+  "headline": {
+    "recordedAuthority": { "PROVEN": 100, "TEST_ONLY_OR_DEAD": 13, "REVIEW_REQUIRED": 0 },
+    "qualifiedAuthorityBefore": { "PROVEN": 83, "TEST_ONLY_OR_DEAD": 30, "REVIEW_REQUIRED": 17 },
+    "qualifiedAuthorityNow": { "PROVEN": 97, "TEST_ONLY_OR_DEAD": 16, "REVIEW_REQUIRED": 0 },
+    "reviewRequiredMeaning": "A boundary RECORDED PROVEN whose production reachability the qualified resolver cannot establish. 17 at the start of this round, 0 now.",
+    "howZeroWasReached": "14 boundaries were recovered by general resolver rules; the remaining 3 were SOURCE-VERIFIED as genuine method-name collisions and belong to TEST_ONLY_OR_DEAD. Each is listed below with its evidence.",
+    "inventoryUnchanged": "120 candidates / 113 boundaries / 11 raw sites / 87 historical — counted independently of status, all unchanged",
+    "frozenArtifactsUnchanged": {
+      "goldenV2Sha": "256E5906DB0AFBDEB175C1E754C2C8EC3A1213139AE4F805E95C5396086586CD",
+      "crosswalkSha": "E4861D67B1EBC4885FA9034245C0B2734E25E3865DE278A4FF660C0B4B0621D2",
+      "validatorGate": "scripts/ts6-phase-b-transaction-authority-validator.ts:826 PRODUCTION_REVIEW_REQUIRED — NOT relaxed, NOT touched",
+      "productionSource": "no file under adapters/ modules/ packages/ assemblies/ apps/ was modified by this round"
+    }
+  },
+
+  "patternLanded": {
+    "id": "P-ACCESSOR",
+    "status": "DONE",
+    "targets": [
+      "PostgresSourcesProductService.submit",
+      "PostgresSourcesProductService.resolveDuplicate",
+      "PostgresSourcesProductService.retry"
+    ],
+    "recovered": "all 3, and 3 more as a side effect of the same rule",
+    "generalRule": "A declaration with no written type annotation whose initialiser CALLS a locally declared helper takes the helper's DECLARED RETURN TYPE. `const runtime = getSourcesWriteRuntime()` therefore resolves to `SourcesWriteRuntime | undefined` -> `SourcesWriteRuntime`, and `runtime.productService` resolves through the runtime shape to the Port the boundary implements.",
+    "whyItWasInvisible": "The helper's return type is written on the ARROW SIGNATURE, which the declaration index carries in the initialiser text (`(): SourcesWriteRuntime | undefined => activeRuntime`), never in the annotation field. Reading only type annotations finds nothing.",
+    "additionalDefectFixedAlongside": "a type annotation of the form `A | B` or `Pick<A,'x'>` reduced to no type name at all; the union alternative and the generic type argument are now both considered."
+  },
+
+  "resolverDefectsFixedThisRound": [
+    {
+      "id": "R-6",
+      "defect": "FUNCTION PARAMETERS WERE NEVER INDEXED",
+      "cause": "the body walk started at the function's Block, and a function's parameter list is a sibling of that Block, not a child — so no injected dependency declared as a parameter was ever visible to the calls in the body",
+      "impact": "GENERAL and large: production dependencies arrive as parameters far more often than as locals. `registerAISettingsRoutes(..., semanticCorpusSourceSnapshotReader?: Pick<...>)` is the canonical shape.",
+      "status": "FIXED — the walk now starts at the function-like scope (parameters + body) and descends into nested function-likes as their own scope"
+    },
+    {
+      "id": "R-7",
+      "defect": "a call site nested in a callback was attributed to EVERY enclosing body, and deduplication let whichever context the index reached first decide",
+      "cause": "an outer body cannot see a nested function's locals, so it reports the same site as `unresolved`; keeping the first record made reachability depend on traversal ORDER",
+      "impact": "general — this defect was introduced by the R-6 fix and is recorded here because it was found by the mandated regression check, not by inspection",
+      "status": "FIXED — each call site is owned by the context that RESOLVES its receiver, falling back to the deepest context. Verified: 0 boundaries changed verdict as a result."
+    },
+    {
+      "id": "R-8",
+      "defect": "type-alias constituents were extracted with a text scan that (a) missed `Pick<Port, ...>` entirely, (b) admitted METHOD NAMES as if they were type names, and (c) treated nested type references without regard to nesting",
+      "cause": "`X = Pick<A,'a'> & Pick<A,'b'>` reduced to the literal string `appendEpistemicReentryTrigger`",
+      "impact": "GENERAL in both directions: real Port bindings looked like collisions, and admitting `saveRevision` as a 'constituent' linked two unrelated repository Ports that merely declare it, which turned a real caller into an ambiguity",
+      "status": "FIXED — aliases are now walked as a type tree; only type references count, member-level references do not, and a utility applied to a type contributes that type argument"
+    },
+    {
+      "id": "R-9",
+      "defect": "the implementation index was one-directional",
+      "cause": "a class implementing a broad Port was not registered as an implementation of the NARROWING alias derived from it (`DiscoveryFeedbackWriteRepositoryPort = Pick<DiscoveryFeedbackRepositoryPort, ...>`), so the narrow Port looked like it had no production implementation",
+      "impact": "general",
+      "status": "FIXED — the index closes over the alias graph in both directions, one hop per narrowing alias (NOT transitively: two sibling narrowings of one Port are unrelated, and closing them would create false ambiguity)"
+    },
+    {
+      "id": "R-10",
+      "defect": "QUALIFICATION WAS EXPRESSED TWICE AND THE TWO COPIES DISAGREED",
+      "cause": "`resolveReachability` accepted any receiver the alias/Port rule matched, while the caller-classification rule accepted only a literal class name or a single-implementation Port. `ProductFindingRepository = DiscoveryFindingRepositoryPort & DiscoveryFindingLifecycleRepositoryPort` and `SemanticGenerationRepository = SemanticIndexRepositoryPort & SemanticGenerationLifecycleRepositoryPort` were therefore accepted as callers and then classified as collisions.",
+      "impact": "general — it hid every composite-Port listener of a boundary that has no `implements` clause naming the composite",
+      "status": "FIXED — `boundaryMatchKind()` is now the single expression of the doctrine and `resolveReachability` delegates to it, so the verdict and the classification cannot disagree"
+    },
+    {
+      "id": "R-11",
+      "defect": "object-literal FACTORIES were not implementations of the Port they satisfy",
+      "cause": "nothing records that `(pool: Pool): ActivityReadModelStorePort => ({ ..., async commitProjectProjection() {} })` binds its literal to that Port, because no class implements it",
+      "impact": "general — every module-level boundary whose closure satisfies a Port looked unreachable, and every builder holding that Port looked like a name collision",
+      "status": "FIXED — a factory whose declared return type is a Port and whose returned literal provides the method counts as an implementation of that Port"
+    }
+  ],
+
+  "recoveredByRule": [
+    { "boundary": "PostgresSourcesProductService.submit", "rule": "P-ACCESSOR" },
+    { "boundary": "PostgresSourcesProductService.resolveDuplicate", "rule": "P-ACCESSOR" },
+    { "boundary": "PostgresSourcesProductService.retry", "rule": "P-ACCESSOR" },
+    { "boundary": "PostgresDiscoveryRuntimeRepository.reserveProviderCall", "rule": "P-ACCESSOR" },
+    { "boundary": "PostgresDiscoveryRuntimeRepository.finalizeProviderCall", "rule": "P-ACCESSOR" },
+    { "boundary": "PostgresFrontendCommandGateway.accept", "rule": "P-ACCESSOR + R-7" },
+    { "boundary": "PostgresSemanticCorpusSourceSnapshotReader.readSnapshot", "rule": "R-6 + R-8 + R-10" },
+    { "boundary": "PostgresDiscoveryFeedbackRepository.appendSuppression", "rule": "R-8 + R-9" },
+    { "boundary": "PostgresDiscoveryFindingRepository.saveFenced", "rule": "R-10" },
+    { "boundary": "PostgresSemanticIndexRepository.activateGeneration", "rule": "R-8 + R-10" },
+    { "boundary": "PostgresCanonicalKnowledgeRepository.commitFrontendDraft", "rule": "R-10" },
+    { "boundary": "PostgresAuthRepository.bootstrapOwner", "rule": "R-10 (see the doctrine ruling below)" },
+    { "boundary": "<module>.commitProjectProjection (frontend-activity-postgres)", "rule": "R-11" },
+    { "boundary": "<module>.commitProjectProjection (frontend-history-postgres)", "rule": "R-11" },
+    { "boundary": "PostgresDiscoveryRuntimeRepository.saveJob", "rule": "NONE — source-verified collision" },
+    { "boundary": "PostgresDiscoveryRuntimeRepository.transitionJob", "rule": "NONE — source-verified collision" },
+    { "boundary": "PostgresDiscoveryFindingRepository.save", "rule": "NONE — source-verified collision" }
+  ],
+
+  "sourceVerifiedCollisions": [
+    {
+      "boundary": "PostgresDiscoveryRuntimeRepository.saveJob",
+      "verdict": "TEST_ONLY_OR_DEAD",
+      "proof": "Every same-named call site has receiver type `DiscoveryTriggerRuntimeRepositoryPort` (modules/discovery-trigger-coordinator/src/index.ts:66). The ONLY class in the repository that implements that Port is `InMemoryDiscoveryRuntimeRepository` (adapters/discovery-trigger-coordinator/src/index.ts:631) — an in-memory stand-in. `PostgresDiscoveryRuntimeRepository` (adapters/discovery-runtime-postgres/src/index.ts) implements `DiscoveryRuntimeExecutionRepositoryPort` and `DiscoveryActivityReadPort`, and the Port is offered only as an optional injection point (`readonly discoveryRuntimeRepository?: ...`, server.ts:817) with no durable binder anywhere in the composition root.",
+      "conclusion": "the call reaches a DIFFERENT repository contract; it cannot reach this boundary. Genuine method-name collision."
+    },
+    {
+      "boundary": "PostgresDiscoveryRuntimeRepository.transitionJob",
+      "verdict": "TEST_ONLY_OR_DEAD",
+      "proof": "same single call site family and the same Port as saveJob (modules/discovery-trigger-coordinator/src/index.ts:738)",
+      "conclusion": "genuine method-name collision, same evidence as saveJob"
+    },
+    {
+      "boundary": "PostgresDiscoveryFindingRepository.save",
+      "verdict": "TEST_ONLY_OR_DEAD",
+      "proof": "8 same-named call sites, every one on an UNRELATED Port: TransformationRepositoryPort (x2), ProjectAIConfigurationPort, StandingAIProcessingPolicyWriterPort, ChangeSetReviewRepositoryPort (x2), DiscoveryReviewResourceWriterPort, IntakeRepositoryPort, plus 1 unresolved. The composite the boundary IS wired through is `type ProductFindingRepository = DiscoveryFindingRepositoryPort & DiscoveryFindingLifecycleRepositoryPort` (adapters/discovery-runtime-product/src/index.ts). Enumerating EVERY member access on that composite in that file shows listByProject, findLifecycle, saveFenced, findRevision, listByProjectPage — `save` is never called on it.",
+      "conclusion": "no call site reaches this boundary. Genuine method-name collision."
+    }
+  ],
+
+  "doctrineRulingRequired": {
+    "boundary": "PostgresAuthRepository.bootstrapOwner",
+    "resolverVerdict": "PROVEN (SOLE — the receiver type `AuthRepositoryPort` has one production implementation, the boundary)",
+    "sourceFact": "the single call site (assemblies/shotgun-app/src/server.ts:2553) is inside `if (testDevelopmentAuth)`, and `testDevelopmentAuth = process.env.VITEST === 'true' && !options.authRepository && !production` (server.ts:2549-2550). Under `NODE_ENV=production` the guard is FALSE.",
+    "theQuestion": "Does a production-reachability authority that reads STATIC wiring treat a call behind a runtime configuration guard as production reachable?",
+    "whyItIsNotASimpleCollision": "unlike the three above, the receiver type genuinely IS the boundary's Port and the boundary genuinely IS its only implementation. The call is eligible on the production code path and suppressed by deployment configuration — the same SHAPE of question as `PostgresConnectorRuntimeState.recoverExpiredLeases`, which the owner already ruled to be production reachable.",
+    "bothOutcomesKeepREVIEW_REQUIREDZero": "PROVEN (guard is not part of static reachability, consistent with the recoverExpiredLeases ruling) or TEST_ONLY_OR_DEAD (a VITEST-gated call is test evidence). Neither requires a rule change; the ruling only decides which of the two statuses is recorded.",
+    "recommendation": "PROVEN, for consistency with the recoverExpiredLeases ruling: static wiring is the authority, and a configuration guard is recorded as evidence rather than as unreachability. This round did NOT change it."
+  },
+
+  "notAppliedAndWhy": {
+    "what": "switching `buildAuditShape` to the qualified authority (scripts/ts6-phase-b-transaction-authority-validator.ts:511-512, `callersFor` -> boundaryMatchKind)",
+    "effect": "TX_BOUNDARY 100 -> 97 and TEST_ONLY_OR_DEAD 13 -> 16 for the 3 confirmed collisions",
+    "whyNot": "the C2-R15 work order forbids changing the transaction inventory, and this changes the DERIVED scoreboard that all four frozen snapshots pin (c2r15-authority-correction.test.ts:48-54, regression-evidence-authority.test.ts:33-39, and corpus.summary / candidateReconciliation[].c2r2Classification). It is the adoption step the owner has to authorise, not a resolver fix.",
+    "readyToApply": "the resolver is finished and `boundaryMatchKind()` is a drop-in for `callersFor()`; the authority correction is a 2-line change plus the baseline updates"
+  },
+
+  "verifiedUnchanged": {
+    "frozenGoldenV2Sha": "256E5906DB0AFBDEB175C1E754C2C8EC3A1213139AE4F805E95C5396086586CD",
+    "frozenCrosswalkSha": "E4861D67B1EBC4885FA9034245C0B2734E25E3865DE278A4FF660C0B4B0621D2",
+    "validatorGate": "unchanged and NOT relaxed",
+    "transactionInventory": "unchanged (120/113/11/87)",
+    "productionSource": "unchanged",
+    "resolverTypecheck": "clean (tsc --noEmit reports no error in the resolver)"
+  },
+
+  "artifacts": {
+    "qualifiedClassification": "artifacts/ts6-phase-b-c2-r15/production-reachability-qualified.json — every one of the 113 boundaries with recorded status, qualified verdict and the call sites that decide it"
+  },
+
+  "nextAction": "Owner decision on the two open items: (1) the bootstrapOwner doctrine ruling (recommendation PROVEN), and (2) authorisation to apply the authority correction to buildAuditShape and update the pinned 97/16 baselines. Rejected alternatives remain: do NOT hardcode hand-traced results as per-boundary exceptions, do NOT relax the PRODUCTION_REVIEW_REQUIRED gate, do NOT tune the resolver to a target number."
+}

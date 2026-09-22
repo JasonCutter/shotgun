@@ -1,0 +1,83 @@
+{
+  "generatedAt": "2026-09-21T12:00:00.000Z",
+  "subject": "Review of the A′ proposal — what is accepted, what is corrected with evidence",
+  "reviewerProposal": "A′ : preserve frozen v2/v5, adopt qualified production reachability as the new authority, produce a correction manifest + derived v6 lineage. B rejected as a final solution.",
+
+  "verdict": "A′ is ACCEPTED as the right direction. Three of its details are corrected below; two of them change the target numbers.",
+
+  "accepted": [
+    {
+      "point": "B is not a final solution",
+      "why": "read-model and production evidence already measured that 5 boundaries are recorded PROVEN although their only same-named production call sites are on unrelated types. Leaving the status as-is keeps a factually incorrect claim in the canonical audit.",
+      "status": "ACCEPTED"
+    },
+    {
+      "point": "frozen v2 need not be touched; add a lineage instead of overwriting history",
+      "why": "v2 and v5 are historical artifacts under the pre-correction authority. Overwriting them would destroy the provenance that makes this audit reviewable.",
+      "status": "ACCEPTED",
+      "addendum": "The 112 relation corrections in v5 are not re-opened. A reachability correction only changes which boundaries carry coverage obligations; it does not invalidate any relation proof."
+    }
+  ],
+
+  "corrections": [
+    {
+      "id": "C-1",
+      "point": "REVIEW_REQUIRED is NOT an admissible final status",
+      "severity": "blocking",
+      "evidence": "scripts/ts6-phase-b-transaction-authority-validator.ts:826 raises the issue code PRODUCTION_REVIEW_REQUIRED for ANY boundary whose productionReachability.status === 'REVIEW_REQUIRED', and validateCorpus therefore returns valid=false. The schema defines the status (line 100) and buildAuditShape pins the classification bucket REVIEW_REQUIRED: 0 (line 649).",
+      "consequence": "A snapshot containing a REVIEW_REQUIRED boundary can never pass the validator. 94 / 18 / 1 would be a snapshot the tool rejects.",
+      "correctReading": "REVIEW_REQUIRED is the correct way to REPRESENT unresolved reachability, and the validator correctly treats its presence as a gate failure. It is not a state a final projection may ship in."
+    },
+    {
+      "id": "C-2",
+      "point": "the inventory claim needs a precision: 120 / 113 / 11 / 87 survives, the SCOREBOARD does not",
+      "severity": "informational",
+      "evidence": "rawTransactionSites (11), boundaries (113), candidates (120) and historical rows (87) are counted independently of status, so they are unchanged. But corpus.summary.TX_BOUNDARY / TEST_ONLY_OR_DEAD / REVIEW_REQUIRED and candidateReconciliation[].c2r2Classification are DERIVED from status (scripts/ts6-phase-b-transaction-authority-validator.ts:584, 629, 646-649, 908-911).",
+      "consequence": "The reviewer's statement that 120/113/11/87 cannot break is correct. The earlier phrasing in my own report ('invalidates the 120/113/11/87 invariant') was imprecise: what a status correction changes is the TX_BOUNDARY/TEST_ONLY_OR_DEAD split and the summary counts, which are re-derived, not part of the frozen inventory."
+    },
+    {
+      "id": "C-3",
+      "point": "94 / 18 / 1 is not what an authority can emit — it is a hand-triage result, and a different valid call site exists for the 1",
+      "severity": "blocking",
+      "evidence": [
+        "Applying the qualified resolver mechanically to all 113 boundaries yields PROVEN 83 / TEST_ONLY_OR_DEAD 14 / REVIEW_REQUIRED 16 (measurement recorded in .qualified-classification.json).",
+        "The 94 figure came from adding 12 hand-traced recoveries to the resolver's 82. Those 12 fixes are not encoded in the resolver, so an automated authority cannot reproduce 94 today.",
+        "PostgresConnectorRuntimeState.recoverExpiredLeases does have a registered production call site: the constructor registers setInterval(() => { void this.recoverExpiredLeases(); }, 5_000) (adapters/connector-runtime-postgres/src/index.ts:1367). The resolver excludes it under the doctrine that a call in the boundary's own class is not external reachability.",
+        "The lifecycle is started in the canonical production path: package.json \"start\" -> assemblies/shotgun-app/src/main.ts -> startShotgunApplication -> application.ts:1207 passes new PostgresConnectorRuntimeState(pool) -> server.ts:2968 awaits options.connectorRuntimeState.lifecycle.start()."
+      ],
+      "consequence": "recoverExpiredLeases is neither a name collision nor an unresolvable receiver. It is a registered timer callback in the canonical production composition: genuinely reachable, but reachable from inside its own class, which the current reachability doctrine does not count. It remains a REVIEW_REQUIRED-class case, and therefore a TS-6 FINAL blocker — correctly identified as a blocker, but for a doctrinal reason rather than a configuration unknown."
+    }
+  ],
+
+  "authoritativeMeasurement": {
+    "authority": "qualified resolver — PROVEN iff a production call site's receiver statically resolves to the boundary class or to a Port the boundary implements",
+    "distribution": { "PROVEN": 83, "TEST_ONLY_OR_DEAD": 14, "REVIEW_REQUIRED": 16 },
+    "recorded": { "PROVEN": 100, "TEST_ONLY_OR_DEAD": 13, "REVIEW_REQUIRED": 0 },
+    "statusMoves": 17,
+    "reviewRequiredClass": 16,
+    "breakdownOfThe16": {
+      "confirmedMethodNameCollision": 5,
+      "resolverCannotFollowTheBinding": 10,
+      "ownClassRegisteredCallback": 1
+    },
+    "note": "The 5 confirmed collisions are the same five identified by hand triage. The 10 unresolved ones are the boundaries whose wiring was hand-traced successfully (sources product service via the process-global write runtime, semantic corpus reader through a structural inline parameter type, the command gateway through dependency objects, the connector runtime repository through an object-literal factory, the comparison repository through a module input member)."
+  },
+
+  "whatAdoptionRequires": [
+    "Close REVIEW_REQUIRED to zero, else the projection is invalid by construction. Two ways:",
+    "  (a) encode the 10 hand-traced bindings into the resolver (module-level accessors returning the runtime, object-literal factory captures, structural inline parameter types, dependency-object ports), and resolve the own-class callback case by doctrine; or",
+    "  (b) declare the hand-triage part of the manifest rather than of the machine authority, which means the authority is not fully automated and the manifest becomes load-bearing",
+    "Re-derive the status/classification from the corrected authority, which moves TX_BOUNDARY 100 -> 83 and TEST_ONLY_OR_DEAD 13 -> 14, and produces the 16 REVIEW_REQUIRED that must be closed first",
+    "Re-run the audit baselines that currently pin TX_BOUNDARY: 100 / TEST_ONLY_OR_DEAD: 13 (scripts/ts6-audit/c2r15-authority-correction.test.ts:48-54, scripts/ts6-audit/regression-evidence-authority.test.ts:33-39)",
+    "Re-verify the 112 relations: 5 boundaries lose PROVEN, so they leave the coverage-required set; no relation proof is invalidated"
+  ],
+
+  "explicitNonClaims": [
+    "No callersFor change has been applied.",
+    "No fixture, frozen artifact, or inventory value has been changed.",
+    "golden.v5 remains valid as the corrected regression-evidence projection.",
+    "The 94 figure is NOT an authority output and must not be adopted as the target."
+  ],
+
+  "recommendation": "Proceed with A′ but gate it on closing the REVIEW_REQUIRED class to zero, because the validator rejects any projection that contains one. Recommended order: (1) treat recoverExpiredLeases as its own decision — doctrine question, not code discovery; (2) encode the 10 hand-traced bindings into the resolver; (3) confirm the 5 collisions; (4) only then re-derive the corrected projection and update the audit baselines. Attempting the derivation before step 2 produces a projection the tool rejects, which is why the current 94/18/1 cannot be the target."
+}

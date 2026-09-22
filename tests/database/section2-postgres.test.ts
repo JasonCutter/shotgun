@@ -162,6 +162,62 @@ describe.runIf(pool)('Persistent PostgreSQL Section 2 Settings & Project Adminis
     });
   });
 
+  it('updates PostgreSQL project metadata through the transaction owner', async () => {
+    const projectId = `pg-proj-update-${randomUUID().slice(0, 8)}`;
+    const actorId = randomUUID();
+    await pool!.query(
+      'INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, $2, $3, $4, now())',
+      [actorId, 'user', 'active', `user-${actorId.slice(0, 8)}`],
+    );
+    await projectAdminRepo.createProject({
+      commandId: randomUUID(),
+      clientRequestId: `req-create-${randomUUID()}`,
+      idempotencyKey: `idem-create-${randomUUID()}`,
+      projectId,
+      actorPrincipalId: actorId,
+      expectedProjectRevision: 0,
+      name: 'Before metadata update',
+    });
+
+    const updated = await projectAdminRepo.updateProject({
+      commandId: randomUUID(),
+      clientRequestId: `req-update-${randomUUID()}`,
+      idempotencyKey: `idem-update-${randomUUID()}`,
+      projectId,
+      actorPrincipalId: actorId,
+      expectedProjectRevision: 1,
+      name: 'After metadata update',
+      description: 'Updated by the PostgreSQL transaction owner.',
+    });
+
+    expect(updated).toMatchObject({
+      id: projectId,
+      name: 'After metadata update',
+      description: 'Updated by the PostgreSQL transaction owner.',
+      revision: 2,
+    });
+  });
+
+  it('updates PostgreSQL principal preferences through the transaction owner', async () => {
+    const principalId = randomUUID();
+    await pool!.query(
+      'INSERT INTO auth.principals (principal_id, actor_type, status, account_id, created_at) VALUES ($1, $2, $3, $4, now())',
+      [principalId, 'user', 'active', `user-${principalId.slice(0, 8)}`],
+    );
+
+    const preferences = await settingsRepo.updatePrincipalPreferences({
+      commandId: randomUUID(),
+      clientRequestId: `req-preferences-${randomUUID()}`,
+      idempotencyKey: `idem-preferences-${randomUUID()}`,
+      principalId,
+      expectedPreferenceRevision: 0,
+      preferences: { locale: 'en-US', timezone: 'Asia/Seoul' },
+    });
+
+    expect(preferences).toMatchObject({ locale: 'en-US', timezone: 'Asia/Seoul' });
+    await expect(settingsRepo.getPrincipalPreferenceRevision(principalId)).resolves.toBe(1);
+  });
+
   it('applies settings command, increments revisions, and persists across repository re-instantiation', async () => {
     const projId = `pg-proj-${randomUUID().slice(0, 8)}`;
     const actorId = randomUUID();

@@ -1,0 +1,106 @@
+{
+  "generatedAt": "2026-09-21T15:00:00.000Z",
+  "subject": "Reachability re-adjudication ledger",
+  "targetDiscarded": {
+    "value": "94 / 19 / 0",
+    "reason": "It was an ESTIMATE built on a hand-trace that has since been shown to contain several misclassifications. It is a historical hypothesis, not a goal. The reviewer's correction is accepted: REVIEW_REQUIRED = 0 is the requirement; the PROVEN/TEST_ONLY split is whatever the evidence says.",
+    "arithmeticFailure": "The estimate assumed 10 recoveries to PROVEN and 6 to TEST_ONLY_OR_DEAD. Measured facts: 5 pure binding gaps in REVIEW_REQUIRED (not 10), and 13 pre-existing TEST_ONLY_OR_DEAD (so 6 moves to TEST_ONLY would need 19 total, but the collision evidence supports 11 candidates of which some are recoverable)."
+  },
+
+  "correctedAdjudicationQuestion": {
+    "wrong": "\"does a same-named collision call site exist?\"",
+    "right": "\"does at least ONE production reachability path confirmed FOR THIS BOUNDARY exist?\"",
+    "consequence": "A boundary with colliding call sites AND one qualifying call site is PROVEN. Collisions are noise, not disqualification."
+  },
+
+  "resolverDefectsFixedThisRound": [
+    {
+      "id": "R-1",
+      "defect": "object-literal method bodies indexed with zero calls",
+      "cause": "body lives on the PropertyAssignment initializer, not the node",
+      "impact": "general — hid every timer/queue/event/factory registration written as an object-literal method",
+      "status": "FIXED"
+    },
+    {
+      "id": "R-2",
+      "defect": "callback registration by the boundary's own owner not counted",
+      "cause": "own-class calls were excluded unconditionally, with no distinction between a bare self-call and a registered callback",
+      "impact": "general — hid setInterval/setTimeout/queue/event entries",
+      "status": "FIXED (owner-confirmed doctrine encoded in selfCallbackOwners + viaCallback)"
+    },
+    {
+      "id": "R-3",
+      "defect": "abstract receiver types not resolved through the implementations index",
+      "cause": "only direct class equality was accepted",
+      "impact": "general — made legitimate Port-typed dependencies look like collisions",
+      "status": "FIXED (bidirectional expansion)"
+    },
+    {
+      "id": "R-4",
+      "defect": "type aliases treated as opaque types",
+      "cause": "`type X = A & B` was not traversable, so a receiver of that alias could not match a boundary implementing A and B",
+      "impact": "general",
+      "status": "FIXED — recovered PostgresSemanticIndexRepository.activateGeneration and PostgresDiscoveryFeedbackRepository.appendSuppression"
+    },
+    {
+      "id": "R-5",
+      "defect": "module-level boundaries do not consider the classes in their own file",
+      "status": "FIXED (equivalentBoundaryClasses) — did not move a boundary by itself, because the read-model closures satisfy their Ports via an object literal that no class declares"
+    }
+  ],
+
+  "rowsReAdjudicatedBySource": [
+    {
+      "boundary": "PostgresSemanticIndexRepository.activateGeneration",
+      "previousLabel": "collision",
+      "verdict": "PROVEN",
+      "proof": "both call sites have receiver type `SemanticGenerationRepository`, which is `type SemanticGenerationRepository = SemanticIndexRepositoryPort & SemanticGenerationLifecycleRepositoryPort` — exactly the two ports the boundary class implements. The alias made a legitimate binding look like a collision.",
+      "resolverChange": "R-4"
+    },
+    {
+      "boundary": "PostgresDiscoveryFeedbackRepository.appendSuppression",
+      "previousLabel": "collision",
+      "verdict": "PROVEN",
+      "proof": "receiver type is DiscoveryFeedbackWriteRepositoryPort = Pick<DiscoveryFeedbackRepositoryPort, 'appendFeedback' | 'appendSuppression'>, a port the boundary implements",
+      "resolverChange": "R-4"
+    },
+    {
+      "boundary": "PostgresDiscoveryFindingRepository.save",
+      "previousLabel": "collision / trace uncertain",
+      "verdict": "TEST_ONLY_OR_DEAD",
+      "proof": "13 same-named call sites enumerated. The boundary implements DiscoveryFindingRepositoryPort, DiscoveryFindingLifecycleRepositoryPort and DiscoveryFindingFingerprintLookupPort. The receiver types at the call sites are TransformationRepositoryPort (x2 sites), ProjectAIConfigurationPort, StandingAIProcessingPolicyWriterPort, ChangeSetReviewRepositoryPort (x2), DiscoveryReviewResourceWriterPort, IntakeRepositoryPort (x2), ValidationRepositoryPort (x2), plus one unresolved. `ChangeSetReviewRepositoryPort` was checked specifically because PostgresChangeSetReviewRepository also declares `save`; it is a different class. No call site reaches this boundary.",
+      "residualUncertainty": "none remaining on the types; the earlier trace was incomplete, not wrong"
+    },
+    {
+      "boundary": "PostgresSourcesProductService.retry",
+      "previousLabel": "collision (PostgresJobRuntime)",
+      "verdict": "binding gap",
+      "proof": "connector-runtime-postgres:797 is `this.retry(...)` inside PostgresJobRuntime.run — a self-call on that class, unrelated to the Sources retry",
+      "resolverChange": "pending — P-ACCESSOR"
+    }
+  ],
+
+  "machineAuthorityNow": {
+    "PROVEN": 86,
+    "TEST_ONLY_OR_DEAD": 13,
+    "REVIEW_REQUIRED": 14,
+    "reviewerRequirement": "REVIEW_REQUIRED must reach 0; the PROVEN/TEST_ONLY split is not fixed in advance"
+  },
+
+  "remainingPatterns": [
+    "P-ACCESSOR — runtime.productService via the process-global write runtime (3 boundaries incl. retry)",
+    "P-FACTORY-CAPTURE — closure captured at application.ts:833 (2 boundaries)",
+    "P-STRUCTURAL — inline structural parameter type (1 boundary)",
+    "P-DEPS-MEMBER — input.repository / this.deps.X (remaining cases)",
+    "Open rows still labelled collision and needing the same source check as above: PostgresAuthRepository.bootstrapOwner (test-guarded, already source-verified), PostgresCanonicalKnowledgeRepository.commitFrontendDraft, PostgresDiscoveryRuntimeRepository.saveJob/transitionJob, <module>.commitProjectProjection x2, PostgresFrontendCommandGateway.accept"
+  ],
+
+  "verifiedUnchanged": {
+    "frozenGoldenV2Sha": "256E5906DB0AFBDEB175C1E754C2C8EC3A1213139AE4F805E95C5396086586CD",
+    "frozenCrosswalkSha": "E4861D67B1EBC4885FA9034245C0B2734E25E3865DE278A4FF660C0B4B0621D2",
+    "goldenV5": "valid=true, issues=0",
+    "validatorAuthorityAndGate": "unchanged — the REVIEW_REQUIRED gate is a final safety net and was NOT relaxed",
+    "inventory": "unchanged",
+    "resolverTypecheck": "clean"
+  }
+}

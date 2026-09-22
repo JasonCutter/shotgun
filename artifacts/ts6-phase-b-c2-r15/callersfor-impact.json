@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2026-09-21T09:14:03.967Z",
+  "gateQuestion": "Is callersFor() the authority for productionReachability.status === PROVEN?",
+  "gateAnswer": "YES — by code inspection. buildAuditShape sets status = callersFor(...).length > 0 ? 'PROVEN' : 'TEST_ONLY_OR_DEAD', and that status decides c2r2Classification TX_BOUNDARY (100) vs TEST_ONLY_OR_DEAD (13). callersFor is an authority, not decoration.",
+  "consequence": "The recorded productionReachability.callers lists ARE method-name-only matches and are therefore polluted: PostgresDiscoveryFeedbackRepository.transaction records 56 callers, PostgresAskAnswerExecutionRepository.transaction records 47. A boundary's caller list is NOT evidence that any listed call site touches that class.",
+  "stopConditionChecked": "The reviewer's STOP condition: does any boundary that is PROVEN today have zero legitimate production callers, which would make productionReachability.status itself wrong and move the 100/13 inventory split?",
+  "stopConditionResult": "NOT TRIGGERED on the evidence available. Three independent approximations were attempted and all three turned out to be measurement artifacts — which is itself the finding.",
+  "attempts": [
+    {
+      "pass": 1,
+      "method": "receiver-text equality against the boundary class",
+      "result": "89/100 PROVEN with zero qualified callers",
+      "verdict": "ARTIFACT. A receiver is rarely spelled as the class name (this.ordering.commit, state.ordering.acquireNext, port-typed parameters)."
+    },
+    {
+      "pass": 2,
+      "method": "call-site-local receiver type resolution (parameter / field / local new-expression)",
+      "result": "98/100 PROVEN with zero qualified external callers",
+      "verdict": "ARTIFACT. Same cause, plus the boundary classes implement Port interfaces, so production receivers are typed as the interface rather than the class."
+    },
+    {
+      "pass": 3,
+      "method": "production function-body call graph, depth 6, named function and method bodies only",
+      "result": "11/100 PROVEN with no reachable body",
+      "verdict": "ARTIFACT, and root-caused. Every sampled case is invoked from an ANONYMOUS callback, which a named-body index cannot see. Evidence: PostgresOrderingStore.acquireNext is called as state.ordering.acquireNext inside the async callback passed to state.jobs.run (packages/connector-runtime/src/runtime.ts:686); PostgresConnectorRuntimeState.recoverExpiredLeases is called from a setInterval arrow (adapters/connector-runtime-postgres/src/index.ts:1367).",
+      "artifactDetail": {
+        "provenWithoutReachableProductionBody": 11,
+        "boundaryIdsSampledAndExplained": [
+          "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+          "safe:adapters/connector-runtime-postgres/src/index.ts:1389"
+        ]
+      }
+    }
+  ],
+  "conclusion": [
+    "The PROVEN authority is sound in substance: no boundary was shown to be PROVEN without a real production call path. The 13 TEST_ONLY_OR_DEAD boundaries stay TEST_ONLY_OR_DEAD and the 100 / 13 / 7 split is not disturbed.",
+    "The callers LISTS remain polluted, so productionReachability.callers must not be used to source regression evidence or to license a PUBLIC_PATH hop. That constraint was already applied in this round: Groups A and B were selected using qualified DIRECT_BOUNDARY resolution only.",
+    "Tightening callersFor() to a file/symbol-qualified match (plus anonymous-callback indexing) is a separate correction with its own re-adjudication of the 100/13 split. It is NOT required for C2-R15 final acceptance and is recorded as follow-up."
+  ],
+  "followUpTicket": {
+    "title": "callersFor(): replace method-name matching with file/symbol-qualified caller evidence",
+    "scope": [
+      "index anonymous function/arrow bodies so callback invocations are visible",
+      "resolve production receivers through parameter/field/port annotations instead of receiver text",
+      "re-derive productionReachability.callers for all 113 boundaries",
+      "re-check the 100 PROVEN / 13 TEST_ONLY_OR_DEAD split and the candidateReconciliation classifications",
+      "re-run the frozen v2 (must stay at 121) and the corrected snapshot"
+    ],
+    "notRequiredFor": "C2-R15 §4 and §5 closure"
+  },
+  "usableForThisRound": "No. No PUBLIC_PATH declaration may be built on productionReachability.callers."
+}

@@ -1,0 +1,85 @@
+{
+  "missingRegressionAtStart": 16,
+  "records": [
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+      "method": "acquireNext",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "method": "recoverExpiredLeases",
+      "decision": "A EXISTING_DIRECT_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:777",
+      "method": "recordConsumptionDisposition",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:987",
+      "method": "persistIntake",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2844",
+      "method": "saveFailureContext",
+      "decision": "E NEW_MINIMAL_REGRESSION_REQUIRED"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:91",
+      "method": "withProjectWriteLock",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2421",
+      "method": "poolTransaction",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:467",
+      "method": "markSubmissionStage3Incomplete",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:508",
+      "method": "finalizeSubmissionState",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485",
+      "method": "markStage3ItemsSucceeded",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:418",
+      "method": "withTransaction",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1340",
+      "method": "markStale",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:971",
+      "method": "updateProject",
+      "decision": "E NEW_MINIMAL_REGRESSION_REQUIRED"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1500",
+      "method": "updatePrincipalPreferences",
+      "decision": "E NEW_MINIMAL_REGRESSION_REQUIRED"
+    },
+    {
+      "boundaryId": "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:90",
+      "method": "createProposal",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    },
+    {
+      "boundaryId": "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:160",
+      "method": "approveProposal",
+      "decision": "B EXISTING_PATH_REGRESSION"
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "generatedAt": "2026-09-22T00:45:00.000Z",
+  "subject": "TS-6 C2 release verifier wired into CI, plus the provenance audit the owner required before any commit",
+  "instruction": "No commit, push or PR. This entry prepares the exact changeset boundary so the owner can authorise a commit without the two workstreams silently merging.",
+
+  "part1_releaseVerifier": {
+    "script": "scripts/verify-ts6-c2-release.ts",
+    "npm": "verify:ts6-c2  ->  tsx scripts/verify-ts6-c2-release.ts",
+    "ci": ".github/workflows/ci.yml — quality job, immediately after the Typecheck step: `run: npm run verify:ts6-c2`",
+    "whyItIsADeterministicGateNotAHardcodedNumber": "It never asserts `96 / 17`. It RE-DERIVES the authority through buildAuditShape and resolveReachability, then checks that the committed golden.v6 still follows from it. A drift in the authority fails the gate until the lineage is deliberately re-derived.",
+    "checks": [
+      "1. frozen artifacts preserved — sha256 of frozen v2, crosswalk and golden.v5 must be byte-identical",
+      "2. current authority inventory — 120 candidates / 113 boundaries / 11 raw sites, counted independently of status",
+      "3. current authority classification — REVIEW_REQUIRED must be 0, TX_BOUNDARY + TEST_ONLY_OR_DEAD must reconcile to 113, and every PROVEN boundary must carry a qualified caller",
+      "4. golden.v6 lineage — validateCorpus must return valid=true with 0 issues against the CURRENT authority (this is the 'the committed classification still follows from the committed authority' claim), summary must equal the re-derived classification, one row per boundary",
+      "5. relation graph — 112 declared relations, every covers[] target back-referenced, every PROVEN row carrying a resolving relation, lineage PROVEN count equal to the derived count",
+      "6. legacy authority retirement — the legacy reconstruction is still reachable for historical assertions, the two authorities must DIFFER (proving the replacement is actually in effect), and the inventory must not move with the authority"
+    ],
+    "localResult": "PASSED, exit 0",
+    "negativeTest": {
+      "method": "flipped one PROVEN boundary to TEST_ONLY_OR_DEAD inside golden.v6 only, decrementing the summary, then re-ran the gate",
+      "result": "exit 1 with 3 FAILs — 'golden.v6 validates clean against the current authority' (REACHABILITY_DRIFT, SUMMARY_COUNT x2), 'golden.v6 summary is the re-derived classification' (v6 95/18/0 != derived 96/17/0), 'lineage PROVEN count equals the derived classification' (95 != 96)",
+      "thenRestored": "gate PASSED again, exit 0",
+      "conclusion": "the gate genuinely detects lineage drift; it is not a no-op assertion"
+    },
+    "scopeLimitation": "This is the ONLY TS-6 C2 enforcement added. The 37-case audit suites (scripts/ts6-audit/*.test.ts) are deliberately NOT added as permanent unit/contract gates — they keep their teardown defect and their issue-scoped role. Nothing about test:contract, Stage 9, NetworkX or the timeouts was changed."
+  },
+
+  "part2_provenanceAudit": {
+    "why": "The owner required a check that the dirty worktree's other production changes cannot ride along in the TS-6 commit. 'Looks unrelated' is not the same claim as 'is not in the commit'.",
+    "finding": "The worktree is NOT one changeset. It carries TWO workstreams, and the production changes are real functional work — not formatting or incidental noise.",
+    "workstreamB_isNotC2R15": {
+      "identity": "Postgres authority-critical commit-ambiguity / OUTCOME_UNKNOWN reconciliation",
+      "evidence": [
+        "docs/architecture/adr/ADR-169-authority-critical-postgres-commit-ambiguity-reconciliation.md is MODIFIED (7389 bytes)",
+        "docs/architecture/adr/ADR-123-ask-command-conversation-persistence-and-outcome-recovery-boundary.md is MODIFIED",
+        "12 added lines across the production diff reference OUTCOME_UNKNOWN / outcome-state handling",
+        "sample: modules/discovery-runtime/src/worker.ts adds `isOutcomeUnknown()` and a `preserveLeaseForRecovery` path that keeps the lease fence alive on OUTCOME_UNKNOWN",
+        "the two ADRs and the TS-6 transaction-outcome tests are dirty together, which is the OUTCOME_UNKNOWN workstream"
+      ],
+      "testProofsAlsoDirty": [
+        "tests/contract/ts6-transaction-outcome.contract.test.ts",
+        "tests/database/ts6-transaction-outcome-isolation.database.test.ts",
+        "tests/database/ts6-command-gateway-exact-readback.database.test.ts",
+        "tests/database/ts6-semantic-embedding-ack-loss.database.test.ts",
+        "tests/helpers/postgres-commit-ack-loss.ts",
+        "tests/unit/frontend-command-route-outcome.test.ts"
+      ],
+      "otherUnrelatedGroupsAlsoDirty": [
+        "docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html",
+        "docs/implementation/frontend-cross-phase-product-gap-repair-amendment-260809001.md",
+        "package.json was ALREADY modified before this round (the pre-existing R12 `test:unit --maxWorkers=2`)"
+      ],
+      "relationToC2R15": "C2-R15's own handoff (13-FINAL-HANDOFF.md §3) states 'No production source under adapters/ modules/ packages/ assemblies/ apps/ was modified by this round.' The 23 dirty production files are therefore outside C2-R15's declared scope."
+    },
+    "workstreamA_isThisRound": {
+      "files": [
+        "scripts/ts6-phase-b-production-reachability.ts (new — the authority)",
+        "scripts/ts6-phase-b-transaction-authority-validator.ts",
+        "scripts/ts6-phase-b-regression-evidence-resolver.ts",
+        "scripts/ts6-phase-b-regression-evidence-authority.ts",
+        "scripts/verify-ts6-c2-release.ts (new — this round's release gate)",
+        "scripts/rebuild-ts6-phase-b-c2-r15-qualified-reachability.mjs (new)",
+        "scripts/rebuild-ts6-phase-b-c2-r15-v6-lineage.mjs (new)",
+        "scripts/ts6-audit/c2r15-authority-correction.test.ts",
+        "scripts/ts6-audit/regression-evidence-authority.test.ts",
+        "artifacts/ts6-phase-b-c2-r15/** (round artifacts, incl. golden.v6.derived.json)",
+        ".github/workflows/ci.yml (this round's gate step; NOTE the file was already modified earlier for other reasons)",
+        "package.json (this round's verify:ts6-c2 script; the file was already modified earlier)"
+      ],
+      "notInThisRound": "no file under adapters/ modules/ packages/ assemblies/ apps/"
+    },
+    "theBoundaryIsCleanerThanItFirstLooked": {
+      "checked": "the 8 tests/database/*.test.ts that C2-R15 §3 lists as its own C1/C3/C4/C5/Group C proofs",
+      "finding": "all 8 are PURELY ADDITIVE — 35 to 91 added lines each, ZERO deletions — and none carries a workstream-B edit. The only 'outcome/ACK' hits were false positives on the words 'feedback', 'callback' and 'durably'. Workstream B does not touch these files.",
+      "consequence": "the split boundary is clean: the 8 proof files belong to C2-R15 and need no hunk-splitting",
+      "remainingProblem": "Every local verification result this round (typecheck, unit, contract, integration, database, verifier) was produced against the FULL dirty worktree, i.e. workstream A + B + the unrelated docs changes together. A commit containing only workstream A is NOT the tree that was verified, so the results must be reproduced at the exact head — which is exactly what the owner's step 5 requires.",
+      "whatIsStillNeededFromTheOwner": "a decision on whether the two workstreams land as separate commits/PRs or as one declared PR. That is a governance call, not derivable from the code.",
+      "options": [
+        "A. land the two workstreams as SEPARATE commits/PRs (recommended) — C2-R15 audit correction first, then the OUTCOME_UNKNOWN production work, each with its own exact-head CI run",
+        "B. land them as one declared PR, explicitly stating that it contains both, so the review and the CI result cover the real head"
+      ],
+      "notDecidedHere": "no staging, commit or push was performed"
+    },
+    "mechanicallyVerifiableAtCommitTime": [
+      "git diff --cached --name-only must contain NO path under adapters/ modules/ packages/ assemblies/ apps/ for a C2-R15-only commit",
+      "git diff --cached --name-only must not contain docs/architecture/adr/ADR-169* or ADR-123*",
+      "npm run verify:ts6-c2 must exit 0 on the exact staged tree",
+      "npm run typecheck must exit 0 on the exact staged tree"
+    ]
+  },
+
+  "part3_localFlakesUnchanged": {
+    "disposition": "not modified, exactly as instructed. Stage 9 / NetworkX and the DB concurrency test were NOT touched.",
+    "unit": "1232/1232 assertions passed, process exit 1 (teardown defect)",
+    "contract": "702/704, 2 NetworkX cases failed in the full lane, 12/12 in isolation",
+    "database": "562 passed / 2 failed, all green on isolated rerun",
+    "canonicalCi": "to be judged there; an isolated pass will not be used to dismiss a canonical failure"
+  },
+
+  "status": {
+    "C2-R15 evidence authority": "PASS",
+    "qualified reachability authority": "PASS",
+    "golden.v6 lineage": "PASS",
+    "typecheck blocker": "FIXED",
+    "v6 CI enforcement": "ADDED — npm run verify:ts6-c2, wired into the quality job, proven to detect drift",
+    "changeset provenance": "AUDITED — two workstreams found; owner decision required before commit",
+    "local release lanes": "NOT CLEAN",
+    "canonical exact-head CI": "NOT YET POSSIBLE",
+    "commit / push / PR": "HOLD",
+    "TS-6 C2 FINAL": "HOLD"
+  }
+}

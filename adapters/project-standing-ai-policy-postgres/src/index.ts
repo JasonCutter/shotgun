@@ -6,6 +6,7 @@ import type {
   StandingAIProcessingPolicy,
   StandingAIProcessingPolicyRepositoryPort,
 } from '../../../packages/policy/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 type StandingPolicyRow = QueryResultRow & {
   project_id: string;
@@ -70,26 +71,26 @@ export class PostgresStandingAIProcessingPolicyRepository implements StandingAIP
     readonly expectedRevision: number;
     readonly next: StandingAIProcessingPolicy;
   }): Promise<'CREATED' | 'UPDATED' | 'CONFLICT'> {
-    const client = await this.pool.connect();
     try {
-      await client.query('BEGIN');
-      const current = await client.query<StandingPolicyRow>(`${currentSql} FOR UPDATE`, [
-        input.next.projectId,
-      ]);
-      const currentRow = current.rows[0];
-      const currentRevision = currentRow ? Number(currentRow.policy_revision) : 0;
-      if (
-        currentRevision !== input.expectedRevision ||
-        input.next.policyRevision !== input.expectedRevision + 1
-      ) {
-        await client.query('ROLLBACK');
-        return 'CONFLICT';
-      }
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const current = await client.query<StandingPolicyRow>(`${currentSql} FOR UPDATE`, [
+            input.next.projectId,
+          ]);
+          const currentRow = current.rows[0];
+          const currentRevision = currentRow ? Number(currentRow.policy_revision) : 0;
+          if (
+            currentRevision !== input.expectedRevision ||
+            input.next.policyRevision !== input.expectedRevision + 1
+          ) {
+            return 'CONFLICT';
+          }
 
-      await insertRevision(client, input.next);
-      if (currentRow) {
-        await client.query(
-          `UPDATE ai.project_standing_ai_processing_policies
+          await insertRevision(client, input.next);
+          if (currentRow) {
+            await client.query(
+              `UPDATE ai.project_standing_ai_processing_policies
            SET enabled = $2,
                provider_id = $3,
                policy_revision = $4,
@@ -97,58 +98,57 @@ export class PostgresStandingAIProcessingPolicyRepository implements StandingAIP
                changed_by = $6,
                changed_at = $7
            WHERE project_id = $1`,
-          [
-            input.next.projectId,
-            input.next.enabled,
-            input.next.providerId,
-            input.next.policyRevision,
-            input.next.aiConfigurationRevision,
-            input.next.changedBy,
-            input.next.changedAt,
-          ],
-        );
-      } else {
-        await client.query(
-          `INSERT INTO ai.project_standing_ai_processing_policies (
+              [
+                input.next.projectId,
+                input.next.enabled,
+                input.next.providerId,
+                input.next.policyRevision,
+                input.next.aiConfigurationRevision,
+                input.next.changedBy,
+                input.next.changedAt,
+              ],
+            );
+          } else {
+            await client.query(
+              `INSERT INTO ai.project_standing_ai_processing_policies (
              project_id, enabled, provider_id, policy_revision,
              ai_configuration_revision, changed_by, changed_at
            ) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [
-            input.next.projectId,
-            input.next.enabled,
-            input.next.providerId,
-            input.next.policyRevision,
-            input.next.aiConfigurationRevision,
-            input.next.changedBy,
-            input.next.changedAt,
-          ],
-        );
-      }
-      await client.query(
-        `INSERT INTO settings.settings_audit_events
+              [
+                input.next.projectId,
+                input.next.enabled,
+                input.next.providerId,
+                input.next.policyRevision,
+                input.next.aiConfigurationRevision,
+                input.next.changedBy,
+                input.next.changedAt,
+              ],
+            );
+          }
+          await client.query(
+            `INSERT INTO settings.settings_audit_events
            (event_id, project_id, actor_id, action_name, risk_level, details, timestamp)
          VALUES ($1, $2, $3, 'PROJECT_STANDING_AI_PROCESSING_POLICY_CHANGED', 'HIGH', $4, $5)`,
-        [
-          randomUUID(),
-          input.next.projectId,
-          input.next.changedBy,
-          JSON.stringify({
-            enabled: input.next.enabled,
-            providerId: input.next.providerId,
-            policyRevision: input.next.policyRevision,
-            aiConfigurationRevision: input.next.aiConfigurationRevision,
-          }),
-          input.next.changedAt,
-        ],
+            [
+              randomUUID(),
+              input.next.projectId,
+              input.next.changedBy,
+              JSON.stringify({
+                enabled: input.next.enabled,
+                providerId: input.next.providerId,
+                policyRevision: input.next.policyRevision,
+                aiConfigurationRevision: input.next.aiConfigurationRevision,
+              }),
+              input.next.changedAt,
+            ],
+          );
+          return currentRow ? 'UPDATED' : 'CREATED';
+        },
+        { module: 'project-standing-ai-policy-postgres', operation: 'save-revision' },
       );
-      await client.query('COMMIT');
-      return currentRow ? 'UPDATED' : 'CREATED';
     } catch (error) {
-      await client.query('ROLLBACK');
       if ((error as { code?: string }).code === '23505') return 'CONFLICT';
       throw error;
-    } finally {
-      client.release();
     }
   }
 }

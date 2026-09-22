@@ -23,6 +23,7 @@ import {
   type SettingsValidationResult,
   type ProductFeatureView,
 } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   CreateProjectInput,
   ProjectBootstrapInput,
@@ -307,21 +308,20 @@ export class PostgresOriginalAssetRepository
   }
 
   async store(input: StoreOriginalAssetInput): Promise<StoredIntakeResult> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-        `${input.projectId}:${input.submissionId}`,
-      ]);
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+          `${input.projectId}:${input.submissionId}`,
+        ]);
 
-      const receipt = await this.findReceipt(client, input.projectId, input.submissionId);
-      if (receipt) {
-        await client.query('COMMIT');
-        return receipt;
-      }
+        const receipt = await this.findReceipt(client, input.projectId, input.submissionId);
+        if (receipt) {
+          return receipt;
+        }
 
-      const insertedAsset = await client.query<{ asset_id: string }>(
-        `
+        const insertedAsset = await client.query<{ asset_id: string }>(
+          `
           INSERT INTO asset.original_assets (
             asset_id, content_hash, size_bytes, storage_key, created_at
           )
@@ -329,47 +329,47 @@ export class PostgresOriginalAssetRepository
           ON CONFLICT (content_hash) DO NOTHING
           RETURNING asset_id::text
         `,
-        [randomUUID(), input.contentHash, input.sizeBytes, input.storageKey, input.createdAt],
-      );
-      const assetReused = insertedAsset.rowCount === 0;
-      const asset = await client.query<{ asset_id: string }>(
-        'SELECT asset_id::text FROM asset.original_assets WHERE content_hash = $1',
-        [input.contentHash],
-      );
-      const assetId = asset.rows[0]?.asset_id;
-      if (!assetId) {
-        throw new Error('Original Asset insert did not produce an asset.');
-      }
+          [randomUUID(), input.contentHash, input.sizeBytes, input.storageKey, input.createdAt],
+        );
+        const assetReused = insertedAsset.rowCount === 0;
+        const asset = await client.query<{ asset_id: string }>(
+          'SELECT asset_id::text FROM asset.original_assets WHERE content_hash = $1',
+          [input.contentHash],
+        );
+        const assetId = asset.rows[0]?.asset_id;
+        if (!assetId) {
+          throw new Error('Original Asset insert did not produce an asset.');
+        }
 
-      const sourceId = await this.resolveSource(client, input);
-      const existingVersion = await client.query<{
-        source_version_id: string;
-        version_number: number;
-      }>(
-        `
+        const sourceId = await this.resolveSource(client, input);
+        const existingVersion = await client.query<{
+          source_version_id: string;
+          version_number: number;
+        }>(
+          `
           SELECT source_version_id::text, version_number
           FROM asset.source_versions
           WHERE source_id = $1 AND original_asset_id = $2
         `,
-        [sourceId, assetId],
-      );
+          [sourceId, assetId],
+        );
 
-      let sourceVersionId = existingVersion.rows[0]?.source_version_id;
-      let versionNumber = existingVersion.rows[0]?.version_number;
-      const versionCreated = !sourceVersionId;
-      if (!sourceVersionId || !versionNumber) {
-        const latest = await client.query<{ next_version: number }>(
-          `
+        let sourceVersionId = existingVersion.rows[0]?.source_version_id;
+        let versionNumber = existingVersion.rows[0]?.version_number;
+        const versionCreated = !sourceVersionId;
+        if (!sourceVersionId || !versionNumber) {
+          const latest = await client.query<{ next_version: number }>(
+            `
             SELECT COALESCE(MAX(version_number), 0) + 1 AS next_version
             FROM asset.source_versions
             WHERE source_id = $1
           `,
-          [sourceId],
-        );
-        sourceVersionId = randomUUID();
-        versionNumber = Number(latest.rows[0]?.next_version ?? 1);
-        await client.query(
-          `
+            [sourceId],
+          );
+          sourceVersionId = randomUUID();
+          versionNumber = Number(latest.rows[0]?.next_version ?? 1);
+          await client.query(
+            `
             INSERT INTO asset.source_versions (
               source_version_id,
               source_id,
@@ -382,21 +382,21 @@ export class PostgresOriginalAssetRepository
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           `,
-          [
-            sourceVersionId,
-            sourceId,
-            versionNumber,
-            assetId,
-            input.mediaType,
-            input.accessScope,
-            input.sensitivity,
-            input.createdAt,
-          ],
-        );
-      }
+            [
+              sourceVersionId,
+              sourceId,
+              versionNumber,
+              assetId,
+              input.mediaType,
+              input.accessScope,
+              input.sensitivity,
+              input.createdAt,
+            ],
+          );
+        }
 
-      await client.query(
-        `
+        await client.query(
+          `
           INSERT INTO asset.storage_receipts (
             receipt_id,
             submission_id,
@@ -411,32 +411,28 @@ export class PostgresOriginalAssetRepository
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         `,
-        [
-          randomUUID(),
-          input.submissionId,
-          input.projectId,
-          sourceVersionId,
-          input.channel,
-          input.materialKind,
-          input.originalFileName ?? null,
-          assetReused,
-          versionCreated,
-          input.createdAt,
-        ],
-      );
+          [
+            randomUUID(),
+            input.submissionId,
+            input.projectId,
+            sourceVersionId,
+            input.channel,
+            input.materialKind,
+            input.originalFileName ?? null,
+            assetReused,
+            versionCreated,
+            input.createdAt,
+          ],
+        );
 
-      const stored = await this.findReceipt(client, input.projectId, input.submissionId);
-      if (!stored) {
-        throw new Error('Original Asset receipt was not created.');
-      }
-      await client.query('COMMIT');
-      return stored;
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+        const stored = await this.findReceipt(client, input.projectId, input.submissionId);
+        if (!stored) {
+          throw new Error('Original Asset receipt was not created.');
+        }
+        return stored;
+      },
+      { module: 'postgres', operation: 'store-original-asset' },
+    );
   }
 
   async findBySubmission(
@@ -818,273 +814,276 @@ export class PostgresProjectAdministrationRepository implements ProjectAdministr
   }
 
   async createProject(input: CreateProjectInput): Promise<ProjectListItemView> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const now = new Date();
+    let replayed = false;
+    const result = await withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const now = new Date();
 
-      const existingIdem = await client.query<{
-        client_request_id: string;
-      }>(
-        `SELECT client_request_id FROM project_admin.project_command_results WHERE idempotency_key = $1`,
-        [input.idempotencyKey],
-      );
-      if (existingIdem.rows.length > 0) {
-        if (existingIdem.rows[0]?.client_request_id !== input.clientRequestId) {
-          throw new FrontendContractError(
-            'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-            `Idempotency key '${input.idempotencyKey}' reused with different clientRequestId.`,
-          );
+        const existingIdem = await client.query<{
+          client_request_id: string;
+        }>(
+          `SELECT client_request_id FROM project_admin.project_command_results WHERE idempotency_key = $1`,
+          [input.idempotencyKey],
+        );
+        if (existingIdem.rows.length > 0) {
+          if (existingIdem.rows[0]?.client_request_id !== input.clientRequestId) {
+            throw new FrontendContractError(
+              'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+              `Idempotency key '${input.idempotencyKey}' reused with different clientRequestId.`,
+            );
+          }
+          replayed = true;
+          return null;
         }
-        await client.query('COMMIT');
-        const existingProject = await this.getProjectDetails(input.projectId);
-        if (!existingProject) throw new Error('Project created but not found');
-        return existingProject;
-      }
 
-      // Step 1: Insert project metadata (using input.projectId directly)
-      const insertRes = await client.query<{
-        id: string;
-        name: string;
-        description: string | null;
-        status: string;
-        active: boolean;
-        created_at: Date;
-        updated_at: Date;
-        revision: number;
-      }>(
-        `INSERT INTO project_admin.projects (id, name, description, status, active, created_at, updated_at, revision)
+        // Step 1: Insert project metadata (using input.projectId directly)
+        const insertRes = await client.query<{
+          id: string;
+          name: string;
+          description: string | null;
+          status: string;
+          active: boolean;
+          created_at: Date;
+          updated_at: Date;
+          revision: number;
+        }>(
+          `INSERT INTO project_admin.projects (id, name, description, status, active, created_at, updated_at, revision)
          VALUES ($1, $2, $3, 'ACTIVE', true, $4, $4, 1)
          RETURNING id, name, description, status, active, created_at, updated_at, revision`,
-        [input.projectId, input.name, input.description ?? null, now],
-      );
+          [input.projectId, input.name, input.description ?? null, now],
+        );
 
-      // Step 2: Insert project revision record
-      await client.query(
-        `INSERT INTO project_admin.project_revisions (project_id, revision, changed_by, change_reason, created_at)
+        // Step 2: Insert project revision record
+        await client.query(
+          `INSERT INTO project_admin.project_revisions (project_id, revision, changed_by, change_reason, created_at)
          VALUES ($1, 1, $2, 'Initial project creation', $3)`,
-        [input.projectId, input.actorPrincipalId, now],
-      );
+          [input.projectId, input.actorPrincipalId, now],
+        );
 
-      // Step 3: Owner membership — use auth.project_memberships
-      await client.query(
-        `INSERT INTO auth.project_memberships (principal_id, project_id, scopes, sensitivity_clearance, is_owner)
+        // Step 3: Owner membership — use auth.project_memberships
+        await client.query(
+          `INSERT INTO auth.project_memberships (principal_id, project_id, scopes, sensitivity_clearance, is_owner)
          VALUES ($1, $2, $3, $4, true)
          ON CONFLICT (principal_id, project_id) DO NOTHING`,
-        [input.actorPrincipalId, input.projectId, ['owner'], 'private'],
-      );
+          [input.actorPrincipalId, input.projectId, ['owner'], 'private'],
+        );
 
-      // Step 4: Initial Settings Revision (append-only; PK=(project_id, revision))
-      await client.query(
-        `INSERT INTO settings.settings_revisions (project_id, revision, settings_snapshot, created_at)
+        // Step 4: Initial Settings Revision (append-only; PK=(project_id, revision))
+        await client.query(
+          `INSERT INTO settings.settings_revisions (project_id, revision, settings_snapshot, created_at)
          VALUES ($1, 1, '{}'::jsonb, $2)`,
-        [input.projectId, now],
-      );
+          [input.projectId, now],
+        );
 
-      // Step 5: Initial Policy Context Revision (append-only; PK=(project_id, revision))
-      await client.query(
-        `INSERT INTO settings.policy_context_revisions (project_id, revision, policy_binding, created_at)
+        // Step 5: Initial Policy Context Revision (append-only; PK=(project_id, revision))
+        await client.query(
+          `INSERT INTO settings.policy_context_revisions (project_id, revision, policy_binding, created_at)
          VALUES ($1, 1, '{}'::jsonb, $2)`,
-        [input.projectId, now],
-      );
+          [input.projectId, now],
+        );
 
-      await client.query(
-        `INSERT INTO ai.project_standing_ai_processing_policy_revisions
+        await client.query(
+          `INSERT INTO ai.project_standing_ai_processing_policy_revisions
            (project_id, enabled, provider_id, policy_revision,
             ai_configuration_revision, changed_by, changed_at)
          VALUES ($1, false, 'deepseek', 1, 0, $2, $3)`,
-        [input.projectId, input.actorPrincipalId, now],
-      );
-      await client.query(
-        `INSERT INTO ai.project_standing_ai_processing_policies
+          [input.projectId, input.actorPrincipalId, now],
+        );
+        await client.query(
+          `INSERT INTO ai.project_standing_ai_processing_policies
            (project_id, enabled, provider_id, policy_revision,
             ai_configuration_revision, changed_by, changed_at)
          VALUES ($1, false, 'deepseek', 1, 0, $2, $3)`,
-        [input.projectId, input.actorPrincipalId, now],
-      );
+          [input.projectId, input.actorPrincipalId, now],
+        );
 
-      // Step 6: Project Lifecycle Command Idempotency
-      await client.query(
-        `INSERT INTO project_admin.project_commands (command_id, client_request_id, idempotency_key, project_id, actor_id, expected_revision, command_type, command_payload, status, created_at)
+        // Step 6: Project Lifecycle Command Idempotency
+        await client.query(
+          `INSERT INTO project_admin.project_commands (command_id, client_request_id, idempotency_key, project_id, actor_id, expected_revision, command_type, command_payload, status, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, 'CREATE_PROJECT', $7, 'APPLIED', $8)`,
-        [
-          input.commandId,
-          input.clientRequestId,
-          input.idempotencyKey,
-          input.projectId,
-          input.actorPrincipalId,
-          1,
-          JSON.stringify({ name: input.name, description: input.description }),
-          now,
-        ],
-      );
-      await client.query(
-        `INSERT INTO project_admin.project_command_results (command_id, client_request_id, idempotency_key, status, applied_revision, completed_at)
+          [
+            input.commandId,
+            input.clientRequestId,
+            input.idempotencyKey,
+            input.projectId,
+            input.actorPrincipalId,
+            1,
+            JSON.stringify({ name: input.name, description: input.description }),
+            now,
+          ],
+        );
+        await client.query(
+          `INSERT INTO project_admin.project_command_results (command_id, client_request_id, idempotency_key, status, applied_revision, completed_at)
          VALUES ($1, $2, $3, 'APPLIED', 1, $4)`,
-        [input.commandId, input.clientRequestId, input.idempotencyKey, now],
-      );
+          [input.commandId, input.clientRequestId, input.idempotencyKey, now],
+        );
 
-      // Step 7: Audit event
-      await client.query(
-        `INSERT INTO settings.settings_audit_events
+        // Step 7: Audit event
+        await client.query(
+          `INSERT INTO settings.settings_audit_events
            (event_id, project_id, actor_id, action_name, risk_level, details, timestamp)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          randomUUID(),
-          input.projectId,
-          input.actorPrincipalId,
-          'PROJECT_CREATED',
-          'LOW',
-          JSON.stringify({ projectName: input.name }),
-          now,
-        ],
-      );
+          [
+            randomUUID(),
+            input.projectId,
+            input.actorPrincipalId,
+            'PROJECT_CREATED',
+            'LOW',
+            JSON.stringify({ projectName: input.name }),
+            now,
+          ],
+        );
 
-      await client.query('COMMIT');
-
-      const row = insertRes.rows[0]!;
-      return decodeProjectListItemView({
-        id: row.id,
-        name: row.name,
-        description: row.description ?? undefined,
-        isOwner: true,
-        status: row.status,
-        active: row.active,
-        createdAt: row.created_at.toISOString(),
-        updatedAt: row.updated_at.toISOString(),
-        revision: Number(row.revision),
-        capability: {
-          canRename: true,
-          canArchive: true,
-          canRestore: false,
-          canDelete: true,
-          canManagePolicies: true,
-        },
-      });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
+        const row = insertRes.rows[0]!;
+        return decodeProjectListItemView({
+          id: row.id,
+          name: row.name,
+          description: row.description ?? undefined,
+          isOwner: true,
+          status: row.status,
+          active: row.active,
+          createdAt: row.created_at.toISOString(),
+          updatedAt: row.updated_at.toISOString(),
+          revision: Number(row.revision),
+          capability: {
+            canRename: true,
+            canArchive: true,
+            canRestore: false,
+            canDelete: true,
+            canManagePolicies: true,
+          },
+        });
+      },
+      { module: 'postgres', operation: 'create-project' },
+    );
+    if (replayed) {
+      const existingProject = await this.getProjectDetails(input.projectId);
+      if (!existingProject) throw new Error('Project created but not found');
+      return existingProject;
     }
+    if (!result) throw new Error('Project creation produced no result.');
+    return result;
   }
 
   async updateProject(input: UpdateProjectInput): Promise<ProjectListItemView> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const now = new Date();
+    let replayed = false;
+    const result = await withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const now = new Date();
 
-      const existingIdem = await client.query<{
-        client_request_id: string;
-      }>(
-        `SELECT client_request_id FROM project_admin.project_command_results WHERE idempotency_key = $1`,
-        [input.idempotencyKey],
-      );
-      if (existingIdem.rows.length > 0) {
-        if (existingIdem.rows[0]?.client_request_id !== input.clientRequestId) {
+        const existingIdem = await client.query<{
+          client_request_id: string;
+        }>(
+          `SELECT client_request_id FROM project_admin.project_command_results WHERE idempotency_key = $1`,
+          [input.idempotencyKey],
+        );
+        if (existingIdem.rows.length > 0) {
+          if (existingIdem.rows[0]?.client_request_id !== input.clientRequestId) {
+            throw new FrontendContractError(
+              'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+              `Idempotency key '${input.idempotencyKey}' reused with different clientRequestId.`,
+            );
+          }
+          replayed = true;
+          return null;
+        }
+
+        const checkRes = await client.query<{ revision: number }>(
+          `SELECT revision FROM project_admin.projects WHERE id = $1 FOR UPDATE`,
+          [input.projectId],
+        );
+        if (checkRes.rows.length === 0) {
           throw new FrontendContractError(
-            'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-            `Idempotency key '${input.idempotencyKey}' reused with different clientRequestId.`,
+            'RESOURCE_RETIRED',
+            `Project '${input.projectId}' not found.`,
           );
         }
-        await client.query('COMMIT');
-        const existingProject = await this.getProjectDetails(input.projectId);
-        if (!existingProject) throw new Error('Project updated but not found');
-        return existingProject;
-      }
+        const currentRev = checkRes.rows[0]!.revision;
+        if (currentRev !== input.expectedProjectRevision) {
+          throw new FrontendContractError(
+            'REVISION_CONFLICT',
+            `Expected project revision ${input.expectedProjectRevision} but current is ${currentRev}.`,
+          );
+        }
 
-      const checkRes = await client.query<{ revision: number }>(
-        `SELECT revision FROM project_admin.projects WHERE id = $1 FOR UPDATE`,
-        [input.projectId],
-      );
-      if (checkRes.rows.length === 0) {
-        throw new FrontendContractError(
-          'RESOURCE_RETIRED',
-          `Project '${input.projectId}' not found.`,
-        );
-      }
-      const currentRev = checkRes.rows[0]!.revision;
-      if (currentRev !== input.expectedProjectRevision) {
-        throw new FrontendContractError(
-          'REVISION_CONFLICT',
-          `Expected project revision ${input.expectedProjectRevision} but current is ${currentRev}.`,
-        );
-      }
-
-      const nextRev = currentRev + 1;
-      const updateRes = await client.query<{
-        id: string;
-        name: string;
-        description: string | null;
-        status: string;
-        active: boolean;
-        created_at: Date;
-        updated_at: Date;
-        revision: number;
-      }>(
-        `UPDATE project_admin.projects
+        const nextRev = currentRev + 1;
+        const updateRes = await client.query<{
+          id: string;
+          name: string;
+          description: string | null;
+          status: string;
+          active: boolean;
+          created_at: Date;
+          updated_at: Date;
+          revision: number;
+        }>(
+          `UPDATE project_admin.projects
          SET name = COALESCE($1, name), description = COALESCE($2, description), revision = $3, updated_at = $4
          WHERE id = $5
          RETURNING id, name, description, status, active, created_at, updated_at, revision`,
-        [input.name ?? null, input.description ?? null, nextRev, now, input.projectId],
-      );
+          [input.name ?? null, input.description ?? null, nextRev, now, input.projectId],
+        );
 
-      await client.query(
-        `INSERT INTO project_admin.project_revisions (project_id, revision, changed_by, change_reason, created_at)
+        await client.query(
+          `INSERT INTO project_admin.project_revisions (project_id, revision, changed_by, change_reason, created_at)
          VALUES ($1, $2, $3, 'Update project metadata', $4)`,
-        [input.projectId, nextRev, input.actorPrincipalId, now],
-      );
+          [input.projectId, nextRev, input.actorPrincipalId, now],
+        );
 
-      await client.query(
-        `INSERT INTO project_admin.project_commands (command_id, client_request_id, idempotency_key, project_id, actor_id, expected_revision, command_type, command_payload, status, created_at)
+        await client.query(
+          `INSERT INTO project_admin.project_commands (command_id, client_request_id, idempotency_key, project_id, actor_id, expected_revision, command_type, command_payload, status, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, 'UPDATE_PROJECT', $7, 'APPLIED', $8)`,
-        [
-          input.commandId,
-          input.clientRequestId,
-          input.idempotencyKey,
-          input.projectId,
-          input.actorPrincipalId,
-          input.expectedProjectRevision,
-          JSON.stringify({ name: input.name, description: input.description }),
-          now,
-        ],
-      );
+          [
+            input.commandId,
+            input.clientRequestId,
+            input.idempotencyKey,
+            input.projectId,
+            input.actorPrincipalId,
+            input.expectedProjectRevision,
+            JSON.stringify({ name: input.name, description: input.description }),
+            now,
+          ],
+        );
 
-      await client.query(
-        `INSERT INTO project_admin.project_command_results (command_id, client_request_id, idempotency_key, status, applied_revision, completed_at)
+        await client.query(
+          `INSERT INTO project_admin.project_command_results (command_id, client_request_id, idempotency_key, status, applied_revision, completed_at)
          VALUES ($1, $2, $3, 'APPLIED', $4, $5)`,
-        [input.commandId, input.clientRequestId, input.idempotencyKey, nextRev, now],
-      );
+          [input.commandId, input.clientRequestId, input.idempotencyKey, nextRev, now],
+        );
 
-      await client.query('COMMIT');
-      const row = updateRes.rows[0]!;
-      const isActive = row.status === 'ACTIVE';
-      const isArchived = row.status === 'ARCHIVED';
-      return decodeProjectListItemView({
-        id: row.id,
-        name: row.name,
-        description: row.description ?? undefined,
-        isOwner: false, // route handler enforces membership
-        status: row.status,
-        active: row.active,
-        createdAt: row.created_at.toISOString(),
-        updatedAt: row.updated_at.toISOString(),
-        revision: Number(row.revision),
-        capability: {
-          canRename: isActive,
-          canArchive: isActive,
-          canRestore: isArchived,
-          canDelete: isActive || isArchived,
-          canManagePolicies: isActive,
-        },
-      });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
+        const row = updateRes.rows[0]!;
+        const isActive = row.status === 'ACTIVE';
+        const isArchived = row.status === 'ARCHIVED';
+        return decodeProjectListItemView({
+          id: row.id,
+          name: row.name,
+          description: row.description ?? undefined,
+          isOwner: false, // route handler enforces membership
+          status: row.status,
+          active: row.active,
+          createdAt: row.created_at.toISOString(),
+          updatedAt: row.updated_at.toISOString(),
+          revision: Number(row.revision),
+          capability: {
+            canRename: isActive,
+            canArchive: isActive,
+            canRestore: isArchived,
+            canDelete: isActive || isArchived,
+            canManagePolicies: isActive,
+          },
+        });
+      },
+      { module: 'postgres', operation: 'update-project' },
+    );
+    if (replayed) {
+      const existingProject = await this.getProjectDetails(input.projectId);
+      if (!existingProject) throw new Error('Project updated but not found');
+      return existingProject;
     }
+    if (!result) throw new Error('Project update produced no result.');
+    return result;
   }
 
   async archiveProject(input: ProjectLifecycleCommandInput): Promise<ProjectListItemView> {
@@ -1103,121 +1102,123 @@ export class PostgresProjectAdministrationRepository implements ProjectAdministr
     input: ProjectLifecycleCommandInput,
     newStatus: string,
   ): Promise<ProjectListItemView> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const now = new Date();
+    let replayed = false;
+    const result = await withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const now = new Date();
 
-      const existingIdem = await client.query<{
-        client_request_id: string;
-      }>(
-        `SELECT client_request_id FROM project_admin.project_command_results WHERE idempotency_key = $1`,
-        [input.idempotencyKey],
-      );
-      if (existingIdem.rows.length > 0) {
-        if (existingIdem.rows[0]?.client_request_id !== input.clientRequestId) {
+        const existingIdem = await client.query<{
+          client_request_id: string;
+        }>(
+          `SELECT client_request_id FROM project_admin.project_command_results WHERE idempotency_key = $1`,
+          [input.idempotencyKey],
+        );
+        if (existingIdem.rows.length > 0) {
+          if (existingIdem.rows[0]?.client_request_id !== input.clientRequestId) {
+            throw new FrontendContractError(
+              'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+              `Idempotency key '${input.idempotencyKey}' reused with different clientRequestId.`,
+            );
+          }
+          replayed = true;
+          return null;
+        }
+
+        const checkRes = await client.query<{ revision: number }>(
+          `SELECT revision FROM project_admin.projects WHERE id = $1 FOR UPDATE`,
+          [input.projectId],
+        );
+        if (checkRes.rows.length === 0) {
           throw new FrontendContractError(
-            'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-            `Idempotency key '${input.idempotencyKey}' reused with different clientRequestId.`,
+            'RESOURCE_RETIRED',
+            `Project '${input.projectId}' not found.`,
           );
         }
-        await client.query('COMMIT');
-        const existingProject = await this.getProjectDetails(input.projectId);
-        if (!existingProject) throw new Error('Project updated but not found');
-        return existingProject;
-      }
+        const currentRev = checkRes.rows[0]!.revision;
+        if (currentRev !== input.expectedProjectRevision) {
+          throw new FrontendContractError(
+            'REVISION_CONFLICT',
+            `Expected revision ${input.expectedProjectRevision} but current is ${currentRev}.`,
+          );
+        }
 
-      const checkRes = await client.query<{ revision: number }>(
-        `SELECT revision FROM project_admin.projects WHERE id = $1 FOR UPDATE`,
-        [input.projectId],
-      );
-      if (checkRes.rows.length === 0) {
-        throw new FrontendContractError(
-          'RESOURCE_RETIRED',
-          `Project '${input.projectId}' not found.`,
-        );
-      }
-      const currentRev = checkRes.rows[0]!.revision;
-      if (currentRev !== input.expectedProjectRevision) {
-        throw new FrontendContractError(
-          'REVISION_CONFLICT',
-          `Expected revision ${input.expectedProjectRevision} but current is ${currentRev}.`,
-        );
-      }
-
-      const nextRev = currentRev + 1;
-      const nextActive = newStatus === 'ACTIVE';
-      const updateRes = await client.query<{
-        id: string;
-        name: string;
-        description: string | null;
-        status: string;
-        active: boolean;
-        created_at: Date;
-        updated_at: Date;
-        revision: number;
-      }>(
-        `UPDATE project_admin.projects
+        const nextRev = currentRev + 1;
+        const nextActive = newStatus === 'ACTIVE';
+        const updateRes = await client.query<{
+          id: string;
+          name: string;
+          description: string | null;
+          status: string;
+          active: boolean;
+          created_at: Date;
+          updated_at: Date;
+          revision: number;
+        }>(
+          `UPDATE project_admin.projects
          SET status = $1, active = $2, revision = $3, updated_at = $4
          WHERE id = $5
          RETURNING id, name, description, status, active, created_at, updated_at, revision`,
-        [newStatus, nextActive, nextRev, now, input.projectId],
-      );
+          [newStatus, nextActive, nextRev, now, input.projectId],
+        );
 
-      await client.query(
-        `INSERT INTO project_admin.project_revisions (project_id, revision, changed_by, change_reason, created_at)
+        await client.query(
+          `INSERT INTO project_admin.project_revisions (project_id, revision, changed_by, change_reason, created_at)
          VALUES ($1, $2, $3, $4, $5)`,
-        [input.projectId, nextRev, input.actorPrincipalId, `Status updated to ${newStatus}`, now],
-      );
+          [input.projectId, nextRev, input.actorPrincipalId, `Status updated to ${newStatus}`, now],
+        );
 
-      await client.query(
-        `INSERT INTO project_admin.project_commands (command_id, client_request_id, idempotency_key, project_id, actor_id, expected_revision, command_type, command_payload, status, created_at)
+        await client.query(
+          `INSERT INTO project_admin.project_commands (command_id, client_request_id, idempotency_key, project_id, actor_id, expected_revision, command_type, command_payload, status, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'APPLIED', $9)`,
-        [
-          input.commandId,
-          input.clientRequestId,
-          input.idempotencyKey,
-          input.projectId,
-          input.actorPrincipalId,
-          input.expectedProjectRevision,
-          `UPDATE_STATUS_${newStatus}`,
-          JSON.stringify({ status: newStatus }),
-          now,
-        ],
-      );
+          [
+            input.commandId,
+            input.clientRequestId,
+            input.idempotencyKey,
+            input.projectId,
+            input.actorPrincipalId,
+            input.expectedProjectRevision,
+            `UPDATE_STATUS_${newStatus}`,
+            JSON.stringify({ status: newStatus }),
+            now,
+          ],
+        );
 
-      await client.query(
-        `INSERT INTO project_admin.project_command_results (command_id, client_request_id, idempotency_key, status, applied_revision, completed_at)
+        await client.query(
+          `INSERT INTO project_admin.project_command_results (command_id, client_request_id, idempotency_key, status, applied_revision, completed_at)
          VALUES ($1, $2, $3, 'APPLIED', $4, $5)`,
-        [input.commandId, input.clientRequestId, input.idempotencyKey, nextRev, now],
-      );
+          [input.commandId, input.clientRequestId, input.idempotencyKey, nextRev, now],
+        );
 
-      await client.query('COMMIT');
-      const row = updateRes.rows[0]!;
-      return decodeProjectListItemView({
-        id: row.id,
-        name: row.name,
-        description: row.description ?? undefined,
-        isOwner: false, // route handler enforces membership
-        status: row.status,
-        active: row.active,
-        createdAt: row.created_at.toISOString(),
-        updatedAt: row.updated_at.toISOString(),
-        revision: Number(row.revision),
-        capability: {
-          canRename: row.status === 'ACTIVE',
-          canArchive: row.status === 'ACTIVE',
-          canRestore: row.status === 'ARCHIVED',
-          canDelete: row.status === 'ACTIVE' || row.status === 'ARCHIVED',
-          canManagePolicies: row.status === 'ACTIVE',
-        },
-      });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
+        const row = updateRes.rows[0]!;
+        return decodeProjectListItemView({
+          id: row.id,
+          name: row.name,
+          description: row.description ?? undefined,
+          isOwner: false, // route handler enforces membership
+          status: row.status,
+          active: row.active,
+          createdAt: row.created_at.toISOString(),
+          updatedAt: row.updated_at.toISOString(),
+          revision: Number(row.revision),
+          capability: {
+            canRename: row.status === 'ACTIVE',
+            canArchive: row.status === 'ACTIVE',
+            canRestore: row.status === 'ARCHIVED',
+            canDelete: row.status === 'ACTIVE' || row.status === 'ARCHIVED',
+            canManagePolicies: row.status === 'ACTIVE',
+          },
+        });
+      },
+      { module: 'postgres', operation: 'update-project-status' },
+    );
+    if (replayed) {
+      const existingProject = await this.getProjectDetails(input.projectId);
+      if (!existingProject) throw new Error('Project updated but not found');
+      return existingProject;
     }
+    if (!result) throw new Error('Project status update produced no result.');
+    return result;
   }
 }
 
@@ -1225,176 +1226,171 @@ export class PostgresProjectBootstrapUnitOfWork implements ProjectBootstrapUnitO
   constructor(private readonly pool: Pool) {}
 
   async bootstrap(input: ProjectBootstrapInput): Promise<ProjectBootstrapResult> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const session = await client.query<{
-        active_project_id: string | null;
-        revoked_at: Date | null;
-        expires_at: Date;
-      }>(
-        `SELECT active_project_id, revoked_at, expires_at
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const session = await client.query<{
+          active_project_id: string | null;
+          revoked_at: Date | null;
+          expires_at: Date;
+        }>(
+          `SELECT active_project_id, revoked_at, expires_at
          FROM auth.sessions
          WHERE session_id = $1
            AND principal_id = $2
          FOR UPDATE`,
-        [input.sessionId, input.principalId],
-      );
-      const sessionRow = session.rows[0];
-      if (!sessionRow || sessionRow.revoked_at || sessionRow.expires_at.getTime() <= Date.now()) {
-        throw new ShotgunError({
-          code: 'AUTHENTICATION_INVALID',
-          safeMessage: 'The bootstrap Session is invalid, expired, or revoked.',
-          module: 'project-bootstrap',
-          operation: 'lock-zero-project-session',
-        });
-      }
+          [input.sessionId, input.principalId],
+        );
+        const sessionRow = session.rows[0];
+        if (!sessionRow || sessionRow.revoked_at || sessionRow.expires_at.getTime() <= Date.now()) {
+          throw new ShotgunError({
+            code: 'AUTHENTICATION_INVALID',
+            safeMessage: 'The bootstrap Session is invalid, expired, or revoked.',
+            module: 'project-bootstrap',
+            operation: 'lock-zero-project-session',
+          });
+        }
 
-      const existing = await this.findCompletedWithClient(client, input.commandId);
-      if (existing) {
-        await client.query('COMMIT');
-        return { project: existing, replayed: true };
-      }
+        const existing = await this.findCompletedWithClient(client, input.commandId);
+        if (existing) {
+          return { project: existing, replayed: true };
+        }
 
-      const memberships = await client.query<{ count: string }>(
-        `SELECT count(*)::text AS count
+        const memberships = await client.query<{ count: string }>(
+          `SELECT count(*)::text AS count
          FROM auth.project_memberships
          WHERE principal_id = $1
            AND (expires_at IS NULL OR expires_at > now())`,
-        [input.principalId],
-      );
-      const actualAccessRevision = memberships.rows[0]?.count ?? '0';
-      if (
-        input.observedProjectAccessRevision !== undefined &&
-        input.observedProjectAccessRevision !== actualAccessRevision
-      ) {
-        throw new ShotgunError({
-          code: 'PROJECT_ACCESS_REVISION_CONFLICT',
-          safeMessage: 'The accessible Project set changed before bootstrap.',
-          module: 'project-bootstrap',
-          operation: 'verify-project-access-revision',
-        });
-      }
-      if (sessionRow.active_project_id !== null || actualAccessRevision !== '0') {
-        throw new ShotgunError({
-          code: 'ZERO_PROJECT_PRECONDITION_FAILED',
-          safeMessage: 'The Session is no longer in the zero-project state.',
-          module: 'project-bootstrap',
-          operation: 'verify-zero-project-state',
-        });
-      }
+          [input.principalId],
+        );
+        const actualAccessRevision = memberships.rows[0]?.count ?? '0';
+        if (
+          input.observedProjectAccessRevision !== undefined &&
+          input.observedProjectAccessRevision !== actualAccessRevision
+        ) {
+          throw new ShotgunError({
+            code: 'PROJECT_ACCESS_REVISION_CONFLICT',
+            safeMessage: 'The accessible Project set changed before bootstrap.',
+            module: 'project-bootstrap',
+            operation: 'verify-project-access-revision',
+          });
+        }
+        if (sessionRow.active_project_id !== null || actualAccessRevision !== '0') {
+          throw new ShotgunError({
+            code: 'ZERO_PROJECT_PRECONDITION_FAILED',
+            safeMessage: 'The Session is no longer in the zero-project state.',
+            module: 'project-bootstrap',
+            operation: 'verify-zero-project-state',
+          });
+        }
 
-      const projectId = randomUUID();
-      const createdAt = new Date();
-      const inserted = await client.query<{
-        id: string;
-        name: string;
-        description: string | null;
-        status: string;
-        active: boolean;
-        created_at: Date;
-        updated_at: Date;
-        revision: number;
-      }>(
-        `INSERT INTO project_admin.projects (
+        const projectId = randomUUID();
+        const createdAt = new Date();
+        const inserted = await client.query<{
+          id: string;
+          name: string;
+          description: string | null;
+          status: string;
+          active: boolean;
+          created_at: Date;
+          updated_at: Date;
+          revision: number;
+        }>(
+          `INSERT INTO project_admin.projects (
            id, name, description, status, active, created_at, updated_at, revision
          ) VALUES ($1, $2, $3, 'ACTIVE', true, $4, $4, 1)
          RETURNING id, name, description, status, active, created_at, updated_at, revision`,
-        [projectId, input.payload.name, input.payload.description ?? null, createdAt],
-      );
-      await client.query(
-        `INSERT INTO project_admin.project_revisions (
+          [projectId, input.payload.name, input.payload.description ?? null, createdAt],
+        );
+        await client.query(
+          `INSERT INTO project_admin.project_revisions (
            project_id, revision, changed_by, change_reason, created_at
          ) VALUES ($1, 1, $2, 'Initial zero-project bootstrap', $3)`,
-        [projectId, input.principalId, createdAt],
-      );
-      await client.query(
-        `INSERT INTO auth.project_memberships (
+          [projectId, input.principalId, createdAt],
+        );
+        await client.query(
+          `INSERT INTO auth.project_memberships (
            principal_id, project_id, scopes, sensitivity_clearance, is_owner
          ) VALUES ($1, $2, $3, 'private', true)`,
-        [input.principalId, projectId, ['owner']],
-      );
-      await client.query(
-        `UPDATE auth.sessions
+          [input.principalId, projectId, ['owner']],
+        );
+        await client.query(
+          `UPDATE auth.sessions
          SET active_project_id = $2
          WHERE session_id = $1
            AND active_project_id IS NULL`,
-        [input.sessionId, projectId],
-      );
-      await client.query(
-        `INSERT INTO settings.settings_revisions (
+          [input.sessionId, projectId],
+        );
+        await client.query(
+          `INSERT INTO settings.settings_revisions (
            project_id, revision, settings_snapshot, created_at
          ) VALUES ($1, 1, '{}'::jsonb, $2)`,
-        [projectId, createdAt],
-      );
-      await client.query(
-        `INSERT INTO settings.policy_context_revisions (
+          [projectId, createdAt],
+        );
+        await client.query(
+          `INSERT INTO settings.policy_context_revisions (
            project_id, revision, policy_binding, created_at
          ) VALUES ($1, 1, '{}'::jsonb, $2)`,
-        [projectId, createdAt],
-      );
-      await client.query(
-        `INSERT INTO ai.project_standing_ai_processing_policy_revisions
+          [projectId, createdAt],
+        );
+        await client.query(
+          `INSERT INTO ai.project_standing_ai_processing_policy_revisions
            (project_id, enabled, provider_id, policy_revision,
             ai_configuration_revision, changed_by, changed_at)
          VALUES ($1, false, 'deepseek', 1, 0, $2, $3)`,
-        [projectId, input.principalId, createdAt],
-      );
-      await client.query(
-        `INSERT INTO ai.project_standing_ai_processing_policies
+          [projectId, input.principalId, createdAt],
+        );
+        await client.query(
+          `INSERT INTO ai.project_standing_ai_processing_policies
            (project_id, enabled, provider_id, policy_revision,
             ai_configuration_revision, changed_by, changed_at)
          VALUES ($1, false, 'deepseek', 1, 0, $2, $3)`,
-        [projectId, input.principalId, createdAt],
-      );
-      await client.query(
-        `INSERT INTO project_admin.project_commands (
+          [projectId, input.principalId, createdAt],
+        );
+        await client.query(
+          `INSERT INTO project_admin.project_commands (
            command_id, client_request_id, idempotency_key, project_id, actor_id,
            expected_revision, command_type, command_payload, status, created_at
          ) VALUES ($1, $2, $3, $4, $5, 0, 'CREATE_PROJECT_BOOTSTRAP', $6, 'APPLIED', $7)`,
-        [
-          input.commandId,
-          input.clientRequestId,
-          input.idempotencyKey,
-          projectId,
-          input.principalId,
-          JSON.stringify(input.payload),
-          createdAt,
-        ],
-      );
-      await client.query(
-        `INSERT INTO project_admin.project_command_results (
+          [
+            input.commandId,
+            input.clientRequestId,
+            input.idempotencyKey,
+            projectId,
+            input.principalId,
+            JSON.stringify(input.payload),
+            createdAt,
+          ],
+        );
+        await client.query(
+          `INSERT INTO project_admin.project_command_results (
            command_id, client_request_id, idempotency_key, status,
            applied_revision, completed_at
          ) VALUES ($1, $2, $3, 'APPLIED', 1, $4)`,
-        [input.commandId, input.clientRequestId, input.idempotencyKey, createdAt],
-      );
-      await client.query(
-        `INSERT INTO auth.audit_events (
+          [input.commandId, input.clientRequestId, input.idempotencyKey, createdAt],
+        );
+        await client.query(
+          `INSERT INTO auth.audit_events (
            audit_event_id, principal_id, project_id, event, reason, created_at
          ) VALUES ($1, $2, $3, 'PROJECT_BOOTSTRAP_COMMITTED', $4, $5)`,
-        [randomUUID(), input.principalId, projectId, `commandId=${input.commandId}`, createdAt],
-      );
-      await client.query(
-        `INSERT INTO settings.settings_audit_events (
+          [randomUUID(), input.principalId, projectId, `commandId=${input.commandId}`, createdAt],
+        );
+        await client.query(
+          `INSERT INTO settings.settings_audit_events (
            event_id, project_id, actor_id, action_name, risk_level, details, timestamp
          ) VALUES ($1, $2, $3, 'PROJECT_CREATED', 'LOW', $4, $5)`,
-        [
-          randomUUID(),
-          projectId,
-          input.principalId,
-          JSON.stringify({ bootstrap: true, commandId: input.commandId }),
-          createdAt,
-        ],
-      );
-      await client.query('COMMIT');
-      return { project: this.toProjectView(inserted.rows[0]!), replayed: false };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+          [
+            randomUUID(),
+            projectId,
+            input.principalId,
+            JSON.stringify({ bootstrap: true, commandId: input.commandId }),
+            createdAt,
+          ],
+        );
+        return { project: this.toProjectView(inserted.rows[0]!), replayed: false };
+      },
+      { module: 'project-bootstrap', operation: 'bootstrap' },
+    );
   }
 
   async findCompleted(commandId: string): Promise<ProjectListItemView | null> {
@@ -1500,103 +1496,102 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
   async updatePrincipalPreferences(
     input: ApplyPreferenceCommandInput,
   ): Promise<Record<string, unknown>> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      const existingIdem = await client.query<{
-        client_request_id: string;
-      }>(
-        `SELECT client_request_id FROM settings.preference_command_results WHERE idempotency_key = $1`,
-        [input.idempotencyKey],
-      );
-      if (existingIdem.rows.length > 0) {
-        if (existingIdem.rows[0]?.client_request_id !== input.clientRequestId) {
-          throw new FrontendContractError(
-            'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-            `Idempotency key '${input.idempotencyKey}' reused with different clientRequestId.`,
-          );
+    let replayed = false;
+    const result = await withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const existingIdem = await client.query<{
+          client_request_id: string;
+        }>(
+          `SELECT client_request_id FROM settings.preference_command_results WHERE idempotency_key = $1`,
+          [input.idempotencyKey],
+        );
+        if (existingIdem.rows.length > 0) {
+          if (existingIdem.rows[0]?.client_request_id !== input.clientRequestId) {
+            throw new FrontendContractError(
+              'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+              `Idempotency key '${input.idempotencyKey}' reused with different clientRequestId.`,
+            );
+          }
+          replayed = true;
+          return null;
         }
-        await client.query('COMMIT');
-        return this.getPrincipalPreferences(input.principalId); // Return current state
-      }
 
-      // Lock principal row first
-      await client.query(
-        `INSERT INTO settings.principal_preferences (principal_id, preferences, updated_at)
+        // Lock principal row first
+        await client.query(
+          `INSERT INTO settings.principal_preferences (principal_id, preferences, updated_at)
          VALUES ($1, '{}'::jsonb, now())
          ON CONFLICT (principal_id) DO NOTHING`,
-        [input.principalId],
-      );
-      await client.query(
-        `SELECT principal_id FROM settings.principal_preferences WHERE principal_id = $1 FOR UPDATE`,
-        [input.principalId],
-      );
-      const revRes = await client.query<{ revision: number }>(
-        `SELECT COALESCE(MAX(revision), 0) AS revision FROM settings.preference_revisions WHERE principal_id = $1`,
-        [input.principalId],
-      );
-      const currentRev = revRes.rows[0]?.revision ?? 0;
-      if (currentRev !== input.expectedPreferenceRevision) {
-        throw new FrontendContractError(
-          'REVISION_CONFLICT',
-          `Expected preference revision ${input.expectedPreferenceRevision} but current is ${currentRev}.`,
+          [input.principalId],
         );
-      }
+        await client.query(
+          `SELECT principal_id FROM settings.principal_preferences WHERE principal_id = $1 FOR UPDATE`,
+          [input.principalId],
+        );
+        const revRes = await client.query<{ revision: number }>(
+          `SELECT COALESCE(MAX(revision), 0) AS revision FROM settings.preference_revisions WHERE principal_id = $1`,
+          [input.principalId],
+        );
+        const currentRev = revRes.rows[0]?.revision ?? 0;
+        if (currentRev !== input.expectedPreferenceRevision) {
+          throw new FrontendContractError(
+            'REVISION_CONFLICT',
+            `Expected preference revision ${input.expectedPreferenceRevision} but current is ${currentRev}.`,
+          );
+        }
 
-      const nextRev = currentRev + 1;
-      const existing = await this.getPrincipalPreferences(input.principalId);
-      const updated = { ...existing, ...input.preferences };
+        const nextRev = currentRev + 1;
+        const existing = await this.getPrincipalPreferences(input.principalId);
+        const updated = { ...existing, ...input.preferences };
 
-      // INSERT revision
-      await client.query(
-        `INSERT INTO settings.preference_revisions (principal_id, revision, preferences_snapshot, created_at)
+        // INSERT revision
+        await client.query(
+          `INSERT INTO settings.preference_revisions (principal_id, revision, preferences_snapshot, created_at)
          VALUES ($1, $2, $3, now())`,
-        [input.principalId, nextRev, JSON.stringify(updated)],
-      );
+          [input.principalId, nextRev, JSON.stringify(updated)],
+        );
 
-      // Record commands
-      await client.query(
-        `INSERT INTO settings.preference_commands (command_id, client_request_id, idempotency_key, principal_id, expected_revision, status, command_payload, created_at)
+        // Record commands
+        await client.query(
+          `INSERT INTO settings.preference_commands (command_id, client_request_id, idempotency_key, principal_id, expected_revision, status, command_payload, created_at)
          VALUES ($1, $2, $3, $4, $5, 'APPLIED', $6, now())`,
-        [
-          input.commandId,
-          input.clientRequestId,
-          input.idempotencyKey,
-          input.principalId,
-          input.expectedPreferenceRevision,
-          JSON.stringify(input.preferences),
-        ],
-      );
-      await client.query(
-        `INSERT INTO settings.preference_command_results (command_id, client_request_id, idempotency_key, status, applied_revision, completed_at)
+          [
+            input.commandId,
+            input.clientRequestId,
+            input.idempotencyKey,
+            input.principalId,
+            input.expectedPreferenceRevision,
+            JSON.stringify(input.preferences),
+          ],
+        );
+        await client.query(
+          `INSERT INTO settings.preference_command_results (command_id, client_request_id, idempotency_key, status, applied_revision, completed_at)
          VALUES ($1, $2, $3, 'APPLIED', $4, now())`,
-        [input.commandId, input.clientRequestId, input.idempotencyKey, nextRev],
-      );
+          [input.commandId, input.clientRequestId, input.idempotencyKey, nextRev],
+        );
 
-      // Audit event
-      await client.query(
-        `INSERT INTO settings.settings_audit_events
+        // Audit event
+        await client.query(
+          `INSERT INTO settings.settings_audit_events
            (event_id, project_id, actor_id, action_name, risk_level, details, timestamp)
          VALUES ($1, $2, $3, $4, $5, $6, now())`,
-        [
-          randomUUID(),
-          'SYSTEM_SCOPE', // Preferences are not project-scoped
-          input.principalId,
-          'PREFERENCE_COMMAND_APPLIED',
-          'LOW',
-          JSON.stringify({ appliedRevision: nextRev, keys: Object.keys(input.preferences) }),
-        ],
-      );
+          [
+            randomUUID(),
+            'SYSTEM_SCOPE', // Preferences are not project-scoped
+            input.principalId,
+            'PREFERENCE_COMMAND_APPLIED',
+            'LOW',
+            JSON.stringify({ appliedRevision: nextRev, keys: Object.keys(input.preferences) }),
+          ],
+        );
 
-      await client.query('COMMIT');
-      return updated;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+        return updated;
+      },
+      { module: 'postgres', operation: 'update-principal-preferences' },
+    );
+    if (replayed) return this.getPrincipalPreferences(input.principalId);
+    if (!result) throw new Error('Preference update produced no result.');
+    return result;
   }
 
   async getSettingsSnapshot(projectId: string): Promise<SettingsSnapshot> {
@@ -1815,285 +1810,279 @@ export class PostgresSettingsRepository implements SettingsRepositoryPort {
         `Validation failed: ${validation.errors.map((error) => error.message).join('; ')}`,
       );
     }
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      const existingCmd = await client.query<{
-        command_id: string;
-        client_request_id: string;
-        command_payload: Record<string, unknown>;
-        project_id: string;
-        expected_revision: number;
-        status: string;
-        applied_revision: number | null;
-        completed_at: Date;
-      }>(
-        `SELECT c.command_id, c.client_request_id, c.command_payload, c.project_id, c.expected_revision, r.status, r.applied_revision, r.completed_at
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const existingCmd = await client.query<{
+          command_id: string;
+          client_request_id: string;
+          command_payload: Record<string, unknown>;
+          project_id: string;
+          expected_revision: number;
+          status: string;
+          applied_revision: number | null;
+          completed_at: Date;
+        }>(
+          `SELECT c.command_id, c.client_request_id, c.command_payload, c.project_id, c.expected_revision, r.status, r.applied_revision, r.completed_at
          FROM settings.settings_commands c
          JOIN settings.settings_command_results r USING (command_id)
          WHERE c.idempotency_key = $1`,
-        [input.idempotencyKey],
-      );
-      if (existingCmd.rows.length > 0) {
-        const row = existingCmd.rows[0]!;
-        const expectedPayload = input.reviewProposalId
-          ? { settings: input.settings, reviewProposalId: input.reviewProposalId }
-          : input.settings;
-        const payloadMatch =
-          JSON.stringify(row.command_payload) === JSON.stringify(expectedPayload);
-        if (
-          row.client_request_id !== input.clientRequestId ||
-          row.project_id !== input.projectId ||
-          row.expected_revision !== input.expectedSettingsRevision ||
-          !payloadMatch
-        ) {
+          [input.idempotencyKey],
+        );
+        if (existingCmd.rows.length > 0) {
+          const row = existingCmd.rows[0]!;
+          const expectedPayload = input.reviewProposalId
+            ? { settings: input.settings, reviewProposalId: input.reviewProposalId }
+            : input.settings;
+          const payloadMatch =
+            JSON.stringify(row.command_payload) === JSON.stringify(expectedPayload);
+          if (
+            row.client_request_id !== input.clientRequestId ||
+            row.project_id !== input.projectId ||
+            row.expected_revision !== input.expectedSettingsRevision ||
+            !payloadMatch
+          ) {
+            throw new FrontendContractError(
+              'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+              `Idempotency key '${input.idempotencyKey}' reused with mismatched parameters or payload.`,
+            );
+          }
+          return Object.freeze({
+            commandId: row.command_id,
+            clientRequestId: row.client_request_id,
+            idempotencyKey: input.idempotencyKey,
+            projectId: row.project_id,
+            status: row.status as SettingsCommandResult['status'],
+            appliedRevision: row.applied_revision ?? undefined,
+            completedAt: row.completed_at
+              ? row.completed_at.toISOString()
+              : new Date().toISOString(),
+          });
+        }
+
+        // 1. Lock parent project row
+        const projRes = await client.query<{ id: string }>(
+          `SELECT id FROM project_admin.projects WHERE id = $1 FOR UPDATE`,
+          [input.projectId],
+        );
+        if (projRes.rows.length === 0) {
           throw new FrontendContractError(
-            'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-            `Idempotency key '${input.idempotencyKey}' reused with mismatched parameters or payload.`,
+            'RESOURCE_RETIRED',
+            `Project '${input.projectId}' not found.`,
           );
         }
-        await client.query('COMMIT');
-        return Object.freeze({
-          commandId: row.command_id,
-          clientRequestId: row.client_request_id,
-          idempotencyKey: input.idempotencyKey,
-          projectId: row.project_id,
-          status: row.status as SettingsCommandResult['status'],
-          appliedRevision: row.applied_revision ?? undefined,
-          completedAt: row.completed_at ? row.completed_at.toISOString() : new Date().toISOString(),
-        });
-      }
 
-      // 1. Lock parent project row
-      const projRes = await client.query<{ id: string }>(
-        `SELECT id FROM project_admin.projects WHERE id = $1 FOR UPDATE`,
-        [input.projectId],
-      );
-      if (projRes.rows.length === 0) {
-        throw new FrontendContractError(
-          'RESOURCE_RETIRED',
-          `Project '${input.projectId}' not found.`,
+        // 2. Query settings revision (no FOR UPDATE on aggregate)
+        const revRes = await client.query<{ revision: number }>(
+          `SELECT COALESCE(MAX(revision), 0) AS revision FROM settings.settings_revisions WHERE project_id = $1`,
+          [input.projectId],
         );
-      }
+        const currentRev = revRes.rows[0]?.revision ?? 0;
+        if (currentRev !== input.expectedSettingsRevision) {
+          throw new FrontendContractError(
+            'REVISION_CONFLICT',
+            `Expected settings revision ${input.expectedSettingsRevision} but current is ${currentRev}.`,
+          );
+        }
 
-      // 2. Query settings revision (no FOR UPDATE on aggregate)
-      const revRes = await client.query<{ revision: number }>(
-        `SELECT COALESCE(MAX(revision), 0) AS revision FROM settings.settings_revisions WHERE project_id = $1`,
-        [input.projectId],
-      );
-      const currentRev = revRes.rows[0]?.revision ?? 0;
-      if (currentRev !== input.expectedSettingsRevision) {
-        throw new FrontendContractError(
-          'REVISION_CONFLICT',
-          `Expected settings revision ${input.expectedSettingsRevision} but current is ${currentRev}.`,
+        // 3. Query policy context revision (no FOR UPDATE on aggregate)
+        const policyRevRes = await client.query<{ revision: number }>(
+          `SELECT COALESCE(MAX(revision), 0) AS revision FROM settings.policy_context_revisions WHERE project_id = $1`,
+          [input.projectId],
         );
-      }
+        const currentPolicyRev = policyRevRes.rows[0]?.revision ?? 0;
+        if (currentPolicyRev !== input.observedPolicyContextRevision) {
+          throw new FrontendContractError(
+            'REVISION_CONFLICT',
+            `Observed policy context revision ${input.observedPolicyContextRevision} differs from current ${currentPolicyRev}.`,
+          );
+        }
 
-      // 3. Query policy context revision (no FOR UPDATE on aggregate)
-      const policyRevRes = await client.query<{ revision: number }>(
-        `SELECT COALESCE(MAX(revision), 0) AS revision FROM settings.policy_context_revisions WHERE project_id = $1`,
-        [input.projectId],
-      );
-      const currentPolicyRev = policyRevRes.rows[0]?.revision ?? 0;
-      if (currentPolicyRev !== input.observedPolicyContextRevision) {
-        throw new FrontendContractError(
-          'REVISION_CONFLICT',
-          `Observed policy context revision ${input.observedPolicyContextRevision} differs from current ${currentPolicyRev}.`,
-        );
-      }
-
-      const requiresReview = deriveSettingsImpact(input.settings).requiresReview;
-      if (requiresReview && !input.reviewProposalId) {
-        const proposalId = `settings-review-${randomUUID()}`;
-        const commandPayload = input.settings;
-        await client.query(
-          `INSERT INTO settings.settings_review_proposals
+        const requiresReview = deriveSettingsImpact(input.settings).requiresReview;
+        if (requiresReview && !input.reviewProposalId) {
+          const proposalId = `settings-review-${randomUUID()}`;
+          const commandPayload = input.settings;
+          await client.query(
+            `INSERT INTO settings.settings_review_proposals
              (proposal_id, project_id, resource_id, directive_type, description, status, payload, created_at)
            VALUES ($1, $2, $3, 'PRIVACY_EXTERNAL_TRANSFER', $4, 'PROPOSED', $5, now())`,
-          [
-            proposalId,
-            input.projectId,
-            'setting/privacy.externalTransferAllowed',
-            'Review private Project context transfer to external AI providers.',
-            JSON.stringify({
-              settings: input.settings,
-              expectedSettingsRevision: currentRev,
-              observedPolicyContextRevision: currentPolicyRev,
-            }),
-          ],
-        );
-        await client.query(
-          `INSERT INTO settings.settings_commands
+            [
+              proposalId,
+              input.projectId,
+              'setting/privacy.externalTransferAllowed',
+              'Review private Project context transfer to external AI providers.',
+              JSON.stringify({
+                settings: input.settings,
+                expectedSettingsRevision: currentRev,
+                observedPolicyContextRevision: currentPolicyRev,
+              }),
+            ],
+          );
+          await client.query(
+            `INSERT INTO settings.settings_commands
              (command_id, client_request_id, idempotency_key, project_id, expected_revision, status, command_payload, created_at)
            VALUES ($1, $2, $3, $4, $5, 'REVIEW_REQUIRED', $6, now())`,
+            [
+              input.commandId,
+              input.clientRequestId,
+              input.idempotencyKey,
+              input.projectId,
+              input.expectedSettingsRevision,
+              JSON.stringify(commandPayload),
+            ],
+          );
+          await client.query(
+            `INSERT INTO settings.settings_command_results
+             (command_id, client_request_id, idempotency_key, status, review_proposal_id, completed_at)
+           VALUES ($1, $2, $3, 'REVIEW_REQUIRED', $4, now())`,
+            [input.commandId, input.clientRequestId, input.idempotencyKey, proposalId],
+          );
+          await client.query(
+            `INSERT INTO settings.settings_audit_events
+             (event_id, project_id, actor_id, action_name, risk_level, details, timestamp)
+           VALUES ($1, $2, $3, 'SETTINGS_REVIEW_PROPOSED', 'HIGH', $4, now())`,
+            [
+              randomUUID(),
+              input.projectId,
+              input.actorId,
+              JSON.stringify({ proposalId, keys: Object.keys(input.settings) }),
+            ],
+          );
+          return Object.freeze({
+            commandId: input.commandId,
+            clientRequestId: input.clientRequestId,
+            idempotencyKey: input.idempotencyKey,
+            projectId: input.projectId,
+            status: 'REVIEW_REQUIRED',
+            reviewProposalId: proposalId,
+            completedAt: new Date().toISOString(),
+          });
+        }
+
+        if (input.reviewProposalId) {
+          const proposal = await client.query<{
+            project_id: string;
+            status: string;
+            payload: {
+              settings?: Record<string, unknown>;
+              expectedSettingsRevision?: number;
+              observedPolicyContextRevision?: number;
+            };
+          }>(
+            `SELECT project_id, status, payload
+           FROM settings.settings_review_proposals
+           WHERE proposal_id = $1 FOR UPDATE`,
+            [input.reviewProposalId],
+          );
+          const row = proposal.rows[0];
+          if (
+            !row ||
+            row.project_id !== input.projectId ||
+            row.status !== 'PROPOSED' ||
+            JSON.stringify(row.payload.settings) !== JSON.stringify(input.settings) ||
+            row.payload.expectedSettingsRevision !== currentRev ||
+            row.payload.observedPolicyContextRevision !== currentPolicyRev
+          ) {
+            throw new FrontendContractError(
+              'REVISION_CONFLICT',
+              'The privacy review proposal is stale or does not match this command.',
+            );
+          }
+        }
+
+        const nextRev = currentRev + 1;
+        const nextPolicyRev = currentPolicyRev + 1; // Bump policy context revision since settings affect policy
+
+        // Read current snapshot from latest settings_revisions row
+        const existingSnap = await client.query<{ settings_snapshot: Record<string, unknown> }>(
+          `SELECT settings_snapshot FROM settings.settings_revisions
+         WHERE project_id = $1
+         ORDER BY revision DESC LIMIT 1`,
+          [input.projectId],
+        );
+        const updatedSnapshot = {
+          ...(existingSnap.rows[0]?.settings_snapshot ?? {}),
+          ...input.settings,
+        };
+
+        // INSERT new settings_revisions row (append-only; PK=(project_id, revision))
+        await client.query(
+          `INSERT INTO settings.settings_revisions (project_id, revision, settings_snapshot, created_at)
+         VALUES ($1, $2, $3, now())`,
+          [input.projectId, nextRev, JSON.stringify(updatedSnapshot)],
+        );
+
+        // INSERT new policy_context_revisions row
+        await client.query(
+          `INSERT INTO settings.policy_context_revisions (project_id, revision, policy_binding, created_at)
+         VALUES ($1, $2, $3, now())`,
+          [input.projectId, nextPolicyRev, JSON.stringify({})],
+        );
+
+        await client.query(
+          `INSERT INTO settings.settings_commands (command_id, client_request_id, idempotency_key, project_id, expected_revision, status, command_payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, 'APPLIED', $6, now())`,
           [
             input.commandId,
             input.clientRequestId,
             input.idempotencyKey,
             input.projectId,
             input.expectedSettingsRevision,
-            JSON.stringify(commandPayload),
+            JSON.stringify(
+              input.reviewProposalId
+                ? { settings: input.settings, reviewProposalId: input.reviewProposalId }
+                : input.settings,
+            ),
           ],
         );
+
         await client.query(
-          `INSERT INTO settings.settings_command_results
-             (command_id, client_request_id, idempotency_key, status, review_proposal_id, completed_at)
-           VALUES ($1, $2, $3, 'REVIEW_REQUIRED', $4, now())`,
-          [input.commandId, input.clientRequestId, input.idempotencyKey, proposalId],
+          `INSERT INTO settings.settings_command_results (command_id, client_request_id, idempotency_key, status, applied_revision, completed_at)
+         VALUES ($1, $2, $3, 'APPLIED', $4, now())`,
+          [input.commandId, input.clientRequestId, input.idempotencyKey, nextRev],
         );
+
+        if (input.reviewProposalId) {
+          await client.query(
+            `UPDATE settings.settings_review_proposals
+           SET status = CASE WHEN proposal_id = $1 THEN 'APPROVED' ELSE 'REJECTED' END
+           WHERE project_id = $2 AND directive_type = 'PRIVACY_EXTERNAL_TRANSFER'
+             AND status = 'PROPOSED'`,
+            [input.reviewProposalId, input.projectId],
+          );
+        }
+
+        // Audit event — use actual schema columns
         await client.query(
           `INSERT INTO settings.settings_audit_events
-             (event_id, project_id, actor_id, action_name, risk_level, details, timestamp)
-           VALUES ($1, $2, $3, 'SETTINGS_REVIEW_PROPOSED', 'HIGH', $4, now())`,
+           (event_id, project_id, actor_id, action_name, risk_level, details, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6, now())`,
           [
             randomUUID(),
             input.projectId,
             input.actorId,
-            JSON.stringify({ proposalId, keys: Object.keys(input.settings) }),
+            'SETTINGS_COMMAND_APPLIED',
+            requiresReview ? 'HIGH' : 'LOW',
+            JSON.stringify({
+              appliedRevision: nextRev,
+              keys: Object.keys(input.settings),
+              ...(input.reviewProposalId ? { reviewProposalId: input.reviewProposalId } : {}),
+            }),
           ],
         );
-        await client.query('COMMIT');
+
         return Object.freeze({
           commandId: input.commandId,
           clientRequestId: input.clientRequestId,
           idempotencyKey: input.idempotencyKey,
           projectId: input.projectId,
-          status: 'REVIEW_REQUIRED',
-          reviewProposalId: proposalId,
+          status: 'APPLIED',
+          appliedRevision: nextRev,
           completedAt: new Date().toISOString(),
         });
-      }
-
-      if (input.reviewProposalId) {
-        const proposal = await client.query<{
-          project_id: string;
-          status: string;
-          payload: {
-            settings?: Record<string, unknown>;
-            expectedSettingsRevision?: number;
-            observedPolicyContextRevision?: number;
-          };
-        }>(
-          `SELECT project_id, status, payload
-           FROM settings.settings_review_proposals
-           WHERE proposal_id = $1 FOR UPDATE`,
-          [input.reviewProposalId],
-        );
-        const row = proposal.rows[0];
-        if (
-          !row ||
-          row.project_id !== input.projectId ||
-          row.status !== 'PROPOSED' ||
-          JSON.stringify(row.payload.settings) !== JSON.stringify(input.settings) ||
-          row.payload.expectedSettingsRevision !== currentRev ||
-          row.payload.observedPolicyContextRevision !== currentPolicyRev
-        ) {
-          throw new FrontendContractError(
-            'REVISION_CONFLICT',
-            'The privacy review proposal is stale or does not match this command.',
-          );
-        }
-      }
-
-      const nextRev = currentRev + 1;
-      const nextPolicyRev = currentPolicyRev + 1; // Bump policy context revision since settings affect policy
-
-      // Read current snapshot from latest settings_revisions row
-      const existingSnap = await client.query<{ settings_snapshot: Record<string, unknown> }>(
-        `SELECT settings_snapshot FROM settings.settings_revisions
-         WHERE project_id = $1
-         ORDER BY revision DESC LIMIT 1`,
-        [input.projectId],
-      );
-      const updatedSnapshot = {
-        ...(existingSnap.rows[0]?.settings_snapshot ?? {}),
-        ...input.settings,
-      };
-
-      // INSERT new settings_revisions row (append-only; PK=(project_id, revision))
-      await client.query(
-        `INSERT INTO settings.settings_revisions (project_id, revision, settings_snapshot, created_at)
-         VALUES ($1, $2, $3, now())`,
-        [input.projectId, nextRev, JSON.stringify(updatedSnapshot)],
-      );
-
-      // INSERT new policy_context_revisions row
-      await client.query(
-        `INSERT INTO settings.policy_context_revisions (project_id, revision, policy_binding, created_at)
-         VALUES ($1, $2, $3, now())`,
-        [input.projectId, nextPolicyRev, JSON.stringify({})],
-      );
-
-      await client.query(
-        `INSERT INTO settings.settings_commands (command_id, client_request_id, idempotency_key, project_id, expected_revision, status, command_payload, created_at)
-         VALUES ($1, $2, $3, $4, $5, 'APPLIED', $6, now())`,
-        [
-          input.commandId,
-          input.clientRequestId,
-          input.idempotencyKey,
-          input.projectId,
-          input.expectedSettingsRevision,
-          JSON.stringify(
-            input.reviewProposalId
-              ? { settings: input.settings, reviewProposalId: input.reviewProposalId }
-              : input.settings,
-          ),
-        ],
-      );
-
-      await client.query(
-        `INSERT INTO settings.settings_command_results (command_id, client_request_id, idempotency_key, status, applied_revision, completed_at)
-         VALUES ($1, $2, $3, 'APPLIED', $4, now())`,
-        [input.commandId, input.clientRequestId, input.idempotencyKey, nextRev],
-      );
-
-      if (input.reviewProposalId) {
-        await client.query(
-          `UPDATE settings.settings_review_proposals
-           SET status = CASE WHEN proposal_id = $1 THEN 'APPROVED' ELSE 'REJECTED' END
-           WHERE project_id = $2 AND directive_type = 'PRIVACY_EXTERNAL_TRANSFER'
-             AND status = 'PROPOSED'`,
-          [input.reviewProposalId, input.projectId],
-        );
-      }
-
-      // Audit event — use actual schema columns
-      await client.query(
-        `INSERT INTO settings.settings_audit_events
-           (event_id, project_id, actor_id, action_name, risk_level, details, timestamp)
-         VALUES ($1, $2, $3, $4, $5, $6, now())`,
-        [
-          randomUUID(),
-          input.projectId,
-          input.actorId,
-          'SETTINGS_COMMAND_APPLIED',
-          requiresReview ? 'HIGH' : 'LOW',
-          JSON.stringify({
-            appliedRevision: nextRev,
-            keys: Object.keys(input.settings),
-            ...(input.reviewProposalId ? { reviewProposalId: input.reviewProposalId } : {}),
-          }),
-        ],
-      );
-
-      await client.query('COMMIT');
-
-      return Object.freeze({
-        commandId: input.commandId,
-        clientRequestId: input.clientRequestId,
-        idempotencyKey: input.idempotencyKey,
-        projectId: input.projectId,
-        status: 'APPLIED',
-        appliedRevision: nextRev,
-        completedAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+      },
+      { module: 'postgres', operation: 'apply-settings-command' },
+    );
   }
 
   async getCommandStatus(commandId: string): Promise<SettingsCommandResult | null> {

@@ -14,6 +14,7 @@ import type { ProjectAdministrationRepositoryPort } from '../../../../modules/pr
 import type { AuthRepositoryPort } from '../../../../packages/authentication/src/index.js';
 import {
   acceptSection2Command,
+  markAcceptedCommandOutcomeUnknown,
   rejectAcceptedCommand,
   requireRevisionPrecondition,
   toProductApiCommandError,
@@ -131,7 +132,15 @@ export function registerSettingsRoutes(
           });
           return { outcome, preferences, preferenceRevision };
         } catch (error) {
-          await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+          if (
+            !(await markAcceptedCommandOutcomeUnknown(
+              commandGateway,
+              accepted.outcome.commandId,
+              error,
+            ))
+          ) {
+            await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+          }
           throw error;
         }
       } catch (error) {
@@ -309,7 +318,15 @@ export function registerSettingsRoutes(
           });
           return { outcome, result };
         } catch (error) {
-          await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+          if (
+            !(await markAcceptedCommandOutcomeUnknown(
+              commandGateway,
+              accepted.outcome.commandId,
+              error,
+            ))
+          ) {
+            await rejectAcceptedCommand(commandGateway, accepted.outcome.commandId, error);
+          }
           throw error;
         }
       } catch (error) {

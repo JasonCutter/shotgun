@@ -162,6 +162,30 @@ export const rejectAcceptedCommand = async (
   });
 };
 
+/**
+ * Preserve a transaction acknowledgement ambiguity at the command boundary.
+ * This is deliberately a caller-side translation helper: it does not add a
+ * ledger or retry authority and leaves deterministic failures on the existing
+ * reject path.
+ */
+export const markAcceptedCommandOutcomeUnknown = async (
+  gateway: FrontendCommandGatewayPort,
+  commandId: string,
+  error: unknown,
+): Promise<boolean> => {
+  if (!(error instanceof ShotgunError) || error.code !== 'OUTCOME_UNKNOWN') return false;
+  try {
+    await gateway.markOutcomeUnknown({
+      commandId,
+      message: error.safeMessage,
+      completedAt: new Date().toISOString(),
+    });
+  } catch {
+    // Preserve the original ambiguity when the resolution write is unavailable.
+  }
+  return true;
+};
+
 export const toProductApiCommandError = (error: unknown, operation: string): ShotgunError => {
   if (error instanceof ShotgunError) return error;
   if (error instanceof FrontendContractError) {

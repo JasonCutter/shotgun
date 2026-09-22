@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 
 import { FrontendContractError } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   PayloadStateOwner,
   PayloadStateRecord,
@@ -123,40 +124,40 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
 
   async setPayloadState(input: SetPayloadStateInput): Promise<PayloadStateRecord> {
     this.validateInput(input.resourceProjectId, input.sourceEventKind, input.sourceEventId);
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const table = this.sidecarTable();
-      // Current state read INSIDE the transaction with FOR UPDATE, so the
-      // resurrection guard and the projection cache sanitize share the same
-      // atomic boundary (GPT Round 4 F2-B): sidecar transition and projection
-      // sanitize commit together or not at all.
-      const existing = await client.query<{ payload_availability: string }>(
-        `SELECT payload_availability FROM ${table}
+    await withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const table = this.sidecarTable();
+        // Current state read INSIDE the transaction with FOR UPDATE, so the
+        // resurrection guard and the projection cache sanitize share the same
+        // atomic boundary (GPT Round 4 F2-B): sidecar transition and projection
+        // sanitize commit together or not at all.
+        const existing = await client.query<{ payload_availability: string }>(
+          `SELECT payload_availability FROM ${table}
          WHERE resource_project_id = $1 AND source_event_kind = $2 AND source_event_id = $3
          FOR UPDATE`,
-        [input.resourceProjectId, input.sourceEventKind, input.sourceEventId],
-      );
-      const previous = existing.rows[0]?.payload_availability as
-        PayloadStateRecord['payloadAvailability'] | undefined;
-      // PURGED_BY_POLICY is only ever produced by purgeByPolicy() (the unique
-      // purge transition authority). Direct set is REJECTED.
-      if (input.payloadAvailability === 'PURGED_BY_POLICY') {
-        throw new FrontendContractError(
-          'CONFLICT',
-          `PURGED_BY_POLICY can only be set through purgeByPolicy().`,
+          [input.resourceProjectId, input.sourceEventKind, input.sourceEventId],
         );
-      }
-      // Resurrection is FORBIDDEN: a purged payload cannot be flipped back to
-      // AVAILABLE/REDACTED/UNAVAILABLE through setPayloadState.
-      if (previous === 'PURGED_BY_POLICY') {
-        throw new FrontendContractError(
-          'CONFLICT',
-          `Payload for ${input.sourceEventKind}:${input.sourceEventId} is PURGED_BY_POLICY and cannot be resurrected.`,
-        );
-      }
-      await client.query(
-        `INSERT INTO ${table}
+        const previous = existing.rows[0]?.payload_availability as
+          PayloadStateRecord['payloadAvailability'] | undefined;
+        // PURGED_BY_POLICY is only ever produced by purgeByPolicy() (the unique
+        // purge transition authority). Direct set is REJECTED.
+        if (input.payloadAvailability === 'PURGED_BY_POLICY') {
+          throw new FrontendContractError(
+            'CONFLICT',
+            `PURGED_BY_POLICY can only be set through purgeByPolicy().`,
+          );
+        }
+        // Resurrection is FORBIDDEN: a purged payload cannot be flipped back to
+        // AVAILABLE/REDACTED/UNAVAILABLE through setPayloadState.
+        if (previous === 'PURGED_BY_POLICY') {
+          throw new FrontendContractError(
+            'CONFLICT',
+            `Payload for ${input.sourceEventKind}:${input.sourceEventId} is PURGED_BY_POLICY and cannot be resurrected.`,
+          );
+        }
+        await client.query(
+          `INSERT INTO ${table}
            (resource_project_id, source_event_kind, source_event_id, payload_availability,
             tombstone_metadata, changed_at, reason, policy_revision)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -166,38 +167,34 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
            changed_at = EXCLUDED.changed_at,
            reason = EXCLUDED.reason,
            policy_revision = EXCLUDED.policy_revision`,
-        [
-          input.resourceProjectId,
-          input.sourceEventKind,
-          input.sourceEventId,
-          input.payloadAvailability,
-          input.tombstoneMetadata ? JSON.stringify(input.tombstoneMetadata) : null,
-          input.changedAt,
-          input.reason,
-          input.policyRevision ?? null,
-        ],
-      );
-      // A transition away from AVAILABLE must also sanitize the persistent
-      // History projection cache in the SAME transaction (Round 3 F / Round 4
-      // F2-B): no raw payload may remain in
-      // frontend_history.history_projection_index after redaction, and a
-      // sanitize failure rolls back the sidecar transition too.
-      if (input.payloadAvailability !== 'AVAILABLE') {
-        await this.sanitizeProjectionCache(client, {
-          resourceProjectId: input.resourceProjectId,
-          sourceEventKind: input.sourceEventKind,
-          sourceEventId: input.sourceEventId,
-          payloadAvailability: input.payloadAvailability,
-          tombstoneMetadata: input.tombstoneMetadata,
-        });
-      }
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+          [
+            input.resourceProjectId,
+            input.sourceEventKind,
+            input.sourceEventId,
+            input.payloadAvailability,
+            input.tombstoneMetadata ? JSON.stringify(input.tombstoneMetadata) : null,
+            input.changedAt,
+            input.reason,
+            input.policyRevision ?? null,
+          ],
+        );
+        // A transition away from AVAILABLE must also sanitize the persistent
+        // History projection cache in the SAME transaction (Round 3 F / Round 4
+        // F2-B): no raw payload may remain in
+        // frontend_history.history_projection_index after redaction, and a
+        // sanitize failure rolls back the sidecar transition too.
+        if (input.payloadAvailability !== 'AVAILABLE') {
+          await this.sanitizeProjectionCache(client, {
+            resourceProjectId: input.resourceProjectId,
+            sourceEventKind: input.sourceEventKind,
+            sourceEventId: input.sourceEventId,
+            payloadAvailability: input.payloadAvailability,
+            tombstoneMetadata: input.tombstoneMetadata,
+          });
+        }
+      },
+      { module: 'frontend-history-postgres', operation: 'set-payload-state' },
+    );
     const record = await this.getPayloadState(
       input.resourceProjectId,
       input.sourceEventKind,
@@ -208,28 +205,28 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
 
   async purgeByPolicy(input: PurgeByPolicyInput): Promise<PayloadStateRecord> {
     this.validateInput(input.resourceProjectId, input.sourceEventKind, input.sourceEventId);
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      const table = this.sidecarTable();
-      const existing = await client.query<{ payload_availability: string }>(
-        `SELECT payload_availability FROM ${table}
+    await withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const table = this.sidecarTable();
+        const existing = await client.query<{ payload_availability: string }>(
+          `SELECT payload_availability FROM ${table}
          WHERE resource_project_id = $1 AND source_event_kind = $2 AND source_event_id = $3
          FOR UPDATE`,
-        [input.resourceProjectId, input.sourceEventKind, input.sourceEventId],
-      );
-      const previous = existing.rows[0]?.payload_availability as
-        PayloadStateRecord['payloadAvailability'] | undefined;
-      if (!isPurgeTransitionValid(previous)) {
-        throw new FrontendContractError(
-          'CONFLICT',
-          `Payload for ${input.sourceEventKind}:${input.sourceEventId} cannot be purged (already PURGED_BY_POLICY).`,
+          [input.resourceProjectId, input.sourceEventKind, input.sourceEventId],
         );
-      }
+        const previous = existing.rows[0]?.payload_availability as
+          PayloadStateRecord['payloadAvailability'] | undefined;
+        if (!isPurgeTransitionValid(previous)) {
+          throw new FrontendContractError(
+            'CONFLICT',
+            `Payload for ${input.sourceEventKind}:${input.sourceEventId} cannot be purged (already PURGED_BY_POLICY).`,
+          );
+        }
 
-      // 1. flip sidecar to PURGED_BY_POLICY (identity preserved)
-      await client.query(
-        `INSERT INTO ${table}
+        // 1. flip sidecar to PURGED_BY_POLICY (identity preserved)
+        await client.query(
+          `INSERT INTO ${table}
            (resource_project_id, source_event_kind, source_event_id, payload_availability,
             tombstone_metadata, changed_at, reason, policy_revision)
          VALUES ($1, $2, $3, 'PURGED_BY_POLICY', $4, $5, $6, $7)
@@ -239,38 +236,33 @@ export class PostgresPayloadStateStore implements PayloadStateStorePort {
            changed_at = EXCLUDED.changed_at,
            reason = EXCLUDED.reason,
            policy_revision = EXCLUDED.policy_revision`,
-        [
-          input.resourceProjectId,
-          input.sourceEventKind,
-          input.sourceEventId,
-          input.tombstoneMetadata ? JSON.stringify(input.tombstoneMetadata) : null,
-          input.occurredAt,
-          input.reason,
-          input.policyRevision ?? null,
-        ],
-      );
+          [
+            input.resourceProjectId,
+            input.sourceEventKind,
+            input.sourceEventId,
+            input.tombstoneMetadata ? JSON.stringify(input.tombstoneMetadata) : null,
+            input.occurredAt,
+            input.reason,
+            input.policyRevision ?? null,
+          ],
+        );
 
-      // 2. append owner Domain purge AuditEvent (non-sensitive metadata only)
-      await this.appendPurgeAuditEvent(client, input, previous ?? 'AVAILABLE');
+        // 2. append owner Domain purge AuditEvent (non-sensitive metadata only)
+        await this.appendPurgeAuditEvent(client, input, previous ?? 'AVAILABLE');
 
-      // 3. sanitize the persistent History projection cache in the SAME
-      // transaction (Round 3 F / AC-05): the previous raw payload must not
-      // remain in frontend_history.history_projection_index after the purge.
-      await this.sanitizeProjectionCache(client, {
-        resourceProjectId: input.resourceProjectId,
-        sourceEventKind: input.sourceEventKind,
-        sourceEventId: input.sourceEventId,
-        payloadAvailability: 'PURGED_BY_POLICY',
-        tombstoneMetadata: input.tombstoneMetadata,
-      });
-
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+        // 3. sanitize the persistent History projection cache in the SAME
+        // transaction (Round 3 F / AC-05): the previous raw payload must not
+        // remain in frontend_history.history_projection_index after the purge.
+        await this.sanitizeProjectionCache(client, {
+          resourceProjectId: input.resourceProjectId,
+          sourceEventKind: input.sourceEventKind,
+          sourceEventId: input.sourceEventId,
+          payloadAvailability: 'PURGED_BY_POLICY',
+          tombstoneMetadata: input.tombstoneMetadata,
+        });
+      },
+      { module: 'frontend-history-postgres', operation: 'purge-by-policy' },
+    );
     const record = await this.getPayloadState(
       input.resourceProjectId,
       input.sourceEventKind,

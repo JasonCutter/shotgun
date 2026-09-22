@@ -25,6 +25,7 @@ import {
   isSemanticGenerationResourceType,
 } from '../../../packages/contracts/src/index.js';
 import { semanticMembershipDigest } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 
 type GenerationRow = QueryResultRow & {
   readonly project_id: string;
@@ -449,74 +450,75 @@ export class PostgresSemanticIndexRepository
 
   async upsertItems(items: readonly SemanticProjectionItem[]): Promise<void> {
     if (items.length === 0) return;
-    const client = await this.pool.connect();
     try {
-      await client.query('BEGIN');
-      for (const item of items) {
-        if (item.resourceType === 'FACT') {
-          throw new SemanticEmbeddingError({
-            code: 'VALIDATION_FAILURE',
-            safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
-            operation: 'upsert-items',
-          });
-        }
-        // Validate generation using the SAME connected transaction client
-        const genRes = await client.query<GenerationRow>(
-          `SELECT project_id, generation_id, dimension, embedding_profile_id, embedding_profile_revision, representation_version, normalization_policy,
+      await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          for (const item of items) {
+            if (item.resourceType === 'FACT') {
+              throw new SemanticEmbeddingError({
+                code: 'VALIDATION_FAILURE',
+                safeMessage: 'FACT is not eligible for the Product semantic generation corpus.',
+                operation: 'upsert-items',
+              });
+            }
+            // Validate generation using the SAME connected transaction client
+            const genRes = await client.query<GenerationRow>(
+              `SELECT project_id, generation_id, dimension, embedding_profile_id, embedding_profile_revision, representation_version, normalization_policy,
                   provider_id, embedding_model_id, source_projection_digest
            FROM projection.semantic_generations
            WHERE project_id = $1 AND generation_id = $2`,
-          [item.projectId, item.generationId],
-        );
-        const gen = genRes.rows[0];
-        if (!gen) {
-          throw new SemanticEmbeddingError({
-            code: 'CONFIGURATION_REQUIRED',
-            safeMessage: 'Referenced projection generation does not exist.',
-            operation: 'upsert-items',
-          });
-        }
-        validatePersistedItem(item, 'upsert-items');
-        const hasR3Identity =
-          item.providerId !== undefined ||
-          item.embeddingModelId !== undefined ||
-          item.authority !== undefined;
-        if (
-          item.dimension !== gen.dimension ||
-          item.embeddingProfileId !== gen.embedding_profile_id ||
-          item.embeddingProfileRevision !== gen.embedding_profile_revision ||
-          item.representationVersion !== gen.representation_version ||
-          (hasR3Identity &&
-            (item.sourceProjectionDigest !== gen.source_projection_digest ||
-              item.providerId !== gen.provider_id ||
-              item.embeddingModelId !== gen.embedding_model_id ||
-              item.normalizationPolicy !== gen.normalization_policy))
-        ) {
-          throw new SemanticEmbeddingError({
-            code: 'VALIDATION_FAILURE',
-            safeMessage: `Item metadata does not match generation.`,
-            operation: 'upsert-items',
-          });
-        }
-        if (item.vector.length !== gen.dimension) {
-          throw new SemanticEmbeddingError({
-            code: 'VALIDATION_FAILURE',
-            safeMessage: `Item dimension ${item.dimension} (vector length ${item.vector.length}) does not match generation dimension ${gen.dimension}.`,
-            operation: 'upsert-items',
-          });
-        }
-        if (gen.normalization_policy === 'unit_length') {
-          validateUnitLength(item.vector, 'upsert-items');
-        } else {
-          validateFiniteVector(item.vector, 'upsert-items');
-        }
+              [item.projectId, item.generationId],
+            );
+            const gen = genRes.rows[0];
+            if (!gen) {
+              throw new SemanticEmbeddingError({
+                code: 'CONFIGURATION_REQUIRED',
+                safeMessage: 'Referenced projection generation does not exist.',
+                operation: 'upsert-items',
+              });
+            }
+            validatePersistedItem(item, 'upsert-items');
+            const hasR3Identity =
+              item.providerId !== undefined ||
+              item.embeddingModelId !== undefined ||
+              item.authority !== undefined;
+            if (
+              item.dimension !== gen.dimension ||
+              item.embeddingProfileId !== gen.embedding_profile_id ||
+              item.embeddingProfileRevision !== gen.embedding_profile_revision ||
+              item.representationVersion !== gen.representation_version ||
+              (hasR3Identity &&
+                (item.sourceProjectionDigest !== gen.source_projection_digest ||
+                  item.providerId !== gen.provider_id ||
+                  item.embeddingModelId !== gen.embedding_model_id ||
+                  item.normalizationPolicy !== gen.normalization_policy))
+            ) {
+              throw new SemanticEmbeddingError({
+                code: 'VALIDATION_FAILURE',
+                safeMessage: `Item metadata does not match generation.`,
+                operation: 'upsert-items',
+              });
+            }
+            if (item.vector.length !== gen.dimension) {
+              throw new SemanticEmbeddingError({
+                code: 'VALIDATION_FAILURE',
+                safeMessage: `Item dimension ${item.dimension} (vector length ${item.vector.length}) does not match generation dimension ${gen.dimension}.`,
+                operation: 'upsert-items',
+              });
+            }
+            if (gen.normalization_policy === 'unit_length') {
+              validateUnitLength(item.vector, 'upsert-items');
+            } else {
+              validateFiniteVector(item.vector, 'upsert-items');
+            }
 
-        const vectorString = JSON.stringify(item.vector);
-        const providerId = item.providerId ?? gen.provider_id;
-        const embeddingModelId = item.embeddingModelId ?? gen.embedding_model_id;
-        const normalizationPolicy = item.normalizationPolicy ?? gen.normalization_policy;
-        await client.query(
-          `INSERT INTO projection.semantic_items (
+            const vectorString = JSON.stringify(item.vector);
+            const providerId = item.providerId ?? gen.provider_id;
+            const embeddingModelId = item.embeddingModelId ?? gen.embedding_model_id;
+            const normalizationPolicy = item.normalizationPolicy ?? gen.normalization_policy;
+            await client.query(
+              `INSERT INTO projection.semantic_items (
              project_id, generation_id, semantic_item_id, resource_type, resource_id,
              source_projection_digest, canonical_version, semantic_text_digest,
              embedding_profile_id, embedding_profile_revision, representation_version,
@@ -552,40 +554,39 @@ export class PostgresSemanticIndexRepository
              provenance = EXCLUDED.provenance,
              indexed_at = EXCLUDED.indexed_at,
              updated_at = EXCLUDED.updated_at`,
-          [
-            item.projectId,
-            item.generationId,
-            item.semanticItemId,
-            item.resourceType,
-            item.resourceId,
-            item.sourceProjectionDigest,
-            item.canonicalVersion,
-            item.semanticTextDigest,
-            item.embeddingProfileId,
-            item.embeddingProfileRevision,
-            item.representationVersion,
-            vectorString,
-            item.dimension,
-            item.evidenceIds,
-            item.accessScope,
-            item.sensitivity,
-            providerId,
-            embeddingModelId,
-            normalizationPolicy,
-            item.authority ?? null,
-            item.provenance === undefined ? null : JSON.stringify(item.provenance),
-            item.indexedAt,
-            item.createdAt,
-            item.updatedAt,
-          ],
-        );
-      }
-      await client.query('COMMIT');
+              [
+                item.projectId,
+                item.generationId,
+                item.semanticItemId,
+                item.resourceType,
+                item.resourceId,
+                item.sourceProjectionDigest,
+                item.canonicalVersion,
+                item.semanticTextDigest,
+                item.embeddingProfileId,
+                item.embeddingProfileRevision,
+                item.representationVersion,
+                vectorString,
+                item.dimension,
+                item.evidenceIds,
+                item.accessScope,
+                item.sensitivity,
+                providerId,
+                embeddingModelId,
+                normalizationPolicy,
+                item.authority ?? null,
+                item.provenance === undefined ? null : JSON.stringify(item.provenance),
+                item.indexedAt,
+                item.createdAt,
+                item.updatedAt,
+              ],
+            );
+          }
+        },
+        { module: 'semantic-index-postgres', operation: 'upsert-items' },
+      );
     } catch (error) {
-      await client.query('ROLLBACK');
       handlePostgresError(error, 'upsert-items');
-    } finally {
-      client.release();
     }
   }
 
@@ -921,66 +922,66 @@ export class PostgresSemanticIndexRepository
     readonly canonicalBaseVersion: number;
     readonly updatedAt: string;
   }): Promise<SemanticGenerationActivationResult> {
-    const client = await this.pool.connect();
     try {
-      await client.query('BEGIN');
-      const generationResult = await client.query<{
-        build_status: SemanticProjectionGenerationStatus;
-        source_projection_digest: string;
-        canonical_base_version: number;
-      }>(
-        `SELECT build_status, source_projection_digest, canonical_base_version
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const generationResult = await client.query<{
+            build_status: SemanticProjectionGenerationStatus;
+            source_projection_digest: string;
+            canonical_base_version: number;
+          }>(
+            `SELECT build_status, source_projection_digest, canonical_base_version
          FROM projection.semantic_generations
          WHERE project_id = $1 AND generation_id = $2
          FOR SHARE`,
-        [input.projectId, input.generationId],
-      );
-      const generation = generationResult.rows[0];
-      if (
-        !generation ||
-        generation.build_status !== 'READY' ||
-        generation.source_projection_digest !== input.sourceProjectionDigest ||
-        generation.canonical_base_version !== input.canonicalBaseVersion
-      ) {
-        await client.query('ROLLBACK');
-        return { status: 'CONFLICT' };
-      }
+            [input.projectId, input.generationId],
+          );
+          const generation = generationResult.rows[0];
+          if (
+            !generation ||
+            generation.build_status !== 'READY' ||
+            generation.source_projection_digest !== input.sourceProjectionDigest ||
+            generation.canonical_base_version !== input.canonicalBaseVersion
+          ) {
+            return { status: 'CONFLICT' };
+          }
 
-      let pointerResult;
-      if (input.expectedPointer.kind === 'NONE') {
-        pointerResult = await client.query<{
-          project_id: string;
-          active_generation_id: string;
-          pointer_revision: string | number;
-          source_projection_digest: string;
-          canonical_base_version: number;
-          updated_at: Date;
-        }>(
-          `INSERT INTO projection.semantic_generation_pointers (
+          let pointerResult;
+          if (input.expectedPointer.kind === 'NONE') {
+            pointerResult = await client.query<{
+              project_id: string;
+              active_generation_id: string;
+              pointer_revision: string | number;
+              source_projection_digest: string;
+              canonical_base_version: number;
+              updated_at: Date;
+            }>(
+              `INSERT INTO projection.semantic_generation_pointers (
              project_id, active_generation_id, pointer_revision,
              source_projection_digest, canonical_base_version, updated_at
            ) VALUES ($1, $2, 1, $3, $4, $5)
            ON CONFLICT (project_id) DO NOTHING
            RETURNING project_id, active_generation_id, pointer_revision,
                      source_projection_digest, canonical_base_version, updated_at`,
-          [
-            input.projectId,
-            input.generationId,
-            input.sourceProjectionDigest,
-            input.canonicalBaseVersion,
-            input.updatedAt,
-          ],
-        );
-      } else {
-        pointerResult = await client.query<{
-          project_id: string;
-          active_generation_id: string;
-          pointer_revision: string | number;
-          source_projection_digest: string;
-          canonical_base_version: number;
-          updated_at: Date;
-        }>(
-          `UPDATE projection.semantic_generation_pointers
+              [
+                input.projectId,
+                input.generationId,
+                input.sourceProjectionDigest,
+                input.canonicalBaseVersion,
+                input.updatedAt,
+              ],
+            );
+          } else {
+            pointerResult = await client.query<{
+              project_id: string;
+              active_generation_id: string;
+              pointer_revision: string | number;
+              source_projection_digest: string;
+              canonical_base_version: number;
+              updated_at: Date;
+            }>(
+              `UPDATE projection.semantic_generation_pointers
            SET active_generation_id = $4,
                pointer_revision = pointer_revision + 1,
                source_projection_digest = $5,
@@ -991,68 +992,66 @@ export class PostgresSemanticIndexRepository
              AND pointer_revision = $3
            RETURNING project_id, active_generation_id, pointer_revision,
                      source_projection_digest, canonical_base_version, updated_at`,
-          [
-            input.projectId,
-            input.expectedPointer.activeGenerationId,
-            input.expectedPointer.pointerRevision,
-            input.generationId,
-            input.sourceProjectionDigest,
-            input.canonicalBaseVersion,
-            input.updatedAt,
-          ],
-        );
-      }
+              [
+                input.projectId,
+                input.expectedPointer.activeGenerationId,
+                input.expectedPointer.pointerRevision,
+                input.generationId,
+                input.sourceProjectionDigest,
+                input.canonicalBaseVersion,
+                input.updatedAt,
+              ],
+            );
+          }
 
-      const row = pointerResult.rows[0];
-      if (!row) {
-        const currentResult = await client.query<{
-          project_id: string;
-          active_generation_id: string;
-          pointer_revision: string | number;
-          source_projection_digest: string;
-          canonical_base_version: number;
-          updated_at: Date;
-        }>(
-          `SELECT project_id, active_generation_id, pointer_revision,
+          const row = pointerResult.rows[0];
+          if (!row) {
+            const currentResult = await client.query<{
+              project_id: string;
+              active_generation_id: string;
+              pointer_revision: string | number;
+              source_projection_digest: string;
+              canonical_base_version: number;
+              updated_at: Date;
+            }>(
+              `SELECT project_id, active_generation_id, pointer_revision,
                   source_projection_digest, canonical_base_version, updated_at
            FROM projection.semantic_generation_pointers
            WHERE project_id = $1`,
-          [input.projectId],
-        );
-        await client.query('ROLLBACK');
-        const current = currentResult.rows[0];
-        return current
-          ? {
-              status: 'CONFLICT',
-              pointer: {
-                projectId: current.project_id,
-                activeGenerationId: current.active_generation_id,
-                pointerRevision: Number(current.pointer_revision),
-                sourceProjectionDigest: current.source_projection_digest,
-                canonicalBaseVersion: current.canonical_base_version,
-                updatedAt: current.updated_at.toISOString(),
-              },
-            }
-          : { status: 'CONFLICT' };
-      }
+              [input.projectId],
+            );
+            const current = currentResult.rows[0];
+            return current
+              ? {
+                  status: 'CONFLICT',
+                  pointer: {
+                    projectId: current.project_id,
+                    activeGenerationId: current.active_generation_id,
+                    pointerRevision: Number(current.pointer_revision),
+                    sourceProjectionDigest: current.source_projection_digest,
+                    canonicalBaseVersion: current.canonical_base_version,
+                    updatedAt: current.updated_at.toISOString(),
+                  },
+                }
+              : { status: 'CONFLICT' };
+          }
 
-      await client.query('COMMIT');
-      return {
-        status: 'ACTIVATED',
-        pointer: {
-          projectId: row.project_id,
-          activeGenerationId: row.active_generation_id,
-          pointerRevision: Number(row.pointer_revision),
-          sourceProjectionDigest: row.source_projection_digest,
-          canonicalBaseVersion: row.canonical_base_version,
-          updatedAt: row.updated_at.toISOString(),
+          return {
+            status: 'ACTIVATED',
+            pointer: {
+              projectId: row.project_id,
+              activeGenerationId: row.active_generation_id,
+              pointerRevision: Number(row.pointer_revision),
+              sourceProjectionDigest: row.source_projection_digest,
+              canonicalBaseVersion: row.canonical_base_version,
+              updatedAt: row.updated_at.toISOString(),
+            },
+          };
         },
-      };
+        { module: 'semantic-index-postgres', operation: 'activate-generation' },
+      );
     } catch (error) {
-      await client.query('ROLLBACK');
       return handlePostgresError(error, 'activate-generation');
-    } finally {
-      client.release();
     }
   }
 }

@@ -40,6 +40,7 @@ import {
   createIsolatedPostgresTestDatabase,
   type IsolatedPostgresTestDatabase,
 } from '../helpers/isolated-postgres-test-database.js';
+import { expectCommitAckLossOutcomeUnknown } from '../helpers/postgres-commit-ack-loss.js';
 
 let isolatedTestDatabase: IsolatedPostgresTestDatabase | undefined;
 let pool: Pool;
@@ -102,7 +103,7 @@ const testVerificationReadback = (trace: CommitAckLossTrace): void => {
 
 const expectAckLossTrace = (
   trace: CommitAckLossTrace,
-  expectedPostCommitRollbackAttempts = 1,
+  expectedPostCommitRollbackAttempts = 0,
 ): void => {
   expect(trace).toMatchObject({
     commitAttempts: 1,
@@ -113,8 +114,11 @@ const expectAckLossTrace = (
   });
 };
 
-const expectSafeAckLossTrace = (trace: CommitAckLossTrace): void => {
-  expectAckLossTrace(trace);
+const expectSafeAckLossTrace = (
+  trace: CommitAckLossTrace,
+  expectedPostCommitRollbackAttempts = 0,
+): void => {
+  expectAckLossTrace(trace, expectedPostCommitRollbackAttempts);
   expect(trace.productionReconciliationReadbacks).toBe(0);
 };
 
@@ -812,9 +816,8 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
     const record = makeAIRecord(ids, `ensure:${randomUUID()}`);
     try {
       const injected = createCommitAckLossPool(pool);
-      await expect(
-        new PostgresAIProviderCallRepository(injected.pool).ensure(record),
-      ).rejects.toThrow('synthetic commit acknowledgement loss');
+      const ensured = await new PostgresAIProviderCallRepository(injected.pool).ensure(record);
+      expect(ensured).toEqual(record);
       testVerificationReadback(injected.trace);
       expect(
         await new PostgresAIProviderCallRepository(pool).findByRequestId(
@@ -823,7 +826,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         ),
       ).toEqual(record);
       expect(await new PostgresAIProviderCallRepository(pool).ensure(record)).toEqual(record);
-      expectSafeAckLossTrace(injected.trace);
+      expectCorrectedAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -887,7 +890,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
           )
         ).state,
       ).toBe('OUTCOME_UNKNOWN');
-      expectSafeAckLossTrace(injected.trace);
+      expectSafeAckLossTrace(injected.trace, 1);
     } finally {
       await cleanupSource(ids);
     }
@@ -930,7 +933,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         (await clean.acceptOutput(ids.projectId, record.requestId, output.outputId, call)).output
           ?.outputId,
       ).toBe(output.outputId);
-      expectSafeAckLossTrace(injected.trace);
+      expectSafeAckLossTrace(injected.trace, 1);
     } finally {
       // Provider output provenance is append-only by contract. Leave this
       // uniquely identified proof history in the isolated db-test database.
@@ -945,9 +948,8 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
       const evidenceId = batch.candidates[0]!.evidenceIds[0];
       expect(evidenceId).toBe(ids.evidenceId);
       const injected = createCommitAckLossPool(pool);
-      await expect(new PostgresCandidateRepository(injected.pool).saveBatch(batch)).rejects.toThrow(
-        'synthetic commit acknowledgement loss',
-      );
+      const saved = await new PostgresCandidateRepository(injected.pool).saveBatch(batch);
+      expect(saved).toEqual(batch);
       const clean = new PostgresCandidateRepository(pool);
       testVerificationReadback(injected.trace);
       expect(await clean.findBatchByIdempotencyKey(ids.projectId, batch.idempotencyKey)).toEqual(
@@ -959,7 +961,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         [ids.projectId, batch.batchId],
       );
       expect(count.rows[0]?.count).toBe('1');
-      expectSafeAckLossTrace(injected.trace);
+      expectCorrectedAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -971,9 +973,9 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
       await new PostgresComparisonV2Repository(pool).saveCompletedAggregate(ids.fixture.aggregate);
       const repository = new PostgresChangeSetReviewV2Repository(pool);
       const injected = createCommitAckLossPool(pool);
-      await expect(
+      await expectCommitAckLossOutcomeUnknown(
         new PostgresChangeSetReviewV2Repository(injected.pool).saveDraft(ids.fixture.draft),
-      ).rejects.toThrow('synthetic commit acknowledgement loss');
+      );
       testVerificationReadback(injected.trace);
       expect(await repository.findDraftById(ids.projectId, ids.fixture.draft.changeSetId)).toEqual(
         ids.fixture.draft,
@@ -1061,9 +1063,14 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         resolution,
       };
       const injected = createCommitAckLossPool(pool);
-      await expect(
-        new PostgresChangeSetReviewV2Repository(injected.pool).resolveOperation(write),
-      ).rejects.toThrow('synthetic commit acknowledgement loss');
+      const resolved = await new PostgresChangeSetReviewV2Repository(
+        injected.pool,
+      ).resolveOperation(write);
+      expect(resolved).toEqual({
+        status: 'IDEMPOTENT_REPLAY',
+        resolution,
+        draft: resolvedDraft,
+      });
       const durable = await repository.findDraftById(ids.projectId, ids.fixture.draft.changeSetId);
       testVerificationReadback(injected.trace);
       expect(durable).toEqual(resolvedDraft);
@@ -1075,7 +1082,7 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         ),
       ).toEqual(resolution);
       expect((await repository.resolveOperation(write)).status).toBe('IDEMPOTENT_REPLAY');
-      expectSafeAckLossTrace(injected.trace);
+      expectCorrectedAckLossTrace(injected.trace);
     } finally {
       await cleanupSource(ids);
     }
@@ -1103,9 +1110,9 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
         updated,
       };
       const injected = createCommitAckLossPool(pool);
-      await expect(
+      await expectCommitAckLossOutcomeUnknown(
         new PostgresChangeSetReviewV2Repository(injected.pool).recordDecision(write),
-      ).rejects.toThrow('synthetic commit acknowledgement loss');
+      );
       const durable = await repository.findDecisionById(ids.projectId, write.decision.decisionId);
       testVerificationReadback(injected.trace);
       expect(durable?.draft).toEqual(updated);
@@ -1122,11 +1129,11 @@ describe('POST-TF RISK-001A authority-critical commit ambiguity proof matrix', (
     try {
       const repository = new PostgresComparisonV2Repository(pool);
       const injected = createCommitAckLossPool(pool);
-      await expect(
+      await expectCommitAckLossOutcomeUnknown(
         new PostgresComparisonV2Repository(injected.pool).saveCompletedAggregate(
           ids.fixture.aggregate,
         ),
-      ).rejects.toThrow();
+      );
       const durable = await repository.findComparisonById(
         ids.projectId,
         ids.fixture.aggregate.comparison.comparisonId,

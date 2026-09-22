@@ -5,6 +5,7 @@ import {
   frontendCommandScopeBindingKey,
   getFailureDescriptor,
   isErrorCode,
+  ShotgunError,
   type AnyFrontendCommandOutcomeView,
 } from '../../../packages/contracts/src/index.js';
 import {
@@ -105,11 +106,12 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
                 : null,
           };
     const scopeBindingKey = frontendCommandScopeBindingKey(input.request);
-    return withSafePostgresTransaction(
-      this.pool,
-      async (client) => {
-        const existing = await client.query<CommandLedgerRow>(
-          `SELECT *
+    try {
+      return await withSafePostgresTransaction(
+        this.pool,
+        async (client) => {
+          const existing = await client.query<CommandLedgerRow>(
+            `SELECT *
          FROM frontend_command.command_ledger
          WHERE (principal_id = $1 AND client_request_id = $2)
             OR (
@@ -122,54 +124,54 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
               AND idempotency_key = $8
             )
          FOR UPDATE`,
-          [
-            input.principalId,
-            input.request.clientRequestId,
-            scope.envelopeVersion,
-            scope.scopeKind,
-            scopeBindingKey,
-            input.request.commandType,
-            input.request.commandSchemaVersion,
-            input.request.idempotencyKey,
-          ],
-        );
-        if (existing.rows[0]) {
-          const outcome = toOutcome(existing.rows[0]);
-          if (outcome.clientRequestId === input.request.clientRequestId) {
-            if (
-              existing.rows[0].envelope_version !== scope.envelopeVersion ||
-              existing.rows[0].scope_kind !== scope.scopeKind ||
-              existing.rows[0].scope_binding_key !== scopeBindingKey ||
-              outcome.commandType !== input.request.commandType ||
-              outcome.commandSchemaVersion !== input.request.commandSchemaVersion ||
-              outcome.commandSemanticDigest !== input.commandSemanticDigest
-            ) {
+            [
+              input.principalId,
+              input.request.clientRequestId,
+              scope.envelopeVersion,
+              scope.scopeKind,
+              scopeBindingKey,
+              input.request.commandType,
+              input.request.commandSchemaVersion,
+              input.request.idempotencyKey,
+            ],
+          );
+          if (existing.rows[0]) {
+            const outcome = toOutcome(existing.rows[0]);
+            if (outcome.clientRequestId === input.request.clientRequestId) {
+              if (
+                existing.rows[0].envelope_version !== scope.envelopeVersion ||
+                existing.rows[0].scope_kind !== scope.scopeKind ||
+                existing.rows[0].scope_binding_key !== scopeBindingKey ||
+                outcome.commandType !== input.request.commandType ||
+                outcome.commandSchemaVersion !== input.request.commandSchemaVersion ||
+                outcome.commandSemanticDigest !== input.commandSemanticDigest
+              ) {
+                throw new FrontendContractError(
+                  input.request.envelopeVersion === '2.0.0'
+                    ? 'CLIENT_REQUEST_MEANING_MISMATCH'
+                    : 'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+                  'clientRequestId cannot be rebound to different command meaning.',
+                );
+              }
+            }
+            if (outcome.idempotencyKey !== input.request.idempotencyKey) {
               throw new FrontendContractError(
-                input.request.envelopeVersion === '2.0.0'
-                  ? 'CLIENT_REQUEST_MEANING_MISMATCH'
-                  : 'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-                'clientRequestId cannot be rebound to different command meaning.',
+                'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+                'clientRequestId cannot be rebound to a different idempotency key.',
               );
             }
+            if (outcome.commandSemanticDigest !== input.commandSemanticDigest) {
+              throw new FrontendContractError(
+                'IDEMPOTENCY_KEY_REUSE_MISMATCH',
+                'Existing frontend command has a different semantic digest.',
+              );
+            }
+            return { outcome, replayed: true };
           }
-          if (outcome.idempotencyKey !== input.request.idempotencyKey) {
-            throw new FrontendContractError(
-              'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-              'clientRequestId cannot be rebound to a different idempotency key.',
-            );
-          }
-          if (outcome.commandSemanticDigest !== input.commandSemanticDigest) {
-            throw new FrontendContractError(
-              'IDEMPOTENCY_KEY_REUSE_MISMATCH',
-              'Existing frontend command has a different semantic digest.',
-            );
-          }
-          return { outcome, replayed: true };
-        }
 
-        const outcome = createAcceptedFrontendCommandOutcome(input);
-        await client.query(
-          `INSERT INTO frontend_command.command_ledger (
+          const outcome = createAcceptedFrontendCommandOutcome(input);
+          await client.query(
+            `INSERT INTO frontend_command.command_ledger (
           command_id, command_revision, client_request_id, idempotency_key,
           principal_id, envelope_version, scope_kind, active_project_id,
           target_project_id, resource_project_id, scope_binding_key, command_type,
@@ -183,46 +185,63 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
           $15::jsonb, $16::jsonb, $17::jsonb, $18::jsonb, $19::jsonb, $20::jsonb,
           $21, $22, $23::jsonb, $24::jsonb, $25, $26, $27, $28, $29, $30
         )`,
-          [
-            outcome.commandId,
-            Number(outcome.commandRevision),
-            outcome.clientRequestId,
-            outcome.idempotencyKey,
-            input.principalId,
-            scope.envelopeVersion,
-            scope.scopeKind,
-            scope.activeProjectId,
-            scope.targetProjectId,
-            scope.resourceProjectId,
-            scopeBindingKey,
-            outcome.commandType,
-            outcome.commandSchemaVersion,
-            outcome.commandSemanticDigest,
-            JSON.stringify(input.request.policyBinding),
-            JSON.stringify(outcome.acceptedPrincipalContext),
-            JSON.stringify(outcome.acceptedProjectContext),
-            JSON.stringify(outcome.acceptedPolicyContext),
-            JSON.stringify(input.request.preconditions),
-            JSON.stringify(input.request.payload),
-            outcome.outcomeState,
-            outcome.completionDisposition ?? null,
-            JSON.stringify(outcome.producedResources),
-            outcome.rejection ? JSON.stringify(outcome.rejection) : null,
-            outcome.correlationId,
-            outcome.traceId,
-            outcome.receivedAt,
-            outcome.acceptedAt ?? null,
-            outcome.completedAt ?? null,
-            outcome.lastUpdatedAt,
-          ],
+            [
+              outcome.commandId,
+              Number(outcome.commandRevision),
+              outcome.clientRequestId,
+              outcome.idempotencyKey,
+              input.principalId,
+              scope.envelopeVersion,
+              scope.scopeKind,
+              scope.activeProjectId,
+              scope.targetProjectId,
+              scope.resourceProjectId,
+              scopeBindingKey,
+              outcome.commandType,
+              outcome.commandSchemaVersion,
+              outcome.commandSemanticDigest,
+              JSON.stringify(input.request.policyBinding),
+              JSON.stringify(outcome.acceptedPrincipalContext),
+              JSON.stringify(outcome.acceptedProjectContext),
+              JSON.stringify(outcome.acceptedPolicyContext),
+              JSON.stringify(input.request.preconditions),
+              JSON.stringify(input.request.payload),
+              outcome.outcomeState,
+              outcome.completionDisposition ?? null,
+              JSON.stringify(outcome.producedResources),
+              outcome.rejection ? JSON.stringify(outcome.rejection) : null,
+              outcome.correlationId,
+              outcome.traceId,
+              outcome.receivedAt,
+              outcome.acceptedAt ?? null,
+              outcome.completedAt ?? null,
+              outcome.lastUpdatedAt,
+            ],
+          );
+          return { outcome, replayed: false };
+        },
+        {
+          module: 'frontend-command-gateway-postgres',
+          operation: 'accept-command',
+        },
+      );
+    } catch (error) {
+      if (error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN') {
+        const recovered = await this.findByClientRequestId(
+          input.principalId,
+          input.request.clientRequestId,
         );
-        return { outcome, replayed: false };
-      },
-      {
-        module: 'frontend-command-gateway-postgres',
-        operation: 'accept-command',
-      },
-    );
+        if (recovered) {
+          // An exact identity readback distinguishes a committed ACCEPTED
+          // command (safe to resume) from a completed/unknown/rejected replay.
+          return {
+            outcome: recovered,
+            replayed: recovered.outcomeState !== 'ACCEPTED',
+          };
+        }
+      }
+      throw error;
+    }
   }
 
   async lockAcceptedForExecution(
@@ -256,14 +275,39 @@ export class PostgresFrontendCommandGateway implements FrontendCommandGatewayPor
   }
 
   async complete(input: CompleteFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView> {
-    return withSafePostgresTransaction(
-      this.pool,
-      (client) => this.completeWithClient(client, input),
-      {
-        module: 'frontend-command-gateway-postgres',
-        operation: 'complete-command',
-      },
-    );
+    try {
+      return await withSafePostgresTransaction(
+        this.pool,
+        (client) => this.completeWithClient(client, input),
+        {
+          module: 'frontend-command-gateway-postgres',
+          operation: 'complete-command',
+        },
+      );
+    } catch (error) {
+      if (error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN') {
+        // A command id alone is not proof that this completion committed. A
+        // durable ACCEPTED, OUTCOME_UNKNOWN, or differently completed row must
+        // remain ambiguous; only the exact terminal material state resolves a
+        // post-COMMIT acknowledgement loss.
+        try {
+          const recovered = await this.pool.query<CommandLedgerRow>(
+            `SELECT *
+             FROM frontend_command.command_ledger
+             WHERE command_id = $1
+               AND outcome_state = 'COMPLETED'
+               AND completion_disposition = 'SUCCEEDED'
+               AND produced_resources = $2::jsonb`,
+            [input.commandId, JSON.stringify(input.producedResources)],
+          );
+          if (recovered.rows[0]) return toOutcome(recovered.rows[0]);
+        } catch {
+          // Preserve the original ambiguity when the readback itself fails.
+        }
+        throw error;
+      }
+      throw error;
+    }
   }
 
   async reject(input: RejectFrontendCommandInput): Promise<AnyFrontendCommandOutcomeView> {

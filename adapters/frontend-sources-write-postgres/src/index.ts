@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   CreateExactDuplicateDecisionInput,
   CreateSourcesIntakeSubmissionInput,
@@ -124,205 +125,192 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
     }
     input.items.forEach(validateItem);
 
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-        `${input.projectId}:${input.submissionId}`,
-      ]);
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+          `${input.projectId}:${input.submissionId}`,
+        ]);
 
-      const replay = await client.query<{
-        submission_id: string;
-        project_id: string;
-        submission_revision: string;
-      }>(
-        `SELECT submission_id::text, project_id, submission_revision::text
+        const replay = await client.query<{
+          submission_id: string;
+          project_id: string;
+          submission_revision: string;
+        }>(
+          `SELECT submission_id::text, project_id, submission_revision::text
          FROM source_product.intake_submissions
          WHERE create_command_id = $1
          FOR UPDATE`,
-        [input.createCommandId],
-      );
-      if (replay.rows[0]) {
-        const result = await this.loadResult(client, replay.rows[0], true);
-        await client.query('COMMIT');
-        return result;
-      }
+          [input.createCommandId],
+        );
+        if (replay.rows[0]) {
+          const result = await this.loadResult(client, replay.rows[0], true);
+          return result;
+        }
 
-      const command = await this.acceptedCommand(
-        client,
-        input.createCommandId,
-        input.projectId,
-        'sources.intake.submit.v1',
-        input.principalId,
-      );
-      assertSourcesLedgerManifestSafe(command.command_payload);
+        const command = await this.acceptedCommand(
+          client,
+          input.createCommandId,
+          input.projectId,
+          'sources.intake.submit.v1',
+          input.principalId,
+        );
+        assertSourcesLedgerManifestSafe(command.command_payload);
 
-      await client.query(
-        `INSERT INTO source_product.intake_submissions (
+        await client.query(
+          `INSERT INTO source_product.intake_submissions (
            submission_id, project_id, principal_id, session_id, create_command_id,
            state, accepted_policy_context_id, accepted_policy_binding,
            access_revision, policy_context_revision, created_at, updated_at
          ) VALUES ($1, $2, $3, $4, $5, 'RUNNING', $6, $7::jsonb, $8, $9, $10, $10)`,
-        [
-          input.submissionId,
-          input.projectId,
-          input.principalId,
-          input.sessionId,
-          input.createCommandId,
-          input.acceptedPolicyContextId,
-          JSON.stringify(input.acceptedPolicyBinding),
-          input.accessRevision,
-          input.policyContextRevision,
-          input.createdAt,
-        ],
-      );
+          [
+            input.submissionId,
+            input.projectId,
+            input.principalId,
+            input.sessionId,
+            input.createCommandId,
+            input.acceptedPolicyContextId,
+            JSON.stringify(input.acceptedPolicyBinding),
+            input.accessRevision,
+            input.policyContextRevision,
+            input.createdAt,
+          ],
+        );
 
-      const items: SourcesIntakeStoredItemResult[] = [];
-      for (const [ordinal, item] of input.items.entries()) {
-        items.push(await this.storeItem(client, input, item, ordinal));
-      }
+        const items: SourcesIntakeStoredItemResult[] = [];
+        for (const [ordinal, item] of input.items.entries()) {
+          items.push(await this.storeItem(client, input, item, ordinal));
+        }
 
-      const completed = await client.query<{ submission_revision: string }>(
-        `UPDATE source_product.intake_submissions
+        const completed = await client.query<{ submission_revision: string }>(
+          `UPDATE source_product.intake_submissions
          SET state = 'SUCCEEDED', completed_at = $2
          WHERE submission_id = $1
          RETURNING submission_revision::text`,
-        [input.submissionId, input.createdAt],
-      );
-      const submissionRevision = completed.rows[0]?.submission_revision;
-      if (!submissionRevision) throw new Error('Sources submission did not complete.');
-      await client.query('COMMIT');
-      return {
-        submissionId: input.submissionId,
-        projectId: input.projectId,
-        submissionRevision,
-        replayed: false,
-        items,
-      };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+          [input.submissionId, input.createdAt],
+        );
+        const submissionRevision = completed.rows[0]?.submission_revision;
+        if (!submissionRevision) throw new Error('Sources submission did not complete.');
+        return {
+          submissionId: input.submissionId,
+          projectId: input.projectId,
+          submissionRevision,
+          replayed: false,
+          items,
+        };
+      },
+      { module: 'frontend-sources-write-postgres', operation: 'create-submission' },
+    );
   }
 
   async createExactDuplicateDecision(
     input: CreateExactDuplicateDecisionInput,
   ): Promise<ExactDuplicateDecisionResult> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-        `${input.projectId}:${input.submissionId}`,
-      ]);
-      const item = await client.query<{ content_hash: string | null }>(
-        `SELECT content_hash
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+          `${input.projectId}:${input.submissionId}`,
+        ]);
+        const item = await client.query<{ content_hash: string | null }>(
+          `SELECT content_hash
          FROM source_product.intake_submission_items
          WHERE project_id = $1 AND submission_id = $2 AND submission_item_id = $3
          FOR UPDATE`,
-        [input.projectId, input.submissionId, input.submissionItemId],
-      );
-      if (item.rows[0]?.content_hash !== input.contentHash) {
-        throw new ShotgunError({
-          code: 'STALE_VERSION',
-          safeMessage: 'The Sources Item changed before duplicate evaluation.',
-          module: 'frontend-sources-write-postgres',
-          operation: 'create-duplicate-decision',
-        });
-      }
-      const previous = await client.query<{
-        decision_id: string;
-        decision_revision: string;
-      }>(
-        `SELECT decision_id::text, decision_revision::text
+          [input.projectId, input.submissionId, input.submissionItemId],
+        );
+        if (item.rows[0]?.content_hash !== input.contentHash) {
+          throw new ShotgunError({
+            code: 'STALE_VERSION',
+            safeMessage: 'The Sources Item changed before duplicate evaluation.',
+            module: 'frontend-sources-write-postgres',
+            operation: 'create-duplicate-decision',
+          });
+        }
+        const previous = await client.query<{
+          decision_id: string;
+          decision_revision: string;
+        }>(
+          `SELECT decision_id::text, decision_revision::text
          FROM source_product.exact_duplicate_decisions
          WHERE submission_item_id = $1
          ORDER BY decision_revision DESC LIMIT 1 FOR UPDATE`,
-        [input.submissionItemId],
-      );
-      const decisionId = randomUUID();
-      const revision = Number(previous.rows[0]?.decision_revision ?? 0) + 1;
-      await client.query(
-        `INSERT INTO source_product.exact_duplicate_decisions (
+          [input.submissionItemId],
+        );
+        const decisionId = randomUUID();
+        const revision = Number(previous.rows[0]?.decision_revision ?? 0) + 1;
+        await client.query(
+          `INSERT INTO source_product.exact_duplicate_decisions (
            decision_id, project_id, submission_id, submission_item_id,
            decision_revision, content_hash, existing_source_id,
            existing_source_version_id, allowed_dispositions,
            observed_source_revision, access_revision, policy_context_revision,
            supersedes_decision_id, created_at
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-        [
-          decisionId,
-          input.projectId,
-          input.submissionId,
-          input.submissionItemId,
-          revision,
-          input.contentHash,
-          input.existingSourceId,
-          input.existingSourceVersionId,
-          input.allowedDispositions,
-          input.observedSourceRevision,
-          input.accessRevision,
-          input.policyContextRevision,
-          previous.rows[0]?.decision_id ?? null,
-          input.createdAt,
-        ],
-      );
-      await client.query(
-        `UPDATE source_product.intake_submission_items
+          [
+            decisionId,
+            input.projectId,
+            input.submissionId,
+            input.submissionItemId,
+            revision,
+            input.contentHash,
+            input.existingSourceId,
+            input.existingSourceVersionId,
+            input.allowedDispositions,
+            input.observedSourceRevision,
+            input.accessRevision,
+            input.policyContextRevision,
+            previous.rows[0]?.decision_id ?? null,
+            input.createdAt,
+          ],
+        );
+        await client.query(
+          `UPDATE source_product.intake_submission_items
          SET active_duplicate_decision_id = $2, state = 'ACTION_REQUIRED'
          WHERE submission_item_id = $1`,
-        [input.submissionItemId, decisionId],
-      );
-      await client.query('COMMIT');
-      return { decisionId, decisionRevision: String(revision) };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+          [input.submissionItemId, decisionId],
+        );
+        return { decisionId, decisionRevision: String(revision) };
+      },
+      { module: 'frontend-sources-write-postgres', operation: 'create-duplicate-decision' },
+    );
   }
 
   async resolveExactDuplicateDecision(input: ResolveExactDuplicateDecisionInput): Promise<void> {
-    const client = await this.pool.connect();
-    try {
-      await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-        `${input.projectId}:${input.submissionId}`,
-      ]);
-      await this.acceptedCommand(
-        client,
-        input.commandId,
-        input.projectId,
-        'sources.duplicate.resolve.v1',
-      );
-      await client.query(
-        `INSERT INTO source_product.exact_duplicate_dispositions (
+    await withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+          `${input.projectId}:${input.submissionId}`,
+        ]);
+        await this.acceptedCommand(
+          client,
+          input.commandId,
+          input.projectId,
+          'sources.duplicate.resolve.v1',
+        );
+        await client.query(
+          `INSERT INTO source_product.exact_duplicate_dispositions (
            disposition_id, project_id, submission_id, submission_item_id,
            decision_id, observed_decision_revision, command_id, disposition,
            target_source_id, created_at
          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [
-          randomUUID(),
-          input.projectId,
-          input.submissionId,
-          input.submissionItemId,
-          input.decisionId,
-          Number(input.observedDecisionRevision),
-          input.commandId,
-          input.disposition,
-          input.targetSourceId ?? null,
-          input.createdAt,
-        ],
-      );
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
+          [
+            randomUUID(),
+            input.projectId,
+            input.submissionId,
+            input.submissionItemId,
+            input.decisionId,
+            Number(input.observedDecisionRevision),
+            input.commandId,
+            input.disposition,
+            input.targetSourceId ?? null,
+            input.createdAt,
+          ],
+        );
+      },
+      { module: 'frontend-sources-write-postgres', operation: 'resolve-duplicate-decision' },
+    );
   }
 
   private async storeItem(

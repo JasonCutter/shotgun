@@ -4,7 +4,10 @@ import type {
   DiscoveryResourceRefV1,
   DiscoveryStageV1,
 } from '../../../packages/contracts/src/index.js';
-import { decodeDiscoveryFindingEnvelopeV1 } from '../../../packages/contracts/src/index.js';
+import {
+  decodeDiscoveryFindingEnvelopeV1,
+  ShotgunError,
+} from '../../../packages/contracts/src/index.js';
 import type {
   DiscoveryRuntimeBudgetCheckpointV1,
   DiscoveryRuntimeCandidateProofV1,
@@ -474,6 +477,9 @@ const failureFrom = (error: unknown): DiscoveryWorkerFailureV1 => {
   });
 };
 
+const isOutcomeUnknown = (error: unknown): boolean =>
+  error instanceof ShotgunError && error.code === 'OUTCOME_UNKNOWN';
+
 const nowIso = (clock: () => Date): string => {
   const now = clock();
   if (!Number.isFinite(now.getTime())) throw new TypeError('clock must return a valid Date');
@@ -635,6 +641,7 @@ export class PersistentDiscoveryWorker {
       acquiredAt: claim.acquiredAt,
       expiresAt: claim.expiresAt,
     };
+    let preserveLeaseForRecovery = false;
     try {
       const checkpoint = await this.repository.readBudgetCheckpoint({
         projectId: claim.projectId,
@@ -1180,6 +1187,12 @@ export class PersistentDiscoveryWorker {
           if (this.stopping && (controller.signal.aborted || shutdownAbort(error))) {
             return 'STOPPED';
           }
+          if (isOutcomeUnknown(error)) {
+            // Keep the current fence alive until the existing recovery runner
+            // observes expiry and records the durable OUTCOME_UNKNOWN state.
+            preserveLeaseForRecovery = true;
+            return 'STALE';
+          }
           return await this.failClaim(
             lease,
             currentStage.stageId,
@@ -1233,6 +1246,10 @@ export class PersistentDiscoveryWorker {
       if (this.stopping && (controller.signal.aborted || shutdownAbort(error))) {
         return 'STOPPED';
       }
+      if (isOutcomeUnknown(error)) {
+        preserveLeaseForRecovery = true;
+        return 'STALE';
+      }
       return await this.failClaim(
         lease,
         undefined,
@@ -1243,7 +1260,9 @@ export class PersistentDiscoveryWorker {
       );
     } finally {
       this.activeClaims.delete(controller);
-      await this.repository.releaseLease({ ...lease, now: nowIso(this.clock) });
+      if (!preserveLeaseForRecovery) {
+        await this.repository.releaseLease({ ...lease, now: nowIso(this.clock) });
+      }
     }
   }
 

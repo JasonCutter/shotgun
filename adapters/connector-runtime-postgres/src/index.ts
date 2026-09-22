@@ -1432,8 +1432,11 @@ export class PostgresConnectorRuntimeState implements ConnectorRuntimeStatePort 
         { module: 'connector-runtime-postgres', operation: 'recover-expired-leases' },
       );
     } catch {
-      // Recovery is retried on the next tick; failure is observable through
-      // the existing application health/logging surface without exposing data.
+      // Recovery is retried on the next tick. Keep the failure observable at
+      // the existing process logging boundary without exposing row contents.
+      process.emitWarning('Connector lease recovery failed; the next recovery tick will retry.', {
+        code: 'CONNECTOR_LEASE_RECOVERY_RETRY',
+      });
     }
   }
 }

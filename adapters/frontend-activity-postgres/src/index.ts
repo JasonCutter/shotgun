@@ -1,6 +1,7 @@
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
 import type { ActivityDomainKindV1 } from '../../../packages/contracts/src/index.js';
+import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import {
   assertRebuildRevisionNotLower,
   decodeActivityIndexCursor,
@@ -87,18 +88,14 @@ export class PostgresActivityIndexStore implements ActivityIndexStorePort {
     projectId: string,
     action: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
-    return this.withClient(async (client) => {
-      await client.query('BEGIN');
-      try {
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [projectId]);
-        const result = await action(client);
-        await client.query('COMMIT');
-        return result;
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      }
-    });
+        return action(client);
+      },
+      { module: 'frontend-activity-postgres', operation: 'project-write-lock' },
+    );
   }
 
   async upsert(record: ActivityIndexRecordV1): Promise<void> {
@@ -439,89 +436,89 @@ export const createPostgresActivityReadModelStore = (pool: Pool): ActivityReadMo
           );
         }
       }
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
-          input.resourceProjectId,
-        ]);
-        const existing = await client.query<{ snapshot_revision: string }>(
-          `SELECT snapshot_revision::text AS snapshot_revision
+      await withSafePostgresTransaction(
+        pool,
+        async (client) => {
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+            input.resourceProjectId,
+          ]);
+          const existing = await client.query<{ snapshot_revision: string }>(
+            `SELECT snapshot_revision::text AS snapshot_revision
            FROM frontend_activity.activity_index
            WHERE resource_project_id = $1`,
-          [input.resourceProjectId],
-        );
-        const existingWatermarks = await client.query<{ snapshot_revision: string }>(
-          `SELECT snapshot_revision::text AS snapshot_revision
+            [input.resourceProjectId],
+          );
+          const existingWatermarks = await client.query<{ snapshot_revision: string }>(
+            `SELECT snapshot_revision::text AS snapshot_revision
            FROM frontend_activity.projection_watermarks
            WHERE resource_project_id = $1`,
-          [input.resourceProjectId],
-        );
-        const existingRevisions = existing.rows.map((row) => Number(row.snapshot_revision));
-        const existingWatermarkRevisions = existingWatermarks.rows.map((row) =>
-          Number(row.snapshot_revision),
-        );
-        const committedMax = Math.max(...existingRevisions, ...existingWatermarkRevisions, 0);
-        // CAS against BOTH the index and the watermarks: a concurrent build
-        // that already committed this revision — even with an empty index
-        // (e.g. all adapters failed) — must be rejected.
-        if (committedMax >= input.snapshotRevision) {
-          throw new Error(
-            `ACTIVITY_INDEX_STALE_REBUILD: ${input.resourceProjectId}/ALL already has snapshot revision >= ${input.snapshotRevision}`,
+            [input.resourceProjectId],
           );
-        }
-        assertRebuildRevisionNotLower(
-          existingRevisions.map((snapshotRevision) => ({ snapshotRevision })),
-          input.snapshotRevision,
-          `${input.resourceProjectId}/ALL`,
-        );
-        await client.query(
-          'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1',
-          [input.resourceProjectId],
-        );
-        for (const record of input.records) {
+          const existingRevisions = existing.rows.map((row) => Number(row.snapshot_revision));
+          const existingWatermarkRevisions = existingWatermarks.rows.map((row) =>
+            Number(row.snapshot_revision),
+          );
+          const committedMax = Math.max(...existingRevisions, ...existingWatermarkRevisions, 0);
+          // CAS against BOTH the index and the watermarks: a concurrent build
+          // that already committed this revision — even with an empty index
+          // (e.g. all adapters failed) — must be rejected.
+          if (committedMax >= input.snapshotRevision) {
+            throw new Error(
+              `ACTIVITY_INDEX_STALE_REBUILD: ${input.resourceProjectId}/ALL already has snapshot revision >= ${input.snapshotRevision}`,
+            );
+          }
+          assertRebuildRevisionNotLower(
+            existingRevisions.map((snapshotRevision) => ({ snapshotRevision })),
+            input.snapshotRevision,
+            `${input.resourceProjectId}/ALL`,
+          );
           await client.query(
-            `INSERT INTO frontend_activity.activity_index (
+            'DELETE FROM frontend_activity.activity_index WHERE resource_project_id = $1',
+            [input.resourceProjectId],
+          );
+          for (const record of input.records) {
+            await client.query(
+              `INSERT INTO frontend_activity.activity_index (
                resource_project_id, activity_id, domain_kind, root_kind,
                domain_resource_kind, domain_resource_id, domain_resource_revision,
                resource_href, job_id, run_id, summary, state, attention, retryability,
                freshness, adapter_status, snapshot_revision, snapshot, projected_at, updated_at
              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-            [
-              record.resourceProjectId,
-              record.activityId,
-              record.domainKind,
-              record.rootKind,
-              record.domainResourceKind,
-              record.domainResourceId,
-              record.domainResourceRevision ?? null,
-              record.resourceHref,
-              record.jobId ?? null,
-              record.runId,
-              record.summary,
-              record.state,
-              record.attention,
-              record.retryability,
-              record.freshness,
-              record.adapterStatus,
-              record.snapshotRevision,
-              JSONB_SNAPSHOT(record.snapshot),
-              record.projectedAt,
-              record.updatedAt,
-            ],
-          );
-        }
-        // Replace the whole watermark set in the same transaction: watermarks
-        // of adapters that left the registry must not survive (in-memory
-        // parity). Stale watermarks would keep removed adapters visible in
-        // metadata and could drive revision computation forever.
-        await client.query(
-          'DELETE FROM frontend_activity.projection_watermarks WHERE resource_project_id = $1',
-          [input.resourceProjectId],
-        );
-        for (const watermark of input.watermarks) {
+              [
+                record.resourceProjectId,
+                record.activityId,
+                record.domainKind,
+                record.rootKind,
+                record.domainResourceKind,
+                record.domainResourceId,
+                record.domainResourceRevision ?? null,
+                record.resourceHref,
+                record.jobId ?? null,
+                record.runId,
+                record.summary,
+                record.state,
+                record.attention,
+                record.retryability,
+                record.freshness,
+                record.adapterStatus,
+                record.snapshotRevision,
+                JSONB_SNAPSHOT(record.snapshot),
+                record.projectedAt,
+                record.updatedAt,
+              ],
+            );
+          }
+          // Replace the whole watermark set in the same transaction: watermarks
+          // of adapters that left the registry must not survive (in-memory
+          // parity). Stale watermarks would keep removed adapters visible in
+          // metadata and could drive revision computation forever.
           await client.query(
-            `INSERT INTO frontend_activity.projection_watermarks (
+            'DELETE FROM frontend_activity.projection_watermarks WHERE resource_project_id = $1',
+            [input.resourceProjectId],
+          );
+          for (const watermark of input.watermarks) {
+            await client.query(
+              `INSERT INTO frontend_activity.projection_watermarks (
                resource_project_id, adapter_id, domain_kind, source_updated_at,
                projected_at, lag_milliseconds, adapter_status, snapshot_revision,
                cursor, updated_at
@@ -536,27 +533,23 @@ export const createPostgresActivityReadModelStore = (pool: Pool): ActivityReadMo
                cursor = EXCLUDED.cursor,
                updated_at = EXCLUDED.updated_at
              WHERE frontend_activity.projection_watermarks.snapshot_revision <= EXCLUDED.snapshot_revision`,
-            [
-              watermark.resourceProjectId,
-              watermark.adapterId,
-              watermark.domainKind,
-              watermark.sourceUpdatedAt ?? null,
-              watermark.projectedAt,
-              watermark.lagMilliseconds ?? null,
-              watermark.adapterStatus,
-              watermark.snapshotRevision,
-              watermark.cursor ?? null,
-              watermark.updatedAt,
-            ],
-          );
-        }
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
+              [
+                watermark.resourceProjectId,
+                watermark.adapterId,
+                watermark.domainKind,
+                watermark.sourceUpdatedAt ?? null,
+                watermark.projectedAt,
+                watermark.lagMilliseconds ?? null,
+                watermark.adapterStatus,
+                watermark.snapshotRevision,
+                watermark.cursor ?? null,
+                watermark.updatedAt,
+              ],
+            );
+          }
+        },
+        { module: 'frontend-activity-postgres', operation: 'commit-project-projection' },
+      );
     },
   };
 };

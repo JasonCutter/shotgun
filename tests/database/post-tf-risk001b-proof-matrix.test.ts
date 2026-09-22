@@ -26,6 +26,7 @@ import {
 } from '../../packages/contracts/src/index.js';
 import { hashPassword } from '../../packages/authentication/src/index.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { expectCommitAckLossOutcomeUnknown } from '../helpers/postgres-commit-ack-loss.js';
 
 /**
  * POST-TF RISK-001B / Issue #339 — proof-only matrix.
@@ -115,15 +116,6 @@ const expectAckLoss = (trace: AckLossTrace): void => {
     acknowledgementLost: true,
     postCommitRollbackAttempts: 0,
   });
-};
-
-const expectLegacyAckLoss = (trace: AckLossTrace): void => {
-  expect(trace).toMatchObject({
-    commitAttempts: 1,
-    commitSucceeded: true,
-    acknowledgementLost: true,
-  });
-  expect(trace.postCommitRollbackAttempts).toBeGreaterThan(0);
 };
 
 const sha256 = (value: string): string =>
@@ -443,13 +435,15 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
       now: '2026-09-17T08:00:01.000Z',
     };
     const injected = createCommitAckLossPool(pool);
-    await expect(
-      new CredentialVaultService(
-        new PostgresCredentialVaultRepository(injected.pool),
-        authority(),
-      ).replace(input),
-    ).rejects.toThrow('synthetic commit acknowledgement loss');
-    expectLegacyAckLoss(injected.trace);
+    const recoveredAmbiguous = await new CredentialVaultService(
+      new PostgresCredentialVaultRepository(injected.pool),
+      authority(),
+    ).replace(input);
+    expect(recoveredAmbiguous).toMatchObject({
+      credentialId: first.credentialId,
+      credentialRevision: 2,
+    });
+    expectAckLoss(injected.trace);
     const recovered = await cleanVault.replace(input);
     expect(recovered).toMatchObject({
       credentialId: first.credentialId,
@@ -465,7 +459,7 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
     recordProof({
       surface: 'Credential vault',
       operation: 'replace / advanceRevision',
-      classification: 'SAFE_ALREADY',
+      classification: 'GREEN_RECOVERED',
       observed: 'COMMIT durable; exact client request retry recovers the same revision',
     });
   });
@@ -605,10 +599,10 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
     const input = directSubmission(context);
     const clean = new PostgresSourcesIntakeUnitOfWork(pool);
     const injected = createCommitAckLossPool(pool);
-    await expect(
+    await expectCommitAckLossOutcomeUnknown(
       new PostgresSourcesIntakeUnitOfWork(injected.pool).createSubmission(input),
-    ).rejects.toThrow('synthetic commit acknowledgement loss');
-    expectLegacyAckLoss(injected.trace);
+    );
+    expectAckLoss(injected.trace);
     const replayed = await clean.createSubmission(input);
     expect(replayed).toMatchObject({
       submissionId: input.submissionId,
@@ -687,10 +681,10 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
       createdAt: context.now,
     };
     const injected = createCommitAckLossPool(pool);
-    await expect(
+    await expectCommitAckLossOutcomeUnknown(
       new PostgresSourcesProductService(injected.pool, {} as never).submit(input),
-    ).rejects.toThrow('synthetic commit acknowledgement loss');
-    expectLegacyAckLoss(injected.trace);
+    );
+    expectAckLoss(injected.trace);
     const retried = await new PostgresSourcesProductService(pool, {} as never).submit(input);
     expect(retried).toMatchObject({ state: 'ACTION_REQUIRED' });
     expect(
@@ -723,10 +717,10 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
       policyRevision: '1',
     };
     const injected = createCommitAckLossPool(pool);
-    await expect(
+    await expectCommitAckLossOutcomeUnknown(
       new PostgresPayloadStateStore(injected.pool, 'SETTINGS').setPayloadState(input),
-    ).rejects.toThrow('synthetic commit acknowledgement loss');
-    expectLegacyAckLoss(injected.trace);
+    );
+    expectAckLoss(injected.trace);
     expect(
       await new PostgresPayloadStateStore(pool, 'SETTINGS').getPayloadState(
         input.resourceProjectId,
@@ -751,10 +745,10 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
     const projectId = `post-tf-risk001b-activity-${randomUUID()}`;
     const record = activityRecord(projectId);
     const injected = createCommitAckLossPool(pool);
-    await expect(new PostgresActivityIndexStore(injected.pool).upsert(record)).rejects.toThrow(
-      'synthetic commit acknowledgement loss',
+    await expectCommitAckLossOutcomeUnknown(
+      new PostgresActivityIndexStore(injected.pool).upsert(record),
     );
-    expectLegacyAckLoss(injected.trace);
+    expectAckLoss(injected.trace);
     const clean = new PostgresActivityIndexStore(pool);
     await expect(
       clean.findByIdentity({
@@ -852,19 +846,21 @@ describe('POST-TF RISK-001B manual transaction ACK-loss proof matrix', () => {
     const accountId = `post-tf-risk001b-local-${randomUUID()}`;
     const input = { accountId };
     const injected = createCommitAckLossPool(pool);
-    await expect(
-      new PostgresAuthRepository(injected.pool).bootstrapLocalOwnerPrincipal(input),
-    ).rejects.toThrow('synthetic commit acknowledgement loss');
-    expectLegacyAckLoss(injected.trace);
+    const bootstrapped = await new PostgresAuthRepository(
+      injected.pool,
+    ).bootstrapLocalOwnerPrincipal(input);
+    expect(bootstrapped).toMatchObject({ status: 'active' });
+    expectAckLoss(injected.trace);
     const clean = new PostgresAuthRepository(pool);
     const durable = await clean.findPrincipalByAccountId(accountId);
     expect(durable).toBeDefined();
+    expect(bootstrapped.principalId).toBe(durable!.principalId);
     const replayed = await clean.bootstrapLocalOwnerPrincipal(input);
     expect(replayed).toMatchObject({ principalId: durable!.principalId, status: 'active' });
     recordProof({
       surface: 'Authentication',
       operation: 'bootstrapLocalOwnerPrincipal',
-      classification: 'SAFE_ALREADY',
+      classification: 'GREEN_RECOVERED',
       observed: 'COMMIT durable; exact retry resolves the existing principal without duplication',
     });
   });

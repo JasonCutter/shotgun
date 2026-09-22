@@ -9,7 +9,10 @@ const root = resolve(import.meta.dirname, '..');
 const evidenceRoot = resolve(root, 'artifacts/ts6-phase-b-c2-r9');
 const stage = resolve(evidenceRoot, '.zip-staging');
 const zipPath = resolve(root, 'shotgun-ts6-phase-b-c2-r9-review-20260921.zip');
-const fixturePath = resolve(root, 'tests/fixtures/ts6-phase-b-transaction-authority-golden.v2.json');
+const fixturePath = resolve(
+  root,
+  'tests/fixtures/ts6-phase-b-transaction-authority-golden.v2.json',
+);
 const r7TestPath = resolve(root, 'tests/unit/ts1-document-format-boundary.test.ts');
 const rawRoot = resolve(evidenceRoot);
 
@@ -22,13 +25,21 @@ const writeStage = async (name, value) => {
 };
 const git = (args) => {
   try {
-    return execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return execFileSync('git', args, {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
   } catch (error) {
     return `${error.stdout ?? ''}${error.stderr ?? ''}`;
   }
 };
 const readJson = async (file) => JSON.parse(await text(file));
-const hashFile = async (file) => createHash('sha256').update(await readFile(file)).digest('hex').toUpperCase();
+const hashFile = async (file) =>
+  createHash('sha256')
+    .update(await readFile(file))
+    .digest('hex')
+    .toUpperCase();
 
 await mkdir(evidenceRoot, { recursive: true });
 await rm(stage, { recursive: true, force: true });
@@ -36,7 +47,9 @@ await mkdir(stage, { recursive: true });
 
 const packageJson = JSON.parse(await text(resolve(root, 'package.json')));
 const fixtureSha = await hashFile(fixturePath);
-const activeVitest = JSON.parse(readFileSync(resolve(root, 'node_modules/vitest/package.json'), 'utf8')).version;
+const activeVitest = JSON.parse(
+  readFileSync(resolve(root, 'node_modules/vitest/package.json'), 'utf8'),
+).version;
 const r7Diff = git(['diff', '--', 'tests/unit/ts1-document-format-boundary.test.ts']);
 const currentStatus = git(['status', '--short']);
 const currentDiffCheck = git(['diff', '--check']);
@@ -110,21 +123,52 @@ const validatorAudit = `# C2 validator source audit
 - R9 result: F4 passed 5/5 exact forks-1 runs, 3/3 threads-1 exact runs, the validator file passed forks-1 and threads-1 runs, and standalone unit/audit/verify all passed. The only R9 reproduction was during full-suite sandbox contention, where the same test exceeded 20s under both V3 and V4.
 `;
 
-const runSummary = (files, flags, repeats, status, note) => ({ files, flags, repeats, status, note });
+const runSummary = (files, flags, repeats, status, note) => ({
+  files,
+  flags,
+  repeats,
+  status,
+  note,
+});
 
 const classifications = {
   generatedAt: new Date().toISOString(),
   overall: 'ALL_FOUR_NOT_INTRINSIC_UNDER_ISOLATION; SUITE_WIDE_CONTENTION_AND_CAPACITY_REMAINS',
   failures: {
-    F1: { classification: 'SUITE_WIDE_CONTENTION_ARTIFACT', isolated: '5/5 pass', fileAndPairwise: 'all pass', semanticFailure: false, confidence: 'high' },
-    F2: { classification: 'SUITE_WIDE_CONTENTION_ARTIFACT', isolated: '5/5 pass', fileAndPairwise: 'all pass', semanticFailure: false, confidence: 'high' },
-    F3: { classification: 'SUITE_WIDE_CONTENTION_ARTIFACT', isolated: '5/5 pass', fileAndPairwise: 'all pass', semanticFailure: false, confidence: 'high' },
-    F4: { classification: 'SUITE_WIDE_CONTENTION_ARTIFACT_PLUS_ENVIRONMENT_CAPACITY_LIMIT', isolated: '5/5 pass; standalone validator pass', fileAndPairwise: 'all real-worktree groups pass; sandbox whole-suite timeout under V3 and V4', semanticFailure: false, confidence: 'high' },
+    F1: {
+      classification: 'SUITE_WIDE_CONTENTION_ARTIFACT',
+      isolated: '5/5 pass',
+      fileAndPairwise: 'all pass',
+      semanticFailure: false,
+      confidence: 'high',
+    },
+    F2: {
+      classification: 'SUITE_WIDE_CONTENTION_ARTIFACT',
+      isolated: '5/5 pass',
+      fileAndPairwise: 'all pass',
+      semanticFailure: false,
+      confidence: 'high',
+    },
+    F3: {
+      classification: 'SUITE_WIDE_CONTENTION_ARTIFACT',
+      isolated: '5/5 pass',
+      fileAndPairwise: 'all pass',
+      semanticFailure: false,
+      confidence: 'high',
+    },
+    F4: {
+      classification: 'SUITE_WIDE_CONTENTION_ARTIFACT_PLUS_ENVIRONMENT_CAPACITY_LIMIT',
+      isolated: '5/5 pass; standalone validator pass',
+      fileAndPairwise: 'all real-worktree groups pass; sandbox whole-suite timeout under V3 and V4',
+      semanticFailure: false,
+      confidence: 'high',
+    },
   },
   noNewProductFailure: true,
   noFifthAssertionFailure: true,
   rpc: {
-    realWorktreeVitest3: 'one unhandled onTaskUpdate RPC timeout; 156/156 files and 1256/1256 assertions pass; exit 1',
+    realWorktreeVitest3:
+      'one unhandled onTaskUpdate RPC timeout; 156/156 files and 1256/1256 assertions pass; exit 1',
     sandboxVitest3: 'no RPC error in valid rebuilt sandbox; one F4 timeout',
     sandboxVitest4: 'no RPC error; one F4 timeout',
   },
@@ -196,99 +240,288 @@ Artifacts: shotgun-ts6-phase-b-c2-r9-review-20260921.zip
 ZIP and manifest hashes are printed by the rebuild script and recorded in the controller report.
 `;
 
-await writeStage('01-identity.txt', `worktree=C:\\dev\\shotgun-ts6-phase-b\nbranch=${currentBranch}\nHEAD=${head}\nmain=${main}\nrootVitest=${activeVitest}\nnode=${process.version}\nparallelism=${os.availableParallelism()}\n`);
-await writeStage('02-worktree-before.txt', `${currentStatus}\n\ngit diff --check:\n${currentDiffCheck || 'PASS'}\n`);
+await writeStage(
+  '01-identity.txt',
+  `worktree=C:\\dev\\shotgun-ts6-phase-b\nbranch=${currentBranch}\nHEAD=${head}\nmain=${main}\nrootVitest=${activeVitest}\nnode=${process.version}\nparallelism=${os.availableParallelism()}\n`,
+);
+await writeStage(
+  '02-worktree-before.txt',
+  `${currentStatus}\n\ngit diff --check:\n${currentDiffCheck || 'PASS'}\n`,
+);
 await writeStage('03-frozen-artifact-references.txt', frozen);
-await writeStage('04-r7-functional-diff.txt', r7Diff || 'R7 functional diff unavailable; inherited one-line timeout correction is recorded in the closure report.');
+await writeStage(
+  '04-r7-functional-diff.txt',
+  r7Diff ||
+    'R7 functional diff unavailable; inherited one-line timeout correction is recorded in the closure report.',
+);
 await writeStage('05-r8-new-failure-inventory.json', failureInventory);
 await writeStage('06-stage8-source-audit.md', stage8Audit);
 await writeStage('07-ts1-xlsx-source-audit.md', ts1Audit);
 await writeStage('08-validator-source-audit.md', validatorAudit);
-await writeStage('09-default-worker-count.txt', `Node os.availableParallelism()=${os.availableParallelism()}\nVitest 3.2.7 source: node_modules/vitest/dist/chunks/coverage.DfSpMS-b.js:2609-2613\nNon-watch default threadsCount=max(numCpus-1,1)=7\nDefault config pool=forks; equivalent maxForks resolves from config.maxWorkers or threadsCount, so effective default capacity is 7 on this host when no CLI override is supplied.\nObserved: forks-default affected set 2/2 clean; official whole-suite default produced one RPC error; exact worker ownership is not inferred from global process counts.`);
-await writeStage('10-isolated-assertion-runs.txt', [
-  runSummary('F1', 'forks maxWorkers=1 fileParallelism=false', '5', 'PASS 5/5', 'not intrinsic'),
-  runSummary('F2', 'forks maxWorkers=1 fileParallelism=false', '5', 'PASS 5/5', 'not intrinsic'),
-  runSummary('F3', 'forks maxWorkers=1 fileParallelism=false', '5', 'PASS 5/5', 'not intrinsic'),
-  runSummary('F4', 'forks maxWorkers=1 fileParallelism=false', '5', 'PASS 5/5', 'not intrinsic'),
-].map((x) => JSON.stringify(x)).join('\n'));
-await writeStage('11-isolated-file-runs.txt', [
-  runSummary('Stage8', 'forks maxWorkers=1 fileParallelism=false', '3', 'PASS 3/3', 'all 13 tests'),
-  runSummary('TS1', 'forks maxWorkers=1 fileParallelism=false', '3', 'PASS 3/3', 'all 18 tests'),
-  runSummary('validator', 'forks maxWorkers=1 fileParallelism=false', '3', 'PASS 3/3', 'all 24 tests'),
-].map((x) => JSON.stringify(x)).join('\n'));
-await writeStage('12-pairwise-contention-runs.txt', [
-  runSummary('P1 Stage8+TS1', 'forks maxWorkers=2 fileParallelism=true', '3', 'PASS 3/3', 'no RPC'),
-  runSummary('P2 Stage8+validator', 'forks maxWorkers=2 fileParallelism=true', '3', 'PASS 3/3', 'no RPC'),
-  runSummary('P3 TS1+validator', 'forks maxWorkers=2 fileParallelism=true', '3', 'PASS 3/3', 'no RPC'),
-].map((x) => JSON.stringify(x)).join('\n'));
-await writeStage('13-three-file-contention-runs.txt', JSON.stringify(runSummary('Stage8+TS1+validator', 'forks maxWorkers=3 fileParallelism=true', '3', 'PASS 3/3', 'no RPC'), null, 2));
-await writeStage('14-forks-scale-runs.txt', [
-  JSON.stringify(runSummary('affected-set', 'forks maxWorkers=4 fileParallelism=true', '2', 'PASS 2/2', 'no RPC')),
-  JSON.stringify(runSummary('affected-set', 'forks default worker count', '2', 'PASS 2/2', 'no RPC')),
-].join('\n'));
-await writeStage('15-whole-suite-default.txt', `Command: npm run test:unit\nPool: installed default forks; no CLI overrides\nReal worktree result: 156/156 test files passed; 1256/1256 tests passed; 1 unhandled [vitest-worker]: Timeout calling "onTaskUpdate"; exitCode=1.\nThis is an error-only failure, not an assertion failure.\n`);
-await writeStage('16-threads-isolated-runs.txt', [
-  'F1/F2/F3/F4 exact assertions: each 3/3 at threads maxWorkers=1 fileParallelism=false; PASS.',
-  'Affected files Stage8/TS1/validator: each 2/2 at threads maxWorkers=1 fileParallelism=false; PASS.',
-].join('\n'));
-await writeStage('17-threads-scale-runs.txt', [
-  'Affected set threads maxWorkers=2 fileParallelism=true: 2/2 PASS.',
-  'Affected set threads maxWorkers=4 fileParallelism=true: 2/2 PASS.',
-  'No semantic failure, per-test timeout, or onTaskUpdate error in these controlled runs.',
-].join('\n'));
+await writeStage(
+  '09-default-worker-count.txt',
+  `Node os.availableParallelism()=${os.availableParallelism()}\nVitest 3.2.7 source: node_modules/vitest/dist/chunks/coverage.DfSpMS-b.js:2609-2613\nNon-watch default threadsCount=max(numCpus-1,1)=7\nDefault config pool=forks; equivalent maxForks resolves from config.maxWorkers or threadsCount, so effective default capacity is 7 on this host when no CLI override is supplied.\nObserved: forks-default affected set 2/2 clean; official whole-suite default produced one RPC error; exact worker ownership is not inferred from global process counts.`,
+);
+await writeStage(
+  '10-isolated-assertion-runs.txt',
+  [
+    runSummary('F1', 'forks maxWorkers=1 fileParallelism=false', '5', 'PASS 5/5', 'not intrinsic'),
+    runSummary('F2', 'forks maxWorkers=1 fileParallelism=false', '5', 'PASS 5/5', 'not intrinsic'),
+    runSummary('F3', 'forks maxWorkers=1 fileParallelism=false', '5', 'PASS 5/5', 'not intrinsic'),
+    runSummary('F4', 'forks maxWorkers=1 fileParallelism=false', '5', 'PASS 5/5', 'not intrinsic'),
+  ]
+    .map((x) => JSON.stringify(x))
+    .join('\n'),
+);
+await writeStage(
+  '11-isolated-file-runs.txt',
+  [
+    runSummary(
+      'Stage8',
+      'forks maxWorkers=1 fileParallelism=false',
+      '3',
+      'PASS 3/3',
+      'all 13 tests',
+    ),
+    runSummary('TS1', 'forks maxWorkers=1 fileParallelism=false', '3', 'PASS 3/3', 'all 18 tests'),
+    runSummary(
+      'validator',
+      'forks maxWorkers=1 fileParallelism=false',
+      '3',
+      'PASS 3/3',
+      'all 24 tests',
+    ),
+  ]
+    .map((x) => JSON.stringify(x))
+    .join('\n'),
+);
+await writeStage(
+  '12-pairwise-contention-runs.txt',
+  [
+    runSummary(
+      'P1 Stage8+TS1',
+      'forks maxWorkers=2 fileParallelism=true',
+      '3',
+      'PASS 3/3',
+      'no RPC',
+    ),
+    runSummary(
+      'P2 Stage8+validator',
+      'forks maxWorkers=2 fileParallelism=true',
+      '3',
+      'PASS 3/3',
+      'no RPC',
+    ),
+    runSummary(
+      'P3 TS1+validator',
+      'forks maxWorkers=2 fileParallelism=true',
+      '3',
+      'PASS 3/3',
+      'no RPC',
+    ),
+  ]
+    .map((x) => JSON.stringify(x))
+    .join('\n'),
+);
+await writeStage(
+  '13-three-file-contention-runs.txt',
+  JSON.stringify(
+    runSummary(
+      'Stage8+TS1+validator',
+      'forks maxWorkers=3 fileParallelism=true',
+      '3',
+      'PASS 3/3',
+      'no RPC',
+    ),
+    null,
+    2,
+  ),
+);
+await writeStage(
+  '14-forks-scale-runs.txt',
+  [
+    JSON.stringify(
+      runSummary(
+        'affected-set',
+        'forks maxWorkers=4 fileParallelism=true',
+        '2',
+        'PASS 2/2',
+        'no RPC',
+      ),
+    ),
+    JSON.stringify(
+      runSummary('affected-set', 'forks default worker count', '2', 'PASS 2/2', 'no RPC'),
+    ),
+  ].join('\n'),
+);
+await writeStage(
+  '15-whole-suite-default.txt',
+  `Command: npm run test:unit\nPool: installed default forks; no CLI overrides\nReal worktree result: 156/156 test files passed; 1256/1256 tests passed; 1 unhandled [vitest-worker]: Timeout calling "onTaskUpdate"; exitCode=1.\nThis is an error-only failure, not an assertion failure.\n`,
+);
+await writeStage(
+  '16-threads-isolated-runs.txt',
+  [
+    'F1/F2/F3/F4 exact assertions: each 3/3 at threads maxWorkers=1 fileParallelism=false; PASS.',
+    'Affected files Stage8/TS1/validator: each 2/2 at threads maxWorkers=1 fileParallelism=false; PASS.',
+  ].join('\n'),
+);
+await writeStage(
+  '17-threads-scale-runs.txt',
+  [
+    'Affected set threads maxWorkers=2 fileParallelism=true: 2/2 PASS.',
+    'Affected set threads maxWorkers=4 fileParallelism=true: 2/2 PASS.',
+    'No semantic failure, per-test timeout, or onTaskUpdate error in these controlled runs.',
+  ].join('\n'),
+);
 await writeStage('18-resource-contention-observation.json', {
-  host: { availableParallelism: os.availableParallelism(), cpuCount: os.cpus().length, node: process.version },
-  realWorktreePostRun: { timestamp: '2026-09-21T02:06:37.5852421+09:00', nodeCount: 14, pythonCount: 0, freeMemoryMB: 5937.6, totalMemoryMB: 16267.6 },
-  inheritedR8MachineSamples: { peakGlobalNodeByMatrix: { M1: 17, M2: 18, M3: 21, M4: 23 }, minFreeMemoryGB: 4.4, note: 'coarse global samples including desktop processes' },
-  r9ControlledRuns: { affectedForksAndThreads: 'all PASS', realDefault: 'RPC error after assertion-clean completion', v3Sandbox: 'F4 timeout', v4Sandbox: 'F4 timeout' },
-  interpretation: 'capacity/contention signal; memory pressure is not proven as sole cause; no process leak observed',
+  host: {
+    availableParallelism: os.availableParallelism(),
+    cpuCount: os.cpus().length,
+    node: process.version,
+  },
+  realWorktreePostRun: {
+    timestamp: '2026-09-21T02:06:37.5852421+09:00',
+    nodeCount: 14,
+    pythonCount: 0,
+    freeMemoryMB: 5937.6,
+    totalMemoryMB: 16267.6,
+  },
+  inheritedR8MachineSamples: {
+    peakGlobalNodeByMatrix: { M1: 17, M2: 18, M3: 21, M4: 23 },
+    minFreeMemoryGB: 4.4,
+    note: 'coarse global samples including desktop processes',
+  },
+  r9ControlledRuns: {
+    affectedForksAndThreads: 'all PASS',
+    realDefault: 'RPC error after assertion-clean completion',
+    v3Sandbox: 'F4 timeout',
+    v4Sandbox: 'F4 timeout',
+  },
+  interpretation:
+    'capacity/contention signal; memory pressure is not proven as sole cause; no process leak observed',
 });
-await writeStage('19-process-hygiene.txt', 'After R9 runs, Python process count was 0 and the global Node count returned to the pre/post desktop baseline of 14. No orphaned test subprocess attributable to the runner was observed.');
+await writeStage(
+  '19-process-hygiene.txt',
+  'After R9 runs, Python process count was 0 and the global Node count returned to the pre/post desktop baseline of 14. No orphaned test subprocess attributable to the runner was observed.',
+);
 await writeStage('20-failure-classification.json', classifications);
-await writeStage('21-validator-final.txt', `Standalone validator unit: PASS 24/24\nAudit: PASS\nVerify: PASS\ncandidateCount=120; rawSiteCount=11; TX_BOUNDARY=100; TX_PARTICIPANT=0; TX_DELEGATE=0; NON_TX=7; TEST_ONLY_OR_DEAD=13; REVIEW_REQUIRED=0; issueCount=0; missingRegression=0; fixtureMutation=false\nFixture SHA=${fixtureSha}`);
-await writeStage('22-fixture-final.txt', `SHA-256=${fixtureSha}\nexpected=256E5906DB0AFBDEB175C1E754C2C8EC3A1213139AE4F805E95C5396086586CD\nfixtureMutation=false`);
-await writeStage('23-sandbox-source-identity.txt', `Valid A/B source: C:\\dev\\shotgun-ts6-phase-b with current R7/C2 source files and required evidence directories copied to disposable sandboxes. V3 and V4 used npm ci in isolated directories. Invalid preliminary copy attempt was excluded because robocopy dereferenced workspace junctions and omitted required artifacts; it produced setup-only missing-module/artifact errors and is not part of classification.`);
-await writeStage('24-sandbox-vitest3.txt', `Sandbox: C:\\dev\\shotgun-ts6-phase-b-r9-sandbox-v3\nVitest: 3.2.7\nCommand: npm run test:unit\nResult: 155/156 files passed; 1255/1256 tests passed; F4 existing 20_000 ms case timeout; no RPC error in valid rebuilt run; exitCode=1.`);
-await writeStage('25-sandbox-vitest4.txt', `Sandbox: C:\\dev\\shotgun-ts6-phase-b-r9-sandbox-v4\nVitest: 4.1.10 (sandbox-only; real package.json/lockfile unchanged)\nCommand: npm run test:unit\nResult: 155/156 files passed; 1255/1256 tests passed; same F4 existing 20_000 ms case timeout; no RPC error; exitCode=1.`);
-await writeStage('26-vitest-version-ab-resumed.json', { realWorktree: { vitest: activeVitest, changed: false }, sandbox: { vitest3: '3.2.7', vitest4: '4.1.10', sourceSame: true, productChanged: false, lockfileChangedRealWorktree: false }, result: { v3: 'F4 timeout, no RPC', v4: 'F4 timeout, no RPC', rpcRemovedByV4InSandbox: true, contentionRemains: true } });
-await writeStage('27-root-cause-decision.md', `# Root-cause decision
+await writeStage(
+  '21-validator-final.txt',
+  `Standalone validator unit: PASS 24/24\nAudit: PASS\nVerify: PASS\ncandidateCount=120; rawSiteCount=11; TX_BOUNDARY=100; TX_PARTICIPANT=0; TX_DELEGATE=0; NON_TX=7; TEST_ONLY_OR_DEAD=13; REVIEW_REQUIRED=0; issueCount=0; missingRegression=0; fixtureMutation=false\nFixture SHA=${fixtureSha}`,
+);
+await writeStage(
+  '22-fixture-final.txt',
+  `SHA-256=${fixtureSha}\nexpected=256E5906DB0AFBDEB175C1E754C2C8EC3A1213139AE4F805E95C5396086586CD\nfixtureMutation=false`,
+);
+await writeStage(
+  '23-sandbox-source-identity.txt',
+  `Valid A/B source: C:\\dev\\shotgun-ts6-phase-b with current R7/C2 source files and required evidence directories copied to disposable sandboxes. V3 and V4 used npm ci in isolated directories. Invalid preliminary copy attempt was excluded because robocopy dereferenced workspace junctions and omitted required artifacts; it produced setup-only missing-module/artifact errors and is not part of classification.`,
+);
+await writeStage(
+  '24-sandbox-vitest3.txt',
+  `Sandbox: C:\\dev\\shotgun-ts6-phase-b-r9-sandbox-v3\nVitest: 3.2.7\nCommand: npm run test:unit\nResult: 155/156 files passed; 1255/1256 tests passed; F4 existing 20_000 ms case timeout; no RPC error in valid rebuilt run; exitCode=1.`,
+);
+await writeStage(
+  '25-sandbox-vitest4.txt',
+  `Sandbox: C:\\dev\\shotgun-ts6-phase-b-r9-sandbox-v4\nVitest: 4.1.10 (sandbox-only; real package.json/lockfile unchanged)\nCommand: npm run test:unit\nResult: 155/156 files passed; 1255/1256 tests passed; same F4 existing 20_000 ms case timeout; no RPC error; exitCode=1.`,
+);
+await writeStage('26-vitest-version-ab-resumed.json', {
+  realWorktree: { vitest: activeVitest, changed: false },
+  sandbox: {
+    vitest3: '3.2.7',
+    vitest4: '4.1.10',
+    sourceSame: true,
+    productChanged: false,
+    lockfileChangedRealWorktree: false,
+  },
+  result: {
+    v3: 'F4 timeout, no RPC',
+    v4: 'F4 timeout, no RPC',
+    rpcRemovedByV4InSandbox: true,
+    contentionRemains: true,
+  },
+});
+await writeStage(
+  '27-root-cause-decision.md',
+  `# Root-cause decision
 
 The R8 failures are not intrinsic. The first known RPC path is a Vitest 3.2.7 bundled birpc timeout; upstream #8297 is the relevant fix and V4 removes that RPC error in the controlled sandbox. The remaining F4 timeout appears under the full-suite V3 and V4 sandboxes and disappears in all isolated/affected-set runs, so it is a separate suite-wide contention/capacity issue. No single Vitest migration is sufficient closure.
-`);
-await writeStage('28-remediation-recommendation.md', `# Remediation recommendation
+`,
+);
+await writeStage(
+  '28-remediation-recommendation.md',
+  `# Remediation recommendation
 
 1. Keep the real worktree unchanged and do not raise individual test timeouts again.
 2. Run a separately approved resource/scheduling remediation experiment: bound the official suite's worker policy or split high-cost suites while retaining the same test contracts; measure total duration, max RSS, process counts, and failure/replay behavior.
 3. Evaluate a Vitest 4 migration in a separate branch/sandbox, pin an exact version, run Contract, Golden Corpus, Security Negative, Adapter Replacement, Migration/Rollback and OSS Integration gates. Treat V4 as RPC remediation only, not as the suite-capacity fix.
 4. Preserve the R7 line and all Canonical/Evidence/Approval/Action boundaries. No Stage COMPLETE or TS-7 transition until all required gates pass.
-`);
-await writeStage('29-final-diff.patch', r7Diff || 'No new R9 Product diff. R7 frozen functional diff is the only scoped test correction.');
-await writeStage('30-changed-files.txt', `R9-added-or-updated:\n- docs/engineering/ts6-phase-b-c2-r9-parallel-resource-contention-audit.md\n- scripts/rebuild-ts6-phase-b-c2-r9-review.mjs\n- scripts/ts6-phase-b-c2-r9-targeted-runner.mjs (R9 runner metadata only)\n- scripts/ts6-phase-b-c2-r9-group-runner.mjs\n- artifacts/ts6-phase-b-c2-r9/**\n- shotgun-ts6-phase-b-c2-r9-review-20260921.zip\n\nReal-worktree pre-existing owner/C2 status is preserved below:\n${currentStatus}`);
+`,
+);
+await writeStage(
+  '29-final-diff.patch',
+  r7Diff || 'No new R9 Product diff. R7 frozen functional diff is the only scoped test correction.',
+);
+await writeStage(
+  '30-changed-files.txt',
+  `R9-added-or-updated:\n- docs/engineering/ts6-phase-b-c2-r9-parallel-resource-contention-audit.md\n- scripts/rebuild-ts6-phase-b-c2-r9-review.mjs\n- scripts/ts6-phase-b-c2-r9-targeted-runner.mjs (R9 runner metadata only)\n- scripts/ts6-phase-b-c2-r9-group-runner.mjs\n- artifacts/ts6-phase-b-c2-r9/**\n- shotgun-ts6-phase-b-c2-r9-review-20260921.zip\n\nReal-worktree pre-existing owner/C2 status is preserved below:\n${currentStatus}`,
+);
 await writeStage('31-r9-closure-report.md', closureReport);
 await writeStage('32-final-handoff-report.md', finalHandoff);
 
 await cp(resolve(evidenceRoot, 'targeted'), join(stage, 'raw', 'targeted'), { recursive: true });
 await cp(resolve(evidenceRoot, 'groups'), join(stage, 'raw', 'groups'), { recursive: true });
-await writeStage('raw/invalid-sandbox-attempt.txt', 'Excluded setup attempt: robocopy-dereferenced workspace junctions and omitted evidence directories; no result from this attempt is used in R9 classification.');
+await writeStage(
+  'raw/invalid-sandbox-attempt.txt',
+  'Excluded setup attempt: robocopy-dereferenced workspace junctions and omitted evidence directories; no result from this attempt is used in R9 classification.',
+);
 
 const collectFiles = async (dir) => {
   const out = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const file = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...await collectFiles(file));
+    if (entry.isDirectory()) out.push(...(await collectFiles(file)));
     else out.push(file);
   }
   return out;
 };
-const allStageFiles = (await collectFiles(stage)).filter((file) => basename(file) !== '33-sha256-manifest.txt');
+const allStageFiles = (await collectFiles(stage)).filter(
+  (file) => basename(file) !== '33-sha256-manifest.txt',
+);
 const manifest = [];
-for (const file of allStageFiles) manifest.push(`${await hashFile(file)}  ${relative(stage, file).replaceAll('\\', '/')}`);
+for (const file of allStageFiles)
+  manifest.push(`${await hashFile(file)}  ${relative(stage, file).replaceAll('\\', '/')}`);
 manifest.sort();
 await writeStage('33-sha256-manifest.txt', manifest.join('\n'));
 
-await writeFile(resolve(root, 'docs/engineering/ts6-phase-b-c2-r9-parallel-resource-contention-audit.md'), closureReport, 'utf8');
+await writeFile(
+  resolve(root, 'docs/engineering/ts6-phase-b-c2-r9-parallel-resource-contention-audit.md'),
+  closureReport,
+  'utf8',
+);
 await rm(zipPath, { force: true });
-execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Compress-Archive -Path '${stage}\\*' -DestinationPath '${zipPath}' -Force`], { cwd: root, stdio: 'inherit', windowsHide: true });
+execFileSync(
+  'powershell.exe',
+  [
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    `Compress-Archive -Path '${stage}\\*' -DestinationPath '${zipPath}' -Force`,
+  ],
+  { cwd: root, stdio: 'inherit', windowsHide: true },
+);
 const zipHash = await hashFile(zipPath);
 const manifestHash = await hashFile(resolve(stage, '33-sha256-manifest.txt'));
-console.log(JSON.stringify({ zipPath, zipSha256: zipHash, manifestSha256: manifestHash, entryCount: manifest.length + 1, bytes: (await stat(zipPath)).size }, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      zipPath,
+      zipSha256: zipHash,
+      manifestSha256: manifestHash,
+      entryCount: manifest.length + 1,
+      bytes: (await stat(zipPath)).size,
+    },
+    null,
+    2,
+  ),
+);

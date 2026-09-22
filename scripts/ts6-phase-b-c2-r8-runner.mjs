@@ -22,16 +22,30 @@ const commands = [
 
 function psSnapshot() {
   return new Promise((resolveSnapshot) => {
-    const ps = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', [
-      '$p=Get-Process -Name node,python,python3,py -ErrorAction SilentlyContinue;',
-      '$mem=Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty FreePhysicalMemory;',
-      '[pscustomobject]@{node=($p|Where-Object ProcessName -eq "node").Count;python=(($p|Where-Object {$_.ProcessName -in @("python","python3","py")}).Count);freeMemoryKb=$mem} | ConvertTo-Json -Compress',
-    ].join('')], { windowsHide: true });
+    const ps = spawn(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        [
+          '$p=Get-Process -Name node,python,python3,py -ErrorAction SilentlyContinue;',
+          '$mem=Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty FreePhysicalMemory;',
+          '[pscustomobject]@{node=($p|Where-Object ProcessName -eq "node").Count;python=(($p|Where-Object {$_.ProcessName -in @("python","python3","py")}).Count);freeMemoryKb=$mem} | ConvertTo-Json -Compress',
+        ].join(''),
+      ],
+      { windowsHide: true },
+    );
     let output = '';
-    ps.stdout.on('data', (chunk) => { output += chunk; });
+    ps.stdout.on('data', (chunk) => {
+      output += chunk;
+    });
     ps.on('close', () => {
-      try { resolveSnapshot(JSON.parse(output.trim() || '{}')); }
-      catch { resolveSnapshot({}); }
+      try {
+        resolveSnapshot(JSON.parse(output.trim() || '{}'));
+      } catch {
+        resolveSnapshot({});
+      }
     });
     ps.on('error', () => resolveSnapshot({}));
   });
@@ -42,7 +56,8 @@ async function run(label, flags) {
   const jsonPath = resolve(outDir, `${label}.json`);
   const args = [
     resolve(root, 'node_modules/vitest/vitest.mjs'),
-    'run', 'tests/unit',
+    'run',
+    'tests/unit',
     ...flags,
     '--reporter=default',
     '--reporter=json',
@@ -61,9 +76,15 @@ async function run(label, flags) {
       freeMemoryKb: snapshot.freeMemoryKb ?? null,
     });
   };
-  const timer = setInterval(() => { void sample(); }, 1000);
-  child.stdout.on('data', (chunk) => { output += chunk; });
-  child.stderr.on('data', (chunk) => { output += chunk; });
+  const timer = setInterval(() => {
+    void sample();
+  }, 1000);
+  child.stdout.on('data', (chunk) => {
+    output += chunk;
+  });
+  child.stderr.on('data', (chunk) => {
+    output += chunk;
+  });
   const exitCode = await new Promise((resolveExit) => {
     child.on('close', (code) => resolveExit(code ?? -1));
     child.on('error', () => resolveExit(-1));
@@ -81,21 +102,37 @@ async function run(label, flags) {
     outputBytes: Buffer.byteLength(output),
     hasOnTaskUpdate: output.includes('Timeout calling "onTaskUpdate"'),
     hasUnhandled: output.includes('Unhandled Errors'),
-    hasAssertionFailure: /Test Files\s+[1-9]\d* failed|Tests\s+[1-9]\d* failed|\bFAIL\b/.test(output),
+    hasAssertionFailure: /Test Files\s+[1-9]\d* failed|Tests\s+[1-9]\d* failed|\bFAIL\b/.test(
+      output,
+    ),
     samples,
     peakNode: Math.max(0, ...samples.map((s) => Number(s.node) || 0)),
     peakPython: Math.max(0, ...samples.map((s) => Number(s.python) || 0)),
-    minFreeMemoryKb: Math.min(...samples.map((s) => Number(s.freeMemoryKb)).filter(Number.isFinite)),
+    minFreeMemoryKb: Math.min(
+      ...samples.map((s) => Number(s.freeMemoryKb)).filter(Number.isFinite),
+    ),
   };
 }
 
 const results = [];
 for (const [label, flags] of commands) {
   results.push(await run(label, flags));
-  await writeFile(resolve(outDir, 'matrix-progress.json'), JSON.stringify(results, null, 2), 'utf8');
+  await writeFile(
+    resolve(outDir, 'matrix-progress.json'),
+    JSON.stringify(results, null, 2),
+    'utf8',
+  );
 }
-await writeFile(resolve(outDir, 'matrix.json'), JSON.stringify({
-  generatedAt: new Date().toISOString(),
-  results,
-}, null, 2), 'utf8');
+await writeFile(
+  resolve(outDir, 'matrix.json'),
+  JSON.stringify(
+    {
+      generatedAt: new Date().toISOString(),
+      results,
+    },
+    null,
+    2,
+  ),
+  'utf8',
+);
 console.log(JSON.stringify(results, null, 2));

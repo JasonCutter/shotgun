@@ -76,13 +76,13 @@ after completion. No orphaned Python process was observed:
 
 Five repetitions per case, with correctness checked on every repetition:
 
-| Case | Result | Min / median / max |
-| --- | --- | --- |
-| Small valid CSV, 4 cells | 5/5 PASS | 810.9 / 866.6 / 871.6 ms |
-| Valid 1600-cell CSV | 5/5 PASS | 2139.3 / 2161.4 / 2186.0 ms |
-| Valid 8192-cell near-limit CSV | 5/5 PASS | 46202.2 / 48247.8 / 51944.3 ms |
-| First invalid 8193-cell CSV | 5/5 `VALIDATION_ERROR` | 923.2 / 951.9 / 1035.3 ms |
-| Combined 1600 then 8193 sequence | 5/5 correct | 3019.2 / 3258.9 / 3305.8 ms |
+| Case                             | Result                 | Min / median / max             |
+| -------------------------------- | ---------------------- | ------------------------------ |
+| Small valid CSV, 4 cells         | 5/5 PASS               | 810.9 / 866.6 / 871.6 ms       |
+| Valid 1600-cell CSV              | 5/5 PASS               | 2139.3 / 2161.4 / 2186.0 ms    |
+| Valid 8192-cell near-limit CSV   | 5/5 PASS               | 46202.2 / 48247.8 / 51944.3 ms |
+| First invalid 8193-cell CSV      | 5/5 `VALIDATION_ERROR` | 923.2 / 951.9 / 1035.3 ms      |
+| Combined 1600 then 8193 sequence | 5/5 correct            | 3019.2 / 3258.9 / 3305.8 ms    |
 
 The 8192-cell valid boundary is intentionally heavy because the adapter must
 materialize and validate 8192 blocks; it is not used as a reason to change the

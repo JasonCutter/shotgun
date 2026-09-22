@@ -1337,7 +1337,10 @@ describe.runIf(pool)(
       await store.transactionWithHandle(async (handle) => {
         await (
           handle.raw as {
-            query: (sql: string, values?: readonly unknown[]) => Promise<{ rowCount: number | null }>;
+            query: (
+              sql: string,
+              values?: readonly unknown[],
+            ) => Promise<{ rowCount: number | null }>;
           }
         ).query(
           `INSERT INTO frontend_external_action.audit_events (

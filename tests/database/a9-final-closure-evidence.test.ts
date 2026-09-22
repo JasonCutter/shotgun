@@ -1076,11 +1076,9 @@ describe('A9 final closure deterministic cross-boundary evidence', () => {
     const requestId = `c2r15-ask-transaction-${randomUUID()}`;
     // A fresh instance of the registered class, so the boundary is driven by a
     // receiver that is unambiguously this repository.
-    const executionRepository = new PostgresAskAnswerExecutionRepository(
-      pool,
-      fixture.projection,
-      { resolve: async () => undefined },
-    );
+    const executionRepository = new PostgresAskAnswerExecutionRepository(pool, fixture.projection, {
+      resolve: async () => undefined,
+    });
 
     const result = await executionRepository.transaction(async (transaction) => {
       const feedback = await transaction.saveFeedback({

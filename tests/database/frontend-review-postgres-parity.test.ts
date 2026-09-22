@@ -330,8 +330,6 @@ describe.runIf(pool)('FE-P4-S1 in-memory vs PostgreSQL review store parity (AC-1
     const persisted = await repository.transaction((repositories) =>
       repositories.decisions.findDecisions('context-1'),
     );
-    expect(persisted.map((decision) => decision.decisionId)).toContain(
-      'c2r15-boundary-decision',
-    );
+    expect(persisted.map((decision) => decision.decisionId)).toContain('c2r15-boundary-decision');
   });
 });

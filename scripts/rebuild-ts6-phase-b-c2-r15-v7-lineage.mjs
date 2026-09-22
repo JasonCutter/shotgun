@@ -58,7 +58,9 @@ const transactionBoundaries = previous.transactionBoundaries.map((row) => {
     ...row,
     productionReachability: {
       status: after,
-      callers: current ? current.productionReachability.callers : row.productionReachability.callers,
+      callers: current
+        ? current.productionReachability.callers
+        : row.productionReachability.callers,
     },
     legacyRecordedCallers: current ? current.legacyRecordedCallers : row.legacyRecordedCallers,
     regressionEvidenceIds: row.regressionEvidenceIds,

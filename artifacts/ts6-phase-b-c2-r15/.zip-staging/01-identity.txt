@@ -1,8 +1,0 @@
-TS-6 Phase B C2-R15 ??Regression Evidence Authority Correction
-repository : JasonCutter/shotgun
-worktree   : C:/dev/shotgun-ts6-phase-b
-branch     : codex/ts6-postgres-transaction-phase-b
-base       : 1f821ea371b308d8cecede4a98ebe27960873b21 (provenance only; the audited state is the dirty worktree)
-status     : UNCOMMITTED ??no commit, push, PR, CI change, or merge
-vitest     : 3.2.7 (unchanged)
-generated  : 2026-09-21T06:01:01.986Z

@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
 
 import { PostgresCredentialVaultRepository } from '../../adapters/credential-vault-postgres/src/index.js';
+import { PostgresOrderingStore } from '../../adapters/connector-runtime-postgres/src/index.js';
 import {
   PostgresCanonicalCommittedSourceAdapter,
   PostgresDiscoveryScheduleRepository,
@@ -131,6 +132,7 @@ import {
   type RelationCandidate,
   type SemanticEmbeddingRouterPort,
   decodeDiscoveryFeedbackProductCommandRequestV1,
+  createCommand,
 } from '../../packages/contracts/src/index.js';
 import {
   createIsolatedPostgresTestDatabase,
@@ -1869,6 +1871,88 @@ describe.runIf(dbConfigured)('AKP-8 WP2 cross-section causal PostgreSQL acceptan
     expect(mConflictHistory.rows).toEqual(
       expect.arrayContaining([expect.objectContaining({ to_state: 'STALE' })]),
     );
+  });
+
+  // C2-R15 minimal proof for the registered `PostgresOrderingStore.commit`
+  // transaction boundary. This boundary had no direct regression proof: the
+  // declared relation reached the canonical-knowledge module's own `commit`
+  // in `commitCausalClaim` below, which is a same-named method on an unrelated
+  // class and can never qualify. This exercises the real boundary against real
+  // PostgreSQL through its own class instead: acquire the partial-ordering
+  // fence, commit the checkpoint, and assert the committed state.
+  it('commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)', async () => {
+    const ordering = new PostgresOrderingStore(pool!);
+    const identity = {
+      projectId: 'akp-8-wp2-ordering-commit-project',
+      securityScope: 'owner',
+      consumerId: 'akp-8-wp2-ordering-commit-consumer',
+      messageKind: 'command' as const,
+      messageType: 'shotgun.akp8.ordering.commit-proof.v1',
+      semanticKey: 'akp-8-wp2-ordering-commit-proof',
+      fingerprint: 'akp-8-wp2-ordering-commit-fingerprint',
+    };
+    const orderingKey = `akp-8-wp2-commit-${randomUUID()}`;
+    const envelope = createCommand({
+      producerModule: 'akp-8-wp2-cross-section-causal-acceptance',
+      producerVersion: '1.0.0',
+      projectId: identity.projectId,
+      actor: { type: 'system', id: 'akp-8-wp2-causal-acceptance' },
+      security: { accessScope: ['owner'], sensitivity: 'private', dataClassification: 'internal' },
+      messageType: identity.messageType,
+      schemaVersion: '1.0.0',
+      idempotencyKey: orderingKey,
+      payload: { orderingKey },
+      orderingKey,
+      sequence: 1,
+    });
+
+    const acquired = await ordering.acquireNext(identity, envelope, randomUUID(), 300_000);
+    expect(acquired.fencingToken).toBeGreaterThan(0);
+
+    const claimed = await pool!.query<{
+      claim_sequence: string | number;
+      claim_fence_token: string | number;
+    }>(
+      `SELECT claim_sequence, claim_fence_token
+         FROM connector.ordering_checkpoints
+        WHERE project_id = $1 AND security_scope = $2 AND consumer_id = $3
+          AND message_kind = $4 AND message_type = $5 AND ordering_key = $6`,
+      [
+        identity.projectId,
+        identity.securityScope,
+        identity.consumerId,
+        identity.messageKind,
+        identity.messageType,
+        orderingKey,
+      ],
+    );
+    expect(Number(claimed.rows[0]?.claim_sequence)).toBe(1);
+
+    await ordering.commit(identity, envelope, acquired.fencingToken);
+
+    const committed = await pool!.query<{
+      last_sequence: string | number;
+      claim_sequence: string | number | null;
+      claim_expires_at: Date | null;
+    }>(
+      `SELECT last_sequence, claim_sequence, claim_expires_at
+         FROM connector.ordering_checkpoints
+        WHERE project_id = $1 AND security_scope = $2 AND consumer_id = $3
+          AND message_kind = $4 AND message_type = $5 AND ordering_key = $6`,
+      [
+        identity.projectId,
+        identity.securityScope,
+        identity.consumerId,
+        identity.messageKind,
+        identity.messageType,
+        orderingKey,
+      ],
+    );
+    // The committed checkpoint advances last_sequence to the claimed sequence
+    // and releases the claim in the same transaction.
+    expect(Number(committed.rows[0]?.last_sequence)).toBe(1);
+    expect(committed.rows[0]?.claim_sequence).toBeNull();
+    expect(committed.rows[0]?.claim_expires_at).toBeNull();
   });
 
   afterAll(async () => {

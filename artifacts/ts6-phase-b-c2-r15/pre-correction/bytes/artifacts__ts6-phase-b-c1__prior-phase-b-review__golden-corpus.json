@@ -1,0 +1,1462 @@
+{
+  "schemaVersion": "ts6-transaction-boundary-golden.v1",
+  "total": 112,
+  "rows": [
+    {
+      "stableBoundaryId": "safe:adapters/ai-configuration-postgres/src/index.ts:106:PostgresProjectAIConfigurationRepository.saveRevision",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresProjectAIConfigurationRepository.saveRevision"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-model-profile-postgres/src/index.ts:126:PostgresDiscoveryModelProfileRepository.saveRevision",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryModelProfileRepository.saveRevision"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-model-profile-postgres/src/index.ts:209:PostgresDiscoveryModelProfileRepository.updateStatus",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryModelProfileRepository.updateStatus"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-auth/src/index.ts:133:PostgresAuthRepository.bootstrapOwner",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresAuthRepository.bootstrapOwner"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage10/src/index.ts:85:PostgresCompiledTruthRepository.synchronize",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresCompiledTruthRepository.synchronize"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage10/src/index.ts:167:PostgresCompiledTruthRepository.saveInferences",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresCompiledTruthRepository.saveInferences"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage11/src/index.ts:583:PostgresActionExecutionRepository.markFeedbackOutboxPublished",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresActionExecutionRepository.markFeedbackOutboxPublished"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage11/src/index.ts:847:PostgresActionExecutionRepository.transaction",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresActionExecutionRepository.transaction"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122:PostgresSourcesStage3ProgressRepository.claim",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesStage3ProgressRepository.claim"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:491:PostgresSourcesStage3AtomicPersistence.persist",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesStage3AtomicPersistence.persist"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896:PostgresSourcesStage4ContinuationStore.claimNext",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesStage4ContinuationStore.claimNext"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:386:PostgresAIProviderCallRepository.claimNextAttempt",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresAIProviderCallRepository.claimNextAttempt"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage5/src/index.ts:635:PostgresComparisonV2Repository.transitionAnalysisRevision",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresComparisonV2Repository.transitionAnalysisRevision"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage5/src/index.ts:1618:PostgresChangeSetReviewV2Repository.markStaleIfCurrent",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresChangeSetReviewV2Repository.markStaleIfCurrent"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage7/src/index.ts:137:PostgresSearchProjectionRepository.applyCommit",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSearchProjectionRepository.applyCommit"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage7/src/index.ts:196:PostgresSearchProjectionRepository.rebuild",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSearchProjectionRepository.rebuild"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199:PostgresOrderingStore.acquireNext",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresOrderingStore.acquireNext"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284:PostgresOrderingStore.commit",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresOrderingStore.commit"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389:PostgresConnectorRuntimeState.recoverExpiredLeases",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresConnectorRuntimeState.recoverExpiredLeases"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-feedback-postgres/src/index.ts:444:PostgresDiscoveryFeedbackRepository.appendSuppression",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryFeedbackRepository.appendSuppression"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-feedback-postgres/src/index.ts:727:PostgresDiscoveryFeedbackRepository.transaction",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryFeedbackRepository.transaction"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:360:PostgresDiscoveryFindingRepository.save",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryFindingRepository.save"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:385:PostgresDiscoveryFindingRepository.saveFenced",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryFindingRepository.saveFenced"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:736:PostgresDiscoveryFindingRepository.transitionLifecycle",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryFindingRepository.transitionLifecycle"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:567:PostgresDiscoveryReentryRepository.recordEpistemicReentryDisposition",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryReentryRepository.recordEpistemicReentryDisposition"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:777:PostgresDiscoveryReentryRepository.recordConsumptionDisposition",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryReentryRepository.recordConsumptionDisposition"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:987:PostgresDiscoveryReentryRepository.persistIntake",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryReentryRepository.persistIntake"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1050:PostgresDiscoveryRuntimeRepository.saveJob",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.saveJob"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1155:PostgresDiscoveryRuntimeRepository.transitionJob",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.transitionJob"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1232:PostgresDiscoveryRuntimeRepository.saveRun",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.saveRun"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1298:PostgresDiscoveryRuntimeRepository.transitionRun",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.transitionRun"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1393:PostgresDiscoveryRuntimeRepository.saveAttempt",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.saveAttempt"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1488:PostgresDiscoveryRuntimeRepository.transitionAttempt",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.transitionAttempt"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1554:PostgresDiscoveryRuntimeRepository.saveStage",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.saveStage"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1617:PostgresDiscoveryRuntimeRepository.transitionStage",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.transitionStage"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1689:PostgresDiscoveryRuntimeRepository.claimNext",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.claimNext"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2051:PostgresDiscoveryRuntimeRepository.renewLease",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.renewLease"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2093:PostgresDiscoveryRuntimeRepository.releaseLease",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.releaseLease"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2123:PostgresDiscoveryRuntimeRepository.transitionStageWithLease",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.transitionStageWithLease"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2190:PostgresDiscoveryRuntimeRepository.transitionAttemptWithLease",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.transitionAttemptWithLease"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2257:PostgresDiscoveryRuntimeRepository.transitionRunWithLease",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.transitionRunWithLease"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2353:PostgresDiscoveryRuntimeRepository.transitionJobWithLease",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.transitionJobWithLease"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2435:PostgresDiscoveryRuntimeRepository.finalizeClaimWithLease",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.finalizeClaimWithLease"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2608:PostgresDiscoveryRuntimeRepository.finalizeFailureWithLease",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.finalizeFailureWithLease"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2844:PostgresDiscoveryRuntimeRepository.saveFailureContext",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.saveFailureContext"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2959:PostgresDiscoveryRuntimeRepository.writeBudgetCheckpoint",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.writeBudgetCheckpoint"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3053:PostgresDiscoveryRuntimeRepository.writeStageOutput",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.writeStageOutput"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3144:PostgresDiscoveryRuntimeRepository.reserveProviderCall",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.reserveProviderCall"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3209:PostgresDiscoveryRuntimeRepository.finalizeProviderCall",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.finalizeProviderCall"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3302:PostgresDiscoveryRuntimeRepository.publishFindingReady",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryRuntimeRepository.publishFindingReady"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:1751:PostgresAskAnswerExecutionRepository.transaction",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresAskAnswerExecutionRepository.transaction"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2421:PostgresAskAnswerExecutionRepository.poolTransaction",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresAskAnswerExecutionRepository.poolTransaction"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:173:PostgresAskConversationRepository.transaction",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresAskConversationRepository.transaction"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:108:PostgresFrontendCommandGateway.accept",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresFrontendCommandGateway.accept"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:259:PostgresFrontendCommandGateway.complete",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresFrontendCommandGateway.complete"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:104:PostgresExternalActionStore.transaction",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresExternalActionStore.transaction"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:114:PostgresExternalActionStore.transactionWithHandle",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresExternalActionStore.transactionWithHandle"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:55:PostgresFrontendKnowledgeDraftRepository.transaction",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresFrontendKnowledgeDraftRepository.transaction"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:65:PostgresFrontendKnowledgeDraftRepository.transactionWithHandle",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresFrontendKnowledgeDraftRepository.transactionWithHandle"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:162:PostgresFrontendReviewRepository.transaction",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresFrontendReviewRepository.transaction"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:172:PostgresFrontendReviewRepository.transactionWithHandle",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresFrontendReviewRepository.transactionWithHandle"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:811:PostgresDiscoveryReviewResourceRepository.save",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresDiscoveryReviewResourceRepository.save"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage6/src/index.ts:261:PostgresCanonicalKnowledgeRepository.commit",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresCanonicalKnowledgeRepository.commit"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage6/src/index.ts:507:PostgresCanonicalKnowledgeRepository.commitV2",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresCanonicalKnowledgeRepository.commitV2"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage6/src/index.ts:758:PostgresCanonicalKnowledgeRepository.commitFrontendDraft",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresCanonicalKnowledgeRepository.commitFrontendDraft"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:114:PostgresTypedPropositionConflictRuleRepository.transaction",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresTypedPropositionConflictRuleRepository.transaction"
+    },
+    {
+      "stableBoundaryId": "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:221:PostgresTypedPropositionConflictAssertionRepository.saveAssertion",
+      "mechanism": "SAFE_HELPER",
+      "phaseAClassification": "PRODUCTION_SAFE_HELPER",
+      "finalTs6RiskClass": "SAFE_ALREADY",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "NOT_APPLICABLE",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresTypedPropositionConflictAssertionRepository.saveAssertion"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/credential-vault-postgres/src/index.ts:141:PostgresCredentialVaultRepository.advanceRevision",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_OPERATION_SPECIFIC_RESOLUTION",
+      "authorityKind": "EXACT_IDEMPOTENT_REPLAY",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresCredentialVaultRepository.advanceRevision"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-activity-postgres/src/index.ts:91:PostgresActivityIndexStore.<anonymous-function>",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "NO_EXISTING_DURABLE_RESOLUTION",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresActivityIndexStore.<anonymous-function>"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-activity-postgres/src/index.ts:444:commitProjectProjection",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "NO_EXISTING_DURABLE_RESOLUTION",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "commitProjectProjection"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-history-postgres/src/history-projection-store.ts:122:withHistoryProjectWriteLock",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "NO_EXISTING_DURABLE_RESOLUTION",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "withHistoryProjectWriteLock"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-history-postgres/src/history-projection-store.ts:396:commitProjectProjection",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "NO_EXISTING_DURABLE_RESOLUTION",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "commitProjectProjection"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-history-postgres/src/index.ts:128:PostgresPayloadStateStore.setPayloadState",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "NO_EXISTING_DURABLE_RESOLUTION",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresPayloadStateStore.setPayloadState"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-history-postgres/src/index.ts:213:PostgresPayloadStateStore.purgeByPolicy",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "NO_EXISTING_DURABLE_RESOLUTION",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresPayloadStateStore.purgeByPolicy"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-sources-write-postgres/src/index.ts:129:PostgresSourcesIntakeUnitOfWork.createSubmission",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesIntakeUnitOfWork.createSubmission"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-sources-write-postgres/src/index.ts:215:PostgresSourcesIntakeUnitOfWork.createExactDuplicateDecision",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesIntakeUnitOfWork.createExactDuplicateDecision"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-sources-write-postgres/src/index.ts:290:PostgresSourcesIntakeUnitOfWork.resolveExactDuplicateDecision",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesIntakeUnitOfWork.resolveExactDuplicateDecision"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-sources-write-postgres/src/lifecycle.ts:202:PostgresSourcesIntakeLifecycle.transaction",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesIntakeLifecycle.transaction"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-sources-write-postgres/src/product-service.ts:274:PostgresSourcesProductService.submit",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesProductService.submit"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-sources-write-postgres/src/product-service.ts:475:PostgresSourcesProductService.markSubmissionStage3Incomplete",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesProductService.markSubmissionStage3Incomplete"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-sources-write-postgres/src/product-service.ts:523:PostgresSourcesProductService.finalizeSubmissionState",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesProductService.finalizeSubmissionState"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-sources-write-postgres/src/product-service.ts:772:PostgresSourcesProductService.resolveDuplicate",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesProductService.resolveDuplicate"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-sources-write-postgres/src/product-service.ts:967:PostgresSourcesProductService.retry",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesProductService.retry"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/frontend-sources-write-postgres/src/product-service.ts:1518:PostgresSourcesProductService.markStage3ItemsSucceeded",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSourcesProductService.markStage3ItemsSucceeded"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-auth/src/index.ts:71:PostgresAuthRepository.bootstrapLocalOwnerPrincipal",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresAuthRepository.bootstrapLocalOwnerPrincipal"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage3/src/index.ts:150:PostgresTransformationRepository.save",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "NO_EXISTING_DURABLE_RESOLUTION",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresTransformationRepository.save"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage3/src/index.ts:308:PostgresEvidenceRepository.index",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "NO_EXISTING_DURABLE_RESOLUTION",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresEvidenceRepository.index"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:315:PostgresAIProviderCallRepository.ensure",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_PLUS_READBACK",
+      "authorityKind": "EXACT_INTENDED_MATERIAL_READBACK",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresAIProviderCallRepository.ensure"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:452:PostgresAIProviderCallRepository.storeOutput",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresAIProviderCallRepository.storeOutput"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:524:PostgresAIProviderCallRepository.acceptOutput",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_IDEMPOTENT_REPLAY",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresAIProviderCallRepository.acceptOutput"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:648:PostgresAIProviderCallRepository.failAttempt",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresAIProviderCallRepository.failAttempt"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:684:PostgresAIProviderCallRepository.markAttemptOutcomeUnknown",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "NO_CHANGE_PROVEN_SAFE",
+      "authorityKind": "EXACT_IDEMPOTENT_REPLAY",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresAIProviderCallRepository.markAttemptOutcomeUnknown"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage4/src/index.ts:796:PostgresCandidateRepository.saveBatch",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_OPERATION_SPECIFIC_RESOLUTION",
+      "authorityKind": "EXACT_IDEMPOTENT_REPLAY",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresCandidateRepository.saveBatch"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage5/src/index.ts:407:PostgresComparisonV2Repository.withTransaction",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "NO_EXISTING_DURABLE_RESOLUTION",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresComparisonV2Repository.withTransaction"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage5/src/index.ts:1233:PostgresChangeSetReviewRepository.recordDecision",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresChangeSetReviewRepository.recordDecision"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage5/src/index.ts:1339:PostgresChangeSetReviewRepository.markStale",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresChangeSetReviewRepository.markStale"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage5/src/index.ts:1462:PostgresChangeSetReviewV2Repository.saveDraft",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresChangeSetReviewV2Repository.saveDraft"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage5/src/index.ts:1904:PostgresChangeSetReviewV2Repository.resolveOperation",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_OPERATION_SPECIFIC_RESOLUTION",
+      "authorityKind": "EXACT_IDEMPOTENT_REPLAY",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresChangeSetReviewV2Repository.resolveOperation"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres-stage5/src/index.ts:2125:PostgresChangeSetReviewV2Repository.recordDecision",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresChangeSetReviewV2Repository.recordDecision"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres/src/index.ts:312:PostgresOriginalAssetRepository.store",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresOriginalAssetRepository.store"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres/src/index.ts:823:PostgresProjectAdministrationRepository.createProject",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresProjectAdministrationRepository.createProject"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres/src/index.ts:975:PostgresProjectAdministrationRepository.updateProject",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresProjectAdministrationRepository.updateProject"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres/src/index.ts:1108:PostgresProjectAdministrationRepository.updateStatus",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresProjectAdministrationRepository.updateStatus"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres/src/index.ts:1230:PostgresProjectBootstrapUnitOfWork.bootstrap",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresProjectBootstrapUnitOfWork.bootstrap"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres/src/index.ts:1505:PostgresSettingsRepository.updatePrincipalPreferences",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSettingsRepository.updatePrincipalPreferences"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/postgres/src/index.ts:1820:PostgresSettingsRepository.applySettingsCommand",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSettingsRepository.applySettingsCommand"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/project-standing-ai-policy-postgres/src/index.ts:75:PostgresStandingAIProcessingPolicyRepository.saveRevision",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresStandingAIProcessingPolicyRepository.saveRevision"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/provider-privacy-deployment-postgres/src/index.ts:91:PostgresProviderExternalTransferApprovalRepository.createProposal",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresProviderExternalTransferApprovalRepository.createProposal"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/provider-privacy-deployment-postgres/src/index.ts:165:PostgresProviderExternalTransferApprovalRepository.approveProposal",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresProviderExternalTransferApprovalRepository.approveProposal"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/semantic-embedding-postgres/src/index.ts:99:PostgresSemanticEmbeddingProfileRepository.saveRevision",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_FALSE_FAILURE",
+      "finalPhaseBDisposition": "FIX_OPERATION_SPECIFIC_RESOLUTION",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSemanticEmbeddingProfileRepository.saveRevision"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/semantic-index-postgres/src/index.ts:454:PostgresSemanticIndexRepository.upsertItems",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_STALE_CONFLICT",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSemanticIndexRepository.upsertItems"
+    },
+    {
+      "stableBoundaryId": "raw:adapters/semantic-index-postgres/src/index.ts:926:PostgresSemanticIndexRepository.activateGeneration",
+      "mechanism": "RAW",
+      "phaseAClassification": "RAW_PRODUCT_WRITE",
+      "finalTs6RiskClass": "RED_STALE_CONFLICT",
+      "finalPhaseBDisposition": "FIX_WRAPPER_ONLY",
+      "authorityKind": "EXISTING_STATE_ONLY_NOT_INTENT_PROOF",
+      "replayKind": "NO_AUTOMATIC_RETRY",
+      "requiredRegressionTestIds": [
+        "ts6-transaction-outcome-contract"
+      ],
+      "domainOwner": "PostgresSemanticIndexRepository.activateGeneration"
+    }
+  ]
+}

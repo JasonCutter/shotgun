@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { FakeDraftActionConnector } from '../../adapters/action-connector-fake/src/index.js';
@@ -335,6 +337,65 @@ describe.runIf(pool)('Stage 12.1 P0-2 PostgreSQL Action persistence', () => {
     ).toBeLessThanOrEqual(1);
     await recoveryKernel.shutdown();
     await kernel.shutdown();
+  });
+
+  // C2-R15 minimal proof for the registered
+  // `PostgresActionExecutionRepository.transaction` transaction boundary. The
+  // earlier relation reached an unrelated class's `transaction`. This drives the
+  // boundary's own public entry and asserts the preview it writes is durable.
+  it('commits the Action preview through the repository transaction boundary', async () => {
+    const projectId = `c2r15-action-boundary-${randomUUID()}`;
+    const actionId = randomUUID();
+    const snapshotId = randomUUID();
+    const digest = (seed: string) => `sha256:${seed.repeat(64).slice(0, 64)}`;
+    const now = '2026-09-15T10:00:00.000Z';
+    const preview = {
+      actionId,
+      snapshotId,
+      snapshotSchemaVersion: 'action-preview-snapshot-v1',
+      canonicalSerializer: 'action-preview-canonical-v1',
+      hashAlgorithm: 'SHA-256',
+      projectId,
+      candidate: {
+        candidateId: `candidate-${actionId}`,
+        revisionNumber: 1,
+      },
+      candidateDigest: digest('a'),
+      validationDigest: digest('b'),
+      evidence: [],
+      evidenceSetDigest: digest('c'),
+      sourceSensitivity: 'private',
+      targetDigest: digest('d'),
+      parameterDigest: digest('e'),
+      renderedPayload: { title: 'C2-R15 boundary proof', body: 'Durable preview body.' },
+      payloadDigest: digest('f'),
+      connectorId: 'action-connector-fake',
+      operationKey: 'draft.create',
+      riskDecision: { decision: 'ALLOW', reason: 'C2-R15 boundary proof.' },
+      approvalPolicy: { required: false },
+      requesterPrincipalId: 'c2r15-boundary-principal',
+      expiryPolicyVersion: 'action-preview-expiry-v1',
+      createdAt: now,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+      previewDigest: digest('1'),
+    };
+    const record = {
+      actionId,
+      projectId,
+      status: 'PREVIEW_READY',
+      preview,
+      canonicalWrite: false,
+      createdAt: now,
+      updatedAt: now,
+    } as unknown as ActionExecutionRecord;
+
+    const repository = new PostgresActionExecutionRepository(pool!);
+    const created = await repository.createPreview(record, []);
+    expect(created.actionId).toBe(actionId);
+
+    // Durable only if the boundary's transaction committed.
+    const rows = await countPersistedActionRows(projectId, actionId);
+    expect(rows).toMatchObject({ executions: 1, snapshots: 1 });
   });
 });
 

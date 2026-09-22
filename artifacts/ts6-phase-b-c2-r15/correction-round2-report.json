@@ -1,0 +1,1140 @@
+{
+  "generatedAt": "2026-09-21T06:44:57.827Z",
+  "note": "C2-R15 round 2 — the 7 approved §4 boundary dispositions applied as relation-declaration corrections, and every boundary back-reference rebuilt from covers[] so invariant B holds by construction. v2 and v3 untouched. Relations were split rather than deleted where one evidence record served several boundaries.",
+  "evidenceRecords": {
+    "before": 69,
+    "after": 72
+  },
+  "corrections": [
+    {
+      "case": "C1 PostgresOrderingStore.commit",
+      "disposition": "MINIMAL_PROOF_ADDED",
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284",
+      "boundary": "PostgresOrderingStore.commit",
+      "split": true,
+      "from": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+      "to": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)",
+      "evidenceCovers": [
+        "safe:adapters/connector-runtime-postgres/src/index.ts:1284"
+      ],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresOrderingStore.commit",
+      "path": [
+        "PostgresOrderingStore.commit"
+      ],
+      "note": "The declared block reaches PostgresCanonicalKnowledgeRepository.commit through the test-local helper commitCausalClaim — a same-named method on an unrelated class reached through a correct-looking path, so relabelling was impossible. The record's other two targets genuinely resolve from that block and keep it."
+    },
+    {
+      "case": "C2 <module>.commitProjectProjection",
+      "disposition": "REBIND_EXISTING",
+      "boundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:439",
+      "boundary": "<module>.commitProjectProjection",
+      "split": false,
+      "from": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity)",
+      "to": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory atomic commitProjectProjection (index + watermarks in one CAS)",
+      "evidenceCovers": [
+        "safe:adapters/frontend-activity-postgres/src/index.ts:439"
+      ],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "<module>.commitProjectProjection",
+      "path": [
+        "<module>.commitProjectProjection"
+      ],
+      "note": "The 683-line port-parameter block was proven irrelevant: this boundary is the module-level closure returned by createPostgresActivityReadModelStore, whose index/watermarks ARE the real Postgres stores. The declared file already contained a block that invokes it, so no test was added."
+    },
+    {
+      "case": "C3 PostgresExternalActionStore.transactionWithHandle",
+      "disposition": "MINIMAL_PROOF_ADDED",
+      "boundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:114",
+      "boundary": "PostgresExternalActionStore.transactionWithHandle",
+      "split": true,
+      "from": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+      "to": "test:tests/database/frontend-external-action-postgres-parity.test.ts:commits the transaction handle callback durably (PostgresExternalActionStore)",
+      "evidenceCovers": [
+        "safe:adapters/frontend-external-action-postgres/src/index.ts:114"
+      ],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresExternalActionStore.transactionWithHandle",
+      "path": [
+        "PostgresExternalActionStore.transactionWithHandle"
+      ],
+      "note": "That block calls the draft repository, which is the correct proof for the record's other target. Only this edge moved, to a block that instantiates PostgresExternalActionStore."
+    },
+    {
+      "case": "C4 PostgresSourcesProductService.retry",
+      "disposition": "MINIMAL_PROOF_ADDED",
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941",
+      "boundary": "PostgresSourcesProductService.retry",
+      "split": false,
+      "from": "test:tests/database/a9-final-closure-evidence.test.ts:E2E-D: routes a new credential revision while an older failed Run retries with its original revision",
+      "to": "test:tests/database/frontend-sources-stage3-recovery.test.ts:retries the outcome-indeterminate Sources item through the product service boundary",
+      "evidenceCovers": [
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941"
+      ],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresSourcesProductService.retry",
+      "path": [
+        "PostgresSourcesProductService.retry"
+      ],
+      "note": "E2E-D invokes AskAnswerExecutionService.retry (a run-level execution model on an unrelated class). No file/symbol-qualified path from that block to the Sources retry exists, so MINIMAL_PROOF applied."
+    },
+    {
+      "case": "C5 PostgresChangeSetReviewRepository.recordDecision",
+      "disposition": "MINIMAL_PROOF_ADDED",
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1239",
+      "boundary": "PostgresChangeSetReviewRepository.recordDecision",
+      "split": true,
+      "from": "test:tests/database/comparison-review-v2-postgres.test.ts:Issue #299: atomically converges only the exact Draft revision to STALE",
+      "to": "test:tests/database/stage-5-postgres.test.ts:commits the review decision and its Draft state in one transaction (PostgresChangeSetReviewRepository)",
+      "evidenceCovers": [
+        "safe:adapters/postgres-stage5/src/index.ts:1239"
+      ],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresChangeSetReviewRepository.recordDecision",
+      "path": [
+        "PostgresChangeSetReviewRepository.recordDecision"
+      ],
+      "note": "The declared block reaches PostgresChangeSetReviewV2Repository.recordDecision, a different registered boundary. Its other two targets genuinely resolve from that block. No existing block called the base repository method directly, so MINIMAL_PROOF applied."
+    },
+    {
+      "case": "C6 PostgresOrderingStore.acquireNext",
+      "disposition": "REWRITE_PATH",
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+      "boundary": "PostgresOrderingStore.acquireNext",
+      "split": false,
+      "from": "test:tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts:re-enters the same durable event on a rotated job and snapshots the current DLQ job",
+      "to": "test:tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts:re-enters the same durable event on a rotated job and snapshots the current DLQ job",
+      "evidenceCovers": [
+        "safe:adapters/connector-runtime-postgres/src/index.ts:1199"
+      ],
+      "coverageKind": "PUBLIC_PATH",
+      "entrySymbol": "kernel.connector.publishEvent",
+      "path": [
+        "kernel.connector.publishEvent",
+        "ConnectorRuntime.executeDeduplicated",
+        "PostgresOrderingStore.acquireNext"
+      ],
+      "note": "The declared middle hop named the parameter TYPE `ConnectorRuntime`, which is not a callable hop, and the declared path never named the entry. Rewritten to the real hop ConnectorRuntime.executeDeduplicated in packages/connector-runtime/src/runtime.ts, a licensed caller file. No test change."
+    },
+    {
+      "case": "C7 PostgresSourcesProductService.markStage3ItemsSucceeded",
+      "disposition": "REBIND_EXISTING",
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485",
+      "boundary": "PostgresSourcesProductService.markStage3ItemsSucceeded",
+      "split": false,
+      "from": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded",
+      "to": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL",
+      "evidenceCovers": [
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:508",
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485"
+      ],
+      "coverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "mixedService.submit",
+      "path": [
+        "mixedService.submit",
+        "PostgresSourcesProductService.runStage3AndFinalize",
+        "PostgresSourcesProductService.markStage3ItemsSucceeded"
+      ],
+      "note": "The declared title carried a spurious `:markStage3ItemsSucceeded` suffix; the block exists under the title without it. The unsuffixed record already documents this exact block and already independently resolves this boundary, so the relation merges onto it: the record gains this target and the owner path is stated explicitly. No test change."
+    }
+  ],
+  "retiredEvidenceIds": [
+    {
+      "evidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded",
+      "mergedInto": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL"
+    }
+  ],
+  "droppedBackReferences": [
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284",
+      "evidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+      "supersededBy": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)",
+      "reason": "relation moved to the corrected record"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:439",
+      "evidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity)",
+      "supersededBy": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory atomic commitProjectProjection (index + watermarks in one CAS)",
+      "reason": "relation moved to the corrected record"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:114",
+      "evidenceId": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+      "supersededBy": "test:tests/database/frontend-external-action-postgres-parity.test.ts:commits the transaction handle callback durably (PostgresExternalActionStore)",
+      "reason": "relation moved to the corrected record"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-history-postgres/src/history-projection-store.ts:394",
+      "evidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity)",
+      "supersededBy": null,
+      "reason": "superseded relation retained; the corrected record does not cover this boundary"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485",
+      "evidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded",
+      "supersededBy": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL",
+      "reason": "relation moved to the corrected record"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941",
+      "evidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:E2E-D: routes a new credential revision while an older failed Run retries with its original revision",
+      "supersededBy": "test:tests/database/frontend-sources-stage3-recovery.test.ts:retries the outcome-indeterminate Sources item through the product service boundary",
+      "reason": "relation moved to the corrected record"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1239",
+      "evidenceId": "test:tests/database/comparison-review-v2-postgres.test.ts:Issue #299: atomically converges only the exact Draft revision to STALE",
+      "supersededBy": "test:tests/database/stage-5-postgres.test.ts:commits the review decision and its Draft state in one transaction (PostgresChangeSetReviewRepository)",
+      "reason": "relation moved to the corrected record"
+    }
+  ],
+  "addedBackReferences": [],
+  "round2Adjudication": {
+    "note": "The 27 declared-but-unresolved relations, adjudicated independently under each coverageKind. Not applied in this round; recorded so the follow-up is a decision table rather than a re-investigation.",
+    "groupA_completeCovers": {
+      "count": 7,
+      "action": "relation already resolves; only covers[] is missing",
+      "boundaryIds": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2190",
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2257",
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2353",
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2435",
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2608",
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:3053",
+        "safe:adapters/frontend-history-postgres/src/history-projection-store.ts:394"
+      ]
+    },
+    "groupB_rebind": {
+      "count": 13,
+      "action": "wrong historical edge; a different existing block proves the boundary with a qualified DIRECT_BOUNDARY call",
+      "entries": [
+        {
+          "boundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:736",
+          "replacementTestEvidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:rejects a stale reconciliation fence and preserves lifecycle authority"
+        },
+        {
+          "boundaryId": "safe:adapters/discovery-model-profile-postgres/src/index.ts:126",
+          "replacementTestEvidenceId": "test:tests/database/akp-3-wp3-discovery-model-profile-postgres.database.test.ts:rejects a stale concurrent revision without overwriting the accepted revision"
+        },
+        {
+          "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:173",
+          "replacementTestEvidenceId": "test:tests/unit/frontend-ask-write-postgres.test.ts:does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error"
+        },
+        {
+          "boundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:104",
+          "replacementTestEvidenceId": "test:tests/database/frontend-external-action-postgres-parity.test.ts:reserves the project budget atomically under concurrency (single remaining execution)"
+        },
+        {
+          "boundaryId": "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:55",
+          "replacementTestEvidenceId": "test:tests/database/frontend-knowledge-draft-postgres-parity.test.ts:enforces one materialization per Draft identity at the database"
+        },
+        {
+          "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:162",
+          "replacementTestEvidenceId": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:rolls back Review decisions and Draft materialization when ledger completion fails"
+        },
+        {
+          "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:811",
+          "replacementTestEvidenceId": "test:tests/database/akp-5-wp5-stale-provenance-security-closure.database.test.ts:G/H: retains but hides an immutable resource when authority changes after save"
+        },
+        {
+          "boundaryId": "safe:adapters/postgres-stage3/src/index.ts:148",
+          "replacementTestEvidenceId": "test:tests/database/frontend-sources-stage4-isolation.test.ts:re-extracts an existing PostgreSQL SourceVersion through the Product route after AI becomes available"
+        },
+        {
+          "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896",
+          "replacementTestEvidenceId": "test:tests/database/runtime-data-integrity-wp04-schema.test.ts:rejects malformed lease inputs before opening a PostgreSQL transaction"
+        },
+        {
+          "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1458",
+          "replacementTestEvidenceId": "test:tests/database/comparison-review-v2-postgres.test.ts:DB-3: reads the same Draft through a fresh application DB connection"
+        },
+        {
+          "boundaryId": "safe:adapters/postgres-stage6/src/index.ts:261",
+          "replacementTestEvidenceId": "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+        },
+        {
+          "boundaryId": "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:114",
+          "replacementTestEvidenceId": "test:tests/database/akp-8-wp2r-typed-proposition-conflict.database.test.ts:uses normal application composition and the real Postgres authority to reach Conflict selection"
+        },
+        {
+          "boundaryId": "safe:adapters/postgres/src/index.ts:1813",
+          "replacementTestEvidenceId": "test:tests/database/section2-postgres.test.ts:applies settings command, increments revisions, and persists across repository re-instantiation"
+        }
+      ]
+    },
+    "groupC_needsProofOrGap": {
+      "count": 7,
+      "action": "no qualified call on the registered class exists anywhere in the corpus; needs a minimal proof or an owner COVERAGE_GAP decision",
+      "boundaryIds": [
+        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:1751",
+        "safe:adapters/frontend-review-postgres/src/index.ts:172",
+        "safe:adapters/frontend-sources-write-postgres/src/lifecycle.ts:201",
+        "safe:adapters/postgres-stage11/src/index.ts:847",
+        "safe:adapters/discovery-model-profile-postgres/src/index.ts:209",
+        "safe:adapters/project-standing-ai-policy-postgres/src/index.ts:75",
+        "safe:adapters/semantic-embedding-postgres/src/index.ts:132"
+      ]
+    },
+    "caveat": "callersFor() in the validator matches production callers by method name only, so a boundary can record dozens of unrelated callers (PostgresAskAnswerExecutionRepository.transaction records 47). PUBLIC_PATH declarations built on that caller list are unsound; Groups A and B were therefore selected using qualified DIRECT_BOUNDARY resolution only.",
+    "status": "APPLIED in golden.v5.derived.json",
+    "counts": {
+      "B": 20,
+      "A": 7
+    },
+    "outcome": {
+      "finalSnapshot": "artifacts/ts6-phase-b-c2-r15/golden.v5.derived.json",
+      "validatorValid": true,
+      "validatorIssues": 0,
+      "relationStatements": 112,
+      "relationsResolving": 112,
+      "provenBoundariesWithoutResolvingRelation": 0,
+      "provenance": {
+        "derivedFrom": "artifacts/ts6-phase-b-c2-r15/golden.v3.derived.json",
+        "generator": "c2r15-round2-derive.mts",
+        "appliedCorrections": [
+          {
+            "case": "C1 PostgresOrderingStore.commit",
+            "disposition": "MINIMAL_PROOF_ADDED",
+            "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284",
+            "boundary": "PostgresOrderingStore.commit",
+            "split": true,
+            "from": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+            "to": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)",
+            "evidenceCovers": [
+              "safe:adapters/connector-runtime-postgres/src/index.ts:1284"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresOrderingStore.commit",
+            "path": [
+              "PostgresOrderingStore.commit"
+            ],
+            "note": "The declared block reaches PostgresCanonicalKnowledgeRepository.commit through the test-local helper commitCausalClaim — a same-named method on an unrelated class reached through a correct-looking path, so relabelling was impossible. The record's other two targets genuinely resolve from that block and keep it."
+          },
+          {
+            "case": "C2 <module>.commitProjectProjection",
+            "disposition": "REBIND_EXISTING",
+            "boundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:439",
+            "boundary": "<module>.commitProjectProjection",
+            "split": false,
+            "from": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity)",
+            "to": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory atomic commitProjectProjection (index + watermarks in one CAS)",
+            "evidenceCovers": [
+              "safe:adapters/frontend-activity-postgres/src/index.ts:439"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "<module>.commitProjectProjection",
+            "path": [
+              "<module>.commitProjectProjection"
+            ],
+            "note": "The 683-line port-parameter block was proven irrelevant: this boundary is the module-level closure returned by createPostgresActivityReadModelStore, whose index/watermarks ARE the real Postgres stores. The declared file already contained a block that invokes it, so no test was added."
+          },
+          {
+            "case": "C3 PostgresExternalActionStore.transactionWithHandle",
+            "disposition": "MINIMAL_PROOF_ADDED",
+            "boundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:114",
+            "boundary": "PostgresExternalActionStore.transactionWithHandle",
+            "split": true,
+            "from": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+            "to": "test:tests/database/frontend-external-action-postgres-parity.test.ts:commits the transaction handle callback durably (PostgresExternalActionStore)",
+            "evidenceCovers": [
+              "safe:adapters/frontend-external-action-postgres/src/index.ts:114"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresExternalActionStore.transactionWithHandle",
+            "path": [
+              "PostgresExternalActionStore.transactionWithHandle"
+            ],
+            "note": "That block calls the draft repository, which is the correct proof for the record's other target. Only this edge moved, to a block that instantiates PostgresExternalActionStore."
+          },
+          {
+            "case": "C4 PostgresSourcesProductService.retry",
+            "disposition": "MINIMAL_PROOF_ADDED",
+            "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941",
+            "boundary": "PostgresSourcesProductService.retry",
+            "split": false,
+            "from": "test:tests/database/a9-final-closure-evidence.test.ts:E2E-D: routes a new credential revision while an older failed Run retries with its original revision",
+            "to": "test:tests/database/frontend-sources-stage3-recovery.test.ts:retries the outcome-indeterminate Sources item through the product service boundary",
+            "evidenceCovers": [
+              "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresSourcesProductService.retry",
+            "path": [
+              "PostgresSourcesProductService.retry"
+            ],
+            "note": "E2E-D invokes AskAnswerExecutionService.retry (a run-level execution model on an unrelated class). No file/symbol-qualified path from that block to the Sources retry exists, so MINIMAL_PROOF applied."
+          },
+          {
+            "case": "C5 PostgresChangeSetReviewRepository.recordDecision",
+            "disposition": "MINIMAL_PROOF_ADDED",
+            "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1239",
+            "boundary": "PostgresChangeSetReviewRepository.recordDecision",
+            "split": true,
+            "from": "test:tests/database/comparison-review-v2-postgres.test.ts:Issue #299: atomically converges only the exact Draft revision to STALE",
+            "to": "test:tests/database/stage-5-postgres.test.ts:commits the review decision and its Draft state in one transaction (PostgresChangeSetReviewRepository)",
+            "evidenceCovers": [
+              "safe:adapters/postgres-stage5/src/index.ts:1239"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresChangeSetReviewRepository.recordDecision",
+            "path": [
+              "PostgresChangeSetReviewRepository.recordDecision"
+            ],
+            "note": "The declared block reaches PostgresChangeSetReviewV2Repository.recordDecision, a different registered boundary. Its other two targets genuinely resolve from that block. No existing block called the base repository method directly, so MINIMAL_PROOF applied."
+          },
+          {
+            "case": "C6 PostgresOrderingStore.acquireNext",
+            "disposition": "REWRITE_PATH",
+            "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+            "boundary": "PostgresOrderingStore.acquireNext",
+            "split": false,
+            "from": "test:tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts:re-enters the same durable event on a rotated job and snapshots the current DLQ job",
+            "to": "test:tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts:re-enters the same durable event on a rotated job and snapshots the current DLQ job",
+            "evidenceCovers": [
+              "safe:adapters/connector-runtime-postgres/src/index.ts:1199"
+            ],
+            "coverageKind": "PUBLIC_PATH",
+            "entrySymbol": "kernel.connector.publishEvent",
+            "path": [
+              "kernel.connector.publishEvent",
+              "ConnectorRuntime.executeDeduplicated",
+              "PostgresOrderingStore.acquireNext"
+            ],
+            "note": "The declared middle hop named the parameter TYPE `ConnectorRuntime`, which is not a callable hop, and the declared path never named the entry. Rewritten to the real hop ConnectorRuntime.executeDeduplicated in packages/connector-runtime/src/runtime.ts, a licensed caller file. No test change."
+          },
+          {
+            "case": "C7 PostgresSourcesProductService.markStage3ItemsSucceeded",
+            "disposition": "REBIND_EXISTING",
+            "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485",
+            "boundary": "PostgresSourcesProductService.markStage3ItemsSucceeded",
+            "split": false,
+            "from": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded",
+            "to": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL",
+            "evidenceCovers": [
+              "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:508",
+              "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485"
+            ],
+            "coverageKind": "OWNER_ATOMICITY",
+            "entrySymbol": "mixedService.submit",
+            "path": [
+              "mixedService.submit",
+              "PostgresSourcesProductService.runStage3AndFinalize",
+              "PostgresSourcesProductService.markStage3ItemsSucceeded"
+            ],
+            "note": "The declared title carried a spurious `:markStage3ItemsSucceeded` suffix; the block exists under the title without it. The unsuffixed record already documents this exact block and already independently resolves this boundary, so the relation merges onto it: the record gains this target and the owner path is stated explicitly. No test change."
+          }
+        ],
+        "droppedBackReferences": [],
+        "addedBackReferences": [],
+        "reconciledDirectPaths": [
+          {
+            "evidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+            "from": [
+              "PostgresOrderingStore.commit"
+            ],
+            "to": [
+              "PostgresAuthRepository.bootstrapLocalOwnerPrincipal"
+            ],
+            "covers": [
+              "safe:adapters/postgres-auth/src/index.ts:70",
+              "safe:adapters/postgres/src/index.ts:311"
+            ]
+          },
+          {
+            "evidenceId": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+            "from": [
+              "PostgresExternalActionStore.transactionWithHandle"
+            ],
+            "to": [
+              "PostgresFrontendKnowledgeDraftRepository.transactionWithHandle"
+            ],
+            "covers": [
+              "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:65"
+            ]
+          },
+          {
+            "evidenceId": "test:tests/database/comparison-review-v2-postgres.test.ts:Issue #299: atomically converges only the exact Draft revision to STALE",
+            "from": [
+              "PostgresChangeSetReviewRepository.recordDecision"
+            ],
+            "to": [
+              "PostgresChangeSetReviewV2Repository.markStaleIfCurrent"
+            ],
+            "covers": [
+              "safe:adapters/postgres-stage5/src/index.ts:1611",
+              "safe:adapters/postgres-stage5/src/index.ts:2131"
+            ]
+          }
+        ],
+        "derivedTo": "golden.v5.derived.json",
+        "adjudicationApplied": [
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresDiscoveryFindingRepository.transitionLifecycle",
+            "boundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:736",
+            "previousEvidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+            "evidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:rejects a stale reconciliation fence and preserves lifecycle authority",
+            "covers": [
+              "safe:adapters/discovery-finding-postgres/src/index.ts:736"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresDiscoveryFindingRepository.transitionLifecycle",
+            "path": [
+              "transitionLifecycle"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresDiscoveryModelProfileRepository.saveRevision",
+            "boundaryId": "safe:adapters/discovery-model-profile-postgres/src/index.ts:126",
+            "previousEvidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+            "evidenceId": "test:tests/database/akp-3-wp3-discovery-model-profile-postgres.database.test.ts:rejects a stale concurrent revision without overwriting the accepted revision",
+            "covers": [
+              "safe:adapters/discovery-model-profile-postgres/src/index.ts:126"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresDiscoveryModelProfileRepository.saveRevision",
+            "path": [
+              "saveRevision"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "A",
+            "action": "COMPLETE_COVERS",
+            "boundary": "PostgresDiscoveryRuntimeRepository.transitionAttemptWithLease",
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2190",
+            "previousEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:transitionAttemptWithLease",
+            "covers": [
+              "safe:adapters/discovery-runtime-postgres/src/index.ts:2190"
+            ],
+            "path": [
+              "PersistentDiscoveryWorker.runOnce",
+              "PostgresDiscoveryRuntimeRepository.transitionAttemptWithLease"
+            ]
+          },
+          {
+            "group": "A",
+            "action": "COMPLETE_COVERS",
+            "boundary": "PostgresDiscoveryRuntimeRepository.transitionRunWithLease",
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2257",
+            "previousEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:transitionRunWithLease",
+            "covers": [
+              "safe:adapters/discovery-runtime-postgres/src/index.ts:2257"
+            ],
+            "path": [
+              "PersistentDiscoveryWorker.runOnce",
+              "PostgresDiscoveryRuntimeRepository.transitionRunWithLease"
+            ]
+          },
+          {
+            "group": "A",
+            "action": "COMPLETE_COVERS",
+            "boundary": "PostgresDiscoveryRuntimeRepository.transitionJobWithLease",
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2353",
+            "previousEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:transitionJobWithLease",
+            "covers": [
+              "safe:adapters/discovery-runtime-postgres/src/index.ts:2353"
+            ],
+            "path": [
+              "PersistentDiscoveryWorker.runOnce",
+              "PostgresDiscoveryRuntimeRepository.transitionJobWithLease"
+            ]
+          },
+          {
+            "group": "A",
+            "action": "COMPLETE_COVERS",
+            "boundary": "PostgresDiscoveryRuntimeRepository.finalizeClaimWithLease",
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2435",
+            "previousEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:finalizeClaimWithLease",
+            "covers": [
+              "safe:adapters/discovery-runtime-postgres/src/index.ts:2435"
+            ],
+            "path": [
+              "PersistentDiscoveryWorker.runOnce",
+              "PostgresDiscoveryRuntimeRepository.finalizeClaimWithLease"
+            ]
+          },
+          {
+            "group": "A",
+            "action": "COMPLETE_COVERS",
+            "boundary": "PostgresDiscoveryRuntimeRepository.finalizeFailureWithLease",
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2608",
+            "previousEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:finalizeFailureWithLease",
+            "covers": [
+              "safe:adapters/discovery-runtime-postgres/src/index.ts:2608"
+            ],
+            "path": [
+              "PersistentDiscoveryWorker.runOnce",
+              "PostgresDiscoveryRuntimeRepository.finalizeFailureWithLease"
+            ]
+          },
+          {
+            "group": "A",
+            "action": "COMPLETE_COVERS",
+            "boundary": "PostgresDiscoveryRuntimeRepository.writeStageOutput",
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3053",
+            "previousEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:writeStageOutput",
+            "covers": [
+              "safe:adapters/discovery-runtime-postgres/src/index.ts:3053"
+            ],
+            "path": [
+              "PersistentDiscoveryWorker.runOnce",
+              "PostgresDiscoveryRuntimeRepository.writeStageOutput"
+            ]
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresAskAnswerExecutionRepository.transaction",
+            "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:1751",
+            "previousEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "evidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:commits work performed through the Ask execution transaction boundary",
+            "covers": [
+              "safe:adapters/frontend-ask-execution-postgres/src/index.ts:1751"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresAskAnswerExecutionRepository.transaction",
+            "path": [
+              "transaction"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresAskConversationRepository.transaction",
+            "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:173",
+            "previousEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "evidenceId": "test:tests/unit/frontend-ask-write-postgres.test.ts:does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error",
+            "covers": [
+              "safe:adapters/frontend-ask-write-postgres/src/index.ts:173"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresAskConversationRepository.transaction",
+            "path": [
+              "transaction"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresExternalActionStore.transaction",
+            "boundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:104",
+            "previousEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "evidenceId": "test:tests/database/frontend-external-action-postgres-parity.test.ts:reserves the project budget atomically under concurrency (single remaining execution)",
+            "covers": [
+              "safe:adapters/frontend-external-action-postgres/src/index.ts:104"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresExternalActionStore.transaction",
+            "path": [
+              "transaction"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "A",
+            "action": "COMPLETE_COVERS",
+            "boundary": "<module>.commitProjectProjection",
+            "boundaryId": "safe:adapters/frontend-history-postgres/src/history-projection-store.ts:394",
+            "previousEvidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity)",
+            "evidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity):commitProjectProjection",
+            "covers": [
+              "safe:adapters/frontend-history-postgres/src/history-projection-store.ts:394"
+            ],
+            "path": [
+              "<module>.commitProjectProjection",
+              "<module>.commitProjectProjection"
+            ]
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresFrontendKnowledgeDraftRepository.transaction",
+            "boundaryId": "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:55",
+            "previousEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "evidenceId": "test:tests/database/frontend-knowledge-draft-postgres-parity.test.ts:enforces one materialization per Draft identity at the database",
+            "covers": [
+              "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:55"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresFrontendKnowledgeDraftRepository.transaction",
+            "path": [
+              "transaction"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresFrontendReviewRepository.transaction",
+            "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:162",
+            "previousEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "evidenceId": "test:tests/database/frontend-review-postgres-parity.test.ts:exposes transaction-bound repositories and commits their writes (PostgresFrontendReviewRepository)",
+            "covers": [
+              "safe:adapters/frontend-review-postgres/src/index.ts:162"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresFrontendReviewRepository.transaction",
+            "path": [
+              "transaction"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_EXISTING",
+            "boundary": "PostgresFrontendReviewRepository.transactionWithHandle",
+            "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:172",
+            "previousEvidenceId": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+            "evidenceId": "test:tests/database/frontend-review-postgres-parity.test.ts:exposes transaction-bound repositories and commits their writes (PostgresFrontendReviewRepository)",
+            "replacementCovers": [
+              "safe:adapters/frontend-review-postgres/src/index.ts:162",
+              "safe:adapters/frontend-review-postgres/src/index.ts:172"
+            ]
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresDiscoveryReviewResourceRepository.save",
+            "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:811",
+            "previousEvidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:converges concurrent consumers to one logical result",
+            "evidenceId": "test:tests/database/akp-5-wp5-stale-provenance-security-closure.database.test.ts:G/H: retains but hides an immutable resource when authority changes after save",
+            "covers": [
+              "safe:adapters/frontend-review-postgres/src/index.ts:811"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresDiscoveryReviewResourceRepository.save",
+            "path": [
+              "save"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresSourcesIntakeLifecycle.transaction",
+            "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/lifecycle.ts:201",
+            "previousEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "evidenceId": "test:tests/database/frontend-phase-2-section-1-sources-lifecycle.test.ts:rejects retry while an Item is still running and creates no new Attempt",
+            "covers": [
+              "safe:adapters/frontend-sources-write-postgres/src/lifecycle.ts:201"
+            ],
+            "coverageKind": "PUBLIC_PATH",
+            "entrySymbol": "PostgresSourcesIntakeLifecycle.retryItems",
+            "path": [
+              "PostgresSourcesIntakeLifecycle.retryItems",
+              "PostgresSourcesIntakeLifecycle.transaction"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresActionExecutionRepository.transaction",
+            "boundaryId": "safe:adapters/postgres-stage11/src/index.ts:847",
+            "previousEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "evidenceId": "test:tests/unit/discovery-finding-lifecycle.test.ts:advances lifecycle revisions and appends exactly one event per success",
+            "covers": [
+              "safe:adapters/postgres-stage11/src/index.ts:847"
+            ],
+            "coverageKind": "PUBLIC_PATH",
+            "entrySymbol": "PostgresActionExecutionRepository.transition",
+            "path": [
+              "PostgresActionExecutionRepository.transition",
+              "PostgresActionExecutionRepository.transaction"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_EXISTING",
+            "boundary": "PostgresTransformationRepository.save",
+            "boundaryId": "safe:adapters/postgres-stage3/src/index.ts:148",
+            "previousEvidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:converges concurrent consumers to one logical result",
+            "evidenceId": "test:tests/database/frontend-sources-stage4-isolation.test.ts:re-extracts an existing PostgreSQL SourceVersion through the Product route after AI becomes available",
+            "replacementCovers": [
+              "safe:adapters/postgres-stage3/src/index.ts:296",
+              "safe:adapters/postgres-stage3/src/index.ts:148"
+            ]
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_EXISTING",
+            "boundary": "PostgresSourcesStage4ContinuationStore.claimNext",
+            "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896",
+            "previousEvidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:converges concurrent claimers to one Run and seven durable stages",
+            "evidenceId": "test:tests/database/runtime-data-integrity-wp04-schema.test.ts:rejects malformed lease inputs before opening a PostgreSQL transaction",
+            "replacementCovers": [
+              "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122",
+              "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896"
+            ]
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresChangeSetReviewV2Repository.saveDraft",
+            "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1458",
+            "previousEvidenceId": "test:tests/database/auth-postgres.test.ts:Scenario 1: does not reuse another project owner as Local Owner",
+            "evidenceId": "test:tests/database/comparison-review-v2-postgres.test.ts:DB-3: reads the same Draft through a fresh application DB connection",
+            "covers": [
+              "safe:adapters/postgres-stage5/src/index.ts:1458"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresChangeSetReviewV2Repository.saveDraft",
+            "path": [
+              "saveDraft"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresCanonicalKnowledgeRepository.commit",
+            "boundaryId": "safe:adapters/postgres-stage6/src/index.ts:261",
+            "previousEvidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+            "evidenceId": "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one",
+            "covers": [
+              "safe:adapters/postgres-stage6/src/index.ts:261"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresCanonicalKnowledgeRepository.commit",
+            "path": [
+              "commit"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_EXISTING",
+            "boundary": "PostgresTypedPropositionConflictRuleRepository.transaction",
+            "boundaryId": "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:114",
+            "previousEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "evidenceId": "test:tests/database/akp-8-wp2r-typed-proposition-conflict.database.test.ts:uses normal application composition and the real Postgres authority to reach Conflict selection",
+            "replacementCovers": [
+              "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:221",
+              "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:114"
+            ]
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresProjectAdministrationRepository.updateStatus",
+            "boundaryId": "safe:adapters/postgres/src/index.ts:1106",
+            "previousEvidenceId": "test:tests/database/akp-3-wp3-discovery-model-profile-postgres.database.test.ts:retire/activate is transactional and leaves at most one active profile",
+            "evidenceId": "test:tests/database/section2-postgres.test.ts:keeps PostgreSQL Project lifecycle status and active state in parity",
+            "covers": [
+              "safe:adapters/postgres/src/index.ts:1106"
+            ],
+            "coverageKind": "PUBLIC_PATH",
+            "entrySymbol": "PostgresProjectAdministrationRepository.archiveProject",
+            "path": [
+              "PostgresProjectAdministrationRepository.archiveProject",
+              "PostgresProjectAdministrationRepository.updateStatus"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresSettingsRepository.applySettingsCommand",
+            "boundaryId": "safe:adapters/postgres/src/index.ts:1813",
+            "previousEvidenceId": "test:tests/database/auth-postgres.test.ts:Scenario 1: does not reuse another project owner as Local Owner",
+            "evidenceId": "test:tests/database/section2-postgres.test.ts:rolls back cleanly on transaction errors without leaving corrupted revisions",
+            "covers": [
+              "safe:adapters/postgres/src/index.ts:1813"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresSettingsRepository.applySettingsCommand",
+            "path": [
+              "applySettingsCommand"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresStandingAIProcessingPolicyRepository.saveRevision",
+            "boundaryId": "safe:adapters/project-standing-ai-policy-postgres/src/index.ts:75",
+            "previousEvidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+            "evidenceId": "test:tests/database/standing-ai-processing-policy-owner.test.ts:commits the Standing AI policy revision through the repository boundary",
+            "covers": [
+              "safe:adapters/project-standing-ai-policy-postgres/src/index.ts:75"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresStandingAIProcessingPolicyRepository.saveRevision",
+            "path": [
+              "saveRevision"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          },
+          {
+            "group": "B",
+            "action": "REBIND_TO_NEW_EVIDENCE_RECORD",
+            "boundary": "PostgresSemanticEmbeddingProfileRepository.saveRevision",
+            "boundaryId": "safe:adapters/semantic-embedding-postgres/src/index.ts:132",
+            "previousEvidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+            "evidenceId": "test:tests/database/ts6-semantic-embedding-ack-loss.database.test.ts:reconciles the exact hidden revision and preserves stale/newer/cross-project boundaries",
+            "covers": [
+              "safe:adapters/semantic-embedding-postgres/src/index.ts:132"
+            ],
+            "coverageKind": "DIRECT_BOUNDARY",
+            "entrySymbol": "PostgresSemanticEmbeddingProfileRepository.saveRevision",
+            "path": [
+              "saveRevision"
+            ],
+            "note": "qualifying existing block registered as evidence; verified by qualified resolution"
+          }
+        ],
+        "retiredEvidenceIds": [],
+        "retiredSupersededBackReferences": [
+          {
+            "boundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:736",
+            "boundary": "PostgresDiscoveryFindingRepository.transitionLifecycle",
+            "group": "B",
+            "evidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+            "replacedBy": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:rejects a stale reconciliation fence and preserves lifecycle authority"
+          },
+          {
+            "boundaryId": "safe:adapters/discovery-model-profile-postgres/src/index.ts:126",
+            "boundary": "PostgresDiscoveryModelProfileRepository.saveRevision",
+            "group": "B",
+            "evidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+            "replacedBy": "test:tests/database/akp-3-wp3-discovery-model-profile-postgres.database.test.ts:rejects a stale concurrent revision without overwriting the accepted revision"
+          },
+          {
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2190",
+            "boundary": "PostgresDiscoveryRuntimeRepository.transitionAttemptWithLease",
+            "group": "A",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "replacedBy": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:transitionAttemptWithLease"
+          },
+          {
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2257",
+            "boundary": "PostgresDiscoveryRuntimeRepository.transitionRunWithLease",
+            "group": "A",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "replacedBy": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:transitionRunWithLease"
+          },
+          {
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2353",
+            "boundary": "PostgresDiscoveryRuntimeRepository.transitionJobWithLease",
+            "group": "A",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "replacedBy": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:transitionJobWithLease"
+          },
+          {
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2435",
+            "boundary": "PostgresDiscoveryRuntimeRepository.finalizeClaimWithLease",
+            "group": "A",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "replacedBy": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:finalizeClaimWithLease"
+          },
+          {
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2608",
+            "boundary": "PostgresDiscoveryRuntimeRepository.finalizeFailureWithLease",
+            "group": "A",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "replacedBy": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:finalizeFailureWithLease"
+          },
+          {
+            "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3053",
+            "boundary": "PostgresDiscoveryRuntimeRepository.writeStageOutput",
+            "group": "A",
+            "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+            "replacedBy": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim:writeStageOutput"
+          },
+          {
+            "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:1751",
+            "boundary": "PostgresAskAnswerExecutionRepository.transaction",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "replacedBy": "test:tests/database/a9-final-closure-evidence.test.ts:commits work performed through the Ask execution transaction boundary"
+          },
+          {
+            "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:173",
+            "boundary": "PostgresAskConversationRepository.transaction",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "replacedBy": "test:tests/unit/frontend-ask-write-postgres.test.ts:does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error"
+          },
+          {
+            "boundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:104",
+            "boundary": "PostgresExternalActionStore.transaction",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "replacedBy": "test:tests/database/frontend-external-action-postgres-parity.test.ts:reserves the project budget atomically under concurrency (single remaining execution)"
+          },
+          {
+            "boundaryId": "safe:adapters/frontend-history-postgres/src/history-projection-store.ts:394",
+            "boundary": "<module>.commitProjectProjection",
+            "group": "A",
+            "evidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity)",
+            "replacedBy": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity):commitProjectProjection"
+          },
+          {
+            "boundaryId": "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:55",
+            "boundary": "PostgresFrontendKnowledgeDraftRepository.transaction",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "replacedBy": "test:tests/database/frontend-knowledge-draft-postgres-parity.test.ts:enforces one materialization per Draft identity at the database"
+          },
+          {
+            "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:162",
+            "boundary": "PostgresFrontendReviewRepository.transaction",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "replacedBy": "test:tests/database/frontend-review-postgres-parity.test.ts:exposes transaction-bound repositories and commits their writes (PostgresFrontendReviewRepository)"
+          },
+          {
+            "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:172",
+            "boundary": "PostgresFrontendReviewRepository.transactionWithHandle",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+            "replacedBy": "test:tests/database/frontend-review-postgres-parity.test.ts:exposes transaction-bound repositories and commits their writes (PostgresFrontendReviewRepository)"
+          },
+          {
+            "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:811",
+            "boundary": "PostgresDiscoveryReviewResourceRepository.save",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:converges concurrent consumers to one logical result",
+            "replacedBy": "test:tests/database/akp-5-wp5-stale-provenance-security-closure.database.test.ts:G/H: retains but hides an immutable resource when authority changes after save"
+          },
+          {
+            "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/lifecycle.ts:201",
+            "boundary": "PostgresSourcesIntakeLifecycle.transaction",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "replacedBy": "test:tests/database/frontend-phase-2-section-1-sources-lifecycle.test.ts:rejects retry while an Item is still running and creates no new Attempt"
+          },
+          {
+            "boundaryId": "safe:adapters/postgres-stage11/src/index.ts:847",
+            "boundary": "PostgresActionExecutionRepository.transaction",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "replacedBy": "test:tests/unit/discovery-finding-lifecycle.test.ts:advances lifecycle revisions and appends exactly one event per success"
+          },
+          {
+            "boundaryId": "safe:adapters/postgres-stage3/src/index.ts:148",
+            "boundary": "PostgresTransformationRepository.save",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:converges concurrent consumers to one logical result",
+            "replacedBy": "test:tests/database/frontend-sources-stage4-isolation.test.ts:re-extracts an existing PostgreSQL SourceVersion through the Product route after AI becomes available"
+          },
+          {
+            "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896",
+            "boundary": "PostgresSourcesStage4ContinuationStore.claimNext",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:converges concurrent claimers to one Run and seven durable stages",
+            "replacedBy": "test:tests/database/runtime-data-integrity-wp04-schema.test.ts:rejects malformed lease inputs before opening a PostgreSQL transaction"
+          },
+          {
+            "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1458",
+            "boundary": "PostgresChangeSetReviewV2Repository.saveDraft",
+            "group": "B",
+            "evidenceId": "test:tests/database/auth-postgres.test.ts:Scenario 1: does not reuse another project owner as Local Owner",
+            "replacedBy": "test:tests/database/comparison-review-v2-postgres.test.ts:DB-3: reads the same Draft through a fresh application DB connection"
+          },
+          {
+            "boundaryId": "safe:adapters/postgres-stage6/src/index.ts:261",
+            "boundary": "PostgresCanonicalKnowledgeRepository.commit",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+            "replacedBy": "test:tests/database/stage-6-postgres.test.ts:serializes concurrent approved writes and rejects the stale one"
+          },
+          {
+            "boundaryId": "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:114",
+            "boundary": "PostgresTypedPropositionConflictRuleRepository.transaction",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+            "replacedBy": "test:tests/database/akp-8-wp2r-typed-proposition-conflict.database.test.ts:uses normal application composition and the real Postgres authority to reach Conflict selection"
+          },
+          {
+            "boundaryId": "safe:adapters/postgres/src/index.ts:1106",
+            "boundary": "PostgresProjectAdministrationRepository.updateStatus",
+            "group": "B",
+            "evidenceId": "test:tests/database/akp-3-wp3-discovery-model-profile-postgres.database.test.ts:retire/activate is transactional and leaves at most one active profile",
+            "replacedBy": "test:tests/database/section2-postgres.test.ts:keeps PostgreSQL Project lifecycle status and active state in parity"
+          },
+          {
+            "boundaryId": "safe:adapters/postgres/src/index.ts:1813",
+            "boundary": "PostgresSettingsRepository.applySettingsCommand",
+            "group": "B",
+            "evidenceId": "test:tests/database/auth-postgres.test.ts:Scenario 1: does not reuse another project owner as Local Owner",
+            "replacedBy": "test:tests/database/section2-postgres.test.ts:rolls back cleanly on transaction errors without leaving corrupted revisions"
+          },
+          {
+            "boundaryId": "safe:adapters/project-standing-ai-policy-postgres/src/index.ts:75",
+            "boundary": "PostgresStandingAIProcessingPolicyRepository.saveRevision",
+            "group": "B",
+            "evidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+            "replacedBy": "test:tests/database/standing-ai-processing-policy-owner.test.ts:commits the Standing AI policy revision through the repository boundary"
+          },
+          {
+            "boundaryId": "safe:adapters/semantic-embedding-postgres/src/index.ts:132",
+            "boundary": "PostgresSemanticEmbeddingProfileRepository.saveRevision",
+            "group": "B",
+            "evidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+            "replacedBy": "test:tests/database/ts6-semantic-embedding-ack-loss.database.test.ts:reconciles the exact hidden revision and preserves stale/newer/cross-project boundaries"
+          }
+        ]
+      }
+    },
+    "groupCResolution": {
+      "note": "All six Group C boundaries closed. Two were rebindable to an existing public-path proof; four required a minimal proof; one boundary method is public and its proof drives it directly.",
+      "entries": [
+        [
+          "PostgresAskAnswerExecutionRepository.transaction",
+          "MINIMAL_PROOF",
+          "tests/database/a9-final-closure-evidence.test.ts"
+        ],
+        [
+          "PostgresFrontendReviewRepository.transactionWithHandle",
+          "MINIMAL_PROOF",
+          "tests/database/frontend-review-postgres-parity.test.ts"
+        ],
+        [
+          "PostgresActionExecutionRepository.transaction",
+          "MINIMAL_PROOF",
+          "tests/database/stage-11-postgres.test.ts"
+        ],
+        [
+          "PostgresStandingAIProcessingPolicyRepository.saveRevision",
+          "MINIMAL_PROOF",
+          "tests/database/standing-ai-processing-policy-owner.test.ts"
+        ],
+        [
+          "PostgresSourcesIntakeLifecycle.transaction",
+          "REBIND_PUBLIC_PATH",
+          "tests/database/frontend-phase-2-section-1-sources-lifecycle.test.ts"
+        ],
+        [
+          "PostgresProjectAdministrationRepository.updateStatus",
+          "REBIND_PUBLIC_PATH",
+          "tests/database/section2-postgres.test.ts"
+        ]
+      ]
+    }
+  },
+  "finalSnapshot": {
+    "path": "artifacts/ts6-phase-b-c2-r15/golden.v5.derived.json",
+    "issueProgression": {
+      "v2": 119,
+      "v3": 66,
+      "v4": 54,
+      "v5": 0
+    },
+    "baselineNote": "The frozen v2 baseline moved from 121 to 119 because the authority now verifies the same test block the validator resolves (evidence.file / evidence.testName) instead of re-parsing it out of the id. The 2 dropped statements were false REGRESSION_TEST_BLOCK_MISSING / REGRESSION_COVERAGE_INCOMPLETE findings for a record whose id carried a suffix. No statement was added. Reproduce the recorded 121 with C2R15_BASELINE_OLD_AUTHORITY=1; see v2-authority-identity-comparison.json."
+  }
+}

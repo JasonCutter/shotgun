@@ -1,0 +1,62 @@
+{
+  "generatedAt": "2026-09-21T23:55:00.000Z",
+  "subject": "TS-6 C2 — FINAL CONSOLIDATED STATE. Correction phase closed; release verification phase open.",
+  "phase": "RELEASE VERIFICATION — no further reachability or lineage work is authorised",
+  "instruction": "Do NOT modify golden.v6 or the resolver/validator reachability authority. The single next decision point is exact-head canonical CI.",
+
+  "finalStatus": {
+    "C2-R15 evidence authority": "COMPLETE / PASS",
+    "qualified reachability authority": "COMPLETE / PASS",
+    "golden.v6 lineage": "COMPLETE / PASS",
+    "TS-6 C2 FINAL": "HOLD"
+  },
+
+  "classification": { "PROVEN": 96, "TEST_ONLY_OR_DEAD": 17, "REVIEW_REQUIRED": 0, "TOTAL": 113 },
+  "relationGraph": { "declared": 112, "bidirectionallyConsistent": 112, "reopenedByThisCorrection": 0 },
+  "inventory": { "candidates": 120, "boundaries": 113, "rawSites": 11, "historicalRows": 87 },
+
+  "preserved": {
+    "frozenV2": { "sha256": "256E5906DB0AFBDEB175C1E754C2C8EC3A1213139AE4F805E95C5396086586CD", "status": "PRESERVED, unmodified, still rejected" },
+    "frozenCrosswalk": { "sha256": "E4861D67B1EBC4885FA9034245C0B2734E25E3865DE278A4FF660C0B4B0621D2", "status": "PRESERVED, unmodified" },
+    "goldenV5": { "sha256": "D5CB331B4060A7632BA5435292FD5E755CD196D7488D85FACE8D8D78C26ABE60", "status": "PRESERVED, byte-identical" },
+    "productSource": "UNCHANGED — no file under adapters/ modules/ packages/ assemblies/ apps/"
+  },
+
+  "releaseEvidence": {
+    "localAssertionEvidence": "PASS",
+    "localProcessExit": "NOT CLEAN",
+    "canonicalExactHeadCi": "PENDING",
+    "disposition": "No local exemption. Exact-head canonical CI decides. If it exits 0 cleanly, the DB concurrency flake and the local teardown error are shown NOT to be blockers for this change and TS-6 C2 FINAL can move toward approval. Only if canonical CI reproduces the same failures is the runner/flaky question re-opened for separate adjudication."
+  },
+
+  "currentAuthorityNumbers": {
+    "frozenV2IssueCount": 166,
+    "goldenV5IssueCount": 47,
+    "goldenV6IssueCount": 0,
+    "goldenV5Breakdown": { "CALLER_SET": 37, "CLASSIFICATION_DRIFT": 4, "REACHABILITY_DRIFT": 4, "SUMMARY_COUNT": 2 },
+    "goldenV6Breakdown": {},
+    "staleNumbersDoNotReuse": {
+      "119": "HISTORICAL ONLY — the pre-correction frozen-v2 issue count under the legacy authority. Never the current number.",
+      "229": "HISTORICAL ONLY — a mid-round measurement taken before the caller-needle defect was fixed. Never a valid number.",
+      "94 / 19 / 0": "DISCARDED — a hand-trace estimate, never an authority output, never used as a target.",
+      "100 / 13": "LEGACY AUTHORITY era value — still asserted, but only as the historical record through buildAuditShape(ROOT, { legacyAuthority: true }) and the frozen v2 summary.",
+      "97 / 16": "HISTORICAL ONLY — the mid-round qualified split before the bootstrapOwner non-production-gate ruling."
+    }
+  },
+
+  "bootstrapOwnerDoctrine": {
+    "boundary": "PostgresAuthRepository.bootstrapOwner",
+    "inAuditedCorpus": "TEST_ONLY_OR_DEAD — unreachable in the application production runtime",
+    "outsideCorpus": "REACHABLE through the operator-invoked CLI scripts/auth-bootstrap-owner.ts (npm script `auth:bootstrap-owner`) against a real Postgres pool",
+    "whyScopeDecides": "the audit doctrine targets application production runtime reachability, and scripts/ is outside the resolver corpus (SCOPES = adapters, modules, packages, assemblies, apps)",
+    "requiredWording": "never describe this boundary as merely 'dead' — it is a scope limitation, not an absence of capability"
+  },
+
+  "handoffDocuments": {
+    "entry": "22-RELEASE-VERIFICATION-HOLD.json (this file is 23-CONSOLIDATED-FINAL-STATE.json) -> 21-FINAL-HANDOFF-R3.md -> 19-authority-correction-adopted.json -> golden.v6.derived.json",
+    "supersededMarked": ["13-FINAL-HANDOFF.md (round 2, banner added)", "18-ROUND3-HANDOFF.md (mid-round, banner added)"],
+    "historicalPreserved": ["10-RESUME-HANDOFF.md", "11-round2-closure.md", "12-RESUME-HANDOFF-R2.md"]
+  },
+
+  "singleNextDecisionPoint": "exact-head canonical CI exit status"
+}

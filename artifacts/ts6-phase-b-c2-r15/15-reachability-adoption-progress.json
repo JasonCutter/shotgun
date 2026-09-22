@@ -1,0 +1,72 @@
+{
+  "generatedAt": "2026-09-21T14:00:00.000Z",
+  "subject": "Reachability authority adoption — status at end of round 2",
+  "supersededBy": "17-round3-paccessor-and-review-required-closure.json (round 3) and 18-ROUND3-HANDOFF.md — the machineAuthorityNow and notDone fields below are ROUND 2 and no longer current: round 3 delivered P-ACCESSOR, P-FACTORY-CAPTURE/P-STRUCTURAL/P-PICK-PORT as one unified qualification rule, and drove REVIEW_REQUIRED to 0",
+  "reviewerInstructionsAccepted": {
+    "validatorGate": "The PRODUCTION_REVIEW_REQUIRED gate is a FINAL SAFETY NET and must NOT be relaxed. Target has REVIEW_REQUIRED = 0, so the existing gate passes unchanged once the resolver finishes. My earlier statement that the gate 'must be replaced' was WRONG and is withdrawn.",
+    "process": "One binding pattern at a time: red case -> general resolution rule -> affected cases recovered -> confirm NO regression in the already-resolved set. Never tune the resolver to hit a target number.",
+    "noHardcoding": "Hand-traced wiring is expected regression evidence for the general rules, never a per-boundary authority exception."
+  },
+
+  "machineAuthorityNow": {
+    "PROVEN": 84,
+    "TEST_ONLY_OR_DEAD": 13,
+    "REVIEW_REQUIRED": 16,
+    "target": { "PROVEN": 94, "TEST_ONLY_OR_DEAD": 19, "REVIEW_REQUIRED": 0 }
+  },
+
+  "landedThisRound": [
+    {
+      "change": "callback doctrine encoded generally",
+      "detail": "selfCallbackOwners() + viaCallback on every indexed call site; a timer/queue/event registration by the boundary's own reachable owner counts as production reachability, a bare self-call does not",
+      "effect": "PostgresConnectorRuntimeState.recoverExpiredLeases -> PROVEN, derived from the general rule and not from a special case"
+    },
+    {
+      "change": "object-literal method body indexing defect FIXED",
+      "detail": "for `{ async start() { ... } }` the body lives on the PropertyAssignment's initializer, not the node; the indexer read the wrong property and recorded zero calls for EVERY object-literal method",
+      "materiality": "general defect covering exactly the production entries the confirmed doctrine is about (timer, queue consumer, event handler, factory-produced runtime entry). lifecycle.start went from 0 indexed calls to 3."
+    },
+    {
+      "change": "implementations-index rule for abstract receiver types",
+      "detail": "a receiver typed as a Port now resolves when a production class implements that Port; module-level boundaries additionally consider the classes declared in their own file",
+      "effect": "removed two FALSE collision labels (see ledger); did not yet move any boundary to PROVEN because those boundaries have colliding call sites as well as qualifying ones"
+    }
+  ],
+
+  "ledgerFinding": {
+    "correctedLabels": [
+      "PostgresSourcesProductService.retry — the 'collision' at connector-runtime-postgres:797 is `this.retry(...)` inside PostgresJobRuntime.run: a SELF-CALL on that class, not a collision",
+      "PostgresDiscoveryFeedbackRepository.appendSuppression — DiscoveryFeedbackWriteRepositoryPort is Pick<DiscoveryFeedbackRepositoryPort,'appendFeedback'|'appendSuppression'>, a port the boundary IMPLEMENTS: a legitimate data abstraction, not a collision",
+      "PostgresFrontendCommandGateway.accept — FrontendCommandGatewayPort is implemented by the boundary and bound to it at application.ts:472: a legitimate binding, not a collision"
+    ],
+    "arithmetic": {
+      "ifTheRecoverableCasesAreRecovered": { "PROVEN": 91, "TEST_ONLY_OR_DEAD": 22, "REVIEW_REQUIRED": 0 },
+      "reviewerTarget": { "PROVEN": 94, "TEST_ONLY_OR_DEAD": 19, "REVIEW_REQUIRED": 0 },
+      "difference": "3 boundaries",
+      "action": "close by evidence, not by adjusting the rule. Either 3 further genuine binding gaps are currently mislabelled collisions, or the target assumption needs revisiting."
+    },
+    "openRow": {
+      "boundary": "PostgresDiscoveryFindingRepository.save",
+      "issue": "hand trace concluded the receiver is PostgresComparisonRepository (modules/comparison/src/index.ts:436), which would be a collision; but the ledger shows 8 colliding call sites in the boundary's own module family, so a real production caller may exist that both the resolver and the trace missed"
+    }
+  },
+
+  "notDone": [
+    "P-ACCESSOR (3 boundaries: PostgresSourcesProductService.submit / resolveDuplicate / retry via the process-global write runtime getter)",
+    "P-FACTORY-CAPTURE (2: PostgresDiscoveryRuntimeRepository.reserveProviderCall / finalizeProviderCall via the application.ts:833 closure)",
+    "P-STRUCTURAL (1: PostgresSemanticCorpusSourceSnapshotReader.readSnapshot via an inline structural parameter type)",
+    "P-DEPS-MEMBER and remaining P-PORT-THROUGH-OBJECT cases",
+    "Deriving the corrected lineage and updating the pinned 100/13 audit assertions"
+  ],
+
+  "verifiedUnchanged": {
+    "frozenGoldenV2Sha": "256E5906DB0AFBDEB175C1E754C2C8EC3A1213139AE4F805E95C5396086586CD",
+    "frozenCrosswalkSha": "E4861D67B1EBC4885FA9034245C0B2734E25E3865DE278A4FF660C0B4B0621D2",
+    "goldenV5": "valid=true, issues=0",
+    "validatorAuthority": "unchanged — callersFor remains name-only, and the REVIEW_REQUIRED gate is untouched",
+    "inventory": "unchanged",
+    "resolverTypecheck": "clean (tsc --noEmit)"
+  },
+
+  "nextAction": "Resume at P-ACCESSOR. It carries 3 of the required recoveries and is a general rule (accessor-returned runtime object resolved through the configure() call's object-literal argument against the parameter's declared type). Then P-FACTORY-CAPTURE, then P-STRUCTURAL, verifying after each that the already-resolved set does not regress."
+}

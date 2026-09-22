@@ -473,4 +473,95 @@ describe.runIf(pool)('FE-P5-XP Sources Stage 3 failure recovery', () => {
     );
     expect(Number(evidence.rows[0]?.count ?? 0)).toBeGreaterThan(0);
   });
+
+  // C2-R15 minimal proof for the registered `PostgresSourcesProductService.retry`
+  // transaction boundary. The earlier relation pointed at
+  // `AskAnswerExecutionService.retry` (E2E-D), an unrelated class with a
+  // same-named method that wrote a run-level execution model; no existing block
+  // invokes the Sources retry at all. This exercises the real boundary: after a
+  // transient Stage 3 fault the submission is retryable, and `retry` drives the
+  // resumed attempt through the boundary's own transaction.
+  it('retries the outcome-indeterminate Sources item through the product service boundary', async () => {
+    const context = await seedContext();
+    const submissionId = randomUUID();
+    const text = 'Shotgun Sources retry boundary: resumed attempt after a transient Stage 3 fault.';
+    const service = new PostgresSourcesProductService(
+      pool!,
+      new SealedSourcesStagingService(
+        assetStorage,
+        'sources-recovery-staging-secret-32-characters',
+      ),
+      new FailOnceStage3Pipeline(stage3()),
+    );
+
+    await expect(
+      service.submit(await submitInput(context, submissionId, [text], context.commandId)),
+    ).rejects.toThrow('Stage 3 transient failure');
+
+    const afterFailure = (await service.getSubmission(
+      {
+        principalId: context.principalId,
+        sessionId: context.sessionId,
+        projectId: context.projectId,
+        principalAccessScopes: ['owner'],
+        sensitivityClearance: 'private',
+        resourceSecurityPolicy: {
+          allowedClassifications: ['public', 'internal', 'private'],
+          resourceAccessScope: ['owner'],
+        },
+        accessRevision: `${context.projectId}:owner`,
+        policyContextRevision: '1',
+        acceptedPolicyContextId: `policy/${context.projectId}`,
+        acceptedPolicyBinding: { mode: 'CURRENT' },
+      },
+      submissionId,
+    ))!;
+    expect(afterFailure.state, 'transient Stage 3 fault must stay retryable').toBe(
+      'OUTCOME_INDETERMINATE',
+    );
+    const retryableItemIds = afterFailure.items.map((item) => item.itemId);
+    expect(retryableItemIds.length).toBeGreaterThan(0);
+
+    const retryCommandId = randomUUID();
+    await seedCommand(
+      context.principalId,
+      context.projectId,
+      retryCommandId,
+      'sources.intake.retry.v1',
+      context.now,
+    );
+    const retried = await service.retry({
+      commandId: retryCommandId,
+      correlationId: randomUUID(),
+      submissionId,
+      itemIds: retryableItemIds,
+      mode: 'SAME_CONTEXT',
+      scope: {
+        principalId: context.principalId,
+        sessionId: context.sessionId,
+        projectId: context.projectId,
+        principalAccessScopes: ['owner'],
+        sensitivityClearance: 'private',
+        resourceSecurityPolicy: {
+          allowedClassifications: ['public', 'internal', 'private'],
+          resourceAccessScope: ['owner'],
+        },
+        accessRevision: `${context.projectId}:owner`,
+        policyContextRevision: '1',
+        acceptedPolicyContextId: `policy/${context.projectId}`,
+        acceptedPolicyBinding: { mode: 'CURRENT' },
+      },
+      createdAt: new Date().toISOString(),
+    });
+    // The boundary's transaction committed and the resumed attempt is observable.
+    expect(retried.submissionId).toBe(submissionId);
+    expect(retried.state).not.toBe('QUEUED');
+    const attempts = await pool!.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+         FROM source_product.intake_attempts
+        WHERE project_id = $1 AND submission_id = $2 AND command_id = $3`,
+      [context.projectId, submissionId, retryCommandId],
+    );
+    expect(Number(attempts.rows[0]?.count ?? 0)).toBeGreaterThan(0);
+  });
 });

@@ -1,0 +1,41 @@
+{
+  "generatedAt": "2026-09-21T09:40:21.070Z",
+  "gateQuestion": "Why did the frozen v2 baseline move from 121 to 119?",
+  "cause": "checkRegressionEvidenceAuthority resolved the declared test block by re-parsing it out of testEvidenceId, while the validator resolves it from evidence.file / evidence.testName. Those disagree when a record id carries a suffix, so the authority checked a different block than the validator.",
+  "fix": "The authority now uses the same block identity as the validator, falling back to id-parsing only when file/testName are absent. C2R15_BASELINE_OLD_AUTHORITY=1 restores the legacy id-only parse.",
+  "legacyCount": 121,
+  "correctedCount": 119,
+  "legacySummary": {
+    "REGRESSION_BACKREF_MISMATCH": 43,
+    "REGRESSION_TARGET_MISMATCH": 8,
+    "REGRESSION_CALL_OUTSIDE_TARGET_BLOCK": 2,
+    "REGRESSION_QUALIFIED_CALL_MISSING": 3,
+    "REGRESSION_RECEIVER_UNQUALIFIED": 6,
+    "REGRESSION_PATH_UNRESOLVED": 1,
+    "REGRESSION_TEST_BLOCK_MISSING": 1,
+    "REGRESSION_COVERAGE_INCOMPLETE": 57
+  },
+  "correctedSummary": {
+    "REGRESSION_BACKREF_MISMATCH": 43,
+    "REGRESSION_TARGET_MISMATCH": 8,
+    "REGRESSION_CALL_OUTSIDE_TARGET_BLOCK": 2,
+    "REGRESSION_QUALIFIED_CALL_MISSING": 3,
+    "REGRESSION_RECEIVER_UNQUALIFIED": 6,
+    "REGRESSION_PATH_UNRESOLVED": 1,
+    "REGRESSION_COVERAGE_INCOMPLETE": 56
+  },
+  "droppedByCorrection": [
+    {
+      "code": "REGRESSION_TEST_BLOCK_MISSING",
+      "message": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485 <- \"test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded\": MISSING_TEST_BLOCK — no it()/test() block titled \"mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded\" in tests/database/frontend-sources-stage3-recovery.test.ts",
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485"
+    },
+    {
+      "code": "REGRESSION_COVERAGE_INCOMPLETE",
+      "message": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485 is PROVEN but none of its declared (boundary, evidence) relations independently resolve",
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485"
+    }
+  ],
+  "addedByCorrection": [],
+  "verdict": "STRICT IMPROVEMENT: the corrected run is a strict subset of the recorded run; no statement was added and every dropped statement was a false positive of the mis-parse."
+}

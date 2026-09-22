@@ -1,0 +1,644 @@
+{
+  "generatedAt": "2026-09-21T09:27:33.899Z",
+  "note": "Executable plan for the 27 declared relations, scanned from the corpus. Group A completes covers[]; Group B rebinds to an existing qualified DIRECT_BOUNDARY proof; Group C needs a minimal proof first.",
+  "counts": {
+    "B": 20,
+    "A": 7
+  },
+  "plan": [
+    {
+      "boundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:736",
+      "boundary": "PostgresDiscoveryFindingRepository.transitionLifecycle",
+      "method": "transitionLifecycle",
+      "symbol": "PostgresDiscoveryFindingRepository",
+      "file": "adapters/discovery-finding-postgres/src/index.ts",
+      "verdict": "NO_QUALIFIED_CALL",
+      "staleEvidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+      "staleCovers": [
+        "safe:adapters/ai-configuration-postgres/src/index.ts:106"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/akp-4-wp4-discovery-execution.database.test.ts",
+        "title": "rejects a stale reconciliation fence and preserves lifecycle authority",
+        "size": 1820
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/database/akp-5-wp4-type-specific-review-materialization.database.test.ts",
+          "title": "fails closed on a terminal lifecycle race and never reopens the Finding",
+          "size": 2225
+        },
+        {
+          "file": "tests/database/akp-6-wp1-discovery-product.database.test.ts",
+          "title": "reads project-bound findings and authoritative lifecycle without fabricating evidence",
+          "size": 2893
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-model-profile-postgres/src/index.ts:126",
+      "boundary": "PostgresDiscoveryModelProfileRepository.saveRevision",
+      "method": "saveRevision",
+      "symbol": "PostgresDiscoveryModelProfileRepository",
+      "file": "adapters/discovery-model-profile-postgres/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+      "staleCovers": [
+        "safe:adapters/ai-configuration-postgres/src/index.ts:106"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/akp-3-wp3-discovery-model-profile-postgres.database.test.ts",
+        "title": "rejects a stale concurrent revision without overwriting the accepted revision",
+        "size": 786
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/database/akp-3-wp3-discovery-model-profile-postgres.database.test.ts",
+          "title": "persists exact revisions, preserves history, and isolates Projects",
+          "size": 986
+        },
+        {
+          "file": "tests/database/post-tf-risk001b-proof-matrix.test.ts",
+          "title": "discovery model profile saveRevision: committed write recovers after ACK-loss",
+          "size": 1116
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2190",
+      "boundary": "PostgresDiscoveryRuntimeRepository.transitionAttemptWithLease",
+      "method": "transitionAttemptWithLease",
+      "symbol": "PostgresDiscoveryRuntimeRepository",
+      "file": "adapters/discovery-runtime-postgres/src/index.ts",
+      "verdict": "RESOLVES",
+      "staleEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "staleCovers": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "group": "A",
+      "action": "COMPLETE_COVERS"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2257",
+      "boundary": "PostgresDiscoveryRuntimeRepository.transitionRunWithLease",
+      "method": "transitionRunWithLease",
+      "symbol": "PostgresDiscoveryRuntimeRepository",
+      "file": "adapters/discovery-runtime-postgres/src/index.ts",
+      "verdict": "RESOLVES",
+      "staleEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "staleCovers": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "group": "A",
+      "action": "COMPLETE_COVERS"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2353",
+      "boundary": "PostgresDiscoveryRuntimeRepository.transitionJobWithLease",
+      "method": "transitionJobWithLease",
+      "symbol": "PostgresDiscoveryRuntimeRepository",
+      "file": "adapters/discovery-runtime-postgres/src/index.ts",
+      "verdict": "RESOLVES",
+      "staleEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "staleCovers": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "group": "A",
+      "action": "COMPLETE_COVERS"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2435",
+      "boundary": "PostgresDiscoveryRuntimeRepository.finalizeClaimWithLease",
+      "method": "finalizeClaimWithLease",
+      "symbol": "PostgresDiscoveryRuntimeRepository",
+      "file": "adapters/discovery-runtime-postgres/src/index.ts",
+      "verdict": "RESOLVES",
+      "staleEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "staleCovers": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "group": "A",
+      "action": "COMPLETE_COVERS"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2608",
+      "boundary": "PostgresDiscoveryRuntimeRepository.finalizeFailureWithLease",
+      "method": "finalizeFailureWithLease",
+      "symbol": "PostgresDiscoveryRuntimeRepository",
+      "file": "adapters/discovery-runtime-postgres/src/index.ts",
+      "verdict": "RESOLVES",
+      "staleEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "staleCovers": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "group": "A",
+      "action": "COMPLETE_COVERS"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3053",
+      "boundary": "PostgresDiscoveryRuntimeRepository.writeStageOutput",
+      "method": "writeStageOutput",
+      "symbol": "PostgresDiscoveryRuntimeRepository",
+      "file": "adapters/discovery-runtime-postgres/src/index.ts",
+      "verdict": "RESOLVES",
+      "staleEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "staleCovers": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:2093"
+      ],
+      "group": "A",
+      "action": "COMPLETE_COVERS"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:1751",
+      "boundary": "PostgresAskAnswerExecutionRepository.transaction",
+      "method": "transaction",
+      "symbol": "PostgresAskAnswerExecutionRepository",
+      "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "staleCovers": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727",
+        "safe:adapters/discovery-reentry-postgres/src/index.ts:567"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/a9-final-closure-evidence.test.ts",
+        "title": "commits work performed through the Ask execution transaction boundary",
+        "size": 1657
+      },
+      "alternativeProofs": []
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:173",
+      "boundary": "PostgresAskConversationRepository.transaction",
+      "method": "transaction",
+      "symbol": "PostgresAskConversationRepository",
+      "file": "adapters/frontend-ask-write-postgres/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "staleCovers": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727",
+        "safe:adapters/discovery-reentry-postgres/src/index.ts:567"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/unit/frontend-ask-write-postgres.test.ts",
+        "title": "does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error",
+        "size": 671
+      },
+      "alternativeProofs": []
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:104",
+      "boundary": "PostgresExternalActionStore.transaction",
+      "method": "transaction",
+      "symbol": "PostgresExternalActionStore",
+      "file": "adapters/frontend-external-action-postgres/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "staleCovers": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727",
+        "safe:adapters/discovery-reentry-postgres/src/index.ts:567"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/frontend-external-action-postgres-parity.test.ts",
+        "title": "reserves the project budget atomically under concurrency (single remaining execution)",
+        "size": 1108
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/database/frontend-external-action-postgres-parity.test.ts",
+          "title": "lets the LAST execution consume the final budget slot through the coordinator, then fails closed",
+          "size": 2632
+        },
+        {
+          "file": "tests/database/frontend-external-action-postgres-parity.test.ts",
+          "title": "rejects a conflicting immutable snapshot and an illegal attempt transition at the database",
+          "size": 2914
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-history-postgres/src/history-projection-store.ts:394",
+      "boundary": "<module>.commitProjectProjection",
+      "method": "commitProjectProjection",
+      "symbol": "<module>",
+      "file": "adapters/frontend-history-postgres/src/history-projection-store.ts",
+      "verdict": "RESOLVES",
+      "staleEvidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity)",
+      "staleCovers": [],
+      "group": "A",
+      "action": "COMPLETE_COVERS"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:55",
+      "boundary": "PostgresFrontendKnowledgeDraftRepository.transaction",
+      "method": "transaction",
+      "symbol": "PostgresFrontendKnowledgeDraftRepository",
+      "file": "adapters/frontend-knowledge-draft-postgres/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "staleCovers": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727",
+        "safe:adapters/discovery-reentry-postgres/src/index.ts:567"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/frontend-knowledge-draft-postgres-parity.test.ts",
+        "title": "enforces one materialization per Draft identity at the database",
+        "size": 434
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/database/frontend-knowledge-draft-postgres-parity.test.ts",
+          "title": "enforces a unique non-null Seed identity at the database",
+          "size": 439
+        },
+        {
+          "file": "tests/database/frontend-knowledge-draft-postgres-parity.test.ts",
+          "title": "enforces a unique command replay identity at the database",
+          "size": 952
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:162",
+      "boundary": "PostgresFrontendReviewRepository.transaction",
+      "method": "transaction",
+      "symbol": "PostgresFrontendReviewRepository",
+      "file": "adapters/frontend-review-postgres/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "staleCovers": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727",
+        "safe:adapters/discovery-reentry-postgres/src/index.ts:567"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/frontend-review-postgres-parity.test.ts",
+        "title": "exposes transaction-bound repositories and commits their writes (PostgresFrontendReviewRepository)",
+        "size": 1364
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts",
+          "title": "rolls back Review decisions and Draft materialization when ledger completion fails",
+          "size": 2155
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:172",
+      "boundary": "PostgresFrontendReviewRepository.transactionWithHandle",
+      "method": "transactionWithHandle",
+      "symbol": "PostgresFrontendReviewRepository",
+      "file": "adapters/frontend-review-postgres/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+      "staleCovers": [
+        "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:65"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/frontend-review-postgres-parity.test.ts",
+        "title": "exposes transaction-bound repositories and commits their writes (PostgresFrontendReviewRepository)",
+        "size": 1364
+      },
+      "alternativeProofs": []
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-review-postgres/src/index.ts:811",
+      "boundary": "PostgresDiscoveryReviewResourceRepository.save",
+      "method": "save",
+      "symbol": "PostgresDiscoveryReviewResourceRepository",
+      "file": "adapters/frontend-review-postgres/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:converges concurrent consumers to one logical result",
+      "staleCovers": [
+        "safe:adapters/discovery-finding-postgres/src/index.ts:360"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/akp-5-wp5-stale-provenance-security-closure.database.test.ts",
+        "title": "G/H: retains but hides an immutable resource when authority changes after save",
+        "size": 2362
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/database/akp-5-wp3-persistent-review-bridge.database.test.ts",
+          "title": "does not leak raw WP2 candidates, foreign projects, or conflicting immutable content",
+          "size": 4216
+        },
+        {
+          "file": "tests/database/akp-5-wp3-persistent-review-bridge.database.test.ts",
+          "title": "persists, restarts and reads the same eligible target with idempotent identity",
+          "size": 5137
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/lifecycle.ts:201",
+      "boundary": "PostgresSourcesIntakeLifecycle.transaction",
+      "method": "transaction",
+      "symbol": "PostgresSourcesIntakeLifecycle",
+      "file": "adapters/frontend-sources-write-postgres/src/lifecycle.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "staleCovers": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727",
+        "safe:adapters/discovery-reentry-postgres/src/index.ts:567"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/frontend-phase-2-section-1-sources-lifecycle.test.ts",
+        "title": "rejects retry while an Item is still running and creates no new Attempt",
+        "size": 1208,
+        "kind": "PUBLIC_PATH",
+        "entry": "PostgresSourcesIntakeLifecycle.retryItems"
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/database/frontend-phase-2-section-1-sources-lifecycle.test.ts",
+          "title": "preserves Attempt history through outcome-indeterminate, retry and cancellation",
+          "size": 3036,
+          "kind": "PUBLIC_PATH",
+          "entry": "PostgresSourcesIntakeLifecycle.retryItems"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage11/src/index.ts:847",
+      "boundary": "PostgresActionExecutionRepository.transaction",
+      "method": "transaction",
+      "symbol": "PostgresActionExecutionRepository",
+      "file": "adapters/postgres-stage11/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "staleCovers": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727",
+        "safe:adapters/discovery-reentry-postgres/src/index.ts:567"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/unit/discovery-finding-lifecycle.test.ts",
+        "title": "advances lifecycle revisions and appends exactly one event per success",
+        "size": 717,
+        "kind": "PUBLIC_PATH",
+        "entry": "PostgresActionExecutionRepository.transition"
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/unit/discovery-finding-lifecycle.test.ts",
+          "title": "returns a typed stale conflict without appending history",
+          "size": 841,
+          "kind": "PUBLIC_PATH",
+          "entry": "PostgresActionExecutionRepository.transition"
+        },
+        {
+          "file": "tests/database/stage-11-action-feedback-outbox.test.ts",
+          "title": "backfill makes forward progress when the requested limit is smaller than history",
+          "size": 855,
+          "kind": "PUBLIC_PATH",
+          "entry": "PostgresActionExecutionRepository.transition"
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage3/src/index.ts:148",
+      "boundary": "PostgresTransformationRepository.save",
+      "method": "save",
+      "symbol": "PostgresTransformationRepository",
+      "file": "adapters/postgres-stage3/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:converges concurrent consumers to one logical result",
+      "staleCovers": [
+        "safe:adapters/discovery-finding-postgres/src/index.ts:360"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/frontend-sources-stage4-isolation.test.ts",
+        "title": "re-extracts an existing PostgreSQL SourceVersion through the Product route after AI becomes available",
+        "size": 10234
+      },
+      "alternativeProofs": []
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896",
+      "boundary": "PostgresSourcesStage4ContinuationStore.claimNext",
+      "method": "claimNext",
+      "symbol": "PostgresSourcesStage4ContinuationStore",
+      "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-4-wp4-discovery-execution.database.test.ts:converges concurrent claimers to one Run and seven durable stages",
+      "staleCovers": [
+        "safe:adapters/discovery-runtime-postgres/src/index.ts:1689"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/runtime-data-integrity-wp04-schema.test.ts",
+        "title": "rejects malformed lease inputs before opening a PostgreSQL transaction",
+        "size": 799
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
+          "title": "Stage 3 continuation claim: reconciles a committed claim after ACK loss",
+          "size": 1647
+        },
+        {
+          "file": "tests/database/runtime-data-integrity-wp04-schema.test.ts",
+          "title": "T02 claims a pending Stage 4 continuation with the injected lease timestamp and fence",
+          "size": 4989
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1458",
+      "boundary": "PostgresChangeSetReviewV2Repository.saveDraft",
+      "method": "saveDraft",
+      "symbol": "PostgresChangeSetReviewV2Repository",
+      "file": "adapters/postgres-stage5/src/index.ts",
+      "verdict": "NO_QUALIFIED_CALL",
+      "staleEvidenceId": "test:tests/database/auth-postgres.test.ts:Scenario 1: does not reuse another project owner as Local Owner",
+      "staleCovers": [
+        "safe:adapters/postgres-auth/src/index.ts:145"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/comparison-review-v2-postgres.test.ts",
+        "title": "DB-3: reads the same Draft through a fresh application DB connection",
+        "size": 611
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/database/comparison-review-v2-postgres.test.ts",
+          "title": "DB-1/DB-2: round-trips and rejects conflicting Draft replay",
+          "size": 858
+        },
+        {
+          "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
+          "title": "Stage 5 Draft persistence: exact retry converges to the committed Draft",
+          "size": 955
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage6/src/index.ts:261",
+      "boundary": "PostgresCanonicalKnowledgeRepository.commit",
+      "method": "commit",
+      "symbol": "PostgresCanonicalKnowledgeRepository",
+      "file": "adapters/postgres-stage6/src/index.ts",
+      "verdict": "CALL_OUTSIDE_TARGET_BLOCK",
+      "staleEvidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+      "staleCovers": [
+        "safe:adapters/postgres-auth/src/index.ts:70",
+        "safe:adapters/postgres/src/index.ts:311"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/stage-6-postgres.test.ts",
+        "title": "serializes concurrent approved writes and rejects the stale one",
+        "size": 1320
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/database/stage-6-commit-ambiguity.test.ts",
+          "title": "returns OUTCOME_UNKNOWN, then resolves all three direct paths by deterministic replay",
+          "size": 1866
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:114",
+      "boundary": "PostgresTypedPropositionConflictRuleRepository.transaction",
+      "method": "transaction",
+      "symbol": "PostgresTypedPropositionConflictRuleRepository",
+      "file": "adapters/postgres-stage9/src/typed-proposition-conflict.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-7-wp4-epistemic-feedback-reentry.database.test.ts:atomically stores a trigger, reconciles historical feedback, and preserves exact revision/project identity",
+      "staleCovers": [
+        "safe:adapters/discovery-feedback-postgres/src/index.ts:727",
+        "safe:adapters/discovery-reentry-postgres/src/index.ts:567"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/akp-8-wp2r-typed-proposition-conflict.database.test.ts",
+        "title": "uses normal application composition and the real Postgres authority to reach Conflict selection",
+        "size": 14621
+      },
+      "alternativeProofs": []
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1106",
+      "boundary": "PostgresProjectAdministrationRepository.updateStatus",
+      "method": "updateStatus",
+      "symbol": "PostgresProjectAdministrationRepository",
+      "file": "adapters/postgres/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/akp-3-wp3-discovery-model-profile-postgres.database.test.ts:retire/activate is transactional and leaves at most one active profile",
+      "staleCovers": [
+        "safe:adapters/discovery-model-profile-postgres/src/index.ts:209"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/section2-postgres.test.ts",
+        "title": "keeps PostgreSQL Project lifecycle status and active state in parity",
+        "size": 2290,
+        "kind": "PUBLIC_PATH",
+        "entry": "PostgresProjectAdministrationRepository.archiveProject"
+      },
+      "alternativeProofs": []
+    },
+    {
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1813",
+      "boundary": "PostgresSettingsRepository.applySettingsCommand",
+      "method": "applySettingsCommand",
+      "symbol": "PostgresSettingsRepository",
+      "file": "adapters/postgres/src/index.ts",
+      "verdict": "NO_QUALIFIED_CALL",
+      "staleEvidenceId": "test:tests/database/auth-postgres.test.ts:Scenario 1: does not reuse another project owner as Local Owner",
+      "staleCovers": [
+        "safe:adapters/postgres-auth/src/index.ts:145"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/section2-postgres.test.ts",
+        "title": "rolls back cleanly on transaction errors without leaving corrupted revisions",
+        "size": 1475
+      },
+      "alternativeProofs": [
+        {
+          "file": "tests/database/section2-postgres.test.ts",
+          "title": "applies settings command, increments revisions, and persists across repository re-instantiation",
+          "size": 1968
+        },
+        {
+          "file": "tests/database/section2-postgres.test.ts",
+          "title": "enforces idempotency key reuse with payload & parameter binding in PostgreSQL",
+          "size": 2340
+        }
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/project-standing-ai-policy-postgres/src/index.ts:75",
+      "boundary": "PostgresStandingAIProcessingPolicyRepository.saveRevision",
+      "method": "saveRevision",
+      "symbol": "PostgresStandingAIProcessingPolicyRepository",
+      "file": "adapters/project-standing-ai-policy-postgres/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+      "staleCovers": [
+        "safe:adapters/ai-configuration-postgres/src/index.ts:106"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/standing-ai-processing-policy-owner.test.ts",
+        "title": "commits the Standing AI policy revision through the repository boundary",
+        "size": 1527
+      },
+      "alternativeProofs": []
+    },
+    {
+      "boundaryId": "safe:adapters/semantic-embedding-postgres/src/index.ts:132",
+      "boundary": "PostgresSemanticEmbeddingProfileRepository.saveRevision",
+      "method": "saveRevision",
+      "symbol": "PostgresSemanticEmbeddingProfileRepository",
+      "file": "adapters/semantic-embedding-postgres/src/index.ts",
+      "verdict": "TARGET_MISMATCH",
+      "staleEvidenceId": "test:tests/database/post-tf-risk001b-proof-matrix.test.ts:AI configuration saveRevision: committed write becomes a stale conflict on retry",
+      "staleCovers": [
+        "safe:adapters/ai-configuration-postgres/src/index.ts:106"
+      ],
+      "group": "B",
+      "action": "REBIND_TO_EXISTING",
+      "replacement": {
+        "file": "tests/database/ts6-semantic-embedding-ack-loss.database.test.ts",
+        "title": "reconciles the exact hidden revision and preserves stale/newer/cross-project boundaries",
+        "size": 1840
+      },
+      "alternativeProofs": []
+    }
+  ]
+}

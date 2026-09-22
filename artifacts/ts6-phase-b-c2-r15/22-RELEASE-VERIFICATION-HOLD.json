@@ -1,0 +1,82 @@
+{
+  "generatedAt": "2026-09-21T23:30:00.000Z",
+  "subject": "TS-6 C2 — owner verdict recorded: v6 lineage PASS, TS-6 C2 FINAL HOLD on exact-head release verification",
+  "ownerConsolidation": "See 23-CONSOLIDATED-FINAL-STATE.json — the correction phase is CLOSED and the release verification phase is open. Do NOT modify golden.v6 or the resolver/validator reachability authority. The single next decision point is exact-head canonical CI exit status. If canonical CI exits 0 cleanly, the DB concurrency flake and the local teardown error are shown not to be blockers for this change and TS-6 C2 FINAL can move toward approval; only if canonical CI reproduces them is the runner/flaky question re-opened for separate adjudication.",
+  "verdict": {
+    "C2-R15 regression evidence authority": "PASS",
+    "production reachability authority": "PASS",
+    "golden.v6 derived lineage": "PASS",
+    "TS-6 C2 FINAL": "HOLD",
+    "whatRemains": "NOT further design or audit work. Exact-head release verification only."
+  },
+
+  "closedStructuralConditions": [
+    "legacy callersFor() removed from the classification authority",
+    "current authority converges on the single boundaryMatchKind()",
+    "96 PROVEN / 17 TEST_ONLY_OR_DEAD / 0 REVIEW_REQUIRED",
+    "113 boundary total reconciles",
+    "inventory 120 / 113 / 11 / 87 held",
+    "frozen v2 / crosswalk / golden.v5 byte-identical",
+    "golden.v6 valid=true / issues=0",
+    "relation graph 112 / 112 held",
+    "all 96 PROVEN boundaries hold a qualified caller AND a resolving relation",
+    "historical 100/13 and current 96/17 assertions separated with the authority era labelled"
+  ],
+
+  "bootstrapOwnerLimitation": {
+    "boundary": "PostgresAuthRepository.bootstrapOwner",
+    "classificationInCorpus": "TEST_ONLY_OR_DEAD",
+    "scopeOfDoctrine": "the audit doctrine targets APPLICATION PRODUCTION RUNTIME reachability, and scripts/ is explicitly outside the resolver corpus (SCOPES = adapters, modules, packages, assemblies, apps)",
+    "requiredWording": "application runtime: UNREACHABLE. Separate operator-invoked operational CLI scripts/auth-bootstrap-owner.ts (npm script `auth:bootstrap-owner`) against a real Postgres pool: REACHABLE.",
+    "instruction": "Do NOT describe this boundary as merely 'dead'. Record it as a scope limitation: unreachable in the audited application runtime, reachable through a separate operator-invoked CLI that the corpus does not cover.",
+    "effectOnVerdict": "none — discovery recorded, verdict unchanged"
+  },
+
+  "releaseEvidenceStatus": {
+    "rule": "A passing assertion set and a passing process are NOT the same claim. Neither the local teardown defect, the DB concurrency flake, nor the pre-existing TS error is exempted locally.",
+    "localAssertionEvidence": "PASS",
+    "localProcessExit": "NOT CLEAN — audit and unit lanes exit 1 with zero test failures, caused by the known Vitest teardown / onTaskUpdate timeout",
+    "fullDatabaseRun": "NOT CLEAN — 2 failures in tests/database/frontend-ask-claim-concurrency.test.ts, 3/3 PASS when re-run in isolation, PASS in the earlier full-lane run this session",
+    "canonicalExactHeadCi": "NOT YET VERIFIED",
+    "dispositions": {
+      "exitCode1": "require a normal exit 0 from exact-head canonical CI. If canonical CI shows the SAME infrastructure teardown error, THEN check whether an approved runner-defect / isolation policy already exists and adjudicate separately. No pre-emptive exemption.",
+      "dbFlake": "let exact-head canonical CI / DB suite decide. If canonical CI passes, close it with no further investigation. If the same concurrency test fails repeatedly in canonical CI, re-open the flaky determination.",
+      "ts2345": "validator:1012 TS2345 must be checked at exact-head canonical typecheck: is it already part of the accepted baseline, and does the canonical typecheck actually permit it? 'No NEW TypeScript error' is accurate; 'typecheck clean' is NOT. A pre-existing error is not an automatic release exemption."
+    },
+    "forbidden": "Do not promote this round's local results to release PASS evidence, and do not report the lanes as green."
+  },
+
+  "frozenV2UnderCurrentAuthority": {
+    "valid": false,
+    "issues": 166,
+    "counts": { "TX_BOUNDARY": 96, "TEST_ONLY_OR_DEAD": 17, "REVIEW_REQUIRED": 0 },
+    "breakdown": {
+      "REGRESSION_COVERAGE_INCOMPLETE": 56,
+      "REGRESSION_BACKREF_MISMATCH": 43,
+      "CALLER_SET": 37,
+      "REGRESSION_TARGET_MISMATCH": 8,
+      "REGRESSION_RECEIVER_UNQUALIFIED": 6,
+      "CLASSIFICATION_DRIFT": 4,
+      "REACHABILITY_DRIFT": 4,
+      "REGRESSION_QUALIFIED_CALL_MISSING": 3,
+      "SUMMARY_COUNT": 2,
+      "REGRESSION_CALL_OUTSIDE_TARGET_BLOCK": 2,
+      "REGRESSION_PATH_UNRESOLVED": 1
+    },
+    "note": "The frozen v2 is a record of the LEGACY authority, so its rejection is expected and required. The pre-correction figure was 119; the corrected authority reports 166 because the caller sets and the derived classification both moved. Do not quote 119 as the current number.",
+    "withBaselineOldAuthorityFlag": 168
+  },
+
+  "exactHeadReleaseVerificationChecklist": [
+    "canonical CI process exit code is 0 (not merely 'all assertions passed')",
+    "if the Vitest teardown / onTaskUpdate error appears in canonical CI, obtain the standing runner-defect adjudication or isolation policy before treating it as non-blocking",
+    "full canonical DB suite is clean, or the ask-claim concurrency file's behaviour at exact head is adjudicated",
+    "canonical typecheck at exact head either reports no validator:1012 TS2345, or that error is confirmed as an already-accepted baseline entry",
+    "confirm frozen v2 / crosswalk / golden.v5 are byte-identical at exact head",
+    "confirm nothing under adapters/ modules/ packages/ assemblies/ apps/ changed",
+    "re-run scripts/rebuild-ts6-phase-b-c2-r15-qualified-reachability.mjs at exact head and confirm 96 / 17 / 0 with REVIEW_REQUIRED 0",
+    "re-run scripts/rebuild-ts6-phase-b-c2-r15-v6-lineage.mjs and confirm the derived lineage still validates valid=true issues=0"
+  ],
+
+  "instructionForNextRound": "Do NOT modify v6 or re-open the reachability authority. The remaining work is release-level verification at exact head."
+}

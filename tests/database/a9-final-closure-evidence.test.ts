@@ -1061,4 +1061,47 @@ describe('A9 final closure deterministic cross-boundary evidence', () => {
     );
     expect(transientState.rows[0]?.state).toBe('QUEUED');
   });
+
+  // C2-R15 minimal proof for the registered
+  // `PostgresAskAnswerExecutionRepository.transaction` transaction boundary. The
+  // earlier relation reached an unrelated class's `transaction`. This drives the
+  // boundary directly and asserts that work performed through its transaction
+  // port is durable after commit.
+  it('commits work performed through the Ask execution transaction boundary', async () => {
+    const fixture = await createFixture();
+    // `configure` is what gives the fixture a resolvable execution identity; the
+    // boundary proof itself needs only a durable answer run.
+    await configure(fixture, 'deepseek', 0);
+    const run = await submit(fixture, 'Commit through the Ask execution boundary.');
+    const requestId = `c2r15-ask-transaction-${randomUUID()}`;
+    // A fresh instance of the registered class, so the boundary is driven by a
+    // receiver that is unambiguously this repository.
+    const executionRepository = new PostgresAskAnswerExecutionRepository(
+      pool,
+      fixture.projection,
+      { resolve: async () => undefined },
+    );
+
+    const result = await executionRepository.transaction(async (transaction) => {
+      const feedback = await transaction.saveFeedback({
+        scope: fixture.executionScope,
+        answerRunId: run.answerRunId,
+        kind: 'HELPFUL',
+        comment: 'C2-R15 transaction boundary proof.',
+        requestId,
+      });
+      await transaction.afterCommit(() => undefined);
+      return feedback;
+    });
+    expect(result.answerRunId).toBe(run.answerRunId);
+
+    // Durable only if the boundary's transaction committed.
+    const persisted = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+         FROM frontend_ask.answer_feedback
+        WHERE answer_run_id = $1 AND project_id = $2 AND request_id = $3`,
+      [run.answerRunId, fixture.projectId, requestId],
+    );
+    expect(persisted.rows[0]?.count).toBe('1');
+  });
 });

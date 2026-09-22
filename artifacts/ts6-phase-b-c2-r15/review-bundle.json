@@ -1,0 +1,28 @@
+{
+  "generatedAt": "2026-09-21T05:05:54.281Z",
+  "round": "TS-6 Phase B C2-R15 — Regression Evidence Authority Correction",
+  "status": "UNCOMMITTED — no commit, push, PR, CI change, or merge",
+  "reconstruction": {
+    "baseCommitProvenance": "1f821ea371b308d8cecede4a98ebe27960873b21",
+    "preCorrectionArchive": "artifacts/ts6-phase-b-c2-r15/pre-correction/",
+    "preCorrectionManifest": "artifacts/ts6-phase-b-c2-r15/pre-correction/manifest.json",
+    "trackedPatch": "artifacts/ts6-phase-b-c2-r15/pre-correction/tracked-worktree.patch",
+    "untrackedBytesDir": "artifacts/ts6-phase-b-c2-r15/pre-correction/bytes/"
+  },
+  "changedFiles": [
+    "scripts/ts6-phase-b-regression-evidence-resolver.ts",
+    "scripts/ts6-phase-b-regression-evidence-authority.ts",
+    "scripts/ts6-phase-b-transaction-authority-validator.ts",
+    "scripts/ts6-audit/regression-evidence-authority.test.ts",
+    "scripts/ts6-audit/c2r15-authority-correction.test.ts"
+  ],
+  "removedFromUnitLane": [
+    {
+      "from": "tests/unit/ts6-phase-b-transaction-authority-validator.test.ts",
+      "to": "scripts/ts6-audit/regression-evidence-authority.test.ts",
+      "reason": "issue-scoped TS-6 audit tooling; removed from normal unit scheduling. Audit assertions are therefore no longer auto-executed by the unit CI lane. A future observe-once permanent audit design is out of scope for C2-R15."
+    }
+  ],
+  "sha256Manifest": "artifacts/ts6-phase-b-c2-r15/sha256-manifest.txt",
+  "entryCount": 21
+}

@@ -1,0 +1,135 @@
+== changed or added by C2-R15 ==
+M scripts/ts6-phase-b-transaction-authority-validator.ts   (import + authority check wiring)
+A scripts/ts6-phase-b-regression-evidence-resolver.ts
+A scripts/ts6-phase-b-regression-evidence-authority.ts
+A scripts/ts6-audit/regression-evidence-authority.test.ts
+A scripts/ts6-audit/c2r15-authority-correction.test.ts
+M tests/unit/ts6-phase-b-transaction-authority-validator.test.ts -> moved to scripts/ts6-audit/
+A artifacts/ts6-phase-b-c2-r15/**
+
+== frozen: NOT modified ==
+tests/fixtures/ts6-phase-b-transaction-authority-golden.v2.json   256E5906DB0AFBDEB175C1E754C2C8EC3A1213139AE4F805E95C5396086586CD
+ts6-c2-r3-boundary-count-crosswalk.json                           E4861D67B1EBC4885FA9034245C0B2734E25E3865DE278A4FF660C0B4B0621D2
+package.json (test:contract / test:database unchanged; test:unit carries the pre-existing R12 --maxWorkers=2)
+
+== full worktree status ==
+M adapters/connector-runtime-postgres/src/index.ts
+ M adapters/credential-vault-postgres/src/index.ts
+ M adapters/frontend-activity-postgres/src/index.ts
+ M adapters/frontend-command-gateway-postgres/src/index.ts
+ M adapters/frontend-history-postgres/src/history-projection-store.ts
+ M adapters/frontend-history-postgres/src/index.ts
+ M adapters/frontend-sources-write-postgres/src/index.ts
+ M adapters/frontend-sources-write-postgres/src/lifecycle.ts
+ M adapters/frontend-sources-write-postgres/src/product-service.ts
+ M adapters/postgres-auth/src/index.ts
+ M adapters/postgres-stage3/src/index.ts
+ M adapters/postgres-stage4/src/index.ts
+ M adapters/postgres-stage5/src/index.ts
+ M adapters/postgres/src/index.ts
+ M adapters/project-standing-ai-policy-postgres/src/index.ts
+ M adapters/provider-privacy-deployment-postgres/src/index.ts
+ M adapters/semantic-embedding-postgres/src/index.ts
+ M adapters/semantic-index-postgres/src/index.ts
+ M assemblies/shotgun-app/src/product-api/frontend-command-route.ts
+ M assemblies/shotgun-app/src/product-api/project-routes.ts
+ M assemblies/shotgun-app/src/product-api/settings-routes.ts
+ M assemblies/shotgun-app/src/product-api/sources-routes.ts
+ M docs/SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html
+ M docs/architecture/adr/ADR-123-ask-command-conversation-persistence-and-outcome-recovery-boundary.md
+ M docs/architecture/adr/ADR-169-authority-critical-postgres-commit-ambiguity-reconciliation.md
+ M docs/implementation/frontend-cross-phase-product-gap-repair-amendment-260809001.md
+ M modules/discovery-runtime/src/worker.ts
+ M package.json
+ M tests/database/akp-4-wp4-discovery-execution.database.test.ts
+ M tests/database/post-tf-risk001a-proof-matrix.test.ts
+ M tests/database/post-tf-risk001b-proof-matrix.test.ts
+ M tests/database/section2-postgres.test.ts
+ M tests/unit/runtime-data-integrity-wp03.test.ts
+ M tests/unit/ts1-document-format-boundary.test.ts
+?? artifacts/ts6-phase-b-c1/
+?? artifacts/ts6-phase-b-c2-r10/
+?? artifacts/ts6-phase-b-c2-r11/
+?? artifacts/ts6-phase-b-c2-r12/
+?? artifacts/ts6-phase-b-c2-r13/
+?? artifacts/ts6-phase-b-c2-r14/
+?? artifacts/ts6-phase-b-c2-r15/
+?? artifacts/ts6-phase-b-c2-r2/
+?? artifacts/ts6-phase-b-c2-r3/
+?? artifacts/ts6-phase-b-c2-r4/
+?? artifacts/ts6-phase-b-c2-r5/
+?? artifacts/ts6-phase-b-c2-r6/
+?? artifacts/ts6-phase-b-c2-r7/
+?? artifacts/ts6-phase-b-c2-r8/
+?? artifacts/ts6-phase-b-c2-r9/
+?? artifacts/ts6-phase-b-c2/
+?? artifacts/ts6-phase-b-ir1/
+?? artifacts/ts6-phase-b-review/
+?? artifacts/ts6-phase-b/
+?? docs/engineering/ts6-phase-b-c2-r1-transaction-authority-evidence.md
+?? docs/engineering/ts6-phase-b-c2-r10-bounded-unit-runner-closure.md
+?? docs/engineering/ts6-phase-b-c2-r11-vitest4-migration-closure.md
+?? docs/engineering/ts6-phase-b-c2-r12-deterministic-unit-runner-ceiling.md
+?? docs/engineering/ts6-phase-b-c2-r13-contract-capacity-boundary.md
+?? docs/engineering/ts6-phase-b-c2-r14-single-worker-contract-baseline.md
+?? docs/engineering/ts6-phase-b-c2-r2-transaction-authority-rebaseline.md
+?? docs/engineering/ts6-phase-b-c2-r3-regression-evidence-closure.md
+?? docs/engineering/ts6-phase-b-c2-r5-ci-equivalent-closure.md
+?? docs/engineering/ts6-phase-b-c2-r6-ci-equivalent-closure.md
+?? docs/engineering/ts6-phase-b-c2-r7-timeout-closure.md
+?? docs/engineering/ts6-phase-b-c2-r8-vitest-worker-rpc-audit.md
+?? docs/engineering/ts6-phase-b-c2-r9-parallel-resource-contention-audit.md
+?? docs/implementation/ts6-postgres-transaction-phase-b.md
+?? scripts/rebuild-ts6-phase-b-c1-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r10-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r11-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r12-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r13-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r14-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r3-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r4-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r5-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r6-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r7-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r8-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-r9-review.mjs
+?? scripts/rebuild-ts6-phase-b-c2-review.mjs
+?? scripts/rebuild-ts6-phase-b-review.mjs
+?? scripts/ts6-audit/
+?? scripts/ts6-phase-b-c2-r10-runner.mjs
+?? scripts/ts6-phase-b-c2-r12-runner.mjs
+?? scripts/ts6-phase-b-c2-r13-contract-runner.mjs
+?? scripts/ts6-phase-b-c2-r14-contract-runner.mjs
+?? scripts/ts6-phase-b-c2-r8-runner.mjs
+?? scripts/ts6-phase-b-c2-r9-group-runner.mjs
+?? scripts/ts6-phase-b-c2-r9-targeted-runner.mjs
+?? scripts/ts6-phase-b-regression-evidence-authority.ts
+?? scripts/ts6-phase-b-regression-evidence-resolver.ts
+?? scripts/ts6-phase-b-transaction-authority-validator.ts
+?? shotgun-ts6-phase-b-c1-review-20260920.zip
+?? shotgun-ts6-phase-b-c2-r10-review-20260921.zip
+?? shotgun-ts6-phase-b-c2-r11-review-20260921.zip
+?? shotgun-ts6-phase-b-c2-r12-review-20260921.zip
+?? shotgun-ts6-phase-b-c2-r13-review-20260921.zip
+?? shotgun-ts6-phase-b-c2-r14-review-20260921.zip
+?? shotgun-ts6-phase-b-c2-r15-review-20260921.zip
+?? shotgun-ts6-phase-b-c2-r2-review-20260920.zip
+?? shotgun-ts6-phase-b-c2-r3-review-20260920.zip
+?? shotgun-ts6-phase-b-c2-r4-review-20260920.zip
+?? shotgun-ts6-phase-b-c2-r5-review-20260920.zip
+?? shotgun-ts6-phase-b-c2-r6-review-20260920.zip
+?? shotgun-ts6-phase-b-c2-r7-review-20260921.zip
+?? shotgun-ts6-phase-b-c2-r8-review-20260921.zip
+?? shotgun-ts6-phase-b-c2-r9-review-20260921.zip
+?? shotgun-ts6-phase-b-c2-review-20260920.zip
+?? shotgun-ts6-phase-b-ir1-review-20260920.zip
+?? shotgun-ts6-phase-b-review.zip
+?? tests/contract/ts6-transaction-outcome.contract.test.ts
+?? tests/database/ts6-command-gateway-exact-readback.database.test.ts
+?? tests/database/ts6-semantic-embedding-ack-loss.database.test.ts
+?? tests/database/ts6-transaction-outcome-isolation.database.test.ts
+?? tests/fixtures/ts6-phase-b-transaction-authority-golden.v2.json
+?? tests/helpers/postgres-commit-ack-loss.ts
+?? tests/unit/frontend-command-route-outcome.test.ts
+?? tests/unit/ts6-transaction-boundary-golden.test.ts
+?? ts6-c2-r3-boundary-count-crosswalk.json

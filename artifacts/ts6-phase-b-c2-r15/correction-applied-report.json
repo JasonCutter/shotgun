@@ -1,0 +1,285 @@
+{
+  "generatedAt": "2026-09-21T05:58:41.518Z",
+  "v2Unmodified": true,
+  "derivedArtifact": "artifacts/ts6-phase-b-c2-r15/golden.v3.derived.json",
+  "inventory": {
+    "candidates": 120,
+    "boundaries": 113,
+    "rawSites": 11,
+    "historicalReconciliation": 87
+  },
+  "evidence": {
+    "v2Records": 69,
+    "v3Records": 69,
+    "droppedEvidenceRecords": 0,
+    "coversCompletedByRelationResolution": 16,
+    "unresolvedDeclaredRelations": 27,
+    "backrefsRemapped": 20,
+    "droppedBackReferences": 0,
+    "staleEdgesDropped": 0
+  },
+  "rebindsApplied": 12,
+  "relabelsApplied": 2,
+  "applied": [
+    {
+      "boundaryId": "safe:adapters/ai-configuration-postgres/src/index.ts:106",
+      "method": "saveRevision",
+      "from": {
+        "file": "tests/database/akp-2-wp4-discovery-backup-restore.database.test.ts",
+        "title": "backs up and restores the durable finding and complete lifecycle history"
+      },
+      "to": {
+        "file": "tests/database/post-tf-risk001b-proof-matrix.test.ts",
+        "title": "AI configuration saveRevision: committed write becomes a stale conflict on retry",
+        "receiver": "new PostgresProjectAIConfigurationRepository(injected.pool)"
+      },
+      "previousStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-feedback-postgres/src/index.ts:444",
+      "method": "appendSuppression",
+      "from": {
+        "file": "tests/contract/akp-7-wp3-discovery-presentation.contract.test.ts",
+        "title": "keeps utility and suppression principal-scoped and rejects cursor replay"
+      },
+      "to": {
+        "file": "tests/database/akp-7-wp1-feedback-suppression-ranking.database.test.ts",
+        "title": "separates exact suppression from similar matching and retains expired snooze history",
+        "receiver": "repository"
+      },
+      "previousStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:360",
+      "method": "save",
+      "from": {
+        "file": "tests/contract/ai-configuration.contract.test.ts",
+        "title": "returns registry descriptors and saves only a validated exact credential reference"
+      },
+      "to": {
+        "file": "tests/database/akp-5-wp2-discovery-reentry.database.test.ts",
+        "title": "converges concurrent consumers to one logical result",
+        "receiver": "findingRepository"
+      },
+      "previousStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:110",
+      "method": "accept",
+      "from": {
+        "file": "tests/browser/frontend-settings-privacy-flow.spec.ts",
+        "title": "HFM-S7-C6 Settings privacy flow: AI review required -> Privacy proposal -> Approval"
+      },
+      "to": {
+        "file": "tests/database/section2-postgres.test.ts",
+        "title": "persists accepted context, semantic digest, outcome revision, and clientRequestId recovery",
+        "receiver": "commandGateway"
+      },
+      "previousStatus": "UNQUALIFIED_RECEIVER"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:279",
+      "method": "complete",
+      "from": {
+        "file": "tests/database/adr155-post-handler-outcome-unknown.test.ts",
+        "title": "converges a committed dedup completion when its acknowledgement is lost"
+      },
+      "to": {
+        "file": "tests/database/ts6-command-gateway-exact-readback.database.test.ts",
+        "title": "CG-RB-08 leaves normal completion behavior unchanged",
+        "receiver": "new PostgresFrontendCommandGateway(pool)"
+      },
+      "previousStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:272",
+      "method": "submit",
+      "from": {
+        "file": "tests/database/a9-final-closure-evidence.test.ts",
+        "title": "E2E-A: persists a fresh DeepSeek Product configuration and routes a new durable Ask through its exact pin"
+      },
+      "to": {
+        "file": "tests/database/frontend-sources-stage4-isolation.test.ts",
+        "title": "keeps genuine Transformation failure retryable as OUTCOME_INDETERMINATE",
+        "receiver": "service"
+      },
+      "previousStatus": "UNQUALIFIED_RECEIVER"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-auth/src/index.ts:145",
+      "method": "bootstrapOwner",
+      "from": {
+        "file": "tests/database/adr163-product-r19-postgres.test.ts",
+        "title": "reconciles Product route ack loss without replaying the resolver"
+      },
+      "to": {
+        "file": "tests/database/auth-postgres.test.ts",
+        "title": "Scenario 1: does not reuse another project owner as Local Owner",
+        "receiver": "repository"
+      },
+      "previousStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage10/src/index.ts:167",
+      "method": "saveInferences",
+      "from": {
+        "file": "tests/contract/knowledge-workspace-search.contract.test.ts",
+        "title": "rejects Derived Inference correlation outside visible graph nodes and evidence"
+      },
+      "to": {
+        "file": "tests/unit/postgres-stage10-transaction-boundary.test.ts",
+        "title": "rolls back deterministic inference failures before COMMIT",
+        "receiver": "repository"
+      },
+      "previousStatus": "UNQUALIFIED_RECEIVER"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage10/src/index.ts:85",
+      "method": "synchronize",
+      "from": {
+        "file": "tests/contract/compiled-truth.contract.test.ts",
+        "title": "serves the additive read snapshot with status fallback and security filtering"
+      },
+      "to": {
+        "file": "tests/unit/postgres-stage10-transaction-boundary.test.ts",
+        "title": "rolls back deterministic Compiled Truth failures before COMMIT",
+        "receiver": "repository"
+      },
+      "previousStatus": "UNQUALIFIED_RECEIVER"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122",
+      "method": "claim",
+      "from": {
+        "file": "tests/browser/frontend-cross-phase-negative.spec.ts",
+        "title": "Cross-Phase negative deltas CP-NEG-01~06 (no authority, switch isolation, non-disclosure, no auto-canonical, no approval bypass, no approval/commit/execute mix)"
+      },
+      "to": {
+        "file": "tests/database/runtime-data-integrity-wp04-schema.test.ts",
+        "title": "rejects malformed lease inputs before opening a PostgreSQL transaction",
+        "receiver": "repository"
+      },
+      "previousStatus": "NO_QUALIFIED_CALL"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage4/src/index.ts:841",
+      "method": "saveBatch",
+      "from": {
+        "file": "tests/contract/adr163-stage6-integrated.contract.test.ts",
+        "title": "runs resolved ADD_CLAIM through approval and Stage 6 Canonical +1"
+      },
+      "to": {
+        "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
+        "title": "Stage 4 candidate batch persistence: exact retry converges without duplicate candidates",
+        "receiver": "new PostgresCandidateRepository(injected.pool)"
+      },
+      "previousStatus": "UNQUALIFIED_RECEIVER"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage6/src/index.ts:758",
+      "method": "commitFrontendDraft",
+      "from": {
+        "file": "tests/contract/akp-8-wp2a-canonical-relation-projection.contract.test.ts",
+        "title": "keeps the in-memory replacement adapter relation-aware and replay-safe"
+      },
+      "to": {
+        "file": "tests/database/frontend-canonical-commit-frontend-draft.test.ts",
+        "title": "is replay-idempotent for the same commit id + authority",
+        "receiver": "repository"
+      },
+      "previousStatus": "TARGET_MISMATCH"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2093",
+      "method": "releaseLease",
+      "kind": "DECLARATION_RELABEL",
+      "before": {
+        "coverageKind": "DIRECT_BOUNDARY",
+        "entrySymbol": "PostgresDiscoveryRuntimeRepository.releaseLease",
+        "path": [
+          "PostgresDiscoveryRuntimeRepository.releaseLease"
+        ]
+      },
+      "after": {
+        "symbol": "PostgresDiscoveryRuntimeRepository",
+        "method": "releaseLease",
+        "coverageKind": "PUBLIC_PATH",
+        "entrySymbol": "PersistentDiscoveryWorker.runOnce",
+        "path": [
+          "PersistentDiscoveryWorker.runOnce",
+          "PostgresDiscoveryRuntimeRepository.releaseLease"
+        ]
+      }
+    },
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "method": "recoverExpiredLeases",
+      "kind": "DECLARATION_RELABEL",
+      "before": {
+        "coverageKind": "DIRECT_BOUNDARY",
+        "entrySymbol": "recoverProductionExpiredLeases",
+        "path": [
+          "recoverProductionExpiredLeases",
+          "PostgresConnectorRuntimeState.recoverExpiredLeases"
+        ]
+      },
+      "after": {
+        "symbol": "PostgresConnectorRuntimeState",
+        "method": "recoverExpiredLeases",
+        "coverageKind": "OWNER_ATOMICITY",
+        "entrySymbol": "recoverProductionExpiredLeases",
+        "path": [
+          "recoverProductionExpiredLeases",
+          "PostgresConnectorRuntimeState.recoverExpiredLeases"
+        ]
+      }
+    }
+  ],
+  "unapplied": [
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284",
+      "evidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+      "reason": "no proof block found"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2093",
+      "evidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "reason": "no proof block found"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:439",
+      "evidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity)",
+      "reason": "no proof block found"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:114",
+      "evidenceId": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+      "reason": "no proof block found"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941",
+      "evidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:E2E-D: routes a new credential revision while an older failed Run retries with its original revision",
+      "reason": "no proof block found"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1239",
+      "evidenceId": "test:tests/database/comparison-review-v2-postgres.test.ts:Issue #299: atomically converges only the exact Draft revision to STALE",
+      "reason": "no proof block found"
+    },
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+      "evidenceId": "test:tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts:re-enters the same durable event on a rotated job and snapshots the current DLQ job",
+      "reason": "no proof block found"
+    },
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "evidenceId": "test:tests/database/post-tf-risk002-connector-fencing-proof.test.ts:Scenario A: production recovery leaves a real running attempt behind",
+      "reason": "no proof block found"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485",
+      "evidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded",
+      "reason": "no proof block found"
+    }
+  ]
+}

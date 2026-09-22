@@ -1,0 +1,133 @@
+{
+  "generatedAt": "2026-09-22T00:05:00.000Z",
+  "subject": "Exact-head CI pre-verification: one hard blocker found and FIXED; two load-sensitive flakes observed; the v6 gates are NOT wired into CI",
+  "instruction": "Still no modification of golden.v6, the resolver classification, or the lineage. This entry records CI-path findings only.",
+
+  "whatCiActuallyRuns": {
+    "file": ".github/workflows/ci.yml",
+    "qualityJobGates": [
+      "npm run docs:knowledge-flow:check",
+      "npm run docs:validate",
+      "npm run docs:frontend-work-items / docs:completion-invariants / docs:frontend-projections:check",
+      "npm run format:check",
+      "npm run lint",
+      "npm run typecheck",
+      "npm run oss:audit",
+      "npm sbom + JSON verify",
+      "npm run db:test:reset",
+      "npm run stage12:reuse-operations-gate",
+      "npm run test:ci   = test:unit && test:contract && test:integration && test:architecture && test:stage12-package",
+      "npm run test:database"
+    ],
+    "requiredGates": "both the quality and frontend jobs must report success; any step failure fails the PR"
+  },
+
+  "blockerFoundAndFixed": {
+    "gate": "npm run typecheck (CI step 'Typecheck')",
+    "found": "exit=2 with 16 TypeScript errors across 3 untracked scripts",
+    "files": {
+      "scripts/ts6-phase-b-regression-evidence-resolver.ts": 13,
+      "scripts/ts6-phase-b-regression-evidence-authority.ts": 2,
+      "scripts/ts6-phase-b-transaction-authority-validator.ts": 1
+    },
+    "verdict": "PRE-EXISTING — these are the C2-R15 round-1/round-2 scripts, all untracked, so this typecheck failure would have blocked the PR with or without this round's work. It was never caught because the earlier local gates ran the specific scripts, not the repo-wide `npm run typecheck`.",
+    "rootCause": "strict compiler options (noUncheckedIndexedAccess) on unchecked indexed access and regex capture groups: `args[0]`, `segments[0]`, `hops[i]`, `m[1]`, plus two over-narrow type declarations.",
+    "fix": "type-only. Behaviour preserved, then verified: every fix either adds a runtime guard for a case that already fell through to the same result, or widens a declared type to what the code already accepts at runtime (`CoverageKind` -> `string`, which the resolver dispatches on and reports REGRESSION_COVERAGE_KIND_UNSUPPORTED for).",
+    "result": "npm run typecheck EXIT 0, 0 errors",
+    "semanticReVerificationAfterFix": {
+      "golden.v5.derived.json": "valid=false issues=47 (unchanged: CLASSIFICATION_DRIFT 4, CALLER_SET 37, REACHABILITY_DRIFT 4, SUMMARY_COUNT 2)",
+      "golden.v6.derived.json": "valid=true issues=0 (unchanged)",
+      "classification": "96 / 17 / 0 with authority agrees with resolver = true (unchanged)"
+    }
+  },
+
+  "loadSensitiveFlakes": [
+    {
+      "lane": "npm run test:contract (a test:ci member, so CI-gated)",
+      "file": "tests/contract/knowledge-model.contract.test.ts",
+      "observed": "2 of 12 cases failed in the full lane: 'traverses approved Typed Edges deterministically and matches NetworkX' (in-memory and in-process)",
+      "isolatedRerun": "12/12 passed",
+      "causeClass": "load-sensitive, same class as the database flake. NetworkX 3.6.1 IS installed locally, so this is not a missing dependency.",
+      "constraint": "Stage 9 / NetworkX are on the do-not-modify list — this must not be 'fixed' by editing the oracle or the test",
+      "evidenceQuality": "weak causal link to this change; the file has no dependency on the reachability authority",
+      "disposition": "exact-head canonical CI decides"
+    },
+    {
+      "lane": "npm run test:database",
+      "file": "tests/database/frontend-ask-claim-concurrency.test.ts",
+      "observed": "2 of 3 cases failed in the full lane",
+      "isolatedRerun": "3/3 passed",
+      "disposition": "exact-head canonical CI decides"
+    }
+  ],
+
+  "localCiEquivalent results": {
+    "npm run typecheck": "PASS exit 0 (after the fix)",
+    "test:architecture": "PASS exit 0",
+    "test:stage12-package": "PASS exit 0",
+    "test:unit": "1232/1232 assertions passed, process exit 1 (teardown)",
+    "test:contract": "702/704 assertions passed, 2 failed, process exit 1; the 2 pass in isolation",
+    "test:integration": "PASS exit 0 — 65 files / 510 tests passed",
+    "test:database": "562 passed / 2 failed / 2 skipped earlier, all green on isolated rerun of the failing file",
+    "audit suites (NOT in CI)": "37/37 assertions passed, process exit 1 (teardown)"
+  },
+
+  "preExistingUncommittedProductionChanges": {
+    "count": 23,
+    "files": [
+      "adapters/connector-runtime-postgres/src/index.ts",
+      "adapters/credential-vault-postgres/src/index.ts",
+      "adapters/frontend-activity-postgres/src/index.ts",
+      "adapters/frontend-command-gateway-postgres/src/index.ts",
+      "adapters/frontend-history-postgres/src/history-projection-store.ts",
+      "adapters/frontend-history-postgres/src/index.ts",
+      "adapters/frontend-sources-write-postgres/src/index.ts",
+      "adapters/frontend-sources-write-postgres/src/lifecycle.ts",
+      "adapters/frontend-sources-write-postgres/src/product-service.ts",
+      "adapters/postgres-auth/src/index.ts",
+      "adapters/postgres-stage3/src/index.ts",
+      "adapters/postgres-stage4/src/index.ts",
+      "adapters/postgres-stage5/src/index.ts",
+      "adapters/postgres/src/index.ts",
+      "adapters/project-standing-ai-policy-postgres/src/index.ts",
+      "adapters/provider-privacy-deployment-postgres/src/index.ts",
+      "adapters/semantic-embedding-postgres/src/index.ts",
+      "adapters/semantic-index-postgres/src/index.ts",
+      "assemblies/shotgun-app/src/product-api/frontend-command-route.ts",
+      "assemblies/shotgun-app/src/product-api/project-routes.ts",
+      "assemblies/shotgun-app/src/product-api/settings-routes.ts",
+      "assemblies/shotgun-app/src/product-api/sources-routes.ts",
+      "modules/discovery-runtime/src/worker.ts"
+    ],
+    "provenance": "carried in the worktree from earlier C2-R15 rounds; NOT introduced by this round",
+    "relevanceToTheFlakes": "none. There is no Ask-claim, knowledge-model or Stage 9 / NetworkX file in the list, and the two flaky files are concurrency/load sensitive.",
+    "note": "the whole working tree is uncommitted, so no CI run can see ANY of this work yet — see the sequencing note"
+  },
+
+  "sequencingNote": {
+    "observation": "CI triggers on pull_request and on push to main. The branch codex/ts6-postgres-transaction-phase-b exists locally but nothing is committed or pushed, and the work order forbids commit/push/PR.",
+    "consequence": "there is no exact head for CI to verify until an owner-authorised commit + PR exists",
+    "implication": "the release gate cannot be reached inside these constraints; it needs owner authorisation to commit and push (or an explicit decision to run CI another way)"
+  },
+
+  "ciCoverageGap": {
+    "finding": "NO npm script and NO CI step runs scripts/ts6-audit/*. `test:ci` = unit, contract, integration, architecture, stage12-package only. `npm audit` is not the audit suite.",
+    "consequence": "the v6 lineage assertions added this round — 'derives the corrected v6 lineage and validates clean' and 'does not re-open an approved relation' — are NOT executed by CI. Neither is the qualified-authority scoreboard assertion. The owner's release checklist therefore depends on someone remembering to run them by hand.",
+    "risk": "the authority correction could silently drift without CI noticing",
+    "proposedOptionsNotApplied": [
+      "add an npm script (e.g. `test:authority-audit`) and one CI step to run the two audit suites with an explicit timeout budget",
+      "or keep them manual and record the omission as an accepted limitation of the release gate"
+    ],
+    "whyNotApplied": "a hard constraint forbids changing the test:contract policy and CI; adding a CI step needs explicit owner authorisation"
+  },
+
+  "statusUnchanged": {
+    "classification": "96 / 17 / 0",
+    "relationGraph": "112",
+    "inventory": "120 / 113 / 11 / 87",
+    "goldenV6": "valid=true issues=0",
+    "frozenArtifacts": "preserved",
+    "productSource": "unchanged",
+    "TS-6 C2 FINAL": "HOLD"
+  }
+}

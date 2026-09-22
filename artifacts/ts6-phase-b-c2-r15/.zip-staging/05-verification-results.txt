@@ -1,0 +1,41 @@
+C2-R15 verification results (after the relation-aware correction)
+====================================================================
+
+[PASS] corrected validator rejects UNMODIFIED golden.v2
+       issueCount 121, valid=false
+       57 REGRESSION_COVERAGE_INCOMPLETE
+       43 REGRESSION_BACKREF_MISMATCH
+        8 REGRESSION_TARGET_MISMATCH
+        6 REGRESSION_RECEIVER_UNQUALIFIED
+        3 REGRESSION_QUALIFIED_CALL_MISSING
+        2 REGRESSION_CALL_OUTSIDE_TARGET_BLOCK
+        1 REGRESSION_PATH_UNRESOLVED
+        1 REGRESSION_TEST_BLOCK_MISSING
+
+[PASS] retained inventory unchanged
+       candidates=120 boundaries=113 rawSites=11
+       counts TX_BOUNDARY=100 TX_PARTICIPANT=0 TX_DELEGATE=0 NON_TX=7
+              TEST_ONLY_OR_DEAD=13 REVIEW_REQUIRED=0
+
+[PASS] audit test excluded from the normal unit lane
+       vitest list tests/unit -> transaction-authority-validator entries = 0
+       total collected unit items = 1232
+
+[PASS] normal unit suite after exclusion
+       Test Files 155 passed (155)   Tests 1232 passed (1232)   Duration 120.18s
+       command: vitest run tests/unit --maxWorkers=2
+
+[PASS] audit verification test now green
+       vitest run scripts/ts6-audit/regression-evidence-authority.test.ts
+       Test Files 1 passed (1)   Tests 24 passed (24)
+
+[PASS] C2-R15 acceptance + negative regression test
+       vitest run scripts/ts6-audit/c2r15-authority-correction.test.ts
+       Test Files 1 passed (1)   Tests 8 passed (8)
+
+[PASS] scanner determinism
+       observedInventoryDigest 4377fec79e627e0a3217a3c0a2eed5aba7a1707bb6204fc45f713888896eec42
+       identical across two consecutive audit runs
+
+[NOT RUN] DB-gated rebind proof (no TEST_DATABASE_URL in this session)
+[NOT RUN] test:ci, test:contract, Stage 9, NetworkX, test:database

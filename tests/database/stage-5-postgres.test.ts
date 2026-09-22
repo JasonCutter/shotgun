@@ -228,4 +228,55 @@ describe.runIf(pool)('Stage 5 PostgreSQL persistence', () => {
     expect(count.rows[0]?.count).toBe('1');
     await kernel.shutdown();
   });
+
+  // C2-R15 minimal proof for the registered
+  // `PostgresChangeSetReviewRepository.recordDecision` transaction boundary. The
+  // earlier relation reached the V2 repository's own `recordDecision`, which is a
+  // different registered boundary and can never qualify, and no existing block
+  // calls this repository method directly. This does, against real PostgreSQL,
+  // and asserts both the committed decision row and the returned Draft state.
+  it('commits the review decision and its Draft state in one transaction (PostgresChangeSetReviewRepository)', async () => {
+    const kernel = await createHarness(new InMemoryAssetStorage());
+    const { command, draft } = await createDraft(kernel, 'stage5-postgres-record-decision');
+    const repository = new PostgresChangeSetReviewRepository(pool!);
+    const decisionId = randomUUID();
+    const decision = decisionCommand(
+      command,
+      draft,
+      'HOLD',
+      decisionId,
+      'Owner deferred the decision pending evidence review.',
+    ).payload;
+
+    const stored = await repository.recordDecision({
+      projectId: draft.projectId,
+      changeSetId: draft.changeSetId,
+      expectedRevisionNumber: draft.revisionNumber,
+      expectedContentDigest: draft.contentDigest,
+      updated: { ...draft, status: 'ON_HOLD', updatedAt: new Date().toISOString() },
+      decision: {
+        decisionId,
+        decision: decision.decision,
+        reason: decision.reason,
+        actor: command.actor!,
+        contentDigest: draft.contentDigest,
+        decidedAt: new Date().toISOString(),
+      },
+    });
+
+    expect(stored.changeSet.status).toBe('ON_HOLD');
+    // The boundary's transaction committed BOTH writes: the decision row and the
+    // Draft state.
+    const persisted = await pool!.query<{ decision_json: { decisionId: string } }>(
+      `SELECT decision_json FROM review.decisions WHERE decision_id = $1`,
+      [decisionId],
+    );
+    expect(persisted.rows[0]?.decision_json.decisionId).toBe(decisionId);
+    const persistedDraft = await pool!.query<{ change_set_json: { status: string } }>(
+      `SELECT change_set_json FROM review.change_sets WHERE change_set_id = $1`,
+      [draft.changeSetId],
+    );
+    expect(persistedDraft.rows[0]?.change_set_json.status).toBe('ON_HOLD');
+    await kernel.shutdown();
+  });
 });

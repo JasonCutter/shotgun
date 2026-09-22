@@ -288,4 +288,53 @@ describe('Standing AI processing policy Project Owner authority', () => {
       await app.server.close();
     }
   });
+
+  // C2-R15 minimal proof for the registered
+  // `PostgresStandingAIProcessingPolicyRepository.saveRevision` transaction
+  // boundary. The earlier relation reached a same-named method on an unrelated
+  // class. This invokes the boundary itself against real PostgreSQL and asserts
+  // the committed revision is durable.
+  it('commits the Standing AI policy revision through the repository boundary', async () => {
+    const suffix = randomUUID();
+    const projectId = `standing-policy-boundary-${suffix}`;
+    const changedAt = new Date().toISOString();
+    await pool.query(
+      `INSERT INTO project_admin.projects
+         (id, name, status, active, created_at, updated_at, revision)
+       VALUES ($1, $2, 'ACTIVE', true, $3, $3, 1)`,
+      [projectId, `Standing Policy Boundary ${suffix}`, changedAt],
+    );
+
+    const repository = new PostgresStandingAIProcessingPolicyRepository(pool);
+    const outcome = await repository.saveRevision({
+      expectedRevision: 0,
+      next: {
+        projectId,
+        enabled: true,
+        providerId: 'deepseek',
+        policyRevision: 1,
+        aiConfigurationRevision: 3,
+        changedBy: 'c2r15-boundary-proof',
+        changedAt,
+      },
+    });
+    expect(outcome).toBe('CREATED');
+
+    // Durable only if the boundary's transaction committed.
+    const current = await repository.getCurrent(projectId);
+    expect(current).toMatchObject({
+      projectId,
+      enabled: true,
+      providerId: 'deepseek',
+      policyRevision: 1,
+      aiConfigurationRevision: 3,
+    });
+    const revisions = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+         FROM ai.project_standing_ai_processing_policy_revisions
+        WHERE project_id = $1`,
+      [projectId],
+    );
+    expect(revisions.rows[0]?.count).toBe('1');
+  });
 });

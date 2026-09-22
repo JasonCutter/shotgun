@@ -1,0 +1,655 @@
+{
+  "generatedAt": "2026-09-21T04:52:56.156Z",
+  "mode": "C2-R15 STEP 0 — independent resolution of approved v2 evidence relations",
+  "note": "golden.v2 was NOT modified. This is resolution/assessment only.",
+  "declaredCoverageDimension": {
+    "DIRECT_BOUNDARY": 57,
+    "PUBLIC_PATH": 6,
+    "OWNER_ATOMICITY": 6
+  },
+  "resolutionDimension": {
+    "RESOLVED_DIRECT": 38,
+    "TARGET_MISMATCH": 8,
+    "CALL_OUTSIDE_TARGET_BLOCK": 2,
+    "NO_QUALIFIED_CALL": 3,
+    "UNQUALIFIED_RECEIVER": 6,
+    "PATH_NOT_RESOLVED": 1,
+    "RESOLVED_PUBLIC_PATH": 5,
+    "RESOLVED_OWNER_ATOMICITY": 5,
+    "MISSING_TEST_BLOCK": 1
+  },
+  "totals": {
+    "records": 69,
+    "resolved": 48,
+    "notResolved": 21
+  },
+  "notResolvedDetail": [
+    {
+      "testEvidenceId": "test:tests/database/akp-2-wp4-discovery-backup-restore.database.test.ts:backs up and restores the durable finding and complete lifecycle history",
+      "targetBoundaryId": "safe:adapters/ai-configuration-postgres/src/index.ts:106",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresProjectAIConfigurationRepository.saveRevision",
+      "path": [
+        "PostgresProjectAIConfigurationRepository.saveRevision"
+      ],
+      "testFile": "tests/database/akp-2-wp4-discovery-backup-restore.database.test.ts",
+      "testTitle": "backs up and restores the durable finding and complete lifecycle history",
+      "resolution": "TARGET_MISMATCH",
+      "resolved": false,
+      "issueCode": "REGRESSION_TARGET_MISMATCH",
+      "evidence": [
+        "saveRevision is invoked in the declared block but on a different class (expected PostgresProjectAIConfigurationRepository)",
+        "sourceProfileRepository -> PostgresDiscoveryModelProfileRepository (receiver root \"sourceProfileRepository\" resolves to PostgresDiscoveryModelProfileRepository)"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+      "targetBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresOrderingStore.commit",
+      "path": [
+        "PostgresOrderingStore.commit"
+      ],
+      "testFile": "tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts",
+      "testTitle": "proves the production Canonical → Discovery → Review → Draft → Canonical journey",
+      "resolution": "CALL_OUTSIDE_TARGET_BLOCK",
+      "resolved": false,
+      "issueCode": "REGRESSION_CALL_OUTSIDE_TARGET_BLOCK",
+      "evidence": [
+        "commit is invoked in tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts but NOT inside block \"proves the production Canonical → Discovery → Review → Draft → Canonical journey\""
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/contract/akp-7-wp3-discovery-presentation.contract.test.ts:keeps utility and suppression principal-scoped and rejects cursor replay",
+      "targetBoundaryId": "safe:adapters/discovery-feedback-postgres/src/index.ts:444",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresDiscoveryFeedbackRepository.appendSuppression",
+      "path": [
+        "PostgresDiscoveryFeedbackRepository.appendSuppression"
+      ],
+      "testFile": "tests/contract/akp-7-wp3-discovery-presentation.contract.test.ts",
+      "testTitle": "keeps utility and suppression principal-scoped and rejects cursor replay",
+      "resolution": "TARGET_MISMATCH",
+      "resolved": false,
+      "issueCode": "REGRESSION_TARGET_MISMATCH",
+      "evidence": [
+        "appendSuppression is invoked in the declared block but on a different class (expected PostgresDiscoveryFeedbackRepository)",
+        "repository -> InMemoryDiscoveryFeedbackRepository (receiver root \"repository\" resolves to InMemoryDiscoveryFeedbackRepository)"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/contract/ai-configuration.contract.test.ts:returns registry descriptors and saves only a validated exact credential reference",
+      "targetBoundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:360",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresDiscoveryFindingRepository.save",
+      "path": [
+        "PostgresDiscoveryFindingRepository.save"
+      ],
+      "testFile": "tests/contract/ai-configuration.contract.test.ts",
+      "testTitle": "returns registry descriptors and saves only a validated exact credential reference",
+      "resolution": "TARGET_MISMATCH",
+      "resolved": false,
+      "issueCode": "REGRESSION_TARGET_MISMATCH",
+      "evidence": [
+        "save is invoked in the declared block but on a different class (expected PostgresDiscoveryFindingRepository)",
+        "service -> InMemoryProjectAIConfigurationRepository (receiver root \"service\" resolves to InMemoryProjectAIConfigurationRepository)"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/contract/akp-4-wp4-discovery-execution.contract.test.ts:runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "targetBoundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2093",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresDiscoveryRuntimeRepository.releaseLease",
+      "path": [
+        "PostgresDiscoveryRuntimeRepository.releaseLease"
+      ],
+      "testFile": "tests/contract/akp-4-wp4-discovery-execution.contract.test.ts",
+      "testTitle": "runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim",
+      "resolution": "NO_QUALIFIED_CALL",
+      "resolved": false,
+      "issueCode": "REGRESSION_QUALIFIED_CALL_MISSING",
+      "evidence": [
+        "no call to releaseLease inside block \"runs the seven durable stages, finalizes lineage, and does not reclaim a completed claim\" in tests/contract/akp-4-wp4-discovery-execution.contract.test.ts"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:matches in-memory direct identity lookup (findByIdentity)",
+      "targetBoundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:439",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "<module>.commitProjectProjection",
+      "path": [
+        "<module>.commitProjectProjection"
+      ],
+      "testFile": "tests/database/frontend-activity-postgres-parity.test.ts",
+      "testTitle": "matches in-memory direct identity lookup (findByIdentity)",
+      "resolution": "CALL_OUTSIDE_TARGET_BLOCK",
+      "resolved": false,
+      "issueCode": "REGRESSION_CALL_OUTSIDE_TARGET_BLOCK",
+      "evidence": [
+        "commitProjectProjection is invoked in tests/database/frontend-activity-postgres-parity.test.ts but NOT inside block \"matches in-memory direct identity lookup (findByIdentity)\""
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/browser/frontend-settings-privacy-flow.spec.ts:HFM-S7-C6 Settings privacy flow: AI review required -> Privacy proposal -> Approval",
+      "targetBoundaryId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:110",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresFrontendCommandGateway.accept",
+      "path": [
+        "PostgresFrontendCommandGateway.accept"
+      ],
+      "testFile": "tests/browser/frontend-settings-privacy-flow.spec.ts",
+      "testTitle": "HFM-S7-C6 Settings privacy flow: AI review required -> Privacy proposal -> Approval",
+      "resolution": "UNQUALIFIED_RECEIVER",
+      "resolved": false,
+      "issueCode": "REGRESSION_RECEIVER_UNQUALIFIED",
+      "evidence": [
+        "accept is invoked in the declared block but the receiver cannot be bound to PostgresFrontendCommandGateway",
+        "dialog -> UNRESOLVED (cannot derive a boundary class for \"dialog\")"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/adr155-post-handler-outcome-unknown.test.ts:converges a committed dedup completion when its acknowledgement is lost",
+      "targetBoundaryId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:279",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresFrontendCommandGateway.complete",
+      "path": [
+        "PostgresFrontendCommandGateway.complete"
+      ],
+      "testFile": "tests/database/adr155-post-handler-outcome-unknown.test.ts",
+      "testTitle": "converges a committed dedup completion when its acknowledgement is lost",
+      "resolution": "TARGET_MISMATCH",
+      "resolved": false,
+      "issueCode": "REGRESSION_TARGET_MISMATCH",
+      "evidence": [
+        "complete is invoked in the declared block but on a different class (expected PostgresFrontendCommandGateway)",
+        "faulted -> PostgresDedupStore (receiver root \"faulted\" resolves to PostgresDedupStore)"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts:accepts Review into one server-materialized Draft and composes restrictive persisted security",
+      "targetBoundaryId": "safe:adapters/frontend-external-action-postgres/src/index.ts:114",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresExternalActionStore.transactionWithHandle",
+      "path": [
+        "PostgresExternalActionStore.transactionWithHandle"
+      ],
+      "testFile": "tests/database/akp-8-wp2a-review-draft-postgres.database.test.ts",
+      "testTitle": "accepts Review into one server-materialized Draft and composes restrictive persisted security",
+      "resolution": "TARGET_MISMATCH",
+      "resolved": false,
+      "issueCode": "REGRESSION_TARGET_MISMATCH",
+      "evidence": [
+        "transactionWithHandle is invoked in the declared block but on a different class (expected PostgresExternalActionStore)",
+        "draftRepository -> PostgresFrontendKnowledgeDraftRepository (receiver root \"draftRepository\" resolves to PostgresFrontendKnowledgeDraftRepository)",
+        "draftRepository -> PostgresFrontendKnowledgeDraftRepository (receiver root \"draftRepository\" resolves to PostgresFrontendKnowledgeDraftRepository)",
+        "draftRepository -> PostgresFrontendKnowledgeDraftRepository (receiver root \"draftRepository\" resolves to PostgresFrontendKnowledgeDraftRepository)"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:E2E-A: persists a fresh DeepSeek Product configuration and routes a new durable Ask through its exact pin",
+      "targetBoundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:272",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresSourcesProductService.submit",
+      "path": [
+        "PostgresSourcesProductService.submit"
+      ],
+      "testFile": "tests/database/a9-final-closure-evidence.test.ts",
+      "testTitle": "E2E-A: persists a fresh DeepSeek Product configuration and routes a new durable Ask through its exact pin",
+      "resolution": "UNQUALIFIED_RECEIVER",
+      "resolved": false,
+      "issueCode": "REGRESSION_RECEIVER_UNQUALIFIED",
+      "evidence": [
+        "submit is invoked in the declared block but the receiver cannot be bound to PostgresSourcesProductService",
+        "(bare) -> UNRESOLVED (bare identifier call)"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:E2E-D: routes a new credential revision while an older failed Run retries with its original revision",
+      "targetBoundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresSourcesProductService.retry",
+      "path": [
+        "PostgresSourcesProductService.retry"
+      ],
+      "testFile": "tests/database/a9-final-closure-evidence.test.ts",
+      "testTitle": "E2E-D: routes a new credential revision while an older failed Run retries with its original revision",
+      "resolution": "UNQUALIFIED_RECEIVER",
+      "resolved": false,
+      "issueCode": "REGRESSION_RECEIVER_UNQUALIFIED",
+      "evidence": [
+        "retry is invoked in the declared block but the receiver cannot be bound to PostgresSourcesProductService",
+        "fixture.execution -> UNRESOLVED (cannot derive a boundary class for \"fixture.execution\")"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/adr163-product-r19-postgres.test.ts:reconciles Product route ack loss without replaying the resolver",
+      "targetBoundaryId": "safe:adapters/postgres-auth/src/index.ts:145",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresAuthRepository.bootstrapOwner",
+      "path": [
+        "PostgresAuthRepository.bootstrapOwner"
+      ],
+      "testFile": "tests/database/adr163-product-r19-postgres.test.ts",
+      "testTitle": "reconciles Product route ack loss without replaying the resolver",
+      "resolution": "TARGET_MISMATCH",
+      "resolved": false,
+      "issueCode": "REGRESSION_TARGET_MISMATCH",
+      "evidence": [
+        "bootstrapOwner is invoked in the declared block but on a different class (expected PostgresAuthRepository)",
+        "auth -> InMemoryAuthRepository (receiver root \"auth\" resolves to InMemoryAuthRepository)"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/contract/knowledge-workspace-search.contract.test.ts:rejects Derived Inference correlation outside visible graph nodes and evidence",
+      "targetBoundaryId": "safe:adapters/postgres-stage10/src/index.ts:167",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresCompiledTruthRepository.saveInferences",
+      "path": [
+        "PostgresCompiledTruthRepository.saveInferences"
+      ],
+      "testFile": "tests/contract/knowledge-workspace-search.contract.test.ts",
+      "testTitle": "rejects Derived Inference correlation outside visible graph nodes and evidence",
+      "resolution": "UNQUALIFIED_RECEIVER",
+      "resolved": false,
+      "issueCode": "REGRESSION_RECEIVER_UNQUALIFIED",
+      "evidence": [
+        "saveInferences is invoked in the declared block but the receiver cannot be bound to PostgresCompiledTruthRepository",
+        "compiledTruthRepository -> UNRESOLVED (cannot derive a boundary class for \"compiledTruthRepository\")"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/contract/compiled-truth.contract.test.ts:serves the additive read snapshot with status fallback and security filtering",
+      "targetBoundaryId": "safe:adapters/postgres-stage10/src/index.ts:85",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresCompiledTruthRepository.synchronize",
+      "path": [
+        "PostgresCompiledTruthRepository.synchronize"
+      ],
+      "testFile": "tests/contract/compiled-truth.contract.test.ts",
+      "testTitle": "serves the additive read snapshot with status fallback and security filtering",
+      "resolution": "UNQUALIFIED_RECEIVER",
+      "resolved": false,
+      "issueCode": "REGRESSION_RECEIVER_UNQUALIFIED",
+      "evidence": [
+        "synchronize is invoked in the declared block but the receiver cannot be bound to PostgresCompiledTruthRepository",
+        "app.repositories.compiledTruth -> UNRESOLVED (cannot derive a boundary class for \"app.repositories.compiledTruth\")"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/browser/frontend-cross-phase-negative.spec.ts:Cross-Phase negative deltas CP-NEG-01~06 (no authority, switch isolation, non-disclosure, no auto-canonical, no approval bypass, no approval/commit/execute mix)",
+      "targetBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresSourcesStage3ProgressRepository.claim",
+      "path": [
+        "PostgresSourcesStage3ProgressRepository.claim"
+      ],
+      "testFile": "tests/browser/frontend-cross-phase-negative.spec.ts",
+      "testTitle": "Cross-Phase negative deltas CP-NEG-01~06 (no authority, switch isolation, non-disclosure, no auto-canonical, no approval bypass, no approval/commit/execute mix)",
+      "resolution": "NO_QUALIFIED_CALL",
+      "resolved": false,
+      "issueCode": "REGRESSION_QUALIFIED_CALL_MISSING",
+      "evidence": [
+        "no call to claim inside block \"Cross-Phase negative deltas CP-NEG-01~06 (no authority, switch isolation, non-disclosure, no auto-canonical, no approval bypass, no approval/commit/execute mix)\" in tests/browser/frontend-cross-phase-negative.spec.ts"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/contract/adr163-stage6-integrated.contract.test.ts:runs resolved ADD_CLAIM through approval and Stage 6 Canonical +1",
+      "targetBoundaryId": "safe:adapters/postgres-stage4/src/index.ts:841",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresCandidateRepository.saveBatch",
+      "path": [
+        "PostgresCandidateRepository.saveBatch"
+      ],
+      "testFile": "tests/contract/adr163-stage6-integrated.contract.test.ts",
+      "testTitle": "runs resolved ADD_CLAIM through approval and Stage 6 Canonical +1",
+      "resolution": "UNQUALIFIED_RECEIVER",
+      "resolved": false,
+      "issueCode": "REGRESSION_RECEIVER_UNQUALIFIED",
+      "evidence": [
+        "saveBatch is invoked in the declared block but the receiver cannot be bound to PostgresCandidateRepository",
+        "harness.candidateRepository -> UNRESOLVED (cannot derive a boundary class for \"harness.candidateRepository\")"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/comparison-review-v2-postgres.test.ts:Issue #299: atomically converges only the exact Draft revision to STALE",
+      "targetBoundaryId": "safe:adapters/postgres-stage5/src/index.ts:1239",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresChangeSetReviewRepository.recordDecision",
+      "path": [
+        "PostgresChangeSetReviewRepository.recordDecision"
+      ],
+      "testFile": "tests/database/comparison-review-v2-postgres.test.ts",
+      "testTitle": "Issue #299: atomically converges only the exact Draft revision to STALE",
+      "resolution": "TARGET_MISMATCH",
+      "resolved": false,
+      "issueCode": "REGRESSION_TARGET_MISMATCH",
+      "evidence": [
+        "recordDecision is invoked in the declared block but on a different class (expected PostgresChangeSetReviewRepository)",
+        "repository -> PostgresChangeSetReviewV2Repository (receiver root \"repository\" resolves to PostgresChangeSetReviewV2Repository)"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/contract/akp-8-wp2a-canonical-relation-projection.contract.test.ts:keeps the in-memory replacement adapter relation-aware and replay-safe",
+      "targetBoundaryId": "safe:adapters/postgres-stage6/src/index.ts:758",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresCanonicalKnowledgeRepository.commitFrontendDraft",
+      "path": [
+        "PostgresCanonicalKnowledgeRepository.commitFrontendDraft"
+      ],
+      "testFile": "tests/contract/akp-8-wp2a-canonical-relation-projection.contract.test.ts",
+      "testTitle": "keeps the in-memory replacement adapter relation-aware and replay-safe",
+      "resolution": "TARGET_MISMATCH",
+      "resolved": false,
+      "issueCode": "REGRESSION_TARGET_MISMATCH",
+      "evidence": [
+        "commitFrontendDraft is invoked in the declared block but on a different class (expected PostgresCanonicalKnowledgeRepository)",
+        "repository -> InMemoryCompiledTruthRepository (receiver root \"repository\" resolves to InMemoryCompiledTruthRepository)",
+        "repository -> InMemoryCompiledTruthRepository (receiver root \"repository\" resolves to InMemoryCompiledTruthRepository)",
+        "repository -> InMemoryCompiledTruthRepository (receiver root \"repository\" resolves to InMemoryCompiledTruthRepository)"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts:re-enters the same durable event on a rotated job and snapshots the current DLQ job",
+      "targetBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+      "declaredCoverageKind": "PUBLIC_PATH",
+      "entrySymbol": "kernel.connector.publishEvent",
+      "path": [
+        "kernel.connector.publishEvent",
+        "ConnectorRuntime",
+        "PostgresOrderingStore.acquireNext"
+      ],
+      "testFile": "tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts",
+      "testTitle": "re-enters the same durable event on a rotated job and snapshots the current DLQ job",
+      "resolution": "PATH_NOT_RESOLVED",
+      "resolved": false,
+      "issueCode": "REGRESSION_PATH_UNRESOLVED",
+      "evidence": [
+        "approved entry invoked in declared block: kernel.connector.publishEvent",
+        "approved path does not resolve from ConnectorRuntime to acquireNext"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/post-tf-risk002-connector-fencing-proof.test.ts:Scenario A: production recovery leaves a real running attempt behind",
+      "targetBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "recoverProductionExpiredLeases",
+      "path": [
+        "recoverProductionExpiredLeases",
+        "PostgresConnectorRuntimeState.recoverExpiredLeases"
+      ],
+      "testFile": "tests/database/post-tf-risk002-connector-fencing-proof.test.ts",
+      "testTitle": "Scenario A: production recovery leaves a real running attempt behind",
+      "resolution": "NO_QUALIFIED_CALL",
+      "resolved": false,
+      "issueCode": "REGRESSION_QUALIFIED_CALL_MISSING",
+      "evidence": [
+        "no call to recoverExpiredLeases inside block \"Scenario A: production recovery leaves a real running attempt behind\" in tests/database/post-tf-risk002-connector-fencing-proof.test.ts"
+      ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded",
+      "targetBoundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485",
+      "declaredCoverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "mixedService.submit",
+      "path": [
+        "mixedService.submit",
+        "PostgresSourcesProductService.runStage3AndFinalize",
+        "PostgresSourcesProductService.markStage3ItemsSucceeded"
+      ],
+      "testFile": "tests/database/frontend-sources-stage3-recovery.test.ts",
+      "testTitle": "mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded",
+      "resolution": "MISSING_TEST_BLOCK",
+      "resolved": false,
+      "issueCode": "REGRESSION_TEST_BLOCK_MISSING",
+      "evidence": [
+        "no it()/test() block titled \"mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded\" in tests/database/frontend-sources-stage3-recovery.test.ts"
+      ]
+    }
+  ],
+  "liveZeroCount": 13,
+  "liveZeroReport": [
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+      "symbol": "PostgresOrderingStore",
+      "method": "acquireNext",
+      "declaredCoverageKind": "PUBLIC_PATH",
+      "entrySymbol": "kernel.connector.publishEvent",
+      "path": [
+        "kernel.connector.publishEvent",
+        "ConnectorRuntime",
+        "PostgresOrderingStore.acquireNext"
+      ],
+      "testEvidenceId": "test:tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts:re-enters the same durable event on a rotated job and snapshots the current DLQ job",
+      "resolution": "PATH_NOT_RESOLVED",
+      "resolved": false,
+      "evidence": [
+        "approved entry invoked in declared block: kernel.connector.publishEvent",
+        "approved path does not resolve from ConnectorRuntime to acquireNext"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "symbol": "PostgresConnectorRuntimeState",
+      "method": "recoverExpiredLeases",
+      "declaredCoverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "recoverProductionExpiredLeases",
+      "path": [
+        "recoverProductionExpiredLeases",
+        "PostgresConnectorRuntimeState.recoverExpiredLeases"
+      ],
+      "testEvidenceId": "test:tests/database/post-tf-risk002-connector-fencing-proof.test.ts:Scenario A: production recovery leaves a real running attempt behind",
+      "resolution": "NO_QUALIFIED_CALL",
+      "resolved": false,
+      "evidence": [
+        "no call to recoverExpiredLeases inside block \"Scenario A: production recovery leaves a real running attempt behind\" in tests/database/post-tf-risk002-connector-fencing-proof.test.ts"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:777",
+      "symbol": "PostgresDiscoveryReentryRepository",
+      "method": "recordConsumptionDisposition",
+      "declaredCoverageKind": "PUBLIC_PATH",
+      "entrySymbol": "createRetryConsumer",
+      "path": [
+        "createRetryConsumer",
+        "DiscoveryReentryConsumer.runOnce",
+        "PostgresDiscoveryReentryRepository.recordConsumptionDisposition"
+      ],
+      "testEvidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:durably defers retryable failures, advances the retry boundary, and transitions to processed",
+      "resolution": "RESOLVED_PUBLIC_PATH",
+      "resolved": true,
+      "evidence": [
+        "approved entry invoked in declared block: createRetryConsumer",
+        "approved path resolves to target: modules/discovery-reentry/src/index.ts:DiscoveryReentryConsumer.runOnce -> consume -> modules/discovery-reentry/src/index.ts:DiscoveryReentryConsumer.consume -> recordConsumptionDisposition"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-reentry-postgres/src/index.ts:987",
+      "symbol": "PostgresDiscoveryReentryRepository",
+      "method": "persistIntake",
+      "declaredCoverageKind": "PUBLIC_PATH",
+      "entrySymbol": "runConsumer",
+      "path": [
+        "runConsumer",
+        "DiscoveryReentryConsumer.runOnce",
+        "PostgresDiscoveryReentryRepository.persistIntake"
+      ],
+      "testEvidenceId": "test:tests/database/akp-5-wp2-discovery-reentry.database.test.ts:creates one manifest/candidate atomically and resolves a production-shaped unversioned ref",
+      "resolution": "RESOLVED_PUBLIC_PATH",
+      "resolved": true,
+      "evidence": [
+        "approved entry invoked in declared block: runConsumer",
+        "approved path resolves to target: modules/discovery-reentry/src/index.ts:DiscoveryReentryConsumer.runOnce -> consume -> modules/discovery-reentry/src/index.ts:DiscoveryReentryConsumer.consume -> persistIntake"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:91",
+      "symbol": "PostgresActivityIndexStore",
+      "method": "withProjectWriteLock",
+      "declaredCoverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "index.upsert",
+      "path": [
+        "index.upsert",
+        "index.rebuildProject",
+        "PostgresActivityIndexStore.withProjectWriteLock"
+      ],
+      "testEvidenceId": "test:tests/database/frontend-activity-postgres-parity.test.ts:serializes a concurrent upsert and rebuild so a lower revision never wins",
+      "resolution": "RESOLVED_OWNER_ATOMICITY",
+      "resolved": true,
+      "evidence": [
+        "owner entry invoked in declared block: index.upsert",
+        "assertions: block=4, file=88; total calls in block: 13"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2421",
+      "symbol": "PostgresAskAnswerExecutionRepository",
+      "method": "poolTransaction",
+      "declaredCoverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "executionService.startWorker",
+      "path": [
+        "executionService.startWorker",
+        "PostgresAskAnswerExecutionRepository",
+        "PostgresAskAnswerExecutionRepository.poolTransaction"
+      ],
+      "testEvidenceId": "test:tests/database/frontend-ask-write-postgres.database.test.ts:commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
+      "resolution": "RESOLVED_OWNER_ATOMICITY",
+      "resolved": true,
+      "evidence": [
+        "owner entry invoked in declared block: executionService.startWorker",
+        "assertions: block=32, file=50; total calls in block: 65"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485",
+      "symbol": "PostgresSourcesProductService",
+      "method": "markStage3ItemsSucceeded",
+      "declaredCoverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "mixedService.submit",
+      "path": [
+        "mixedService.submit",
+        "PostgresSourcesProductService.runStage3AndFinalize",
+        "PostgresSourcesProductService.markStage3ItemsSucceeded"
+      ],
+      "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded",
+      "resolution": "MISSING_TEST_BLOCK",
+      "resolved": false,
+      "evidence": [
+        "no it()/test() block titled \"mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL:markStage3ItemsSucceeded\" in tests/database/frontend-sources-stage3-recovery.test.ts"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:467",
+      "symbol": "PostgresSourcesProductService",
+      "method": "markSubmissionStage3Incomplete",
+      "declaredCoverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "service.submit",
+      "path": [
+        "service.submit",
+        "PostgresSourcesProductService.runStage3AndFinalize",
+        "PostgresSourcesProductService.markSubmissionStage3Incomplete"
+      ],
+      "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:Stage3 first attempt throws → retry → same SourceId/SourceVersionId → Stage3 completes → Evidence exists → no duplicate SourceVersion",
+      "resolution": "RESOLVED_OWNER_ATOMICITY",
+      "resolved": true,
+      "evidence": [
+        "owner entry invoked in declared block: service.submit",
+        "assertions: block=22, file=42; total calls in block: 38"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:508",
+      "symbol": "PostgresSourcesProductService",
+      "method": "finalizeSubmissionState",
+      "declaredCoverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "mixedService.submit",
+      "path": [
+        "mixedService.submit",
+        "PostgresSourcesProductService.runStage3AndFinalize",
+        "PostgresSourcesProductService.finalizeSubmissionState"
+      ],
+      "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL",
+      "resolution": "RESOLVED_OWNER_ATOMICITY",
+      "resolved": true,
+      "evidence": [
+        "owner entry invoked in declared block: mixedService.submit",
+        "assertions: block=20, file=42; total calls in block: 42"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:1340",
+      "symbol": "PostgresChangeSetReviewRepository",
+      "method": "markStale",
+      "declaredCoverageKind": "PUBLIC_PATH",
+      "entrySymbol": "decideV1",
+      "path": [
+        "decideV1",
+        "createChangeSetReviewModule",
+        "PostgresChangeSetReviewRepository.markStale"
+      ],
+      "testEvidenceId": "test:tests/database/comparison-reentry-product-postgres.test.ts:executes V2 through the authenticated Product route and reuses the persisted lineage before provider execution",
+      "resolution": "RESOLVED_PUBLIC_PATH",
+      "resolved": true,
+      "evidence": [
+        "approved entry invoked in declared block: decideV1",
+        "approved path resolves to target: modules/change-set-review/src/index.ts:<module>.createChangeSetReviewModule -> markStale"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage5/src/index.ts:418",
+      "symbol": "PostgresComparisonV2Repository",
+      "method": "withTransaction",
+      "declaredCoverageKind": "OWNER_ATOMICITY",
+      "entrySymbol": "repository.saveCompletedAggregate",
+      "path": [
+        "repository.saveCompletedAggregate",
+        "PostgresComparisonV2Repository.withTransaction"
+      ],
+      "testEvidenceId": "test:tests/database/stage-5-comparison-v2-postgres.test.ts:P2-01 persists a semantic aggregate with two analyses and two relationships and reloads it",
+      "resolution": "RESOLVED_OWNER_ATOMICITY",
+      "resolved": true,
+      "evidence": [
+        "owner entry invoked in declared block: repository.saveCompletedAggregate",
+        "assertions: block=6, file=109; total calls in block: 14"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:160",
+      "symbol": "PostgresProviderExternalTransferApprovalRepository",
+      "method": "approveProposal",
+      "declaredCoverageKind": "PUBLIC_PATH",
+      "entrySymbol": "service.approve",
+      "path": [
+        "service.approve",
+        "ProviderExternalTransferApprovalService.approve",
+        "PostgresProviderExternalTransferApprovalRepository.approveProposal"
+      ],
+      "testEvidenceId": "test:tests/database/a4-provider-external-transfer-authority.test.ts:fails closed on stale and concurrent approvals while keeping one current revision",
+      "resolution": "RESOLVED_PUBLIC_PATH",
+      "resolved": true,
+      "evidence": [
+        "approved entry invoked in declared block: service.approve",
+        "approved path resolves to target: modules/provider-privacy-policy/src/index.ts:ProviderExternalTransferApprovalService.approve -> approveProposal"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:90",
+      "symbol": "PostgresProviderExternalTransferApprovalRepository",
+      "method": "createProposal",
+      "declaredCoverageKind": "PUBLIC_PATH",
+      "entrySymbol": "service.propose",
+      "path": [
+        "service.propose",
+        "ProviderExternalTransferApprovalService.propose",
+        "PostgresProviderExternalTransferApprovalRepository.createProposal"
+      ],
+      "testEvidenceId": "test:tests/database/a4-provider-external-transfer-authority.test.ts:adds provider/project authority without rewriting historical Settings and preserves immutable history",
+      "resolution": "RESOLVED_PUBLIC_PATH",
+      "resolved": true,
+      "evidence": [
+        "approved entry invoked in declared block: service.propose",
+        "approved path resolves to target: modules/provider-privacy-policy/src/index.ts:ProviderExternalTransferApprovalService.propose -> createProposal"
+      ]
+    }
+  ]
+}

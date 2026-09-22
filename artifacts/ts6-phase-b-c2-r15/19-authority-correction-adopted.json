@@ -1,0 +1,116 @@
+{
+  "generatedAt": "2026-09-21T22:45:00.000Z",
+  "subject": "C2-R15 round 3 — qualified reachability authority ADOPTED, v6 lineage derived",
+  "ownerAuthorization": {
+    "bootstrapOwner": "TEST_ONLY_OR_DEAD — the only call path is gated by `VITEST && !options.authRepository && !production`, and under a Postgres configuration `authRepository = new PostgresAuthRepository(pool)` is injected, so `!options.authRepository` is mutually exclusive with it. No supported production execution path exists.",
+    "authorityReplacement": "APPROVED — remove callersFor() from the classification authority and adopt qualified boundaryMatchKind().",
+    "applicationPrinciple": "frozen v2 / frozen crosswalk / golden.v5 / historical counts preserved; the correction produces a NEW derived lineage; every value currently derived from the authority must consume the SAME boundaryMatchKind result.",
+    "callersForRetention": "may be retained as historical/diagnostic metadata only, and must not be reused as an authority for PROVEN, coverage requirement, PUBLIC_PATH, evidence sourcing or reconciliation classification.",
+    "pinnedTests": "must NOT be a simple substitution: separate the HISTORICAL assertion (legacy authority -> 100/13) from the CURRENT authority assertion (qualified -> 96/17/0)."
+  },
+
+  "authority": {
+    "authority": "scripts/ts6-phase-b-production-reachability.ts — boundaryMatchKind()",
+    "authorityKind": "qualified production reachability",
+    "legacyAuthority": "scripts/ts6-phase-b-transaction-authority-validator.ts — callersFor()",
+    "legacyAuthorityStatus": "RETIRED FROM AUTHORITY — retained only as legacyRecordedCallers metadata and for the reconstructed legacy scoreboard",
+    "singleDoctrine": "boundaryMatchKind() is the only expression of the qualification doctrine. resolveReachability consumes it for the verdict, classifyCallers consumes it for the caller classification, and the validator derives status, caller sets, candidateReconciliation[].c2r2Classification and summary from that one result.",
+    "nonProductionGate": "a call written behind a non-production gate (VITEST, or NODE_ENV === 'test', inline or through a flag initialised from one) is TEST evidence, not a production execution path"
+  },
+
+  "scoreboard": {
+    "legacyAuthority": { "TX_BOUNDARY": 100, "TEST_ONLY_OR_DEAD": 13, "REVIEW_REQUIRED": 0 },
+    "currentAuthority": { "TX_BOUNDARY": 96, "TEST_ONLY_OR_DEAD": 17, "REVIEW_REQUIRED": 0 },
+    "inventory": { "candidates": 120, "boundaries": 113, "rawSites": 11, "historicalRows": 87 },
+    "inventoryNote": "counted independently of status — unchanged by the authority replacement"
+  },
+
+  "statusMoves": [
+    {
+      "boundary": "PostgresDiscoveryFindingRepository.save",
+      "from": "PROVEN",
+      "to": "TEST_ONLY_OR_DEAD",
+      "evidence": "8 same-named call sites, every one on an unrelated Port (TransformationRepositoryPort x2, ProjectAIConfigurationPort, StandingAIProcessingPolicyWriterPort, ChangeSetReviewRepositoryPort x2, DiscoveryReviewResourceWriterPort, IntakeRepositoryPort) + 1 unresolved. The composite the boundary is wired through is `ProductFindingRepository = DiscoveryFindingRepositoryPort & DiscoveryFindingLifecycleRepositoryPort`, and enumerating every member access on that composite shows listByProject, findLifecycle, saveFenced, findRevision, listByProjectPage — `save` is never called."
+    },
+    {
+      "boundary": "PostgresDiscoveryRuntimeRepository.saveJob",
+      "from": "PROVEN",
+      "to": "TEST_ONLY_OR_DEAD",
+      "evidence": "every same-named call site has receiver type DiscoveryTriggerRuntimeRepositoryPort, whose only implementation is InMemoryDiscoveryRuntimeRepository (adapters/discovery-trigger-coordinator/src/index.ts:631). The boundary implements DiscoveryRuntimeExecutionRepositoryPort and DiscoveryActivityReadPort; the Port is an optional injection point with no durable binder."
+    },
+    {
+      "boundary": "PostgresDiscoveryRuntimeRepository.transitionJob",
+      "from": "PROVEN",
+      "to": "TEST_ONLY_OR_DEAD",
+      "evidence": "same Port and same evidence as saveJob (modules/discovery-trigger-coordinator/src/index.ts:738)"
+    },
+    {
+      "boundary": "PostgresAuthRepository.bootstrapOwner",
+      "from": "PROVEN",
+      "to": "TEST_ONLY_OR_DEAD",
+      "evidence": "the only call site (assemblies/shotgun-app/src/server.ts:2553) is inside `if (testDevelopmentAuth)` where testDevelopmentAuth = process.env.VITEST === 'true' && !options.authRepository && !production. Owner ruling applied.",
+      "notedCounterEvidence": "scripts/auth-bootstrap-owner.ts:32 (npm script `auth:bootstrap-owner`) calls `new PostgresAuthRepository(pool).bootstrapOwner(...)` against a real pool. It is an operator-invoked CLI outside the scanned scope (adapters/modules/packages/assemblies/apps) and is not an application runtime path, which is why the owner's ruling stands; recorded here so the fact is not lost."
+    }
+  ],
+
+  "derivedLineage": {
+    "file": "artifacts/ts6-phase-b-c2-r15/golden.v6.derived.json",
+    "derivedFrom": "golden.v5.derived.json (preserved, byte-identical)",
+    "validatorResult": "valid=true, issues=0",
+    "relationIntegrity": {
+      "declaredRelationsBefore": 112,
+      "declaredRelationsAfter": 112,
+      "identical": true,
+      "backReferencesMissing": 0,
+      "reopened": 0,
+      "note": "a reachability correction changes WHICH boundaries carry a coverage obligation, never whether an approved relation proof holds"
+    },
+    "provenBoundaryIntegrity": {
+      "proven": 96,
+      "withoutQualifiedCaller": 0,
+      "withoutRelation": 0
+    },
+    "statusMoves": 4,
+    "evidenceRecords": 95,
+    "candidates": 120,
+    "boundaries": 113
+  },
+
+  "preserved": {
+    "frozenV2Sha": "256E5906DB0AFBDEB175C1E754C2C8EC3A1213139AE4F805E95C5396086586CD",
+    "frozenCrosswalkSha": "E4861D67B1EBC4885FA9034245C0B2734E25E3865DE278A4FF660C0B4B0621D2",
+    "goldenV5Sha": "D5CB331B4060A7632BA5435292FD5E755CD196D7488D85FACE8D8D78C26ABE60",
+    "goldenV5": "unmodified; validates false with 47 issues, all of them the expected drift (CALLER_SET 37, CLASSIFICATION_DRIFT 4, REACHABILITY_DRIFT 4, SUMMARY_COUNT 2) because it records the pre-correction caller sets",
+    "frozenV2": "unmodified; validates false with 166 issues under the CURRENT authority (the pre-correction figure was 119, and it was 229 mid-round before the caller-needle defect was fixed — do not quote either stale number as current). Breakdown: REGRESSION_COVERAGE_INCOMPLETE 56, REGRESSION_BACKREF_MISMATCH 43, CALLER_SET 37, REGRESSION_TARGET_MISMATCH 8, REGRESSION_RECEIVER_UNQUALIFIED 6, CLASSIFICATION_DRIFT 4, REACHABILITY_DRIFT 4, REGRESSION_QUALIFIED_CALL_MISSING 3, SUMMARY_COUNT 2, REGRESSION_CALL_OUTSIDE_TARGET_BLOCK 2, REGRESSION_PATH_UNRESOLVED 1",
+    "productionSource": "no file under adapters/ modules/ packages/ assemblies/ apps/ modified",
+    "validatorGate": "PRODUCTION_REVIEW_REQUIRED unchanged and NOT relaxed",
+    "historicalCounts": "87 rows / 120 candidates unchanged"
+  },
+
+  "pinnedAssertionsSplit": {
+    "historical": {
+      "authority": "legacy callersFor",
+      "values": "100 / 13 / 0",
+      "how": "buildAuditShape(ROOT, { legacyAuthority: true }) reconstructs the pre-correction projection; the frozen v2 fixture's own summary is asserted directly",
+      "files": [
+        "scripts/ts6-audit/c2r15-authority-correction.test.ts — 'records the LEGACY authority scoreboard'",
+        "scripts/ts6-audit/regression-evidence-authority.test.ts — 'still reconstructs the LEGACY authority inventory'"
+      ]
+    },
+    "current": {
+      "authority": "qualified boundaryMatchKind",
+      "values": "96 / 17 / 0",
+      "files": [
+        "scripts/ts6-audit/c2r15-authority-correction.test.ts — 'derives the CURRENT qualified-authority scoreboard', 'derives the corrected v6 lineage from the same authority and validates clean', 'does not re-open an approved relation when the reachability authority changes'",
+        "scripts/ts6-audit/regression-evidence-authority.test.ts — 'derives the complete C2-R1 candidate set and canonical inventory'"
+      ]
+    },
+    "noNumberWasSubstituted": "the 100/13 assertion was not replaced by 96/17; both eras are asserted, each labelled with the authority it belongs to"
+  },
+
+  "knownNonAuthorityDefectsNotIntroduced": {
+    "validatorTypeError": "scripts/ts6-phase-b-transaction-authority-validator.ts:1012 TS2345 (Corpus RegressionEvidence[] vs EvidenceShape[]) — pre-existing, unrelated to this round, does not affect execution",
+    "vitestTeardown": "the audit and unit lanes report exit code 1 from '[vitest-worker]: Timeout calling onTaskUpdate' with zero test failures; pre-existing runner defect documented in 13-FINAL-HANDOFF.md §5.3. Those lanes are NOT reported as green: assertions passed, process exit code was 1.",
+    "databaseFlake": "tests/database/frontend-ask-claim-concurrency.test.ts failed 2 of 3 cases in the full database lane and passed 3/3 in isolation. The file imports only PostgresFrontendCommandGateway, PostgresAskAnswerExecutionRepository, createPostgresPool and migration helpers; NOTHING under adapters/ modules/ packages/ assemblies/ imports the validator or the resolver, so no production path is reachable from this change. The same file passed in the earlier full-lane run this session."
+  }
+}

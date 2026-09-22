@@ -1,0 +1,219 @@
+{
+  "generatedAt": "2026-09-21T11:00:00.000Z",
+  "subject": "callersFor() — production reachability authority for productionReachability.status === PROVEN",
+  "workOrder": "C — triage the UNKNOWN cases by hand and report the corrected counts",
+  "status": "C COMPLETE. A and B NOT applied.",
+  "verdict": "DEFECT CONFIRMED, but its CLASSIFICATION impact is much smaller than the raw independent-resolver comparison suggested. The recorded status is right for 96 of 100 PROVEN boundaries. callersFor()'s real damage is in the CALLER LISTS, not in the PROVEN/DEAD split.",
+  "authorityConfirmed": {
+    "chain": "buildAuditShape -> callersFor(...) -> callers.length > 0 -> PROVEN -> c2r2Classification TX_BOUNDARY | TEST_ONLY_OR_DEAD",
+    "matchRule": "method-name equality only",
+    "pollution": {
+      "PostgresDiscoveryFeedbackRepository.transaction": 56,
+      "PostgresAskAnswerExecutionRepository.transaction": 56,
+      "callerEntriesAcrossProvenBoundaries": "748 recorded vs 165 qualified"
+    }
+  },
+  "triageMethod": "Every UNKNOWN and every non-collision call site behind an over-claim was traced by hand from the production composition root: constructor/factory wiring -> concrete instance -> receiver -> target method. Nothing was demoted to unreachable on method-name or interface-name grounds alone.",
+  "finalCounts": {
+    "recordedProven": 100,
+    "qualifiedReachable": 94,
+    "confirmedOverclaim": 5,
+    "stillUnknown": 1,
+    "sum": 100,
+    "note": "The independent resolver alone proved 82. Hand-tracing recovered 12 boundaries it could not follow, and confirmed 5 as genuine over-claims plus 1 that cannot be closed statically. The earlier '18 over-claims' figure is superseded: it counted resolver gaps as suspected over-claims.",
+    "authorityNote": "HAND-DERIVED. These counts include 12 boundaries resolved by reading wiring by hand; the qualified resolver alone proves 82. An automated authority cannot reproduce 94 as of this round."
+  },
+  "trigage": [
+    {
+      "boundaryId": "raw:adapters/semantic-corpus-postgres/src/index.ts:151",
+      "boundary": "PostgresSemanticCorpusSourceSnapshotReader.readSnapshot",
+      "state": "QUALIFIED_REACHABLE",
+      "wiring": "application.ts:539 `new PostgresSemanticCorpusSourceSnapshotReader(pool)` -> passed as the `source` argument of SemanticGenerationBuilder at application.ts:623 -> `this.source.readSnapshot` at semantic-generation/src/index.ts:292; the route at ai-settings-routes.ts:558 receives the same instance.",
+      "evidence": "readSnapshot has exactly two production implementors (semantic-corpus-postgres:145, semantic-corpus-repository:30) and the app assembly binds the Postgres reader.",
+      "resolverGap": "the constructor parameter is a structural inline type `{ readSnapshot(...); readWatermark(...) }`, which names no class"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3144",
+      "boundary": "PostgresDiscoveryRuntimeRepository.reserveProviderCall",
+      "state": "QUALIFIED_REACHABLE",
+      "wiring": "application.ts:833 `const discoveryRuntimeRepository = new PostgresDiscoveryRuntimeRepository(pool)` -> `discoveryRuntimeRepository.reserveProviderCall(...)` at application.ts:989",
+      "evidence": "concrete class is visible in the same function scope as the call site",
+      "resolverGap": "the call sits inside an object literal passed to a factory, so the receiver is a closure variable the single-pass resolver did not bind"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3209",
+      "boundary": "PostgresDiscoveryRuntimeRepository.finalizeProviderCall",
+      "state": "QUALIFIED_REACHABLE",
+      "wiring": "same instance as above -> application.ts:1010",
+      "evidence": "concrete class visible at application.ts:833",
+      "resolverGap": "same"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:110",
+      "boundary": "PostgresFrontendCommandGateway.accept",
+      "state": "QUALIFIED_REACHABLE",
+      "wiring": "application.ts:472 `new PostgresFrontendCommandGateway(pool)` -> application.ts:1217 `frontendCommandGateway: commandGateway` -> the route modules receive it and call `accept` at frontend-command-route.ts:56/108, frontend-product-routes.ts:325/642, sources-routes.ts:186, typed-proposition-conflict-routes.ts:85",
+      "evidence": "FrontendCommandGatewayPort exposes `accept`; its production implementors are PostgresFrontendCommandGateway and InMemoryFrontendCommandGateway (the latter only as the default in server.ts:2244 when no gateway is supplied, which is not the app assembly wiring)",
+      "resolverGap": "port-typed receivers passed through dependency objects"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:272",
+      "boundary": "PostgresSourcesProductService.submit",
+      "state": "QUALIFIED_REACHABLE",
+      "wiring": "application.ts:521 `new PostgresSourcesProductService(pool, staging, sourcesStage3Pipeline)` -> application.ts:535 `configureSourcesWriteRuntime({ productService: sourcesProductService })` -> sources-routes.ts:351 `runtime.productService.submit(...)`",
+      "evidence": "PostgresSourcesProductService is the ONLY implementation of SourcesProductWriteServicePort; the runtime field is typed as that port and bound to this instance at the composition root",
+      "resolverGap": "receiver is `runtime.productService` where `runtime` comes from a module-level `getSourcesWriteRuntime()` accessor"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:751",
+      "boundary": "PostgresSourcesProductService.resolveDuplicate",
+      "state": "QUALIFIED_REACHABLE",
+      "wiring": "same as above -> sources-routes.ts:442",
+      "evidence": "same sole-implementation binding",
+      "resolverGap": "same"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941",
+      "boundary": "PostgresSourcesProductService.retry",
+      "state": "QUALIFIED_REACHABLE",
+      "wiring": "same as above -> sources-routes.ts:557",
+      "evidence": "same sole-implementation binding",
+      "resolverGap": "same"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:360",
+      "boundary": "PostgresDiscoveryFindingRepository.save",
+      "state": "QUALIFIED_REACHABLE",
+      "wiring": "application.ts:1296 `comparisonRepository: new PostgresComparisonRepository(pool)` -> createComparisonModule -> modules/comparison/src/index.ts:436 `input.repository.save(...)`",
+      "evidence": "the receiver is the Postgres comparison repository; `save` is reached on that concrete instance",
+      "resolverGap": "receiver is `input.repository`, an interface-typed member of the module's input object"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-auth/src/index.ts:145",
+      "boundary": "PostgresAuthRepository.bootstrapOwner",
+      "state": "CONFIRMED_OVERCLAIM",
+      "recordedCaller": "assemblies/shotgun-app/src/server.ts:2553",
+      "why": "the only production-scope call site is behind `testDevelopmentAuth = process.env.VITEST === 'true' && !options.authRepository && !production`. That guard is *false in production by construction*, and mutually exclusive with the Postgres wiring: the guard requires no injected authRepository, while application.ts:924 injects `new PostgresAuthRepository(pool)`. `bootstrapOwner` is not part of the production startup path, and AuthRepositoryPort is also implemented by InMemoryAuthRepository.",
+      "classification": "method/guard collision — the recorded PROVEN rests on a test-only code path"
+    },
+    {
+      "boundaryId": "safe:adapters/postgres-stage6/src/index.ts:758",
+      "boundary": "PostgresCanonicalKnowledgeRepository.commitFrontendDraft",
+      "state": "CONFIRMED_OVERCLAIM",
+      "recordedCallers": [
+        "assemblies/shotgun-app/src/product-api/frontend-knowledge-draft-routes.ts:212  receiver `coordinator`"
+      ],
+      "why": "the recorded call is on FrontendKnowledgeDraftProductCoordinator, not on the canonical repository; no production call site reaches PostgresCanonicalKnowledgeRepository.commitFrontendDraft",
+      "classification": "method-name collision"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-finding-postgres/src/index.ts:385",
+      "boundary": "PostgresDiscoveryFindingRepository.saveFenced",
+      "state": "CONFIRMED_OVERCLAIM",
+      "recordedCallers": [
+        "adapters/discovery-runtime-product/src/index.ts:1106  receiver `input.findingRepository`"
+      ],
+      "why": "the receiver resolves to ProductFindingRepository (a different type), not to PostgresDiscoveryFindingRepository",
+      "classification": "method-name collision"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1050",
+      "boundary": "PostgresDiscoveryRuntimeRepository.saveJob",
+      "state": "CONFIRMED_OVERCLAIM",
+      "recordedCallers": [
+        "modules/discovery-trigger-coordinator/src/index.ts:433 and :583  receiver `this.runtime` typed DiscoveryTriggerRuntimeRepositoryPort"
+      ],
+      "why": "the only same-named call sites are on a different port that PostgresDiscoveryRuntimeRepository does not implement",
+      "classification": "method-name collision"
+    },
+    {
+      "boundaryId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1155",
+      "boundary": "PostgresDiscoveryRuntimeRepository.transitionJob",
+      "state": "CONFIRMED_OVERCLAIM",
+      "recordedCallers": [
+        "modules/discovery-trigger-coordinator/src/index.ts:738  receiver `this.runtime` typed DiscoveryTriggerRuntimeRepositoryPort"
+      ],
+      "why": "same as saveJob",
+      "classification": "method-name collision"
+    },
+    {
+      "boundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:439",
+      "boundary": "<module>.commitProjectProjection (activity) and <module>.commitProjectProjection (history)",
+      "state": "CONFIRMED_OVERCLAIM",
+      "recordedCallers": [
+        "modules/frontend-activity/src/activity-projection-builder.ts:257  receiver `this.store` typed ActivityReadModelStorePort",
+        "modules/frontend-history/src/history-projection-builder.ts:127  receiver `this.store` typed HistoryReadModelStorePort"
+      ],
+      "why": "both receivers are read-model Ports that neither module-level commitProjectProjection boundary implements; the two boundaries are closures returned by the postgres read-model factory",
+      "classification": "method-name collision",
+      "note": "C2's relation was re-pointed in this round to a block that invokes the real closure, so the LESSON record this boundary carries is unaffected even though the STATUS is an over-claim."
+    },
+    {
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "boundary": "PostgresConnectorRuntimeState.recoverExpiredLeases",
+      "state": "REVIEW_REQUIRED",
+      "callSite": "adapters/connector-runtime-postgres/src/index.ts:1367  `setInterval(() => { void this.recoverExpiredLeases(); }, 5000).unref()` inside `lifecycle.start`",
+      "whyStaticallyUndecidable": "the method is `private` with no external caller. Its production reachability depends on whether `lifecycle.start()` is invoked, and that lifecycle can only be started by the application assembly through `options.connectorRuntimeState?.lifecycle?.start()` at server.ts:2968, while the boundary's own `beforeAll`-style test harness starts it separately. Bytecode/static evidence cannot confirm the concrete binding without knowing whether the app assembly enables the durable connector runtime in the deployed configuration; asserting either way would be a guess.",
+      "notDemoted": "explicitly NOT recorded as unreachable",
+      "doctrineNote": "the call executes inside the boundary class itself, and the current reachability doctrine does not count an own-class call as external reachability",
+      "productionNote": "it is a registered timer callback in the canonical production composition, so it is genuinely reachable in the supported production configuration"
+    }
+  ],
+  "whatCChanges": {
+    "before": {
+      "qualifiedProvenByResolver": 82,
+      "suspectedOverClaims": 18
+    },
+    "after": {
+      "qualifiedReachable": 94,
+      "confirmedOverclaim": 5,
+      "stillUnknown": 1
+    },
+    "conclusion": [
+      "The PROVEN/DEAD split is correct for 94 of 100 boundaries and wrong for 5, with 1 undecidable statically.",
+      "The resolver's 82 was an under-estimate produced by path-finding gaps (object-literal factories, port-typed dependency objects, accessor-returned runtimes), not by real unreachability.",
+      "callersFor()'s material defect is its CALLER LIST: 748 entries collapse to 165 qualified ones. That is an evidence-quality defect: any disposition, coverage argument or rationale that cited a recorded caller may be citing an unrelated call site.",
+      "Affected evidence already closed in this round: C1 and C5 both cited recorded callers that are confirmed collisions (C1's original relation reached the canonical-knowledge repository's own commit; C5's reached the V2 repository); C3's original relation reached the knowledge-draft repository. All three were resolved by MINIMAL_PROOF or REBIND rather than by trusting the recorded caller, so the evidence outcome is unaffected."
+    ]
+  },
+  "remediationImpact": {
+    "optionA": {
+      "name": "adopt the qualified authority and re-derive a v6 lineage",
+      "inventoryMove": "TX_BOUNDARY 100 -> 94, TEST_ONLY_OR_DEAD 13 -> 19",
+      "cost": "much lower than the initially reported 82/31 projection, but still invalidates the frozen v2 hash and the 120/113/11/87 invariant for a 5-boundary correction",
+      "stillRequires": [
+        "owner authorisation (inventory change is forbidden by the C2-R15 work order)",
+        "a superseding decision on the hash-pinned frozen v2 fixture",
+        "closure of the 1 STILL_UNKNOWN case (requires a deployment-configuration fact, not code reading)"
+      ]
+    },
+    "optionB": {
+      "name": "demote the fixture status from evidence authority",
+      "stillRecommendedFor": "the caller lists — they are the confirmed 78%-polluted artifact",
+      "cost": "low, no inventory change",
+      "note": "B is now narrower than before: the status field itself is right for 95/100, so B is about stopping caller-list citations, not about distrusting PROVEN wholesale"
+    },
+    "optionC": "COMPLETE"
+  },
+  "recommendation": "Prefer B over A. A now buys only a 4-5 boundary correction in the canonical snapshot while still invalidating the frozen v2 hash and the 120/113/11/87 invariant. B removes the confirmed defect (caller-list citations) from the evidence path at low cost. If A is taken for correctness reasons, it should be paired with fixing callersFor() so the caller lists are qualified as well, otherwise the same defect re-enters through the lists.",
+  "notApplied": {
+    "callersForChanged": false,
+    "inventoryChanged": false,
+    "frozenArtifactsChanged": false,
+    "goldenV5Changed": false
+  },
+  "machineAuthority": {
+    "note": "What the qualified resolver emits mechanically for all 113 boundaries. This is the figure an adoptable authority would produce today.",
+    "distribution": {
+      "PROVEN": 83,
+      "TEST_ONLY_OR_DEAD": 14,
+      "REVIEW_REQUIRED": 16
+    },
+    "reviewRequiredClassBreakdown": {
+      "confirmedMethodNameCollision": 5,
+      "resolverCannotFollowTheBinding": 10,
+      "ownClassRegisteredCallback": 1
+    },
+    "blocker": "REVIEW_REQUIRED is rejected by the validator (PRODUCTION_REVIEW_REQUIRED at ts6-phase-b-transaction-authority-validator.ts:826), so a projection containing one cannot pass. The class must be driven to zero before adoption."
+  }
+}

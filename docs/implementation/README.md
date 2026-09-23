@@ -57,6 +57,8 @@
 | [Risk Register](./risk-register.md) | 주요 구현 위험, 조기 신호, 완화책과 중단 기준 |
 | [Runtime Data Integrity Proposed Canonical Implementation Plan](./runtime-data-integrity-canonical-implementation-plan-2026-09-03.md) | Source·Evidence·Connector·Ask·Discovery의 데이터 정합성, 런타임 및 동시성 결함 통합 수정 순서와 검증 |
 | [T3 수정 구현계획서](./t3-correction-implementation-plan.md) | TS-6 감사 증거, Source·파생 데이터 정리, 실제 제품 경로 인수 검증의 수정 순서와 완료 기준 |
+| [T3 구현 전 설계 확정](./t3-design-freeze-2026-09-23.md) | TS-6 감사 권위, Project Source 지식 초기화, 실제 제품 인수 검증의 계약·순서·중단 기준 |
+| [T3 저장소 분류표](./t3-storage-classification-register.md) | migration 077 기준 190개 DB 테이블과 CAS·백업·캐시의 보존·정리 규칙 |
 
 `OSS Integration Roadmap`은 언제 어떤 후보를 검토할지 정하고, `OSS Evaluation Plan`은 후보를 어떤 기준으로 평가할지 정한다.
 

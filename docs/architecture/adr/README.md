@@ -27,7 +27,7 @@ This directory and the registered consolidated ADR documents form the global ADR
 | ADR-095         | Reserved Legacy Gap                                                            |
 | ADR-096–ADR-099 | Individual files in this directory                                             |
 | ADR-100–ADR-113 | [Frontend consolidated record](../frontend/adr-100-113-consolidated-record.md) |
-| ADR-114–ADR-170 | Individual files in this directory                                             |
+| ADR-114–ADR-171 | Individual files in this directory                                             |
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
@@ -41,8 +41,8 @@ complete.
 
 ADR-145 remains an accepted historical individual decision. ADR-146 supersedes ADR-145 as the governing owner-facing Product interaction architecture; both identifiers retain explicit relationship metadata.
 
-The current latest accepted individual decision is
-[ADR-170 — Asset CAS Liveness, Staging Leases, and Maintenance GC](ADR-170-asset-cas-liveness-staging-leases-and-maintenance-gc.md), accepted on 2026-09-19. ADR-169 remains the immediately preceding authority-critical PostgreSQL decision. New generative execution is DeepSeek-only while embedding provider identity remains governed by the independent embedding authority.
+The current latest accepted pre-T3 individual decision is
+[ADR-170 — Asset CAS Liveness, Staging Leases, and Maintenance GC](ADR-170-asset-cas-liveness-staging-leases-and-maintenance-gc.md), accepted on 2026-09-19. [ADR-171 — T3 Project Source Knowledge Reset](ADR-171-t3-project-source-knowledge-reset.md) records the T3 design baseline; it does not implement or execute a reset. ADR-169 remains the preceding authority-critical PostgreSQL decision. New generative execution is DeepSeek-only while embedding provider identity remains governed by the independent embedding authority.
 
 ADR-150 is an accepted implementation-discovered refinement for the bounded AKP-7
 WP4 implementation. It does not create a new AKP Section, expand the accepted AKP

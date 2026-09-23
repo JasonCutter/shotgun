@@ -23,7 +23,7 @@ T3는 The Second(TS-0~TS-7)의 역사적 완료 기록을 소급해서 다시 �
 ### 1.2 사용자 결과
 
 - JasonMemo를 포함한 프로젝트 identity, 로그인 계정·세션 정책, AI Provider·모델·비밀정보·승인 설정은 유지한다.
-- 사용자가 지정한 Source 또는 프로젝트의 모든 Source와 그 자료에서 파생된 제품 콘텐츠를 정리할 수 있다.
+- 기존 Project의 모든 Source와 그 자료에서 파생된 제품 콘텐츠를 정리할 수 있다. 개별 Source 선택 삭제는 별도 설계로 연기한다.
 - 정리 뒤 Library·Search·Ask·Citation·Review·Projection·History payload 및 재시작 후 조회에서 해당 자료가 다시 나타나지 않는다.
 - Source와 공유되지 않는 원본 CAS 객체는 안전한 GC 절차를 거쳐 제거한다. 다른 Source가 참조하는 객체는 보존한다.
 - T3의 완료 주장은 실제 제품 경로, 영속성 readback, 장애·재시도 증거와 통과한 CI로 재현된다.
@@ -63,7 +63,7 @@ TS-7 번들에는 실제 데스크톱 실행과 DB readback을 기록한 별도 
 ### 범위
 
 1. TS-6 감사 lineage, boundary↔caller↔regression evidence, reachability 등급, verifier 및 CI.
-2. Source 단위와 프로젝트 내 모든 Source 단위의 콘텐츠 정리. Project·Auth·AI Settings는 보존.
+2. 프로젝트 내 모든 Source와 그 파생 콘텐츠의 초기화. Project·Auth·AI Settings는 보존. 개별 Source 삭제는 T3 범위 밖이다.
 3. Source에서 직접 또는 간접 파생된 Evidence·Candidate·Review·Canonical·Projection·Discovery·Ask·Citation·History payload의 영향 판정과 정리.
 4. 실제 Product 경로 인수 테스트, 데스크톱 재시작 검증, 문서와 CI의 완료 판정 정합화.
 
@@ -104,10 +104,10 @@ TS-7 번들에는 실제 데스크톱 실행과 DB readback을 기록한 별도 
 
 **선행 설계 결정**
 
-- “삭제”의 단위: Source 하나, 선택한 Source 집합, 프로젝트의 모든 Source. 모두 동일한 서버 권위의 command를 사용한다.
+- “삭제”의 단위: 기존 Project의 모든 Source와 기록된 파생 콘텐츠. 개별 Source는 혼합 출처와 불완전한 계보 때문에 T3에서 제공하지 않는다(ADR-171).
 - 원본·파생물·불변 History의 의미: **콘텐츠와 개인 자료는 제품 및 활성 저장소에서 제거**하되, 감사상 필요한 최소 identity tombstone을 남길 수 있는지 ADR에서 결정한다. tombstone에는 원문·제목·파일명·URL·프롬프트·인용문 등 Source 콘텐츠를 담지 않는다.
 - 독립 근거를 공유하는 Canonical Claim/Fact, 다른 Source가 참조하는 CAS 객체, Source를 포함한 Ask 대화 등 다중 출처 상태의 판정 규칙.
-- 승인된 Canonical 내용을 폐기·수정해야 할 경우 기존 Review/Approval/Canonical Write 권한을 거치는 방법. 영향이 모호하면 실행을 차단하고 소유자에게 영향 목록을 제시한다.
+- 승인된 Canonical 내용의 정리는 ADR-171의 Owner Knowledge Reset Approval과 Canonical owner의 전용 검증·reset 경로로 제한한다. 영향이 모호하면 실행을 차단하고 소유자에게 영향 목록을 제시한다.
 - 백업의 보존·만료, 복원 시 purge tombstone 재적용, 암호화된 비밀정보와 로그·내보내기의 잔존 범위. 보장할 수 없는 저장 영역은 완료 보고에 명시한다.
 
 **데이터 지도:** Source ID와 Project ID를 따라 intake, asset/CAS, transform, evidence, generation, candidate, validation, comparison, review, canonical, projection/search/graph, discovery, Ask, History/Audit, command ledger, 임시 staging, 백업까지 **테이블·파일·캐시별 owner·참조 방향·정리 방식·재구성 방식**을 기록한다. 직접 DB 연쇄 삭제를 기본 구현으로 삼지 않는다.
@@ -120,10 +120,10 @@ TS-7 번들에는 실제 데스크톱 실행과 DB readback을 기록한 별도 
 
 1. Project Owner 권한, CSRF, Project scope, 대상 집합, 예상 revision·digest, idempotency key를 포함한 preview/confirm command.
 2. Preview는 삭제 대상 및 공유·독립 출처·승인된 Canonical 영향과 복구 제한을 표시한다. Confirm은 preview의 고정된 digest를 소비한다.
-3. 요청 접수 즉시 해당 Source의 새 처리·검색 노출·AI 재생성을 차단한다. 동시 Job·lease·outcome-unknown과 경합하면 안전하게 대기 또는 실패하고, 같은 command 재시도는 하나의 결과에 수렴한다.
+3. 요청 접수 즉시 해당 Project의 Source 새 처리·검색 노출·AI 재생성을 차단한다. 동시 Job·lease·outcome-unknown과 경합하면 안전하게 대기 또는 실패하고, 같은 command 재시도는 하나의 결과에 수렴한다.
 4. 각 owner 모듈의 Port 또는 명시적인 Application Coordinator로 파생물과 민감 payload를 정리한다. Canonical 변경은 정해진 승인·commit 경로를 통과하고, Projection은 watermark를 따라 재구성한다.
 5. 공유 CAS 객체는 다른 live 참조가 없는 것을 확인한 뒤 ADR-170의 grace→quarantine→재확인→최종 삭제 흐름에 맡긴다. 실패 시 즉시 파일을 삭제하거나 전체 Project를 초기화하지 않는다.
-6. Library에서 저장된 Source의 정리·진행·실패·완료를 표시하고 프로젝트 전체 Source 정리도 제공한다. 계정·프로젝트·AI 설정 화면과 값은 유지한다.
+6. Library에서 Project 전체 Source 지식 초기화의 Preview·진행·실패·완료를 표시한다. 계정·프로젝트·AI 설정 화면과 값은 유지한다.
 
 **통과 조건:** 정상·중복·중단·재시작·부분 실패·권한 거부·stale preview·공유 CAS·공유 Claim을 포함한 Contract/DB/Product/보안 음성 테스트가 통과한다. Library, Search, Ask, Citation, Review, Projection 및 민감 History payload의 정리 결과가 DB와 UI에서 일치하고, Project/Auth/AI Settings의 전후 snapshot이 동일하다.
 
@@ -148,17 +148,16 @@ TS-7 번들에는 실제 데스크톱 실행과 DB readback을 기록한 별도 
 
 ## 5. 검증 매트릭스
 
-| 시나리오           | 필수 관찰                                                               |
-| ------------------ | ----------------------------------------------------------------------- |
-| 감사 산출물 재생성 | 동일 입력에서 동일 hash; 누락·오염 관계를 거부                          |
-| verifier 변조      | 잘못된 계보, 고아 증거, 무배선 Port, no-op 음성 사례에 비영 exit        |
-| 단일 Source 정리   | 선택한 Source의 콘텐츠·파생물만 사라지고 독립 Source·공유 CAS 유지      |
-| 전체 Source 정리   | Library/Search/Ask/Projection/History payload에서 과거 콘텐츠 부재      |
-| 보존 경계          | Project ID/이름, Principal, Membership, AI 설정·비밀정보의 전후 값 동일 |
-| Canonical 영향     | 독립 근거 보존, 단독 근거 폐기에는 고정된 승인과 History 기록           |
-| 동시성·재시도      | 중복 command, 작업 중 lease, crash, COMMIT ack loss 후 단일 결과        |
-| 재시작·복원        | 종료/재시작 후에도 삭제 상태 유지; 백업 복원 뒤 재등장 방지 절차 통과   |
-| 재사용             | 동일 프로젝트에서 새 Source 제출부터 인용 답변까지 성공                 |
+| 시나리오           | 필수 관찰                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------- |
+| 감사 산출물 재생성 | 동일 입력에서 동일 hash; 누락·오염 관계를 거부                                                          |
+| verifier 변조      | 잘못된 계보, 고아 증거, 무배선 Port, no-op 음성 사례에 비영 exit                                        |
+| 전체 Source 정리   | Library/Search/Ask/Projection/History payload에서 과거 콘텐츠 부재; 다른 Project의 Source·공유 CAS 유지 |
+| 보존 경계          | Project ID/이름, Principal, Membership, AI 설정·비밀정보의 전후 값 동일                                 |
+| Canonical 영향     | 독립 근거 보존, 단독 근거 폐기에는 고정된 승인과 History 기록                                           |
+| 동시성·재시도      | 중복 command, 작업 중 lease, crash, COMMIT ack loss 후 단일 결과                                        |
+| 재시작·복원        | 종료/재시작 후에도 삭제 상태 유지; 백업 복원 뒤 재등장 방지 절차 통과                                   |
+| 재사용             | 동일 프로젝트에서 새 Source 제출부터 인용 답변까지 성공                                                 |
 
 ## 6. PR·Issue 및 변경 관리
 

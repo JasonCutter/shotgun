@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
+import { createMemoryRouter, Link, Outlet, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { GlobalShellView, ShotgunApiClient, SourceLibraryPageView } from '@shotgun/api-client';
@@ -68,6 +68,7 @@ const ShellOutlet = () => {
   const { getLeaveState } = useLeaveGuard();
   return (
     <>
+      <Link to="/home">Home</Link>
       <button
         type="button"
         onClick={() =>
@@ -88,7 +89,10 @@ const renderWorkspace = () => {
       {
         path: '/',
         element: <ShellOutlet />,
-        children: [{ path: 'sources', element: <SourcesWorkspace /> }],
+        children: [
+          { path: 'sources', element: <SourcesWorkspace /> },
+          { path: 'home', element: <p>Home workspace</p> },
+        ],
       },
     ],
     { initialEntries: ['/sources?view=add'] },
@@ -99,6 +103,7 @@ const renderWorkspace = () => {
       <RouterProvider router={router} />
     </AppProviders>,
   );
+  return router;
 };
 
 const addDirectTextDraft = async (label: string, text: string) => {
@@ -110,6 +115,32 @@ const addDirectTextDraft = async (label: string, text: string) => {
 };
 
 describe('Sources Workspace Leave Guard integration', () => {
+  it('keeps an unsubmitted file draft when navigation is canceled and discards it only by choice', async () => {
+    const user = userEvent.setup();
+    const router = renderWorkspace();
+    await screen.findByRole('heading', { name: 'Sources', level: 1 });
+
+    await user.selectOptions(screen.getByLabelText('Input type'), 'FILE');
+    await user.upload(
+      screen.getByLabelText('File'),
+      new File(['draft content'], 'sample.txt', { type: 'text/plain' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Add intake draft' }));
+    expect(screen.getByRole('button', { name: 'Submit drafts' })).toBeTruthy();
+
+    await user.click(screen.getByRole('link', { name: 'Home' }));
+    expect(router.state.location.pathname).toBe('/sources');
+    expect(screen.getByRole('dialog', { name: 'Leave with unsubmitted drafts?' })).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByText('sample.txt')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/sources');
+
+    await user.click(screen.getByRole('link', { name: 'Home' }));
+    await user.click(screen.getByRole('button', { name: 'Discard drafts and leave' }));
+    expect(await screen.findByText('Home workspace')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/home');
+  });
+
   it('keeps the Guard active after a partial delete and releases it after the last delete', async () => {
     renderWorkspace();
     await screen.findByRole('heading', { name: 'Sources', level: 1 });

@@ -228,6 +228,20 @@ const SourceCandidateComparison = ({
   const semanticEnableCommand = commandController?.commands.find(
     (command) => command.id === 'semantic.enable',
   );
+  const semanticSettingsButton = () => (
+    <button
+      type="button"
+      disabled={!semanticEnableCommand || semanticEnableCommand.availability !== 'AVAILABLE'}
+      title={semanticEnableCommand?.reason}
+      onClick={(event) => {
+        if (semanticEnableCommand && commandController) {
+          commandController.executeCommand(semanticEnableCommand, event.currentTarget);
+        }
+      }}
+    >
+      {t('source_detail.semantic_candidate_open_settings')}
+    </button>
+  );
   const [pendingIdentity, setPendingIdentity] = useState<
     PendingSourceRecompareCommandIdentityV1 | undefined
   >();
@@ -357,27 +371,13 @@ const SourceCandidateComparison = ({
         </button>
       ) : candidate.status === 'READY' && semanticStatus?.rollout !== 'V2_ACTIVE' ? (
         <p role="status">
-          {t('source_detail.semantic_candidates_not_ready')}{' '}
-          <Link to="/settings/ai">{t('source_detail.semantic_candidates_configure')}</Link>
+          {t('source_detail.semantic_candidates_not_ready')} {semanticSettingsButton()}
         </p>
       ) : null}
       {feedback ? (
         <p role={feedback.kind === 'error' ? 'alert' : 'status'}>{feedback.message}</p>
       ) : null}
-      {semanticRecoveryRequired ? (
-        semanticEnableCommand && commandController ? (
-          <button
-            type="button"
-            onClick={(event) =>
-              commandController.executeCommand(semanticEnableCommand, event.currentTarget)
-            }
-          >
-            {t('source_detail.semantic_candidate_open_settings')}
-          </button>
-        ) : (
-          <Link to="/settings/ai">{t('source_detail.semantic_candidate_open_settings')}</Link>
-        )
-      ) : null}
+      {semanticRecoveryRequired ? semanticSettingsButton() : null}
       {reviewReady ? (
         <Link to="/review">{t('source_detail.semantic_candidate_open_review')}</Link>
       ) : null}

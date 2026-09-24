@@ -35,6 +35,12 @@ import type {
   NavigationAvailability,
   SourceLibraryQuery,
   SourceLibraryPageView,
+  KnowledgeResetStateV1,
+  KnowledgeResetBlockerCodeV1,
+  KnowledgeResetConfirmationV1,
+  KnowledgeResetPreviewV1,
+  KnowledgeResetRequestV1,
+  ConfirmKnowledgeResetResponseV1,
   SourceDetailView,
   SourceCandidateView,
   SourceCandidateListView,
@@ -309,6 +315,12 @@ export type {
   NavigationAvailability,
   SourceLibraryQuery,
   SourceLibraryPageView,
+  KnowledgeResetStateV1,
+  KnowledgeResetBlockerCodeV1,
+  KnowledgeResetConfirmationV1,
+  KnowledgeResetPreviewV1,
+  KnowledgeResetRequestV1,
+  ConfirmKnowledgeResetResponseV1,
   SourceDetailView,
   SourceCandidateView,
   SourceCandidateListView,
@@ -874,6 +886,20 @@ export type ShotgunApiClient = {
     options?: RequestOptions,
   ): Promise<RouteGuardDecisionView>;
   listSources(query: SourceLibraryQuery, options?: RequestOptions): Promise<SourceLibraryPageView>;
+  previewSourceKnowledgeReset(
+    projectId: string,
+    options?: RequestOptions,
+  ): Promise<KnowledgeResetPreviewV1>;
+  confirmSourceKnowledgeReset(
+    projectId: string,
+    confirmation: KnowledgeResetConfirmationV1,
+    options?: RequestOptions,
+  ): Promise<ConfirmKnowledgeResetResponseV1>;
+  getSourceKnowledgeResetStatus(
+    projectId: string,
+    requestId: string,
+    options?: RequestOptions,
+  ): Promise<KnowledgeResetRequestV1>;
   getSourceDetail(sourceId: string, options?: RequestOptions): Promise<SourceDetailView>;
   getSourceCandidates(
     sourceId: string,

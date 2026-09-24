@@ -52,6 +52,7 @@ import {
   type IsolatedPostgresTestDatabase,
 } from '../helpers/isolated-postgres-test-database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { recreateTestDatabaseSchemas } from '../helpers/recreate-test-database.js';
 
 await requireTestDatabaseTarget();
 
@@ -366,40 +367,8 @@ afterAll(async () => {
 
 describe('Source Product / Stage 4 failure isolation', () => {
   beforeEach(async () => {
-    await pool!.query(`
-      TRUNCATE
-        validation.results,
-        candidate.materializations,
-        candidate.claim_candidates,
-        candidate.batches,
-        ai.provider_outputs,
-        ai.provider_attempts,
-        ai.provider_calls,
-        evidence.spans,
-        transformation.attempts,
-        transformation.revisions,
-        source_product.url_provenance_receipts,
-        source_product.url_acquisition_attempts,
-        source_product.exact_duplicate_dispositions,
-        source_product.exact_duplicate_decisions,
-        source_product.intake_attempts,
-        source_product.intake_submission_items,
-        source_product.intake_submissions,
-        asset.storage_receipts,
-        asset.source_versions,
-        asset.sources,
-        asset.original_assets,
-        intake.submissions,
-        frontend_command.command_ledger,
-        project_admin.project_revisions,
-        project_admin.projects,
-        auth.audit_events,
-        auth.sessions,
-        auth.project_memberships,
-        auth.credentials,
-        auth.principals
-      CASCADE
-    `);
+    if (!isolatedTestDatabase) throw new Error('Isolated Stage 4 test database is unavailable.');
+    await recreateTestDatabaseSchemas(isolatedTestDatabase.databaseUrl);
   });
 
   it('keeps Source success after Stage 4 failure and does not retry it on replay', async () => {

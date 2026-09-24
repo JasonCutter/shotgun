@@ -19,6 +19,15 @@ import {
   createIsolatedPostgresDatabase,
   dropIsolatedPostgresDatabase,
 } from './isolated-postgres-database.js';
+import {
+  assertBackupKnowledgeEpochsAllowed,
+  assertErasureJournalOutsideBackupRoot,
+  readSourceErasureJournal,
+  sourceErasureJournalConfigFromEnvironment,
+  verifyBackupKnowledgeEpochBarrier,
+  type SourceErasureJournalRecord,
+  type SourceErasureJournalConfig,
+} from './source-erasure-journal.js';
 
 export const BACKUP_FORMAT_VERSION = 'shotgun-backup-v1';
 const DATABASE_DUMP_FILE = 'database.dump';
@@ -86,6 +95,12 @@ const ADR163_REVIEW_OPERATION_RESOLUTION_V2_MIGRATION =
 const STAGE6_COMPARISON_REVIEW_V2_HANDOFF_MIGRATION = '068_stage6_comparison_review_v2_handoff.sql';
 const ACTION_FEEDBACK_OUTBOX_MIGRATION = '074_adr166_stage11_action_feedback_outbox.sql';
 const TS5_STAGING_LEASE_MIGRATION = '077_ts5_asset_cas_lifecycle.sql';
+const T3_PROJECT_RESET_MIGRATION = '078_t3_project_source_knowledge_reset.sql';
+const RESTORE_SECURITY_PROFILE = 'postgres-owners-and-acls-v1' as const;
+const T3_CANONICAL_ERASURE_MIGRATION = '101_t3_canonical_erasure.sql';
+const FRONTEND_ACTIVITY_MIGRATION = '029_frontend_activity_read_model.sql';
+const FRONTEND_HISTORY_MIGRATION = '030_frontend_history_projection.sql';
+const KNOWLEDGE_MODEL_MIGRATION = '009_stage9_knowledge_model.sql';
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
@@ -187,6 +202,30 @@ export const authoritativeIntegrityTablesForMigrations = (
       : []),
     ...(applied.has(ACTION_FEEDBACK_OUTBOX_MIGRATION) ? ['action.action_feedback_outbox'] : []),
     ...(applied.has(TS5_STAGING_LEASE_MIGRATION) ? ['asset.staging_asset_leases'] : []),
+    ...(applied.has(T3_PROJECT_RESET_MIGRATION)
+      ? [
+          'project_admin.project_knowledge_epoch',
+          'project_admin.project_knowledge_reset_requests',
+          'canonical.knowledge_reset_events',
+        ]
+      : []),
+    ...(applied.has(T3_CANONICAL_ERASURE_MIGRATION)
+      ? [
+          'canonical.t3_reset_owner_snapshots',
+          'canonical.t3_reset_owner_snapshot_rows',
+          'canonical.history_payload_state',
+          'canonical.history_payload_audit_events',
+        ]
+      : []),
+    ...(applied.has(FRONTEND_ACTIVITY_MIGRATION)
+      ? ['frontend_activity.activity_index', 'frontend_activity.projection_watermarks']
+      : []),
+    ...(applied.has(FRONTEND_HISTORY_MIGRATION)
+      ? ['frontend_history.history_projection_index', 'frontend_history.projection_watermarks']
+      : []),
+    ...(applied.has(KNOWLEDGE_MODEL_MIGRATION)
+      ? ['knowledge.review_groups', 'knowledge.entity_vault_imports']
+      : []),
   ];
 };
 
@@ -223,6 +262,8 @@ export type BackupManifest = {
     readonly dumpFile: typeof DATABASE_DUMP_FILE;
     readonly dumpSha256: string;
     readonly migrations: readonly string[];
+    /** Present when the custom dump preserves database owners and ACLs. */
+    readonly restoreSecurityProfile?: typeof RESTORE_SECURITY_PROFILE;
   };
   readonly assets: {
     readonly storage: 'local-content-addressed';
@@ -234,6 +275,8 @@ export type BackupManifest = {
   readonly integrity: {
     readonly tables: Readonly<Record<string, BackupIntegrityEntry>>;
   };
+  /** Present when migration 078 is included; absent in historical backups. */
+  readonly projectKnowledgeEpochs?: Readonly<Record<string, number>>;
   readonly configuration: {
     readonly secretsIncluded: false;
     readonly projectionAuthority: 'rebuild-from-canonical';
@@ -254,6 +297,7 @@ export type RestoreBackupOptions = {
   readonly targetDatabaseUrl: string;
   readonly targetAssetRoot: string;
   readonly backupDirectory: string;
+  readonly backupRoot?: string;
   readonly toolMode?: BackupToolMode;
   readonly postgresService?: string;
 };
@@ -423,6 +467,40 @@ export const snapshotAuthoritativeIntegrity = async (
     return entries;
   });
 
+export const snapshotProjectKnowledgeEpochs = async (
+  databaseUrl: string,
+  migrations: readonly string[],
+): Promise<Readonly<Record<string, number>> | undefined> => {
+  if (!migrations.includes(T3_PROJECT_RESET_MIGRATION)) return undefined;
+  return withClient(databaseUrl, async (client) => {
+    const result = await client.query<{ project_id: string; epoch: string }>(
+      `SELECT p.id AS project_id, COALESCE(e.epoch, 0)::text AS epoch
+       FROM project_admin.projects AS p
+       LEFT JOIN project_admin.project_knowledge_epoch AS e ON e.project_id = p.id
+       ORDER BY p.id`,
+    );
+    return Object.fromEntries(result.rows.map((row) => [row.project_id, Number(row.epoch)]));
+  });
+};
+
+const verifyKnowledgeEpochsAgainstJournal = async (input: {
+  readonly epochs: Readonly<Record<string, number>>;
+  readonly journalConfig: SourceErasureJournalConfig | null;
+  readonly backupRoot: string;
+  readonly journalRequired?: boolean;
+}): Promise<readonly SourceErasureJournalRecord[]> => {
+  await verifyBackupKnowledgeEpochBarrier({
+    backupEpochs: input.epochs,
+    config: input.journalConfig,
+    backupRoot: input.backupRoot,
+    journalRequired: input.journalRequired,
+  });
+  if (!input.journalConfig) return [];
+  const records = await readSourceErasureJournal(input.journalConfig);
+  assertBackupKnowledgeEpochsAllowed({ backupEpochs: input.epochs, journalRecords: records });
+  return records;
+};
+
 const listMigrations = async (databaseUrl: string): Promise<readonly string[]> =>
   withClient(databaseUrl, async (client) => {
     const result = await client.query<{ name: string }>(
@@ -433,7 +511,7 @@ const listMigrations = async (databaseUrl: string): Promise<readonly string[]> =
 
 const assertManifestIntegrityTableSet = (manifest: BackupManifest): void => {
   const expected = [
-    ...authoritativeIntegrityTablesForMigrations(manifest.database.migrations),
+    ...new Set(authoritativeIntegrityTablesForMigrations(manifest.database.migrations)),
   ].sort();
   const actual = Object.keys(manifest.integrity.tables).sort();
   if (stableJson(actual) !== stableJson(expected)) {
@@ -580,7 +658,7 @@ const createBackupUnlocked = async (options: CreateBackupOptions): Promise<Backu
   await runPostgresTool({
     tool: 'pg_dump',
     databaseUrl: options.databaseUrl,
-    args: ['--format=custom', '--no-owner', '--no-privileges', '--serializable-deferrable'],
+    args: ['--format=custom', '--serializable-deferrable'],
     mode: options.toolMode ?? 'local',
     postgresService: options.postgresService ?? 'db',
     outputFile: dumpFile,
@@ -600,6 +678,18 @@ const createBackupUnlocked = async (options: CreateBackupOptions): Promise<Backu
   if (stableJson(after) !== stableJson(final)) {
     throw new Error('Authoritative data changed while Backup assets were being copied.');
   }
+  const projectKnowledgeEpochs = await snapshotProjectKnowledgeEpochs(
+    options.databaseUrl,
+    migrations,
+  );
+  if (projectKnowledgeEpochs) {
+    await verifyKnowledgeEpochsAgainstJournal({
+      epochs: projectKnowledgeEpochs,
+      journalConfig: sourceErasureJournalConfigFromEnvironment(),
+      backupRoot: path.dirname(outputDirectory),
+      journalRequired: true,
+    });
+  }
   const manifest: BackupManifest = {
     formatVersion: BACKUP_FORMAT_VERSION,
     backupId: randomUUID(),
@@ -611,10 +701,14 @@ const createBackupUnlocked = async (options: CreateBackupOptions): Promise<Backu
       dumpFile: DATABASE_DUMP_FILE,
       dumpSha256: await sha256File(dumpFile),
       migrations,
+      ...(migrations.includes(T3_PROJECT_RESET_MIGRATION)
+        ? { restoreSecurityProfile: RESTORE_SECURITY_PROFILE }
+        : {}),
     },
     assets: { storage: 'local-content-addressed', files: assets },
     contracts: { files: contracts },
     integrity: { tables: after },
+    ...(projectKnowledgeEpochs ? { projectKnowledgeEpochs } : {}),
     configuration: {
       secretsIncluded: false,
       projectionAuthority: 'rebuild-from-canonical',
@@ -648,6 +742,28 @@ export const readManifest = async (backupDirectory: string): Promise<BackupManif
   ) as BackupManifest;
   if (parsed.formatVersion !== BACKUP_FORMAT_VERSION) {
     throw new Error(`Unsupported Backup format: ${String(parsed.formatVersion)}`);
+  }
+  if (
+    parsed.database.migrations.includes(T3_PROJECT_RESET_MIGRATION) &&
+    parsed.database.restoreSecurityProfile !== RESTORE_SECURITY_PROFILE
+  ) {
+    throw new Error(
+      'T3 Backup does not declare the owner-and-ACL-preserving restore security profile.',
+    );
+  }
+  const hasT3Migration = parsed.database.migrations.includes(T3_PROJECT_RESET_MIGRATION);
+  if (hasT3Migration !== (parsed.projectKnowledgeEpochs !== undefined)) {
+    throw new Error(
+      'Backup Manifest Project knowledge epochs do not match its migration identity.',
+    );
+  }
+  if (
+    parsed.projectKnowledgeEpochs &&
+    Object.entries(parsed.projectKnowledgeEpochs).some(
+      ([projectId, epoch]) => !projectId || !Number.isSafeInteger(epoch) || epoch < 0,
+    )
+  ) {
+    throw new Error('Backup Manifest contains an invalid Project knowledge epoch.');
   }
   return parsed;
 };
@@ -688,6 +804,27 @@ const assertEmptyTargetDatabase = async (databaseUrl: string): Promise<void> =>
     }
   });
 
+const assertT3RestoreRolesExist = async (databaseUrl: string): Promise<void> =>
+  withClient(databaseUrl, async (client) => {
+    const requiredRoles = [
+      'shotgun_runtime',
+      'shotgun_erasure_executor',
+      'shotgun_schema_owner',
+      'shotgun_migrator',
+    ];
+    const result = await client.query<{ readonly rolname: string }>(
+      'SELECT rolname FROM pg_roles WHERE rolname = ANY($1::text[]) ORDER BY rolname',
+      [requiredRoles],
+    );
+    const present = new Set(result.rows.map((row) => row.rolname));
+    const missing = requiredRoles.filter((role) => !present.has(role));
+    if (missing.length > 0) {
+      throw new Error(
+        `T3 Backup restore requires these PostgreSQL roles to be provisioned first: ${missing.join(', ')}.`,
+      );
+    }
+  });
+
 export const copyRestoredAssets = async (
   manifest: BackupManifest,
   backupRoot: string,
@@ -712,13 +849,47 @@ const restoreBackupUnlocked = async (options: RestoreBackupOptions): Promise<Bac
   const backupDirectory = path.resolve(options.backupDirectory);
   const manifest = await verifyBackup(backupDirectory);
   assertManifestIntegrityTableSet(manifest);
+  const journalConfig = sourceErasureJournalConfigFromEnvironment();
+  const manifestEpochs = manifest.projectKnowledgeEpochs ?? {};
+  const sourceMigrations = await listMigrations(options.sourceDatabaseUrl);
+  const journalRequired =
+    manifest.database.migrations.includes(T3_PROJECT_RESET_MIGRATION) ||
+    sourceMigrations.includes(T3_PROJECT_RESET_MIGRATION);
+  const sourceEpochs =
+    (await snapshotProjectKnowledgeEpochs(options.sourceDatabaseUrl, sourceMigrations)) ?? {};
+  const configuredBackupRoot =
+    options.backupRoot ?? process.env.SHOTGUN_BACKUP_ROOT ?? path.dirname(backupDirectory);
+  if (journalConfig) {
+    await assertErasureJournalOutsideBackupRoot(journalConfig, path.dirname(backupDirectory));
+    await assertErasureJournalOutsideBackupRoot(journalConfig, configuredBackupRoot);
+  }
+  await verifyKnowledgeEpochsAgainstJournal({
+    epochs: sourceEpochs,
+    journalConfig,
+    backupRoot: configuredBackupRoot,
+    journalRequired,
+  });
+  await verifyKnowledgeEpochsAgainstJournal({
+    epochs: manifestEpochs,
+    journalConfig,
+    backupRoot: configuredBackupRoot,
+    journalRequired,
+  });
+  for (const [projectId, backupEpoch] of Object.entries(manifestEpochs)) {
+    if ((sourceEpochs[projectId] ?? 0) < backupEpoch) {
+      throw new Error('Backup Project knowledge epoch is newer than the active source database.');
+    }
+  }
   await assertPostgresMajorVersion(options.targetDatabaseUrl, manifest.database.majorVersion);
+  if (manifest.database.restoreSecurityProfile === RESTORE_SECURITY_PROFILE) {
+    await assertT3RestoreRolesExist(options.targetDatabaseUrl);
+  }
   await assertEmptyTargetDatabase(options.targetDatabaseUrl);
   await ensureEmptyDirectory(path.resolve(options.targetAssetRoot), 'Restore Asset root');
   await runPostgresTool({
     tool: 'pg_restore',
     databaseUrl: options.targetDatabaseUrl,
-    args: ['--exit-on-error', '--no-owner', '--no-privileges'],
+    args: ['--exit-on-error'],
     mode: options.toolMode ?? 'local',
     postgresService: options.postgresService ?? 'db',
     inputFile: resolveWithin(backupDirectory, manifest.database.dumpFile),
@@ -731,6 +902,23 @@ const restoreBackupUnlocked = async (options: RestoreBackupOptions): Promise<Bac
   if (stableJson(restored) !== stableJson(manifest.integrity.tables)) {
     throw new Error('Restored authoritative data does not match the Backup Manifest.');
   }
+  const restoredEpochs =
+    (await snapshotProjectKnowledgeEpochs(
+      options.targetDatabaseUrl,
+      manifest.database.migrations,
+    )) ?? {};
+  if (
+    manifest.projectKnowledgeEpochs &&
+    stableJson(restoredEpochs) !== stableJson(manifest.projectKnowledgeEpochs)
+  ) {
+    throw new Error('Restored Project knowledge epochs do not match the Backup Manifest.');
+  }
+  await verifyKnowledgeEpochsAgainstJournal({
+    epochs: restoredEpochs,
+    journalConfig,
+    backupRoot: configuredBackupRoot,
+    journalRequired: manifest.database.migrations.includes(T3_PROJECT_RESET_MIGRATION),
+  });
   await withClient(options.targetDatabaseUrl, async (client) => {
     await client.query(`
       TRUNCATE
@@ -812,6 +1000,7 @@ const main = async () => {
       targetDatabaseUrl: requiredEnvironment('RESTORE_DATABASE_URL'),
       targetAssetRoot: requiredEnvironment('RESTORE_ASSET_STORAGE_ROOT'),
       backupDirectory,
+      backupRoot: process.env.SHOTGUN_BACKUP_ROOT ?? path.dirname(path.resolve(backupDirectory)),
       toolMode: mode,
     });
     console.log(`Backup restored and verified: ${manifest.backupId}`);

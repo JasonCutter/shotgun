@@ -1036,6 +1036,38 @@ export const resolveReceiverType = (
   const root = segments[0];
   if (!root) return { typeName: '', via: 'empty receiver' };
 
+  const propertyTypeFromLiteral = (typeText: string, propertyName: string): string | null => {
+    const sf = ts.createSourceFile(
+      'receiver-type.ts',
+      `type __Receiver = ${typeText};`,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const declaration = sf.statements[0];
+    if (!declaration || !ts.isTypeAliasDeclaration(declaration)) return null;
+    const visitType = (node: ts.TypeNode): string | null => {
+      if (ts.isTypeLiteralNode(node)) {
+        const member = node.members.find(
+          (item): item is ts.PropertySignature =>
+            ts.isPropertySignature(item) &&
+            !!item.name &&
+            (ts.isIdentifier(item.name) || ts.isStringLiteral(item.name)) &&
+            item.name.text === propertyName,
+        );
+        return member?.type ? bareTypeName(member.type.getText(sf)) : null;
+      }
+      if (ts.isIntersectionTypeNode(node) || ts.isUnionTypeNode(node)) {
+        for (const part of node.types) {
+          const found = visitType(part);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    return visitType(declaration.type);
+  };
+
   /** Resolve a member name inside `withinClass`, or in this body when null. */
   const typeOfName = (
     name: string,
@@ -1108,6 +1140,22 @@ export const resolveReceiverType = (
           via: string;
         })
       : typeOfName(root, null);
+  let nextSegment = 1;
+  if (!current && segments.length > 1) {
+    const rootDeclarations = method.declarations
+      .filter((declaration) => declaration.name === root)
+      .sort((a, b) => b.position - a.position);
+    for (const declaration of rootDeclarations) {
+      const memberType = propertyTypeFromLiteral(declaration.typeText, segments[1]!);
+      if (!memberType) continue;
+      current = {
+        typeName: memberType,
+        via: `property ${segments[1]} of ${root} is declared as ${memberType}`,
+      };
+      nextSegment = 2;
+      break;
+    }
+  }
   // `await getSourcesWriteRuntime().productService.submit(...)` — the root itself
   // is the accessor call, not a declared name. Resolve it as the accessor's
   // declared return type before declaring the receiver unresolvable.
@@ -1124,7 +1172,7 @@ export const resolveReceiverType = (
     }
   }
   if (!current) return { typeName: '', via: `cannot resolve ${root}` };
-  for (let i = 1; i < segments.length; i++) {
+  for (let i = nextSegment; i < segments.length; i++) {
     if (!index.classFields.has(current.typeName))
       return {
         typeName: '',
@@ -1298,32 +1346,72 @@ const computeLiteralPortBindings = (
 ): ReadonlyMap<string, ReadonlySet<string>> => {
   const out = new Map<string, Set<string>>();
 
-  /** Every property name an object literal in `source` provides. */
-  const providedNames = (source: string): ReadonlySet<string> => {
+  const unwrap = (node: ts.Expression): ts.Expression => {
+    let current = node;
+    while (
+      ts.isParenthesizedExpression(current) ||
+      ts.isAsExpression(current) ||
+      ts.isTypeAssertionExpression(current) ||
+      ts.isSatisfiesExpression(current) ||
+      ts.isAwaitExpression(current)
+    )
+      current = current.expression;
+    return current;
+  };
+
+  /** Only properties on an object that the typed factory actually returns count. */
+  const returnedObjects = (body: ts.ConciseBody): ts.ObjectLiteralExpression[] => {
+    const expressions: ts.Expression[] = [];
+    if (!ts.isBlock(body)) expressions.push(body);
+    else {
+      const visit = (node: ts.Node): void => {
+        if (ts.isReturnStatement(node) && node.expression) expressions.push(node.expression);
+        if (node !== body && (ts.isFunctionLike(node) || ts.isClassLike(node))) return;
+        ts.forEachChild(node, visit);
+      };
+      visit(body);
+    }
+
+    const objects: ts.ObjectLiteralExpression[] = [];
+    const collect = (expression: ts.Expression): void => {
+      const value = unwrap(expression);
+      if (ts.isObjectLiteralExpression(value)) {
+        objects.push(value);
+        return;
+      }
+      if (ts.isConditionalExpression(value)) {
+        collect(value.whenTrue);
+        collect(value.whenFalse);
+      }
+    };
+    for (const expression of expressions) collect(expression);
+    return objects;
+  };
+
+  const providedNames = (declaration: { readonly initText: string }): ReadonlySet<string> => {
     const names = new Set<string>();
     const sf = ts.createSourceFile(
-      'literal.ts',
-      source,
+      'literal-binding.ts',
+      `const __binding = ${declaration.initText};`,
       ts.ScriptTarget.Latest,
       true,
       ts.ScriptKind.TS,
     );
-    const walk = (n: ts.Node): void => {
-      if (ts.isObjectLiteralExpression(n)) {
-        for (const prop of n.properties) {
-          if (
-            (ts.isPropertyAssignment(prop) ||
-              ts.isMethodDeclaration(prop) ||
-              ts.isShorthandPropertyAssignment(prop)) &&
-            prop.name &&
-            ts.isIdentifier(prop.name)
-          )
-            names.add(prop.name.text);
-        }
-      }
-      ts.forEachChild(n, walk);
-    };
-    walk(sf);
+    const initializer = (sf.statements[0] as ts.VariableStatement | undefined)?.declarationList
+      .declarations[0]?.initializer;
+    if (!initializer) return names;
+    const factory = unwrap(initializer);
+    if (!ts.isArrowFunction(factory) && !ts.isFunctionExpression(factory)) return names;
+    for (const object of returnedObjects(factory.body))
+      for (const property of object.properties)
+        if (
+          (ts.isPropertyAssignment(property) ||
+            ts.isMethodDeclaration(property) ||
+            ts.isShorthandPropertyAssignment(property)) &&
+          property.name &&
+          (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+        )
+          names.add(property.name.text);
     return names;
   };
 
@@ -1333,7 +1421,7 @@ const computeLiteralPortBindings = (
       if (!d.initText.includes('=>')) continue;
       const returned = returnTypeNamesOfDeclaration(d);
       if (returned.length === 0) continue;
-      const names = providedNames(d.initText);
+      const names = providedNames(d);
       if (names.size === 0) continue;
       for (const port of returned) {
         const set = out.get(port) ?? new Set<string>();

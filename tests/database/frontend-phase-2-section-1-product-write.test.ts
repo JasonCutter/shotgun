@@ -10,6 +10,7 @@ import type { SourcesStage3PipelinePort } from '../../modules/frontend-sources-w
 import type { SourcesProductWriteScope } from '../../modules/frontend-sources-write/src/product-service.js';
 
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { recreateTestDatabaseSchemas } from '../helpers/recreate-test-database.js';
 
 const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -140,32 +141,7 @@ afterAll(async () => {
 
 describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
   beforeEach(async () => {
-    await pool!.query(`
-      TRUNCATE
-        source_product.url_provenance_receipts,
-        source_product.url_acquisition_attempts,
-        source_product.exact_duplicate_dispositions,
-        source_product.exact_duplicate_decisions,
-        source_product.intake_attempts,
-        source_product.intake_submission_items,
-        source_product.intake_submissions,
-        asset.storage_receipts,
-        asset.source_versions,
-        asset.sources,
-        asset.original_assets,
-        intake.submissions,
-        frontend_command.command_ledger,
-        -- settings history sources are append-only (migration 032): never
-        -- truncated; tests isolate via unique project/identity prefix.
-        project_admin.project_revisions,
-        project_admin.projects,
-        auth.audit_events,
-        auth.sessions,
-        auth.project_memberships,
-        auth.credentials,
-        auth.principals
-      CASCADE
-    `);
+    await recreateTestDatabaseSchemas(databaseUrl);
   });
 
   it('creates one Source, requires an exact-duplicate decision, and reuses the pinned Version', async () => {

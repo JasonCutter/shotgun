@@ -23,7 +23,7 @@ import {
  * ownership, no cutover), and the Frozen 13-kind failure taxonomy.
  */
 
-const HOME = path.join('fake', 'home');
+const HOME = path.resolve('fake', 'home');
 const BACKUP_ROOT = path.join(HOME, 'Shotgun Backups');
 
 const makeManifest = (backupId = 'b1', createdAt = '2026-08-11T00:00:00.000Z'): BackupManifest => ({

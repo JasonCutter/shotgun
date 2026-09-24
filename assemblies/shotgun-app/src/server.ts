@@ -112,6 +112,7 @@ import type {
 } from '../../../modules/settings-policy/src/index.js';
 import type { FrontendCommandGatewayPort } from '../../../modules/frontend-command-gateway/src/index.js';
 import type { AISettingsBackendPort } from '../../../modules/ai-settings-backend/src/index.js';
+import type { KnowledgeResetCoordinatorPort } from '../../../modules/source-knowledge-reset/src/index.js';
 import type { ProviderExternalTransferApprovalPort } from '../../../modules/provider-privacy-policy/src/index.js';
 import { registerProjectRoutes } from './product-api/project-routes.js';
 import { registerFrontendProductRoutes } from './product-api/frontend-product-routes.js';
@@ -119,6 +120,7 @@ import { registerSettingsRoutes } from './product-api/settings-routes.js';
 import { registerTypedPropositionConflictRuleRoutes } from './product-api/typed-proposition-conflict-routes.js';
 import { registerAISettingsRoutes } from './product-api/ai-settings-routes.js';
 import { registerSourcesRoutes } from './product-api/sources-routes.js';
+import { registerSourceKnowledgeResetRoutes } from './product-api/source-knowledge-reset-routes.js';
 import { registerFrontendKnowledgeDraftRoutes } from './product-api/frontend-knowledge-draft-routes.js';
 import { registerFrontendReviewRoutes } from './product-api/frontend-review-routes.js';
 import { registerFrontendExternalActionRoutes } from './product-api/frontend-external-action-routes.js';
@@ -838,6 +840,8 @@ export type ApplicationOptions = {
   readonly authenticationAdapter?: AuthenticationPort;
   readonly projectAdminRepository?: ProjectAdministrationRepositoryPort;
   readonly projectBootstrapUnitOfWork?: ProjectBootstrapUnitOfWorkPort;
+  /** ADR-171 Owner-authorized reset preview/confirmation/status boundary. */
+  readonly sourceKnowledgeResetCoordinator?: KnowledgeResetCoordinatorPort;
   readonly settingsRepository?: SettingsRepositoryPort;
   readonly aiSettingsBackend?: AISettingsBackendPort;
   /** Product-owned semantic embedding profile provisioning boundary. */
@@ -3705,6 +3709,12 @@ const createApplicationCore = async (
     settingsRepository,
     requirePrincipalBrowserSession,
     { connector: kernel.connector },
+  );
+  registerSourceKnowledgeResetRoutes(
+    server,
+    options.sourceKnowledgeResetCoordinator,
+    authRepository,
+    requirePrincipalBrowserSession,
   );
   registerSettingsRoutes(
     server,

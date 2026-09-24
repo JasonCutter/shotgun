@@ -652,7 +652,10 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
         });
       }
       await client.query(
-        `UPDATE ai.provider_attempts SET status = 'succeeded', provider_response_id = $1, latency_ms = $2, finished_at = now() WHERE attempt_id = $3 AND call_id = $4 AND status IN ('running', 'outcome_unknown')`,
+        `UPDATE ai.provider_attempts
+         SET status = 'succeeded', provider_response_id = $1, latency_ms = $2,
+             finished_at = now(), lease_expires_at = NULL
+         WHERE attempt_id = $3 AND call_id = $4 AND status IN ('running', 'outcome_unknown')`,
         [
           completedAttempt?.providerResponseId ?? null,
           completedAttempt?.latencyMs ?? 0,
@@ -705,7 +708,9 @@ export class PostgresAIProviderCallRepository implements AIProviderCallRepositor
             operation: 'fail-provider-attempt',
           });
         await client.query(
-          `UPDATE ai.provider_attempts SET status = 'failed', error_code = $1, finished_at = now() WHERE attempt_id = $2 AND call_id = $3`,
+          `UPDATE ai.provider_attempts
+           SET status = 'failed', error_code = $1, finished_at = now(), lease_expires_at = NULL
+           WHERE attempt_id = $2 AND call_id = $3`,
           [code, attemptId, record.callId],
         );
         await client.query(

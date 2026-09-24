@@ -12,6 +12,7 @@ import {
 
 export type Classification =
   | 'TX_BOUNDARY'
+  | 'PORT_INFERRED'
   | 'TX_PARTICIPANT'
   | 'TX_DELEGATE'
   | 'NON_TX'
@@ -37,6 +38,7 @@ export type CallEvidence = {
   readonly callNeedle: string;
   readonly bindingEvidence: readonly string[];
   readonly regressionEvidenceIds: readonly string[];
+  readonly evidenceGrade?: 'DIRECT_CALLER' | 'COMPOSITION_BOUND' | 'PORT_INFERRED';
   /** Qualified construct: DIRECT (names the boundary) or SOLE/PORT (names a Port it implements). */
   readonly bindingKind?: 'DIRECT' | 'SOLE' | 'PORT';
   /** The Port the receiver is typed as, for a SOLE/PORT binding. */
@@ -65,8 +67,18 @@ export type RegressionEvidence = {
 };
 
 export type Corpus = {
-  readonly schemaVersion: 'ts6.phase-b.transaction-authority.v2';
+  readonly schemaVersion:
+    | 'ts6.phase-b.transaction-authority.v2'
+    | 'ts6.phase-b.transaction-authority.v3'
+    | 'ts6.phase-b.transaction-authority.v4';
   readonly baseSha: string;
+  readonly derivedFrom?: {
+    readonly parentArtifact: string;
+    readonly parentSha256: string;
+    readonly baseCommit: string;
+    readonly authorityVersion: string;
+  };
+  readonly correctionRound?: string;
   readonly historical: {
     readonly previousSchema: 'v1';
     readonly previousReviewedRows: 87;
@@ -112,7 +124,7 @@ export type Boundary = {
     readonly transactionNeedle: string;
   };
   readonly productionReachability: {
-    readonly status: 'PROVEN' | 'TEST_ONLY_OR_DEAD' | 'REVIEW_REQUIRED';
+    readonly status: 'PROVEN' | 'PORT_INFERRED' | 'TEST_ONLY_OR_DEAD' | 'REVIEW_REQUIRED';
     readonly callers: readonly CallEvidence[];
   };
   /**
@@ -198,6 +210,7 @@ const MODULE_PATH = fileURLToPath(import.meta.url);
 export const ROOT = path.resolve(path.dirname(MODULE_PATH), '..');
 export const BASELINE_SHA = '0ac63ea5c548b1cb44422afeef668b90274724c8';
 export const HISTORICAL_BASELINE_SHA = '1f821ea371b308d8cecede4a98ebe27960873b21';
+export const T3_BASELINE_SHA = 'a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43';
 export const V2_FIXTURE_RELATIVE_PATH =
   'tests/fixtures/ts6-phase-b-transaction-authority-golden.v2.json';
 const SCOPES = ['adapters', 'modules', 'packages', 'assemblies', 'apps'] as const;
@@ -540,7 +553,7 @@ const qualifiedResolve = (
   root: string,
   boundary: SourceCandidate,
 ): {
-  readonly status: 'PROVEN' | 'TEST_ONLY_OR_DEAD';
+  readonly status: 'PROVEN' | 'PORT_INFERRED' | 'TEST_ONLY_OR_DEAD' | 'REVIEW_REQUIRED';
   readonly callers: readonly CallEvidence[];
 } => {
   let index = reachIndexCache.get(root);
@@ -574,10 +587,44 @@ const qualifiedResolve = (
         bindingVia: caller.via,
         receiverType: caller.receiverType,
         line: caller.line,
+        evidenceGrade: kind === 'DIRECT' ? 'DIRECT_CALLER' : 'PORT_INFERRED',
       };
     },
   );
-  return { status: callers.length > 0 ? 'PROVEN' : 'TEST_ONLY_OR_DEAD', callers };
+  const hasDirectCaller = callers.some((caller) => caller.evidenceGrade === 'DIRECT_CALLER');
+  if (hasDirectCaller) return { status: 'PROVEN', callers };
+  if (callers.length > 0) return { status: 'PORT_INFERRED', callers };
+  if (verdict.nameOnlyCollisions.some((collision) => collision.receiverType === '(unresolved)'))
+    return { status: 'REVIEW_REQUIRED', callers };
+  return { status: 'TEST_ONLY_OR_DEAD', callers };
+};
+
+const classificationForReachability = (
+  status: Boundary['productionReachability']['status'],
+): Classification => {
+  switch (status) {
+    case 'PROVEN':
+      return 'TX_BOUNDARY';
+    case 'PORT_INFERRED':
+      return 'PORT_INFERRED';
+    case 'REVIEW_REQUIRED':
+      return 'REVIEW_REQUIRED';
+    case 'TEST_ONLY_OR_DEAD':
+      return 'TEST_ONLY_OR_DEAD';
+  }
+};
+
+const reasonForReachability = (status: Boundary['productionReachability']['status']): string => {
+  switch (status) {
+    case 'PROVEN':
+      return 'A production call site names the concrete boundary receiver.';
+    case 'PORT_INFERRED':
+      return 'A production call site names a Port implemented by this boundary; composition binding is not proven.';
+    case 'REVIEW_REQUIRED':
+      return 'A production call site has an unresolved receiver type and needs review.';
+    case 'TEST_ONLY_OR_DEAD':
+      return 'No qualified production call site remains after receiver resolution.';
+  }
 };
 const savepoint = (candidate: SourceCandidate): boolean =>
   /(?:ROLLBACK\s+TO\s+SAVEPOINT|SAVEPOINT\s+)/i.test(candidate.text);
@@ -626,7 +673,7 @@ export const buildAuditShape = (
           const legacy = callersFor(root, candidate);
           return {
             status: (legacy.length > 0 ? 'PROVEN' : 'TEST_ONLY_OR_DEAD') as
-              'PROVEN' | 'TEST_ONLY_OR_DEAD',
+              'PROVEN' | 'PORT_INFERRED' | 'TEST_ONLY_OR_DEAD' | 'REVIEW_REQUIRED',
             callers: legacy as readonly CallEvidence[],
           };
         })()
@@ -702,15 +749,11 @@ export const buildAuditShape = (
       reconciliation.push({
         candidateId: candidate.candidateId,
         c2r1Classification: candidate.kind,
-        c2r2Classification:
-          boundary.productionReachability.status === 'PROVEN' ? 'TX_BOUNDARY' : 'TEST_ONLY_OR_DEAD',
+        c2r2Classification: classificationForReachability(boundary.productionReachability.status),
         file: candidate.file,
         symbol: candidate.symbol,
         method: candidate.method,
-        reason:
-          boundary.productionReachability.status === 'PROVEN'
-            ? 'Safe helper call owns transaction outcome.'
-            : 'No production CallExpression found after AST audit.',
+        reason: reasonForReachability(boundary.productionReachability.status),
         productionReachable: boundary.productionReachability.status === 'PROVEN',
         transactionOwner: true,
         transactionParticipant: false,
@@ -747,12 +790,11 @@ export const buildAuditShape = (
     reconciliation.push({
       candidateId: candidate.candidateId,
       c2r1Classification: candidate.kind,
-      c2r2Classification:
-        boundary.productionReachability.status === 'PROVEN' ? 'TX_BOUNDARY' : 'TEST_ONLY_OR_DEAD',
+      c2r2Classification: classificationForReachability(boundary.productionReachability.status),
       file: candidate.file,
       symbol: candidate.symbol,
       method: candidate.method,
-      reason: 'Manual BEGIN owns raw transaction outcome.',
+      reason: reasonForReachability(boundary.productionReachability.status),
       productionReachable: boundary.productionReachability.status === 'PROVEN',
       transactionOwner: true,
       transactionParticipant: false,
@@ -761,6 +803,8 @@ export const buildAuditShape = (
   }
   const counts = {
     TX_BOUNDARY: reconciliation.filter((row) => row.c2r2Classification === 'TX_BOUNDARY').length,
+    PORT_INFERRED: reconciliation.filter((row) => row.c2r2Classification === 'PORT_INFERRED')
+      .length,
     TX_PARTICIPANT: reconciliation.filter((row) => row.c2r2Classification === 'TX_PARTICIPANT')
       .length,
     TX_DELEGATE: 0,
@@ -768,7 +812,8 @@ export const buildAuditShape = (
     TEST_ONLY_OR_DEAD: reconciliation.filter(
       (row) => row.c2r2Classification === 'TEST_ONLY_OR_DEAD',
     ).length,
-    REVIEW_REQUIRED: 0,
+    REVIEW_REQUIRED: reconciliation.filter((row) => row.c2r2Classification === 'REVIEW_REQUIRED')
+      .length,
   } satisfies Record<Classification, number>;
   return {
     candidates,
@@ -863,10 +908,11 @@ export const validateCorpus = (corpus: Corpus, root: string = ROOT): ValidationR
   const SUPPORTED_SCHEMAS = new Set([
     'ts6.phase-b.transaction-authority.v2',
     'ts6.phase-b.transaction-authority.v3',
+    'ts6.phase-b.transaction-authority.v4',
   ]);
   if (!SUPPORTED_SCHEMAS.has(corpus.schemaVersion))
-    add(issues, 'SCHEMA', 'schemaVersion must be v2 or v3 (v3 is the C2-R15 corrected snapshot).');
-  const SUPPORTED_BASE_SHAS = new Set([BASELINE_SHA, HISTORICAL_BASELINE_SHA]);
+    add(issues, 'SCHEMA', 'schemaVersion must be v2, v3, or v4 (v4 is the T3 authority snapshot).');
+  const SUPPORTED_BASE_SHAS = new Set([BASELINE_SHA, HISTORICAL_BASELINE_SHA, T3_BASELINE_SHA]);
   if (!SUPPORTED_BASE_SHAS.has(corpus.baseSha))
     add(issues, 'BASE_SHA', `baseSha must be ${BASELINE_SHA} or ${HISTORICAL_BASELINE_SHA}.`);
   if (corpus.historical.previousReviewedRows !== 87 || corpus.historical.c2r1CandidateRows !== 120)
@@ -946,6 +992,19 @@ export const validateCorpus = (corpus: Corpus, root: string = ROOT): ValidationR
         !expectedCallers.every((caller) => actualCallers.includes(caller))
       )
         add(issues, 'CALLER_SET', boundary.boundaryId);
+      if (corpus.schemaVersion === 'ts6.phase-b.transaction-authority.v4') {
+        const expectedGrades = new Map(
+          expectedBoundary.productionReachability.callers.map((caller) => [
+            `${caller.file}:${caller.callNeedle}`,
+            caller.evidenceGrade,
+          ]),
+        );
+        for (const caller of boundary.productionReachability.callers) {
+          const key = `${caller.file}:${caller.callNeedle}`;
+          if (expectedGrades.get(key) !== caller.evidenceGrade)
+            add(issues, 'CALLER_EVIDENCE_GRADE_DRIFT', `${boundary.boundaryId}:${key}`);
+        }
+      }
     }
     if (boundary.productionReachability.status === 'REVIEW_REQUIRED')
       add(issues, 'PRODUCTION_REVIEW_REQUIRED', boundary.boundaryId);
@@ -954,6 +1013,33 @@ export const validateCorpus = (corpus: Corpus, root: string = ROOT): ValidationR
         add(issues, 'MISSING_CALLER', boundary.boundaryId);
       if (boundary.regressionEvidenceIds.length === 0)
         add(issues, 'MISSING_REGRESSION', boundary.boundaryId);
+    }
+    if (corpus.schemaVersion === 'ts6.phase-b.transaction-authority.v4') {
+      const grades = new Set(
+        boundary.productionReachability.callers.map((caller) => caller.evidenceGrade),
+      );
+      if (
+        boundary.productionReachability.status === 'PROVEN' &&
+        ![...grades].some((grade) => grade === 'DIRECT_CALLER' || grade === 'COMPOSITION_BOUND')
+      )
+        add(issues, 'PROVEN_WITHOUT_DIRECT_OR_COMPOSITION_EVIDENCE', boundary.boundaryId);
+      if (
+        boundary.productionReachability.status === 'PORT_INFERRED' &&
+        ![...grades].some((grade) => grade === 'PORT_INFERRED')
+      )
+        add(issues, 'PORT_INFERENCE_EVIDENCE_MISSING', boundary.boundaryId);
+      if (
+        boundary.productionReachability.status === 'PORT_INFERRED' &&
+        [...grades].some((grade) => grade === 'DIRECT_CALLER' || grade === 'COMPOSITION_BOUND')
+      )
+        add(issues, 'PORT_INFERENCE_STATUS_TOO_WEAK', boundary.boundaryId);
+      for (const caller of boundary.productionReachability.callers) {
+        if (!caller.evidenceGrade)
+          add(issues, 'CALLER_EVIDENCE_GRADE_MISSING', boundary.boundaryId);
+        for (const id of caller.regressionEvidenceIds)
+          if (!boundary.regressionEvidenceIds.includes(id))
+            add(issues, 'CALLER_REGRESSION_LINK', `${boundary.boundaryId}:${id}`);
+      }
     }
     for (const caller of boundary.productionReachability.callers) {
       const callerSource = read(root, caller.file);
@@ -1034,10 +1120,12 @@ export const validateCorpus = (corpus: Corpus, root: string = ROOT): ValidationR
   if (corpus.summary.reconciliationTotal !== audit.candidates.length)
     add(issues, 'SUMMARY_TOTAL', 'reconciliationTotal does not equal the source candidate count.');
   const crosswalkPath = path.join(root, 'ts6-c2-r3-boundary-count-crosswalk.json');
-  if (fs.existsSync(crosswalkPath)) {
-    const crosswalk = JSON.parse(fs.readFileSync(crosswalkPath, 'utf8')) as CountCrosswalk;
-    issues.push(...validateCountCrosswalk(crosswalk));
-  } else add(issues, 'CROSSWALK_FILE', 'ts6-c2-r3-boundary-count-crosswalk.json is missing.');
+  if (corpus.schemaVersion !== 'ts6.phase-b.transaction-authority.v4') {
+    if (fs.existsSync(crosswalkPath)) {
+      const crosswalk = JSON.parse(fs.readFileSync(crosswalkPath, 'utf8')) as CountCrosswalk;
+      issues.push(...validateCountCrosswalk(crosswalk));
+    } else add(issues, 'CROSSWALK_FILE', 'ts6-c2-r3-boundary-count-crosswalk.json is missing.');
+  }
   // C2-R15: independent validation of the approved regression-evidence relations.
   // Removes fixture self-reference ??a non-empty regressionEvidenceIds array alone
   // no longer satisfies regression coverage for a PROVEN boundary.

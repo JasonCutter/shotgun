@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   convergeOwnerState,
   ownerStateQueryKeys,
+  purgeProjectScopedKnowledgeQueries,
   sourceIntakeSubmissionQueryKey,
   type SourcesQueryScope,
 } from './query-keys.js';
@@ -128,6 +129,38 @@ describe('owner state convergence', () => {
         .getAll()
         .map(({ queryKey }) => queryKey),
     ).toContainEqual(project2QueryKey);
+  });
+});
+
+describe('Project knowledge epoch cache fencing', () => {
+  it('purges fenced Project query data while retaining reset status and other Projects', async () => {
+    const queryClient = new QueryClient();
+    const fencedSourceKey = [
+      'project',
+      'principal-1',
+      'project-1',
+      'source',
+      'source-1',
+      'version',
+      'version-1',
+      'preview',
+      'ORIGINAL',
+    ] as const;
+    const resetStatusKey = ['source-knowledge-reset-status', 'project-1', 'request-1'] as const;
+    const otherProjectKey = ['project', 'principal-1', 'project-2', 'source', 'source-2'] as const;
+    const sessionKey = ['session', 'boundary'] as const;
+    queryClient.setQueryData(fencedSourceKey, 'private source content');
+    queryClient.setQueryData(resetStatusKey, { state: 'APPROVED' });
+    queryClient.setQueryData(otherProjectKey, 'other project data');
+    queryClient.setQueryData(sessionKey, { principalId: 'principal-1' });
+
+    await purgeProjectScopedKnowledgeQueries(queryClient, 'project-1');
+
+    expect(queryClient.getQueryData(fencedSourceKey)).toBeUndefined();
+    expect(queryClient.getQueryData(resetStatusKey)).toEqual({ state: 'APPROVED' });
+    expect(queryClient.getQueryData(otherProjectKey)).toBe('other project data');
+    expect(queryClient.getQueryData(sessionKey)).toEqual({ principalId: 'principal-1' });
+    await queryClient.cancelQueries();
   });
 });
 

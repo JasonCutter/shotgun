@@ -1,4 +1,4 @@
-import type { QueryClient } from '@tanstack/react-query';
+import type { Query, QueryClient } from '@tanstack/react-query';
 import type {
   GlobalShellView,
   GraphSnapshotRequestV1,
@@ -48,6 +48,24 @@ export const convergeOwnerState = async (
       queryClient.invalidateQueries({ queryKey: [...queryKey] }),
     ),
   );
+};
+
+/**
+ * Once a Project knowledge epoch advances, cached views for that Project may
+ * contain data from the fenced epoch. Cancel in-flight reads, clear inactive
+ * copies, and reset active consumers so they reload from the new authority.
+ * Keep the reset status query itself available to the Owner.
+ */
+export const purgeProjectScopedKnowledgeQueries = async (
+  queryClient: QueryClient,
+  projectId: string,
+): Promise<void> => {
+  if (!projectId) return;
+  const predicate = (query: Query) =>
+    query.queryKey[0] !== 'source-knowledge-reset-status' && query.queryKey.includes(projectId);
+  await queryClient.cancelQueries({ predicate });
+  queryClient.removeQueries({ predicate, type: 'inactive' });
+  await queryClient.resetQueries({ predicate, type: 'active' });
 };
 
 export const projectQueryKey = (

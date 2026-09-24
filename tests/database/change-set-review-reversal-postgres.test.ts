@@ -18,6 +18,7 @@ import {
 } from '../../packages/contracts/src/index.js';
 
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { recreateTestDatabaseSchemas } from '../helpers/recreate-test-database.js';
 
 const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -158,18 +159,7 @@ const addCommit = async (opts: {
 };
 
 const cleanup = async () => {
-  // canonical.claims is append-only (no DELETE), matching the other DB tests
-  // that seed canonical tables: reset the whole canonical schema set.
-  await pool!.query(`
-    TRUNCATE
-      canonical.outbox,
-      canonical.history_events,
-      canonical.revisions,
-      canonical.commits,
-      canonical.claims,
-      canonical.project_state
-    CASCADE
-  `);
+  await recreateTestDatabaseSchemas(databaseUrl);
 };
 
 describe.runIf(pool)('FE-P5-S2 WP3 Reversal DraftChangeSet (real PostgreSQL)', () => {

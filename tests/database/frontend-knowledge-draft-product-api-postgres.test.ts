@@ -18,6 +18,7 @@ import {
 } from '../../modules/frontend-knowledge-draft/src/product-api.js';
 import type { FrontendKnowledgeOperationV1 } from '../../packages/contracts/src/index.js';
 import { pBase, pOperation } from '../helpers/frontend-knowledge-draft-parity.js';
+import { recreateTestDatabaseSchemas } from '../helpers/recreate-test-database.js';
 
 const PROJECT_ID = 'project-1';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
@@ -27,24 +28,7 @@ const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
 
 describe.runIf(pool)('FE-P3-S2 Product API coordinator on PostgreSQL persistence', () => {
   beforeEach(async () => {
-    await pool!.query(
-      `TRUNCATE frontend_knowledge_draft.drafts,
-                frontend_knowledge_draft.revisions,
-                frontend_knowledge_draft.operations,
-                frontend_knowledge_draft.materializations,
-                frontend_knowledge_draft.artifact_refs,
-                frontend_command.command_ledger,
-                canonical.outbox,
-                canonical.history_events,
-                canonical.revisions,
-                canonical.commits,
-                canonical.claims,
-                canonical.project_state,
-                asset.source_versions,
-                asset.sources,
-                asset.original_assets
-       CASCADE`,
-    );
+    await recreateTestDatabaseSchemas(databaseUrl);
   });
 
   afterAll(async () => {

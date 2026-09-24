@@ -1,16 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Pool, PoolClient } from 'pg';
 
 import { withSafePostgresTransaction } from '../../packages/postgres-transaction/src/index.js';
 
 describe('withSafePostgresTransaction', () => {
-  let query: ReturnType<typeof vi.fn>;
-  let client: { query: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn> };
-  let pool: { connect: ReturnType<typeof vi.fn> };
+  type TestQueryResult = { rowCount: number; rows: unknown[] };
+  type QueryMock = ReturnType<typeof vi.fn<(sql: string) => Promise<TestQueryResult>>>;
+
+  let query: QueryMock;
+  let client: { query: QueryMock; release: ReturnType<typeof vi.fn> };
+  let pool: Pick<Pool, 'connect'>;
 
   beforeEach(() => {
-    query = vi.fn(async () => ({ rowCount: 1, rows: [] }));
+    query = vi.fn<(sql: string) => Promise<TestQueryResult>>(async () => ({
+      rowCount: 1,
+      rows: [],
+    }));
     client = { query, release: vi.fn() };
-    pool = { connect: vi.fn(async () => client) };
+    pool = {
+      connect: vi.fn(async () => client as unknown as PoolClient),
+    } as unknown as Pick<Pool, 'connect'>;
   });
 
   it('does not roll back after COMMIT acknowledgement loss', async () => {
@@ -26,6 +35,30 @@ describe('withSafePostgresTransaction', () => {
       }),
     ).rejects.toMatchObject({ code: 'OUTCOME_UNKNOWN' });
     expect(query.mock.calls.map(([sql]) => sql)).toEqual(['BEGIN', 'COMMIT']);
+    expect(client.release).toHaveBeenCalledOnce();
+  });
+
+  it('supports a repeatable-read snapshot for consistent read models', async () => {
+    await expect(
+      withSafePostgresTransaction(
+        pool,
+        async (transactionClient) => {
+          await transactionClient.query('SELECT 1');
+          return 'snapshot-read';
+        },
+        {
+          module: 'test',
+          operation: 'read-snapshot',
+          isolationLevel: 'REPEATABLE READ',
+          readOnly: true,
+        },
+      ),
+    ).resolves.toBe('snapshot-read');
+    expect(query.mock.calls.map(([sql]) => sql)).toEqual([
+      'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY',
+      'SELECT 1',
+      'COMMIT',
+    ]);
     expect(client.release).toHaveBeenCalledOnce();
   });
 

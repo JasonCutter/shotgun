@@ -6,6 +6,7 @@ import { PostgresSourcesIntakeUnitOfWork } from '../../adapters/frontend-sources
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { recreateTestDatabaseSchemas } from '../helpers/recreate-test-database.js';
 
 const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -196,27 +197,7 @@ const seed = async () => {
 
 describe.runIf(pool)('Sources exact duplicate persistence', () => {
   beforeEach(async () => {
-    await pool!.query(`
-      TRUNCATE
-        source_product.exact_duplicate_dispositions,
-        source_product.exact_duplicate_decisions,
-        source_product.intake_attempts,
-        source_product.intake_submission_items,
-        source_product.intake_submissions,
-        asset.storage_receipts,
-        asset.source_versions,
-        asset.sources,
-        asset.original_assets,
-        frontend_command.command_ledger,
-        project_admin.project_revisions,
-        project_admin.projects,
-        auth.audit_events,
-        auth.sessions,
-        auth.project_memberships,
-        auth.credentials,
-        auth.principals
-      CASCADE
-    `);
+    await recreateTestDatabaseSchemas(databaseUrl);
   });
 
   it('rejects a stale Decision and accepts only one concurrent Disposition', async () => {

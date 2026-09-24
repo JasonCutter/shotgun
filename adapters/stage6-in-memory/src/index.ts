@@ -10,6 +10,7 @@ import {
   type CanonicalClaim,
   type CanonicalCommitResult,
   type CanonicalHistoryEvent,
+  type CanonicalKnowledgeResetEventV1,
   type CanonicalOutboxRecord,
   type CanonicalRelationV1,
   type CanonicalRelationPrecursorLinkV1,
@@ -785,6 +786,12 @@ export class InMemoryCanonicalKnowledgeRepository
           left.historyEventId.localeCompare(right.historyEventId),
       )
       .map(clone);
+  }
+
+  async listKnowledgeResetEvents(
+    _projectId: string,
+  ): Promise<readonly CanonicalKnowledgeResetEventV1[]> {
+    return [];
   }
 
   async findOutbox(

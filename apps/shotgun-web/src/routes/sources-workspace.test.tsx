@@ -12,6 +12,8 @@ import type {
   SourceLibraryPageView,
   SourcePreviewView,
   SourceVersionHistoryView,
+  KnowledgeResetPreviewV1,
+  KnowledgeResetRequestV1,
 } from '@shotgun/api-client';
 
 import { createFrontendQueryClient } from '../app/query-client.js';
@@ -23,7 +25,7 @@ import { SourceDetailWorkspace } from './source-detail-workspace.js';
 import { SourcesWorkspace } from './sources-workspace.js';
 
 const now = '2026-07-30T12:00:00.000Z';
-const hash = `sha256:${'a'.repeat(64)}`;
+const hash: `sha256:${string}` = `sha256:${'a'.repeat(64)}`;
 
 const shell: GlobalShellView = {
   schemaVersion: '1.0.0',
@@ -698,6 +700,146 @@ describe('Sources Workspace', () => {
     });
     await waitFor(() =>
       expect(document.activeElement).toBe(document.getElementById('evidence-evidence-1')),
+    );
+  });
+
+  it('blocks Source knowledge reset confirmation when impact is not closed', async () => {
+    globalThis.sessionStorage.clear();
+    const runtime = createRuntime();
+    const blockedPreview: KnowledgeResetPreviewV1 = {
+      schemaVersion: '1.0.0',
+      previewId: 'preview-1',
+      projectId: 'project-1',
+      manifestDigest: hash,
+      ownerManifestDigest: hash,
+      projectRevision: 1,
+      knowledgeEpoch: 0,
+      expiresAt: '2026-09-23T01:05:00.000Z',
+      counts: {
+        sourceCount: 2,
+        sourceVersionCount: 3,
+        sourceDerivedRecordCount: 14,
+        redactedHistoryRecordCount: 4,
+        rebuildProjectionCount: 5,
+        sharedAssetCount: 1,
+        blockedRecordCount: 1,
+      },
+      blockers: ['ERASURE_EXECUTOR_UNAVAILABLE'],
+      preservedConfigurationDigest: hash,
+      canConfirm: false,
+    };
+    runtime.apiClient.previewSourceKnowledgeReset = vi.fn(async () => blockedPreview);
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <LocalizedShellOutlet />,
+          children: [{ path: 'sources', element: <SourcesWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await userEvent
+      .setup()
+      .click(await screen.findByRole('button', { name: 'Review reset impact' }));
+    expect(
+      await screen.findByText('The dedicated erasure executor is not configured.'),
+    ).toBeTruthy();
+    expect(screen.getByText('Derived records')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Confirm Project reset' })).toBeNull();
+  });
+
+  it('requires explicit irreversible confirmation and follows the durable reset status', async () => {
+    globalThis.sessionStorage.clear();
+    const runtime = createRuntime();
+    const resetPreview: KnowledgeResetPreviewV1 = {
+      schemaVersion: '1.0.0',
+      previewId: 'preview-confirm',
+      projectId: 'project-1',
+      manifestDigest: hash,
+      ownerManifestDigest: hash,
+      projectRevision: 3,
+      knowledgeEpoch: 2,
+      expiresAt: '2026-09-23T01:05:00.000Z',
+      counts: {
+        sourceCount: 1,
+        sourceVersionCount: 1,
+        sourceDerivedRecordCount: 4,
+        redactedHistoryRecordCount: 2,
+        rebuildProjectionCount: 3,
+        sharedAssetCount: 0,
+        blockedRecordCount: 0,
+      },
+      blockers: [],
+      preservedConfigurationDigest: hash,
+      canConfirm: true,
+    };
+    const resetRequest: KnowledgeResetRequestV1 = {
+      schemaVersion: '1.0.0',
+      requestId: 'request-confirm',
+      projectId: 'project-1',
+      projectRevision: 3,
+      manifestDigest: hash,
+      state: 'APPROVED',
+      expectedKnowledgeEpoch: 2,
+      knowledgeEpoch: 3,
+      blockerCodes: [],
+      counts: resetPreview.counts,
+      completedSteps: [],
+      casStatus: 'QUARANTINED_PENDING_SWEEP',
+      backupStatus: 'PENDING',
+      createdAt: '2026-09-23T01:00:00.000Z',
+      updatedAt: '2026-09-23T01:01:00.000Z',
+    };
+    runtime.apiClient.previewSourceKnowledgeReset = vi.fn(async () => resetPreview);
+    runtime.apiClient.confirmSourceKnowledgeReset = vi.fn(async () => ({
+      request: resetRequest,
+      replayed: false,
+    }));
+    runtime.apiClient.getSourceKnowledgeResetStatus = vi.fn(async () => resetRequest);
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <LocalizedShellOutlet />,
+          children: [{ path: 'sources', element: <SourcesWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Review reset impact' }));
+    const confirmButton = await screen.findByRole('button', { name: 'Confirm Project reset' });
+    expect((confirmButton as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByRole('checkbox', { name: /permanently removes/i }));
+    expect((confirmButton as HTMLButtonElement).disabled).toBe(false);
+    await user.click(confirmButton);
+
+    expect(runtime.apiClient.confirmSourceKnowledgeReset).toHaveBeenCalledWith(
+      'project-1',
+      expect.objectContaining({
+        previewId: 'preview-confirm',
+        expectedProjectRevision: 3,
+        expectedKnowledgeEpoch: 2,
+        confirmIrreversibleReset: true,
+      }),
+    );
+    expect(await screen.findByText(/Reset status: APPROVED/)).toBeTruthy();
+    expect(screen.getByText(/Exit and restart Shotgun to run the approved reset/i)).toBeTruthy();
+    expect(globalThis.sessionStorage.getItem('shotgun:source-knowledge-reset:project-1')).toBe(
+      'request-confirm',
     );
   });
 });

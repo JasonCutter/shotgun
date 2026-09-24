@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useOutletContext, useSearchParams } from 'react-router';
 
 import {
@@ -11,8 +11,11 @@ import {
   type SourceLibraryQuery,
   type SourcesSensitivity,
   type StagedSourcesIntakeInput,
+  type KnowledgeResetPreviewV1,
+  type KnowledgeResetBlockerCodeV1,
 } from '@shotgun/api-client';
 
+import { purgeProjectScopedKnowledgeQueries } from '../app/query-keys.js';
 import { useAppRuntime } from '../app/providers.js';
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
@@ -42,6 +45,18 @@ const DEFAULT_QUERY: SourceLibraryQuery = {
 
 const identity = (prefix: string): string =>
   `${prefix}-${typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now()}`;
+
+const resetRequestStorageKey = (projectId: string): string =>
+  `shotgun:source-knowledge-reset:${projectId}`;
+
+const readResetRequestId = (projectId: string): string | undefined => {
+  if (!projectId || typeof globalThis.sessionStorage === 'undefined') return undefined;
+  try {
+    return globalThis.sessionStorage.getItem(resetRequestStorageKey(projectId)) ?? undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 type SourceLibraryItem = SourceLibraryPageView['items'][number];
 
@@ -100,6 +115,25 @@ const sourceDraftMessage = (t: ProductTranslator, code: SourceIntakeDraftMessage
   }
 };
 
+const resetBlockerMessage = (t: ProductTranslator, code: KnowledgeResetBlockerCodeV1): string => {
+  switch (code) {
+    case 'UNCLASSIFIED_CONTENT':
+      return t('sources.reset_blocker_unclassified');
+    case 'STALE_PREVIEW':
+      return t('sources.reset_blocker_stale');
+    case 'ACTIVE_JOB_OUTCOME_UNKNOWN':
+      return t('sources.reset_blocker_job');
+    case 'EXTERNAL_ACTION_DEPENDENCY':
+      return t('sources.reset_blocker_external_action');
+    case 'RESET_IN_PROGRESS':
+      return t('sources.reset_blocker_in_progress');
+    case 'ERASURE_EXECUTOR_UNAVAILABLE':
+      return t('sources.reset_blocker_executor');
+    case 'KNOWLEDGE_RESET_JOURNAL_UNAVAILABLE':
+      return t('sources.reset_blocker_journal');
+  }
+};
+
 type DraftCommandIdentity = {
   readonly fingerprint: string;
   readonly clientRequestId: string;
@@ -108,13 +142,17 @@ type DraftCommandIdentity = {
 };
 
 export const SourcesWorkspace = () => {
-  const { apiClient } = useAppRuntime();
+  const { apiClient, queryClient } = useAppRuntime();
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const location = useLocation();
   const [searchParameters] = useSearchParams();
   const connectivity = useConnectivityState();
   const { t } = useProductLocalization();
   const writeClient = useMemo(() => createSourcesWriteClient(), []);
+  const projectId = shell.activeProject?.id ?? '';
+  const isActiveProjectOwner = shell.accessibleProjects.some(
+    (project) => project.id === projectId && project.isOwner,
+  );
   const commandIdentity = useRef<DraftCommandIdentity | undefined>(undefined);
   const [searchInput, setSearchInput] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
@@ -128,6 +166,19 @@ export const SourcesWorkspace = () => {
   const [decision, setDecision] = useState<ExactDuplicateDecisionView>();
   const [mutationState, setMutationState] = useState<'IDLE' | 'STAGING' | 'SUBMITTING'>('IDLE');
   const [mutationError, setMutationError] = useState<string>();
+  const [resetPreview, setResetPreview] = useState<KnowledgeResetPreviewV1>();
+  const [resetRequest, setResetRequest] = useState<
+    { projectId: string; requestId: string } | undefined
+  >(() => {
+    const requestId = readResetRequestId(projectId);
+    return requestId ? { projectId, requestId } : undefined;
+  });
+  const resetRequestId = resetRequest?.projectId === projectId ? resetRequest.requestId : undefined;
+  const [resetConfirmed, setResetConfirmed] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string>();
+  const resetIdempotency = useRef<{ previewId: string; key: string } | undefined>(undefined);
+  const resetCachePurgedRequestId = useRef<string | undefined>(undefined);
   const linkedSubmissionId = searchParameters.get('submission')?.trim() || null;
   const query = useMemo<SourceLibraryQuery>(
     () => ({
@@ -140,6 +191,36 @@ export const SourcesWorkspace = () => {
   const linkedSubmission = useQuery(
     sourceIntakeSubmissionQueryOptions(apiClient, shell, linkedSubmissionId),
   );
+  const resetStatus = useQuery({
+    queryKey: ['source-knowledge-reset-status', projectId, resetRequestId],
+    queryFn: () => apiClient.getSourceKnowledgeResetStatus(projectId, resetRequestId!),
+    enabled: Boolean(projectId && resetRequestId && !connectivity.isOffline),
+    refetchInterval: (query) =>
+      query.state.data &&
+      ['COMPLETE', 'BLOCKED', 'OUTCOME_UNKNOWN', 'ERASURE_UNVERIFIED'].includes(
+        query.state.data.state,
+      )
+        ? false
+        : 2_000,
+  });
+  useEffect(() => {
+    const request = resetStatus.data;
+    if (
+      !request ||
+      request.projectId !== projectId ||
+      resetCachePurgedRequestId.current === request.requestId
+    ) {
+      return;
+    }
+    resetCachePurgedRequestId.current = request.requestId;
+    void purgeProjectScopedKnowledgeQueries(queryClient, projectId);
+  }, [projectId, queryClient, resetStatus.data?.projectId, resetStatus.data?.requestId]);
+  useEffect(() => {
+    const requestId = readResetRequestId(projectId);
+    setResetPreview(undefined);
+    setResetConfirmed(false);
+    setResetRequest(requestId ? { projectId, requestId } : undefined);
+  }, [projectId]);
   const seed =
     typeof location.state === 'object' && location.state !== null
       ? (location.state as { readonly intakeDraftSeed?: unknown }).intakeDraftSeed
@@ -155,7 +236,6 @@ export const SourcesWorkspace = () => {
     );
   }
 
-  const projectId = shell.activeProject.id;
   const requestedView = searchParameters.get('view');
   const showAddSource = requestedView === 'add' || (requestedView === null && seed !== undefined);
   const displayedSubmission =
@@ -167,6 +247,68 @@ export const SourcesWorkspace = () => {
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
     if (!connectivity.isOffline) setAppliedQuery(searchInput);
+  };
+
+  const previewReset = async () => {
+    if (connectivity.isOffline || resetBusy || !isActiveProjectOwner) return;
+    setResetBusy(true);
+    setResetError(undefined);
+    setResetPreview(undefined);
+    setResetConfirmed(false);
+    resetIdempotency.current = undefined;
+    try {
+      setResetPreview(await apiClient.previewSourceKnowledgeReset(projectId));
+    } catch {
+      setResetError(t('sources.reset_error'));
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const confirmReset = async () => {
+    const preview = resetPreview;
+    if (
+      !preview ||
+      !preview.canConfirm ||
+      !resetConfirmed ||
+      preview.projectId !== projectId ||
+      connectivity.isOffline ||
+      resetBusy ||
+      !isActiveProjectOwner
+    ) {
+      return;
+    }
+    if (resetIdempotency.current?.previewId !== preview.previewId) {
+      resetIdempotency.current = { previewId: preview.previewId, key: identity('source-reset') };
+    }
+    setResetBusy(true);
+    setResetError(undefined);
+    try {
+      const response = await apiClient.confirmSourceKnowledgeReset(projectId, {
+        previewId: preview.previewId,
+        manifestDigest: preview.manifestDigest,
+        expectedProjectRevision: preview.projectRevision,
+        expectedKnowledgeEpoch: preview.knowledgeEpoch,
+        idempotencyKey: resetIdempotency.current.key,
+        confirmIrreversibleReset: true,
+      });
+      try {
+        globalThis.sessionStorage.setItem(
+          resetRequestStorageKey(projectId),
+          response.request.requestId,
+        );
+      } catch {
+        // Durable status remains available from the request ID returned by the API response.
+      }
+      setResetRequest({ projectId, requestId: response.request.requestId });
+      setResetPreview(undefined);
+      setResetConfirmed(false);
+    } catch {
+      // Keep the preview and idempotency key so an uncertain request can be retried safely.
+      setResetError(t('sources.reset_error'));
+    } finally {
+      setResetBusy(false);
+    }
   };
 
   const onAddDraft = (event: FormEvent) => {
@@ -646,6 +788,123 @@ export const SourcesWorkspace = () => {
               </div>
             </form>
           </div>
+
+          {isActiveProjectOwner ? (
+            <section className="source-knowledge-reset" aria-labelledby="source-reset-heading">
+              <h3 id="source-reset-heading">{t('sources.reset_title')}</h3>
+              <p>{t('sources.reset_help')}</p>
+              {connectivity.isOffline ? (
+                <p className="stale-state" role="status">
+                  {t('sources.reset_offline')}
+                </p>
+              ) : null}
+              <button
+                className="hfm-action-secondary"
+                type="button"
+                onClick={() => void previewReset()}
+                disabled={connectivity.isOffline || resetBusy}
+              >
+                {resetBusy ? t('common.checking') : t('sources.reset_review')}
+              </button>
+              {resetError ? (
+                <p className="warning-state hfm-status-error" role="alert">
+                  {resetError}
+                </p>
+              ) : null}
+              {resetPreview ? (
+                <div className="source-knowledge-reset-preview">
+                  <p>{t('sources.reset_preview_help')}</p>
+                  <dl>
+                    <div>
+                      <dt>{t('sources.reset_count_sources')}</dt>
+                      <dd>{resetPreview.counts.sourceCount}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('sources.reset_count_versions')}</dt>
+                      <dd>{resetPreview.counts.sourceVersionCount}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('sources.reset_count_derived')}</dt>
+                      <dd>{resetPreview.counts.sourceDerivedRecordCount}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('sources.reset_count_history')}</dt>
+                      <dd>{resetPreview.counts.redactedHistoryRecordCount}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('sources.reset_count_projections')}</dt>
+                      <dd>{resetPreview.counts.rebuildProjectionCount}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('sources.reset_count_shared_assets')}</dt>
+                      <dd>{resetPreview.counts.sharedAssetCount}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('sources.reset_count_blocked')}</dt>
+                      <dd>{resetPreview.counts.blockedRecordCount}</dd>
+                    </div>
+                  </dl>
+                  <ul aria-label="Reset blockers">
+                    {resetPreview.blockers.map((code) => (
+                      <li key={code} className="warning-state hfm-status-attention">
+                        {resetBlockerMessage(t, code)}
+                      </li>
+                    ))}
+                  </ul>
+                  <p>{new Date(resetPreview.expiresAt).toLocaleString()}</p>
+                  {resetPreview.canConfirm ? (
+                    <>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={resetConfirmed}
+                          onChange={(event) => setResetConfirmed(event.target.checked)}
+                        />{' '}
+                        {t('sources.reset_irreversible_ack')}
+                      </label>
+                      <button
+                        className="hfm-action-destructive"
+                        type="button"
+                        disabled={!resetConfirmed || resetBusy || connectivity.isOffline}
+                        onClick={() => void confirmReset()}
+                      >
+                        {resetBusy ? t('common.saving') : t('sources.reset_confirm')}
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+              {resetRequestId ? (
+                <div className="source-knowledge-reset-status" role="status" aria-live="polite">
+                  {resetStatus.isPending ? <p>{t('common.loading')}</p> : null}
+                  {resetStatus.error ? (
+                    <p className="warning-state hfm-status-error">{t('sources.reset_error')}</p>
+                  ) : null}
+                  {resetStatus.data ? (
+                    <>
+                      <p>
+                        {t('sources.reset_status')}: {resetStatus.data.state}
+                      </p>
+                      {resetStatus.data.state === 'APPROVED' ? (
+                        <p>{t('sources.reset_restart_required')}</p>
+                      ) : null}
+                      <p>
+                        {t('sources.reset_cas')}: {resetStatus.data.casStatus}
+                      </p>
+                      <p>
+                        {t('sources.reset_backup')}: {resetStatus.data.backupStatus}
+                      </p>
+                      {resetStatus.data.blockerCodes.map((code) => (
+                        <p key={code} className="warning-state hfm-status-attention">
+                          {resetBlockerMessage(t, code)}
+                        </p>
+                      ))}
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {connectivity.isOffline ? (
             <p className="stale-state" role="status">

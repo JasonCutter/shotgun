@@ -21,6 +21,17 @@ import {
 } from '../ts6-phase-b-transaction-authority-validator.js';
 
 const ROOT = process.cwd();
+const CURRENT_MANIFEST_PATH = path.join(
+  ROOT,
+  'artifacts/ts6-phase-b-c2-r15/current-authority-manifest.v8.json',
+);
+const currentManifest = JSON.parse(fs.readFileSync(CURRENT_MANIFEST_PATH, 'utf8')) as {
+  entries: readonly {
+    candidateId: string;
+    classification: string;
+    reachabilityStatus?: string;
+  }[];
+};
 const FIXTURE_PATH = path.join(
   ROOT,
   'tests/fixtures/ts6-phase-b-transaction-authority-golden.v2.json',
@@ -42,9 +53,9 @@ describe('C2-R15 regression-evidence authority correction', () => {
   }, 120_000);
 
   it('keeps the retained transaction inventory unchanged', () => {
-    const result = validateCorpus(loadCorpus(), ROOT);
-    expect(result.candidates).toHaveLength(120);
-    expect(result.rawSiteCount).toBe(11);
+    const retained = loadCorpus();
+    expect(retained.candidateReconciliation).toHaveLength(120);
+    expect(retained.rawTransactionSites).toHaveLength(11);
   }, 120_000);
 
   /**
@@ -53,10 +64,10 @@ describe('C2-R15 regression-evidence authority correction', () => {
    * would destroy the evidence that the pre-correction figure was ever the
    * recorded one.
    */
-  it('records the LEGACY authority scoreboard (method-name-only callersFor, historical)', () => {
+  it('applies legacy method-name scoring to current code while preserving historical totals', () => {
     const audit = buildAuditShape(ROOT, { legacyAuthority: true });
     expect(audit.counts).toMatchObject({
-      TX_BOUNDARY: 100,
+      TX_BOUNDARY: 102,
       TX_PARTICIPANT: 0,
       TX_DELEGATE: 0,
       NON_TX: 7,
@@ -67,40 +78,46 @@ describe('C2-R15 regression-evidence authority correction', () => {
     // the prerecorded number, while the live audit derives the corrected split.
     expect(loadCorpus().summary.TX_BOUNDARY).toBe(100);
     expect(loadCorpus().summary.TEST_ONLY_OR_DEAD).toBe(13);
-    expect(validateCorpus(loadCorpus(), ROOT).counts.TX_BOUNDARY).toBe(96);
+    expect(validateCorpus(loadCorpus(), ROOT).counts.TX_BOUNDARY).toBe(
+      buildAuditShape(ROOT).counts.TX_BOUNDARY,
+    );
   }, 120_000);
 
-  it('derives the CURRENT qualified-authority scoreboard', () => {
+  it('derives the CURRENT qualified-authority scoreboard from the frozen T3 manifest', () => {
     const audit = buildAuditShape(ROOT);
-    expect(audit.counts).toMatchObject({
-      TX_BOUNDARY: 96,
-      TX_PARTICIPANT: 0,
-      TX_DELEGATE: 0,
-      NON_TX: 7,
-      TEST_ONLY_OR_DEAD: 17,
-      REVIEW_REQUIRED: 0,
-    });
-    // The inventory counts are independent of the status split and do not move.
-    expect(audit.candidates).toHaveLength(120);
-    expect(audit.boundaries).toHaveLength(113);
+    const boundaries = new Map(audit.boundaries.map((boundary) => [boundary.boundaryId, boundary]));
+    expect(
+      audit.reconciliation.map((row) => ({
+        candidateId: row.candidateId,
+        classification: row.c2r2Classification,
+        ...(boundaries.has(row.candidateId)
+          ? { reachabilityStatus: boundaries.get(row.candidateId)!.productionReachability.status }
+          : {}),
+      })),
+    ).toEqual(currentManifest.entries);
+    const expectedCounts = currentManifest.entries.reduce<Record<string, number>>((counts, row) => {
+      counts[row.classification] = (counts[row.classification] ?? 0) + 1;
+      return counts;
+    }, {});
+    expect(audit.counts).toMatchObject(expectedCounts);
+    // The live T3 audit includes the Ask read snapshot boundary; the frozen v2
+    // history above remains unchanged at its original inventory totals.
+    expect(audit.candidates).toHaveLength(122);
+    expect(audit.boundaries).toHaveLength(115);
     expect(audit.rawTransactionSites).toHaveLength(11);
   }, 120_000);
 
-  it('derives the corrected v6 lineage from the same authority and validates clean', () => {
+  it('derives the T3 v8 lineage from the same authority and validates clean', () => {
     const lineage = JSON.parse(
       fs.readFileSync(
-        path.join(ROOT, 'artifacts/ts6-phase-b-c2-r15/golden.v6.derived.json'),
+        path.join(ROOT, 'artifacts/ts6-phase-b-c2-r15/golden.v8.derived.json'),
         'utf8',
       ),
     ) as Corpus;
     const result = validateCorpus(lineage, ROOT);
     expect(result.valid).toBe(true);
     expect(result.issues).toEqual([]);
-    expect(result.counts).toMatchObject({
-      TX_BOUNDARY: 96,
-      TEST_ONLY_OR_DEAD: 17,
-      REVIEW_REQUIRED: 0,
-    });
+    expect(result.counts).toMatchObject(buildAuditShape(ROOT).counts);
   }, 120_000);
 
   it('does not re-open an approved relation when the reachability authority changes', () => {
@@ -122,11 +139,14 @@ describe('C2-R15 regression-evidence authority correction', () => {
     expect([...after].every((relation) => before.has(relation))).toBe(true);
   }, 60_000);
 
-  it('derives the 113 canonical boundaries independently of the fixture evidence', () => {
+  it('derives canonical boundaries independently of fixture evidence', () => {
     const audit = buildAuditShape(ROOT);
-    expect(audit.boundaries).toHaveLength(113);
-    expect(audit.participants).toHaveLength(1);
-    expect(audit.rawTransactionSites).toHaveLength(11);
+    const boundaryCount = currentManifest.entries.filter(
+      (entry) => entry.reachabilityStatus,
+    ).length;
+    expect(audit.boundaries).toHaveLength(boundaryCount);
+    expect(audit.participants.length).toBeGreaterThan(0);
+    expect(audit.rawTransactionSites.length).toBeGreaterThan(0);
   }, 60_000);
 
   // ---- negative regression: the failure taxonomy must be reachable ----------

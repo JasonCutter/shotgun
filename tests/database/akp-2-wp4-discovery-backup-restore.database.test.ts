@@ -25,6 +25,7 @@ import {
 } from '../../scripts/backup-restore.js';
 import { migrateUpTo } from '../../scripts/database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { initializeSourceErasureJournal } from '../../scripts/source-erasure-journal.js';
 
 const canRunBackupAcceptance =
   Boolean(process.env.TEST_DATABASE_URL?.trim()) &&
@@ -163,10 +164,20 @@ describe.runIf(databaseUrl)('AKP-2 WP4 Discovery backup and isolated restore', (
     const backupDirectory = path.join(temporaryRoot, 'backup');
     const sourceAssetRoot = path.join(temporaryRoot, 'source-assets');
     const targetAssetRoot = path.join(temporaryRoot, 'target-assets');
+    const journalRoot = await mkdtemp(path.join(os.tmpdir(), 'shotgun-wp4-journal-'));
+    const journalKey = randomUUID() + randomUUID();
+    const priorJournalRoot = process.env.SHOTGUN_ERASURE_JOURNAL_ROOT;
+    const priorJournalKey = process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY;
     let manifest: BackupManifest | undefined;
 
     try {
       await migrateUpTo(undefined, source.databaseUrl);
+      process.env.SHOTGUN_ERASURE_JOURNAL_ROOT = journalRoot;
+      process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY = journalKey;
+      await initializeSourceErasureJournal(
+        { root: journalRoot, hmacKey: journalKey },
+        temporaryRoot,
+      );
       const sourcePool = createPostgresPool(source.databaseUrl);
       const sourceRepository = new PostgresDiscoveryFindingRepository(sourcePool);
       const sourceProfileRepository = new PostgresDiscoveryModelProfileRepository(sourcePool);
@@ -285,7 +296,14 @@ describe.runIf(databaseUrl)('AKP-2 WP4 Discovery backup and isolated restore', (
         decodeDiscoveryFindingEnvelopeV1(await targetRepository.findRevision(identity)),
       ).toEqual(finding);
     } finally {
-      await rm(temporaryRoot, { recursive: true, force: true });
+      if (priorJournalRoot === undefined) delete process.env.SHOTGUN_ERASURE_JOURNAL_ROOT;
+      else process.env.SHOTGUN_ERASURE_JOURNAL_ROOT = priorJournalRoot;
+      if (priorJournalKey === undefined) delete process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY;
+      else process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY = priorJournalKey;
+      await Promise.all([
+        rm(temporaryRoot, { recursive: true, force: true }),
+        rm(journalRoot, { recursive: true, force: true }),
+      ]);
     }
   }, 60_000);
 

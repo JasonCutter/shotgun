@@ -637,81 +637,91 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
       selectionsResult,
       statementsResult,
       citationsResult,
-    ] = await Promise.all([
-      this.pool.query<ConversationRow>(
-        `SELECT * FROM frontend_ask.conversations
-           WHERE conversation_id = $1 AND project_id = $2`,
-        [conversationId, projectId],
-      ),
-      this.pool.query<BranchRow>(
-        `SELECT * FROM frontend_ask.branches
-           WHERE conversation_id = $1
-           ORDER BY created_at, branch_id`,
-        [conversationId],
-      ),
-      this.pool.query<TurnRow>(
-        `SELECT * FROM frontend_ask.turns
-           WHERE conversation_id = $1
-           ORDER BY branch_id, ordinal, turn_id`,
-        [conversationId],
-      ),
-      this.pool.query<AnswerRunRow>(
-        `SELECT run.*,
-                attempt.context_supported AS latest_context_supported
-           FROM frontend_ask.answer_runs AS run
-           LEFT JOIN frontend_ask.answer_run_attempts AS attempt
-             ON attempt.answer_run_id = run.answer_run_id
-            AND attempt.project_id = run.project_id
-            AND attempt.attempt_number = run.attempt_number
-           WHERE run.conversation_id = $1`,
-        [conversationId],
-      ),
-      this.pool.query<SelectionRow>(
-        `SELECT
-             selection.selection_id,
-             selection.answer_run_id,
-             selection.selection_ordinal,
-             selection.source_id::text,
-             selection.source_version_id::text,
-             evidence.evidence_id::text,
-             evidence.evidence_ordinal
-           FROM frontend_ask.source_selections AS selection
-           LEFT JOIN frontend_ask.source_selection_evidence AS evidence
-             ON evidence.selection_id = selection.selection_id
-           JOIN frontend_ask.answer_runs AS run
-             ON run.answer_run_id = selection.answer_run_id
-           WHERE run.conversation_id = $1
-           ORDER BY selection.answer_run_id, selection.selection_ordinal, evidence.evidence_ordinal`,
-        [conversationId],
-      ),
-      this.pool.query<StatementRow>(
-        `SELECT statement_id, answer_run_id, ordinal, text
-           FROM frontend_ask.statements
-           WHERE answer_run_id IN (
-             SELECT answer_run_id FROM frontend_ask.answer_runs WHERE conversation_id = $1
-           )
-           ORDER BY answer_run_id, ordinal`,
-        [conversationId],
-      ),
-      this.pool.query<CitationRow>(
-        `SELECT
-             citation.citation_id,
-             citation.statement_id,
-             citation.citation_ordinal,
-             citation.source_id::text,
-             citation.source_version_id::text,
-             citation.evidence_id::text,
-             citation.exact_quote
-           FROM frontend_ask.citations AS citation
-           JOIN frontend_ask.statements AS statement
-             ON statement.statement_id = citation.statement_id
-           JOIN frontend_ask.answer_runs AS run
-             ON run.answer_run_id = statement.answer_run_id
-           WHERE run.conversation_id = $1
-           ORDER BY citation.statement_id, citation.citation_ordinal`,
-        [conversationId],
-      ),
-    ]);
+    ] = await withSafePostgresTransaction(
+      this.pool,
+      async (client) =>
+        [
+          await client.query<ConversationRow>(
+            `SELECT * FROM frontend_ask.conversations
+               WHERE conversation_id = $1 AND project_id = $2`,
+            [conversationId, projectId],
+          ),
+          await client.query<BranchRow>(
+            `SELECT * FROM frontend_ask.branches
+               WHERE conversation_id = $1
+               ORDER BY created_at, branch_id`,
+            [conversationId],
+          ),
+          await client.query<TurnRow>(
+            `SELECT * FROM frontend_ask.turns
+               WHERE conversation_id = $1
+               ORDER BY branch_id, ordinal, turn_id`,
+            [conversationId],
+          ),
+          await client.query<AnswerRunRow>(
+            `SELECT run.*,
+                    attempt.context_supported AS latest_context_supported
+               FROM frontend_ask.answer_runs AS run
+               LEFT JOIN frontend_ask.answer_run_attempts AS attempt
+                 ON attempt.answer_run_id = run.answer_run_id
+                AND attempt.project_id = run.project_id
+                AND attempt.attempt_number = run.attempt_number
+              WHERE run.conversation_id = $1`,
+            [conversationId],
+          ),
+          await client.query<SelectionRow>(
+            `SELECT
+                 selection.selection_id,
+                 selection.answer_run_id,
+                 selection.selection_ordinal,
+                 selection.source_id::text,
+                 selection.source_version_id::text,
+                 evidence.evidence_id::text,
+                 evidence.evidence_ordinal
+               FROM frontend_ask.source_selections AS selection
+               LEFT JOIN frontend_ask.source_selection_evidence AS evidence
+                 ON evidence.selection_id = selection.selection_id
+               JOIN frontend_ask.answer_runs AS run
+                 ON run.answer_run_id = selection.answer_run_id
+               WHERE run.conversation_id = $1
+               ORDER BY selection.answer_run_id, selection.selection_ordinal, evidence.evidence_ordinal`,
+            [conversationId],
+          ),
+          await client.query<StatementRow>(
+            `SELECT statement_id, answer_run_id, ordinal, text
+               FROM frontend_ask.statements
+               WHERE answer_run_id IN (
+                 SELECT answer_run_id FROM frontend_ask.answer_runs WHERE conversation_id = $1
+               )
+               ORDER BY answer_run_id, ordinal`,
+            [conversationId],
+          ),
+          await client.query<CitationRow>(
+            `SELECT
+                 citation.citation_id,
+                 citation.statement_id,
+                 citation.citation_ordinal,
+                 citation.source_id::text,
+                 citation.source_version_id::text,
+                 citation.evidence_id::text,
+                 citation.exact_quote
+               FROM frontend_ask.citations AS citation
+               JOIN frontend_ask.statements AS statement
+                 ON statement.statement_id = citation.statement_id
+               JOIN frontend_ask.answer_runs AS run
+                 ON run.answer_run_id = statement.answer_run_id
+              WHERE run.conversation_id = $1
+              ORDER BY citation.statement_id, citation.citation_ordinal`,
+            [conversationId],
+          ),
+        ] as const,
+      {
+        module: 'frontend-ask-write-postgres',
+        operation: 'load-conversation',
+        isolationLevel: 'REPEATABLE READ',
+        readOnly: true,
+      },
+    );
 
     const conversationRow = conversationResult.rows[0];
     if (!conversationRow) throw notFound('load-conversation');

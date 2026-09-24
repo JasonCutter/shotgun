@@ -119,6 +119,53 @@ describe('LPA-WP4 A2 Correction C3-A — Frozen failure taxonomy (8 kinds)', () 
     await handle.close();
   });
 
+  it('runs approved reset recovery after DB verification and before application startup', async () => {
+    const { deps, calls } = makeDeps();
+    const handle = await runLaunch(
+      makeOptions({
+        noOpen: true,
+        beforeApplicationStart: async () => {
+          calls.push('t3-reset-recovery');
+        },
+      }),
+      deps,
+    );
+    expect(calls).toEqual([
+      'build',
+      'db-probe',
+      'db-verify',
+      't3-reset-recovery',
+      'start',
+      'listen',
+      'readiness',
+    ]);
+    await handle.close();
+  });
+
+  it('keeps the runtime stopped when approved reset recovery fails', async () => {
+    const { deps, calls } = makeDeps({
+      startApplication: async () => {
+        calls.push('start');
+        return makeHandle(calls);
+      },
+    });
+    await expect(
+      runLaunch(
+        makeOptions({
+          beforeApplicationStart: async () => {
+            calls.push('t3-reset-recovery');
+            throw new Error('maintenance recovery failed');
+          },
+        }),
+        deps,
+      ),
+    ).rejects.toMatchObject({
+      code: 'BACKEND_START_FAILED',
+      message: 'Approved Project Source reset recovery failed; the runtime was not started.',
+    });
+    expect(calls).toEqual(['build', 'db-probe', 'db-verify', 't3-reset-recovery']);
+  });
+
   it('forwards noSignals to the real application boundary', async () => {
     let observed: boolean | undefined;
     const { deps } = makeDeps({

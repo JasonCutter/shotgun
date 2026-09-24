@@ -8,7 +8,11 @@ import { InMemoryPayloadStateStore } from '../../adapters/frontend-history-in-me
 import { InMemoryFrontendReviewStore } from '../../adapters/frontend-review-in-memory/src/index.js';
 import { InMemoryExternalActionStore } from '../../adapters/frontend-external-action-in-memory/src/index.js';
 import { InMemoryPolicyHistoryReadAdapter } from '../../adapters/settings-project-admin-in-memory/src/index.js';
-import type { CanonicalHistoryEvent, HistoryEntryV1 } from '../../packages/contracts/src/index.js';
+import type {
+  CanonicalHistoryEvent,
+  CanonicalKnowledgeResetEventV1,
+  HistoryEntryV1,
+} from '../../packages/contracts/src/index.js';
 import type { CanonicalKnowledgeRepositoryPort } from '../../modules/canonical-knowledge/src/index.js';
 
 const canonicalEvent = (
@@ -30,6 +34,7 @@ const canonicalEvent = (
 
 const canonicalRepo = (
   events: readonly CanonicalHistoryEvent[],
+  resetEvents: readonly CanonicalKnowledgeResetEventV1[] = [],
 ): CanonicalKnowledgeRepositoryPort => ({
   listProjectIds: async () => ['p1'],
   getSnapshot: async () => {
@@ -45,6 +50,8 @@ const canonicalRepo = (
   findCommit: async () => undefined,
   findRevision: async () => undefined,
   listHistory: async () => [...events],
+  listKnowledgeResetEvents: async (projectId) =>
+    resetEvents.filter((event) => event.projectId === projectId),
   findOutbox: async () => undefined,
   claimOutbox: async () => [],
   markOutboxPublished: async () => {},
@@ -70,6 +77,53 @@ describe('FE-P5-S2 WP4 History domain adapters', () => {
     expect(entry.occurredAt).toBe('2026-08-09T00:00:00.000Z');
     expect(entry.payloadAvailability).toBe('AVAILABLE');
     expect(entry.domainResourceId).toBe('claim-e-1');
+  });
+
+  it('canonical adapter projects and resolves the minimal reset audit identity', async () => {
+    const resetEvent: CanonicalKnowledgeResetEventV1 = {
+      eventId: 'reset-event-1',
+      requestId: 'reset-request-1',
+      projectId: 'p1',
+      actorPrincipalId: 'principal-1',
+      resultingKnowledgeEpoch: 4,
+      manifestDigest: `sha256:${'a'.repeat(64)}`,
+      emptyKnowledgeDigest: `sha256:${'b'.repeat(64)}`,
+      stateVersion: 9,
+      createdAt: '2026-09-24T00:00:00.000Z',
+    };
+    const adapter = new CanonicalHistoryAdapter(
+      canonicalRepo([], [resetEvent]),
+      new InMemoryPayloadStateStore('CANONICAL'),
+      () => new Date('2026-09-24T01:00:00.000Z'),
+    );
+
+    const [entry] = await adapter.readHistory('p1');
+    expect(entry).toMatchObject({
+      historyEntryId: 'history:p1:knowledge-reset:reset-event-1',
+      resourceProjectId: 'p1',
+      domainKind: 'CANONICAL',
+      domainResourceKind: 'CANONICAL_KNOWLEDGE_RESET',
+      domainResourceId: 'reset-request-1',
+      sourceEventKind: 'CANONICAL_KNOWLEDGE_RESET',
+      sourceEventId: 'reset-event-1',
+      occurredAt: '2026-09-24T00:00:00.000Z',
+      payloadAvailability: 'AVAILABLE',
+      payloadSnapshot: {
+        eventType: 'CANONICAL_KNOWLEDGE_RESET',
+        requestId: 'reset-request-1',
+        resultingKnowledgeEpoch: 4,
+        manifestDigest: resetEvent.manifestDigest,
+        emptyKnowledgeDigest: resetEvent.emptyKnowledgeDigest,
+        stateVersion: 9,
+        actorPrincipalId: 'principal-1',
+      },
+    });
+    await expect(
+      adapter.resolveHistoryEntry('p1', 'CANONICAL_KNOWLEDGE_RESET', 'reset-event-1'),
+    ).resolves.toEqual(entry);
+    await expect(
+      adapter.resolveHistoryEntry('p2', 'CANONICAL_KNOWLEDGE_RESET', 'reset-event-1'),
+    ).resolves.toBeUndefined();
   });
 
   it('review adapter maps decisions + approvals inside the review boundary', async () => {

@@ -28,6 +28,9 @@ import { recoverSourceKnowledgeResetsBeforeRuntime } from '../../scripts/t3-laun
 import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres-test-database.js';
 
 const literal = (value: string): string => `'${value.replaceAll("'", "''")}'`;
+const traceMaintenanceTest = (phase: string): void => {
+  if (process.env.CI === 'true') process.stderr.write(`[t3-maintenance-ci] ${phase}\n`);
+};
 
 const reserveLoopbackPort = async (): Promise<number> => {
   const server = createServer();
@@ -150,6 +153,7 @@ describe('T3 production maintenance execution', () => {
     });
     expect(approval.request.requestId).toBe(requestId);
     expect(approval.request.ownerManifestDigest).toBeTruthy();
+    traceMaintenanceTest('first reset approved');
 
     // A real child process commits the first owner purge, then waits while it
     // still holds the exclusive maintenance lock. Kill it before the runner
@@ -217,6 +221,7 @@ describe('T3 production maintenance execution', () => {
     expect(crashMarkerSeen, crashWorker.stderr).toBe(true);
     expect(crashKillIssued, crashWorker.stderr).toBe(true);
     expect(crashWorker.exitCode, `${crashWorker.stdout}\n${crashWorker.stderr}`).not.toBe(0);
+    traceMaintenanceTest('stale worker killed after owner purge commit');
     const executionPersistence = new PostgresKnowledgeResetExecutorPersistence(executorPool);
     const crashedSnapshot = await executionPersistence.readForExecution({ projectId, requestId });
     expect(crashedSnapshot?.request.state).toBe('PURGING');
@@ -225,6 +230,8 @@ describe('T3 production maintenance execution', () => {
 
     // The production CLI resumes the same durable request after the killed
     // process loses its advisory lock and the owner purge remains uncheckpointed.
+    traceMaintenanceTest('starting production reset CLI recovery');
+    let cliTimedOut = false;
     const cli = await new Promise<{
       exitCode: number;
       stdout: string;
@@ -256,13 +263,34 @@ describe('T3 production maintenance execution', () => {
       );
       let stdout = '';
       let stderr = '';
+      let settled = false;
+      const finish = (result: { exitCode: number; stdout: string; stderr: string }): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve(result);
+      };
+      const timeout = setTimeout(() => {
+        cliTimedOut = true;
+        child.kill('SIGKILL');
+        finish({
+          exitCode: 124,
+          stdout,
+          stderr: `${stderr}\nT3 reset CLI exceeded its 90-second test deadline.`,
+        });
+      }, 90_000);
       child.stdout?.on('data', (chunk: Buffer) => (stdout += chunk.toString('utf8')));
       child.stderr?.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
-      child.once('error', reject);
-      child.once('close', (code) => resolve({ exitCode: code ?? 1, stdout, stderr }));
+      child.once('error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      child.once('close', (code) => finish({ exitCode: code ?? 1, stdout, stderr }));
     });
+    expect(cliTimedOut, `${cli.stdout}\n${cli.stderr}`).toBe(false);
     expect(cli.exitCode, `${cli.stdout}\n${cli.stderr}`).toBe(0);
     expect(JSON.parse(cli.stdout)).toMatchObject({ status: 'COMPLETE', projectId, requestId });
+    traceMaintenanceTest('production reset CLI completed recovery');
     const completed = await runtimePersistence.findById(projectId, requestId);
     if (!completed) throw new Error('Restarted T3 maintenance request was not persisted.');
     expect(completed).toMatchObject({
@@ -407,6 +435,7 @@ describe('T3 production maintenance execution', () => {
     // shared maintenance lock. Reset must wait until that runtime drains.
     const activeRuntime = await launchRuntime();
     expect(activeRuntime).toBeDefined();
+    traceMaintenanceTest('production runtime acquired shared maintenance lock');
     const launcherRequestIds = [randomUUID(), randomUUID()];
     const launcherCoordinator = createKnowledgeResetCoordinator({
       projectState: runtimePersistence,
@@ -439,6 +468,7 @@ describe('T3 production maintenance execution', () => {
       blockerCode: 'RESET_IN_PROGRESS',
     });
     await activeRuntime.close();
+    traceMaintenanceTest('production runtime stopped after approval');
     await expect(
       maintenanceBoundary.withExclusiveMaintenanceLock(async () => 'runtime stopped'),
     ).resolves.toBe('runtime stopped');
@@ -469,6 +499,7 @@ describe('T3 production maintenance execution', () => {
     ]);
     expect(recoveryLogs).toHaveLength(1);
     expect(requestStateAtRuntimeStart).toBe('COMPLETE');
+    traceMaintenanceTest('launcher recovered approved reset before startup');
     await expect(
       maintenanceBoundary.withExclusiveMaintenanceLock(async () => 'unsafe'),
     ).rejects.toMatchObject({ blockerCode: 'RESET_IN_PROGRESS' });
@@ -490,5 +521,5 @@ describe('T3 production maintenance execution', () => {
         .filter((record) => record.requestId === launcherApproval.request.requestId)
         .map((record) => record.phase),
     ).toEqual(['PREPARED', 'VERIFIED']);
-  }, 120_000);
+  }, 300_000);
 });

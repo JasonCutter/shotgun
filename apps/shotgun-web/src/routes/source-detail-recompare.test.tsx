@@ -239,6 +239,30 @@ describe('Source Detail initial V2 Candidate re-entry', () => {
     vi.restoreAllMocks();
   });
 
+  it('opens the semantic setup command from a READY candidate when comparison is not configured', async () => {
+    const runtime = createRuntime(vi.fn());
+    vi.mocked(runtime.apiClient.getSemanticComparisonStatus).mockResolvedValue({
+      ...semanticStatus,
+      status: 'NOT_CONFIGURED',
+      rollout: 'V1_ONLY',
+    });
+    const executeCommand = vi.fn();
+    const router = renderDetail(runtime, {
+      commands: [semanticCommand],
+      executeCommand,
+    });
+
+    const settingsButtons = await screen.findAllByRole('button', {
+      name: 'Open Semantic Comparison settings',
+    });
+    expect(settingsButtons).toHaveLength(2);
+    await userEvent.click(settingsButtons[0]!);
+
+    expect(executeCommand).toHaveBeenCalledWith(semanticCommand, settingsButtons[0]);
+    expect(router.state.location.pathname).toBe('/sources/source-1');
+    expect(screen.queryByText('AI settings')).toBeNull();
+  });
+
   it('lists both READY Candidates, prevents duplicate clicks, and exposes Review recovery after success', async () => {
     let resolveRequest: ((value: RecompareCandidateResponse) => void) | undefined;
     const recompareCandidate = vi.fn<ShotgunApiClient['recompareCandidate']>(

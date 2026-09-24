@@ -1,6 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Link, useLocation, useOutletContext, useSearchParams } from 'react-router';
+import {
+  Link,
+  useBeforeUnload,
+  useBlocker,
+  useLocation,
+  useOutletContext,
+  useSearchParams,
+} from 'react-router';
 
 import {
   createSourcesWriteClient,
@@ -17,6 +24,7 @@ import {
 
 import { purgeProjectScopedKnowledgeQueries } from '../app/query-keys.js';
 import { useAppRuntime } from '../app/providers.js';
+import { useAccessibleDialog } from '../app/use-accessible-dialog.js';
 import { EmptyState } from '../components/empty-state.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
@@ -226,6 +234,18 @@ export const SourcesWorkspace = () => {
       ? (location.state as { readonly intakeDraftSeed?: unknown }).intakeDraftSeed
       : undefined;
   const draftQueue = useSourceIntakeDraftQueue(shell.activeProject?.id ?? '', seed);
+  const draftNavigation = useBlocker(draftQueue.items.length > 0);
+  useBeforeUnload((event) => {
+    if (draftQueue.items.length === 0) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+  const draftLeaveDialog = useAccessibleDialog({
+    open: draftNavigation.state === 'blocked',
+    onClose: () => {
+      if (draftNavigation.state === 'blocked') draftNavigation.reset();
+    },
+  });
 
   if (!shell.activeProject) {
     return (
@@ -526,6 +546,41 @@ export const SourcesWorkspace = () => {
 
   return (
     <section className="route-page hfm-route-page sources-workspace">
+      {draftNavigation.state === 'blocked' ? (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="source-draft-leave-heading"
+          ref={draftLeaveDialog.dialogRef}
+          tabIndex={-1}
+          onKeyDown={draftLeaveDialog.onDialogKeyDown}
+        >
+          <div className="modal-card hfm-command-surface">
+            <h2 id="source-draft-leave-heading">{t('sources.leave_draft_title')}</h2>
+            <p>{t('sources.leave_draft_help')}</p>
+            <div className="source-intake-actions">
+              <button
+                type="button"
+                className="hfm-action-secondary"
+                onClick={() => draftNavigation.reset()}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                className="hfm-action-destructive"
+                onClick={() => {
+                  draftQueue.discardAll();
+                  draftNavigation.proceed();
+                }}
+              >
+                {t('sources.discard_and_leave')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <p className="eyebrow">{t('sources.eyebrow')}</p>
       <h1 tabIndex={-1}>{t('sources.title')}</h1>
 

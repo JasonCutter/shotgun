@@ -383,7 +383,10 @@ const enUS = {
   'sources.create_project_help': 'Create a Project to organize and add Sources.',
   'sources.draft_queue': 'Draft Queue',
   'sources.draft_help':
-    'Drafts stay with the project where they were created until submitted or discarded.',
+    'Adding a draft only queues it on this page. Select Submit drafts to save it in the project.',
+  'sources.leave_draft_title': 'Leave with unsubmitted drafts?',
+  'sources.leave_draft_help': 'These drafts have not been saved. Leaving will discard them.',
+  'sources.discard_and_leave': 'Discard drafts and leave',
   'sources.no_drafts': 'No drafts yet.',
   'sources.library': 'Source Library',
   'sources.reset_title': 'Reset Project Source knowledge',
@@ -535,8 +538,6 @@ const enUS = {
     'No Candidate claims are available for this Source version.',
   'source_detail.semantic_candidates_not_ready':
     'Semantic comparison is not ready and remains unavailable for these Candidates.',
-  'source_detail.semantic_candidates_configure':
-    'Open Settings → AI to enable semantic comparison.',
   'source_detail.semantic_candidate_noncanonical': 'Candidate · not Canonical',
   'source_detail.semantic_candidate_status': 'Status',
   'source_detail.semantic_candidate_compare': 'Run semantic comparison',
@@ -1240,7 +1241,11 @@ const koKR: Record<ProductMessageKey, string> = {
   'sources.create_project': '소스를 추가하기 전에 프로젝트를 만드세요',
   'sources.create_project_help': '소스를 정리하고 추가하려면 프로젝트를 만드세요.',
   'sources.draft_queue': '초안 대기열',
-  'sources.draft_help': '초안은 제출하거나 버릴 때까지 생성한 프로젝트에 유지됩니다.',
+  'sources.draft_help':
+    '수집 초안 추가는 이 화면의 대기열에만 넣습니다. 프로젝트에 저장하려면 초안 제출을 누르세요.',
+  'sources.leave_draft_title': '제출하지 않은 초안을 두고 이동할까요?',
+  'sources.leave_draft_help': '이 초안은 저장되지 않았습니다. 이동하면 초안이 사라집니다.',
+  'sources.discard_and_leave': '초안 버리고 이동',
   'sources.no_drafts': '아직 초안이 없습니다.',
   'sources.library': '소스 라이브러리',
   'sources.reset_title': '프로젝트 소스 지식 초기화',
@@ -1388,7 +1393,6 @@ const koKR: Record<ProductMessageKey, string> = {
     '이 소스 버전에서 사용할 수 있는 Candidate 주장이 없습니다.',
   'source_detail.semantic_candidates_not_ready':
     '시맨틱 비교가 준비되지 않아 Candidate를 비교할 수 없습니다.',
-  'source_detail.semantic_candidates_configure': '설정 → AI에서 시맨틱 비교를 활성화하세요.',
   'source_detail.semantic_candidate_noncanonical': 'Candidate · 정본 아님',
   'source_detail.semantic_candidate_status': '상태',
   'source_detail.semantic_candidate_compare': '시맨틱 비교 실행',

@@ -8,6 +8,10 @@ import path from 'node:path';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import {
+  acquireMaintenanceLock,
+  releaseMaintenanceLock,
+} from '../../adapters/postgres-maintenance-lock/src/index.js';
 import { PostgresKnowledgeResetExecutorPersistence } from '../../adapters/source-knowledge-reset-postgres/src/execution-persistence.js';
 import { PostgresKnowledgeResetImpactInspector } from '../../adapters/source-knowledge-reset-postgres/src/impact-inspector.js';
 import { PostgresKnowledgeResetMaintenanceBoundary } from '../../adapters/source-knowledge-reset-postgres/src/maintenance-boundary.js';
@@ -30,6 +34,26 @@ import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres
 const literal = (value: string): string => `'${value.replaceAll("'", "''")}'`;
 const traceMaintenanceTest = (phase: string): void => {
   if (process.env.CI === 'true') process.stderr.write(`[t3-maintenance-ci] ${phase}\n`);
+};
+
+const waitForExclusiveMaintenanceLockRelease = async (pool: Pool): Promise<void> => {
+  const client = await pool.connect();
+  let acquired = false;
+  try {
+    const deadline = Date.now() + 10_000;
+    while (!acquired && Date.now() < deadline) {
+      acquired = await acquireMaintenanceLock(client, 'exclusive', true);
+      if (!acquired) await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (!acquired) {
+      throw new Error('Killed T3 worker did not release the PostgreSQL maintenance lock in time.');
+    }
+    await releaseMaintenanceLock(client, 'exclusive');
+    acquired = false;
+  } finally {
+    if (acquired) await releaseMaintenanceLock(client, 'exclusive');
+    client.release();
+  }
 };
 
 const reserveLoopbackPort = async (): Promise<number> => {
@@ -255,6 +279,8 @@ describe('T3 production maintenance execution', () => {
 
     // The production CLI resumes the same durable request after the killed
     // process loses its advisory lock and the owner purge remains uncheckpointed.
+    await waitForExclusiveMaintenanceLockRelease(executorPool);
+    traceMaintenanceTest('killed worker maintenance lock released');
     traceMaintenanceTest('starting production reset CLI recovery');
     let cliTimedOut = false;
     const cli = await new Promise<{

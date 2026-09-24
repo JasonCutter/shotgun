@@ -105,6 +105,7 @@ describe('T3 restore knowledge epoch preflight', () => {
         dumpFormat: 'custom',
         dumpFile: 'database.dump',
         dumpSha256: sha256(dump),
+        restoreSecurityProfile: 'postgres-owners-and-acls-v1',
         migrations,
       },
       assets: { storage: 'local-content-addressed', files: [] },

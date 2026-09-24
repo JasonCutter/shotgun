@@ -84,6 +84,7 @@ import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres
 import { runAssetCasGc } from '../../scripts/asset-cas-gc.js';
 import { createBackup, restoreBackup } from '../../scripts/backup-restore.js';
 
+const backupToolMode = process.env.SHOTGUN_PG_TOOL_MODE === 'local' ? 'local' : 'docker-compose';
 const literal = (value: string): string => `'${value.replaceAll("'", "''")}'`;
 describe('T3 actual Product acceptance on isolated PostgreSQL', () => {
   let database: Awaited<ReturnType<typeof createIsolatedPostgresTestDatabase>>;
@@ -716,7 +717,7 @@ describe('T3 actual Product acceptance on isolated PostgreSQL', () => {
       databaseUrl: database.databaseUrl,
       assetRoot,
       outputDirectory: preResetBackupDirectory,
-      toolMode: 'docker-compose',
+      toolMode: backupToolMode,
     });
     expect(preResetManifest.database.restoreSecurityProfile).toBe('postgres-owners-and-acls-v1');
     expect(preResetManifest.projectKnowledgeEpochs?.[projectId]).toBe(0);
@@ -728,7 +729,7 @@ describe('T3 actual Product acceptance on isolated PostgreSQL', () => {
       targetAssetRoot: reapplyAssetRoot,
       backupDirectory: preResetBackupDirectory,
       backupRoot,
-      toolMode: 'docker-compose',
+      toolMode: backupToolMode,
     });
     reapplyTargetPool = reapplyTarget.createPool();
     const reapplyExecutorUrl = new URL(reapplyTarget.databaseUrl);
@@ -1142,7 +1143,7 @@ describe('T3 actual Product acceptance on isolated PostgreSQL', () => {
       databaseUrl: database.databaseUrl,
       assetRoot,
       outputDirectory: postResetBackupDirectory,
-      toolMode: 'docker-compose',
+      toolMode: backupToolMode,
     });
     expect(postResetManifest.projectKnowledgeEpochs?.[projectId]).toBe(1);
     expect(postResetManifest.database.restoreSecurityProfile).toBe('postgres-owners-and-acls-v1');
@@ -1152,7 +1153,7 @@ describe('T3 actual Product acceptance on isolated PostgreSQL', () => {
       targetAssetRoot: restoredAssetRoot,
       backupDirectory: postResetBackupDirectory,
       backupRoot,
-      toolMode: 'docker-compose',
+      toolMode: backupToolMode,
     });
     restoreTargetPool = restoreTarget.createPool();
     const restoredProjectState = await restoreTargetPool.query<{

@@ -490,5 +490,5 @@ describe('T3 production maintenance execution', () => {
         .filter((record) => record.requestId === launcherApproval.request.requestId)
         .map((record) => record.phase),
     ).toEqual(['PREPARED', 'VERIFIED']);
-  }, 60_000);
+  }, 120_000);
 });

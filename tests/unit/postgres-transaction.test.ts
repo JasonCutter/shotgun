@@ -38,6 +38,30 @@ describe('withSafePostgresTransaction', () => {
     expect(client.release).toHaveBeenCalledOnce();
   });
 
+  it('supports a repeatable-read snapshot for consistent read models', async () => {
+    await expect(
+      withSafePostgresTransaction(
+        pool,
+        async (transactionClient) => {
+          await transactionClient.query('SELECT 1');
+          return 'snapshot-read';
+        },
+        {
+          module: 'test',
+          operation: 'read-snapshot',
+          isolationLevel: 'REPEATABLE READ',
+          readOnly: true,
+        },
+      ),
+    ).resolves.toBe('snapshot-read');
+    expect(query.mock.calls.map(([sql]) => sql)).toEqual([
+      'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY',
+      'SELECT 1',
+      'COMMIT',
+    ]);
+    expect(client.release).toHaveBeenCalledOnce();
+  });
+
   it('reports OUTCOME_UNKNOWN when rollback acknowledgement is lost', async () => {
     query.mockImplementation(async (sql: string) => {
       if (sql === 'ROLLBACK') throw new Error('rollback response lost');

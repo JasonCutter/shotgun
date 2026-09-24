@@ -13,6 +13,16 @@ export type PostgresTransactionState =
 export type SafePostgresTransactionOptions = {
   readonly module: string;
   readonly operation: string;
+  readonly isolationLevel?: 'READ COMMITTED' | 'REPEATABLE READ';
+  readonly readOnly?: boolean;
+};
+
+const beginStatement = (options: SafePostgresTransactionOptions): string => {
+  const modes = [
+    ...(options.isolationLevel ? [`ISOLATION LEVEL ${options.isolationLevel}`] : []),
+    ...(options.readOnly ? ['READ ONLY'] : []),
+  ];
+  return modes.length > 0 ? `BEGIN ${modes.join(' ')}` : 'BEGIN';
 };
 
 const outcomeUnknown = (
@@ -43,7 +53,7 @@ export async function withSafePostgresTransaction<T>(
   let state: PostgresTransactionState = 'BEFORE_COMMIT';
   let result: T;
   try {
-    await client.query('BEGIN');
+    await client.query(beginStatement(options));
     result = await action(client, (callback) => afterCommit.push(callback));
     state = 'COMMIT_ATTEMPTED';
     try {

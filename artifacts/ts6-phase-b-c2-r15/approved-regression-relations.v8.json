@@ -7,7 +7,8 @@
   "approvalBasis": [
     "golden.v7 independently passed the C2-R15 regression-evidence resolver before T3",
     "artifacts/ts6-phase-b-c2-r15/19-authority-correction-adopted.json records the relation graph as approved and not reopened by the reachability correction",
-    "T3 added a direct regression relation for the newly implemented Source knowledge reset persistence boundary"
+    "T3 added a direct regression relation for the newly implemented Source knowledge reset persistence boundary",
+    "T3 added a production-path regression relation for consistent Ask workspace snapshots, verified through Product citations"
   ],
   "records": [
     {
@@ -997,6 +998,19 @@
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresKnowledgeResetPersistence.insertApproved",
       "path": ["PostgresKnowledgeResetPersistence.insertApproved"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/t3-product-acceptance.database.test.ts:creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
+      "file": "tests/database/t3-product-acceptance.database.test.ts",
+      "testName": "creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
+      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:640"],
+      "coverageKind": "PUBLIC_PATH",
+      "entrySymbol": "askForSource",
+      "path": [
+        "askForSource",
+        "PostgresAskWorkspaceProjection.getAnswerRun",
+        "PostgresAskWorkspaceProjection.loadConversation"
+      ]
     }
   ]
 }

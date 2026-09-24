@@ -2,7 +2,7 @@
   "schemaVersion": "ts6.phase-b.current-authority-manifest.v8",
   "status": "FROZEN_BASELINE_EXPECTATIONS",
   "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
-  "reviewBasis": "Static expected classifications and reachability for the T3 source inventory plus Source knowledge reset persistence; source-coordinate updates require an audited function/method/classification/reachability match, and CI never rewrites this manifest.",
+  "reviewBasis": "Static expected classifications and reachability for the T3 source inventory, Source knowledge reset persistence, and Ask workspace read snapshot; source-coordinate updates require an audited function/method/classification/reachability match, and CI never rewrites this manifest.",
   "entries": [
     {
       "candidateId": "raw:adapters/postgres-stage4/src/index.ts:574",
@@ -261,6 +261,11 @@
       "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:173",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:640",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
     },
     {
       "candidateId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:110",

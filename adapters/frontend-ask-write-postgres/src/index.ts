@@ -637,13 +637,10 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
       selectionsResult,
       statementsResult,
       citationsResult,
-    ] = await (async () => {
-      const client = await this.pool.connect();
-      let transactionStarted = false;
-      try {
-        await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-        transactionStarted = true;
-        const results = [
+    ] = await withSafePostgresTransaction(
+      this.pool,
+      async (client) =>
+        [
           await client.query<ConversationRow>(
             `SELECT * FROM frontend_ask.conversations
                WHERE conversation_id = $1 AND project_id = $2`,
@@ -717,17 +714,14 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
               ORDER BY citation.statement_id, citation.citation_ordinal`,
             [conversationId],
           ),
-        ] as const;
-        await client.query('COMMIT');
-        transactionStarted = false;
-        return results;
-      } catch (error) {
-        if (transactionStarted) await client.query('ROLLBACK').catch(() => undefined);
-        throw error;
-      } finally {
-        client.release();
-      }
-    })();
+        ] as const,
+      {
+        module: 'frontend-ask-write-postgres',
+        operation: 'load-conversation',
+        isolationLevel: 'REPEATABLE READ',
+        readOnly: true,
+      },
+    );
 
     const conversationRow = conversationResult.rows[0];
     if (!conversationRow) throw notFound('load-conversation');

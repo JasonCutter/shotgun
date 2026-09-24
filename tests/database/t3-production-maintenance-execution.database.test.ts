@@ -200,7 +200,8 @@ describe('T3 production maintenance execution', () => {
       const child = spawn(
         process.execPath,
         [
-          path.resolve('node_modules/tsx/dist/cli.mjs'),
+          '--import',
+          'tsx',
           path.resolve('tests/helpers/t3-reset-crash-worker.ts'),
           projectId,
           requestId,

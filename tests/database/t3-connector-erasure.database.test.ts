@@ -123,6 +123,33 @@ describe('ADR-171 Connector erasure owner', () => {
     return { sourceId, versionId, revisionId, dedupId, jobId };
   };
 
+  const addCorrelatedQuery = async (
+    projectId: string,
+    sourceVersionId: string,
+    consumerId = 'stage4.ai-provider:query:GenerateStructured',
+  ) => {
+    const dedupId = randomUUID();
+    const jobId = randomUUID();
+    const semanticKey = `query:${randomUUID()}`;
+    await adminPool.query(
+      `INSERT INTO connector.dedup_records (
+         dedup_record_id, project_id, security_scope, consumer_id, message_kind,
+         message_type, semantic_key, fingerprint, state, job_id, result,
+         safe_error_code, safe_error_message, created_at, updated_at, completed_at
+       ) VALUES ($1, $2, 'project', $6,
+                 'query', 'GenerateStructured', $3, $4, 'FAILED', $5, '{}'::jsonb,
+                 'CONFIGURATION_REQUIRED', 'Configuration unavailable.', now(), now(), now())`,
+      [dedupId, projectId, semanticKey, hash('f'), jobId, consumerId],
+    );
+    await adminPool.query(
+      `INSERT INTO connector.jobs (
+         job_id, dedup_record_id, correlation_id, status, safe_error_code, created_at, updated_at
+       ) VALUES ($1, $2, $3, 'failed', 'CONFIGURATION_REQUIRED', now(), now())`,
+      [jobId, dedupId, `sources-stage3:${projectId}:${sourceVersionId}`],
+    );
+    return { dedupId, jobId };
+  };
+
   const createReset = async (projectId: string): Promise<KnowledgeResetOwnerContext> => {
     const requestId = randomUUID();
     await adminPool.query(
@@ -161,6 +188,7 @@ describe('ADR-171 Connector erasure owner', () => {
     await createProject(projectId);
     await createProject(otherProjectId);
     const selected = await addSourceAndEvent(projectId);
+    const correlatedQuery = await addCorrelatedQuery(projectId, selected.versionId);
     const other = await addSourceAndEvent(otherProjectId);
     const context = await createReset(projectId);
     const owner = new PostgresConnectorKnowledgeResetOwner(executorPool);
@@ -168,7 +196,7 @@ describe('ADR-171 Connector erasure owner', () => {
     const impact = await adminPool.query<{
       impact: { sourceDerivedRecordCount: number; unclassifiedRecordCount: number };
     }>('SELECT connector.t3_project_connector_impact($1) AS impact', [projectId]);
-    expect(impact.rows[0]?.impact.sourceDerivedRecordCount).toBe(4);
+    expect(impact.rows[0]?.impact.sourceDerivedRecordCount).toBe(6);
     expect(impact.rows[0]?.impact.unclassifiedRecordCount).toBe(0);
 
     await owner.fence(context);
@@ -190,9 +218,11 @@ describe('ADR-171 Connector erasure owner', () => {
       `SELECT (
          (SELECT count(*) FROM connector.dedup_records WHERE dedup_record_id = $1) +
          (SELECT count(*) FROM connector.jobs WHERE job_id = $2) +
-         (SELECT count(*) FROM connector.ordering_checkpoints WHERE project_id = $3)
+         (SELECT count(*) FROM connector.ordering_checkpoints WHERE project_id = $3) +
+         (SELECT count(*) FROM connector.dedup_records WHERE dedup_record_id = $4) +
+         (SELECT count(*) FROM connector.jobs WHERE job_id = $5)
        )::text AS count`,
-      [selected.dedupId, selected.jobId, projectId],
+      [selected.dedupId, selected.jobId, projectId, correlatedQuery.dedupId, correlatedQuery.jobId],
     );
     expect(selectedRows.rows[0]?.count).toBe('0');
     const otherRows = await adminPool.query<{ count: string }>(
@@ -231,6 +261,19 @@ describe('ADR-171 Connector erasure owner', () => {
     await addSourceAndEvent(unknownProjectId, 'UnclassifiedMessage');
     const unknownContext = await createReset(unknownProjectId);
     await expect(owner.fence(unknownContext)).rejects.toMatchObject({
+      blockerCode: 'UNCLASSIFIED_CONTENT',
+    });
+
+    const unrelatedProjectId = `t3-connector-correlation-collision-${randomUUID()}`;
+    await createProject(unrelatedProjectId);
+    const unrelatedSource = await addSourceAndEvent(unrelatedProjectId);
+    await addCorrelatedQuery(
+      unrelatedProjectId,
+      unrelatedSource.versionId,
+      'independent-project-query',
+    );
+    const unrelatedContext = await createReset(unrelatedProjectId);
+    await expect(owner.fence(unrelatedContext)).rejects.toMatchObject({
       blockerCode: 'UNCLASSIFIED_CONTENT',
     });
   });

@@ -133,6 +133,11 @@ BEGIN
   ), tokens(token) AS (
     SELECT source_id::text FROM source_scope
     UNION SELECT source_version_id::text FROM source_scope
+    -- Stage 3 connectors use one correlation id for the whole SourceVersion
+    -- pipeline. Query outcomes can be terminal failures with no source token in
+    -- their result or dead-letter payload, so preserve this exact owner lineage.
+    UNION SELECT 'sources-stage3:' || p_target_project_id || ':' || source_version_id::text
+      FROM source_scope
     UNION SELECT revision.revision_id::text
       FROM transformation.revisions AS revision
       JOIN source_scope USING (source_version_id)
@@ -436,7 +441,11 @@ BEGIN
         OR EXISTS (
           SELECT 1 FROM connector.jobs AS job
           WHERE job.dedup_record_id = dedup.dedup_record_id
-            AND connector.t3_jsonb_mentions_source_token(job.result, source_tokens)
+            AND (
+              (job.correlation_id = ANY(source_tokens)
+                AND (dedup.consumer_id LIKE 'stage3.%' OR dedup.consumer_id LIKE 'stage4.%'))
+              OR connector.t3_jsonb_mentions_source_token(job.result, source_tokens)
+            )
         )
         -- Search projection rows are intentionally rebuilt after backup
         -- restore, so they cannot remain the only lineage proof for this
@@ -732,7 +741,11 @@ BEGIN
       OR EXISTS (
         SELECT 1 FROM connector.jobs AS job
         WHERE job.dedup_record_id = dedup.dedup_record_id
-          AND connector.t3_jsonb_mentions_source_token(job.result, source_token_values)
+          AND (
+            (job.correlation_id = ANY(source_token_values)
+              AND (dedup.consumer_id LIKE 'stage3.%' OR dedup.consumer_id LIKE 'stage4.%'))
+            OR connector.t3_jsonb_mentions_source_token(job.result, source_token_values)
+          )
       )
       -- See the impact query above: restore drops rebuildable Search rows,
       -- while this old Project-scoped job must still be purged with them.

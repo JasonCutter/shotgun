@@ -196,9 +196,35 @@ describe('T3 production maintenance execution', () => {
       );
       let stdout = '';
       let stderr = '';
+      let settled = false;
+      let exitDeadline: ReturnType<typeof setTimeout> | undefined;
+      const finish = (result: {
+        exitCode: number | null;
+        signal: NodeJS.Signals | null;
+        stdout: string;
+        stderr: string;
+      }): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (exitDeadline) clearTimeout(exitDeadline);
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        resolve(result);
+      };
       const timeout = setTimeout(() => {
         crashWorkerTimedOut = true;
         if (!child.killed) child.kill('SIGKILL');
+        exitDeadline = setTimeout(
+          () =>
+            finish({
+              exitCode: null,
+              signal: 'SIGKILL',
+              stdout,
+              stderr: `${stderr}\nT3 crash worker did not exit after SIGKILL.`,
+            }),
+          5_000,
+        );
       }, 30_000);
       child.stdout?.on('data', (chunk: Buffer) => {
         stdout += chunk.toString('utf8');
@@ -210,16 +236,15 @@ describe('T3 production maintenance execution', () => {
       child.stderr?.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
       child.once('error', (error) => {
         clearTimeout(timeout);
+        if (exitDeadline) clearTimeout(exitDeadline);
         reject(error);
       });
-      child.once('close', (exitCode, signal) => {
-        clearTimeout(timeout);
-        resolve({ exitCode, signal, stdout, stderr });
-      });
+      child.once('exit', (exitCode, signal) => finish({ exitCode, signal, stdout, stderr }));
     });
     expect(crashWorkerTimedOut, crashWorker.stderr).toBe(false);
     expect(crashMarkerSeen, crashWorker.stderr).toBe(true);
     expect(crashKillIssued, crashWorker.stderr).toBe(true);
+    expect(crashWorker.signal, crashWorker.stderr).toBe('SIGKILL');
     expect(crashWorker.exitCode, `${crashWorker.stdout}\n${crashWorker.stderr}`).not.toBe(0);
     traceMaintenanceTest('stale worker killed after owner purge commit');
     const executionPersistence = new PostgresKnowledgeResetExecutorPersistence(executorPool);

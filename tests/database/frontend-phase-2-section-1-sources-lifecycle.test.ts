@@ -6,6 +6,7 @@ import { PostgresSourcesIntakeLifecycle } from '../../adapters/frontend-sources-
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { recreateTestDatabaseSchemas } from '../helpers/recreate-test-database.js';
 
 const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -140,25 +141,7 @@ const seedRunningSubmission = async () => {
 
 describe.runIf(pool)('Sources cancel retry and outcome recovery persistence', () => {
   beforeEach(async () => {
-    await pool!.query(`
-      TRUNCATE
-        source_product.url_provenance_receipts,
-        source_product.url_acquisition_attempts,
-        source_product.exact_duplicate_dispositions,
-        source_product.exact_duplicate_decisions,
-        source_product.intake_attempts,
-        source_product.intake_submission_items,
-        source_product.intake_submissions,
-        frontend_command.command_ledger,
-        project_admin.project_revisions,
-        project_admin.projects,
-        auth.audit_events,
-        auth.sessions,
-        auth.project_memberships,
-        auth.credentials,
-        auth.principals
-      CASCADE
-    `);
+    await recreateTestDatabaseSchemas(databaseUrl);
   });
 
   it('preserves Attempt history through outcome-indeterminate, retry and cancellation', async () => {

@@ -1577,7 +1577,7 @@
       "stages": [12],
       "officialSource": "https://github.com/vitest-dev/vitest",
       "pin": {
-        "type": "workspace-npm-lock",
+        "type": "npm-lock",
         "package": "vitest",
         "value": "4.1.10"
       },
@@ -1587,14 +1587,14 @@
         "evidence": "workspace lockfile, npm metadata, and official LICENSE"
       },
       "decision": "ADOPT",
-      "scope": "Frontend Section 1 jsdom component suite while the existing Backend suite retains its current root runner",
+      "scope": "Frontend Section 1 jsdom component suite and root Backend/TS-6 audit suites; test runner only",
       "security": "Test-only dependency with no browser production bundle path",
-      "maintenance": "Exact workspace version 4.1.10 is locked and supports Vite 8 and Node.js 24",
+      "maintenance": "Exact root and workspace version 4.1.10 is locked. Reviewed tag v4.1.10 at upstream commit db616d2; the v4 line includes upstream PR #8297's worker RPC timeout fix and supports Vite 8 and Node.js 24.",
       "evidence": [
         "Frontend component suite passes independently",
-        "Existing Backend Vitest suite remains unchanged"
+        "TS-6 audit negative tests and authority lineage validation run as a dedicated CI gate"
       ],
-      "boundary": "apps/shotgun-web tests only",
+      "boundary": "Root and frontend test tooling only; no Vitest runtime is included in the product bundle",
       "replacement": "Use another test runner that passes the same accessible-role and mutation-state tests",
       "recheckTrigger": "Root test runner major upgrade or workspace consolidation"
     },

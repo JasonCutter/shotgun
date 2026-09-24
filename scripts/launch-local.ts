@@ -28,6 +28,7 @@ import {
   runCanonicalLaunchPreflight,
 } from './launch-canonical.js';
 import { installSignalShutdown } from '../assemblies/shotgun-app/src/shutdown.js';
+import { recoverSourceKnowledgeResetsBeforeRuntime } from './t3-launch-recovery.js';
 
 const rootDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -80,6 +81,14 @@ const main = async (): Promise<void> => {
         rootDirectory,
         env: process.env,
         environmentProfile: 'runtime-development',
+        beforeApplicationStart: async ({ databaseUrl, rootDirectory, environment }) => {
+          await recoverSourceKnowledgeResetsBeforeRuntime({
+            databaseUrl,
+            rootDirectory,
+            environment,
+            log: (message) => console.log(message),
+          });
+        },
       },
       createDefaultLaunchDeps(),
     );

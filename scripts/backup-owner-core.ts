@@ -90,6 +90,7 @@ export interface OwnerDeps {
     targetDatabaseUrl: string;
     targetAssetRoot: string;
     backupDirectory: string;
+    backupRoot?: string;
     toolMode?: BackupToolMode;
   }) => Promise<BackupManifest>;
   readonly createIsolatedRestoreDatabase: (
@@ -194,7 +195,9 @@ export const createDefaultOwnerDeps = (): OwnerDeps => ({
 });
 
 export const defaultBackupRoot = (deps: OwnerDeps): string =>
-  path.join(deps.homedir(), DEFAULT_BACKUP_ROOT_NAME);
+  path.resolve(
+    process.env.SHOTGUN_BACKUP_ROOT ?? path.join(deps.homedir(), DEFAULT_BACKUP_ROOT_NAME),
+  );
 
 export const defaultRestoreRoot = (deps: OwnerDeps): string =>
   path.join(deps.homedir(), DEFAULT_RESTORE_ROOT_NAME);
@@ -508,12 +511,14 @@ export const runOwnerRestoreSafe = async (
 
   // 4. Restore + verification + bounded recovery; cleanup only auto-created
   //    targets on failure (D10/D11 ownership contract).
+  const selectedBackupRoot = args.root ? path.resolve(args.root) : defaultBackupRoot(deps);
   try {
     const manifest = await deps.restoreBackup({
       sourceDatabaseUrl: env.sourceDatabaseUrl,
       targetDatabaseUrl: target.databaseUrl,
       targetAssetRoot: target.assetRoot,
       backupDirectory,
+      backupRoot: selectedBackupRoot,
       toolMode: env.toolMode,
     });
     const recovery = await verifyBoundedRecovery(target.databaseUrl, target.assetRoot, deps);

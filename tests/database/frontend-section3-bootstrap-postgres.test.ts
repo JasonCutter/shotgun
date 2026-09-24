@@ -38,20 +38,8 @@ const request = (suffix: string) => ({
 
 describe.runIf(pool)('ADR-116 PostgreSQL bootstrap transaction', () => {
   beforeEach(async () => {
-    await pool!.query(`
-      TRUNCATE
-        frontend_command.command_ledger,
-        project_admin.project_command_results,
-        project_admin.project_commands,
-        project_admin.project_revisions,
-        project_admin.projects,
-        auth.audit_events,
-        auth.sessions,
-        auth.project_memberships,
-        auth.credentials,
-        auth.principals
-      CASCADE
-    `);
+    await dropSchemas(databaseUrl);
+    await migrateUpTo(undefined, databaseUrl);
   });
 
   afterEach(async () => {

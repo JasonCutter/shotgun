@@ -70,6 +70,11 @@ export interface ShotgunLaunchOptions {
   readonly environmentProfile?: RuntimeConfigurationProfile;
   readonly noSignals?: boolean;
   readonly onReady?: () => Promise<void> | void;
+  readonly beforeApplicationStart?: (input: {
+    databaseUrl: string;
+    rootDirectory: string;
+    environment: NodeJS.ProcessEnv;
+  }) => Promise<void>;
 }
 
 export interface ApplicationHandleLike {
@@ -227,6 +232,19 @@ export const runLaunch = async (
       'The database schema is not aligned with the migrations.',
       'Run the migrations then verify the schema.',
       'npm run db:migrate; npm run db:verify',
+    );
+  }
+
+  // Maintenance recovery runs after non-destructive DB validation and before
+  // the application acquires its shared maintenance lock or starts workers.
+  try {
+    await options.beforeApplicationStart?.({ databaseUrl, rootDirectory, environment: env });
+  } catch {
+    throw new LaunchFailure(
+      'BACKEND_START_FAILED',
+      'Approved Project Source reset recovery failed; the runtime was not started.',
+      'Check the T3 maintenance process output and repair the recovery prerequisites.',
+      'npm run launch',
     );
   }
 

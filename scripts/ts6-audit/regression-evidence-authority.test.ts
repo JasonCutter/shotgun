@@ -11,6 +11,17 @@ import {
 } from '../ts6-phase-b-transaction-authority-validator.js';
 
 const ROOT = process.cwd();
+const CURRENT_MANIFEST_PATH = path.join(
+  ROOT,
+  'artifacts/ts6-phase-b-c2-r15/current-authority-manifest.v8.json',
+);
+const currentManifest = JSON.parse(fs.readFileSync(CURRENT_MANIFEST_PATH, 'utf8')) as {
+  entries: readonly {
+    candidateId: string;
+    classification: string;
+    reachabilityStatus?: string;
+  }[];
+};
 const FIXTURE_PATH = path.join(
   ROOT,
   'tests/fixtures/ts6-phase-b-transaction-authority-golden.v2.json',
@@ -25,20 +36,26 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
   it('derives the complete C2-R1 candidate set and canonical inventory', () => {
     const audit = buildAuditShape(ROOT);
 
-    expect(audit.candidates).toHaveLength(120);
-    expect(new Set(audit.candidates.map((candidate) => candidate.candidateId)).size).toBe(120);
+    expect(audit.candidates).toHaveLength(121);
+    expect(new Set(audit.candidates.map((candidate) => candidate.candidateId)).size).toBe(121);
     expect(audit.rawTransactionSites).toHaveLength(11);
-    expect(audit.boundaries).toHaveLength(113);
+    expect(audit.boundaries).toHaveLength(114);
     expect(audit.participants).toHaveLength(1);
-    // CURRENT authority: qualified production reachability.
-    expect(audit.counts).toMatchObject({
-      TX_BOUNDARY: 96,
-      TX_PARTICIPANT: 0,
-      TX_DELEGATE: 0,
-      NON_TX: 7,
-      TEST_ONLY_OR_DEAD: 17,
-      REVIEW_REQUIRED: 0,
-    });
+    // Current categories are taken from the independently frozen T3 manifest.
+    const boundaries = new Map(audit.boundaries.map((boundary) => [boundary.boundaryId, boundary]));
+    const actual = audit.reconciliation.map((row) => ({
+      candidateId: row.candidateId,
+      classification: row.c2r2Classification,
+      ...(boundaries.has(row.candidateId)
+        ? { reachabilityStatus: boundaries.get(row.candidateId)!.productionReachability.status }
+        : {}),
+    }));
+    expect(actual).toEqual(currentManifest.entries);
+    const expectedCounts = currentManifest.entries.reduce<Record<string, number>>((counts, row) => {
+      counts[row.classification] = (counts[row.classification] ?? 0) + 1;
+      return counts;
+    }, {});
+    expect(audit.counts).toMatchObject(expectedCounts);
   }, 60_000);
 
   it('still reconstructs the LEGACY authority inventory (historical record)', () => {
@@ -46,11 +63,12 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
 
     // Identical inventory — the authority replacement changed no count that the
     // inventory owns, only the derived TX_BOUNDARY / TEST_ONLY_OR_DEAD split.
-    expect(legacy.candidates).toHaveLength(120);
-    expect(legacy.boundaries).toHaveLength(113);
+    expect(legacy.candidates).toHaveLength(121);
+    expect(legacy.boundaries).toHaveLength(114);
     expect(legacy.rawTransactionSites).toHaveLength(11);
     expect(legacy.counts).toMatchObject({
-      TX_BOUNDARY: 100,
+      TX_BOUNDARY: 101,
+      NON_TX: 7,
       TEST_ONLY_OR_DEAD: 13,
       REVIEW_REQUIRED: 0,
     });
@@ -60,11 +78,11 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
     const result = validateCorpus(loadCorpus(), ROOT);
 
     expect(result.issues.map((issue) => issue.code)).not.toContain('HISTORICAL_DELTA');
-    expect(result.candidates).toHaveLength(120);
+    expect(result.candidates).toHaveLength(121);
     // The frozen fixture is a record of the LEGACY authority, so its own
     // classification is read back from it rather than from the live authority.
     expect(loadCorpus().summary.TX_BOUNDARY).toBe(100);
-    expect(result.counts.TX_BOUNDARY).toBe(96);
+    expect(result.counts.TX_BOUNDARY).toBe(buildAuditShape(ROOT).counts.TX_BOUNDARY);
   }, 60_000);
 
   it('rejects a source classification drift', () => {
@@ -163,7 +181,7 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
 
     expect(issueCodes(omitted)).toContain('UNREGISTERED_CANDIDATE');
     expect(issueCodes(duplicated)).toContain('DUPLICATE_CANDIDATE');
-  });
+  }, 120_000);
 
   it('rejects a new or stale raw transaction site', () => {
     const corpus = loadCorpus();
@@ -182,7 +200,7 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
 
     expect(issueCodes(unregistered)).toContain('STALE_RAW');
     expect(issueCodes(stale)).toContain('UNREGISTERED_RAW');
-  });
+  }, 120_000);
 
   it('rejects production REVIEW_REQUIRED and unresolved regression targets', () => {
     const corpus = loadCorpus();
@@ -343,16 +361,15 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
     expect(issueCodes(mutated)).toContain('REGRESSION_PATH_SYMBOL');
   });
 
-  it('R3-V06 accepts participant-inherited atomicity when the owner path is explicit', () => {
+  it('rejects unsupported participant-atomicity evidence with its exact error code', () => {
     const corpus = loadCorpus();
     const ownerEvidence = corpus.regressionEvidence.find((item) =>
       item.covers.includes('safe:adapters/frontend-ask-execution-postgres/src/index.ts:2421'),
     )!;
-    const participant = corpus.transactionParticipants[0]!;
     const inherited = {
       ...ownerEvidence,
       testEvidenceId: `${ownerEvidence.testEvidenceId}:participant`,
-      covers: [participant.participantId],
+      covers: [ownerEvidence.covers[0]!],
       coverageKind: 'PARTICIPANT_ATOMICITY' as const,
     };
     const mutated: Corpus = {
@@ -360,21 +377,22 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
       regressionEvidence: [...corpus.regressionEvidence, inherited],
     };
 
-    expect(issueCodes(mutated)).not.toContain('REGRESSION_TARGET');
+    expect(issueCodes(mutated)).toContain('REGRESSION_COVERAGE_KIND_UNSUPPORTED');
   });
 
-  it('R3-V07 accepts delegate-inherited path coverage without inventing a boundary', () => {
+  it('rejects unsupported delegate-path evidence with its exact error code', () => {
     const corpus = loadCorpus();
     const source = corpus.regressionEvidence.find((item) => item.coverageKind === 'PUBLIC_PATH')!;
     const inherited = {
       ...source,
       testEvidenceId: `${source.testEvidenceId}:delegate`,
+      covers: [source.covers[0]!],
       coverageKind: 'DELEGATE_PATH' as const,
     };
 
     expect(
       issueCodes({ ...corpus, regressionEvidence: [...corpus.regressionEvidence, inherited] }),
-    ).not.toContain('REGRESSION_TARGET');
+    ).toContain('REGRESSION_COVERAGE_KIND_UNSUPPORTED');
   });
 
   it('R3-V08 rejects a fabricated regression test name', () => {

@@ -22,6 +22,7 @@ import {
   type CanonicalClaim,
   type CanonicalCommitResult,
   type CanonicalHistoryEvent,
+  type CanonicalKnowledgeResetEventV1,
   type CanonicalOutboxRecord,
   type CanonicalRevision,
   type CanonicalSnapshot,
@@ -112,6 +113,8 @@ export type CanonicalKnowledgeRepositoryPort = {
   findCommit(projectId: string, commitId: string): Promise<CanonicalCommitResult | undefined>;
   findRevision(projectId: string, revisionId: string): Promise<CanonicalRevision | undefined>;
   listHistory(projectId: string): Promise<readonly CanonicalHistoryEvent[]>;
+  /** Minimal audit identities for ADR-171 resets, separate from commit history. */
+  listKnowledgeResetEvents(projectId: string): Promise<readonly CanonicalKnowledgeResetEventV1[]>;
   findOutbox(projectId: string, outboxId: string): Promise<CanonicalOutboxRecord | undefined>;
   claimOutbox(
     projectId: string,

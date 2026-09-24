@@ -22,6 +22,7 @@ import {
 } from '../../packages/contracts/src/index.js';
 
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { recreateTestDatabaseSchemas } from '../helpers/recreate-test-database.js';
 
 const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -195,22 +196,7 @@ const seedOutboxBatch = async (projectId: string, aggregateId: string) => {
 
 describe.runIf(pool)('Stage 12.1 Canonical Outbox and Projection recovery', () => {
   beforeEach(async () => {
-    await pool!.query(`
-      TRUNCATE
-        projection.discovery_inferences,
-        projection.compiled_truth,
-        projection.search_documents,
-        projection.watermarks,
-        knowledge.entity_vault_imports,
-        knowledge.review_groups,
-        canonical.outbox,
-        canonical.history_events,
-        canonical.revisions,
-        canonical.commits,
-        canonical.claims,
-        canonical.project_state
-      CASCADE
-    `);
+    await recreateTestDatabaseSchemas(databaseUrl);
   });
 
   afterAll(async () => {

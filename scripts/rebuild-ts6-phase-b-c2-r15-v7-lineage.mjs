@@ -7,21 +7,26 @@
  *   qualified `boundaryMatchKind`                   the only authority
  *   base commit: 0ac63ea5c548b1cb44422afeef668b90274724c8 (merged PR #359)
  *
- * This writes a NEW snapshot (golden.v7.derived.json); it does not touch any
+ * This only writes an explicitly requested scratch snapshot; it cannot touch any
  * frozen artifact. Every value that the authority derives — productionReachability.status,
  * caller set, candidateReconciliation[].c2r2Classification, summary — is re-derived
  * from the fresh AST scan of the merged main tree.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { resolveLineageOutput } from './ts6-lineage-output-guard.mjs';
+import { makeLineageMetadata } from './ts6-lineage-metadata.mjs';
 
 const ROOT = process.cwd();
+const out = resolveLineageOutput(ROOT, process.argv.slice(2));
 const validator = await import(
   `file:///${path.join(ROOT, 'scripts/ts6-phase-b-transaction-authority-validator.ts').replace(/\\/g, '/')}`
 );
 
 const ARTIFACTS = 'artifacts/ts6-phase-b-c2-r15';
-const previous = JSON.parse(fs.readFileSync(`${ARTIFACTS}/golden.v6.derived.json`, 'utf8'));
+const parentArtifact = `${ARTIFACTS}/golden.v6.derived.json`;
+const parentContent = fs.readFileSync(parentArtifact, 'utf8');
+const previous = JSON.parse(parentContent);
 const audit = validator.buildAuditShape(ROOT);
 
 // The approved regression-evidence relations are NOT re-opened by a reachability
@@ -89,14 +94,12 @@ const summary = {
 const derived = {
   ...previous,
   baseSha: validator.BASELINE_SHA,
-  derivedFrom: {
-    ...(previous.derivedFrom ?? {}),
-    authority: 'scripts/ts6-phase-b-production-reachability.ts — boundaryMatchKind()',
-    previousAuthority:
-      'retired: callersFor() method-name-only scan (scripts/ts6-phase-b-transaction-authority-validator.ts)',
-    previousLineage: 'golden.v6.derived.json (preserved, unmodified)',
+  derivedFrom: makeLineageMetadata({
+    parentArtifact,
+    parentContent,
     baseCommit: validator.BASELINE_SHA,
-  },
+    authorityVersion: 'scripts/ts6-phase-b-production-reachability.ts#boundaryMatchKind',
+  }),
   correctionRound: 'C2-R15-R4-POST-MERGE-MAIN-V7-LINEAGE',
   correctionNotes:
     'Post-merge main (0ac63ea5c548b1cb44422afeef668b90274724c8) derived lineage. PR #359 production prerequisite merged. Frozen v2, crosswalk, golden.v5, and golden.v6 are preserved and unmodified. No relation proof was re-opened.',
@@ -112,10 +115,9 @@ const derived = {
   summary,
 };
 
-const out = `${ARTIFACTS}/golden.v7.derived.json`;
 fs.writeFileSync(out, `${JSON.stringify(derived, null, 2)}\n`, 'utf8');
 
 console.log('status moves:', moved.length);
 for (const m of moved) console.log(`  ${m.symbol}.${m.method}: ${m.before} -> ${m.after}`);
 console.log('summary:', JSON.stringify(summary));
-console.log('wrote', out);
+console.log('wrote scratch lineage', out);

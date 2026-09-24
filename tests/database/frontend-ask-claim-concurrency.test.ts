@@ -9,7 +9,6 @@ import {
   PostgresAskSourceSelectionValidator,
   PostgresAskWorkspaceProjection,
 } from '../../adapters/frontend-ask-write-postgres/src/index.js';
-import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import {
   AskCommandCoordinator,
   type AskReadScope,
@@ -19,11 +18,10 @@ import type {
   AskExecutionScope,
 } from '../../modules/frontend-ask-execution/src/index.js';
 import { ASK_SCHEMA_VERSION } from '../../packages/contracts/src/index.js';
-import { migrateUpTo } from '../../scripts/database.js';
-import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres-test-database.js';
 
-const databaseUrl = await requireTestDatabaseTarget();
-const pool: Pool = createPostgresPool(databaseUrl);
+let database: Awaited<ReturnType<typeof createIsolatedPostgresTestDatabase>>;
+let pool: Pool;
 
 type Fixture = {
   readonly projectId: string;
@@ -143,11 +141,12 @@ const pinFor = (scope: AskExecutionScope, answerRunId: string): AIExecutionPin =
 
 describe('Ask queued atomic multi-worker claim PostgreSQL verification', () => {
   beforeAll(async () => {
-    await migrateUpTo(undefined, databaseUrl);
+    database = await createIsolatedPostgresTestDatabase();
+    pool = database.createPool();
   });
 
   afterAll(async () => {
-    await pool.end();
+    await database.dispose();
   });
 
   it('claims 64 queued runs exactly once across two concurrent workers', async () => {

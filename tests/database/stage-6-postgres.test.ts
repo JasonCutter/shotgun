@@ -58,6 +58,7 @@ import {
 import { historyQuery, outboxQuery, snapshotQuery } from '../helpers/stage-6.js';
 
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { recreateTestDatabaseSchemas } from '../helpers/recreate-test-database.js';
 
 const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
@@ -156,32 +157,7 @@ const writeFor = (manifest: ApprovedChangeSetManifest) => ({
 
 describe.runIf(pool)('Stage 6 PostgreSQL persistence', () => {
   beforeEach(async () => {
-    await pool!.query(`
-      TRUNCATE
-        canonical.outbox,
-        canonical.history_events,
-        canonical.revisions,
-        canonical.commits,
-        canonical.claims,
-        canonical.project_state,
-        review.decisions,
-        review.change_sets,
-        comparison.results,
-        validation.results,
-        candidate.claim_candidates,
-        candidate.batches,
-        ai.provider_attempts,
-        ai.provider_calls,
-        evidence.spans,
-        transformation.attempts,
-        transformation.revisions,
-        intake.submissions,
-        asset.storage_receipts,
-        asset.source_versions,
-        asset.sources,
-        asset.original_assets
-      CASCADE
-    `);
+    await recreateTestDatabaseSchemas(databaseUrl);
   });
 
   afterAll(async () => {

@@ -65,6 +65,18 @@ export const checkRegressionEvidenceAuthority = (
   evidence: readonly EvidenceShape[],
 ): AuthorityIssue[] => {
   const issues: AuthorityIssue[] = [];
+  const evidenceIdCounts = new Map<string, number>();
+  for (const record of evidence)
+    evidenceIdCounts.set(
+      record.testEvidenceId,
+      (evidenceIdCounts.get(record.testEvidenceId) ?? 0) + 1,
+    );
+  for (const [id, count] of evidenceIdCounts)
+    if (count > 1)
+      issues.push({
+        code: 'REGRESSION_EVIDENCE_ID_DUPLICATE',
+        message: `evidence id "${id}" occurs ${count} times`,
+      });
   const byId = new Map(evidence.map((e) => [e.testEvidenceId, e]));
   const boundaryById = new Map(boundaries.map((b) => [b.boundaryId, b]));
 
@@ -82,6 +94,16 @@ export const checkRegressionEvidenceAuthority = (
 
   // ---- B. bidirectional integrity
   for (const record of evidence) {
+    if (record.covers.length === 0)
+      issues.push({
+        code: 'REGRESSION_COVERS_EMPTY',
+        message: `evidence "${record.testEvidenceId}" has no target boundary`,
+      });
+    if (new Set(record.covers).size !== record.covers.length)
+      issues.push({
+        code: 'REGRESSION_COVERS_DUPLICATE',
+        message: `evidence "${record.testEvidenceId}" repeats a target boundary`,
+      });
     for (const covered of record.covers) {
       const boundary = boundaryById.get(covered);
       if (!boundary) {

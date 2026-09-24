@@ -75,6 +75,8 @@ import {
   decodeSourceCandidateReextractView,
   decodeIntakeSubmissionSnapshot,
   decodeExactDuplicateDecisionView,
+  decodeKnowledgeResetPreviewV1,
+  decodeKnowledgeResetRequestV1,
   SOURCES_FRONTEND_COMMAND_TYPES,
   SECTION2_FRONTEND_COMMAND_TYPES,
   type SettingsSnapshot,
@@ -90,6 +92,10 @@ import {
   type DirectiveProposalView,
   type SchemaPackView,
   type DiagnosticsView,
+  type KnowledgeResetConfirmationV1,
+  type KnowledgeResetPreviewV1,
+  type KnowledgeResetRequestV1,
+  type ConfirmKnowledgeResetResponseV1,
   type GlobalSearchRequest,
   type GlobalSearchResultView,
   type GlobalShellView,
@@ -484,6 +490,87 @@ export const createShotgunApiClient = (
         const body = (await assertOk(response)) as { page: unknown };
         return decodeMeasured('sources-library', () => decodeSourceLibraryPageView(body.page));
       });
+    },
+
+    async previewSourceKnowledgeReset(
+      projectId: string,
+      requestOptions?: RequestOptions,
+    ): Promise<KnowledgeResetPreviewV1> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await productRequest(
+          `/projects/${encodeURIComponent(projectId)}/source-knowledge-reset/preview`,
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-csrf-token': csrfToken,
+            },
+            body: JSON.stringify({}),
+            cache: 'no-store',
+            signal: requestOptions?.signal,
+          },
+        );
+        const body = (await assertOk(response)) as { preview: unknown };
+        return decodeMeasured('source-knowledge-reset-preview', () =>
+          decodeKnowledgeResetPreviewV1(body.preview),
+        );
+      });
+    },
+
+    async confirmSourceKnowledgeReset(
+      projectId: string,
+      confirmation: KnowledgeResetConfirmationV1,
+      requestOptions?: RequestOptions,
+    ): Promise<ConfirmKnowledgeResetResponseV1> {
+      return runMutation(requestOptions?.signal, async (csrfToken) => {
+        const response = await productRequest(
+          `/projects/${encodeURIComponent(projectId)}/source-knowledge-reset/confirm`,
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-csrf-token': csrfToken,
+              'x-idempotency-key': confirmation.idempotencyKey,
+            },
+            body: JSON.stringify(confirmation),
+            cache: 'no-store',
+            signal: requestOptions?.signal,
+          },
+        );
+        const body = await assertOk(response);
+        if (
+          !body ||
+          typeof body !== 'object' ||
+          Array.isArray(body) ||
+          !('request' in body) ||
+          !('replayed' in body) ||
+          typeof body.replayed !== 'boolean'
+        ) {
+          throw new FrontendContractError(
+            'UNSUPPORTED_SCHEMA',
+            'Reset confirmation response is invalid.',
+          );
+        }
+        return {
+          request: decodeKnowledgeResetRequestV1(body.request),
+          replayed: body.replayed,
+        };
+      });
+    },
+
+    async getSourceKnowledgeResetStatus(
+      projectId: string,
+      requestId: string,
+      requestOptions?: RequestOptions,
+    ): Promise<KnowledgeResetRequestV1> {
+      const response = await productRequest(
+        `/projects/${encodeURIComponent(projectId)}/source-knowledge-reset/${encodeURIComponent(requestId)}`,
+        { cache: 'no-store', signal: requestOptions?.signal },
+      );
+      const body = (await assertOk(response)) as { request: unknown };
+      return decodeMeasured('source-knowledge-reset-status', () =>
+        decodeKnowledgeResetRequestV1(body.request),
+      );
     },
 
     async getSourceDetail(

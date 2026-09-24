@@ -122,6 +122,12 @@ import { PostgresDiscoveryFeedbackRepository } from '../../../adapters/discovery
 import { PostgresDiscoveryModelProfileRepository } from '../../../adapters/discovery-model-profile-postgres/src/index.js';
 import { PostgresDiscoveryScheduleRepository } from '../../../adapters/discovery-trigger-coordinator/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
+import { PostgresKnowledgeResetPersistence } from '../../../adapters/source-knowledge-reset-postgres/src/index.js';
+import { PostgresKnowledgeResetImpactInspector } from '../../../adapters/source-knowledge-reset-postgres/src/impact-inspector.js';
+import {
+  createKnowledgeResetCoordinator,
+  type KnowledgeResetRequestRepositoryPort,
+} from '../../../modules/source-knowledge-reset/src/index.js';
 import { hasSensitivityClearance } from '../../../packages/authentication/src/index.js';
 import {
   ShotgunError,
@@ -245,6 +251,7 @@ import { createApplication, RECOVERY_RUNNER_IDS } from './server.js';
 import { installSignalShutdown } from './shutdown.js';
 import { AsyncCleanupStack } from './cleanup-stack.js';
 import { createMaintenanceSessionGuard } from './runtime-maintenance-session.js';
+import { assertNoUnresolvedProjectKnowledgeReset } from './runtime-knowledge-reset-readiness.js';
 
 export type StartShotgunApplicationOptions = {
   /** Override HOST (defaults to the `HOST` env or `127.0.0.1`). */
@@ -428,6 +435,7 @@ export const startShotgunApplication = async (
   try {
     await runtimeMaintenanceClient.connect();
     runtimeMaintenanceClientConnected = true;
+    await assertNoUnresolvedProjectKnowledgeReset(runtimeMaintenanceClient);
     const acquired = await acquireMaintenanceLock(runtimeMaintenanceClient, 'shared', true);
     if (!acquired) {
       throw new Error(
@@ -1202,6 +1210,21 @@ export const startShotgunApplication = async (
     const frontendReviewAuthoringBridge = new PostgresDiscoveryAuthoringBridge(
       frontendKnowledgeDraftRepository,
     );
+    const knowledgeResetPersistence = new PostgresKnowledgeResetPersistence(pool);
+    const knowledgeResetRequestRepository: KnowledgeResetRequestRepositoryPort = {
+      insertApproved: (input) => knowledgeResetPersistence.insertApproved(input),
+      findById: (projectId, requestId) => knowledgeResetPersistence.findById(projectId, requestId),
+      findByIdempotencyKey: (projectId, idempotencyKey) =>
+        knowledgeResetPersistence.findByIdempotencyKey(projectId, idempotencyKey),
+    };
+    const sourceKnowledgeResetCoordinator = recoveryHarness
+      ? undefined
+      : createKnowledgeResetCoordinator({
+          projectState: knowledgeResetPersistence,
+          requests: knowledgeResetRequestRepository,
+          configurationFingerprint: knowledgeResetPersistence,
+          impact: new PostgresKnowledgeResetImpactInspector(pool),
+        });
 
     application = await createApplication({
       connectorRuntimeState: new PostgresConnectorRuntimeState(pool),
@@ -1316,6 +1339,7 @@ export const startShotgunApplication = async (
       actionCandidateRepository: new PostgresActionCandidateRepository(pool),
       actionExecutionRepository: new PostgresActionExecutionRepository(pool),
       authRepository,
+      ...(sourceKnowledgeResetCoordinator === undefined ? {} : { sourceKnowledgeResetCoordinator }),
       production,
       frontendReviewStore,
       activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),

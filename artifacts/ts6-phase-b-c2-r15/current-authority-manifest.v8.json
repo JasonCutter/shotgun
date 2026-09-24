@@ -1,0 +1,606 @@
+{
+  "schemaVersion": "ts6.phase-b.current-authority-manifest.v8",
+  "status": "FROZEN_BASELINE_EXPECTATIONS",
+  "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
+  "reviewBasis": "Static expected classifications and reachability for the T3 source inventory plus Source knowledge reset persistence; source-coordinate updates require an audited function/method/classification/reachability match, and CI never rewrites this manifest.",
+  "entries": [
+    {
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:574",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:643",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:682",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:686",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:735",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:759",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/postgres-stage4/src/index.ts:763",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/semantic-corpus-postgres/src/index.ts:151",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "raw:adapters/semantic-corpus-postgres/src/index.ts:156",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/semantic-corpus-postgres/src/index.ts:168",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "safe:adapters/ai-configuration-postgres/src/index.ts:106",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/credential-vault-postgres/src/index.ts:161",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-feedback-postgres/src/index.ts:444",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-feedback-postgres/src/index.ts:727",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-finding-postgres/src/index.ts:360",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-finding-postgres/src/index.ts:385",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-finding-postgres/src/index.ts:736",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-model-profile-postgres/src/index.ts:126",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-model-profile-postgres/src/index.ts:209",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-reentry-postgres/src/index.ts:567",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-reentry-postgres/src/index.ts:777",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-reentry-postgres/src/index.ts:987",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1050",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1155",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1232",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1298",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1393",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1488",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1554",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1617",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:1689",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2051",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2093",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2123",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2190",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2257",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2353",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2435",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2608",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2844",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:2959",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3053",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3144",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3209",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/discovery-runtime-postgres/src/index.ts:3302",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-activity-postgres/src/index.ts:439",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-activity-postgres/src/index.ts:91",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:1751",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2421",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:173",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:110",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:279",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-external-action-postgres/src/index.ts:104",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-external-action-postgres/src/index.ts:114",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-history-postgres/src/history-projection-store.ts:121",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-history-postgres/src/history-projection-store.ts:394",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-history-postgres/src/index.ts:127",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-history-postgres/src/index.ts:208",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:55",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-knowledge-draft-postgres/src/index.ts:65",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-review-postgres/src/index.ts:162",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-review-postgres/src/index.ts:172",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-review-postgres/src/index.ts:811",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/index.ts:128",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/index.ts:209",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/index.ts:280",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/lifecycle.ts:201",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:272",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:467",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:508",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:751",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-auth/src/index.ts:145",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-auth/src/index.ts:70",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage10/src/index.ts:167",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage10/src/index.ts:85",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage11/src/index.ts:594",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage11/src/index.ts:859",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage3/src/index.ts:148",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage3/src/index.ts:296",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:491",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:346",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:440",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:504",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:699",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage4/src/index.ts:846",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage5/src/index.ts:1239",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage5/src/index.ts:1340",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage5/src/index.ts:1458",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage5/src/index.ts:1611",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage5/src/index.ts:1896",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage5/src/index.ts:2131",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage5/src/index.ts:418",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage5/src/index.ts:643",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage6/src/index.ts:291",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage6/src/index.ts:537",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage6/src/index.ts:788",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage7/src/index.ts:137",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage7/src/index.ts:196",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:114",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:221",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres/src/index.ts:1106",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/postgres/src/index.ts:1229",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres/src/index.ts:1500",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres/src/index.ts:1813",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres/src/index.ts:311",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres/src/index.ts:818",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres/src/index.ts:971",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/project-standing-ai-policy-postgres/src/index.ts:75",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:160",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/provider-privacy-deployment-postgres/src/index.ts:90",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/semantic-embedding-postgres/src/index.ts:132",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/semantic-index-postgres/src/index.ts:454",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/semantic-index-postgres/src/index.ts:926",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/source-knowledge-reset-postgres/src/index.ts:207",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    }
+  ]
+}

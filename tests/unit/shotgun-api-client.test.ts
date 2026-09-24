@@ -417,4 +417,84 @@ describe('shotgun-api-client', () => {
       }),
     ).rejects.toMatchObject({ code: 'INVALID_PRODUCT_API_RESPONSE' });
   });
+
+  it('binds Project reset preview, explicit confirmation, CSRF, idempotency, and status APIs', async () => {
+    const counts = {
+      sourceCount: 1,
+      sourceVersionCount: 2,
+      sourceDerivedRecordCount: 3,
+      redactedHistoryRecordCount: 4,
+      rebuildProjectionCount: 5,
+      sharedAssetCount: 0,
+      blockedRecordCount: 0,
+    };
+    const preview = {
+      schemaVersion: '1.0.0',
+      previewId: 'preview-1',
+      projectId: 'project-reset',
+      manifestDigest: `sha256:${'a'.repeat(64)}`,
+      ownerManifestDigest: `sha256:${'c'.repeat(64)}`,
+      projectRevision: 7,
+      knowledgeEpoch: 2,
+      expiresAt: '2026-09-23T01:05:00.000Z',
+      counts,
+      blockers: [],
+      preservedConfigurationDigest: `sha256:${'b'.repeat(64)}`,
+      canConfirm: true,
+    };
+    const request = {
+      schemaVersion: '1.0.0',
+      requestId: 'request-1',
+      projectId: 'project-reset',
+      projectRevision: 7,
+      manifestDigest: preview.manifestDigest,
+      ownerManifestDigest: preview.ownerManifestDigest,
+      state: 'APPROVED',
+      expectedKnowledgeEpoch: 2,
+      knowledgeEpoch: 3,
+      blockerCodes: [],
+      counts,
+      completedSteps: [],
+      casStatus: 'NOT_STARTED',
+      backupStatus: 'PENDING',
+      createdAt: '2026-09-23T01:00:00.000Z',
+      updatedAt: '2026-09-23T01:00:00.000Z',
+    };
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      void init;
+      const url = String(input);
+      if (url.endsWith('/security/csrf')) return json({ csrfToken: 'csrf-reset' });
+      if (url.endsWith('/preview')) return json({ preview });
+      if (url.endsWith('/confirm')) return json({ request, replayed: false });
+      return json({ request });
+    });
+    const client = createShotgunApiClient({ fetch });
+    const readPreview = await client.previewSourceKnowledgeReset('project-reset');
+    const confirmation = {
+      previewId: readPreview.previewId,
+      manifestDigest: readPreview.manifestDigest,
+      expectedProjectRevision: readPreview.projectRevision,
+      expectedKnowledgeEpoch: readPreview.knowledgeEpoch,
+      idempotencyKey: 'reset-idem-1',
+      confirmIrreversibleReset: true as const,
+    };
+    const confirmed = await client.confirmSourceKnowledgeReset('project-reset', confirmation);
+    const status = await client.getSourceKnowledgeResetStatus('project-reset', request.requestId);
+
+    expect(confirmed).toEqual({ request, replayed: false });
+    expect(status).toEqual(request);
+    const confirmCall = fetch.mock.calls.find(([input]) => String(input).endsWith('/confirm'));
+    expect(confirmCall?.[1]).toMatchObject({
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'x-csrf-token': 'csrf-reset',
+        'x-idempotency-key': 'reset-idem-1',
+      },
+    });
+    expect(JSON.parse(String(confirmCall?.[1]?.body))).toMatchObject({
+      confirmIrreversibleReset: true,
+      previewId: 'preview-1',
+    });
+  });
 });

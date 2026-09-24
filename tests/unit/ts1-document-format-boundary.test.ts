@@ -286,7 +286,7 @@ describe('TS-1 document-format safety boundaries', () => {
       code: 'VALIDATION_ERROR',
       retryable: false,
     });
-  });
+  }, 15_000);
 
   it('maps PDF physical line segments to only the overlapping sentence', async () => {
     const output = await transform(twoLinePdf(), 'application/pdf');

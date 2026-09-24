@@ -197,6 +197,20 @@ export type CanonicalHistoryEvent = {
   readonly createdAt: string;
 };
 
+/** Minimal, non-content audit identity for a completed Project knowledge reset. */
+export type CanonicalKnowledgeResetEventV1 = Readonly<{
+  readonly eventId: string;
+  readonly requestId: string;
+  readonly projectId: string;
+  readonly actorPrincipalId: string;
+  readonly resultingKnowledgeEpoch: number;
+  readonly manifestDigest: `sha256:${string}`;
+  readonly emptyKnowledgeDigest: `sha256:${string}`;
+  readonly stateVersion: number;
+  readonly createdAt: string;
+  readonly publishedAt?: string;
+}>;
+
 export type CanonicalCommittedPayload = {
   readonly commitId: string;
   readonly manifestId: string | null;

@@ -12,6 +12,7 @@ import {
   type CanonicalClaim,
   type CanonicalCommitResult,
   type CanonicalHistoryEvent,
+  type CanonicalKnowledgeResetEventV1,
   type CanonicalOutboxRecord,
   type CanonicalRevision,
   type CanonicalRelationV1,
@@ -54,6 +55,35 @@ type CommitRow = QueryResultRow & {
 
 type HistoryRow = QueryResultRow & {
   readonly event_json: CanonicalHistoryEvent;
+};
+
+type KnowledgeResetEventRow = QueryResultRow & {
+  readonly event_id: string;
+  readonly request_id: string;
+  readonly project_id: string;
+  readonly actor_principal_id: string;
+  readonly resulting_knowledge_epoch: string | number;
+  readonly manifest_digest: string;
+  readonly empty_knowledge_digest: string;
+  readonly state_version: string | number;
+  readonly created_at: Date | string;
+  readonly published_at: Date | string | null;
+};
+
+const resetEventInteger = (value: number | string, field: string): number => {
+  const integer = typeof value === 'number' ? value : Number(value);
+  if (!Number.isSafeInteger(integer) || integer < 1) {
+    throw new Error(`Canonical reset event returned an invalid ${field}.`);
+  }
+  return integer;
+};
+
+const resetEventTimestamp = (value: Date | string, field: string): string => {
+  const timestamp = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(timestamp.getTime())) {
+    throw new Error(`Canonical reset event returned an invalid ${field}.`);
+  }
+  return timestamp.toISOString();
 };
 
 type OutboxRow = QueryResultRow & {
@@ -1263,6 +1293,47 @@ export class PostgresCanonicalKnowledgeRepository
       [projectId],
     );
     return result.rows.map((row) => row.event_json);
+  }
+
+  async listKnowledgeResetEvents(
+    projectId: string,
+  ): Promise<readonly CanonicalKnowledgeResetEventV1[]> {
+    const result = await this.pool.query<KnowledgeResetEventRow>(
+      `SELECT event_id, request_id, project_id, actor_principal_id,
+              resulting_knowledge_epoch, manifest_digest, empty_knowledge_digest,
+              state_version, created_at, published_at
+       FROM canonical.t3_list_project_knowledge_reset_events($1)`,
+      [projectId],
+    );
+    return result.rows.map((row) => {
+      if (
+        row.project_id !== projectId ||
+        row.event_id.length === 0 ||
+        row.request_id.length === 0 ||
+        row.actor_principal_id.length === 0 ||
+        !/^sha256:[a-f0-9]{64}$/u.test(row.manifest_digest) ||
+        !/^sha256:[a-f0-9]{64}$/u.test(row.empty_knowledge_digest)
+      ) {
+        throw new Error('Canonical reset event read returned an invalid identity or digest.');
+      }
+      return {
+        eventId: row.event_id,
+        requestId: row.request_id,
+        projectId: row.project_id,
+        actorPrincipalId: row.actor_principal_id,
+        resultingKnowledgeEpoch: resetEventInteger(
+          row.resulting_knowledge_epoch,
+          'knowledge epoch',
+        ),
+        manifestDigest: row.manifest_digest as `sha256:${string}`,
+        emptyKnowledgeDigest: row.empty_knowledge_digest as `sha256:${string}`,
+        stateVersion: resetEventInteger(row.state_version, 'state version'),
+        createdAt: resetEventTimestamp(row.created_at, 'created timestamp'),
+        ...(row.published_at === null
+          ? {}
+          : { publishedAt: resetEventTimestamp(row.published_at, 'published timestamp') }),
+      };
+    });
   }
 
   async findOutbox(

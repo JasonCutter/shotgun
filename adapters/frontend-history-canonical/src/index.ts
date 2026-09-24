@@ -17,6 +17,7 @@ import type {
 import { redactHistoryPayload } from '../../../modules/frontend-history/src/index.js';
 import type {
   CanonicalHistoryEvent,
+  CanonicalKnowledgeResetEventV1,
   HistoryEntryV1,
   HistorySourceDomainKindV1,
 } from '../../../packages/contracts/src/index.js';
@@ -59,8 +60,14 @@ export class CanonicalHistoryAdapter implements HistoryAdapterPort {
   ) {}
 
   async readHistory(projectId: string): Promise<readonly HistoryEntryV1[]> {
-    const events = await this.canonical.listHistory(projectId);
-    return this.mapEvents(projectId, events);
+    const [events, resetEvents] = await Promise.all([
+      this.canonical.listHistory(projectId),
+      this.canonical.listKnowledgeResetEvents(projectId),
+    ]);
+    return [
+      ...(await this.mapEvents(projectId, events)),
+      ...(await this.mapResetEvents(projectId, resetEvents)),
+    ];
   }
 
   async resolveHistoryEntry(
@@ -75,9 +82,16 @@ export class CanonicalHistoryAdapter implements HistoryAdapterPort {
       (candidate) =>
         candidate.eventType === sourceEventKind && candidate.historyEventId === sourceEventId,
     );
-    if (event === undefined) return undefined;
-    const entries = await this.mapEvents(projectId, [event]);
-    return entries[0];
+    if (event !== undefined) {
+      const entries = await this.mapEvents(projectId, [event]);
+      return entries[0];
+    }
+    const resetEvent = (await this.canonical.listKnowledgeResetEvents(projectId)).find(
+      (candidate) =>
+        sourceEventKind === 'CANONICAL_KNOWLEDGE_RESET' && candidate.eventId === sourceEventId,
+    );
+    if (resetEvent === undefined) return undefined;
+    return (await this.mapResetEvents(projectId, [resetEvent]))[0];
   }
 
   async redactEntry(entry: HistoryEntryV1): Promise<HistoryEntryV1> {
@@ -132,6 +146,48 @@ export class CanonicalHistoryAdapter implements HistoryAdapterPort {
         domainResourceId: event.claimId ?? event.changeSetId ?? event.commitId,
         sourceEventKind: event.eventType,
         sourceEventId: event.historyEventId,
+        occurredAt: event.createdAt,
+        ...redacted,
+        projectedAt,
+      });
+    }
+    return entries;
+  }
+
+  private async mapResetEvents(
+    projectId: string,
+    events: readonly CanonicalKnowledgeResetEventV1[],
+  ): Promise<readonly HistoryEntryV1[]> {
+    const projectedAt = this.now().toISOString();
+    const entries: HistoryEntryV1[] = [];
+    for (const event of events) {
+      if (event.projectId !== projectId) {
+        throw new Error('Canonical reset history returned an event for another Project.');
+      }
+      const state = await this.payloadState.getPayloadState(
+        projectId,
+        'CANONICAL_KNOWLEDGE_RESET',
+        event.eventId,
+      );
+      const availability = state?.payloadAvailability ?? 'AVAILABLE';
+      const redacted = redactHistoryPayload(availability, state, {
+        eventType: 'CANONICAL_KNOWLEDGE_RESET',
+        requestId: event.requestId,
+        resultingKnowledgeEpoch: event.resultingKnowledgeEpoch,
+        manifestDigest: event.manifestDigest,
+        emptyKnowledgeDigest: event.emptyKnowledgeDigest,
+        stateVersion: event.stateVersion,
+        actorPrincipalId: event.actorPrincipalId,
+      });
+      entries.push({
+        schemaVersion: '1.0.0',
+        historyEntryId: `history:${projectId}:knowledge-reset:${event.eventId}`,
+        resourceProjectId: projectId,
+        domainKind: CANONICAL_DOMAIN_KIND,
+        domainResourceKind: 'CANONICAL_KNOWLEDGE_RESET',
+        domainResourceId: event.requestId,
+        sourceEventKind: 'CANONICAL_KNOWLEDGE_RESET',
+        sourceEventId: event.eventId,
         occurredAt: event.createdAt,
         ...redacted,
         projectedAt,

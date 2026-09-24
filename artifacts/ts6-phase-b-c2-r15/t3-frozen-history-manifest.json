@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "ts6.phase-b.frozen-history.v1",
+  "status": "IMMUTABLE_HISTORICAL_INPUT",
+  "hashEncoding": "SHA-256 over UTF-8 text after CRLF-to-LF normalization",
+  "artifacts": [
+    {
+      "path": "tests/fixtures/ts6-phase-b-transaction-authority-golden.v2.json",
+      "sha256": "256e5906db0afbdeb175c1e754c2c8ec3a1213139ae4f805e95c5396086586cd"
+    },
+    {
+      "path": "ts6-c2-r3-boundary-count-crosswalk.json",
+      "sha256": "e4861d67b1ebc4885fa9034245c0b2734e25e3865de278a4ff660c0b4b0621d2"
+    },
+    {
+      "path": "artifacts/ts6-phase-b-c2-r15/golden.v3.derived.json",
+      "sha256": "274f282be06fe47eaac524350cd15e4c432551c3007814f372d0968093b1a0ea"
+    },
+    {
+      "path": "artifacts/ts6-phase-b-c2-r15/golden.v4.derived.json",
+      "sha256": "8d7b20f6df676f8f37637e53ad48cf46f989c90bcd3cc70b8241c4e8cd8f93db"
+    },
+    {
+      "path": "artifacts/ts6-phase-b-c2-r15/golden.v5.derived.json",
+      "sha256": "d5cb331b4060a7632ba5435292fd5e755cd196d7488d85face8d8d78c26abe60"
+    },
+    {
+      "path": "artifacts/ts6-phase-b-c2-r15/golden.v6.derived.json",
+      "sha256": "d80f400f9b0388d0eb128a052f2a543312c03f2354aceada61a4baae18ff5eb8"
+    },
+    {
+      "path": "artifacts/ts6-phase-b-c2-r15/golden.v7.derived.json",
+      "sha256": "3d973d0ec484ca6907be1ed4020ea8ad3b0501714c8ad0fe2b1057a3ce959337"
+    }
+  ]
+}

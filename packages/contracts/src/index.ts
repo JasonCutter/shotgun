@@ -23,6 +23,7 @@ export * from './frontend-foundation.js';
 export * from './frontend-section3.js';
 export * from './frontend-sources.js';
 export * from './frontend-sources-staging.js';
+export * from './source-knowledge-reset.js';
 export * from './frontend-ask.js';
 export * from './frontend-ask-execution.js';
 export * from './frontend-ask-invariants.js';

@@ -98,6 +98,23 @@ describe('Backup Bundle verification', () => {
     await expect(verifyBackup(directory)).resolves.toEqual(manifest);
   });
 
+  it('rejects T3 bundles that cannot prove owners and ACLs were preserved', async () => {
+    const { directory, manifest } = await fixture();
+    const legacyT3Manifest: BackupManifest = {
+      ...manifest,
+      database: {
+        ...manifest.database,
+        migrations: [...manifest.database.migrations, '078_t3_project_source_knowledge_reset.sql'],
+      },
+      projectKnowledgeEpochs: {},
+    };
+    await writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify(legacyT3Manifest)}\n`);
+
+    await expect(verifyBackup(directory)).rejects.toThrow(
+      'T3 Backup does not declare the owner-and-ACL-preserving restore security profile.',
+    );
+  });
+
   it('selects Discovery integrity tables from migration identity and fails closed', () => {
     const discoveryTables = (migrations: readonly string[]) =>
       authoritativeIntegrityTablesForMigrations(migrations).filter((table) =>
@@ -211,6 +228,58 @@ describe('Backup Bundle verification', () => {
         '077_ts5_asset_cas_lifecycle.sql',
       ]),
     ).toContain('asset.staging_asset_leases');
+  });
+
+  it('includes Knowledge Model source-linked tables after migration 009', () => {
+    expect(authoritativeIntegrityTablesForMigrations(['009_stage9_knowledge_model.sql'])).toEqual(
+      expect.arrayContaining(['knowledge.review_groups', 'knowledge.entity_vault_imports']),
+    );
+  });
+
+  it('requires Project knowledge epochs with migration 078 and backs up reset control state', async () => {
+    const { directory, manifest } = await fixture();
+    const t3Manifest: BackupManifest = {
+      ...manifest,
+      database: {
+        ...manifest.database,
+        restoreSecurityProfile: 'postgres-owners-and-acls-v1',
+        migrations: [
+          '009_stage9_knowledge_model.sql',
+          '029_frontend_activity_read_model.sql',
+          '030_frontend_history_projection.sql',
+          '077_ts5_asset_cas_lifecycle.sql',
+          '078_t3_project_source_knowledge_reset.sql',
+          '101_t3_canonical_erasure.sql',
+          '102_t3_activity_erasure.sql',
+        ],
+      },
+      projectKnowledgeEpochs: { 'project-a': 0 },
+    };
+    await writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify(t3Manifest)}\n`);
+    await expect(readManifest(directory)).resolves.toEqual(t3Manifest);
+    expect(authoritativeIntegrityTablesForMigrations(t3Manifest.database.migrations)).toEqual(
+      expect.arrayContaining([
+        'project_admin.project_knowledge_epoch',
+        'project_admin.project_knowledge_reset_requests',
+        'canonical.knowledge_reset_events',
+        'canonical.t3_reset_owner_snapshots',
+        'canonical.t3_reset_owner_snapshot_rows',
+        'canonical.history_payload_state',
+        'canonical.history_payload_audit_events',
+        'frontend_activity.activity_index',
+        'frontend_activity.projection_watermarks',
+        'frontend_history.history_projection_index',
+        'frontend_history.projection_watermarks',
+        'knowledge.review_groups',
+        'knowledge.entity_vault_imports',
+      ]),
+    );
+
+    const { projectKnowledgeEpochs: _discardedEpochs, ...missingEpochs } = t3Manifest;
+    await writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify(missingEpochs)}\n`);
+    await expect(readManifest(directory)).rejects.toThrow(
+      'Backup Manifest Project knowledge epochs do not match its migration identity.',
+    );
   });
 
   it('fails closed when a referenced Original Asset is corrupt or missing', async () => {

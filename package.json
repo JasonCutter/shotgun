@@ -32,7 +32,8 @@
     "test:database": "node --env-file-if-exists=.env --env-file-if-exists=.env.test node_modules/vitest/vitest.mjs run tests/database --maxWorkers=1 --fileParallelism=false --testTimeout=60000 --hookTimeout=60000",
     "test:live-ai": "vitest run tests/live/gemini-provider.live.test.ts --maxWorkers=1",
     "test:quick": "npm run test:unit && npm run test:contract && npm run test:architecture",
-    "test:ci": "npm run test:unit && npm run test:contract && npm run test:integration && npm run test:architecture && npm run test:stage12-package",
+    "test:ci": "npm run test:unit && npm run test:contract && npm run test:integration && npm run test:architecture && npm run test:stage12-package && npm run test:ts6-audit",
+    "test:ts6-audit": "vitest run scripts/ts6-audit --pool=forks --maxWorkers=4",
     "frontend:typecheck": "npm --workspace @shotgun/web run typecheck",
     "frontend:test": "npm --workspace @shotgun/web run test",
     "frontend:build": "npm --workspace @shotgun/web run build",
@@ -67,7 +68,11 @@
     "db:test:reset": "node --env-file-if-exists=.env --env-file-if-exists=.env.test node_modules/tsx/dist/cli.mjs scripts/database.ts test-reset",
     "db:verify": "tsx scripts/database.ts verify",
     "db:test:verify": "node --env-file-if-exists=.env --env-file-if-exists=.env.test node_modules/tsx/dist/cli.mjs scripts/database.ts test-verify",
+    "t3:erasure-journal:init": "tsx scripts/t3-erasure-journal.ts init",
+    "t3:reset": "tsx scripts/t3-source-knowledge-reset.ts",
     "verify:ts6-c2": "tsx scripts/verify-ts6-c2-release.ts",
+    "ts6:v8:rebuild": "tsx scripts/rebuild-ts6-phase-b-c2-r15-v8-lineage.ts",
+    "ts6:v8:check": "tsx scripts/rebuild-ts6-phase-b-c2-r15-v8-lineage.ts --check",
     "backup:create": "tsx scripts/backup-owner.ts create",
     "backup:list": "tsx scripts/backup-owner.ts list",
     "backup:verify": "tsx scripts/backup-owner.ts verify",
@@ -103,7 +108,7 @@
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.32.0",
-    "vitest": "^3.2.2"
+    "vitest": "4.1.10"
   },
   "overrides": {
     "brace-expansion": "5.0.9",

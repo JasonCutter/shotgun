@@ -216,7 +216,9 @@ export class PostgresActionExecutionRepository
           `${record.projectId}:${record.preview.candidate.candidateId}:${record.preview.candidate.revisionNumber}:${record.preview.operationKey}`,
         ]);
         const existing = await client.query<ExecutionRow>(
-          `SELECT record_json FROM action.executions WHERE project_id = $1 AND candidate_id = $2 AND candidate_revision = $3`,
+          `SELECT record_json FROM action.executions
+           WHERE project_id = $1 AND candidate_id = $2 AND candidate_revision = $3
+             AND status <> 'SOURCE_RESET'`,
           [
             record.projectId,
             record.preview.candidate.candidateId,
@@ -356,7 +358,9 @@ export class PostgresActionExecutionRepository
          FROM action.approval_records approvals
          JOIN action.executions executions ON executions.action_id = approvals.action_id
          JOIN action.preview_snapshots snapshots ON snapshots.snapshot_id = approvals.snapshot_id
-         WHERE approvals.approval_id = $1 AND executions.project_id = $2 FOR UPDATE OF executions`,
+         WHERE approvals.approval_id = $1 AND executions.project_id = $2
+           AND executions.status <> 'SOURCE_RESET'
+         FOR UPDATE OF executions`,
           [approvalId, projectId],
         );
         const row = result.rows[0];
@@ -488,7 +492,8 @@ export class PostgresActionExecutionRepository
 
   async find(projectId: string, actionId: string): Promise<ActionExecutionRecord | undefined> {
     const result = await this.pool.query<ExecutionRow>(
-      'SELECT record_json FROM action.executions WHERE project_id = $1 AND action_id = $2',
+      `SELECT record_json FROM action.executions
+       WHERE project_id = $1 AND action_id = $2 AND status <> 'SOURCE_RESET'`,
       [projectId, actionId],
     );
     return result.rows[0]?.record_json;
@@ -496,7 +501,13 @@ export class PostgresActionExecutionRepository
 
   async listAudit(projectId: string, actionId: string): Promise<readonly ActionAuditEvent[]> {
     const result = await this.pool.query<AuditRow>(
-      'SELECT event_json FROM action.audit_events WHERE project_id = $1 AND action_id = $2 ORDER BY sequence',
+      `SELECT audit.event_json
+       FROM action.audit_events AS audit
+       JOIN action.executions AS execution
+         ON execution.action_id = audit.action_id AND execution.project_id = audit.project_id
+       WHERE audit.project_id = $1 AND audit.action_id = $2
+         AND execution.status <> 'SOURCE_RESET'
+       ORDER BY audit.sequence`,
       [projectId, actionId],
     );
     return result.rows.map((row) => row.event_json);
@@ -651,6 +662,7 @@ export class PostgresActionExecutionRepository
          'ACTION_FAILED', 'ACTION_OUTCOME_UNKNOWN', 'ACTION_VERIFIED',
          'ACTION_VERIFICATION_FAILED'
        )
+         AND execution.status <> 'SOURCE_RESET'
          AND NOT EXISTS (
            SELECT 1
            FROM action.action_feedback_outbox AS existing
@@ -721,7 +733,7 @@ export class PostgresActionExecutionRepository
         const owner = await client.query<{ readonly project_id: string }>(
           `SELECT project_id
          FROM action.executions
-         WHERE action_id::text = $1
+         WHERE action_id::text = $1 AND status <> 'SOURCE_RESET'
          FOR SHARE`,
           [input.actionId],
         );
@@ -880,7 +892,8 @@ export class PostgresActionExecutionRepository
               snapshots.expires_at AS snapshot_expires_at
        FROM action.executions executions
        JOIN action.preview_snapshots snapshots ON snapshots.action_id = executions.action_id
-       WHERE executions.project_id = $1 AND executions.action_id = $2`,
+       WHERE executions.project_id = $1 AND executions.action_id = $2
+         AND executions.status <> 'SOURCE_RESET'`,
       [projectId, actionId],
     );
     return result.rows[0];
@@ -903,7 +916,8 @@ export class PostgresActionExecutionRepository
        JOIN action.preview_snapshots snapshots ON snapshots.action_id = executions.action_id
        WHERE executions.project_id = $1
          AND executions.candidate_id = $2
-         AND executions.candidate_revision = $3`,
+         AND executions.candidate_revision = $3
+         AND executions.status <> 'SOURCE_RESET'`,
       [projectId, candidateId, candidateRevision],
     );
     return result.rows[0];
@@ -933,6 +947,7 @@ export class PostgresActionExecutionRepository
        JOIN action.preview_snapshots snapshots ON snapshots.snapshot_id = approvals.snapshot_id
        WHERE executions.project_id = $1
          AND executions.action_id = $2
+         AND executions.status <> 'SOURCE_RESET'
          AND approvals.approval_id = $3`,
       [projectId, actionId, approvalId],
     );
@@ -1103,7 +1118,13 @@ export class PostgresActionExecutionRepository
     expected: readonly Omit<ActionAuditEvent, 'auditEventId' | 'sequence'>[],
   ): Promise<boolean> {
     const result = await this.pool.query<AuditRow>(
-      'SELECT event_json FROM action.audit_events WHERE project_id = $1 AND action_id = $2 ORDER BY sequence',
+      `SELECT audit.event_json
+       FROM action.audit_events AS audit
+       JOIN action.executions AS execution
+         ON execution.action_id = audit.action_id AND execution.project_id = audit.project_id
+       WHERE audit.project_id = $1 AND audit.action_id = $2
+         AND execution.status <> 'SOURCE_RESET'
+       ORDER BY audit.sequence`,
       [projectId, actionId],
     );
     return expected.every(
@@ -1145,7 +1166,8 @@ export class PostgresActionExecutionRepository
     actionId: string,
   ): Promise<ActionExecutionRecord> {
     const result = await client.query<ExecutionRow>(
-      'SELECT record_json FROM action.executions WHERE project_id = $1 AND action_id = $2 FOR UPDATE',
+      `SELECT record_json FROM action.executions
+       WHERE project_id = $1 AND action_id = $2 AND status <> 'SOURCE_RESET' FOR UPDATE`,
       [projectId, actionId],
     );
     const record = result.rows[0]?.record_json;

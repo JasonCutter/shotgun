@@ -386,6 +386,40 @@ const enUS = {
     'Drafts stay with the project where they were created until submitted or discarded.',
   'sources.no_drafts': 'No drafts yet.',
   'sources.library': 'Source Library',
+  'sources.reset_title': 'Reset Project Source knowledge',
+  'sources.reset_help':
+    'Remove this Project’s Sources and derived knowledge. Project identity, login accounts, and AI settings are preserved.',
+  'sources.reset_review': 'Review reset impact',
+  'sources.reset_preview_help':
+    'This read-only preview is bound to the current Project, Source inventory, and preserved settings. It expires after five minutes.',
+  'sources.reset_irreversible_ack':
+    'I understand that confirming permanently removes this Project’s Sources and Source-derived content.',
+  'sources.reset_confirm': 'Confirm Project reset',
+  'sources.reset_status': 'Reset status',
+  'sources.reset_restart_required':
+    'Exit and restart Shotgun to run the approved reset before the workspace opens.',
+  'sources.reset_cas': 'Shared asset cleanup',
+  'sources.reset_backup': 'Backup cleanup',
+  'sources.reset_error': 'The reset request could not be completed.',
+  'sources.reset_offline': 'Reconnect before previewing or confirming a Project reset.',
+  'sources.reset_count_sources': 'Sources',
+  'sources.reset_count_versions': 'Source versions',
+  'sources.reset_count_derived': 'Derived records',
+  'sources.reset_count_history': 'History payloads to scrub',
+  'sources.reset_count_projections': 'Projections to rebuild',
+  'sources.reset_count_shared_assets': 'Shared assets to recheck',
+  'sources.reset_count_blocked': 'Unclassified records',
+  'sources.reset_blocker_unclassified':
+    'Some stored content has no verified cleanup classification.',
+  'sources.reset_blocker_stale':
+    'Source content changed after approval; review a fresh impact preview.',
+  'sources.reset_blocker_job':
+    'A Source-related job has an unknown outcome and must be reconciled.',
+  'sources.reset_blocker_external_action':
+    'A completed external Action needs a separate disposition.',
+  'sources.reset_blocker_in_progress': 'A Project knowledge reset is already in progress.',
+  'sources.reset_blocker_executor': 'The dedicated erasure executor is not configured.',
+  'sources.reset_blocker_journal': 'The external erasure journal is not available.',
   'sources.add_source': 'Add Source',
   'sources.search': 'Search Sources',
   'sources.search_submit': 'Search',
@@ -1209,6 +1243,37 @@ const koKR: Record<ProductMessageKey, string> = {
   'sources.draft_help': '초안은 제출하거나 버릴 때까지 생성한 프로젝트에 유지됩니다.',
   'sources.no_drafts': '아직 초안이 없습니다.',
   'sources.library': '소스 라이브러리',
+  'sources.reset_title': '프로젝트 소스 지식 초기화',
+  'sources.reset_help':
+    '이 프로젝트의 소스와 파생 지식을 제거합니다. 프로젝트 identity, 로그인 계정, AI 설정은 보존됩니다.',
+  'sources.reset_review': '초기화 영향 검토',
+  'sources.reset_preview_help':
+    '읽기 전용 미리보기는 현재 프로젝트, 소스 목록, 보존 설정에 묶입니다. 5분 후 만료됩니다.',
+  'sources.reset_irreversible_ack':
+    '확인하면 이 프로젝트의 소스와 소스 파생 콘텐츠가 영구적으로 제거됨을 이해했습니다.',
+  'sources.reset_confirm': '프로젝트 초기화 확인',
+  'sources.reset_status': '초기화 상태',
+  'sources.reset_restart_required':
+    'Shotgun을 종료한 뒤 다시 실행하면 작업 공간이 열리기 전에 승인된 초기화가 처리됩니다.',
+  'sources.reset_cas': '공유 자산 정리',
+  'sources.reset_backup': '백업 정리',
+  'sources.reset_error': '초기화 요청을 완료하지 못했습니다.',
+  'sources.reset_offline': '프로젝트 초기화를 미리 보거나 확인하려면 다시 연결하세요.',
+  'sources.reset_count_sources': '소스',
+  'sources.reset_count_versions': '소스 버전',
+  'sources.reset_count_derived': '파생 레코드',
+  'sources.reset_count_history': '정리할 기록 payload',
+  'sources.reset_count_projections': '재구성할 projection',
+  'sources.reset_count_shared_assets': '재확인할 공유 자산',
+  'sources.reset_count_blocked': '미분류 레코드',
+  'sources.reset_blocker_unclassified': '정리 분류가 검증되지 않은 저장 콘텐츠가 있습니다.',
+  'sources.reset_blocker_stale':
+    '승인 후 소스 내용이 변경되었습니다. 최신 영향 미리보기를 확인하세요.',
+  'sources.reset_blocker_job': '결과를 확인해야 하는 소스 관련 작업이 진행 중입니다.',
+  'sources.reset_blocker_external_action': '완료된 외부 Action의 별도 처리 판정이 필요합니다.',
+  'sources.reset_blocker_in_progress': '프로젝트 지식 초기화가 이미 진행 중입니다.',
+  'sources.reset_blocker_executor': '전용 삭제 executor가 구성되지 않았습니다.',
+  'sources.reset_blocker_journal': '외부 삭제 journal을 사용할 수 없습니다.',
   'sources.add_source': '소스 추가',
   'sources.search': '소스 검색',
   'sources.search_submit': '검색',

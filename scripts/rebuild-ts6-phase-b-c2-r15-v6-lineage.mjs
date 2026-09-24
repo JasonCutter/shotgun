@@ -6,7 +6,8 @@
  *   legacy `callersFor` authority        RETIRED from every decision
  *   qualified `boundaryMatchKind`        the only authority
  *
- * This writes a NEW snapshot; it does not touch any frozen artifact. Every value
+ * This only writes an explicitly requested scratch snapshot; it cannot touch a
+ * frozen artifact. Every value
  * that the previous authority derived ??productionReachability.status, the caller
  * set, candidateReconciliation[].c2r2Classification, summary ??is re-derived from
  * the SAME single qualified result, so status and scoreboard cannot diverge into
@@ -14,14 +15,19 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { resolveLineageOutput } from './ts6-lineage-output-guard.mjs';
+import { makeLineageMetadata } from './ts6-lineage-metadata.mjs';
 
 const ROOT = process.cwd();
+const out = resolveLineageOutput(ROOT, process.argv.slice(2));
 const validator = await import(
   `file:///${path.join(ROOT, 'scripts/ts6-phase-b-transaction-authority-validator.ts').replace(/\\/g, '/')}`
 );
 
 const ARTIFACTS = 'artifacts/ts6-phase-b-c2-r15';
-const previous = JSON.parse(fs.readFileSync(`${ARTIFACTS}/golden.v5.derived.json`, 'utf8'));
+const parentArtifact = `${ARTIFACTS}/golden.v5.derived.json`;
+const parentContent = fs.readFileSync(parentArtifact, 'utf8');
+const previous = JSON.parse(parentContent);
 const audit = validator.buildAuditShape(ROOT);
 
 // The approved regression-evidence relations are NOT re-opened by a reachability
@@ -90,13 +96,12 @@ const summary = {
 
 const derived = {
   ...previous,
-  derivedFrom: {
-    ...(previous.derivedFrom ?? {}),
-    authority: 'scripts/ts6-phase-b-production-reachability.ts ??boundaryMatchKind()',
-    previousAuthority:
-      'retired: callersFor() method-name-only scan (scripts/ts6-phase-b-transaction-authority-validator.ts)',
-    previousLineage: 'golden.v5.derived.json (preserved, unmodified)',
-  },
+  derivedFrom: makeLineageMetadata({
+    parentArtifact,
+    parentContent,
+    baseCommit: validator.BASELINE_SHA,
+    authorityVersion: 'scripts/ts6-phase-b-production-reachability.ts#boundaryMatchKind',
+  }),
   correctionRound: 'C2-R15-R3-QUALIFIED-REACHABILITY-AUTHORITY',
   correctionNotes:
     'Reachability authority replacement only. Frozen v2, the crosswalk and golden.v5 are preserved and unmodified. No relation proof was re-opened: 5 boundaries lose PROVEN and leave the coverage-required set; every other relation is unchanged.',
@@ -113,10 +118,9 @@ const derived = {
   summary,
 };
 
-const out = `${ARTIFACTS}/golden.v6.derived.json`;
 fs.writeFileSync(out, `${JSON.stringify(derived, null, 2)}\n`, 'utf8');
 
 console.log('status moves:', moved.length);
 for (const m of moved) console.log(`  ${m.symbol}.${m.method}: ${m.before} -> ${m.after}`);
 console.log('summary:', JSON.stringify(summary));
-console.log('wrote', out);
+console.log('wrote scratch lineage', out);

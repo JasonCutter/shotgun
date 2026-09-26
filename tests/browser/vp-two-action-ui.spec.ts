@@ -136,6 +136,22 @@ test('VP browser journey uploads, revises, and answers from the latest source ve
       payload: { inputs: [expect.objectContaining({ requestedSourceId: sourceId })] },
     });
 
+    const secondSourceText = `An independent VP source ${randomUUID().slice(0, 8)} says the project signal is blue.`;
+    await page.goto(`${FRONTEND}/sources?view=add`);
+    await page.locator('#source-intake-kind').selectOption('FILE');
+    await page.locator('#source-intake-file').setInputFiles({
+      name: 'second-vp-source.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from(secondSourceText),
+    });
+    const secondSubmission = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/product-api/frontend/sources/submissions') &&
+        response.request().method() === 'POST',
+    );
+    await page.locator('.source-intake-form button[type="submit"]').click();
+    expect((await secondSubmission).ok()).toBe(true);
+
     await page.goto(`${FRONTEND}/ask`);
     await page
       .locator('#global-ask-question')
@@ -144,15 +160,18 @@ test('VP browser journey uploads, revises, and answers from the latest source ve
     await expect(page.getByText(revisedText, { exact: false }).first()).toBeVisible({
       timeout: 30_000,
     });
-    const currentCitation = page
+    await expect(page.getByText(secondSourceText, { exact: false }).first()).toBeVisible();
+    const citationHrefs = await page
       .locator('.ask-turn')
       .last()
       .locator('.ask-citation-list a')
-      .first();
-    await expect(currentCitation).toBeVisible();
-    const currentHref = await currentCitation.getAttribute('href');
-    expect(new URL(currentHref as string, FRONTEND).pathname.split('/').at(-1)).toBe(sourceId);
-    expect(new URL(currentHref as string, FRONTEND).searchParams.get('version')).not.toBe(
+      .evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+    const citedSources = citationHrefs.map((href) => new URL(href as string, FRONTEND));
+    expect(new Set(citedSources.map((url) => url.pathname)).size).toBeGreaterThanOrEqual(2);
+    const currentSourceCitation = citedSources.find((url) =>
+      url.pathname.endsWith(`/sources/${sourceId}`),
+    );
+    expect(currentSourceCitation?.searchParams.get('version')).not.toBe(
       new URL(previousHref as string, FRONTEND).searchParams.get('version'),
     );
 

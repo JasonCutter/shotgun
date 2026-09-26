@@ -36,6 +36,7 @@ import {
   useProductLocalization,
 } from '../localization/product-localization.js';
 import {
+  sourceDetailQueryOptions,
   sourceIntakeSubmissionQueryOptions,
   sourcesLibraryQueryOptions,
 } from '../sources/sources-queries.js';
@@ -170,6 +171,7 @@ export const SourcesWorkspace = () => {
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const location = useLocation();
   const [searchParameters] = useSearchParams();
+  const targetSourceId = searchParameters.get('sourceId')?.trim() || undefined;
   const connectivity = useConnectivityState();
   const { t } = useProductLocalization();
   const writeClient = useMemo(() => createSourcesWriteClient(), []);
@@ -185,7 +187,10 @@ export const SourcesWorkspace = () => {
   const [appliedQuery, setAppliedQuery] = useState('');
   const [intakeKind, setIntakeKind] = useState<'DIRECT_TEXT' | 'FILE' | 'URL'>('DIRECT_TEXT');
   const [intakeLabel, setIntakeLabel] = useState('');
-  const requestedClassification: SourcesSensitivity = 'private';
+  const targetSource = useQuery(sourceDetailQueryOptions(apiClient, shell, targetSourceId ?? ''));
+  const requestedClassification: SourcesSensitivity = targetSourceId
+    ? (targetSource.data?.sensitivity ?? 'private')
+    : 'private';
   const [directText, setDirectText] = useState('');
   const [requestedUrl, setRequestedUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File>();
@@ -223,7 +228,6 @@ export const SourcesWorkspace = () => {
   const resetIdempotency = useRef<{ previewId: string; key: string } | undefined>(undefined);
   const resetCachePurgedRequestId = useRef<string | undefined>(undefined);
   const linkedSubmissionId = searchParameters.get('submission')?.trim() || null;
-  const targetSourceId = searchParameters.get('sourceId')?.trim() || undefined;
   const query = useMemo<SourceLibraryQuery>(
     () => ({
       ...DEFAULT_QUERY,
@@ -376,7 +380,10 @@ export const SourcesWorkspace = () => {
       connectivity.isOffline ||
       mutationState !== 'IDLE' ||
       !projectId ||
-      intakeProjectId.current !== projectId
+      intakeProjectId.current !== projectId ||
+      (targetSourceId !== undefined &&
+        (targetSource.data?.sourceId !== targetSourceId ||
+          targetSource.data.projectId !== projectId))
     ) {
       return;
     }
@@ -754,6 +761,13 @@ export const SourcesWorkspace = () => {
             {t(targetSourceId ? 'sources.update_source' : 'sources.direct_intake')}
           </h2>
           <p>{t(targetSourceId ? 'sources.update_help' : 'sources.direct_help')}</p>
+          {targetSourceId && targetSource.isPending ? (
+            <LoadingState message={t('source_detail.loading')} />
+          ) : null}
+          {targetSourceId && targetSource.error ? (
+            <ErrorState error={targetSource.error} onRetry={() => targetSource.refetch()} />
+          ) : null}
+          {targetSourceId && targetSource.data ? <p>{targetSource.data.label}</p> : null}
           <p>
             <Link to="/sources">{t('sources.library')}</Link>
           </p>
@@ -847,6 +861,7 @@ export const SourcesWorkspace = () => {
               disabled={
                 connectivity.isOffline ||
                 mutationState !== 'IDLE' ||
+                (targetSourceId !== undefined && !targetSource.data) ||
                 (intakeKind === 'FILE' && !selectedFile) ||
                 (intakeKind === 'DIRECT_TEXT' && !directText.trim()) ||
                 (intakeKind === 'URL' && !requestedUrl.trim())

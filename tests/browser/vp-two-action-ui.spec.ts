@@ -17,6 +17,7 @@ const FRONTEND = 'http://127.0.0.1:5174';
 test('VP browser journey uploads, revises, and answers from the latest source version', async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   const fixture = (await tsImport(
     './fixtures/frontend-cross-phase-backend.ts',
     import.meta.url,
@@ -216,13 +217,70 @@ test('VP browser journey uploads, revises, and answers from the latest source ve
       mimeType: 'text/markdown',
       buffer: Buffer.from('This cannot update another project source.'),
     });
-    const rejectedSubmission = page.waitForResponse(
-      (response) =>
-        response.url().endsWith('/product-api/frontend/sources/submissions') &&
-        response.request().method() === 'POST',
+    await expect(page.locator('.source-intake-form button[type="submit"]')).toBeDisabled();
+
+    // A forged API request must be rejected even when it bypasses the UI guard.
+    const otherCsrf = await page.request.get(`${FRONTEND}/api/v1/security/csrf`);
+    const otherToken = ((await otherCsrf.json()) as { csrfToken?: string }).csrfToken;
+    expect(otherToken).toBeTruthy();
+    const draftId = `cross-project-${randomUUID()}`;
+    const itemId = `item-${randomUUID()}`;
+    const staged = await page.request.post(
+      `${FRONTEND}/product-api/frontend/sources/staging/bytes?${new URLSearchParams({
+        draftId,
+        itemId,
+        kind: 'FILE',
+        label: 'forbidden-revision.md',
+        mediaType: 'text/markdown',
+        fileName: 'forbidden-revision.md',
+      })}`,
+      {
+        headers: {
+          'x-csrf-token': otherToken as string,
+          'content-type': 'application/octet-stream',
+        },
+        data: Buffer.from('This cannot update another project source.'),
+      },
     );
-    await page.locator('.source-intake-form button[type="submit"]').click();
-    expect((await rejectedSubmission).ok()).toBe(false);
+    const stagedBody = (await staged.json()) as { receipt?: { stagingReference?: string } };
+    expect(staged.ok(), JSON.stringify(stagedBody)).toBe(true);
+    const forbidden = await page.request.post(
+      `${FRONTEND}/product-api/frontend/sources/submissions`,
+      {
+        headers: { 'x-csrf-token': otherToken as string },
+        data: {
+          envelopeVersion: '1.0.0',
+          commandType: 'sources.intake.submit.v1',
+          commandSchemaVersion: '1.0.0',
+          clientRequestId: randomUUID(),
+          idempotencyKey: randomUUID(),
+          projectContext: {
+            activeProjectId: otherProjectId,
+            targetProjectId: otherProjectId,
+            resourceProjectId: otherProjectId,
+          },
+          policyBinding: { mode: 'CURRENT' },
+          preconditions: [],
+          clientIssuedAt: new Date().toISOString(),
+          payload: {
+            draftId,
+            duplicateHandling: 'AUTOMATIC',
+            inputs: [
+              {
+                itemId,
+                kind: 'FILE',
+                label: 'forbidden-revision.md',
+                fileName: 'forbidden-revision.md',
+                mediaType: 'text/markdown',
+                stagingReference: stagedBody.receipt?.stagingReference,
+                requestedSourceId: sourceId,
+              },
+            ],
+          },
+        },
+      },
+    );
+    expect(forbidden.ok(), await forbidden.text()).toBe(false);
   } finally {
     await frontend?.close();
     await backend.close();

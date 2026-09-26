@@ -378,6 +378,25 @@ describe('VP validated direct assertion ledger', () => {
       [projectId],
     );
     expect(semanticLinks.rows[0]?.count).toBe('1');
+    expect(await jobs.enqueueCurrentPairs('vp-revised-policy')).toBe(1);
+    const revisedJob = await jobs.claimNext('vp-revised-policy');
+    expect(revisedJob).toBeDefined();
+    expect(
+      await jobs.completeDecision({
+        ...decision,
+        jobId: revisedJob!.jobId,
+        leaseToken: revisedJob!.leaseToken,
+      }),
+    ).toBe(true);
+    const relationVersions = await pool.query<{ historical: string; current: string }>(
+      `SELECT
+         (SELECT count(*)::text FROM vp.relations
+           WHERE project_id = $1 AND relation_kind = 'CONTRADICTS') AS historical,
+         (SELECT count(*)::text FROM vp.current_relations
+           WHERE project_id = $1 AND relation_kind = 'CONTRADICTS') AS current`,
+      [projectId],
+    );
+    expect(relationVersions.rows[0]).toEqual({ historical: '2', current: '1' });
     await expect(
       pool.query(`UPDATE vp.assertions SET claim_text = 'tampered' WHERE candidate_id = $1`, [
         first.candidateId,
@@ -426,7 +445,7 @@ describe('VP validated direct assertion ledger', () => {
         [projectId, resetRequestId],
       );
       expect(before.rows[0]?.status.assertions).toBe(4);
-      expect(before.rows[0]?.status.jobs).toBe(1);
+      expect(before.rows[0]?.status.jobs).toBe(2);
       await executor.query('SELECT vp.t3_erase_project($1, $2::uuid)', [projectId, resetRequestId]);
       const after = await executor.query<{ status: Record<string, number> }>(
         'SELECT vp.t3_project_status($1, $2::uuid) AS status',
@@ -450,7 +469,7 @@ describe('VP validated direct assertion ledger', () => {
     ).inspectProjectSourceKnowledge(projectId);
     expect(
       impact.counts.sourceDerivedRecordCount - afterPurgeImpact.counts.sourceDerivedRecordCount,
-    ).toBe(15);
+    ).toBe(19);
     expect(afterPurgeImpact.manifestDigest).not.toBe(impact.manifestDigest);
   });
 });

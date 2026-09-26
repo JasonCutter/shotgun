@@ -203,6 +203,8 @@ export const SourcesWorkspace = () => {
     setDirectText('');
     setRequestedUrl('');
     setSelectedFile(undefined);
+    setSubmission(undefined);
+    setDecision(undefined);
     if (fileInputRef.current) fileInputRef.current.value = '';
     setMutationError(undefined);
     setMutationState('IDLE');
@@ -230,9 +232,15 @@ export const SourcesWorkspace = () => {
     [appliedQuery],
   );
   const library = useQuery(sourcesLibraryQueryOptions(apiClient, shell, query));
-  const linkedSubmission = useQuery(
-    sourceIntakeSubmissionQueryOptions(apiClient, shell, linkedSubmissionId),
-  );
+  const monitoredSubmissionId = linkedSubmissionId ?? submission?.submissionId ?? null;
+  const linkedSubmission = useQuery({
+    ...sourceIntakeSubmissionQueryOptions(apiClient, shell, monitoredSubmissionId),
+    refetchInterval: (query) =>
+      query.state.data &&
+      ['SUCCEEDED', 'FAILED', 'CANCELLED', 'ACTION_REQUIRED'].includes(query.state.data.state)
+        ? false
+        : 2_000,
+  });
   const resetStatus = useQuery({
     queryKey: ['source-knowledge-reset-status', projectId, resetRequestId],
     queryFn: () => apiClient.getSourceKnowledgeResetStatus(projectId, resetRequestId!),
@@ -293,11 +301,8 @@ export const SourcesWorkspace = () => {
   const requestedView = searchParameters.get('view');
   const showAddSource = requestedView === 'add' || (requestedView === null && seed !== undefined);
   const displayedSubmission =
-    submission?.submissionId === linkedSubmissionId
-      ? submission
-      : linkedSubmissionId === null
-        ? submission
-        : linkedSubmission.data;
+    linkedSubmission.data ??
+    (submission?.submissionId === monitoredSubmissionId ? submission : undefined);
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
     if (!connectivity.isOffline) setAppliedQuery(searchInput);
@@ -915,6 +920,9 @@ export const SourcesWorkspace = () => {
                       <strong>{item.manifest.label}</strong>
                       <p>{hfmOwnerLabel(t, 'intakeState', item.state)}</p>
                       {item.attentionReason ? <small>{item.attentionReason}</small> : null}
+                      {item.safeFailure ? (
+                        <small role="alert">{item.safeFailure.message}</small>
+                      ) : null}
                     </div>
                     <div className="source-intake-actions">
                       {item.duplicateDecisionId ? (

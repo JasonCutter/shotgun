@@ -18,6 +18,7 @@ import {
   type SourceLibraryQuery,
   type SourcesSensitivity,
   type StagedSourcesIntakeInput,
+  type SourcesStagingMediaType,
   type KnowledgeResetPreviewV1,
   type KnowledgeResetBlockerCodeV1,
 } from '@shotgun/api-client';
@@ -53,6 +54,21 @@ const DEFAULT_QUERY: SourceLibraryQuery = {
 
 const identity = (prefix: string): string =>
   `${prefix}-${typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now()}`;
+
+const fileMediaType = (name: string): SourcesStagingMediaType => {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.docx'))
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (lower.endsWith('.xlsx'))
+    return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (lower.endsWith('.pptx'))
+    return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
+  if (lower.endsWith('.csv')) return 'text/csv';
+  if (lower.endsWith('.md')) return 'text/markdown';
+  return 'text/plain';
+};
 
 const resetRequestStorageKey = (projectId: string): string =>
   `shotgun:source-knowledge-reset:${projectId}`;
@@ -387,7 +403,7 @@ export const SourcesWorkspace = () => {
         return;
       }
     }
-    if (file && !/\.(txt|md|pdf)$/i.test(file.name)) {
+    if (file && !/\.(txt|md|pdf|html?|csv|docx|xlsx|pptx)$/i.test(file.name)) {
       setMutationError(t('sources.draft_message.file_unsupported'));
       return;
     }
@@ -430,11 +446,7 @@ export const SourcesWorkspace = () => {
           requestedClassification,
         };
       } else {
-        const mediaType = file?.name.toLowerCase().endsWith('.pdf')
-          ? 'application/pdf'
-          : file?.name.toLowerCase().endsWith('.md')
-            ? 'text/markdown'
-            : 'text/plain';
+        const mediaType = file ? fileMediaType(file.name) : 'text/plain';
         const receipt = await writeClient.stageBytes({
           draftId: command.draftId,
           itemId,
@@ -803,7 +815,7 @@ export const SourcesWorkspace = () => {
                   ref={fileInputRef}
                   id="source-intake-file"
                   type="file"
-                  accept="text/plain,text/markdown,application/pdf,.txt,.md,.pdf"
+                  accept=".txt,.md,.pdf,.html,.htm,.csv,.docx,.xlsx,.pptx"
                   onChange={(event) => setSelectedFile(event.target.files?.[0])}
                 />
               </>

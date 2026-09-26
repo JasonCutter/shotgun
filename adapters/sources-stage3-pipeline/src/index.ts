@@ -19,7 +19,10 @@ import type {
   SourcesStage4ContinuationPort,
 } from '../../../modules/frontend-sources-write/src/index.js';
 import { classifySourcesStage3Failure } from '../../../modules/frontend-sources-write/src/index.js';
-import { ShotgunError } from '../../../packages/contracts/src/index.js';
+import {
+  ShotgunError,
+  SOURCES_STAGING_MEDIA_TYPES,
+} from '../../../packages/contracts/src/index.js';
 
 import type { SourcesStage4ContinuationStorePort } from '../../../modules/frontend-sources-write/src/index.js';
 
@@ -35,7 +38,7 @@ const assertStage3Input = (
     !input.sourceVersionId ||
     !input.storageKey ||
     !/^sha256:[a-f0-9]{64}$/.test(input.contentHash) ||
-    !['text/plain', 'text/markdown', 'application/pdf'].includes(input.mediaType) ||
+    !SOURCES_STAGING_MEDIA_TYPES.includes(input.mediaType) ||
     input.accessScope.length === 0 ||
     !validSensitivity
   ) {

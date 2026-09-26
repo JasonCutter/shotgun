@@ -11,7 +11,26 @@ import {
 } from './frontend-sources.js';
 
 export type SourcesStagingInputKind = 'DIRECT_TEXT' | 'FILE' | 'URL';
-export type SourcesStagingMediaType = 'text/plain' | 'text/markdown' | 'application/pdf';
+export type SourcesStagingMediaType =
+  | 'text/plain'
+  | 'text/markdown'
+  | 'text/html'
+  | 'text/csv'
+  | 'application/pdf'
+  | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  | 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
+export const SOURCES_STAGING_MEDIA_TYPES: readonly SourcesStagingMediaType[] = [
+  'text/plain',
+  'text/markdown',
+  'text/html',
+  'text/csv',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+];
 
 export type SourcesStagingReceipt = {
   readonly schemaVersion: typeof SOURCES_SCHEMA_VERSION;
@@ -168,21 +187,14 @@ export const decodeSubmitStagedSourcesIntakePayload = (
         path,
       );
       const mediaType = item['mediaType'];
-      if (
-        mediaType !== 'text/plain' &&
-        mediaType !== 'text/markdown' &&
-        mediaType !== 'application/pdf'
-      ) {
-        throw new FrontendContractError(
-          'INVALID_REQUEST',
-          `${path}.mediaType must be text/plain, text/markdown or application/pdf.`,
-        );
+      if (!SOURCES_STAGING_MEDIA_TYPES.includes(mediaType as SourcesStagingMediaType)) {
+        throw new FrontendContractError('INVALID_REQUEST', `${path}.mediaType is unsupported.`);
       }
       return {
         kind: 'FILE',
         ...common,
         fileName: stringValue(item['fileName'], `${path}.fileName`, 255),
-        mediaType,
+        mediaType: mediaType as SourcesStagingMediaType,
       };
     }
     if (item['kind'] === 'URL') {
@@ -252,18 +264,14 @@ export const decodeSourcesStagingReceipt = (input: unknown): SourcesStagingRecei
     throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Unsupported Sources staging kind.');
   }
   const mediaType = value['mediaType'];
-  if (
-    mediaType !== 'text/plain' &&
-    mediaType !== 'text/markdown' &&
-    mediaType !== 'application/pdf'
-  ) {
+  if (!SOURCES_STAGING_MEDIA_TYPES.includes(mediaType as SourcesStagingMediaType)) {
     throw new FrontendContractError(
       'UNSUPPORTED_SCHEMA',
       'Unsupported Sources staging media type.',
     );
   }
-  if (mediaType === 'application/pdf' && kind !== 'FILE') {
-    throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'PDF staging requires a file.');
+  if (mediaType !== 'text/plain' && mediaType !== 'text/markdown' && kind !== 'FILE') {
+    throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Document staging requires a file.');
   }
   const sizeBytes = value['sizeBytes'];
   if (!Number.isInteger(sizeBytes) || Number(sizeBytes) <= 0 || Number(sizeBytes) > 1_048_576) {
@@ -299,7 +307,7 @@ export const decodeSourcesStagingReceipt = (input: unknown): SourcesStagingRecei
       value['stagingReference'],
       'SourcesStagingReceipt.stagingReference',
     ),
-    mediaType,
+    mediaType: mediaType as SourcesStagingMediaType,
     sizeBytes: Number(sizeBytes),
     contentHash,
     ...(fileName === undefined ? {} : { fileName }),

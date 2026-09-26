@@ -366,7 +366,7 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
          channel, material_kind, media_type, original_file_name, content_hash,
          size_bytes, access_scope, sensitivity, created_at
        ) VALUES ($1, $2, $3, $4, $5, $6,
-                 CASE WHEN $7 = 'application/pdf' THEN 'document' ELSE 'plain_text' END,
+                 CASE WHEN $7 IN ('text/plain', 'text/markdown') THEN 'plain_text' ELSE 'document' END,
                  $7, $8, $9, $10, $11, $12, $13)`,
       [
         randomUUID(),
@@ -438,7 +438,7 @@ export class PostgresSourcesIntakeUnitOfWork implements SourcesIntakeUnitOfWorkP
          receipt_id, submission_id, project_id, source_version_id, channel,
          material_kind, original_file_name, asset_reused, version_created, created_at
        ) VALUES ($1, $2, $3, $4, $5,
-                 CASE WHEN $6 = 'application/pdf' THEN 'document' ELSE 'plain_text' END,
+                 CASE WHEN $6 IN ('text/plain', 'text/markdown') THEN 'plain_text' ELSE 'document' END,
                  $7, $8, $9, $10)`,
       [
         randomUUID(),

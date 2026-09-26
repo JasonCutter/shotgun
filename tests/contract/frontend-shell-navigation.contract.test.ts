@@ -75,9 +75,9 @@ describe('Frontend Shell HFM-S3 persistent navigation', () => {
       accessibleProjects: [],
     });
     expect(shell.navigation).toEqual([]);
-    expect(shell.features.find((feature) => feature.id === 'vp-autonomous-knowledge')?.availability).toBe(
-      'HIDDEN',
-    );
+    expect(
+      shell.features.find((feature) => feature.id === 'vp-autonomous-knowledge')?.availability,
+    ).toBe('HIDDEN');
     expect(shell.leadingWarning?.code).toBe('PROJECT_SETUP_REQUIRED');
   });
 

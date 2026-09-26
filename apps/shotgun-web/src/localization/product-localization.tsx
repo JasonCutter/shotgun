@@ -458,7 +458,8 @@ const enUS = {
   'sources.draft_message.direct_text_too_large': 'Direct Text exceeds the active one MiB limit.',
   'sources.draft_message.client_preflight':
     'Client preflight passed. The Server will validate again.',
-  'sources.draft_message.file_unsupported': 'Choose a .txt, .md, or .pdf file.',
+  'sources.draft_message.file_unsupported':
+    'Choose a TXT, Markdown, PDF, HTML, CSV, DOCX, XLSX, or PPTX file.',
   'sources.draft_message.file_size': 'The file must be between 1 byte and one MiB.',
   'sources.draft_message.file_preflight':
     'Client preflight passed. The Server will verify bytes, type and filename.',
@@ -1317,7 +1318,8 @@ const koKR: Record<ProductMessageKey, string> = {
   'sources.draft_message.direct_text_too_large': '직접 입력 내용이 현재 1 MiB 한도를 초과합니다.',
   'sources.draft_message.client_preflight':
     '클라이언트 사전 검사를 통과했습니다. 서버가 다시 검증합니다.',
-  'sources.draft_message.file_unsupported': '.txt, .md 또는 .pdf 파일을 선택하세요.',
+  'sources.draft_message.file_unsupported':
+    'TXT, Markdown, PDF, HTML, CSV, DOCX, XLSX 또는 PPTX 파일을 선택하세요.',
   'sources.draft_message.file_size': '파일 크기는 1바이트 이상 1 MiB 이하여야 합니다.',
   'sources.draft_message.file_preflight':
     '클라이언트 사전 검사를 통과했습니다. 서버가 바이트, 형식 및 파일 이름을 검증합니다.',

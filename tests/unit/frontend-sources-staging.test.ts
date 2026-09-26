@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -169,5 +171,23 @@ describe('sealed Sources staging service', () => {
     await expect(
       service.stageBytes({ ...pdf, bytes: new TextEncoder().encode('not a PDF') }),
     ).rejects.toThrow(/PDF signature/);
+  });
+
+  it.each([
+    ['golden.html', 'text/html'],
+    ['golden.csv', 'text/csv'],
+    ['golden.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    ['golden.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    ['golden.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+  ] as const)('stages %s through the file input boundary', async (fileName, mediaType) => {
+    const service = new SealedSourcesStagingService(new MemoryStorage(), secret);
+    const receipt = await service.stageBytes({
+      ...base,
+      kind: 'FILE',
+      fileName,
+      mediaType,
+      bytes: await readFile(path.resolve('tests/fixtures/stage-8', fileName)),
+    });
+    expect(receipt).toMatchObject({ kind: 'FILE', fileName, mediaType });
   });
 });

@@ -146,72 +146,82 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
     await recreateTestDatabaseSchemas(databaseUrl);
   });
 
-  it('stores an automatic PDF submission as a document SourceVersion for Stage 3', async () => {
-    const context = await createContext();
-    const storage = new InMemoryAssetStorage();
-    const staging = new SealedSourcesStagingService(
-      storage,
-      'database-product-write-staging-secret-32-characters',
-    );
-    const stage3 = new RecordingStage3Pipeline();
-    const service = new PostgresSourcesProductService(pool!, staging, stage3);
-    const commandId = randomUUID();
-    await insertAcceptedCommand({
-      commandId,
-      commandType: 'sources.intake.submit.v1',
-      principalId: context.principalId,
-      projectId: context.projectId,
-      payload: { draftId: 'pdf-draft', inputs: [{ kind: 'FILE', stagingReference: 'sealed' }] },
-      now: context.now,
-    });
-    const receipt = await staging.stageBytes({
-      draftId: 'pdf-draft',
-      itemId: 'pdf-item',
-      projectId: context.projectId,
-      principalId: context.principalId,
-      kind: 'FILE',
-      label: 'Golden PDF',
-      mediaType: 'application/pdf',
-      fileName: 'golden.pdf',
-      bytes: await readFile(path.resolve('tests/fixtures/stage-8/golden.pdf')),
-    });
-    const artifact = await staging.resolve({
-      stagingReference: receipt.stagingReference,
-      draftId: 'pdf-draft',
-      itemId: 'pdf-item',
-      projectId: context.projectId,
-      principalId: context.principalId,
-      kind: 'FILE',
-    });
-    const result = await service.submit({
-      submissionId: commandId,
-      commandId,
-      correlationId: `correlation-${commandId}`,
-      draftId: 'pdf-draft',
-      scope: context.scope,
-      items: [{ ...artifact, requestedClassification: 'public' }],
-      duplicateHandling: 'AUTOMATIC',
-      createdAt: context.now,
-    });
-    expect(result.state).toBe('SUCCEEDED');
-    expect(stage3.calls).toHaveLength(1);
-    expect(stage3.calls[0]?.mediaType).toBe('application/pdf');
-    const submission = await pool!.query<{ material_kind: string; media_type: string }>(
-      'SELECT material_kind, media_type FROM intake.submissions WHERE project_id = $1 AND content_hash = $2',
-      [context.projectId, receipt.contentHash],
-    );
-    expect(submission.rows[0]).toEqual({
-      material_kind: 'document',
-      media_type: 'application/pdf',
-    });
-    const receiptRows = await pool!.query<{ material_kind: string }>(
-      `SELECT receipt.material_kind FROM asset.storage_receipts AS receipt
+  it.each([
+    ['golden.pdf', 'application/pdf'],
+    ['golden.html', 'text/html'],
+    ['golden.csv', 'text/csv'],
+    ['golden.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    ['golden.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    ['golden.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+  ] as const)(
+    'stores an automatic %s submission as a document SourceVersion for Stage 3',
+    async (fileName, mediaType) => {
+      const context = await createContext();
+      const storage = new InMemoryAssetStorage();
+      const staging = new SealedSourcesStagingService(
+        storage,
+        'database-product-write-staging-secret-32-characters',
+      );
+      const stage3 = new RecordingStage3Pipeline();
+      const service = new PostgresSourcesProductService(pool!, staging, stage3);
+      const commandId = randomUUID();
+      await insertAcceptedCommand({
+        commandId,
+        commandType: 'sources.intake.submit.v1',
+        principalId: context.principalId,
+        projectId: context.projectId,
+        payload: { draftId: 'pdf-draft', inputs: [{ kind: 'FILE', stagingReference: 'sealed' }] },
+        now: context.now,
+      });
+      const receipt = await staging.stageBytes({
+        draftId: 'pdf-draft',
+        itemId: 'pdf-item',
+        projectId: context.projectId,
+        principalId: context.principalId,
+        kind: 'FILE',
+        label: 'Golden document',
+        mediaType,
+        fileName,
+        bytes: await readFile(path.resolve('tests/fixtures/stage-8', fileName)),
+      });
+      const artifact = await staging.resolve({
+        stagingReference: receipt.stagingReference,
+        draftId: 'pdf-draft',
+        itemId: 'pdf-item',
+        projectId: context.projectId,
+        principalId: context.principalId,
+        kind: 'FILE',
+      });
+      const result = await service.submit({
+        submissionId: commandId,
+        commandId,
+        correlationId: `correlation-${commandId}`,
+        draftId: 'pdf-draft',
+        scope: context.scope,
+        items: [{ ...artifact, requestedClassification: 'public' }],
+        duplicateHandling: 'AUTOMATIC',
+        createdAt: context.now,
+      });
+      expect(result.state).toBe('SUCCEEDED');
+      expect(stage3.calls).toHaveLength(1);
+      expect(stage3.calls[0]?.mediaType).toBe(mediaType);
+      const submission = await pool!.query<{ material_kind: string; media_type: string }>(
+        'SELECT material_kind, media_type FROM intake.submissions WHERE project_id = $1 AND content_hash = $2',
+        [context.projectId, receipt.contentHash],
+      );
+      expect(submission.rows[0]).toEqual({
+        material_kind: 'document',
+        media_type: mediaType,
+      });
+      const receiptRows = await pool!.query<{ material_kind: string }>(
+        `SELECT receipt.material_kind FROM asset.storage_receipts AS receipt
        JOIN intake.submissions AS submission ON submission.submission_id = receipt.submission_id
        WHERE submission.project_id = $1 AND submission.content_hash = $2`,
-      [context.projectId, receipt.contentHash],
-    );
-    expect(receiptRows.rows[0]?.material_kind).toBe('document');
-  });
+        [context.projectId, receipt.contentHash],
+      );
+      expect(receiptRows.rows[0]?.material_kind).toBe('document');
+    },
+  );
 
   it('creates one Source, requires an exact-duplicate decision, and reuses the pinned Version', async () => {
     const context = await createContext();

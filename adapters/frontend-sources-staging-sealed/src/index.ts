@@ -8,6 +8,7 @@ import type {
 } from '../../../modules/url-acquisition/src/index.js';
 import {
   ShotgunError,
+  SOURCES_STAGING_MEDIA_TYPES,
   SOURCES_SCHEMA_VERSION,
   type SourcesStagingInputKind,
   type SourcesStagingMediaType,
@@ -93,7 +94,7 @@ const isArtifact = (value: unknown): value is ResolvedSourcesStagingArtifact => 
     ['DIRECT_TEXT', 'FILE', 'URL'].includes(String(candidate['kind'])) &&
     typeof candidate['label'] === 'string' &&
     ['direct_text', 'file_upload', 'url_acquisition'].includes(String(candidate['channel'])) &&
-    ['text/plain', 'text/markdown', 'application/pdf'].includes(String(candidate['mediaType'])) &&
+    SOURCES_STAGING_MEDIA_TYPES.includes(candidate['mediaType'] as SourcesStagingMediaType) &&
     typeof candidate['contentHash'] === 'string' &&
     /^sha256:[a-f0-9]{64}$/.test(candidate['contentHash']) &&
     Number.isInteger(candidate['sizeBytes']) &&
@@ -149,13 +150,23 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
       }
       if (input.kind === 'FILE') {
         const name = input.fileName ?? '';
-        const allowedTypes = /\.pdf$/i.test(name)
+        const allowedTypes: readonly SourcesStagingMediaType[] = /\.pdf$/i.test(name)
           ? ['application/pdf']
-          : /\.md$/i.test(name)
-            ? ['text/plain', 'text/markdown']
-            : /\.txt$/i.test(name)
-              ? ['text/plain']
-              : [];
+          : /\.docx$/i.test(name)
+            ? ['application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+            : /\.xlsx$/i.test(name)
+              ? ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+              : /\.pptx$/i.test(name)
+                ? ['application/vnd.openxmlformats-officedocument.presentationml.presentation']
+                : /\.html?$/i.test(name)
+                  ? ['text/html']
+                  : /\.csv$/i.test(name)
+                    ? ['text/csv']
+                    : /\.md$/i.test(name)
+                      ? ['text/plain', 'text/markdown']
+                      : /\.txt$/i.test(name)
+                        ? ['text/plain']
+                        : [];
         if (!allowedTypes.includes(input.mediaType)) {
           return fail('VALIDATION_ERROR', 'File extension and media type must match.');
         }
@@ -165,8 +176,14 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
         ) {
           return fail('VALIDATION_ERROR', 'File does not have a PDF signature.');
         }
+        if (
+          input.mediaType.startsWith('application/vnd.openxmlformats-officedocument.') &&
+          Buffer.from(input.bytes.subarray(0, 4)).toString('binary') !== 'PK\x03\x04'
+        ) {
+          return fail('VALIDATION_ERROR', 'Office file does not have a ZIP signature.');
+        }
       }
-      if (input.mediaType !== 'application/pdf') {
+      if (input.mediaType.startsWith('text/')) {
         try {
           new TextDecoder('utf-8', { fatal: true }).decode(input.bytes);
         } catch {

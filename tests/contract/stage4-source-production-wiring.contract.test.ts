@@ -146,33 +146,55 @@ const publishEvidenceIndexed = async (
 };
 
 describe('Stage 3 → Stage 4 production continuation', () => {
-  it('passes immutable PDF bytes through the source Stage 3 pipeline to page evidence', async () => {
-    const storage = new InMemoryAssetStorage();
-    const transformationRepository = new InMemoryTransformationRepository();
-    const evidenceRepository = new InMemoryEvidenceRepository();
-    const bytes = await readFile(path.resolve('tests/fixtures/stage-8/golden.pdf'));
-    const contentHash = hash(bytes);
-    const storageKey = await storage.put(contentHash, bytes);
-    const pipeline = new SourcesStage3TestPipeline({
-      storage,
-      transformer: new PythonDocumentFormatAdapter(),
-      locator: new LucasAugmentedPlainTextAdapter(),
-      transformationRepository,
-      evidenceRepository,
-    });
-    const outcome = await pipeline.runForSourceVersion({
-      ...sourceInput(contentHash, storageKey),
-      mediaType: 'application/pdf',
-    });
-    expect('stage3' in outcome ? outcome.stage3.evidenceCount : 0).toBeGreaterThan(0);
-    const evidence = await evidenceRepository.listBySourceVersion(
-      'source-stage4-project',
-      '22222222-2222-4222-8222-222222222222',
-    );
-    expect(
-      evidence.some((item) => item.selectors?.some((selector) => selector.type === 'PageSelector')),
-    ).toBe(true);
-  });
+  it.each([
+    ['golden.pdf', 'application/pdf', 'PageSelector'],
+    ['golden.html', 'text/html', 'CssSelector'],
+    ['golden.csv', 'text/csv', 'CellSelector'],
+    [
+      'golden.docx',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'CellSelector',
+    ],
+    [
+      'golden.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'CellSelector',
+    ],
+    [
+      'golden.pptx',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'ShapeSelector',
+    ],
+  ] as const)(
+    'passes immutable %s bytes through source Stage 3 to %s evidence',
+    async (fileName, mediaType, selectorType) => {
+      const storage = new InMemoryAssetStorage();
+      const transformationRepository = new InMemoryTransformationRepository();
+      const evidenceRepository = new InMemoryEvidenceRepository();
+      const bytes = await readFile(path.resolve('tests/fixtures/stage-8', fileName));
+      const contentHash = hash(bytes);
+      const storageKey = await storage.put(contentHash, bytes);
+      const pipeline = new SourcesStage3TestPipeline({
+        storage,
+        transformer: new PythonDocumentFormatAdapter(),
+        locator: new LucasAugmentedPlainTextAdapter(),
+        transformationRepository,
+        evidenceRepository,
+      });
+      const outcome = await pipeline.runForSourceVersion({
+        ...sourceInput(contentHash, storageKey),
+        mediaType,
+      });
+      expect('stage3' in outcome ? outcome.stage3.evidenceCount : 0).toBeGreaterThan(0);
+      const evidence = await evidenceRepository.listBySourceVersion(
+        'source-stage4-project',
+        '22222222-2222-4222-8222-222222222222',
+      );
+      expect(
+        evidence.some((item) => item.selectors?.some((selector) => selector.type === selectorType)),
+      ).toBe(true);
+    },
+  );
   it('starts one routed DeepSeek structured call after durable Evidence and reaches READY', async () => {
     const storage = new InMemoryAssetStorage();
     const evidenceIds = [

@@ -451,6 +451,9 @@ describe('Sources Workspace', () => {
     expect((screen.getByRole('button', { name: 'Add source' }) as HTMLButtonElement).disabled).toBe(
       false,
     );
+    await user.selectOptions(screen.getByLabelText('Input type'), 'FILE');
+    expect((screen.getByLabelText('File') as HTMLInputElement).accept).toContain('.pptx');
+    expect((screen.getByLabelText('File') as HTMLInputElement).accept).toContain('.pdf');
   });
 
   it('loads only the exact linked IntakeSubmission and exposes its owner action', async () => {

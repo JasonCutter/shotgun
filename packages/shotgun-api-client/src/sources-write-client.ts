@@ -6,6 +6,7 @@ import {
   type ExactDuplicateDisposition,
   type IntakeSubmissionSnapshot,
   type SourcesStagingReceipt,
+  type SourcesStagingMediaType,
   type StagedSourcesIntakeInput,
 } from '../../contracts/src/index.js';
 import type {
@@ -26,7 +27,7 @@ export type SourcesWriteClient = {
       readonly itemId: string;
       readonly kind: 'DIRECT_TEXT' | 'FILE';
       readonly label: string;
-      readonly mediaType: 'text/plain' | 'text/markdown' | 'application/pdf';
+      readonly mediaType: SourcesStagingMediaType;
       readonly fileName?: string;
       readonly bytes: Uint8Array;
     },

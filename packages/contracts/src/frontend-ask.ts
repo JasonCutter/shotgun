@@ -966,9 +966,13 @@ export const decodeSubmitAskQuestionRequest = (value: unknown): SubmitAskQuestio
     'request',
   );
   schema(input, 'request');
-  const sourceSelections = array(input.sourceSelections, 'request.sourceSelections', (sel, i) =>
-    decodeAskSourceSelectionView(sel, `request.sourceSelections[${i}]`),
-  );
+  const sourceSelections =
+    input.sourceSelections === undefined &&
+    (input.mode === undefined || input.mode === 'AUTO_PROJECT_KNOWLEDGE')
+      ? []
+      : array(input.sourceSelections, 'request.sourceSelections', (sel, i) =>
+          decodeAskSourceSelectionView(sel, `request.sourceSelections[${i}]`),
+        );
 
   if (
     (input.conversationId !== undefined || input.branchId !== undefined) &&

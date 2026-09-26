@@ -13,6 +13,7 @@ import {
   PostgresAskWorkspaceProjection,
 } from '../../../adapters/frontend-ask-write-postgres/src/index.js';
 import { PostgresAskAnswerExecutionRepository } from '../../../adapters/frontend-ask-execution-postgres/src/index.js';
+import { PostgresVPAskEvidenceSearch } from '../../../adapters/vp-knowledge-postgres/src/ask-evidence-search.js';
 import { OriginalAssetAskSourceVersionContextReader } from '../../../adapters/frontend-ask-source-context-original-asset/src/index.js';
 import { createPostgresActivityReadModelStore } from '../../../adapters/frontend-activity-postgres/src/index.js';
 import {
@@ -204,6 +205,8 @@ export async function startFrontendCrossPhaseBackend() {
       pool,
       askWorkspaceProjection,
       new OriginalAssetAskSourceVersionContextReader(originalAssetRepository, assetStorage),
+      undefined,
+      new PostgresVPAskEvidenceSearch(pool),
     ),
     askAnswerProvider,
     { maxConcurrency: 2 },

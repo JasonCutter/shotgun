@@ -743,8 +743,8 @@ export const SourcesWorkspace = () => {
 
       {showAddSource ? (
         <section className="action-card sources-intake" aria-labelledby="source-intake-heading">
-          <h2 id="source-intake-heading">{t('sources.draft_queue')}</h2>
-          <p>{t('sources.draft_help')}</p>
+          <h2 id="source-intake-heading">{t('sources.direct_intake')}</h2>
+          <p>{t('sources.direct_help')}</p>
           <p>
             <Link to="/sources">{t('sources.library')}</Link>
           </p>
@@ -848,6 +848,8 @@ export const SourcesWorkspace = () => {
           </form>
           {draftQueue.items.length > 0 ? (
             <>
+              <h3>{t('sources.draft_queue')}</h3>
+              <p>{t('sources.draft_help')}</p>
               <ul className="source-intake-list" aria-label={t('sources.intake_drafts')}>
                 {draftQueue.items.map((item) => (
                   <li key={item.draftItemId}>

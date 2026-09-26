@@ -382,6 +382,8 @@ const enUS = {
   'sources.create_project': 'Create a Project before adding Sources',
   'sources.create_project_help': 'Create a Project to organize and add Sources.',
   'sources.draft_queue': 'Draft Queue',
+  'sources.direct_intake': 'Add knowledge source',
+  'sources.direct_help': 'Submit a file, text, or URL once. Shotgun processes it automatically.',
   'sources.draft_help':
     'Adding a draft only queues it on this page. Select Submit drafts to save it in the project.',
   'sources.leave_draft_title': 'Leave with unsubmitted drafts?',
@@ -1246,6 +1248,8 @@ const koKR: Record<ProductMessageKey, string> = {
   'sources.create_project': '소스를 추가하기 전에 프로젝트를 만드세요',
   'sources.create_project_help': '소스를 정리하고 추가하려면 프로젝트를 만드세요.',
   'sources.draft_queue': '초안 대기열',
+  'sources.direct_intake': '지식 자료 투입',
+  'sources.direct_help': '파일·텍스트·URL을 한 번 제출하면 샷건이 자동으로 처리합니다.',
   'sources.draft_help':
     '수집 초안 추가는 이 화면의 대기열에만 넣습니다. 프로젝트에 저장하려면 초안 제출을 누르세요.',
   'sources.leave_draft_title': '제출하지 않은 초안을 두고 이동할까요?',

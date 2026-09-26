@@ -120,6 +120,8 @@ VP-1이 먼저 사용자 가치를 제공한다. VP-2/3 실패가 VP-1의 원문
 - 새 VP 테이블은 프로젝트 지식 초기화의 영향 목록·전용 owner·삭제 순서·체크포인트에 포함했다. 검증된 초기화 요청의 전용 executor에서만 원장 삭제를 허용하고 일반 쓰기·수정은 금지한다.
 - `DecisionProviderPort`와 Jev HTTP PoC Adapter는 고정 모델 revision, 인가된 두 주장만 외부 전송, 닫힌 관계 선택지·분포·사용량 검증을 계약으로 갖는다. 작업별로 보정된 임계값을 받아 Jev의 모호한 결과를 일반 AI Port로 넘기는 Router를 만들었다. 현재는 API 자격 증명과 Golden Corpus 평가가 없어 생산 원장 작업자에 연결하지 않았고, 실제 비용·지연 절감은 확인되지 않았다.
 - 일반 AI 보충 Adapter는 기존 Project별 AI 자격 증명·정책 resolver를 사용하고, 두 주장 텍스트만 구조화 출력 요청에 전달한다. 관계 선택지·확률 합·토큰을 검증하며, 불완전한 출력은 원장 관계로 기록하지 않는다. 이 Adapter도 관계 Job·평가·cutover 전까지 생산 worker에 연결하지 않는다.
+- 서로 다른 현재 직접 주장 쌍을 위한 `VPRelationJobStorePort`와 PostgreSQL 작업 큐를 추가했다. 작업은 정책 버전별 유일 키, 임대, 재시도, 최신 SourceVersion 재확인, 결정 영수증, 관계, epoch/history를 갖는다. 오래된 주장에 연결된 미완료 작업은 `SUPERSEDED`로 보존한다. 통합 테스트는 잘못된 임대 토큰 거부와 결정·프로젝트 지식 초기화를 확인했다. 이 큐는 아직 생산 worker에 연결하지 않았다.
+- 큐·lease 구현은 gbrain의 Job/lock recovery 검증 결과를 `REFERENCE_ONLY` 출발점으로 사용한다. gbrain 전체 Runtime·DB를 VP 원장에 적용하면 Shotgun의 SourceVersion/Evidence, 프로젝트 지식 초기화, 단일 writer 경계를 잃으므로 VP Port 뒤에서 직접 구현했다. `vp-knowledge-postgres` Adapter를 교체 경계로 삼고, 계약·재생·장애 주입 결과를 확보하기 전에는 OSS Integration Gate를 완료로 간주하지 않는다.
 - VP Global Shell 기능이 활성화되면 소스 상세 화면은 원문·근거·버전 열람과 자동 처리 안내를 표시하고, 수동 `AI 처리 다시 시도`·`시맨틱 비교 실행`·Review 진입은 표시하지 않는다. 구형 승인 경로 자체는 데이터 이행 전까지 보존한다.
 - Home 주의 목록에서 지식 `REVIEW_DECISION`을 제외하고 Review 탐색·Route Guard도 같은 Home 가시성 결과를 사용한다. 외부 실행의 별도 승인과 실패 작업 알림은 유지한다. 과거 미결 Review 데이터를 자동 처리·이관하는 작업은 아직 남아 있다.
 - 한 번 제출 경로에 `.pdf/.html/.htm/.csv/.docx/.xlsx/.pptx` (현재 1 MiB 이하)를 추가했다. 서버가 확장자·media type, PDF·Office 서명 및 텍스트 UTF-8을 대조하고 `document`로 저장한다. 기존 Stage 8 Python 변환기에 원본 바이트를 전달해 페이지·CSS·셀·도형 Evidence를 만든다. 더 큰 파일과 이미지/오디오/영상은 아직 활성화하지 않았다.

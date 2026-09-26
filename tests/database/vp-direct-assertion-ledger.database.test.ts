@@ -4,6 +4,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PostgresVPKnowledgeLedger } from '../../adapters/vp-knowledge-postgres/src/index.js';
+import { PostgresVPRelationJobs } from '../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
 import { PostgresKnowledgeResetImpactInspector } from '../../adapters/source-knowledge-reset-postgres/src/impact-inspector.js';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
 import { PostgresProjectAdministrationRepository } from '../../adapters/postgres/src/index.js';
@@ -50,14 +51,18 @@ describe('VP validated direct assertion ledger', () => {
     await createProject(projectId);
 
     const claimText = 'The shared verification code is 42.';
-    const seedCandidate = async (index: number, sensitivity: 'public' | 'private') => {
+    const seedCandidate = async (
+      index: number,
+      sensitivity: 'public' | 'private',
+      text = claimText,
+    ) => {
       const sourceId = randomUUID();
       const sourceVersionId = randomUUID();
       const assetId = randomUUID();
       const revisionId = randomUUID();
       const evidenceId = randomUUID();
       const candidateId = randomUUID();
-      const content = `VP source ${index}: ${claimText} ${suffix}`;
+      const content = `VP source ${index}: ${text} ${suffix}`;
       await pool.query(
         `INSERT INTO asset.original_assets
            (asset_id, content_hash, size_bytes, storage_key, created_at)
@@ -89,7 +94,7 @@ describe('VP validated direct assertion ledger', () => {
           sourceId,
           sourceVersionId,
           hash(content),
-          hash(claimText),
+          hash(text),
           hash(`map-${index}`),
           sensitivity,
         ],
@@ -107,9 +112,9 @@ describe('VP validated direct assertion ledger', () => {
           projectId,
           sourceId,
           sourceVersionId,
-          JSON.stringify({ start: 0, end: claimText.length }),
-          JSON.stringify({ exact: claimText }),
-          hash(claimText),
+          JSON.stringify({ start: 0, end: text.length }),
+          JSON.stringify({ exact: text }),
+          hash(text),
           sensitivity,
         ],
       );
@@ -154,7 +159,7 @@ describe('VP validated direct assertion ledger', () => {
             sensitivity, created_at)
          VALUES ($1, $2, $3, $4, 1, $5, $6, 'DIRECT_EVIDENCE',
                  'direct-only', 'READY', '{}'::jsonb, '{owner}', $7, now())`,
-        [candidateId, batchId, projectId, sourceVersionId, claimText, evidenceId, sensitivity],
+        [candidateId, batchId, projectId, sourceVersionId, text, evidenceId, sensitivity],
       );
       await pool.query(
         `INSERT INTO validation.results
@@ -344,6 +349,35 @@ describe('VP validated direct assertion ledger', () => {
       [projectId],
     );
     expect(currentLinks.rows[0]?.count).toBe('0');
+    await seedCandidate(4, 'public', 'The shared verification code is 43.');
+    expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
+    const jobs = new PostgresVPRelationJobs(runtimePool);
+    expect(await jobs.enqueueCurrentPairs('vp-test-policy')).toBe(1);
+    expect(await jobs.enqueueCurrentPairs('vp-test-policy')).toBe(0);
+    const job = await jobs.claimNext('vp-test-policy');
+    expect(job).toBeDefined();
+    expect(new Set([job!.left.claimText, job!.right.claimText])).toEqual(
+      new Set([claimText, 'The shared verification code is 43.']),
+    );
+    const decision = {
+      jobId: job!.jobId,
+      leaseToken: job!.leaseToken,
+      provider: 'GENERAL_AI' as const,
+      choice: 'CONTRADICTS' as const,
+      confidence: 0.91,
+      model: 'vp-test-model',
+      inputTokens: 20,
+      outputTokens: 5,
+    };
+    expect(await jobs.completeDecision({ ...decision, leaseToken: randomUUID() })).toBe(false);
+    expect(await jobs.completeDecision(decision)).toBe(true);
+    expect(await jobs.completeDecision(decision)).toBe(false);
+    const semanticLinks = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM vp.current_relations
+        WHERE project_id = $1 AND relation_kind = 'CONTRADICTS'`,
+      [projectId],
+    );
+    expect(semanticLinks.rows[0]?.count).toBe('1');
     await expect(
       pool.query(`UPDATE vp.assertions SET claim_text = 'tampered' WHERE candidate_id = $1`, [
         first.candidateId,
@@ -391,13 +425,15 @@ describe('VP validated direct assertion ledger', () => {
         'SELECT vp.t3_project_status($1, $2::uuid) AS status',
         [projectId, resetRequestId],
       );
-      expect(before.rows[0]?.status.assertions).toBe(3);
+      expect(before.rows[0]?.status.assertions).toBe(4);
+      expect(before.rows[0]?.status.jobs).toBe(1);
       await executor.query('SELECT vp.t3_erase_project($1, $2::uuid)', [projectId, resetRequestId]);
       const after = await executor.query<{ status: Record<string, number> }>(
         'SELECT vp.t3_project_status($1, $2::uuid) AS status',
         [projectId, resetRequestId],
       );
       expect(after.rows[0]?.status).toEqual({
+        jobs: 0,
         assertions: 0,
         relations: 0,
         decisions: 0,
@@ -414,7 +450,7 @@ describe('VP validated direct assertion ledger', () => {
     ).inspectProjectSourceKnowledge(projectId);
     expect(
       impact.counts.sourceDerivedRecordCount - afterPurgeImpact.counts.sourceDerivedRecordCount,
-    ).toBe(9);
+    ).toBe(15);
     expect(afterPurgeImpact.manifestDigest).not.toBe(impact.manifestDigest);
   });
 });

@@ -1,7 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import type {
+  GlobalShellView,
+  HomeActionCenterView,
   ProductSessionView,
   ProjectListItemView,
   ShotgunApiClient,
@@ -105,6 +107,90 @@ describe('Product route guard authorization', () => {
       sessionCycleState: createSessionCycleState(),
     };
   };
+
+  it('creates the first internal knowledge space without asking for a Project name', async () => {
+    let created = false;
+    const createdSession: ProductSessionView = {
+      ...activeSession,
+      projectAccessRevision: '1',
+    };
+    const createFirstProject = vi.fn(async () => {
+      created = true;
+      return { outcome: { status: 'COMPLETED' }, resource: { id: 'project-1' } };
+    });
+    const runtime = createRuntime(
+      {
+        getSession: vi.fn(async () => (created ? createdSession : bootstrapSession)),
+        createFirstProject: createFirstProject as unknown as ShotgunApiClient['createFirstProject'],
+        getGlobalShell: vi.fn(async (): Promise<GlobalShellView> => ({
+          schemaVersion: '1.0.0',
+          principalId: 'principal-1',
+          sessionId: 'session-1',
+          activeProject: created
+            ? { id: 'project-1', label: 'Shotgun', sensitivityClearance: 'private' }
+            : null,
+          accessibleProjects: created
+            ? [
+                {
+                  id: 'project-1',
+                  label: 'Shotgun',
+                  isOwner: true,
+                  sensitivityClearance: 'private',
+                },
+              ]
+            : [],
+          navigation: [],
+          features: [],
+          readiness: [],
+          background: { activeCount: 0, failedCount: 0 },
+          notifications: { unreadCount: 0, presentationRevision: 'n1' },
+          accessRevision: created ? 'a1' : 'a0',
+          policyContextRevision: 'p1',
+          projectionRevision: 'pr1',
+          fetchedAt: '2026-09-26T00:00:00.000Z',
+        })),
+        getHomeActionCenter: vi.fn(async (): Promise<HomeActionCenterView> => ({
+          schemaVersion: '1.0.0',
+          principalId: 'principal-1',
+          sessionId: 'session-1',
+          activeProject: { id: 'project-1', label: 'Shotgun' },
+          projectState: { lifecycle: 'ACTIVE', message: 'Ready.' },
+          primaryActions: [],
+          attention: [],
+          continueWorking: [],
+          recent: [],
+          pinned: [],
+          operationalSummary: {
+            activeBackgroundCount: 0,
+            failedBackgroundCount: 0,
+            unreadNotificationCount: 0,
+          },
+          stale: false,
+          accessRevision: 'a1',
+          policyContextRevision: 'p1',
+          projectionRevision: 'pr1',
+          fetchedAt: '2026-09-26T00:00:00.000Z',
+        })),
+      },
+      bootstrapSession,
+    );
+    const router = createMemoryRouter(createAppRouteObjects(runtime), {
+      initialEntries: ['/'],
+    });
+
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    await waitFor(() => expect(createFirstProject).toHaveBeenCalledTimes(1));
+    expect(createFirstProject).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Shotgun', projectAccessRevision: '0' }),
+    );
+    expect(screen.queryByRole('heading', { name: 'Create your first Project' })).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Home' })).toBeTruthy();
+  });
 
   it('invokes parent getRouteGuardDecision with settings routeId and renders AI workspace when ALLOWed', async () => {
     const getRouteGuardDecision = vi.fn().mockResolvedValue({

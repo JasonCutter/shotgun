@@ -74,6 +74,11 @@ const shellView = (created: boolean) => ({
       : [],
     features: [
       {
+        id: 'vp-autonomous-knowledge',
+        label: 'Automatic knowledge',
+        availability: created ? 'AVAILABLE' : 'HIDDEN',
+      },
+      {
         id: 'global-search',
         label: 'Global Search',
         availability: created ? 'AVAILABLE' : 'TEMPORARILY_UNAVAILABLE',
@@ -353,7 +358,7 @@ test('Section 3 blocks unsafe leave state, warns on offline state, and restores 
   await expect(commands.getByRole('button', { name: /^Search/ })).toBeEnabled();
 });
 
-test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a browser Project ID', async ({
+test('VP creates its internal knowledge space without a browser Project choice', async ({
   page,
 }) => {
   await page.goto('/');
@@ -499,18 +504,14 @@ test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a brow
   });
 
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Create your first Project' })).toBeVisible();
-  await expect(page.getByText('Create your first Project to get started.')).toBeVisible();
+  await expect.poll(() => Boolean(bootstrapBody)).toBe(true);
   await expect(page.getByText(/Project authority.*browser/i)).toHaveCount(0);
-  expect(homeRequests).toBe(0);
-  await page.getByRole('link', { name: 'Open Project onboarding' }).click();
-  await page.getByRole('button', { name: 'Create Project' }).click();
-  const createDialog = page.getByRole('dialog', { name: 'Create your first Project' });
-  await expect(createDialog).toBeVisible();
-  await expect(page.getByLabel('Project ID (Immutable)')).toHaveCount(0);
-  await page.getByLabel('Project Name').fill('Server Project');
-  await createDialog.getByRole('button', { name: 'Create Project', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Create your first Project' })).toHaveCount(0);
+  await expect(page.getByLabel('Project Name')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+  await expect(page.getByLabel('Current project')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Project', exact: true })).toHaveCount(0);
+  expect(homeRequests).toBeGreaterThan(0);
   expect(bootstrapBody).toMatchObject({
     envelopeVersion: '2.0.0',
     commandType: 'project.create.v1',
@@ -518,7 +519,7 @@ test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a brow
       scope: 'PRINCIPAL',
       observedProjectAccessRevision: '0',
     },
-    payload: { name: 'Server Project' },
+    payload: { name: 'Shotgun' },
   });
   expect(JSON.stringify(bootstrapBody)).not.toContain('server-project-1');
 });

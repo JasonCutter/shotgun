@@ -469,6 +469,15 @@ describe('VP validated direct assertion ledger', () => {
       }),
     ).toBe(true);
     expect(await jobs.claimNext('vp-unresolved-test')).toBeUndefined();
+    const abstainedProjection = await pool.query<{ historical: string; current: string }>(
+      `SELECT
+         (SELECT count(*)::text FROM vp.relations AS relation
+           JOIN vp.decision_receipts AS receipt ON receipt.decision_id = relation.decision_id
+          WHERE relation.project_id = $1 AND receipt.task_kind = 'SEMANTIC_RELATION') AS historical,
+         (SELECT count(*)::text FROM vp.current_relations WHERE project_id = $1) AS current`,
+      [projectId],
+    );
+    expect(abstainedProjection.rows[0]).toEqual({ historical: '3', current: '0' });
     await expect(
       pool.query(`UPDATE vp.assertions SET claim_text = 'tampered' WHERE candidate_id = $1`, [
         first.candidateId,

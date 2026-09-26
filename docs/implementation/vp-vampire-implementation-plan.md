@@ -28,10 +28,10 @@
 | `sources-workspace.tsx`: `수집 초안 추가`와 `초안 제출` 두 단계, 수동 중복 선택                    | 한 번 제출하는 Command/UI, 서버 결정적 중복 처리와 작업 상태                                                   |
 | `source-detail-workspace.tsx`: `AI 처리 다시 시도`, 후보별 `시맨틱 비교 실행`                      | 백그라운드 자동 재개·비교, 진행/오류/근거 열람만 유지                                                          |
 | `frontend-ask-write`/Postgres: 기본 `CANONICAL_ONLY`, `SOURCE_EXPLORATION` 수동 SourceVersion 선택 | `AUTO_PROJECT_KNOWLEDGE` 기본값과 서버 고정 프로젝트 전체 범위. 기존 모드는 마이그레이션 중 호환 읽기로만 사용 |
-| `CandidateValidated → ComparisonCompleted → Review → ChangeSetApproved → CanonicalCommitted`       | VP Ledger의 자동 주장·관계 반영 이벤트로 대체. 기존 이력/데이터는 보존                                         |
+| `CandidateValidated → ComparisonCompleted → Review → ChangeSetApproved → CanonicalCommitted`       | VP Ledger의 자동 주장·관계 반영 이벤트로 대체. 기존 사용자 자료는 새 공간으로 이관하지 않음                    |
 | Canonical/Compiled Truth 기반 검색과 별도 Source Exploration                                       | VP 활성 Source/Evidence/Assertion의 인가된 단일 검색 조정자와 epoch 일치                                       |
 
-같은 이름의 기존 Port를 의미만 바꿔 재사용하지 않는다. VP 계약은 새 major/event 이름으로 추가하고, 기존 사용자 데이터·이력의 해석을 보존한다. `Source`/`Evidence`와 기존 작업·검색 인프라는 검증되는 범위에서 재사용한다.
+같은 이름의 기존 Port를 의미만 바꿔 재사용하지 않는다. VP 계약은 새 major/event 이름으로 추가한다. 기존 코드와 Source/Evidence 처리 인프라는 검증되는 범위에서 재사용하되 과거 사용자 자료·이력은 새 공간의 입력으로 사용하지 않는다.
 
 ## 4. 고정한 모듈·계약 설계
 
@@ -66,7 +66,7 @@ Jev는 외부 hosted API이므로 민감도/egress 정책을 통과해야 한다
 | **VP-1 두 동작 수직 슬라이스** | 한 번의 파일 제출, durable ingestion, 모든 활성 `.txt/.md` Evidence의 서버 자동 검색, 질문 대기/자동 완료, 원문 인용 답변                                    | 실제 UI·API·PostgreSQL로 `파일 제출 → 질문 → 근거 있는 답변` 통과. 후보·Review·소스 선택 클릭 0회                        |
 | **VP-2 자동 지식 축적**        | 원자 주장·조건·시점 추출, VP Ledger, 관계/충돌 기록, 증분 projection, SourceVersion 변경 영향 전파                                                           | 두 자료의 합의·차이·충돌과 수정 버전이 인용/epoch와 함께 반영. replay·restart·full rebuild 동등성 통과                   |
 | **VP-3 판단 제공자 품질**      | DecisionProviderPort, 현재 DeepSeek의 작업별 Golden Corpus·calibration·비용 예산·fallback. Jev Adapter PoC는 API 복구 후 별도 평가                           | 현재 DeepSeek의 중요 오류·보안·비용 Gate 통과. 향후 Jev가 품질을 유지하고 지연·비용을 실측 개선할 때만 선택적으로 활성화 |
-| **VP-4 자료 범위·전환**        | PDF/Office/HTML, 이후 오디오/영상 근거 selector 검증; 기존 Canonical 이관, 프로젝트별 shadow/cutover, VP Home/Ask UX, 기존 Review 일반 경로 제거             | 형식별 Golden Corpus, 보안·migration·rollback, 실제 두 동작 E2E, 운영 상태와 사용자 문구 검증. 단일 활성 지식 권위 확인  |
+| **VP-4 자료 범위·전환**        | PDF/Office/HTML, 이후 오디오/영상 근거 selector 검증; 빈 단일 공간 초기화, VP Home/Ask UX, 기존 Review 일반 경로 제거                                        | 형식별 Golden Corpus, 보안·초기화·rollback, 실제 두 동작 E2E, 운영 상태와 사용자 문구 검증. 단일 활성 지식 권위 확인     |
 
 VP-1이 먼저 사용자 가치를 제공한다. VP-2/3 실패가 VP-1의 원문 기반 질문을 막지 않도록 각 상태와 fallback을 분리한다. 그러나 최종 VP 완료는 VP-4까지 통과해야 한다. VP-2의 자동 재처리 트리거에는 새 자료·새 버전뿐 아니라 질문에서 드러난 근거 공백, 연동 출처 갱신, 모델/정책 개정, 주기적 미해결 관계 재평가를 포함한다. 새 근거가 없는 재평가는 직접 사실을 새로 만들 수 없다. 각 패키지에서 관련 OSS 검토 → Integration Decision → 구현 → Contract/Golden/Security/Replacement 검증 순서를 지킨다.
 
@@ -94,15 +94,15 @@ VP-1이 먼저 사용자 가치를 제공한다. VP-2/3 실패가 VP-1의 원문
 6. **회복:** 중복 제출, 이벤트 재전달, worker 중단/재시작, DB commit ACK 유실, Jev timeout/장애, 일반 AI 장애에도 원장 중복·손실 없음. `OUTCOME_UNKNOWN`은 readback으로 해결.
 7. **보안:** 프로젝트/민감도 경계 이전 필터, 인용 통한 우회 노출 차단, 프롬프트 주입 방어, 미허용 외부 egress 0건, cross-project 조회 0건.
 8. **판단 제공자:** 현재 DeepSeek를 고정 데이터에서 결정적 기준선과 비교해 정확도/중요 오류, calibration, 호출 수, p50/p95, 총 비용, end-to-end 답변 영향을 측정. Jev는 API가 이용 가능해진 뒤 같은 corpus로 별도 비교한다. 제공자 자체 benchmark를 Shotgun 성능으로 대체하지 않음.
-9. **이행:** 기존 승인 Canonical과 미승인 Candidate의 구분, 이관 근거, 단일 활성 권위, 프로젝트별 cutover/rollback을 실제 PostgreSQL에서 검증.
+9. **새 출발:** 과거 Source·Evidence·Canonical·대화가 없는 저장소에서 내부 범위 하나를 자동 생성하고, DeepSeek 구성과 단일 활성 지식 권위, reset/cutover/rollback을 실제 PostgreSQL에서 검증.
 10. **완료 판정:** Module·Flow·Product·Architecture·OSS Integration Gate, 새 자동 지식 권위의 Security Negative·Golden Corpus·Replay·Migration·Replacement Test를 모두 통과. 설계 문서나 PoC만으로 `COMPLETE`라고 보고하지 않음.
 
 ## 8. 이행·중단·되돌리기
 
-- Migration은 additive로 시작한다. VP Ledger와 projection을 기존 제품 옆에서 shadow 구축하되, shadow 결과를 사용자 답변의 현재 권위로 혼합하지 않는다. 프로젝트별 epoch/lineage/readback이 일치하면 VP로 단일 cutover한다.
-- 기존 Canonical은 `LEGACY_IMPORTED` 계보로 이관 가능한 근거가 확인된 경우에만 VP Ledger에 반영한다. 기존 미승인 Candidate는 원본에서 다시 처리한다. 출처가 불명확하면 이관하지 않고 gap으로 기록한다.
+- 코드·Schema Migration은 additive로 검증하되 제품 데이터는 빈 공간에서 시작한다. VP Ledger와 projection의 lineage/readback이 일치하면 VP로 단일 cutover한다.
+- 과거 Canonical과 미승인 Candidate는 새 VP 지식으로 이관하지 않는다. 새로 투입된 자료만 새 공간의 SourceVersion/Evidence 계보로 처리한다.
 - 정지 조건: 원문 인용 복원 불가, 프로젝트 경계 침범, 중복 원장 기록, 설명 불가능한 지식 역행, 최신성 watermark 불일치, 모델 비용 상한 초과, Jev 품질 비열화. 해당 Project cutover를 멈추고 마지막 정상 epoch로 읽는다.
-- 롤백은 VP shadow/발행을 중지하고 컷오버 전에는 기존 제품을 그대로 유지한다. 컷오버 후 VP에서 생성한 지식을 기존 승인형 Canonical에 자동 복사하지 않는다. 보존된 VP 원장에서 정방향 복구하거나 차이를 명시한 제한 읽기로 복귀한다.
+- 롤백은 새 VP 실행 대상을 중지하고 이전 실행 설정으로 복귀한다. 컷오버 후 VP에서 생성한 지식을 기존 승인형 Canonical에 자동 복사하지 않는다. VP 원장을 보존해 정방향 복구한다.
 - 구현 전 형식·모델 제공자별 개인정보/라이선스/보안/maintenance, 정확한 upstream pin과 lockfile, 대체 Adapter, 비용 한도, 로그 보존을 검증한다.
 
 ## 9. 구현 착수 조건과 현재 상태

@@ -11,7 +11,7 @@
 
 VP는 원문에 근거한 자동 지식 기록을 Shotgun의 **유일한 활성 지식 권위**로 정의한다. 원본·원문 위치·버전은 불변으로 보존하고, 추출 주장과 의미 관계는 출처·시점·모델/정책 버전을 가진 기록으로 추가한다. 현재 지식 화면과 질문 검색은 이 기록에서 재생성 가능한 읽기 모델이다. AI의 출력, Jev의 확률, 벡터 유사도는 단독으로 객관적 진실이 되지 않는다.
 
-VP는 승인형 Canonical 쓰기 계약을 **대체**한다. VP Knowledge Ledger가 자동 지식 원장을 소유하고, 원문 근거·버전·정책 검증을 통과한 시스템 결정을 기록한다. 자료 투입 후 일반 지식 처리에서 Review→Approval→Canonical 경로는 호출하지 않는다. 기존 승인형 Canonical/Approval/History는 migration과 감사에 필요한 역사 자료로 보존하지만, 프로젝트 VP 전환 완료 후에는 현재 지식의 병렬 권위가 아니다. 새 주장과 관계의 활성 읽기 권위는 VP Ledger 하나뿐이다.
+VP는 승인형 Canonical 쓰기 계약을 **대체**한다. VP Knowledge Ledger가 자동 지식 원장을 소유하고, 원문 근거·버전·정책 검증을 통과한 시스템 결정을 기록한다. 자료 투입 후 일반 지식 처리에서 Review→Approval→Canonical 경로는 호출하지 않는다. 과거 승인형 Canonical/Approval/History는 새 VP 지식 공간으로 이관하지 않는다. 새 주장과 관계의 활성 읽기 권위는 VP Ledger 하나뿐이다.
 
 ## 2. 기존 결정과의 관계
 
@@ -65,13 +65,13 @@ Jev는 문장 생성기가 아니므로 주장 문장 추출, 복합 추론 서�
 
 ## 8. 보존·이행·되돌리기
 
-새 테이블/계약과 provider adapter는 additive migration으로 도입한다. 기존 Source/Evidence를 재사용하고, 기존 Candidate/Comparison/Review/Canonical/History는 삭제·자동 승인하지 않는다. 기존 승인된 Canonical은 SourceVersion·Evidence가 복원되는 항목만 `LEGACY_IMPORTED` 계보로 VP Ledger에 가져온다. 현재 미승인 후보는 승인 여부를 추측해 이관하지 않고 원문 근거에서 VP 정책으로 다시 처리한다. 프로젝트별 그림자 처리·readback·지식 epoch 수렴을 확인한 뒤 활성 읽기 권위를 VP로 **단일 전환**한다. 전환 후 기존 Canonical은 일반 Ask 결과의 두 번째 권위로 섞지 않는다.
+새 테이블/계약과 provider adapter는 코드·Schema Migration으로 도입한다. 제품 데이터는 빈 지식 공간에서 시작하며, 과거 Source/Evidence/Candidate/Comparison/Review/Canonical/History를 새 원장에 가져오지 않는다. 새로 투입한 자료의 원문 근거·지식 epoch·readback이 수렴하면 활성 읽기 권위를 VP로 **단일 전환**한다. 과거 Canonical은 일반 Ask 결과의 두 번째 권위로 섞지 않는다.
 
-컷오버 전 롤백은 VP 그림자 처리를 중지하고 기존 제품을 유지한다. 컷오버 후에는 안전한 기존 Ask로 읽기를 되돌릴 수 있으나, 그동안 VP에서 추가된 지식을 기존 Canonical에 자동 이식하지 않는다. VP Ledger와 결정 영수증은 보존하고, 차이를 표시한 후 재컷오버 또는 정방향 복구한다. 외부 Action이나 자료 삭제는 이 롤백에 포함하지 않는다.
+컷오버 전 롤백은 새 VP 실행을 중지하고 이전 실행 설정으로 돌아간다. 컷오버 후 VP에서 추가된 지식을 기존 Canonical에 자동 이식하지 않는다. VP Ledger와 결정 영수증은 정방향 복구 대상으로 보존한다. 외부 Action은 이 롤백에 포함하지 않는다.
 
 ## 9. 구현 권한과 이행
 
-사용자는 계획 검토 후 VP 구현을 명시적으로 지시했다. 이 ADR은 `ACCEPTED`이며 VP의 자동 지식 경로를 구현한다. Phase 1~6 Canonical ADD의 Notion 원문은 이 작성 환경에서 열리지 않아 저장소의 공식 요약·관련 ACCEPTED ADR로 충돌을 확인했다. 기존 승인 정책은 VP 설계의 선결 거부 조건으로 사용하지 않는다. 기존 데이터와 API는 프로젝트별 전환이 검증될 때까지 보존한다.
+사용자는 계획 검토 후 VP 구현을 명시적으로 지시했다. 이 ADR은 `ACCEPTED`이며 VP의 자동 지식 경로를 구현한다. Phase 1~6 Canonical ADD의 Notion 원문은 이 작성 환경에서 열리지 않아 저장소의 공식 요약·관련 ACCEPTED ADR로 충돌을 확인했다. 기존 승인 정책은 VP 설계의 선결 거부 조건으로 사용하지 않는다. 기존 사용자 자료를 새 VP로 옮기는 요구는 2026-09-26 사용자 결정으로 철회됐다.
 
 ## 10. 2026-09-26 사용자 결정 — 단일 지식 공간
 

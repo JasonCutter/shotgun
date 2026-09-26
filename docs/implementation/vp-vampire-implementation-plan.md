@@ -6,9 +6,9 @@
 
 ## 1. 목표와 최종 인수 문장
 
-사용자는 자료를 투입하고, 그 자료에 관해 질문한다. Shotgun은 여러 자료의 주장을 자동으로 분해·연결·통합·구별하고, 새 버전에 맞춰 다시 계산하며, 답변에 출처와 시점을 붙인다. 일반 지식 흐름에는 후보별 클릭·소스 선택·Review·`ADD_CLAIM`·`NO_OP`·승인이 없다. Jev는 빠른 의미 판단, 일반 AI는 추출·복합 추론·서술, 결정적 코드는 무결성·권한·버전·멱등성을 맡는다.
+사용자는 자료를 투입하고, 그 자료에 관해 질문한다. Shotgun은 여러 자료의 주장을 자동으로 분해·연결·통합·구별하고, 새 버전에 맞춰 다시 계산하며, 답변에 출처와 시점을 붙인다. 일반 지식 흐름에는 프로젝트 생성·선택, 후보별 클릭·소스 선택·Review·`ADD_CLAIM`·`NO_OP`·승인이 없다. 현재 DeepSeek가 인가된 의미 판단·추출·복합 추론·서술을 맡고, 결정적 코드는 무결성·권한·버전·멱등성을 맡는다. Jev는 API가 이용 가능해진 뒤 평가할 선택적 판단 최적화다.
 
-**최종 인수 시나리오:** 빈 프로젝트에서 자료 A를 한 번 넣고 질문한다. 이어 자료 B와 A의 수정 버전을 넣고 같은 질문을 한다. 두 번째 답변은 최신 활성 버전과 B를 반영하며, 합의·조건 차이·충돌을 원문 인용과 함께 구분한다. 이 과정에 추가 사용자 결정은 없다. 질문이 자료 처리보다 먼저 도착하면 같은 AnswerRun이 준비를 기다렸다가 자동 완료한다. 처리에 실패하면 이유를 보여 주고 근거 없는 답을 내지 않는다.
+**최종 인수 시나리오:** 빈 Shotgun에서 프로젝트 설정 없이 자료 A를 한 번 넣고 질문한다. 이어 자료 B와 A의 수정 버전을 넣고 같은 질문을 한다. 기존 여러 프로젝트에 저장된 자료도 같은 질문의 인가된 지식 범위에 들어간다. 두 번째 답변은 최신 활성 버전과 B를 반영하며, 합의·조건 차이·충돌을 원문 인용과 함께 구분한다. 이 과정에 추가 사용자 결정은 없다. 질문이 자료 처리보다 먼저 도착하면 같은 AnswerRun이 준비를 기다렸다가 자동 완료한다. 처리에 실패하면 이유를 보여 주고 근거 없는 답을 내지 않는다.
 
 ## 2. 범위와 제품 원칙
 
@@ -52,21 +52,21 @@
 - 활성 SourceVersion이 바뀌면 관련 관계와 projection을 무효화해 증분 재계산한다. 특정 Project의 증분 결과는 동일 입력의 full rebuild와 논리적으로 같아야 한다.
 - Retrieval은 권한/민감도 필터를 **순위화 전에** 적용한다. 원문 citation은 stable SourceVersion/EvidenceSpan으로 검증한다. embedding·Jev confidence·검색 rank는 근거 강도나 사실 확률이 아니다.
 
-### 4.3 Jev 분기와 일반 AI
+### 4.3 현재 DeepSeek 분기와 향후 Jev
 
-결정적 코드가 해시·ID·버전·정확 문자열·권한을 먼저 처리한다. Jev는 bounded shortlist에 대한 `관련/무관`, `동일/보완/충돌/불명`, `심층 분석 필요/불필요` 같은 닫힌 판단을 한다. 일반 AI는 주장 추출, 조건·시간·인과가 얽힌 관계 분석, 여러 자료의 종합, 최종 답변을 처리한다. Jev가 불확실하거나 품질 Gate를 통과하지 못하면 Shotgun이 일반 AI로 넘기며, 일반 AI도 근거를 만들지 못하면 `UNRESOLVED`/답변 불가로 남긴다. 작업별 임계값은 Golden Corpus에서 보정하고 버전으로 고정한다.
+결정적 코드가 해시·ID·버전·정확 문자열·권한을 먼저 처리한다. 현재는 DeepSeek가 bounded shortlist의 닫힌 의미 판단과 주장 추출·복합 분석·답변을 맡는다. DeepSeek가 근거를 만들지 못하면 `UNRESOLVED`/답변 불가로 남긴다. 작업별 임계값은 Golden Corpus에서 보정하고 버전으로 고정한다. Jev가 이용 가능해진 뒤에는 짧은 판단을 같은 Port에서 평가하되 품질 Gate를 통과해야만 활성화한다.
 
-Jev는 외부 hosted API이므로 프로젝트 민감도/egress 정책을 통과해야 한다. PoC 대상은 공식 TypeSafe JavaScript SDK `v0.6.0` tag/`66880cc` (MIT, 2026-09-15 공개) 또는 공식 HTTP API다. 이는 **평가 기준 pin**이며 현재 저장소 의존성으로 채택했다는 뜻이 아니다. 정확한 commit, 취약점, 유지보수, 데이터 정책, API 접근성, lockfile, Adapter Contract/Replacement Test가 통과하기 전에는 생산 경로에 넣지 않는다. 공급자의 가격·지연 수치는 계획의 성능 보증이 아니라 비교 가설이다. [공식 발표](https://typesafe.ai/blog/introducing-system-one-models-and-jev), [공식 API](https://docs.typesafe.ai/introduction/quickstart), [공식 SDK](https://github.com/typesafe-ai/typesafe-sdk-js/releases)
+Jev는 외부 hosted API이므로 민감도/egress 정책을 통과해야 한다. 향후 평가 대상은 공식 TypeSafe JavaScript SDK `v0.6.0` tag/`66880cc` (MIT, 2026-09-15 공개) 또는 공식 HTTP API다. 이는 **평가 기준 pin**이며 현재 저장소 의존성으로 채택했다는 뜻이 아니다. 정확한 commit, 취약점, 유지보수, 데이터 정책, API 접근성, lockfile, Adapter Contract/Replacement Test가 통과하기 전에는 생산 경로에 넣지 않는다. Jev API 접근 불가는 현재 DeepSeek 기반 VP 출시 Gate를 막지 않는다. [공식 발표](https://typesafe.ai/blog/introducing-system-one-models-and-jev), [공식 API](https://docs.typesafe.ai/introduction/quickstart), [공식 SDK](https://github.com/typesafe-ai/typesafe-sdk-js/releases)
 
 ## 5. 구현 작업 패키지와 순서
 
-| 단계                           | 변경·산출물                                                                                                                                                  | 완료 Gate                                                                                                                                               |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **VP-0 권위·기준선**           | ADR-172 사용자 수락 후 ADD/DoD/Role Matrix/관련 ADR의 VP 범위 개정. 현행 Product 경로, DB·출처 계보, Golden Corpus, 비용/지연 baseline, OSS 후보별 결정 기록 | 새 자동 Ledger의 단일 writer·데이터 소유권·보안 경계가 문서와 Contract에 일치. 기존 승인형 데이터 해석 보존                                             |
-| **VP-1 두 동작 수직 슬라이스** | 한 번의 파일 제출, durable ingestion, 모든 활성 `.txt/.md` Evidence의 서버 자동 검색, 질문 대기/자동 완료, 원문 인용 답변                                    | 실제 UI·API·PostgreSQL로 `파일 제출 → 질문 → 근거 있는 답변` 통과. 후보·Review·소스 선택 클릭 0회                                                       |
-| **VP-2 자동 지식 축적**        | 원자 주장·조건·시점 추출, VP Ledger, 관계/충돌 기록, 증분 projection, SourceVersion 변경 영향 전파                                                           | 두 자료의 합의·차이·충돌과 수정 버전이 인용/epoch와 함께 반영. replay·restart·full rebuild 동등성 통과                                                  |
-| **VP-3 Jev 판단 최적화**       | DecisionProviderPort, Jev Adapter PoC, 일반 AI escalation, 작업별 calibration·비용 예산·provider fallback                                                    | Gold 평가에서 품질 비열화 없음. 결정 단계 p95 지연과 실제 총 비용 각각 기준선 대비 최소 20% 절감할 때만 Jev를 기본 활성화. 아니면 Adapter를 비활성 유지 |
-| **VP-4 자료 범위·전환**        | PDF/Office/HTML, 이후 오디오/영상 근거 selector 검증; 기존 Canonical 이관, 프로젝트별 shadow/cutover, VP Home/Ask UX, 기존 Review 일반 경로 제거             | 형식별 Golden Corpus, 보안·migration·rollback, 실제 두 동작 E2E, 운영 상태와 사용자 문구 검증. 단일 활성 지식 권위 확인                                 |
+| 단계                           | 변경·산출물                                                                                                                                                  | 완료 Gate                                                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| **VP-0 권위·기준선**           | ADR-172 사용자 수락 후 ADD/DoD/Role Matrix/관련 ADR의 VP 범위 개정. 현행 Product 경로, DB·출처 계보, Golden Corpus, 비용/지연 baseline, OSS 후보별 결정 기록 | 새 자동 Ledger의 단일 writer·데이터 소유권·보안 경계가 문서와 Contract에 일치. 기존 승인형 데이터 해석 보존              |
+| **VP-1 두 동작 수직 슬라이스** | 한 번의 파일 제출, durable ingestion, 모든 활성 `.txt/.md` Evidence의 서버 자동 검색, 질문 대기/자동 완료, 원문 인용 답변                                    | 실제 UI·API·PostgreSQL로 `파일 제출 → 질문 → 근거 있는 답변` 통과. 후보·Review·소스 선택 클릭 0회                        |
+| **VP-2 자동 지식 축적**        | 원자 주장·조건·시점 추출, VP Ledger, 관계/충돌 기록, 증분 projection, SourceVersion 변경 영향 전파                                                           | 두 자료의 합의·차이·충돌과 수정 버전이 인용/epoch와 함께 반영. replay·restart·full rebuild 동등성 통과                   |
+| **VP-3 판단 제공자 품질**      | DecisionProviderPort, 현재 DeepSeek의 작업별 Golden Corpus·calibration·비용 예산·fallback. Jev Adapter PoC는 API 복구 후 별도 평가                           | 현재 DeepSeek의 중요 오류·보안·비용 Gate 통과. 향후 Jev가 품질을 유지하고 지연·비용을 실측 개선할 때만 선택적으로 활성화 |
+| **VP-4 자료 범위·전환**        | PDF/Office/HTML, 이후 오디오/영상 근거 selector 검증; 기존 Canonical 이관, 프로젝트별 shadow/cutover, VP Home/Ask UX, 기존 Review 일반 경로 제거             | 형식별 Golden Corpus, 보안·migration·rollback, 실제 두 동작 E2E, 운영 상태와 사용자 문구 검증. 단일 활성 지식 권위 확인  |
 
 VP-1이 먼저 사용자 가치를 제공한다. VP-2/3 실패가 VP-1의 원문 기반 질문을 막지 않도록 각 상태와 fallback을 분리한다. 그러나 최종 VP 완료는 VP-4까지 통과해야 한다. VP-2의 자동 재처리 트리거에는 새 자료·새 버전뿐 아니라 질문에서 드러난 근거 공백, 연동 출처 갱신, 모델/정책 개정, 주기적 미해결 관계 재평가를 포함한다. 새 근거가 없는 재평가는 직접 사실을 새로 만들 수 없다. 각 패키지에서 관련 OSS 검토 → Integration Decision → 구현 → Contract/Golden/Security/Replacement 검증 순서를 지킨다.
 
@@ -80,7 +80,7 @@ VP-1이 먼저 사용자 가치를 제공한다. VP-2/3 실패가 VP-1의 원문
 | `lucasastorian/llmwiki` | <https://github.com/lucasastorian/llmwiki> · `ad626a3d81be1480e35ef4e94234de8dbb27a61e` · Apache-2.0       | 기존 locator `EXTRACT` 유지, 형식 확대 시 재평가    | 변환·원문 위치 복원. SQLite/VaultFS 전체 제외                                 |
 | `ddsyasas/llm-wiki`     | <https://github.com/ddsyasas/llm-wiki> · `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c` · MIT                  | `REFERENCE_ONLY`                                    | 두 동작 UI·상태 표현. Backend/DB/LLM client 제외                              |
 | Inkeep OpenKnowledge    | <https://github.com/inkeep/open-knowledge> · `f2834c237639e2cff603817ed88182b33f83cf91` · GPL-3.0-or-later | `REFERENCE_ONLY`                                    | 출처·충돌·활동 표시. 전체 Runtime/Yjs/Canonical 모델 제외                     |
-| TypeSafe Jev            | <https://github.com/typesafe-ai/typesafe-sdk-js> · `v0.6.0`/`66880cc` · MIT                                | `DEFER` 생산 채택, VP-3 Adapter PoC 필수            | DecisionProviderPort 뒤 hosted 판단만. 형식 생성·Ledger writer·답변 생성 제외 |
+| TypeSafe Jev            | <https://github.com/typesafe-ai/typesafe-sdk-js> · `v0.6.0`/`66880cc` · MIT                                | `DEFER`, API 이용 가능 시 별도 PoC                  | DecisionProviderPort 뒤 hosted 판단만. 형식 생성·Ledger writer·답변 생성 제외 |
 
 새 VP Ledger·프로젝트 전체 자동 Ask 권위·전환 정책은 Shotgun 고유의 Source/Evidence/권한/역사 계약이므로 직접 구현 후보지만, VP-0에서 해당 기능을 제공하는 OSS 후보 조사 범위·재사용 불가 이유·교체 Port를 결정 기록으로 남겨야 한다. 형식별 변환은 현재 Role Matrix의 Docling/Tika/MarkItDown/PyMuPDF/Office 후보를 각각 Golden Corpus로 비교한다. 기존 PostgreSQL/pgvector/검색 인프라는 교체 가능 Port 뒤에서 우선 재사용한다.
 
@@ -93,7 +93,7 @@ VP-1이 먼저 사용자 가치를 제공한다. VP-2/3 실패가 VP-1의 원문
 5. **근거:** 사실 문장별 유효 SourceVersion/EvidenceSpan 인용. 직접 진술과 도출 추론을 혼동하지 않음. Golden Corpus에서 근거 없는 확정 주장 0건.
 6. **회복:** 중복 제출, 이벤트 재전달, worker 중단/재시작, DB commit ACK 유실, Jev timeout/장애, 일반 AI 장애에도 원장 중복·손실 없음. `OUTCOME_UNKNOWN`은 readback으로 해결.
 7. **보안:** 프로젝트/민감도 경계 이전 필터, 인용 통한 우회 노출 차단, 프롬프트 주입 방어, 미허용 외부 egress 0건, cross-project 조회 0건.
-8. **Jev 비교:** 같은 고정 데이터로 결정적 기준선·현행 일반 AI·Jev·Jev+escalation을 나란히 평가. 정확도/중요 오류, calibration, 호출 수, p50/p95, 총 입력·출력 비용, end-to-end 답변 영향을 측정. 제공자 자체 benchmark를 Shotgun 성능으로 대체하지 않음.
+8. **판단 제공자:** 현재 DeepSeek를 고정 데이터에서 결정적 기준선과 비교해 정확도/중요 오류, calibration, 호출 수, p50/p95, 총 비용, end-to-end 답변 영향을 측정. Jev는 API가 이용 가능해진 뒤 같은 corpus로 별도 비교한다. 제공자 자체 benchmark를 Shotgun 성능으로 대체하지 않음.
 9. **이행:** 기존 승인 Canonical과 미승인 Candidate의 구분, 이관 근거, 단일 활성 권위, 프로젝트별 cutover/rollback을 실제 PostgreSQL에서 검증.
 10. **완료 판정:** Module·Flow·Product·Architecture·OSS Integration Gate, 새 자동 지식 권위의 Security Negative·Golden Corpus·Replay·Migration·Replacement Test를 모두 통과. 설계 문서나 PoC만으로 `COMPLETE`라고 보고하지 않음.
 
@@ -132,4 +132,17 @@ VP-1이 먼저 사용자 가치를 제공한다. VP-2/3 실패가 VP-1의 원문
 - Home 주의 목록에서 지식 `REVIEW_DECISION`을 제외하고 Review 탐색·Route Guard도 같은 Home 가시성 결과를 사용한다. 외부 실행의 별도 승인과 실패 작업 알림은 유지한다. 과거 미결 Review 데이터를 자동 처리·이관하는 작업은 아직 남아 있다.
 - 한 번 제출 경로에 `.pdf/.html/.htm/.csv/.docx/.xlsx/.pptx` (현재 1 MiB 이하)를 추가했다. 서버가 확장자·media type, PDF·Office 서명 및 텍스트 UTF-8을 대조하고 `document`로 저장한다. 기존 Stage 8 Python 변환기에 원본 바이트를 전달해 페이지·CSS·셀·도형 Evidence를 만든다. 더 큰 파일과 이미지/오디오/영상은 아직 활성화하지 않았다.
 - DB migration `111_vp_auto_project_ask_mode.sql`은 과거 Ask 모드를 유지하면서 VP 모드를 추가한다. 실제 PostgreSQL 테스트에서 최신 버전과 접근 범위 필터를 확인했다.
-- 이 체크포인트는 **VP-1 완료가 아니다.** 모든 실패 형태의 자동 복구, 문장 간 자동 지식 병합, 후보·Review UI 제거, Jev Adapter는 아직 연결되지 않았다. 해당 경로에서 사용자 결정이 요구될 수 있으므로 최종 두 동작 제품 계약을 만족한다고 보고하지 않는다.
+- 이 체크포인트는 **VP-1 완료가 아니다.** 모든 실패 형태의 자동 복구, 문장 간 자동 지식 병합, 후보·Review UI 제거, 단일 지식 공간과 기존 프로젝트 자료의 통합 읽기는 아직 검증되지 않았다. Jev Adapter는 현재 필수 경로에서 제외했다. 해당 경로에서 사용자 결정이 요구되거나 일부 자료가 검색에서 빠질 수 있으므로 최종 두 동작 제품 계약을 만족한다고 보고하지 않는다.
+
+## 10. 2026-09-26 단일 지식 공간 전환 작업
+
+사용자는 Project를 만들거나 선택하지 않고 자료를 투입하고 질문한다. 기존 `Project`는 여러 모듈의 저장·인가 키이므로 사용자 제품 개념에서 제거하되, 검증된 이행 전에는 DB에서 삭제하지 않는다. 이 절은 위의 프로젝트별 기본 범위·컷오버 설명에 우선한다.
+
+1. **재고 조사:** 현재 owner가 접근 가능한 Project와 각각의 Source/Version/Evidence, VP Ledger, 기존 Canonical, 대화, AI·privacy/egress 정책을 읽기 전용으로 집계한다. 미인가·보관·삭제 중 범위는 별도 분류한다.
+2. **자동 기본 범위:** 새 설치의 첫 투입 시 서버가 지식 저장 범위를 만들고 선택한다. 브라우저는 Project 이름·ID를 입력하지 않는다. 동일 owner의 재시작·동시 최초 요청은 같은 범위를 재사용한다.
+3. **통합 읽기:** 현재 owner에게 허용된 모든 활성 범위를 서버가 합성하고, 자료별 권한·민감도 필터를 검색 전에 적용한다. 하나의 Ask는 범위 간 자료도 함께 인용·비교한다. source/version/evidence ID를 새 복사본으로 바꾸지 않는다. Project별 AI 정책이 충돌하면 가장 제한적인 적용 가능 정책을 채택하거나 해당 자료를 보류하고 이유를 표시한다.
+4. **자동 관계:** 서로 다른 과거 범위의 주장은 같은 지식 관계 후보가 될 수 있다. 단, 두 원문의 접근·egress가 모두 허용될 때만 AI에 전달하고, 관계·결정 영수증에는 각 원본 범위를 기록한다.
+5. **제품 화면:** 통합 읽기와 누락 검증이 통과한 다음 Project selector/설정/수동 범위 문구를 일반 VP 경로에서 제거한다. 자료 분류·필터는 검색 편의 기능으로 제공하되 투입 필수 입력이나 지식 격리 경계로 사용하지 않는다.
+6. **검증과 전환:** Project A/B에 각각 상충·합의 자료와 수정 버전이 있는 실제 PostgreSQL fixture로 투입→질문→두 범위 인용·관계·최신성 검증, 접근 권한·민감도 음성 테스트, full rebuild/replay 동등성, 성능·백업·롤백을 통과한다. 이전 Project를 물리적으로 합치는 작업은 stable ID와 계보를 손상하지 않는 방법이 입증될 때만 별도로 수행한다.
+
+OSS Integration Decision은 기존 Role Matrix의 gbrain Search/Graph `REFERENCE_ONLY`, ddsyasas UX `REFERENCE_ONLY`, PostgreSQL Port `AUGMENT`를 유지한다. 외부 OSS의 Project/namespace DB를 공통 권위로 채택하지 않는다. 통합 범위·인가 의미는 Shotgun `AskKnowledgeEvidenceSearchPort`와 서버 권한 Port가 소유한다. 롤백은 통합 읽기 flag를 끄고 기존 범위별 읽기로 복귀하되 데이터·계보·영수증을 보존한다. 자료 누락이 검출된 상태에서는 단일 공간으로 전환하거나 Project UI를 숨기지 않는다.

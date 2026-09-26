@@ -122,6 +122,33 @@ describe('Frontend Phase 2 Section 1 Sources contracts', () => {
         payload: { ...request.payload, duplicateHandling: 'AUTOMATIC' },
       }).payload.duplicateHandling,
     ).toBe('AUTOMATIC');
+    const requestedSourceId = '8a7ce8bf-c547-49f7-82da-05d02b592e67';
+    const revised = {
+      ...request,
+      payload: {
+        ...request.payload,
+        duplicateHandling: 'AUTOMATIC',
+        inputs: [{ ...request.payload.inputs[0], requestedSourceId }],
+      },
+    };
+    expect(validateStagedSourcesFrontendCommandRequest(revised).payload.inputs[0]).toMatchObject({
+      requestedSourceId,
+    });
+    expect(() =>
+      validateStagedSourcesFrontendCommandRequest({
+        ...revised,
+        payload: { ...revised.payload, duplicateHandling: undefined },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      validateStagedSourcesFrontendCommandRequest({
+        ...revised,
+        payload: {
+          ...revised.payload,
+          inputs: [{ ...request.payload.inputs[0], requestedSourceId: 'not-a-uuid' }],
+        },
+      }),
+    ).toThrow(FrontendContractError);
     expect(() =>
       validateStagedSourcesFrontendCommandRequest({
         ...request,

@@ -33,6 +33,7 @@ export type ResolvedSourcesStagingArtifact = {
   readonly issuedAt: string;
   readonly expiresAt: string;
   readonly requestedClassification?: SourcesSensitivity;
+  readonly requestedSourceId?: string;
 };
 
 export type SourcesStagingServicePort = {

@@ -9,6 +9,7 @@ import {
   type IntakeSubmissionItemView,
   type IntakeSubmissionSnapshot,
   type SourcesCapability,
+  type SourcesSensitivity,
   type SourcesStagingMediaType,
 } from '../../../packages/contracts/src/index.js';
 import type { SourcesStagingServicePort } from '../../../modules/frontend-sources-staging/src/index.js';
@@ -145,6 +146,9 @@ const safeManifest = (
   ...(artifact.requestedClassification === undefined
     ? {}
     : { requestedClassification: artifact.requestedClassification }),
+  ...(artifact.requestedSourceId === undefined
+    ? {}
+    : { requestedSourceId: artifact.requestedSourceId }),
 });
 
 const resolveItemSecurity = (
@@ -325,6 +329,35 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             ordinal,
             manifest,
           );
+          if (artifact.requestedSourceId) {
+            const currentHash = await this.currentTargetSourceHash(
+              client,
+              input.scope.projectId,
+              artifact.requestedSourceId,
+              security,
+            );
+            const materialized = await this.materialize(
+              client,
+              input.scope,
+              input.submissionId,
+              itemId,
+              attemptId,
+              storedItem(artifact, artifact.requestedSourceId),
+              security,
+              input.createdAt,
+              currentHash !== artifact.contentHash,
+            );
+            materializedForStage3.push({
+              sourceId: materialized.sourceId,
+              sourceVersionId: materialized.sourceVersionId,
+              storageKey: artifact.storageKey,
+              mediaType: artifact.mediaType,
+              contentHash: artifact.contentHash,
+              security,
+            });
+            succeeded += 1;
+            continue;
+          }
           const duplicate = await this.findDuplicate(
             client,
             input.scope.projectId,
@@ -1104,6 +1137,27 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             principalId: input.scope.principalId,
             kind: row.input_kind,
           });
+          const requestedSourceId = row.input_manifest['requestedSourceId'];
+          if (typeof requestedSourceId === 'string') {
+            const currentHash = await this.currentTargetSourceHash(
+              client,
+              input.scope.projectId,
+              requestedSourceId,
+              security,
+            );
+            await this.materialize(
+              client,
+              input.scope,
+              input.submissionId,
+              row.submission_item_id,
+              row.intake_attempt_id,
+              storedItem(artifact, requestedSourceId),
+              security,
+              input.createdAt,
+              currentHash !== artifact.contentHash,
+            );
+            continue;
+          }
           const duplicate = await this.findDuplicate(
             client,
             input.scope.projectId,
@@ -1480,7 +1534,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       const existing = await client.query<{ source_version_id: string; version_number: number }>(
         `SELECT source_version_id::text, version_number
          FROM asset.source_versions WHERE source_id = $1 AND original_asset_id = $2
-         ORDER BY version_number LIMIT 1`,
+         ORDER BY version_number DESC LIMIT 1`,
         [sourceId, originalAssetId],
       );
       sourceVersionId = existing.rows[0]?.source_version_id;
@@ -1878,6 +1932,49 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       [sourceId, scope.projectId, scope.principalId, createdAt],
     );
     return sourceId;
+  }
+
+  private async currentTargetSourceHash(
+    client: PoolClient,
+    projectId: string,
+    sourceId: string,
+    security: SourcesResourceSecurityMetadata,
+  ): Promise<string> {
+    const result = await client.query<{
+      content_hash: string;
+      access_scope: string[];
+      sensitivity: SourcesSensitivity;
+    }>(
+      `SELECT original.content_hash, version.access_scope, version.sensitivity
+       FROM asset.sources AS source
+       JOIN LATERAL (
+         SELECT original_asset_id, access_scope, sensitivity
+         FROM asset.source_versions
+         WHERE source_id = source.source_id
+         ORDER BY version_number DESC LIMIT 1
+       ) AS version ON true
+       JOIN asset.original_assets AS original
+         ON original.asset_id = version.original_asset_id
+       WHERE source.project_id = $1 AND source.source_id = $2
+       FOR UPDATE OF source`,
+      [projectId, sourceId],
+    );
+    const current = result.rows[0];
+    if (!current) throw this.notFound();
+    if (
+      !sourceSecurityMetadataEqual(
+        { accessScope: current.access_scope, sensitivity: current.sensitivity },
+        security,
+      )
+    ) {
+      throw new ShotgunError({
+        code: 'POLICY_DENIED',
+        safeMessage: 'A new Source version must retain the current Source security scope.',
+        module: 'frontend-sources-write-postgres',
+        operation: 'validate-target-source-version',
+      });
+    }
+    return current.content_hash;
   }
 
   private async finishItem(

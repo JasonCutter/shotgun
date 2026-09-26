@@ -50,6 +50,8 @@ export type SourcesStagingReceipt = {
 type SourceClassificationRequest = {
   /** Browser request only; the Server resolves the effective Resource classification. */
   readonly requestedClassification?: SourcesSensitivity;
+  /** An existing Source to version; the Server verifies project and security ownership. */
+  readonly requestedSourceId?: string;
 };
 
 export type StagedSourcesIntakeInput = SourceClassificationRequest &
@@ -141,6 +143,7 @@ export const decodeSubmitStagedSourcesIntakePayload = (
   if (value['duplicateHandling'] !== undefined && value['duplicateHandling'] !== 'AUTOMATIC') {
     throw new FrontendContractError('INVALID_REQUEST', 'payload.duplicateHandling is unsupported.');
   }
+  const automatic = value['duplicateHandling'] === 'AUTOMATIC';
   if (
     !Array.isArray(value['inputs']) ||
     value['inputs'].length === 0 ||
@@ -158,16 +161,37 @@ export const decodeSubmitStagedSourcesIntakePayload = (
       item['requestedClassification'],
       `${path}.requestedClassification`,
     );
+    const requestedSourceId = item['requestedSourceId'];
+    if (requestedSourceId !== undefined) {
+      if (
+        !automatic ||
+        typeof requestedSourceId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedSourceId)
+      ) {
+        throw new FrontendContractError(
+          'INVALID_REQUEST',
+          `${path}.requestedSourceId is unsupported.`,
+        );
+      }
+    }
     const common = {
       itemId: stringValue(item['itemId'], `${path}.itemId`, 200),
       label: stringValue(item['label'], `${path}.label`, 500),
       stagingReference: stagingReference(item['stagingReference'], `${path}.stagingReference`),
       ...(classification === undefined ? {} : { requestedClassification: classification }),
+      ...(requestedSourceId === undefined ? {} : { requestedSourceId }),
     };
     if (item['kind'] === 'DIRECT_TEXT') {
       onlyKeys(
         item,
-        ['itemId', 'kind', 'label', 'stagingReference', 'requestedClassification'],
+        [
+          'itemId',
+          'kind',
+          'label',
+          'stagingReference',
+          'requestedClassification',
+          'requestedSourceId',
+        ],
         path,
       );
       return { kind: 'DIRECT_TEXT', ...common };
@@ -183,6 +207,7 @@ export const decodeSubmitStagedSourcesIntakePayload = (
           'mediaType',
           'stagingReference',
           'requestedClassification',
+          'requestedSourceId',
         ],
         path,
       );
@@ -200,7 +225,14 @@ export const decodeSubmitStagedSourcesIntakePayload = (
     if (item['kind'] === 'URL') {
       onlyKeys(
         item,
-        ['itemId', 'kind', 'label', 'stagingReference', 'requestedClassification'],
+        [
+          'itemId',
+          'kind',
+          'label',
+          'stagingReference',
+          'requestedClassification',
+          'requestedSourceId',
+        ],
         path,
       );
       return { kind: 'URL', ...common };

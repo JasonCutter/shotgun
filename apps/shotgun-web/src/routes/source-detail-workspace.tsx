@@ -680,6 +680,9 @@ export const SourceDetailWorkspace = () => {
         >
           <h2 id="source-ai-heading">{t('source_detail.vp_auto_heading')}</h2>
           <p>{t('source_detail.vp_auto_explanation')}</p>
+          <Link to={`/sources?view=add&sourceId=${encodeURIComponent(sourceId)}`}>
+            {t('source_detail.add_version')}
+          </Link>
         </section>
       ) : null}
       {!vpAutomaticKnowledge && reextractEligible ? (

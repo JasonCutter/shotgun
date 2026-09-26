@@ -221,6 +221,7 @@ export const SourcesWorkspace = () => {
   const resetIdempotency = useRef<{ previewId: string; key: string } | undefined>(undefined);
   const resetCachePurgedRequestId = useRef<string | undefined>(undefined);
   const linkedSubmissionId = searchParameters.get('submission')?.trim() || null;
+  const targetSourceId = searchParameters.get('sourceId')?.trim() || undefined;
   const query = useMemo<SourceLibraryQuery>(
     () => ({
       ...DEFAULT_QUERY,
@@ -382,9 +383,10 @@ export const SourcesWorkspace = () => {
           ? requestedUrl.trim()
           : hfmOwnerLabel(t, 'intakeKind', 'DIRECT_TEXT')));
     const fingerprint =
-      intakeKind === 'FILE'
+      `${targetSourceId ?? 'new'}:` +
+      (intakeKind === 'FILE'
         ? `FILE:${label}:${file?.name ?? ''}:${file?.size ?? 0}`
-        : `${intakeKind}:${label}:${intakeKind === 'URL' ? requestedUrl : directText}`;
+        : `${intakeKind}:${label}:${intakeKind === 'URL' ? requestedUrl : directText}`);
     if (
       !label ||
       (intakeKind === 'DIRECT_TEXT' && !directText.trim()) ||
@@ -484,7 +486,7 @@ export const SourcesWorkspace = () => {
         clientRequestId: command.clientRequestId,
         idempotencyKey: command.idempotencyKey,
         draftId: command.draftId,
-        inputs: [staged],
+        inputs: [targetSourceId ? { ...staged, requestedSourceId: targetSourceId } : staged],
         duplicateHandling: 'AUTOMATIC',
       });
       if (intakeProjectId.current === projectId) {
@@ -743,8 +745,10 @@ export const SourcesWorkspace = () => {
 
       {showAddSource ? (
         <section className="action-card sources-intake" aria-labelledby="source-intake-heading">
-          <h2 id="source-intake-heading">{t('sources.direct_intake')}</h2>
-          <p>{t('sources.direct_help')}</p>
+          <h2 id="source-intake-heading">
+            {t(targetSourceId ? 'sources.update_source' : 'sources.direct_intake')}
+          </h2>
+          <p>{t(targetSourceId ? 'sources.update_help' : 'sources.direct_help')}</p>
           <p>
             <Link to="/sources">{t('sources.library')}</Link>
           </p>

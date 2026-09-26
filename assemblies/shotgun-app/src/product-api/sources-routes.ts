@@ -349,6 +349,9 @@ export const registerSourcesRoutes = (
                 ...(item.requestedClassification === undefined
                   ? {}
                   : { requestedClassification: item.requestedClassification }),
+                ...(item.requestedSourceId === undefined
+                  ? {}
+                  : { requestedSourceId: item.requestedSourceId }),
               };
             }),
           );

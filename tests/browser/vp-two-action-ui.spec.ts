@@ -14,7 +14,7 @@ type CrossPhaseBackend = {
 const BACKEND = 'http://127.0.0.1:3002';
 const FRONTEND = 'http://127.0.0.1:5174';
 
-test('VP browser journey uploads one file and asks one automatic project question', async ({
+test('VP browser journey uploads, revises, and answers from the latest source version', async ({
   page,
 }) => {
   const fixture = (await tsImport(
@@ -108,7 +108,102 @@ test('VP browser journey uploads one file and asks one automatic project questio
     await expect(page.getByText(sourceText, { exact: false }).first()).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.locator('.ask-citation-list a').first()).toBeVisible();
+    const firstCitation = page.locator('.ask-citation-list a').first();
+    await expect(firstCitation).toBeVisible();
+    const previousHref = await firstCitation.getAttribute('href');
+    expect(previousHref).toBeTruthy();
+    const sourceId = new URL(previousHref as string, FRONTEND).pathname.split('/').at(-1);
+    expect(sourceId).toBeTruthy();
+
+    await firstCitation.click();
+    await page.locator(`a[href*="view=add&sourceId=${sourceId}"]`).click();
+    const revisedText = `VP browser source says the project signal is blue after revision ${randomUUID().slice(0, 8)}.`;
+    await page.locator('#source-intake-kind').selectOption('FILE');
+    await page.locator('#source-intake-file').setInputFiles({
+      name: 'vp-browser-source.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from(revisedText),
+    });
+    const revisedSubmission = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/product-api/frontend/sources/submissions') &&
+        response.request().method() === 'POST',
+    );
+    await page.locator('.source-intake-form button[type="submit"]').click();
+    const revisedResponse = await revisedSubmission;
+    expect(revisedResponse.ok()).toBe(true);
+    expect(revisedResponse.request().postDataJSON()).toMatchObject({
+      payload: { inputs: [expect.objectContaining({ requestedSourceId: sourceId })] },
+    });
+
+    await page.goto(`${FRONTEND}/ask`);
+    await page
+      .locator('#global-ask-question')
+      .fill('After the revision, what is the project signal?');
+    await page.locator('.global-composer button[type="submit"]').click();
+    await expect(page.getByText(revisedText, { exact: false }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+    const currentCitation = page
+      .locator('.ask-turn')
+      .last()
+      .locator('.ask-citation-list a')
+      .first();
+    await expect(currentCitation).toBeVisible();
+    const currentHref = await currentCitation.getAttribute('href');
+    expect(new URL(currentHref as string, FRONTEND).pathname.split('/').at(-1)).toBe(sourceId);
+    expect(new URL(currentHref as string, FRONTEND).searchParams.get('version')).not.toBe(
+      new URL(previousHref as string, FRONTEND).searchParams.get('version'),
+    );
+
+    const otherProjectId = `vp-other-${randomUUID().slice(0, 12)}`;
+    const freshCsrf = await page.request.get(`${FRONTEND}/api/v1/security/csrf`);
+    const freshCsrfToken = ((await freshCsrf.json()) as { csrfToken?: string }).csrfToken;
+    expect(freshCsrfToken).toBeTruthy();
+    const freshHeaders = { 'x-csrf-token': freshCsrfToken as string };
+    const otherProject = await page.request.post(`${FRONTEND}/api/v1/projects`, {
+      headers: freshHeaders,
+      data: {
+        envelopeVersion: '1.0.0',
+        commandType: 'project.create.v1',
+        commandSchemaVersion: '1.0.0',
+        clientRequestId: randomUUID(),
+        idempotencyKey: randomUUID(),
+        projectContext: {
+          activeProjectId: projectId,
+          targetProjectId: projectId,
+          resourceProjectId: projectId,
+        },
+        policyBinding: { mode: 'CURRENT' },
+        preconditions: [],
+        clientIssuedAt: new Date().toISOString(),
+        payload: {
+          newProjectId: otherProjectId,
+          name: otherProjectId,
+          description: 'VP access test',
+        },
+      },
+    });
+    expect(otherProject.ok(), await otherProject.text()).toBe(true);
+    const otherSwitch = await page.request.post(`${FRONTEND}/api/v1/session/active-project`, {
+      headers: freshHeaders,
+      data: { projectId: otherProjectId },
+    });
+    expect(otherSwitch.ok(), await otherSwitch.text()).toBe(true);
+    await page.goto(`${FRONTEND}/sources?view=add&sourceId=${sourceId}`);
+    await page.locator('#source-intake-kind').selectOption('FILE');
+    await page.locator('#source-intake-file').setInputFiles({
+      name: 'forbidden-revision.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from('This cannot update another project source.'),
+    });
+    const rejectedSubmission = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/product-api/frontend/sources/submissions') &&
+        response.request().method() === 'POST',
+    );
+    await page.locator('.source-intake-form button[type="submit"]').click();
+    expect((await rejectedSubmission).ok()).toBe(false);
   } finally {
     await frontend?.close();
     await backend.close();

@@ -384,6 +384,8 @@ const enUS = {
   'sources.draft_queue': 'Draft Queue',
   'sources.direct_intake': 'Add knowledge source',
   'sources.direct_help': 'Submit a file, text, or URL once. Shotgun processes it automatically.',
+  'sources.update_source': 'Add a new source version',
+  'sources.update_help': 'Submit the revised file once to update this source automatically.',
   'sources.draft_help':
     'Adding a draft only queues it on this page. Select Submit drafts to save it in the project.',
   'sources.leave_draft_title': 'Leave with unsubmitted drafts?',
@@ -526,6 +528,7 @@ const enUS = {
   'source_detail.vp_auto_explanation':
     'Shotgun processes this source in the background. You can inspect its original text, evidence, and version history while asking questions.',
   'source_detail.reprocess_ai_heading': 'AI processing',
+  'source_detail.add_version': 'Add revised version',
   'source_detail.reprocess_ai_explanation':
     'Restart AI processing for this Source version using the current Project configuration.',
   'source_detail.reprocess_ai': 'Retry AI processing',
@@ -1250,6 +1253,8 @@ const koKR: Record<ProductMessageKey, string> = {
   'sources.draft_queue': '초안 대기열',
   'sources.direct_intake': '지식 자료 투입',
   'sources.direct_help': '파일·텍스트·URL을 한 번 제출하면 샷건이 자동으로 처리합니다.',
+  'sources.update_source': '자료의 새 버전 투입',
+  'sources.update_help': '수정된 파일을 한 번 제출하면 이 자료의 새 버전으로 자동 처리합니다.',
   'sources.draft_help':
     '수집 초안 추가는 이 화면의 대기열에만 넣습니다. 프로젝트에 저장하려면 초안 제출을 누르세요.',
   'sources.leave_draft_title': '제출하지 않은 초안을 두고 이동할까요?',
@@ -1388,6 +1393,7 @@ const koKR: Record<ProductMessageKey, string> = {
   'source_detail.vp_auto_explanation':
     '샷건이 이 자료를 백그라운드에서 처리합니다. 원문·근거·버전 기록을 확인하면서 질문할 수 있습니다.',
   'source_detail.reprocess_ai_heading': 'AI 처리',
+  'source_detail.add_version': '수정 버전 투입',
   'source_detail.reprocess_ai_explanation':
     '현재 Project 설정으로 이 소스 버전의 AI 처리를 다시 시작합니다.',
   'source_detail.reprocess_ai': 'AI 처리 다시 시도',

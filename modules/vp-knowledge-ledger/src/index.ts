@@ -35,6 +35,11 @@ export type VPRelationJobStorePort = {
   enqueueCurrentPairs(policyRevision: string, limit?: number): Promise<number>;
   claimNext(policyRevision: string): Promise<VPRelationJob | undefined>;
   completeDecision(input: VPRelationJobDecision): Promise<boolean>;
+  completeUnresolved(input: {
+    readonly jobId: string;
+    readonly leaseToken: string;
+    readonly code: 'INSUFFICIENT_EVIDENCE' | 'QUALIFIER_NOT_MODELED';
+  }): Promise<boolean>;
   retry(input: {
     readonly jobId: string;
     readonly leaseToken: string;
@@ -60,7 +65,7 @@ export class VPRelationJobWorker {
     private readonly maxJobsPerTick = 4,
   ) {}
 
-  async dispatchOnce(): Promise<'EMPTY' | 'DECIDED' | 'RETRYING'> {
+  async dispatchOnce(): Promise<'EMPTY' | 'DECIDED' | 'UNRESOLVED' | 'RETRYING'> {
     await this.jobs.enqueueCurrentPairs(this.policyRevision);
     const job = await this.jobs.claimNext(this.policyRevision);
     if (!job) return 'EMPTY';
@@ -108,7 +113,15 @@ export class VPRelationJobWorker {
         });
         return 'DECIDED';
       }
-      const code = result.status === 'UNRESOLVED' ? result.reason : 'INSUFFICIENT_EVIDENCE';
+      const code = result.status === 'UNRESOLVED' ? result.reason : 'QUALIFIER_NOT_MODELED';
+      if (code === 'INSUFFICIENT_EVIDENCE' || code === 'QUALIFIER_NOT_MODELED') {
+        await this.jobs.completeUnresolved({
+          jobId: job.jobId,
+          leaseToken: job.leaseToken,
+          code,
+        });
+        return 'UNRESOLVED';
+      }
       const delayMs = code === 'PROVIDER_FAILED' ? 5 * 60_000 : 24 * 60 * 60_000;
       await this.jobs.retry({
         jobId: job.jobId,

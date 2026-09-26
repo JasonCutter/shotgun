@@ -326,4 +326,20 @@ export class PostgresVPRelationJobs implements VPRelationJobStorePort {
       [input.jobId, input.leaseToken, input.nextAttemptAt, input.code],
     );
   }
+
+  async completeUnresolved(input: {
+    readonly jobId: string;
+    readonly leaseToken: string;
+    readonly code: 'INSUFFICIENT_EVIDENCE' | 'QUALIFIER_NOT_MODELED';
+  }): Promise<boolean> {
+    const result = await this.pool.query(
+      `UPDATE vp.relation_jobs
+          SET status = 'COMPLETED', lease_token = NULL,
+              lease_expires_at = NULL, next_attempt_at = NULL,
+              last_failure_code = $3, updated_at = clock_timestamp()
+        WHERE job_id = $1 AND lease_token = $2 AND status = 'RUNNING'`,
+      [input.jobId, input.leaseToken, input.code],
+    );
+    return Boolean(result.rowCount);
+  }
 }

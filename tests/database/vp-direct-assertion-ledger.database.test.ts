@@ -451,6 +451,24 @@ describe('VP validated direct assertion ledger', () => {
     expect(deepseekReceipt.rows).toEqual([
       { method: 'GENERAL_AI', provider_model: 'deepseek/deepseek-flash' },
     ]);
+    expect(await jobs.enqueueCurrentPairs('vp-unresolved-test')).toBe(1);
+    const unresolvedJob = await jobs.claimNext('vp-unresolved-test');
+    expect(unresolvedJob).toBeDefined();
+    expect(
+      await jobs.completeUnresolved({
+        jobId: unresolvedJob!.jobId,
+        leaseToken: randomUUID(),
+        code: 'QUALIFIER_NOT_MODELED',
+      }),
+    ).toBe(false);
+    expect(
+      await jobs.completeUnresolved({
+        jobId: unresolvedJob!.jobId,
+        leaseToken: unresolvedJob!.leaseToken,
+        code: 'QUALIFIER_NOT_MODELED',
+      }),
+    ).toBe(true);
+    expect(await jobs.claimNext('vp-unresolved-test')).toBeUndefined();
     await expect(
       pool.query(`UPDATE vp.assertions SET claim_text = 'tampered' WHERE candidate_id = $1`, [
         first.candidateId,
@@ -499,7 +517,7 @@ describe('VP validated direct assertion ledger', () => {
         [projectId, resetRequestId],
       );
       expect(before.rows[0]?.status.assertions).toBe(4);
-      expect(before.rows[0]?.status.jobs).toBe(3);
+      expect(before.rows[0]?.status.jobs).toBe(4);
       await executor.query('SELECT vp.t3_erase_project($1, $2::uuid)', [projectId, resetRequestId]);
       const after = await executor.query<{ status: Record<string, number> }>(
         'SELECT vp.t3_project_status($1, $2::uuid) AS status',
@@ -523,7 +541,7 @@ describe('VP validated direct assertion ledger', () => {
     ).inspectProjectSourceKnowledge(projectId);
     expect(
       impact.counts.sourceDerivedRecordCount - afterPurgeImpact.counts.sourceDerivedRecordCount,
-    ).toBe(23);
+    ).toBe(24);
     expect(afterPurgeImpact.manifestDigest).not.toBe(impact.manifestDigest);
   });
 });

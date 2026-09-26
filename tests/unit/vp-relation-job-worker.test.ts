@@ -41,6 +41,7 @@ const jobs = (): VPRelationJobStorePort => ({
   enqueueCurrentPairs: vi.fn(async () => 1),
   claimNext: vi.fn(async () => job),
   completeDecision: vi.fn(async () => true),
+  completeUnresolved: vi.fn(async () => true),
   retry: vi.fn(async () => undefined),
 });
 
@@ -173,10 +174,11 @@ describe('VP relation job worker', () => {
       async () => true,
       policy.revision,
     );
-    expect(await worker.dispatchOnce()).toBe('RETRYING');
+    expect(await worker.dispatchOnce()).toBe('UNRESOLVED');
     expect(store.completeDecision).not.toHaveBeenCalled();
-    expect(store.retry).toHaveBeenCalledWith(
-      expect.objectContaining({ code: 'INSUFFICIENT_EVIDENCE' }),
+    expect(store.completeUnresolved).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'QUALIFIER_NOT_MODELED' }),
     );
+    expect(store.retry).not.toHaveBeenCalled();
   });
 });

@@ -433,19 +433,19 @@ describe('VP validated direct assertion ledger', () => {
     const worker = new VPRelationJobWorker(
       jobs,
       new VPRelationDecisionRouter(undefined, new GeneralAIVPDecisionAdapter(deepseekResolver), {
-        revision: 'vp-deepseek-relation-v1',
+        revision: 'vp-deepseek-relation-v2',
         minimumChoiceProbability: 0.9,
         maximumDeepAnalysisScore: 0,
         maximumInputTokens: 4_000,
         maximumOutputTokens: 256,
       }),
       async () => true,
-      'vp-deepseek-relation-v1',
+      'vp-deepseek-relation-v2',
     );
     expect(await worker.dispatchOnce()).toBe('DECIDED');
     const deepseekReceipt = await pool.query<{ method: string; provider_model: string }>(
       `SELECT method, provider_model FROM vp.decision_receipts
-        WHERE project_id = $1 AND policy_revision = 'vp-deepseek-relation-v1'`,
+        WHERE project_id = $1 AND policy_revision = 'vp-deepseek-relation-v2'`,
       [projectId],
     );
     expect(deepseekReceipt.rows).toEqual([

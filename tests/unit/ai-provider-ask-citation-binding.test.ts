@@ -55,6 +55,34 @@ const provider = (
 });
 
 describe('StructuredAskAnswerProviderAdapter citation reference binding', () => {
+  it('treats conflicting VP source quotes as attributed claims', async () => {
+    let generation: StructuredGenerationRequest | undefined;
+    const adapter = new StructuredAskAnswerProviderAdapter(
+      provider(async (value) => {
+        generation = value;
+        return {
+          rawText: JSON.stringify({
+            answer: 'The two sources disagree.',
+            citations: [{ citationRef: 'E1' }, { citationRef: 'E2' }],
+          }),
+        };
+      }),
+    );
+    const result = await adapter.execute({
+      ...request([
+        evidence('550e8400-e29b-41d4-a716-446655440000', 'The limit is 42.'),
+        evidence('660e8400-e29b-41d4-a716-446655440000', 'The limit is 43.'),
+      ]),
+      mode: 'AUTO_PROJECT_KNOWLEDGE',
+    });
+    expect(JSON.parse(generation!.prompt).task).toBe('shotgun-ask-answer-vp2');
+    expect(generation!.systemInstruction).toContain('describe both claims and cite both sources');
+    expect(result.citations).toEqual([
+      { evidenceId: '550e8400-e29b-41d4-a716-446655440000' },
+      { evidenceId: '660e8400-e29b-41d4-a716-446655440000' },
+    ]);
+  });
+
   it('maps the single issued E1 reference back to the canonical Evidence ID', async () => {
     let generation: StructuredGenerationRequest | undefined;
     const adapter = new StructuredAskAnswerProviderAdapter(

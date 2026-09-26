@@ -253,6 +253,7 @@ export const AskShellProvider = ({
     enabled:
       mode !== undefined &&
       mode !== 'CANONICAL_ONLY' &&
+      mode !== 'AUTO_PROJECT_KNOWLEDGE' &&
       workspace !== undefined &&
       activeConversationId === undefined &&
       shell.activeProject?.id === workspace.projectId,
@@ -269,6 +270,7 @@ export const AskShellProvider = ({
     enabled:
       mode !== undefined &&
       mode !== 'CANONICAL_ONLY' &&
+      mode !== 'AUTO_PROJECT_KNOWLEDGE' &&
       workspace !== undefined &&
       activeConversationId !== undefined &&
       workspace.selectedConversation?.conversationId === activeConversationId,
@@ -290,7 +292,8 @@ export const AskShellProvider = ({
           schemaVersion: '1.0.0',
           ...(activeConversationId ? { conversationId: activeConversationId } : {}),
           mode,
-          sourceSelections: mode === 'CANONICAL_ONLY' ? [] : sourceSelections,
+          sourceSelections:
+            mode === 'CANONICAL_ONLY' || mode === 'AUTO_PROJECT_KNOWLEDGE' ? [] : sourceSelections,
         },
         { signal },
       );
@@ -845,7 +848,8 @@ export const AskShellProvider = ({
         ...followUpRequest,
         question: question.trim(),
         mode,
-        sourceSelections: mode === 'CANONICAL_ONLY' ? [] : sourceSelections,
+        sourceSelections:
+          mode === 'CANONICAL_ONLY' || mode === 'AUTO_PROJECT_KNOWLEDGE' ? [] : sourceSelections,
       });
       applyVerifiedSubmission(submission);
     } catch {
@@ -1245,7 +1249,9 @@ export const AskCenterWorkspace = () => {
   if (error) return <ErrorState error={error} onRetry={() => window.location.reload()} />;
   if (!workspace) return <LoadingState message={t('ask.loading_workspace')} />;
 
-  const hasVisibleSupportControls = Boolean(mode && mode !== 'CANONICAL_ONLY');
+  const hasVisibleSupportControls = Boolean(
+    mode && mode !== 'CANONICAL_ONLY' && mode !== 'AUTO_PROJECT_KNOWLEDGE',
+  );
   const showEmptyLanding = !activeConversationId && !hasVisibleSupportControls;
 
   return (

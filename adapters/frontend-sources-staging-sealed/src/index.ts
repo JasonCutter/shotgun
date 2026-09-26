@@ -10,6 +10,7 @@ import {
   ShotgunError,
   SOURCES_SCHEMA_VERSION,
   type SourcesStagingInputKind,
+  type SourcesStagingMediaType,
   type SourcesStagingReceipt,
 } from '../../../packages/contracts/src/index.js';
 import type {
@@ -92,7 +93,7 @@ const isArtifact = (value: unknown): value is ResolvedSourcesStagingArtifact => 
     ['DIRECT_TEXT', 'FILE', 'URL'].includes(String(candidate['kind'])) &&
     typeof candidate['label'] === 'string' &&
     ['direct_text', 'file_upload', 'url_acquisition'].includes(String(candidate['channel'])) &&
-    ['text/plain', 'text/markdown'].includes(String(candidate['mediaType'])) &&
+    ['text/plain', 'text/markdown', 'application/pdf'].includes(String(candidate['mediaType'])) &&
     typeof candidate['contentHash'] === 'string' &&
     /^sha256:[a-f0-9]{64}$/.test(candidate['contentHash']) &&
     Number.isInteger(candidate['sizeBytes']) &&
@@ -131,7 +132,7 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
     readonly principalId: string;
     readonly kind: 'DIRECT_TEXT' | 'FILE';
     readonly label: string;
-    readonly mediaType: 'text/plain' | 'text/markdown';
+    readonly mediaType: SourcesStagingMediaType;
     readonly fileName?: string;
     readonly bytes: Uint8Array;
   }): Promise<SourcesStagingReceipt> {
@@ -145,6 +146,32 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
       }
       if (input.kind === 'FILE' && input.fileName === undefined) {
         return fail('VALIDATION_ERROR', 'File staging requires a filename.');
+      }
+      if (input.kind === 'FILE') {
+        const name = input.fileName ?? '';
+        const allowedTypes = /\.pdf$/i.test(name)
+          ? ['application/pdf']
+          : /\.md$/i.test(name)
+            ? ['text/plain', 'text/markdown']
+            : /\.txt$/i.test(name)
+              ? ['text/plain']
+              : [];
+        if (!allowedTypes.includes(input.mediaType)) {
+          return fail('VALIDATION_ERROR', 'File extension and media type must match.');
+        }
+        if (
+          input.mediaType === 'application/pdf' &&
+          Buffer.from(input.bytes.subarray(0, 5)).toString('ascii') !== '%PDF-'
+        ) {
+          return fail('VALIDATION_ERROR', 'File does not have a PDF signature.');
+        }
+      }
+      if (input.mediaType !== 'application/pdf') {
+        try {
+          new TextDecoder('utf-8', { fatal: true }).decode(input.bytes);
+        } catch {
+          return fail('VALIDATION_ERROR', 'Text source must be valid UTF-8.');
+        }
       }
       const contentHash = sha256(input.bytes);
       const storageKey = await this.storage.put(contentHash, input.bytes);

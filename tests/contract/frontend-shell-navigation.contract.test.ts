@@ -61,6 +61,11 @@ describe('Frontend Shell HFM-S3 persistent navigation', () => {
         targetRoute: { routeId: 'ask', href: '/ask' },
       },
     ]);
+    expect(shell.features).toContainEqual({
+      id: 'vp-autonomous-knowledge',
+      label: 'Automatic project knowledge',
+      availability: 'AVAILABLE',
+    });
   });
 
   it('does not advertise disabled workspace placeholders without a Project', async () => {
@@ -70,6 +75,9 @@ describe('Frontend Shell HFM-S3 persistent navigation', () => {
       accessibleProjects: [],
     });
     expect(shell.navigation).toEqual([]);
+    expect(shell.features.find((feature) => feature.id === 'vp-autonomous-knowledge')?.availability).toBe(
+      'HIDDEN',
+    );
     expect(shell.leadingWarning?.code).toBe('PROJECT_SETUP_REQUIRED');
   });
 

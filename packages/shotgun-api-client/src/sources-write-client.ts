@@ -26,7 +26,7 @@ export type SourcesWriteClient = {
       readonly itemId: string;
       readonly kind: 'DIRECT_TEXT' | 'FILE';
       readonly label: string;
-      readonly mediaType: 'text/plain' | 'text/markdown';
+      readonly mediaType: 'text/plain' | 'text/markdown' | 'application/pdf';
       readonly fileName?: string;
       readonly bytes: Uint8Array;
     },
@@ -45,6 +45,7 @@ export type SourcesWriteClient = {
     input: FrontendCommandSubmission & {
       readonly draftId: string;
       readonly inputs: readonly StagedSourcesIntakeInput[];
+      readonly duplicateHandling?: 'AUTOMATIC';
     },
     options?: RequestOptions,
   ): Promise<FrontendCommandMutationResponse<IntakeSubmissionSnapshot>>;
@@ -187,7 +188,13 @@ export const createSourcesWriteClient = (
         commandRequest({
           ...input,
           commandType: SOURCES_FRONTEND_COMMAND_TYPES.submit,
-          payload: { draftId: input.draftId, inputs: input.inputs },
+          payload: {
+            draftId: input.draftId,
+            inputs: input.inputs,
+            ...(input.duplicateHandling === undefined
+              ? {}
+              : { duplicateHandling: input.duplicateHandling }),
+          },
         }),
         options?.signal,
       );

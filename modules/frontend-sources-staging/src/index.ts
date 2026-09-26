@@ -1,5 +1,6 @@
 import type {
   SourcesStagingInputKind,
+  SourcesStagingMediaType,
   SourcesStagingReceipt,
 } from '../../../packages/contracts/src/index.js';
 
@@ -11,7 +12,7 @@ export type ResolvedSourcesStagingArtifact = {
   readonly kind: 'DIRECT_TEXT' | 'FILE' | 'URL';
   readonly label: string;
   readonly channel: 'direct_text' | 'file_upload' | 'url_acquisition';
-  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly mediaType: SourcesStagingMediaType;
   readonly contentHash: string;
   readonly sizeBytes: number;
   readonly storageKey: string;
@@ -56,7 +57,7 @@ export type SourcesStagingServicePort = {
     readonly principalId: string;
     readonly kind: 'DIRECT_TEXT' | 'FILE';
     readonly label: string;
-    readonly mediaType: 'text/plain' | 'text/markdown';
+    readonly mediaType: SourcesStagingMediaType;
     readonly fileName?: string;
     readonly bytes: Uint8Array;
   }): Promise<SourcesStagingReceipt>;

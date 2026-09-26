@@ -40,6 +40,7 @@ import { PostgresSettingsKnowledgeResetOwner } from './settings-owner.js';
 import { PostgresSourceProductKnowledgeResetOwner } from './source-product-owner.js';
 import { PostgresTransformationKnowledgeResetOwner } from './transformation-owner.js';
 import { PostgresValidationKnowledgeResetOwner } from './validation-owner.js';
+import { PostgresVPKnowledgeResetOwner } from './vp-ledger-owner.js';
 
 export type PostgresKnowledgeResetRebuilders = Readonly<{
   activity: ProjectActivityResetRebuilder;
@@ -63,6 +64,7 @@ export const composePostgresKnowledgeResetOwners = (
     new PostgresReviewKnowledgeResetOwner(pool),
     new PostgresKnowledgeDraftResetOwner(pool),
     new PostgresComparisonKnowledgeResetOwner(pool),
+    new PostgresVPKnowledgeResetOwner(pool),
     new PostgresValidationKnowledgeResetOwner(pool),
     new PostgresCandidateKnowledgeResetOwner(pool),
     new PostgresAiOutputKnowledgeResetOwner(pool),

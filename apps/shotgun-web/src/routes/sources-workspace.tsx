@@ -162,6 +162,9 @@ export const SourcesWorkspace = () => {
     (project) => project.id === projectId && project.isOwner,
   );
   const commandIdentity = useRef<DraftCommandIdentity | undefined>(undefined);
+  const directCommandIdentity = useRef<
+    { readonly command: DraftCommandIdentity; readonly file?: File } | undefined
+  >(undefined);
   const [searchInput, setSearchInput] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
   const [intakeKind, setIntakeKind] = useState<'DIRECT_TEXT' | 'FILE' | 'URL'>('DIRECT_TEXT');
@@ -170,10 +173,24 @@ export const SourcesWorkspace = () => {
   const [directText, setDirectText] = useState('');
   const [requestedUrl, setRequestedUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const intakeProjectId = useRef(projectId);
   const [submission, setSubmission] = useState<IntakeSubmissionSnapshot>();
   const [decision, setDecision] = useState<ExactDuplicateDecisionView>();
   const [mutationState, setMutationState] = useState<'IDLE' | 'STAGING' | 'SUBMITTING'>('IDLE');
   const [mutationError, setMutationError] = useState<string>();
+  useEffect(() => {
+    if (intakeProjectId.current === projectId) return;
+    intakeProjectId.current = projectId;
+    directCommandIdentity.current = undefined;
+    setIntakeLabel('');
+    setDirectText('');
+    setRequestedUrl('');
+    setSelectedFile(undefined);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setMutationError(undefined);
+    setMutationState('IDLE');
+  }, [projectId]);
   const [resetPreview, setResetPreview] = useState<KnowledgeResetPreviewV1>();
   const [resetRequest, setResetRequest] = useState<
     { projectId: string; requestId: string } | undefined
@@ -331,23 +348,151 @@ export const SourcesWorkspace = () => {
     }
   };
 
-  const onAddDraft = (event: FormEvent) => {
+  const onSubmitSource = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (intakeKind === 'DIRECT_TEXT') {
-      draftQueue.addDirectText(
-        intakeLabel || hfmOwnerLabel(t, 'intakeKind', 'DIRECT_TEXT'),
-        directText,
-        requestedClassification,
-      );
-      setDirectText('');
-    } else if (intakeKind === 'URL') {
-      draftQueue.addUrl(intakeLabel, requestedUrl, requestedClassification);
-      setRequestedUrl('');
-    } else if (selectedFile) {
-      draftQueue.addFile(intakeLabel, selectedFile, requestedClassification);
-      setSelectedFile(undefined);
+    if (
+      connectivity.isOffline ||
+      mutationState !== 'IDLE' ||
+      !projectId ||
+      intakeProjectId.current !== projectId
+    ) {
+      return;
     }
-    setIntakeLabel('');
+    const file = intakeKind === 'FILE' ? selectedFile : undefined;
+    const label =
+      intakeLabel.trim() ||
+      (file?.name ??
+        (intakeKind === 'URL'
+          ? requestedUrl.trim()
+          : hfmOwnerLabel(t, 'intakeKind', 'DIRECT_TEXT')));
+    const fingerprint =
+      intakeKind === 'FILE'
+        ? `FILE:${label}:${file?.name ?? ''}:${file?.size ?? 0}`
+        : `${intakeKind}:${label}:${intakeKind === 'URL' ? requestedUrl : directText}`;
+    if (
+      !label ||
+      (intakeKind === 'DIRECT_TEXT' && !directText.trim()) ||
+      (intakeKind === 'FILE' && !file) ||
+      (intakeKind === 'URL' && !requestedUrl.trim())
+    ) {
+      setMutationError(t('sources.invalid_draft'));
+      return;
+    }
+    if (intakeKind === 'URL') {
+      try {
+        const protocol = new URL(requestedUrl).protocol;
+        if (protocol !== 'http:' && protocol !== 'https:') throw new Error('unsupported protocol');
+      } catch {
+        setMutationError(t('sources.draft_message.url_invalid'));
+        return;
+      }
+    }
+    if (file && !/\.(txt|md|pdf)$/i.test(file.name)) {
+      setMutationError(t('sources.draft_message.file_unsupported'));
+      return;
+    }
+    if (file && (file.size < 1 || file.size > 1_048_576)) {
+      setMutationError(t('sources.draft_message.file_size'));
+      return;
+    }
+    if (intakeKind === 'DIRECT_TEXT' && new TextEncoder().encode(directText).length > 1_048_576) {
+      setMutationError(t('sources.draft_message.direct_text_too_large'));
+      return;
+    }
+    const previous = directCommandIdentity.current;
+    const command =
+      previous?.command.fingerprint === fingerprint && previous.file === file
+        ? previous.command
+        : {
+            fingerprint,
+            clientRequestId: identity('sources-request'),
+            idempotencyKey: identity('sources-idempotency'),
+            draftId: identity('sources-draft'),
+          };
+    directCommandIdentity.current = { command, ...(file ? { file } : {}) };
+    const itemId = `${command.draftId}-item`;
+    setMutationError(undefined);
+    setMutationState('STAGING');
+    try {
+      let staged: StagedSourcesIntakeInput;
+      if (intakeKind === 'URL') {
+        const receipt = await writeClient.stageUrl({
+          draftId: command.draftId,
+          itemId,
+          label,
+          requestedUrl: requestedUrl.trim(),
+        });
+        staged = {
+          itemId,
+          kind: 'URL',
+          label,
+          stagingReference: receipt.stagingReference,
+          requestedClassification,
+        };
+      } else {
+        const mediaType = file?.name.toLowerCase().endsWith('.pdf')
+          ? 'application/pdf'
+          : file?.name.toLowerCase().endsWith('.md')
+            ? 'text/markdown'
+            : 'text/plain';
+        const receipt = await writeClient.stageBytes({
+          draftId: command.draftId,
+          itemId,
+          kind: file ? 'FILE' : 'DIRECT_TEXT',
+          label,
+          mediaType,
+          ...(file ? { fileName: file.name } : {}),
+          bytes: file
+            ? new Uint8Array(await file.arrayBuffer())
+            : new TextEncoder().encode(directText),
+        });
+        staged = file
+          ? {
+              itemId,
+              kind: 'FILE',
+              label,
+              fileName: file.name,
+              mediaType,
+              stagingReference: receipt.stagingReference,
+              requestedClassification,
+            }
+          : {
+              itemId,
+              kind: 'DIRECT_TEXT',
+              label,
+              stagingReference: receipt.stagingReference,
+              requestedClassification,
+            };
+      }
+      if (intakeProjectId.current !== projectId) return;
+      setMutationState('SUBMITTING');
+      const result = await writeClient.submit({
+        activeProjectId: projectId,
+        targetProjectId: projectId,
+        clientRequestId: command.clientRequestId,
+        idempotencyKey: command.idempotencyKey,
+        draftId: command.draftId,
+        inputs: [staged],
+        duplicateHandling: 'AUTOMATIC',
+      });
+      if (intakeProjectId.current === projectId) {
+        setSubmission(result.resource);
+        setDecision(undefined);
+        directCommandIdentity.current = undefined;
+        setIntakeLabel('');
+        setDirectText('');
+        setRequestedUrl('');
+        setSelectedFile(undefined);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        void library.refetch();
+      }
+    } catch (error) {
+      if (intakeProjectId.current === projectId) {
+        setMutationError(error instanceof Error ? error.message : t('sources.submission_failed'));
+      }
+    } finally {
+      if (intakeProjectId.current === projectId) setMutationState('IDLE');
+    }
   };
 
   const commandFor = (fingerprint: string): DraftCommandIdentity => {
@@ -618,7 +763,7 @@ export const SourcesWorkspace = () => {
           ) : linkedSubmissionId && linkedSubmission.isError ? (
             <ErrorState error={linkedSubmission.error} onRetry={() => linkedSubmission.refetch()} />
           ) : null}
-          <form className="source-intake-form" onSubmit={onAddDraft}>
+          <form className="source-intake-form" onSubmit={(event) => void onSubmitSource(event)}>
             <label htmlFor="source-intake-kind">{t('sources.input_type')}</label>
             <select
               id="source-intake-kind"
@@ -655,9 +800,10 @@ export const SourcesWorkspace = () => {
               <>
                 <label htmlFor="source-intake-file">{hfmOwnerLabel(t, 'intakeKind', 'FILE')}</label>
                 <input
+                  ref={fileInputRef}
                   id="source-intake-file"
                   type="file"
-                  accept="text/plain,text/markdown,.txt,.md"
+                  accept="text/plain,text/markdown,application/pdf,.txt,.md,.pdf"
                   onChange={(event) => setSelectedFile(event.target.files?.[0])}
                 />
               </>
@@ -675,14 +821,19 @@ export const SourcesWorkspace = () => {
               </>
             ) : null}
             <button
-              className="hfm-action-secondary"
+              className="hfm-action-primary"
               type="submit"
-              disabled={intakeKind === 'FILE' && !selectedFile}
+              disabled={
+                connectivity.isOffline ||
+                mutationState !== 'IDLE' ||
+                (intakeKind === 'FILE' && !selectedFile) ||
+                (intakeKind === 'DIRECT_TEXT' && !directText.trim()) ||
+                (intakeKind === 'URL' && !requestedUrl.trim())
+              }
             >
-              {t('sources.add_intake_draft')}
+              {t('sources.submit_source')}
             </button>
           </form>
-          {draftQueue.items.length === 0 ? <p>{t('sources.no_drafts')}</p> : null}
           {draftQueue.items.length > 0 ? (
             <>
               <ul className="source-intake-list" aria-label={t('sources.intake_drafts')}>

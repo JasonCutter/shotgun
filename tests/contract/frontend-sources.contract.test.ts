@@ -116,6 +116,18 @@ describe('Frontend Phase 2 Section 1 Sources contracts', () => {
     expect(validateStagedSourcesFrontendCommandRequest(request).payload.inputs[0]).toMatchObject({
       requestedClassification: 'public',
     });
+    expect(
+      validateStagedSourcesFrontendCommandRequest({
+        ...request,
+        payload: { ...request.payload, duplicateHandling: 'AUTOMATIC' },
+      }).payload.duplicateHandling,
+    ).toBe('AUTOMATIC');
+    expect(() =>
+      validateStagedSourcesFrontendCommandRequest({
+        ...request,
+        payload: { ...request.payload, duplicateHandling: 'REUSE_ANY_SECURITY' },
+      }),
+    ).toThrow(FrontendContractError);
     expect(() =>
       validateStagedSourcesFrontendCommandRequest({
         ...request,

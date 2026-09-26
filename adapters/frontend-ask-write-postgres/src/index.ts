@@ -548,8 +548,13 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
       principalId: input.principalId,
       sessionId: input.sessionId,
       projectId,
-      defaultAskMode: 'CANONICAL_ONLY',
-      availableAskModes: ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'],
+      defaultAskMode: 'AUTO_PROJECT_KNOWLEDGE',
+      availableAskModes: [
+        'AUTO_PROJECT_KNOWLEDGE',
+        'CANONICAL_ONLY',
+        'SOURCE_EXPLORATION',
+        'HYBRID',
+      ],
       conversations: summaries.rows.map((row) => ({
         conversationId: row.conversation_id,
         projectId: row.project_id,

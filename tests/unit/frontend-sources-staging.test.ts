@@ -141,4 +141,33 @@ describe('sealed Sources staging service', () => {
       /one MiB/,
     );
   });
+
+  it('stages a PDF as a file and rejects mismatched types or signatures', async () => {
+    const service = new SealedSourcesStagingService(new MemoryStorage(), secret);
+    const pdf = {
+      ...base,
+      kind: 'FILE' as const,
+      mediaType: 'application/pdf' as const,
+      fileName: 'paper.pdf',
+      bytes: new TextEncoder().encode('%PDF-1.4\n1 0 obj\n'),
+    };
+    const receipt = await service.stageBytes(pdf);
+    expect(receipt).toMatchObject({ kind: 'FILE', mediaType: 'application/pdf' });
+    await expect(
+      service.resolve({
+        stagingReference: receipt.stagingReference,
+        draftId: pdf.draftId,
+        itemId: pdf.itemId,
+        projectId: pdf.projectId,
+        principalId: pdf.principalId,
+        kind: 'FILE',
+      }),
+    ).resolves.toMatchObject({ mediaType: 'application/pdf', fileName: 'paper.pdf' });
+    await expect(service.stageBytes({ ...pdf, mediaType: 'text/plain' })).rejects.toThrow(
+      /extension and media type/,
+    );
+    await expect(
+      service.stageBytes({ ...pdf, bytes: new TextEncoder().encode('not a PDF') }),
+    ).rejects.toThrow(/PDF signature/);
+  });
 });

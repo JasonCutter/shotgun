@@ -130,6 +130,11 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
         : [],
       features: [
         {
+          id: 'vp-autonomous-knowledge',
+          label: 'Automatic project knowledge',
+          availability: projectReady ? 'AVAILABLE' : 'HIDDEN',
+        },
+        {
           id: 'global-search',
           label: 'Global Search',
           availability: projectReady ? 'AVAILABLE' : 'TEMPORARILY_UNAVAILABLE',
@@ -189,7 +194,9 @@ export class InMemoryActionCenterProjection implements ActionCenterProjectionPor
       readonly activeProject: NonNullable<FrontendReadScope['activeProject']>;
     },
   ): Promise<HomeActionCenterView> {
-    const attention = (await this.attention?.listAttention(input)) ?? [];
+    const attention = ((await this.attention?.listAttention(input)) ?? []).filter(
+      (item) => item.kind !== 'REVIEW_DECISION',
+    );
     return decodeHomeActionCenterView({
       schemaVersion: '1.0.0',
       principalId: input.principalId,

@@ -57,7 +57,7 @@ type MaterializedStage3Item = {
   readonly sourceId: string;
   readonly sourceVersionId: string;
   readonly storageKey: string;
-  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly mediaType: 'text/plain' | 'text/markdown' | 'application/pdf';
   readonly contentHash: string;
   readonly security: SourcesResourceSecurityMetadata;
 };
@@ -285,8 +285,9 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
           `INSERT INTO source_product.intake_submissions (
            submission_id, project_id, principal_id, session_id, create_command_id,
            state, accepted_policy_context_id, accepted_policy_binding,
-           access_revision, policy_context_revision, created_at, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, 'RUNNING', $6, $7::jsonb, $8, $9, $10, $10)`,
+           access_revision, policy_context_revision, duplicate_handling,
+           created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, 'RUNNING', $6, $7::jsonb, $8, $9, $11, $10, $10)`,
           [
             input.submissionId,
             input.scope.projectId,
@@ -298,6 +299,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             input.scope.accessRevision,
             input.scope.policyContextRevision,
             input.createdAt,
+            input.duplicateHandling ?? 'MANUAL',
           ],
         );
 
@@ -329,16 +331,39 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             security,
           );
           if (duplicate) {
-            await this.createDuplicateDecision(
-              client,
-              input,
-              artifact,
-              itemId,
-              attemptId,
-              duplicate,
-              security,
-            );
-            actionRequired += 1;
+            if (input.duplicateHandling === 'AUTOMATIC') {
+              const resolved = await this.resolveAutomaticDuplicate(
+                client,
+                input.scope,
+                input.submissionId,
+                itemId,
+                attemptId,
+                artifact,
+                duplicate,
+                security,
+                input.createdAt,
+              );
+              materializedForStage3.push({
+                sourceId: resolved.sourceId,
+                sourceVersionId: resolved.sourceVersionId,
+                storageKey: artifact.storageKey,
+                mediaType: artifact.mediaType,
+                contentHash: artifact.contentHash,
+                security,
+              });
+              succeeded += 1;
+            } else {
+              await this.createDuplicateDecision(
+                client,
+                input,
+                artifact,
+                itemId,
+                attemptId,
+                duplicate,
+                security,
+              );
+              actionRequired += 1;
+            }
           } else {
             const materialized = await this.materialize(
               client,
@@ -451,6 +476,80 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       input.submissionId,
       remaining.actionRequired === 0 ? 'SUCCEEDED' : 'PARTIAL',
       input.createdAt,
+    );
+  }
+
+  /** Reconcile VP intakes after a Stage 3 worker completed without a submit replay. */
+  async reconcileCompletedAutomaticSubmissions(limit = 32): Promise<number> {
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
+        const ready = await client.query<{ submission_id: string }>(
+          `SELECT submission.submission_id::text
+             FROM source_product.intake_submissions AS submission
+            WHERE submission.duplicate_handling = 'AUTOMATIC'
+              AND submission.state IN ('RUNNING', 'PARTIAL', 'OUTCOME_INDETERMINATE')
+              AND EXISTS (
+                SELECT 1 FROM source_product.intake_submission_items AS item
+                 WHERE item.project_id = submission.project_id
+                   AND item.submission_id = submission.submission_id
+                   AND item.produced_source_version_id IS NOT NULL
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM source_product.intake_submission_items AS item
+                 WHERE item.project_id = submission.project_id
+                   AND item.submission_id = submission.submission_id
+                   AND (
+                     item.state NOT IN ('SUCCEEDED', 'RUNNING', 'OUTCOME_INDETERMINATE')
+                     OR item.produced_source_version_id IS NULL
+                     OR NOT EXISTS (
+                       SELECT 1 FROM source_product.source_stage3_progress AS progress
+                        WHERE progress.project_id = item.project_id
+                          AND progress.source_version_id = item.produced_source_version_id
+                          AND progress.state IN ('STAGE3_COMPLETED', 'NO_EVIDENCE')
+                     )
+                   )
+              )
+            ORDER BY submission.updated_at, submission.submission_id
+            LIMIT $1 FOR UPDATE OF submission SKIP LOCKED`,
+          [Math.max(1, Math.floor(limit))],
+        );
+        for (const row of ready.rows) {
+          await client.query(
+            `UPDATE source_product.intake_submission_items AS item
+                SET state = 'SUCCEEDED', safe_failure_code = NULL,
+                    safe_failure_message = NULL, safe_failure_retryable = NULL
+              WHERE item.submission_id = $1
+                AND item.state IN ('RUNNING', 'OUTCOME_INDETERMINATE')
+                AND EXISTS (
+                  SELECT 1 FROM source_product.source_stage3_progress AS progress
+                   WHERE progress.project_id = item.project_id
+                     AND progress.source_version_id = item.produced_source_version_id
+                     AND progress.state IN ('STAGE3_COMPLETED', 'NO_EVIDENCE')
+                )`,
+            [row.submission_id],
+          );
+          await client.query(
+            `UPDATE source_product.intake_attempts AS attempt
+                SET state = 'SUCCEEDED', completed_at = clock_timestamp()
+              WHERE attempt.submission_id = $1 AND attempt.state = 'RUNNING'`,
+            [row.submission_id],
+          );
+          await client.query(
+            `UPDATE source_product.intake_submissions
+                SET state = 'SUCCEEDED', completed_at = clock_timestamp()
+              WHERE submission_id = $1
+                AND state IN ('RUNNING', 'PARTIAL', 'OUTCOME_INDETERMINATE')
+                AND NOT EXISTS (
+                  SELECT 1 FROM source_product.intake_submission_items AS item
+                   WHERE item.submission_id = $1 AND item.state <> 'SUCCEEDED'
+                )`,
+            [row.submission_id],
+          );
+        }
+        return ready.rowCount ?? 0;
+      },
+      { module: 'frontend-sources-write-postgres', operation: 'reconcile-vp-auto-submissions' },
     );
   }
 
@@ -602,7 +701,8 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
         sourceId: row.produced_source_id!,
         sourceVersionId: row.produced_source_version_id!,
         storageKey,
-        mediaType: (row.media_type as 'text/plain' | 'text/markdown') ?? 'text/plain',
+        mediaType:
+          (row.media_type as 'text/plain' | 'text/markdown' | 'application/pdf') ?? 'text/plain',
         contentHash,
         security: pinnedItemSecurity(row),
       });
@@ -941,6 +1041,13 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     await withSafePostgresTransaction(
       this.pool,
       async (client) => {
+        const submission = await client.query<{ duplicate_handling: 'MANUAL' | 'AUTOMATIC' }>(
+          `SELECT duplicate_handling FROM source_product.intake_submissions
+           WHERE project_id = $1 AND submission_id = $2 FOR UPDATE`,
+          [input.scope.projectId, input.submissionId],
+        );
+        if (!submission.rows[0]) throw this.notFound();
+        const automaticDuplicates = submission.rows[0].duplicate_handling === 'AUTOMATIC';
         await client.query(
           `UPDATE source_product.intake_submissions SET state = 'RUNNING'
          WHERE submission_id = $1 AND state = 'QUEUED'`,
@@ -1004,15 +1111,29 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
             security,
           );
           if (duplicate) {
-            await this.createRetryDuplicateDecision(
-              client,
-              input,
-              artifact,
-              row.submission_item_id,
-              row.intake_attempt_id,
-              duplicate,
-              security,
-            );
+            if (automaticDuplicates) {
+              await this.resolveAutomaticDuplicate(
+                client,
+                input.scope,
+                input.submissionId,
+                row.submission_item_id,
+                row.intake_attempt_id,
+                artifact,
+                duplicate,
+                security,
+                input.createdAt,
+              );
+            } else {
+              await this.createRetryDuplicateDecision(
+                client,
+                input,
+                artifact,
+                row.submission_item_id,
+                row.intake_attempt_id,
+                duplicate,
+                security,
+              );
+            }
           } else {
             await this.materialize(
               client,
@@ -1281,6 +1402,11 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
        JOIN asset.source_versions AS version ON version.original_asset_id = original.asset_id
        JOIN asset.sources AS source ON source.source_id = version.source_id
        WHERE source.project_id = $1 AND original.content_hash = $2
+         AND NOT EXISTS (
+           SELECT 1 FROM asset.source_versions AS newer
+           WHERE newer.source_id = version.source_id
+             AND newer.version_number > version.version_number
+         )
        ORDER BY (version.sensitivity = $3 AND version.access_scope = $4::text[]) DESC,
                 version.created_at, version.source_version_id
        LIMIT 1`,
@@ -1414,6 +1540,45 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     return { sourceId, sourceVersionId };
   }
 
+  private async resolveAutomaticDuplicate(
+    client: PoolClient,
+    scope: SourcesProductWriteScope,
+    submissionId: string,
+    itemId: string,
+    attemptId: string,
+    artifact: SubmitSourcesProductInput['items'][number],
+    duplicate: DuplicateRecord,
+    security: SourcesResourceSecurityMetadata,
+    createdAt: string,
+  ): Promise<{ readonly sourceId: string; readonly sourceVersionId: string }> {
+    if (sourceSecurityMetadataEqual(duplicate.security, security)) {
+      await this.reuseExistingVersion(
+        client,
+        scope,
+        itemId,
+        attemptId,
+        artifact,
+        security,
+        duplicate.sourceId,
+        duplicate.sourceVersionId,
+        createdAt,
+      );
+      return { sourceId: duplicate.sourceId, sourceVersionId: duplicate.sourceVersionId };
+    }
+    // Equal bytes with a different security identity cannot inherit the old
+    // SourceVersion's authority. Keep a separate Source and its own provenance.
+    return this.materialize(
+      client,
+      scope,
+      submissionId,
+      itemId,
+      attemptId,
+      storedItem(artifact),
+      security,
+      createdAt,
+    );
+  }
+
   private async reuseExistingVersion(
     client: PoolClient,
     scope: SourcesProductWriteScope,
@@ -1542,7 +1707,9 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
          submission_key, submission_id, project_id, actor_id, requested_source_id,
          channel, material_kind, media_type, original_file_name, content_hash,
          size_bytes, access_scope, sensitivity, created_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, 'plain_text', $7, $8, $9, $10, $11, $12, $13)`,
+       ) VALUES ($1, $2, $3, $4, $5, $6,
+                 CASE WHEN $7 = 'application/pdf' THEN 'document' ELSE 'plain_text' END,
+                 $7, $8, $9, $10, $11, $12, $13)`,
       [
         randomUUID(),
         itemId,
@@ -1575,13 +1742,16 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       `INSERT INTO asset.storage_receipts (
          receipt_id, submission_id, project_id, source_version_id, channel,
          material_kind, original_file_name, asset_reused, version_created, created_at
-       ) VALUES ($1, $2, $3, $4, $5, 'plain_text', $6, $7, $8, $9)`,
+       ) VALUES ($1, $2, $3, $4, $5,
+                 CASE WHEN $6 = 'application/pdf' THEN 'document' ELSE 'plain_text' END,
+                 $7, $8, $9, $10)`,
       [
         randomUUID(),
         itemId,
         projectId,
         sourceVersionId,
         item.channel,
+        item.mediaType,
         item.originalFileName ?? null,
         assetReused,
         versionCreated,

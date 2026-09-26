@@ -11,6 +11,7 @@ import {
 } from './frontend-sources.js';
 
 export type SourcesStagingInputKind = 'DIRECT_TEXT' | 'FILE' | 'URL';
+export type SourcesStagingMediaType = 'text/plain' | 'text/markdown' | 'application/pdf';
 
 export type SourcesStagingReceipt = {
   readonly schemaVersion: typeof SOURCES_SCHEMA_VERSION;
@@ -19,7 +20,7 @@ export type SourcesStagingReceipt = {
   readonly kind: SourcesStagingInputKind;
   readonly label: string;
   readonly stagingReference: string;
-  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly mediaType: SourcesStagingMediaType;
   readonly sizeBytes: number;
   readonly contentHash: string;
   readonly fileName?: string;
@@ -45,7 +46,7 @@ export type StagedSourcesIntakeInput = SourceClassificationRequest &
         readonly kind: 'FILE';
         readonly label: string;
         readonly fileName: string;
-        readonly mediaType: 'text/plain' | 'text/markdown';
+        readonly mediaType: SourcesStagingMediaType;
         readonly stagingReference: string;
       }
     | {
@@ -59,6 +60,8 @@ export type StagedSourcesIntakeInput = SourceClassificationRequest &
 export type SubmitStagedSourcesIntakeCommandPayload = {
   readonly draftId: string;
   readonly inputs: readonly StagedSourcesIntakeInput[];
+  /** VP intake resolves exact duplicates deterministically without a user decision. */
+  readonly duplicateHandling?: 'AUTOMATIC';
 };
 
 const record = (value: unknown, path: string): Record<string, unknown> => {
@@ -115,7 +118,10 @@ export const decodeSubmitStagedSourcesIntakePayload = (
   input: unknown,
 ): SubmitStagedSourcesIntakeCommandPayload => {
   const value = record(input, 'sources.intake.submit.v1.payload');
-  onlyKeys(value, ['draftId', 'inputs'], 'sources.intake.submit.v1.payload');
+  onlyKeys(value, ['draftId', 'inputs', 'duplicateHandling'], 'sources.intake.submit.v1.payload');
+  if (value['duplicateHandling'] !== undefined && value['duplicateHandling'] !== 'AUTOMATIC') {
+    throw new FrontendContractError('INVALID_REQUEST', 'payload.duplicateHandling is unsupported.');
+  }
   if (
     !Array.isArray(value['inputs']) ||
     value['inputs'].length === 0 ||
@@ -162,10 +168,14 @@ export const decodeSubmitStagedSourcesIntakePayload = (
         path,
       );
       const mediaType = item['mediaType'];
-      if (mediaType !== 'text/plain' && mediaType !== 'text/markdown') {
+      if (
+        mediaType !== 'text/plain' &&
+        mediaType !== 'text/markdown' &&
+        mediaType !== 'application/pdf'
+      ) {
         throw new FrontendContractError(
           'INVALID_REQUEST',
-          `${path}.mediaType must be text/plain or text/markdown.`,
+          `${path}.mediaType must be text/plain, text/markdown or application/pdf.`,
         );
       }
       return {
@@ -194,6 +204,9 @@ export const decodeSubmitStagedSourcesIntakePayload = (
   return {
     draftId: stringValue(value['draftId'], 'payload.draftId', 512),
     inputs,
+    ...(value['duplicateHandling'] === 'AUTOMATIC'
+      ? { duplicateHandling: 'AUTOMATIC' as const }
+      : {}),
   };
 };
 
@@ -239,11 +252,18 @@ export const decodeSourcesStagingReceipt = (input: unknown): SourcesStagingRecei
     throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Unsupported Sources staging kind.');
   }
   const mediaType = value['mediaType'];
-  if (mediaType !== 'text/plain' && mediaType !== 'text/markdown') {
+  if (
+    mediaType !== 'text/plain' &&
+    mediaType !== 'text/markdown' &&
+    mediaType !== 'application/pdf'
+  ) {
     throw new FrontendContractError(
       'UNSUPPORTED_SCHEMA',
       'Unsupported Sources staging media type.',
     );
+  }
+  if (mediaType === 'application/pdf' && kind !== 'FILE') {
+    throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'PDF staging requires a file.');
   }
   const sizeBytes = value['sizeBytes'];
   if (!Number.isInteger(sizeBytes) || Number(sizeBytes) <= 0 || Number(sizeBytes) > 1_048_576) {

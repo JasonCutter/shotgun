@@ -268,7 +268,11 @@ export const registerSourcesRoutes = (
       });
     }
     const mediaType = request.query.mediaType;
-    if (mediaType !== 'text/plain' && mediaType !== 'text/markdown') {
+    if (
+      mediaType !== 'text/plain' &&
+      mediaType !== 'text/markdown' &&
+      !(kind === 'FILE' && mediaType === 'application/pdf')
+    ) {
       throw new ShotgunError({
         code: 'INVALID_REQUEST',
         safeMessage: 'Sources byte staging media type is unsupported.',
@@ -355,6 +359,9 @@ export const registerSourcesRoutes = (
               draftId: accepted.request.payload.draftId,
               scope: scope.write,
               items,
+              ...(accepted.request.payload.duplicateHandling === 'AUTOMATIC'
+                ? { duplicateHandling: 'AUTOMATIC' as const }
+                : {}),
               createdAt: new Date().toISOString(),
             });
           } catch (error) {

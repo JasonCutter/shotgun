@@ -458,8 +458,7 @@ const enUS = {
   'sources.draft_message.direct_text_too_large': 'Direct Text exceeds the active one MiB limit.',
   'sources.draft_message.client_preflight':
     'Client preflight passed. The Server will validate again.',
-  'sources.draft_message.file_unsupported':
-    'Only text/plain and text/markdown are active in this Section.',
+  'sources.draft_message.file_unsupported': 'Choose a .txt, .md, or .pdf file.',
   'sources.draft_message.file_size': 'The file must be between 1 byte and one MiB.',
   'sources.draft_message.file_preflight':
     'Client preflight passed. The Server will verify bytes, type and filename.',
@@ -474,6 +473,7 @@ const enUS = {
   'sources.classification_help':
     'This is a classification request for this new Source. The Server validates and stores the final classification; it does not change your access clearance.',
   'sources.add_intake_draft': 'Add intake draft',
+  'sources.submit_source': 'Add source',
   'sources.intake_drafts': 'Intake drafts',
   'sources.requested_classification': 'Requested classification:',
   'sources.remove': 'Remove',
@@ -519,6 +519,9 @@ const enUS = {
   'source_detail.evidence_revision': 'Evidence revision',
   'source_detail.source_id': 'Source ID',
   'source_detail.source_version_id': 'SourceVersion ID',
+  'source_detail.vp_auto_heading': 'Automatic knowledge processing',
+  'source_detail.vp_auto_explanation':
+    'Shotgun processes this source in the background. You can inspect its original text, evidence, and version history while asking questions.',
   'source_detail.reprocess_ai_heading': 'AI processing',
   'source_detail.reprocess_ai_explanation':
     'Restart AI processing for this Source version using the current Project configuration.',
@@ -780,6 +783,7 @@ const enUS = {
   'discovery.resource.source': 'Source',
   'discovery.resource.source_version': 'Source version',
   'discovery.resource.compiled_truth_item': 'Compiled Truth item',
+  'enum.ask_mode.auto_project_knowledge': 'Ask across my project materials',
   'enum.ask_mode.canonical_only': 'Verified knowledge only',
   'enum.ask_mode.source_exploration': 'Use selected sources',
   'enum.ask_mode.hybrid': 'Verified knowledge + selected sources',
@@ -1313,8 +1317,7 @@ const koKR: Record<ProductMessageKey, string> = {
   'sources.draft_message.direct_text_too_large': '직접 입력 내용이 현재 1 MiB 한도를 초과합니다.',
   'sources.draft_message.client_preflight':
     '클라이언트 사전 검사를 통과했습니다. 서버가 다시 검증합니다.',
-  'sources.draft_message.file_unsupported':
-    '이 섹션에서는 text/plain 및 text/markdown 형식만 사용할 수 있습니다.',
+  'sources.draft_message.file_unsupported': '.txt, .md 또는 .pdf 파일을 선택하세요.',
   'sources.draft_message.file_size': '파일 크기는 1바이트 이상 1 MiB 이하여야 합니다.',
   'sources.draft_message.file_preflight':
     '클라이언트 사전 검사를 통과했습니다. 서버가 바이트, 형식 및 파일 이름을 검증합니다.',
@@ -1329,6 +1332,7 @@ const koKR: Record<ProductMessageKey, string> = {
   'sources.classification_help':
     '새 소스에 대한 분류 요청입니다. 서버가 최종 분류를 검증하고 저장하며 사용자의 접근 허용 수준은 변경하지 않습니다.',
   'sources.add_intake_draft': '수집 초안 추가',
+  'sources.submit_source': '자료 투입',
   'sources.intake_drafts': '수집 초안',
   'sources.requested_classification': '요청한 분류:',
   'sources.remove': '제거',
@@ -1374,6 +1378,9 @@ const koKR: Record<ProductMessageKey, string> = {
   'source_detail.evidence_revision': '근거 리비전',
   'source_detail.source_id': '소스 ID',
   'source_detail.source_version_id': '소스 버전 ID',
+  'source_detail.vp_auto_heading': '자동 지식 처리',
+  'source_detail.vp_auto_explanation':
+    '샷건이 이 자료를 백그라운드에서 처리합니다. 원문·근거·버전 기록을 확인하면서 질문할 수 있습니다.',
   'source_detail.reprocess_ai_heading': 'AI 처리',
   'source_detail.reprocess_ai_explanation':
     '현재 Project 설정으로 이 소스 버전의 AI 처리를 다시 시작합니다.',
@@ -1633,6 +1640,7 @@ const koKR: Record<ProductMessageKey, string> = {
   'discovery.resource.source': 'Source',
   'discovery.resource.source_version': 'Source 버전',
   'discovery.resource.compiled_truth_item': 'Compiled Truth 항목',
+  'enum.ask_mode.auto_project_knowledge': '투입한 자료 전체에 질문',
   'enum.ask_mode.canonical_only': '검증된 지식만 사용',
   'enum.ask_mode.source_exploration': '선택한 소스 사용',
   'enum.ask_mode.hybrid': '검증된 지식과 선택한 소스 사용',
@@ -1741,6 +1749,7 @@ const hfmOwnerLabelKeys: Readonly<
   Record<HfmOwnerLabelKind, Readonly<Record<string, ProductMessageKey>>>
 > = {
   askMode: {
+    AUTO_PROJECT_KNOWLEDGE: 'enum.ask_mode.auto_project_knowledge',
     CANONICAL_ONLY: 'enum.ask_mode.canonical_only',
     SOURCE_EXPLORATION: 'enum.ask_mode.source_exploration',
     HYBRID: 'enum.ask_mode.hybrid',

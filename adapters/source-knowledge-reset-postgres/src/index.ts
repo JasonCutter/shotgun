@@ -8,6 +8,7 @@ export { PostgresAskKnowledgeResetOwner } from './ask-owner.js';
 export { PostgresComparisonKnowledgeResetOwner } from './comparison-owner.js';
 export { PostgresValidationKnowledgeResetOwner } from './validation-owner.js';
 export { PostgresCandidateKnowledgeResetOwner } from './candidate-owner.js';
+export { PostgresVPKnowledgeResetOwner } from './vp-ledger-owner.js';
 export { PostgresAiOutputKnowledgeResetOwner } from './ai-output-owner.js';
 export { PostgresAssetKnowledgeResetOwner } from './asset-owner.js';
 export { PostgresKnowledgeGraphResetOwner } from './knowledge-graph-owner.js';

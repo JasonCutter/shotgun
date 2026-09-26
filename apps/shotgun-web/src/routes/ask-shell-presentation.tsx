@@ -217,7 +217,7 @@ export const AskSupportControls = ({
   onToggleSource,
   t,
 }: AskSupportControlsProps) => {
-  if (!mode || mode === 'CANONICAL_ONLY') return null;
+  if (!mode || mode === 'CANONICAL_ONLY' || mode === 'AUTO_PROJECT_KNOWLEDGE') return null;
   return (
     <section className="ask-support-controls" aria-labelledby="ask-source-context-label">
       <h2 id="ask-source-context-label">{t('ask.source_context')}</h2>

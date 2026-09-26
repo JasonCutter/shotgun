@@ -562,3 +562,11 @@ Stage 0~3의 재검증된 exact pin과 결정은
 - 독립 서비스 경계
 
 이 항목들은 Module Port와 Contract를 먼저 구현한 뒤 benchmark로 결정한다.
+
+## 10. VP 자동 지식 원장 추가 결정 (2026-09-25)
+
+`vp.knowledge-ledger`의 검증된 직접 주장 기록은 Shotgun의 SourceVersion·EvidenceSpan·Project 접근 범위·T3 초기화 경계에 묶인다. [VP 구현계획](../../implementation/vp-vampire-implementation-plan.md)의 기존 검토를 출발점으로 `garrytan/gbrain` (`a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, MIT)을 `REFERENCE_ONLY`로 둔다. gbrain의 Fact/Graph 저장 의미와 DB를 이 경계의 권위로 채택하면 기존 Evidence·권한·초기화 계약을 그대로 지킬 수 없어 VP 원장은 PostgreSQL Adapter로 직접 구현한다. 현재 재사용하는 PostgreSQL은 기존 채택 인프라이며 새 OSS Runtime은 추가하지 않았다.
+
+첫 Adapter는 `VPKnowledgeLedgerPort` 뒤에서 Stage 4의 `READY` 직접 후보와 정확한 변환 revision을 검증한다. 문자열이 완전히 같은 경우에만 결정적 관계를 만들고 각 Source의 근거를 보존한다. 의미 비교·충돌·Jev는 아직 `DEFER`이며 별도 Golden Corpus와 교체 테스트 뒤에 연결한다. Migration 113–114는 새 원장과 프로젝트 초기화 owner를 추가한다. 롤백은 VP 작업자 중지와 Shadow Ledger 보존으로 시작하며, 프로젝트의 활성 Ask 권위 전환 전까지 기존 Canonical 데이터는 변경하지 않는다.
+
+`DecisionProviderPort`의 Jev PoC는 [TypeSafe 공식 API](https://docs.typesafe.ai/introduction/quickstart) 요청 형식을 `REFERENCE_ONLY`로 사용한다. 후보 SDK [`typesafe-sdk-js@v0.6.0`](https://github.com/typesafe-ai/typesafe-sdk-js/releases/tag/v0.6.0), commit `66880cc`, MIT는 이번 PoC에서 `DEFER`한다. SDK의 provider/runtime 타입을 Shotgun 계약으로 끌어오지 않고 작은 HTTP Adapter로 모델 pin·응답 검증·egress 차단을 먼저 검증한다. SDK 통합 여부는 live API·Golden Corpus·보안/maintenance 평가 후 결정한다. 지금은 자격 증명이 없어 실제 Jev 결과나 비용·지연을 측정하지 않았으며 생산 경로에 연결하지 않는다. 실패/불확실성은 `UNRESOLVED` 또는 일반 AI Port로 넘기는 계약 테스트만 통과했다. PoC 롤백은 Adapter 미구성과 기존 Shadow Ledger 유지다.

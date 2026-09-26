@@ -32,7 +32,13 @@ describe('Postgres Ask source-selection validation', () => {
       policyContextRevision: 'policy-1',
     });
 
-    expect(workspace.availableAskModes).toEqual(['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID']);
+    expect(workspace.defaultAskMode).toBe('AUTO_PROJECT_KNOWLEDGE');
+    expect(workspace.availableAskModes).toEqual([
+      'AUTO_PROJECT_KNOWLEDGE',
+      'CANONICAL_ONLY',
+      'SOURCE_EXPLORATION',
+      'HYBRID',
+    ]);
   });
 
   it('rejects empty SOURCE_EXPLORATION before issuing a database query', async () => {
@@ -47,6 +53,23 @@ describe('Postgres Ask source-selection validation', () => {
         mode: 'SOURCE_EXPLORATION',
         policyContextRevision: 'policy-1',
         sourceSelections: [],
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('rejects client-selected sources in automatic Project mode', async () => {
+    const query = vi.fn();
+    const validator = new PostgresAskSourceSelectionValidator({ query } as never);
+
+    await expect(
+      validator.validate({
+        principalId: 'principal-1',
+        projectId: 'project-1',
+        sensitivityClearance: 'private',
+        mode: 'AUTO_PROJECT_KNOWLEDGE',
+        policyContextRevision: 'policy-1',
+        sourceSelections: [{ sourceId: 'source-1', sourceVersionId: 'version-1', evidenceIds: [] }],
       }),
     ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
     expect(query).not.toHaveBeenCalled();

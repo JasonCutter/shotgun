@@ -8,8 +8,8 @@ import type {
   KnowledgeResetImpactPort,
 } from '../../../modules/source-knowledge-reset/src/index.js';
 
-const EXPECTED_TABLE_COUNT = 195;
-const EXPECTED_TABLE_DIGEST = 'b9aebe5dabead6bb1151d4a0e0fb57b372d15e6a3bee12be9ec84ae7ef43301a';
+const EXPECTED_TABLE_COUNT = 200;
+const EXPECTED_TABLE_DIGEST = '1e6c86adaa00262f9eacfcc6ae1d3c515370b5761d8ab4f4ef6eb72a73830a27';
 const EXPECTED_CONTENT_COLUMN_COUNT = 167;
 const EXPECTED_CONTENT_COLUMN_DIGEST =
   '6e62325d2d2757c8c7c877ebd8b17faaeb67e856645363685a2313b695a309b2';
@@ -174,6 +174,7 @@ const MANAGED_SCHEMAS = new Set([
   'source_product',
   'transformation',
   'validation',
+  'vp',
 ]);
 
 const SOURCE_DERIVED_SCHEMAS = new Set([
@@ -185,6 +186,7 @@ const SOURCE_DERIVED_SCHEMAS = new Set([
   'source_product',
   'transformation',
   'validation',
+  'vp',
 ]);
 
 const CONDITIONAL_SCHEMAS = new Set([
@@ -1169,6 +1171,15 @@ export class PostgresKnowledgeResetImpactInspector implements KnowledgeResetImpa
     const scopedSnapshots: ScopeSnapshot[] = [];
     for (const relation of projectIdRelations.rows) {
       if (RESET_CONTROL_TABLES.has(`${relation.schema_name}.${relation.table_name}`)) continue;
+      // Current VP views are derived from the owned ledger tables. Count and
+      // fingerprint their stored rows once, rather than double-counting views.
+      if (
+        relation.schema_name === 'vp' &&
+        (relation.table_name === 'current_assertions' ||
+          relation.table_name === 'current_relations')
+      ) {
+        continue;
+      }
       if (OWNER_CLASSIFIED_SCHEMAS.has(relation.schema_name)) continue;
       if (OWNER_CLASSIFIED_TABLES.has(`${relation.schema_name}.${relation.table_name}`)) continue;
       // Every authenticated Product API request appends REQUEST_AUTHORIZED before

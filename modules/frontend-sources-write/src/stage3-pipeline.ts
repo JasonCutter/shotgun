@@ -153,7 +153,7 @@ export type SourcesStage3PipelinePort = {
     readonly sourceId: string;
     readonly sourceVersionId: string;
     readonly storageKey: string;
-    readonly mediaType: 'text/plain' | 'text/markdown';
+    readonly mediaType: 'text/plain' | 'text/markdown' | 'application/pdf';
     readonly contentHash: string;
     readonly accessScope: readonly string[];
     readonly sensitivity: SourcesSensitivity;
@@ -197,7 +197,7 @@ export type SourcesStage3RecoveryItem = {
   readonly sourceId: string;
   readonly sourceVersionId: string;
   readonly storageKey: string;
-  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly mediaType: 'text/plain' | 'text/markdown' | 'application/pdf';
   readonly contentHash: string;
   readonly accessScope: readonly string[];
   readonly sensitivity: SourcesSensitivity;

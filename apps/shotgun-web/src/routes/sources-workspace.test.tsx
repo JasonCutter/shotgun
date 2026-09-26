@@ -409,7 +409,7 @@ describe('Sources Workspace', () => {
     expect(screen.queryByText('Summary')).toBeNull();
   });
 
-  it('renders server state, keeps search private, and activates valid draft submission', async () => {
+  it('renders server state, keeps search private, and enables one-step source submission', async () => {
     const user = userEvent.setup();
     const runtime = createRuntime();
     const router = createMemoryRouter(
@@ -447,11 +447,10 @@ describe('Sources Workspace', () => {
     expect(router.state.location.search).toBe('?view=add');
     expect(await screen.findByLabelText('Direct Text')).toBeTruthy();
     expect(screen.queryByLabelText('Source classification')).toBeNull();
-    await user.type(screen.getByLabelText('Direct Text'), 'Local draft');
-    await user.click(screen.getByRole('button', { name: 'Add intake draft' }));
-    expect(
-      (screen.getByRole('button', { name: 'Submit drafts' }) as HTMLButtonElement).disabled,
-    ).toBe(false);
+    await user.type(screen.getByLabelText('Direct Text'), 'Local source');
+    expect((screen.getByRole('button', { name: 'Add source' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
   });
 
   it('loads only the exact linked IntakeSubmission and exposes its owner action', async () => {
@@ -573,7 +572,7 @@ describe('Sources Workspace', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Discard all drafts' }));
     await userEvent.selectOptions(screen.getByLabelText('Input type'), 'URL');
     await userEvent.type(screen.getByLabelText('URL'), 'file:///etc/passwd');
-    await userEvent.click(screen.getByRole('button', { name: 'Add intake draft' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add source' }));
     expect(screen.getByText('Enter an absolute HTTP(S) URL.')).toBeTruthy();
   });
 

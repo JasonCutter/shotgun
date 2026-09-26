@@ -43,8 +43,10 @@ import {
 } from '../../../adapters/frontend-product-read-postgres/src/index.js';
 import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
+import { PostgresVPKnowledgeLedger } from '../../../adapters/vp-knowledge-postgres/src/index.js';
 import { PostgresStagingAssetLeaseRepository } from '../../../adapters/frontend-sources-staging-postgres/src/index.js';
 import { PostgresSourcesActivityRead } from '../../../adapters/frontend-sources-write-postgres/src/activity-read.js';
+import { VPAssertionLedgerWorker } from '../../../modules/vp-knowledge-ledger/src/index.js';
 import { PostgresAskActivityRead } from '../../../adapters/frontend-ask-execution-postgres/src/activity-read.js';
 import { createPostgresActivityReadModelStore } from '../../../adapters/frontend-activity-postgres/src/index.js';
 import {
@@ -1483,7 +1485,10 @@ export const startShotgunApplication = async (
       const stage3RecoveryDispatcher = new SourcesStage3RecoveryDispatcher(
         stage3Progress,
         sourcesStage3Pipeline,
-        { reporter: { report: reportStage3Recovery } },
+        {
+          reporter: { report: reportStage3Recovery },
+          reconcileCompleted: () => sourcesProductService.reconcileCompletedAutomaticSubmissions(),
+        },
       );
       cleanupStack.add(
         'Sources Stage 3 recovery worker',
@@ -1494,6 +1499,13 @@ export const startShotgunApplication = async (
         sourcesStage4Continuation,
       );
       cleanupStack.add('Sources Stage 4 continuation worker', await stage4Dispatcher.startWorker());
+      const vpAssertionLedgerWorker = new VPAssertionLedgerWorker(
+        new PostgresVPKnowledgeLedger(pool),
+      );
+      cleanupStack.add(
+        'VP direct assertion ledger worker',
+        await vpAssertionLedgerWorker.startWorker(),
+      );
     }
     const { server } = application;
 

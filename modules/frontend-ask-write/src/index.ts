@@ -202,6 +202,14 @@ export const assertAskSourceSelectionContract = (input: {
   readonly mode: NonNullable<SubmitAskQuestionRequest['mode']>;
   readonly sourceSelections: readonly AskSourceSelectionView[];
 }): void => {
+  if (input.mode === 'AUTO_PROJECT_KNOWLEDGE' && input.sourceSelections.length > 0) {
+    throw new ShotgunError({
+      code: 'INVALID_REQUEST',
+      safeMessage: 'Automatic Project questions do not accept client-selected sources.',
+      module: 'frontend-ask-write',
+      operation: 'validate-auto-project-pinning',
+    });
+  }
   if (input.mode !== 'SOURCE_EXPLORATION') return;
   if (input.sourceSelections.length === 0) {
     throw new ShotgunError({
@@ -332,7 +340,7 @@ export class AskCommandCoordinator {
     input: AskReadScope & { readonly request: SubmitAskQuestionRequest },
   ): Promise<AskQuestionSubmissionView> {
     const request = input.request;
-    const mode = request.mode ?? 'CANONICAL_ONLY';
+    const mode = request.mode ?? 'AUTO_PROJECT_KNOWLEDGE';
     const authority = await this.resolveAuthority(input);
     const now = new Date().toISOString();
     const semanticDigest = computeSubmitAskQuestionDigest(request);

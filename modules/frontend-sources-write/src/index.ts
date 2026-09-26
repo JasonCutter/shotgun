@@ -76,7 +76,7 @@ export type SourcesIntakeStoredItemInput = {
   readonly label: string;
   readonly inputManifest: Readonly<Record<string, unknown>>;
   readonly channel: SourcesIntakeChannel;
-  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly mediaType: 'text/plain' | 'text/markdown' | 'application/pdf';
   readonly contentHash: string;
   readonly sizeBytes: number;
   readonly storageKey: string;

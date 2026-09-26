@@ -17,6 +17,6 @@ describe('PostgreSQL T3 maintenance composition', () => {
     const owners = composePostgresKnowledgeResetOwners(pool, rebuilders);
 
     expect(owners.map((owner) => owner.ownerId)).toEqual(KNOWLEDGE_RESET_OWNER_ORDER);
-    expect(new Set(owners.map((owner) => owner.ownerId)).size).toBe(25);
+    expect(new Set(owners.map((owner) => owner.ownerId)).size).toBe(26);
   });
 });

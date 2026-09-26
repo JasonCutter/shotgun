@@ -101,6 +101,11 @@ export class PostgresVPRelationJobs implements VPRelationJobStorePort {
               lease_expires_at = NULL, next_attempt_at = NULL,
               updated_at = clock_timestamp()
         WHERE job.status IN ('PENDING', 'RUNNING', 'RETRYABLE')
+          AND NOT EXISTS (
+            SELECT 1 FROM project_admin.project_knowledge_epoch AS reset_epoch
+             WHERE reset_epoch.project_id = job.project_id
+               AND reset_epoch.state <> 'READY'
+          )
           AND (NOT EXISTS (
             SELECT 1 FROM vp.current_assertions AS current_left
              WHERE current_left.project_id = job.project_id

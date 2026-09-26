@@ -44,9 +44,15 @@ import {
 import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
 import { PostgresVPKnowledgeLedger } from '../../../adapters/vp-knowledge-postgres/src/index.js';
+import { PostgresVPRelationJobs } from '../../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
+import { GeneralAIVPDecisionAdapter } from '../../../adapters/vp-decision-general-ai/src/index.js';
 import { PostgresStagingAssetLeaseRepository } from '../../../adapters/frontend-sources-staging-postgres/src/index.js';
 import { PostgresSourcesActivityRead } from '../../../adapters/frontend-sources-write-postgres/src/activity-read.js';
-import { VPAssertionLedgerWorker } from '../../../modules/vp-knowledge-ledger/src/index.js';
+import {
+  VPAssertionLedgerWorker,
+  VPRelationJobWorker,
+} from '../../../modules/vp-knowledge-ledger/src/index.js';
+import { VPRelationDecisionRouter } from '../../../modules/vp-decision/src/index.js';
 import { PostgresAskActivityRead } from '../../../adapters/frontend-ask-execution-postgres/src/activity-read.js';
 import { createPostgresActivityReadModelStore } from '../../../adapters/frontend-activity-postgres/src/index.js';
 import {
@@ -1506,6 +1512,32 @@ export const startShotgunApplication = async (
         'VP direct assertion ledger worker',
         await vpAssertionLedgerWorker.startWorker(),
       );
+      // DeepSeek is the sole semantic decision provider until Jev can be
+      // evaluated. The existing project AI resolver enforces credentials,
+      // standing policy, deployment egress and the DeepSeek-only provider pin.
+      const vpRelationWorker = new VPRelationJobWorker(
+        new PostgresVPRelationJobs(pool),
+        new VPRelationDecisionRouter(
+          undefined,
+          new GeneralAIVPDecisionAdapter(stage4AIExecutionResolver),
+          {
+            revision: 'vp-deepseek-relation-v1',
+            minimumChoiceProbability: 0.9,
+            maximumDeepAnalysisScore: 0,
+            maximumInputTokens: 4_000,
+            maximumOutputTokens: 256,
+          },
+        ),
+        async (job) =>
+          job.left.sensitivity !== 'restricted' &&
+          job.right.sensitivity !== 'restricted' &&
+          job.left.accessScope.length > 0 &&
+          job.left.accessScope.every((entry) => job.right.accessScope.includes(entry)),
+        'vp-deepseek-relation-v1',
+        60_000,
+        1,
+      );
+      cleanupStack.add('VP DeepSeek relation worker', await vpRelationWorker.startWorker());
     }
     const { server } = application;
 

@@ -5,9 +5,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PostgresVPKnowledgeLedger } from '../../adapters/vp-knowledge-postgres/src/index.js';
 import { PostgresVPRelationJobs } from '../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
+import { GeneralAIVPDecisionAdapter } from '../../adapters/vp-decision-general-ai/src/index.js';
 import { PostgresKnowledgeResetImpactInspector } from '../../adapters/source-knowledge-reset-postgres/src/impact-inspector.js';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
 import { PostgresProjectAdministrationRepository } from '../../adapters/postgres/src/index.js';
+import type { AIProviderExecutionResolverPort } from '../../modules/ai-provider/src/index.js';
+import { VPRelationJobWorker } from '../../modules/vp-knowledge-ledger/src/index.js';
+import { VPRelationDecisionRouter } from '../../modules/vp-decision/src/index.js';
 import {
   createIsolatedPostgresTestDatabase,
   type IsolatedPostgresTestDatabase,
@@ -397,6 +401,56 @@ describe('VP validated direct assertion ledger', () => {
       [projectId],
     );
     expect(relationVersions.rows[0]).toEqual({ historical: '2', current: '1' });
+    const deepseekResolver: AIProviderExecutionResolverPort = {
+      resolve: async () => ({
+        adapter: {
+          identity: {
+            provider: 'deepseek',
+            model: 'deepseek-flash',
+            adapterVersion: 'test',
+            dataPolicyVersion: 'test',
+          },
+          generateStructured: async () => ({
+            rawText: JSON.stringify({
+              choice: 'CONTRADICTS',
+              confidence: 0.98,
+              probabilities: {
+                EQUIVALENT: 0.01,
+                QUALIFIES: 0.01,
+                CONTRADICTS: 0.98,
+                RELATED: 0,
+                UNRESOLVED: 0,
+              },
+            }),
+            modelVersion: 'deepseek-flash',
+            inputTokens: 100,
+            outputTokens: 30,
+          }),
+        },
+        executionIdentity: {} as never,
+      }),
+    };
+    const worker = new VPRelationJobWorker(
+      jobs,
+      new VPRelationDecisionRouter(undefined, new GeneralAIVPDecisionAdapter(deepseekResolver), {
+        revision: 'vp-deepseek-relation-v1',
+        minimumChoiceProbability: 0.9,
+        maximumDeepAnalysisScore: 0,
+        maximumInputTokens: 4_000,
+        maximumOutputTokens: 256,
+      }),
+      async () => true,
+      'vp-deepseek-relation-v1',
+    );
+    expect(await worker.dispatchOnce()).toBe('DECIDED');
+    const deepseekReceipt = await pool.query<{ method: string; provider_model: string }>(
+      `SELECT method, provider_model FROM vp.decision_receipts
+        WHERE project_id = $1 AND policy_revision = 'vp-deepseek-relation-v1'`,
+      [projectId],
+    );
+    expect(deepseekReceipt.rows).toEqual([
+      { method: 'GENERAL_AI', provider_model: 'deepseek/deepseek-flash' },
+    ]);
     await expect(
       pool.query(`UPDATE vp.assertions SET claim_text = 'tampered' WHERE candidate_id = $1`, [
         first.candidateId,
@@ -445,7 +499,7 @@ describe('VP validated direct assertion ledger', () => {
         [projectId, resetRequestId],
       );
       expect(before.rows[0]?.status.assertions).toBe(4);
-      expect(before.rows[0]?.status.jobs).toBe(2);
+      expect(before.rows[0]?.status.jobs).toBe(3);
       await executor.query('SELECT vp.t3_erase_project($1, $2::uuid)', [projectId, resetRequestId]);
       const after = await executor.query<{ status: Record<string, number> }>(
         'SELECT vp.t3_project_status($1, $2::uuid) AS status',
@@ -469,7 +523,7 @@ describe('VP validated direct assertion ledger', () => {
     ).inspectProjectSourceKnowledge(projectId);
     expect(
       impact.counts.sourceDerivedRecordCount - afterPurgeImpact.counts.sourceDerivedRecordCount,
-    ).toBe(19);
+    ).toBe(23);
     expect(afterPurgeImpact.manifestDigest).not.toBe(impact.manifestDigest);
   });
 });

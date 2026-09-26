@@ -57,6 +57,7 @@ export class VPRelationJobWorker {
     private readonly egressPolicy: VPRelationEgressPolicy,
     private readonly policyRevision: string,
     private readonly intervalMs = 5_000,
+    private readonly maxJobsPerTick = 4,
   ) {}
 
   async dispatchOnce(): Promise<'EMPTY' | 'DECIDED' | 'RETRYING'> {
@@ -88,7 +89,13 @@ export class VPRelationJobWorker {
         externalEgressAllowed: allowed,
         policyRevision: this.policyRevision,
       });
-      if (result.status === 'DECIDED' && result.decision.choice !== 'UNRESOLVED') {
+      // QUALIFIES needs a directed qualifier assertion and condition before
+      // it can become a durable relation. Preserve the job for reevaluation.
+      if (
+        result.status === 'DECIDED' &&
+        result.decision.choice !== 'UNRESOLVED' &&
+        result.decision.choice !== 'QUALIFIES'
+      ) {
         await this.jobs.completeDecision({
           jobId: job.jobId,
           leaseToken: job.leaseToken,
@@ -128,7 +135,11 @@ export class VPRelationJobWorker {
       if (this.stopped) return;
       try {
         let count = 0;
-        while ((await this.dispatchOnce()) !== 'EMPTY' && ++count < 4 && !this.stopped) {
+        while (
+          (await this.dispatchOnce()) !== 'EMPTY' &&
+          ++count < this.maxJobsPerTick &&
+          !this.stopped
+        ) {
           // Bound each tick so other workers and Projects can make progress.
         }
       } catch (error) {

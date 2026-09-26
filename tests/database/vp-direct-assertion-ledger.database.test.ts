@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PostgresVPKnowledgeLedger } from '../../adapters/vp-knowledge-postgres/src/index.js';
 import { PostgresVPRelationJobs } from '../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
+import { PostgresVPAskEvidenceSearch } from '../../adapters/vp-knowledge-postgres/src/ask-evidence-search.js';
 import { GeneralAIVPDecisionAdapter } from '../../adapters/vp-decision-general-ai/src/index.js';
 import { PostgresKnowledgeResetImpactInspector } from '../../adapters/source-knowledge-reset-postgres/src/impact-inspector.js';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
@@ -353,7 +354,7 @@ describe('VP validated direct assertion ledger', () => {
       [projectId],
     );
     expect(currentLinks.rows[0]?.count).toBe('0');
-    await seedCandidate(4, 'public', 'The shared verification code is 43.');
+    const fourth = await seedCandidate(4, 'public', 'The shared verification code is 43.');
     expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
     const jobs = new PostgresVPRelationJobs(runtimePool);
     expect(await jobs.enqueueCurrentPairs('vp-test-policy')).toBe(1);
@@ -451,6 +452,35 @@ describe('VP validated direct assertion ledger', () => {
     expect(deepseekReceipt.rows).toEqual([
       { method: 'GENERAL_AI', provider_model: 'deepseek/deepseek-flash' },
     ]);
+    const vpSearch = new PostgresVPAskEvidenceSearch(runtimePool);
+    const relatedEvidence = await vpSearch.search({
+      projectId,
+      question: '43',
+      accessScope: ['owner'],
+      authorizedSensitivities: ['public'],
+      limit: 12,
+    });
+    expect(relatedEvidence).toContain(second.evidenceId);
+    expect(relatedEvidence).toContain(fourth.evidenceId);
+    expect(relatedEvidence).not.toContain(third.evidenceId);
+    expect(
+      await vpSearch.search({
+        projectId: `${projectId}-other`,
+        question: '43',
+        accessScope: ['owner'],
+        authorizedSensitivities: ['public'],
+        limit: 12,
+      }),
+    ).toEqual([]);
+    expect(
+      await vpSearch.search({
+        projectId,
+        question: '43',
+        accessScope: [],
+        authorizedSensitivities: ['public'],
+        limit: 12,
+      }),
+    ).toEqual([]);
     expect(await jobs.enqueueCurrentPairs('vp-unresolved-test')).toBe(1);
     const unresolvedJob = await jobs.claimNext('vp-unresolved-test');
     expect(unresolvedJob).toBeDefined();
@@ -478,6 +508,15 @@ describe('VP validated direct assertion ledger', () => {
       [projectId],
     );
     expect(abstainedProjection.rows[0]).toEqual({ historical: '3', current: '0' });
+    const afterAbstention = await vpSearch.search({
+      projectId,
+      question: '43',
+      accessScope: ['owner'],
+      authorizedSensitivities: ['public'],
+      limit: 12,
+    });
+    expect(afterAbstention).toContain(fourth.evidenceId);
+    expect(afterAbstention).not.toContain(second.evidenceId);
     await expect(
       pool.query(`UPDATE vp.assertions SET claim_text = 'tampered' WHERE candidate_id = $1`, [
         first.candidateId,

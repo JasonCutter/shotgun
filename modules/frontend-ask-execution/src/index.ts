@@ -50,6 +50,17 @@ export type AskExecutionEvidence = {
   readonly sensitivity: AskExecutionScope['sensitivityClearance'];
 };
 
+/** Optional VP read boundary; Ask rechecks every returned Evidence ID. */
+export type AskKnowledgeEvidenceSearchPort = {
+  search(input: {
+    readonly projectId: string;
+    readonly question: string;
+    readonly accessScope: readonly string[];
+    readonly authorizedSensitivities: readonly AskExecutionScope['sensitivityClearance'][];
+    readonly limit: number;
+  }): Promise<readonly string[]>;
+};
+
 export type AskExecutionSourceVersionContext = {
   readonly kind: 'SOURCE_VERSION';
   readonly sourceId: string;

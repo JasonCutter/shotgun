@@ -44,6 +44,7 @@ import {
 import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
 import { PostgresVPKnowledgeLedger } from '../../../adapters/vp-knowledge-postgres/src/index.js';
+import { PostgresVPAskEvidenceSearch } from '../../../adapters/vp-knowledge-postgres/src/ask-evidence-search.js';
 import { PostgresVPRelationJobs } from '../../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
 import { GeneralAIVPDecisionAdapter } from '../../../adapters/vp-decision-general-ai/src/index.js';
 import { PostgresStagingAssetLeaseRepository } from '../../../adapters/frontend-sources-staging-postgres/src/index.js';
@@ -804,6 +805,7 @@ export const startShotgunApplication = async (
         askWorkspaceProjection,
         new OriginalAssetAskSourceVersionContextReader(originalAssetRepository, assetStorage),
         hybridRetrievalCoordinator,
+        new PostgresVPAskEvidenceSearch(pool),
       ),
       askAnswerProvider,
       {

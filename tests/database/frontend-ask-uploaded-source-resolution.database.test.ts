@@ -117,6 +117,35 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
         ],
       );
     }
+    const vpLinkedEvidenceId = randomUUID();
+    const outOfClearanceEvidenceId = randomUUID();
+    for (const [index, [evidenceId, sensitivity]] of (
+      [
+        [vpLinkedEvidenceId, 'private'],
+        [outOfClearanceEvidenceId, 'restricted'],
+      ] as const
+    ).entries()) {
+      const quote = `Unrelated archive note ${evidenceId}.`;
+      await pool.query(
+        `INSERT INTO evidence.spans
+           (evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
+            node_kind, origin, position, quote, exact_hash, access_scope, sensitivity, created_at)
+         VALUES ($1, $2, $3, $4, $5, $10,
+                 'sentence', 'source', $6::jsonb, $7::jsonb, $8, '{owner}', $9, now())`,
+        [
+          evidenceId,
+          revisionId,
+          projectId,
+          sourceId,
+          sourceVersionId,
+          JSON.stringify({ start: 500, end: 500 + quote.length }),
+          JSON.stringify({ exact: quote }),
+          hash(quote),
+          sensitivity,
+          `/paragraph[${11 + index}]/sentence[1]`,
+        ],
+      );
+    }
 
     const scope = {
       principalId: principal.principalId,
@@ -210,7 +239,7 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
          indexing_result_id, project_id, source_id, source_version_id, revision_id,
          transformer_id, transformer_version, status, evidence_count, reused_count,
          evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, 'test-transformer', '1.0.0', 'INDEXED', 10, 0,
+         ) VALUES ($1, $2, $3, $4, $5, 'test-transformer', '1.0.0', 'INDEXED', 12, 0,
                  $6, 'stage3-evidence-index.v1', $7, now(), now())`,
       [
         indexingResultId,
@@ -260,6 +289,39 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
     expect(
       automaticContext?.evidence.every((item) => item.sourceVersionId === sourceVersionId),
     ).toBe(true);
+    const vpAugmented = new PostgresAskAnswerExecutionRepository(
+      pool,
+      projection,
+      { resolve: async () => undefined },
+      undefined,
+      { search: async () => [vpLinkedEvidenceId, outOfClearanceEvidenceId, randomUUID()] },
+    );
+    const augmentedContext = await vpAugmented.getRunContext(
+      executionScope,
+      automatic.answerRun.answerRunId,
+    );
+    expect(augmentedContext?.queryPlanRevision).toBe('ask-query-plan-vp2');
+    expect(augmentedContext?.evidence.map((item) => item.evidenceId)).toContain(vpLinkedEvidenceId);
+    expect(augmentedContext?.evidence.map((item) => item.evidenceId)).not.toContain(
+      outOfClearanceEvidenceId,
+    );
+    expect(augmentedContext?.resolvedContextDigest).not.toBe(
+      automaticContext?.resolvedContextDigest,
+    );
+    const degradedContext = await new PostgresAskAnswerExecutionRepository(
+      pool,
+      projection,
+      { resolve: async () => undefined },
+      undefined,
+      {
+        search: async () => {
+          throw new Error('temporary VP read failure');
+        },
+      },
+    ).getRunContext(executionScope, automatic.answerRun.answerRunId);
+    expect(degradedContext?.evidence.map((item) => item.evidenceId)).toEqual(
+      automaticContext?.evidence.map((item) => item.evidenceId),
+    );
 
     const intakeSessionId = randomUUID();
     const intakeCommandId = randomUUID();

@@ -52,6 +52,7 @@ import type {
   AskExecutionTransactionPort,
   AskInitialExecutionIdentityResolver,
   AskSourceVersionContextReaderPort,
+  AskKnowledgeEvidenceSearchPort,
   AskWorkerLeaseState,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 
@@ -162,12 +163,14 @@ const AUTOMATIC_SOURCE_EVIDENCE_LIMIT = 8;
 const ASK_QUERY_PLAN_REVISION_V4 = 'ask-query-plan-v4';
 const ASK_QUERY_PLAN_REVISION_V5 = 'ask-query-plan-v5';
 const ASK_QUERY_PLAN_REVISION_VP1 = 'ask-query-plan-vp1';
+const ASK_QUERY_PLAN_REVISION_VP2 = 'ask-query-plan-vp2';
 
 const isAskQueryPlanWithSourceReplay = (revision: string): boolean =>
   revision === 'ask-query-plan-v3' ||
   revision === ASK_QUERY_PLAN_REVISION_V4 ||
   revision === ASK_QUERY_PLAN_REVISION_V5 ||
-  revision === ASK_QUERY_PLAN_REVISION_VP1;
+  revision === ASK_QUERY_PLAN_REVISION_VP1 ||
+  revision === ASK_QUERY_PLAN_REVISION_VP2;
 
 const isAllowedSensitivity = (
   sensitivity: AskExecutionScope['sensitivityClearance'],
@@ -345,6 +348,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     private readonly workspace: AskWorkspaceQueryPort,
     private readonly sourceContextReader: AskSourceVersionContextReaderPort,
     private readonly hybridRetrieval?: HybridRetrievalCoordinatorPort,
+    private readonly vpEvidenceSearch?: AskKnowledgeEvidenceSearchPort,
   ) {}
 
   async isProjectKnowledgePending(
@@ -705,7 +709,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         ).rows.map((row) => row.evidence_id);
       }
     }
-    const automaticProjectEvidence =
+    const automaticProjectEvidenceFromText =
       snapshot.mode === 'AUTO_PROJECT_KNOWLEDGE'
         ? (
             await this.pool.query<EvidenceRow>(
@@ -769,6 +773,71 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
             )
           ).rows
         : undefined;
+    let vpEvidenceRows: EvidenceRow[] = [];
+    if (snapshot.mode === 'AUTO_PROJECT_KNOWLEDGE' && this.vpEvidenceSearch) {
+      try {
+        const candidateIds = (
+          await this.vpEvidenceSearch.search({
+            projectId: scope.projectId,
+            question: snapshot.question,
+            accessScope: scope.accessScope ?? [],
+            authorizedSensitivities: allowedSensitivities,
+            limit: 12,
+          })
+        ).slice(0, 12);
+        if (candidateIds.length > 0) {
+          vpEvidenceRows = (
+            await this.pool.query<EvidenceRow>(
+              `SELECT spans.evidence_id::text, spans.source_id::text,
+                      spans.source_version_id::text,
+                      spans.quote ->> 'exact' AS exact_quote, spans.sensitivity
+                 FROM evidence.spans AS spans
+                 JOIN asset.sources AS source
+                   ON source.source_id = spans.source_id
+                  AND source.project_id = spans.project_id
+                 JOIN asset.source_versions AS version
+                   ON version.source_version_id = spans.source_version_id
+                  AND version.source_id = source.source_id
+                 JOIN source_product.source_stage3_progress AS progress
+                   ON progress.project_id = spans.project_id
+                  AND progress.source_version_id = spans.source_version_id
+                  AND progress.state = 'STAGE3_COMPLETED'
+                WHERE spans.project_id = $1
+                  AND spans.evidence_id::text = ANY($2::text[])
+                  AND spans.access_scope <@ $3::text[]
+                  AND spans.sensitivity = ANY($4::text[])
+                  AND version.access_scope <@ $3::text[]
+                  AND version.sensitivity = ANY($4::text[])
+                  AND version.version_number = (
+                    SELECT max(newer.version_number)
+                      FROM asset.source_versions AS newer
+                     WHERE newer.source_id = source.source_id
+                  )
+                ORDER BY array_position($2::text[], spans.evidence_id::text)`,
+              [scope.projectId, candidateIds, scope.accessScope ?? [], allowedSensitivities],
+            )
+          ).rows;
+        }
+      } catch (error) {
+        // VP remains a shadow retrieval signal until project cutover. Raw
+        // Evidence still supports Ask if the optional projection is unavailable.
+        console.error(
+          '[ask-vp-evidence] shadow retrieval unavailable',
+          error instanceof Error ? error.name : 'UNKNOWN_ERROR',
+        );
+      }
+    }
+    const automaticProjectEvidence =
+      automaticProjectEvidenceFromText === undefined
+        ? undefined
+        : [
+            ...new Map(
+              [...vpEvidenceRows, ...automaticProjectEvidenceFromText].map((row) => [
+                row.evidence_id,
+                row,
+              ]),
+            ).values(),
+          ].slice(0, 24);
     const evidenceIds =
       snapshot.mode === 'CANONICAL_ONLY'
         ? canonicalEvidenceIds
@@ -922,7 +991,9 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     ];
     const queryPlanRevision =
       snapshot.mode === 'AUTO_PROJECT_KNOWLEDGE'
-        ? ASK_QUERY_PLAN_REVISION_VP1
+        ? this.vpEvidenceSearch
+          ? ASK_QUERY_PLAN_REVISION_VP2
+          : ASK_QUERY_PLAN_REVISION_VP1
         : useHybridCanonicalContext
           ? ASK_QUERY_PLAN_REVISION_V5
           : ASK_QUERY_PLAN_REVISION_V4;

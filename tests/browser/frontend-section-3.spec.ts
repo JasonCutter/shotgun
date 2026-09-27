@@ -331,19 +331,11 @@ test('Section 3 blocks unsafe leave state, warns on offline state, and restores 
   await page.goto('/sources?view=add');
   await page.getByLabel('Label').fill('Guarded draft');
   await page.getByLabel('Direct Text').fill('Transient unsafe-leave evidence');
-  await page.getByRole('button', { name: 'Add intake draft' }).click();
-  await switchProject(page, 'Project B');
-  await expect(page.locator('.project-summary')).toContainText('shotgun');
-  await expect(page.locator('.global-tools [aria-live="polite"]')).toContainText(
-    'Resolve the current Workspace before switching Projects.',
-  );
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('region', { name: 'Commands' })).toHaveCount(0);
-  await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
-
-  await page.getByRole('button', { name: 'Remove Guarded draft' }).click();
-  await switchProject(page, 'Project B');
-  await expect(page.locator('.project-summary')).toContainText('Project B');
+  await page.getByRole('link', { name: 'Source Library' }).click();
+  const guard = page.getByRole('dialog', { name: 'Leave with unsubmitted drafts?' });
+  await expect(guard).toBeVisible();
+  await guard.getByRole('button', { name: 'Discard drafts and leave' }).click();
+  await expect(page).toHaveURL(/\/sources$/);
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();

@@ -164,13 +164,15 @@ const ASK_QUERY_PLAN_REVISION_V4 = 'ask-query-plan-v4';
 const ASK_QUERY_PLAN_REVISION_V5 = 'ask-query-plan-v5';
 const ASK_QUERY_PLAN_REVISION_VP1 = 'ask-query-plan-vp1';
 const ASK_QUERY_PLAN_REVISION_VP2 = 'ask-query-plan-vp2';
+const ASK_QUERY_PLAN_REVISION_VP3 = 'ask-query-plan-vp3';
 
 const isAskQueryPlanWithSourceReplay = (revision: string): boolean =>
   revision === 'ask-query-plan-v3' ||
   revision === ASK_QUERY_PLAN_REVISION_V4 ||
   revision === ASK_QUERY_PLAN_REVISION_V5 ||
   revision === ASK_QUERY_PLAN_REVISION_VP1 ||
-  revision === ASK_QUERY_PLAN_REVISION_VP2;
+  revision === ASK_QUERY_PLAN_REVISION_VP2 ||
+  revision === ASK_QUERY_PLAN_REVISION_VP3;
 
 const isAllowedSensitivity = (
   sensitivity: AskExecutionScope['sensitivityClearance'],
@@ -992,7 +994,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     const queryPlanRevision =
       snapshot.mode === 'AUTO_PROJECT_KNOWLEDGE'
         ? this.vpEvidenceSearch
-          ? ASK_QUERY_PLAN_REVISION_VP2
+          ? ASK_QUERY_PLAN_REVISION_VP3
           : ASK_QUERY_PLAN_REVISION_VP1
         : useHybridCanonicalContext
           ? ASK_QUERY_PLAN_REVISION_V5

@@ -300,7 +300,7 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
       executionScope,
       automatic.answerRun.answerRunId,
     );
-    expect(augmentedContext?.queryPlanRevision).toBe('ask-query-plan-vp2');
+    expect(augmentedContext?.queryPlanRevision).toBe('ask-query-plan-vp3');
     expect(augmentedContext?.evidence.map((item) => item.evidenceId)).toContain(vpLinkedEvidenceId);
     expect(augmentedContext?.evidence.map((item) => item.evidenceId)).not.toContain(
       outOfClearanceEvidenceId,

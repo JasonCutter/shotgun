@@ -60,7 +60,11 @@ export class FakeAIProviderAdapter implements AIProviderAdapterPort {
         | { readonly kind: 'SOURCE_VERSION'; readonly text: string }
       )[];
     };
-    if (parsed.task === 'shotgun-ask-answer-v1' || parsed.task === 'shotgun-ask-answer-vp2') {
+    if (
+      parsed.task === 'shotgun-ask-answer-v1' ||
+      parsed.task === 'shotgun-ask-answer-vp2' ||
+      parsed.task === 'shotgun-ask-answer-vp3'
+    ) {
       const context = parsed.context ?? [];
       const answer = context.length
         ? `${parsed.question ?? 'Answer'}\n\n${context

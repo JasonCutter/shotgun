@@ -1,11 +1,9 @@
-import { useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link, useOutletContext } from 'react-router';
 
-import type { GlobalShellView, ProductSessionView } from '@shotgun/api-client';
+import type { GlobalShellView } from '@shotgun/api-client';
 
 import { useAppRuntime } from '../app/providers.js';
-import { productSessionQueryKey, sessionBoundaryQueryKey } from '../app/query-keys.js';
 import { ErrorState } from '../components/error-state.js';
 import { LoadingState } from '../components/loading-state.js';
 import { useProductLocalization } from '../localization/product-localization.js';
@@ -14,68 +12,6 @@ import {
   decodeRestorableBrowserDrafts,
 } from '../section3/browser-drafts.js';
 import { homeActionCenterQueryOptions } from '../section3/section3-queries.js';
-import { sessionQueryOptions } from '../session/session-query.js';
-
-/** A fresh personal VP space uses the existing atomic Project bootstrap internally. */
-const AutoBootstrapKnowledgeSpace = () => {
-  const { apiClient } = useAppRuntime();
-  const queryClient = useQueryClient();
-  const sessionQuery = useQuery(sessionQueryOptions(apiClient));
-  const session = sessionQuery.data;
-  const bootstrapQuery = useQuery({
-    queryKey: [
-      'vp',
-      'auto-knowledge-space',
-      session?.principal.id,
-      session?.apiVersion === '2.0.0' ? session.projectAccessRevision : '0',
-    ],
-    enabled: Boolean(session && !session.activeProject),
-    retry: false,
-    queryFn: async (): Promise<ProductSessionView> => {
-      if (!session || session.activeProject)
-        throw new Error('A new knowledge space is not needed.');
-      try {
-        await apiClient.createFirstProject({
-          name: 'Shotgun',
-          projectAccessRevision:
-            session.apiVersion === '2.0.0' ? session.projectAccessRevision : '0',
-          clientRequestId: crypto.randomUUID(),
-          idempotencyKey: crypto.randomUUID(),
-        });
-      } catch (error) {
-        // A lost response can still mean the atomic bootstrap committed.
-        const current = await apiClient.getSession();
-        if (current.activeProject) return current;
-        throw error;
-      }
-      const current = await apiClient.getSession();
-      if (!current.activeProject) throw new Error('The knowledge space is not ready yet.');
-      return current;
-    },
-  });
-
-  useEffect(() => {
-    if (!bootstrapQuery.data?.activeProject) return;
-    queryClient.setQueryData(productSessionQueryKey, bootstrapQuery.data);
-    queryClient.setQueryData(sessionBoundaryQueryKey, (current: unknown) =>
-      typeof current === 'object' && current !== null
-        ? { ...current, session: bootstrapQuery.data }
-        : current,
-    );
-  }, [bootstrapQuery.data, queryClient]);
-
-  if (sessionQuery.error || bootstrapQuery.error) {
-    return (
-      <ErrorState
-        error={sessionQuery.error ?? bootstrapQuery.error}
-        onRetry={() => {
-          void (sessionQuery.error ? sessionQuery.refetch() : bootstrapQuery.refetch());
-        }}
-      />
-    );
-  }
-  return <LoadingState message="지식 공간을 준비하고 있습니다…" />;
-};
 
 const readBrowserDrafts = (shell: GlobalShellView) => {
   if (!shell.activeProject) return [];
@@ -107,9 +43,7 @@ export const HomePage = () => {
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const homeQuery = useQuery(homeActionCenterQueryOptions(apiClient, shell));
 
-  if (!shell.activeProject) {
-    return <AutoBootstrapKnowledgeSpace />;
-  }
+  if (!shell.activeProject) return <LoadingState message="지식 공간을 준비하고 있습니다…" />;
   if (homeQuery.isPending) return <LoadingState message={t('home.loading')} />;
   if (homeQuery.error) {
     return (

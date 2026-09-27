@@ -337,15 +337,15 @@ const enUS = {
   'ask.provider_eligibility_unavailable':
     'Provider eligibility could not be verified. Submission remains unavailable.',
   'ask.provider_eligibility.standing_policy_disabled':
-    'Automatic AI processing is disabled for this Project.',
+    'Automatic AI processing is not configured for this knowledge space.',
   'ask.provider_eligibility.standing_policy_provider_mismatch':
     'Automatic AI processing is bound to a different configured provider.',
   'ask.provider_eligibility.deployment_policy_blocked':
-    'Current deployment policy does not permit sending the Project context required for this question to the configured AI provider.',
+    'Current deployment policy does not permit sending the knowledge context required for this question to the configured AI provider.',
   'ask.provider_eligibility.project_approval_required':
-    'Project privacy approval is required before the context for this question can be sent to the configured AI provider.',
+    'Privacy authorization is required before the context for this question can be sent to the configured AI provider.',
   'ask.provider_eligibility.restricted_context_blocked':
-    'Restricted Project context cannot be sent to the configured AI provider.',
+    'Restricted knowledge context cannot be sent to the configured AI provider.',
   'ask.submission_unavailable': 'Question submission is not available for this conversation.',
   'ask.current_conversation': '(current conversation)',
   'ask.conversation_list': 'Conversations',
@@ -789,7 +789,7 @@ const enUS = {
   'discovery.resource.source': 'Source',
   'discovery.resource.source_version': 'Source version',
   'discovery.resource.compiled_truth_item': 'Compiled Truth item',
-  'enum.ask_mode.auto_project_knowledge': 'Ask across my project materials',
+  'enum.ask_mode.auto_project_knowledge': 'Ask across all my sources',
   'enum.ask_mode.canonical_only': 'Verified knowledge only',
   'enum.ask_mode.source_exploration': 'Use selected sources',
   'enum.ask_mode.hybrid': 'Verified knowledge + selected sources',
@@ -1206,15 +1206,15 @@ const koKR: Record<ProductMessageKey, string> = {
   'ask.provider_eligibility_unavailable':
     '제공자 사용 가능 여부를 확인하지 못했습니다. 질문을 제출할 수 없습니다.',
   'ask.provider_eligibility.standing_policy_disabled':
-    '이 프로젝트의 AI 자동 처리가 꺼져 있습니다.',
+    '이 지식 공간의 AI 자동 처리가 설정되지 않았습니다.',
   'ask.provider_eligibility.standing_policy_provider_mismatch':
     'AI 자동 처리가 현재 구성된 제공자와 다른 제공자에 연결되어 있습니다.',
   'ask.provider_eligibility.deployment_policy_blocked':
-    '현재 배포 정책에서는 이 질문에 필요한 프로젝트 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
+    '현재 배포 정책에서는 이 질문에 필요한 지식 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
   'ask.provider_eligibility.project_approval_required':
-    '이 질문에 필요한 프로젝트 내용을 AI 제공자에게 보내려면 프로젝트 개인정보 승인이 필요합니다.',
+    '이 질문에 필요한 지식 내용을 AI 제공자에게 보내려면 개인정보 전송 허가가 필요합니다.',
   'ask.provider_eligibility.restricted_context_blocked':
-    '제한된 프로젝트 내용은 구성된 AI 제공자에게 보낼 수 없습니다.',
+    '전송이 제한된 지식 내용은 구성된 AI 제공자에게 보낼 수 없습니다.',
   'ask.submission_unavailable': '이 대화에서는 질문을 제출할 수 없습니다.',
   'ask.current_conversation': '(현재 대화)',
   'ask.conversation_list': '대화',
@@ -1912,7 +1912,10 @@ export const ProductLocalizationProvider = ({
     queryFn: () => apiClient.getPrincipalPreferences(),
     staleTime: Number.POSITIVE_INFINITY,
   });
-  const locale = resolveProductLocale(preferences.data?.preferences['locale']);
+  const locale = resolveProductLocale(
+    preferences.data?.preferences['locale'] ??
+      (typeof navigator === 'undefined' ? undefined : navigator.language),
+  );
   const value = useMemo<ProductLocalizationValue>(
     () => ({ locale, t: (key) => dictionaries[locale][key] }),
     [locale],

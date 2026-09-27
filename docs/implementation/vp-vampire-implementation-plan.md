@@ -147,3 +147,11 @@ VP-1이 먼저 사용자 가치를 제공한다. VP-2/3 실패가 VP-1의 원문
 현재 로컬 DB의 읽기 전용 조사에서는 활성 Project 하나(`JasonMemo`), Source 2건, DeepSeek 자격 증명 1건과 활성 `deepseek-flash` 구성·상시 처리 정책이 확인됐다. 이 조사는 데이터 변경 없이 수행했다. 따라서 여러 Project를 합치는 기능은 현재 제품 출시에 필요하지 않다. 기존 자료를 실제로 제거하는 작업은 새 VP의 제품 여정과 실행 환경이 검증된 뒤 수행한다.
 
 OSS Integration Decision은 기존 Role Matrix의 gbrain Search/Graph `REFERENCE_ONLY`, ddsyasas UX `REFERENCE_ONLY`, PostgreSQL Port `AUGMENT`를 유지한다. 외부 OSS의 Project/namespace DB를 공통 권위로 채택하지 않는다. 새로운 빈 공간의 접근·검색 의미는 Shotgun Port가 소유한다. 롤백은 새 VP 실행 대상을 중지하고 이전 실행 설정으로 복귀하는 방식이다. 이전 자료를 새 공간에 혼합하지 않는다.
+
+## 11. 2026-09-27 빈 공간 기동 검증
+
+- 별도 빈 PostgreSQL DB `shotgun_vp`에 최신 마이그레이션을 적용하고 첫 접속에서 내부 지식 공간 하나를 자동 생성했다. 라우트 진입 시 공간을 먼저 준비하므로 `/sources?view=add` 직접 접속에서도 설정 API와 자료 화면이 같은 공간을 사용한다.
+- 기존 DB에서 **DeepSeek 자격 증명만** 메모리 안에서 복호화·재암호화해 새 공간에 설정하는 `scripts/vp-configure-fresh-space.ts`를 추가했다. 기존 Source·대화·주장·Canonical·Review는 복사하지 않는다. 설정은 기존 Vault, AI Configuration, 개인정보 전송 proposal/approval, Standing Policy 계약을 사용하고 재실행 시 중복 revision을 만들지 않는다. 스크립트에는 원본/대상 DB URL과 동일한 master key가 필요하며 URL·비밀값을 출력하지 않는다.
+- 별도 검증 DB `shotgun_vp_route`에서 직접 자료 화면 진입 → 테스트 텍스트 투입 → 자동 VP 주장 생성 → 질문 → DeepSeek 답변과 pinned Evidence 링크까지 실제 브라우저로 확인했다. 첫 세션의 `401`은 로컬 Owner 세션 bootstrap이 처리하며, 이후 요청에 Project context 오류는 없었다.
+- 같은 검증 DB에 상충하는 자료 B를 넣자 DeepSeek 관계 작업은 `CONTRADICTS`를 기록했고, 재질문 답변은 두 근거를 인용하며 판단 불가를 명시했다. 이어 A의 수정 버전을 투입하자 현재 주장은 새 버전으로 교체됐고, 재질문 인용은 이전 A 버전을 사용하지 않았다. 모델이 Shotgun의 최신 활성 버전 선택을 알 수 있도록 Ask prompt를 `vp3`로 개정해 최신 자료 기준 답변을 실제 확인했다.
+- 이 검증은 합성 텍스트의 A/B/수정 버전 수직 경로다. 완전한 epoch 수렴·재생, 다량 후보의 비용 상한, 모든 파일 형식, 설치된 Desktop 런처와 `main` 병합은 아직 출시 Gate에 남아 있다. `shotgun_vp_route`는 검증용이며 최종 사용자 자료가 들어갈 대상은 `shotgun_vp`다.

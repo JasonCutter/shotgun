@@ -192,6 +192,72 @@ describe('Product route guard authorization', () => {
     expect(await screen.findByRole('heading', { name: 'Home' })).toBeTruthy();
   });
 
+  it('creates the internal knowledge space before guarding a direct Sources link', async () => {
+    let created = false;
+    const getRouteGuardDecision = vi.fn(async () => ({
+      schemaVersion: '1.0.0' as const,
+      decision: 'ALLOW' as const,
+      masked: false,
+      message: 'Allowed.',
+      accessRevision: 'a1',
+      policyContextRevision: 'p1',
+    }));
+    const createFirstProject = vi.fn(async () => {
+      created = true;
+      return { outcome: { status: 'COMPLETED' }, resource: { id: 'project-1' } };
+    });
+    const runtime = createRuntime(
+      {
+        getSession: vi.fn(async () => (created ? activeSession : bootstrapSession)),
+        createFirstProject: createFirstProject as unknown as ShotgunApiClient['createFirstProject'],
+        getRouteGuardDecision,
+        getGlobalShell: vi.fn(async (): Promise<GlobalShellView> => ({
+          schemaVersion: '1.0.0',
+          principalId: 'principal-1',
+          sessionId: 'session-1',
+          activeProject: created
+            ? { id: 'project-1', label: 'Shotgun', sensitivityClearance: 'private' }
+            : null,
+          accessibleProjects: created
+            ? [
+                {
+                  id: 'project-1',
+                  label: 'Shotgun',
+                  isOwner: true,
+                  sensitivityClearance: 'private',
+                },
+              ]
+            : [],
+          navigation: [],
+          features: [],
+          readiness: [],
+          background: { activeCount: 0, failedCount: 0 },
+          notifications: { unreadCount: 0, presentationRevision: 'n1' },
+          accessRevision: created ? 'a1' : 'a0',
+          policyContextRevision: 'p1',
+          projectionRevision: 'pr1',
+          fetchedAt: '2026-09-27T00:00:00.000Z',
+        })),
+      },
+      bootstrapSession,
+    );
+    const router = createMemoryRouter(createAppRouteObjects(runtime), {
+      initialEntries: ['/sources?view=add'],
+    });
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+    await waitFor(() => expect(getRouteGuardDecision).toHaveBeenCalledTimes(1));
+    expect(createFirstProject).toHaveBeenCalledTimes(1);
+    expect(getRouteGuardDecision).toHaveBeenCalledWith(
+      { routeId: 'sources', href: '/sources' },
+      undefined,
+      expect.any(Object),
+    );
+  });
+
   it('invokes parent getRouteGuardDecision with settings routeId and renders AI workspace when ALLOWed', async () => {
     const getRouteGuardDecision = vi.fn().mockResolvedValue({
       schemaVersion: '1.0.0',
@@ -257,7 +323,7 @@ describe('Product route guard authorization', () => {
       decision: 'ALLOW',
       masked: false,
     });
-    const runtime = createRuntime({ getRouteGuardDecision }, bootstrapSession);
+    const runtime = createRuntime({ getRouteGuardDecision });
     const router = createMemoryRouter(createAppRouteObjects(runtime), {
       initialEntries: ['/settings/projects'],
     });
@@ -268,7 +334,7 @@ describe('Product route guard authorization', () => {
       </AppProviders>,
     );
 
-    expect(await screen.findByRole('heading', { name: 'Create your first Project' })).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Manage Projects' })).toBeTruthy();
     expect(getRouteGuardDecision).toHaveBeenCalledWith(
       { routeId: 'settings', href: '/settings' },
       undefined,
@@ -336,7 +402,7 @@ describe('Product route guard authorization', () => {
       }
       return { schemaVersion: '1.0.0', decision: 'ALLOW', masked: false };
     });
-    const runtime = createRuntime({ getRouteGuardDecision }, bootstrapSession);
+    const runtime = createRuntime({ getRouteGuardDecision });
     const router = createMemoryRouter(createAppRouteObjects(runtime), {
       initialEntries: ['/settings/projects'],
     });

@@ -75,8 +75,13 @@ describe('StructuredAskAnswerProviderAdapter citation reference binding', () => 
       ]),
       mode: 'AUTO_PROJECT_KNOWLEDGE',
     });
-    expect(JSON.parse(generation!.prompt).task).toBe('shotgun-ask-answer-vp2');
+    expect(JSON.parse(generation!.prompt).task).toBe('shotgun-ask-answer-vp3');
+    expect(JSON.parse(generation!.prompt).sourceVersionSelection).toBe(
+      'LATEST_ACTIVE_AT_ANSWER_RUN',
+    );
     expect(generation!.systemInstruction).toContain('describe both claims and cite both sources');
+    expect(generation!.systemInstruction).toContain('Older SourceVersions were excluded');
+    expect(generation!.systemInstruction).toContain('Do not put opaque Source IDs');
     expect(result.citations).toEqual([
       { evidenceId: '550e8400-e29b-41d4-a716-446655440000' },
       { evidenceId: '660e8400-e29b-41d4-a716-446655440000' },

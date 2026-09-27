@@ -6,6 +6,10 @@
 
 이 배정은 **초기 아키텍처 기준선**이지 영구 채택 목록이 아니다. 개발 과정에서 license, security, maintenance, benchmark, API 안정성, Fork 비용과 Shotgun 계약 정합성에 따라 교체·축소·제외할 수 있다.
 
+### VP 활성 경로의 재사용 경계
+
+[ADR-172](../adr/ADR-172-vp-autonomous-knowledge-authority.md)의 VP Knowledge Ledger·Decision·Ask는 Shotgun의 SourceVersion/Evidence/접근 의미를 소유한다. 아래 Canonical·Approval 기준은 기존 승인형 경로에 한정한다. VP에서는 PostgreSQL 저장·Job·검색 Adapter와 기존 형식 변환기를 재사용하고, gbrain의 전체 Runtime/DB를 원장으로 도입하지 않는다. `garrytan/gbrain` Job·Graph, `ddsyasas/llm-wiki` 두 동작 UX, OpenKnowledge 활동·시각화는 `REFERENCE_ONLY`로 유지한다. `lucasastorian/llmwiki`에서 검증된 locator 추출 경계는 유지한다. 각 실제 코드 채택·추출은 Source Registry의 고정 commit·license·security·Contract 결과를 요구한다. DeepSeek는 현재 VP Decision Port의 일반 AI 구현이며, Jev는 API·품질·비용 검증이 가능해질 때까지 `DEFER`다.
+
 ## 2. 상태 분류
 
 | 상태                   | 의미                                            |

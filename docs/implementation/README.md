@@ -6,6 +6,12 @@
 
 이 디렉터리는 Shotgun Architecture Design Documents와 Module Architecture를 실제 개발 작업으로 전환하는 실행 계획을 관리한다.
 
+## VP 활성 제품 경로
+
+[ADR-172](../architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md)와 [VP 구현계획](./vp-vampire-implementation-plan.md)이 빈 단일 지식 공간의 **자료 투입 → 자동 지식화 → 질문** 경로를 정의한다. 아래 Phase 1–6 승인형 Canonical 단계와 Stage 표는 기존 경로의 구현·감사 기준이다. VP에서는 사용자 Review·Approval 없이 Evidence를 검증한 VP Knowledge Ledger가 활성 지식 권위를 가진다. 이 제품 경로의 완료는 VP 구현계획의 VP-0–VP-4 Gate와 [Definition of Done](./definition-of-done.md)의 공통 Module·Flow·Product·Architecture·OSS Gate를 모두 통과해야 한다.
+
+기존 Canonical/Approval 데이터는 새 공간으로 이관하지 않는다. SourceVersion·Evidence·접근 경계와 외부 Action 승인은 VP에서도 유지한다. 미완료 VP Gate를 기존 Stage의 완료 판정으로 대체하지 않는다.
+
 ## 1. 기준 문서
 
 - [Knowledge Flow 기준본](../SHOTGUN_KNOWLEDGE_FLOW_BASELINE_v1.0.html)

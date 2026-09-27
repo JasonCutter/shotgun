@@ -89,7 +89,14 @@ const pairJoins = `
 
 /** All pair selection and writes are scoped to current, immutable Evidence. */
 export class PostgresVPRelationJobs implements VPRelationJobStorePort {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly maxDailyProviderAttempts = 100,
+  ) {
+    if (!Number.isSafeInteger(maxDailyProviderAttempts) || maxDailyProviderAttempts < 1) {
+      throw new Error('VP daily provider attempt ceiling must be a positive integer.');
+    }
+  }
 
   async enqueueCurrentPairs(policyRevision: string, limit = 32): Promise<number> {
     if (!policyRevision.trim()) throw new Error('VP relation policy revision is required.');
@@ -152,6 +159,20 @@ export class PostgresVPRelationJobs implements VPRelationJobStorePort {
     return withSafePostgresTransaction(
       this.pool,
       async (client) => {
+        await client.query(
+          `INSERT INTO vp.relation_call_budget (budget_day, claimed_count)
+           VALUES (CURRENT_DATE, 0) ON CONFLICT DO NOTHING`,
+        );
+        const budget = await client.query<{ claimed_count: number }>(
+          `SELECT claimed_count FROM vp.relation_call_budget
+            WHERE budget_day = CURRENT_DATE FOR UPDATE`,
+        );
+        if (
+          (budget.rows[0]?.claimed_count ?? this.maxDailyProviderAttempts) >=
+          this.maxDailyProviderAttempts
+        ) {
+          return undefined;
+        }
         const selected = await client.query<PairRow>(
           `SELECT ${pairProjection}
              FROM vp.relation_jobs AS job
@@ -168,6 +189,10 @@ export class PostgresVPRelationJobs implements VPRelationJobStorePort {
         const row = selected.rows[0];
         if (!row) return undefined;
         const leaseToken = randomUUID();
+        await client.query(
+          `UPDATE vp.relation_call_budget SET claimed_count = claimed_count + 1
+            WHERE budget_day = CURRENT_DATE`,
+        );
         await client.query(
           `UPDATE vp.relation_jobs
               SET status = 'RUNNING', lease_token = $2,

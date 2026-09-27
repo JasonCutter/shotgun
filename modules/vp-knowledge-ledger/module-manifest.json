@@ -10,6 +10,7 @@
       "vp.decision_receipts",
       "vp.relations",
       "vp.relation_jobs",
+      "vp.relation_call_budget",
       "vp.history_events"
     ],
     "readsViaPorts": ["VPKnowledgeLedgerPort", "VPRelationJobStorePort", "VPRelationDecisionPort"],

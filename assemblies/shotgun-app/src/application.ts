@@ -1518,7 +1518,10 @@ export const startShotgunApplication = async (
       // evaluated. The existing project AI resolver enforces credentials,
       // standing policy, deployment egress and the DeepSeek-only provider pin.
       const vpRelationWorker = new VPRelationJobWorker(
-        new PostgresVPRelationJobs(pool),
+        new PostgresVPRelationJobs(
+          pool,
+          Number(process.env.VP_MAX_DAILY_RELATION_PROVIDER_ATTEMPTS ?? '100'),
+        ),
         new VPRelationDecisionRouter(
           undefined,
           new GeneralAIVPDecisionAdapter(stage4AIExecutionResolver),

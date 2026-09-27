@@ -36,6 +36,8 @@ describe('VP validated direct assertion ledger', () => {
   });
 
   it('records direct claims once, links exact text, filters security, and retires old versions', async () => {
+    // Upstream fixture cleanup may cascade through an empty VP ledger.
+    await expect(pool.query('TRUNCATE vp.assertions CASCADE')).resolves.toBeDefined();
     const suffix = randomUUID();
     const projectId = `vp-ledger-${suffix}`;
     const auth = new PostgresAuthRepository(pool);
@@ -182,6 +184,9 @@ describe('VP validated direct assertion ledger', () => {
     const ledger = new PostgresVPKnowledgeLedger(runtimePool);
     expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
     expect(await ledger.ingestValidatedDirectClaims()).toBe(0);
+    await expect(pool.query('TRUNCATE vp.assertions CASCADE')).rejects.toThrow(
+      /VP ledger .* cannot be truncated/,
+    );
 
     const second = await seedCandidate(2, 'public');
     expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
@@ -359,6 +364,24 @@ describe('VP validated direct assertion ledger', () => {
     const jobs = new PostgresVPRelationJobs(runtimePool);
     expect(await jobs.enqueueCurrentPairs('vp-test-policy')).toBe(1);
     expect(await jobs.enqueueCurrentPairs('vp-test-policy')).toBe(0);
+    await runtimePool.query(
+      `INSERT INTO vp.relation_call_budget (budget_day, claimed_count)
+       VALUES (CURRENT_DATE, 1) ON CONFLICT (budget_day)
+       DO UPDATE SET claimed_count = 1`,
+    );
+    expect(
+      await new PostgresVPRelationJobs(runtimePool, 1).claimNext('vp-test-policy'),
+    ).toBeUndefined();
+    expect(
+      (
+        await pool.query<{ status: string }>(
+          `SELECT status FROM vp.relation_jobs WHERE policy_revision = 'vp-test-policy'`,
+        )
+      ).rows[0]?.status,
+    ).toBe('PENDING');
+    await runtimePool.query(
+      `UPDATE vp.relation_call_budget SET claimed_count = 0 WHERE budget_day = CURRENT_DATE`,
+    );
     const job = await jobs.claimNext('vp-test-policy');
     expect(job).toBeDefined();
     expect(new Set([job!.left.claimText, job!.right.claimText])).toEqual(

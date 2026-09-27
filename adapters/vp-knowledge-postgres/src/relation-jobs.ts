@@ -150,7 +150,13 @@ export class PostgresVPRelationJobs implements VPRelationJobStorePort {
                AND existing.right_assertion_id = right_claim.assertion_id
                AND existing.policy_revision = $1
           )
-        ORDER BY left_claim.created_at, right_claim.created_at,
+        -- A large document can produce thousands of unrelated pairs. Resolve
+        -- likely cross-source agreement/conflict before exhausting the daily
+        -- provider budget on older, unrelated assertions from one document.
+        -- This changes priority only: low-similarity pairs remain eligible.
+        ORDER BY (left_claim.source_id <> right_claim.source_id) DESC,
+                 similarity(left_claim.claim_text, right_claim.claim_text) DESC,
+                 GREATEST(left_claim.created_at, right_claim.created_at) DESC,
                  left_claim.assertion_id, right_claim.assertion_id
         LIMIT $2
        ON CONFLICT DO NOTHING RETURNING job_id::text`,

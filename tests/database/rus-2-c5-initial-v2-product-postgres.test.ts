@@ -50,7 +50,7 @@ describeDatabase('RUS-2 C5 fresh initial V2 Product PostgreSQL lifecycle', () =>
     await pool?.end();
   });
 
-  it('enters V2 through the Product Candidate path and converges Home and Review', async () => {
+  it('enters V2 through the Product Candidate path while keeping Home review-free', async () => {
     if (!pool) return;
 
     const suffix = randomUUID();
@@ -570,9 +570,7 @@ describeDatabase('RUS-2 C5 fresh initial V2 Product PostgreSQL lifecycle', () =>
       });
 
       const afterAHome = await apiClient.getHomeActionCenter();
-      expect(afterAHome.attention).toEqual(
-        expect.arrayContaining([expect.objectContaining({ kind: 'REVIEW_DECISION', projectId })]),
-      );
+      expect(afterAHome.attention.some((item) => item.kind === 'REVIEW_DECISION')).toBe(false);
       const afterAGuard = await apiClient.getRouteGuardDecision(reviewRoute);
       expect(afterAGuard).toMatchObject({
         decision: 'ALLOW',

@@ -1460,7 +1460,9 @@ const decodeEvidenceItem = (input: unknown, path: string): EvidenceItemView => {
       `${path}.origin`,
     ),
     ...(exactText === undefined ? {} : { exactText }),
-    locators: boundedArray(value['locators'], `${path}.locators`, 20).map((entry, index) =>
+    // A document block may have up to 256 physical selectors plus its text
+    // position and quote. Keep the full source map available to Evidence views.
+    locators: boundedArray(value['locators'], `${path}.locators`, 258).map((entry, index) =>
       decodeLocator(entry, `${path}.locators[${index}]`),
     ),
     createdAt: timestamp(value['createdAt'], `${path}.createdAt`),

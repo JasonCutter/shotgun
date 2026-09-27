@@ -693,6 +693,48 @@ describe('Frontend Phase 2 Section 1 Sources contracts', () => {
     ).toThrow(/suffix must be a string when present/);
   });
 
+  it('keeps PDF paragraph locators through the evidence response boundary', () => {
+    const item = {
+      evidenceId: 'evidence-long-pdf-paragraph',
+      sourceId: 'source-1',
+      sourceVersionId: 'version-1',
+      revisionId: 'revision-1',
+      label: 'Long PDF paragraph',
+      origin: 'ORIGINAL',
+      exactText: 'Long PDF paragraph',
+      locators: [
+        { type: 'TextPositionSelector', start: 0, end: 18, unit: 'unicode-code-point' },
+        { type: 'TextQuoteSelector', exact: 'Long PDF paragraph' },
+        { type: 'PageSelector', page: 6 },
+        ...Array.from({ length: 255 }, (_, index) => ({
+          type: 'BoundingBoxSelector',
+          page: 6,
+          x: 10,
+          y: index,
+          width: 100,
+          height: 10,
+          unit: 'pt',
+        })),
+      ],
+      createdAt: now,
+    };
+    const view = {
+      schemaVersion: '1.0.0',
+      projectId: 'project-1',
+      sourceId: 'source-1',
+      sourceVersionId: 'version-1',
+      items: [item],
+      ...revisions,
+    };
+    expect(decodeEvidenceListView(view).items[0]?.locators).toHaveLength(258);
+    expect(() =>
+      decodeEvidenceListView({
+        ...view,
+        items: [{ ...item, locators: [...item.locators, { type: 'PageSelector', page: 7 }] }],
+      }),
+    ).toThrow(/locators/);
+  });
+
   it('accepts only internal Citation return routes and explicit pinned identities', () => {
     expect(
       decodeCitationReturnTarget({

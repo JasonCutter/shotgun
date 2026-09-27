@@ -302,7 +302,8 @@ test('VP browser journey uploads, revises, and answers from the latest source ve
         response.request().method() === 'POST',
     );
     await page.locator('.source-intake-form button[type="submit"]').click();
-    expect((await pdfSubmission).ok()).toBe(true);
+    const pdfResponse = await pdfSubmission;
+    expect(pdfResponse.ok(), `golden.pdf status=${pdfResponse.status()}`).toBe(true);
     await expect(page.getByRole('heading', { name: 'Submission Completed' })).toBeVisible({
       timeout: 30_000,
     });
@@ -358,7 +359,8 @@ test('VP browser journey uploads, revises, and answers from the latest source ve
           response.request().method() === 'POST',
       );
       await page.locator('.source-intake-form button[type="submit"]').click();
-      expect((await submission).ok(), fileName).toBe(true);
+      const formatResponse = await submission;
+      expect(formatResponse.ok(), `${fileName} status=${formatResponse.status()}`).toBe(true);
       await expect(page.getByRole('heading', { name: 'Submission Completed' })).toBeVisible({
         timeout: 30_000,
       });

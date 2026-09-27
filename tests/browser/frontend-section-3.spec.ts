@@ -1,7 +1,5 @@
 import { expect, test } from '@playwright/test';
 
-import { switchProject } from './helpers/hfm-commands.js';
-
 const forbiddenAuthorityHeaders = [
   'x-project-id',
   'x-actor-id',

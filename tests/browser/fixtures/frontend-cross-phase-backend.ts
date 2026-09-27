@@ -390,6 +390,38 @@ export async function startFrontendCrossPhaseBackend() {
      * package directly (Playwright's spec loader does not handle the
      * contracts JSON-schema import attributes).
      */
+    hasEvidenceSelector: async (
+      projectId: string,
+      mediaType: string,
+      selectorType: string,
+    ): Promise<boolean> => {
+      const result = await pool.query<{ ready: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM evidence.spans e
+           JOIN asset.source_versions v ON v.source_version_id = e.source_version_id
+           JOIN asset.sources s ON s.source_id = v.source_id
+           WHERE s.project_id = $1 AND v.media_type = $2
+             AND e.selectors @> $3::jsonb
+         ) AS ready`,
+        [projectId, mediaType, JSON.stringify([{ type: selectorType }])],
+      );
+      return result.rows[0]?.ready ?? false;
+    },
+    sourceHasMediaType: async (
+      projectId: string,
+      sourceId: string,
+      mediaType: string,
+    ): Promise<boolean> => {
+      const result = await pool.query<{ ready: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM asset.sources s
+           JOIN asset.source_versions v ON v.source_id = s.source_id
+           WHERE s.project_id = $1 AND s.source_id = $2::uuid AND v.media_type = $3
+         ) AS ready`,
+        [projectId, sourceId, mediaType],
+      );
+      return result.rows[0]?.ready ?? false;
+    },
     computeDraftRevisionDigest: (input: {
       draftId: string;
       revision: number;

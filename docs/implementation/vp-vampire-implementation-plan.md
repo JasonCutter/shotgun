@@ -131,6 +131,7 @@ VP-1이 먼저 사용자 가치를 제공한다. VP-2/3 실패가 VP-1의 원문
 - VP Global Shell 기능이 활성화되면 소스 상세 화면은 원문·근거·버전 열람과 자동 처리 안내를 표시하고, 수동 `AI 처리 다시 시도`·`시맨틱 비교 실행`·Review 진입은 표시하지 않는다. 구형 승인 경로 자체는 데이터 이행 전까지 보존한다.
 - Home 주의 목록에서 지식 `REVIEW_DECISION`을 제외하고 Review 탐색·Route Guard도 같은 Home 가시성 결과를 사용한다. 외부 실행의 별도 승인과 실패 작업 알림은 유지한다. 과거 미결 Review 데이터를 자동 처리·이관하는 작업은 아직 남아 있다.
 - 한 번 제출 경로에 `.pdf/.html/.htm/.csv/.docx/.xlsx/.pptx` (현재 1 MiB 이하)를 추가했다. 서버가 확장자·media type, PDF·Office 서명 및 텍스트 UTF-8을 대조하고 `document`로 저장한다. 기존 Stage 8 Python 변환기에 원본 바이트를 전달해 페이지·CSS·셀·도형 Evidence를 만든다. 더 큰 파일과 이미지/오디오/영상은 아직 활성화하지 않았다.
+- 실제 브라우저와 PostgreSQL을 연결한 VP 경로에서 PDF·HTML·CSV·DOCX·XLSX·PPTX Golden 파일을 각각 한 번 제출했다. 형식별 페이지·CSS·셀·도형 selector가 Evidence에 저장되고, 질문의 인용 Source가 해당 형식의 파일임을 확인했다. 답변 제공자는 결정적 fake이므로 이 검증은 실제 DeepSeek의 형식별 답변 품질을 입증하지 않는다.
 - DB migration `111_vp_auto_project_ask_mode.sql`은 과거 Ask 모드를 유지하면서 VP 모드를 추가한다. 실제 PostgreSQL 테스트에서 최신 버전과 접근 범위 필터를 확인했다.
 - 이 체크포인트는 **VP-1 완료가 아니다.** 모든 실패 형태의 자동 복구, 문장 간 자동 지식 병합, 후보·Review UI 제거, 빈 단일 지식 공간의 자동 초기화는 아직 검증되지 않았다. Jev Adapter는 현재 필수 경로에서 제외했다. 해당 경로에서 사용자 결정이 요구될 수 있으므로 최종 두 동작 제품 계약을 만족한다고 보고하지 않는다.
 

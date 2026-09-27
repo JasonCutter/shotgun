@@ -8,7 +8,15 @@ import type { ViteDevServer } from 'vite';
 import { tsImport } from 'tsx/esm/api';
 
 type CrossPhaseBackend = {
-  startFrontendCrossPhaseBackend(): Promise<{ close(): Promise<void> }>;
+  startFrontendCrossPhaseBackend(): Promise<{
+    close(): Promise<void>;
+    hasEvidenceSelector(
+      projectId: string,
+      mediaType: string,
+      selectorType: string,
+    ): Promise<boolean>;
+    sourceHasMediaType(projectId: string, sourceId: string, mediaType: string): Promise<boolean>;
+  }>;
 };
 
 const BACKEND = 'http://127.0.0.1:3002';
@@ -17,7 +25,7 @@ const FRONTEND = 'http://127.0.0.1:5174';
 test('VP browser journey uploads, revises, and answers from the latest source version', async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(180_000);
   const fixture = (await tsImport(
     './fixtures/frontend-cross-phase-backend.ts',
     import.meta.url,
@@ -281,6 +289,101 @@ test('VP browser journey uploads, revises, and answers from the latest source ve
       },
     );
     expect(forbidden.ok(), await forbidden.text()).toBe(false);
+
+    // The same one-click path must also deliver binary document evidence to Ask.
+    await page.goto(`${FRONTEND}/sources?view=add`);
+    await page.locator('#source-intake-kind').selectOption('FILE');
+    await page
+      .locator('#source-intake-file')
+      .setInputFiles(path.resolve('tests/fixtures/stage-8/golden.pdf'));
+    const pdfSubmission = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/product-api/frontend/sources/submissions') &&
+        response.request().method() === 'POST',
+    );
+    await page.locator('.source-intake-form button[type="submit"]').click();
+    expect((await pdfSubmission).ok()).toBe(true);
+    await expect(page.getByRole('heading', { name: 'Submission Completed' })).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect
+      .poll(() => backend.hasEvidenceSelector(otherProjectId, 'application/pdf', 'PageSelector'), {
+        timeout: 30_000,
+      })
+      .toBe(true);
+    await page.goto(`${FRONTEND}/ask`);
+    await page.locator('#global-ask-question').fill('What does the Shotgun PDF say?');
+    await page.locator('.global-composer button[type="submit"]').click();
+    const pdfCitation = page.locator('.ask-turn').last().locator('.ask-citation-list a').first();
+    await expect(pdfCitation).toBeVisible({ timeout: 30_000 });
+    const pdfHref = await pdfCitation.getAttribute('href');
+    expect(pdfHref).toBeTruthy();
+    const pdfSourceId = new URL(pdfHref as string, FRONTEND).pathname.split('/').at(-1);
+    expect(pdfSourceId).toBeTruthy();
+    expect(
+      await backend.sourceHasMediaType(otherProjectId, pdfSourceId as string, 'application/pdf'),
+    ).toBe(true);
+
+    const documentFormats = [
+      ['golden.html', 'text/html', 'CssSelector', 'What is Shotgun Format Golden?'],
+      ['golden.csv', 'text/csv', 'CellSelector', 'What is the CSV Status?'],
+      [
+        'golden.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'CellSelector',
+        'What does Shotgun DOCX Golden say?',
+      ],
+      [
+        'golden.xlsx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'CellSelector',
+        'What is the spreadsheet formula =1+1?',
+      ],
+      [
+        'golden.pptx',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'ShapeSelector',
+        'What does Shotgun PPTX Golden say?',
+      ],
+    ] as const;
+    for (const [fileName, mediaType, selectorType, question] of documentFormats) {
+      await page.goto(`${FRONTEND}/sources?view=add`);
+      await page.locator('#source-intake-kind').selectOption('FILE');
+      await page
+        .locator('#source-intake-file')
+        .setInputFiles(path.resolve('tests/fixtures/stage-8', fileName));
+      const submission = page.waitForResponse(
+        (response) =>
+          response.url().endsWith('/product-api/frontend/sources/submissions') &&
+          response.request().method() === 'POST',
+      );
+      await page.locator('.source-intake-form button[type="submit"]').click();
+      expect((await submission).ok(), fileName).toBe(true);
+      await expect(page.getByRole('heading', { name: 'Submission Completed' })).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect
+        .poll(() => backend.hasEvidenceSelector(otherProjectId, mediaType, selectorType), {
+          timeout: 30_000,
+        })
+        .toBe(true);
+
+      await page.goto(`${FRONTEND}/ask`);
+      await page.locator('#global-ask-question').fill(question);
+      await page.locator('.global-composer button[type="submit"]').click();
+      const latestCitations = page.locator('.ask-turn').last().locator('.ask-citation-list a');
+      await expect(latestCitations.first()).toBeVisible({ timeout: 30_000 });
+      const hrefs = await latestCitations.evaluateAll((links) =>
+        links.map((link) => link.getAttribute('href')).filter((href): href is string => !!href),
+      );
+      const matchingCitations = await Promise.all(
+        hrefs.map(async (href) => {
+          const sourceId = new URL(href, FRONTEND).pathname.split('/').at(-1);
+          return sourceId ? backend.sourceHasMediaType(otherProjectId, sourceId, mediaType) : false;
+        }),
+      );
+      expect(matchingCitations.some(Boolean), fileName).toBe(true);
+    }
   } finally {
     await frontend?.close();
     await backend.close();

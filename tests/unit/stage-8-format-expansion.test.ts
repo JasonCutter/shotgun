@@ -124,7 +124,9 @@ describe('Stage 8 format Golden Corpus', () => {
     expect(extracted).toContain('foo\ufffdbar');
     expect(extracted).not.toContain('\u0000');
     expect(output.sourceMap.entries).toContainEqual(
-      expect.objectContaining({ selectors: expect.arrayContaining([expect.objectContaining({ type: 'CellSelector' })]) }),
+      expect.objectContaining({
+        selectors: expect.arrayContaining([expect.objectContaining({ type: 'CellSelector' })]),
+      }),
     );
   });
 

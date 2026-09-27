@@ -381,7 +381,18 @@ type RunPostgresToolOptions = {
 
 const runPostgresTool = async (options: RunPostgresToolOptions): Promise<void> => {
   const connection = connectionEnvironment(options.databaseUrl);
-  const childEnvironment = { ...process.env, ...connection.values };
+  const toolConnection = { ...connection.values };
+  // In docker-compose mode the tool runs inside `db`, where localhost:5433
+  // cannot reach the host-mapped test database. Use Compose service discovery.
+  if (
+    options.mode === 'docker-compose' &&
+    ['localhost', '127.0.0.1', '::1'].includes(toolConnection.PGHOST ?? '') &&
+    toolConnection.PGPORT === '5433'
+  ) {
+    toolConnection.PGHOST = 'db-test';
+    toolConnection.PGPORT = '5432';
+  }
+  const childEnvironment = { ...process.env, ...toolConnection };
   const executable =
     options.mode === 'local'
       ? options.tool === 'pg_dump'
@@ -398,7 +409,7 @@ const runPostgresTool = async (options: RunPostgresToolOptions): Promise<void> =
           'compose',
           'exec',
           '-T',
-          ...Object.keys(connection.values).flatMap((name) => ['-e', name]),
+          ...Object.keys(toolConnection).flatMap((name) => ['-e', name]),
           options.postgresService,
           options.tool,
           ...(options.tool === 'pg_restore' ? [`--dbname=${connection.database}`] : []),

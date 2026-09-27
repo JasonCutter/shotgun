@@ -71,6 +71,7 @@ describe('Frontend Section 3 Product API', () => {
       }),
     );
     expect(shell.features.map((feature) => feature.id)).toEqual([
+      'vp-autonomous-knowledge',
       'global-search',
       'command-palette',
       'cross-project-search',

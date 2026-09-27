@@ -11,7 +11,10 @@ import {
   PostgresEvidenceRepository,
   PostgresTransformationRepository,
 } from '../../adapters/postgres-stage3/src/index.js';
-import { createProductionStage3Pipeline } from '../../adapters/sources-stage3-pipeline/src/index.js';
+import {
+  createProductionStage3Pipeline,
+  SourcesStage3RecoveryDispatcher,
+} from '../../adapters/sources-stage3-pipeline/src/index.js';
 import {
   PostgresSourcesStage3AtomicPersistence,
   PostgresSourcesStage3ProgressRepository,
@@ -335,6 +338,52 @@ describe.runIf(pool)('FE-P5-XP Sources Stage 3 failure recovery', () => {
         (row) => row.sensitivity === 'public' && row.access_scope.join(',') === 'owner',
       ),
     ).toBe(true);
+  });
+
+  it('VP automatic intake is finalized by the recovery worker without a user retry', async () => {
+    const context = await seedContext();
+    const submissionId = randomUUID();
+    const input = {
+      ...(await submitInput(
+        context,
+        submissionId,
+        ['VP recovery produces cited evidence after the first Stage 3 failure.'],
+        context.commandId,
+      )),
+      duplicateHandling: 'AUTOMATIC' as const,
+    };
+    const service = new PostgresSourcesProductService(
+      pool!,
+      new SealedSourcesStagingService(
+        assetStorage,
+        'sources-recovery-staging-secret-32-characters',
+      ),
+      new FailOnceStage3Pipeline(stage3()),
+    );
+    await expect(service.submit(input)).rejects.toThrow('Stage 3 transient failure');
+    expect((await service.getSubmission(input.scope, submissionId))?.state).toBe(
+      'OUTCOME_INDETERMINATE',
+    );
+
+    const dispatcher = new SourcesStage3RecoveryDispatcher(
+      new PostgresSourcesStage3ProgressRepository(pool!),
+      stage3(),
+      { reconcileCompleted: () => service.reconcileCompletedAutomaticSubmissions() },
+    );
+    expect(await dispatcher.dispatchOnce()).toBe('SUCCEEDED');
+    expect(await dispatcher.dispatchOnce()).toBe('SUCCEEDED');
+    expect(await dispatcher.dispatchOnce()).toBe('EMPTY');
+    const completed = await service.getSubmission(input.scope, submissionId);
+    expect(completed?.state).toBe('SUCCEEDED');
+    expect(completed?.items[0]?.state).toBe('SUCCEEDED');
+    const sourceVersionId = completed?.items[0]?.producedResource?.sourceVersionId;
+    expect(sourceVersionId).toBeDefined();
+    const evidence = await pool!.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM evidence.spans
+        WHERE project_id = $1 AND source_version_id = $2`,
+      [context.projectId, sourceVersionId],
+    );
+    expect(Number(evidence.rows[0]?.count ?? 0)).toBeGreaterThan(0);
   });
 
   it('mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL', async () => {

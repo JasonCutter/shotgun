@@ -11,6 +11,26 @@ import {
 } from './frontend-sources.js';
 
 export type SourcesStagingInputKind = 'DIRECT_TEXT' | 'FILE' | 'URL';
+export type SourcesStagingMediaType =
+  | 'text/plain'
+  | 'text/markdown'
+  | 'text/html'
+  | 'text/csv'
+  | 'application/pdf'
+  | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  | 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
+export const SOURCES_STAGING_MEDIA_TYPES: readonly SourcesStagingMediaType[] = [
+  'text/plain',
+  'text/markdown',
+  'text/html',
+  'text/csv',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+];
 
 export type SourcesStagingReceipt = {
   readonly schemaVersion: typeof SOURCES_SCHEMA_VERSION;
@@ -19,7 +39,7 @@ export type SourcesStagingReceipt = {
   readonly kind: SourcesStagingInputKind;
   readonly label: string;
   readonly stagingReference: string;
-  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly mediaType: SourcesStagingMediaType;
   readonly sizeBytes: number;
   readonly contentHash: string;
   readonly fileName?: string;
@@ -30,6 +50,8 @@ export type SourcesStagingReceipt = {
 type SourceClassificationRequest = {
   /** Browser request only; the Server resolves the effective Resource classification. */
   readonly requestedClassification?: SourcesSensitivity;
+  /** An existing Source to version; the Server verifies project and security ownership. */
+  readonly requestedSourceId?: string;
 };
 
 export type StagedSourcesIntakeInput = SourceClassificationRequest &
@@ -45,7 +67,7 @@ export type StagedSourcesIntakeInput = SourceClassificationRequest &
         readonly kind: 'FILE';
         readonly label: string;
         readonly fileName: string;
-        readonly mediaType: 'text/plain' | 'text/markdown';
+        readonly mediaType: SourcesStagingMediaType;
         readonly stagingReference: string;
       }
     | {
@@ -59,6 +81,8 @@ export type StagedSourcesIntakeInput = SourceClassificationRequest &
 export type SubmitStagedSourcesIntakeCommandPayload = {
   readonly draftId: string;
   readonly inputs: readonly StagedSourcesIntakeInput[];
+  /** VP intake resolves exact duplicates deterministically without a user decision. */
+  readonly duplicateHandling?: 'AUTOMATIC';
 };
 
 const record = (value: unknown, path: string): Record<string, unknown> => {
@@ -115,7 +139,11 @@ export const decodeSubmitStagedSourcesIntakePayload = (
   input: unknown,
 ): SubmitStagedSourcesIntakeCommandPayload => {
   const value = record(input, 'sources.intake.submit.v1.payload');
-  onlyKeys(value, ['draftId', 'inputs'], 'sources.intake.submit.v1.payload');
+  onlyKeys(value, ['draftId', 'inputs', 'duplicateHandling'], 'sources.intake.submit.v1.payload');
+  if (value['duplicateHandling'] !== undefined && value['duplicateHandling'] !== 'AUTOMATIC') {
+    throw new FrontendContractError('INVALID_REQUEST', 'payload.duplicateHandling is unsupported.');
+  }
+  const automatic = value['duplicateHandling'] === 'AUTOMATIC';
   if (
     !Array.isArray(value['inputs']) ||
     value['inputs'].length === 0 ||
@@ -133,16 +161,37 @@ export const decodeSubmitStagedSourcesIntakePayload = (
       item['requestedClassification'],
       `${path}.requestedClassification`,
     );
+    const requestedSourceId = item['requestedSourceId'];
+    if (requestedSourceId !== undefined) {
+      if (
+        !automatic ||
+        typeof requestedSourceId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedSourceId)
+      ) {
+        throw new FrontendContractError(
+          'INVALID_REQUEST',
+          `${path}.requestedSourceId is unsupported.`,
+        );
+      }
+    }
     const common = {
       itemId: stringValue(item['itemId'], `${path}.itemId`, 200),
       label: stringValue(item['label'], `${path}.label`, 500),
       stagingReference: stagingReference(item['stagingReference'], `${path}.stagingReference`),
       ...(classification === undefined ? {} : { requestedClassification: classification }),
+      ...(requestedSourceId === undefined ? {} : { requestedSourceId }),
     };
     if (item['kind'] === 'DIRECT_TEXT') {
       onlyKeys(
         item,
-        ['itemId', 'kind', 'label', 'stagingReference', 'requestedClassification'],
+        [
+          'itemId',
+          'kind',
+          'label',
+          'stagingReference',
+          'requestedClassification',
+          'requestedSourceId',
+        ],
         path,
       );
       return { kind: 'DIRECT_TEXT', ...common };
@@ -158,27 +207,32 @@ export const decodeSubmitStagedSourcesIntakePayload = (
           'mediaType',
           'stagingReference',
           'requestedClassification',
+          'requestedSourceId',
         ],
         path,
       );
       const mediaType = item['mediaType'];
-      if (mediaType !== 'text/plain' && mediaType !== 'text/markdown') {
-        throw new FrontendContractError(
-          'INVALID_REQUEST',
-          `${path}.mediaType must be text/plain or text/markdown.`,
-        );
+      if (!SOURCES_STAGING_MEDIA_TYPES.includes(mediaType as SourcesStagingMediaType)) {
+        throw new FrontendContractError('INVALID_REQUEST', `${path}.mediaType is unsupported.`);
       }
       return {
         kind: 'FILE',
         ...common,
         fileName: stringValue(item['fileName'], `${path}.fileName`, 255),
-        mediaType,
+        mediaType: mediaType as SourcesStagingMediaType,
       };
     }
     if (item['kind'] === 'URL') {
       onlyKeys(
         item,
-        ['itemId', 'kind', 'label', 'stagingReference', 'requestedClassification'],
+        [
+          'itemId',
+          'kind',
+          'label',
+          'stagingReference',
+          'requestedClassification',
+          'requestedSourceId',
+        ],
         path,
       );
       return { kind: 'URL', ...common };
@@ -194,6 +248,9 @@ export const decodeSubmitStagedSourcesIntakePayload = (
   return {
     draftId: stringValue(value['draftId'], 'payload.draftId', 512),
     inputs,
+    ...(value['duplicateHandling'] === 'AUTOMATIC'
+      ? { duplicateHandling: 'AUTOMATIC' as const }
+      : {}),
   };
 };
 
@@ -239,11 +296,14 @@ export const decodeSourcesStagingReceipt = (input: unknown): SourcesStagingRecei
     throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Unsupported Sources staging kind.');
   }
   const mediaType = value['mediaType'];
-  if (mediaType !== 'text/plain' && mediaType !== 'text/markdown') {
+  if (!SOURCES_STAGING_MEDIA_TYPES.includes(mediaType as SourcesStagingMediaType)) {
     throw new FrontendContractError(
       'UNSUPPORTED_SCHEMA',
       'Unsupported Sources staging media type.',
     );
+  }
+  if (mediaType !== 'text/plain' && mediaType !== 'text/markdown' && kind !== 'FILE') {
+    throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Document staging requires a file.');
   }
   const sizeBytes = value['sizeBytes'];
   if (!Number.isInteger(sizeBytes) || Number(sizeBytes) <= 0 || Number(sizeBytes) > 1_048_576) {
@@ -279,7 +339,7 @@ export const decodeSourcesStagingReceipt = (input: unknown): SourcesStagingRecei
       value['stagingReference'],
       'SourcesStagingReceipt.stagingReference',
     ),
-    mediaType,
+    mediaType: mediaType as SourcesStagingMediaType,
     sizeBytes: Number(sizeBytes),
     contentHash,
     ...(fileName === undefined ? {} : { fileName }),

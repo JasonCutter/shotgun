@@ -69,8 +69,14 @@ const promptFor = (
 ): string => {
   let evidenceIndex = 0;
   return stableJson({
-    task: 'shotgun-ask-answer-v1',
+    task:
+      request.mode === 'AUTO_PROJECT_KNOWLEDGE'
+        ? 'shotgun-ask-answer-vp3'
+        : 'shotgun-ask-answer-v1',
     question: request.question,
+    ...(request.mode === 'AUTO_PROJECT_KNOWLEDGE'
+      ? { sourceVersionSelection: 'LATEST_ACTIVE_AT_ANSWER_RUN' }
+      : {}),
     context: request.context.map((item) =>
       item.kind === 'EVIDENCE'
         ? {
@@ -206,6 +212,15 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
         'Evidence items may be cited only with their supplied citationRef.',
         'SourceVersion items have no Evidence identity and must never produce a citation.',
         'Do not invent facts, Evidence, citation references, or citations.',
+        ...(request.mode === 'AUTO_PROJECT_KNOWLEDGE'
+          ? [
+              'Evidence quotes record what each source states; they are not independently verified facts.',
+              'The supplied Evidence belongs to the latest active SourceVersion of each included Source at this AnswerRun. Older SourceVersions were excluded by Shotgun. You may describe that selection, but do not claim the external world is current beyond these sources.',
+              'Do not put opaque Source IDs or SourceVersion IDs in the prose answer; cite the supplied Evidence references instead.',
+              'When sources disagree for the same scope and time, describe both claims and cite both sources. Do not choose a winner without supporting evidence.',
+              'Distinguish direct source statements from your inferences and say when the available evidence cannot resolve a question.',
+            ]
+          : []),
         'Return JSON with answer and citations.',
         'Each citation citationRef must be copied exactly from a supplied Evidence item.',
       ].join(' '),

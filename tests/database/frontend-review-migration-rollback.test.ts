@@ -58,12 +58,13 @@ describe.runIf(pool)('FE-P4-S1 migration 027 apply/rollback (AC-17)', () => {
   it('applies 027, rolls it back to the pre-027 fingerprint, and re-applies cleanly', async () => {
     const client = await pool!.connect();
     try {
-      // Clean slate for the review schema.
+      // Keep the migration drill inside one transaction so later database
+      // tests retain the current schema, constraints, and their fixture data.
+      await client.query('BEGIN');
       await client.query('DROP SCHEMA IF EXISTS frontend_review CASCADE');
       const sql = await readFile(MIGRATION_027, 'utf8');
 
       // Apply.
-      await client.query('BEGIN');
       await client.query(sql);
       const tables = await client.query(
         `SELECT table_name FROM information_schema.tables
@@ -105,9 +106,8 @@ describe.runIf(pool)('FE-P4-S1 migration 027 apply/rollback (AC-17)', () => {
          WHERE schema_name = 'frontend_review'`,
       );
       expect(afterReverse.rows[0]?.count).toBe(0);
-      await client.query('COMMIT');
 
-      // Re-apply restores the schema for the remaining suite.
+      // Re-apply verifies the forward SQL before the drill is rolled back.
       await client.query(sql);
       const restored = await client.query(
         `SELECT COUNT(*)::int AS count FROM information_schema.schemata
@@ -115,7 +115,11 @@ describe.runIf(pool)('FE-P4-S1 migration 027 apply/rollback (AC-17)', () => {
       );
       expect(restored.rows[0]?.count).toBe(1);
     } finally {
-      client.release();
+      try {
+        await client.query('ROLLBACK');
+      } finally {
+        client.release();
+      }
     }
   });
 });

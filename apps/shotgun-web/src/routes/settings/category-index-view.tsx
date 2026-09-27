@@ -1,6 +1,14 @@
-import { Link } from 'react-router';
+import { Link, useOutletContext } from 'react-router';
+import type { GlobalShellView } from '@shotgun/api-client';
 
 export const CategoryIndexView = () => {
+  const outlet = useOutletContext<{ readonly shell?: GlobalShellView } | undefined>();
+  const shell = outlet?.shell;
+  const singleKnowledgeSpace =
+    shell?.accessibleProjects.length === 1 &&
+    shell.features.some(
+      (feature) => feature.id === 'vp-autonomous-knowledge' && feature.availability === 'AVAILABLE',
+    );
   const categories = [
     {
       id: 'ai',
@@ -21,12 +29,17 @@ export const CategoryIndexView = () => {
       description: 'Manage personal display preferences, locale, and timezone settings.',
       href: '/settings/preferences',
     },
-    {
-      id: 'projects',
-      label: 'Project',
-      description: 'View Project settings, rename, archive, or request project lifecycle actions.',
-      href: '/settings/projects',
-    },
+    ...(!singleKnowledgeSpace
+      ? [
+          {
+            id: 'projects',
+            label: 'Project',
+            description:
+              'View Project settings, rename, archive, or request project lifecycle actions.',
+            href: '/settings/projects',
+          },
+        ]
+      : []),
   ];
 
   return (

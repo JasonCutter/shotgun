@@ -18,6 +18,7 @@ import {
   type SourceLibraryQuery,
   type SourcesSensitivity,
   type StagedSourcesIntakeInput,
+  type SourcesStagingMediaType,
   type KnowledgeResetPreviewV1,
   type KnowledgeResetBlockerCodeV1,
 } from '@shotgun/api-client';
@@ -35,6 +36,7 @@ import {
   useProductLocalization,
 } from '../localization/product-localization.js';
 import {
+  sourceDetailQueryOptions,
   sourceIntakeSubmissionQueryOptions,
   sourcesLibraryQueryOptions,
 } from '../sources/sources-queries.js';
@@ -42,6 +44,7 @@ import {
   type SourceIntakeDraftMessageCode,
   useSourceIntakeDraftQueue,
 } from '../sources/source-intake-drafts.js';
+import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
 
 const DEFAULT_QUERY: SourceLibraryQuery = {
@@ -53,6 +56,21 @@ const DEFAULT_QUERY: SourceLibraryQuery = {
 
 const identity = (prefix: string): string =>
   `${prefix}-${typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Date.now()}`;
+
+const fileMediaType = (name: string): SourcesStagingMediaType => {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.docx'))
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (lower.endsWith('.xlsx'))
+    return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (lower.endsWith('.pptx'))
+    return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
+  if (lower.endsWith('.csv')) return 'text/csv';
+  if (lower.endsWith('.md')) return 'text/markdown';
+  return 'text/plain';
+};
 
 const resetRequestStorageKey = (projectId: string): string =>
   `shotgun:source-knowledge-reset:${projectId}`;
@@ -154,6 +172,7 @@ export const SourcesWorkspace = () => {
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const location = useLocation();
   const [searchParameters] = useSearchParams();
+  const targetSourceId = searchParameters.get('sourceId')?.trim() || undefined;
   const connectivity = useConnectivityState();
   const { t } = useProductLocalization();
   const writeClient = useMemo(() => createSourcesWriteClient(), []);
@@ -162,18 +181,59 @@ export const SourcesWorkspace = () => {
     (project) => project.id === projectId && project.isOwner,
   );
   const commandIdentity = useRef<DraftCommandIdentity | undefined>(undefined);
+  const directCommandIdentity = useRef<
+    { readonly command: DraftCommandIdentity; readonly file?: File } | undefined
+  >(undefined);
   const [searchInput, setSearchInput] = useState('');
   const [appliedQuery, setAppliedQuery] = useState('');
   const [intakeKind, setIntakeKind] = useState<'DIRECT_TEXT' | 'FILE' | 'URL'>('DIRECT_TEXT');
   const [intakeLabel, setIntakeLabel] = useState('');
-  const requestedClassification: SourcesSensitivity = 'private';
+  const targetSource = useQuery(sourceDetailQueryOptions(apiClient, shell, targetSourceId ?? ''));
+  const requestedClassification: SourcesSensitivity = targetSourceId
+    ? (targetSource.data?.sensitivity ?? 'private')
+    : 'private';
   const [directText, setDirectText] = useState('');
   const [requestedUrl, setRequestedUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const formHasUnsavedDraft = Boolean(
+    intakeLabel.trim() || directText.trim() || requestedUrl.trim() || selectedFile,
+  );
+  const formHasUnsavedDraftRef = useRef(formHasUnsavedDraft);
+  formHasUnsavedDraftRef.current = formHasUnsavedDraft;
+  const { registerLeaveGuard } = useLeaveGuard();
+  useEffect(
+    () =>
+      registerLeaveGuard(() => {
+        const hasUnsavedDraft = formHasUnsavedDraftRef.current;
+        return {
+          canLeaveCurrentContext: !hasUnsavedDraft,
+          hasUnsavedDraft,
+          hasBlockingDialog: false,
+          hasOutcomeUnknownCommand: false,
+        };
+      }),
+    [registerLeaveGuard],
+  );
+  const intakeProjectId = useRef(projectId);
   const [submission, setSubmission] = useState<IntakeSubmissionSnapshot>();
   const [decision, setDecision] = useState<ExactDuplicateDecisionView>();
   const [mutationState, setMutationState] = useState<'IDLE' | 'STAGING' | 'SUBMITTING'>('IDLE');
   const [mutationError, setMutationError] = useState<string>();
+  useEffect(() => {
+    if (intakeProjectId.current === projectId) return;
+    intakeProjectId.current = projectId;
+    directCommandIdentity.current = undefined;
+    setIntakeLabel('');
+    setDirectText('');
+    setRequestedUrl('');
+    setSelectedFile(undefined);
+    setSubmission(undefined);
+    setDecision(undefined);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setMutationError(undefined);
+    setMutationState('IDLE');
+  }, [projectId]);
   const [resetPreview, setResetPreview] = useState<KnowledgeResetPreviewV1>();
   const [resetRequest, setResetRequest] = useState<
     { projectId: string; requestId: string } | undefined
@@ -196,9 +256,15 @@ export const SourcesWorkspace = () => {
     [appliedQuery],
   );
   const library = useQuery(sourcesLibraryQueryOptions(apiClient, shell, query));
-  const linkedSubmission = useQuery(
-    sourceIntakeSubmissionQueryOptions(apiClient, shell, linkedSubmissionId),
-  );
+  const monitoredSubmissionId = linkedSubmissionId ?? submission?.submissionId ?? null;
+  const linkedSubmission = useQuery({
+    ...sourceIntakeSubmissionQueryOptions(apiClient, shell, monitoredSubmissionId),
+    refetchInterval: (query) =>
+      query.state.data &&
+      ['SUCCEEDED', 'FAILED', 'CANCELLED', 'ACTION_REQUIRED'].includes(query.state.data.state)
+        ? false
+        : 2_000,
+  });
   const resetStatus = useQuery({
     queryKey: ['source-knowledge-reset-status', projectId, resetRequestId],
     queryFn: () => apiClient.getSourceKnowledgeResetStatus(projectId, resetRequestId!),
@@ -234,9 +300,10 @@ export const SourcesWorkspace = () => {
       ? (location.state as { readonly intakeDraftSeed?: unknown }).intakeDraftSeed
       : undefined;
   const draftQueue = useSourceIntakeDraftQueue(shell.activeProject?.id ?? '', seed);
-  const draftNavigation = useBlocker(draftQueue.items.length > 0);
+  const hasUnsavedDraft = draftQueue.items.length > 0 || formHasUnsavedDraft;
+  const draftNavigation = useBlocker(hasUnsavedDraft);
   useBeforeUnload((event) => {
-    if (draftQueue.items.length === 0) return;
+    if (!hasUnsavedDraft) return;
     event.preventDefault();
     event.returnValue = '';
   });
@@ -259,11 +326,8 @@ export const SourcesWorkspace = () => {
   const requestedView = searchParameters.get('view');
   const showAddSource = requestedView === 'add' || (requestedView === null && seed !== undefined);
   const displayedSubmission =
-    submission?.submissionId === linkedSubmissionId
-      ? submission
-      : linkedSubmissionId === null
-        ? submission
-        : linkedSubmission.data;
+    linkedSubmission.data ??
+    (submission?.submissionId === monitoredSubmissionId ? submission : undefined);
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
     if (!connectivity.isOffline) setAppliedQuery(searchInput);
@@ -331,23 +395,151 @@ export const SourcesWorkspace = () => {
     }
   };
 
-  const onAddDraft = (event: FormEvent) => {
+  const onSubmitSource = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (intakeKind === 'DIRECT_TEXT') {
-      draftQueue.addDirectText(
-        intakeLabel || hfmOwnerLabel(t, 'intakeKind', 'DIRECT_TEXT'),
-        directText,
-        requestedClassification,
-      );
-      setDirectText('');
-    } else if (intakeKind === 'URL') {
-      draftQueue.addUrl(intakeLabel, requestedUrl, requestedClassification);
-      setRequestedUrl('');
-    } else if (selectedFile) {
-      draftQueue.addFile(intakeLabel, selectedFile, requestedClassification);
-      setSelectedFile(undefined);
+    if (
+      connectivity.isOffline ||
+      mutationState !== 'IDLE' ||
+      !projectId ||
+      intakeProjectId.current !== projectId ||
+      (targetSourceId !== undefined &&
+        (targetSource.data?.sourceId !== targetSourceId ||
+          targetSource.data.projectId !== projectId))
+    ) {
+      return;
     }
-    setIntakeLabel('');
+    const file = intakeKind === 'FILE' ? selectedFile : undefined;
+    const label =
+      intakeLabel.trim() ||
+      (file?.name ??
+        (intakeKind === 'URL'
+          ? requestedUrl.trim()
+          : hfmOwnerLabel(t, 'intakeKind', 'DIRECT_TEXT')));
+    const fingerprint =
+      `${targetSourceId ?? 'new'}:` +
+      (intakeKind === 'FILE'
+        ? `FILE:${label}:${file?.name ?? ''}:${file?.size ?? 0}`
+        : `${intakeKind}:${label}:${intakeKind === 'URL' ? requestedUrl : directText}`);
+    if (
+      !label ||
+      (intakeKind === 'DIRECT_TEXT' && !directText.trim()) ||
+      (intakeKind === 'FILE' && !file) ||
+      (intakeKind === 'URL' && !requestedUrl.trim())
+    ) {
+      setMutationError(t('sources.invalid_draft'));
+      return;
+    }
+    if (intakeKind === 'URL') {
+      try {
+        const protocol = new URL(requestedUrl).protocol;
+        if (protocol !== 'http:' && protocol !== 'https:') throw new Error('unsupported protocol');
+      } catch {
+        setMutationError(t('sources.draft_message.url_invalid'));
+        return;
+      }
+    }
+    if (file && !/\.(txt|md|pdf|html?|csv|docx|xlsx|pptx)$/i.test(file.name)) {
+      setMutationError(t('sources.draft_message.file_unsupported'));
+      return;
+    }
+    if (file && (file.size < 1 || file.size > 1_048_576)) {
+      setMutationError(t('sources.draft_message.file_size'));
+      return;
+    }
+    if (intakeKind === 'DIRECT_TEXT' && new TextEncoder().encode(directText).length > 1_048_576) {
+      setMutationError(t('sources.draft_message.direct_text_too_large'));
+      return;
+    }
+    const previous = directCommandIdentity.current;
+    const command =
+      previous?.command.fingerprint === fingerprint && previous.file === file
+        ? previous.command
+        : {
+            fingerprint,
+            clientRequestId: identity('sources-request'),
+            idempotencyKey: identity('sources-idempotency'),
+            draftId: identity('sources-draft'),
+          };
+    directCommandIdentity.current = { command, ...(file ? { file } : {}) };
+    const itemId = `${command.draftId}-item`;
+    setMutationError(undefined);
+    setMutationState('STAGING');
+    try {
+      let staged: StagedSourcesIntakeInput;
+      if (intakeKind === 'URL') {
+        const receipt = await writeClient.stageUrl({
+          draftId: command.draftId,
+          itemId,
+          label,
+          requestedUrl: requestedUrl.trim(),
+        });
+        staged = {
+          itemId,
+          kind: 'URL',
+          label,
+          stagingReference: receipt.stagingReference,
+          requestedClassification,
+        };
+      } else {
+        const mediaType = file ? fileMediaType(file.name) : 'text/plain';
+        const receipt = await writeClient.stageBytes({
+          draftId: command.draftId,
+          itemId,
+          kind: file ? 'FILE' : 'DIRECT_TEXT',
+          label,
+          mediaType,
+          ...(file ? { fileName: file.name } : {}),
+          bytes: file
+            ? new Uint8Array(await file.arrayBuffer())
+            : new TextEncoder().encode(directText),
+        });
+        staged = file
+          ? {
+              itemId,
+              kind: 'FILE',
+              label,
+              fileName: file.name,
+              mediaType,
+              stagingReference: receipt.stagingReference,
+              requestedClassification,
+            }
+          : {
+              itemId,
+              kind: 'DIRECT_TEXT',
+              label,
+              stagingReference: receipt.stagingReference,
+              requestedClassification,
+            };
+      }
+      if (intakeProjectId.current !== projectId) return;
+      setMutationState('SUBMITTING');
+      const result = await writeClient.submit({
+        activeProjectId: projectId,
+        targetProjectId: projectId,
+        clientRequestId: command.clientRequestId,
+        idempotencyKey: command.idempotencyKey,
+        draftId: command.draftId,
+        inputs: [targetSourceId ? { ...staged, requestedSourceId: targetSourceId } : staged],
+        duplicateHandling: 'AUTOMATIC',
+      });
+      if (intakeProjectId.current === projectId) {
+        setSubmission(result.resource);
+        setDecision(undefined);
+        directCommandIdentity.current = undefined;
+        setIntakeLabel('');
+        setDirectText('');
+        setRequestedUrl('');
+        setSelectedFile(undefined);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        void library.refetch();
+      }
+    } catch (error) {
+      if (intakeProjectId.current === projectId) {
+        setMutationError(error instanceof Error ? error.message : t('sources.submission_failed'));
+      }
+    } finally {
+      if (intakeProjectId.current === projectId) setMutationState('IDLE');
+    }
   };
 
   const commandFor = (fingerprint: string): DraftCommandIdentity => {
@@ -572,6 +764,12 @@ export const SourcesWorkspace = () => {
                 className="hfm-action-destructive"
                 onClick={() => {
                   draftQueue.discardAll();
+                  directCommandIdentity.current = undefined;
+                  setIntakeLabel('');
+                  setDirectText('');
+                  setRequestedUrl('');
+                  setSelectedFile(undefined);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
                   draftNavigation.proceed();
                 }}
               >
@@ -586,8 +784,17 @@ export const SourcesWorkspace = () => {
 
       {showAddSource ? (
         <section className="action-card sources-intake" aria-labelledby="source-intake-heading">
-          <h2 id="source-intake-heading">{t('sources.draft_queue')}</h2>
-          <p>{t('sources.draft_help')}</p>
+          <h2 id="source-intake-heading">
+            {t(targetSourceId ? 'sources.update_source' : 'sources.direct_intake')}
+          </h2>
+          <p>{t(targetSourceId ? 'sources.update_help' : 'sources.direct_help')}</p>
+          {targetSourceId && targetSource.isPending ? (
+            <LoadingState message={t('source_detail.loading')} />
+          ) : null}
+          {targetSourceId && targetSource.error ? (
+            <ErrorState error={targetSource.error} onRetry={() => targetSource.refetch()} />
+          ) : null}
+          {targetSourceId && targetSource.data ? <p>{targetSource.data.label}</p> : null}
           <p>
             <Link to="/sources">{t('sources.library')}</Link>
           </p>
@@ -618,7 +825,7 @@ export const SourcesWorkspace = () => {
           ) : linkedSubmissionId && linkedSubmission.isError ? (
             <ErrorState error={linkedSubmission.error} onRetry={() => linkedSubmission.refetch()} />
           ) : null}
-          <form className="source-intake-form" onSubmit={onAddDraft}>
+          <form className="source-intake-form" onSubmit={(event) => void onSubmitSource(event)}>
             <label htmlFor="source-intake-kind">{t('sources.input_type')}</label>
             <select
               id="source-intake-kind"
@@ -655,9 +862,10 @@ export const SourcesWorkspace = () => {
               <>
                 <label htmlFor="source-intake-file">{hfmOwnerLabel(t, 'intakeKind', 'FILE')}</label>
                 <input
+                  ref={fileInputRef}
                   id="source-intake-file"
                   type="file"
-                  accept="text/plain,text/markdown,.txt,.md"
+                  accept=".txt,.md,.pdf,.html,.htm,.csv,.docx,.xlsx,.pptx"
                   onChange={(event) => setSelectedFile(event.target.files?.[0])}
                 />
               </>
@@ -675,16 +883,24 @@ export const SourcesWorkspace = () => {
               </>
             ) : null}
             <button
-              className="hfm-action-secondary"
+              className="hfm-action-primary"
               type="submit"
-              disabled={intakeKind === 'FILE' && !selectedFile}
+              disabled={
+                connectivity.isOffline ||
+                mutationState !== 'IDLE' ||
+                (targetSourceId !== undefined && !targetSource.data) ||
+                (intakeKind === 'FILE' && !selectedFile) ||
+                (intakeKind === 'DIRECT_TEXT' && !directText.trim()) ||
+                (intakeKind === 'URL' && !requestedUrl.trim())
+              }
             >
-              {t('sources.add_intake_draft')}
+              {t('sources.submit_source')}
             </button>
           </form>
-          {draftQueue.items.length === 0 ? <p>{t('sources.no_drafts')}</p> : null}
           {draftQueue.items.length > 0 ? (
             <>
+              <h3>{t('sources.draft_queue')}</h3>
+              <p>{t('sources.draft_help')}</p>
               <ul className="source-intake-list" aria-label={t('sources.intake_drafts')}>
                 {draftQueue.items.map((item) => (
                   <li key={item.draftItemId}>
@@ -746,6 +962,9 @@ export const SourcesWorkspace = () => {
                       <strong>{item.manifest.label}</strong>
                       <p>{hfmOwnerLabel(t, 'intakeState', item.state)}</p>
                       {item.attentionReason ? <small>{item.attentionReason}</small> : null}
+                      {item.safeFailure ? (
+                        <small role="alert">{item.safeFailure.message}</small>
+                      ) : null}
                     </div>
                     <div className="source-intake-actions">
                       {item.duplicateDecisionId ? (

@@ -69,6 +69,7 @@ export const managedSchemas = [
   'runtime',
   'connector',
   'discovery',
+  'vp',
 ] as const;
 
 const dropManagedSchemas = async (client: Client): Promise<void> => {

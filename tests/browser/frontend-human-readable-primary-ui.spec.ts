@@ -19,8 +19,7 @@ test('Human-readable primary UI smoke', async ({ page }) => {
   await page
     .getByLabel('Direct Text')
     .fill(`A human-readable Source label must survive intake: ${sourceLabel}.`);
-  await page.getByRole('button', { name: 'Add intake draft' }).click();
-  await page.getByRole('button', { name: 'Submit drafts' }).click();
+  await page.getByRole('button', { name: 'Add source' }).click();
 
   await expect(page.getByRole('heading', { name: 'Submission Completed' })).toBeVisible({
     timeout: 15_000,

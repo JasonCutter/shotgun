@@ -50,6 +50,17 @@ export type AskExecutionEvidence = {
   readonly sensitivity: AskExecutionScope['sensitivityClearance'];
 };
 
+/** Optional VP read boundary; Ask rechecks every returned Evidence ID. */
+export type AskKnowledgeEvidenceSearchPort = {
+  search(input: {
+    readonly projectId: string;
+    readonly question: string;
+    readonly accessScope: readonly string[];
+    readonly authorizedSensitivities: readonly AskExecutionScope['sensitivityClearance'][];
+    readonly limit: number;
+  }): Promise<readonly string[]>;
+};
+
 export type AskExecutionSourceVersionContext = {
   readonly kind: 'SOURCE_VERSION';
   readonly sourceId: string;
@@ -269,6 +280,8 @@ export const validateAIExecutionPin = (
 };
 
 export type AskAnswerExecutionRepositoryPort = {
+  /** VP Ask stays queued while an authorized latest SourceVersion is indexing. */
+  isProjectKnowledgePending?(scope: AskExecutionScope): Promise<boolean>;
   getRunContext(
     scope: AskExecutionScope,
     answerRunId: string,
@@ -573,6 +586,13 @@ export class AskAnswerExecutionService {
   async execute(scope: AskExecutionScope, answerRunId: string): Promise<AskAnswerRunSnapshot> {
     const current = await this.repository.getRunContext(scope, answerRunId);
     if (!current) throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'execute');
+    if (
+      current.snapshot.state === 'QUEUED' &&
+      current.snapshot.mode === 'AUTO_PROJECT_KNOWLEDGE' &&
+      (await this.repository.isProjectKnowledgePending?.(scope))
+    ) {
+      return current.snapshot;
+    }
     const executionPin =
       current.snapshot.state === 'QUEUED' && this.executionIdentityResolver
         ? await this.resolveExecutionIdentityForClaim(scope, answerRunId)

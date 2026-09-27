@@ -36,10 +36,10 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
   it('derives the complete C2-R1 candidate set and canonical inventory', () => {
     const audit = buildAuditShape(ROOT);
 
-    expect(audit.candidates).toHaveLength(122);
-    expect(new Set(audit.candidates.map((candidate) => candidate.candidateId)).size).toBe(122);
+    expect(audit.candidates).toHaveLength(126);
+    expect(new Set(audit.candidates.map((candidate) => candidate.candidateId)).size).toBe(126);
     expect(audit.rawTransactionSites).toHaveLength(11);
-    expect(audit.boundaries).toHaveLength(115);
+    expect(audit.boundaries).toHaveLength(119);
     expect(audit.participants).toHaveLength(1);
     // Current categories are taken from the independently frozen T3 manifest.
     const boundaries = new Map(audit.boundaries.map((boundary) => [boundary.boundaryId, boundary]));
@@ -61,13 +61,13 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
   it('still reconstructs the LEGACY authority inventory (historical record)', () => {
     const legacy = buildAuditShape(ROOT, { legacyAuthority: true });
 
-    // The live inventory includes the new Ask read snapshot candidate; the
-    // authority replacement itself changes only the derived category split.
-    expect(legacy.candidates).toHaveLength(122);
-    expect(legacy.boundaries).toHaveLength(115);
+    // The live inventory includes the VP boundaries; legacy scoring uses the
+    // current source inventory while the frozen v2 fixture remains unchanged.
+    expect(legacy.candidates).toHaveLength(126);
+    expect(legacy.boundaries).toHaveLength(119);
     expect(legacy.rawTransactionSites).toHaveLength(11);
     expect(legacy.counts).toMatchObject({
-      TX_BOUNDARY: 102,
+      TX_BOUNDARY: 106,
       NON_TX: 7,
       TEST_ONLY_OR_DEAD: 13,
       REVIEW_REQUIRED: 0,
@@ -78,7 +78,7 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
     const result = validateCorpus(loadCorpus(), ROOT);
 
     expect(result.issues.map((issue) => issue.code)).not.toContain('HISTORICAL_DELTA');
-    expect(result.candidates).toHaveLength(122);
+    expect(result.candidates).toHaveLength(126);
     // The frozen fixture is a record of the LEGACY authority, so its own
     // classification is read back from it rather than from the live authority.
     expect(loadCorpus().summary.TX_BOUNDARY).toBe(100);

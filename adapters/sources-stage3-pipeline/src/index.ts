@@ -19,7 +19,10 @@ import type {
   SourcesStage4ContinuationPort,
 } from '../../../modules/frontend-sources-write/src/index.js';
 import { classifySourcesStage3Failure } from '../../../modules/frontend-sources-write/src/index.js';
-import { ShotgunError } from '../../../packages/contracts/src/index.js';
+import {
+  ShotgunError,
+  SOURCES_STAGING_MEDIA_TYPES,
+} from '../../../packages/contracts/src/index.js';
 
 import type { SourcesStage4ContinuationStorePort } from '../../../modules/frontend-sources-write/src/index.js';
 
@@ -35,7 +38,7 @@ const assertStage3Input = (
     !input.sourceVersionId ||
     !input.storageKey ||
     !/^sha256:[a-f0-9]{64}$/.test(input.contentHash) ||
-    !['text/plain', 'text/markdown'].includes(input.mediaType) ||
+    !SOURCES_STAGING_MEDIA_TYPES.includes(input.mediaType) ||
     input.accessScope.length === 0 ||
     !validSensitivity
   ) {
@@ -160,14 +163,17 @@ class SourcesStage3PipelineRuntime implements SourcesStage3PipelinePort {
       // TextDecoder's default UTF-8 mode consumes a leading BOM. The original
       // asset hash is byte-addressed, so dropping that character makes the
       // document root hash disagree with the immutable SourceVersion hash.
-      const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes);
+      const isText = input.mediaType === 'text/plain' || input.mediaType === 'text/markdown';
+      const text = isText ? new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes) : undefined;
       const sourceContentHash = input.contentHash;
       const output = await this.deps.transformer.transform({
         sourceId: input.sourceId,
         sourceVersionId: input.sourceVersionId,
         sourceContentHash,
         mediaType: input.mediaType,
-        text,
+        ...(text === undefined
+          ? { contentBase64: Buffer.from(bytes).toString('base64') }
+          : { text }),
       });
       const transformation = {
         projectId: input.projectId,
@@ -339,6 +345,7 @@ export class SourcesStage3RecoveryDispatcher {
       readonly intervalMs?: number;
       readonly batchSize?: number;
       readonly reporter?: SourcesStage3RecoveryReporter;
+      readonly reconcileCompleted?: () => Promise<number>;
       readonly failureBackoffMs?: number;
       readonly maxFailureBackoffMs?: number;
     } = {},
@@ -358,6 +365,21 @@ export class SourcesStage3RecoveryDispatcher {
         code: 'STAGE3_RECOVERY_BREAKER_OPEN',
       });
       return 'EMPTY';
+    }
+    if (this.options.reconcileCompleted) {
+      try {
+        const reconciled = await this.options.reconcileCompleted();
+        if (reconciled > 0) {
+          this.breaker.recordSuccess();
+          await this.options.reporter?.report({ status: 'SUCCEEDED' });
+          return 'SUCCEEDED';
+        }
+      } catch (error) {
+        const failure = classifySourcesStage3Failure(error);
+        if (failure.code === 'STAGE3_DB_TRANSIENT') this.breaker.recordFailure();
+        await this.options.reporter?.report({ status: 'FAILED', code: failure.code });
+        throw error;
+      }
     }
     let recoverable: readonly SourcesStage3RecoveryItem[];
     try {

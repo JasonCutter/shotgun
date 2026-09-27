@@ -414,7 +414,7 @@ describe('AskWorkspace', () => {
       </AppProviders>,
     );
 
-    const disabledMessage = '이 프로젝트의 AI 자동 처리가 꺼져 있습니다.';
+    const disabledMessage = '이 지식 공간의 AI 자동 처리가 설정되지 않았습니다.';
     expect(await screen.findByText(disabledMessage)).toBeTruthy();
     expect(getProviderEligibility).toHaveBeenCalledTimes(1);
 
@@ -479,16 +479,16 @@ describe('AskWorkspace', () => {
     expect(screen.queryByText('Available for questions')).toBeNull();
     expect(
       screen.queryByText(
-        '현재 배포 정책에서는 이 질문에 필요한 프로젝트 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
+        '현재 배포 정책에서는 이 질문에 필요한 지식 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
       ),
     ).toBeNull();
     expect(
       screen.queryByText(
-        '이 질문에 필요한 프로젝트 내용을 AI 제공자에게 보내려면 프로젝트 개인정보 승인이 필요합니다.',
+        '이 질문에 필요한 지식 내용을 AI 제공자에게 보내려면 개인정보 전송 허가가 필요합니다.',
       ),
     ).toBeNull();
     expect(
-      screen.queryByText('제한된 프로젝트 내용은 구성된 AI 제공자에게 보낼 수 없습니다.'),
+      screen.queryByText('전송이 제한된 지식 내용은 구성된 AI 제공자에게 보낼 수 없습니다.'),
     ).toBeNull();
   });
 
@@ -531,7 +531,7 @@ describe('AskWorkspace', () => {
     );
     expect(
       await screen.findByText(
-        '이 질문에 필요한 프로젝트 내용을 AI 제공자에게 보내려면 프로젝트 개인정보 승인이 필요합니다.',
+        '이 질문에 필요한 지식 내용을 AI 제공자에게 보내려면 개인정보 전송 허가가 필요합니다.',
       ),
     ).toBeTruthy();
     expect(screen.queryByText('A Project Owner must complete the privacy review.')).toBeNull();
@@ -581,7 +581,7 @@ describe('AskWorkspace', () => {
     );
     expect(
       await screen.findByText(
-        '현재 배포 정책에서는 이 질문에 필요한 프로젝트 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
+        '현재 배포 정책에서는 이 질문에 필요한 지식 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
       ),
     ).toBeTruthy();
     expect(

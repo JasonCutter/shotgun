@@ -248,12 +248,12 @@
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:1751",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:1976",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2421",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2658",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
@@ -263,7 +263,7 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:640",
+      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:645",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
@@ -353,32 +353,37 @@
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485",
-      "classification": "TX_BOUNDARY",
-      "reachabilityStatus": "PROVEN"
-    },
-    {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:272",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1074",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:467",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1704",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:508",
-      "classification": "TX_BOUNDARY",
-      "reachabilityStatus": "PROVEN"
-    },
-    {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:751",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:277",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:518",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:600",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:641",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:884",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
@@ -603,9 +608,24 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/source-knowledge-reset-postgres/src/index.ts:207",
+      "candidateId": "safe:adapters/source-knowledge-reset-postgres/src/index.ts:208",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/index.ts:43",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:167",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:240",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
     }
   ]
 }

@@ -113,30 +113,37 @@ export const GlobalTools = ({ shell, children }: GlobalToolsProps) => {
     queryKey: projectAdminQueryKey(shell.principalId),
     queryFn: () => apiClient.getProjects(),
   });
-  const commandRegistry = useMemo(
-    () =>
-      createOwnerCommandRegistry({
-        shell,
-        isOffline: connectivity.isOffline,
-        includeProjectSwitch: true,
-        includeSearch: true,
-        hasTechnicalInspection: technicalBlocks.length > 0,
-        answerContext: paletteAnswerContext ?? answerRegistration?.context,
-        answerCommandPending: answerRegistration?.commandPending,
-        discoveryContext: discoveryCommands?.registration?.context,
-        discoveryCommandPending: discoveryCommands?.registration?.commandPending,
-        projects: projectsQuery.data,
-      }),
-    [
-      answerRegistration,
-      connectivity.isOffline,
-      discoveryCommands,
-      paletteAnswerContext,
-      projectsQuery.data,
+  const commandRegistry = useMemo(() => {
+    const commands = createOwnerCommandRegistry({
       shell,
-      technicalBlocks.length,
-    ],
-  );
+      isOffline: connectivity.isOffline,
+      includeProjectSwitch: true,
+      includeSearch: true,
+      hasTechnicalInspection: technicalBlocks.length > 0,
+      answerContext: paletteAnswerContext ?? answerRegistration?.context,
+      answerCommandPending: answerRegistration?.commandPending,
+      discoveryContext: discoveryCommands?.registration?.context,
+      discoveryCommandPending: discoveryCommands?.registration?.commandPending,
+      projects: projectsQuery.data,
+    });
+    const singleKnowledgeSpace =
+      shell.accessibleProjects.length === 1 &&
+      shell.features.some(
+        (feature) =>
+          feature.id === 'vp-autonomous-knowledge' && feature.availability === 'AVAILABLE',
+      );
+    return singleKnowledgeSpace
+      ? commands.filter((command) => !command.id.startsWith('project.'))
+      : commands;
+  }, [
+    answerRegistration,
+    connectivity.isOffline,
+    discoveryCommands,
+    paletteAnswerContext,
+    projectsQuery.data,
+    shell,
+    technicalBlocks.length,
+  ]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

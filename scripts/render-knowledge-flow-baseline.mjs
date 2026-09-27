@@ -76,7 +76,8 @@ document.querySelectorAll('.phase').forEach((button)=>button.addEventListener('c
 
 if (checkOnly) {
   const current = readFileSync(outputPath, 'utf8');
-  if (current !== html) {
+  // Git may check out this versioned presentation with Windows CRLF endings.
+  if (current.replaceAll('\r\n', '\n') !== html.replaceAll('\r\n', '\n')) {
     console.error(
       `Generated Knowledge Flow baseline is stale. Run: node ${path.relative(repoRoot, import.meta.filename)}.`,
     );

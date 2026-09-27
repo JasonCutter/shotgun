@@ -152,6 +152,15 @@ describe('Frontend Ask contracts', () => {
     expect(
       decodeSubmitAskQuestionRequest({
         schemaVersion: ASK_SCHEMA_VERSION,
+        clientRequestId: 'request-auto',
+        idempotencyKey: 'idem-auto',
+        question: 'What do my sources say?',
+      }),
+    ).toMatchObject({ sourceSelections: [] });
+
+    expect(
+      decodeSubmitAskQuestionRequest({
+        schemaVersion: ASK_SCHEMA_VERSION,
         clientRequestId: 'request-1',
         idempotencyKey: 'idem-1',
         question: 'Use this source.',

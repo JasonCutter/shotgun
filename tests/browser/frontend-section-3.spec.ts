@@ -1,7 +1,5 @@
 import { expect, test } from '@playwright/test';
 
-import { switchProject } from './helpers/hfm-commands.js';
-
 const forbiddenAuthorityHeaders = [
   'x-project-id',
   'x-actor-id',
@@ -73,6 +71,11 @@ const shellView = (created: boolean) => ({
         ]
       : [],
     features: [
+      {
+        id: 'vp-autonomous-knowledge',
+        label: 'Automatic knowledge',
+        availability: created ? 'AVAILABLE' : 'HIDDEN',
+      },
       {
         id: 'global-search',
         label: 'Global Search',
@@ -326,19 +329,11 @@ test('Section 3 blocks unsafe leave state, warns on offline state, and restores 
   await page.goto('/sources?view=add');
   await page.getByLabel('Label').fill('Guarded draft');
   await page.getByLabel('Direct Text').fill('Transient unsafe-leave evidence');
-  await page.getByRole('button', { name: 'Add intake draft' }).click();
-  await switchProject(page, 'Project B');
-  await expect(page.locator('.project-summary')).toContainText('shotgun');
-  await expect(page.locator('.global-tools [aria-live="polite"]')).toContainText(
-    'Resolve the current Workspace before switching Projects.',
-  );
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('region', { name: 'Commands' })).toHaveCount(0);
-  await expect(page.getByRole('dialog', { name: 'Commands' })).toHaveCount(0);
-
-  await page.getByRole('button', { name: 'Remove Guarded draft' }).click();
-  await switchProject(page, 'Project B');
-  await expect(page.locator('.project-summary')).toContainText('Project B');
+  await page.getByRole('link', { name: 'Source Library' }).click();
+  const guard = page.getByRole('dialog', { name: 'Leave with unsubmitted drafts?' });
+  await expect(guard).toBeVisible();
+  await guard.getByRole('button', { name: 'Discard drafts and leave' }).click();
+  await expect(page).toHaveURL(/\/sources$/);
 
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
@@ -353,7 +348,7 @@ test('Section 3 blocks unsafe leave state, warns on offline state, and restores 
   await expect(commands.getByRole('button', { name: /^Search/ })).toBeEnabled();
 });
 
-test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a browser Project ID', async ({
+test('VP creates its internal knowledge space without a browser Project choice', async ({
   page,
 }) => {
   await page.goto('/');
@@ -499,18 +494,14 @@ test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a brow
   });
 
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Create your first Project' })).toBeVisible();
-  await expect(page.getByText('Create your first Project to get started.')).toBeVisible();
+  await expect.poll(() => Boolean(bootstrapBody)).toBe(true);
   await expect(page.getByText(/Project authority.*browser/i)).toHaveCount(0);
-  expect(homeRequests).toBe(0);
-  await page.getByRole('link', { name: 'Open Project onboarding' }).click();
-  await page.getByRole('button', { name: 'Create Project' }).click();
-  const createDialog = page.getByRole('dialog', { name: 'Create your first Project' });
-  await expect(createDialog).toBeVisible();
-  await expect(page.getByLabel('Project ID (Immutable)')).toHaveCount(0);
-  await page.getByLabel('Project Name').fill('Server Project');
-  await createDialog.getByRole('button', { name: 'Create Project', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Create your first Project' })).toHaveCount(0);
+  await expect(page.getByLabel('Project Name')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+  await expect(page.getByLabel('Current project')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Project', exact: true })).toHaveCount(0);
+  expect(homeRequests).toBeGreaterThan(0);
   expect(bootstrapBody).toMatchObject({
     envelopeVersion: '2.0.0',
     commandType: 'project.create.v1',
@@ -518,7 +509,7 @@ test('Section 3 zero-project onboarding sends PRINCIPAL bootstrap without a brow
       scope: 'PRINCIPAL',
       observedProjectAccessRevision: '0',
     },
-    payload: { name: 'Server Project' },
+    payload: { name: 'Shotgun' },
   });
   expect(JSON.stringify(bootstrapBody)).not.toContain('server-project-1');
 });

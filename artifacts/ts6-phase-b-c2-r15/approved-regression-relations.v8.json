@@ -291,7 +291,7 @@
       "testEvidenceId": "test:tests/database/frontend-sources-stage4-isolation.test.ts:keeps genuine Transformation failure retryable as OUTCOME_INDETERMINATE",
       "file": "tests/database/frontend-sources-stage4-isolation.test.ts",
       "testName": "keeps genuine Transformation failure retryable as OUTCOME_INDETERMINATE",
-      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:272"],
+      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:277"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesProductService.submit",
       "path": ["PostgresSourcesProductService.submit"]
@@ -300,7 +300,7 @@
       "testEvidenceId": "test:tests/database/frontend-phase-2-section-1-product-write.test.ts:creates one Source, requires an exact-duplicate decision, and reuses the pinned Version",
       "file": "tests/database/frontend-phase-2-section-1-product-write.test.ts",
       "testName": "creates one Source, requires an exact-duplicate decision, and reuses the pinned Version",
-      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:751"],
+      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:884"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesProductService.resolveDuplicate",
       "path": ["PostgresSourcesProductService.resolveDuplicate"]
@@ -309,7 +309,7 @@
       "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:retries the outcome-indeterminate Sources item through the product service boundary",
       "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
       "testName": "retries the outcome-indeterminate Sources item through the product service boundary",
-      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:941"],
+      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1074"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesProductService.retry",
       "path": ["PostgresSourcesProductService.retry"]
@@ -613,7 +613,7 @@
       "testEvidenceId": "test:tests/database/frontend-ask-write-postgres.database.test.ts:commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
       "file": "tests/database/frontend-ask-write-postgres.database.test.ts",
       "testName": "commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
-      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2421"],
+      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2658"],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "executionService.startWorker",
       "path": [
@@ -626,7 +626,7 @@
       "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:Stage3 first attempt throws → retry → same SourceId/SourceVersionId → Stage3 completes → Evidence exists → no duplicate SourceVersion",
       "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
       "testName": "Stage3 first attempt throws → retry → same SourceId/SourceVersionId → Stage3 completes → Evidence exists → no duplicate SourceVersion",
-      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:467"],
+      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:600"],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "service.submit",
       "path": [
@@ -640,8 +640,8 @@
       "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
       "testName": "mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL",
       "covers": [
-        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:508",
-        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1485"
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:641",
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1704"
       ],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "mixedService.submit",
@@ -847,7 +847,7 @@
       "testEvidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:commits work performed through the Ask execution transaction boundary",
       "file": "tests/database/a9-final-closure-evidence.test.ts",
       "testName": "commits work performed through the Ask execution transaction boundary",
-      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:1751"],
+      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:1976"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskAnswerExecutionRepository.transaction",
       "path": ["transaction"]
@@ -994,7 +994,7 @@
       "testEvidenceId": "test:tests/database/t3-knowledge-reset-approval.database.test.ts:reconciles a committed approval after COMMIT acknowledgement loss and preserves state",
       "file": "tests/database/t3-knowledge-reset-approval.database.test.ts",
       "testName": "reconciles a committed approval after COMMIT acknowledgement loss and preserves state",
-      "covers": ["safe:adapters/source-knowledge-reset-postgres/src/index.ts:207"],
+      "covers": ["safe:adapters/source-knowledge-reset-postgres/src/index.ts:208"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresKnowledgeResetPersistence.insertApproved",
       "path": ["PostgresKnowledgeResetPersistence.insertApproved"]
@@ -1003,7 +1003,7 @@
       "testEvidenceId": "test:tests/database/t3-product-acceptance.database.test.ts:creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
       "file": "tests/database/t3-product-acceptance.database.test.ts",
       "testName": "creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
-      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:640"],
+      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:645"],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "askForSource",
       "path": [
@@ -1011,6 +1011,15 @@
         "PostgresAskWorkspaceProjection.getAnswerRun",
         "PostgresAskWorkspaceProjection.loadConversation"
       ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:VP automatic intake is finalized by the recovery worker without a user retry",
+      "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
+      "testName": "VP automatic intake is finalized by the recovery worker without a user retry",
+      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:518"],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresSourcesProductService.reconcileCompletedAutomaticSubmissions",
+      "path": ["PostgresSourcesProductService.reconcileCompletedAutomaticSubmissions"]
     }
   ]
 }

@@ -6,6 +6,10 @@
 
 이 배정은 **초기 아키텍처 기준선**이지 영구 채택 목록이 아니다. 개발 과정에서 license, security, maintenance, benchmark, API 안정성, Fork 비용과 Shotgun 계약 정합성에 따라 교체·축소·제외할 수 있다.
 
+### VP 활성 경로의 재사용 경계
+
+[ADR-172](../adr/ADR-172-vp-autonomous-knowledge-authority.md)의 VP Knowledge Ledger·Decision·Ask는 Shotgun의 SourceVersion/Evidence/접근 의미를 소유한다. 아래 Canonical·Approval 기준은 기존 승인형 경로에 한정한다. VP에서는 PostgreSQL 저장·Job·검색 Adapter와 기존 형식 변환기를 재사용하고, gbrain의 전체 Runtime/DB를 원장으로 도입하지 않는다. `garrytan/gbrain` Job·Graph, `ddsyasas/llm-wiki` 두 동작 UX, OpenKnowledge 활동·시각화는 `REFERENCE_ONLY`로 유지한다. `lucasastorian/llmwiki`에서 검증된 locator 추출 경계는 유지한다. 각 실제 코드 채택·추출은 Source Registry의 고정 commit·license·security·Contract 결과를 요구한다. DeepSeek는 현재 VP Decision Port의 일반 AI 구현이며, Jev는 API·품질·비용 검증이 가능해질 때까지 `DEFER`다.
+
 ## 2. 상태 분류
 
 | 상태                   | 의미                                            |
@@ -562,3 +566,19 @@ Stage 0~3의 재검증된 exact pin과 결정은
 - 독립 서비스 경계
 
 이 항목들은 Module Port와 Contract를 먼저 구현한 뒤 benchmark로 결정한다.
+
+## 10. VP 자동 지식 원장 추가 결정 (2026-09-25)
+
+`vp.knowledge-ledger`의 검증된 직접 주장 기록은 Shotgun의 SourceVersion·EvidenceSpan·Project 접근 범위·T3 초기화 경계에 묶인다. [VP 구현계획](../../implementation/vp-vampire-implementation-plan.md)의 기존 검토를 출발점으로 `garrytan/gbrain` (`a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, MIT)을 `REFERENCE_ONLY`로 둔다. gbrain의 Fact/Graph 저장 의미와 DB를 이 경계의 권위로 채택하면 기존 Evidence·권한·초기화 계약을 그대로 지킬 수 없어 VP 원장은 PostgreSQL Adapter로 직접 구현한다. 현재 재사용하는 PostgreSQL은 기존 채택 인프라이며 새 OSS Runtime은 추가하지 않았다.
+
+첫 Adapter는 `VPKnowledgeLedgerPort` 뒤에서 Stage 4의 `READY` 직접 후보와 정확한 변환 revision을 검증한다. 문자열이 완전히 같은 경우에는 결정적 관계를 만들고 각 Source의 근거를 보존한다. 의미 비교·충돌은 기존 DeepSeek AI Provider Adapter를 `DecisionProviderPort` 뒤에서 임시 재사용하며, Jev는 `DEFER`다. Migration 113–114는 새 원장과 프로젝트 초기화 owner를 추가한다. 롤백은 VP 관계 작업자 중지와 Shadow Ledger 보존으로 시작하며, 프로젝트의 활성 Ask 권위 전환 전까지 기존 Canonical 데이터는 변경하지 않는다.
+
+`DecisionProviderPort`의 Jev PoC는 [TypeSafe 공식 API](https://docs.typesafe.ai/introduction/quickstart) 요청 형식을 `REFERENCE_ONLY`로 사용한다. 후보 SDK [`typesafe-sdk-js@v0.6.0`](https://github.com/typesafe-ai/typesafe-sdk-js/releases/tag/v0.6.0), commit `66880cc`, MIT는 이번 PoC에서 `DEFER`한다. SDK의 provider/runtime 타입을 Shotgun 계약으로 끌어오지 않고 작은 HTTP Adapter로 모델 pin·응답 검증·egress 차단을 먼저 검증한다. SDK 통합 여부는 live API·Golden Corpus·보안/maintenance 평가 후 결정한다. 지금은 자격 증명이 없어 실제 Jev 결과나 비용·지연을 측정하지 않았으며 생산 경로에 연결하지 않는다. 실패/불확실성은 `UNRESOLVED` 또는 일반 AI Port로 넘기는 계약 테스트만 통과했다. PoC 롤백은 Adapter 미구성과 기존 Shadow Ledger 유지다.
+
+2026-09-26 임시 대체 결정은 신규 OSS 채택이 아닌 **기존 DeepSeek 연결 재사용(`AUGMENT`)**이다. 기존 Project AI resolver, Vault, DeepSeek HTTP Adapter와 현재 Project에 고정된 모델을 사용한다. VP Port와 Shadow Ledger 작업자는 제공자 유형·자격 증명을 직접 소유하지 않는다. Jev Adapter는 구성하지 않는다. 합성 문장 5쌍의 실 API 분류와 격리 PostgreSQL의 작업자→결정 영수증·관계 기록은 통과했다. 품질 Golden Corpus·대규모 비용 benchmark·Adapter 교체 검증은 미완료이며 활성 Ask 권위 전환의 Gate로 남긴다. 전환 전 롤백은 VP 관계 작업자 중지, 작업·영수증·관계 이력 보존, 기존 Ask 경로 유지다.
+
+VP 관계 기반 Ask 근거 확장은 기존 PostgreSQL 검색과 gbrain Search/Graph 검증 패턴을 재사용하되, gbrain Runtime·DB는 `REFERENCE_ONLY`로 유지한다. `AskKnowledgeEvidenceSearchPort`가 교체 경계이고 VP Adapter는 인가된 현재 주장과 두 관계 종류에서 Evidence ID만 제안한다. Ask는 자체 Source/Evidence 권한·최신성 검증을 다시 수행한다. 새로운 OSS 의존성이나 Migration은 없다. Adapter 제거가 롤백이며 원문 Ask 검색과 과거 AnswerRun Context는 그대로 남는다. 대규모 검색 품질·비용 benchmark와 전체 제품 E2E는 아직 Gate에 남는다.
+
+VP 수정 자료 투입은 이미 채택한 Shotgun `Source`·`SourceVersion`·Stage 3 Adapter를 `AUGMENT`한다. 외부 Runtime을 추가하지 않는다. gbrain의 Fact/Timeline과 lucas의 Evidence 패턴은 위 결정대로 참고·추출 경계에 두며, 프로젝트/보안 범위가 고정된 기존 Source의 버전 번호와 원본 계보는 Shotgun이 계속 소유한다. 새 버전 투입은 현재 Source의 보안 메타데이터 일치를 검사하고, 다른 프로젝트 Source ID는 거부한다. 되돌리기는 새 투입 UI를 비활성화하고 과거 SourceVersion을 보존하는 방식이며, 이미 생성된 버전을 삭제하지 않는다. 격리 PostgreSQL 브라우저 여정에서 파일 투입→인용 답변→수정 파일 투입→새 버전 인용 및 프로젝트 간 갱신 거부를 검증했다. DeepSeek 판단을 포함한 전체 제품 인수와 증분/전체 재생성 동등성은 아직 Gate에 남는다.
+
+2026-09-26 단일 지식 공간 결정은 새 VP에서 Project를 사용자 제품 범위로 노출하지 않는 변경이다. 사용자는 과거 자료·원본·대화·지식·프로젝트 설정의 이관을 요구하지 않으며 빈 공간에서 시작한다. gbrain Search/Graph와 ddsyasas의 단순 Intake/Ask UX는 각각 `REFERENCE_ONLY`이며, PostgreSQL Source/Evidence/Ask Port는 `AUGMENT`한다. OSS 내부 namespace/DB는 공통 지식 권위로 채택하지 않는다. Shotgun이 내부 저장·인가 키 하나를 자동 생성하고, 빈 저장소에서 투입·질문·인용·관계가 작동하는 Golden Corpus·보안 음성 테스트를 통과해야 한다. DeepSeek 자격 증명은 새 공간에 별도로 구성한다. 롤백은 새 실행 대상을 중지하고 이전 실행 설정으로 복귀하는 방식이며, 과거 자료를 새 지식 공간에 혼합하지 않는다.

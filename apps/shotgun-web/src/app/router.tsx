@@ -32,12 +32,50 @@ import { ActivityWorkspace } from '../routes/activity-workspace.js';
 import { HistoryWorkspace } from '../routes/history-workspace.js';
 import type { AppRuntime } from './providers.js';
 import { ensureSessionBoundary, sessionBoundaryQueryOptions } from '../session/session-query.js';
-import type { TargetRouteView } from '@shotgun/api-client';
+import { productSessionQueryKey, sessionBoundaryQueryKey } from './query-keys.js';
+import type { ProductSessionView, SessionBoundaryView, TargetRouteView } from '@shotgun/api-client';
 
 const RouteError = () => {
   const error = useRouteError();
   const revalidator = useRevalidator();
   return <ErrorState error={error} onRetry={() => revalidator.revalidate()} />;
+};
+
+/** Prepare the one internal VP space before any route or Project-scoped read. */
+const ensureKnowledgeSpace = async (
+  runtime: AppRuntime,
+  boundary: SessionBoundaryView,
+): Promise<SessionBoundaryView> => {
+  if (boundary.sessionState !== 'READY' || !boundary.session || boundary.session.activeProject)
+    return boundary;
+  const session = boundary.session;
+  const created = await runtime.queryClient.fetchQuery({
+    queryKey: ['vp', 'auto-knowledge-space', session.principal.id],
+    staleTime: Number.POSITIVE_INFINITY,
+    queryFn: async (): Promise<ProductSessionView> => {
+      try {
+        await runtime.apiClient.createFirstProject({
+          name: 'Shotgun',
+          projectAccessRevision:
+            session.apiVersion === '2.0.0' ? session.projectAccessRevision : '0',
+          clientRequestId: crypto.randomUUID(),
+          idempotencyKey: crypto.randomUUID(),
+        });
+      } catch (error) {
+        // An interrupted response can follow a committed atomic bootstrap.
+        const current = await runtime.apiClient.getSession();
+        if (current.activeProject) return current;
+        throw error;
+      }
+      const current = await runtime.apiClient.getSession();
+      if (!current.activeProject) throw new Error('The knowledge space is not ready yet.');
+      return current;
+    },
+  });
+  const readyBoundary = { ...boundary, session: created };
+  runtime.queryClient.setQueryData(productSessionQueryKey, created);
+  runtime.queryClient.setQueryData(sessionBoundaryQueryKey, readyBoundary);
+  return readyBoundary;
 };
 
 const sessionLoader =
@@ -48,7 +86,7 @@ const sessionLoader =
       runtime.queryClient,
       runtime.sessionCycleState,
     );
-    return await runtime.queryClient.fetchQuery({
+    const boundary = await runtime.queryClient.fetchQuery({
       ...opts,
       queryFn: ({ signal }) =>
         ensureSessionBoundary(
@@ -58,6 +96,7 @@ const sessionLoader =
           runtime.sessionCycleState,
         ),
     });
+    return await ensureKnowledgeSpace(runtime, boundary);
   };
 
 const guardedRouteLoader =
@@ -68,7 +107,7 @@ const guardedRouteLoader =
       runtime.queryClient,
       runtime.sessionCycleState,
     );
-    const boundary = await runtime.queryClient.fetchQuery({
+    const initialBoundary = await runtime.queryClient.fetchQuery({
       ...sessionOptions,
       queryFn: ({ signal }) =>
         ensureSessionBoundary(
@@ -78,6 +117,7 @@ const guardedRouteLoader =
           runtime.sessionCycleState,
         ),
     });
+    const boundary = await ensureKnowledgeSpace(runtime, initialBoundary);
     if (boundary.sessionState !== 'READY' || !boundary.session) {
       throw new Error('A ready Session is required before route authorization.');
     }

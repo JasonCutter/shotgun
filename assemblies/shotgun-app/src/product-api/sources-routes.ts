@@ -8,6 +8,7 @@ import {
   createCommand,
   FrontendContractError,
   SOURCES_FRONTEND_COMMAND_TYPES,
+  SOURCES_STAGING_MEDIA_TYPES,
   ShotgunError,
   buildPrincipalScopedCommandSemanticDigestInput,
   decodeSourceLibraryQuery,
@@ -17,6 +18,7 @@ import {
   type SourcesFrontendCommandPayload,
   type SourcesFrontendCommandType,
   type SourcesSensitivity,
+  type SourcesStagingMediaType,
   type SubmitStagedSourcesIntakeCommandPayload,
 } from '../../../../packages/contracts/src/index.js';
 import type { SettingsRepositoryPort } from '../../../../modules/settings-policy/src/index.js';
@@ -268,7 +270,10 @@ export const registerSourcesRoutes = (
       });
     }
     const mediaType = request.query.mediaType;
-    if (mediaType !== 'text/plain' && mediaType !== 'text/markdown') {
+    if (
+      !SOURCES_STAGING_MEDIA_TYPES.includes(mediaType as SourcesStagingMediaType) ||
+      (kind === 'DIRECT_TEXT' && mediaType !== 'text/plain')
+    ) {
       throw new ShotgunError({
         code: 'INVALID_REQUEST',
         safeMessage: 'Sources byte staging media type is unsupported.',
@@ -284,7 +289,7 @@ export const registerSourcesRoutes = (
         principalId: scope.write.principalId,
         kind,
         label: requireParameter(request.query.label, 'label', 500),
-        mediaType,
+        mediaType: mediaType as SourcesStagingMediaType,
         ...(kind === 'FILE'
           ? { fileName: requireParameter(request.query.fileName, 'fileName', 255) }
           : {}),
@@ -344,6 +349,9 @@ export const registerSourcesRoutes = (
                 ...(item.requestedClassification === undefined
                   ? {}
                   : { requestedClassification: item.requestedClassification }),
+                ...(item.requestedSourceId === undefined
+                  ? {}
+                  : { requestedSourceId: item.requestedSourceId }),
               };
             }),
           );
@@ -355,6 +363,9 @@ export const registerSourcesRoutes = (
               draftId: accepted.request.payload.draftId,
               scope: scope.write,
               items,
+              ...(accepted.request.payload.duplicateHandling === 'AUTOMATIC'
+                ? { duplicateHandling: 'AUTOMATIC' as const }
+                : {}),
               createdAt: new Date().toISOString(),
             });
           } catch (error) {

@@ -5,6 +5,7 @@ import type {
   SourcesSensitivity,
   SourcesStagingInputKind,
   SourcesStagingReceipt,
+  SourcesStagingMediaType,
 } from '../../../packages/contracts/src/index.js';
 import type {
   SourcesIntakeChannel,
@@ -21,7 +22,7 @@ export type ResolvedSourcesStagingArtifact = {
   readonly kind: SourcesIntakeInputKind;
   readonly label: string;
   readonly channel: SourcesIntakeChannel;
-  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly mediaType: SourcesStagingMediaType;
   readonly contentHash: string;
   readonly sizeBytes: number;
   readonly storageKey: string;
@@ -32,6 +33,7 @@ export type ResolvedSourcesStagingArtifact = {
   readonly issuedAt: string;
   readonly expiresAt: string;
   readonly requestedClassification?: SourcesSensitivity;
+  readonly requestedSourceId?: string;
 };
 
 export type SourcesStagingServicePort = {
@@ -42,7 +44,7 @@ export type SourcesStagingServicePort = {
     readonly principalId: string;
     readonly kind: 'DIRECT_TEXT' | 'FILE';
     readonly label: string;
-    readonly mediaType: 'text/plain' | 'text/markdown';
+    readonly mediaType: SourcesStagingMediaType;
     readonly fileName?: string;
     readonly bytes: Uint8Array;
   }): Promise<SourcesStagingReceipt>;
@@ -84,6 +86,7 @@ export type SubmitSourcesProductInput = {
   readonly draftId: string;
   readonly scope: SourcesProductWriteScope;
   readonly items: readonly ResolvedSourcesStagingArtifact[];
+  readonly duplicateHandling?: 'AUTOMATIC';
   readonly createdAt: string;
 };
 

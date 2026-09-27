@@ -8,14 +8,14 @@ import {
 } from '../../scripts/t3-storage-inventory.js';
 
 describe('T3 frozen storage inventory', () => {
-  it('is unique and covers the 190-table baseline plus five approved reset control tables', async () => {
+  it('is unique and covers the baseline, reset control tables, and seven VP tables', async () => {
     const register = await readFile(
       'docs/implementation/t3-storage-classification-register.md',
       'utf8',
     );
     const expected = parseT3ExpectedTables(register);
-    expect(expected.schemas).toHaveLength(29);
-    expect(expected.tables).toHaveLength(195);
+    expect(expected.schemas).toHaveLength(30);
+    expect(expected.tables).toHaveLength(202);
     expect(
       expected.tables.filter(
         (table) =>

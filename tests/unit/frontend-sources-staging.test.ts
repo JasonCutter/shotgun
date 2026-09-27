@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -140,5 +142,52 @@ describe('sealed Sources staging service', () => {
     await expect(service.stageBytes({ ...base, bytes: new Uint8Array(1_048_577) })).rejects.toThrow(
       /one MiB/,
     );
+  });
+
+  it('stages a PDF as a file and rejects mismatched types or signatures', async () => {
+    const service = new SealedSourcesStagingService(new MemoryStorage(), secret);
+    const pdf = {
+      ...base,
+      kind: 'FILE' as const,
+      mediaType: 'application/pdf' as const,
+      fileName: 'paper.pdf',
+      bytes: new TextEncoder().encode('%PDF-1.4\n1 0 obj\n'),
+    };
+    const receipt = await service.stageBytes(pdf);
+    expect(receipt).toMatchObject({ kind: 'FILE', mediaType: 'application/pdf' });
+    await expect(
+      service.resolve({
+        stagingReference: receipt.stagingReference,
+        draftId: pdf.draftId,
+        itemId: pdf.itemId,
+        projectId: pdf.projectId,
+        principalId: pdf.principalId,
+        kind: 'FILE',
+      }),
+    ).resolves.toMatchObject({ mediaType: 'application/pdf', fileName: 'paper.pdf' });
+    await expect(service.stageBytes({ ...pdf, mediaType: 'text/plain' })).rejects.toThrow(
+      /extension and media type/,
+    );
+    await expect(
+      service.stageBytes({ ...pdf, bytes: new TextEncoder().encode('not a PDF') }),
+    ).rejects.toThrow(/PDF signature/);
+  });
+
+  it.each([
+    ['golden.html', 'text/html'],
+    ['golden.csv', 'text/csv'],
+    ['golden.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    ['golden.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    ['golden.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+  ] as const)('stages %s through the file input boundary', async (fileName, mediaType) => {
+    const service = new SealedSourcesStagingService(new MemoryStorage(), secret);
+    const receipt = await service.stageBytes({
+      ...base,
+      kind: 'FILE',
+      fileName,
+      mediaType,
+      bytes: await readFile(path.resolve('tests/fixtures/stage-8', fileName)),
+    });
+    expect(receipt).toMatchObject({ kind: 'FILE', fileName, mediaType });
   });
 });

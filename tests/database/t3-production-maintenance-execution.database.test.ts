@@ -121,7 +121,7 @@ describe('T3 production maintenance execution', () => {
     if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true });
   });
 
-  it('recovers a killed 25-owner run and executes approved resets before launcher startup', async () => {
+  it('recovers a killed 26-owner run and executes approved resets before launcher startup', async () => {
     const projectId = `t3-maintenance-${randomUUID()}`;
     const principalId = randomUUID();
     const requestId = randomUUID();

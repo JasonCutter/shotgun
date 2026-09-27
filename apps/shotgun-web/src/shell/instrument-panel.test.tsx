@@ -161,6 +161,25 @@ const renderInstrument = ({
 };
 
 describe('InstrumentPanel HFM-S7-C2R authority', () => {
+  it('hides the internal Project identity for a single VP knowledge space', () => {
+    renderInstrument({
+      shellView: {
+        ...shell,
+        accessibleProjects: [shell.accessibleProjects[0]!],
+        features: [
+          {
+            id: 'vp-autonomous-knowledge',
+            label: 'Automatic knowledge',
+            availability: 'AVAILABLE',
+          },
+        ],
+      },
+    });
+
+    expect(screen.queryByRole('combobox', { name: 'Current project' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Sources: 2' })).toBeTruthy();
+  });
+
   it('uses exact PROJECT_MANAGED provider/model descriptors and the shared project.switch command', async () => {
     const user = userEvent.setup();
     const executeCommand = vi.fn();

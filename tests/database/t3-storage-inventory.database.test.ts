@@ -31,7 +31,7 @@ describe('T3 storage classification coverage', () => {
     );
     const expected = parseT3ExpectedTables(register);
     expect(expected.schemas).toEqual([...managedSchemas].sort());
-    expect(expected.tables).toHaveLength(195);
+    expect(expected.tables).toHaveLength(202);
 
     const actual = await pool.query<{ schema_name: string; table_name: string }>(
       `SELECT table_schema AS schema_name, table_name

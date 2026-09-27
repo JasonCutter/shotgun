@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -143,6 +145,83 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
   beforeEach(async () => {
     await recreateTestDatabaseSchemas(databaseUrl);
   });
+
+  it.each([
+    ['golden.pdf', 'application/pdf'],
+    ['golden.html', 'text/html'],
+    ['golden.csv', 'text/csv'],
+    ['golden.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    ['golden.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    ['golden.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+  ] as const)(
+    'stores an automatic %s submission as a document SourceVersion for Stage 3',
+    async (fileName, mediaType) => {
+      const context = await createContext();
+      const storage = new InMemoryAssetStorage();
+      const staging = new SealedSourcesStagingService(
+        storage,
+        'database-product-write-staging-secret-32-characters',
+      );
+      const stage3 = new RecordingStage3Pipeline();
+      const service = new PostgresSourcesProductService(pool!, staging, stage3);
+      const commandId = randomUUID();
+      await insertAcceptedCommand({
+        commandId,
+        commandType: 'sources.intake.submit.v1',
+        principalId: context.principalId,
+        projectId: context.projectId,
+        payload: { draftId: 'pdf-draft', inputs: [{ kind: 'FILE', stagingReference: 'sealed' }] },
+        now: context.now,
+      });
+      const receipt = await staging.stageBytes({
+        draftId: 'pdf-draft',
+        itemId: 'pdf-item',
+        projectId: context.projectId,
+        principalId: context.principalId,
+        kind: 'FILE',
+        label: 'Golden document',
+        mediaType,
+        fileName,
+        bytes: await readFile(path.resolve('tests/fixtures/stage-8', fileName)),
+      });
+      const artifact = await staging.resolve({
+        stagingReference: receipt.stagingReference,
+        draftId: 'pdf-draft',
+        itemId: 'pdf-item',
+        projectId: context.projectId,
+        principalId: context.principalId,
+        kind: 'FILE',
+      });
+      const result = await service.submit({
+        submissionId: commandId,
+        commandId,
+        correlationId: `correlation-${commandId}`,
+        draftId: 'pdf-draft',
+        scope: context.scope,
+        items: [{ ...artifact, requestedClassification: 'public' }],
+        duplicateHandling: 'AUTOMATIC',
+        createdAt: context.now,
+      });
+      expect(result.state).toBe('SUCCEEDED');
+      expect(stage3.calls).toHaveLength(1);
+      expect(stage3.calls[0]?.mediaType).toBe(mediaType);
+      const submission = await pool!.query<{ material_kind: string; media_type: string }>(
+        'SELECT material_kind, media_type FROM intake.submissions WHERE project_id = $1 AND content_hash = $2',
+        [context.projectId, receipt.contentHash],
+      );
+      expect(submission.rows[0]).toEqual({
+        material_kind: 'document',
+        media_type: mediaType,
+      });
+      const receiptRows = await pool!.query<{ material_kind: string }>(
+        `SELECT receipt.material_kind FROM asset.storage_receipts AS receipt
+       JOIN intake.submissions AS submission ON submission.submission_id = receipt.submission_id
+       WHERE submission.project_id = $1 AND submission.content_hash = $2`,
+        [context.projectId, receipt.contentHash],
+      );
+      expect(receiptRows.rows[0]?.material_kind).toBe('document');
+    },
+  );
 
   it('creates one Source, requires an exact-duplicate decision, and reuses the pinned Version', async () => {
     const context = await createContext();
@@ -302,6 +381,99 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
           raw_in_ledger: false,
         },
       ],
+    });
+  });
+
+  it('automatically reuses a matching SourceVersion and separates incompatible security without a decision', async () => {
+    const context = await createContext();
+    const storage = new InMemoryAssetStorage();
+    const staging = new SealedSourcesStagingService(
+      storage,
+      'database-product-write-staging-secret-32-characters',
+      undefined,
+      () => new Date(context.now),
+    );
+    const service = new PostgresSourcesProductService(
+      pool!,
+      staging,
+      new RecordingStage3Pipeline(),
+    );
+    const bytes = new TextEncoder().encode('VP immutable duplicate bytes');
+    const submit = async (
+      draftId: string,
+      classification: 'public' | 'private',
+      automatic: boolean,
+    ) => {
+      const commandId = randomUUID();
+      await insertAcceptedCommand({
+        commandId,
+        commandType: 'sources.intake.submit.v1',
+        principalId: context.principalId,
+        projectId: context.projectId,
+        payload: { draftId, inputs: [] },
+        now: context.now,
+      });
+      const receipt = await staging.stageBytes({
+        draftId,
+        itemId: `${draftId}-item`,
+        projectId: context.projectId,
+        principalId: context.principalId,
+        kind: 'DIRECT_TEXT',
+        label: draftId,
+        mediaType: 'text/plain',
+        bytes,
+      });
+      const artifact = await staging.resolve({
+        stagingReference: receipt.stagingReference,
+        draftId,
+        itemId: `${draftId}-item`,
+        projectId: context.projectId,
+        principalId: context.principalId,
+        kind: 'DIRECT_TEXT',
+      });
+      return service.submit({
+        submissionId: commandId,
+        commandId,
+        correlationId: `correlation-${commandId}`,
+        draftId,
+        scope: context.scope,
+        items: [{ ...artifact, requestedClassification: classification }],
+        ...(automatic ? { duplicateHandling: 'AUTOMATIC' as const } : {}),
+        createdAt: context.now,
+      });
+    };
+
+    const first = await submit('vp-original', 'public', false);
+    const sameSecurity = await submit('vp-same-security', 'public', true);
+    const differentSecurity = await submit('vp-private-security', 'private', true);
+    expect(sameSecurity.state).toBe('SUCCEEDED');
+    expect(sameSecurity.items[0]?.duplicateDecisionId).toBeUndefined();
+    expect(sameSecurity.items[0]?.producedResource).toMatchObject(
+      first.items[0]!.producedResource!,
+    );
+    expect(differentSecurity.state).toBe('SUCCEEDED');
+    expect(differentSecurity.items[0]?.duplicateDecisionId).toBeUndefined();
+    expect(differentSecurity.items[0]?.producedResource?.sourceId).not.toBe(
+      first.items[0]?.producedResource?.sourceId,
+    );
+    const rows = await pool!.query<{
+      sources: string;
+      versions: string;
+      decisions: string;
+      automatic_submissions: string;
+    }>(
+      `SELECT
+         (SELECT count(*)::text FROM asset.sources) AS sources,
+         (SELECT count(*)::text FROM asset.source_versions) AS versions,
+         (SELECT count(*)::text FROM source_product.exact_duplicate_decisions) AS decisions,
+         (SELECT count(*)::text FROM source_product.intake_submissions
+          WHERE duplicate_handling = 'AUTOMATIC') AS automatic_submissions`,
+    );
+    expect(rows.rows[0]).toEqual({
+      sources: '2',
+      versions: '2',
+      decisions: '0',
+      automatic_submissions: '2',
     });
   });
 

@@ -17,7 +17,7 @@ type AskCitation = {
 
 const BASE = 'http://127.0.0.1:3002';
 
-test('Direct Text SourceVersion executes SOURCE_EXPLORATION without selected Evidence', async () => {
+test('Direct Text SourceVersion answers both selected and automatic project questions', async () => {
   const fixture = (await tsImport(
     './fixtures/frontend-cross-phase-backend.ts',
     import.meta.url,
@@ -206,6 +206,48 @@ test('Direct Text SourceVersion executes SOURCE_EXPLORATION without selected Evi
       });
     }
     expect(citations.some((citation) => citation.exactQuote === sourceText)).toBe(true);
+
+    // VP two-action path: after intake, the user sends only a question.
+    // The server chooses the current project SourceVersion and its Evidence.
+    const automatic = await mutate('/product-api/frontend/ask/questions', {
+      schemaVersion: '1.0.0',
+      clientRequestId: requestId(),
+      idempotencyKey: requestId(),
+      question: 'When was Shotgun first run, and what was the first project?',
+    });
+    const automaticRunId = (automatic as { submission?: { answerRun?: { answerRunId?: string } } })
+      .submission?.answerRun?.answerRunId;
+    expect(automaticRunId).toBeTruthy();
+
+    let automaticRun:
+      | {
+          state?: string;
+          statements?: { text?: string; citations?: AskCitation[] }[];
+        }
+      | undefined;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const view = await get<{
+        answerRun?: {
+          state?: string;
+          statements?: { text?: string; citations?: AskCitation[] }[];
+        };
+      }>(`/product-api/frontend/ask/answer-runs/${automaticRunId}`);
+      automaticRun = view.answerRun;
+      if (['SUCCEEDED', 'FAILED'].includes(automaticRun?.state ?? '')) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    expect(automaticRun?.state).toBe('SUCCEEDED');
+    expect(automaticRun?.statements?.[0]?.text).toContain(sourceText);
+    expect(automaticRun?.statements?.[0]?.citations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceId: source?.sourceId,
+          sourceVersionId: source?.selectedSourceVersionId,
+          exactQuote: sourceText,
+        }),
+      ]),
+    );
   } finally {
     await backend.close();
   }

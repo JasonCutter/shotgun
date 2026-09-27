@@ -2,6 +2,12 @@
 
 > 목적: 기능이 구현됐다는 주장과 실제로 다음 단계에 전달 가능한 상태를 구분한다.
 
+## VP 적용 범위
+
+[ADR-172](../architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md)의 빈 단일 지식 공간에서는 사용자가 자료를 투입하고 질문하는 두 동작만 필수다. 아래 승인형 Canonical·Review 규칙은 기존 경로의 검증 기준이며, VP Knowledge Ledger의 자동 기록을 사용자 승인으로 위장하지 않는다. VP의 지식 기록 Gate는 원문 Evidence와 현재 SourceVersion 확인, 접근·민감도 및 제공자 전송 정책, 결정 영수증, 멱등 재생, 미해결·충돌 보존으로 판정한다. 외부 Action 실행의 별도 승인 경계는 그대로 적용한다.
+
+VP를 `COMPLETE`로 보고하려면 [VP 구현계획](./vp-vampire-implementation-plan.md)의 VP-0~VP-4 Gate와 이 문서의 공통 Module·Flow·Product·Architecture·OSS Integration Gate를 모두 통과해야 한다. 자료 A·B·수정 버전의 실제 제품 흐름, 형식별 Golden Corpus, 재시작·전체 재생성과 증분 결과의 동등성, DeepSeek 품질·보안·비용 한도, 빈 공간 초기화와 설치된 런처의 MAIN 실행을 검증한다. 미검증 Gate는 정확히 남겨 보고하고 완료로 표시하지 않는다.
+
 ## 1. 완료의 다섯 가지 Gate
 
 모든 기능, 모듈과 Stage는 다음 다섯 Gate를 통과해야 한다.
@@ -246,15 +252,18 @@ Test를 생략하면 PR 설명에 이유, 위험과 후속 Issue를 기록한다
 
 ```markdown
 ## Scope
+
 - [ ] 관련 Stage와 Vertical Slice를 명시했다.
 - [ ] 담당 모듈과 데이터 소유권을 명시했다.
 
 ## Contracts
+
 - [ ] 입력·출력 Contract가 Versioned다.
 - [ ] Breaking Change 여부를 확인했다.
 - [ ] Module Manifest를 갱신했다.
 
 ## OSS Integration
+
 - [ ] 관련 OSS 후보를 검토했다.
 - [ ] 후보별 Integration Decision을 기록했다.
 - [ ] 채택 후보의 version·commit·license·security 상태를 기록했다.
@@ -262,16 +271,19 @@ Test를 생략하면 PR 설명에 이유, 위험과 후속 Issue를 기록한다
 - [ ] Adapter·Extract Package Contract Test를 통과했다.
 
 ## Safety
+
 - [ ] Security Context와 접근 범위를 검증했다.
 - [ ] Canonical·Approval·Action 경계를 위반하지 않는다.
 - [ ] Secret과 민감 데이터가 노출되지 않는다.
 
 ## Reliability
+
 - [ ] Idempotency를 검증했다.
 - [ ] Retry·Timeout·Partial Failure를 검증했다.
 - [ ] Migration·Rollback 방법이 있다.
 
 ## Tests
+
 - [ ] Unit Test
 - [ ] Contract Test
 - [ ] Integration Test
@@ -280,6 +292,7 @@ Test를 생략하면 PR 설명에 이유, 위험과 후속 Issue를 기록한다
 - [ ] OSS Adapter Replacement Test, 해당하는 경우
 
 ## Documentation
+
 - [ ] 관련 문서를 갱신했다.
 - [ ] 알려진 제한과 후속 작업을 기록했다.
 ```

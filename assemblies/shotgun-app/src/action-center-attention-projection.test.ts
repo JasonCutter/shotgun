@@ -142,7 +142,6 @@ describe('CoordinatorActionCenterAttentionProjection', () => {
     expect(home.attention.map((item) => item.label)).toEqual([
       'Resolve an unknown external outcome',
       'Source processing failed',
-      'Review the project brief',
     ]);
     expect(home.attention.map((item) => item.targetRoute)).toEqual([
       { routeId: 'external-action', href: '/external-action' },
@@ -150,7 +149,6 @@ describe('CoordinatorActionCenterAttentionProjection', () => {
         routeId: 'activity',
         href: '/activity?domain=SOURCES&activity=activity-1&resource=IntakeSubmission&resourceId=submission-1',
       },
-      { routeId: 'review', href: '/review' },
     ]);
     expect(home.attention.some((item) => item.label === 'Must not disclose')).toBe(false);
     expect(home.attention.every((item) => !('command' in item))).toBe(true);

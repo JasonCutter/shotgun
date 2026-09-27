@@ -106,16 +106,15 @@ const renderWorkspace = () => {
   return router;
 };
 
-const addDirectTextDraft = async (label: string, text: string) => {
+const fillDirectTextForm = async (label: string, text: string) => {
   await userEvent.clear(screen.getByLabelText('Label'));
   await userEvent.type(screen.getByLabelText('Label'), label);
   await userEvent.clear(screen.getByLabelText('Direct Text'));
   await userEvent.type(screen.getByLabelText('Direct Text'), text);
-  await userEvent.click(screen.getByRole('button', { name: 'Add intake draft' }));
 };
 
 describe('Sources Workspace Leave Guard integration', () => {
-  it('keeps an unsubmitted file draft when navigation is canceled and discards it only by choice', async () => {
+  it('keeps a selected file when navigation is canceled and discards it only by choice', async () => {
     const user = userEvent.setup();
     const router = renderWorkspace();
     await screen.findByRole('heading', { name: 'Sources', level: 1 });
@@ -125,14 +124,13 @@ describe('Sources Workspace Leave Guard integration', () => {
       screen.getByLabelText('File'),
       new File(['draft content'], 'sample.txt', { type: 'text/plain' }),
     );
-    await user.click(screen.getByRole('button', { name: 'Add intake draft' }));
-    expect(screen.getByRole('button', { name: 'Submit drafts' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Add source' })).toBeTruthy();
 
     await user.click(screen.getByRole('link', { name: 'Home' }));
     expect(router.state.location.pathname).toBe('/sources');
     expect(screen.getByRole('dialog', { name: 'Leave with unsubmitted drafts?' })).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.getByText('sample.txt')).toBeTruthy();
+    expect((screen.getByLabelText('File') as HTMLInputElement).files?.[0]?.name).toBe('sample.txt');
     expect(router.state.location.pathname).toBe('/sources');
 
     await user.click(screen.getByRole('link', { name: 'Home' }));
@@ -141,31 +139,29 @@ describe('Sources Workspace Leave Guard integration', () => {
     expect(router.state.location.pathname).toBe('/home');
   });
 
-  it('keeps the Guard active after a partial delete and releases it after the last delete', async () => {
+  it('keeps the Guard active while a direct-text form has unsaved content', async () => {
     renderWorkspace();
     await screen.findByRole('heading', { name: 'Sources', level: 1 });
 
-    await addDirectTextDraft('Draft A', 'First draft');
-    await addDirectTextDraft('Draft B', 'Second draft');
+    await fillDirectTextForm('Draft A', 'First draft');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Remove Draft A' }));
     await userEvent.click(screen.getByRole('button', { name: 'Inspect leave state' }));
     expect(document.body.getAttribute('data-leave-state')).toContain('"hasUnsavedDraft":true');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Remove Draft B' }));
+    await userEvent.clear(screen.getByLabelText('Label'));
+    await userEvent.clear(screen.getByLabelText('Direct Text'));
     await userEvent.click(screen.getByRole('button', { name: 'Inspect leave state' }));
     expect(document.body.getAttribute('data-leave-state')).toContain('"hasUnsavedDraft":false');
   });
 
-  it('releases the Guard immediately after discarding the queue', async () => {
-    renderWorkspace();
+  it('allows navigation when the one-step intake form is empty', async () => {
+    const router = renderWorkspace();
     await screen.findByRole('heading', { name: 'Sources', level: 1 });
 
-    await addDirectTextDraft('Draft A', 'Transient draft');
-    await userEvent.click(screen.getByRole('button', { name: 'Discard all drafts' }));
+    await userEvent.click(screen.getByRole('link', { name: 'Home' }));
+    expect(await screen.findByText('Home workspace')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/home');
     await userEvent.click(screen.getByRole('button', { name: 'Inspect leave state' }));
-
     expect(document.body.getAttribute('data-leave-state')).toContain('"hasUnsavedDraft":false');
-    expect(screen.getByText('No drafts yet.')).toBeTruthy();
   });
 });

@@ -1,0 +1,20 @@
+{
+  "id": "vp.decision",
+  "version": "1.0.0",
+  "owner": "Shotgun VP Decision Router",
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": [],
+    "readsViaPorts": ["VPDecisionProviderPort"],
+    "directSchemaAccess": false
+  },
+  "consumes": { "commands": [], "events": [] },
+  "produces": { "events": [], "handoffs": [] },
+  "provides": { "queries": [], "capabilities": [] },
+  "requires": { "capabilities": [] },
+  "security": {
+    "requiredContext": ["project", "access_scope", "sensitivity", "external_egress_policy"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": { "canWriteCanonical": false, "canExecuteExternalAction": false }
+}

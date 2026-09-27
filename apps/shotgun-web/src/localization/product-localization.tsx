@@ -337,15 +337,15 @@ const enUS = {
   'ask.provider_eligibility_unavailable':
     'Provider eligibility could not be verified. Submission remains unavailable.',
   'ask.provider_eligibility.standing_policy_disabled':
-    'Automatic AI processing is disabled for this Project.',
+    'Automatic AI processing is not configured for this knowledge space.',
   'ask.provider_eligibility.standing_policy_provider_mismatch':
     'Automatic AI processing is bound to a different configured provider.',
   'ask.provider_eligibility.deployment_policy_blocked':
-    'Current deployment policy does not permit sending the Project context required for this question to the configured AI provider.',
+    'Current deployment policy does not permit sending the knowledge context required for this question to the configured AI provider.',
   'ask.provider_eligibility.project_approval_required':
-    'Project privacy approval is required before the context for this question can be sent to the configured AI provider.',
+    'Privacy authorization is required before the context for this question can be sent to the configured AI provider.',
   'ask.provider_eligibility.restricted_context_blocked':
-    'Restricted Project context cannot be sent to the configured AI provider.',
+    'Restricted knowledge context cannot be sent to the configured AI provider.',
   'ask.submission_unavailable': 'Question submission is not available for this conversation.',
   'ask.current_conversation': '(current conversation)',
   'ask.conversation_list': 'Conversations',
@@ -382,6 +382,10 @@ const enUS = {
   'sources.create_project': 'Create a Project before adding Sources',
   'sources.create_project_help': 'Create a Project to organize and add Sources.',
   'sources.draft_queue': 'Draft Queue',
+  'sources.direct_intake': 'Add knowledge source',
+  'sources.direct_help': 'Submit a file, text, or URL once. Shotgun processes it automatically.',
+  'sources.update_source': 'Add a new source version',
+  'sources.update_help': 'Submit the revised file once to update this source automatically.',
   'sources.draft_help':
     'Adding a draft only queues it on this page. Select Submit drafts to save it in the project.',
   'sources.leave_draft_title': 'Leave with unsubmitted drafts?',
@@ -459,7 +463,7 @@ const enUS = {
   'sources.draft_message.client_preflight':
     'Client preflight passed. The Server will validate again.',
   'sources.draft_message.file_unsupported':
-    'Only text/plain and text/markdown are active in this Section.',
+    'Choose a TXT, Markdown, PDF, HTML, CSV, DOCX, XLSX, or PPTX file.',
   'sources.draft_message.file_size': 'The file must be between 1 byte and one MiB.',
   'sources.draft_message.file_preflight':
     'Client preflight passed. The Server will verify bytes, type and filename.',
@@ -474,6 +478,7 @@ const enUS = {
   'sources.classification_help':
     'This is a classification request for this new Source. The Server validates and stores the final classification; it does not change your access clearance.',
   'sources.add_intake_draft': 'Add intake draft',
+  'sources.submit_source': 'Add source',
   'sources.intake_drafts': 'Intake drafts',
   'sources.requested_classification': 'Requested classification:',
   'sources.remove': 'Remove',
@@ -519,7 +524,11 @@ const enUS = {
   'source_detail.evidence_revision': 'Evidence revision',
   'source_detail.source_id': 'Source ID',
   'source_detail.source_version_id': 'SourceVersion ID',
+  'source_detail.vp_auto_heading': 'Automatic knowledge processing',
+  'source_detail.vp_auto_explanation':
+    'Shotgun processes this source in the background. You can inspect its original text, evidence, and version history while asking questions.',
   'source_detail.reprocess_ai_heading': 'AI processing',
+  'source_detail.add_version': 'Add revised version',
   'source_detail.reprocess_ai_explanation':
     'Restart AI processing for this Source version using the current Project configuration.',
   'source_detail.reprocess_ai': 'Retry AI processing',
@@ -780,6 +789,7 @@ const enUS = {
   'discovery.resource.source': 'Source',
   'discovery.resource.source_version': 'Source version',
   'discovery.resource.compiled_truth_item': 'Compiled Truth item',
+  'enum.ask_mode.auto_project_knowledge': 'Ask across all my sources',
   'enum.ask_mode.canonical_only': 'Verified knowledge only',
   'enum.ask_mode.source_exploration': 'Use selected sources',
   'enum.ask_mode.hybrid': 'Verified knowledge + selected sources',
@@ -1196,15 +1206,15 @@ const koKR: Record<ProductMessageKey, string> = {
   'ask.provider_eligibility_unavailable':
     '제공자 사용 가능 여부를 확인하지 못했습니다. 질문을 제출할 수 없습니다.',
   'ask.provider_eligibility.standing_policy_disabled':
-    '이 프로젝트의 AI 자동 처리가 꺼져 있습니다.',
+    '이 지식 공간의 AI 자동 처리가 설정되지 않았습니다.',
   'ask.provider_eligibility.standing_policy_provider_mismatch':
     'AI 자동 처리가 현재 구성된 제공자와 다른 제공자에 연결되어 있습니다.',
   'ask.provider_eligibility.deployment_policy_blocked':
-    '현재 배포 정책에서는 이 질문에 필요한 프로젝트 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
+    '현재 배포 정책에서는 이 질문에 필요한 지식 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
   'ask.provider_eligibility.project_approval_required':
-    '이 질문에 필요한 프로젝트 내용을 AI 제공자에게 보내려면 프로젝트 개인정보 승인이 필요합니다.',
+    '이 질문에 필요한 지식 내용을 AI 제공자에게 보내려면 개인정보 전송 허가가 필요합니다.',
   'ask.provider_eligibility.restricted_context_blocked':
-    '제한된 프로젝트 내용은 구성된 AI 제공자에게 보낼 수 없습니다.',
+    '전송이 제한된 지식 내용은 구성된 AI 제공자에게 보낼 수 없습니다.',
   'ask.submission_unavailable': '이 대화에서는 질문을 제출할 수 없습니다.',
   'ask.current_conversation': '(현재 대화)',
   'ask.conversation_list': '대화',
@@ -1241,6 +1251,10 @@ const koKR: Record<ProductMessageKey, string> = {
   'sources.create_project': '소스를 추가하기 전에 프로젝트를 만드세요',
   'sources.create_project_help': '소스를 정리하고 추가하려면 프로젝트를 만드세요.',
   'sources.draft_queue': '초안 대기열',
+  'sources.direct_intake': '지식 자료 투입',
+  'sources.direct_help': '파일·텍스트·URL을 한 번 제출하면 샷건이 자동으로 처리합니다.',
+  'sources.update_source': '자료의 새 버전 투입',
+  'sources.update_help': '수정된 파일을 한 번 제출하면 이 자료의 새 버전으로 자동 처리합니다.',
   'sources.draft_help':
     '수집 초안 추가는 이 화면의 대기열에만 넣습니다. 프로젝트에 저장하려면 초안 제출을 누르세요.',
   'sources.leave_draft_title': '제출하지 않은 초안을 두고 이동할까요?',
@@ -1314,7 +1328,7 @@ const koKR: Record<ProductMessageKey, string> = {
   'sources.draft_message.client_preflight':
     '클라이언트 사전 검사를 통과했습니다. 서버가 다시 검증합니다.',
   'sources.draft_message.file_unsupported':
-    '이 섹션에서는 text/plain 및 text/markdown 형식만 사용할 수 있습니다.',
+    'TXT, Markdown, PDF, HTML, CSV, DOCX, XLSX 또는 PPTX 파일을 선택하세요.',
   'sources.draft_message.file_size': '파일 크기는 1바이트 이상 1 MiB 이하여야 합니다.',
   'sources.draft_message.file_preflight':
     '클라이언트 사전 검사를 통과했습니다. 서버가 바이트, 형식 및 파일 이름을 검증합니다.',
@@ -1329,6 +1343,7 @@ const koKR: Record<ProductMessageKey, string> = {
   'sources.classification_help':
     '새 소스에 대한 분류 요청입니다. 서버가 최종 분류를 검증하고 저장하며 사용자의 접근 허용 수준은 변경하지 않습니다.',
   'sources.add_intake_draft': '수집 초안 추가',
+  'sources.submit_source': '자료 투입',
   'sources.intake_drafts': '수집 초안',
   'sources.requested_classification': '요청한 분류:',
   'sources.remove': '제거',
@@ -1374,7 +1389,11 @@ const koKR: Record<ProductMessageKey, string> = {
   'source_detail.evidence_revision': '근거 리비전',
   'source_detail.source_id': '소스 ID',
   'source_detail.source_version_id': '소스 버전 ID',
+  'source_detail.vp_auto_heading': '자동 지식 처리',
+  'source_detail.vp_auto_explanation':
+    '샷건이 이 자료를 백그라운드에서 처리합니다. 원문·근거·버전 기록을 확인하면서 질문할 수 있습니다.',
   'source_detail.reprocess_ai_heading': 'AI 처리',
+  'source_detail.add_version': '수정 버전 투입',
   'source_detail.reprocess_ai_explanation':
     '현재 Project 설정으로 이 소스 버전의 AI 처리를 다시 시작합니다.',
   'source_detail.reprocess_ai': 'AI 처리 다시 시도',
@@ -1633,6 +1652,7 @@ const koKR: Record<ProductMessageKey, string> = {
   'discovery.resource.source': 'Source',
   'discovery.resource.source_version': 'Source 버전',
   'discovery.resource.compiled_truth_item': 'Compiled Truth 항목',
+  'enum.ask_mode.auto_project_knowledge': '투입한 자료 전체에 질문',
   'enum.ask_mode.canonical_only': '검증된 지식만 사용',
   'enum.ask_mode.source_exploration': '선택한 소스 사용',
   'enum.ask_mode.hybrid': '검증된 지식과 선택한 소스 사용',
@@ -1741,6 +1761,7 @@ const hfmOwnerLabelKeys: Readonly<
   Record<HfmOwnerLabelKind, Readonly<Record<string, ProductMessageKey>>>
 > = {
   askMode: {
+    AUTO_PROJECT_KNOWLEDGE: 'enum.ask_mode.auto_project_knowledge',
     CANONICAL_ONLY: 'enum.ask_mode.canonical_only',
     SOURCE_EXPLORATION: 'enum.ask_mode.source_exploration',
     HYBRID: 'enum.ask_mode.hybrid',
@@ -1891,7 +1912,10 @@ export const ProductLocalizationProvider = ({
     queryFn: () => apiClient.getPrincipalPreferences(),
     staleTime: Number.POSITIVE_INFINITY,
   });
-  const locale = resolveProductLocale(preferences.data?.preferences['locale']);
+  const locale = resolveProductLocale(
+    preferences.data?.preferences['locale'] ??
+      (typeof navigator === 'undefined' ? undefined : navigator.language),
+  );
   const value = useMemo<ProductLocalizationValue>(
     () => ({ locale, t: (key) => dictionaries[locale][key] }),
     [locale],

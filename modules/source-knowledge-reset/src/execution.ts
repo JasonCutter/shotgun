@@ -17,6 +17,7 @@ export const KNOWLEDGE_RESET_OWNER_ORDER = [
   'review',
   'knowledge-draft',
   'comparison',
+  'vp-ledger',
   'validation',
   'candidate',
   'ai-output',

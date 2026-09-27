@@ -43,18 +43,7 @@ export const HomePage = () => {
   const { shell } = useOutletContext<{ readonly shell: GlobalShellView }>();
   const homeQuery = useQuery(homeActionCenterQueryOptions(apiClient, shell));
 
-  if (!shell.activeProject) {
-    return (
-      <section className="route-page hfm-route-page first-run">
-        <p className="eyebrow">{t('home.first_run')}</p>
-        <h1 tabIndex={-1}>{t('home.create_first_project')}</h1>
-        <p>{t('home.create_first_project_help')}</p>
-        <Link className="primary-link" to="/settings/projects">
-          {t('home.open_onboarding')}
-        </Link>
-      </section>
-    );
-  }
+  if (!shell.activeProject) return <LoadingState message="지식 공간을 준비하고 있습니다…" />;
   if (homeQuery.isPending) return <LoadingState message={t('home.loading')} />;
   if (homeQuery.error) {
     return (

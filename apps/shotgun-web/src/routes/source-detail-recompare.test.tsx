@@ -207,12 +207,30 @@ const createRuntime = (recompareCandidate: ShotgunApiClient['recompareCandidate'
 const renderDetail = (
   runtime: AppRuntime,
   controller: OwnerCommandController = { commands: [], executeCommand: vi.fn() },
+  vpEnabled = false,
 ) => {
   const router = createMemoryRouter(
     [
       {
         path: '/',
-        element: <Outlet context={{ shell }} />,
+        element: (
+          <Outlet
+            context={{
+              shell: vpEnabled
+                ? {
+                    ...shell,
+                    features: [
+                      {
+                        id: 'vp-autonomous-knowledge',
+                        label: 'Automatic project knowledge',
+                        availability: 'AVAILABLE' as const,
+                      },
+                    ],
+                  }
+                : shell,
+            }}
+          />
+        ),
         children: [
           { path: 'sources/:sourceId', element: <SourceDetailWorkspace /> },
           { path: 'review', element: <p>Review route</p> },
@@ -237,6 +255,19 @@ describe('Source Detail initial V2 Candidate re-entry', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it('keeps the VP source detail read-only without manual comparison or Review actions', async () => {
+    const runtime = createRuntime(vi.fn());
+    renderDetail(runtime, undefined, true);
+    expect(
+      await screen.findByRole('heading', { name: 'Automatic knowledge processing' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Run semantic comparison' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry AI processing' })).toBeNull();
+    expect(screen.queryByText('Semantic comparison candidates')).toBeNull();
+    expect(runtime.apiClient.getSourceCandidates).not.toHaveBeenCalled();
+    expect(runtime.apiClient.getSemanticComparisonStatus).not.toHaveBeenCalled();
   });
 
   it('opens the semantic setup command from a READY candidate when comparison is not configured', async () => {

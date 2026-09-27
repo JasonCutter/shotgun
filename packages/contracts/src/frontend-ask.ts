@@ -7,7 +7,7 @@ import {
 } from './frontend-sources.js';
 
 export const ASK_SCHEMA_VERSION = '1.0.0' as const;
-export type AskMode = 'CANONICAL_ONLY' | 'SOURCE_EXPLORATION' | 'HYBRID';
+export type AskMode = 'AUTO_PROJECT_KNOWLEDGE' | 'CANONICAL_ONLY' | 'SOURCE_EXPLORATION' | 'HYBRID';
 export type AskAnswerRunState =
   | 'QUEUED'
   | 'RUNNING'
@@ -298,7 +298,12 @@ const booleanVal = (value: unknown, path: string): boolean => {
 };
 
 const askMode = (value: unknown, path: string): AskMode => {
-  const valid: AskMode[] = ['CANONICAL_ONLY', 'SOURCE_EXPLORATION', 'HYBRID'];
+  const valid: AskMode[] = [
+    'AUTO_PROJECT_KNOWLEDGE',
+    'CANONICAL_ONLY',
+    'SOURCE_EXPLORATION',
+    'HYBRID',
+  ];
   if (!valid.includes(value as AskMode)) fail(`${path} is unsupported AskMode.`);
   return value as AskMode;
 };
@@ -961,9 +966,13 @@ export const decodeSubmitAskQuestionRequest = (value: unknown): SubmitAskQuestio
     'request',
   );
   schema(input, 'request');
-  const sourceSelections = array(input.sourceSelections, 'request.sourceSelections', (sel, i) =>
-    decodeAskSourceSelectionView(sel, `request.sourceSelections[${i}]`),
-  );
+  const sourceSelections =
+    input.sourceSelections === undefined &&
+    (input.mode === undefined || input.mode === 'AUTO_PROJECT_KNOWLEDGE')
+      ? []
+      : array(input.sourceSelections, 'request.sourceSelections', (sel, i) =>
+          decodeAskSourceSelectionView(sel, `request.sourceSelections[${i}]`),
+        );
 
   if (
     (input.conversationId !== undefined || input.branchId !== undefined) &&
@@ -1011,7 +1020,7 @@ export const computeSubmitAskQuestionDigest = (request: SubmitAskQuestionRequest
     commandType: 'SUBMIT_QUESTION',
     commandSchemaVersion: ASK_SCHEMA_VERSION,
     question: request.question.trim(),
-    mode: request.mode ?? 'CANONICAL_ONLY',
+    mode: request.mode ?? 'AUTO_PROJECT_KNOWLEDGE',
     conversationId: request.conversationId ?? null,
     branchId: request.branchId ?? null,
     expectedConversationRevision: request.expectedConversationRevision ?? null,

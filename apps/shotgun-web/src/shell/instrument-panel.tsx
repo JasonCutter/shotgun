@@ -72,48 +72,55 @@ export const InstrumentPanel = ({
   );
   const aiConfiguration = effectiveAIConfiguration(settingsQuery.data);
   const breadcrumb = breadcrumbForPath(location.pathname);
+  const singleKnowledgeSpace =
+    shell.accessibleProjects.length === 1 &&
+    shell.features.some(
+      (feature) => feature.id === 'vp-autonomous-knowledge' && feature.availability === 'AVAILABLE',
+    );
 
   return (
     <header className="instrument-panel">
       <p className="instrument-panel__identity" aria-label="Shotgun">
         Shotgun
       </p>
-      <label className="instrument-panel__project">
-        <span className="visually-hidden">Current project</span>
-        <select
-          aria-label="Current project"
-          className="instrument-panel__project-selector"
-          value={shell.activeProject?.id ?? ''}
-          disabled={!shell.activeProject || projectSwitchCommands.length === 0}
-          onChange={(event) => {
-            const command = projectSwitchCommands.find(
-              (candidate) =>
-                candidate.action.kind === 'SWITCH_PROJECT' &&
-                candidate.action.projectId === event.currentTarget.value,
-            );
-            if (command) controller.executeCommand(command, event.currentTarget);
-          }}
-        >
-          {shell.activeProject ? (
-            <option value={shell.activeProject.id}>{shell.activeProject.label}</option>
-          ) : (
-            <option value="">No Project</option>
-          )}
-          {projectSwitchCommands.map((command) =>
-            command.action.kind === 'SWITCH_PROJECT' ? (
-              <option
-                key={command.action.projectId}
-                value={command.action.projectId}
-                disabled={command.availability !== 'AVAILABLE'}
-              >
-                {command.label.replace(/^Switch to /, '')}
-              </option>
-            ) : null,
-          )}
-        </select>
-      </label>
+      {!singleKnowledgeSpace ? (
+        <label className="instrument-panel__project">
+          <span className="visually-hidden">Current project</span>
+          <select
+            aria-label="Current project"
+            className="instrument-panel__project-selector"
+            value={shell.activeProject?.id ?? ''}
+            disabled={!shell.activeProject || projectSwitchCommands.length === 0}
+            onChange={(event) => {
+              const command = projectSwitchCommands.find(
+                (candidate) =>
+                  candidate.action.kind === 'SWITCH_PROJECT' &&
+                  candidate.action.projectId === event.currentTarget.value,
+              );
+              if (command) controller.executeCommand(command, event.currentTarget);
+            }}
+          >
+            {shell.activeProject ? (
+              <option value={shell.activeProject.id}>{shell.activeProject.label}</option>
+            ) : (
+              <option value="">No Project</option>
+            )}
+            {projectSwitchCommands.map((command) =>
+              command.action.kind === 'SWITCH_PROJECT' ? (
+                <option
+                  key={command.action.projectId}
+                  value={command.action.projectId}
+                  disabled={command.availability !== 'AVAILABLE'}
+                >
+                  {command.label.replace(/^Switch to /, '')}
+                </option>
+              ) : null,
+            )}
+          </select>
+        </label>
+      ) : null}
       <p className="project-summary visually-hidden">
-        {shell.activeProject?.label ?? 'No Project'}
+        {singleKnowledgeSpace ? 'Shotgun' : (shell.activeProject?.label ?? 'No Project')}
       </p>
       <p className="instrument-panel__breadcrumb" aria-label="Workspace breadcrumb">
         {breadcrumb}

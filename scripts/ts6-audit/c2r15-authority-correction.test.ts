@@ -67,7 +67,7 @@ describe('C2-R15 regression-evidence authority correction', () => {
   it('applies legacy method-name scoring to current code while preserving historical totals', () => {
     const audit = buildAuditShape(ROOT, { legacyAuthority: true });
     expect(audit.counts).toMatchObject({
-      TX_BOUNDARY: 102,
+      TX_BOUNDARY: 106,
       TX_PARTICIPANT: 0,
       TX_DELEGATE: 0,
       NON_TX: 7,
@@ -100,10 +100,10 @@ describe('C2-R15 regression-evidence authority correction', () => {
       return counts;
     }, {});
     expect(audit.counts).toMatchObject(expectedCounts);
-    // The live T3 audit includes the Ask read snapshot boundary; the frozen v2
+    // The current VP audit includes four added boundaries; the frozen v2
     // history above remains unchanged at its original inventory totals.
-    expect(audit.candidates).toHaveLength(122);
-    expect(audit.boundaries).toHaveLength(115);
+    expect(audit.candidates).toHaveLength(126);
+    expect(audit.boundaries).toHaveLength(119);
     expect(audit.rawTransactionSites).toHaveLength(11);
   }, 120_000);
 

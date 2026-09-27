@@ -1,4 +1,7 @@
-import type { SecurityContext } from '../../../packages/contracts/src/index.js';
+import type {
+  SecurityContext,
+  SourcesStagingMediaType,
+} from '../../../packages/contracts/src/index.js';
 
 export type {
   SourcesStage3EvidenceIndexResult,
@@ -76,7 +79,7 @@ export type SourcesIntakeStoredItemInput = {
   readonly label: string;
   readonly inputManifest: Readonly<Record<string, unknown>>;
   readonly channel: SourcesIntakeChannel;
-  readonly mediaType: 'text/plain' | 'text/markdown';
+  readonly mediaType: SourcesStagingMediaType;
   readonly contentHash: string;
   readonly sizeBytes: number;
   readonly storageKey: string;

@@ -392,6 +392,9 @@ export const SourceDetailWorkspace = () => {
   const { sourceId = '' } = useParams();
   const location = useLocation();
   const [searchParameters, setSearchParameters] = useSearchParams();
+  const vpAutomaticKnowledge = shell.features.some(
+    (feature) => feature.id === 'vp-autonomous-knowledge' && feature.availability === 'AVAILABLE',
+  );
   const detail = useQuery(sourceDetailQueryOptions(apiClient, shell, sourceId));
   const selectedVersionId =
     searchParameters.get('version') ?? detail.data?.currentSourceVersionId ?? '';
@@ -408,7 +411,8 @@ export const SourceDetailWorkspace = () => {
     sourceEvidenceQueryOptions(apiClient, shell, sourceId, selectedVersionId),
   );
   const activeProjectId = shell.activeProject?.id;
-  const candidateReadAvailable = typeof apiClient.getSourceCandidates === 'function';
+  const candidateReadAvailable =
+    !vpAutomaticKnowledge && typeof apiClient.getSourceCandidates === 'function';
   const candidatesOptions = sourceCandidatesQueryOptions(
     apiClient,
     shell,
@@ -419,7 +423,8 @@ export const SourceDetailWorkspace = () => {
     ...candidatesOptions,
     enabled: candidateReadAvailable && candidatesOptions.enabled,
   });
-  const semanticReadAvailable = typeof apiClient.getSemanticComparisonStatus === 'function';
+  const semanticReadAvailable =
+    !vpAutomaticKnowledge && typeof apiClient.getSemanticComparisonStatus === 'function';
   const semanticStatus = useQuery({
     queryKey: ['settings', 'ai', 'semantic-comparison', activeProjectId ?? 'no-project'],
     queryFn: ({ signal }) => apiClient.getSemanticComparisonStatus(activeProjectId!, { signal }),
@@ -668,7 +673,19 @@ export const SourceDetailWorkspace = () => {
           </Link>
         </p>
       ) : null}
-      {reextractEligible ? (
+      {vpAutomaticKnowledge ? (
+        <section
+          className="action-card source-detail-ai-action"
+          aria-labelledby="source-ai-heading"
+        >
+          <h2 id="source-ai-heading">{t('source_detail.vp_auto_heading')}</h2>
+          <p>{t('source_detail.vp_auto_explanation')}</p>
+          <Link to={`/sources?view=add&sourceId=${encodeURIComponent(sourceId)}`}>
+            {t('source_detail.add_version')}
+          </Link>
+        </section>
+      ) : null}
+      {!vpAutomaticKnowledge && reextractEligible ? (
         <section
           className="action-card source-detail-ai-action"
           aria-labelledby="source-ai-heading"
@@ -691,7 +708,7 @@ export const SourceDetailWorkspace = () => {
             <Link to="/settings/ai">{t('source_detail.reprocess_ai_configure')}</Link>
           ) : null}
         </section>
-      ) : reextractFeedback ? (
+      ) : !vpAutomaticKnowledge && reextractFeedback ? (
         <p role={reextractFeedback.kind === 'error' ? 'alert' : 'status'}>
           {reextractFeedback.message}
         </p>

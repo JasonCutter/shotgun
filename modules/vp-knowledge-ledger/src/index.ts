@@ -1,5 +1,3 @@
-import type { VPRelationDecisionRouter } from '../../vp-decision/src/index.js';
-
 export type VPCurrentAssertion = {
   readonly assertionId: string;
   readonly projectId: string;
@@ -50,6 +48,41 @@ export type VPRelationJobStorePort = {
 
 export type VPRelationEgressPolicy = (job: VPRelationJob) => Promise<boolean>;
 
+/** Local Port keeps the ledger independent of the decision module's runtime. */
+export type VPRelationDecisionPort = {
+  resolve(input: {
+    readonly projectId: string;
+    readonly left: Pick<
+      VPCurrentAssertion,
+      'assertionId' | 'sourceVersionId' | 'evidenceId' | 'accessScope' | 'sensitivity'
+    > & { readonly text: string };
+    readonly right: Pick<
+      VPCurrentAssertion,
+      'assertionId' | 'sourceVersionId' | 'evidenceId' | 'accessScope' | 'sensitivity'
+    > & { readonly text: string };
+    readonly allowedAccessScope: readonly string[];
+    readonly authorizedSensitivities: readonly VPCurrentAssertion['sensitivity'][];
+    readonly externalEgressAllowed: boolean;
+    readonly policyRevision: string;
+  }): Promise<
+    | {
+        readonly status: 'DECIDED';
+        readonly provider: 'JEV' | 'GENERAL_AI';
+        readonly decision: {
+          readonly choice: VPRelationJobDecision['choice'] | 'UNRESOLVED';
+          readonly confidence: number;
+          readonly model: string;
+          readonly inputTokens: number;
+          readonly outputTokens: number;
+        };
+      }
+    | {
+        readonly status: 'UNRESOLVED';
+        readonly reason: 'NO_AUTHORIZED_PROVIDER' | 'PROVIDER_FAILED' | 'INSUFFICIENT_EVIDENCE';
+      }
+  >;
+};
+
 /** Jobs and leases are durable; uncertain provider outcomes never write a relation. */
 export class VPRelationJobWorker {
   private stopped = false;
@@ -58,7 +91,7 @@ export class VPRelationJobWorker {
 
   constructor(
     private readonly jobs: VPRelationJobStorePort,
-    private readonly router: VPRelationDecisionRouter,
+    private readonly router: VPRelationDecisionPort,
     private readonly egressPolicy: VPRelationEgressPolicy,
     private readonly policyRevision: string,
     private readonly intervalMs = 5_000,

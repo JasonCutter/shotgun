@@ -44,6 +44,7 @@ import {
   type SourceIntakeDraftMessageCode,
   useSourceIntakeDraftQueue,
 } from '../sources/source-intake-drafts.js';
+import { useLeaveGuard } from '../session/leave-guard-context.js';
 import { useConnectivityState } from '../shell/use-connectivity-state.js';
 
 const DEFAULT_QUERY: SourceLibraryQuery = {
@@ -195,6 +196,25 @@ export const SourcesWorkspace = () => {
   const [requestedUrl, setRequestedUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File>();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formHasUnsavedDraft = Boolean(
+    intakeLabel.trim() || directText.trim() || requestedUrl.trim() || selectedFile,
+  );
+  const formHasUnsavedDraftRef = useRef(formHasUnsavedDraft);
+  formHasUnsavedDraftRef.current = formHasUnsavedDraft;
+  const { registerLeaveGuard } = useLeaveGuard();
+  useEffect(
+    () =>
+      registerLeaveGuard(() => {
+        const hasUnsavedDraft = formHasUnsavedDraftRef.current;
+        return {
+          canLeaveCurrentContext: !hasUnsavedDraft,
+          hasUnsavedDraft,
+          hasBlockingDialog: false,
+          hasOutcomeUnknownCommand: false,
+        };
+      }),
+    [registerLeaveGuard],
+  );
   const intakeProjectId = useRef(projectId);
   const [submission, setSubmission] = useState<IntakeSubmissionSnapshot>();
   const [decision, setDecision] = useState<ExactDuplicateDecisionView>();
@@ -280,9 +300,10 @@ export const SourcesWorkspace = () => {
       ? (location.state as { readonly intakeDraftSeed?: unknown }).intakeDraftSeed
       : undefined;
   const draftQueue = useSourceIntakeDraftQueue(shell.activeProject?.id ?? '', seed);
-  const draftNavigation = useBlocker(draftQueue.items.length > 0);
+  const hasUnsavedDraft = draftQueue.items.length > 0 || formHasUnsavedDraft;
+  const draftNavigation = useBlocker(hasUnsavedDraft);
   useBeforeUnload((event) => {
-    if (draftQueue.items.length === 0) return;
+    if (!hasUnsavedDraft) return;
     event.preventDefault();
     event.returnValue = '';
   });
@@ -743,6 +764,12 @@ export const SourcesWorkspace = () => {
                 className="hfm-action-destructive"
                 onClick={() => {
                   draftQueue.discardAll();
+                  directCommandIdentity.current = undefined;
+                  setIntakeLabel('');
+                  setDirectText('');
+                  setRequestedUrl('');
+                  setSelectedFile(undefined);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
                   draftNavigation.proceed();
                 }}
               >

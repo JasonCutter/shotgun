@@ -8,8 +8,8 @@ import type {
   KnowledgeResetImpactPort,
 } from '../../../modules/source-knowledge-reset/src/index.js';
 
-const EXPECTED_TABLE_COUNT = 200;
-const EXPECTED_TABLE_DIGEST = '1e6c86adaa00262f9eacfcc6ae1d3c515370b5761d8ab4f4ef6eb72a73830a27';
+const EXPECTED_TABLE_COUNT = 202;
+const EXPECTED_TABLE_DIGEST = '11283547b47dd38b50e56d7a0c4949f869fd593a97323d44de09d5f655039532';
 const EXPECTED_CONTENT_COLUMN_COUNT = 167;
 const EXPECTED_CONTENT_COLUMN_DIGEST =
   '6e62325d2d2757c8c7c877ebd8b17faaeb67e856645363685a2313b695a309b2';
@@ -269,6 +269,7 @@ const PRESERVED_TABLES = new Set([
   'frontend_external_action.budgets',
   'frontend_external_action.credentials',
   'projection.semantic_embedding_profiles',
+  'vp.relation_call_budget',
 ]);
 
 const quoteIdentifier = (identifier: string): string => `"${identifier.replaceAll('"', '""')}"`;

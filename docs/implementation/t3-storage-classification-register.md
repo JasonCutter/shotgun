@@ -1,8 +1,8 @@
 # T3 Project Source 지식 저장소 분류표
 
-> - 상태: **IMPLEMENTATION — migration 113~115의 VP 원장과 26번째 reset owner 포함; 제품 인수 미완료**
-> - DB 기준선: migration 001–077의 190 application base table / 29 schema; T3 reset control table 5개와 VP 원장·작업 table 6개 추가
-> - 기준 content inventory: 201개 table / 167개 JSON·JSONB·bytea column; 검증 migration 001–115, 2026-09-26
+> - 상태: **IMPLEMENTATION — migration 113~119의 VP 원장과 26번째 reset owner 포함; 제품 인수 미완료**
+> - DB 기준선: migration 001–077의 190 application base table / 29 schema; T3 reset control table 5개와 VP 원장·작업 table 6개, 전역 호출 예산 table 1개 추가
+> - 기준 content inventory: 202개 table / 167개 JSON·JSONB·bytea column; 검증 migration 001–119, 2026-09-27
 > - 권위: [ADR-171](../architecture/adr/ADR-171-t3-project-source-knowledge-reset.md)
 
 이 표는 SQL `information_schema.tables`의 전체 190개 base table 목록을 schema별로 묶은 것이다. 구현은 같은 목록을 fresh DB에서 다시 추출해 **새 테이블·누락 테이블이 있으면 Preview와 CI를 실패**시킨다. “프로젝트 전체”라는 이름만으로 보존 대상의 데이터를 지우지 않는다. JSON/파일/캐시도 아래 별도 규칙을 적용한다.
@@ -45,7 +45,7 @@ Migration 078의 reset control-plane 3개 table과 migration 101의 Canonical ow
 | `transformation` (2)            | `attempts`, `revisions`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 대상 SourceVersion의 D.                                                                                                                                                                                                                                                                                      |
 | `validation` (1)                | `results`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 대상 Candidate의 D.                                                                                                                                                                                                                                                                                          |
 
-| `vp` (6) | `assertions`, `decision_receipts`, `history_events`, `project_epochs`, `relation_jobs`, `relations` | D. VP 직접 주장·판단·관계·작업·epoch는 Source 파생 지식이며 `vp-ledger` owner가 Candidate/Evidence보다 먼저 삭제·검증한다. |
+| `vp` (7) | `assertions`, `decision_receipts`, `history_events`, `project_epochs`, `relation_call_budget`, `relation_jobs`, `relations` | D. VP 직접 주장·판단·관계·작업·epoch는 Source 파생 지식이며 `vp-ledger` owner가 Candidate/Evidence보다 먼저 삭제·검증한다. `relation_call_budget`는 프로젝트 내용을 담지 않는 전역 운영 예산으로 P이며 Project reset에서 유지한다. |
 
 ## Migration 078 additions
 

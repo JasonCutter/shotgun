@@ -99,7 +99,7 @@ export class VPRelationJobWorker {
   ) {}
 
   async dispatchOnce(): Promise<'EMPTY' | 'DECIDED' | 'UNRESOLVED' | 'RETRYING'> {
-    await this.jobs.enqueueCurrentPairs(this.policyRevision);
+    await this.jobs.enqueueCurrentPairs(this.policyRevision, 1);
     const job = await this.jobs.claimNext(this.policyRevision);
     if (!job) return 'EMPTY';
     try {

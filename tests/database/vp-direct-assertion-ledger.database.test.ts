@@ -369,9 +369,9 @@ describe('VP validated direct assertion ledger', () => {
        VALUES (CURRENT_DATE, 1) ON CONFLICT (budget_day)
        DO UPDATE SET claimed_count = 1`,
     );
-    expect(
-      await new PostgresVPRelationJobs(runtimePool, 1).claimNext('vp-test-policy'),
-    ).toBeUndefined();
+    const cappedJobs = new PostgresVPRelationJobs(runtimePool, 1);
+    expect(await cappedJobs.claimNext('vp-test-policy')).toBeUndefined();
+    expect(await cappedJobs.enqueueCurrentPairs('vp-capped-policy')).toBe(0);
     expect(
       (
         await pool.query<{ status: string }>(

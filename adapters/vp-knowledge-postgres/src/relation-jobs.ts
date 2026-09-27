@@ -139,6 +139,10 @@ export class PostgresVPRelationJobs implements VPRelationJobStorePort {
          LEFT JOIN project_admin.project_knowledge_epoch AS reset_epoch
            ON reset_epoch.project_id = left_claim.project_id
         WHERE (reset_epoch.state IS NULL OR reset_epoch.state = 'READY')
+          AND COALESCE(
+            (SELECT claimed_count FROM vp.relation_call_budget
+              WHERE budget_day = CURRENT_DATE), 0
+          ) < $3
           AND NOT EXISTS (
             SELECT 1 FROM vp.relation_jobs AS existing
              WHERE existing.project_id = left_claim.project_id
@@ -150,7 +154,11 @@ export class PostgresVPRelationJobs implements VPRelationJobStorePort {
                  left_claim.assertion_id, right_claim.assertion_id
         LIMIT $2
        ON CONFLICT DO NOTHING RETURNING job_id::text`,
-      [policyRevision, Math.max(1, Math.min(128, Math.floor(limit)))],
+      [
+        policyRevision,
+        Math.max(1, Math.min(128, Math.floor(limit))),
+        this.maxDailyProviderAttempts,
+      ],
     );
     return result.rowCount ?? 0;
   }

@@ -143,7 +143,10 @@ def block(
     selectors: list[dict[str, Any]],
     segments: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
-    value = " ".join(str(text).split())
+    # PDF font maps (and some other source formats) can yield U+0000 for an
+    # unmapped glyph. PostgreSQL text/jsonb cannot store NUL; replacing one
+    # code point with one visible marker preserves physical segment offsets.
+    value = " ".join(str(text).split()).replace("\x00", "\ufffd")
     if not value:
         return None
     if segments is None:

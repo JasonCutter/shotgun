@@ -110,6 +110,26 @@ describe('Stage 8 format Golden Corpus', () => {
     );
   });
 
+  it('replaces unmapped NUL glyphs before storing extracted text', async () => {
+    const bytes = Buffer.from('Label,Value\nfoo\u0000bar,7\n');
+    const adapter = new PythonDocumentFormatAdapter({ pythonExecutable });
+    const output = await adapter.transform({
+      sourceId: randomUUID(),
+      sourceVersionId: randomUUID(),
+      sourceContentHash: hashBytes(bytes),
+      mediaType: 'text/csv',
+      contentBase64: bytes.toString('base64'),
+    });
+    const extracted = output.documentIR.blocks.map((item) => item.text).join('\n');
+    expect(extracted).toContain('foo\ufffdbar');
+    expect(extracted).not.toContain('\u0000');
+    expect(output.sourceMap.entries).toContainEqual(
+      expect.objectContaining({
+        selectors: expect.arrayContaining([expect.objectContaining({ type: 'CellSelector' })]),
+      }),
+    );
+  });
+
   it('requires multimodal validation for image meaning and records the image BBox', async () => {
     await expect(transformFixture('golden.png', 'image/png')).rejects.toMatchObject({
       code: 'MULTIMODAL_VALIDATION_REQUIRED',

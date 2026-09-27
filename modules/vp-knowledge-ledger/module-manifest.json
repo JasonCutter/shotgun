@@ -1,0 +1,27 @@
+{
+  "id": "vp.knowledge-ledger",
+  "version": "1.0.0",
+  "owner": "Shotgun VP Knowledge Ledger",
+  "deployment": { "modes": ["in_process", "worker"] },
+  "dataOwnership": {
+    "owns": [
+      "vp.project_epochs",
+      "vp.assertions",
+      "vp.decision_receipts",
+      "vp.relations",
+      "vp.relation_jobs",
+      "vp.history_events"
+    ],
+    "readsViaPorts": ["VPKnowledgeLedgerPort", "VPRelationJobStorePort", "VPRelationDecisionPort"],
+    "directSchemaAccess": false
+  },
+  "consumes": { "commands": [], "events": [] },
+  "produces": { "events": [], "handoffs": [] },
+  "provides": { "queries": [], "capabilities": [] },
+  "requires": { "capabilities": [] },
+  "security": {
+    "requiredContext": ["project", "access_scope", "sensitivity"],
+    "defaultOnMissingContext": "deny"
+  },
+  "approvalPolicy": { "canWriteCanonical": false, "canExecuteExternalAction": false }
+}

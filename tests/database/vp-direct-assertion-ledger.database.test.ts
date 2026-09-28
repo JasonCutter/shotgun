@@ -184,6 +184,75 @@ describe('VP validated direct assertion ledger', () => {
     const ledger = new PostgresVPKnowledgeLedger(runtimePool);
     expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
     expect(await ledger.ingestValidatedDirectClaims()).toBe(0);
+    const originalAssertion = (
+      await ledger.listCurrentAssertions({
+        projectId,
+        accessScope: ['owner'],
+        authorizedSensitivities: ['public'],
+      })
+    )[0];
+    const replacementBatchId = randomUUID();
+    const replacementCandidateId = randomUUID();
+    await pool.query(
+      `INSERT INTO candidate.batches
+         (batch_id, project_id, source_version_id, revision_id,
+          idempotency_key, provider_call, created_at)
+       VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, now() + interval '1 second')`,
+      [
+        replacementBatchId,
+        projectId,
+        first.sourceVersionId,
+        first.revisionId,
+        `vp-replacement-${suffix}`,
+      ],
+    );
+    await pool.query(
+      `INSERT INTO candidate.claim_candidates
+         (candidate_id, batch_id, project_id, source_version_id,
+          revision_number, claim_text, evidence_id, evidence_mode,
+          extraction_profile, status, provider_call, access_scope,
+          sensitivity, created_at)
+       VALUES ($1, $2, $3, $4, 1, $5, $6, 'DIRECT_EVIDENCE',
+               'direct-only', 'PENDING_VALIDATION', '{}'::jsonb, '{owner}',
+               'public', now())`,
+      [
+        replacementCandidateId,
+        replacementBatchId,
+        projectId,
+        first.sourceVersionId,
+        claimText,
+        first.evidenceId,
+      ],
+    );
+    expect(
+      (
+        await ledger.listCurrentAssertions({
+          projectId,
+          accessScope: ['owner'],
+          authorizedSensitivities: ['public'],
+        })
+      )[0]?.assertionId,
+    ).toBe(originalAssertion?.assertionId);
+    await pool.query(
+      `INSERT INTO validation.results
+         (validation_id, candidate_id, revision_number, project_id,
+          source_version_id, status, dimensions, created_at)
+       VALUES ($1, $2, 1, $3, $4, 'READY', '[]'::jsonb, now())`,
+      [randomUUID(), replacementCandidateId, projectId, first.sourceVersionId],
+    );
+    await pool.query(
+      `UPDATE candidate.claim_candidates SET status = 'READY'
+        WHERE candidate_id = $1`,
+      [replacementCandidateId],
+    );
+    expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
+    const replacementAssertions = await ledger.listCurrentAssertions({
+      projectId,
+      accessScope: ['owner'],
+      authorizedSensitivities: ['public'],
+    });
+    expect(replacementAssertions).toHaveLength(1);
+    expect(replacementAssertions[0]?.assertionId).not.toBe(originalAssertion?.assertionId);
     await expect(pool.query('TRUNCATE vp.assertions CASCADE')).rejects.toThrow(
       /VP ledger .* cannot be truncated/,
     );
@@ -226,7 +295,7 @@ describe('VP validated direct assertion ledger', () => {
       `SELECT current_epoch::text FROM vp.project_epochs WHERE project_id = $1`,
       [projectId],
     );
-    expect(epoch.rows[0]?.current_epoch).toBe('3');
+    expect(epoch.rows[0]?.current_epoch).toBe('4');
     await expect(
       pool.query('UPDATE vp.project_epochs SET current_epoch = 0 WHERE project_id = $1', [
         projectId,
@@ -587,7 +656,7 @@ describe('VP validated direct assertion ledger', () => {
         'SELECT vp.t3_project_status($1, $2::uuid) AS status',
         [projectId, resetRequestId],
       );
-      expect(before.rows[0]?.status.assertions).toBe(4);
+      expect(before.rows[0]?.status.assertions).toBe(5);
       expect(before.rows[0]?.status.jobs).toBe(4);
       await executor.query('SELECT vp.t3_erase_project($1, $2::uuid)', [projectId, resetRequestId]);
       const after = await executor.query<{ status: Record<string, number> }>(
@@ -612,7 +681,7 @@ describe('VP validated direct assertion ledger', () => {
     ).inspectProjectSourceKnowledge(projectId);
     expect(
       impact.counts.sourceDerivedRecordCount - afterPurgeImpact.counts.sourceDerivedRecordCount,
-    ).toBe(24);
+    ).toBe(26);
     expect(afterPurgeImpact.manifestDigest).not.toBe(impact.manifestDigest);
   });
 });

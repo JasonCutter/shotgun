@@ -19,6 +19,7 @@
 - 독립 PostgreSQL DB: Stage 3 완료 + 과거 Batch일 때만 대상이 나오고, owner 범위가 아니거나 v2 Batch가 존재하면 대상이 사라진다.
 - 원장 PostgreSQL 회귀: 신규 Batch 검증 중에는 과거 주장이 현재로 보이고, 신규 주장이 원장에 반영된 후에는 과거 Batch가 현재 조회에서 빠진다. SourceVersion 변경·현재 관계·권한 필터·T3 초기화도 함께 통과했다.
 - 분리된 `shotgun_vp_route` 제품 서버: 구형 v1 Batch만 있는 최신 SourceVersion 3건을 자동으로 v2 재추출했다. `ai.provider_calls`에는 고정된 `vp-policy-refresh:direct-claim-v2` request ID의 실제 `deepseek/deepseek-flash` 호출 3건이 `COMPLETED`로 기록됐다. 사용자 DB `shotgun_vp`는 이 검증으로 변경하지 않았다.
+- 같은 검증 DB에 Migration 120을 적용했다. 적용 전 현재 주장 View는 v1 67건과 v2 13건을 동시에 보여 줬고, 적용 후에는 v2 13건만 보여 줬다. 원장의 과거 기록은 삭제하지 않았다.
 
 ## 남은 Gate
 

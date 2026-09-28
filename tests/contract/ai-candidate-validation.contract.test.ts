@@ -11,6 +11,10 @@ import { InMemoryEvidenceRepository } from '../../adapters/stage3-in-memory/src/
 import { InMemoryTransport } from '../../adapters/transport-in-memory/src/index.js';
 import { InProcessTransport } from '../../adapters/transport-in-process/src/index.js';
 import type { ClaimCandidate, ValidationResult } from '../../packages/contracts/src/index.js';
+import type {
+  AIProviderAdapterPort,
+  StructuredGenerationRequest,
+} from '../../modules/ai-provider/src/index.js';
 import {
   candidatesQuery,
   createStage4Harness,
@@ -78,6 +82,39 @@ const resumeCommand = (
   });
 
 describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
+  it('pins the numerical-example prompt and validates an exact stated equation', async () => {
+    const fake = new FakeAIProviderAdapter([{ claimText: '1억원 = 6천만원 + 4천만원' }]);
+    let request: StructuredGenerationRequest | undefined;
+    const provider: AIProviderAdapterPort = {
+      identity: fake.identity,
+      generateStructured(input) {
+        request = input;
+        return fake.generateStructured(input);
+      },
+    };
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: provider,
+    });
+    const command = directTextCommand('stage4-number-example', '1억원 = 6천만원 + 4천만원.');
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+    expect(request?.systemInstruction).toContain('Explicit numerical examples and equations');
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      claimText: '1억원 = 6천만원 + 4천만원',
+      status: 'READY',
+      providerCall: { promptVersion: 'direct-claim-v2' },
+    });
+  });
+
   it('creates only evidence-backed READY candidates with provider provenance', async () => {
     const { kernel } = await createStage4Harness({ transport: createTransport() });
     const command = directTextCommand(
@@ -103,7 +140,7 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
       extractionProfile: 'direct-only',
       providerCall: {
         provider: 'fake',
-        promptVersion: 'direct-claim-v1',
+        promptVersion: 'direct-claim-v2',
         policyVersion: 'direct-only-v1',
         structuredOutputValid: true,
         cost: { status: 'unavailable' },
@@ -289,7 +326,7 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
       sourceVersionId,
     );
     expect(activeRevisionId).toBeTruthy();
-    const historicalRequestId = `${command.projectId}:${sourceVersionId}:${activeRevisionId}:candidate-extraction:direct-claim-v1:direct-only-v1`;
+    const historicalRequestId = `${command.projectId}:${sourceVersionId}:${activeRevisionId}:candidate-extraction:direct-claim-v2:direct-only-v1`;
 
     await kernel.connector.sendCommand(
       reextractCommand(command, sourceVersionId, activeRevisionId!, 'R2', 'reextract-command-r2'),

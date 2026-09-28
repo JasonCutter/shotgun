@@ -218,7 +218,7 @@ const candidateBatchSchema = {
 } as const;
 
 const systemInstruction = [
-  'You extract only claims that are explicitly written in the supplied evidence.',
+  'You extract only claims that are explicitly written in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
   'Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
   'claimText must be an exact contiguous substring of the matching evidence text.',
   'Return no candidate when an explicit claim is absent.',
@@ -265,7 +265,7 @@ const snapshotDigest = (projectId: string, payload: GenerateStructuredPayload) =
       dataClassification: payload.dataClassification,
       taskProfile: payload.taskProfile,
       schema: { name: payload.schemaName, version: '1.0.0' },
-      promptVersion: 'direct-claim-v1',
+      promptVersion: 'direct-claim-v2',
       policyVersion: payload.policyVersion,
     }),
   );
@@ -277,7 +277,7 @@ const requestDigest = (payload: GenerateStructuredPayload, inputSnapshotDigest: 
       taskProfile: payload.taskProfile,
       schemaName: payload.schemaName,
       schemaVersion: '1.0.0',
-      promptVersion: 'direct-claim-v1',
+      promptVersion: 'direct-claim-v2',
       policyVersion: payload.policyVersion,
       inputSnapshotDigest,
       ...(payload.generationEpochId === undefined
@@ -647,7 +647,7 @@ export const createAIProviderModule = (
             revisionId,
             provider: activeAdapter.identity.provider,
             model: activeAdapter.identity.model,
-            promptVersion: 'direct-claim-v1',
+            promptVersion: 'direct-claim-v2',
             policyVersion: payload.policyVersion,
             schemaName: payload.schemaName,
             dataClassification: payload.dataClassification,
@@ -785,7 +785,7 @@ export const createAIProviderModule = (
               model: activeAdapter.identity.model,
               schemaName: payload.schemaName,
               schemaVersion: '1.0.0' as const,
-              promptVersion: 'direct-claim-v1' as const,
+              promptVersion: 'direct-claim-v2' as const,
               policyVersion: payload.policyVersion,
               dataPolicyVersion: activeAdapter.identity
                 .dataPolicyVersion as AIProviderCall['dataPolicyVersion'],
@@ -880,7 +880,7 @@ export const createAIProviderModule = (
               adapterVersion: activeAdapter.identity.adapterVersion,
               model: activeAdapter.identity.model,
               modelVersion: draft.modelVersion,
-              promptVersion: 'direct-claim-v1',
+              promptVersion: 'direct-claim-v2',
               policyVersion: payload.policyVersion,
               dataPolicyVersion: activeAdapter.identity
                 .dataPolicyVersion as AIProviderCall['dataPolicyVersion'],

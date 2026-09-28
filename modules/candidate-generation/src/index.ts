@@ -159,7 +159,7 @@ const assertScope = (
 };
 
 const batchKey = (projectId: string, sourceVersionId: string, revisionId: string) =>
-  `${projectId}:${sourceVersionId}:${revisionId}:candidate-extraction:direct-claim-v1:direct-only-v1`;
+  `${projectId}:${sourceVersionId}:${revisionId}:candidate-extraction:direct-claim-v2:direct-only-v1`;
 
 const reextractBatchKey = (
   projectId: string,
@@ -167,7 +167,7 @@ const reextractBatchKey = (
   revisionId: string,
   requestId: string,
 ) =>
-  `${projectId}:${sourceVersionId}:${revisionId}:candidate-reextract:${requestId}:direct-claim-v1:direct-only-v1`;
+  `${projectId}:${sourceVersionId}:${revisionId}:candidate-reextract:${requestId}:direct-claim-v2:direct-only-v1`;
 
 const publishGenerated = async (
   context: Parameters<NonNullable<ShotgunModule['handlers']['events'][number]['handle']>>[1],

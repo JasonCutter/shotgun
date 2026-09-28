@@ -10,6 +10,7 @@
 
 - 기존 [gbrain](https://github.com/garrytan/gbrain) `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (MIT)의 Fact 추출 패턴은 `REFERENCE_ONLY`를 유지한다. Shotgun의 Evidence ID·SourceVersion·보안 범위·Stage 4 출력 계약을 대체하는 Runtime이나 DB는 도입하지 않는다.
 - 이 변경은 기존 `AIProviderAdapterPort`와 DeepSeek 연결을 `AUGMENT`한다. 새 OSS나 Version pin은 없으며, 기존 Role Matrix의 소유권과 교체 경계는 바뀌지 않는다. v2가 품질 기준에 미달하면 추출 지시문과 새 작업 키를 v1로 되돌린다. Schema Migration은 없다. 이미 기록된 원장 이력은 삭제하지 않고 SourceVersion과 정책별 재평가로 처리한다.
+- gbrain 코드는 실행·복사하지 않아 해당 upstream의 유지보수·취약점 상태를 제품 의존성으로 승격하지 않는다. 새 외부 전송도 없으며 기존 Project 인가와 DeepSeek 전송 정책을 통과해야 한다. 실제 PDF PoC 결과는 아래와 같고 Golden Corpus·Benchmark는 아직 없다. 이 결정은 Open-source Role Matrix의 `REFERENCE_ONLY` 역할을 바꾸지 않으므로 매트릭스 개정은 필요하지 않다.
 - 출력 품질은 아래 단일 실제 PDF에서 확인했다. 형식별 Golden Corpus와 대표 Benchmark 결과가 없으므로 VP-3·OSS Integration 완료로 판단하지 않는다.
 
 ## 실제 제품과 계약 검증

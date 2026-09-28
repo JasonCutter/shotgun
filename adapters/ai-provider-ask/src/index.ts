@@ -1,6 +1,7 @@
 import type {
   AIProviderAdapterPort,
   StructuredGenerationRequest,
+  StructuredGenerationResponse,
 } from '../../../modules/ai-provider/src/index.js';
 import { ShotgunError, stableJson } from '../../../packages/contracts/src/index.js';
 import type {
@@ -227,24 +228,43 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
       prompt: promptFor(request, citationBindings),
       responseSchema: answerSchemaFor(citationBindings),
     };
-    let response;
-    if (this.adapter.generateStructuredStream) {
-      let streamedText = '';
-      response = await this.adapter.generateStructuredStream(
-        generation,
-        async (text) => {
-          streamedText += text;
-          const partial = partialAnswerFromJson(streamedText);
-          if (partial) await request.onPartial(partial);
-        },
-        request.signal,
-      );
-    } else if (this.adapter.generateStructuredWithSignal) {
-      response = await this.adapter.generateStructuredWithSignal(generation, request.signal);
-    } else {
-      response = await this.adapter.generateStructured(generation);
+    const generate = async (): Promise<StructuredGenerationResponse> => {
+      if (this.adapter.generateStructuredStream) {
+        let streamedText = '';
+        return this.adapter.generateStructuredStream(
+          generation,
+          async (text) => {
+            streamedText += text;
+            const partial = partialAnswerFromJson(streamedText);
+            if (partial) await request.onPartial(partial);
+          },
+          request.signal,
+        );
+      }
+      if (this.adapter.generateStructuredWithSignal) {
+        return this.adapter.generateStructuredWithSignal(generation, request.signal);
+      }
+      return this.adapter.generateStructured(generation);
+    };
+    let response = await generate();
+    let firstInvalidResponse: StructuredGenerationResponse | undefined;
+    let parsed: AnswerPayload;
+    try {
+      parsed = parseAnswer(response.rawText);
+    } catch (error) {
+      if (request.signal.aborted || request.mode !== 'AUTO_PROJECT_KNOWLEDGE') throw error;
+      firstInvalidResponse = response;
+      response = await generate();
+      parsed = parseAnswer(response.rawText);
     }
-    const parsed = parseAnswer(response.rawText);
+    const sumTokens = (key: 'inputTokens' | 'outputTokens' | 'totalTokens'): number | undefined => {
+      const first = firstInvalidResponse?.[key];
+      const second = response[key];
+      return first === undefined && second === undefined ? undefined : (first ?? 0) + (second ?? 0);
+    };
+    const inputTokens = sumTokens('inputTokens');
+    const outputTokens = sumTokens('outputTokens');
+    const totalTokens = sumTokens('totalTokens');
     return {
       answer: parsed.answer,
       citations: canonicalCitationsFor(parsed.citations, citationBindings),
@@ -255,9 +275,9 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
         adapterVersion: this.identity.adapterVersion,
       },
       usage: {
-        ...(response.inputTokens === undefined ? {} : { inputTokens: response.inputTokens }),
-        ...(response.outputTokens === undefined ? {} : { outputTokens: response.outputTokens }),
-        ...(response.totalTokens === undefined ? {} : { totalTokens: response.totalTokens }),
+        ...(inputTokens === undefined ? {} : { inputTokens }),
+        ...(outputTokens === undefined ? {} : { outputTokens }),
+        ...(totalTokens === undefined ? {} : { totalTokens }),
       },
     };
   }

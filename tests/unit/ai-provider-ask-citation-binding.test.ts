@@ -149,21 +149,114 @@ describe('StructuredAskAnswerProviderAdapter citation reference binding', () => 
     expect(result.citations).toEqual([{ evidenceId: '660e8400-e29b-41d4-a716-446655440000' }]);
   });
 
-  it('fails closed when the provider returns an unissued citation reference', async () => {
+  it('retries malformed structured output once with the same pinned prompt and counts both calls', async () => {
+    const prompts: string[] = [];
     const adapter = new StructuredAskAnswerProviderAdapter(
-      provider(async () => ({
-        rawText: JSON.stringify({
-          answer: 'Unsupported citation.',
-          citations: [{ citationRef: 'E3' }],
-        }),
-      })),
+      provider(async (generation) => {
+        prompts.push(generation.prompt);
+        return prompts.length === 1
+          ? { rawText: 'not JSON', inputTokens: 11, outputTokens: 2, totalTokens: 13 }
+          : {
+              rawText: JSON.stringify({
+                answer: 'The selected evidence says 42.',
+                citations: [{ citationRef: 'E1' }],
+              }),
+              inputTokens: 12,
+              outputTokens: 8,
+              totalTokens: 20,
+            };
+      }),
+    );
+
+    const result = await adapter.execute({
+      ...request([evidence('evidence-a', 'The value is 42.')]),
+      mode: 'AUTO_PROJECT_KNOWLEDGE',
+    });
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toBe(prompts[0]);
+    expect(result.answer).toBe('The selected evidence says 42.');
+    expect(result.citations).toEqual([{ evidenceId: 'evidence-a' }]);
+    expect(result.usage).toEqual({ inputTokens: 23, outputTokens: 10, totalTokens: 33 });
+  });
+
+  it('stops after the one automatic retry when both provider responses are malformed', async () => {
+    let calls = 0;
+    const adapter = new StructuredAskAnswerProviderAdapter(
+      provider(async () => {
+        calls += 1;
+        return { rawText: 'not JSON' };
+      }),
     );
 
     await expect(
-      adapter.execute(request([evidence('evidence-a', 'Quote A.')])),
+      adapter.execute({
+        ...request([evidence('evidence-a', 'The value is 42.')]),
+        mode: 'AUTO_PROJECT_KNOWLEDGE',
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', operation: 'parse-answer' });
+    expect(calls).toBe(2);
+  });
+
+  it('does not retry a malformed response after the request is cancelled', async () => {
+    const controller = new AbortController();
+    let calls = 0;
+    const adapter = new StructuredAskAnswerProviderAdapter(
+      provider(async () => {
+        calls += 1;
+        controller.abort();
+        return { rawText: 'not JSON' };
+      }),
+    );
+
+    await expect(
+      adapter.execute({
+        ...request([evidence('evidence-a', 'The value is 42.')]),
+        mode: 'AUTO_PROJECT_KNOWLEDGE',
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', operation: 'parse-answer' });
+    expect(calls).toBe(1);
+  });
+
+  it('keeps legacy source exploration failure behavior unchanged', async () => {
+    let calls = 0;
+    const adapter = new StructuredAskAnswerProviderAdapter(
+      provider(async () => {
+        calls += 1;
+        return { rawText: 'not JSON' };
+      }),
+    );
+
+    await expect(
+      adapter.execute(request([evidence('evidence-a', 'The value is 42.')])),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', operation: 'parse-answer' });
+    expect(calls).toBe(1);
+  });
+
+  it('fails closed when the provider returns an unissued citation reference', async () => {
+    let calls = 0;
+    const adapter = new StructuredAskAnswerProviderAdapter(
+      provider(async () => {
+        calls += 1;
+        return {
+          rawText: JSON.stringify({
+            answer: 'Unsupported citation.',
+            citations: [{ citationRef: 'E3' }],
+          }),
+        };
+      }),
+    );
+
+    await expect(
+      adapter.execute({
+        ...request([evidence('evidence-a', 'Quote A.')]),
+        mode: 'AUTO_PROJECT_KNOWLEDGE',
+      }),
     ).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
+    expect(calls).toBe(1);
   });
 
   it('accepts an empty citation list for SourceVersion-only context', async () => {

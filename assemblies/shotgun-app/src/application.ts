@@ -46,6 +46,7 @@ import { PostgresSourcesProductService } from '../../../adapters/frontend-source
 import { PostgresVPKnowledgeLedger } from '../../../adapters/vp-knowledge-postgres/src/index.js';
 import { PostgresVPAskEvidenceSearch } from '../../../adapters/vp-knowledge-postgres/src/ask-evidence-search.js';
 import { PostgresVPRelationJobs } from '../../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
+import { startVPCandidatePolicyRefreshWorker } from './vp-candidate-policy-refresh.js';
 import { GeneralAIVPDecisionAdapter } from '../../../adapters/vp-decision-general-ai/src/index.js';
 import { PostgresStagingAssetLeaseRepository } from '../../../adapters/frontend-sources-staging-postgres/src/index.js';
 import { PostgresSourcesActivityRead } from '../../../adapters/frontend-sources-write-postgres/src/activity-read.js';
@@ -261,7 +262,6 @@ import { installSignalShutdown } from './shutdown.js';
 import { AsyncCleanupStack } from './cleanup-stack.js';
 import { createMaintenanceSessionGuard } from './runtime-maintenance-session.js';
 import { assertNoUnresolvedProjectKnowledgeReset } from './runtime-knowledge-reset-readiness.js';
-
 export type StartShotgunApplicationOptions = {
   /** Override HOST (defaults to the `HOST` env or `127.0.0.1`). */
   readonly host?: string;
@@ -1507,6 +1507,10 @@ export const startShotgunApplication = async (
         sourcesStage4Continuation,
       );
       cleanupStack.add('Sources Stage 4 continuation worker', await stage4Dispatcher.startWorker());
+      cleanupStack.add(
+        'VP candidate policy refresh worker',
+        await startVPCandidatePolicyRefreshWorker(pool, runningApplication.kernel.connector),
+      );
       const vpAssertionLedgerWorker = new VPAssertionLedgerWorker(
         new PostgresVPKnowledgeLedger(pool),
       );

@@ -11,6 +11,7 @@ import { withSafePostgresTransaction } from '../../../packages/postgres-transact
 
 type ValidatedCandidateRow = QueryResultRow & {
   readonly candidate_id: string;
+  readonly batch_id: string;
   readonly project_id: string;
   readonly source_id: string;
   readonly source_version_id: string;
@@ -35,7 +36,6 @@ const exactPairDigest = (left: string, right: string, claimText: string): string
   `sha256:${createHash('sha256')
     .update(JSON.stringify([left, right, claimText]))
     .digest('hex')}`;
-
 export class PostgresVPKnowledgeLedger implements VPKnowledgeLedgerPort {
   constructor(private readonly pool: Pool) {}
 
@@ -44,7 +44,8 @@ export class PostgresVPKnowledgeLedger implements VPKnowledgeLedgerPort {
       this.pool,
       async (client) => {
         const candidates = await client.query<ValidatedCandidateRow>(
-          `SELECT candidate.candidate_id::text, candidate.project_id,
+          `SELECT candidate.candidate_id::text, candidate.batch_id::text,
+                  candidate.project_id,
                   evidence.source_id::text, candidate.source_version_id::text,
                   evidence.evidence_id::text, candidate.claim_text,
                   evidence.access_scope, evidence.sensitivity
@@ -132,13 +133,26 @@ export class PostgresVPKnowledgeLedger implements VPKnowledgeLedgerPort {
             `SELECT assertion_id::text FROM vp.current_assertions
               WHERE project_id = $1 AND claim_text = $2 AND assertion_id <> $3
                 AND access_scope = $4::text[] AND sensitivity = $5
-              ORDER BY assertion_id`,
+                AND source_version_id <> $6::uuid
+             UNION
+             SELECT previous.assertion_id::text
+               FROM vp.assertions AS previous
+               JOIN candidate.claim_candidates AS prior_candidate
+                 ON prior_candidate.candidate_id = previous.candidate_id
+              WHERE previous.project_id = $1 AND previous.claim_text = $2
+                AND previous.assertion_id <> $3
+                AND previous.access_scope = $4::text[]
+                AND previous.sensitivity = $5
+                AND prior_candidate.batch_id = $7::uuid
+             ORDER BY assertion_id`,
             [
               candidate.project_id,
               candidate.claim_text,
               assertionId,
               candidate.access_scope,
               candidate.sensitivity,
+              candidate.source_version_id,
+              candidate.batch_id,
             ],
           );
           const relationIds: string[] = [];

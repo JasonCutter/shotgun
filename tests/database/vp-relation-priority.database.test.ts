@@ -115,6 +115,13 @@ const seedAssertion = async (
     [candidateId, batchId, projectId, sourceVersionId, text, evidenceId],
   );
   await pool.query(
+    `INSERT INTO validation.results
+       (validation_id, candidate_id, revision_number, project_id,
+        source_version_id, status, dimensions, created_at)
+     VALUES ($1, $2, 1, $3, $4, 'READY', '[]'::jsonb, now())`,
+    [randomUUID(), candidateId, projectId, sourceVersionId],
+  );
+  await pool.query(
     `INSERT INTO vp.assertions
        (assertion_id, project_id, candidate_id, source_id, source_version_id,
         evidence_id, claim_text, origin, access_scope, sensitivity, created_at)

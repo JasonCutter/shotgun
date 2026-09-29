@@ -115,6 +115,6 @@
     "minimatch": "10.2.3",
     "postcss": "8.5.25",
     "undici": "7.29.0",
-    "fast-uri": "4.1.3"
+    "fast-uri": "4.1.4"
   }
 }

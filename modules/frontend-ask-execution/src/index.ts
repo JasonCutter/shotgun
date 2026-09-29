@@ -50,7 +50,18 @@ export type AskExecutionEvidence = {
   readonly sensitivity: AskExecutionScope['sensitivityClearance'];
 };
 
-/** Optional VP read boundary; Ask rechecks every returned Evidence ID. */
+export type AskKnowledgeSnapshot = {
+  /** Monotonic project epoch observed with this shortlist. */
+  readonly knowledgeEpoch: string;
+  /** Digest of the accessible latest SourceVersions at the same read point. */
+  readonly sourceWatermark: string;
+};
+
+export type AskKnowledgeEvidenceSearchResult = AskKnowledgeSnapshot & {
+  readonly evidenceIds: readonly string[];
+};
+
+/** VP is the authoritative knowledge read boundary for AUTO_PROJECT_KNOWLEDGE. */
 export type AskKnowledgeEvidenceSearchPort = {
   search(input: {
     readonly projectId: string;
@@ -58,7 +69,13 @@ export type AskKnowledgeEvidenceSearchPort = {
     readonly accessScope: readonly string[];
     readonly authorizedSensitivities: readonly AskExecutionScope['sensitivityClearance'][];
     readonly limit: number;
-  }): Promise<readonly string[]>;
+  }): Promise<AskKnowledgeEvidenceSearchResult>;
+  isSnapshotCurrent(input: {
+    readonly projectId: string;
+    readonly accessScope: readonly string[];
+    readonly authorizedSensitivities: readonly AskExecutionScope['sensitivityClearance'][];
+    readonly snapshot: AskKnowledgeSnapshot;
+  }): Promise<boolean>;
 };
 
 export type AskExecutionSourceVersionContext = {
@@ -139,6 +156,8 @@ export type AskExecutionAttempt = {
   readonly policyContextRevision: string;
   readonly resolvedContextDigest: string;
   readonly queryPlanRevision: string;
+  readonly vpKnowledgeEpoch?: string;
+  readonly vpSourceWatermark?: string;
   readonly resolvedSensitivity: AskExecutionScope['sensitivityClearance'];
   readonly dataPolicyVersion?: string;
   readonly effectiveProviderPolicyFingerprint?: string;
@@ -184,6 +203,8 @@ export type AskExecutionRunContext = {
   readonly contextStatus: AskExecutionContextStatus;
   readonly resolvedContextDigest: string;
   readonly queryPlanRevision: string;
+  readonly vpKnowledgeEpoch?: string;
+  readonly vpSourceWatermark?: string;
   readonly executionPin?: AIExecutionPin;
 };
 
@@ -502,6 +523,8 @@ export const askExecutionContextDigest = (input: {
   readonly mode: AskAnswerRunSnapshot['mode'];
   readonly question: string;
   readonly context: readonly AskExecutionContextItem[];
+  readonly vpKnowledgeEpoch?: string;
+  readonly vpSourceWatermark?: string;
 }): string =>
   sha256Text(
     stableJson({
@@ -509,6 +532,10 @@ export const askExecutionContextDigest = (input: {
       projectId: input.projectId,
       mode: input.mode,
       question: input.question,
+      ...(input.vpKnowledgeEpoch === undefined ? {} : { vpKnowledgeEpoch: input.vpKnowledgeEpoch }),
+      ...(input.vpSourceWatermark === undefined
+        ? {}
+        : { vpSourceWatermark: input.vpSourceWatermark }),
       context: input.context.map((item) =>
         item.kind === 'EVIDENCE'
           ? {

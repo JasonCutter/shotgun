@@ -12,6 +12,7 @@ import {
 } from '../../adapters/frontend-ask-write-postgres/src/index.js';
 import { PostgresProjectAdministrationRepository } from '../../adapters/postgres/src/index.js';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
+import { PostgresVPAskEvidenceSearch } from '../../adapters/vp-knowledge-postgres/src/ask-evidence-search.js';
 import { AskCommandCoordinator } from '../../modules/frontend-ask-write/src/index.js';
 import type { AskExecutionScope } from '../../modules/frontend-ask-execution/src/index.js';
 import { ASK_SCHEMA_VERSION } from '../../packages/contracts/src/index.js';
@@ -204,12 +205,20 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
       accessScope: ['owner'],
     };
     let originalReaderCalls = 0;
-    const executionRepository = new PostgresAskAnswerExecutionRepository(pool, projection, {
-      resolve: async () => {
-        originalReaderCalls += 1;
-        throw new Error('Automatic Evidence resolution must not require original Source context.');
+    const executionRepository = new PostgresAskAnswerExecutionRepository(
+      pool,
+      projection,
+      {
+        resolve: async () => {
+          originalReaderCalls += 1;
+          throw new Error(
+            'Automatic Evidence resolution must not require original Source context.',
+          );
+        },
       },
-    });
+      undefined,
+      new PostgresVPAskEvidenceSearch(pool),
+    );
     const context = await executionRepository.getRunContext(
       executionScope,
       submission.answerRun.answerRunId,
@@ -258,6 +267,14 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
        ) VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, now(), now())`,
       [projectId, sourceId, sourceVersionId, indexingResultId],
     );
+    expect(await executionRepository.isProjectKnowledgePending(executionScope)).toBe(true);
+    await pool.query(
+      `INSERT INTO candidate.batches (
+         batch_id, project_id, source_version_id, revision_id, idempotency_key,
+         provider_call, created_at
+       ) VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, now())`,
+      [randomUUID(), projectId, sourceVersionId, revisionId, `empty-candidate-batch-${suffix}`],
+    );
 
     const automaticCoordinator = new AskCommandCoordinator(
       new PostgresFrontendCommandGateway(pool),
@@ -282,46 +299,48 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
       automatic.answerRun.answerRunId,
     );
     expect(automaticContext).toMatchObject({
-      contextStatus: 'SUPPORTED',
-      queryPlanRevision: 'ask-query-plan-vp1',
+      contextStatus: 'NO_SUPPORTED_ANSWER',
+      queryPlanRevision: 'ask-query-plan-vp4',
     });
-    expect(automaticContext?.evidence).toHaveLength(10);
-    expect(
-      automaticContext?.evidence.every((item) => item.sourceVersionId === sourceVersionId),
-    ).toBe(true);
+    expect(automaticContext?.evidence).toHaveLength(0);
     const vpAugmented = new PostgresAskAnswerExecutionRepository(
       pool,
       projection,
       { resolve: async () => undefined },
       undefined,
-      { search: async () => [vpLinkedEvidenceId, outOfClearanceEvidenceId, randomUUID()] },
+      {
+        search: async () => ({
+          knowledgeEpoch: '1',
+          sourceWatermark: hash('ask-vp-source-watermark'),
+          evidenceIds: [vpLinkedEvidenceId, outOfClearanceEvidenceId, randomUUID()],
+        }),
+        isSnapshotCurrent: async () => true,
+      },
     );
     const augmentedContext = await vpAugmented.getRunContext(
       executionScope,
       automatic.answerRun.answerRunId,
     );
-    expect(augmentedContext?.queryPlanRevision).toBe('ask-query-plan-vp3');
+    expect(augmentedContext?.queryPlanRevision).toBe('ask-query-plan-vp4');
     expect(augmentedContext?.evidence.map((item) => item.evidenceId)).toContain(vpLinkedEvidenceId);
+    expect(augmentedContext?.evidence).toHaveLength(1);
+    expect(augmentedContext?.vpKnowledgeEpoch).toBe('1');
+    expect(augmentedContext?.vpSourceWatermark).toBe(hash('ask-vp-source-watermark'));
     expect(augmentedContext?.evidence.map((item) => item.evidenceId)).not.toContain(
       outOfClearanceEvidenceId,
     );
     expect(augmentedContext?.resolvedContextDigest).not.toBe(
       automaticContext?.resolvedContextDigest,
     );
-    const degradedContext = await new PostgresAskAnswerExecutionRepository(
+    const noVpAuthority = new PostgresAskAnswerExecutionRepository(
       pool,
       projection,
       { resolve: async () => undefined },
       undefined,
-      {
-        search: async () => {
-          throw new Error('temporary VP read failure');
-        },
-      },
-    ).getRunContext(executionScope, automatic.answerRun.answerRunId);
-    expect(degradedContext?.evidence.map((item) => item.evidenceId)).toEqual(
-      automaticContext?.evidence.map((item) => item.evidenceId),
     );
+    await expect(
+      noVpAuthority.getRunContext(executionScope, automatic.answerRun.answerRunId),
+    ).rejects.toThrow('VP knowledge authority is not configured');
 
     const intakeSessionId = randomUUID();
     const intakeCommandId = randomUUID();
@@ -447,6 +466,7 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
       automatic.answerRun.answerRunId,
     );
     expect(staleContext?.contextStatus).toBe('NO_SUPPORTED_ANSWER');
+    expect(staleContext?.vpSourceWatermark).not.toBe(automaticContext?.vpSourceWatermark);
     expect(await executionRepository.isProjectKnowledgePending(executionScope)).toBe(true);
     expect(
       await executionRepository.claimInitial(executionScope, automatic.answerRun.answerRunId),
@@ -517,11 +537,67 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
        ) VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, now(), now())`,
       [projectId, sourceId, newerVersionId, newerIndexingResultId],
     );
+    expect(await executionRepository.isProjectKnowledgePending(executionScope)).toBe(true);
+    await pool.query(
+      `INSERT INTO candidate.batches (
+         batch_id, project_id, source_version_id, revision_id, idempotency_key,
+         provider_call, created_at
+       ) VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, now())`,
+      [randomUUID(), projectId, newerVersionId, newerRevisionId, `newer-empty-batch-${suffix}`],
+    );
     expect(await executionRepository.isProjectKnowledgePending(executionScope)).toBe(false);
     const resumed = await executionRepository.claimQueuedForWorker('vp-wait-worker', 1);
     expect(resumed).toHaveLength(1);
-    expect(resumed[0]?.claimed.context.evidence.map((item) => item.evidenceId)).toEqual([
-      newerEvidenceId,
-    ]);
+    expect(resumed[0]?.claimed.context.contextStatus).toBe('NO_SUPPORTED_ANSWER');
+    expect(resumed[0]?.claimed.context.evidence).toEqual([]);
+    const pinnedAttempt = resumed[0]!.claimed.attempt;
+    const persistedPin = await pool.query<{
+      readonly vp_knowledge_epoch: string;
+      readonly vp_source_watermark: string;
+    }>(
+      `SELECT vp_knowledge_epoch, vp_source_watermark
+         FROM frontend_ask.answer_run_attempts
+        WHERE attempt_id = $1`,
+      [pinnedAttempt.attemptId],
+    );
+    expect(persistedPin.rows[0]).toEqual({
+      vp_knowledge_epoch: '0',
+      vp_source_watermark: resumed[0]!.claimed.context.vpSourceWatermark,
+    });
+    const newestAssetId = randomUUID();
+    const newestVersionId = randomUUID();
+    await pool.query(
+      `INSERT INTO asset.original_assets
+         (asset_id, content_hash, size_bytes, storage_key, created_at)
+       VALUES ($1, $2, 1, $3, now())`,
+      [newestAssetId, hash(`ask-vp-latest-${suffix}`), `ask-vp-latest-${suffix}`],
+    );
+    await pool.query(
+      `INSERT INTO asset.source_versions
+         (source_version_id, source_id, version_number, original_asset_id,
+          media_type, access_scope, sensitivity, created_at)
+       VALUES ($1, $2, 3, $3, 'text/plain', '{owner}', 'private', now())`,
+      [newestVersionId, sourceId, newestAssetId],
+    );
+    const staleCompletion = {
+      scope: executionScope,
+      answerRunId: automatic.answerRun.answerRunId,
+      attemptNumber: pinnedAttempt.attemptNumber,
+      answer: 'This stale result must not be published.',
+      citations: [],
+      provider: { provider: 'test', model: 'test', adapterVersion: 'test' },
+      resolvedContextDigest: resumed[0]!.claimed.context.resolvedContextDigest,
+      queryPlanRevision: resumed[0]!.claimed.context.queryPlanRevision,
+      workerId: 'vp-wait-worker',
+    };
+    await expect(executionRepository.complete(staleCompletion)).rejects.toThrow(
+      'VP knowledge changed while Ask was being answered',
+    );
+    const unpublished = await pool.query<{ readonly statements: string }>(
+      `SELECT count(*)::text AS statements FROM frontend_ask.statements
+        WHERE answer_run_id = $1`,
+      [automatic.answerRun.answerRunId],
+    );
+    expect(unpublished.rows[0]?.statements).toBe('0');
   });
 });

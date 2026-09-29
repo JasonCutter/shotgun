@@ -555,9 +555,27 @@ describe('VP validated direct assertion ledger', () => {
       authorizedSensitivities: ['public'],
       limit: 12,
     });
-    expect(relatedEvidence).toContain(second.evidenceId);
-    expect(relatedEvidence).toContain(fourth.evidenceId);
-    expect(relatedEvidence).not.toContain(third.evidenceId);
+    expect(relatedEvidence.evidenceIds).toContain(second.evidenceId);
+    expect(relatedEvidence.evidenceIds).toContain(fourth.evidenceId);
+    expect(relatedEvidence.evidenceIds).not.toContain(third.evidenceId);
+    expect(relatedEvidence.knowledgeEpoch).toMatch(/^\d+$/);
+    expect(relatedEvidence.sourceWatermark).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(
+      await vpSearch.isSnapshotCurrent({
+        projectId,
+        accessScope: ['owner'],
+        authorizedSensitivities: ['public'],
+        snapshot: relatedEvidence,
+      }),
+    ).toBe(true);
+    expect(
+      await vpSearch.isSnapshotCurrent({
+        projectId,
+        accessScope: ['owner'],
+        authorizedSensitivities: ['public'],
+        snapshot: { ...relatedEvidence, knowledgeEpoch: '999999999999' },
+      }),
+    ).toBe(false);
     expect(
       await vpSearch.search({
         projectId: `${projectId}-other`,
@@ -566,7 +584,7 @@ describe('VP validated direct assertion ledger', () => {
         authorizedSensitivities: ['public'],
         limit: 12,
       }),
-    ).toEqual([]);
+    ).toMatchObject({ evidenceIds: [] });
     expect(
       await vpSearch.search({
         projectId,
@@ -575,7 +593,7 @@ describe('VP validated direct assertion ledger', () => {
         authorizedSensitivities: ['public'],
         limit: 12,
       }),
-    ).toEqual([]);
+    ).toMatchObject({ evidenceIds: [] });
     expect(await jobs.enqueueCurrentPairs('vp-unresolved-test')).toBe(1);
     const unresolvedJob = await jobs.claimNext('vp-unresolved-test');
     expect(unresolvedJob).toBeDefined();
@@ -611,8 +629,8 @@ describe('VP validated direct assertion ledger', () => {
       authorizedSensitivities: ['public'],
       limit: 12,
     });
-    expect(afterAbstention).toContain(fourth.evidenceId);
-    expect(afterAbstention).not.toContain(second.evidenceId);
+    expect(afterAbstention.evidenceIds).toContain(fourth.evidenceId);
+    expect(afterAbstention.evidenceIds).not.toContain(second.evidenceId);
     await expect(
       pool.query(`UPDATE vp.assertions SET claim_text = 'tampered' WHERE candidate_id = $1`, [
         first.candidateId,

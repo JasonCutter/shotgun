@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -70,6 +71,7 @@ import {
 import {
   PostgresSourcesStage3AtomicPersistence,
   PostgresSourcesStage3ProgressRepository,
+  PostgresSourcesStage4ContinuationStore,
 } from '../../../adapters/postgres-stage3/src/runtime-data-integrity.js';
 import {
   PostgresAIProviderCallRepository,
@@ -84,8 +86,15 @@ import { PostgresCanonicalKnowledgeRepository } from '../../../adapters/postgres
 import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-stage7/src/index.js';
 import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
+import { PostgresVPKnowledgeLedger } from '../../../adapters/vp-knowledge-postgres/src/index.js';
 import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
 import { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
+import { VPAssertionLedgerWorker } from '../../../modules/vp-knowledge-ledger/src/index.js';
+import { SourcesStage4ContinuationDispatcher } from '../../../adapters/sources-stage3-pipeline/src/index.js';
+import type {
+  SourcesStage3EvidenceIndexedInput,
+  SourcesStage4ContinuationPort,
+} from '../../../modules/frontend-sources-write/src/index.js';
 import { FrontendProductReadCoordinator } from '../../../modules/frontend-product-read/src/index.js';
 import {
   createHistoryAdapterRegistry,
@@ -171,6 +180,16 @@ export async function startFrontendCrossPhaseBackend() {
   const evidenceRepository = new PostgresEvidenceRepository(pool);
   const stage3Progress = new PostgresSourcesStage3ProgressRepository(pool);
   const stage3AtomicPersistence = new PostgresSourcesStage3AtomicPersistence(pool);
+  const stage4ContinuationStore = new PostgresSourcesStage4ContinuationStore(pool);
+  const stage4Publisher: {
+    current?: (input: SourcesStage3EvidenceIndexedInput) => Promise<void>;
+  } = {};
+  const sourcesStage4Continuation: SourcesStage4ContinuationPort = {
+    onEvidenceIndexed: async (input) => {
+      if (!stage4Publisher.current) throw new Error('Stage 4 continuation is not ready.');
+      await stage4Publisher.current(input);
+    },
+  };
   const transformer = new PythonDocumentFormatAdapter();
   const evidenceLocator = new LucasAugmentedPlainTextAdapter();
   const sourcesStage3Pipeline = createProductionStage3Pipeline({
@@ -181,6 +200,7 @@ export async function startFrontendCrossPhaseBackend() {
     evidenceRepository,
     progress: stage3Progress,
     atomicPersistence: stage3AtomicPersistence,
+    stage4: sourcesStage4Continuation,
   });
   const sourcesProductService = new PostgresSourcesProductService(
     pool,
@@ -353,10 +373,48 @@ export async function startFrontendCrossPhaseBackend() {
       await pool.end();
     },
   });
+  stage4Publisher.current = async (input) => {
+    const delivery = await application.kernel.connector.publishEvent({
+      messageId: randomUUID(),
+      messageType: 'EvidenceIndexed',
+      messageKind: 'event',
+      schemaVersion: '1.0.0',
+      producerModule: 'sources-stage3-pipeline',
+      producerVersion: '1.0.0',
+      correlationId: `sources-stage3:${input.projectId}:${input.sourceVersionId}`,
+      projectId: input.projectId,
+      actor: { type: 'service', id: 'sources-stage3-pipeline' },
+      security: {
+        accessScope: [...input.accessScope],
+        sensitivity: input.sensitivity,
+        dataClassification: input.dataClassification,
+      },
+      idempotencyKey: `evidence-indexed:${input.projectId}:${input.revisionId}`,
+      payload: {
+        revisionId: input.revisionId,
+        sourceVersionId: input.sourceVersionId,
+        evidenceCount: input.evidenceCount,
+        reusedCount: input.reusedCount,
+      },
+      createdAt: new Date().toISOString(),
+      traceId: randomUUID(),
+    });
+    const failed = delivery.consumers.find((consumer) => consumer.status === 'dead-letter');
+    if (failed) throw new Error(`Stage 4 continuation failed for ${failed.consumerId}.`);
+  };
   await application.server.listen({ host: '127.0.0.1', port: 3002 });
-  let stopWorker: () => Promise<void> = async () => {};
+  const stopStage4Worker = await new SourcesStage4ContinuationDispatcher(
+    stage4ContinuationStore,
+    sourcesStage4Continuation,
+    { intervalMs: 250 },
+  ).startWorker();
+  const stopVPAssertionWorker = await new VPAssertionLedgerWorker(
+    new PostgresVPKnowledgeLedger(pool),
+    250,
+  ).startWorker();
+  let stopAskWorker: () => Promise<void> = async () => {};
   try {
-    stopWorker = await askAnswerExecution.startWorker(250);
+    stopAskWorker = await askAnswerExecution.startWorker(250);
   } catch {
     // Worker start is best-effort for the journey; submissions can be polled.
   }
@@ -437,7 +495,9 @@ export async function startFrontendCrossPhaseBackend() {
     close: async () => {
       if (closing) return;
       closing = true;
-      await stopWorker();
+      await stopAskWorker();
+      await stopVPAssertionWorker();
+      await stopStage4Worker();
       await application.server.close();
     },
   };

@@ -21,3 +21,20 @@
 - 이 검증은 **이미 저장된** Source·Candidate·원장을 현재 조회로 재생한다. 원문에서 변환·AI 추출·관계 판단까지 전체 파이프라인을 처음부터 다시 실행해 의미 결과를 비교하는 검증은 아니다.
 - DB 재시작 시 전용 maintenance lock 세션이 끊어지면 Runtime은 설계대로 fail-stop한다. 이번 재시작에서 실행 중 샷건은 종료됐고 바탕화면 아이콘으로 다시 시작해 복구했다. 무인 자동 재기동은 아직 구현·검증하지 않았다.
 - 모든 형식 Golden Corpus, DeepSeek 품질·비용 Gate와 제품 답변의 epoch 고정은 별도 완료 기준이다. 이 보고서만으로 VP를 `COMPLETE`로 판정하지 않는다.
+
+## 2026-09-29 재생 완료 판정 보강
+
+기존 검사기는 현재 Projection과 일치하는 ID만 비교해, 최신 `READY` Candidate가 원장에 아직 기록되지 않았거나 최신 SourceVersion의 Stage 3가 끝나지 않은 상태를 완전 수렴으로 오판할 수 있었다. 다음 조건을 모두 확인하도록 보강했다.
+
+- Source마다 최신 SourceVersion의 Stage 3 인덱싱이 완료됐다.
+- 최신 Transformation revision의 가장 최근 Candidate batch가 Validation까지 끝났고, 각 `READY` Candidate의 Evidence가 같은 SourceVersion·revision에 속하며 Claim 문구·접근 범위·민감도가 원장 Assertion과 일치한다.
+- 모든 `READY` Candidate가 원장에 기록되고, 재구성한 현재 주장·관계가 DB의 현재 View와 일치한다.
+- 활성 관계 Job이 `PENDING`, `RUNNING`, `RETRYABLE` 상태로 남아 있지 않다.
+
+격리 PostgreSQL 테스트는 원장 기록 전에는 `expectedReadyCandidates=1`, `ledgeredReadyCandidates=0`으로 실패하고, 원장 기록 후 통과하는 것을 확인했다. Stage 3가 끝나지 않은 최신 수정 버전과 대기 관계 Job도 각각 미수렴으로 표시했다. VP 관계 우선순위 테스트와 함께 두 DB 테스트가 통과했다.
+
+`main@c7f152cc` 기준 실제 Shotgun DB를 읽기 전용으로 다시 검사한 결과는 주장 16/16, 관계 3/3, History epoch/event 48/48, 최신 자료 처리 완료, Candidate·원장 매핑 완료, 대기 관계 Job 0건이었다. 원장·Projection을 변경하지 않았다.
+
+이번 변경은 기존 PostgreSQL Adapter를 `AUGMENT`한다. gbrain은 고정 commit `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (MIT)의 replay 패턴만 `REFERENCE_ONLY`로 유지한다. 새 OSS·Migration·Schema는 없다. 되돌리기는 검증기 코드와 음성 테스트를 이전 커밋으로 복귀하는 것이다.
+
+이 보강은 저장된 AI Candidate·VP history에서 수렴 여부를 더 엄격히 검사한다. 원본 Asset부터 Transformation, 실제 DeepSeek 주장 추출·관계 판단, 새 공간 재빌드, 답변까지 독립 재실행하는 VP-02 기준은 아직 통과하지 않았다. 전체 TypeScript 검사도 이번 파일에서는 오류가 없고, 기존 untracked `tests/contract/ts7-cross-section-acceptance.contract.test.ts`의 구형 계약 타입 오류로 계속 실패한다.

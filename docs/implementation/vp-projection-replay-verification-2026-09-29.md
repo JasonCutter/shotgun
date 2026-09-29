@@ -38,3 +38,26 @@
 이번 변경은 기존 PostgreSQL Adapter를 `AUGMENT`한다. gbrain은 고정 commit `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (MIT)의 replay 패턴만 `REFERENCE_ONLY`로 유지한다. 새 OSS·Migration·Schema는 없다. 되돌리기는 검증기 코드와 음성 테스트를 이전 커밋으로 복귀하는 것이다.
 
 이 보강은 저장된 AI Candidate·VP history에서 수렴 여부를 더 엄격히 검사한다. 원본 Asset부터 Transformation, 실제 DeepSeek 주장 추출·관계 판단, 새 공간 재빌드, 답변까지 독립 재실행하는 VP-02 기준은 아직 통과하지 않았다. 전체 TypeScript 검사도 이번 파일에서는 오류가 없고, 기존 untracked `tests/contract/ts7-cross-section-acceptance.contract.test.ts`의 구형 계약 타입 오류로 계속 실패한다.
+
+## 2026-09-29 실제 DeepSeek 제품 경로 검증
+
+테스트 전용 격리 PostgreSQL DB에서 Shotgun 브라우저의 Sources 화면으로 서로 충돌하는 공개 합성 Markdown 두 건을 투입했다. Stage 2~4 추출과 VP 관계 작업에 실제 설정된 DeepSeek adapter를 연결하고, 주장·관계 작업이 끝난 뒤 제품 Ask 화면에서 같은 주제로 질문했다. 운영 DB에는 Source나 VP 데이터를 쓰지 않았다. Vault의 설정 자격 증명은 테스트 프로세스 안의 임시 메모리 Vault로만 전달했고, 출력·보고서에는 비밀을 기록하지 않는다.
+
+실제 결과:
+
+- 주장 2개가 저장되고 `CONTRADICTS` 관계 1개가 현재 조회에 반영됐다.
+- 관계 대기 작업 0건을 확인한 뒤 질문했고, 답변은 `42`와 `43` 양쪽을 설명하며 인용 링크 2개를 표시했다.
+- 질문 전후 독립 읽기 전용 재생 검사는 SourceVersion·Stage 3·Candidate·Evidence·VP 원장·현재 조회가 일치한다고 판정했다 (`replayMatches=true`).
+- 첫 실행에서 관계 갱신 도중 제출된 질문 결과는 Ask의 epoch 일관성 경계가 게시를 거부했다. 브라우저 인수 흐름은 관계 작업 완료를 확인한 뒤 질문하도록 조정했고, 재실행은 통과했다.
+
+재실행 명령과 결과:
+
+```powershell
+$env:VP_LIVE_DEEPSEEK='1'; npm run frontend:test:e2e -- tests/browser/vp-deepseek-full-flow.live.spec.ts --reporter=line
+```
+
+결과는 Chromium 1건 통과, `activeAssertions=2`, `activeRelations=1`, `pendingRelationJobs=0`, `answerCitations=2`, `replayMatches=true`다. 같은 검증에서 VP 원장 누락·관계 우선순위 DB 테스트 2건과 실제 DeepSeek 추출 재시도 통합 테스트 1건도 통과했다. 추출 재시도는 API 1회, 입력 252 tokens, 출력 58 tokens를 사용했고 두 번째 같은 명령은 저장된 출력을 재사용했다. 구현·검증 코드는 `main@49455929`에 있다.
+
+이번 결과는 두 합성 문서로 실행한 실제 증분 제품 흐름의 통과 증거다. 대표 Golden Corpus 품질·비용, Source 수정 및 정책 변경 뒤의 증분 동등성, 저장 원문에서 독립적으로 모든 처리 단계를 다시 구축한 결과와 기존 증분 결과의 비교는 검증하지 않았다. 따라서 VP-02는 계속 열려 있고 이 테스트만으로 VP 완료를 선언하지 않는다. 테스트 보강은 기존 PostgreSQL·DeepSeek Adapter와 VP Port를 사용하며 OSS 채택·Migration·Schema 변경은 없다. 롤백은 테스트 전용 옵션·검증 파일을 되돌리는 것이며 운영 데이터 변경은 없다.
+
+변경한 브라우저 fixture·live test·통합 test의 ESLint, 포맷, 대상 파일 TypeScript 검사와 `git diff --check`는 통과했다. 전체 `npm run typecheck`는 현재 작업과 무관한 untracked `tests/contract/ts7-cross-section-acceptance.contract.test.ts`의 오래된 계약 타입 오류로 여전히 실패한다.

@@ -180,11 +180,20 @@ describe('VP validated direct assertion ledger', () => {
     };
 
     const first = await seedCandidate(1, 'public');
+    const preLedgerReplay = await verifyVPProjectionReplay(pool, projectId);
+    expect(preLedgerReplay).toMatchObject({
+      matches: false,
+      sourceProcessingComplete: true,
+      candidateMaterializationComplete: false,
+      expectedReadyCandidates: 1,
+      ledgeredReadyCandidates: 0,
+    });
     runtimePool = new Pool({ connectionString: database!.databaseUrl, max: 1 });
     await runtimePool.query('SET ROLE shotgun_runtime');
     const ledger = new PostgresVPKnowledgeLedger(runtimePool);
     expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
     expect(await ledger.ingestValidatedDirectClaims()).toBe(0);
+    expect((await verifyVPProjectionReplay(pool, projectId)).matches).toBe(true);
     const originalAssertion = (
       await ledger.listCurrentAssertions({
         projectId,
@@ -430,11 +439,19 @@ describe('VP validated direct assertion ledger', () => {
       [projectId],
     );
     expect(currentLinks.rows[0]?.count).toBe('0');
-    expect((await verifyVPProjectionReplay(pool, projectId)).matches).toBe(true);
+    expect(await verifyVPProjectionReplay(pool, projectId)).toMatchObject({
+      matches: false,
+      sourceProcessingComplete: false,
+      candidateMaterializationComplete: false,
+    });
     const fourth = await seedCandidate(4, 'public', 'The shared verification code is 43.');
     expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
     const jobs = new PostgresVPRelationJobs(runtimePool);
     expect(await jobs.enqueueCurrentPairs('vp-test-policy')).toBe(1);
+    expect(await verifyVPProjectionReplay(pool, projectId)).toMatchObject({
+      relationQueueSettled: false,
+      pendingRelationJobs: 1,
+    });
     expect(await jobs.enqueueCurrentPairs('vp-test-policy')).toBe(0);
     await runtimePool.query(
       `INSERT INTO vp.relation_call_budget (budget_day, claimed_count)
@@ -621,7 +638,11 @@ describe('VP validated direct assertion ledger', () => {
       [projectId],
     );
     expect(abstainedProjection.rows[0]).toEqual({ historical: '3', current: '0' });
-    expect((await verifyVPProjectionReplay(pool, projectId)).matches).toBe(true);
+    expect(await verifyVPProjectionReplay(pool, projectId)).toMatchObject({
+      matches: false,
+      sourceProcessingComplete: false,
+      candidateMaterializationComplete: false,
+    });
     const afterAbstention = await vpSearch.search({
       projectId,
       question: '43',

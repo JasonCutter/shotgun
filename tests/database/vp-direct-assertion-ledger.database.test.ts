@@ -13,6 +13,7 @@ import { PostgresProjectAdministrationRepository } from '../../adapters/postgres
 import type { AIProviderExecutionResolverPort } from '../../modules/ai-provider/src/index.js';
 import { VPRelationJobWorker } from '../../modules/vp-knowledge-ledger/src/index.js';
 import { VPRelationDecisionRouter } from '../../modules/vp-decision/src/index.js';
+import { verifyVPProjectionReplay } from '../../scripts/vp-projection-replay.js';
 import {
   createIsolatedPostgresTestDatabase,
   type IsolatedPostgresTestDatabase,
@@ -253,6 +254,7 @@ describe('VP validated direct assertion ledger', () => {
     });
     expect(replacementAssertions).toHaveLength(1);
     expect(replacementAssertions[0]?.assertionId).not.toBe(originalAssertion?.assertionId);
+    expect((await verifyVPProjectionReplay(pool, projectId)).matches).toBe(true);
     await expect(pool.query('TRUNCATE vp.assertions CASCADE')).rejects.toThrow(
       /VP ledger .* cannot be truncated/,
     );
@@ -428,6 +430,7 @@ describe('VP validated direct assertion ledger', () => {
       [projectId],
     );
     expect(currentLinks.rows[0]?.count).toBe('0');
+    expect((await verifyVPProjectionReplay(pool, projectId)).matches).toBe(true);
     const fourth = await seedCandidate(4, 'public', 'The shared verification code is 43.');
     expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
     const jobs = new PostgresVPRelationJobs(runtimePool);
@@ -600,6 +603,7 @@ describe('VP validated direct assertion ledger', () => {
       [projectId],
     );
     expect(abstainedProjection.rows[0]).toEqual({ historical: '3', current: '0' });
+    expect((await verifyVPProjectionReplay(pool, projectId)).matches).toBe(true);
     const afterAbstention = await vpSearch.search({
       projectId,
       question: '43',

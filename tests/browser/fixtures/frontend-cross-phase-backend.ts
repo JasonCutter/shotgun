@@ -94,6 +94,7 @@ import { AskAnswerExecutionService } from '../../../modules/frontend-ask-executi
 import { VPAssertionLedgerWorker } from '../../../modules/vp-knowledge-ledger/src/index.js';
 import { VPRelationDecisionRouter } from '../../../modules/vp-decision/src/index.js';
 import { VPRelationJobWorker } from '../../../modules/vp-knowledge-ledger/src/index.js';
+import { startVPCandidatePolicyRefreshWorker } from '../../../assemblies/shotgun-app/src/vp-candidate-policy-refresh.js';
 import type {
   AIProviderAdapterPort,
   AIProviderExecutionResolverPort,
@@ -140,6 +141,7 @@ export type FrontendCrossPhaseBackendOptions = {
   readonly databaseUrl?: string;
   readonly aiProvider?: AIProviderAdapterPort;
   readonly aiProviderPolicy?: AIProviderPolicy;
+  readonly aiCandidatePromptVersion?: string;
   readonly enableVPRelationWorker?: boolean;
 };
 
@@ -374,6 +376,9 @@ export async function startFrontendCrossPhaseBackend(
     authRepository,
     aiProvider,
     ...(options.aiProviderPolicy ? { aiProviderPolicy: options.aiProviderPolicy } : {}),
+    ...(options.aiCandidatePromptVersion
+      ? { aiCandidatePromptVersion: options.aiCandidatePromptVersion }
+      : {}),
     production: false,
     activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
     activityAskRead: new PostgresAskActivityRead(pool),
@@ -431,6 +436,15 @@ export async function startFrontendCrossPhaseBackend(
     new PostgresVPKnowledgeLedger(pool),
     250,
   ).startWorker();
+  let stopVPCandidatePolicyRefreshWorker: () => Promise<void> = async () => {};
+  if (options.aiCandidatePromptVersion) {
+    stopVPCandidatePolicyRefreshWorker = await startVPCandidatePolicyRefreshWorker(
+      pool,
+      application.kernel.connector,
+      options.aiCandidatePromptVersion,
+      50,
+    );
+  }
   let stopVPRelationWorker: () => Promise<void> = async () => {};
   if (options.enableVPRelationWorker) {
     const decisionResolver: AIProviderExecutionResolverPort = {
@@ -538,6 +552,7 @@ export async function startFrontendCrossPhaseBackend(
     close: async () => {
       if (closing) return;
       closing = true;
+      await stopVPCandidatePolicyRefreshWorker();
       await stopVPRelationWorker();
       await stopAskWorker();
       await stopVPAssertionWorker();

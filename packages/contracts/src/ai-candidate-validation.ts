@@ -69,7 +69,7 @@ export type AIProviderOutput = {
   readonly model: string;
   readonly schemaName: 'ClaimCandidateBatch.v1';
   readonly schemaVersion: '1.0.0';
-  readonly promptVersion: 'direct-claim-v1' | 'direct-claim-v2';
+  readonly promptVersion: string;
   readonly policyVersion: 'direct-only-v1';
   /** Provider-specific policy identity. Kept open so routed providers can
    * persist their own governed policy version without changing this contract.
@@ -105,7 +105,7 @@ export type AIProviderCall = {
   readonly adapterVersion: string;
   readonly model: string;
   readonly modelVersion: string;
-  readonly promptVersion: 'direct-claim-v1' | 'direct-claim-v2';
+  readonly promptVersion: string;
   readonly policyVersion: 'direct-only-v1';
   readonly dataPolicyVersion: string;
   readonly dataClassification: string;

@@ -115,6 +115,42 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
     });
   });
 
+  it('keeps a qualified sentence intact when direct-claim-v3 returns only a fragment', async () => {
+    const sourceSentence = 'The demo archive contained exactly 44 records on 2025-01-01.';
+    const fake = new FakeAIProviderAdapter([{ claimText: 'exactly 44 records' }]);
+    let request: StructuredGenerationRequest | undefined;
+    const provider: AIProviderAdapterPort = {
+      identity: fake.identity,
+      generateStructured(input) {
+        request = input;
+        return fake.generateStructured(input);
+      },
+    };
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: provider,
+      candidatePromptVersion: 'direct-claim-v3',
+    });
+    const command = directTextCommand('stage4-qualified-v3', sourceSentence);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(request?.systemInstruction).toContain('entire matching source sentence');
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      claimText: sourceSentence,
+      status: 'READY',
+      providerCall: { promptVersion: 'direct-claim-v3' },
+    });
+  });
+
   it('creates only evidence-backed READY candidates with provider provenance', async () => {
     const { kernel } = await createStage4Harness({ transport: createTransport() });
     const command = directTextCommand(

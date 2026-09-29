@@ -175,7 +175,11 @@ export type AIProviderModuleOptions = {
   /** Optional request-time Project authority. When supplied, the static
    * adapter is only the compatibility fallback for existing harnesses. */
   readonly executionResolver?: AIProviderExecutionResolverPort;
+  /** Version of direct-claim extraction semantics, used in durable request identity. */
+  readonly candidatePromptVersion?: string;
 };
+
+export const DEFAULT_CANDIDATE_PROMPT_VERSION = 'direct-claim-v2';
 
 type GenerateStructuredPayload = {
   readonly requestId: string;
@@ -217,12 +221,36 @@ const candidateBatchSchema = {
   },
 } as const;
 
-const systemInstruction = [
-  'You extract only claims that are explicitly written in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
-  'Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
-  'claimText must be an exact contiguous substring of the matching evidence text.',
-  'Return no candidate when an explicit claim is absent.',
-].join(' ');
+const candidatePromptInstructions: Readonly<Record<string, string>> = {
+  'direct-claim-v2': [
+    'You extract only claims that are explicitly written in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
+    'claimText must be an exact contiguous substring of the matching evidence text.',
+    'Return no candidate when an explicit claim is absent.',
+  ].join(' '),
+  'direct-claim-v3': [
+    'You extract only claims that are explicitly written in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
+    'For each candidate, claimText must be the entire matching source sentence copied verbatim, never a shortened fragment.',
+    'This policy stores one sentence-level claim per evidence sentence so its dates, time ranges, units, and conditions remain attached to the stated value.',
+    'Return no candidate when an explicit claim is absent.',
+  ].join(' '),
+};
+
+const resolveCandidatePromptPolicy = (promptVersion: string) => {
+  if (
+    !promptVersion.trim() ||
+    promptVersion.length > 128 ||
+    promptVersion.trim() !== promptVersion
+  ) {
+    throw new Error('Candidate extraction prompt version must be a bounded, trimmed value.');
+  }
+  const systemInstruction = candidatePromptInstructions[promptVersion];
+  if (!systemInstruction) {
+    throw new Error(`Unsupported candidate extraction prompt version: ${promptVersion}`);
+  }
+  return { promptVersion, systemInstruction };
+};
 
 const promptFor = (payload: GenerateStructuredPayload): string =>
   stableJson({
@@ -248,7 +276,11 @@ const errorCode = (error: unknown): ErrorCode =>
 const isRetryable = (error: ShotgunError) =>
   error.retryable || isRetryableAIProviderErrorCode(error.code);
 
-const snapshotDigest = (projectId: string, payload: GenerateStructuredPayload) =>
+const snapshotDigest = (
+  projectId: string,
+  payload: GenerateStructuredPayload,
+  promptVersion: string,
+) =>
   sha256Text(
     stableJson({
       version: 'ai-generation-input-v1',
@@ -265,19 +297,23 @@ const snapshotDigest = (projectId: string, payload: GenerateStructuredPayload) =
       dataClassification: payload.dataClassification,
       taskProfile: payload.taskProfile,
       schema: { name: payload.schemaName, version: '1.0.0' },
-      promptVersion: 'direct-claim-v2',
+      promptVersion,
       policyVersion: payload.policyVersion,
     }),
   );
 
-const requestDigest = (payload: GenerateStructuredPayload, inputSnapshotDigest: string) =>
+const requestDigest = (
+  payload: GenerateStructuredPayload,
+  inputSnapshotDigest: string,
+  promptVersion: string,
+) =>
   sha256Text(
     stableJson({
       version: 'ai-generation-request-v1',
       taskProfile: payload.taskProfile,
       schemaName: payload.schemaName,
       schemaVersion: '1.0.0',
-      promptVersion: 'direct-claim-v2',
+      promptVersion,
       policyVersion: payload.policyVersion,
       inputSnapshotDigest,
       ...(payload.generationEpochId === undefined
@@ -468,6 +504,9 @@ export const createAIProviderModule = (
         timeoutMs: 60_000,
         async handle(envelope, context: HandlerContext) {
           const payload = envelope.payload as GenerateStructuredPayload;
+          const { promptVersion, systemInstruction } = resolveCandidatePromptPolicy(
+            options.candidatePromptVersion ?? DEFAULT_CANDIDATE_PROMPT_VERSION,
+          );
           const { projectId, security } = assertContext(envelope);
           const cancellationError = () =>
             new ShotgunError({
@@ -615,8 +654,8 @@ export const createAIProviderModule = (
               correlationId: envelope.correlationId,
             });
           }
-          const inputSnapshotDigest = snapshotDigest(projectId, payload);
-          const durableRequestDigest = requestDigest(payload, inputSnapshotDigest);
+          const inputSnapshotDigest = snapshotDigest(projectId, payload, promptVersion);
+          const durableRequestDigest = requestDigest(payload, inputSnapshotDigest, promptVersion);
           const revisionIds = [...new Set(payload.evidence.map((item) => item.revisionId))];
           if (revisionIds.length !== 1 || !revisionIds[0]) {
             throw new ShotgunError({
@@ -647,7 +686,7 @@ export const createAIProviderModule = (
             revisionId,
             provider: activeAdapter.identity.provider,
             model: activeAdapter.identity.model,
-            promptVersion: 'direct-claim-v2',
+            promptVersion,
             policyVersion: payload.policyVersion,
             schemaName: payload.schemaName,
             dataClassification: payload.dataClassification,
@@ -785,7 +824,7 @@ export const createAIProviderModule = (
               model: activeAdapter.identity.model,
               schemaName: payload.schemaName,
               schemaVersion: '1.0.0' as const,
-              promptVersion: 'direct-claim-v2' as const,
+              promptVersion,
               policyVersion: payload.policyVersion,
               dataPolicyVersion: activeAdapter.identity
                 .dataPolicyVersion as AIProviderCall['dataPolicyVersion'],
@@ -880,7 +919,7 @@ export const createAIProviderModule = (
               adapterVersion: activeAdapter.identity.adapterVersion,
               model: activeAdapter.identity.model,
               modelVersion: draft.modelVersion,
-              promptVersion: 'direct-claim-v2',
+              promptVersion,
               policyVersion: payload.policyVersion,
               dataPolicyVersion: activeAdapter.identity
                 .dataPolicyVersion as AIProviderCall['dataPolicyVersion'],

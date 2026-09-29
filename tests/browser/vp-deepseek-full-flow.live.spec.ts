@@ -18,6 +18,7 @@ type CrossPhaseBackend = {
     databaseUrl: string;
     aiProvider: AIProviderAdapterPort;
     aiProviderPolicy: { allowPrivate: true; allowRestricted: false; maxAttempts: 2 };
+    aiCandidatePromptVersion: string;
     enableVPRelationWorker: true;
   }): Promise<{ close(): Promise<void> }>;
 };
@@ -210,10 +211,14 @@ type SourceSubmission = {
 
 type LogicalProjection = {
   readonly assertions: readonly string[];
+  readonly candidatePromptVersions: readonly string[];
   readonly relations: readonly string[];
 };
 
-const startProductRuntime = async (databaseUrl: string): Promise<ProductRuntime> => {
+const startProductRuntime = async (
+  databaseUrl: string,
+  candidatePromptVersion: string,
+): Promise<ProductRuntime> => {
   const deepseek = await resolveDeepSeekForProject('shotgun');
   const fixture = (await tsImport(
     './fixtures/frontend-cross-phase-backend.ts',
@@ -223,6 +228,7 @@ const startProductRuntime = async (databaseUrl: string): Promise<ProductRuntime>
     databaseUrl,
     aiProvider: deepseek,
     aiProviderPolicy: { allowPrivate: true, allowRestricted: false, maxAttempts: 2 },
+    aiCandidatePromptVersion: candidatePromptVersion,
     enableVPRelationWorker: true,
   });
   let frontend: ViteDevServer | undefined;
@@ -326,6 +332,36 @@ const waitForVPConvergence = async (pool: Pool, replayModule: ReplayModule) => {
     });
 };
 
+const waitForCandidatePromptVersion = async (pool: Pool, promptVersion: string) => {
+  await expect
+    .poll(
+      async () => {
+        const result = await pool.query<{ count: string }>(
+          `SELECT count(*)::text AS count
+             FROM asset.sources AS source
+             JOIN asset.source_versions AS version
+               ON version.source_id = source.source_id
+            WHERE source.project_id = 'shotgun'
+              AND NOT EXISTS (
+                SELECT 1 FROM asset.source_versions AS newer
+                 WHERE newer.source_id = version.source_id
+                   AND newer.version_number > version.version_number
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM candidate.batches AS batch
+                 WHERE batch.project_id = source.project_id
+                   AND batch.source_version_id = version.source_version_id
+                   AND batch.provider_call->>'promptVersion' = $1
+              )`,
+          [promptVersion],
+        );
+        return Number(result.rows[0]?.count ?? 0);
+      },
+      { timeout: 180_000, intervals: [100, 250, 500, 1000, 2000] },
+    )
+    .toBe(0);
+};
+
 const askAboutArchive = async (
   page: Page,
   frontendUrl: string,
@@ -379,11 +415,24 @@ const readLogicalProjection = async (pool: Pool): Promise<LogicalProjection> => 
         AND right_claim.assertion_id = relation.right_assertion_id
       WHERE relation.project_id = 'shotgun'`,
   );
+  const promptVersionRows = await pool.query<{ prompt_version: string }>(
+    `SELECT DISTINCT batch.provider_call->>'promptVersion' AS prompt_version
+       FROM vp.current_assertions AS assertion
+       JOIN candidate.claim_candidates AS candidate
+         ON candidate.project_id = assertion.project_id
+        AND candidate.candidate_id = assertion.candidate_id
+       JOIN candidate.batches AS batch
+         ON batch.project_id = candidate.project_id
+        AND batch.batch_id = candidate.batch_id
+      WHERE assertion.project_id = 'shotgun'
+      ORDER BY prompt_version`,
+  );
   const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
   return {
     assertions: assertionRows.rows
       .map((row) => `${normalize(row.claim_text)}\u0000${normalize(row.evidence_text)}`)
       .sort(),
+    candidatePromptVersions: promptVersionRows.rows.map((row) => row.prompt_version),
     relations: relationRows.rows
       .map((row) => {
         const pair = [normalize(row.left_claim), normalize(row.right_claim)].sort();
@@ -400,12 +449,17 @@ const runProductScenario = async (input: {
   readonly sourceA: string;
   readonly sourceB: string;
   readonly revisedSourceA?: string;
+  readonly initialCandidatePromptVersion?: string;
+  readonly candidatePromptVersion?: string;
 }) => {
   const isolated = await input.databaseFactory.createIsolatedPostgresTestDatabase();
   const pool = isolated.createPool();
   let runtime: ProductRuntime | undefined;
   try {
-    runtime = await startProductRuntime(isolated.databaseUrl);
+    const candidatePromptVersion = input.candidatePromptVersion ?? 'direct-claim-v2';
+    const initialCandidatePromptVersion =
+      input.initialCandidatePromptVersion ?? candidatePromptVersion;
+    runtime = await startProductRuntime(isolated.databaseUrl, initialCandidatePromptVersion);
     await bootstrapProductSession(input.page, runtime.frontendUrl);
     const firstSource = await submitMarkdown(
       input.page,
@@ -418,6 +472,18 @@ const runProductScenario = async (input: {
 
     if (input.revisedSourceA) {
       await askAboutArchive(input.page, runtime.frontendUrl, ['42', '43']);
+      if (initialCandidatePromptVersion !== candidatePromptVersion) {
+        await input.page.evaluate(() => {
+          localStorage.clear();
+          sessionStorage.clear();
+        });
+        await input.page.context().clearCookies();
+        await runtime.close();
+        runtime = await startProductRuntime(isolated.databaseUrl, candidatePromptVersion);
+        await bootstrapProductSession(input.page, runtime.frontendUrl);
+        await waitForCandidatePromptVersion(pool, candidatePromptVersion);
+        await waitForVPConvergence(pool, input.replayModule);
+      }
       const revision = await submitMarkdown(
         input.page,
         runtime.frontendUrl,
@@ -445,10 +511,12 @@ const runProductScenario = async (input: {
       currentRelations: 1,
       pendingRelationJobs: 0,
     });
+    const projection = await readLogicalProjection(pool);
+    expect(projection.candidatePromptVersions).toEqual([candidatePromptVersion]);
     return {
       answer,
       replay,
-      projection: await readLogicalProjection(pool),
+      projection,
     };
   } finally {
     if (runtime) {
@@ -482,6 +550,8 @@ test('VP live incremental history agrees with a clean DeepSeek rebuild', async (
     sourceA: 'The demo archive contained exactly 42 records on 2025-01-01.',
     sourceB: 'The demo archive contained exactly 43 records on 2025-01-01.',
     revisedSourceA: 'The demo archive contained exactly 44 records on 2025-01-01.',
+    initialCandidatePromptVersion: 'direct-claim-v2',
+    candidatePromptVersion: 'direct-claim-v3',
   });
   const rebuilt = await runProductScenario({
     page,
@@ -489,6 +559,7 @@ test('VP live incremental history agrees with a clean DeepSeek rebuild', async (
     replayModule,
     sourceA: 'The demo archive contained exactly 44 records on 2025-01-01.',
     sourceB: 'The demo archive contained exactly 43 records on 2025-01-01.',
+    candidatePromptVersion: 'direct-claim-v3',
   });
 
   expect(rebuilt.projection).toEqual(incremental.projection);
@@ -499,6 +570,8 @@ test('VP live incremental history agrees with a clean DeepSeek rebuild', async (
       summary: 'vp-deepseek-incremental-vs-clean-rebuild-v1',
       incrementalAssertions: incremental.replay.currentAssertions,
       rebuiltAssertions: rebuilt.replay.currentAssertions,
+      incrementalCandidatePromptVersions: incremental.projection.candidatePromptVersions,
+      rebuiltCandidatePromptVersions: rebuilt.projection.candidatePromptVersions,
       incrementalRelations: incremental.replay.currentRelations,
       rebuiltRelations: rebuilt.replay.currentRelations,
       currentProjectionMatches: rebuilt.projection.assertions.length === 2,

@@ -797,6 +797,8 @@ export type ApplicationOptions = {
   readonly validationRepository?: ValidationRepositoryPort;
   readonly aiProvider?: AIProviderAdapterPort;
   readonly aiProviderPolicy?: AIProviderPolicy;
+  /** Version of candidate extraction semantics used for durable Stage 4 runs. */
+  readonly aiCandidatePromptVersion?: string;
   /** Production Stage 4 request-time Project AI authority. */
   readonly aiProviderExecutionResolver?: AIProviderExecutionResolverPort;
   readonly canonicalSnapshot?: CanonicalSnapshotPort;
@@ -2593,9 +2595,14 @@ const createApplicationCore = async (
       allowRestricted: false,
       maxAttempts: 2,
     },
-    options.aiProviderExecutionResolver === undefined
-      ? {}
-      : { executionResolver: options.aiProviderExecutionResolver },
+    {
+      ...(options.aiProviderExecutionResolver === undefined
+        ? {}
+        : { executionResolver: options.aiProviderExecutionResolver }),
+      ...(options.aiCandidatePromptVersion === undefined
+        ? {}
+        : { candidatePromptVersion: options.aiCandidatePromptVersion }),
+    },
   );
   const candidateGeneration = createCandidateGenerationModule(candidateRepository);
   const validation = createValidationModule(validationRepository);

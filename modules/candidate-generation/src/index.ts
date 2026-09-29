@@ -421,10 +421,11 @@ export const createCandidateGenerationModule = (
     });
     let batch: CandidateBatch;
     try {
-      const allowedEvidence = new Set(evidence.map((item) => item.evidenceId));
+      const evidenceById = new Map(evidence.map((item) => [item.evidenceId, item]));
       const seen = new Set<string>();
       const candidates = generated.candidates.flatMap((item): ClaimCandidate[] => {
-        if (!allowedEvidence.has(item.evidenceId)) {
+        const sourceEvidence = evidenceById.get(item.evidenceId);
+        if (!sourceEvidence) {
           throw new ShotgunError({
             code: 'VALIDATION_ERROR',
             safeMessage: 'AI output referred to evidence outside the request.',
@@ -433,7 +434,13 @@ export const createCandidateGenerationModule = (
             correlationId: envelope.correlationId,
           });
         }
-        const claimText = item.claimText.trim();
+        const modelClaimText = item.claimText.trim();
+        const claimText =
+          generated.call.promptVersion === 'direct-claim-v3' &&
+          modelClaimText.length > 0 &&
+          sourceEvidence.quote.exact.includes(modelClaimText)
+            ? sourceEvidence.quote.exact
+            : modelClaimText;
         const fingerprint = sha256Text(stableJson({ claimText, evidenceId: item.evidenceId }));
         if (!claimText || seen.has(fingerprint)) return [];
         seen.add(fingerprint);

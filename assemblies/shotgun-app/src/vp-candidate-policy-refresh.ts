@@ -1,5 +1,6 @@
 import type { Pool } from 'pg';
 
+import { DEFAULT_CANDIDATE_PROMPT_VERSION } from '../../../modules/ai-provider/src/index.js';
 import { PostgresVPCandidatePolicyRefresh } from '../../../adapters/vp-knowledge-postgres/src/candidate-policy-refresh.js';
 import {
   VPCandidatePolicyRefreshWorker,
@@ -37,14 +38,16 @@ export const createVPCandidatePolicyRefreshCommand = (
 export const startVPCandidatePolicyRefreshWorker = (
   pool: Pool,
   connector: { sendCommand(command: CommandEnvelope): Promise<unknown> },
+  promptVersion = DEFAULT_CANDIDATE_PROMPT_VERSION,
+  intervalMs = 60_000,
 ): Promise<() => Promise<void>> => {
-  const promptVersion = 'direct-claim-v2';
   const worker = new VPCandidatePolicyRefreshWorker(
     new PostgresVPCandidatePolicyRefresh(pool),
     async (target) => {
       await connector.sendCommand(createVPCandidatePolicyRefreshCommand(target, promptVersion));
     },
     promptVersion,
+    intervalMs,
   );
   return worker.startWorker();
 };

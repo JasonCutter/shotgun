@@ -58,7 +58,7 @@ $env:VP_LIVE_DEEPSEEK='1'; npm run frontend:test:e2e -- tests/browser/vp-deepsee
 
 결과는 Chromium 1건 통과, `activeAssertions=2`, `activeRelations=1`, `pendingRelationJobs=0`, `answerCitations=2`, `replayMatches=true`다. 같은 검증에서 VP 원장 누락·관계 우선순위 DB 테스트 2건과 실제 DeepSeek 추출 재시도 통합 테스트 1건도 통과했다. 추출 재시도는 API 1회, 입력 252 tokens, 출력 58 tokens를 사용했고 두 번째 같은 명령은 저장된 출력을 재사용했다. 구현·검증 코드는 `main@49455929`에 있다.
 
-초기 제품 흐름 검증 뒤 Source 수정 증분 결과와 깨끗한 새 공간 재구축을 비교하는 검증을 추가했다. 두 검증 모두 합성 자료에 한정되며 대표 Golden Corpus 품질·비용은 측정하지 않았다. 추출 정책 개정 뒤의 증분 결과와 새 공간 재구축 비교도 아직 남아 VP-02는 계속 열려 있다. 이 보고서로 VP 완료를 선언하지 않는다. 테스트 보강은 기존 PostgreSQL·DeepSeek Adapter와 VP Port를 사용하며 OSS 채택·Migration·Schema 변경은 없다. 롤백은 테스트 전용 옵션·검증 파일을 되돌리는 것이며 운영 데이터 변경은 없다.
+초기 제품 흐름 검증 뒤 Source 수정 증분 결과와 깨끗한 새 공간 재구축을 비교하는 검증을 추가했다. 이 검증은 합성 자료에 한정되며 대표 Golden Corpus 품질·비용은 측정하지 않았다. 추출 정책 개정 비교는 아래 별도 결과를 참조한다. 이 보고서로 VP 전체 완료를 선언하지 않는다.
 
 ## 2026-09-29 수정본 증분 처리와 새 공간 재구축 비교
 
@@ -72,4 +72,16 @@ $env:VP_LIVE_DEEPSEEK='1'; npm run frontend:test:e2e -- tests/browser/vp-deepsee
 
 결과는 Chromium 1건 통과, `incrementalAssertions=2`, `rebuiltAssertions=2`, 각 관계 1건, 각 답변 인용 2건이다. 코드는 `main@87db2ee8`이다. 이 테스트는 Source 수정 뒤의 원문→현재 지식→답변 증분 결과를 새 빈 저장소의 전체 구축과 대조한다. Candidate 추출 정책 revision 변경은 아직 이 비교에 포함되지 않았다.
 
-변경한 브라우저 fixture·live test·통합 test의 ESLint, 포맷, 대상 파일 TypeScript 검사와 `git diff --check`는 통과했다. 전체 `npm run typecheck`는 현재 작업과 무관한 untracked `tests/contract/ts7-cross-section-acceptance.contract.test.ts`의 오래된 계약 타입 오류로 여전히 실패한다.
+변경한 브라우저 fixture·live test·통합 test의 ESLint, 포맷과 `git diff --check`는 통과했다. 전체 `npm run typecheck`는 현재 작업과 무관한 untracked `tests/contract/ts7-cross-section-acceptance.contract.test.ts`의 오래된 계약 타입 오류로 실패한다.
+
+## 2026-09-29 실제 DeepSeek v2→v3 정책 개정 증분·재구축 비교
+
+처음에는 양쪽 DB를 모두 v3로 시작해 정책 개정 자체가 비교되지 않는 설정 오류를 발견했다. 시나리오를 고쳐 첫 격리 PostgreSQL DB는 A=42·B=43을 `direct-claim-v2`로 처리하고 질문했다. 그런 다음 런타임을 `direct-claim-v3`로 재시작해 현재 SourceVersion을 정책 갱신 worker가 자동 재처리할 때까지 기다렸다. 이후 A를 같은 Source의 새 버전 A=44로 수정하고 질문했다. 두 번째 빈 격리 DB는 처음부터 최종 A=44·B=43을 v3로 처리했다.
+
+실제 DeepSeek 한 응답은 A=44 Evidence의 일부인 `exactly 44 records`만 후보로 반환해, v3 지시만으로는 날짜 조건이 항상 보존되지 않는 것을 확인했다. 이를 막기 위해 v3는 문장 단위 후보로 정의하고, 후보 생성 단계에서 AI 문구가 해당 원문 Evidence의 정확한 부분 문자열이면 그 문장 전체를 주장으로 고정한다. Evidence에 없는 출력은 그대로 검증 단계로 보내 기존 직접 Evidence 검증이 거부하게 했다. Provider의 원 응답은 수정하지 않고 보존한다.
+
+두 흐름의 현재 Projection은 주장 문구와 연결된 원문 Evidence, 관계 종류·양쪽 주장 문구까지 논리적으로 같았다. 양쪽 모두 v3 Batch만 활성 주장에 연결됐고, 주장은 2개, `CONTRADICTS` 관계는 1개, 미처리 관계 Job은 0건이었다. 마지막 질문은 각각 44와 43을 인용 2개로 답했고 수정 이전 값 42는 제외했다. 격리 DB 브라우저 검증에서 Chromium 1건이 통과했다.
+
+추가 검증: Stage 4 contract 20건(두 transport), production wiring contract 8건, 후보 정책·원장·관계 PostgreSQL 테스트 3건, 실제 DeepSeek 추출 재시도 integration 1건이 통과했다. 재시도 검증은 실제 API 1회(254 input tokens, 60 output tokens)를 사용하고 같은 명령 replay 때 저장 출력을 재사용했다. 전체 TypeScript 검사는 이 변경과 무관한 untracked `tests/contract/ts7-cross-section-acceptance.contract.test.ts`의 오래된 계약 타입 오류 때문에 통과하지 못했다.
+
+재사용 결정은 기존 기준을 유지한다. 고정 PostgreSQL 16.14는 `AUGMENT`, gbrain `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (MIT)는 재생·이력 패턴 `REFERENCE_ONLY`이며 새 Package·Adapter·Migration·Schema는 없다. 정책 버전은 Source/Evidence와 Candidate 의미를 Shotgun이 소유하므로 v3의 문장 정규화는 Candidate Generation 경계에서 직접 구현했다. 롤백은 v3 정책과 해당 정규화 경로를 되돌리는 것이며 v2 기본 경로와 저장된 원 Provider 출력은 바뀌지 않는다. VP-02의 합성자료 증분·정책 개정·full rebuild 비교는 통과했으며 대표 corpus 품질·비용은 VP-04/05에 남는다.

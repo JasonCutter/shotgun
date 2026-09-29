@@ -71,7 +71,7 @@ type OutputRow = QueryResultRow & {
   readonly model: string;
   readonly schema_name: 'ClaimCandidateBatch.v1';
   readonly schema_version: '1.0.0';
-  readonly prompt_version: 'direct-claim-v1' | 'direct-claim-v2';
+  readonly prompt_version: string;
   readonly policy_version: 'direct-only-v1';
   readonly data_policy_version: string;
   readonly output_text: string;

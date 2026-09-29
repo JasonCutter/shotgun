@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { FakeDraftActionConnector } from '../../../adapters/action-connector-fake/src/index.js';
 import { FakeAIProviderAdapter } from '../../../adapters/ai-provider-fake/src/index.js';
 import { StructuredAskAnswerProviderAdapter } from '../../../adapters/ai-provider-ask/src/index.js';
+import { PostgresVPRelationJobs } from '../../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
 import { PostgresFrontendKnowledgeDraftRepository } from '../../../adapters/frontend-knowledge-draft-postgres/src/index.js';
 import { PostgresFrontendKnowledgeDraftTargetResolver } from '../../../adapters/frontend-knowledge-draft-api-postgres/src/index.js';
@@ -87,9 +88,17 @@ import { PostgresSearchProjectionRepository } from '../../../adapters/postgres-s
 import { PostgresKnowledgeModelRepository } from '../../../adapters/postgres-stage9/src/index.js';
 import { PostgresAuthRepository } from '../../../adapters/postgres-auth/src/index.js';
 import { PostgresVPKnowledgeLedger } from '../../../adapters/vp-knowledge-postgres/src/index.js';
+import { GeneralAIVPDecisionAdapter } from '../../../adapters/vp-decision-general-ai/src/index.js';
 import { AskCommandCoordinator } from '../../../modules/frontend-ask-write/src/index.js';
 import { AskAnswerExecutionService } from '../../../modules/frontend-ask-execution/src/index.js';
 import { VPAssertionLedgerWorker } from '../../../modules/vp-knowledge-ledger/src/index.js';
+import { VPRelationDecisionRouter } from '../../../modules/vp-decision/src/index.js';
+import { VPRelationJobWorker } from '../../../modules/vp-knowledge-ledger/src/index.js';
+import type {
+  AIProviderAdapterPort,
+  AIProviderExecutionResolverPort,
+  AIProviderPolicy,
+} from '../../../modules/ai-provider/src/index.js';
 import { SourcesStage4ContinuationDispatcher } from '../../../adapters/sources-stage3-pipeline/src/index.js';
 import type {
   SourcesStage3EvidenceIndexedInput,
@@ -127,9 +136,19 @@ import { requireTestDatabaseTarget } from '../../../scripts/database-target-guar
  * It listens on 127.0.0.1:3002 and is used ONLY by the Cross-Phase journey
  * spec; the existing per-Section browser fixture on 3001 is untouched.
  */
-export async function startFrontendCrossPhaseBackend() {
-  const databaseUrl = await requireTestDatabaseTarget();
+export type FrontendCrossPhaseBackendOptions = {
+  readonly databaseUrl?: string;
+  readonly aiProvider?: AIProviderAdapterPort;
+  readonly aiProviderPolicy?: AIProviderPolicy;
+  readonly enableVPRelationWorker?: boolean;
+};
+
+export async function startFrontendCrossPhaseBackend(
+  options: FrontendCrossPhaseBackendOptions = {},
+) {
+  const databaseUrl = options.databaseUrl ?? (await requireTestDatabaseTarget());
   const pool = createPostgresPool(databaseUrl);
+  const aiProvider = options.aiProvider ?? new FakeAIProviderAdapter();
   const authRepository = new PostgresAuthRepository(pool);
   const projectAdminRepository = new PostgresProjectAdministrationRepository(pool);
 
@@ -215,7 +234,7 @@ export async function startFrontendCrossPhaseBackend() {
 
   const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
   const originalAssetRepository = new PostgresOriginalAssetRepository(pool);
-  const askAnswerProvider = new StructuredAskAnswerProviderAdapter(new FakeAIProviderAdapter(), {
+  const askAnswerProvider = new StructuredAskAnswerProviderAdapter(aiProvider, {
     allowPrivate: true,
     allowRestricted: false,
     dataPolicyVersion: 'cross-phase-ask-policy-v1',
@@ -353,6 +372,8 @@ export async function startFrontendCrossPhaseBackend() {
     actionCandidateRepository: new PostgresActionCandidateRepository(pool),
     actionExecutionRepository: new PostgresActionExecutionRepository(pool),
     authRepository,
+    aiProvider,
+    ...(options.aiProviderPolicy ? { aiProviderPolicy: options.aiProviderPolicy } : {}),
     production: false,
     activitySourcesRead: new PostgresSourcesActivityRead(pool, sourcesProductService),
     activityAskRead: new PostgresAskActivityRead(pool),
@@ -365,9 +386,7 @@ export async function startFrontendCrossPhaseBackend() {
     textDiff: new JsDiffAdapter(),
     transformer,
     evidenceLocator,
-    aiProvider: new FakeAIProviderAdapter(),
     askAnswerExecution,
-    aiProviderPolicy: { allowPrivate: true, allowRestricted: false, maxAttempts: 2 },
     closeResources: async () => {
       removeSourcesWriteRuntime();
       await pool.end();
@@ -412,6 +431,30 @@ export async function startFrontendCrossPhaseBackend() {
     new PostgresVPKnowledgeLedger(pool),
     250,
   ).startWorker();
+  let stopVPRelationWorker: () => Promise<void> = async () => {};
+  if (options.enableVPRelationWorker) {
+    const decisionResolver: AIProviderExecutionResolverPort = {
+      resolve: async () => ({ adapter: aiProvider, executionIdentity: {} as never }),
+    };
+    stopVPRelationWorker = await new VPRelationJobWorker(
+      new PostgresVPRelationJobs(pool),
+      new VPRelationDecisionRouter(undefined, new GeneralAIVPDecisionAdapter(decisionResolver), {
+        revision: 'vp-deepseek-relation-v2',
+        minimumChoiceProbability: 0.9,
+        maximumDeepAnalysisScore: 0,
+        maximumInputTokens: 4_000,
+        maximumOutputTokens: 256,
+      }),
+      async (job) =>
+        job.left.sensitivity !== 'restricted' &&
+        job.right.sensitivity !== 'restricted' &&
+        job.left.accessScope.length > 0 &&
+        job.left.accessScope.every((entry) => job.right.accessScope.includes(entry)),
+      'vp-deepseek-relation-v2',
+      250,
+      1,
+    ).startWorker();
+  }
   let stopAskWorker: () => Promise<void> = async () => {};
   try {
     stopAskWorker = await askAnswerExecution.startWorker(250);
@@ -495,6 +538,7 @@ export async function startFrontendCrossPhaseBackend() {
     close: async () => {
       if (closing) return;
       closing = true;
+      await stopVPRelationWorker();
       await stopAskWorker();
       await stopVPAssertionWorker();
       await stopStage4Worker();

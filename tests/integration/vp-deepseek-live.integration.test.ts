@@ -171,6 +171,11 @@ describe.skipIf(!live)('VP DeepSeek live decision proof', () => {
         },
       ] as const;
       const failures: string[] = [];
+      const measurements: {
+        readonly inputTokens: number;
+        readonly outputTokens: number;
+        readonly elapsedMs: number;
+      }[] = [];
       for (const sample of corpus) {
         const started = performance.now();
         try {
@@ -190,12 +195,32 @@ describe.skipIf(!live)('VP DeepSeek live decision proof', () => {
             }),
           );
           expect(sample.allowed, sample.name).toContain(result.choice);
+          measurements.push({
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
+            elapsedMs,
+          });
         } catch (error) {
           failures.push(
             `${sample.name}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       }
+      const sortedLatency = measurements.map((item) => item.elapsedMs).sort((a, b) => a - b);
+      const percentile = (percent: number): number | undefined =>
+        sortedLatency[Math.ceil((percent / 100) * sortedLatency.length) - 1];
+      console.info(
+        JSON.stringify({
+          summary: 'vp-deepseek-relation-v2',
+          sampleCount: corpus.length,
+          safeChoiceCount: measurements.length,
+          failedCount: failures.length,
+          inputTokens: measurements.reduce((sum, item) => sum + item.inputTokens, 0),
+          outputTokens: measurements.reduce((sum, item) => sum + item.outputTokens, 0),
+          p50LatencyMs: percentile(50),
+          p95LatencyMs: percentile(95),
+        }),
+      );
       expect(failures).toEqual([]);
     } finally {
       await pool.end();

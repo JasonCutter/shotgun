@@ -58,6 +58,18 @@ $env:VP_LIVE_DEEPSEEK='1'; npm run frontend:test:e2e -- tests/browser/vp-deepsee
 
 결과는 Chromium 1건 통과, `activeAssertions=2`, `activeRelations=1`, `pendingRelationJobs=0`, `answerCitations=2`, `replayMatches=true`다. 같은 검증에서 VP 원장 누락·관계 우선순위 DB 테스트 2건과 실제 DeepSeek 추출 재시도 통합 테스트 1건도 통과했다. 추출 재시도는 API 1회, 입력 252 tokens, 출력 58 tokens를 사용했고 두 번째 같은 명령은 저장된 출력을 재사용했다. 구현·검증 코드는 `main@49455929`에 있다.
 
-이번 결과는 두 합성 문서로 실행한 실제 증분 제품 흐름의 통과 증거다. 대표 Golden Corpus 품질·비용, Source 수정 및 정책 변경 뒤의 증분 동등성, 저장 원문에서 독립적으로 모든 처리 단계를 다시 구축한 결과와 기존 증분 결과의 비교는 검증하지 않았다. 따라서 VP-02는 계속 열려 있고 이 테스트만으로 VP 완료를 선언하지 않는다. 테스트 보강은 기존 PostgreSQL·DeepSeek Adapter와 VP Port를 사용하며 OSS 채택·Migration·Schema 변경은 없다. 롤백은 테스트 전용 옵션·검증 파일을 되돌리는 것이며 운영 데이터 변경은 없다.
+초기 제품 흐름 검증 뒤 Source 수정 증분 결과와 깨끗한 새 공간 재구축을 비교하는 검증을 추가했다. 두 검증 모두 합성 자료에 한정되며 대표 Golden Corpus 품질·비용은 측정하지 않았다. 추출 정책 개정 뒤의 증분 결과와 새 공간 재구축 비교도 아직 남아 VP-02는 계속 열려 있다. 이 보고서로 VP 완료를 선언하지 않는다. 테스트 보강은 기존 PostgreSQL·DeepSeek Adapter와 VP Port를 사용하며 OSS 채택·Migration·Schema 변경은 없다. 롤백은 테스트 전용 옵션·검증 파일을 되돌리는 것이며 운영 데이터 변경은 없다.
+
+## 2026-09-29 수정본 증분 처리와 새 공간 재구축 비교
+
+실제 Shotgun Sources 화면에서 두 격리 DB를 순서대로 사용했다. 첫 DB에는 A=42와 B=43을 투입하고 질문한 뒤, A를 같은 Source의 새 버전 A=44로 수정해 다시 질문했다. 두 번째 DB는 빈 상태에서 최종 자료 A=44와 B=43만 투입해 전체 처리를 실행했다. 두 흐름 모두 실제 DeepSeek 추출·관계 판단·Ask를 사용했다.
+
+두 흐름의 현재 VP Projection을 ID와 시각에 독립적인 논리 값으로 정규화해 비교했다. 현재 주장 문구, 각 주장의 원문 Evidence 인용문, 관계 종류 및 양쪽 주장 문구가 모두 같았다. 각 흐름에서 현재 주장 2개, `CONTRADICTS` 관계 1개, 대기 Job 0건이었고 최종 답변은 44와 43을 인용 2개와 함께 제시했다. 수정본 이후 답변에는 과거 값 42가 포함되지 않았다. 정리된 실제 결과는 첫 DB의 증분 결과와 두 번째 DB의 clean rebuild 결과가 일치한 것이다.
+
+```powershell
+$env:VP_LIVE_DEEPSEEK='1'; npm run frontend:test:e2e -- tests/browser/vp-deepseek-full-flow.live.spec.ts --reporter=line
+```
+
+결과는 Chromium 1건 통과, `incrementalAssertions=2`, `rebuiltAssertions=2`, 각 관계 1건, 각 답변 인용 2건이다. 코드는 `main@87db2ee8`이다. 이 테스트는 Source 수정 뒤의 원문→현재 지식→답변 증분 결과를 새 빈 저장소의 전체 구축과 대조한다. Candidate 추출 정책 revision 변경은 아직 이 비교에 포함되지 않았다.
 
 변경한 브라우저 fixture·live test·통합 test의 ESLint, 포맷, 대상 파일 TypeScript 검사와 `git diff --check`는 통과했다. 전체 `npm run typecheck`는 현재 작업과 무관한 untracked `tests/contract/ts7-cross-section-acceptance.contract.test.ts`의 오래된 계약 타입 오류로 여전히 실패한다.

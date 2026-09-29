@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import { expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import type { ViteDevServer } from 'vite';
 import { tsImport } from 'tsx/esm/api';
 
@@ -191,34 +192,41 @@ const resolveDeepSeekForProject = async (targetProjectId: string) => {
   }
 };
 
-test('VP live product flow extracts, relates, answers, and converges from two uploaded sources', async ({
-  page,
-}) => {
-  test.skip(!live, 'Set VP_LIVE_DEEPSEEK=1 with a configured Vault credential to run live AI.');
-  test.setTimeout(360_000);
+type ProductRuntime = {
+  readonly frontendUrl: string;
+  close(): Promise<void>;
+};
 
-  const isolatedDatabaseModule = (await tsImport(
-    '../helpers/isolated-postgres-test-database.ts',
+type SourceSubmission = {
+  readonly submission?: {
+    readonly items?: readonly {
+      readonly producedResource?: {
+        readonly sourceId: string;
+        readonly versionNumber: number;
+      };
+    }[];
+  };
+};
+
+type LogicalProjection = {
+  readonly assertions: readonly string[];
+  readonly relations: readonly string[];
+};
+
+const startProductRuntime = async (databaseUrl: string): Promise<ProductRuntime> => {
+  const deepseek = await resolveDeepSeekForProject('shotgun');
+  const fixture = (await tsImport(
+    './fixtures/frontend-cross-phase-backend.ts',
     import.meta.url,
-  )) as IsolatedDatabaseFactory;
-  const isolated = await isolatedDatabaseModule.createIsolatedPostgresTestDatabase();
-  const pool = isolated.createPool();
-  let backend: Awaited<ReturnType<CrossPhaseBackend['startFrontendCrossPhaseBackend']>> | undefined;
+  )) as CrossPhaseBackend;
+  const backend = await fixture.startFrontendCrossPhaseBackend({
+    databaseUrl,
+    aiProvider: deepseek,
+    aiProviderPolicy: { allowPrivate: true, allowRestricted: false, maxAttempts: 2 },
+    enableVPRelationWorker: true,
+  });
   let frontend: ViteDevServer | undefined;
-
   try {
-    const deepseek = await resolveDeepSeekForProject('shotgun');
-    const fixture = (await tsImport(
-      './fixtures/frontend-cross-phase-backend.ts',
-      import.meta.url,
-    )) as CrossPhaseBackend;
-    backend = await fixture.startFrontendCrossPhaseBackend({
-      databaseUrl: isolated.databaseUrl,
-      aiProvider: deepseek,
-      aiProviderPolicy: { allowPrivate: true, allowRestricted: false, maxAttempts: 2 },
-      enableVPRelationWorker: true,
-    });
-
     const backendUrl = 'http://127.0.0.1:3002';
     const frontendUrl = 'http://127.0.0.1:5174';
     const frontendRoot = path.resolve(process.cwd(), 'apps/shotgun-web');
@@ -241,108 +249,263 @@ test('VP live product flow extracts, relates, answers, and converges from two up
       },
     });
     await frontend.listen();
+    return {
+      frontendUrl,
+      close: async () => {
+        await frontend?.close();
+        await backend.close();
+      },
+    };
+  } catch (error) {
+    await frontend?.close();
+    await backend.close();
+    throw error;
+  }
+};
 
-    const bootstrap = await page.request.post(`${frontendUrl}/api/v1/session/local-bootstrap`, {
-      data: {},
-    });
-    expect(bootstrap.ok(), await bootstrap.text()).toBe(true);
-    const csrf = await page.request.get(`${frontendUrl}/api/v1/security/csrf`);
-    const csrfToken = ((await csrf.json()) as { csrfToken?: string }).csrfToken;
-    expect(csrfToken).toBeTruthy();
-    const headers = { 'x-csrf-token': csrfToken as string };
-    const selectedProject = await page.request.post(
-      `${frontendUrl}/api/v1/session/active-project`,
-      { headers, data: { projectId: 'shotgun' } },
-    );
-    expect(selectedProject.ok(), await selectedProject.text()).toBe(true);
+const bootstrapProductSession = async (page: Page, url: string) => {
+  const bootstrap = await page.request.post(`${url}/api/v1/session/local-bootstrap`, {
+    data: {},
+  });
+  expect(bootstrap.ok(), await bootstrap.text()).toBe(true);
+  const csrf = await page.request.get(`${url}/api/v1/security/csrf`);
+  const csrfToken = ((await csrf.json()) as { csrfToken?: string }).csrfToken;
+  expect(csrfToken).toBeTruthy();
+  const selectedProject = await page.request.post(`${url}/api/v1/session/active-project`, {
+    headers: { 'x-csrf-token': csrfToken as string },
+    data: { projectId: 'shotgun' },
+  });
+  expect(selectedProject.ok(), await selectedProject.text()).toBe(true);
+};
 
-    const sources = [
-      'The demo archive contained exactly 42 records on 2025-01-01.',
-      'The demo archive contained exactly 43 records on 2025-01-01.',
-    ];
-    for (const [index, sourceText] of sources.entries()) {
-      await page.goto(`${frontendUrl}/sources?view=add`);
-      await page.locator('#source-intake-kind').selectOption('FILE');
-      await page.locator('#source-intake-file').setInputFiles({
-        name: `vp-live-source-${index + 1}.md`,
-        mimeType: 'text/markdown',
-        buffer: Buffer.from(sourceText),
-      });
-      const submission = page.waitForResponse(
-        (response) =>
-          response.url().endsWith('/product-api/frontend/sources/submissions') &&
-          response.request().method() === 'POST',
-      );
-      await page.locator('.source-intake-form button[type="submit"]').click();
-      expect((await submission).ok()).toBe(true);
-    }
+const submitMarkdown = async (
+  page: Page,
+  frontendUrl: string,
+  fileName: string,
+  sourceText: string,
+  requestedSourceId?: string,
+) => {
+  const query = requestedSourceId
+    ? `?view=add&sourceId=${encodeURIComponent(requestedSourceId)}`
+    : '?view=add';
+  await page.goto(`${frontendUrl}/sources${query}`);
+  await page.locator('#source-intake-kind').selectOption('FILE');
+  await page.locator('#source-intake-file').setInputFiles({
+    name: fileName,
+    mimeType: 'text/markdown',
+    buffer: Buffer.from(sourceText),
+  });
+  const submissionResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/product-api/frontend/sources/submissions') &&
+      response.request().method() === 'POST',
+  );
+  await page.locator('.source-intake-form button[type="submit"]').click();
+  const response = await submissionResponse;
+  expect(response.ok(), `Source submission returned ${response.status()}`).toBe(true);
+  const body = (await response.json()) as SourceSubmission;
+  const produced = body.submission?.items?.[0]?.producedResource;
+  expect(produced, 'Source submission should return its produced source version').toBeDefined();
+  return produced!;
+};
 
-    const replayModule = (await tsImport(
-      '../../scripts/vp-projection-replay.ts',
-      import.meta.url,
-    )) as ReplayModule;
-    await expect
-      .poll(() => replayModule.verifyVPProjectionReplay(pool, 'shotgun'), {
-        timeout: 180_000,
-        intervals: [500, 1000, 2000, 3000],
-      })
-      .toMatchObject({
-        matches: true,
-        sourceProcessingComplete: true,
-        candidateMaterializationComplete: true,
-        relationQueueSettled: true,
-        currentAssertions: 2,
-        currentRelations: 1,
-        pendingRelationJobs: 0,
-      });
-
-    await page.goto(`${frontendUrl}/ask`);
-    await page
-      .locator('#global-ask-question')
-      .fill('How many records were in the demo archive on 2025-01-01?');
-    await page.locator('.global-composer button[type="submit"]').click();
-    const answer = page.locator('.ask-turn').last();
-    await expect(answer).toContainText('42', { timeout: 120_000 });
-    await expect(answer).toContainText('43');
-    await expect(answer.locator('.ask-citation-list a')).toHaveCount(2, { timeout: 30_000 });
-
-    await expect
-      .poll(
-        async () => {
-          const result = await pool.query<{ count: string }>(
-            `SELECT count(*)::text AS count FROM vp.current_relations
-              WHERE project_id = 'shotgun' AND relation_kind = 'CONTRADICTS'`,
-          );
-          return Number(result.rows[0]?.count ?? 0);
-        },
-        { timeout: 60_000, intervals: [250, 500, 1000, 2000] },
-      )
-      .toBe(1);
-
-    const replay = await replayModule.verifyVPProjectionReplay(pool, 'shotgun');
-    expect(replay).toMatchObject({
+const waitForVPConvergence = async (pool: Pool, replayModule: ReplayModule) => {
+  await expect
+    .poll(() => replayModule.verifyVPProjectionReplay(pool, 'shotgun'), {
+      timeout: 180_000,
+      intervals: [500, 1000, 2000, 3000],
+    })
+    .toMatchObject({
       matches: true,
       sourceProcessingComplete: true,
       candidateMaterializationComplete: true,
       relationQueueSettled: true,
+      currentAssertions: 2,
+      currentRelations: 1,
+      pendingRelationJobs: 0,
+    });
+};
+
+const askAboutArchive = async (
+  page: Page,
+  frontendUrl: string,
+  expectedNumbers: readonly string[],
+  excludedNumbers: readonly string[] = [],
+) => {
+  await page.goto(`${frontendUrl}/ask`);
+  await page
+    .locator('#global-ask-question')
+    .fill('How many records were in the demo archive on 2025-01-01?');
+  await page.locator('.global-composer button[type="submit"]').click();
+  const answer = page.locator('.ask-turn').last();
+  for (const value of expectedNumbers) {
+    await expect(answer).toContainText(value, { timeout: 120_000 });
+  }
+  for (const value of excludedNumbers) {
+    await expect(answer).not.toContainText(value);
+  }
+  await expect(answer.locator('.ask-citation-list a')).toHaveCount(2, { timeout: 30_000 });
+  return {
+    text: await answer.innerText(),
+    citations: await answer.locator('.ask-citation-list a').count(),
+  };
+};
+
+const readLogicalProjection = async (pool: Pool): Promise<LogicalProjection> => {
+  const assertionRows = await pool.query<{
+    claim_text: string;
+    evidence_text: string;
+  }>(
+    `SELECT assertion.claim_text, evidence.quote->>'exact' AS evidence_text
+       FROM vp.current_assertions AS assertion
+       JOIN evidence.spans AS evidence
+         ON evidence.project_id = assertion.project_id
+        AND evidence.evidence_id = assertion.evidence_id
+      WHERE assertion.project_id = 'shotgun'`,
+  );
+  const relationRows = await pool.query<{
+    relation_kind: string;
+    left_claim: string;
+    right_claim: string;
+  }>(
+    `SELECT relation.relation_kind, left_claim.claim_text AS left_claim,
+            right_claim.claim_text AS right_claim
+       FROM vp.current_relations AS relation
+       JOIN vp.current_assertions AS left_claim
+         ON left_claim.project_id = relation.project_id
+        AND left_claim.assertion_id = relation.left_assertion_id
+       JOIN vp.current_assertions AS right_claim
+         ON right_claim.project_id = relation.project_id
+        AND right_claim.assertion_id = relation.right_assertion_id
+      WHERE relation.project_id = 'shotgun'`,
+  );
+  const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+  return {
+    assertions: assertionRows.rows
+      .map((row) => `${normalize(row.claim_text)}\u0000${normalize(row.evidence_text)}`)
+      .sort(),
+    relations: relationRows.rows
+      .map((row) => {
+        const pair = [normalize(row.left_claim), normalize(row.right_claim)].sort();
+        return `${row.relation_kind}\u0000${pair.join('\u0001')}`;
+      })
+      .sort(),
+  };
+};
+
+const runProductScenario = async (input: {
+  readonly page: Page;
+  readonly databaseFactory: IsolatedDatabaseFactory;
+  readonly replayModule: ReplayModule;
+  readonly sourceA: string;
+  readonly sourceB: string;
+  readonly revisedSourceA?: string;
+}) => {
+  const isolated = await input.databaseFactory.createIsolatedPostgresTestDatabase();
+  const pool = isolated.createPool();
+  let runtime: ProductRuntime | undefined;
+  try {
+    runtime = await startProductRuntime(isolated.databaseUrl);
+    await bootstrapProductSession(input.page, runtime.frontendUrl);
+    const firstSource = await submitMarkdown(
+      input.page,
+      runtime.frontendUrl,
+      'vp-live-source-1.md',
+      input.sourceA,
+    );
+    await submitMarkdown(input.page, runtime.frontendUrl, 'vp-live-source-2.md', input.sourceB);
+    await waitForVPConvergence(pool, input.replayModule);
+
+    if (input.revisedSourceA) {
+      await askAboutArchive(input.page, runtime.frontendUrl, ['42', '43']);
+      const revision = await submitMarkdown(
+        input.page,
+        runtime.frontendUrl,
+        'vp-live-source-1.md',
+        input.revisedSourceA,
+        firstSource.sourceId,
+      );
+      expect(revision.sourceId).toBe(firstSource.sourceId);
+      expect(revision.versionNumber).toBe(2);
+      await waitForVPConvergence(pool, input.replayModule);
+    }
+
+    const answer = await askAboutArchive(
+      input.page,
+      runtime.frontendUrl,
+      ['44', '43'],
+      input.revisedSourceA ? ['42'] : [],
+    );
+    const replay = await input.replayModule.verifyVPProjectionReplay(pool, 'shotgun');
+    expect(replay).toMatchObject({
+      matches: true,
       expectedAssertions: 2,
       currentAssertions: 2,
       expectedRelations: 1,
       currentRelations: 1,
+      pendingRelationJobs: 0,
     });
-    console.info(
-      JSON.stringify({
-        summary: 'vp-deepseek-product-flow-v1',
-        activeAssertions: replay.currentAssertions,
-        activeRelations: replay.currentRelations,
-        pendingRelationJobs: replay.pendingRelationJobs,
-        answerCitations: await answer.locator('.ask-citation-list a').count(),
-        replayMatches: replay.matches,
-      }),
-    );
+    return {
+      answer,
+      replay,
+      projection: await readLogicalProjection(pool),
+    };
   } finally {
-    await frontend?.close();
-    await backend?.close();
+    if (runtime) {
+      await input.page.evaluate(() => {
+        localStorage.clear();
+        sessionStorage.clear();
+      });
+      await input.page.context().clearCookies();
+      await runtime.close();
+    }
     await isolated.dispose();
   }
+};
+
+test('VP live incremental history agrees with a clean DeepSeek rebuild', async ({ page }) => {
+  test.skip(!live, 'Set VP_LIVE_DEEPSEEK=1 with a configured Vault credential to run live AI.');
+  test.setTimeout(600_000);
+
+  const databaseFactory = (await tsImport(
+    '../helpers/isolated-postgres-test-database.ts',
+    import.meta.url,
+  )) as IsolatedDatabaseFactory;
+  const replayModule = (await tsImport(
+    '../../scripts/vp-projection-replay.ts',
+    import.meta.url,
+  )) as ReplayModule;
+  const incremental = await runProductScenario({
+    page,
+    databaseFactory,
+    replayModule,
+    sourceA: 'The demo archive contained exactly 42 records on 2025-01-01.',
+    sourceB: 'The demo archive contained exactly 43 records on 2025-01-01.',
+    revisedSourceA: 'The demo archive contained exactly 44 records on 2025-01-01.',
+  });
+  const rebuilt = await runProductScenario({
+    page,
+    databaseFactory,
+    replayModule,
+    sourceA: 'The demo archive contained exactly 44 records on 2025-01-01.',
+    sourceB: 'The demo archive contained exactly 43 records on 2025-01-01.',
+  });
+
+  expect(rebuilt.projection).toEqual(incremental.projection);
+  expect(incremental.answer.citations).toBe(2);
+  expect(rebuilt.answer.citations).toBe(2);
+  console.info(
+    JSON.stringify({
+      summary: 'vp-deepseek-incremental-vs-clean-rebuild-v1',
+      incrementalAssertions: incremental.replay.currentAssertions,
+      rebuiltAssertions: rebuilt.replay.currentAssertions,
+      incrementalRelations: incremental.replay.currentRelations,
+      rebuiltRelations: rebuilt.replay.currentRelations,
+      currentProjectionMatches: rebuilt.projection.assertions.length === 2,
+      answerCitations: {
+        incremental: incremental.answer.citations,
+        rebuilt: rebuilt.answer.citations,
+      },
+    }),
+  );
 });

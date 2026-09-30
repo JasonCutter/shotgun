@@ -9,6 +9,15 @@
   image and OOXML preflight, multi-region PDF/HTML selector boundaries, and
   revision-pinned Candidate lineage without changing the original acceptance
   date.
+- 2026-09-29 — VP-04 amendment: Markdown ATX headings are separate source ranges;
+  following text carries an additive `MarkdownHeadingContext` selector. The
+  Shotgun plain-text adapter advances to `1.0.2`; existing revisions remain
+  immutable.
+- 2026-09-29 — VP-04 amendment: the locked pypdfium2 `5.11.0` build is an
+  `AUGMENT` used only to restore uniquely overlapping `<`/`>` glyphs that
+  pdfplumber emits as NUL. pdfplumber remains the sole PDF layout and selector
+  authority; unmatched damage remains U+FFFD and is rejected by direct-text
+  validation. The Python format adapter advances to `1.2.0`.
 
 ## 결정
 
@@ -34,6 +43,11 @@
     오류 코드보다 우선한다.
 12. Python adapter identity는 1.0.1에서 1.1.0으로 올린다. plain-text identity는
     출력 계약 변경 전까지 올리지 않는다.
+13. Markdown ATX headings provide context for following sentence Evidence. The
+    SourceMap stores the exact heading path in `MarkdownHeadingContext`; heading
+    text, body text, Unicode offsets, SourceVersion hash and Evidence hash stay
+    independently verifiable. The plain-text adapter uses version 1.0.2 for
+    this additive output behavior.
 
 ## 결과
 

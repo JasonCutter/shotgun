@@ -590,9 +590,10 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
       queryPlanRevision: resumed[0]!.claimed.context.queryPlanRevision,
       workerId: 'vp-wait-worker',
     };
-    await expect(executionRepository.complete(staleCompletion)).rejects.toThrow(
-      'VP knowledge changed while Ask was being answered',
-    );
+    await expect(executionRepository.complete(staleCompletion)).rejects.toMatchObject({
+      code: 'STALE_VERSION',
+      operation: 'complete-vp-snapshot',
+    });
     const unpublished = await pool.query<{ readonly statements: string }>(
       `SELECT count(*)::text AS statements FROM frontend_ask.statements
         WHERE answer_run_id = $1`,

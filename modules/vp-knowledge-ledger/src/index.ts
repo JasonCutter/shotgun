@@ -22,7 +22,8 @@ export type VPRelationJobDecision = {
   readonly jobId: string;
   readonly leaseToken: string;
   readonly provider: 'JEV' | 'GENERAL_AI';
-  readonly choice: 'EQUIVALENT' | 'QUALIFIES' | 'CONTRADICTS' | 'RELATED';
+  readonly choice: 'EQUIVALENT' | 'SUPPORTS' | 'QUALIFIES' | 'CONTRADICTS' | 'RELATED';
+  readonly direction: 'UNDIRECTED' | 'LEFT_TO_RIGHT' | 'RIGHT_TO_LEFT';
   readonly confidence: number;
   readonly model: string;
   readonly inputTokens: number;
@@ -33,6 +34,10 @@ export type VPRelationJobStorePort = {
   enqueueCurrentPairs(policyRevision: string, limit?: number): Promise<number>;
   claimNext(policyRevision: string): Promise<VPRelationJob | undefined>;
   completeDecision(input: VPRelationJobDecision): Promise<boolean>;
+  readDecisionOutcome(input: {
+    readonly jobId: string;
+    readonly leaseToken: string;
+  }): Promise<'COMPLETED' | 'LEASE_ACTIVE' | 'NOT_ACTIVE'>;
   completeUnresolved(input: {
     readonly jobId: string;
     readonly leaseToken: string;
@@ -43,7 +48,7 @@ export type VPRelationJobStorePort = {
     readonly leaseToken: string;
     readonly code: string;
     readonly nextAttemptAt: string;
-  }): Promise<void>;
+  }): Promise<'RETRYABLE' | 'FAILED' | 'NOOP'>;
 };
 
 export type VPRelationEgressPolicy = (job: VPRelationJob) => Promise<boolean>;
@@ -64,12 +69,14 @@ export type VPRelationDecisionPort = {
     readonly authorizedSensitivities: readonly VPCurrentAssertion['sensitivity'][];
     readonly externalEgressAllowed: boolean;
     readonly policyRevision: string;
+    readonly execution?: { readonly jobId: string; readonly leaseToken: string };
   }): Promise<
     | {
         readonly status: 'DECIDED';
         readonly provider: 'JEV' | 'GENERAL_AI';
         readonly decision: {
           readonly choice: VPRelationJobDecision['choice'] | 'UNRESOLVED';
+          readonly direction?: 'NONE' | 'LEFT_TO_RIGHT' | 'RIGHT_TO_LEFT';
           readonly confidence: number;
           readonly model: string;
           readonly inputTokens: number;
@@ -80,6 +87,7 @@ export type VPRelationDecisionPort = {
         readonly status: 'UNRESOLVED';
         readonly reason: 'NO_AUTHORIZED_PROVIDER' | 'PROVIDER_FAILED' | 'INSUFFICIENT_EVIDENCE';
       }
+    | { readonly status: 'OUTCOME_UNKNOWN' }
   >;
 };
 
@@ -98,7 +106,9 @@ export class VPRelationJobWorker {
     private readonly maxJobsPerTick = 4,
   ) {}
 
-  async dispatchOnce(): Promise<'EMPTY' | 'DECIDED' | 'UNRESOLVED' | 'RETRYING'> {
+  async dispatchOnce(): Promise<
+    'EMPTY' | 'DECIDED' | 'UNRESOLVED' | 'RETRYING' | 'FAILED' | 'OUTCOME_UNKNOWN'
+  > {
     await this.jobs.enqueueCurrentPairs(this.policyRevision, 1);
     const job = await this.jobs.claimNext(this.policyRevision);
     if (!job) return 'EMPTY';
@@ -126,24 +136,40 @@ export class VPRelationJobWorker {
         authorizedSensitivities: [job.left.sensitivity, job.right.sensitivity],
         externalEgressAllowed: allowed,
         policyRevision: this.policyRevision,
+        execution: { jobId: job.jobId, leaseToken: job.leaseToken },
       });
-      // QUALIFIES needs a directed qualifier assertion and condition before
-      // it can become a durable relation. Preserve the job for reevaluation.
+      if (result.status === 'OUTCOME_UNKNOWN') return 'OUTCOME_UNKNOWN';
+      // Directional relation types must identify which assertion supports or
+      // qualifies the other; the pair IDs themselves are sorted for identity.
       if (
         result.status === 'DECIDED' &&
         result.decision.choice !== 'UNRESOLVED' &&
-        result.decision.choice !== 'QUALIFIES'
+        ((result.decision.choice !== 'QUALIFIES' && result.decision.choice !== 'SUPPORTS') ||
+          result.decision.direction === 'LEFT_TO_RIGHT' ||
+          result.decision.direction === 'RIGHT_TO_LEFT')
       ) {
-        await this.jobs.completeDecision({
+        const decision = {
           jobId: job.jobId,
           leaseToken: job.leaseToken,
           provider: result.provider,
           choice: result.decision.choice,
+          direction:
+            result.decision.direction === 'LEFT_TO_RIGHT' ||
+            result.decision.direction === 'RIGHT_TO_LEFT'
+              ? result.decision.direction
+              : 'UNDIRECTED',
           confidence: result.decision.confidence,
           model: result.decision.model,
           inputTokens: result.decision.inputTokens,
           outputTokens: result.decision.outputTokens,
-        });
+        } satisfies VPRelationJobDecision;
+        if (!(await this.completeDecisionWithReadback(decision))) {
+          console.error(
+            '[vp-relation-jobs] decision completion remains unresolved after authoritative readback',
+            { jobId: job.jobId },
+          );
+          return 'OUTCOME_UNKNOWN';
+        }
         return 'DECIDED';
       }
       const code = result.status === 'UNRESOLVED' ? result.reason : 'QUALIFIER_NOT_MODELED';
@@ -156,23 +182,71 @@ export class VPRelationJobWorker {
         return 'UNRESOLVED';
       }
       const delayMs = code === 'PROVIDER_FAILED' ? 5 * 60_000 : 24 * 60 * 60_000;
-      await this.jobs.retry({
+      const retryStatus = await this.jobs.retry({
         jobId: job.jobId,
         leaseToken: job.leaseToken,
         code,
         nextAttemptAt: new Date(Date.now() + delayMs).toISOString(),
       });
-      return 'RETRYING';
+      return retryStatus === 'FAILED'
+        ? 'FAILED'
+        : retryStatus === 'NOOP'
+          ? 'OUTCOME_UNKNOWN'
+          : 'RETRYING';
     } catch (error) {
-      await this.jobs.retry({
+      const retryStatus = await this.jobs.retry({
         jobId: job.jobId,
         leaseToken: job.leaseToken,
         code: 'PROVIDER_FAILED',
         nextAttemptAt: new Date(Date.now() + 5 * 60_000).toISOString(),
       });
       console.error('[vp-relation-jobs] decision failed', error);
-      return 'RETRYING';
+      return retryStatus === 'FAILED'
+        ? 'FAILED'
+        : retryStatus === 'NOOP'
+          ? 'OUTCOME_UNKNOWN'
+          : 'RETRYING';
     }
+  }
+
+  private async completeDecisionWithReadback(input: VPRelationJobDecision): Promise<boolean> {
+    const readback = async (): Promise<'COMPLETED' | 'LEASE_ACTIVE' | 'NOT_ACTIVE' | undefined> => {
+      try {
+        return await this.jobs.readDecisionOutcome({
+          jobId: input.jobId,
+          leaseToken: input.leaseToken,
+        });
+      } catch {
+        return undefined;
+      }
+    };
+
+    try {
+      if (await this.jobs.completeDecision(input)) return true;
+    } catch (error) {
+      if (
+        typeof error !== 'object' ||
+        error === null ||
+        !('code' in error) ||
+        error.code !== 'OUTCOME_UNKNOWN'
+      ) {
+        throw error;
+      }
+    }
+
+    let outcome = await readback();
+    if (outcome === 'COMPLETED') return true;
+    if (outcome !== 'LEASE_ACTIVE') return false;
+
+    // The original transaction did not settle the job. Reuse its already
+    // received provider decision once while the original lease is still valid.
+    try {
+      await this.jobs.completeDecision(input);
+    } catch {
+      // The second commit can also lose its acknowledgement; resolve below.
+    }
+    outcome = await readback();
+    return outcome === 'COMPLETED';
   }
 
   async startWorker(): Promise<() => Promise<void>> {

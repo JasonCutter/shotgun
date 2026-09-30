@@ -1,0 +1,143 @@
+{
+  "contractVersion": "1.0.0",
+  "corpusId": "shotgun-vp-finance-pdf-claim-markers",
+  "corpusVersion": "1.0.0",
+  "labelSetRevision": 1,
+  "corpusDigest": "sha256:c7f8f5ba308f4d778e7d2423280561773fc012adc3a73f67cd673821e734deee",
+  "labelReviewStatus": "CANDIDATE",
+  "source": {
+    "sha256": "bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01",
+    "pageCount": 10,
+    "dataClassification": "USER_PROVIDED",
+    "note": "The source PDF remains external; this fixture stores its hash and short page-grounded markers only."
+  },
+  "markers": [
+    {
+      "id": "balance-sheet-equation",
+      "page": 1,
+      "text": "1억원=6천만원+4천만원",
+      "dimension": "numeric-equation"
+    },
+    {
+      "id": "current-ratio-result",
+      "page": 2,
+      "text": "200%",
+      "requiredText": "유동비율",
+      "dimension": "numeric-ratio"
+    },
+    {
+      "id": "operating-profit-result",
+      "page": 3,
+      "text": "400만원",
+      "requiredText": "영업이익",
+      "dimension": "numeric-result"
+    },
+    {
+      "id": "future-value-example",
+      "page": 5,
+      "text": "121만원",
+      "requiredText": "FV =",
+      "dimension": "numeric-time-value"
+    },
+    {
+      "id": "present-value-example",
+      "page": 5,
+      "text": "100만원",
+      "requiredText": "PV =",
+      "dimension": "numeric-time-value"
+    },
+    {
+      "id": "npv-example",
+      "page": 6,
+      "text": "150만원",
+      "requiredText": "NPV",
+      "dimension": "numeric-investment-value"
+    },
+    {
+      "id": "irr-example",
+      "page": 6,
+      "text": "IRR은 10%다",
+      "requiredText": "IRR",
+      "dimension": "numeric-return-rate"
+    },
+    {
+      "id": "beta-example",
+      "page": 9,
+      "text": "1.5%",
+      "requiredText": "β",
+      "dimension": "numeric-market-sensitivity"
+    },
+    {
+      "id": "balance-sheet-identity",
+      "page": 1,
+      "text": "자산=부채+자본",
+      "dimension": "accounting-identity"
+    },
+    {
+      "id": "cash-vs-profit-distinction",
+      "page": 3,
+      "text": "이익이 증가했다고 해서 현금도 같은 금액만큼 증가한 것은 아니다",
+      "dimension": "qualification"
+    },
+    {
+      "id": "cash-flow-operating",
+      "page": 4,
+      "text": "영업활동 현금흐름",
+      "dimension": "cash-flow-category"
+    },
+    {
+      "id": "cash-flow-investing",
+      "page": 4,
+      "text": "투자활동 현금흐름",
+      "dimension": "cash-flow-category"
+    },
+    {
+      "id": "cash-flow-financing",
+      "page": 4,
+      "text": "재무활동 현금흐름",
+      "dimension": "cash-flow-category"
+    },
+    {
+      "id": "discount-rate-present-value",
+      "page": 6,
+      "text": "할인율이 높아질수록 현재가치는 낮아진다",
+      "dimension": "directional-condition"
+    },
+    {
+      "id": "npv-positive-investment-direction",
+      "page": 6,
+      "text": "NPV > 0 → 투자로 기업가치가 증가하는 방향",
+      "dimension": "sign-condition"
+    },
+    {
+      "id": "npv-negative-investment-direction",
+      "page": 6,
+      "text": "NPV < 0 → 투자로 기업가치가 감소하는 방향",
+      "dimension": "sign-condition"
+    },
+    {
+      "id": "irr-definition",
+      "page": 6,
+      "text": "NPV가 0이 되도록 만드는 할인율",
+      "dimension": "definition"
+    },
+    {
+      "id": "beta-above-one",
+      "page": 9,
+      "text": "β > 1: 시장보다 더 크게 움직이는 경향",
+      "dimension": "threshold-condition"
+    },
+    {
+      "id": "beta-below-one",
+      "page": 9,
+      "text": "β < 1: 시장보다 덜 민감하게 움직이는 경향",
+      "dimension": "threshold-condition"
+    },
+    {
+      "id": "systematic-risk-diversification-limit",
+      "page": 8,
+      "text": "분산투자로 완전히 제거할 수 없다",
+      "dimension": "limitation"
+    }
+  ]
+}

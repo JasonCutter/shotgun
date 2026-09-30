@@ -704,8 +704,17 @@ export class PostgresOriginalAssetRepository
   }
 }
 
-export const createPostgresPool = (connectionString: string): Pool =>
-  new Pool({ connectionString });
+export const createPostgresPool = (connectionString: string): Pool => {
+  const pool = new Pool({ connectionString });
+  // PostgreSQL can terminate idle sessions during restart or failover. node-postgres
+  // removes the broken idle client; handle its pool event so it does not become an
+  // unhandled process error that kills the supervised app before the next query.
+  pool.on('error', (error) => {
+    const code = 'code' in error && typeof error.code === 'string' ? error.code : 'UNKNOWN';
+    console.error('[postgres] DATABASE_IDLE_CLIENT_ERROR', { code });
+  });
+  return pool;
+};
 
 // ============================================================================
 // Postgres Project Administration Repository & Settings Repository

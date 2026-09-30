@@ -450,21 +450,26 @@ export async function startFrontendCrossPhaseBackend(
     const decisionResolver: AIProviderExecutionResolverPort = {
       resolve: async () => ({ adapter: aiProvider, executionIdentity: {} as never }),
     };
+    const relationJobs = new PostgresVPRelationJobs(pool);
     stopVPRelationWorker = await new VPRelationJobWorker(
-      new PostgresVPRelationJobs(pool),
-      new VPRelationDecisionRouter(undefined, new GeneralAIVPDecisionAdapter(decisionResolver), {
-        revision: 'vp-deepseek-relation-v2',
-        minimumChoiceProbability: 0.9,
-        maximumDeepAnalysisScore: 0,
-        maximumInputTokens: 4_000,
-        maximumOutputTokens: 256,
-      }),
+      relationJobs,
+      new VPRelationDecisionRouter(
+        undefined,
+        new GeneralAIVPDecisionAdapter(decisionResolver, relationJobs),
+        {
+          revision: 'vp-deepseek-relation-v5',
+          minimumChoiceProbability: 0.9,
+          maximumDeepAnalysisScore: 0,
+          maximumInputTokens: 4_000,
+          maximumOutputTokens: 256,
+        },
+      ),
       async (job) =>
         job.left.sensitivity !== 'restricted' &&
         job.right.sensitivity !== 'restricted' &&
         job.left.accessScope.length > 0 &&
         job.left.accessScope.every((entry) => job.right.accessScope.includes(entry)),
-      'vp-deepseek-relation-v2',
+      'vp-deepseek-relation-v5',
       250,
       1,
     ).startWorker();

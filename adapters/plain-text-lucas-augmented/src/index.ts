@@ -5,6 +5,7 @@ import {
   type DocumentIR,
   type SourceMap,
   type SourceMapEntry,
+  type SourceSelector,
   type TextPositionSelector,
   type TextQuoteSelector,
   unicodeLength,
@@ -23,15 +24,39 @@ type Range = {
   readonly end: number;
 };
 
+type ParagraphRange = Range & {
+  readonly headingContext?: string;
+};
+
 const CONTEXT_LENGTH = 32;
 const sentenceTerminators = new Set(['.', '!', '?', '。', '！', '？']);
 
-const paragraphRanges = (text: string): readonly Range[] => {
+const paragraphRanges = (
+  text: string,
+  mediaType: DocumentTransformationInput['mediaType'],
+): readonly ParagraphRange[] => {
   const characters = Array.from(text);
-  const ranges: Range[] = [];
+  const ranges: ParagraphRange[] = [];
+  const headings: { readonly level: number; readonly text: string }[] = [];
   let lineStart = 0;
   let paragraphStart: number | undefined;
   let paragraphEnd = 0;
+  let paragraphHeadingContext: string | undefined;
+
+  const currentHeadingContext = () =>
+    headings.length ? headings.map(({ text: heading }) => heading).join(' > ') : undefined;
+  const flushParagraph = () => {
+    if (paragraphStart !== undefined) {
+      ranges.push({
+        start: paragraphStart,
+        end: paragraphEnd,
+        ...(paragraphHeadingContext ? { headingContext: paragraphHeadingContext } : {}),
+      });
+      paragraphStart = undefined;
+      paragraphEnd = 0;
+      paragraphHeadingContext = undefined;
+    }
+  };
 
   while (lineStart <= characters.length) {
     let contentEnd = lineStart;
@@ -51,12 +76,27 @@ const paragraphRanges = (text: string): readonly Range[] => {
 
     const line = characters.slice(lineStart, contentEnd).join('');
     if (line.trim().length === 0) {
-      if (paragraphStart !== undefined) {
-        ranges.push({ start: paragraphStart, end: paragraphEnd });
-        paragraphStart = undefined;
+      flushParagraph();
+    } else if (mediaType === 'text/markdown' && /^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*$/u.test(line)) {
+      flushParagraph();
+      const heading = /^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*$/u.exec(line);
+      if (heading) {
+        const parentContext = currentHeadingContext();
+        ranges.push({
+          start: lineStart,
+          end: contentEnd,
+          ...(parentContext ? { headingContext: parentContext } : {}),
+        });
+        const level = heading[1]!.length;
+        const headingText = heading[2]!.replace(/[ \t]+#+[ \t]*$/u, '').trim();
+        headings.splice(0, headings.length, ...headings.filter((item) => item.level < level));
+        if (headingText) headings.push({ level, text: headingText });
       }
     } else {
-      paragraphStart ??= lineStart;
+      if (paragraphStart === undefined) {
+        paragraphStart = lineStart;
+        paragraphHeadingContext = currentHeadingContext();
+      }
       paragraphEnd = contentEnd;
     }
 
@@ -66,9 +106,7 @@ const paragraphRanges = (text: string): readonly Range[] => {
     lineStart = nextLine;
   }
 
-  if (paragraphStart !== undefined) {
-    ranges.push({ start: paragraphStart, end: paragraphEnd });
-  }
+  flushParagraph();
   return ranges;
 };
 
@@ -143,6 +181,7 @@ const mapEntry = (
   pointer: string,
   nodeKind: SourceMapEntry['nodeKind'],
   range: Range,
+  selectors: readonly SourceSelector[] = [],
 ): SourceMapEntry => {
   const quote = quoteFor(text, range);
   return {
@@ -153,6 +192,7 @@ const mapEntry = (
     origin: 'source',
     position: selectorFor(text, range),
     quote,
+    ...(selectors.length ? { selectors } : {}),
     exactHash: sha256Text(quote.exact),
   };
 };
@@ -162,7 +202,7 @@ export class LucasAugmentedPlainTextAdapter
 {
   readonly identity = {
     id: 'shotgun.plain-text',
-    version: '1.0.1',
+    version: '1.0.2',
   } as const;
 
   transform(input: DocumentTransformationInput): PlainTextTransformationOutput {
@@ -179,8 +219,11 @@ export class LucasAugmentedPlainTextAdapter
       }),
     ];
 
-    paragraphRanges(text).forEach((paragraph, blockIndex) => {
+    paragraphRanges(text, mediaType).forEach((paragraph, blockIndex) => {
       const paragraphText = unicodeSlice(text, paragraph.start, paragraph.end);
+      const selectors: readonly SourceSelector[] = paragraph.headingContext
+        ? [{ type: 'MarkdownHeadingContext', value: paragraph.headingContext }]
+        : [];
       const sentences = sentenceRanges(paragraphText, paragraph.start, mediaType).map(
         (sentence, sentenceIndex) => {
           const id = `sentence-${sentence.start}-${sentence.end}`;
@@ -191,6 +234,7 @@ export class LucasAugmentedPlainTextAdapter
               `/blocks/${blockIndex}/sentences/${sentenceIndex}`,
               'sentence',
               sentence,
+              selectors,
             ),
           );
           return {
@@ -214,6 +258,7 @@ export class LucasAugmentedPlainTextAdapter
           `/blocks/${jsonPointerEscape(String(blockIndex))}`,
           'paragraph',
           paragraph,
+          selectors,
         ),
       );
     });

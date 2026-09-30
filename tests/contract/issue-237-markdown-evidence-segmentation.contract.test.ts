@@ -56,7 +56,7 @@ const revisionFor = (text: string): TransformationRevision => {
 
 describe('Issue #237 Markdown segmentation', () => {
   it('publishes the governed transformer identity for the corrected behavior', () => {
-    expect(adapter.identity).toEqual({ id: 'shotgun.plain-text', version: '1.0.1' });
+    expect(adapter.identity).toEqual({ id: 'shotgun.plain-text', version: '1.0.2' });
   });
 
   it('keeps Markdown ordinal prefixes attached to the meaningful sentence', () => {
@@ -90,10 +90,49 @@ describe('Issue #237 Markdown segmentation', () => {
     ).toEqual(['1.', '태양광으로 전기를 생산한다.']);
   });
 
+  it('separates a heading from its statement and pins heading context to exact Evidence', () => {
+    const text = '# Release\nShotgun v1.2 출시일은 2026-08-01이다.';
+    const output = transformed(text, 'text/markdown');
+    const evidence = buildEvidenceCandidates(revisionFor(text), adapter);
+    const sentenceEntries = output.sourceMap.entries.filter(
+      (entry) => entry.nodeKind === 'sentence',
+    );
+
+    expect(sentenceEntries.map((entry) => entry.quote.exact)).toEqual([
+      '# Release',
+      'Shotgun v1.2 출시일은 2026-08-01이다.',
+    ]);
+    expect(sentenceEntries[1]?.selectors).toEqual([
+      { type: 'MarkdownHeadingContext', value: 'Release' },
+    ]);
+    expect(evidence).toContainEqual(
+      expect.objectContaining({
+        quote: expect.objectContaining({
+          type: 'TextQuoteSelector',
+          exact: 'Shotgun v1.2 출시일은 2026-08-01이다.',
+        }),
+        selectors: [{ type: 'MarkdownHeadingContext', value: 'Release' }],
+      }),
+    );
+  });
+
+  it('retains the active parent path for nested Markdown headings', () => {
+    const statement = 'NPV is positive.';
+    const text = `# Finance\n## Valuation\n${statement}`;
+    const output = transformed(text, 'text/markdown');
+    const statementEntry = output.sourceMap.entries.find(
+      (entry) => entry.nodeKind === 'sentence' && entry.quote.exact === statement,
+    );
+
+    expect(statementEntry?.selectors).toEqual([
+      { type: 'MarkdownHeadingContext', value: 'Finance > Valuation' },
+    ]);
+  });
+
   it('publishes the production transformer identity and delegates corrected Markdown behavior', async () => {
     expect(productionAdapter.identity).toEqual({
       id: 'shotgun.document-formats',
-      version: '1.1.0',
+      version: '1.2.0',
     });
 
     const text = ['---', '', '## 1. Heading', '', '1. Meaningful sentence.'].join('\n');

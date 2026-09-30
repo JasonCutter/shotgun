@@ -232,6 +232,15 @@ const invalid = (message: string): ShotgunError =>
     operation: 'execution',
   });
 
+const staleVPCompletion = (): ShotgunError =>
+  new ShotgunError({
+    code: 'STALE_VERSION',
+    safeMessage: 'VP knowledge changed while Ask was being answered; the result was not published.',
+    module: 'frontend-ask-execution-postgres',
+    operation: 'complete-vp-snapshot',
+    retryable: true,
+  });
+
 const invalidExplicitEvidence = (): ShotgunError =>
   new ShotgunError({
     code: 'INVALID_REQUEST',
@@ -1442,9 +1451,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           },
         }))
       ) {
-        throw invalid(
-          'VP knowledge changed while Ask was being answered; the result was not published.',
-        );
+        throw staleVPCompletion();
       }
       vpKnowledgeEpoch = pinned.vp_knowledge_epoch;
     }
@@ -1472,9 +1479,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           [input.scope.projectId],
         );
         if ((epoch.rows[0]?.current_epoch ?? '0') !== vpKnowledgeEpoch) {
-          throw invalid(
-            'VP knowledge changed while Ask was being answered; the result was not published.',
-          );
+          throw staleVPCompletion();
         }
       }
       const contextResult = await client.query<{ readonly context_supported: boolean }>(

@@ -48,53 +48,62 @@ const assertContext = (envelope: EventEnvelope | QueryEnvelope) => {
 const validateCandidate = (
   candidate: ClaimCandidate,
   evidence: EvidenceSpan,
-): readonly ValidationDimension[] => [
-  {
-    name: 'schema',
-    status: candidate.providerCall.structuredOutputValid ? 'PASS' : 'FAIL',
-    reason: candidate.providerCall.structuredOutputValid
-      ? undefined
-      : 'Provider structured output was not validated.',
-  },
-  {
-    name: 'evidence-reference',
-    status:
-      candidate.evidenceIds[0] === evidence.evidenceId &&
-      candidate.sourceVersionId === evidence.sourceVersionId &&
-      evidence.origin === 'source'
-        ? 'PASS'
-        : 'FAIL',
-    reason:
-      candidate.evidenceIds[0] === evidence.evidenceId &&
-      candidate.sourceVersionId === evidence.sourceVersionId &&
-      evidence.origin === 'source'
+): readonly ValidationDimension[] => {
+  const containsUndecodableCharacter = candidate.claimText.includes('\uFFFD');
+  const isDirectText =
+    !containsUndecodableCharacter && evidence.quote.exact.includes(candidate.claimText);
+  return [
+    {
+      name: 'schema',
+      status: candidate.providerCall.structuredOutputValid ? 'PASS' : 'FAIL',
+      reason: candidate.providerCall.structuredOutputValid
         ? undefined
-        : 'Evidence does not belong to the candidate SourceVersion.',
-  },
-  {
-    name: 'direct-text',
-    status: evidence.quote.exact.includes(candidate.claimText) ? 'PASS' : 'FAIL',
-    reason: evidence.quote.exact.includes(candidate.claimText)
-      ? undefined
-      : 'Claim text is not an exact contiguous substring of the evidence.',
-  },
-  {
-    name: 'policy',
-    status:
-      candidate.evidenceMode === 'DIRECT_EVIDENCE' && candidate.extractionProfile === 'direct-only'
-        ? 'PASS'
-        : 'FAIL',
-    reason:
-      candidate.evidenceMode === 'DIRECT_EVIDENCE' && candidate.extractionProfile === 'direct-only'
-        ? undefined
-        : 'The default Stage 4 profile allows direct evidence only.',
-  },
-  {
-    name: 'semantic',
-    status: 'NOT_RUN',
-    reason: 'Semantic inference validation is disabled in the direct-only MVP profile.',
-  },
-];
+        : 'Provider structured output was not validated.',
+    },
+    {
+      name: 'evidence-reference',
+      status:
+        candidate.evidenceIds[0] === evidence.evidenceId &&
+        candidate.sourceVersionId === evidence.sourceVersionId &&
+        evidence.origin === 'source'
+          ? 'PASS'
+          : 'FAIL',
+      reason:
+        candidate.evidenceIds[0] === evidence.evidenceId &&
+        candidate.sourceVersionId === evidence.sourceVersionId &&
+        evidence.origin === 'source'
+          ? undefined
+          : 'Evidence does not belong to the candidate SourceVersion.',
+    },
+    {
+      name: 'direct-text',
+      status: isDirectText ? 'PASS' : 'FAIL',
+      reason: containsUndecodableCharacter
+        ? 'Claim text contains an undecodable replacement character.'
+        : isDirectText
+          ? undefined
+          : 'Claim text is not an exact contiguous substring of the evidence.',
+    },
+    {
+      name: 'policy',
+      status:
+        candidate.evidenceMode === 'DIRECT_EVIDENCE' &&
+        candidate.extractionProfile === 'direct-only'
+          ? 'PASS'
+          : 'FAIL',
+      reason:
+        candidate.evidenceMode === 'DIRECT_EVIDENCE' &&
+        candidate.extractionProfile === 'direct-only'
+          ? undefined
+          : 'The default Stage 4 profile allows direct evidence only.',
+    },
+    {
+      name: 'semantic',
+      status: 'NOT_RUN',
+      reason: 'Semantic inference validation is disabled in the direct-only MVP profile.',
+    },
+  ];
+};
 
 export const createValidationModule = (repository: ValidationRepositoryPort): ShotgunModule => ({
   manifest: {

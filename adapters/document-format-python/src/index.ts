@@ -134,6 +134,8 @@ const isWorkerSourceSelector = (value: unknown): value is SourceSelector => {
       return isSafePositiveInteger(value.slide) && typeof value.shapeId === 'string';
     case 'CssSelector':
       return typeof value.value === 'string';
+    case 'MarkdownHeadingContext':
+      return typeof value.value === 'string';
     default:
       return false;
   }
@@ -459,7 +461,7 @@ const errorFor = (
   });
 
 export class PythonDocumentFormatAdapter implements PlainTextTransformerPort {
-  readonly identity = { id: 'shotgun.document-formats', version: '1.1.0' } as const;
+  readonly identity = { id: 'shotgun.document-formats', version: '1.2.0' } as const;
   readonly #plainText = new LucasAugmentedPlainTextAdapter();
   readonly #pythonExecutable: string;
   readonly #workerPath: string;

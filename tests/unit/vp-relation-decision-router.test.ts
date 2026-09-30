@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   VPRelationDecisionRouter,
+  VPDecisionOutcomeUnknownError,
   type VPDecisionProviderPort,
   type VPRelationDecision,
   type VPRelationDecisionRequest,
@@ -33,9 +34,11 @@ const input: VPRelationDecisionRequest = {
 
 const decision: VPRelationDecision = {
   choice: 'QUALIFIES',
+  direction: 'RIGHT_TO_LEFT',
   confidence: 0.8,
   probabilities: {
     EQUIVALENT: 0.02,
+    SUPPORTS: 0,
     QUALIFIES: 0.8,
     CONTRADICTS: 0.01,
     RELATED: 0.12,
@@ -116,5 +119,20 @@ describe('VP relation decision routing', () => {
       }),
     ).toEqual({ status: 'UNRESOLVED', reason: 'NO_AUTHORIZED_PROVIDER' });
     expect(provider.decideRelation).not.toHaveBeenCalled();
+  });
+
+  it('does not fall back to another provider when the first provider outcome is unknown', async () => {
+    const fast: VPDecisionProviderPort = {
+      decideRelation: vi.fn(async () => {
+        throw new VPDecisionOutcomeUnknownError();
+      }),
+    };
+    const deep: VPDecisionProviderPort = { decideRelation: vi.fn(async () => decision) };
+
+    expect(await new VPRelationDecisionRouter(fast, deep, policy).resolve(input)).toEqual({
+      status: 'OUTCOME_UNKNOWN',
+    });
+    expect(fast.decideRelation).toHaveBeenCalledOnce();
+    expect(deep.decideRelation).not.toHaveBeenCalled();
   });
 });

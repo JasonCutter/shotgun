@@ -75,14 +75,15 @@ PDFium·각 OOXML 공식 라이브러리로 대체 검증했다.
 
 Phase B는 기존 결정을 바꾸지 않고 Adapter 뒤의 경계를 보완했다.
 
-| 후보/부품             | 결정                          | 고정 버전·범위                             | 제외·교체 경계                                      |
-| --------------------- | ----------------------------- | ------------------------------------------ | --------------------------------------------------- |
-| pdfplumber            | `ADOPT` behind Python adapter | `0.11.10`, lockfile                        | PyMuPDF 1.28.0은 AGPL로 `REJECT`; Docling은 `DEFER` |
-| python-docx           | `ADOPT` behind Python adapter | `1.2.0`, lockfile                          | 전체 Office runtime·DB는 제외                       |
-| openpyxl              | `ADOPT` behind Python adapter | `3.1.5`, lockfile                          | workbook 외부 상태·watcher는 제외                   |
-| python-pptx           | `ADOPT` behind Python adapter | `1.0.2`, lockfile                          | 전체 presentation runtime은 제외                    |
-| Beautiful Soup        | `AUGMENT`                     | `4.15.0`, lockfile                         | HTML semantic cleanup과 selector round-trip만 사용  |
-| lucasastorian/llmwiki | `EXTRACT/AUGMENT`             | `ad626a3d81be1480e35ef4e94234de8dbb27a61e` | SQLite·VaultFS·MCP·전체 runtime 제외                |
+| 후보/부품             | 결정                            | 고정 버전·범위                                                                                               | 제외·교체 경계                                                               |
+| --------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| pdfplumber            | `ADOPT` behind Python adapter   | `0.11.10`, lockfile                                                                                          | PyMuPDF 1.28.0은 AGPL로 `REJECT`; Docling은 `DEFER`                          |
+| pypdfium2             | `AUGMENT` behind Python adapter | `5.11.0`, tag commit `0168561b33a3fc32eceb6ae46cc252f6b0e90c19`; only strict `<`/`>` glyph geometry recovery | pdfplumber remains layout owner; ambiguous/unmatched glyphs stay undecodable |
+| python-docx           | `ADOPT` behind Python adapter   | `1.2.0`, lockfile                                                                                            | 전체 Office runtime·DB는 제외                                                |
+| openpyxl              | `ADOPT` behind Python adapter   | `3.1.5`, lockfile                                                                                            | workbook 외부 상태·watcher는 제외                                            |
+| python-pptx           | `ADOPT` behind Python adapter   | `1.0.2`, lockfile                                                                                            | 전체 presentation runtime은 제외                                             |
+| Beautiful Soup        | `AUGMENT`                       | `4.15.0`, lockfile                                                                                           | HTML semantic cleanup과 selector round-trip만 사용                           |
+| lucasastorian/llmwiki | `EXTRACT/AUGMENT`               | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`                                                                   | SQLite·VaultFS·MCP·전체 runtime 제외                                         |
 
 Phase B Golden 재검증은 Page·여러 physical BBox·Cell·Shape·CSS selector와
 sentence selector 상속을 확인한다. PDF는 word 단위 block을 폐기하고 geometry 기반
@@ -93,3 +94,24 @@ selector 16384, SourceMap 200000, image description 128000 code point 한도를
 Migration·Contract·Golden·Replacement 검증은 Stage 8 Adapter 경계에서 수행하고,
 active revision authority·Candidate lineage는 TS-1 Phase B 보고서의 별도 계약으로
 검증한다.
+
+## 2026-09-29 VP-04 targeted PDF glyph augmentation
+
+The pinned-stack prototype found 25 pdfminer NUL glyphs in the supplied finance
+PDF. On page 6, pypdfium2's PDFium 7913 text layer reports `>` and `<` boxes
+whose centers are each 1.57 pt from a unique NUL box and whose intersection
+covers the smaller box. The other 23 NUL glyphs do not qualify. The
+implementation decision is `AUGMENT`: use those two libraries only behind the
+existing Python Document Format Adapter; keep pdfplumber as the sole source for
+paragraph order, PageSelector, and BoundingBoxSelector.
+
+The exact pypdfium2 pin and license are recorded in the OSS source registry.
+Its upstream repository showed no published security advisory on this review
+date. PDFium stays inside the isolated worker and existing input limits. The
+strict geometry cases, selector contracts, supplied-finance-PDF result,
+downstream direct-text validation, and actual DeepSeek PDF-to-Ask flow are now
+recorded in
+[`vp-finance-pdf-glyph-recovery-design-2026-09-29.md`](../vp-finance-pdf-glyph-recovery-design-2026-09-29.md).
+The wider Stage 8 replacement gate still includes corrupt/encrypted input and
+adapter replacement verification; this scoped VP-04 change does not claim
+those broader tests or close VP-04.

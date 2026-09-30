@@ -154,7 +154,7 @@ describe.each(transports)('%s Stage 3 contract', (_name, createTransport) => {
 
     expect(exactR1.revisionId).toBe(revision1.revisionId);
     expect(exactR2.revisionId).toBe(revision2.revisionId);
-    expect(exactR1.transformer.version).toBe('1.0.1');
+    expect(exactR1.transformer.version).toBe('1.0.2');
     expect(exactR2.transformer.version).toBe('1.1.0');
 
     for (const [key, revision] of [

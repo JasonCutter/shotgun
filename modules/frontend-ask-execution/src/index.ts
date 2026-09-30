@@ -491,6 +491,7 @@ const retryableFailureCodes = new Set([
   'TIMEOUT',
   'RETRYABLE_DEPENDENCY',
   'VALIDATION_ERROR',
+  'STALE_VERSION',
 ]);
 
 const sensitivityRank = {
@@ -964,7 +965,7 @@ export class AskAnswerExecutionService {
         workerId,
       });
       if (context.contextStatus === 'NO_SUPPORTED_ANSWER') {
-        return this.repository.complete({
+        return await this.repository.complete({
           scope,
           answerRunId: context.snapshot.answerRunId,
           attemptNumber: attempt.attemptNumber,
@@ -1054,7 +1055,7 @@ export class AskAnswerExecutionService {
         });
       }
       const citations = this.validateCitations(context, result.citations);
-      return this.repository.complete({
+      return await this.repository.complete({
         scope,
         answerRunId: context.snapshot.answerRunId,
         attemptNumber: attempt.attemptNumber,
@@ -1107,7 +1108,7 @@ export class AskAnswerExecutionService {
         });
       }
       const failure = this.failureFrom(error);
-      return this.repository.fail({
+      const failed = await this.repository.fail({
         scope,
         answerRunId: context.snapshot.answerRunId,
         attemptNumber: attempt.attemptNumber,
@@ -1115,6 +1116,31 @@ export class AskAnswerExecutionService {
         failure,
         workerId,
       });
+      if (
+        error instanceof ShotgunError &&
+        error.code === 'STALE_VERSION' &&
+        error.operation === 'complete-vp-snapshot' &&
+        attempt.kind === 'INITIAL' &&
+        failed.state === 'FAILED'
+      ) {
+        clearInterval(heartbeat);
+        try {
+          const refreshed = await this.repository.retryAndClaim({
+            scope,
+            answerRunId: context.snapshot.answerRunId,
+            mode: 'CURRENT_POLICY',
+            workerId,
+          });
+          return await this.executeClaimed(scope, refreshed);
+        } catch (retryError) {
+          console.error(
+            '[ask-answer-worker] stale VP snapshot refresh retry failed',
+            context.snapshot.answerRunId,
+            retryError instanceof Error ? retryError.message : retryError,
+          );
+        }
+      }
+      return failed;
     } finally {
       clearInterval(heartbeat);
       const current = this.active.get(context.snapshot.answerRunId);

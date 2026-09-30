@@ -1,8 +1,8 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { Pool } from 'pg';
 
 import { LucasAugmentedPlainTextAdapter } from '../../adapters/plain-text-lucas-augmented/src/index.js';
 import {
-  createPostgresPool,
   PostgresIntakeRepository,
   PostgresOriginalAssetRepository,
 } from '../../adapters/postgres/src/index.js';
@@ -21,14 +21,15 @@ import { createTransformationModule } from '../../modules/transformation/src/ind
 import {
   directTextCommand,
   documentRevisionQuery,
+  evidenceQuery,
   evidenceListQuery,
   intakeResultQuery,
 } from '../helpers/stage-3.js';
+import { fileCommand } from '../helpers/stage-2.js';
+import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres-test-database.js';
 
-import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
-
-const databaseUrl = await requireTestDatabaseTarget();
-const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+let isolatedDatabase: Awaited<ReturnType<typeof createIsolatedPostgresTestDatabase>> | undefined;
+let pool: Pool | undefined;
 
 const createHarness = async (storage: InMemoryAssetStorage) => {
   const adapter = new LucasAugmentedPlainTextAdapter();
@@ -43,7 +44,12 @@ const createHarness = async (storage: InMemoryAssetStorage) => {
   return kernel;
 };
 
-describe.runIf(pool)('Stage 3 PostgreSQL persistence', () => {
+describe('Stage 3 PostgreSQL persistence', () => {
+  beforeAll(async () => {
+    isolatedDatabase = await createIsolatedPostgresTestDatabase();
+    pool = isolatedDatabase.createPool();
+  });
+
   beforeEach(async () => {
     await pool!.query(`
       TRUNCATE
@@ -60,7 +66,7 @@ describe.runIf(pool)('Stage 3 PostgreSQL persistence', () => {
   });
 
   afterAll(async () => {
-    await pool!.end();
+    await isolatedDatabase?.dispose();
   });
 
   it('reuses Revision and Evidence identities across runtime restarts', async () => {
@@ -116,6 +122,70 @@ describe.runIf(pool)('Stage 3 PostgreSQL persistence', () => {
       attempts: '2',
       evidence: String(firstEvidence.items.length),
     });
+    await second.shutdown();
+  });
+
+  it('persists Markdown heading context on the exact body Evidence', async () => {
+    const storage = new InMemoryAssetStorage();
+    const first = await createHarness(storage);
+    const statement = 'Shotgun v1.2 출시일은 2026-08-01이다.';
+    const command = fileCommand(
+      'stage3-markdown-heading-postgres',
+      'release.md',
+      'text/markdown',
+      new TextEncoder().encode(`# Release\n${statement}`),
+    );
+    await first.connector.sendCommand(command);
+    const intake = (
+      await first.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload;
+    const firstEvidence = (
+      await first.connector.query<{
+        items: readonly {
+          readonly evidenceId: string;
+          readonly position: { readonly start: number; readonly end: number };
+          readonly selectors: readonly { readonly type: string; readonly value: string }[];
+        }[];
+      }>(evidenceListQuery(command, intake.sourceVersionId))
+    ).result.payload;
+    await first.shutdown();
+
+    const second = await createHarness(storage);
+    const replay = fileCommand(
+      'stage3-markdown-heading-postgres',
+      'release.md',
+      'text/markdown',
+      new TextEncoder().encode(`# Release\n${statement}`),
+    );
+    await second.connector.sendCommand(replay);
+    const storedEvidence = (
+      await second.connector.query<{
+        items: readonly {
+          readonly evidenceId: string;
+          readonly position: { readonly start: number; readonly end: number };
+          readonly selectors: readonly { readonly type: string; readonly value: string }[];
+        }[];
+      }>(evidenceListQuery(replay, intake.sourceVersionId))
+    ).result.payload;
+    const expected = storedEvidence.items.find(
+      (item) => item.position.start === 10 && item.position.end === 41,
+    );
+    const storedBody = expected
+      ? (
+          await second.connector.query<{
+            readonly quote: { readonly exact: string };
+            readonly selectors: readonly { readonly type: string; readonly value: string }[];
+          }>(evidenceQuery(replay, expected.evidenceId))
+        ).result.payload
+      : undefined;
+
+    expect(storedBody).toMatchObject({
+      quote: { exact: statement },
+      selectors: [{ type: 'MarkdownHeadingContext', value: 'Release' }],
+    });
+    expect(storedEvidence.items.map((item) => item.evidenceId)).toEqual(
+      firstEvidence.items.map((item) => item.evidenceId),
+    );
     await second.shutdown();
   });
 });

@@ -25,7 +25,7 @@ VP의 사용자 동작을 늘리던 설정·승인 제약은 제거하거나 배
 | ----------------------------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Source`, `SourceVersion`, `OriginalAsset`, `SourceMap`, `EvidenceSpan` | 기존 Intake·Asset·Evidence owner | 기존 stable ID와 원문 바이트·위치를 유지. 새 내용은 새 버전으로 추가                                                                          |
 | `VPAssertion`                                                           | VP Knowledge Ledger owner        | 하나의 원자적 주장. `DIRECT_SOURCE`, `DERIVED`, `HYPOTHESIS`를 구분하고 원문 근거 또는 상위 주장 계보를 필수로 기록                           |
-| `VPRelation`                                                            | VP Knowledge Ledger owner        | `EQUIVALENT`, `SUPPORTS`, `QUALIFIES`, `CONTRADICTS`, `SUPERSEDES`, `RELATED`. 관계의 양쪽 ID, 적용 조건·시간, 결정 근거를 기록               |
+| `VPRelation`                                                            | VP Knowledge Ledger owner        | `EQUIVALENT`, `SUPPORTS`, `QUALIFIES`, `CONTRADICTS`, `SUPERSEDES`, `RELATED`. 관계의 양쪽 ID, 필요한 방향, 적용 조건·시간, 결정 근거를 기록   |
 | `VPDecisionReceipt`                                                     | VP Decision owner                | 규칙/Jev/일반 AI 중 누가 무엇을 판단했는지, 입력 digest, provider/model/prompt/policy 버전, 비용, 결과, 불확실성을 기록. 권위의 대체물이 아님 |
 | `VPCurrentKnowledge`                                                    | VP Projection owner              | 활성 SourceVersion, 주장·관계·시간 조건으로 재생성. 덮어쓰기 가능한 projection이며 역사 원장이 아님                                           |
 | `VPAnswer`                                                              | Ask owner                        | 사용한 지식 epoch와 SourceVersion·EvidenceSpan, 추론 여부, 충돌·최신성 상태를 인용과 함께 보존                                                |
@@ -44,7 +44,7 @@ VP의 사용자 동작을 늘리던 설정·승인 제약은 제거하거나 배
 
 ## 5. Jev와 모델 분기 계약
 
-`DecisionProviderPort@1.0.0`의 입력은 최소 `project/security scope`, `task kind`, 고정한 SourceVersion·Evidence/주장 ID, 텍스트 digest, 허용 선택지, provider/model/policy revision, 비용·시간 예산을 가진다. 출력은 선택지·분포·확률·usage·request identity다. 브라우저가 모델, 민감도, 정책, 최종 저장 동작을 지정할 수 없다.
+`DecisionProviderPort@1.1.0`의 입력은 최소 `project/security scope`, `task kind`, 고정한 SourceVersion·Evidence/주장 ID, 텍스트 digest, 허용 선택지, provider/model/policy revision, 비용·시간 예산을 가진다. 출력은 선택지·방향·분포·확률·usage·request identity다. `SUPPORTS`와 `QUALIFIES`는 방향을 필수로 하고 나머지 의미 관계는 방향 `NONE`을 사용한다. 안정적인 assertion ID 순서로 정한 left/right 기준을 모든 Adapter에서 공유한다. 브라우저가 모델, 민감도, 정책, 최종 저장 동작을 지정할 수 없다.
 
 우선순위는 **결정적 규칙 → Jev의 짧은 의미 판단 → 일반 AI의 심층 분석 → 근거 부족/미해결**이다. Jev를 `참/거짓`의 세계 지식 판사로 사용하지 않는다. 질문은 “이 원문이 이 주장을 직접 지지하는가?”, “고정된 두 주장이 같은 범위·시점에서 같은 뜻인가?”처럼 주어진 근거와 범위를 포함한다. Jev의 확률은 현장 Golden Corpus로 보정한 작업별 분기에만 사용하며, 보편적인 `0.97` 임계값을 설계 상수로 두지 않는다. Jev가 외부로 보낼 수 없는 자료, API 장애 또는 품질 Gate 실패는 인가된 일반 AI/결정적 경로로 대체하거나 미해결로 남긴다. 확률만으로 원장 변경을 무검증 실행하지 않는다.
 

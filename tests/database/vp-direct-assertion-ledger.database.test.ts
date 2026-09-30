@@ -63,6 +63,7 @@ describe('VP validated direct assertion ledger', () => {
       index: number,
       sensitivity: 'public' | 'private',
       text = claimText,
+      targetProjectId = projectId,
     ) => {
       const sourceId = randomUUID();
       const sourceVersionId = randomUUID();
@@ -80,7 +81,7 @@ describe('VP validated direct assertion ledger', () => {
       await pool.query(
         `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
          VALUES ($1, $2, $3, now())`,
-        [sourceId, projectId, principal.principalId],
+        [sourceId, targetProjectId, principal.principalId],
       );
       await pool.query(
         `INSERT INTO asset.source_versions
@@ -98,7 +99,7 @@ describe('VP validated direct assertion ledger', () => {
                  '{}'::jsonb, $6, $7, '{owner}', $8, now())`,
         [
           revisionId,
-          projectId,
+          targetProjectId,
           sourceId,
           sourceVersionId,
           hash(content),
@@ -117,7 +118,7 @@ describe('VP validated direct assertion ledger', () => {
         [
           evidenceId,
           revisionId,
-          projectId,
+          targetProjectId,
           sourceId,
           sourceVersionId,
           JSON.stringify({ start: 0, end: text.length }),
@@ -136,7 +137,7 @@ describe('VP validated direct assertion ledger', () => {
                  $6, 'stage3-evidence-index.v1', $7, now(), now())`,
         [
           indexingId,
-          projectId,
+          targetProjectId,
           sourceId,
           sourceVersionId,
           revisionId,
@@ -149,7 +150,7 @@ describe('VP validated direct assertion ledger', () => {
            (project_id, source_id, source_version_id, state, indexing_result_id,
             created_at, updated_at)
          VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, now(), now())`,
-        [projectId, sourceId, sourceVersionId, indexingId],
+        [targetProjectId, sourceId, sourceVersionId, indexingId],
       );
       const batchId = randomUUID();
       await pool.query(
@@ -157,7 +158,7 @@ describe('VP validated direct assertion ledger', () => {
            (batch_id, project_id, source_version_id, revision_id,
             idempotency_key, provider_call, created_at)
          VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, now())`,
-        [batchId, projectId, sourceVersionId, revisionId, `vp-batch-${index}-${suffix}`],
+        [batchId, targetProjectId, sourceVersionId, revisionId, `vp-batch-${index}-${suffix}`],
       );
       await pool.query(
         `INSERT INTO candidate.claim_candidates
@@ -167,14 +168,14 @@ describe('VP validated direct assertion ledger', () => {
             sensitivity, created_at)
          VALUES ($1, $2, $3, $4, 1, $5, $6, 'DIRECT_EVIDENCE',
                  'direct-only', 'READY', '{}'::jsonb, '{owner}', $7, now())`,
-        [candidateId, batchId, projectId, sourceVersionId, text, evidenceId, sensitivity],
+        [candidateId, batchId, targetProjectId, sourceVersionId, text, evidenceId, sensitivity],
       );
       await pool.query(
         `INSERT INTO validation.results
            (validation_id, candidate_id, revision_number, project_id,
             source_version_id, status, dimensions, created_at)
          VALUES ($1, $2, 1, $3, $4, 'READY', '[]'::jsonb, now())`,
-        [randomUUID(), candidateId, projectId, sourceVersionId],
+        [randomUUID(), candidateId, targetProjectId, sourceVersionId],
       );
       return { sourceId, sourceVersionId, revisionId, evidenceId, candidateId, content };
     };
@@ -481,6 +482,7 @@ describe('VP validated direct assertion ledger', () => {
       leaseToken: job!.leaseToken,
       provider: 'GENERAL_AI' as const,
       choice: 'CONTRADICTS' as const,
+      direction: 'UNDIRECTED' as const,
       confidence: 0.91,
       model: 'vp-test-model',
       inputTokens: 20,
@@ -526,9 +528,11 @@ describe('VP validated direct assertion ledger', () => {
           generateStructured: async () => ({
             rawText: JSON.stringify({
               choice: 'CONTRADICTS',
+              direction: 'NONE',
               confidence: 0.98,
               probabilities: {
                 EQUIVALENT: 0.01,
+                SUPPORTS: 0,
                 QUALIFIES: 0.01,
                 CONTRADICTS: 0.98,
                 RELATED: 0,
@@ -545,20 +549,24 @@ describe('VP validated direct assertion ledger', () => {
     };
     const worker = new VPRelationJobWorker(
       jobs,
-      new VPRelationDecisionRouter(undefined, new GeneralAIVPDecisionAdapter(deepseekResolver), {
-        revision: 'vp-deepseek-relation-v2',
-        minimumChoiceProbability: 0.9,
-        maximumDeepAnalysisScore: 0,
-        maximumInputTokens: 4_000,
-        maximumOutputTokens: 256,
-      }),
+      new VPRelationDecisionRouter(
+        undefined,
+        new GeneralAIVPDecisionAdapter(deepseekResolver, jobs),
+        {
+          revision: 'vp-deepseek-relation-v5',
+          minimumChoiceProbability: 0.9,
+          maximumDeepAnalysisScore: 0,
+          maximumInputTokens: 4_000,
+          maximumOutputTokens: 256,
+        },
+      ),
       async () => true,
-      'vp-deepseek-relation-v2',
+      'vp-deepseek-relation-v5',
     );
     expect(await worker.dispatchOnce()).toBe('DECIDED');
     const deepseekReceipt = await pool.query<{ method: string; provider_model: string }>(
       `SELECT method, provider_model FROM vp.decision_receipts
-        WHERE project_id = $1 AND policy_revision = 'vp-deepseek-relation-v2'`,
+        WHERE project_id = $1 AND policy_revision = 'vp-deepseek-relation-v5'`,
       [projectId],
     );
     expect(deepseekReceipt.rows).toEqual([
@@ -708,6 +716,7 @@ describe('VP validated direct assertion ledger', () => {
       );
       expect(after.rows[0]?.status).toEqual({
         jobs: 0,
+        provider_calls: 0,
         assertions: 0,
         relations: 0,
         decisions: 0,
@@ -724,7 +733,264 @@ describe('VP validated direct assertion ledger', () => {
     ).inspectProjectSourceKnowledge(projectId);
     expect(
       impact.counts.sourceDerivedRecordCount - afterPurgeImpact.counts.sourceDerivedRecordCount,
-    ).toBe(26);
+    ).toBe(27);
     expect(afterPurgeImpact.manifestDigest).not.toBe(impact.manifestDigest);
+
+    const npvProjectId = `vp-ask-npv-${suffix}`;
+    await createProject(npvProjectId);
+    const npvPositiveText = 'NPV > 0 means investment increases firm value.';
+    const npvNegativeText = 'NPV < 0 means investment decreases firm value.';
+    const npvPositive = await seedCandidate(20, 'public', npvPositiveText, npvProjectId);
+    const npvNegative = await seedCandidate(21, 'public', npvNegativeText, npvProjectId);
+    expect(await ledger.ingestValidatedDirectClaims()).toBe(2);
+    const npvQuestion = await vpSearch.search({
+      projectId: npvProjectId,
+      question: 'NPV가 0보다 클 때와 0보다 작을 때 각각 기업가치에 어떤 영향을 주나요?',
+      accessScope: ['owner'],
+      authorizedSensitivities: ['public'],
+      limit: 12,
+    });
+    expect(npvQuestion.evidenceIds).toContain(npvPositive.evidenceId);
+    expect(npvQuestion.evidenceIds).toContain(npvNegative.evidenceId);
+    const npvEvidence = await pool.query<{ evidence_id: string; exact_quote: string }>(
+      `SELECT evidence_id::text, quote->>'exact' AS exact_quote
+         FROM evidence.spans
+        WHERE evidence_id::text = ANY($1::text[])`,
+      [[npvPositive.evidenceId, npvNegative.evidenceId]],
+    );
+    expect(npvEvidence.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ exact_quote: npvPositiveText }),
+        expect.objectContaining({ exact_quote: npvNegativeText }),
+      ]),
+    );
+  });
+
+  it('advances the knowledge epoch when an empty or fully rejected batch becomes current', async () => {
+    const suffix = randomUUID();
+    const projectId = `vp-empty-batch-${suffix}`;
+    const auth = new PostgresAuthRepository(pool);
+    const principal = await auth.bootstrapLocalOwnerPrincipal({ accountId: `vp-owner-${suffix}` });
+    await new PostgresProjectAdministrationRepository(pool).createProject({
+      commandId: `vp-empty-project-command-${suffix}`,
+      clientRequestId: `vp-empty-project-request-${suffix}`,
+      idempotencyKey: `vp-empty-project-idempotency-${suffix}`,
+      projectId,
+      name: 'VP Empty Batch Fixture',
+      description: 'Completed empty batches must advance the knowledge epoch',
+      actorPrincipalId: principal.principalId,
+      expectedProjectRevision: 0,
+    });
+
+    const sourceId = randomUUID();
+    const sourceVersionId = randomUUID();
+    const assetId = randomUUID();
+    const revisionId = randomUUID();
+    const evidenceId = randomUUID();
+    const content = `The accepted baseline is 42 for ${suffix}.`;
+    await pool.query(
+      `INSERT INTO asset.original_assets
+         (asset_id, content_hash, size_bytes, storage_key, created_at)
+       VALUES ($1, $2, $3, $4, now())`,
+      [assetId, hash(content), Buffer.byteLength(content), `vp-empty-${suffix}`],
+    );
+    await pool.query(
+      `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
+       VALUES ($1, $2, $3, now())`,
+      [sourceId, projectId, principal.principalId],
+    );
+    await pool.query(
+      `INSERT INTO asset.source_versions
+         (source_version_id, source_id, version_number, original_asset_id,
+          media_type, access_scope, sensitivity, created_at)
+       VALUES ($1, $2, 1, $3, 'text/plain', '{owner}', 'public', now())`,
+      [sourceVersionId, sourceId, assetId],
+    );
+    await pool.query(
+      `INSERT INTO transformation.revisions
+         (revision_id, project_id, source_id, source_version_id, source_content_hash,
+          transformer_id, transformer_version, document_ir, source_map, document_hash,
+          source_map_hash, access_scope, sensitivity, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'test-transformer', '1.0.0', '{}'::jsonb,
+               '{}'::jsonb, $6, $7, '{owner}', 'public', now())`,
+      [
+        revisionId,
+        projectId,
+        sourceId,
+        sourceVersionId,
+        hash(content),
+        hash(content),
+        hash(`map-${suffix}`),
+      ],
+    );
+    await pool.query(
+      `INSERT INTO evidence.spans
+         (evidence_id, revision_id, project_id, source_id, source_version_id,
+          pointer, node_kind, origin, position, quote, exact_hash,
+          access_scope, sensitivity, created_at)
+       VALUES ($1, $2, $3, $4, $5, '/paragraph[1]/sentence[1]', 'sentence',
+               'source', $6::jsonb, $7::jsonb, $8,
+               '{owner}', 'public', now())`,
+      [
+        evidenceId,
+        revisionId,
+        projectId,
+        sourceId,
+        sourceVersionId,
+        JSON.stringify({ start: 0, end: content.length }),
+        JSON.stringify({ exact: content }),
+        hash(content),
+      ],
+    );
+    const indexingId = randomUUID();
+    await pool.query(
+      `INSERT INTO evidence.indexing_results
+         (indexing_result_id, project_id, source_id, source_version_id, revision_id,
+          transformer_id, transformer_version, status, evidence_count, reused_count,
+          evidence_set_digest, contract_version, security_scope_digest, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'test-transformer', '1.0.0', 'INDEXED', 1, 0,
+               $6, 'stage3-evidence-index.v1', $7, now(), now())`,
+      [
+        indexingId,
+        projectId,
+        sourceId,
+        sourceVersionId,
+        revisionId,
+        hash(evidenceId),
+        hash('owner'),
+      ],
+    );
+    await pool.query(
+      `INSERT INTO source_product.source_stage3_progress
+         (project_id, source_id, source_version_id, state, indexing_result_id,
+          created_at, updated_at)
+       VALUES ($1, $2, $3, 'STAGE3_COMPLETED', $4, now(), now())`,
+      [projectId, sourceId, sourceVersionId, indexingId],
+    );
+
+    const insertBatch = async (batchId: string, idempotencyKey: string, secondsAhead: number) => {
+      await pool.query(
+        `INSERT INTO candidate.batches
+           (batch_id, project_id, source_version_id, revision_id,
+            idempotency_key, provider_call, created_at)
+         VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, now() + $6 * interval '1 second')`,
+        [batchId, projectId, sourceVersionId, revisionId, idempotencyKey, secondsAhead],
+      );
+    };
+    const insertCandidate = async (
+      batchId: string,
+      candidateId: string,
+      status: 'READY' | 'PENDING_VALIDATION' | 'REJECTED',
+    ) =>
+      pool.query(
+        `INSERT INTO candidate.claim_candidates
+           (candidate_id, batch_id, project_id, source_version_id, revision_number,
+            claim_text, evidence_id, evidence_mode, extraction_profile, status,
+            provider_call, access_scope, sensitivity, created_at)
+         VALUES ($1, $2, $3, $4, 1, $5, $6, 'DIRECT_EVIDENCE', 'direct-only',
+                 $7, '{}'::jsonb, '{owner}', 'public', now())`,
+        [candidateId, batchId, projectId, sourceVersionId, content, evidenceId, status],
+      );
+    const validate = async (candidateId: string, status: 'READY' | 'REJECTED') =>
+      pool.query(
+        `INSERT INTO validation.results
+           (validation_id, candidate_id, revision_number, project_id,
+            source_version_id, status, dimensions, created_at)
+         VALUES ($1, $2, 1, $3, $4, $5, '[]'::jsonb, now())`,
+        [randomUUID(), candidateId, projectId, sourceVersionId, status],
+      );
+
+    const readyBatchId = randomUUID();
+    const readyCandidateId = randomUUID();
+    await insertBatch(readyBatchId, `vp-empty-ready-${suffix}`, 0);
+    await insertCandidate(readyBatchId, readyCandidateId, 'READY');
+    await validate(readyCandidateId, 'READY');
+
+    const runtime = new Pool({ connectionString: database!.databaseUrl, max: 1 });
+    try {
+      await runtime.query('SET ROLE shotgun_runtime');
+      const ledger = new PostgresVPKnowledgeLedger(runtime);
+      expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
+      expect(
+        await ledger.listCurrentAssertions({
+          projectId,
+          accessScope: ['owner'],
+          authorizedSensitivities: ['public'],
+        }),
+      ).toHaveLength(1);
+      expect((await verifyVPProjectionReplay(pool, projectId)).matches).toBe(true);
+
+      const emptyBatchId = randomUUID();
+      await insertBatch(emptyBatchId, `vp-empty-result-${suffix}`, 1);
+      expect((await verifyVPProjectionReplay(pool, projectId)).matches).toBe(false);
+      expect(await ledger.ingestValidatedDirectClaims()).toBe(0);
+      expect(
+        await ledger.listCurrentAssertions({
+          projectId,
+          accessScope: ['owner'],
+          authorizedSensitivities: ['public'],
+        }),
+      ).toHaveLength(0);
+      expect((await verifyVPProjectionReplay(pool, projectId)).matches).toBe(true);
+
+      const pendingBatchId = randomUUID();
+      const pendingCandidateId = randomUUID();
+      await insertBatch(pendingBatchId, `vp-empty-pending-${suffix}`, 2);
+      await insertCandidate(pendingBatchId, pendingCandidateId, 'PENDING_VALIDATION');
+      expect(await ledger.ingestValidatedDirectClaims()).toBe(0);
+      expect(
+        (
+          await pool.query<{ current_epoch: string }>(
+            `SELECT current_epoch::text FROM vp.project_epochs WHERE project_id = $1`,
+            [projectId],
+          )
+        ).rows[0]?.current_epoch,
+      ).toBe('2');
+      expect(
+        (
+          await pool.query<{ count: string }>(
+            `SELECT count(*)::text AS count FROM vp.history_events
+              WHERE project_id = $1 AND batch_id = $2 AND event_kind = 'SOURCE_BATCH_ACTIVATED'`,
+            [projectId, pendingBatchId],
+          )
+        ).rows[0]?.count,
+      ).toBe('0');
+
+      await validate(pendingCandidateId, 'REJECTED');
+      await pool.query(
+        `UPDATE candidate.claim_candidates SET status = 'REJECTED' WHERE candidate_id = $1`,
+        [pendingCandidateId],
+      );
+      expect(await ledger.ingestValidatedDirectClaims()).toBe(0);
+      expect((await verifyVPProjectionReplay(pool, projectId)).matches).toBe(true);
+      expect(await ledger.ingestValidatedDirectClaims()).toBe(0);
+
+      const history = await pool.query<{
+        readonly current_epoch: string;
+        readonly event_count: string;
+        readonly activation_count: string;
+        readonly activated_batches: string[];
+      }>(
+        `SELECT epoch.current_epoch::text,
+                (SELECT count(*)::text FROM vp.history_events WHERE project_id = $1) AS event_count,
+                (SELECT count(*)::text FROM vp.history_events
+                  WHERE project_id = $1 AND event_kind = 'SOURCE_BATCH_ACTIVATED') AS activation_count,
+                (SELECT array_agg(batch_id::text ORDER BY batch_id::text)
+                   FROM vp.history_events
+                  WHERE project_id = $1 AND event_kind = 'SOURCE_BATCH_ACTIVATED') AS activated_batches
+           FROM vp.project_epochs AS epoch WHERE epoch.project_id = $1`,
+        [projectId],
+      );
+      expect(history.rows[0]).toMatchObject({
+        current_epoch: '3',
+        event_count: '3',
+        activation_count: '2',
+      });
+      expect(new Set(history.rows[0]?.activated_batches)).toEqual(
+        new Set([emptyBatchId, pendingBatchId]),
+      );
+    } finally {
+      await runtime.end();
+    }
   });
 });

@@ -5,6 +5,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import sys
@@ -220,18 +221,134 @@ def html_blocks(data: bytes) -> list[dict[str, Any]]:
     return output
 
 
+def pdfium_comparison_glyphs(pdfium_page: Any) -> list[tuple[int, str, tuple[float, float, float, float]]]:
+    """Return PDFium '<'/'>' boxes in pdfplumber's top-origin page coordinates."""
+    text_page = pdfium_page.get_textpage()
+    try:
+        text = text_page.get_text_range()
+        page_height = float(pdfium_page.get_height())
+        output: list[tuple[int, str, tuple[float, float, float, float]]] = []
+        for index, value in enumerate(text):
+            if value not in "<>":
+                continue
+            try:
+                x0, y0, x1, y1 = (float(part) for part in text_page.get_charbox(index))
+            except Exception:
+                continue
+            if not all(math.isfinite(part) for part in (x0, y0, x1, y1)) or x1 <= x0 or y1 <= y0:
+                continue
+            output.append((index, value, (x0, x1, page_height - y1, page_height - y0)))
+        return output
+    finally:
+        text_page.close()
+
+
+def restore_unmapped_comparison_glyphs(
+    page_chars: list[dict[str, Any]],
+    comparison_glyphs: list[tuple[int, str, tuple[float, float, float, float]]],
+) -> int:
+    """Replace only NUL chars with a unique, tightly overlapping PDFium '<'/'>' glyph."""
+    center_distance_limit = 2.5
+    smaller_box_overlap_minimum = 0.65
+    proposals: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    glyph_values: dict[int, str] = {}
+
+    for char in page_chars:
+        if char.get("text") != "\x00":
+            continue
+        try:
+            char_box = tuple(float(char[key]) for key in ("x0", "x1", "top", "bottom"))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not all(math.isfinite(part) for part in char_box):
+            continue
+        char_x0, char_x1, char_top, char_bottom = char_box
+        char_width = char_x1 - char_x0
+        char_height = char_bottom - char_top
+        char_area = char_width * char_height
+        if char_width <= 0 or char_height <= 0:
+            continue
+
+        matches: list[tuple[int, str]] = []
+        for glyph_id, glyph_value, glyph_box in comparison_glyphs:
+            glyph_x0, glyph_x1, glyph_top, glyph_bottom = glyph_box
+            glyph_width = glyph_x1 - glyph_x0
+            glyph_height = glyph_bottom - glyph_top
+            glyph_area = glyph_width * glyph_height
+            if glyph_width <= 0 or glyph_height <= 0:
+                continue
+            center_distance = math.hypot(
+                (char_x0 + char_x1 - glyph_x0 - glyph_x1) / 2,
+                (char_top + char_bottom - glyph_top - glyph_bottom) / 2,
+            )
+            intersection_width = max(0.0, min(char_x1, glyph_x1) - max(char_x0, glyph_x0))
+            intersection_height = max(0.0, min(char_bottom, glyph_bottom) - max(char_top, glyph_top))
+            overlap_fraction = (intersection_width * intersection_height) / min(char_area, glyph_area)
+            if (
+                center_distance <= center_distance_limit
+                and overlap_fraction >= smaller_box_overlap_minimum
+            ):
+                matches.append((glyph_id, glyph_value))
+
+        if len(matches) == 1:
+            glyph_id, glyph_value = matches[0]
+            proposals[glyph_id].append(char)
+            glyph_values[glyph_id] = glyph_value
+
+    restored = 0
+    for glyph_id, matched_chars in proposals.items():
+        # Require a reciprocal one-to-one match. A sign near multiple damaged
+        # characters, or multiple signs near one character, is left unresolved.
+        if len(matched_chars) == 1:
+            matched_chars[0]["text"] = glyph_values[glyph_id]
+            restored += 1
+    return restored
+
+
 def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
+    from contextlib import ExitStack
+
     import pdfplumber
 
     if b"/Encrypt" in data:
         raise PermissionError("encrypted PDF")
     output: list[dict[str, Any]] = []
-    with pdfplumber.open(io.BytesIO(data)) as document:
+    with ExitStack() as resources:
+        document = resources.enter_context(pdfplumber.open(io.BytesIO(data)))
         if document.metadata.get("Encrypted") is True:
             raise PermissionError("encrypted PDF")
         if len(document.pages) > MAX_PDF_PAGES:
             raise ValidationOverflow("VALIDATION_ERROR: PDF page budget exceeded")
+        pdfium_document = None
+        pdfium_open_attempted = False
         for page_number, page in enumerate(document.pages, 1):
+            page_chars = page.chars
+            if any(char.get("text") == "\x00" for char in page_chars):
+                if not pdfium_open_attempted:
+                    pdfium_open_attempted = True
+                    try:
+                        import pypdfium2
+
+                        candidate_pdfium_document = pypdfium2.PdfDocument(data)
+                        if len(candidate_pdfium_document) == len(document.pages):
+                            pdfium_document = candidate_pdfium_document
+                            resources.callback(pdfium_document.close)
+                        else:
+                            candidate_pdfium_document.close()
+                    except Exception:
+                        # This is a safe, optional correction path. Failure
+                        # leaves NULs for block() to mark as U+FFFD; direct-text
+                        # validation then prevents damaged claims from entering knowledge.
+                        pdfium_document = None
+                if pdfium_document is not None:
+                    try:
+                        restore_unmapped_comparison_glyphs(
+                            page_chars,
+                            pdfium_comparison_glyphs(pdfium_document[page_number - 1]),
+                        )
+                    except Exception:
+                        # Keep pdfplumber's layout output and undecodable marker.
+                        pass
             words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
             sorted_words = sorted(
                 words,
@@ -657,20 +774,21 @@ def main() -> None:
     json.dump({"status": "OK", "blocks": blocks}, sys.stdout, ensure_ascii=False)
 
 
-try:
-    main()
-except NotImplementedError as error:
-    json.dump({"status": "FORMAT_UNSUPPORTED", "message": str(error)}, sys.stdout)
-except PermissionError as error:
-    json.dump({"status": "FORMAT_ENCRYPTED", "message": str(error)}, sys.stdout)
-except RuntimeError as error:
-    status = str(error) if str(error) == "MULTIMODAL_VALIDATION_REQUIRED" else "FORMAT_CORRUPT"
-    json.dump({"status": status, "message": str(error)}, sys.stdout)
-except ValidationOverflow as error:
-    status = "FORMAT_CORRUPT" if str(error).startswith("FORMAT_CORRUPT:") else "VALIDATION_ERROR"
-    json.dump({"status": status, "message": str(error)}, sys.stdout)
-except Exception as error:
-    message = str(error)
-    lowered = f"{error.__class__.__name__} {message}".lower()
-    status = "FORMAT_ENCRYPTED" if "password" in lowered or "encrypted" in lowered else "FORMAT_CORRUPT"
-    json.dump({"status": status, "message": message or error.__class__.__name__}, sys.stdout)
+if __name__ == "__main__":
+    try:
+        main()
+    except NotImplementedError as error:
+        json.dump({"status": "FORMAT_UNSUPPORTED", "message": str(error)}, sys.stdout)
+    except PermissionError as error:
+        json.dump({"status": "FORMAT_ENCRYPTED", "message": str(error)}, sys.stdout)
+    except RuntimeError as error:
+        status = str(error) if str(error) == "MULTIMODAL_VALIDATION_REQUIRED" else "FORMAT_CORRUPT"
+        json.dump({"status": status, "message": str(error)}, sys.stdout)
+    except ValidationOverflow as error:
+        status = "FORMAT_CORRUPT" if str(error).startswith("FORMAT_CORRUPT:") else "VALIDATION_ERROR"
+        json.dump({"status": status, "message": str(error)}, sys.stdout)
+    except Exception as error:
+        message = str(error)
+        lowered = f"{error.__class__.__name__} {message}".lower()
+        status = "FORMAT_ENCRYPTED" if "password" in lowered or "encrypted" in lowered else "FORMAT_CORRUPT"
+        json.dump({"status": status, "message": message or error.__class__.__name__}, sys.stdout)

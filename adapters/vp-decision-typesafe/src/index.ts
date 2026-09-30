@@ -1,5 +1,6 @@
 import {
   assertVPDecisionEgress,
+  VP_RELATION_DIRECTIONS,
   VP_RELATION_CHOICES,
   type VPDecisionProviderPort,
   type VPRelationChoice,
@@ -31,15 +32,19 @@ const parseResponse = (value: unknown): VPRelationDecision => {
   const response = record(value);
   const answers = record(response?.['answers']);
   const relation = record(answers?.['relation']);
+  const direction = record(answers?.['direction']);
   const deepAnalysis = record(answers?.['needs_deep_analysis']);
   const usage = record(response?.['usage']);
   const choice = relation?.['choice'];
+  const directionChoice = direction?.['choice'];
   const probabilities = record(relation?.['probabilities']);
   const confidence = relation?.['confidence'];
   const needsDeepAnalysis = deepAnalysis?.['noul'];
   if (
     typeof response?.['model'] !== 'string' ||
     relation?.['type'] !== 'choice' ||
+    direction?.['type'] !== 'choice' ||
+    !VP_RELATION_DIRECTIONS.includes(directionChoice as (typeof VP_RELATION_DIRECTIONS)[number]) ||
     deepAnalysis?.['type'] !== 'noul' ||
     !VP_RELATION_CHOICES.includes(choice as VPRelationChoice) ||
     !finiteProbability(confidence) ||
@@ -65,6 +70,7 @@ const parseResponse = (value: unknown): VPRelationDecision => {
   }
   return {
     choice: choice as VPRelationChoice,
+    direction: directionChoice as VPRelationDecision['direction'],
     confidence,
     probabilities: parsedProbabilities,
     deepAnalysisScore: needsDeepAnalysis,
@@ -113,11 +119,23 @@ export class TypeSafeJevVPDecisionAdapter implements VPDecisionProviderPort {
               'Classify only the relationship of the two supplied source assertions. Compare their meaning, conditions, quantity, and time. Do not use outside knowledge. Choose UNRESOLVED if the supplied text is insufficient.',
             criteria: {
               EQUIVALENT: 'Same claim with the same conditions and time.',
+              SUPPORTS:
+                'One assertion is an example or direct evidence for the other. Direction identifies which assertion supports the other.',
               QUALIFIES: 'One claim adds a condition, exception, or narrower scope.',
               CONTRADICTS: 'Claims cannot both hold for the same scope and time.',
               RELATED:
                 'Related subject, but no supported equivalent, qualification, or contradiction.',
               UNRESOLVED: 'Insufficient information to determine the relationship.',
+            },
+          },
+          direction: {
+            type: 'choice',
+            instructions:
+              'For SUPPORTS, choose the direction from the assertion that provides evidence to the assertion it supports. For QUALIFIES, point from the narrower assertion to the broader assertion. For all other relation choices select NONE.',
+            criteria: {
+              NONE: 'No direction applies.',
+              LEFT_TO_RIGHT: 'The left assertion supports or qualifies the right assertion.',
+              RIGHT_TO_LEFT: 'The right assertion supports or qualifies the left assertion.',
             },
           },
           needs_deep_analysis: {

@@ -72,6 +72,7 @@ export type CanonicalLaunchPreflightOptions = {
 
 export type StartedCanonicalRuntime = {
   readonly identity: LauncherRuntimeIdentity;
+  readonly markStarting: () => Promise<void>;
   readonly markReady: () => Promise<void>;
   readonly release: () => Promise<void>;
 };
@@ -499,8 +500,8 @@ export const runCanonicalLaunchPreflight = async (
   }
   log(`[launch] RUNTIME pid=${identity.pid} sha=${identity.sha} url=${identity.url}`);
 
-  const markReady = async (): Promise<void> => {
-    const ready: LauncherRuntimeIdentity = { ...identity, phase: 'ready' };
+  const writePhase = async (phase: RuntimeIdentityPhase): Promise<void> => {
+    const next: LauncherRuntimeIdentity = { ...identity, phase };
     const current = await deps.readIdentity(identityPath);
     if (current === undefined || !sameRuntime(validateRuntimeIdentity(current), identity)) {
       throw launchFailure(
@@ -510,12 +511,14 @@ export const runCanonicalLaunchPreflight = async (
         'Inspect .data/launcher/runtime.json before retrying npm run launch.',
       );
     }
-    await deps.writeIdentity(identityPath, ready);
+    await deps.writeIdentity(identityPath, next);
   };
+  const markStarting = (): Promise<void> => writePhase('starting');
+  const markReady = (): Promise<void> => writePhase('ready');
   const release = async (): Promise<void> => {
     await removeIfCurrent(identityPath, identity, deps);
   };
-  return { kind: 'start', runtime: { identity, markReady, release } };
+  return { kind: 'start', runtime: { identity, markStarting, markReady, release } };
 };
 
 export const createDefaultCanonicalLaunchDeps = (): CanonicalLaunchDeps => ({

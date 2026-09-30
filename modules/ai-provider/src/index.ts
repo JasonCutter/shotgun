@@ -177,9 +177,12 @@ export type AIProviderModuleOptions = {
   readonly executionResolver?: AIProviderExecutionResolverPort;
   /** Version of direct-claim extraction semantics, used in durable request identity. */
   readonly candidatePromptVersion?: string;
+  /** Optional cap for one source-claim response; included in durable input identity. */
+  readonly candidateMaxOutputTokens?: number;
 };
 
-export const DEFAULT_CANDIDATE_PROMPT_VERSION = 'direct-claim-v2';
+export const DEFAULT_DEEPSEEK_CANDIDATE_MAX_OUTPUT_TOKENS = 16_384;
+export const DEFAULT_CANDIDATE_PROMPT_VERSION = 'direct-claim-v5';
 
 type GenerateStructuredPayload = {
   readonly requestId: string;
@@ -235,6 +238,22 @@ const candidatePromptInstructions: Readonly<Record<string, string>> = {
     'This policy stores one sentence-level claim per evidence sentence so its dates, time ranges, units, and conditions remain attached to the stated value.',
     'Return no candidate when an explicit claim is absent.',
   ].join(' '),
+  'direct-claim-v4': [
+    'Extract only claims explicitly stated in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Return one atomic claim per candidate. Split separate facts, formulas, examples, and conclusions into separate candidates when each can stand on its own, including when a document converter joined them into one Evidence item.',
+    'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine separate claims, or add outside knowledge.',
+    'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies that claim. For an equation or worked example, include its operands and stated result together.',
+    'Do not copy an entire paragraph or evidence block when a shorter complete source statement expresses the claim. Do not add a combined duplicate when separate atomic claims are already returned.',
+    'Return no candidate when an explicit claim is absent.',
+  ].join(' '),
+  'direct-claim-v5': [
+    'Extract only claims explicitly stated in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Extract every distinct explicit claim from each evidence item; do not stop after its first claim. Return one atomic claim per candidate. Split separate facts, formulas, examples, and conclusions into separate candidates when each can stand on its own, including when a document converter joined them into one Evidence item.',
+    'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine separate claims, or add outside knowledge.',
+    'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies that claim. For an equation or worked example, include its operands and stated result together.',
+    'Do not copy an entire paragraph or evidence block when a shorter complete source statement expresses the claim. Do not add a combined duplicate when separate atomic claims are already returned.',
+    'Return no candidate when an explicit claim is absent.',
+  ].join(' '),
 };
 
 const resolveCandidatePromptPolicy = (promptVersion: string) => {
@@ -280,6 +299,7 @@ const snapshotDigest = (
   projectId: string,
   payload: GenerateStructuredPayload,
   promptVersion: string,
+  maxOutputTokens: number | undefined,
 ) =>
   sha256Text(
     stableJson({
@@ -299,6 +319,7 @@ const snapshotDigest = (
       schema: { name: payload.schemaName, version: '1.0.0' },
       promptVersion,
       policyVersion: payload.policyVersion,
+      ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
     }),
   );
 
@@ -306,6 +327,7 @@ const requestDigest = (
   payload: GenerateStructuredPayload,
   inputSnapshotDigest: string,
   promptVersion: string,
+  maxOutputTokens: number | undefined,
 ) =>
   sha256Text(
     stableJson({
@@ -315,6 +337,7 @@ const requestDigest = (
       schemaVersion: '1.0.0',
       promptVersion,
       policyVersion: payload.policyVersion,
+      ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
       inputSnapshotDigest,
       ...(payload.generationEpochId === undefined
         ? {}
@@ -654,8 +677,36 @@ export const createAIProviderModule = (
               correlationId: envelope.correlationId,
             });
           }
-          const inputSnapshotDigest = snapshotDigest(projectId, payload, promptVersion);
-          const durableRequestDigest = requestDigest(payload, inputSnapshotDigest, promptVersion);
+          const candidateMaxOutputTokens =
+            options.candidateMaxOutputTokens ??
+            (activeAdapter.identity.provider === 'deepseek'
+              ? DEFAULT_DEEPSEEK_CANDIDATE_MAX_OUTPUT_TOKENS
+              : undefined);
+          if (
+            candidateMaxOutputTokens !== undefined &&
+            (!Number.isSafeInteger(candidateMaxOutputTokens) || candidateMaxOutputTokens < 1)
+          ) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: 'The candidate output token limit must be a positive integer.',
+              module: 'stage4.ai-provider',
+              operation: 'validate-candidate-output-token-limit',
+              correlationId: envelope.correlationId,
+              retryable: false,
+            });
+          }
+          const inputSnapshotDigest = snapshotDigest(
+            projectId,
+            payload,
+            promptVersion,
+            candidateMaxOutputTokens,
+          );
+          const durableRequestDigest = requestDigest(
+            payload,
+            inputSnapshotDigest,
+            promptVersion,
+            candidateMaxOutputTokens,
+          );
           const revisionIds = [...new Set(payload.evidence.map((item) => item.revisionId))];
           if (revisionIds.length !== 1 || !revisionIds[0]) {
             throw new ShotgunError({
@@ -771,20 +822,17 @@ export const createAIProviderModule = (
               await markCancellationAndThrow(claimed.attempt.attemptId);
             }
             try {
+              const request = {
+                systemInstruction,
+                prompt: promptFor(payload),
+                responseSchema: candidateBatchSchema,
+                ...(candidateMaxOutputTokens === undefined
+                  ? {}
+                  : { maxOutputTokens: candidateMaxOutputTokens }),
+              };
               response = await (activeAdapter.generateStructuredWithSignal
-                ? activeAdapter.generateStructuredWithSignal(
-                    {
-                      systemInstruction,
-                      prompt: promptFor(payload),
-                      responseSchema: candidateBatchSchema,
-                    },
-                    context.signal,
-                  )
-                : activeAdapter.generateStructured({
-                    systemInstruction,
-                    prompt: promptFor(payload),
-                    responseSchema: candidateBatchSchema,
-                  }));
+                ? activeAdapter.generateStructuredWithSignal(request, context.signal)
+                : activeAdapter.generateStructured(request));
             } catch (error) {
               if (context.signal.aborted) {
                 await markCancellationAndThrow(claimed.attempt.attemptId);

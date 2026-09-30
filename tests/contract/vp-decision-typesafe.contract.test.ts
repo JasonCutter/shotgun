@@ -35,15 +35,18 @@ const response = () =>
         relation: {
           type: 'choice',
           choice: 'EQUIVALENT',
+          direction: 'NONE',
           confidence: 0.93,
           probabilities: {
             EQUIVALENT: 0.93,
+            SUPPORTS: 0,
             QUALIFIES: 0.02,
             CONTRADICTS: 0.01,
             RELATED: 0.03,
             UNRESOLVED: 0.01,
           },
         },
+        direction: { type: 'choice', choice: 'NONE' },
         needs_deep_analysis: { type: 'noul', noul: 0.1 },
       },
       usage: { input_tokens: 90, output_tokens: 18 },
@@ -61,6 +64,7 @@ describe('TypeSafe Jev VP DecisionProvider contract', () => {
     });
     expect(await adapter.decideRelation(request)).toMatchObject({
       choice: 'EQUIVALENT',
+      direction: 'NONE',
       deepAnalysisScore: 0.1,
       inputTokens: 90,
       outputTokens: 18,
@@ -74,12 +78,51 @@ describe('TypeSafe Jev VP DecisionProvider contract', () => {
     });
     expect(Object.keys(sent.questions.relation.criteria)).toEqual([
       'EQUIVALENT',
+      'SUPPORTS',
       'QUALIFIES',
       'CONTRADICTS',
       'RELATED',
       'UNRESOLVED',
     ]);
     expect(JSON.stringify(sent)).not.toContain('project-a');
+  });
+
+  it('preserves the orientation when an example supports a general assertion', async () => {
+    const fetcher = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          model: 'jev-1.13.0',
+          answers: {
+            relation: {
+              type: 'choice',
+              choice: 'SUPPORTS',
+              confidence: 0.94,
+              probabilities: {
+                EQUIVALENT: 0.01,
+                SUPPORTS: 0.94,
+                QUALIFIES: 0.01,
+                CONTRADICTS: 0.01,
+                RELATED: 0.02,
+                UNRESOLVED: 0.01,
+              },
+            },
+            direction: { type: 'choice', choice: 'RIGHT_TO_LEFT' },
+            needs_deep_analysis: { type: 'noul', noul: 0.2 },
+          },
+          usage: { input_tokens: 90, output_tokens: 18 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    const adapter = new TypeSafeJevVPDecisionAdapter({
+      apiKey: 'test-only-key',
+      model: 'jev-1.13.0',
+      fetcher: fetcher as typeof fetch,
+    });
+    expect(await adapter.decideRelation(request)).toMatchObject({
+      choice: 'SUPPORTS',
+      direction: 'RIGHT_TO_LEFT',
+    });
   });
 
   it('denies unauthorized or restricted Evidence before any provider request', async () => {

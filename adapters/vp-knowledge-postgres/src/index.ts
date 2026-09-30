@@ -32,6 +32,77 @@ type CurrentAssertionRow = QueryResultRow & {
   readonly sensitivity: VPCurrentAssertion['sensitivity'];
 };
 
+type EmptyBatchRow = QueryResultRow & {
+  readonly project_id: string;
+  readonly source_version_id: string;
+  readonly batch_id: string;
+};
+
+const currentEmptyBatchesSql = `
+  WITH eligible_batches AS (
+    SELECT batch.project_id, batch.source_version_id, batch.revision_id,
+           batch.batch_id, batch.created_at,
+           row_number() OVER (
+             PARTITION BY batch.project_id, batch.source_version_id, batch.revision_id
+             ORDER BY batch.created_at DESC, batch.batch_id DESC
+           ) AS selection_rank
+      FROM candidate.batches AS batch
+      JOIN asset.source_versions AS version
+        ON version.source_version_id = batch.source_version_id
+      JOIN asset.sources AS source
+        ON source.source_id = version.source_id
+       AND source.project_id = batch.project_id
+      JOIN source_product.source_stage3_progress AS progress
+        ON progress.project_id = batch.project_id
+       AND progress.source_version_id = batch.source_version_id
+       AND progress.state = 'STAGE3_COMPLETED'
+      JOIN evidence.indexing_results AS indexing
+        ON indexing.indexing_result_id = progress.indexing_result_id
+       AND indexing.project_id = progress.project_id
+       AND indexing.source_version_id = progress.source_version_id
+       AND indexing.revision_id = batch.revision_id
+      LEFT JOIN project_admin.project_knowledge_epoch AS reset_epoch
+        ON reset_epoch.project_id = batch.project_id
+     WHERE ($1::text IS NULL OR batch.project_id = $1)
+       AND (reset_epoch.state IS NULL OR reset_epoch.state = 'READY')
+       AND version.version_number = (
+         SELECT max(latest.version_number)
+           FROM asset.source_versions AS latest
+          WHERE latest.source_id = version.source_id
+       )
+       AND NOT EXISTS (
+         SELECT 1
+           FROM candidate.claim_candidates AS item
+           LEFT JOIN validation.results AS validation
+             ON validation.project_id = item.project_id
+            AND validation.source_version_id = item.source_version_id
+            AND validation.candidate_id = item.candidate_id
+            AND validation.revision_number = item.revision_number
+           LEFT JOIN vp.assertions AS materialized
+             ON materialized.candidate_id = item.candidate_id
+          WHERE item.batch_id = batch.batch_id
+            AND (item.status = 'PENDING_VALIDATION'
+              OR validation.validation_id IS NULL
+              OR validation.status <> item.status
+              OR (item.status = 'READY' AND materialized.assertion_id IS NULL))
+       )
+  )
+  SELECT selected.project_id, selected.source_version_id::text,
+         selected.batch_id::text
+    FROM eligible_batches AS selected
+   WHERE selected.selection_rank = 1
+     AND NOT EXISTS (
+       SELECT 1 FROM candidate.claim_candidates AS ready
+        WHERE ready.batch_id = selected.batch_id AND ready.status = 'READY'
+     )
+     AND NOT EXISTS (
+       SELECT 1 FROM vp.history_events AS event
+        WHERE event.project_id = selected.project_id
+          AND event.batch_id = selected.batch_id
+          AND event.event_kind = 'SOURCE_BATCH_ACTIVATED'
+     )
+   ORDER BY selected.project_id, selected.batch_id`;
+
 const exactPairDigest = (left: string, right: string, claimText: string): string =>
   `sha256:${createHash('sha256')
     .update(JSON.stringify([left, right, claimText]))
@@ -204,6 +275,46 @@ export class PostgresVPKnowledgeLedger implements VPKnowledgeLedgerPort {
             ],
           );
           ingested += 1;
+        }
+
+        // Empty or fully rejected batches still replace the current assertion
+        // set. Give that state transition its own epoch so Ask snapshots cannot
+        // mistake the previous projection for the completed empty result.
+        const projectsWithEmptyBatches = await client.query<{ project_id: string }>(
+          currentEmptyBatchesSql,
+          [null],
+        );
+        for (const { project_id: projectId } of projectsWithEmptyBatches.rows) {
+          await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+            `vp-ledger:${projectId}`,
+          ]);
+          const emptyBatches = await client.query<EmptyBatchRow>(currentEmptyBatchesSql, [
+            projectId,
+          ]);
+          for (const batch of emptyBatches.rows) {
+            const epoch = await client.query<{ current_epoch: string }>(
+              `INSERT INTO vp.project_epochs (project_id, current_epoch)
+               VALUES ($1, 1)
+               ON CONFLICT (project_id) DO UPDATE
+                 SET current_epoch = vp.project_epochs.current_epoch + 1,
+                     updated_at = clock_timestamp()
+               RETURNING current_epoch::text`,
+              [projectId],
+            );
+            await client.query(
+              `INSERT INTO vp.history_events (
+                 event_id, project_id, epoch, event_kind, assertion_id,
+                 relation_ids, source_version_id, batch_id
+               ) VALUES ($1, $2, $3, 'SOURCE_BATCH_ACTIVATED', NULL, '{}', $4, $5)`,
+              [
+                randomUUID(),
+                projectId,
+                epoch.rows[0]?.current_epoch,
+                batch.source_version_id,
+                batch.batch_id,
+              ],
+            );
+          }
         }
         return ingested;
       },

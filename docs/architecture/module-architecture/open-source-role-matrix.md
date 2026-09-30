@@ -147,12 +147,18 @@ Stage 0~2 재검증 결과 PostgreSQL, Ajv, content-addressed storage pattern은
 | Apache Tika           | 범용 형식 감지·metadata·텍스트 fallback | `ADAPTER_CANDIDATE` |
 | MarkItDown            | 경량 Markdown 변환                      | `ADAPTER_CANDIDATE` |
 | PyMuPDF               | PDF text·page·bbox 처리                 | `ADAPTER_CANDIDATE` |
+| pypdfium2             | pdfplumber NUL 글리프의 위치 한정 복구  | `AUGMENT`           |
 | python-docx           | DOCX 구조 추출                          | `ADAPTER_CANDIDATE` |
 | python-pptx           | PPTX shape·text 추출                    | `ADAPTER_CANDIDATE` |
 | openpyxl              | XLSX cell·formula·sheet 추출            | `ADAPTER_CANDIDATE` |
 | ffmpeg                | 오디오·영상 정규화                      | `DEFERRED`          |
 
 하나의 범용 변환기를 강제하지 않는다. Format Adapter가 공통 `DocumentIR`과 `SourceMap`을 출력한다.
+
+VP-04에서 고정된 pypdfium2 `5.11.0`은 pdfplumber가 NUL로 반환한 글리프와
+PDFium의 `<`·`>` 문자 상자만 비교한다. pdfplumber만 문장 순서와 Page/BBox
+Selector를 만든다. 위치 일치가 유일하고 충분히 겹치지 않으면 원래 손상 표식을
+그대로 남긴다.
 
 Phase 1 Canonical 정책에 따라 Shotgun Assembly는 오디오·영상 파일 직접 분석, 자동 음성 전사와 영상 프레임·음성·장면 분석을 장기 범위에서도 제외한다. `ffmpeg`는 Shotgun 기본 구현 후보가 아니라 다른 Assembly 또는 향후 별도 정책 결정에 대비한 `DEFERRED` 후보로만 유지한다. 영상 URL은 접근 가능한 제목·설명·자막·스크립트를 텍스트로 확보하는 범위에서만 처리한다.
 
@@ -579,6 +585,22 @@ Stage 0~3의 재검증된 exact pin과 결정은
 
 2026-09-29 VP Ask 전환은 기존 PostgreSQL FTS·`pg_trgm` 검색을 `AUGMENT`하고, gbrain Search/Graph는 검증 패턴만 `REFERENCE_ONLY`로 유지한다. `AskKnowledgeEvidenceSearchPort`는 교체 가능한 경계다. `AUTO_PROJECT_KNOWLEDGE`는 VP 현재 주장과 현재 관계에서 얻은 Evidence만 사용하고 raw Evidence 전체 검색으로 대체하지 않는다. Ask는 SourceVersion·Evidence 접근/민감도·활성 버전을 재검증하며, 최신 활성 버전의 Stage 3 인덱싱과 Candidate 검증·원장 기록이 끝나지 않았으면 질문을 대기시킨다. AnswerRun 시도에는 VP epoch, 접근 가능한 최신 SourceVersion 집합의 watermark, 인용 Evidence를 고정한다. 컨텍스트 확인과 답변 게시 직전 스냅샷을 재검증하고, epoch가 바뀌면 답변을 게시하지 않는다. 검증은 PostgreSQL 격리 DB의 VP 검색·원장 테스트와 Ask 소스 버전 대기·고정·오래된 스냅샷 게시 거부 테스트로 수행했다. Migration 121은 기존 AnswerRun 이력을 보존하는 nullable 감사 열만 추가한다. 새 OSS 의존성은 없다. 롤백은 VP Ask 실행 코드 이전으로 복구하는 방식이며, Migration 121 열은 보존한다. 대규모 검색 품질·비용 benchmark와 실제 설치 제품 E2E는 VP 완료 Gate에 남는다.
 
+2026-10-01 stale AnswerRun 복구는 `garrytan/gbrain` Job/Attempt 패턴을 `REFERENCE_ONLY`로 재검토했지만, gbrain Runtime·DB는 Shotgun의 AnswerRun·VP snapshot 계약과 맞지 않아 도입하지 않는다. `ddsyasas/llm-wiki`는 기존과 같이 Ask UX만 `REFERENCE_ONLY`다. Shotgun은 기존 `AskAnswerExecutionRepositoryPort`의 영속 `CURRENT_POLICY` retry를 써서, provider 결과는 알았지만 게시 직전 VP snapshot이 바뀐 최초 시도에 한해 현재 snapshot으로 한 번만 재실행한다. `OUTCOME_UNKNOWN`은 재시도하지 않는다. 이 상호작용에 해당하는 외부 Runtime/Package는 없어 `NO_RELEVANT_OSS`로 결정했다. 추가 egress·DB migration은 없고, unit·PostgreSQL adapter·실제 PDF DeepSeek E2E를 검증한다. 되돌릴 때는 제한된 자동 재시도 분기만 제거하고 awaited completion, typed stale failure, stale 답변 게시 거부는 유지한다.
+
 VP 수정 자료 투입은 이미 채택한 Shotgun `Source`·`SourceVersion`·Stage 3 Adapter를 `AUGMENT`한다. 외부 Runtime을 추가하지 않는다. gbrain의 Fact/Timeline과 lucas의 Evidence 패턴은 위 결정대로 참고·추출 경계에 두며, 프로젝트/보안 범위가 고정된 기존 Source의 버전 번호와 원본 계보는 Shotgun이 계속 소유한다. 새 버전 투입은 현재 Source의 보안 메타데이터 일치를 검사하고, 다른 프로젝트 Source ID는 거부한다. 되돌리기는 새 투입 UI를 비활성화하고 과거 SourceVersion을 보존하는 방식이며, 이미 생성된 버전을 삭제하지 않는다. 격리 PostgreSQL 브라우저 여정에서 파일 투입→인용 답변→수정 파일 투입→새 버전 인용 및 프로젝트 간 갱신 거부를 검증했다. DeepSeek 판단을 포함한 전체 제품 인수와 증분/전체 재생성 동등성은 아직 Gate에 남는다.
 
 2026-09-26 단일 지식 공간 결정은 새 VP에서 Project를 사용자 제품 범위로 노출하지 않는 변경이다. 사용자는 과거 자료·원본·대화·지식·프로젝트 설정의 이관을 요구하지 않으며 빈 공간에서 시작한다. gbrain Search/Graph와 ddsyasas의 단순 Intake/Ask UX는 각각 `REFERENCE_ONLY`이며, PostgreSQL Source/Evidence/Ask Port는 `AUGMENT`한다. OSS 내부 namespace/DB는 공통 지식 권위로 채택하지 않는다. Shotgun이 내부 저장·인가 키 하나를 자동 생성하고, 빈 저장소에서 투입·질문·인용·관계가 작동하는 Golden Corpus·보안 음성 테스트를 통과해야 한다. DeepSeek 자격 증명은 새 공간에 별도로 구성한다. 롤백은 새 실행 대상을 중지하고 이전 실행 설정으로 복귀하는 방식이며, 과거 자료를 새 지식 공간에 혼합하지 않는다.
+
+2026-09-30 방향성 관계 분류는 ADR-172의 Shotgun 소유 `SUPPORTS` 의미를 구현한다. `garrytan/gbrain`의 기존 고정 기준 `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (MIT)는 Fact/Relation 저장 구조와 Graph 동작 참고에 한정해 `REFERENCE_ONLY`다. gbrain runtime/schema를 반입하면 SourceVersion·Evidence 및 relation orientation의 Shotgun 계약과 결합되므로 채택하지 않는다. PostgreSQL은 기존 `ADOPT` 인프라를 VP relation adapter 뒤에서 사용하고, `pg_trgm`은 후보 순위에만 `AUGMENT`로 남긴다. 이 관계 분류·방향 계약 자체에는 재사용할 외부 OSS 구현이 없어 `NO_RELEVANT_OSS`로 기록한다. 기존 DeepSeek DecisionProvider Adapter를 재사용해 새 의존성·provider egress 범위를 늘리지 않았다. `DecisionProviderPort`와 PostgreSQL Adapter를 교체 경계로 유지하며 migration 125는 방향 불변 조건을 적용한다. 격리 PostgreSQL recovery test는 방향이 있는 SUPPORTS 판단을 재시작 뒤 한 번만 저장하고 Ask가 연결된 사례 Evidence를 찾는 것을 확인한다. 전체 Golden Corpus·adapter replacement·최종 VP-10 Gate는 아직 열려 있다.
+
+## 11. VP-07 로컬 Runtime 재기동
+
+Shotgun 로컬 Runtime은 기존 canonical launcher identity 소유권을 유지하기 위해 Node.js `child_process.fork` IPC를 사용한다. Node core는 추가 OSS package가 아닌 기존 Node runtime 표준 API이며, 프로세스 실행·재기동은 `launch-local.ts`가 독점한다. Node runtime은 로컬 검증 시 `v24.15.0`이었다.
+
+| 후보                                                                | 범위                                                                   | 결정                                                                                                                     |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Node.js `child_process.fork`                                        | Shotgun launcher와 replaceable app child 사이의 IPC/readiness/shutdown | 기존 runtime 표준 API, dependency 없음                                                                                   |
+| PM2 `v7.0.4` (`cd6b1b4c592117212d7349d6932288613f336c15`, AGPL-3.0) | 외부 daemon 기반 process supervision                                   | `REJECTED`: 별도 process identity authority와 배포 copyleft 검토를 추가하며 Windows startup hook에 외부 package가 필요함 |
+| gbrain Minion (`a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, MIT)     | Job retry/lease 패턴                                                   | `REFERENCE_ONLY`: 앱 프로세스의 로컬 수명 감독은 제공하지 않음                                                           |
+
+선택 근거·보안 범위·회복 계약·교체 및 롤백은 [ADR-167 VP-07 amendment](../adr/ADR-167-canonical-desktop-launcher-repository-and-runtime-identity.md#2026-09-30--vp-07-supervised-application-restart)와 [VP 재기동 시험 보고](../../implementation/vp-runtime-restart-supervision-2026-09-30.md)에 기록한다. 앱 자식 재기동의 unit·실제 Node IPC 시험과 PostgreSQL server container 재기동 후 persisted project API read 시험이 통과했다. Source/미완료 Job 상태에서의 원장 수렴, 백업/restore/cutover/rollback drill은 아직 VP-07 완료 Gate로 남는다.

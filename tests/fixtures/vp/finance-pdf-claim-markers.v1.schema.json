@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://shotgun.local/schemas/vp/finance-pdf-claim-markers.v1.schema.json",
+  "title": "VP Finance PDF Claim Marker Corpus v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "corpusId",
+    "corpusVersion",
+    "labelSetRevision",
+    "corpusDigest",
+    "labelReviewStatus",
+    "source",
+    "markers"
+  ],
+  "properties": {
+    "contractVersion": { "const": "1.0.0" },
+    "corpusId": { "const": "shotgun-vp-finance-pdf-claim-markers" },
+    "corpusVersion": { "type": "string", "minLength": 1 },
+    "labelSetRevision": { "type": "integer", "minimum": 1 },
+    "corpusDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "labelReviewStatus": { "const": "CANDIDATE" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "pageCount", "dataClassification", "note"],
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "pageCount": { "const": 10 },
+        "dataClassification": { "const": "USER_PROVIDED" },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    },
+    "markers": {
+      "type": "array",
+      "minItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "page", "text", "dimension"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "page": { "type": "integer", "minimum": 1, "maximum": 10 },
+          "text": { "type": "string", "minLength": 1 },
+          "requiredText": { "type": "string", "minLength": 1 },
+          "dimension": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

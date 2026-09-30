@@ -42,13 +42,13 @@
 1. `SubmitVPSource@1.0.0`: 파일/텍스트/URL과 client idempotency key만 수신. 서버가 Project·actor·classification·원본 hash·SourceVersion·작업 identity를 만든다. 응답은 `sourceId`, `sourceVersionId`, `jobId`, 상태다.
 2. `VPSourceState@1.0.0`: `RECEIVED/EVIDENCE_READY/KNOWLEDGE_UPDATING/READY/RETRYING/DEGRADED/FAILED`, 원인 코드, 활성 version/knowledge epoch, 자동 재시도 시각을 반환한다.
 3. `RecordVPAssertion@1.0.0`와 `RecordVPRelation@1.0.0`: 브라우저 공개 명령이 아니다. Evidence·SourceVersion·policy/digest precondition을 서버가 재검증해 append-only VP Ledger에 쓴다. `AutoKnowledgeCommitted@1.0.0`을 outbox로 발행한다.
-4. `DecisionProviderPort@1.0.0`: `task kind`, 허용 선택지, 고정된 evidence/주장/비교 범위와 버전, 정책, 예산을 입력으로 받는다. Jev Adapter와 fake/대체 Adapter가 같은 계약을 구현한다. 결정 영수증은 재생 가능한 식별자와 provenance를 가진다.
+4. `DecisionProviderPort@1.1.0`: `task kind`, 허용 선택지, 고정된 evidence/주장/비교 범위와 버전, 정책, 예산을 입력으로 받는다. `SUPPORTS`/`QUALIFIES`는 assertion ID 정렬 기준 left/right의 방향을 반환하고, 무방향 관계는 `NONE`을 반환한다. Jev Adapter와 fake/대체 Adapter가 같은 계약을 구현한다. 결정 영수증은 재생 가능한 식별자와 provenance를 가진다.
 5. `AskVP@1.0.0`: 질문만 필수 입력. 서버가 프로젝트·권한·지식 epoch·활성 SourceVersion을 고정한다. 준비 중이면 AnswerRun을 `WAITING_FOR_KNOWLEDGE`로 유지하고 완료 후 자동 실행한다. 답변에는 인용, `DIRECT/DERIVED`, 충돌, 자료 확인 시점, 사용 epoch를 반환한다.
 6. `VPProjectionStatus@1.0.0`: active epoch, source/evidence/ledger/search watermark를 제공한다. 차이가 있으면 최신 지식으로 표시하지 않는다.
 
 ### 4.2 데이터와 처리 의미
 
-- Ledger는 원자적 `VPAssertion`, 관계 `VPRelation`, 출처/시점/조건, `VPDecisionReceipt`, history/outbox를 소유한다. 과거 상태를 덮어쓰지 않는다. 검색/현재 지식은 재생성 가능한 projection이다.
+- Ledger는 원자적 `VPAssertion`, 관계 `VPRelation`과 방향, 출처/시점/조건, `VPDecisionReceipt`, history/outbox를 소유한다. 과거 상태를 덮어쓰지 않는다. 검색/현재 지식은 재생성 가능한 projection이다.
 - `DIRECT_SOURCE`는 원문의 직접 진술이다. `DERIVED`는 상위 주장과 추론 단계를 참조한다. `HYPOTHESIS/UNRESOLVED`는 확정된 답변 사실로 승격하지 않는다. 같은 문장의 출처가 둘이면 증거 둘을 유지한다.
 - 중복·동의·보완·예외·충돌·시점 변경은 별도 관계다. `EQUIVALENT`라도 서로 다른 원문/출처를 삭제하지 않는다. 충돌은 원본별 주장과 유효 시점을 함께 유지한다.
 - 활성 SourceVersion이 바뀌면 관련 관계와 projection을 무효화해 증분 재계산한다. 특정 Project의 증분 결과는 동일 입력의 full rebuild와 논리적으로 같아야 한다.
@@ -124,9 +124,9 @@ VP-1이 먼저 사용자 가치를 제공한다. VP-2/3 실패가 VP-1의 원문
 - 사용자의 2026-09-26 지시에 따라 **Jev 대신 DeepSeek를 임시 의미 판단 제공자로 연결**했다. 기존 Project별 DeepSeek 모델·Vault 자격 증명·상시 처리 정책 resolver와 일반 AI Adapter를 재사용한다. 인가된 두 주장 텍스트만 구조화 출력 요청에 전달하고, 관계 선택지·확률 합·토큰을 검증한다. `VPRelationJobWorker`는 Shadow Ledger의 자동 관계 큐에서 분당 최대 한 건을 처리하며, 판단 영수증에 `GENERAL_AI`와 실제 모델을 기록한다. Jev Provider는 구성하지 않으며 나중에 동일 Port 뒤에서 평가한다.
 - 서로 다른 현재 직접 주장 쌍을 위한 `VPRelationJobStorePort`와 PostgreSQL 작업 큐를 추가했다. 작업은 정책 버전별 유일 키, 임대, 재시도, 최신 SourceVersion 재확인, 결정 영수증, 관계, epoch/history를 갖는다. 오래된 주장에 연결된 미완료 작업은 `SUPERSEDED`로 보존한다. 통합 테스트는 잘못된 임대 토큰 거부와 결정·프로젝트 지식 초기화를 확인했다. DeepSeek 결정→작업자→영수증/관계 기록의 PostgreSQL 테스트를 통과했다.
 - 큐·lease 구현은 gbrain의 Job/lock recovery 검증 결과를 `REFERENCE_ONLY` 출발점으로 사용한다. gbrain 전체 Runtime·DB를 VP 원장에 적용하면 Shotgun의 SourceVersion/Evidence, 프로젝트 지식 초기화, 단일 writer 경계를 잃으므로 VP Port 뒤에서 직접 구현했다. `vp-knowledge-postgres` Adapter를 교체 경계로 삼고, 계약·재생·장애 주입 결과를 확보하기 전에는 OSS Integration Gate를 완료로 간주하지 않는다.
-- 의미 관계는 정책 개정마다 append-only로 남기고, 현재 관계 View는 활성 주장 쌍별 최신 결정 한 건만 보인다. 같은 결론으로 재평가해도 새 정책 결정 영수증과 관계 이력을 남기는 PostgreSQL 회귀 테스트를 통과했다. `QUALIFIES`는 방향·조건 계약이 아직 없어 관계로 기록하지 않고 해당 정책 작업을 미확정 완료한다. 같은 입력·정책을 매일 재호출하지 않으며 새 SourceVersion 또는 정책 개정에서 다시 평가한다. Migration 117은 새 미확정 작업이 이전 관계의 현재 투영을 철회하되 이력은 남긴다. 대규모 쌍 후보 축소와 비용 상한은 별도 과제다.
+- 의미 관계는 정책 개정마다 append-only로 남기고, 현재 관계 View는 활성 주장 쌍별 최신 결정 한 건만 보인다. 같은 결론으로 재평가해도 새 정책 결정 영수증과 관계 이력을 남기는 PostgreSQL 회귀 테스트를 통과했다. `SUPPORTS`와 `QUALIFIES`는 assertion ID 정렬 기준의 방향을 함께 저장하며, 구체 사례가 일반 주장을 뒷받침하는 관계를 Ask 검색이 포함한다. Migration 125와 `vp-deepseek-relation-v5`는 이 계약 및 금융 이익/현금 방향 예시를 고정하고 v3/v4의 저장된 판단을 새 정책에 재사용하지 않는다. 기존 `QUALIFIER_NOT_MODELED` 이력은 감사용으로 남는다. 관계 후보 축소·대표 corpus 품질·비용 상한은 VP-04/05에 남는다.
 - 실 DeepSeek API와 프로젝트 Vault 자격 증명으로 합성 문장 5쌍의 초기 연결을 확인했다. 이후 14쌍 고정 corpus를 더해 시점·대상·측정 항목 차이, 수량 조건, 부정 표현, 단위 변환, 한영 동의, 원문 속 지시문을 검증했다. 첫 평가에서는 다른 연도를 `CONTRADICTS`로 오분류했고, 명시적인 논리 양립성과 범위 기준을 추가한 `vp-deepseek-relation-v2`에서 14쌍을 연속 두 차례 기대 안전 범위로 분류했다. 중간 실행 한 차례에서는 모델 출력이 확률 유효성 검사를 통과하지 못했으며, 이 경우 관계를 기록하지 않고 재시도한다. 이는 소규모 합성 검증이며 대표 Golden Corpus, 확률 calibration, Jev 대비 정확도·비용 benchmark가 아니다. 현재 정책의 선택 확률 하한 `0.9`도 임시 보수 값이다. Shadow Ledger 관계를 활성 Ask의 사실 권위로 승격하기 전 해당 품질 Gate를 통과해야 한다.
-- `AskKnowledgeEvidenceSearchPort` 뒤에서 현재 VP 직접 주장과 `EQUIVALENT`·`CONTRADICTS` 관계의 상대 근거를 좁게 찾는 PostgreSQL 읽기 Adapter를 연결했다. `AUTO_PROJECT_KNOWLEDGE`의 `ask-query-plan-vp2`는 VP의 Evidence ID를 힌트로 사용하지만, Ask가 프로젝트·권한·민감도·현재 SourceVersion·Stage 3 완료를 다시 검사한 원문만 답변 Context에 넣는다. VP 검색 장애 시 기존 원문 검색이 유지된다. 실제 PostgreSQL 테스트는 VP 관계 후보 검색, 권한 밖 ID 제거, Context digest 변경을 확인했다. 이것은 원문 기반 Ask의 검색 보완 단계이며 VP Ledger를 유일한 답변 권위로 전환했다는 뜻은 아니다.
+- `AskKnowledgeEvidenceSearchPort` 뒤에서 현재 VP 직접 주장과 `EQUIVALENT`·`SUPPORTS`·`QUALIFIES`·`CONTRADICTS` 관계의 상대 근거를 좁게 찾는 PostgreSQL 읽기 Adapter를 연결했다. `AUTO_PROJECT_KNOWLEDGE`의 `ask-query-plan-vp2`는 VP의 Evidence ID를 힌트로 사용하지만, Ask가 프로젝트·권한·민감도·현재 SourceVersion·Stage 3 완료를 다시 검사한 원문만 답변 Context에 넣는다. VP 검색 장애 시 기존 원문 검색이 유지된다. 실제 PostgreSQL 테스트는 VP 관계 후보 검색, 권한 밖 ID 제거, Context digest 변경을 확인했다. 이것은 원문 기반 Ask의 검색 보완 단계이며 VP Ledger를 유일한 답변 권위로 전환했다는 뜻은 아니다.
 - 자동 질문 답변 지시문은 `shotgun-ask-answer-vp2`로 구분하고 Evidence를 출처의 진술로 취급한다. 같은 조건·시점의 출처가 충돌하면 양쪽 주장과 인용을 보여 주고, 근거 없이 한쪽을 확정하지 않도록 요청한다. 실제 DeepSeek API에 합성 충돌 근거 두 건을 보낸 시험에서 두 출처를 모두 인용하고 차이를 언급했다. 이는 단일 합성 사례이며 전체 답변 Golden Corpus나 사실성 보증은 아니다.
 - 실제 PostgreSQL·브라우저에서 `.md` 한 번 투입→자동 질문→원문 인용, 같은 Source의 수정 버전 및 두 번째 자료 투입→두 자료의 현재 버전 인용을 통과했다. 자동 질문 API는 소스 선택 배열을 생략해도 받아들이며, 기존 자료 상세에서 수정 파일을 투입하면 서버가 프로젝트·보안 범위를 확인하고 새 SourceVersion을 만든다. 다른 프로젝트의 Source ID로 버전을 추가하는 시도는 거부했다. 이 검증의 답변 모델은 결정적 fake이며 DeepSeek 제품 전체 여정의 품질 검증을 대신하지 않는다.
 - 자료 투입 화면은 제출 상태를 완료·실패까지 자동 갱신하고 실패 항목의 서버 안전 오류 문구를 표시한다. 따라서 복구 worker가 지연된 Stage 3을 완료하는 경우에도 사용자가 화면을 새로 고칠 필요가 없다. 실패한 수정 자료의 대체 전 답변 정책과 프로젝트 전체 지식 epoch 상태 표시는 아직 별도 검증이 필요하다.
@@ -160,3 +160,16 @@ OSS Integration Decision은 기존 Role Matrix의 gbrain Search/Graph `REFERENCE
 - 이 검증은 합성 텍스트의 A/B/수정 버전 수직 경로다. 완전한 epoch 수렴·재생, 다량 후보 축소와 실측 비용 Gate, 모든 파일 형식, 설치된 Desktop 런처와 `main` 병합은 아직 출시 Gate에 남아 있다. `shotgun_vp_route`는 검증용이며 최종 사용자 자료가 들어갈 대상은 `shotgun_vp`다.
 - 모듈 선언에 VP Ledger의 데이터 소유권과 Decision Port를 기록했다. 새 VP 원장의 append-only 보호는 기록이 있을 때 그대로 적용하고, 기록이 없는 테이블에 대한 `TRUNCATE CASCADE`만 허용해 기존 DB 테스트 초기화와 충돌하지 않도록 했다. 빈/비어 있지 않은 원장 회귀 테스트와 Stage 12의 10개 DB 테스트를 통과했다.
 - 의미 비교 Provider 호출은 DB의 날짜별 claim 카운터로 제한한다. 기본 상한은 하루 100회이며 `VP_MAX_DAILY_RELATION_PROVIDER_ATTEMPTS`로 변경할 수 있다. 호출 직전 작업 임대와 같은 트랜잭션에서 카운터를 올려 프로세스 중단 시에도 초과 호출을 막는다. 한도에 도달하면 작업은 대기하며 다음 날짜에 자동 재개한다. 이는 지출 안전 장치이지 대규모 지식 관계의 후보 축소나 품질 Gate 완료를 뜻하지 않는다.
+
+### 2026-09-29 관계 정책 v3 후속 검증
+
+실제 DeepSeek에서 상호 배타적인 NPV 조건문을 `RELATED`로 분류하도록 관계 prompt와 정책 revision을 `vp-deepseek-relation-v3`로 갱신했다. 16개 합성 후보 사례는 해당 corpus의 허용 선택지 16/16, exact label 10/10을 통과했다. 한국어 NPV 사례의 모델 선택 확률은 단독 호출 0.75, corpus 실행 0.95, 전체 제품 흐름 0.89로 달라졌다. 전체 흐름의 0.89는 임시 생산 하한 0.90에 못 미쳐 관계를 기록하지 않고 보류했다. 그 상태에서도 두 주장은 원장에 유지됐고, 실제 질문은 두 Evidence를 인용했으며 independent replay가 일치했다. 모순 관계는 기록되지 않았다.
+
+이 결과는 관계 prompt 수정과 안전한 보류 동작을 확인한다. 합성 후보 라벨은 승인된 Gold set이 아니며 모델 확률도 calibration된 사실 확률이 아니다. `vp-deepseek-relation-v3`의 임계값·오류 상한 조정과 대표 재무 다문서 관계는 VP-04/05에서 측정한다. [재현 결과 및 한계](./vp-deepseek-live-metrics-2026-09-29.md#2026-09-29-relation-policy-v3-and-npv-branch-product-flow).
+
+### 2026-09-29 finance cross-source Product verification
+
+- 두 테스트 작성 유동비율 자료를 Sources 화면으로 각각 투입하고, DeepSeek 관계 작업·인용 Ask·독립 replay까지 3회 직렬 실행했다. 매번 두 Source ID와 두 직접 Evidence 주장이 남았고 `EQUIVALENT`가 선택·기록됐으며 답변에서 두 Evidence를 인용했다. replay는 매회 일치했다.
+- 같은 pair의 선택 확률은 0.99, 1.00, 0.99였고 실행당 4 provider calls, 2,269–2,397 tokens를 사용했다. 이는 이 pair의 반복 일관성만 보이며 확률 calibration·외부 청구액·재무 오류율을 보이지 않는다.
+- 같은 예시의 유동비율 200%/150% 충돌 pair도 직렬 3회 실행했다. 1회는 `CONTRADICTS` 0.98로 기록했고, 두 번은 0.50·0.70의 선택 확률이 0.90 하한 미만이라 관계를 보류했다. 세 Ask 답변은 150%와 200%를 양쪽 근거에 연결해 제시했고, 어느 쪽이 맞는지 확정하지 않았다. 독립 replay는 모두 일치했다.
+- 두 pair의 파일은 테스트 작성 자료이며 사용자 PDF 전체나 독립 출판 자료와 대조하지 않았다. 반복 불일치는 모델 확률이 calibration되지 않았고 보수적인 임계값 아래 관계 재현율도 낮음을 보여준다. 금융 domain Golden Corpus, 전체 추출 precision/recall, 관계 후보 축소와 VP-04/05는 열린 상태다. [전체 재현 및 한계](./vp-finance-cross-source-product-verification-2026-09-29.md).

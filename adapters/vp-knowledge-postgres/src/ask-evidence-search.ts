@@ -90,11 +90,21 @@ export class PostgresVPAskEvidenceSearch implements AskKnowledgeEvidenceSearchPo
     }
     const limit = Math.max(1, Math.min(12, Math.floor(input.limit)));
     const result = await this.pool.query<{ evidence_id: string }>(
-      `WITH query_terms AS (
+      `WITH raw_query_terms AS (
          SELECT regexp_split_to_table(
            trim(regexp_replace(lower($2), '[^[:alnum:]가-힣]+', ' ', 'g')),
            '\\s+'
          ) AS term
+       ), query_terms AS (
+         SELECT term FROM raw_query_terms WHERE char_length(term) >= 2
+         UNION
+         SELECT regexp_replace(
+                  term,
+                  '(으로는|에서는|에게는|으로|에서|에게|보다|부터|까지|은|는|이|가|을|를|에|와|과|도|로|의|만)$',
+                  ''
+                ) AS term
+           FROM raw_query_terms
+          WHERE char_length(term) >= 3
        ), ranked AS (
          SELECT assertion.assertion_id, assertion.evidence_id,
                 GREATEST(
@@ -139,7 +149,7 @@ export class PostgresVPAskEvidenceSearch implements AskKnowledgeEvidenceSearchPo
            FROM anchors AS anchor
            JOIN vp.current_relations AS relation
              ON relation.project_id = $1
-            AND relation.relation_kind IN ('EQUIVALENT', 'CONTRADICTS')
+            AND relation.relation_kind IN ('EQUIVALENT', 'SUPPORTS', 'QUALIFIES', 'CONTRADICTS')
             AND (relation.left_assertion_id = anchor.assertion_id
               OR relation.right_assertion_id = anchor.assertion_id)
        ), candidates AS (

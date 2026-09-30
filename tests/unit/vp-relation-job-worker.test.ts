@@ -41,8 +41,9 @@ const jobs = (): VPRelationJobStorePort => ({
   enqueueCurrentPairs: vi.fn(async () => 1),
   claimNext: vi.fn(async () => job),
   completeDecision: vi.fn(async () => true),
+  readDecisionOutcome: vi.fn(async () => 'NOT_ACTIVE' as const),
   completeUnresolved: vi.fn(async () => true),
-  retry: vi.fn(async () => undefined),
+  retry: vi.fn(async () => 'RETRYABLE' as const),
 });
 
 const policy = {
@@ -62,6 +63,7 @@ describe('VP relation job worker', () => {
         confidence: 0.98,
         probabilities: {
           EQUIVALENT: 0.01,
+          SUPPORTS: 0,
           QUALIFIES: 0,
           CONTRADICTS: 0.98,
           RELATED: 0.01,
@@ -85,6 +87,7 @@ describe('VP relation job worker', () => {
       leaseToken: job.leaseToken,
       provider: 'JEV',
       choice: 'CONTRADICTS',
+      direction: 'UNDIRECTED',
       confidence: 0.98,
       model: 'jev-test',
       inputTokens: 30,
@@ -122,6 +125,7 @@ describe('VP relation job worker', () => {
         confidence: 0.96,
         probabilities: {
           EQUIVALENT: 0.01,
+          SUPPORTS: 0,
           QUALIFIES: 0.01,
           CONTRADICTS: 0.96,
           RELATED: 0.01,
@@ -149,14 +153,16 @@ describe('VP relation job worker', () => {
     );
   });
 
-  it('does not store an undirected qualification as settled knowledge', async () => {
+  it('stores a directed qualification and retains which assertion is narrower', async () => {
     const store = jobs();
     const deepseek: VPDecisionProviderPort = {
       decideRelation: vi.fn(async () => ({
         choice: 'QUALIFIES' as const,
+        direction: 'RIGHT_TO_LEFT' as const,
         confidence: 0.99,
         probabilities: {
           EQUIVALENT: 0,
+          SUPPORTS: 0,
           QUALIFIES: 0.99,
           CONTRADICTS: 0,
           RELATED: 0.01,
@@ -174,11 +180,143 @@ describe('VP relation job worker', () => {
       async () => true,
       policy.revision,
     );
-    expect(await worker.dispatchOnce()).toBe('UNRESOLVED');
-    expect(store.completeDecision).not.toHaveBeenCalled();
-    expect(store.completeUnresolved).toHaveBeenCalledWith(
-      expect.objectContaining({ code: 'QUALIFIER_NOT_MODELED' }),
+    expect(await worker.dispatchOnce()).toBe('DECIDED');
+    expect(store.completeDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ choice: 'QUALIFIES', direction: 'RIGHT_TO_LEFT' }),
     );
+    expect(store.completeUnresolved).not.toHaveBeenCalled();
     expect(store.retry).not.toHaveBeenCalled();
+  });
+
+  it('resolves a lost commit acknowledgement by reading the durable decision', async () => {
+    const store = jobs();
+    vi.mocked(store.completeDecision).mockRejectedValue(
+      Object.assign(new Error('commit acknowledgement lost'), { code: 'OUTCOME_UNKNOWN' }),
+    );
+    vi.mocked(store.readDecisionOutcome).mockResolvedValue('COMPLETED');
+    const provider: VPDecisionProviderPort = {
+      decideRelation: vi.fn(async () => ({
+        choice: 'CONTRADICTS' as const,
+        confidence: 0.98,
+        probabilities: {
+          EQUIVALENT: 0.01,
+          SUPPORTS: 0,
+          QUALIFIES: 0,
+          CONTRADICTS: 0.98,
+          RELATED: 0.01,
+          UNRESOLVED: 0,
+        },
+        deepAnalysisScore: 0,
+        model: 'deepseek/pinned-model',
+        inputTokens: 24,
+        outputTokens: 8,
+      })),
+    };
+    const worker = new VPRelationJobWorker(
+      store,
+      new VPRelationDecisionRouter(undefined, provider, policy),
+      async () => true,
+      policy.revision,
+    );
+
+    expect(await worker.dispatchOnce()).toBe('DECIDED');
+    expect(provider.decideRelation).toHaveBeenCalledOnce();
+    expect(store.readDecisionOutcome).toHaveBeenCalledWith({
+      jobId: job.jobId,
+      leaseToken: job.leaseToken,
+    });
+    expect(store.retry).not.toHaveBeenCalled();
+  });
+
+  it('reuses the received decision while the same lease is still active', async () => {
+    const store = jobs();
+    vi.mocked(store.completeDecision)
+      .mockRejectedValueOnce(
+        Object.assign(new Error('commit acknowledgement lost'), { code: 'OUTCOME_UNKNOWN' }),
+      )
+      .mockResolvedValueOnce(true);
+    vi.mocked(store.readDecisionOutcome)
+      .mockResolvedValueOnce('LEASE_ACTIVE')
+      .mockResolvedValueOnce('COMPLETED');
+    const provider: VPDecisionProviderPort = {
+      decideRelation: vi.fn(async () => ({
+        choice: 'CONTRADICTS' as const,
+        confidence: 0.98,
+        probabilities: {
+          EQUIVALENT: 0.01,
+          SUPPORTS: 0,
+          QUALIFIES: 0,
+          CONTRADICTS: 0.98,
+          RELATED: 0.01,
+          UNRESOLVED: 0,
+        },
+        deepAnalysisScore: 0,
+        model: 'deepseek/pinned-model',
+        inputTokens: 24,
+        outputTokens: 8,
+      })),
+    };
+    const worker = new VPRelationJobWorker(
+      store,
+      new VPRelationDecisionRouter(undefined, provider, policy),
+      async () => true,
+      policy.revision,
+    );
+
+    expect(await worker.dispatchOnce()).toBe('DECIDED');
+    expect(provider.decideRelation).toHaveBeenCalledOnce();
+    expect(store.completeDecision).toHaveBeenCalledTimes(2);
+    expect(store.retry).not.toHaveBeenCalled();
+  });
+
+  it('leaves an unconfirmed commit outcome unresolved without retrying the provider', async () => {
+    const store = jobs();
+    vi.mocked(store.completeDecision).mockRejectedValue(
+      Object.assign(new Error('commit acknowledgement lost'), { code: 'OUTCOME_UNKNOWN' }),
+    );
+    vi.mocked(store.readDecisionOutcome).mockResolvedValue('NOT_ACTIVE');
+    const provider: VPDecisionProviderPort = {
+      decideRelation: vi.fn(async () => ({
+        choice: 'CONTRADICTS' as const,
+        confidence: 0.98,
+        probabilities: {
+          EQUIVALENT: 0.01,
+          SUPPORTS: 0,
+          QUALIFIES: 0,
+          CONTRADICTS: 0.98,
+          RELATED: 0.01,
+          UNRESOLVED: 0,
+        },
+        deepAnalysisScore: 0,
+        model: 'deepseek/pinned-model',
+        inputTokens: 24,
+        outputTokens: 8,
+      })),
+    };
+    const worker = new VPRelationJobWorker(
+      store,
+      new VPRelationDecisionRouter(undefined, provider, policy),
+      async () => true,
+      policy.revision,
+    );
+
+    expect(await worker.dispatchOnce()).toBe('OUTCOME_UNKNOWN');
+    expect(provider.decideRelation).toHaveBeenCalledOnce();
+    expect(store.retry).not.toHaveBeenCalled();
+  });
+
+  it('reports a durable terminal failure when the retry cap is reached', async () => {
+    const store = jobs();
+    vi.mocked(store.retry).mockResolvedValue('FAILED');
+    const router = {
+      resolve: vi.fn(async () => ({
+        status: 'UNRESOLVED' as const,
+        reason: 'PROVIDER_FAILED' as const,
+      })),
+    };
+    const worker = new VPRelationJobWorker(store, router, async () => true, policy.revision);
+
+    expect(await worker.dispatchOnce()).toBe('FAILED');
+    expect(store.retry).toHaveBeenCalledWith(expect.objectContaining({ code: 'PROVIDER_FAILED' }));
   });
 });

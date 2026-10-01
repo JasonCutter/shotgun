@@ -45,3 +45,24 @@ The static inventory now recognizes these transaction-owning methods directly:
 - Reproduction commands: `npm run ts6:v8:check`, `npm run verify:ts6-c2`, and `npm run test:ts6-audit`.
 
 The live test expectations track the scanner output; historical v2-v7 fixture totals remain assertions against their own frozen records.
+
+## 2026-10-02 URL freshness projection addendum
+
+The Ask URL-freshness projection added code before existing transaction candidate locations in three PostgreSQL adapters. This moved ten AST candidate coordinates. The audit matched each live candidate by `functionKey`, `sourceNeedle`, owning class/method, candidate kind, classification, and production-reachability grade. All ten mapped to the same transaction-owning methods recorded in the 2026-10-01 audit; only source coordinates changed.
+
+| Previous candidate ID | Current candidate ID | Method | Classification / reachability |
+| --- | --- | --- | --- |
+| `safe:adapters/frontend-ask-execution-postgres/src/index.ts:2091` | `safe:adapters/frontend-ask-execution-postgres/src/index.ts:2161` | `PostgresAskAnswerExecutionRepository.transaction` | `PORT_INFERRED / PORT_INFERRED` |
+| `safe:adapters/frontend-ask-execution-postgres/src/index.ts:2808` | `safe:adapters/frontend-ask-execution-postgres/src/index.ts:2883` | `PostgresAskAnswerExecutionRepository.poolTransaction` | `TX_BOUNDARY / PROVEN` |
+| `safe:adapters/frontend-ask-write-postgres/src/index.ts:173` | `safe:adapters/frontend-ask-write-postgres/src/index.ts:177` | `PostgresAskConversationRepository.transaction` | `PORT_INFERRED / PORT_INFERRED` |
+| `safe:adapters/frontend-ask-write-postgres/src/index.ts:645` | `safe:adapters/frontend-ask-write-postgres/src/index.ts:649` | `PostgresAskWorkspaceProjection.loadConversation` | `TX_BOUNDARY / PROVEN` |
+| `safe:adapters/postgres/src/index.ts:1115` | `safe:adapters/postgres/src/index.ts:1132` | `PostgresProjectAdministrationRepository.updateStatus` | `TX_BOUNDARY / PROVEN` |
+| `safe:adapters/postgres/src/index.ts:1238` | `safe:adapters/postgres/src/index.ts:1255` | `PostgresProjectBootstrapUnitOfWork.bootstrap` | `PORT_INFERRED / PORT_INFERRED` |
+| `safe:adapters/postgres/src/index.ts:1509` | `safe:adapters/postgres/src/index.ts:1526` | `PostgresSettingsRepository.updatePrincipalPreferences` | `PORT_INFERRED / PORT_INFERRED` |
+| `safe:adapters/postgres/src/index.ts:1822` | `safe:adapters/postgres/src/index.ts:1839` | `PostgresSettingsRepository.applySettingsCommand` | `PORT_INFERRED / PORT_INFERRED` |
+| `safe:adapters/postgres/src/index.ts:827` | `safe:adapters/postgres/src/index.ts:844` | `PostgresProjectAdministrationRepository.createProject` | `PORT_INFERRED / PORT_INFERRED` |
+| `safe:adapters/postgres/src/index.ts:980` | `safe:adapters/postgres/src/index.ts:997` | `PostgresProjectAdministrationRepository.updateProject` | `PORT_INFERRED / PORT_INFERRED` |
+
+Ten approved `covers[]` references to these boundaries were updated in `approved-regression-relations.v8.json`. Test IDs, names, coverage kinds, and the frozen v7 source SHA-256 are unchanged.
+
+Current totals remain 129 candidates, 122 transaction boundaries, and 11 raw transaction sites; classifications remain `TX_BOUNDARY 16`, `PORT_INFERRED 89`, `NON_TX 7`, and `TEST_ONLY_OR_DEAD 17`, with no participants, delegates, or review-required records. The v2-v7 historical artifacts are unchanged. After updating the reviewed manifest and approved coordinate references, `npm run ts6:v8:rebuild`, `npm run ts6:v8:check`, `npm run verify:ts6-c2`, and `npm run test:ts6-audit` reproduce and verify the current v8 lineage.

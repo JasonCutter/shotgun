@@ -18,6 +18,12 @@
   pdfplumber emits as NUL. pdfplumber remains the sole PDF layout and selector
   authority; unmatched damage remains U+FFFD and is rejected by direct-text
   validation. The Python format adapter advances to `1.2.0`.
+- 2026-10-01 — VP-04 amendment: the same locked pypdfium2 build may also restore
+  a short, single-row equation from glyph geometry only when its compact glyph
+  sequence exactly matches pdfplumber output and nearby rows show no stacked
+  fraction. Ambiguous equations retain the existing pdfplumber output. The
+  Python format adapter advances to `1.3.0`; pdfplumber remains the sole owner
+  of paragraph order and SourceMap layout.
 
 ## 결정
 

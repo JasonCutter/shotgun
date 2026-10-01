@@ -332,6 +332,56 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
     expect(augmentedContext?.resolvedContextDigest).not.toBe(
       automaticContext?.resolvedContextDigest,
     );
+    let refreshSearches = 0;
+    let refreshSnapshotChecks = 0;
+    const refreshOnStale = new PostgresAskAnswerExecutionRepository(
+      pool,
+      projection,
+      { resolve: async () => undefined },
+      undefined,
+      {
+        search: async () => {
+          refreshSearches += 1;
+          return {
+            knowledgeEpoch: '1',
+            sourceWatermark: hash(`ask-vp-refreshed-watermark-${refreshSearches}`),
+            evidenceIds: [vpLinkedEvidenceId],
+          };
+        },
+        isSnapshotCurrent: async () => {
+          refreshSnapshotChecks += 1;
+          return refreshSnapshotChecks > 1;
+        },
+      },
+    );
+    const refreshedContext = await refreshOnStale.getRunContext(
+      executionScope,
+      automatic.answerRun.answerRunId,
+    );
+    expect(refreshedContext?.evidence.map((item) => item.evidenceId)).toEqual([vpLinkedEvidenceId]);
+    expect(refreshSearches).toBe(2);
+    expect(refreshSnapshotChecks).toBe(2);
+
+    const staleAfterRefresh = new PostgresAskAnswerExecutionRepository(
+      pool,
+      projection,
+      { resolve: async () => undefined },
+      undefined,
+      {
+        search: async () => ({
+          knowledgeEpoch: '1',
+          sourceWatermark: hash('ask-vp-stale-watermark'),
+          evidenceIds: [vpLinkedEvidenceId],
+        }),
+        isSnapshotCurrent: async () => false,
+      },
+    );
+    await expect(
+      staleAfterRefresh.getRunContext(executionScope, automatic.answerRun.answerRunId),
+    ).rejects.toMatchObject({
+      code: 'STALE_VERSION',
+      operation: 'resolve-vp-snapshot',
+    });
     const noVpAuthority = new PostgresAskAnswerExecutionRepository(
       pool,
       projection,

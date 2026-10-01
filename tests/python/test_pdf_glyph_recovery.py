@@ -6,7 +6,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "adapters" / "document-format-python"))
 
-from worker import restore_unmapped_comparison_glyphs
+from worker import (
+    MAX_PDFIUM_PAGE_CHARS,
+    apply_pdfium_horizontal_equations,
+    pdfium_horizontal_equation_words,
+    pdfium_page_glyphs,
+    restore_unmapped_comparison_glyphs,
+)
 
 
 def damaged_char(x0: float = 10, x1: float = 18, top: float = 20, bottom: float = 32) -> dict[str, object]:
@@ -80,6 +86,112 @@ class PdfGlyphRecoveryTests(unittest.TestCase):
         self.assertEqual(restored, 0)
         self.assertEqual(ordinary["text"], "?")
         self.assertEqual(invalid["text"], "\x00")
+
+    def test_rebuilds_a_flat_formula_and_marks_its_superscript(self) -> None:
+        glyphs = formula_glyphs("FV=PV(1+r)n", superscript="n")
+
+        candidates = pdfium_horizontal_equation_words(glyphs)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["text"], "FV = PV(1 + r)^n")
+
+    def test_does_not_flatten_a_fraction_with_overlapping_rows(self) -> None:
+        glyphs = formula_glyphs("NPV=SUM-I0")
+        glyphs.extend(formula_glyphs("CFt", top=90, start_x=40))
+        glyphs.extend(formula_glyphs("(1+r)t", top=110, start_x=40))
+        equality = formula_glyphs("PV=")
+        fraction_left = equality[-1]["x1"] + 7.0
+        glyphs.extend(equality)
+        glyphs.extend(formula_glyphs("FV", top=90, start_x=fraction_left))
+        glyphs.extend(formula_glyphs("(1+r)n", top=110, start_x=fraction_left))
+
+        candidates = pdfium_horizontal_equation_words(glyphs)
+
+        self.assertFalse(any(candidate["text"].startswith("NPV") or candidate["text"] == "PV =" for candidate in candidates))
+
+    def test_replaces_only_an_exactly_matching_pdfplumber_word_run(self) -> None:
+        candidate = {
+            "text": "FV = PV (1 + r)^n",
+            "x0": 10.0,
+            "x1": 80.0,
+            "top": 20.0,
+            "bottom": 32.0,
+            "baseline": 26.0,
+        }
+        words = [
+            {"text": "FV=PV(1+r)", "x0": 10, "x1": 74, "top": 20, "bottom": 32},
+            {"text": "n", "x0": 74, "x1": 80, "top": 20, "bottom": 26},
+            {"text": "other", "x0": 100, "x1": 130, "top": 20, "bottom": 32},
+        ]
+
+        rebuilt = apply_pdfium_horizontal_equations(words, [candidate])
+
+        self.assertEqual([word["text"] for word in rebuilt], ["other", "FV = PV (1 + r)^n"])
+        self.assertEqual(rebuilt[-1]["x0"], 10.0)
+        self.assertEqual(rebuilt[-1]["bottom"], 32.0)
+
+    def test_keeps_a_candidate_when_extracted_glyph_sequence_disagrees(self) -> None:
+        candidate = {
+            "text": "FV = PV (1 + r)^n",
+            "x0": 10.0,
+            "x1": 80.0,
+            "top": 20.0,
+            "bottom": 32.0,
+            "baseline": 26.0,
+        }
+        words = [{"text": "FV=PV(1-r)n", "x0": 10, "x1": 80, "top": 20, "bottom": 32}]
+
+        rebuilt = apply_pdfium_horizontal_equations(words, [candidate])
+
+        self.assertEqual(rebuilt, words)
+
+    def test_pdfium_page_character_budget_fails_closed_before_text_copy(self) -> None:
+        class TextPage:
+            def count_chars(self) -> int:
+                return MAX_PDFIUM_PAGE_CHARS + 1
+
+            def get_text_range(self) -> str:
+                raise AssertionError("oversized PDFium text must not be copied")
+
+            def close(self) -> None:
+                pass
+
+        class Page:
+            def get_textpage(self) -> TextPage:
+                return TextPage()
+
+            def get_height(self) -> float:
+                return 800.0
+
+        self.assertEqual(pdfium_page_glyphs(Page()), [])
+
+
+def formula_glyphs(
+    value: str,
+    *,
+    top: float = 100.0,
+    start_x: float = 10.0,
+    superscript: str | None = None,
+) -> list[dict[str, object]]:
+    output: list[dict[str, object]] = []
+    x = start_x
+    for index, char in enumerate(value):
+        is_superscript = char == superscript
+        glyph_top = top
+        height = 4.0 if is_superscript else 10.0
+        width = 4.0 if char in "=+-" else 6.0
+        output.append(
+            {
+                "index": index,
+                "text": char,
+                "x0": x,
+                "x1": x + width,
+                "top": glyph_top,
+                "bottom": glyph_top + height,
+            }
+        )
+        x += width + 1.0
+    return output
 
 
 if __name__ == "__main__":

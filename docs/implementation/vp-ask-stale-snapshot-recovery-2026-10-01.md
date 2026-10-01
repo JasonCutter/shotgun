@@ -1,37 +1,42 @@
-# VP Ask stale-snapshot recovery — 2026-10-01
+# VP Ask query-scoped freshness — 2026-10-01
 
-**Status: bounded recovery implemented and verified; VP-03/04/06 remain open.**
-This report records a real PDF Ask failure, its cause, the bounded retry, and a
-second live end-to-end run. It does not close broad extraction-quality or
-reliability gates.
+**Status: implemented and verified for the real finance PDF flow; VP-03/04/06 remain open.**
+This change addresses an Ask availability failure. It does not close the broad
+extraction-quality, relation-quality, cost, or reliability gates.
 
 ## Failure and cause
 
-The 2026-10-01 live test re-uploaded the supplied 10-page finance PDF into a
-disposable PostgreSQL database and completed extraction with all 20/20 curated
-markers matched. One final Ask failed to publish citations. Logs showed that
-the VP knowledge epoch changed before the answer could be committed.
-
-The PostgreSQL adapter correctly rejected the stale answer. The execution
-service returned the asynchronous `complete()` Promise from inside a `try`
-block without awaiting it, so this rejection bypassed the service's error
-handler. Its lease later expired and recovery marked the known stale attempt
-`OUTCOME_UNKNOWN`. The provider response was known; the answer was withheld.
+The supplied 10-page finance PDF was uploaded through the real Shotgun browser
+flow and reached all 20 curated extraction markers. Repeated DeepSeek Ask runs
+revealed that the serial relation worker can advance `vp.project_epochs` while
+processing pairs that do not affect the current question. The old global epoch
+equality check treated that unrelated work as a stale answer. One failure also
+exposed an async error-handling bug: the execution service returned the
+`complete()` Promise from inside a `try` without awaiting it, so a known stale
+failure bypassed its handler and expired as `OUTCOME_UNKNOWN`.
 
 ## Change
 
-- The execution service now awaits answer completion, so persistence errors
-  reach its failure handler.
-- A stale VP completion has the typed `STALE_VERSION` code and
-  `complete-vp-snapshot` operation. It is recorded as a known failed attempt;
-  the old answer and citations are not published.
-- On the first `INITIAL` attempt only, the service makes one bounded retry with
-  `CURRENT_POLICY`, which resolves a fresh VP snapshot and current accessible
-  SourceVersion watermark. If that retry also becomes stale or cannot be
-  claimed, the AnswerRun remains a visible failure with the retry action
-  available. It never retries an `OUTCOME_UNKNOWN` provider result.
-- The retry may incur a second provider charge; the separate AnswerRun attempt
-  preserves that cost and execution history. No DB migration was needed.
+- The execution service awaits answer completion so persistence errors reach
+  its failure handler. Stale completion is a typed, retryable `STALE_VERSION`
+  failure; a known failed attempt never publishes its answer or citations.
+- The pinned `vp_knowledge_epoch` remains in the attempt as audit context. It is
+  no longer the sole freshness predicate. Ask re-runs the same question under
+  the same access/sensitivity scope and compares its ordered Evidence IDs and
+  accessible latest-SourceVersion watermark.
+- The adapter checks freshness at evidence resolution, immediately before a
+  provider attempt, and immediately before publishing the answer. The last two
+  checks run on the caller's PostgreSQL transaction while holding a shared lock
+  on the project's VP epoch row, so relation changes cannot race the shortlist
+  validation and publication transition.
+- The resolver makes one bounded local refresh. The service permits at most
+  three total provider attempts when a relevant snapshot keeps changing. Each
+  retry uses current policy and persists its own attempt/cost record; an
+  `OUTCOME_UNKNOWN` result is never retried automatically.
+- A source watermark or question shortlist change still fails closed. A global
+  epoch increment with the same current shortlist and accessible source
+  watermark no longer cancels the answer. No DB migration or new dependency was
+  required.
 
 ## OSS integration decision
 
@@ -40,37 +45,42 @@ The relevant reviewed references are `garrytan/gbrain` at commit
 patterns, and `ddsyasas/llm-wiki` at commit
 `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c` (MIT) for Ask UX. Both remain
 `REFERENCE_ONLY` under the existing Role Matrix decisions. Neither supplies
-this Shotgun-specific interaction between a durable Ask attempt, immutable VP
-snapshot, and answer publication. Decision: `NO_RELEVANT_OSS` for a new runtime
-or package. The retry uses Shotgun's existing `AskAnswerExecutionRepositoryPort`
-and persisted `CURRENT_POLICY` attempt path; no new dependency or provider
-egress was introduced.
+this Shotgun-specific interaction between a durable Ask attempt, an immutable
+VP audit snapshot, and a query-scoped current evidence check. Decision:
+`NO_RELEVANT_OSS` for a new runtime or package. The change stays behind the
+existing `AskKnowledgeEvidenceSearchPort`; no new provider egress was added.
 
 ## Verification
 
-- `tests/unit/frontend-ask-execution.test.ts`: 10/10 passed, including one
-  forced `STALE_VERSION` completion followed by one successful current-policy
-  retry (two provider calls, two durable attempts).
+- Full unit suite: **1,303/1,303 tests passed**, including the bounded stale
+  retry tests.
+- `tests/database/vp-direct-assertion-ledger.database.test.ts`: **2/2 passed**.
+  It checks that an epoch-only difference with the same shortlist stays current,
+  while an Evidence shortlist or source-watermark mismatch is stale.
 - `tests/database/frontend-ask-uploaded-source-resolution.database.test.ts`:
-  1/1 passed; the PostgreSQL adapter rejects a stale completion with typed
-  `STALE_VERSION` and writes no answer statement.
-- Actual PDF browser flow, configured DeepSeek `deepseek-flash`: 1/1 passed in
-  3 minutes. A fresh isolated database received the 797,599-byte PDF with SHA
-  `bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`; the
-  run produced 107 current assertions and 116 candidates, matched 20/20
-  markers, answered two smoke questions plus four fixed topic questions,
-  checked citation SourceVersion/page selectors, matched projection replay,
-  and ended with zero pending relation jobs. The disposable database was
-  released by the test helper.
-- `npm run docs:validate` and `npm run oss:verify` are recorded after the
-  documentation update.
+  **1/1 passed**.
+- Actual finance PDF browser test using the configured DeepSeek `deepseek-flash`:
+  **two consecutive isolated runs passed** (2.7 and 2.3 minutes). Each fresh
+  PostgreSQL database received the 797,599-byte PDF with SHA
+  `bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`.
+  Run 1 produced 112 current assertions and 123 candidates; Run 2 produced 100
+  and 109. Both matched all 20/20 curated markers; each balance-sheet and NPV
+  answer had two citations, and four additional topic answers matched with the
+  expected PDF page citations. Projection replay matched and pending relation
+  jobs were zero at the end of both runs. The runs recorded 15 responses / 33,125
+  tokens and 14 responses / 30,569 tokens, respectively; provider billing was
+  not reconciled. Both isolated databases were disposed by the test helper.
+- `npm run docs:validate`, `npm run oss:verify` (72 decisions, 45 baseline
+  references, Stage 0–12 reviews), Prettier, and ESLint passed.
+- Full repository typecheck remains blocked by pre-existing type errors in the
+  unrelated, untracked `tests/contract/ts7-cross-section-acceptance.contract.test.ts`.
+  It reports no error in this change's files.
 
 ## Limits and rollback
 
-This run measured marker coverage, not full claim precision/recall: duplicates
-and malformed formula glyphs remain visible in extraction output. The Ask corpus
-and relation labels remain `CANDIDATE`; provider billing is not reconciled. The
-VP-04/05 quality, scale, and cost gates stay open. If the automatic retry causes
-undesired provider cost or behavior, remove only the bounded retry branch while
-keeping awaited completion, typed stale failures, and fail-closed publication;
-there is no schema migration to reverse.
+The PDF markers are a narrow coverage measure, not a full claim precision/recall
+score. The relation and Ask corpora remain `CANDIDATE`; malformed stacked
+formula extraction, duplicate claims, full-quality limits, scale, and actual
+provider billing remain open under VP-04/05. If bounded stale retries create
+unwanted provider cost, lower the attempt bound while retaining query-scoped
+freshness and fail-closed publication. There is no schema migration to reverse.

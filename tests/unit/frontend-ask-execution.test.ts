@@ -97,7 +97,7 @@ describe('AskAnswerExecutionService', () => {
     ]);
   });
 
-  it('retries once with current knowledge when the VP snapshot changes before Ask publication', async () => {
+  it('refreshes a moving VP snapshot at most twice before publishing Ask', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
     repository.register(snapshot(), [
       {
@@ -112,7 +112,7 @@ describe('AskAnswerExecutionService', () => {
     let completionAttempts = 0;
     vi.spyOn(repository, 'complete').mockImplementation(async (input) => {
       completionAttempts += 1;
-      if (completionAttempts === 1) {
+      if (completionAttempts < 3) {
         throw new ShotgunError({
           code: 'STALE_VERSION',
           safeMessage: 'The VP snapshot changed during Ask.',
@@ -142,10 +142,61 @@ describe('AskAnswerExecutionService', () => {
         .poll(async () => (await repository.getRunContext(scope, 'run-1'))?.snapshot.state)
         .toBe('SUCCEEDED');
       const completed = await repository.getRunContext(scope, 'run-1');
-      expect(completed?.snapshot.attemptNumber).toBe(2);
+      expect(completed?.snapshot.attemptNumber).toBe(3);
       expect(completed?.snapshot.statements[0]?.text).toBe('The source quote.');
-      expect(providerCalls).toBe(2);
-      expect(completionAttempts).toBe(2);
+      expect(providerCalls).toBe(3);
+      expect(completionAttempts).toBe(3);
+    } finally {
+      await stop();
+    }
+  });
+
+  it('stops after three failed VP snapshot publication attempts', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot(), [
+      {
+        evidenceId: 'evidence-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        exactQuote: 'The source quote.',
+        sensitivity: 'internal',
+      },
+    ]);
+    let completionAttempts = 0;
+    vi.spyOn(repository, 'complete').mockImplementation(async () => {
+      completionAttempts += 1;
+      throw new ShotgunError({
+        code: 'STALE_VERSION',
+        safeMessage: 'The VP snapshot changed during Ask.',
+        module: 'frontend-ask-execution-postgres',
+        operation: 'complete-vp-snapshot',
+        retryable: true,
+      });
+    });
+    let providerCalls = 0;
+    const service = new AskAnswerExecutionService(
+      repository,
+      provider(async () => {
+        providerCalls += 1;
+        return {
+          answer: 'The source quote.',
+          citations: [{ evidenceId: 'evidence-1' }],
+          provider: { provider: 'test-provider', model: 'test-model' },
+        };
+      }),
+    );
+
+    const stop = await service.startWorker(5);
+    try {
+      await expect
+        .poll(async () => (await repository.getRunContext(scope, 'run-1'))?.snapshot.state)
+        .toBe('FAILED');
+      const failed = await repository.getRunContext(scope, 'run-1');
+      expect(failed?.snapshot.attemptNumber).toBe(3);
+      expect(failed?.snapshot.failure?.code).toBe('STALE_VERSION');
+      expect(failed?.snapshot.statements).toEqual([]);
+      expect(providerCalls).toBe(3);
+      expect(completionAttempts).toBe(3);
     } finally {
       await stop();
     }

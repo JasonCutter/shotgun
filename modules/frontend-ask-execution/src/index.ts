@@ -61,6 +61,14 @@ export type AskKnowledgeEvidenceSearchResult = AskKnowledgeSnapshot & {
   readonly evidenceIds: readonly string[];
 };
 
+/** Minimal SQL boundary used to keep a VP freshness check in its caller's transaction. */
+export type AskKnowledgeQueryExecutor = {
+  query<T extends Record<string, unknown> = Record<string, unknown>>(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ readonly rows: readonly T[] }>;
+};
+
 /** VP is the authoritative knowledge read boundary for AUTO_PROJECT_KNOWLEDGE. */
 export type AskKnowledgeEvidenceSearchPort = {
   search(input: {
@@ -72,9 +80,13 @@ export type AskKnowledgeEvidenceSearchPort = {
   }): Promise<AskKnowledgeEvidenceSearchResult>;
   isSnapshotCurrent(input: {
     readonly projectId: string;
+    readonly question: string;
     readonly accessScope: readonly string[];
     readonly authorizedSensitivities: readonly AskExecutionScope['sensitivityClearance'][];
     readonly snapshot: AskKnowledgeSnapshot;
+    readonly evidenceIds: readonly string[];
+    readonly limit: number;
+    readonly queryExecutor?: AskKnowledgeQueryExecutor;
   }): Promise<boolean>;
 };
 
@@ -493,6 +505,9 @@ const retryableFailureCodes = new Set([
   'VALIDATION_ERROR',
   'STALE_VERSION',
 ]);
+
+/** Ask may refresh a moving VP snapshot twice, then fails closed. */
+const MAX_AUTOMATIC_STALE_VP_ATTEMPTS = 3;
 
 const sensitivityRank = {
   public: 0,
@@ -1120,7 +1135,7 @@ export class AskAnswerExecutionService {
         error instanceof ShotgunError &&
         error.code === 'STALE_VERSION' &&
         error.operation === 'complete-vp-snapshot' &&
-        attempt.kind === 'INITIAL' &&
+        attempt.attemptNumber < MAX_AUTOMATIC_STALE_VP_ATTEMPTS &&
         failed.state === 'FAILED'
       ) {
         clearInterval(heartbeat);

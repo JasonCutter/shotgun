@@ -54,6 +54,12 @@ const selectorsOf = (
 ): readonly SourceSelector[] => output.sourceMap.entries.flatMap((entry) => entry.selectors ?? []);
 
 describe('Stage 8 format Golden Corpus', () => {
+  it('versions PDF formula recovery as a distinct transformation revision', () => {
+    const adapter = new PythonDocumentFormatAdapter({ pythonExecutable });
+
+    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.3.0' });
+  });
+
   it.each([
     ['golden.html', 'text/html', 'CssSelector', 'Shotgun Format Golden'],
     ['golden.pdf', 'application/pdf', 'PageSelector', 'Shotgun'],

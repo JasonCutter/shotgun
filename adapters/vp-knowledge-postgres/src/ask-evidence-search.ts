@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import { sha256Text, stableJson } from '../../../packages/contracts/src/index.js';
 import type {
   AskKnowledgeEvidenceSearchPort,
+  AskKnowledgeQueryExecutor,
   AskKnowledgeSnapshot,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 
@@ -20,10 +21,10 @@ type KnowledgeSnapshotRow = {
 };
 
 const readSnapshot = async (
-  pool: Pool,
+  executor: AskKnowledgeQueryExecutor,
   input: KnowledgeSnapshotInput,
 ): Promise<AskKnowledgeSnapshot> => {
-  const result = await pool.query<KnowledgeSnapshotRow>(
+  const result = await executor.query<KnowledgeSnapshotRow>(
     `WITH accessible_latest_versions AS (
        SELECT source.source_id::text AS source_id,
               version.source_version_id::text AS source_version_id
@@ -84,12 +85,19 @@ export class PostgresVPAskEvidenceSearch implements AskKnowledgeEvidenceSearchPo
   async search(
     input: Parameters<AskKnowledgeEvidenceSearchPort['search']>[0],
   ): Promise<Awaited<ReturnType<AskKnowledgeEvidenceSearchPort['search']>>> {
-    const snapshot = await readSnapshot(this.pool, input);
+    return this.searchWithExecutor(this.pool, input);
+  }
+
+  private async searchWithExecutor(
+    executor: AskKnowledgeQueryExecutor,
+    input: Parameters<AskKnowledgeEvidenceSearchPort['search']>[0],
+  ): Promise<Awaited<ReturnType<AskKnowledgeEvidenceSearchPort['search']>>> {
+    const snapshot = await readSnapshot(executor, input);
     if (!input.projectId || !input.question.trim() || input.accessScope.length === 0) {
       return { ...snapshot, evidenceIds: [] };
     }
     const limit = Math.max(1, Math.min(12, Math.floor(input.limit)));
-    const result = await this.pool.query<{ evidence_id: string }>(
+    const result = await executor.query<{ evidence_id: string }>(
       `WITH raw_query_terms AS (
          SELECT regexp_split_to_table(
            trim(regexp_replace(lower($2), '[^[:alnum:]가-힣]+', ' ', 'g')),
@@ -181,14 +189,19 @@ export class PostgresVPAskEvidenceSearch implements AskKnowledgeEvidenceSearchPo
 
   async isSnapshotCurrent(input: {
     readonly projectId: string;
+    readonly question: string;
     readonly accessScope: readonly string[];
     readonly authorizedSensitivities: readonly ('public' | 'internal' | 'private' | 'restricted')[];
     readonly snapshot: AskKnowledgeSnapshot;
+    readonly evidenceIds: readonly string[];
+    readonly limit: number;
+    readonly queryExecutor?: AskKnowledgeQueryExecutor;
   }): Promise<boolean> {
-    const current = await readSnapshot(this.pool, input);
+    const current = await this.searchWithExecutor(input.queryExecutor ?? this.pool, input);
     return (
-      current.knowledgeEpoch === input.snapshot.knowledgeEpoch &&
-      current.sourceWatermark === input.snapshot.sourceWatermark
+      current.sourceWatermark === input.snapshot.sourceWatermark &&
+      current.evidenceIds.length === input.evidenceIds.length &&
+      current.evidenceIds.every((evidenceId, index) => evidenceId === input.evidenceIds[index])
     );
   }
 }

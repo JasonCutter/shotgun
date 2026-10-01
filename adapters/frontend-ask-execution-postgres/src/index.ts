@@ -59,6 +59,7 @@ import type {
 type RunRow = QueryResultRow & {
   readonly answer_run_id: string;
   readonly project_id: string;
+  readonly question: string;
   readonly state: AskAnswerRunSnapshot['state'];
   readonly attempt_number: number;
   readonly event_revision: number;
@@ -238,6 +239,16 @@ const staleVPCompletion = (): ShotgunError =>
     safeMessage: 'VP knowledge changed while Ask was being answered; the result was not published.',
     module: 'frontend-ask-execution-postgres',
     operation: 'complete-vp-snapshot',
+    retryable: true,
+  });
+
+const staleVPResolution = (): ShotgunError =>
+  new ShotgunError({
+    code: 'STALE_VERSION',
+    safeMessage:
+      'VP knowledge changed while Ask was resolving its evidence. The lookup was refreshed once; try again after source processing settles.',
+    module: 'frontend-ask-execution-postgres',
+    operation: 'resolve-vp-snapshot',
     retryable: true,
   });
 
@@ -801,62 +812,69 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       if (!this.vpEvidenceSearch) {
         throw invalid('VP knowledge authority is not configured for project-wide Ask.');
       }
-      const search = await this.vpEvidenceSearch.search({
-        projectId: scope.projectId,
-        question: snapshot.question,
-        accessScope: scope.accessScope ?? [],
-        authorizedSensitivities: allowedSensitivities,
-        limit: 12,
-      });
-      vpSnapshot = {
-        knowledgeEpoch: search.knowledgeEpoch,
-        sourceWatermark: search.sourceWatermark,
-      };
-      const candidateIds = search.evidenceIds.slice(0, 12);
-      vpEvidenceRows =
-        candidateIds.length === 0
-          ? []
-          : (
-              await this.pool.query<EvidenceRow>(
-                `SELECT spans.evidence_id::text, spans.source_id::text,
-                      spans.source_version_id::text,
-                      spans.quote ->> 'exact' AS exact_quote, spans.sensitivity
-                 FROM evidence.spans AS spans
-                 JOIN asset.sources AS source
-                   ON source.source_id = spans.source_id
-                  AND source.project_id = spans.project_id
-                 JOIN asset.source_versions AS version
-                   ON version.source_version_id = spans.source_version_id
-                  AND version.source_id = source.source_id
-                 JOIN source_product.source_stage3_progress AS progress
-                   ON progress.project_id = spans.project_id
-                  AND progress.source_version_id = spans.source_version_id
-                  AND progress.state = 'STAGE3_COMPLETED'
-                WHERE spans.project_id = $1
-                  AND spans.evidence_id::text = ANY($2::text[])
-                  AND spans.access_scope <@ $3::text[]
-                  AND spans.sensitivity = ANY($4::text[])
-                  AND version.access_scope <@ $3::text[]
-                  AND version.sensitivity = ANY($4::text[])
-                  AND version.version_number = (
-                    SELECT max(newer.version_number)
-                      FROM asset.source_versions AS newer
-                     WHERE newer.source_id = source.source_id
-                  )
-                ORDER BY array_position($2::text[], spans.evidence_id::text)`,
-                [scope.projectId, candidateIds, scope.accessScope ?? [], allowedSensitivities],
-              )
-            ).rows;
-      if (
-        !(await this.vpEvidenceSearch.isSnapshotCurrent({
+      for (let resolutionPass = 0; resolutionPass < 2; resolutionPass += 1) {
+        const search = await this.vpEvidenceSearch.search({
           projectId: scope.projectId,
+          question: snapshot.question,
           accessScope: scope.accessScope ?? [],
           authorizedSensitivities: allowedSensitivities,
-          snapshot: vpSnapshot,
-        }))
-      ) {
-        throw invalid('VP knowledge changed while Ask was resolving its evidence.');
+          limit: 12,
+        });
+        const candidateSnapshot = {
+          knowledgeEpoch: search.knowledgeEpoch,
+          sourceWatermark: search.sourceWatermark,
+        };
+        const candidateIds = search.evidenceIds.slice(0, 12);
+        const candidateRows =
+          candidateIds.length === 0
+            ? []
+            : (
+                await this.pool.query<EvidenceRow>(
+                  `SELECT spans.evidence_id::text, spans.source_id::text,
+                        spans.source_version_id::text,
+                        spans.quote ->> 'exact' AS exact_quote, spans.sensitivity
+                   FROM evidence.spans AS spans
+                   JOIN asset.sources AS source
+                     ON source.source_id = spans.source_id
+                    AND source.project_id = spans.project_id
+                   JOIN asset.source_versions AS version
+                     ON version.source_version_id = spans.source_version_id
+                    AND version.source_id = source.source_id
+                   JOIN source_product.source_stage3_progress AS progress
+                     ON progress.project_id = spans.project_id
+                    AND progress.source_version_id = spans.source_version_id
+                    AND progress.state = 'STAGE3_COMPLETED'
+                  WHERE spans.project_id = $1
+                    AND spans.evidence_id::text = ANY($2::text[])
+                    AND spans.access_scope <@ $3::text[]
+                    AND spans.sensitivity = ANY($4::text[])
+                    AND version.access_scope <@ $3::text[]
+                    AND version.sensitivity = ANY($4::text[])
+                    AND version.version_number = (
+                      SELECT max(newer.version_number)
+                        FROM asset.source_versions AS newer
+                       WHERE newer.source_id = source.source_id
+                    )
+                  ORDER BY array_position($2::text[], spans.evidence_id::text)`,
+                  [scope.projectId, candidateIds, scope.accessScope ?? [], allowedSensitivities],
+                )
+              ).rows;
+        const snapshotCurrent = await this.vpEvidenceSearch.isSnapshotCurrent({
+          projectId: scope.projectId,
+          question: snapshot.question,
+          accessScope: scope.accessScope ?? [],
+          authorizedSensitivities: allowedSensitivities,
+          snapshot: candidateSnapshot,
+          evidenceIds: candidateRows.map((row) => row.evidence_id),
+          limit: 12,
+        });
+        if (snapshotCurrent) {
+          vpSnapshot = candidateSnapshot;
+          vpEvidenceRows = candidateRows;
+          break;
+        }
       }
+      if (!vpSnapshot || !vpEvidenceRows) throw staleVPResolution();
     }
     const automaticProjectEvidence = vpEvidenceRows;
     const evidenceIds =
@@ -1425,36 +1443,6 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly usage?: AskAnswerRunUsage;
     readonly workerId: string;
   }): Promise<AskAnswerRunSnapshot> {
-    let vpKnowledgeEpoch: string | undefined;
-    if (input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP4) {
-      const attempt = await this.pool.query<{
-        readonly vp_knowledge_epoch: string | null;
-        readonly vp_source_watermark: string | null;
-      }>(
-        `SELECT vp_knowledge_epoch, vp_source_watermark
-           FROM frontend_ask.answer_run_attempts
-          WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $3`,
-        [input.answerRunId, input.scope.projectId, input.attemptNumber],
-      );
-      const pinned = attempt.rows[0];
-      if (
-        !pinned?.vp_knowledge_epoch ||
-        !pinned.vp_source_watermark ||
-        !this.vpEvidenceSearch ||
-        !(await this.vpEvidenceSearch.isSnapshotCurrent({
-          projectId: input.scope.projectId,
-          accessScope: input.scope.accessScope ?? [],
-          authorizedSensitivities: deriveAuthorizedSensitivities(input.scope.sensitivityClearance),
-          snapshot: {
-            knowledgeEpoch: pinned.vp_knowledge_epoch,
-            sourceWatermark: pinned.vp_source_watermark,
-          },
-        }))
-      ) {
-        throw staleVPCompletion();
-      }
-      vpKnowledgeEpoch = pinned.vp_knowledge_epoch;
-    }
     await this.poolTransaction(async (client) => {
       const row = await this.lockRun(client, input.scope, input.answerRunId);
       if (!row) return;
@@ -1470,15 +1458,55 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         }))
       )
         return;
-      if (vpKnowledgeEpoch !== undefined) {
-        const epoch = await client.query<{ readonly current_epoch: string }>(
+      if (input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP4) {
+        if (!this.vpEvidenceSearch) throw staleVPCompletion();
+        await client.query(
           `SELECT current_epoch::text
              FROM vp.project_epochs
             WHERE project_id = $1
             FOR SHARE`,
           [input.scope.projectId],
         );
-        if ((epoch.rows[0]?.current_epoch ?? '0') !== vpKnowledgeEpoch) {
+        const pinnedResult = await client.query<{
+          readonly attempt_id: string;
+          readonly vp_knowledge_epoch: string | null;
+          readonly vp_source_watermark: string | null;
+        }>(
+          `SELECT attempt_id, vp_knowledge_epoch, vp_source_watermark
+             FROM frontend_ask.answer_run_attempts
+            WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $3`,
+          [input.answerRunId, input.scope.projectId, input.attemptNumber],
+        );
+        const pinned = pinnedResult.rows[0];
+        const evidence = pinned
+          ? await client.query<{ readonly evidence_id: string }>(
+              `SELECT evidence_id::text
+                 FROM frontend_ask.answer_attempt_evidence
+                WHERE attempt_id = $1
+                ORDER BY evidence_ordinal`,
+              [pinned.attempt_id],
+            )
+          : undefined;
+        if (
+          !pinned?.vp_knowledge_epoch ||
+          !pinned.vp_source_watermark ||
+          !evidence ||
+          !(await this.vpEvidenceSearch.isSnapshotCurrent({
+            projectId: input.scope.projectId,
+            question: row.question,
+            accessScope: input.scope.accessScope ?? [],
+            authorizedSensitivities: deriveAuthorizedSensitivities(
+              input.scope.sensitivityClearance,
+            ),
+            snapshot: {
+              knowledgeEpoch: pinned.vp_knowledge_epoch,
+              sourceWatermark: pinned.vp_source_watermark,
+            },
+            evidenceIds: evidence.rows.map((item) => item.evidence_id),
+            limit: 12,
+            queryExecutor: client,
+          }))
+        ) {
           throw staleVPCompletion();
         }
       }
@@ -2419,15 +2447,28 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       if (!context.vpKnowledgeEpoch || !context.vpSourceWatermark) {
         throw invalid('The VP knowledge snapshot is incomplete.');
       }
-      const epoch = await client.query<{ readonly current_epoch: string }>(
+      await client.query(
         `SELECT current_epoch::text
            FROM vp.project_epochs
           WHERE project_id = $1
           FOR SHARE`,
         [scope.projectId],
       );
-      if ((epoch.rows[0]?.current_epoch ?? '0') !== context.vpKnowledgeEpoch) {
-        throw invalid('VP knowledge changed before Ask started; the answer was not generated.');
+      const current = await this.vpEvidenceSearch?.isSnapshotCurrent({
+        projectId: scope.projectId,
+        question: context.snapshot.question,
+        accessScope: scope.accessScope ?? [],
+        authorizedSensitivities: deriveAuthorizedSensitivities(scope.sensitivityClearance),
+        snapshot: {
+          knowledgeEpoch: context.vpKnowledgeEpoch,
+          sourceWatermark: context.vpSourceWatermark,
+        },
+        evidenceIds: context.evidence.map((evidence) => evidence.evidenceId),
+        limit: 12,
+        queryExecutor: client,
+      });
+      if (!current) {
+        throw staleVPResolution();
       }
     }
     if (pin) {
@@ -2605,7 +2646,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   ): Promise<RunRow | undefined> {
     const result = await client.query<RunRow>(
       `SELECT answer_run_id, project_id, state, attempt_number, event_revision,
-              access_scope, sensitivity_clearance, access_revision,
+              question, access_scope, sensitivity_clearance, access_revision,
               policy_context_revision, provider_id, model_id,
               ai_configuration_revision, credential_id, credential_revision,
               initial_provider_policy_fingerprint, ai_execution_pin_created_at

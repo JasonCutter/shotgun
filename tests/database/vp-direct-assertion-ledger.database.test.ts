@@ -588,17 +588,45 @@ describe('VP validated direct assertion ledger', () => {
     expect(
       await vpSearch.isSnapshotCurrent({
         projectId,
+        question: '43',
         accessScope: ['owner'],
         authorizedSensitivities: ['public'],
         snapshot: relatedEvidence,
+        evidenceIds: relatedEvidence.evidenceIds,
+        limit: 12,
       }),
     ).toBe(true);
     expect(
       await vpSearch.isSnapshotCurrent({
         projectId,
+        question: '43',
         accessScope: ['owner'],
         authorizedSensitivities: ['public'],
         snapshot: { ...relatedEvidence, knowledgeEpoch: '999999999999' },
+        evidenceIds: relatedEvidence.evidenceIds,
+        limit: 12,
+      }),
+    ).toBe(true);
+    expect(
+      await vpSearch.isSnapshotCurrent({
+        projectId,
+        question: '43',
+        accessScope: ['owner'],
+        authorizedSensitivities: ['public'],
+        snapshot: relatedEvidence,
+        evidenceIds: relatedEvidence.evidenceIds.slice(1),
+        limit: 12,
+      }),
+    ).toBe(false);
+    expect(
+      await vpSearch.isSnapshotCurrent({
+        projectId,
+        question: '43',
+        accessScope: ['owner'],
+        authorizedSensitivities: ['public'],
+        snapshot: { ...relatedEvidence, sourceWatermark: 'sha256:' + '0'.repeat(64) },
+        evidenceIds: relatedEvidence.evidenceIds,
+        limit: 12,
       }),
     ).toBe(false);
     expect(

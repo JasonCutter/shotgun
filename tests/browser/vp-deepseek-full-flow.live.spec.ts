@@ -1597,10 +1597,79 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
           });
         }
       } catch (error) {
+        const [{ PostgresAskAnswerExecutionRepository }, { PostgresVPAskEvidenceSearch }] =
+          (await Promise.all([
+            tsImport(
+              '../../adapters/frontend-ask-execution-postgres/src/index.ts',
+              import.meta.url,
+            ),
+            tsImport(
+              '../../adapters/vp-knowledge-postgres/src/ask-evidence-search.ts',
+              import.meta.url,
+            ),
+          ])) as [
+            {
+              PostgresAskAnswerExecutionRepository: new (
+                pool: Pool,
+                workspace: never,
+                sourceContextReader: { resolve: () => Promise<undefined> },
+                hybridRetrieval: undefined,
+                vpEvidenceSearch: object,
+              ) => {
+                isProjectKnowledgePending(scope: {
+                  principalId: string;
+                  projectId: string;
+                  accessRevision: string;
+                  policyContextRevision: string;
+                  sensitivityClearance: 'private';
+                  accessScope: readonly string[];
+                }): Promise<boolean>;
+              };
+            },
+            { PostgresVPAskEvidenceSearch: new (pool: Pool) => object },
+          ];
+        const askReadinessRepository = new PostgresAskAnswerExecutionRepository(
+          pool,
+          {} as never,
+          { resolve: async () => undefined },
+          undefined,
+          new PostgresVPAskEvidenceSearch(pool),
+        );
+        const knowledgePending = await askReadinessRepository.isProjectKnowledgePending({
+          principalId: 'ask-worker-diagnostic',
+          projectId: 'shotgun',
+          accessRevision: 'diagnostic',
+          policyContextRevision: 'diagnostic',
+          sensitivityClearance: 'private',
+          accessScope: ['owner'],
+        });
+        const latestNpvRun = await pool.query<{
+          readonly state: string;
+          readonly attempt: Record<string, unknown> | null;
+        }>(
+          `SELECT run.state, to_jsonb(attempt) AS attempt
+             FROM frontend_ask.answer_runs AS run
+             LEFT JOIN frontend_ask.answer_run_attempts AS attempt
+               ON attempt.answer_run_id = run.answer_run_id
+              AND attempt.project_id = run.project_id
+              AND attempt.attempt_number = run.attempt_number
+            WHERE run.project_id = 'shotgun'
+              AND run.question LIKE 'NPV가 0보다 클 때%'
+            ORDER BY run.created_at DESC LIMIT 1`,
+        );
         console.error(
           JSON.stringify({
             summary: 'vp-live-finance-pdf-ask-diagnostic-v1',
             sourceVersionId: source.sourceVersionId,
+            knowledgePending,
+            latestNpvRun: latestNpvRun.rows[0]
+              ? {
+                  state: latestNpvRun.rows[0].state,
+                  attemptState: latestNpvRun.rows[0].attempt?.state,
+                  attemptFailureCode: latestNpvRun.rows[0].attempt?.failure_code,
+                  attemptFailureMessage: latestNpvRun.rows[0].attempt?.failure_message,
+                }
+              : undefined,
             providerResponses,
             askStatus: await page
               .locator('.ask-turn')

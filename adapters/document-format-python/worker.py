@@ -23,6 +23,7 @@ MAX_PDFIUM_TEXT_ROWS = 20_000
 PDFIUM_EQUATION_PREFIX_PATTERN = re.compile(r"^([A-Z]{1,8}|[가-힣]{2,16})\s*=")
 MAX_PDF_BLOCKS = 8192
 MAX_CSV_BLOCKS = 8192
+MAX_CSV_DERIVED_FACT_CELLS = 256
 MAX_SELECTORS = 16384
 MAX_IMAGE_DESCRIPTION = 128000
 MAX_IMAGE_DIMENSION = 8192
@@ -1207,6 +1208,9 @@ def csv_blocks(data: bytes) -> list[dict[str, Any]]:
         in {"key", "name", "field", "property", "항목", "이름", "키"}
         and headers[1].strip().casefold() in {"value", "값", "내용"}
     )
+    if len(cells) > MAX_CSV_DERIVED_FACT_CELLS:
+        return cells
+
     for row_number, row in enumerate(rows[1:], 2):
         facts: list[tuple[str, list[dict[str, Any]]]] = []
         if key_value_table and len(row) >= 2:

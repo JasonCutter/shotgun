@@ -125,16 +125,19 @@ and `openpyxl` `3.1.5` (`MIT`, exact package pin in
 The adapter identity is now `shotgun.document-formats@1.9.0`, and the prior
 `1.8.0` transformation remains an available rollback target.
 
-- CSV still emits every original cell with its own `CellSelector`. It also
-  emits bounded header/value facts with selectors for both cells; the common
-  two-column Key/Value form is rendered as a single `key: value` fact. Thus a
-  question about a field can retrieve its value without discarding raw cells.
+- CSV always emits every original non-empty cell with its own `CellSelector`.
+  For inputs with at most 256 non-empty cells, it also emits header/value facts
+  with selectors for both cells; the common two-column Key/Value form is
+  rendered as a single `key: value` fact. Larger CSV inputs retain their raw
+  cell Evidence without derived facts, preserving the established 1,600-cell
+  output contract and avoiding unbounded duplication.
 - XLSX formula cells retain the exact formula string and cell selector while
   adding a `Formula:` label so a question asking about a formula can retrieve
   the cell as evidence. The adapter does not calculate formulas or claim that
   cached workbook results are current.
-- The combined CSV cell and derived-fact count remains under the existing
-  logical-block budget. Python unit/format Contract tests pass 35/35; Python
+- Derived facts are limited to CSV inputs with at most 256 non-empty cells, so
+  the combined cell/fact output remains bounded; larger inputs return cells
+  only. Python unit/format Contract tests pass 37/37; Python
   worker tests pass 18/18; the browser two-action upload/revision/Ask journey
   passes for HTML, CSV, DOCX and XLSX using the deterministic test provider.
 

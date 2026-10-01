@@ -154,6 +154,21 @@ describe('Stage 8 format Golden Corpus', () => {
     expect(output.documentIR.blocks.map((item) => item.text)).toContain('Ready');
   });
 
+  it('derives header/value facts for compact CSV tables', async () => {
+    const bytes = Buffer.from('Metric,Amount\nRevenue,100\nCost,70\n', 'utf8');
+    const adapter = new PythonDocumentFormatAdapter({ pythonExecutable });
+    const output = await adapter.transform({
+      sourceId: randomUUID(),
+      sourceVersionId: randomUUID(),
+      sourceContentHash: hashBytes(bytes),
+      mediaType: 'text/csv',
+      contentBase64: bytes.toString('base64'),
+    });
+
+    expect(output.documentIR.blocks.map((item) => item.text)).toContain('Metric: Revenue');
+    expect(output.documentIR.blocks.map((item) => item.text)).toContain('Amount: 100');
+  });
+
   it('replaces unmapped NUL glyphs before storing extracted text', async () => {
     const bytes = Buffer.from('Label,Value\nfoo\u0000bar,7\n');
     const adapter = new PythonDocumentFormatAdapter({ pythonExecutable });

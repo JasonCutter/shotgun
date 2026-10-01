@@ -2,7 +2,7 @@
 
 ## Result
 
-The actual DeepSeek product flow passed once for the five active Stage 8 fixture formats: HTML, CSV, DOCX, XLSX, and PPTX. VP-08 remains open because this run does not cover URL/connected-source freshness behavior, the 1 MiB intake limit, or image/audio/video intake and answer paths.
+The actual DeepSeek product flow passed twice for the five active Stage 8 fixture formats: HTML, CSV, DOCX, XLSX, and PPTX. VP-08 remains open because these runs do not cover URL/connected-source freshness behavior, the 1 MiB intake limit, or image/audio/video intake and answer paths.
 
 ## Scope and method
 
@@ -19,11 +19,11 @@ The actual DeepSeek product flow passed once for the five active Stage 8 fixture
 | XLSX   | `CellSelector`                           | Passed                  |
 | PPTX   | `ShapeSelector`                          | Passed                  |
 
-All five fixture questions returned the expected fixture answer and cited Evidence from that fixture's exact uploaded SourceVersion. The run ended with 6 current assertions, 3 current relations, 0 pending relation jobs, and a matching projection replay. DeepSeek reported 22 responses and 16,252 tokens. Provider-reported tokens are not an invoice or reconciled cost.
+All ten fixture questions returned the expected fixture answer and cited Evidence from that fixture's exact uploaded SourceVersion. Both runs ended with 3 current relations, 0 pending relation jobs, and a matching projection replay. The first run had 6 current assertions, 22 DeepSeek responses, and 16,252 provider-reported tokens; the second had 7 current assertions, 28 responses, and 21,204 tokens. Provider-reported tokens are not an invoice or reconciled cost.
 
 ## Limits
 
-This is one successful live run, not a reproducibility or extraction-quality study. Earlier attempts showed variable candidate activation, including one combined run where no expected PPTX assertion became active; a PPTX-only diagnostic and the later complete five-format run passed. The result therefore does not establish precision/recall, error bounds, or stable behavior across repeated runs. The fixtures are candidate Golden examples and have not been independently adjudicated.
+Two complete live runs now reproduce the five expected answers, citations, and replay result, but they do not reproduce the same extraction workload: current assertions changed from 6 to 7 and provider usage changed from 22 responses / 16,252 tokens to 28 / 21,204. Earlier attempts also showed variable candidate activation, including one combined run where no expected PPTX assertion became active; a PPTX-only diagnostic and both later complete runs passed. These results do not establish precision/recall or error bounds, and the workload variation still needs an explanation. The fixtures are candidate Golden examples and have not been independently adjudicated.
 
 The wider VP-08 gate also requires URL/connected-source last-checked time, expiry, and refresh-failure behavior in answers, plus a decision and verification for the 1 MiB limit and currently unsupported image/audio/video paths. Those checks remain open.
 

@@ -13,14 +13,21 @@ export const VP_RELATION_DIRECTIONS = ['NONE', 'LEFT_TO_RIGHT', 'RIGHT_TO_LEFT']
 
 export type VPRelationDirection = (typeof VP_RELATION_DIRECTIONS)[number];
 
+export const VP_DECISION_PROVIDER_PORT_CONTRACT_VERSION = '1.2.0';
+
 export type VPDecisionAssertion = {
   readonly assertionId: string;
   readonly sourceVersionId: string;
   readonly evidenceId: string;
   readonly text: string;
+  /** Bounded exact quote from the same authorized EvidenceSpan, when useful context differs from the claim. */
+  readonly evidenceContext?: string;
+  readonly evidenceContextTruncated?: boolean;
   readonly accessScope: readonly string[];
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
 };
+
+export const VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT = 2_000;
 
 export type VPRelationDecisionRequest = {
   readonly projectId: string;
@@ -251,6 +258,11 @@ export const assertVPDecisionEgress = (input: VPRelationDecisionRequest): void =
       !assertion.sourceVersionId ||
       !assertion.evidenceId ||
       !assertion.text.trim() ||
+      (assertion.evidenceContext !== undefined &&
+        (!assertion.evidenceContext.trim() ||
+          Array.from(assertion.evidenceContext).length >
+            VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT)) ||
+      (assertion.evidenceContextTruncated === true && assertion.evidenceContext === undefined) ||
       assertion.sensitivity === 'restricted' ||
       !input.authorizedSensitivities.includes(assertion.sensitivity) ||
       assertion.accessScope.length === 0 ||

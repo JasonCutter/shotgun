@@ -604,3 +604,16 @@ Shotgun 로컬 Runtime은 기존 canonical launcher identity 소유권을 유지
 | gbrain Minion (`a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, MIT)     | Job retry/lease 패턴                                                   | `REFERENCE_ONLY`: 앱 프로세스의 로컬 수명 감독은 제공하지 않음                                                           |
 
 선택 근거·보안 범위·회복 계약·교체 및 롤백은 [ADR-167 VP-07 amendment](../adr/ADR-167-canonical-desktop-launcher-repository-and-runtime-identity.md#2026-09-30--vp-07-supervised-application-restart)와 [VP 재기동 시험 보고](../../implementation/vp-runtime-restart-supervision-2026-09-30.md)에 기록한다. 앱 자식 재기동의 unit·실제 Node IPC 시험과 PostgreSQL server container 재기동 후 persisted project API read 시험이 통과했다. Source/미완료 Job 상태에서의 원장 수렴, 백업/restore/cutover/rollback drill은 아직 VP-07 완료 Gate로 남는다.
+
+## VP-04 Decision Evidence context — 2026-10-01
+
+Target: `VPDecisionProviderPort@1.2.0` and `VPRelationJobStorePort`, behind the existing Shotgun relation-job and AI provider adapters.
+
+| Candidate                                                             | Decision          | Boundary                                                                                                                                                                                          |
+| --------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL `evidence.spans` and existing VP relation store            | `AUGMENT`         | Read a bounded exact quote only when project, source, SourceVersion, Evidence ID, access scope, and sensitivity match the current assertion. PostgreSQL remains behind the Shotgun-owned adapter. |
+| DeepSeek through existing `DecisionProviderPort` adapter              | `AUGMENT`         | Pass the same authorized claim pair plus optional bounded Evidence context; preserve provider resolver, Vault, egress checks, daily attempt cap, and durable request digest.                      |
+| `garrytan/gbrain` at `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` / MIT | `REFERENCE_ONLY`  | Relation and evidence patterns only; no runtime, database schema, or identifier is imported.                                                                                                      |
+| External relation-context package/runtime                             | `NO_RELEVANT_OSS` | The change is exact-source retrieval and prompt-boundary handling; no standalone package fits the Shotgun provenance and security contract.                                                       |
+
+No dependency, migration, or OSS-owned contract was added. General AI and Jev adapters share the versioned input shape. Contract tests cover hostile source text, over-limit rejection before provider resolution, and distinct durable request digests when Evidence context differs. PostgreSQL integration verifies exact Evidence lineage/security matching and the 2,000-character truncation signal. Rollback reverts the additive request field and the v6 relation policy revision; append-only decisions remain auditable and require no data migration. Finance corpus v1.2 remains `CANDIDATE`; this change does not close VP-04/05.

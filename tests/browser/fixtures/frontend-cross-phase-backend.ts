@@ -457,7 +457,7 @@ export async function startFrontendCrossPhaseBackend(
         undefined,
         new GeneralAIVPDecisionAdapter(decisionResolver, relationJobs),
         {
-          revision: 'vp-deepseek-relation-v5',
+          revision: 'vp-deepseek-relation-v6-evidence-context',
           minimumChoiceProbability: 0.9,
           maximumDeepAnalysisScore: 0,
           maximumInputTokens: 4_000,
@@ -469,7 +469,7 @@ export async function startFrontendCrossPhaseBackend(
         job.right.sensitivity !== 'restricted' &&
         job.left.accessScope.length > 0 &&
         job.left.accessScope.every((entry) => job.right.accessScope.includes(entry)),
-      'vp-deepseek-relation-v5',
+      'vp-deepseek-relation-v6-evidence-context',
       250,
       1,
     ).startWorker();

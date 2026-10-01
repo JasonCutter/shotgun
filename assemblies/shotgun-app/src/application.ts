@@ -1532,7 +1532,7 @@ export const startShotgunApplication = async (
           undefined,
           new GeneralAIVPDecisionAdapter(stage4AIExecutionResolver, vpRelationJobs),
           {
-            revision: 'vp-deepseek-relation-v5',
+            revision: 'vp-deepseek-relation-v6-evidence-context',
             minimumChoiceProbability: 0.9,
             maximumDeepAnalysisScore: 0,
             maximumInputTokens: 4_000,
@@ -1544,7 +1544,7 @@ export const startShotgunApplication = async (
           job.right.sensitivity !== 'restricted' &&
           job.left.accessScope.length > 0 &&
           job.left.accessScope.every((entry) => job.right.accessScope.includes(entry)),
-        'vp-deepseek-relation-v5',
+        'vp-deepseek-relation-v6-evidence-context',
         60_000,
         1,
       );

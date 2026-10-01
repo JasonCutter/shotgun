@@ -63,6 +63,7 @@ const seedAssertion = async (
     principalId: string;
     assertionId: string;
     text: string;
+    sourceText?: string;
   },
 ): Promise<void> => {
   const sourceId = randomUUID();
@@ -74,11 +75,12 @@ const seedAssertion = async (
   const batchId = randomUUID();
   const indexingId = randomUUID();
   const { projectId, principalId, assertionId, text } = input;
+  const sourceText = input.sourceText ?? text;
   await pool.query(
     `INSERT INTO asset.original_assets
        (asset_id, content_hash, size_bytes, storage_key, created_at)
      VALUES ($1, $2, $3, $4, now())`,
-    [assetId, hash(text), Buffer.byteLength(text), `vp-priority-${assetId}`],
+    [assetId, hash(sourceText), Buffer.byteLength(sourceText), `vp-priority-${assetId}`],
   );
   await pool.query(
     `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
@@ -99,7 +101,15 @@ const seedAssertion = async (
         source_map_hash, access_scope, sensitivity, created_at)
      VALUES ($1, $2, $3, $4, $5, 'test-transformer', '1.0.0', '{}'::jsonb,
              '{}'::jsonb, $6, $7, '{owner}', 'public', now())`,
-    [revisionId, projectId, sourceId, sourceVersionId, hash(text), hash(text), hash(sourceId)],
+    [
+      revisionId,
+      projectId,
+      sourceId,
+      sourceVersionId,
+      hash(sourceText),
+      hash(sourceText),
+      hash(sourceId),
+    ],
   );
   await pool.query(
     `INSERT INTO evidence.spans
@@ -114,9 +124,9 @@ const seedAssertion = async (
       projectId,
       sourceId,
       sourceVersionId,
-      JSON.stringify({ start: 0, end: text.length }),
-      JSON.stringify({ exact: text }),
-      hash(text),
+      JSON.stringify({ start: 0, end: sourceText.length }),
+      JSON.stringify({ exact: sourceText }),
+      hash(sourceText),
     ],
   );
   await pool.query(
@@ -201,7 +211,7 @@ it('prioritizes the related cross-source pair before an older unrelated pair', a
       projectId,
       principalId: principal.principalId,
       assertionId: anchor,
-      text: '자산 = 부채 + 자본',
+      text: '할인율이 높아지면 현재가치는 낮아진다.',
     });
     await seedAssertion(pool, {
       projectId,
@@ -213,16 +223,65 @@ it('prioritizes the related cross-source pair before an older unrelated pair', a
       projectId,
       principalId: principal.principalId,
       assertionId: related,
-      text: '자산 = 부채 + 자본이다.',
+      text: '같은 미래 현금흐름과 기간이 유지되면 할인율 상승은 현재가치를 낮춘다.',
+      sourceText:
+        '재무 계산의 전제입니다. '.repeat(180) +
+        'NPV 공식에서 미래 현금흐름과 기간이 고정될 때 할인율이 높아질수록 현재가치는 낮아진다. ' +
+        '같은 미래 현금흐름과 기간이 유지되면 할인율 상승은 현재가치를 낮춘다.',
     });
     const jobs = new PostgresVPRelationJobs(pool);
-    expect(await jobs.enqueueCurrentPairs(`vp-priority-${randomUUID()}`, 1)).toBe(1);
+    const policyRevision = `vp-priority-${randomUUID()}`;
+    expect(await jobs.enqueueCurrentPairs(policyRevision, 1)).toBe(1);
     const selected = await pool.query<{ left_assertion_id: string; right_assertion_id: string }>(
       `SELECT left_assertion_id::text, right_assertion_id::text
          FROM vp.relation_jobs WHERE project_id = $1`,
       [projectId],
     );
     expect(selected.rows).toEqual([{ left_assertion_id: anchor, right_assertion_id: related }]);
+    let providerInput: Parameters<VPDecisionProviderPort['decideRelation']>[0] | undefined;
+    const provider: VPDecisionProviderPort = {
+      decideRelation: async (input) => {
+        providerInput = input;
+        return {
+          choice: 'EQUIVALENT',
+          confidence: 0.95,
+          probabilities: {
+            EQUIVALENT: 0.95,
+            SUPPORTS: 0.01,
+            QUALIFIES: 0.01,
+            CONTRADICTS: 0.01,
+            RELATED: 0.01,
+            UNRESOLVED: 0.01,
+          },
+          deepAnalysisScore: 0,
+          model: 'deepseek/test-model',
+          inputTokens: 50,
+          outputTokens: 10,
+        };
+      },
+    };
+    const worker = new VPRelationJobWorker(
+      jobs,
+      new VPRelationDecisionRouter(undefined, provider, {
+        revision: policyRevision,
+        minimumChoiceProbability: 0.9,
+        maximumDeepAnalysisScore: 0,
+        maximumInputTokens: 4_000,
+        maximumOutputTokens: 256,
+      }),
+      async () => true,
+      policyRevision,
+    );
+    expect(await worker.dispatchOnce()).toBe('DECIDED');
+    expect(providerInput?.left.text).toBe('할인율이 높아지면 현재가치는 낮아진다.');
+    expect(providerInput?.left.evidenceContext).toBeUndefined();
+    expect(providerInput?.right.evidenceContextTruncated).toBe(true);
+    expect(Array.from(providerInput?.right.evidenceContext ?? '').length).toBeLessThanOrEqual(
+      2_000,
+    );
+    expect(providerInput?.right.evidenceContext).toContain(
+      '같은 미래 현금흐름과 기간이 유지되면 할인율 상승은 현재가치를 낮춘다.',
+    );
   } finally {
     await database.dispose();
   }

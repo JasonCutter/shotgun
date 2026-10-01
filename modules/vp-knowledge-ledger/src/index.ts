@@ -5,6 +5,8 @@ export type VPCurrentAssertion = {
   readonly sourceVersionId: string;
   readonly evidenceId: string;
   readonly claimText: string;
+  readonly evidenceContext?: string;
+  readonly evidenceContextTruncated?: boolean;
   readonly accessScope: readonly string[];
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
 };
@@ -60,11 +62,17 @@ export type VPRelationDecisionPort = {
     readonly left: Pick<
       VPCurrentAssertion,
       'assertionId' | 'sourceVersionId' | 'evidenceId' | 'accessScope' | 'sensitivity'
-    > & { readonly text: string };
+    > &
+      Pick<VPCurrentAssertion, 'evidenceContext' | 'evidenceContextTruncated'> & {
+        readonly text: string;
+      };
     readonly right: Pick<
       VPCurrentAssertion,
       'assertionId' | 'sourceVersionId' | 'evidenceId' | 'accessScope' | 'sensitivity'
-    > & { readonly text: string };
+    > &
+      Pick<VPCurrentAssertion, 'evidenceContext' | 'evidenceContextTruncated'> & {
+        readonly text: string;
+      };
     readonly allowedAccessScope: readonly string[];
     readonly authorizedSensitivities: readonly VPCurrentAssertion['sensitivity'][];
     readonly externalEgressAllowed: boolean;
@@ -121,6 +129,12 @@ export class VPRelationJobWorker {
           sourceVersionId: job.left.sourceVersionId,
           evidenceId: job.left.evidenceId,
           text: job.left.claimText,
+          ...(job.left.evidenceContext === undefined
+            ? {}
+            : {
+                evidenceContext: job.left.evidenceContext,
+                evidenceContextTruncated: job.left.evidenceContextTruncated ?? false,
+              }),
           accessScope: job.left.accessScope,
           sensitivity: job.left.sensitivity,
         },
@@ -129,6 +143,12 @@ export class VPRelationJobWorker {
           sourceVersionId: job.right.sourceVersionId,
           evidenceId: job.right.evidenceId,
           text: job.right.claimText,
+          ...(job.right.evidenceContext === undefined
+            ? {}
+            : {
+                evidenceContext: job.right.evidenceContext,
+                evidenceContextTruncated: job.right.evidenceContextTruncated ?? false,
+              }),
           accessScope: job.right.accessScope,
           sensitivity: job.right.sensitivity,
         },

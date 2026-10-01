@@ -191,13 +191,24 @@ describe.skipIf(!live)('VP DeepSeek live decision proof', () => {
         }),
       };
       const decision = new GeneralAIVPDecisionAdapter(resolver);
-      const pair = (left: string, right: string): VPRelationDecisionRequest => ({
+      const pair = (
+        left: string,
+        right: string,
+        leftEvidenceContext?: string,
+        leftEvidenceContextTruncated = false,
+      ): VPRelationDecisionRequest => ({
         projectId: configuration!.project_id,
         left: {
           assertionId: 'synthetic-left',
           sourceVersionId: 'synthetic-version-left',
           evidenceId: 'synthetic-evidence-left',
           text: left,
+          ...(leftEvidenceContext === undefined
+            ? {}
+            : {
+                evidenceContext: leftEvidenceContext,
+                evidenceContextTruncated: leftEvidenceContextTruncated,
+              }),
           accessScope: ['owner'],
           sensitivity: 'public',
         },
@@ -212,7 +223,7 @@ describe.skipIf(!live)('VP DeepSeek live decision proof', () => {
         allowedAccessScope: ['owner'],
         authorizedSensitivities: ['public'],
         externalEgressAllowed: true,
-        policyRevision: 'vp-deepseek-relation-v5',
+        policyRevision: 'vp-deepseek-relation-v6-evidence-context',
       });
       const requestedCaseId = process.env.VP_RELATION_CASE_ID?.trim();
       const requestedCorpusId = process.env.VP_RELATION_CORPUS_ID?.trim();
@@ -254,7 +265,13 @@ describe.skipIf(!live)('VP DeepSeek live decision proof', () => {
         const started = performance.now();
         lastProviderResponse.current = undefined;
         try {
-          const result = await decision.decideRelation(pair(sample.left, sample.right));
+          const leftEvidenceContext =
+            sample.caseId === 'finance-discount-rate-present-value'
+              ? '할인율이 높아질수록 현재가치는 낮아진다. 반대로 할인율이 낮아지면 현재가치는 높아진다. NPV = Σ CF_t/(1+r)^t − I_0; CF_t는 각 기간의 현금흐름, r은 할인율 또는 자본비용이다.'
+              : undefined;
+          const result = await decision.decideRelation(
+            pair(sample.left, sample.right, leftEvidenceContext),
+          );
           const elapsedMs = Math.round(performance.now() - started);
           expect(validVPRelationDecision(result)).toBe(true);
           expect(result.model).toMatch(/^deepseek\//);
@@ -345,7 +362,7 @@ describe.skipIf(!live)('VP DeepSeek live decision proof', () => {
               ).length,
             },
           ].filter((sample) => sample.selectedSampleCount > 0),
-          policyRevision: 'vp-deepseek-relation-v5',
+          policyRevision: 'vp-deepseek-relation-v6-evidence-context',
           sampleCount: corpus.length,
           providerResponseCount: providerMeasurements.length,
           decisionCount: outcomes.filter((outcome) => outcome.choice !== undefined).length,

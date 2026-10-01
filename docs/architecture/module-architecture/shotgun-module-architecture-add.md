@@ -31,7 +31,7 @@
 
 [ADR-172](../adr/ADR-172-vp-autonomous-knowledge-authority.md)는 이 문서가 정의한 모듈·Port·Adapter·데이터 소유권 경계 안에서 새 VP 지식 경로를 결정한다. 위 0.1절과 아래의 Canonical 승인·미승인 Candidate 금지 규칙은 기존 승인형 경로에 적용한다. VP에서 자료 투입 후 지식화는 사용자의 Review·Approval을 요구하지 않으며, VP Knowledge Ledger만 새 공간의 활성 지식 원장을 쓴다. Ask는 접근 가능한 최신 SourceVersion·Evidence와 VP 투영을 사용하고, 승인형 Canonical을 두 번째 지식 권위로 섞지 않는다.
 
-VP Assertion은 원문이 주장한 내용이며 자동으로 객관적 Fact가 되지 않는다. Evidence 연결, 버전·접근·민감도 검증, 결정 영수증, 재생 가능한 투영, 외부 Action의 별도 승인 경계는 유지한다. VP Ledger·Decision·Ask의 각 Port와 데이터 소유권은 [VP 구현계획](../../implementation/vp-vampire-implementation-plan.md)과 모듈 Manifest에 기록한다. 기존 승인형 저장소는 새 VP 공간으로 이관하지 않는다.
+VP Assertion은 원문이 주장한 내용이며 자동으로 객관적 Fact가 되지 않는다. Evidence 연결, 버전·접근·민감도 검증, 결정 영수증, 재생 가능한 투영, 외부 Action의 별도 승인 경계는 유지한다. 관계 판단에는 필요할 때 같은 검증 EvidenceSpan의 길이 제한된 원문 인용을 추가할 수 있으며, 인용은 실행 지시가 아닌 비신뢰 자료로 전달하고 결정 digest에 포함한다. VP Ledger·Decision·Ask의 각 Port와 데이터 소유권은 [VP 구현계획](../../implementation/vp-vampire-implementation-plan.md)과 모듈 Manifest에 기록한다. 기존 승인형 저장소는 새 VP 공간으로 이관하지 않는다.
 
 ## 1. 배경과 문제
 

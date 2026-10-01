@@ -12,6 +12,7 @@ import {
   type VPDecisionExecutionClaim,
   type VPDecisionExecutionRepositoryPort,
   type VPRelationDecision,
+  VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT,
   validVPRelationDecision,
 } from '../../../modules/vp-decision/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
@@ -27,6 +28,8 @@ type PairRow = QueryResultRow & {
   readonly left_source_version_id: string;
   readonly left_evidence_id: string;
   readonly left_claim_text: string;
+  readonly left_evidence_context: string | null;
+  readonly left_evidence_context_truncated: boolean;
   readonly left_access_scope: string[];
   readonly left_sensitivity: VPCurrentAssertion['sensitivity'];
   readonly right_assertion_id: string;
@@ -34,6 +37,8 @@ type PairRow = QueryResultRow & {
   readonly right_source_version_id: string;
   readonly right_evidence_id: string;
   readonly right_claim_text: string;
+  readonly right_evidence_context: string | null;
+  readonly right_evidence_context_truncated: boolean;
   readonly right_access_scope: string[];
   readonly right_sensitivity: VPCurrentAssertion['sensitivity'];
 };
@@ -45,6 +50,14 @@ const assertion = (row: PairRow, side: 'left' | 'right'): VPCurrentAssertion => 
   sourceVersionId: row[`${side}_source_version_id`],
   evidenceId: row[`${side}_evidence_id`],
   claimText: row[`${side}_claim_text`],
+  ...(row[`${side}_evidence_context`] === null ||
+  (row[`${side}_evidence_context`] === row[`${side}_claim_text`] &&
+    !row[`${side}_evidence_context_truncated`])
+    ? {}
+    : {
+        evidenceContext: row[`${side}_evidence_context`] ?? undefined,
+        evidenceContextTruncated: row[`${side}_evidence_context_truncated`],
+      }),
   accessScope: row[`${side}_access_scope`],
   sensitivity: row[`${side}_sensitivity`],
 });
@@ -58,10 +71,14 @@ const digest = (row: PairRow, policyRevision: string): string =>
         row.left_source_version_id,
         row.left_evidence_id,
         row.left_claim_text,
+        row.left_evidence_context,
+        row.left_evidence_context_truncated,
         row.right_assertion_id,
         row.right_source_version_id,
         row.right_evidence_id,
         row.right_claim_text,
+        row.right_evidence_context,
+        row.right_evidence_context_truncated,
         policyRevision,
       ]),
     )
@@ -74,6 +91,23 @@ const pairProjection = `
   left_claim.source_version_id::text AS left_source_version_id,
   left_claim.evidence_id::text AS left_evidence_id,
   left_claim.claim_text AS left_claim_text,
+  CASE
+    WHEN char_length(left_evidence.quote->>'exact') > ${VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT}
+      THEN '…' || substring(
+        left_evidence.quote->>'exact'
+        FROM greatest(
+          1,
+          strpos(left_evidence.quote->>'exact', left_claim.claim_text) -
+            (${VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT} / 2)
+        )
+        FOR ${VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT - 2}
+      ) || '…'
+    ELSE left_evidence.quote->>'exact'
+  END AS left_evidence_context,
+  COALESCE(
+    char_length(left_evidence.quote->>'exact') > ${VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT},
+    false
+  ) AS left_evidence_context_truncated,
   left_claim.access_scope AS left_access_scope,
   left_claim.sensitivity AS left_sensitivity,
   EXISTS (
@@ -87,6 +121,23 @@ const pairProjection = `
   right_claim.source_version_id::text AS right_source_version_id,
   right_claim.evidence_id::text AS right_evidence_id,
   right_claim.claim_text AS right_claim_text,
+  CASE
+    WHEN char_length(right_evidence.quote->>'exact') > ${VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT}
+      THEN '…' || substring(
+        right_evidence.quote->>'exact'
+        FROM greatest(
+          1,
+          strpos(right_evidence.quote->>'exact', right_claim.claim_text) -
+            (${VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT} / 2)
+        )
+        FOR ${VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT - 2}
+      ) || '…'
+    ELSE right_evidence.quote->>'exact'
+  END AS right_evidence_context,
+  COALESCE(
+    char_length(right_evidence.quote->>'exact') > ${VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT},
+    false
+  ) AS right_evidence_context_truncated,
   right_claim.access_scope AS right_access_scope,
   right_claim.sensitivity AS right_sensitivity`;
 
@@ -94,9 +145,23 @@ const pairJoins = `
   JOIN vp.current_assertions AS left_claim
     ON left_claim.project_id = job.project_id
    AND left_claim.assertion_id = job.left_assertion_id
+  LEFT JOIN evidence.spans AS left_evidence
+    ON left_evidence.project_id = left_claim.project_id
+   AND left_evidence.source_id = left_claim.source_id
+   AND left_evidence.source_version_id = left_claim.source_version_id
+   AND left_evidence.evidence_id = left_claim.evidence_id
+   AND left_evidence.access_scope = left_claim.access_scope
+   AND left_evidence.sensitivity = left_claim.sensitivity
   JOIN vp.current_assertions AS right_claim
     ON right_claim.project_id = job.project_id
    AND right_claim.assertion_id = job.right_assertion_id
+  LEFT JOIN evidence.spans AS right_evidence
+    ON right_evidence.project_id = right_claim.project_id
+   AND right_evidence.source_id = right_claim.source_id
+   AND right_evidence.source_version_id = right_claim.source_version_id
+   AND right_evidence.evidence_id = right_claim.evidence_id
+   AND right_evidence.access_scope = right_claim.access_scope
+   AND right_evidence.sensitivity = right_claim.sensitivity
   LEFT JOIN project_admin.project_knowledge_epoch AS reset_epoch
     ON reset_epoch.project_id = job.project_id`;
 

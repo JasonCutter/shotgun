@@ -864,7 +864,7 @@ test('VP live finance paraphrases retain both sources through relation and cited
             AND relation.left_assertion_id = job.left_assertion_id
             AND relation.right_assertion_id = job.right_assertion_id
           WHERE job.project_id = 'shotgun'
-            AND job.policy_revision = 'vp-deepseek-relation-v5'
+            AND job.policy_revision = 'vp-deepseek-relation-v6-evidence-context'
           ORDER BY job.created_at DESC LIMIT 1`,
       );
       return result.rows[0];
@@ -915,7 +915,7 @@ test('VP live finance paraphrases retain both sources through relation and cited
     console.info(
       JSON.stringify({
         summary: 'vp-live-finance-cross-source-equivalence-v1',
-        policyRevision: 'vp-deepseek-relation-v5',
+        policyRevision: 'vp-deepseek-relation-v6-evidence-context',
         assertionCount: assertionSources.rows.length,
         distinctSourceCount: new Set(assertionSources.rows.map((row) => row.source_id)).size,
         relation: completedRelation.relation_kind,
@@ -1006,7 +1006,7 @@ test('VP live same-scope finance values preserve a conflict and cite both source
             AND relation.left_assertion_id = job.left_assertion_id
             AND relation.right_assertion_id = job.right_assertion_id
           WHERE job.project_id = 'shotgun'
-            AND job.policy_revision = 'vp-deepseek-relation-v5'
+            AND job.policy_revision = 'vp-deepseek-relation-v6-evidence-context'
           ORDER BY job.created_at DESC LIMIT 1`,
       );
       return result.rows[0];
@@ -1067,7 +1067,7 @@ test('VP live same-scope finance values preserve a conflict and cite both source
     console.info(
       JSON.stringify({
         summary: 'vp-live-finance-same-scope-conflict-product-v1',
-        policyRevision: 'vp-deepseek-relation-v5',
+        policyRevision: 'vp-deepseek-relation-v6-evidence-context',
         relation: completedRelation.relation_kind,
         relationChoice: completedRelation.choice,
         relationChoiceProbability: completedRelation.chosen_probability,
@@ -1164,7 +1164,7 @@ test('VP live disjoint NPV conditions stay related through intake, ledger, and c
             AND relation.left_assertion_id = job.left_assertion_id
             AND relation.right_assertion_id = job.right_assertion_id
           WHERE job.project_id = 'shotgun'
-            AND job.policy_revision = 'vp-deepseek-relation-v5'
+            AND job.policy_revision = 'vp-deepseek-relation-v6-evidence-context'
           ORDER BY job.created_at DESC LIMIT 1`,
       );
       return result.rows[0];
@@ -1197,7 +1197,7 @@ test('VP live disjoint NPV conditions stay related through intake, ledger, and c
     console.info(
       JSON.stringify({
         summary: 'vp-live-npv-conditional-branches-product-v1',
-        policyRevision: 'vp-deepseek-relation-v5',
+        policyRevision: 'vp-deepseek-relation-v6-evidence-context',
         relation: relationOutcome!.relation_kind,
         relationChoice: relationOutcome!.choice,
         relationChoiceProbability: relationOutcome!.chosen_probability,

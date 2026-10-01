@@ -42,7 +42,7 @@
 1. `SubmitVPSource@1.0.0`: 파일/텍스트/URL과 client idempotency key만 수신. 서버가 Project·actor·classification·원본 hash·SourceVersion·작업 identity를 만든다. 응답은 `sourceId`, `sourceVersionId`, `jobId`, 상태다.
 2. `VPSourceState@1.0.0`: `RECEIVED/EVIDENCE_READY/KNOWLEDGE_UPDATING/READY/RETRYING/DEGRADED/FAILED`, 원인 코드, 활성 version/knowledge epoch, 자동 재시도 시각을 반환한다.
 3. `RecordVPAssertion@1.0.0`와 `RecordVPRelation@1.0.0`: 브라우저 공개 명령이 아니다. Evidence·SourceVersion·policy/digest precondition을 서버가 재검증해 append-only VP Ledger에 쓴다. `AutoKnowledgeCommitted@1.0.0`을 outbox로 발행한다.
-4. `DecisionProviderPort@1.1.0`: `task kind`, 허용 선택지, 고정된 evidence/주장/비교 범위와 버전, 정책, 예산을 입력으로 받는다. `SUPPORTS`/`QUALIFIES`는 assertion ID 정렬 기준 left/right의 방향을 반환하고, 무방향 관계는 `NONE`을 반환한다. Jev Adapter와 fake/대체 Adapter가 같은 계약을 구현한다. 결정 영수증은 재생 가능한 식별자와 provenance를 가진다.
+4. `DecisionProviderPort@1.2.0`: `task kind`, 허용 선택지, 고정된 evidence/주장/비교 범위와 버전, 필요 시 같은 EvidenceSpan에서 가져온 최대 2,000자 원문 문맥과 잘림 표시, 정책, 예산을 입력으로 받는다. 문맥은 비신뢰 원문 자료이며 결정 digest에 포함한다. `SUPPORTS`/`QUALIFIES`는 assertion ID 정렬 기준 left/right의 방향을 반환하고, 무방향 관계는 `NONE`을 반환한다. Jev Adapter와 fake/대체 Adapter가 같은 계약을 구현한다. 결정 영수증은 재생 가능한 식별자와 provenance를 가진다.
 5. `AskVP@1.0.0`: 질문만 필수 입력. 서버가 프로젝트·권한·지식 epoch·활성 SourceVersion을 고정한다. 준비 중이면 AnswerRun을 `WAITING_FOR_KNOWLEDGE`로 유지하고 완료 후 자동 실행한다. 답변에는 인용, `DIRECT/DERIVED`, 충돌, 자료 확인 시점, 사용 epoch를 반환한다.
 6. `VPProjectionStatus@1.0.0`: active epoch, source/evidence/ledger/search watermark를 제공한다. 차이가 있으면 최신 지식으로 표시하지 않는다.
 
@@ -173,3 +173,9 @@ OSS Integration Decision은 기존 Role Matrix의 gbrain Search/Graph `REFERENCE
 - 같은 pair의 선택 확률은 0.99, 1.00, 0.99였고 실행당 4 provider calls, 2,269–2,397 tokens를 사용했다. 이는 이 pair의 반복 일관성만 보이며 확률 calibration·외부 청구액·재무 오류율을 보이지 않는다.
 - 같은 예시의 유동비율 200%/150% 충돌 pair도 직렬 3회 실행했다. 1회는 `CONTRADICTS` 0.98로 기록했고, 두 번은 0.50·0.70의 선택 확률이 0.90 하한 미만이라 관계를 보류했다. 세 Ask 답변은 150%와 200%를 양쪽 근거에 연결해 제시했고, 어느 쪽이 맞는지 확정하지 않았다. 독립 replay는 모두 일치했다.
 - 두 pair의 파일은 테스트 작성 자료이며 사용자 PDF 전체나 독립 출판 자료와 대조하지 않았다. 반복 불일치는 모델 확률이 calibration되지 않았고 보수적인 임계값 아래 관계 재현율도 낮음을 보여준다. 금융 domain Golden Corpus, 전체 추출 precision/recall, 관계 후보 축소와 VP-04/05는 열린 상태다. [전체 재현 및 한계](./vp-finance-cross-source-product-verification-2026-09-29.md).
+
+### 2026-10-01 VP-04 — bounded Evidence context for relation decisions
+
+재무 PDF source-fidelity 감사에서 관계 Adapter에 전달되는 입력이 정규화된 주장 문장뿐이라 원문 조건·설명 문맥을 비교 때 활용하지 못하는 범위를 확인했다. VP Decision Port를 1.2.0으로 확장해 현재 주장과 정확히 같은 프로젝트·Source·SourceVersion·Evidence ID 및 접근 범위·민감도를 가진 EvidenceSpan의 인용을 선택적으로 포함한다. 최대 2,000자이며 긴 인용은 주장 주변으로 자르고 잘림 여부를 함께 전달한다. AI 요청 digest에 원문 문맥과 잘림 상태가 들어가므로 변경된 입력은 저장된 provider 출력과 같은 결정으로 취급되지 않는다. 공급자 지시문은 인용을 지시가 아닌 비신뢰 자료로 취급하며 외부 전송 검사는 기존과 같다.
+
+검증은 격리 PostgreSQL relation-job→Decision Port에서 문맥의 정확한 Evidence 연결·길이 상한·잘림 표시를 확인했다. 일반 AI와 Jev Adapter 계약 테스트, 프롬프트 인젝션 문구를 포함한 단위 테스트를 통과했다. finance v1.2의 할인율/현재가치 후보 한 건에 PDF 원문 문맥을 포함한 실제 DeepSeek 요청을 보내 허용된 `EQUIVALENT` 결과를 확인했다(854 input / 73 output tokens, 861 ms 제공자 응답). Corpus는 `CANDIDATE` 상태다. 이 시험은 전체 PDF에서 원문 문맥 추출, finance Golden Corpus의 독립 라벨 검토, 품질·후보 축소·실청구액 Gate를 닫지 않는다. [구현·검증 보고](./vp-decision-evidence-context-verification-2026-10-01.md).

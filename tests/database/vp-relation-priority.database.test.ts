@@ -688,7 +688,12 @@ it('fences a second provider request when the worker process dies after HTTP suc
     const address = providerStub.address();
     if (!address || typeof address === 'string')
       throw new Error('Provider test server did not bind.');
-    const tsxCli = path.join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    const crashProbe = path.join(
+      process.cwd(),
+      'tests',
+      'helpers',
+      'vp-relation-kill-after-http-response.ts',
+    );
     const inheritedPath = process.env.PATH ?? process.env.Path;
     const childEnvironment = Object.fromEntries(
       Object.entries({
@@ -704,19 +709,12 @@ it('fences a second provider request when the worker process dies after HTTP suc
         VP_CRASH_TEST_POLICY_REVISION: policyRevision,
       }).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
     );
-    child = spawn(
-      process.execPath,
-      [
-        tsxCli,
-        path.join(process.cwd(), 'tests', 'helpers', 'vp-relation-kill-after-http-response.ts'),
-      ],
-      {
-        cwd: process.cwd(),
-        env: childEnvironment,
-        windowsHide: true,
-        stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
-      },
-    );
+    child = spawn(process.execPath, ['--import', 'tsx', crashProbe], {
+      cwd: process.cwd(),
+      env: childEnvironment,
+      windowsHide: true,
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+    });
     let childStderr = '';
     child.stderr?.on('data', (chunk: Buffer) => {
       childStderr += chunk.toString('utf8');

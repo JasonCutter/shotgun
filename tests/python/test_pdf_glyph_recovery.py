@@ -12,8 +12,9 @@ from worker import (
     apply_pdfium_stacked_equations,
     pdfium_horizontal_equation_words,
     pdfium_page_glyphs,
+    pdfium_recoverable_glyphs,
     pdfium_stacked_equation_words,
-    restore_unmapped_comparison_glyphs,
+    restore_unmapped_safe_glyphs,
 )
 
 
@@ -21,7 +22,7 @@ def damaged_char(x0: float = 10, x1: float = 18, top: float = 20, bottom: float 
     return {"text": "\x00", "x0": x0, "x1": x1, "top": top, "bottom": bottom}
 
 
-def comparison_glyph(
+def recoverable_glyph(
     glyph_id: int,
     value: str,
     box: tuple[float, float, float, float] = (11, 17, 21, 31),
@@ -33,9 +34,9 @@ class PdfGlyphRecoveryTests(unittest.TestCase):
     def test_restores_a_unique_overlapping_comparison_sign(self) -> None:
         chars = [damaged_char(), {"text": "N", "x0": 2, "x1": 8, "top": 20, "bottom": 32}]
 
-        restored = restore_unmapped_comparison_glyphs(
+        restored = restore_unmapped_safe_glyphs(
             chars,
-            [comparison_glyph(42, ">")],
+            [recoverable_glyph(42, ">")],
         )
 
         self.assertEqual(restored, 1)
@@ -45,9 +46,9 @@ class PdfGlyphRecoveryTests(unittest.TestCase):
     def test_keeps_a_glyph_when_two_signs_match_the_same_box(self) -> None:
         char = damaged_char()
 
-        restored = restore_unmapped_comparison_glyphs(
+        restored = restore_unmapped_safe_glyphs(
             [char],
-            [comparison_glyph(42, ">"), comparison_glyph(43, "<")],
+            [recoverable_glyph(42, ">"), recoverable_glyph(43, "<")],
         )
 
         self.assertEqual(restored, 0)
@@ -56,7 +57,7 @@ class PdfGlyphRecoveryTests(unittest.TestCase):
     def test_keeps_two_damaged_glyphs_that_compete_for_one_sign(self) -> None:
         chars = [damaged_char(), damaged_char()]
 
-        restored = restore_unmapped_comparison_glyphs(chars, [comparison_glyph(42, "<")])
+        restored = restore_unmapped_safe_glyphs(chars, [recoverable_glyph(42, "<")])
 
         self.assertEqual(restored, 0)
         self.assertEqual([char["text"] for char in chars], ["\x00", "\x00"])
@@ -65,11 +66,11 @@ class PdfGlyphRecoveryTests(unittest.TestCase):
         distant = damaged_char()
         low_overlap = damaged_char()
 
-        restored = restore_unmapped_comparison_glyphs(
+        restored = restore_unmapped_safe_glyphs(
             [distant, low_overlap],
             [
-                comparison_glyph(42, ">", (20, 26, 21, 31)),
-                comparison_glyph(43, "<", (16.5, 22.5, 21, 31)),
+                recoverable_glyph(42, ">", (20, 26, 21, 31)),
+                recoverable_glyph(43, "<", (16.5, 22.5, 21, 31)),
             ],
         )
 
@@ -80,14 +81,35 @@ class PdfGlyphRecoveryTests(unittest.TestCase):
         ordinary = {"text": "?", "x0": 10, "x1": 18, "top": 20, "bottom": 32}
         invalid = {"text": "\x00", "x0": 10, "x1": 10, "top": 20, "bottom": 32}
 
-        restored = restore_unmapped_comparison_glyphs(
+        restored = restore_unmapped_safe_glyphs(
             [ordinary, invalid],
-            [comparison_glyph(42, ">")],
+            [recoverable_glyph(42, ">")],
         )
 
         self.assertEqual(restored, 0)
         self.assertEqual(ordinary["text"], "?")
         self.assertEqual(invalid["text"], "\x00")
+
+    def test_restores_safe_formula_glyphs_but_filters_letters(self) -> None:
+        glyphs = [
+            {"index": 1, "text": "=", "x0": 11, "x1": 17, "top": 21, "bottom": 31},
+            {"index": 2, "text": "1", "x0": 11, "x1": 17, "top": 41, "bottom": 51},
+            {"index": 3, "text": "(", "x0": 11, "x1": 17, "top": 61, "bottom": 71},
+            {"index": 4, "text": "A", "x0": 11, "x1": 17, "top": 81, "bottom": 91},
+            {"index": 5, "text": "한", "x0": 11, "x1": 17, "top": 101, "bottom": 111},
+        ]
+        recoverable = pdfium_recoverable_glyphs(None, glyphs)
+        chars = [
+            damaged_char(top=20, bottom=32),
+            damaged_char(top=40, bottom=52),
+            damaged_char(top=60, bottom=72),
+        ]
+
+        restored = restore_unmapped_safe_glyphs(chars, recoverable)
+
+        self.assertEqual([value for _, value, _ in recoverable], ["=", "1", "("])
+        self.assertEqual(restored, 3)
+        self.assertEqual([char["text"] for char in chars], ["=", "1", "("])
 
     def test_rebuilds_a_flat_formula_and_marks_its_superscript(self) -> None:
         glyphs = formula_glyphs("FV=PV(1+r)n", superscript="n")

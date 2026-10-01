@@ -84,13 +84,16 @@ exceeded six CPU minutes and approximately 1.9 GB memory without a result. The
 isolated environment occupied 854,390,083 bytes. Docling remains `DEFER`; the
 existing pdfplumber/pypdfium2 path stays active. Geometry-backed recovery now
 reconstructs the supplied PDF's flat and stacked PV/NPV formula segments with
-page/BBox selectors under adapter `1.4.0`. The actual DeepSeek browser flow
-passed once: 111 assertions, 120 candidates, 20/20 curated markers, four
-answer-and-citation checks, replay match, 12 current relations, and no pending
-relation jobs (35 provider responses, 51,502 reported tokens). Provider billing
-was not reconciled. 23 unrelated PDF replacement markers remain unresolved;
-the Golden labels remain candidate, and broad precision/recall plus independent
-adjudication remain open, so VP-04 is not complete. [Docling re-evaluation](./vp-docling-finance-formula-reevaluation-2026-10-01.md),
+page/BBox selectors under adapter `1.5.0`. A strict allowlist restored 19/25
+NUL markers; six with no unique geometry match remain rejected by direct-text
+validation. The actual DeepSeek browser flow passed once: 112 assertions, 113
+candidates, 20/20 curated markers, four answer-and-citation checks, replay
+match, 7 current relations, and no pending relation jobs (15 provider
+responses, 32,920 reported tokens). A separate run with 119 assertions and
+121 candidates timed out after 180 seconds with one relation job pending; its
+cause was not captured. Provider billing was not reconciled. The Golden labels
+remain candidate, and broad precision/recall plus independent adjudication
+remain open, so VP-04 is not complete. [Docling re-evaluation](./vp-docling-finance-formula-reevaluation-2026-10-01.md),
 [PDFium formula verification](./vp-finance-pdf-flat-formula-verification-2026-10-01.md).
 
 ## 남은 완료 조건

@@ -259,12 +259,13 @@ def pdfium_page_glyphs(pdfium_page: Any) -> list[dict[str, Any]]:
         text_page.close()
 
 
-def pdfium_comparison_glyphs(
+def pdfium_recoverable_glyphs(
     pdfium_page: Any,
     page_glyphs: list[dict[str, Any]] | None = None,
 ) -> list[tuple[int, str, tuple[float, float, float, float]]]:
-    """Return PDFium '<'/'>' boxes in pdfplumber's top-origin page coordinates."""
+    """Return a small, safe symbol subset with PDFium page-coordinate boxes."""
     glyphs = page_glyphs if page_glyphs is not None else pdfium_page_glyphs(pdfium_page)
+    recoverable_values = frozenset("<>=():0123456789")
     return [
         (
             int(glyph["index"]),
@@ -272,7 +273,7 @@ def pdfium_comparison_glyphs(
             (float(glyph["x0"]), float(glyph["x1"]), float(glyph["top"]), float(glyph["bottom"])),
         )
         for glyph in glyphs
-        if glyph.get("text") in ("<", ">")
+        if glyph.get("text") in recoverable_values
     ]
 
 
@@ -592,11 +593,11 @@ def apply_pdfium_stacked_equations(
     return output
 
 
-def restore_unmapped_comparison_glyphs(
+def restore_unmapped_safe_glyphs(
     page_chars: list[dict[str, Any]],
-    comparison_glyphs: list[tuple[int, str, tuple[float, float, float, float]]],
+    recoverable_glyphs: list[tuple[int, str, tuple[float, float, float, float]]],
 ) -> int:
-    """Replace only NUL chars with a unique, tightly overlapping PDFium '<'/'>' glyph."""
+    """Replace NUL chars only with a unique, tightly overlapping safe PDFium glyph."""
     center_distance_limit = 2.5
     smaller_box_overlap_minimum = 0.65
     proposals: dict[int, list[dict[str, Any]]] = defaultdict(list)
@@ -619,7 +620,7 @@ def restore_unmapped_comparison_glyphs(
             continue
 
         matches: list[tuple[int, str]] = []
-        for glyph_id, glyph_value, glyph_box in comparison_glyphs:
+        for glyph_id, glyph_value, glyph_box in recoverable_glyphs:
             glyph_x0, glyph_x1, glyph_top, glyph_bottom = glyph_box
             glyph_width = glyph_x1 - glyph_x0
             glyph_height = glyph_bottom - glyph_top
@@ -697,9 +698,9 @@ def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
                         pdfium_page = pdfium_document[page_number - 1]
                         page_glyphs = pdfium_page_glyphs(pdfium_page)
                         if has_unmapped_glyph:
-                            restore_unmapped_comparison_glyphs(
+                            restore_unmapped_safe_glyphs(
                                 page_chars,
-                                pdfium_comparison_glyphs(pdfium_page, page_glyphs),
+                                pdfium_recoverable_glyphs(pdfium_page, page_glyphs),
                             )
                     except Exception:
                         # Keep pdfplumber's layout output and undecodable marker.

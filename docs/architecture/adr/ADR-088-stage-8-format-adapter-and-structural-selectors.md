@@ -31,6 +31,12 @@
   recovers the supplied PDF's PV and NPV formulas; mismatches retain the source
   output. The adapter advances to `1.4.0`; pdfplumber still owns paragraph order
   and SourceMap layout.
+- 2026-10-01 — VP-04 amendment: pypdfium2 may also restore a tightly overlapping,
+  one-to-one subset of `=`, parentheses, colon, and digits in addition to `<`
+  and `>`.
+  Letters and other glyphs remain untouched; unmatched markers remain rejected
+  by direct-text validation. The supplied PDF's recoverable NUL markers fell
+  from 25 to 6 after this augmentation. The Python adapter advances to `1.5.0`.
 
 ## 결정
 

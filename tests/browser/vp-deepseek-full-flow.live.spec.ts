@@ -1681,7 +1681,54 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
         throw error;
       }
     }
-    await waitForVPConvergence(pool, replayModule);
+    try {
+      await waitForVPConvergence(pool, replayModule);
+    } catch (error) {
+      const pendingJobs = await pool.query<{
+        readonly jobId: string;
+        readonly status: string;
+        readonly attemptCount: number;
+        readonly maxAttempts: number;
+        readonly lastFailureCode: string | null;
+        readonly nextAttemptAt: Date | null;
+        readonly leaseExpiresAt: Date | null;
+        readonly providerState: string | null;
+        readonly providerFailureCode: string | null;
+        readonly leftClaim: string;
+        readonly rightClaim: string;
+      }>(
+        `SELECT job.job_id::text AS "jobId", job.status,
+                job.attempt_count AS "attemptCount", job.max_attempts AS "maxAttempts",
+                job.last_failure_code AS "lastFailureCode",
+                job.next_attempt_at AS "nextAttemptAt",
+                job.lease_expires_at AS "leaseExpiresAt",
+                provider.state AS "providerState",
+                provider.failure_code AS "providerFailureCode",
+                left_claim.claim_text AS "leftClaim",
+                right_claim.claim_text AS "rightClaim"
+           FROM vp.relation_jobs AS job
+           JOIN vp.assertions AS left_claim
+             ON left_claim.project_id = job.project_id
+            AND left_claim.assertion_id = job.left_assertion_id
+           JOIN vp.assertions AS right_claim
+             ON right_claim.project_id = job.project_id
+            AND right_claim.assertion_id = job.right_assertion_id
+           LEFT JOIN vp.relation_provider_calls AS provider
+             ON provider.project_id = job.project_id AND provider.job_id = job.job_id
+          WHERE job.project_id = 'shotgun'
+            AND job.status IN ('PENDING', 'RUNNING', 'RETRYABLE')
+          ORDER BY job.updated_at DESC`,
+      );
+      console.error(
+        JSON.stringify({
+          summary: 'vp-live-finance-pdf-relation-queue-diagnostic-v1',
+          replay: await replayModule.verifyVPProjectionReplay(pool, 'shotgun'),
+          pendingJobs: pendingJobs.rows,
+          providerResponses,
+        }),
+      );
+      throw error;
+    }
     const replay = await replayModule.verifyVPProjectionReplay(pool, 'shotgun');
     expect(replay).toMatchObject({ matches: true, pendingRelationJobs: 0 });
     const relationRows = await pool.query<{

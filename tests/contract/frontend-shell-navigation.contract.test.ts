@@ -68,6 +68,16 @@ describe('Frontend Shell HFM-S3 persistent navigation', () => {
     });
   });
 
+  it('keeps legacy Review out of the VP shell even while review work exists', async () => {
+    const shell = await new InMemoryGlobalShellProjection(
+      async () => true,
+      undefined,
+      true,
+    ).getShell(scope);
+
+    expect(shell.navigation.map((item) => item.id)).toEqual(['home', 'sources', 'ask']);
+  });
+
   it('does not advertise disabled workspace placeholders without a Project', async () => {
     const shell = await new InMemoryGlobalShellProjection().getShell({
       ...scope,

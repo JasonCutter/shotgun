@@ -1269,18 +1269,7 @@ export const startShotgunApplication = async (
       ) =>
         new FrontendProductReadCoordinator(
           new InMemoryGlobalShellProjection(
-            async (input) => {
-              if (!input.activeProject) return false;
-              try {
-                const home = await actionCenterProjection.getHome({
-                  ...input,
-                  activeProject: input.activeProject,
-                });
-                return home.attention.some((item) => item.kind === 'REVIEW_DECISION');
-              } catch {
-                return false;
-              }
-            },
+            undefined,
             async (input) => {
               if (!input.activeProject) return undefined;
               return frontendSourcesReadCoordinator.countUniqueSources({
@@ -1293,23 +1282,13 @@ export const startShotgunApplication = async (
                 policyContextRevision: input.policyContextRevision,
               });
             },
+            true,
           ),
           actionCenterProjection,
           new InMemoryBackgroundSummaryProjection(),
           new InMemoryNotificationSummaryProjection(),
           new PostgresSourceLibraryGlobalSearch(frontendSourcesReadCoordinator),
-          new InMemoryRouteGuardProjection(async (input) => {
-            if (!input.activeProject) return false;
-            try {
-              const home = await actionCenterProjection.getHome({
-                ...input,
-                activeProject: input.activeProject,
-              });
-              return home.attention.some((item) => item.kind === 'REVIEW_DECISION');
-            } catch {
-              return false;
-            }
-          }),
+          new InMemoryRouteGuardProjection(undefined, true),
           askWorkspaceProjection,
           new PostgresKnowledgeWorkspaceProjection({
             query: async <TResult>({

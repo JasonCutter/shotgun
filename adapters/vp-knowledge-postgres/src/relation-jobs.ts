@@ -383,8 +383,8 @@ export class PostgresVPRelationJobs
   async claim(
     input: Parameters<VPDecisionExecutionRepositoryPort['claim']>[0],
   ): Promise<VPDecisionExecutionClaim> {
-    const insert = async (): Promise<VPDecisionExecutionClaim> =>
-      await withSafePostgresTransaction<VPDecisionExecutionClaim>(
+    try {
+      return await withSafePostgresTransaction<VPDecisionExecutionClaim>(
         this.pool,
         async (client) => {
           const active = await client.query(
@@ -465,8 +465,6 @@ export class PostgresVPRelationJobs
         },
         { module: 'vp-knowledge-postgres', operation: 'claim-relation-provider-call' },
       );
-    try {
-      return await insert();
     } catch (error) {
       // If the claim COMMIT acknowledgement was lost, do not risk treating a
       // durable RUNNING row as permission to send. Readback is conservative.
@@ -504,8 +502,8 @@ export class PostgresVPRelationJobs
     if (!validVPRelationDecision(input.decision)) {
       throw new Error('VP relation provider output failed validation before persistence.');
     }
-    const update = async () =>
-      await withSafePostgresTransaction(
+    try {
+      return await withSafePostgresTransaction(
         this.pool,
         async (client) => {
           const saved = await client.query<{ readonly output_json: VPRelationDecision }>(
@@ -564,8 +562,6 @@ export class PostgresVPRelationJobs
         },
         { module: 'vp-knowledge-postgres', operation: 'store-relation-provider-output' },
       );
-    try {
-      return await update();
     } catch (error) {
       const durable = await this.pool.query<{
         readonly request_digest: string;

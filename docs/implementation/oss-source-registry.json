@@ -1642,7 +1642,7 @@
       "pin": {
         "type": "npm-lock",
         "package": "vitest",
-        "value": "4.1.10"
+        "value": "4.1.11"
       },
       "license": {
         "spdx": "MIT",
@@ -1651,8 +1651,8 @@
       },
       "decision": "ADOPT",
       "scope": "Frontend Section 1 jsdom component suite and root Backend/TS-6 audit suites; test runner only",
-      "security": "Test-only dependency with no browser production bundle path",
-      "maintenance": "Exact root and workspace version 4.1.10 is locked. Reviewed tag v4.1.10 at upstream commit db616d2; the v4 line includes upstream PR #8297's worker RPC timeout fix and supports Vite 8 and Node.js 24.",
+      "security": "Test-only dependency with no browser production bundle path; 4.1.11 includes the upstream fix for GHSA-82fw-gwwq-j7x9",
+      "maintenance": "Exact root version 4.1.11 is locked. Reviewed official tag v4.1.11 at upstream commit 9bd8d464e6328c567c2dbcd8fdd977d57a9425c2; this release fixes GHSA-82fw-gwwq-j7x9. Test-only dependency; the v4 line includes upstream PR #8297's worker RPC timeout fix and supports Vite 8 and Node.js 24.",
       "evidence": [
         "Frontend component suite passes independently",
         "TS-6 audit negative tests and authority lineage validation run as a dedicated CI gate"

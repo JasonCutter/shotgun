@@ -89,6 +89,7 @@ const createMockRuntime = (
   reextractSourceVersionCandidates: (input: ReextractRequest) => Promise<unknown> = async () =>
     reextractResponse(),
   sourceVersionId = 'version-1',
+  externalSourceFreshness: SourceDetailView['externalSourceFreshness'] = undefined,
 ): AppRuntime => {
   const evidenceList: EvidenceListView = {
     schemaVersion: '1.0.0',
@@ -103,7 +104,10 @@ const createMockRuntime = (
   };
 
   const apiClient = {
-    getSourceDetail: vi.fn(async () => detail),
+    getSourceDetail: vi.fn(async () => ({
+      ...detail,
+      ...(externalSourceFreshness ? { externalSourceFreshness } : {}),
+    })),
     getSourceVersionHistory: vi.fn(async () => ({
       schemaVersion: '1.0.0',
       projectId: 'project-1',
@@ -164,6 +168,33 @@ describe('SourceDetailWorkspace Evidence Presentation HFM-S7-C8-D3', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('warns when the last external URL check has expired', async () => {
+    const runtime = createMockRuntime([], 'READY', async () => reextractResponse(), 'version-1', {
+      lastCheckedAt: '2026-08-15T09:00:00.000Z',
+      expiresAt: '2026-08-16T09:00:00.000Z',
+      state: 'EXPIRED',
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources/source-1?version=version-1&view=evidence'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Refresh is due. Answers must treat this external source as historical until it is checked again.',
+    );
   });
 
   it('offers contextual AI reprocessing for an evidence-ready version and does not resubmit on refresh', async () => {

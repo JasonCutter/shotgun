@@ -673,6 +673,31 @@ export const SourceDetailWorkspace = () => {
           </Link>
         </p>
       ) : null}
+      {detail.data.externalSourceFreshness ? (
+        <section
+          className="action-card source-detail-freshness"
+          aria-label={t('source_detail.url_checked')}
+          role={detail.data.externalSourceFreshness.state === 'EXPIRED' ? 'alert' : 'status'}
+        >
+          <p>
+            {t('source_detail.url_checked')}:{' '}
+            <time dateTime={detail.data.externalSourceFreshness.lastCheckedAt}>
+              {new Date(detail.data.externalSourceFreshness.lastCheckedAt).toLocaleString()}
+            </time>
+          </p>
+          <p>
+            {t('source_detail.url_current_until')}:{' '}
+            <time dateTime={detail.data.externalSourceFreshness.expiresAt}>
+              {new Date(detail.data.externalSourceFreshness.expiresAt).toLocaleString()}
+            </time>
+          </p>
+          <p>
+            {detail.data.externalSourceFreshness.state === 'CURRENT'
+              ? t('source_detail.url_freshness_current')
+              : t('source_detail.url_freshness_expired')}
+          </p>
+        </section>
+      ) : null}
       {vpAutomaticKnowledge ? (
         <section
           className="action-card source-detail-ai-action"

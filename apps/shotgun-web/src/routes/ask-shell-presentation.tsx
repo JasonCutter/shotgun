@@ -410,6 +410,19 @@ export const ConversationPane = ({
                                   >
                                     {t('ask.open_evidence')}
                                   </Link>
+                                  {citation.externalSourceFreshness ? (
+                                    <>
+                                      <small>
+                                        {t('ask.source_checked')}:{' '}
+                                        {new Date(
+                                          citation.externalSourceFreshness.lastCheckedAt,
+                                        ).toLocaleString()}
+                                      </small>
+                                      {citation.externalSourceFreshness.state === 'EXPIRED' ? (
+                                        <p role="alert">{t('ask.source_expired')}</p>
+                                      ) : null}
+                                    </>
+                                  ) : null}
                                 </li>
                               ))}
                             </ul>

@@ -151,6 +151,11 @@ const mockWorkspace: AskWorkspaceView = {
                       sourceId: 'src-1',
                       sourceVersionId: 'ver-1',
                       evidenceId: 'ev-1',
+                      externalSourceFreshness: {
+                        lastCheckedAt: '2026-07-30T07:00:00.000Z',
+                        expiresAt: '2026-07-31T07:00:00.000Z',
+                        state: 'EXPIRED',
+                      },
                     },
                   ],
                 },
@@ -473,6 +478,9 @@ describe('AskWorkspace', () => {
     expect(await screen.findByText('질문에 사용 가능')).toBeTruthy();
     expect(screen.getAllByText('버전 1').length).toBeGreaterThan(0);
     expect(screen.getByText('Canonical knowledge is authoritative.')).toBeTruthy();
+    expect(
+      screen.getByText('이 자료는 오래되었을 수 있어 주장을 과거 정보로 처리했습니다.'),
+    ).toBeTruthy();
     expect(screen.getByText('(현재 대화)')).toBeTruthy();
     expect(screen.queryByText('Ask mode')).toBeNull();
     expect(screen.queryByText('Source context')).toBeNull();

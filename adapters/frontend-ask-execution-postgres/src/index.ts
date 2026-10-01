@@ -24,9 +24,11 @@ import {
   type HybridCandidateResult,
   type HybridCitation,
   type HybridRetrievalCoordinatorPort,
+  type ExternalSourceFreshnessView,
   sha256Text,
   stableJson,
 } from '../../../packages/contracts/src/index.js';
+import { URL_SOURCE_FRESHNESS_TTL_MS } from '../../../modules/url-acquisition/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   AskReadScope,
@@ -108,6 +110,9 @@ type EvidenceRow = QueryResultRow & {
   readonly source_version_id: string;
   readonly exact_quote: string;
   readonly sensitivity: AskExecutionScope['sensitivityClearance'];
+  readonly external_source_last_checked_at?: Date | null;
+  readonly external_source_freshness_expires_at?: Date | null;
+  readonly external_source_freshness_state?: ExternalSourceFreshnessView['state'] | null;
 };
 
 type EventRow = QueryResultRow & {
@@ -630,6 +635,47 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     return row ? attemptFromRow(row) : undefined;
   }
 
+  private async attachExternalSourceFreshness(
+    projectId: string,
+    evidence: readonly AskExecutionEvidence[],
+  ): Promise<readonly AskExecutionEvidence[]> {
+    const sourceVersionIds = [...new Set(evidence.map((item) => item.sourceVersionId))];
+    if (sourceVersionIds.length === 0) return evidence;
+    const result = await this.pool.query<{
+      readonly source_version_id: string;
+      readonly retrieved_at: Date;
+    }>(
+      `SELECT DISTINCT ON (provenance.source_version_id)
+              provenance.source_version_id::text,
+              provenance.retrieved_at
+       FROM source_product.url_provenance_receipts AS provenance
+       WHERE provenance.project_id = $1
+         AND provenance.source_version_id::text = ANY($2::text[])
+         AND provenance.outcome = 'SUCCEEDED'
+         AND provenance.retrieved_at IS NOT NULL
+       ORDER BY provenance.source_version_id,
+                provenance.retrieved_at DESC,
+                provenance.created_at DESC,
+                provenance.url_provenance_receipt_id DESC`,
+      [projectId, sourceVersionIds],
+    );
+    const now = Date.now();
+    const freshnessBySourceVersion = new Map<string, ExternalSourceFreshnessView>();
+    for (const row of result.rows) {
+      const lastCheckedAt = row.retrieved_at.toISOString();
+      const expiresAt = new Date(row.retrieved_at.getTime() + URL_SOURCE_FRESHNESS_TTL_MS);
+      freshnessBySourceVersion.set(row.source_version_id, {
+        lastCheckedAt,
+        expiresAt: expiresAt.toISOString(),
+        state: now < expiresAt.getTime() ? 'CURRENT' : 'EXPIRED',
+      });
+    }
+    return evidence.map((item) => {
+      const externalSourceFreshness = freshnessBySourceVersion.get(item.sourceVersionId);
+      return externalSourceFreshness ? { ...item, externalSourceFreshness } : item;
+    });
+  }
+
   private async resolveContext(
     scope: AskExecutionScope,
     snapshot: AskAnswerRunSnapshot,
@@ -903,7 +949,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
                 ]),
               ]
             : [...new Set([...selectedEvidenceIds, ...automaticallyResolvedEvidenceIds])];
-    const evidence: AskExecutionEvidence[] =
+    const baseEvidence: AskExecutionEvidence[] =
       automaticProjectEvidence !== undefined
         ? automaticProjectEvidence.map((row) => ({
             evidenceId: row.evidence_id,
@@ -967,6 +1013,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
                 exactQuote: row.exact_quote,
                 sensitivity: row.sensitivity,
               }));
+    const evidence = await this.attachExternalSourceFreshness(scope.projectId, baseEvidence);
     const evidenceById = new Map(evidence.map((row) => [row.evidenceId, row]));
     if (hybridCanonicalCitations !== undefined) {
       if (evidenceById.size !== hybridCanonicalCitations.length) {
@@ -1141,7 +1188,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     if (!row) return undefined;
     const evidence = await this.pool.query<EvidenceRow>(
       `SELECT evidence_id::text, source_id::text, source_version_id::text,
-              exact_quote, sensitivity
+              exact_quote, sensitivity, external_source_last_checked_at,
+              external_source_freshness_expires_at, external_source_freshness_state
        FROM frontend_ask.answer_attempt_evidence
        WHERE attempt_id = (
          SELECT attempt_id FROM frontend_ask.answer_run_attempts
@@ -1156,6 +1204,17 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       sourceVersionId: item.source_version_id,
       exactQuote: item.exact_quote,
       sensitivity: item.sensitivity,
+      ...(item.external_source_last_checked_at &&
+      item.external_source_freshness_expires_at &&
+      item.external_source_freshness_state
+        ? {
+            externalSourceFreshness: {
+              lastCheckedAt: item.external_source_last_checked_at.toISOString(),
+              expiresAt: item.external_source_freshness_expires_at.toISOString(),
+              state: item.external_source_freshness_state,
+            },
+          }
+        : {}),
     }));
     const queryPlanRevision = row.query_plan_revision ?? 'ask-query-plan-v2';
     const sourceSelectionsWithoutResolvedEvidence = snapshot.sourceSelections.filter(
@@ -1566,11 +1625,19 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       for (let index = 0; index < input.citations.length; index += 1) {
         const citation = input.citations[index];
         if (!citation) continue;
+        const freshness = citation.externalSourceFreshness;
+        const persistedFreshnessState = freshness
+          ? Date.parse(freshness.expiresAt) <= Date.now()
+            ? 'EXPIRED'
+            : freshness.state
+          : null;
         await client.query(
           `INSERT INTO frontend_ask.citations (
              citation_id, statement_id, citation_ordinal, source_id,
-             source_version_id, evidence_id, exact_quote
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+             source_version_id, evidence_id, exact_quote,
+             external_source_last_checked_at, external_source_freshness_expires_at,
+             external_source_freshness_state
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             citation.citationId,
             statementId,
@@ -1579,6 +1646,9 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
             citation.sourceVersionId,
             citation.evidenceId,
             citation.exactQuote ?? null,
+            freshness?.lastCheckedAt ?? null,
+            freshness?.expiresAt ?? null,
+            persistedFreshnessState,
           ],
         );
       }
@@ -2554,8 +2624,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       await client.query(
         `INSERT INTO frontend_ask.answer_attempt_evidence (
            attempt_id, evidence_ordinal, evidence_id, source_id,
-           source_version_id, exact_quote, sensitivity
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+           source_version_id, exact_quote, sensitivity,
+           external_source_last_checked_at, external_source_freshness_expires_at,
+           external_source_freshness_state
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           attemptId,
           index,
@@ -2564,6 +2636,9 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           evidence.sourceVersionId,
           evidence.exactQuote,
           evidence.sensitivity,
+          evidence.externalSourceFreshness?.lastCheckedAt ?? null,
+          evidence.externalSourceFreshness?.expiresAt ?? null,
+          evidence.externalSourceFreshness?.state ?? null,
         ],
       );
     }

@@ -523,6 +523,7 @@ export class PostgresOriginalAssetRepository
       active_revision_id: string | null;
       active_evidence_status: 'INDEXED' | 'NO_EVIDENCE' | null;
       active_evidence_count: number | null;
+      external_source_last_checked_at: Date | null;
     }>(
       `SELECT source.project_id,
               source.source_id::text,
@@ -541,7 +542,8 @@ export class PostgresOriginalAssetRepository
               indexing.indexing_result_id::text AS active_indexing_result_id,
               indexing.revision_id::text AS active_revision_id,
               indexing.status AS active_evidence_status,
-              indexing.evidence_count AS active_evidence_count
+              indexing.evidence_count AS active_evidence_count,
+              url_provenance.retrieved_at AS external_source_last_checked_at
        FROM asset.source_versions AS version
        JOIN asset.sources AS source ON source.source_id = version.source_id
        JOIN asset.original_assets AS original ON original.asset_id = version.original_asset_id
@@ -573,6 +575,18 @@ export class PostgresOriginalAssetRepository
         AND indexing.project_id = source.project_id
         AND indexing.source_id = source.source_id
         AND indexing.source_version_id = version.source_version_id
+       LEFT JOIN LATERAL (
+         SELECT provenance.retrieved_at
+         FROM source_product.url_provenance_receipts AS provenance
+         WHERE provenance.project_id = source.project_id
+           AND provenance.source_version_id = version.source_version_id
+           AND provenance.outcome = 'SUCCEEDED'
+           AND provenance.retrieved_at IS NOT NULL
+         ORDER BY provenance.retrieved_at DESC,
+                  provenance.created_at DESC,
+                  provenance.url_provenance_receipt_id
+         LIMIT 1
+       ) AS url_provenance ON true
        WHERE source.project_id = $1
        ORDER BY source.source_id, version.version_number`,
       [projectId],
@@ -591,6 +605,9 @@ export class PostgresOriginalAssetRepository
       accessScope: row.access_scope,
       sensitivity: row.sensitivity,
       createdAt: row.created_at.toISOString(),
+      ...(row.external_source_last_checked_at === null
+        ? {}
+        : { externalSourceLastCheckedAt: row.external_source_last_checked_at.toISOString() }),
       ...(row.stage3_state === null ? {} : { stage3State: row.stage3_state }),
       ...(row.active_indexing_result_id !== null &&
       row.active_revision_id !== null &&

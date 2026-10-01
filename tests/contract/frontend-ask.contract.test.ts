@@ -11,6 +11,7 @@ import {
   computeSubmitAskQuestionDigest,
   decodeAskAnswerRunSnapshot,
   decodeAskBranchView,
+  decodeAskCitationView,
   decodeAskConversationView,
   decodeAskQuestionSubmissionView,
   decodeAskWorkspaceView,
@@ -130,6 +131,44 @@ const createCoordinator = () => {
 };
 
 describe('Frontend Ask contracts', () => {
+  it('decodes URL freshness on Ask citations and rejects incomplete freshness metadata', () => {
+    expect(
+      decodeAskCitationView({
+        citationId: 'citation-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        evidenceId: 'evidence-1',
+        externalSourceFreshness: {
+          lastCheckedAt: '2026-07-30T07:00:00.000Z',
+          expiresAt: '2026-07-31T07:00:00.000Z',
+          state: 'EXPIRED',
+        },
+      }),
+    ).toMatchObject({ externalSourceFreshness: { state: 'EXPIRED' } });
+    expect(() =>
+      decodeAskCitationView({
+        citationId: 'citation-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        evidenceId: 'evidence-1',
+        externalSourceFreshness: { lastCheckedAt: '2026-07-30T07:00:00.000Z' },
+      }),
+    ).toThrow(FrontendContractError);
+    expect(() =>
+      decodeAskCitationView({
+        citationId: 'citation-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        evidenceId: 'evidence-1',
+        externalSourceFreshness: {
+          lastCheckedAt: '2026-07-31T07:00:00.000Z',
+          expiresAt: '2026-07-30T07:00:00.000Z',
+          state: 'EXPIRED',
+        },
+      }),
+    ).toThrow(FrontendContractError);
+  });
+
   it('decodes the server workspace and authoritative ACTION_REQUIRED answer-run envelope', () => {
     expect(decodeAskWorkspaceView(workspace)).toEqual(workspace);
     expect(

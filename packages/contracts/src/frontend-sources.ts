@@ -177,6 +177,11 @@ export type AskUsageState =
 export type SourceLifecycle = 'ACTIVE' | 'ARCHIVED' | 'ACTION_REQUIRED' | 'FAILED';
 export type SourcePreviewReadiness =
   'NOT_READY' | 'PROCESSING' | 'READY' | 'FAILED' | 'ACCESS_RESTRICTED';
+export type ExternalSourceFreshnessView = {
+  readonly lastCheckedAt: string;
+  readonly expiresAt: string;
+  readonly state: 'CURRENT' | 'EXPIRED';
+};
 
 export type SourceLibraryItemView = {
   readonly sourceId: string;
@@ -244,6 +249,7 @@ export type SourceDetailView = {
   readonly policyContextRevision: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+  readonly externalSourceFreshness?: ExternalSourceFreshnessView;
 };
 
 export type SourceVersionHistoryItemView = {
@@ -973,6 +979,33 @@ export const decodeSourceLibraryPageView = (input: unknown): SourceLibraryPageVi
 export const decodeSourceDetailView = (input: unknown): SourceDetailView => {
   const value = record(input, 'SourceDetailView');
   schema(value, 'SourceDetailView');
+  const freshnessValue = value['externalSourceFreshness'];
+  const externalSourceFreshness =
+    freshnessValue === undefined
+      ? undefined
+      : (() => {
+          const freshness = record(freshnessValue, 'SourceDetailView.externalSourceFreshness');
+          const lastCheckedAt = timestamp(
+            freshness['lastCheckedAt'],
+            'SourceDetailView.externalSourceFreshness.lastCheckedAt',
+          );
+          const expiresAt = timestamp(
+            freshness['expiresAt'],
+            'SourceDetailView.externalSourceFreshness.expiresAt',
+          );
+          if (Date.parse(expiresAt) <= Date.parse(lastCheckedAt)) {
+            fail('SourceDetailView.externalSourceFreshness.expiresAt must follow lastCheckedAt.');
+          }
+          return {
+            lastCheckedAt,
+            expiresAt,
+            state: enumValue(
+              freshness['state'],
+              ['CURRENT', 'EXPIRED'],
+              'SourceDetailView.externalSourceFreshness.state',
+            ),
+          };
+        })();
   return {
     schemaVersion: SOURCES_SCHEMA_VERSION,
     sourceId: stringValue(value['sourceId'], 'SourceDetailView.sourceId'),
@@ -1008,6 +1041,7 @@ export const decodeSourceDetailView = (input: unknown): SourceDetailView => {
     ),
     createdAt: timestamp(value['createdAt'], 'SourceDetailView.createdAt'),
     updatedAt: timestamp(value['updatedAt'], 'SourceDetailView.updatedAt'),
+    ...(externalSourceFreshness ? { externalSourceFreshness } : {}),
   };
 };
 

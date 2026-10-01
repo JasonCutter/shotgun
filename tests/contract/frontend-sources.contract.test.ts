@@ -515,27 +515,32 @@ describe('Frontend Phase 2 Section 1 Sources contracts', () => {
   });
 
   it('pins Source detail and ordered Version history to explicit identities', () => {
-    expect(
-      decodeSourceDetailView({
-        schemaVersion: '1.0.0',
-        sourceId: 'source-1',
-        projectId: 'project-1',
-        label: 'Architecture notes',
-        lifecycle: 'ACTIVE',
-        mediaType: 'text/markdown',
-        sensitivity: 'internal',
-        currentSourceVersionId: 'version-2',
-        versionCount: 2,
-        previewReadiness: 'READY',
-        askUsageState: 'EVIDENCE_READY',
-        askUsageExplanation: 'Evidence is indexed.',
-        capabilities: ['PREVIEW', 'SELECT_FOR_ASK'],
-        sourceRevision: 'source-3',
-        ...revisions,
-        createdAt: now,
-        updatedAt: now,
-      }).currentSourceVersionId,
-    ).toBe('version-2');
+    const sourceDetail = decodeSourceDetailView({
+      schemaVersion: '1.0.0',
+      sourceId: 'source-1',
+      projectId: 'project-1',
+      label: 'Architecture notes',
+      lifecycle: 'ACTIVE',
+      mediaType: 'text/markdown',
+      sensitivity: 'internal',
+      currentSourceVersionId: 'version-2',
+      versionCount: 2,
+      previewReadiness: 'READY',
+      askUsageState: 'EVIDENCE_READY',
+      askUsageExplanation: 'Evidence is indexed.',
+      capabilities: ['PREVIEW', 'SELECT_FOR_ASK'],
+      sourceRevision: 'source-3',
+      ...revisions,
+      createdAt: now,
+      updatedAt: now,
+      externalSourceFreshness: {
+        lastCheckedAt: now,
+        expiresAt: '2026-07-31T12:00:00.000Z',
+        state: 'CURRENT',
+      },
+    });
+    expect(sourceDetail.currentSourceVersionId).toBe('version-2');
+    expect(sourceDetail.externalSourceFreshness?.state).toBe('CURRENT');
 
     expect(
       decodeSourceVersionHistoryView({

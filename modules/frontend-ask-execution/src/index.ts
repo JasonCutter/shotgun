@@ -19,6 +19,7 @@ import {
   type AskTransitionSeedView,
   type AskCitationView,
   type AskCapability,
+  type ExternalSourceFreshnessView,
   type AskProviderPolicyResolverPort,
   sha256Text,
   stableJson,
@@ -48,6 +49,7 @@ export type AskExecutionEvidence = {
   readonly sourceVersionId: string;
   readonly exactQuote: string;
   readonly sensitivity: AskExecutionScope['sensitivityClearance'];
+  readonly externalSourceFreshness?: ExternalSourceFreshnessView;
 };
 
 export type AskKnowledgeSnapshot = {
@@ -565,6 +567,9 @@ export const askExecutionContextDigest = (input: {
               sourceId: item.sourceId,
               sourceVersionId: item.sourceVersionId,
               exactQuote: item.exactQuote,
+              ...(item.externalSourceFreshness === undefined
+                ? {}
+                : { externalSourceFreshness: item.externalSourceFreshness }),
             }
           : {
               kind: item.kind,
@@ -1347,6 +1352,9 @@ export class AskAnswerExecutionService {
         sourceVersionId: evidence.sourceVersionId,
         evidenceId: evidence.evidenceId,
         exactQuote: evidence.exactQuote,
+        ...(evidence.externalSourceFreshness === undefined
+          ? {}
+          : { externalSourceFreshness: evidence.externalSourceFreshness }),
       };
     });
   }

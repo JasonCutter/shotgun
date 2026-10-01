@@ -12,6 +12,7 @@ import {
   type AskConversationView,
   type AskSourceSelectionView,
   type AskWorkspaceView,
+  type ExternalSourceFreshnessView,
 } from '../../../packages/contracts/src/index.js';
 import { askSucceededCapabilitiesForContextStatus } from '../../../modules/frontend-ask-execution/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
@@ -116,6 +117,9 @@ type CitationRow = QueryResultRow & {
   readonly source_version_id: string;
   readonly evidence_id: string;
   readonly exact_quote: string | null;
+  readonly external_source_last_checked_at: Date | null;
+  readonly external_source_freshness_expires_at: Date | null;
+  readonly external_source_freshness_state: ExternalSourceFreshnessView['state'] | null;
 };
 
 type ConversationSummaryRow = QueryResultRow & {
@@ -709,7 +713,10 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
                  citation.source_id::text,
                  citation.source_version_id::text,
                  citation.evidence_id::text,
-                 citation.exact_quote
+                 citation.exact_quote,
+                 citation.external_source_last_checked_at,
+                 citation.external_source_freshness_expires_at,
+                 citation.external_source_freshness_state
                FROM frontend_ask.citations AS citation
                JOIN frontend_ask.statements AS statement
                  ON statement.statement_id = citation.statement_id
@@ -759,6 +766,17 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
         sourceVersionId: row.source_version_id,
         evidenceId: row.evidence_id,
         ...(row.exact_quote ? { exactQuote: row.exact_quote } : {}),
+        ...(row.external_source_last_checked_at &&
+        row.external_source_freshness_expires_at &&
+        row.external_source_freshness_state
+          ? {
+              externalSourceFreshness: {
+                lastCheckedAt: row.external_source_last_checked_at.toISOString(),
+                expiresAt: row.external_source_freshness_expires_at.toISOString(),
+                state: row.external_source_freshness_state,
+              },
+            }
+          : {}),
       });
       citationsByStatement.set(row.statement_id, citations);
     }

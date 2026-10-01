@@ -737,3 +737,23 @@ security and maintenance review remains in `oss-source-registry.json`; rollback
 returns adapter `1.11.0` to `1.10.0`. See the
 [Stage 8 review](../../implementation/stage-validations/stage-8-oss-integration-review.md#vp-04--stage-8-pdfium-capm-subscript-recovery--2026-10-02)
 and [full PDF test record](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-capm-subscript-and-direct-claim-v8-recheck).
+
+## VP-08 / Stage 8 external URL freshness propagation — 2026-10-02
+
+The existing Shotgun `SecureUrlAcquisitionCoordinator` and PostgreSQL URL
+provenance receipts have Integration Decision `AUGMENT`: the latest successful
+`retrieved_at` now flows through Source detail, Ask context digest, attempt Evidence, provider
+prompt, and saved citation. A 24-hour Shotgun TTL marks expired external text
+historical. No dependency or upstream code was added.
+`lucasastorian/llmwiki` at `ad626a3d81be1480e35ef4e94234de8dbb27a61e`
+(`Apache-2.0`) remains `REFERENCE_ONLY`; its Watcher/runtime is excluded by the
+existing Role Matrix. `garrytan/gbrain` at
+`a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (`MIT`) remains
+`REFERENCE_ONLY` for Job patterns. There is no relevant standalone OSS package
+for Shotgun's TTL-to-citation meaning (`NO_RELEVANT_OSS`). The PostgreSQL
+repositories and `ExternalSourceFreshnessView` are the replacement boundary.
+Contract, UI, unit, and focused PostgreSQL tests passed. Migration 128 is
+additive and nullable; restoring the pre-migration database is the rollback
+path if the columns must be removed. No scheduled refresh worker or refresh
+failure receipt exists yet, so this partial slice does not pass the VP-08 OSS
+or Product gate. See the [implementation and verification record](../../implementation/vp-url-freshness-ask-projection-2026-10-02.md).

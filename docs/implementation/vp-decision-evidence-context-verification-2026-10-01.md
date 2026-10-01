@@ -22,8 +22,9 @@ The worker passes the bounded context to both provider adapters. Prompts treat c
 
 - General AI, Jev, relation worker, and router tests: 24 tests passed.
 - PostgreSQL relation-priority suite: all 10 tests passed, including retrieval of the matching EvidenceSpan quote, the 2,000-character bound, and truncation flag. Replay, retry, lease recovery, provider uncertainty, queue prioritization, and candidate recall tests also passed.
+- Live browser flow with an isolated PostgreSQL database and DeepSeek: two Markdown sources completed intake, relation processing, cited Ask, and projection replay. The relation was `EQUIVALENT` at 0.95; the answer cited both sources; replay matched; four provider calls used 2,665 total tokens. This is a synthetic two-source product-flow case, not full-PDF quality evidence.
 - Actual DeepSeek `deepseek-flash` request for finance v1.2 `finance-discount-rate-present-value`: `EQUIVALENT`, allowed candidate label; HTTP 200; 854 input and 73 output tokens; provider latency 861 ms. The prompt included a short source excerpt transcribed from the user-provided PDF. The corpus remains `CANDIDATE`, not independently adjudicated.
-- No provider billing ledger readback was available. The live call tested the model payload, while the PostgreSQL test tested the runtime Evidence retrieval path; this single case does not establish full-document context fidelity or relation quality.
+- No provider billing ledger readback was available. The isolated database test confirms the exact authorized Evidence quote reaches the decision port, and the adapter contract test confirms that quote is sent in the model prompt; the live browser flow confirms the real provider completes the relation and Ask path. Together these do not establish full-document extraction fidelity, independent relation quality, or actual billed cost.
 
 ## Remaining VP-04/05 work
 

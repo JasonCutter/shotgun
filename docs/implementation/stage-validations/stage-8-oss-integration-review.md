@@ -115,3 +115,17 @@ recorded in
 The wider Stage 8 replacement gate still includes corrupt/encrypted input and
 adapter replacement verification; this scoped VP-04 change does not claim
 those broader tests or close VP-04.
+
+## 2026-10-01 VP-04 finance formula re-evaluation
+
+The documented Docling re-evaluation trigger was reached by the supplied
+finance PDF's formula loss on pages 5–6. Docling `v2.130.0` / commit
+`92fc74c36bbd20db9838d7665d38900e5c958319` (MIT) was tested in a temporary
+Python 3.12 environment. Default conversion retained layout but emitted empty
+formula items and `formula-not-decoded` placeholders; optional CodeFormulaV2
+did not finish in over six CPU minutes at approximately 1.9 GB memory. Its
+temporary environment occupied 854,390,083 bytes. The production decision
+remains `DEFER`; no dependency or product adapter changed. Re-evaluate when
+bounded hardware can pass an adjudicated formula Golden corpus. See the
+[focused Docling report](../vp-docling-finance-formula-reevaluation-2026-10-01.md)
+for package, source, quality and rollback details.

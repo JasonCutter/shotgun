@@ -143,7 +143,7 @@ Stage 0~2 재검증 결과 PostgreSQL, Ajv, content-addressed storage pattern은
 | 후보                  | 담당 형식·역할                          | 상태                |
 | --------------------- | --------------------------------------- | ------------------- |
 | lucasastorian/llmwiki | HTML cleaner·XLSX extractor             | `EXTRACT`           |
-| Docling               | PDF·Office 구조와 layout 변환           | `ADAPTER_CANDIDATE` |
+| Docling               | PDF·Office 구조와 layout 변환           | `DEFERRED`          |
 | Apache Tika           | 범용 형식 감지·metadata·텍스트 fallback | `ADAPTER_CANDIDATE` |
 | MarkItDown            | 경량 Markdown 변환                      | `ADAPTER_CANDIDATE` |
 | PyMuPDF               | PDF text·page·bbox 처리                 | `ADAPTER_CANDIDATE` |
@@ -393,43 +393,43 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 Stage 0~3의 재검증된 exact pin과 결정은
 [`oss-source-registry.json`](../../implementation/oss-source-registry.json)을 기준으로 한다.
 
-| 후보                  | 공식 저장소·규격                                              | Version / Commit baseline                              | 라이선스 검토                      | 현재 상태              |
-| --------------------- | ------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------- | ---------------------- |
-| garrytan/gbrain       | https://github.com/garrytan/gbrain                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`             | MIT 확인                           | `REFERENCE`            |
-| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`             | Apache-2.0 확인                    | `EXTRACT`              |
-| ddsyasas/llm-wiki     | https://github.com/ddsyasas/llm-wiki                          | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`             | MIT 확인                           | `REFERENCE`            |
-| Inkeep OpenKnowledge  | https://github.com/inkeep/open-knowledge                      | `f2834c237639e2cff603817ed88182b33f83cf91`             | GPL-3.0-or-later 확인, 패턴 참고만 | `REFERENCE`            |
-| NetworkX              | https://github.com/networkx/networkx                          | `3.6.1` / `7530809bfa1ea7ed6fdf918a4d1431488953cb1f`   | BSD-3-Clause 확인                  | `ADOPTED`              |
-| W3C Web Annotation    | https://www.w3.org/TR/2017/REC-annotation-model-20170223/     | Recommendation `2017-02-23`                            | W3C-20150513 확인                  | `AUGMENT`              |
-| JSON Pointer          | https://www.rfc-editor.org/rfc/rfc6901                        | RFC 6901                                               | IETF Trust 확인                    | `ADOPTED`              |
-| JSON Schema           | https://github.com/json-schema-org/json-schema-spec           | 구현 선택 시 draft와 validator pin                     | 대기                               | `FOUNDATION_CANDIDATE` |
-| OpenAPI               | https://github.com/OAI/OpenAPI-Specification                  | 구현 선택 시 spec version pin                          | 대기                               | `FOUNDATION_CANDIDATE` |
-| AsyncAPI              | https://github.com/asyncapi/spec                              | 구현 선택 시 spec version pin                          | 대기                               | `ADAPTER_CANDIDATE`    |
-| CloudEvents           | https://github.com/cloudevents/spec                           | mapping 검증 시 spec version pin                       | 대기                               | `REFERENCE`            |
-| Temporal              | https://github.com/temporalio/temporal                        | benchmark 시 release pin                               | 대기                               | `ADAPTER_CANDIDATE`    |
-| NATS JetStream        | https://github.com/nats-io/nats-server                        | benchmark 시 release pin                               | 대기                               | `ADAPTER_CANDIDATE`    |
-| Redis Streams         | https://github.com/redis/redis                                | benchmark 시 release pin                               | 대기                               | `ADAPTER_CANDIDATE`    |
-| Docling               | https://github.com/docling-project/docling                    | golden corpus 평가 시 commit pin                       | 대기                               | `ADAPTER_CANDIDATE`    |
-| Apache Tika           | https://github.com/apache/tika                                | golden corpus 평가 시 release pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
-| MarkItDown            | https://github.com/microsoft/markitdown                       | golden corpus 평가 시 commit pin                       | 대기                               | `ADAPTER_CANDIDATE`    |
-| ffmpeg                | https://github.com/FFmpeg/FFmpeg                              | Shotgun Assembly에서는 pin하지 않음                    | 범위 재결정 전 대기                | `DEFERRED`             |
-| LiteLLM               | https://github.com/BerriAI/litellm                            | provider benchmark 시 release pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
-| Langfuse              | https://github.com/langfuse/langfuse                          | observability 평가 시 release pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
-| OpenTelemetry         | https://github.com/open-telemetry/opentelemetry-specification | SDK 언어 결정 후 pin                                   | 대기                               | `FOUNDATION_CANDIDATE` |
-| pgvector              | https://github.com/pgvector/pgvector                          | PostgreSQL version과 함께 pin                          | 대기                               | `ADAPTER_CANDIDATE`    |
-| Apache AGE            | https://github.com/apache/age                                 | graph benchmark 시 release pin                         | 대기                               | `ADAPTER_CANDIDATE`    |
-| Open Policy Agent     | https://github.com/open-policy-agent/opa                      | `v1.18.2` / `e695c9ef8edb0f8b9f13d014d7bc8a7fbcc57297` | Apache-2.0 확인                    | `DEFERRED`             |
-| Casbin                | https://github.com/apache/casbin-node-casbin                  | `v5.51.1` / `2d90c7d8c3b522415605cf3d25481e763e73381e` | Apache-2.0 확인                    | `DEFERRED`             |
-| OpenFGA               | https://github.com/openfga/openfga                            | `v1.18.1` / `69efbd95b3d44afb2e2567d485dcc792c7d79e3f` | Apache-2.0 확인                    | `DEFERRED`             |
-| MCP SDK·Specification | https://github.com/modelcontextprotocol/typescript-sdk        | `v1.29.0` / `e12cbd7078db388152f6e839abdbe09ba01f3f32` | Apache-2.0·MIT 확인                | `DEFERRED`             |
-| Temporal TypeScript   | https://github.com/temporalio/sdk-typescript                  | `v1.20.3` / `ae823d7f9dd513f3b90aeba8c66854c59c39a359` | MIT 확인                           | `DEFERRED`             |
-| Octokit.js            | https://github.com/octokit/octokit.js                         | `v5.0.5` / `45c56ffaa6d1799dd4ebaf83f06a8fc64fc39c49`  | MIT 확인                           | `DEFERRED`             |
-| Tiptap                | https://github.com/ueberdosis/tiptap                          | Review UI prototype 시 release pin                     | 대기                               | `ADAPTER_CANDIDATE`    |
-| Yjs                   | https://github.com/yjs/yjs                                    | 협업 기능 승인 후 pin                                  | 대기                               | `DEFERRED`             |
-| Cytoscape.js          | https://github.com/cytoscape/cytoscape.js                     | `3.34.0` / `22716bfb75834b56fa6679648b0abb06f4ae691c`  | MIT 확인                           | `ADOPTED`              |
-| Apache AGE            | https://github.com/apache/age                                 | `6876abcab0a3281eb65a7e2a91238e0b5abfdea7`             | Apache-2.0 확인                    | `DEFERRED`             |
-| OpenSearch            | https://github.com/opensearch-project/OpenSearch              | `1d71f7b405359d277e9d365bb0d206acce8e559b`             | Apache-2.0 확인                    | `DEFERRED`             |
-| Qdrant                | https://github.com/qdrant/qdrant                              | `44ad62f8cd69642be5afa6441612525e24a0d063`             | Apache-2.0 확인                    | `DEFERRED`             |
+| 후보                  | 공식 저장소·규격                                              | Version / Commit baseline                                    | 라이선스 검토                      | 현재 상태              |
+| --------------------- | ------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------- | ---------------------- |
+| garrytan/gbrain       | https://github.com/garrytan/gbrain                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`                   | MIT 확인                           | `REFERENCE`            |
+| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`                   | Apache-2.0 확인                    | `EXTRACT`              |
+| ddsyasas/llm-wiki     | https://github.com/ddsyasas/llm-wiki                          | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`                   | MIT 확인                           | `REFERENCE`            |
+| Inkeep OpenKnowledge  | https://github.com/inkeep/open-knowledge                      | `f2834c237639e2cff603817ed88182b33f83cf91`                   | GPL-3.0-or-later 확인, 패턴 참고만 | `REFERENCE`            |
+| NetworkX              | https://github.com/networkx/networkx                          | `3.6.1` / `7530809bfa1ea7ed6fdf918a4d1431488953cb1f`         | BSD-3-Clause 확인                  | `ADOPTED`              |
+| W3C Web Annotation    | https://www.w3.org/TR/2017/REC-annotation-model-20170223/     | Recommendation `2017-02-23`                                  | W3C-20150513 확인                  | `AUGMENT`              |
+| JSON Pointer          | https://www.rfc-editor.org/rfc/rfc6901                        | RFC 6901                                                     | IETF Trust 확인                    | `ADOPTED`              |
+| JSON Schema           | https://github.com/json-schema-org/json-schema-spec           | 구현 선택 시 draft와 validator pin                           | 대기                               | `FOUNDATION_CANDIDATE` |
+| OpenAPI               | https://github.com/OAI/OpenAPI-Specification                  | 구현 선택 시 spec version pin                                | 대기                               | `FOUNDATION_CANDIDATE` |
+| AsyncAPI              | https://github.com/asyncapi/spec                              | 구현 선택 시 spec version pin                                | 대기                               | `ADAPTER_CANDIDATE`    |
+| CloudEvents           | https://github.com/cloudevents/spec                           | mapping 검증 시 spec version pin                             | 대기                               | `REFERENCE`            |
+| Temporal              | https://github.com/temporalio/temporal                        | benchmark 시 release pin                                     | 대기                               | `ADAPTER_CANDIDATE`    |
+| NATS JetStream        | https://github.com/nats-io/nats-server                        | benchmark 시 release pin                                     | 대기                               | `ADAPTER_CANDIDATE`    |
+| Redis Streams         | https://github.com/redis/redis                                | benchmark 시 release pin                                     | 대기                               | `ADAPTER_CANDIDATE`    |
+| Docling               | https://github.com/docling-project/docling                    | `v2.130.0` / `92fc74c36bbd20db9838d7665d38900e5c958319`; MIT | MIT 확인                           | `DEFERRED`             |
+| Apache Tika           | https://github.com/apache/tika                                | golden corpus 평가 시 release pin                            | 대기                               | `ADAPTER_CANDIDATE`    |
+| MarkItDown            | https://github.com/microsoft/markitdown                       | golden corpus 평가 시 commit pin                             | 대기                               | `ADAPTER_CANDIDATE`    |
+| ffmpeg                | https://github.com/FFmpeg/FFmpeg                              | Shotgun Assembly에서는 pin하지 않음                          | 범위 재결정 전 대기                | `DEFERRED`             |
+| LiteLLM               | https://github.com/BerriAI/litellm                            | provider benchmark 시 release pin                            | 대기                               | `ADAPTER_CANDIDATE`    |
+| Langfuse              | https://github.com/langfuse/langfuse                          | observability 평가 시 release pin                            | 대기                               | `ADAPTER_CANDIDATE`    |
+| OpenTelemetry         | https://github.com/open-telemetry/opentelemetry-specification | SDK 언어 결정 후 pin                                         | 대기                               | `FOUNDATION_CANDIDATE` |
+| pgvector              | https://github.com/pgvector/pgvector                          | PostgreSQL version과 함께 pin                                | 대기                               | `ADAPTER_CANDIDATE`    |
+| Apache AGE            | https://github.com/apache/age                                 | graph benchmark 시 release pin                               | 대기                               | `ADAPTER_CANDIDATE`    |
+| Open Policy Agent     | https://github.com/open-policy-agent/opa                      | `v1.18.2` / `e695c9ef8edb0f8b9f13d014d7bc8a7fbcc57297`       | Apache-2.0 확인                    | `DEFERRED`             |
+| Casbin                | https://github.com/apache/casbin-node-casbin                  | `v5.51.1` / `2d90c7d8c3b522415605cf3d25481e763e73381e`       | Apache-2.0 확인                    | `DEFERRED`             |
+| OpenFGA               | https://github.com/openfga/openfga                            | `v1.18.1` / `69efbd95b3d44afb2e2567d485dcc792c7d79e3f`       | Apache-2.0 확인                    | `DEFERRED`             |
+| MCP SDK·Specification | https://github.com/modelcontextprotocol/typescript-sdk        | `v1.29.0` / `e12cbd7078db388152f6e839abdbe09ba01f3f32`       | Apache-2.0·MIT 확인                | `DEFERRED`             |
+| Temporal TypeScript   | https://github.com/temporalio/sdk-typescript                  | `v1.20.3` / `ae823d7f9dd513f3b90aeba8c66854c59c39a359`       | MIT 확인                           | `DEFERRED`             |
+| Octokit.js            | https://github.com/octokit/octokit.js                         | `v5.0.5` / `45c56ffaa6d1799dd4ebaf83f06a8fc64fc39c49`        | MIT 확인                           | `DEFERRED`             |
+| Tiptap                | https://github.com/ueberdosis/tiptap                          | Review UI prototype 시 release pin                           | 대기                               | `ADAPTER_CANDIDATE`    |
+| Yjs                   | https://github.com/yjs/yjs                                    | 협업 기능 승인 후 pin                                        | 대기                               | `DEFERRED`             |
+| Cytoscape.js          | https://github.com/cytoscape/cytoscape.js                     | `3.34.0` / `22716bfb75834b56fa6679648b0abb06f4ae691c`        | MIT 확인                           | `ADOPTED`              |
+| Apache AGE            | https://github.com/apache/age                                 | `6876abcab0a3281eb65a7e2a91238e0b5abfdea7`                   | Apache-2.0 확인                    | `DEFERRED`             |
+| OpenSearch            | https://github.com/opensearch-project/OpenSearch              | `1d71f7b405359d277e9d365bb0d206acce8e559b`                   | Apache-2.0 확인                    | `DEFERRED`             |
+| Qdrant                | https://github.com/qdrant/qdrant                              | `44ad62f8cd69642be5afa6441612525e24a0d063`                   | Apache-2.0 확인                    | `DEFERRED`             |
 
 ### Stage 10 확정 결정
 
@@ -617,3 +617,18 @@ Target: `VPDecisionProviderPort@1.2.0` and `VPRelationJobStorePort`, behind the 
 | External relation-context package/runtime                             | `NO_RELEVANT_OSS` | The change is exact-source retrieval and prompt-boundary handling; no standalone package fits the Shotgun provenance and security contract.                                                       |
 
 No dependency, migration, or OSS-owned contract was added. General AI and Jev adapters share the versioned input shape. Contract tests cover hostile source text, over-limit rejection before provider resolution, and distinct durable request digests when Evidence context differs. PostgreSQL integration verifies exact Evidence lineage/security matching and the 2,000-character truncation signal. Rollback reverts the additive request field and the v6 relation policy revision; append-only decisions remain auditable and require no data migration. Finance corpus v1.2 remains `CANDIDATE`; this change does not close VP-04/05.
+
+## VP-04 / Stage 8 Docling finance formula re-evaluation — 2026-10-01
+
+The documented formula-loss trigger was reproduced on the supplied 10-page
+finance PDF. Docling `v2.130.0` (`92fc74c36bbd20db9838d7665d38900e5c958319`, MIT)
+was evaluated only in a temporary Python 3.12 environment. The default
+two-page conversion retained layout but emitted empty formula text and
+`formula-not-decoded` placeholders; optional CodeFormulaV2 did not finish
+within six CPU minutes at about 1.9 GB memory. The temporary environment
+resolved 50 distributions and occupied 854,390,083 bytes. Decision remains
+`DEFER`: do not add it to the product until formula text passes an adjudicated
+page-image Golden corpus within bounded runtime. Upstream security policy says
+only latest versions are supported; no product dependency or production
+security scan was introduced. Full methodology, limitations, and rollback are
+in the [focused re-evaluation report](../../implementation/vp-docling-finance-formula-reevaluation-2026-10-01.md).

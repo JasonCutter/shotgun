@@ -1040,23 +1040,27 @@
       "name": "Docling",
       "stages": [8],
       "officialSource": "https://github.com/docling-project/docling",
-      "pin": { "type": "git-tag", "value": "v2.113.0" },
+      "pin": { "type": "git-tag", "value": "v2.130.0" },
       "license": {
         "spdx": "MIT",
         "status": "VERIFIED",
-        "evidence": "Official repository license at v2.113.0"
+        "evidence": "Official repository LICENSE at v2.130.0"
       },
       "decision": "DEFER",
       "scope": "Advanced PDF and Office layout, table, formula, and image understanding",
-      "security": "Model downloads and a large parser dependency graph require an isolated worker and resource limits",
-      "maintenance": "Deferred because the MVP Golden corpus does not justify its runtime and model footprint",
+      "security": "Upstream security policy supports latest versions only; v2.130.0 was evaluated in an isolated temporary environment, and no production security/dependency gate was run",
+      "maintenance": "v2.130.0 was the reviewed release baseline; the tested formula model path exceeded the local CPU time and memory budget",
       "evidence": [
-        "v2.113.0 reviewed",
-        "Current format-specific adapters passed selector and structure Golden tests without model downloads"
+        "Initial v2.113.0 review retained as historical baseline",
+        "v2.130.0 tag commit 92fc74c36bbd20db9838d7665d38900e5c958319 reviewed; official LICENSE is MIT",
+        "Temporary Python 3.12 environment resolved 50 distributions and occupied 854390083 bytes",
+        "Finance PDF pages 5-6 default conversion kept formula blocks but exported empty formula text and formula-not-decoded placeholders",
+        "Optional CodeFormulaV2 local CPU conversion exceeded six minutes and approximately 1.9 GB process memory without a result",
+        "No application dependency, lockfile, adapter, or production behavior changed"
       ],
       "boundary": "Document format adapter",
       "replacement": "Can replace PDF or Office adapters only through DocumentIR and SourceMap contract tests",
-      "recheckTrigger": "Scanned PDF, complex table, formula, or chart loss exceeds the Stage 8 tolerance"
+      "recheckTrigger": "A bounded supported host is available and CodeFormulaV2 passes a page-image adjudicated finance formula Golden corpus within ingest time and memory limits"
     },
     {
       "id": "markitdown",

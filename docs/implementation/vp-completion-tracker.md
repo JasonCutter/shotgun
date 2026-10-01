@@ -75,6 +75,16 @@
 
 Decision Port 1.2.0에 같은 주장 EvidenceSpan의 제한된 원문 문맥과 잘림 표식을 추가했다. PostgreSQL→Worker→Decision Port 경로의 원문 범위·접근/민감도 일치, 2,000자 제한, provider request digest 결합을 격리 테스트로 확인했다. DeepSeek `deepseek-flash`가 PDF 기반 할인율/현재가치 1건을 허용된 `EQUIVALENT`로 분류했다(854 input / 73 output tokens, 861 ms). corpus 라벨은 독립 검토 전 `CANDIDATE`이며 전체 PDF 추출 품질·다문서 품질·후보 축소·실청구 비용은 미검증이다. VP-04/05는 열린 상태다. [상세 구현·검증](./vp-decision-evidence-context-verification-2026-10-01.md).
 
+### 2026-10-01 VP-04 finance PDF formula extraction
+
+The documented Stage 8 Docling re-evaluation trigger was confirmed on pages
+5–6 of the supplied finance PDF. Docling `v2.130.0` (MIT) preserved layout but
+left formula block text empty in its default mode; optional CodeFormulaV2
+exceeded six CPU minutes and approximately 1.9 GB memory without a result. The
+isolated environment occupied 854,390,083 bytes. Docling remains `DEFER`; the
+existing pdfplumber/pypdfium2 path stays active, and formula-sensitive VP-04
+quality remains open. [Re-evaluation and evidence](./vp-docling-finance-formula-reevaluation-2026-10-01.md).
+
 ## 남은 완료 조건
 
 | 확인 | ID / Gate                     | 완료 판정에 필요한 작업·검증                                                                                                                                                                                                                                                                        | 현재 증거·미충족 사유                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "reviewedAt": "2026-10-01",
+  "reviewedAt": "2026-10-02",
   "decisionValues": [
     "ADOPT",
     "EXTRACT",
@@ -18,20 +18,22 @@
       "officialSource": "https://github.com/postgres/postgres",
       "pin": {
         "type": "docker-digest",
-        "value": "postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
+        "value": "pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b"
       },
       "license": {
         "spdx": "PostgreSQL",
         "status": "VERIFIED",
-        "evidence": "Official PostgreSQL distribution and Docker Official Image"
+        "evidence": "PostgreSQL upstream distribution and the digest-pinned pgvector PostgreSQL image used by compose.yaml"
       },
       "decision": "ADOPT",
       "scope": "Development database, Stage 2 asset metadata, Stage 3 transformation/evidence persistence, Stage 6 Canonical transaction and Outbox, Stage 7 FTS/pg_trgm projection, Stage 10 Compiled Truth, Stage 11 Action approval and append-only Audit, and Stage 12.1 pg_dump/pg_restore clean restore",
       "security": "Local credentials only; production secrets remain outside source control",
-      "maintenance": "Major version 16 is fixed; patch and image digest updates require a registry change",
+      "maintenance": "compose.yaml pins the pgvector PostgreSQL image digest; the observed server is PostgreSQL 16.15. Patch and image digest updates require a registry review",
       "evidence": [
         "docker image digest verified",
-        "PostgreSQL 16.14 runtime verified",
+        "PostgreSQL 16.15 runtime verified from the pinned Compose image",
+        "PostgreSQL REL_16_15 source commit 7d3e000c5961a544302072058a1184e9a588837b verified",
+        "compose.yaml db and db-test services use the same immutable image digest",
         "Stage 6 atomic rollback, restart, row-lock concurrency, append-only, and SKIP LOCKED Outbox tests",
         "Stage 7 FTS, trigram, GIN index, Watermark restart, and atomic rebuild tests",
         "Stage 11 restart, concurrent execution claim, immutable approval, and append-only Audit tests",
@@ -123,20 +125,20 @@
       "id": "postgresql-pg-trgm",
       "name": "PostgreSQL pg_trgm",
       "stages": [7, 10],
-      "officialSource": "https://github.com/postgres/postgres/tree/REL_16_14/contrib/pg_trgm",
+      "officialSource": "https://github.com/postgres/postgres/tree/REL_16_15/contrib/pg_trgm",
       "pin": {
         "type": "git-commit",
-        "value": "0d1c00c624fa7367d4a895f44381887757289682"
+        "value": "7d3e000c5961a544302072058a1184e9a588837b"
       },
       "license": {
         "spdx": "PostgreSQL",
         "status": "VERIFIED",
-        "evidence": "PostgreSQL REL_16_14 source tree and COPYRIGHT"
+        "evidence": "PostgreSQL REL_16_15 source tree and COPYRIGHT"
       },
       "decision": "ADOPT",
       "scope": "Typo-tolerant Canonical Claim search behind SearchProjectionRepositoryPort",
       "security": "Extension runs inside the pinned PostgreSQL image and receives only access-filtered Projection text",
-      "maintenance": "Version follows the pinned PostgreSQL 16.14 image and source commit",
+      "maintenance": "Version follows the PostgreSQL 16.15 source tag and pinned Compose image digest",
       "evidence": [
         "pg_trgm extension availability and migration verified",
         "GIN trigram index and typo retrieval database tests"
@@ -165,6 +167,7 @@
       "maintenance": "pgvector 0.8.x extension on PostgreSQL 16 image digest verified",
       "evidence": [
         "official exact and approximate nearest-neighbor capabilities reviewed",
+        "pgvector 0.8.6 extension observed in the digest-pinned Compose runtime",
         "AKP-1 WP2 database integration tests for variable dimensions, security-before-Top-K, and deterministic tie-breaking"
       ],
       "boundary": "Only adapters/semantic-index-postgres imports pgvector SQL operators behind SemanticIndexRepositoryPort",

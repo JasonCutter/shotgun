@@ -30,6 +30,43 @@ Supervisor는 Product DB에 쓰지 않는다. 실제 장애 시험은 guarded `s
 
 검증 명령: `VP_RUNTIME_POSTGRES_CONTAINER_RESTART=1 npx vitest run tests/integration/vp-runtime-postgres-server-restart.live.test.ts --reporter=verbose` (Windows PowerShell 환경 변수 방식으로 실행), 1 test passed.
 
+### 2026-10-02 PostgreSQL outage 중 Provider 응답 복구
+
+VP relation Job의 Worker child가 pinned PostgreSQL 16 컨테이너 및 격리
+`shotgun_test` DB를 사용했다. Worker가 Job과 Provider call을 `RUNNING`으로
+기록하고 local HTTP Provider에 요청한 뒤 PostgreSQL 컨테이너를 중지했다.
+컨테이너가 중지된 상태에서 Worker가 `EQUIVALENT` 결정 JSON HTTP 200 응답을
+수신했음을 IPC로 확인했다. DB 연결이 복구되지 않은 동안 출력 저장 시도는
+실패했고, Worker child를 종료했다. PostgreSQL을 같은 고정 loopback 포트에서
+다시 시작해 결과 출력이 아직 `NULL`, Job/Provider call이 여전히 `RUNNING`인
+것을 읽었다. 테스트는 lease 만료 시각을 과거로 당겨 2분 만료 대기를
+축약했다. 이어 새 `startShotgunApplication` owner composition이 `/health`
+200을 반환하고 relation worker가 두 원장 행을 모두 `OUTCOME_UNKNOWN`으로
+수렴하는 것을 확인했다. 응답 저장이나 재호출 없이 Provider HTTP 응답은
+한 번뿐이었고, replay는 queue settled/incomplete와 unknown Job 1건을
+보고했으며 Relation은 기록되지 않았다.
+
+실행 명령: Windows PowerShell에서
+`$env:VP_RELATION_POSTGRES_OUTAGE_TEST='1'; node --env-file-if-exists=.env --env-file-if-exists=.env.test node_modules/vitest/vitest.mjs run tests/database/vp-relation-priority.database.test.ts -t "keeps a data-bearing provider result" --maxWorkers=1 --fileParallelism=false --testTimeout=300000 --hookTimeout=300000 --reporter=verbose`.
+집중 시험은 1/1 통과했다. 기본 PostgreSQL relation suite는 10개 통과,
+2개 조건부 시험 건너뜀으로 끝났다. 조건부 중 이 outage 시험은 별도 실행해
+1/1 통과했다.
+
+OSS 경계는 `compose.yaml`의 pinned
+`pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b`
+이미지(PostgreSQL 16.15, pgvector 0.8.6)와 Shotgun 소유
+`VPRelationJobStorePort`를 그대로 사용한다. `oss-source-registry.json`은 이
+digest 및 `REL_16_15`의 `pg_trgm` source commit으로 갱신했다. 관계 원장·Provider call 의미는
+Shotgun 소유다. Integration decision은 기존 PostgreSQL `ADOPT`/`AUGMENT`
+결정에 포함되며 추가 OSS runtime, package, schema, production behavior는
+없다. 시험 rollback은 helper와 gated test 제거다.
+
+이 시험은 DeepSeek 실 API 호출·청구가 아니라 synthetic local HTTP 응답이며,
+2분 lease 만료 대기와 설치된 Windows launcher/아이콘 재기동을 생략한다.
+따라서 장애 중 응답 저장 실패 뒤 원장 수렴의 한 경로를 닫았고, VP-07 전체는
+아직 완료되지 않았다. 설치 프로세스 강제 종료·Windows 재부팅, 배포
+cutover/rollback, 실청구 대사와 UI 복구 상태는 남아 있다.
+
 ## OSS 결정
 
 | 대상                         | 검토 결과                                                                                                                                                                                                                             |
@@ -51,7 +88,7 @@ Supervisor는 Product DB에 쓰지 않는다. 실제 장애 시험은 guarded `s
 
 ## VP-07에 남은 검증
 
-1. Provider 응답 불명확 Job의 owner Runtime 재시작 시 `OUTCOME_UNKNOWN` 수렴과 중복 요청 방지는 통과했다. PostgreSQL 서버 중단이 data-bearing Job 처리와 겹치는 경우와 실제 provider 청구 대사, 사용자 답변 인용·projection watermark를 추가 확인한다.
+1. Provider 응답 불명확 Job 및 PostgreSQL outage와 겹친 data-bearing Provider 응답의 owner Runtime 재시작 수렴과 중복 요청 방지는 통과했다. 실제 Provider 청구 대사, 사용자 답변 인용·projection watermark의 outage 뒤 동작은 추가 확인한다.
 2. 실제 환경에서 database backup→clean restore, cutover, rollback 연습을 완료한다.
 3. owner launcher가 강제 종료된 상황 및 Windows 재부팅 후 아이콘 시작 정책을 검증한다. 이 구현은 owner가 살아 있을 때의 child 복구만 보장한다.
 

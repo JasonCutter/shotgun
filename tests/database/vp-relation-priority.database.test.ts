@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 
+import { execFile } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { createServer } from 'node:http';
+import { createServer, type ServerResponse } from 'node:http';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { Pool, PoolClient, QueryResultRow } from 'pg';
+import { promisify } from 'node:util';
+import { Client, type Pool, type PoolClient, type QueryResultRow } from 'pg';
 import { expect, it, vi } from 'vitest';
 
 import { PostgresVPRelationJobs } from '../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
@@ -38,6 +40,55 @@ import {
   runOwnerRestoreSafe,
 } from '../../scripts/backup-owner-core.js';
 import { startShotgunApplication } from '../../assemblies/shotgun-app/src/application.js';
+import { migrateUpTo } from '../../scripts/database.js';
+
+const execFileAsync = promisify(execFile);
+const postgresImage =
+  'pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b';
+
+const docker = async (...args: string[]): Promise<string> => {
+  const { stdout } = await execFileAsync('docker', args, {
+    encoding: 'utf8',
+    timeout: 120_000,
+    maxBuffer: 1_000_000,
+    windowsHide: true,
+  });
+  return stdout.trim();
+};
+
+const reserveLoopbackPort = async (): Promise<number> => {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Could not reserve a local test port.');
+  }
+  const port = address.port;
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+  return port;
+};
+
+const waitForPostgres = async (databaseUrl: string): Promise<void> => {
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const client = new Client({ connectionString: databaseUrl, connectionTimeoutMillis: 1_000 });
+    try {
+      await client.connect();
+      await client.query('SELECT 1');
+      await client.end();
+      return;
+    } catch {
+      await client.end().catch(() => undefined);
+      await new Promise<void>((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw new Error('The isolated PostgreSQL outage-test container did not become ready.');
+};
 
 const hash = (text: string): string => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 
@@ -1682,3 +1733,312 @@ it('does not duplicate a provider call or relation when the committed decision a
     await database.dispose();
   }
 }, 60_000);
+
+const outageTestEnabled = process.env.VP_RELATION_POSTGRES_OUTAGE_TEST === '1';
+
+it.skipIf(!outageTestEnabled)(
+  'keeps a data-bearing provider result unknown when PostgreSQL is down and owner runtime restarts',
+  async () => {
+    const containerName = `shotgun-vp-relation-outage-${Date.now()}-${randomUUID().slice(0, 8)}`;
+    let containerCreated = false;
+    let databasePool: Pool | undefined;
+    let verificationPool: Pool | undefined;
+    let application: Awaited<ReturnType<typeof startShotgunApplication>> | undefined;
+    let child: ReturnType<typeof spawn> | undefined;
+    let pendingProviderResponse: ServerResponse | undefined;
+    let providerResponseCount = 0;
+    let providerStub: ReturnType<typeof createServer> | undefined;
+    let assetRoot: string | undefined;
+
+    const waitForChildMessage = (
+      messageType: string | readonly string[],
+      timeoutMs = 30_000,
+    ): Promise<Record<string, unknown>> => {
+      if (!child) return Promise.reject(new Error('Outage worker child was not started.'));
+      const expectedTypes = typeof messageType === 'string' ? [messageType] : messageType;
+      const expectedLabel = expectedTypes.join(' or ');
+      return new Promise((resolve, reject) => {
+        const finish = (error?: Error, message?: Record<string, unknown>): void => {
+          clearTimeout(timeout);
+          child?.off('message', onMessage);
+          child?.off('exit', onExit);
+          child?.off('error', onError);
+          if (error) reject(error);
+          else resolve(message!);
+        };
+        const onMessage = (message: unknown): void => {
+          if (
+            typeof message === 'object' &&
+            message !== null &&
+            'type' in message &&
+            typeof message.type === 'string' &&
+            expectedTypes.includes(message.type)
+          ) {
+            finish(undefined, message as Record<string, unknown>);
+          }
+        };
+        const onExit = (code: number | null, signal: NodeJS.Signals | null): void =>
+          finish(
+            new Error(
+              `Outage worker exited before ${expectedLabel} (code=${code}, signal=${signal}).`,
+            ),
+          );
+        const onError = (error: Error): void => finish(error);
+        const timeout = setTimeout(
+          () => finish(new Error(`Timed out waiting for outage worker message ${expectedLabel}.`)),
+          timeoutMs,
+        );
+        child!.on('message', onMessage);
+        child!.once('exit', onExit);
+        child!.once('error', onError);
+      });
+    };
+
+    try {
+      const databasePort = await reserveLoopbackPort();
+      const published = await docker(
+        'run',
+        '--detach',
+        '--name',
+        containerName,
+        '--label',
+        'com.shotgun.test=vp-relation-postgres-outage',
+        '--env',
+        'POSTGRES_DB=shotgun_test',
+        '--env',
+        'POSTGRES_USER=shotgun',
+        '--env',
+        'POSTGRES_PASSWORD=shotgun',
+        '--publish',
+        `127.0.0.1:${databasePort}:5432`,
+        postgresImage,
+      );
+      containerCreated = true;
+      expect(published).toMatch(/^[a-f0-9]{12,64}$/u);
+      const databaseUrl = `postgres://shotgun:shotgun@127.0.0.1:${databasePort}/shotgun_test`;
+      await waitForPostgres(databaseUrl);
+      await requireTestDatabaseTarget({ environment: { TEST_DATABASE_URL: databaseUrl } });
+      await migrateUpTo(undefined, databaseUrl);
+
+      databasePool = createPostgresPool(databaseUrl);
+      const projectId = `vp-postgres-outage-${randomUUID()}`;
+      const principal = await new PostgresAuthRepository(databasePool).bootstrapLocalOwnerPrincipal(
+        {
+          accountId: `vp-postgres-outage-owner-${randomUUID()}`,
+        },
+      );
+      await new PostgresProjectAdministrationRepository(databasePool).createProject({
+        commandId: randomUUID(),
+        clientRequestId: randomUUID(),
+        idempotencyKey: randomUUID(),
+        projectId,
+        name: 'VP relation provider during PostgreSQL outage',
+        description: 'an accepted provider response cannot be stored while PostgreSQL is down',
+        actorPrincipalId: principal.principalId,
+        expectedProjectRevision: 0,
+      });
+      await seedAssertion(databasePool, {
+        projectId,
+        principalId: principal.principalId,
+        assertionId: '00000000-0000-4000-8000-000000000071',
+        text: 'The 2026 report says the current ratio is 2.0.',
+      });
+      await seedAssertion(databasePool, {
+        projectId,
+        principalId: principal.principalId,
+        assertionId: '00000000-0000-4000-8000-000000000072',
+        text: 'The 2026 report states current assets are twice current liabilities.',
+      });
+
+      providerStub = createServer((request, response) => {
+        providerResponseCount += 1;
+        request.resume();
+        pendingProviderResponse = response;
+      });
+      await new Promise<void>((resolve, reject) => {
+        providerStub!.once('error', reject);
+        providerStub!.listen(0, '127.0.0.1', resolve);
+      });
+      const providerAddress = providerStub.address();
+      if (!providerAddress || typeof providerAddress === 'string') {
+        throw new Error('The local provider stub did not bind a TCP port.');
+      }
+      const childPath = path.resolve('tests/helpers/vp-relation-postgres-outage-worker.ts');
+      const inheritedPath = process.env.PATH ?? process.env.Path;
+      const childEnvironment = Object.fromEntries(
+        Object.entries({
+          SystemRoot: process.env.SystemRoot,
+          WINDIR: process.env.WINDIR,
+          TEMP: process.env.TEMP,
+          TMP: process.env.TMP,
+          PATH: inheritedPath,
+          Path: inheritedPath,
+          DATABASE_URL: databaseUrl,
+          VP_OUTAGE_TEST_PROVIDER_URL: `http://127.0.0.1:${providerAddress.port}/decision`,
+          VP_OUTAGE_TEST_PROJECT_ID: projectId,
+        }).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+      );
+      child = spawn(process.execPath, ['--import', 'tsx', childPath], {
+        cwd: process.cwd(),
+        env: childEnvironment,
+        windowsHide: true,
+        stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+      });
+      await waitForChildMessage('provider-request-started');
+      const running = await databasePool.query<{
+        readonly job_status: string;
+        readonly provider_state: string;
+      }>(
+        `SELECT job.status AS job_status, provider_call.state AS provider_state
+           FROM vp.relation_jobs AS job
+           JOIN vp.relation_provider_calls AS provider_call USING (project_id, job_id)
+          WHERE job.project_id = $1`,
+        [projectId],
+      );
+      expect(running.rows).toEqual([{ job_status: 'RUNNING', provider_state: 'RUNNING' }]);
+      await databasePool.end();
+      databasePool = undefined;
+
+      await docker('stop', '--time', '1', containerName);
+      expect(pendingProviderResponse).toBeDefined();
+      const resultAfterOutage = waitForChildMessage('provider-response-received');
+      const workerOutcome = waitForChildMessage(['worker-failed', 'worker-finished']);
+      pendingProviderResponse!.writeHead(200, { 'content-type': 'application/json' });
+      pendingProviderResponse!.end(
+        JSON.stringify({
+          choice: 'EQUIVALENT',
+          direction: 'NONE',
+          confidence: 0.99,
+          probabilities: {
+            EQUIVALENT: 0.99,
+            SUPPORTS: 0.002,
+            QUALIFIES: 0.002,
+            CONTRADICTS: 0.002,
+            RELATED: 0.002,
+            UNRESOLVED: 0.002,
+          },
+        }),
+      );
+      await resultAfterOutage;
+      const workerOutcomeMessage = await workerOutcome;
+      expect(
+        workerOutcomeMessage.type === 'worker-failed' ||
+          workerOutcomeMessage.outcome === 'OUTCOME_UNKNOWN',
+      ).toBe(true);
+      expect(providerResponseCount).toBe(1);
+      if (child && child.exitCode === null && child.signalCode === null) {
+        child.kill();
+        await once(child, 'exit');
+      }
+      child = undefined;
+
+      await docker('start', containerName);
+      try {
+        await waitForPostgres(databaseUrl);
+      } catch (error) {
+        const state = await docker(
+          'inspect',
+          '--format',
+          '{{.State.Status}} {{.State.ExitCode}} {{.State.Error}}',
+          containerName,
+        ).catch(() => 'container state unavailable');
+        const logs = await docker('logs', '--tail', '50', containerName).catch(
+          () => 'container logs unavailable',
+        );
+        throw new Error(`PostgreSQL failed to recover (${state}).\n${logs}`, { cause: error });
+      }
+      verificationPool = createPostgresPool(databaseUrl);
+      const providerCallBeforeOwnerRestart = await verificationPool.query<{
+        readonly job_status: string;
+        readonly provider_state: string;
+        readonly output_is_null: boolean;
+      }>(
+        `SELECT job.status AS job_status, provider_call.state AS provider_state,
+                provider_call.output_json IS NULL AS output_is_null
+           FROM vp.relation_jobs AS job
+           JOIN vp.relation_provider_calls AS provider_call USING (project_id, job_id)
+          WHERE job.project_id = $1`,
+        [projectId],
+      );
+      expect(providerCallBeforeOwnerRestart.rows).toEqual([
+        { job_status: 'RUNNING', provider_state: 'RUNNING', output_is_null: true },
+      ]);
+      await verificationPool.query(
+        `UPDATE vp.relation_jobs SET lease_expires_at = clock_timestamp() - interval '1 second'
+          WHERE project_id = $1 AND status = 'RUNNING'`,
+        [projectId],
+      );
+
+      assetRoot = await mkdtemp(path.join(os.tmpdir(), 'shotgun-vp-pg-outage-owner-'));
+      application = await startShotgunApplication({
+        databaseUrl,
+        environment: { ...process.env, NODE_ENV: 'test' },
+        environmentProfile: 'runtime-test',
+        assetRoot,
+        stagingSecret: 'vp-postgres-outage-test-staging-secret',
+        host: '127.0.0.1',
+        port: 0,
+        noSignals: true,
+        disableAskWorker: true,
+        recoveryIntervalMs: false,
+        actionFeedbackOutboxIntervalMs: false,
+        aiDurableMaterializationRecoveryEnabled: false,
+      });
+      expect((await application.server.inject({ method: 'GET', url: '/health' })).statusCode).toBe(
+        200,
+      );
+      const deadline = Date.now() + 30_000;
+      let finalState: {
+        readonly job_status: string;
+        readonly provider_state: string;
+        readonly output_is_null: boolean;
+      }[] = [];
+      while (Date.now() < deadline) {
+        const state = await verificationPool.query<{
+          readonly job_status: string;
+          readonly provider_state: string;
+          readonly output_is_null: boolean;
+        }>(
+          `SELECT job.status AS job_status, provider_call.state AS provider_state,
+                  provider_call.output_json IS NULL AS output_is_null
+             FROM vp.relation_jobs AS job
+             JOIN vp.relation_provider_calls AS provider_call USING (project_id, job_id)
+            WHERE job.project_id = $1`,
+          [projectId],
+        );
+        finalState = state.rows;
+        if (state.rows[0]?.job_status === 'OUTCOME_UNKNOWN') break;
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      }
+      expect(finalState).toEqual([
+        { job_status: 'OUTCOME_UNKNOWN', provider_state: 'OUTCOME_UNKNOWN', output_is_null: true },
+      ]);
+      expect(providerResponseCount).toBe(1);
+      expect(await verifyVPProjectionReplay(verificationPool, projectId)).toMatchObject({
+        relationQueueSettled: true,
+        relationQueueComplete: false,
+        failedRelationJobs: 0,
+        unknownRelationJobs: 1,
+      });
+    } finally {
+      await application?.close();
+      if (assetRoot) await rm(assetRoot, { recursive: true, force: true });
+      if (child && child.exitCode === null && child.signalCode === null) {
+        child.kill();
+        await once(child, 'exit');
+      }
+      if (providerStub?.listening) {
+        await new Promise<void>((resolve, reject) =>
+          providerStub!.close((error) => (error ? reject(error) : resolve())),
+        );
+      }
+      if (pendingProviderResponse && !pendingProviderResponse.writableEnded) {
+        pendingProviderResponse.destroy();
+      }
+      await verificationPool?.end();
+      await databasePool?.end();
+      if (containerCreated) await docker('rm', '--force', containerName);
+    }
+  },
+  300_000,
+);

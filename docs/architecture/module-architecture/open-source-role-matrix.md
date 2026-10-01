@@ -382,8 +382,8 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 
 ### Stage 6 확정 결정
 
-- PostgreSQL 16.14를 Canonical transaction, project row lock, append-only History와
-  Transactional Outbox 저장소로 `ADOPTED`한다.
+- Compose에 digest로 고정한 PostgreSQL 16.15 runtime을 Canonical transaction, project row
+  lock, append-only History와 Transactional Outbox 저장소로 `ADOPTED`한다.
 - gbrain의 Page·Fact·Timeline·migration·recovery는 `REFERENCE`로 사용하되 gbrain runtime과
   DB를 Shotgun Canonical 원장으로 사용하지 않는다.
 - `Claim`은 `Fact`로 자동 승격하지 않으며 승인 Manifest와 Snapshot precondition을 Shotgun이
@@ -454,8 +454,8 @@ Stage 0~3의 재검증된 exact pin과 결정은
 - gbrain의 contract-first operation 정의, mutating/write scope, remote default-deny와
   side-effect adversarial test를 `REFERENCE_ONLY`로 재사용한다. gbrain MCP runtime·DB·operation을
   Shotgun 실행 권한으로 사용하지 않는다.
-- PostgreSQL 16.14를 Action 상태, 원자적 실행 claim, 불변 Approval과 append-only Audit 저장소로
-  `ADOPTED`한다.
+- Compose에 digest로 고정한 PostgreSQL 16.15 runtime을 Action 상태, 원자적 실행 claim,
+  불변 Approval과 append-only Audit 저장소로 `ADOPTED`한다.
 - R0~R4는 다섯 operation mapping과 restricted·compensation 하한만 필요한 MVP이므로
   `stage11.action-risk.v1` 결정적 코드 정책을 사용한다. OPA v1.18.2와 Casbin v5.51.1은
   정책 규모 또는 다중 서비스 요구가 확인될 때까지 `DEFERRED`다.
@@ -484,7 +484,7 @@ Stage 0~3의 재검증된 exact pin과 결정은
 
 ### Stage 12.1 Durability Recovery 확정 결정
 
-- 고정된 PostgreSQL 16.14 image의 `pg_dump`·`pg_restore`를 Backup Database Adapter로 `ADOPT`한다. Shotgun이 Asset·Contract·Integrity Manifest와 clean-restore 정책을 계속 소유한다.
+- Compose에 digest로 고정한 PostgreSQL 16.15 image의 `pg_dump`·`pg_restore`를 Backup Database Adapter로 `ADOPT`한다. Shotgun이 Asset·Contract·Integrity Manifest와 clean-restore 정책을 계속 소유한다.
 - gbrain의 migration·recovery·idempotency 패턴은 `REFERENCE_ONLY`로 유지하고 gbrain Runtime·DB를 Outbox나 Projection 권위 저장소로 도입하지 않는다.
 - pgBackRest 2.58.0, WAL-G 3.0.8, Barman 3.19.1은 PITR·WAL archive·외부 저장소·다중 Server DR 요구가 승인될 때까지 `DEFER`한다.
 - Canonical Outbox 복구는 Stage 6 Repository Port를, Search와 Compiled Truth 재생성은 Stage 7·10 Module Contract를 재사용한다. 외부 도구의 ID·Schema·Metadata를 Canonical Contract로 노출하지 않는다.
@@ -613,6 +613,10 @@ Shotgun 로컬 Runtime은 기존 canonical launcher identity 소유권을 유지
 선택 근거·보안 범위·회복 계약·교체 및 롤백은 [ADR-167 VP-07 amendment](../adr/ADR-167-canonical-desktop-launcher-repository-and-runtime-identity.md#2026-09-30--vp-07-supervised-application-restart)와 [VP 재기동 시험 보고](../../implementation/vp-runtime-restart-supervision-2026-09-30.md)에 기록한다. 앱 자식 재기동의 unit·실제 Node IPC 시험과 PostgreSQL server container 재기동 후 persisted project API read 시험이 통과했다. Synthetic HTTP 200 직후 isolated test Worker process를 종료하고 새 `startShotgunApplication` 구성으로 재기동한 시험은 `/health` 200, provider-call/Job `OUTCOME_UNKNOWN`, 재호출 0건을 확인했다. 이는 test process와 local HTTP 경계이며 PostgreSQL 장애와 Provider 호출이 겹치는 복구, 배포 cutover/rollback, 설치 Runtime 강제 종료와 Windows 재부팅 검증은 아직 VP-07 완료 Gate로 남는다.
 
 2026-10-01 VP-07 source/job backup recovery extends the existing PostgreSQL backup decision; it does not add another runtime. PostgreSQL `pg_dump`/`pg_restore` remain `ADOPT` behind the Shotgun-owned `shotgun-backup-v1` boundary per [ADR-097](../adr/ADR-097-stage-12-1-outbox-projection-clean-restore.md) and its [Stage 12.1 OSS review](../../implementation/stage-validations/stage-12-1-durability-recovery-oss-review.md). The Windows isolated acceptance ran against the repository-pinned `pg16` Compose image digest `sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b`; `SHOW server_version` returned `16.15` (the earlier Stage 12.1 review recorded 16.14, so both the image digest and observed version are retained as evidence). The acceptance exercised owner `runOwnerCreate` (automatic full verification) and `runOwnerRestoreSafe`, including the existing startup recovery application against the restored database and asset root (all five readiness/readability flags true). It restored Sources, SourceVersions, Evidence, VP assertions, original bytes, and a pending relation Job into a clean disposable target, verified the source remained unchanged with no cutover, and dispatched the restored Job once through Shotgun's existing VP worker/provider-execution ledger. `garrytan/gbrain` remains `REFERENCE_ONLY`; pgBackRest, WAL-G, and Barman remain `DEFER` under ADR-097. No new dependency, migration, OSS-owned schema, or Port was introduced. The deterministic test resolver is not live-provider or installed-owner recovery acceptance; VP-07 remains open. See the [VP-07 backup/restore acceptance report](../../implementation/vp-backup-restore-recovery-2026-10-01.md).
+
+## 2026-10-02 VP-05 PostgreSQL runtime pin reconciliation
+
+Read-only inspection confirmed `compose.yaml` uses the same immutable `pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b` image for `db` and `db-test`. The running runtime reports PostgreSQL `16.15`, `pg_trgm` `1.6`, and pgvector `0.8.6`. The PostgreSQL and `pg_trgm` entries in `oss-source-registry.json` now match that image and the official PostgreSQL `REL_16_15` commit `7d3e000c5961a544302072058a1184e9a588837b`; previous Stage 12.1 evidence for `16.14` remains historical. Existing PostgreSQL `ADOPT`, `pg_trgm` `AUGMENT`, and pgvector `ADOPT` decisions and Shotgun adapter ownership are unchanged. No dependency, migration, or production behavior changed; rollback is a documentation/registry revert. The 2026-10-02 data-bearing Provider/PostgreSQL outage test also passed; details are in the [VP Runtime restart report](../../implementation/vp-runtime-restart-supervision-2026-09-30.md).
 
 ## VP-04 Decision Evidence context — 2026-10-01
 

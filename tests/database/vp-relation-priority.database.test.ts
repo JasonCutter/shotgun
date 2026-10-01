@@ -28,14 +28,14 @@ import { vpRelationDecisionCorpus } from '../helpers/vp-relation-decision-corpus
 import { vpFinanceRelationCandidateCorpus } from '../helpers/vp-finance-relation-candidate.js';
 import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres-test-database.js';
 import { verifyVPProjectionReplay } from '../../scripts/vp-projection-replay.js';
-import {
-  createBackup,
-  createIsolatedRestoreDatabase,
-  dropIsolatedRestoreDatabase,
-  restoreBackup,
-} from '../../scripts/backup-restore.js';
+import { dropIsolatedRestoreDatabase } from '../../scripts/backup-restore.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 import { initializeSourceErasureJournal } from '../../scripts/source-erasure-journal.js';
+import {
+  createDefaultOwnerDeps,
+  runOwnerCreate,
+  runOwnerRestoreSafe,
+} from '../../scripts/backup-owner-core.js';
 
 const hash = (text: string): string => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 
@@ -317,17 +317,23 @@ it.runIf(canRunBackupAcceptance)(
   async () => {
     const parentDatabaseUrl = await requireTestDatabaseTarget();
     const source = await createIsolatedPostgresTestDatabase();
-    const target = await createIsolatedRestoreDatabase(parentDatabaseUrl);
     const sourcePool = source.createPool();
-    const targetPool = createPostgresPool(target.databaseUrl);
+    let targetPool: Pool | undefined;
+    let restoredTarget: Awaited<ReturnType<typeof runOwnerRestoreSafe>>['target'] | undefined;
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'shotgun-vp-restore-recovery-'));
     const journalRoot = await mkdtemp(path.join(os.tmpdir(), 'shotgun-vp-restore-journal-'));
-    const backupDirectory = path.join(temporaryRoot, 'backup');
+    const backupRoot = path.join(temporaryRoot, 'backups');
     const sourceAssetRoot = path.join(temporaryRoot, 'source-assets');
-    const targetAssetRoot = path.join(temporaryRoot, 'target-assets');
+    const ownerDeps = {
+      ...createDefaultOwnerDeps(),
+      homedir: () => temporaryRoot,
+    };
     const journalKey = randomUUID() + randomUUID();
     const priorJournalRoot = process.env.SHOTGUN_ERASURE_JOURNAL_ROOT;
     const priorJournalKey = process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY;
+    let testFailed = false;
+    let testFailure: unknown;
+    let cleanupFailure: AggregateError | undefined;
 
     try {
       process.env.SHOTGUN_ERASURE_JOURNAL_ROOT = journalRoot;
@@ -381,26 +387,54 @@ it.runIf(canRunBackupAcceptance)(
       );
       expect(pendingBeforeBackup.rows).toEqual([{ status: 'PENDING' }]);
 
-      const manifest = await createBackup({
-        databaseUrl: source.databaseUrl,
-        assetRoot: sourceAssetRoot,
-        outputDirectory: backupDirectory,
-        toolMode:
-          process.env.SHOTGUN_PG_TOOL_MODE === 'docker-compose' ? 'docker-compose' : 'local',
-      });
+      const ownerBackup = await runOwnerCreate(
+        { root: backupRoot },
+        {
+          databaseUrl: source.databaseUrl,
+          assetRoot: sourceAssetRoot,
+          toolMode:
+            process.env.SHOTGUN_PG_TOOL_MODE === 'docker-compose' ? 'docker-compose' : 'local',
+        },
+        ownerDeps,
+      );
+      const manifest = ownerBackup.manifest;
+      expect(ownerBackup.verifiedManifest.backupId).toBe(manifest.backupId);
       expect(manifest.formatVersion).toBe('shotgun-backup-v1');
       expect(manifest.assets.files).toHaveLength(2);
-      await restoreBackup({
-        sourceDatabaseUrl: source.databaseUrl,
-        targetDatabaseUrl: target.databaseUrl,
-        targetAssetRoot,
-        backupDirectory,
-        backupRoot: temporaryRoot,
-        toolMode:
-          process.env.SHOTGUN_PG_TOOL_MODE === 'docker-compose' ? 'docker-compose' : 'local',
-      });
 
-      const restoredRows = await targetPool.query<{
+      const ownerRestore = await runOwnerRestoreSafe(
+        { backup: ownerBackup.directory, root: backupRoot },
+        {
+          sourceDatabaseUrl: source.databaseUrl,
+          toolMode:
+            process.env.SHOTGUN_PG_TOOL_MODE === 'docker-compose' ? 'docker-compose' : 'local',
+        },
+        ownerDeps,
+      );
+      restoredTarget = ownerRestore.target;
+      expect(restoredTarget.autoCreated).toBe(true);
+      expect(ownerRestore.recovery).toEqual({
+        canonicalReadable: true,
+        startupRecoverySucceeded: true,
+        searchReady: true,
+        compiledTruthReady: true,
+        productReadable: true,
+      });
+      const sourceAfterRestore = await sourcePool.query<{
+        readonly assertion_count: string;
+        readonly pending_jobs: string;
+      }>(
+        `SELECT (SELECT count(*)::text FROM vp.assertions WHERE project_id = $1) AS assertion_count,
+                (SELECT count(*)::text FROM vp.relation_jobs
+                  WHERE project_id = $1 AND policy_revision = $2 AND status = 'PENDING') AS pending_jobs`,
+        [projectId, policyRevision],
+      );
+      expect(sourceAfterRestore.rows).toEqual([{ assertion_count: '2', pending_jobs: '1' }]);
+      const target = restoredTarget;
+      const restoredPool = createPostgresPool(target.databaseUrl);
+      targetPool = restoredPool;
+
+      const restoredRows = await restoredPool.query<{
         readonly sources: string;
         readonly source_versions: string;
         readonly evidence_spans: string;
@@ -433,7 +467,7 @@ it.runIf(canRunBackupAcceptance)(
           asset_count: '2',
         },
       ]);
-      const restoredAssets = await targetPool.query<{ storage_key: string }>(
+      const restoredAssets = await restoredPool.query<{ storage_key: string }>(
         `SELECT asset.storage_key FROM asset.original_assets asset
           JOIN asset.source_versions version ON version.original_asset_id = asset.asset_id
           JOIN asset.sources source USING (source_id)
@@ -441,7 +475,7 @@ it.runIf(canRunBackupAcceptance)(
         [projectId],
       );
       for (const asset of restoredAssets.rows) {
-        expect(await readFile(path.join(targetAssetRoot, asset.storage_key), 'utf8')).toMatch(
+        expect(await readFile(path.join(target.assetRoot, asset.storage_key), 'utf8')).toMatch(
           /할인율/u,
         );
       }
@@ -483,7 +517,7 @@ it.runIf(canRunBackupAcceptance)(
           executionIdentity: {} as never,
         }),
       };
-      const restoredJobs = new PostgresVPRelationJobs(targetPool);
+      const restoredJobs = new PostgresVPRelationJobs(restoredPool);
       const worker = new VPRelationJobWorker(
         restoredJobs,
         new VPRelationDecisionRouter(
@@ -503,7 +537,7 @@ it.runIf(canRunBackupAcceptance)(
       expect(await worker.dispatchOnce()).toBe('DECIDED');
       expect(await worker.dispatchOnce()).toBe('EMPTY');
 
-      const recoveryResult = await targetPool.query<{
+      const recoveryResult = await restoredPool.query<{
         readonly job_status: string;
         readonly provider_call_state: string;
         readonly receipt_count: string;
@@ -538,21 +572,60 @@ it.runIf(canRunBackupAcceptance)(
           right_assertion_id: [leftAssertionId, rightAssertionId].sort()[1],
         },
       ]);
+    } catch (error) {
+      testFailed = true;
+      testFailure = error;
     } finally {
       if (priorJournalRoot === undefined) delete process.env.SHOTGUN_ERASURE_JOURNAL_ROOT;
       else process.env.SHOTGUN_ERASURE_JOURNAL_ROOT = priorJournalRoot;
       if (priorJournalKey === undefined) delete process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY;
       else process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY = priorJournalKey;
-      await targetPool.end();
-      await dropIsolatedRestoreDatabase(parentDatabaseUrl, target.databaseName);
-      await source.dispose();
-      await Promise.all([
+      const cleanupErrors: unknown[] = [];
+      if (targetPool) {
+        try {
+          await targetPool.end();
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      }
+      if (restoredTarget?.databaseName) {
+        try {
+          await dropIsolatedRestoreDatabase(parentDatabaseUrl, restoredTarget.databaseName);
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      }
+      if (restoredTarget?.assetRoot) {
+        try {
+          await rm(restoredTarget.assetRoot, { recursive: true, force: true });
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      }
+      try {
+        await source.dispose();
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+      const directoryCleanup = await Promise.allSettled([
         rm(temporaryRoot, { recursive: true, force: true }),
         rm(journalRoot, { recursive: true, force: true }),
       ]);
+      cleanupErrors.push(
+        ...directoryCleanup
+          .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+          .map((result) => result.reason),
+      );
+      if (cleanupErrors.length > 0)
+        cleanupFailure = new AggregateError(
+          cleanupErrors,
+          'VP backup recovery test cleanup failed.',
+        );
     }
+    if (testFailed) throw testFailure;
+    if (cleanupFailure) throw cleanupFailure;
   },
-  120_000,
+  180_000,
 );
 
 it('keeps low-similarity exact relation candidates when paging the complete pair queue', async () => {

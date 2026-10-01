@@ -252,3 +252,32 @@ The full actual Product flow was run a second time with Ask enabled against a ne
 - DeepSeek recorded 12 responses and 31,132 provider-reported tokens across extraction, relation processing, and Ask. Actual account billing was not reconciled.
 
 The second run reinforces the bounded marker and Ask result while also showing nondeterministic extraction counts: 143 claims with Ask disabled, 142 with Ask enabled. It still does not establish full-PDF precision/recall, because the 23 positive and four negative labels are a candidate corpus and have not had independent blind adjudication. VP-04/05 remain incomplete.
+
+## 2026-10-01 direct-claim-v7 full Ask rerun after line-boundary repair
+
+The supplied PDF was run again through Chromium Product intake, isolated
+PostgreSQL 16, `PythonDocumentFormatAdapter@1.8.0`, Candidate Generation
+`direct-claim-v7`, and the configured DeepSeek `deepseek-flash` provider. This
+run passed in about 1.4 minutes.
+
+- The current projection contained 150 assertions from 150 candidates. All 23
+  curated positive markers had current matching assertions and all six
+  negative canaries were absent. The β=1.5 example retained its two-line
+  qualifier as one complete source-grounded claim. Every assertion retained
+  its exact Evidence substring.
+- The two overview questions and four page-specific corpus questions returned
+  their expected answers with source-page Evidence citations. The balance
+  sheet answer cited two Evidence records; both NPV sign conditions appeared
+  in the answer with two citations. Each of the four page-specific answers
+  cited the expected printed page.
+- Projection replay matched. Three current relations remained and no relation
+  job was pending. DeepSeek reported 17,237 tokens for extraction; the complete
+  run's usage was not reconciled against provider billing.
+- The previous v7 runs produced 142 and 143 candidates. The change to 150 is
+  further evidence that extraction is nondeterministic. The marker fixture is
+  still `CANDIDATE`; complete precision/recall, omitted-claim review, fragment
+  quality, independent blind labels, cross-source relation quality, scale,
+  and billed-cost reconciliation remain open.
+
+This is a successful end-to-end sample and a confirmed improvement for the
+β example, not a closure of VP-04/05.

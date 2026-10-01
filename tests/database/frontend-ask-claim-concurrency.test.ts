@@ -261,4 +261,33 @@ describe('Ask queued atomic multi-worker claim PostgreSQL verification', () => {
       { answer_run_id: runIds[2], state: 'RUNNING' },
     ]);
   });
+
+  it('quarantines a queued source-exploration run with no pinned source', async () => {
+    const fixture = await createFixture();
+    const answerRunId = await enqueue(fixture, 0);
+    await pool.query(
+      `UPDATE frontend_ask.answer_runs
+          SET mode = 'SOURCE_EXPLORATION'
+        WHERE project_id = $1 AND answer_run_id = $2`,
+      [fixture.projectId, answerRunId],
+    );
+
+    const claimed = await fixture.repository.claimQueuedForWorker(
+      'ask-invalid-selection-worker',
+      1,
+    );
+    expect(
+      claimed.map(({ claimed: execution }) => execution.context.snapshot.answerRunId),
+    ).not.toContain(answerRunId);
+    const snapshot = await fixture.repository.getRunSnapshot(fixture.executionScope, answerRunId);
+    expect(snapshot).toMatchObject({
+      state: 'FAILED',
+      failure: {
+        code: 'INVALID_REQUEST',
+        message: 'SOURCE_EXPLORATION requires at least one pinned SourceVersion.',
+        retryable: false,
+        outcomeUnknown: false,
+      },
+    });
+  });
 });

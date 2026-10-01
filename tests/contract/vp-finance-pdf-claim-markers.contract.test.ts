@@ -11,8 +11,8 @@ describe('VP finance PDF claim marker corpus', () => {
     expect(vpFinancePDFClaimMarkerCorpus).toMatchObject({
       contractVersion: '1.0.0',
       corpusId: 'shotgun-vp-finance-pdf-claim-markers',
-      corpusVersion: '1.4.0',
-      labelSetRevision: 5,
+      corpusVersion: '1.5.0',
+      labelSetRevision: 6,
       labelReviewStatus: 'CANDIDATE',
       source: {
         sha256: 'bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01',
@@ -21,7 +21,7 @@ describe('VP finance PDF claim marker corpus', () => {
       },
     });
     expect(vpFinancePDFClaimMarkerCorpus.markers).toHaveLength(23);
-    expect(vpFinancePDFClaimMarkerCorpus.nonClaims).toHaveLength(4);
+    expect(vpFinancePDFClaimMarkerCorpus.nonClaims).toHaveLength(6);
     expect(
       vpFinancePDFClaimMarkerCorpus.markers.find((marker) => marker.id === 'irr-example')?.page,
     ).toBe(7);
@@ -56,6 +56,12 @@ describe('VP finance PDF claim marker corpus', () => {
     );
     expect(
       new Set(vpFinancePDFClaimMarkerCorpus.nonClaims.map((nonClaim) => nonClaim.dimension)),
-    ).toEqual(new Set(['incomplete-list-fragment', 'incomplete-formula-fragment']));
+    ).toEqual(
+      new Set([
+        'incomplete-list-fragment',
+        'incomplete-formula-fragment',
+        'incomplete-sentence-continuation',
+      ]),
+    );
   });
 });

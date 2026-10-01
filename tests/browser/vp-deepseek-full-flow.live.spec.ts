@@ -1716,10 +1716,18 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
             ORDER BY run.created_at DESC LIMIT 1`,
         );
         const latestFinanceRun = await pool.query<{
+          readonly answer_run_id: string;
           readonly state: string;
+          readonly mode: string;
+          readonly attempt_number: number;
+          readonly source_selection_count: number;
           readonly attempt: Record<string, unknown> | null;
         }>(
-          `SELECT run.state, to_jsonb(attempt) AS attempt
+          `SELECT run.answer_run_id, run.state, run.mode, run.attempt_number,
+                  (SELECT count(*)::int FROM frontend_ask.source_selections AS selection
+                    WHERE selection.project_id = run.project_id
+                      AND selection.answer_run_id = run.answer_run_id) AS source_selection_count,
+                  to_jsonb(attempt) AS attempt
              FROM frontend_ask.answer_runs AS run
              LEFT JOIN frontend_ask.answer_run_attempts AS attempt
                ON attempt.answer_run_id = run.answer_run_id
@@ -1736,7 +1744,11 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
             knowledgePending,
             latestFinanceRun: latestFinanceRun.rows[0]
               ? {
+                  answerRunId: latestFinanceRun.rows[0].answer_run_id,
                   state: latestFinanceRun.rows[0].state,
+                  mode: latestFinanceRun.rows[0].mode,
+                  attemptNumber: latestFinanceRun.rows[0].attempt_number,
+                  sourceSelectionCount: latestFinanceRun.rows[0].source_selection_count,
                   attemptState: latestFinanceRun.rows[0].attempt?.state,
                   attemptFailureCode: latestFinanceRun.rows[0].attempt?.failure_code,
                   attemptFailureMessage: latestFinanceRun.rows[0].attempt?.failure_message,

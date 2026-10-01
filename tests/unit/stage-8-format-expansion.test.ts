@@ -57,7 +57,7 @@ describe('Stage 8 format Golden Corpus', () => {
   it('versions PDF formula and visual-line recovery as a distinct transformation revision', () => {
     const adapter = new PythonDocumentFormatAdapter({ pythonExecutable });
 
-    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.8.0' });
+    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.9.0' });
   });
 
   it.each([
@@ -114,6 +114,44 @@ describe('Stage 8 format Golden Corpus', () => {
     expect(cells).toContainEqual(
       expect.objectContaining({ type: 'CellSelector', sheet: 'Golden', cell: 'B2' }),
     );
+  });
+
+  it('labels formula evidence while retaining its exact formula and cell selector', async () => {
+    const { output } = await transformFixture(
+      'golden.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    const formulaIndex = output.documentIR.blocks.findIndex(
+      (item) => item.text === 'Formula: =1+1',
+    );
+    const formulaSourceMap = output.sourceMap.entries.find(
+      (entry) => entry.pointer === `/blocks/${formulaIndex}`,
+    );
+
+    expect(formulaIndex).toBeGreaterThanOrEqual(0);
+    expect(formulaSourceMap?.selectors).toContainEqual(
+      expect.objectContaining({ type: 'CellSelector', sheet: 'Golden', cell: 'B3' }),
+    );
+  });
+
+  it('preserves CSV header/value relationships with both source cells', async () => {
+    const { output } = await transformFixture('golden.csv', 'text/csv');
+    const relationshipIndex = output.documentIR.blocks.findIndex(
+      (item) => item.text === 'Status: Ready',
+    );
+    const relationshipSourceMap = output.sourceMap.entries.find(
+      (entry) => entry.pointer === `/blocks/${relationshipIndex}`,
+    );
+
+    expect(relationshipIndex).toBeGreaterThanOrEqual(0);
+    expect(relationshipSourceMap?.selectors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'CellSelector', sheet: 'CSV', cell: 'A2' }),
+        expect.objectContaining({ type: 'CellSelector', sheet: 'CSV', cell: 'B2' }),
+      ]),
+    );
+    expect(output.documentIR.blocks.map((item) => item.text)).toContain('Status');
+    expect(output.documentIR.blocks.map((item) => item.text)).toContain('Ready');
   });
 
   it('replaces unmapped NUL glyphs before storing extracted text', async () => {

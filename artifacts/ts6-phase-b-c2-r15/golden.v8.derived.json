@@ -40,7 +40,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 998,
+            "line": 1007,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -85,7 +85,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 554,
+            "line": 563,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -103,7 +103,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 913,
+            "line": 922,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -121,7 +121,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 1006,
+            "line": 1015,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9544,7 +9544,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 741,
+            "line": 750,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9589,7 +9589,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 825,
+            "line": 834,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9634,7 +9634,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 907,
+            "line": 916,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9679,7 +9679,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 857,
+            "line": 866,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -9697,7 +9697,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 951,
+            "line": 960,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9742,7 +9742,7 @@
             "bindingPort": "CandidateRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated CandidateRepositoryPort",
             "receiverType": "CandidateRepositoryPort",
-            "line": 573,
+            "line": 537,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]

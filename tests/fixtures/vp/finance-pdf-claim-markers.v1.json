@@ -1,9 +1,9 @@
 {
   "contractVersion": "1.0.0",
   "corpusId": "shotgun-vp-finance-pdf-claim-markers",
-  "corpusVersion": "1.4.0",
-  "labelSetRevision": 5,
-  "corpusDigest": "sha256:552abba6e0c9a7370e2e93be3ff45a70c0a4ec834b553a42cf98033ac698395b",
+  "corpusVersion": "1.5.0",
+  "labelSetRevision": 6,
+  "corpusDigest": "sha256:b49f0f7db3c66f9b56a5ce943cd9be96503e8cfd7d3d006f91503a5cc553ea3e",
   "labelReviewStatus": "CANDIDATE",
   "source": {
     "sha256": "bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01",
@@ -64,7 +64,7 @@
       "id": "beta-example",
       "page": 9,
       "text": "1.5%",
-      "requiredText": "β",
+      "requiredText": "움직이는 경향이 있다는 의미다",
       "dimension": "numeric-market-sensitivity"
     },
     {
@@ -184,6 +184,16 @@
       "id": "fragmented-capm-symbols",
       "text": "i f m f i",
       "dimension": "incomplete-formula-fragment"
+    },
+    {
+      "id": "dangling-conclusion-marker",
+      "text": "라고 연결하면 된다 .",
+      "dimension": "incomplete-sentence-continuation"
+    },
+    {
+      "id": "beta-example-explanation-fragment",
+      "text": "움직이는 경향이 있다는 의미다 .",
+      "dimension": "incomplete-sentence-continuation"
     }
   ]
 }

@@ -8,7 +8,9 @@ import type { ViteDevServer } from 'vite';
 import { tsImport } from 'tsx/esm/api';
 
 type CrossPhaseBackend = {
-  startFrontendCrossPhaseBackend(): Promise<{
+  startFrontendCrossPhaseBackend(options?: {
+    readonly aiCandidatePromptVersion?: string;
+  }): Promise<{
     close(): Promise<void>;
     hasEvidenceSelector(
       projectId: string,
@@ -30,7 +32,9 @@ test('VP browser journey uploads, revises, and answers from the latest source ve
     './fixtures/frontend-cross-phase-backend.ts',
     import.meta.url,
   )) as CrossPhaseBackend;
-  const backend = await fixture.startFrontendCrossPhaseBackend();
+  const backend = await fixture.startFrontendCrossPhaseBackend({
+    aiCandidatePromptVersion: 'direct-claim-v7',
+  });
   let frontend: ViteDevServer | undefined;
 
   try {

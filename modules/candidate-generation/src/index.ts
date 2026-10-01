@@ -17,7 +17,9 @@ import listClaimCandidatesByRevisionOutputSchema from '../../../packages/contrac
 import listClaimCandidatesByRevisionSchema from '../../../packages/contracts/schemas/list-claim-candidates-by-revision.v1.schema.json';
 import {
   alignDirectClaimToEvidence,
+  findCompleteSourceStatement,
   isClearlyIncompleteDirectClaimFragment,
+  splitAtCompletePhysicalLines,
 } from './direct-claim-shape.js';
 import listEvidenceSpansOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-output.v1.schema.json';
 import listEvidenceSpansSchema from '../../../packages/contracts/schemas/list-evidence-spans.v1.schema.json';
@@ -178,67 +180,10 @@ const materialQualifierPatterns = [
   /(?:이상이면|이하이면|초과하면|미만이면|이내이면|이상|이하|초과|미만|이내|까지|부터|동안|이후|이전|현재|당시|전후|불가|없(?:다|는|으며|습니다)|않(?:다|는|으며|습니다)|아니(?:다|며|고)|\bnot\b|\bnever\b|\bonly\b|\bif\b|\bwhen\b|\bunless\b|\bbefore\b|\bafter\b|\bduring\b|\bwithin\b|\bat least\b|\bat most\b|\bmore than\b|\bless than\b|\bapproximately\b|\babout\b)/giu,
 ];
 
-const sentenceContaining = (sourceText: string, exactFragment: string): string | undefined => {
-  const fragmentStart = sourceText.indexOf(exactFragment);
-  if (fragmentStart < 0) return undefined;
-  const fragmentEnd = fragmentStart + exactFragment.length;
-  const boundaries = [...sourceText.matchAll(/[.!?。！？](?=\s|$|[\p{L}])|\r?\n/gu)];
-  let start = 0;
-  for (const boundary of boundaries) {
-    const boundaryStart = boundary.index ?? 0;
-    const boundaryEnd = boundaryStart + boundary[0].length;
-    if (boundaryEnd <= fragmentStart) {
-      start = boundaryEnd;
-      continue;
-    }
-    if (boundaryStart >= fragmentEnd) {
-      return sourceText.slice(start, boundaryEnd).trim();
-    }
-    if (boundaryEnd === fragmentEnd) {
-      return sourceText.slice(start, boundaryEnd).trim();
-    }
-    // A model span crossing sentence boundaries is kept intact for validation.
-    return undefined;
-  }
-  return sourceText.slice(start).trim();
-};
-
 const materialQualifiers = (statement: string): readonly string[] =>
   materialQualifierPatterns.flatMap((pattern) =>
     [...statement.matchAll(pattern)].map((match) => match[0].trim()).filter(Boolean),
   );
-
-const physicalLineLooksComplete = (line: string): boolean => {
-  const value = line.trim();
-  if (!value || /[,，;:：=+*\x2f×÷^-]$/u.test(value)) return false;
-  if (/[.!?。！？][\])}"'”’]*$/u.test(value)) return true;
-  if (
-    /(?:이다|입니다|있다|있습니다|없다|없습니다|한다|된다|않다|않습니다|있음|없음|다)$/u.test(value)
-  ) {
-    return true;
-  }
-  if (/[→⇒]\s*\S.+$/u.test(value)) return true;
-  if (/^[^=\n]{1,80}=\s*[^=\n].+$/u.test(value)) return true;
-  return /^[^:：\n]{1,40}[:：]\s*\S.+$/u.test(value);
-};
-
-const splitAtCompletePhysicalLines = (text: string): readonly string[] => {
-  const pieces = text.split(/(\r?\n+)/u);
-  const statements: string[] = [];
-  let current = pieces[0] ?? '';
-  for (let index = 1; index + 1 < pieces.length; index += 2) {
-    const separator = pieces[index] ?? '';
-    const next = pieces[index + 1] ?? '';
-    if (physicalLineLooksComplete(current.split(/\r?\n/u).at(-1) ?? current)) {
-      statements.push(current.trim());
-      current = next;
-    } else {
-      current += `${separator}${next}`;
-    }
-  }
-  statements.push(current.trim());
-  return statements.filter(Boolean);
-};
 
 const splitV4CandidateStatements = (claimText: string): readonly string[] =>
   claimText
@@ -246,7 +191,7 @@ const splitV4CandidateStatements = (claimText: string): readonly string[] =>
     // factual claim. Strip heading-only lines before splitting a model span.
     .replace(/^#{1,6}[ \t]+[^\r\n]*(?:\r?\n|$)/gmu, '')
     .split(
-      /(?<=[.!?。！？])(?:\s+|(?=[\p{L}]))|(?=예를\s*들어|예컨대|for example\b|for instance\b|따라서|결론적으로|반면|다만|그러나|이때)|(?<=[%％원건개명회배년개월주일시간분초])\s+(?=[가-힣]{2,}[\s)\]\uFFFD]{0,6}(?:은|는)|(?:현재가치|순현재가치|내부수익률|매출총이익|영업이익|유동비율)\s+(?:PV|NPV|IRR|FV)\b)/giu,
+      /(?<=[.!?。！？])(?:\s+|(?=[\p{L}]))|(?=예를\s*들어|예컨대|for example\b|for instance\b|따라서|결론적으로|반면|다만|그러나|이때)|(?<=[%％원건개명회배년개월주일시간분초])[ \t]+(?=[가-힣]{2,}[\s)\]\uFFFD]{0,6}(?:은|는)|(?:현재가치|순현재가치|내부수익률|매출총이익|영업이익|유동비율)\s+(?:PV|NPV|IRR|FV)\b)/giu,
     )
     .map((statement) => statement.trim())
     .flatMap(splitAtCompletePhysicalLines)
@@ -254,7 +199,7 @@ const splitV4CandidateStatements = (claimText: string): readonly string[] =>
 
 const preserveQualifiedV4Claim = (sourceText: string, modelClaimText: string): string => {
   if (!modelClaimText || !sourceText.includes(modelClaimText)) return modelClaimText;
-  const sentence = sentenceContaining(sourceText, modelClaimText);
+  const sentence = findCompleteSourceStatement(sourceText, modelClaimText);
   if (!sentence) return modelClaimText;
   const statement =
     splitV4CandidateStatements(sentence).find((part) => part.includes(modelClaimText)) ?? sentence;

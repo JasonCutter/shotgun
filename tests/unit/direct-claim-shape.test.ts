@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   alignDirectClaimToEvidence,
+  findCompleteSourceStatement,
   isClearlyIncompleteDirectClaimFragment,
+  splitAtCompletePhysicalLines,
 } from '../../modules/candidate-generation/src/direct-claim-shape.js';
 
 describe('direct claim source alignment', () => {
@@ -26,7 +28,7 @@ describe('direct claim source alignment', () => {
 });
 
 describe('direct claim shape guard', () => {
-  it.each(['토지', '건물', '기계장치', '100만원', 'i f m f i', 'β'])(
+  it.each(['토지', '건물', '기계장치', '100만원', 'i f m f i', 'β', '라고 연결하면 된다 .'])(
     'drops the incomplete fragment %s',
     (candidate) => {
       expect(isClearlyIncompleteDirectClaimFragment(candidate)).toBe(true);
@@ -40,5 +42,24 @@ describe('direct claim shape guard', () => {
     'PV가 미래에 받을 돈을 현재 시점의 가치로 바꾼 것이다.',
   ])('keeps a proposition or complete equation: %s', (candidate) => {
     expect(isClearlyIncompleteDirectClaimFragment(candidate)).toBe(false);
+  });
+});
+
+describe('source statement boundaries', () => {
+  it('keeps an example lead-in joined across a continuation line', () => {
+    const source =
+      '예를 들어 β = 1.5라면 시장수익률이 1% 움직일 때 해당 자산수익률이 평균적으로 약 1.5%\n움직이는 경향이 있다는 의미다 .';
+
+    expect(findCompleteSourceStatement(source, '움직이는 경향이 있다는 의미다 .')).toBe(source);
+    expect(splitAtCompletePhysicalLines(source)).toEqual([source]);
+  });
+
+  it('keeps complete physical lines as boundaries', () => {
+    expect(
+      findCompleteSourceStatement(
+        '첫 문장은 사실이다.\n둘째 문장도 사실이다.',
+        '둘째 문장도 사실이다.',
+      ),
+    ).toBe('둘째 문장도 사실이다.');
   });
 });

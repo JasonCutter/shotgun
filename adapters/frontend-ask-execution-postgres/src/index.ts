@@ -678,7 +678,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       selectionGroups.set(row.selection_id, group);
     }
     if (snapshot.mode === 'SOURCE_EXPLORATION' && selectionGroups.size === 0) {
-      throw invalid('SOURCE_EXPLORATION requires at least one pinned SourceVersion.');
+      throw invalidSourceExplorationSelection();
     }
     const selectedEvidenceIds = selections.rows.flatMap((row) =>
       row.evidence_id ? [row.evidence_id] : [],
@@ -2343,7 +2343,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           if (
             error instanceof ShotgunError &&
             error.code === 'INVALID_REQUEST' &&
-            error.operation === 'resolve-explicit-evidence-selection'
+            /^resolve-(?:explicit-evidence|source-exploration)-selection$/u.test(error.operation)
           ) {
             try {
               await this.poolTransaction((client) =>
@@ -2811,3 +2811,11 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     });
   }
 }
+
+const invalidSourceExplorationSelection = (): ShotgunError =>
+  new ShotgunError({
+    code: 'INVALID_REQUEST',
+    safeMessage: 'SOURCE_EXPLORATION requires at least one pinned SourceVersion.',
+    module: 'frontend-ask-execution-postgres',
+    operation: 'resolve-source-exploration-selection',
+  });

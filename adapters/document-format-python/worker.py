@@ -1154,8 +1154,11 @@ def xlsx_blocks(data: bytes) -> list[dict[str, Any]]:
             for cell_value in row:
                 if cell_value.value is None:
                     continue
+                cell_text = cell_value.value
+                if isinstance(cell_text, str) and cell_text.startswith("="):
+                    cell_text = f"Formula: {cell_text}"
                 item = block(
-                    cell_value.value,
+                    cell_text,
                     [
                         {
                             "type": "CellSelector",
@@ -1175,8 +1178,10 @@ def xlsx_blocks(data: bytes) -> list[dict[str, Any]]:
 def csv_blocks(data: bytes) -> list[dict[str, Any]]:
     from openpyxl.utils import get_column_letter
 
-    output: list[dict[str, Any]] = []
-    for row_number, row in enumerate(csv.reader(io.StringIO(data.decode("utf-8"))), 1):
+    rows = list(csv.reader(io.StringIO(data.decode("utf-8"))))
+    cells: list[dict[str, Any]] = []
+    row_facts: list[dict[str, Any]] = []
+    for row_number, row in enumerate(rows, 1):
         for column_number, value in enumerate(row, 1):
             item = block(
                 value,
@@ -1191,10 +1196,79 @@ def csv_blocks(data: bytes) -> list[dict[str, Any]]:
                 ],
             )
             if item:
-                output.append(item)
-                if len(output) > MAX_CSV_BLOCKS:
+                cells.append(item)
+                if len(cells) > MAX_CSV_BLOCKS:
                     raise ValidationOverflow("VALIDATION_ERROR: CSV logical block budget exceeded")
-    return output
+
+    headers = rows[0] if rows else []
+    key_value_table = (
+        len(headers) == 2
+        and headers[0].strip().casefold()
+        in {"key", "name", "field", "property", "항목", "이름", "키"}
+        and headers[1].strip().casefold() in {"value", "값", "내용"}
+    )
+    for row_number, row in enumerate(rows[1:], 2):
+        facts: list[tuple[str, list[dict[str, Any]]]] = []
+        if key_value_table and len(row) >= 2:
+            label, value = row[0], row[1]
+            if label.strip() and value.strip():
+                facts.append(
+                    (
+                        f"{label.strip()}: {value.strip()}",
+                        [
+                            {
+                                "type": "CellSelector",
+                                "sheet": "CSV",
+                                "cell": f"A{row_number}",
+                                "row": row_number,
+                                "column": 1,
+                            },
+                            {
+                                "type": "CellSelector",
+                                "sheet": "CSV",
+                                "cell": f"B{row_number}",
+                                "row": row_number,
+                                "column": 2,
+                            },
+                        ],
+                    )
+                )
+        else:
+            for column_number, value in enumerate(row, 1):
+                header = headers[column_number - 1] if column_number <= len(headers) else ""
+                if not header.strip() or not value.strip():
+                    continue
+                facts.append(
+                    (
+                        f"{header.strip()}: {value.strip()}",
+                        [
+                            {
+                                "type": "CellSelector",
+                                "sheet": "CSV",
+                                "cell": f"{get_column_letter(column_number)}1",
+                                "row": 1,
+                                "column": column_number,
+                            },
+                            {
+                                "type": "CellSelector",
+                                "sheet": "CSV",
+                                "cell": f"{get_column_letter(column_number)}{row_number}",
+                                "row": row_number,
+                                "column": column_number,
+                            },
+                        ],
+                    )
+                )
+        for fact_text, selectors in facts:
+            if len(cells) + len(row_facts) >= MAX_CSV_BLOCKS:
+                raise ValidationOverflow("VALIDATION_ERROR: CSV logical block budget exceeded")
+            item = block(
+                fact_text,
+                selectors,
+            )
+            if item:
+                row_facts.append(item)
+    return [*cells, *row_facts]
 
 
 def pptx_blocks(data: bytes) -> list[dict[str, Any]]:

@@ -116,6 +116,37 @@ The wider Stage 8 replacement gate still includes corrupt/encrypted input and
 adapter replacement verification; this scoped VP-04 change does not claim
 those broader tests or close VP-04.
 
+## 2026-10-01 VP-08 CSV row and spreadsheet formula Ask context
+
+The existing CSV/XLSX decision remains Python's standard-library CSV parser
+and `openpyxl` `3.1.5` (`MIT`, exact package pin in
+[`oss-source-registry.json`](../oss-source-registry.json)). This change is an
+`AUGMENT` behind `PythonDocumentFormatAdapter`; it adds no package or runtime.
+The adapter identity is now `shotgun.document-formats@1.9.0`, and the prior
+`1.8.0` transformation remains an available rollback target.
+
+- CSV still emits every original cell with its own `CellSelector`. It also
+  emits bounded header/value facts with selectors for both cells; the common
+  two-column Key/Value form is rendered as a single `key: value` fact. Thus a
+  question about a field can retrieve its value without discarding raw cells.
+- XLSX formula cells retain the exact formula string and cell selector while
+  adding a `Formula:` label so a question asking about a formula can retrieve
+  the cell as evidence. The adapter does not calculate formulas or claim that
+  cached workbook results are current.
+- The combined CSV cell and derived-fact count remains under the existing
+  logical-block budget. Python unit/format Contract tests pass 35/35; Python
+  worker tests pass 18/18; the browser two-action upload/revision/Ask journey
+  passes for HTML, CSV, DOCX and XLSX using the deterministic test provider.
+
+The official Python CSV implementation has no new third-party dependency;
+the existing `openpyxl` pin, license, security and maintenance record is
+unchanged. `CSV` row semantics and formula labeling remain Shotgun-owned
+DocumentIR augmentation, isolated behind the adapter and source selectors.
+Rollback restores adapter identity `1.8.0` and its prior transform behavior;
+no database migration is needed. This product-flow evidence does not by itself
+close VP-08: format-specific real-AI corpus coverage, freshness behavior and
+the complete input-format acceptance gate remain open.
+
 ## 2026-10-01 VP-04 finance formula re-evaluation
 
 The documented Docling re-evaluation trigger was reached by the supplied

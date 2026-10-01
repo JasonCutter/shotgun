@@ -57,7 +57,7 @@ describe('Stage 8 format Golden Corpus', () => {
   it('versions PDF formula and visual-line recovery as a distinct transformation revision', () => {
     const adapter = new PythonDocumentFormatAdapter({ pythonExecutable });
 
-    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.11.0' });
+    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.12.0' });
   });
 
   it.each([

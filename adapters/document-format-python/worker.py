@@ -20,6 +20,7 @@ MAX_HTML_TRACKED = 512
 MAX_PDF_PAGES = 1000
 MAX_PDFIUM_PAGE_CHARS = 100_000
 MAX_PDFIUM_TEXT_ROWS = 20_000
+PDF_WORD_X_TOLERANCE = 2.0
 PDFIUM_EQUATION_PREFIX_PATTERN = re.compile(
     r"^([A-Z]{1,8}|[가-힣]{2,16}|\d{1,9}(?:,\d{3})*(?:\.\d+)?)\s*="
 )
@@ -181,6 +182,12 @@ def block(
     if len(flattened) > MAX_SELECTORS_PER_BLOCK:
         raise ValidationOverflow("VALIDATION_ERROR: block selector budget exceeded")
     return {"text": value, "selectors": flattened, "segments": segments}
+
+
+def pdf_words_to_line_text(words: list[dict[str, Any]]) -> str:
+    """Join PDF words while keeping thousands separators attached to their digits."""
+    joined = " ".join(str(word["text"]) for word in words)
+    return re.sub(r"(?<=\d),\s+(?=\d)", ",", joined)
 
 
 def html_blocks(data: bytes) -> list[dict[str, Any]]:
@@ -874,7 +881,11 @@ def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
                     except Exception:
                         # Keep pdfplumber's layout output and undecodable marker.
                         page_glyphs = []
-            words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+            words = page.extract_words(
+                use_text_flow=False,
+                keep_blank_chars=False,
+                x_tolerance=PDF_WORD_X_TOLERANCE,
+            )
             if page_glyphs:
                 try:
                     words = apply_pdfium_horizontal_equations(
@@ -985,12 +996,12 @@ def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
                         previous.append(line)
                 for paragraph_lines in semantic_paragraph:
                     words_in_paragraph = [value for line in paragraph_lines for value in line]
-                    line_texts = [" ".join(str(value["text"]) for value in line) for line in paragraph_lines]
+                    line_texts = [pdf_words_to_line_text(line) for line in paragraph_lines]
                     text = "\n".join(line_texts)
                     segments: list[dict[str, Any]] = []
                     block_offset = 0
                     for line in paragraph_lines:
-                        line_text = " ".join(str(value["text"]) for value in line)
+                        line_text = pdf_words_to_line_text(line)
                         line_selectors = [
                             {"type": "PageSelector", "page": page_number},
                             {

@@ -438,3 +438,146 @@ Together with varying candidate counts, it keeps the corpus `CANDIDATE` and
 VP-04/05 open. The new failure diagnostics retain only run state, provider
 identity, timestamps, event counts, and partial-text length; they do not emit
 the question or answer body.
+
+#### 2026-10-02 DeepSeek body stall and generation deadline correction
+
+The source PDF is 10 pages with SHA-256
+`bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`. Marker
+corpus `1.8.0` adds page-grounded positive markers and incomplete/non-claim
+canaries; its digest is
+`sha256:cc338181b5531120890781e02f7b026776bb2c65dac2c445b0c019029890d080`.
+The marker contract tests passed, but labels remain `CANDIDATE` and this corpus
+is a recall sentinel, not a precision/recall adjudication.
+
+Two isolated real-product DeepSeek attempts used the source's 111 Evidence
+spans. The earlier 60-second run and the later 300-second run each received HTTP
+200 but no complete response body, completion reason, usage, provider output, or
+materialized candidates. Each produced one durable `OUTCOME_UNKNOWN` provider
+attempt and was not automatically recalled. A separate selected finance
+relation request reached its 150-second integration-test ceiling without a
+decision; this does not establish the result of a longer request.
+
+Review of the official [DeepSeek rate-limit documentation](https://api-docs.deepseek.com/quick_start/rate_limit/)
+found that non-streaming calls may remain open with empty-line keepalives and
+that inference may take up to 10 minutes to start before the server closes the
+request. Shotgun's 5-minute generation deadline could abort before that window.
+The handler and DeepSeek generation adapter now share a 15-minute deadline,
+while connectivity probes remain at 60 seconds. The browser acceptance timeout
+and selected one-case live test window were raised to observe that deadline.
+
+The same investigation found that durable Jobs and partial-order reservations
+were leased for five minutes without renewal. PostgreSQL Job and ordering leases
+now renew every 60 seconds while a handler is active. The runtime passes an
+abort signal to the handler; failure to renew fences the operation, and an
+expired lease cannot be resurrected. Focused PostgreSQL lease, Stage 4 replay,
+AI settings, and finance marker contract tests passed 27/27. The full-document
+live flow must be rerun with these changes before any extraction or Ask result
+can be claimed. VP-04/05 remain open.
+
+#### 2026-10-02 soft-wrap rebinding and full Ask rerun
+
+Visual review confirmed that the PDF converter preserves printed line endings,
+including line wraps inside Korean words. Candidate Generation now tries both
+ordinary whitespace normalization and a lookup that omits only line-break
+characters. It accepts a match only when both lookups resolve to one unique
+source span, and it always stores the exact original Evidence slice. Candidate
+Validation still requires the stored claim to be an exact substring of that
+Evidence. Focused Stage 4, quality-baseline, unit, and contract tests passed
+73/73; an ambiguous match and changed source text remain rejected. The current
+`quality:gate` also passed after v9 became the default (precision 0.636, recall
+0.875, F1 0.737, unsupported-claim rate 0; search citation correctness 1.0).
+
+The 1.8.0 marker corpus contained a paraphrase for the page-2 net-income
+sentence. Visual comparison against the supplied page corrected that marker to
+the source wording and advanced the candidate corpus to 1.9.0, label revision
+10, digest `sha256:eefc1cdcf35bc92a382f366eebf2f647edea283bf3dbb6b300f1cf1bab75aa5d`.
+Its status remains `CANDIDATE`; the correction is not independent label
+adjudication.
+
+With the exact-span fix, one real DeepSeek run using the previous v8 prompt
+produced 150 candidates and 150 current assertions. All candidates were
+`READY`, all direct-text checks passed, all 80/80 revised markers matched, and
+none of the 11 non-claim canaries became an assertion. This run disabled Ask.
+
+A subsequent real DeepSeek v9 run completed the full product flow. It produced
+140 candidates and 140 current assertions; all 140 were `READY` with exact
+Evidence, and none of the 11 non-claim canaries matched. It matched 79/80
+markers, omitting the standalone page-9 statement that higher beta increases
+the required expected return. A following sentence explaining why was
+extracted. The v9 prompt explicitly asks for the direction line; this run
+shows that the prompt alone does not make its extraction repeatable. The full
+combined test remains failed at that completeness assertion.
+
+Despite that extraction gap, all six live Ask scenarios passed with citations
+to the expected PDF pages: the standard and NPV questions returned two and
+three citations, and all four page-grounded questions matched their answer and
+page expectations. Projection replay matched, five current relations were
+materialized, and no relation job remained pending. DeepSeek reported 31,620
+tokens across 12 responses for extraction, comparison, and Ask; billing was
+not reconciled. Semantic validation remains `NOT_RUN`. VP-04/05 remain open
+until the claim set is independently adjudicated, completeness is repeatable,
+and quality and actual cost limits are fixed.
+
+## 2026-10-02 Korean PDF word-gap recovery
+
+The source is the user-provided 10-page finance PDF, SHA-256
+`bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`.
+Visual review of page 9 confirms the printed sentence
+`베타가 커질수록 요구되는 기대수익률도 커지는 방향`. The prior
+`pdfplumber==0.11.10` default word-gap tolerance emitted one compact token,
+`베타가커질수록요구되는기대수익률도커지는방향`. An intervening DeepSeek
+full-flow run with a stronger prompt still produced 79/80 markers, so prompt
+rewording and Candidate input ordering were removed as ineffective fixes.
+
+The existing Stage 8 Python adapter now requests PDF words with horizontal
+tolerance `2.0`. This recovers the visible Korean word boundaries while
+retaining the same physical line and Page/BBox source geometry. That tolerance
+can also separate a thousands separator (`1, 000`), so the adapter rejoins only
+whitespace directly between digits around a comma. An exact transformation
+with adapter `1.12.0` returned the complete beta sentence and no malformed
+thousands groups. No new package, dependency, lockfile, schema, or migration
+was introduced. `pdfplumber==0.11.10` remains `ADOPT` for PDF text/geometry;
+`pypdfium2==5.11.0` remains the geometry-only `AUGMENT`. The Stage 8 OSS
+review records the fixed upstream pins, existing license/security/maintenance
+review, adapter boundary, and rollback to `1.11.0`.
+
+The local checks passed: Python PDF glyph tests 23/23; Stage 8 format Golden
+tests 18/18; focused Stage 3/8 segmentation contracts 12/12. The supplied
+PDF was then uploaded in the actual Chromium product flow into isolated
+PostgreSQL and processed by DeepSeek `deepseek-flash` using the existing
+`direct-claim-v10` prompt. The run produced 151 candidates and 151 current
+assertions. All candidates were `READY`, with exact direct Evidence and
+schema/reference/text/policy checks passing; semantic validation was
+`NOT_RUN`. All 80/80 page markers matched, including the beta expected-return
+statement. None of the 11 non-claim canaries became a claim. The overview and
+NPV answers had two and four citations, respectively, and all four
+page-grounded questions matched their expected answers and pages. Projection
+replay matched with three settled relations and zero pending relation jobs.
+DeepSeek reported 18,235 extraction tokens. These are provider-reported
+tokens, not invoice amounts.
+
+This run shows the extraction gap was caused by PDF word segmentation for this
+sentence, rather than an insufficient Candidate prompt. It is one source and
+one full extraction run; marker labels remain `CANDIDATE`. It does not establish
+independently adjudicated full-document precision/recall, repeatability,
+relation correctness, calibrated error limits, total workload cost, or actual
+billing. VP-04/05 remain open. See the [Stage 8 Integration Review](./stage-validations/stage-8-oss-integration-review.md#2026-10-02-vp-04-korean-pdf-word-gap-recovery)
+and [Open-source Role Matrix](../architecture/module-architecture/open-source-role-matrix.md#vp-04--stage-8-korean-pdf-word-gap-recovery--2026-10-02).
+
+## 2026-10-02 repeated Korean finance PDF live runs
+
+To check the fixed segmentation through the real product repeatedly, the
+Chromium live test was run twice serially with the same PDF SHA-256
+`bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`,
+`direct-claim-v10`, isolated PostgreSQL databases, and actual DeepSeek
+credentials. Both tests passed (1.9 and 1.7 minutes). The first produced 138
+current assertions and the second 142; every assertion was `READY` with exact
+direct Evidence. Both matched 80/80 positive markers, promoted none of the 11
+non-claim canaries, passed the overview, NPV, and four page-grounded Ask cases,
+and replayed to a settled queue. The observed current relation counts were 3
+and 4. A prior run of the same PDF/prompt produced 151 assertions and also
+matched 80/80 markers. Thus all three observed runs preserve the marker set,
+while candidate and relation counts vary. Semantic validation remains
+`NOT_RUN`; the fixture remains `CANDIDATE`; no independent full-source
+adjudication or billing reconciliation was performed. These reruns confirm
+the repaired beta statement is repeatably extracted but do not close VP-04/05.

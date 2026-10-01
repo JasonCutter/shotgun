@@ -53,17 +53,17 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1292",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284",
+      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1411",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1516",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },

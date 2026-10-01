@@ -1267,7 +1267,7 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
     !live || !financePdfPath || !existsSync(financePdfPath),
     'Set VP_LIVE_DEEPSEEK=1 and VP_FINANCE_PDF_PATH to the local finance PDF for live characterization.',
   );
-  test.setTimeout(600_000);
+  test.setTimeout(1_200_000);
 
   const databaseFactory = (await tsImport(
     '../helpers/isolated-postgres-test-database.ts',
@@ -1294,7 +1294,7 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       vpFinancePDFClaimMarkerCorpus.source.sha256,
     );
     const runtimePromptVersion =
-      process.env.VP_FINANCE_PDF_TEST_PROMPT_VERSION ?? 'direct-claim-v8';
+      process.env.VP_FINANCE_PDF_TEST_PROMPT_VERSION ?? 'direct-claim-v10';
     runtime = await startProductRuntime(isolated.databaseUrl, runtimePromptVersion, (diagnostic) =>
       providerResponses.push(diagnostic),
     );
@@ -1313,10 +1313,12 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
                 ORDER BY created_at DESC LIMIT 1`,
               [source.sourceVersionId],
             );
-            terminalProviderFailure = providerState.rows[0]?.durable_state === 'PROVIDER_FAILED';
+            terminalProviderFailure = ['PROVIDER_FAILED', 'OUTCOME_UNKNOWN'].includes(
+              providerState.rows[0]?.durable_state ?? '',
+            );
             return terminalProviderFailure || latestReplay.matches;
           },
-          { timeout: 180_000, intervals: [1000, 2000, 3000, 5000] },
+          { timeout: 960_000, intervals: [1000, 2000, 3000, 5000] },
         )
         .toBe(true);
       expect(terminalProviderFailure, 'DeepSeek candidate extraction should complete').toBe(false);
@@ -1567,7 +1569,6 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       }),
     );
     expect(assertionRows.rows.length).toBeGreaterThan(0);
-    expect(markers.filter((marker) => marker.matched)).toHaveLength(markers.length);
     expect(nonClaimMatches.filter((result) => result.matchedClaimTexts.length > 0)).toEqual([]);
     expect(npvPositiveRule.matched, 'DeepSeek must preserve the source NPV > 0 rule').toBe(true);
     expect(npvNegativeRule.matched, 'DeepSeek must preserve the source NPV < 0 rule').toBe(true);
@@ -1940,6 +1941,7 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
         relations: relationRows.rows,
       }),
     );
+    expect(markers.filter((marker) => marker.matched)).toHaveLength(markers.length);
   } finally {
     if (runtime) {
       await page.evaluate(() => {
@@ -1973,7 +1975,7 @@ test('VP live Stage 8 format Golden actual DeepSeek answers', async ({ page }) =
   const providerResponses: ProviderResponseDiagnostic[] = [];
   let runtime: ProductRuntime | undefined;
   try {
-    runtime = await startProductRuntime(isolated.databaseUrl, 'direct-claim-v8', (diagnostic) =>
+    runtime = await startProductRuntime(isolated.databaseUrl, 'direct-claim-v10', (diagnostic) =>
       providerResponses.push(diagnostic),
     );
     await bootstrapProductSession(page, runtime.frontendUrl);
@@ -2142,7 +2144,7 @@ test('VP live Stage 8 format Golden actual DeepSeek answers', async ({ page }) =
       JSON.stringify({
         summary: 'vp-live-stage8-format-ask-acceptance-v1',
         adapterVersion: '1.11.0',
-        candidatePromptVersion: 'direct-claim-v8',
+        candidatePromptVersion: 'direct-claim-v10',
         acceptedFormats,
         assertionCount: assertionCount.rows[0]?.count ?? 0,
         currentRelations: replay.currentRelations,

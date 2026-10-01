@@ -5,7 +5,6 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeAIProviderAdapter } from '../../adapters/ai-provider-fake/src/index.js';
 import { LucasAugmentedPlainTextAdapter } from '../../adapters/plain-text-lucas-augmented/src/index.js';
 import {
-  createPostgresPool,
   PostgresIntakeRepository,
   PostgresOriginalAssetRepository,
 } from '../../adapters/postgres/src/index.js';
@@ -60,10 +59,12 @@ import {
 import { evidenceListQuery, evidenceQuery } from '../helpers/stage-3.js';
 import { candidatesQuery, directTextCommand, intakeResultQuery } from '../helpers/stage-4.js';
 
-import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres-test-database.js';
 
-const databaseUrl = await requireTestDatabaseTarget();
-const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+const isolatedDatabase = process.env.TEST_DATABASE_URL?.trim()
+  ? await createIsolatedPostgresTestDatabase()
+  : undefined;
+const pool = isolatedDatabase?.createPool();
 
 class StoreFailingPostgresAIProviderCallRepository extends PostgresAIProviderCallRepository {
   private shouldFail = true;
@@ -373,8 +374,8 @@ const outcomeUnknownAfterHandlerConnectorState = (): ConnectorRuntimeStatePort =
       if (identity.messageType !== 'ResumeCandidateMaterialization') {
         return jobs.run(identity, correlationId, operation);
       }
-      return jobs.run(identity, correlationId, async (attempt) => {
-        await operation(attempt);
+      return jobs.run(identity, correlationId, async (attempt, signal) => {
+        await operation(attempt, signal);
         throw new ShotgunError({
           code: 'OUTCOME_UNKNOWN',
           safeMessage: 'The test post-handler Resume acknowledgement was intentionally lost.',
@@ -395,7 +396,7 @@ const outcomeUnknownAfterHandlerConnectorState = (): ConnectorRuntimeStatePort =
 
 describe.runIf(pool)('Stage 12.1 durable AI materialization', () => {
   beforeEach(resetDatabase);
-  afterAll(async () => await pool!.end());
+  afterAll(async () => await isolatedDatabase?.dispose());
 
   it('persists one completed materialization and reuses it on repeated delivery', async () => {
     const provider = new FakeAIProviderAdapter();

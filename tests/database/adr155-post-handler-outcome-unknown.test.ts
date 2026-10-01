@@ -6,9 +6,11 @@ import type { Pool } from 'pg';
 import {
   PostgresDedupStore,
   PostgresJobRuntime,
+  PostgresOrderingStore,
 } from '../../adapters/connector-runtime-postgres/src/index.js';
 import { createPostgresPool } from '../../adapters/postgres/src/index.js';
 import { type ConnectorSemanticIdentity } from '../../packages/connector-runtime/src/ports.js';
+import type { AnyEnvelope } from '../../packages/contracts/src/index.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 
 const databaseUrl = await requireTestDatabaseTarget();
@@ -33,6 +35,7 @@ const identityFor = (projectId: string): ConnectorSemanticIdentity => ({
 });
 
 const cleanup = async (projectId: string): Promise<void> => {
+  await pool.query('DELETE FROM connector.ordering_checkpoints WHERE project_id=$1', [projectId]);
   await pool.query(
     `DELETE FROM connector.jobs
       WHERE dedup_record_id IN (
@@ -60,6 +63,113 @@ const poolThatFailsAfterMatchingQuery = (base: Pool, matcher: (sql: string) => b
 };
 
 describe('ADR-155 post-handler outcome-unknown conformance', () => {
+  it('renews a running job lease until the handler finishes', async () => {
+    const projectId = `adr155-job-heartbeat-${randomUUID()}`;
+    const identity = identityFor(projectId);
+    const jobId = randomUUID();
+    const dedup = new PostgresDedupStore(pool);
+    const jobs = new PostgresJobRuntime(pool, 1, 0, {
+      leaseDurationMs: 150,
+      heartbeatIntervalMs: 40,
+    });
+
+    try {
+      const began = await dedup.begin({ ...identity, jobId });
+      expect(began.kind).toBe('ACQUIRED');
+      const execution = await jobs.run(identity, randomUUID(), async (_attempt, signal) => {
+        expect(signal.aborted).toBe(false);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        return { accepted: true };
+      });
+      expect(execution.result).toEqual({ accepted: true });
+      expect(execution.job.status).toBe('succeeded');
+      const row = await pool.query<{ status: string; lease_expires_at: Date | null }>(
+        'SELECT status, lease_expires_at FROM connector.jobs WHERE job_id=$1',
+        [jobId],
+      );
+      expect(row.rows[0]?.status).toBe('succeeded');
+      expect(row.rows[0]?.lease_expires_at).toBeNull();
+    } finally {
+      await cleanup(projectId);
+    }
+  });
+
+  it('aborts an active handler after its job lease expires and records no second execution', async () => {
+    const projectId = `adr155-job-heartbeat-loss-${randomUUID()}`;
+    const identity = identityFor(projectId);
+    const jobId = randomUUID();
+    const dedup = new PostgresDedupStore(pool);
+    const jobs = new PostgresJobRuntime(pool, 2, 0, {
+      leaseDurationMs: 200,
+      heartbeatIntervalMs: 30,
+    });
+    let calls = 0;
+    let signalAborted = false;
+
+    try {
+      const began = await dedup.begin({ ...identity, jobId });
+      expect(began.kind).toBe('ACQUIRED');
+      const execution = jobs.run(identity, randomUUID(), async (_attempt, signal) => {
+        calls += 1;
+        await new Promise<never>((_resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              signalAborted = true;
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await pool.query(
+        `UPDATE connector.jobs SET lease_expires_at=clock_timestamp() - interval '1 second'
+          WHERE job_id=$1`,
+        [jobId],
+      );
+      await expect(execution).rejects.toMatchObject({ code: 'OUTCOME_UNKNOWN' });
+      expect(signalAborted).toBe(true);
+      expect(calls).toBe(1);
+    } finally {
+      await cleanup(projectId);
+    }
+  });
+
+  it('renews an ordered delivery lease while the owning job remains active', async () => {
+    const projectId = `adr155-order-heartbeat-${randomUUID()}`;
+    const identity = identityFor(projectId);
+    const envelope = {
+      messageKind: 'event',
+      messageType: 'PostHandlerOutcomeUnknown',
+      correlationId: randomUUID(),
+      orderingKey: `ordered:${projectId}`,
+      sequence: 1,
+    } as unknown as AnyEnvelope;
+    const ordering = new PostgresOrderingStore(pool);
+    const jobId = randomUUID();
+
+    try {
+      const fence = await ordering.acquireNext(identity, envelope, jobId, 1_200);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      await expect(
+        ordering.renew({
+          identity,
+          envelope,
+          jobId,
+          fencingToken: fence.fencingToken,
+          leaseDurationMs: 1_200,
+        }),
+      ).resolves.toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      await expect(
+        ordering.acquireNext(identity, envelope, randomUUID(), 1_200),
+      ).rejects.toMatchObject({ code: 'RETRYABLE_DEPENDENCY' });
+    } finally {
+      await cleanup(projectId);
+    }
+  });
+
   it('converges a committed dedup completion when its acknowledgement is lost', async () => {
     const projectId = `adr155-dedup-ack-${randomUUID()}`;
     const identity = identityFor(projectId);

@@ -1,4 +1,4 @@
-const collapseWhitespaceWithOffsets = (value: string) => {
+const collapseWhitespaceWithOffsets = (value: string, omitLineBreaks = false) => {
   let normalized = '';
   const starts: number[] = [];
   const ends: number[] = [];
@@ -7,6 +7,11 @@ const collapseWhitespaceWithOffsets = (value: string) => {
   while (index < value.length) {
     const codePoint = String.fromCodePoint(value.codePointAt(index)!);
     const end = index + codePoint.length;
+    if (omitLineBreaks && (codePoint === '\n' || codePoint === '\r')) {
+      index = end;
+      if (codePoint === '\r' && value[index] === '\n') index += 1;
+      continue;
+    }
     if (/\s/u.test(codePoint)) {
       let whitespaceEnd = end;
       while (whitespaceEnd < value.length) {
@@ -41,7 +46,9 @@ const collapseWhitespaceWithOffsets = (value: string) => {
 
 /**
  * Rebinds whitespace-only model formatting changes to a unique exact source
- * span. It never invents or normalizes claim characters in the returned text.
+ * span. PDF line wraps may split a word, so lookup also tries removing line
+ * break characters while preserving every other source character. The result
+ * is always the exact original source slice; it never invents claim text.
  */
 export const alignDirectClaimToEvidence = (
   evidenceText: string,
@@ -51,16 +58,24 @@ export const alignDirectClaimToEvidence = (
   if (!candidate.normalized) return undefined;
   if (evidenceText.includes(modelClaimText.trim())) return modelClaimText.trim();
 
-  const evidence = collapseWhitespaceWithOffsets(evidenceText);
-  const matchIndex = evidence.normalized.indexOf(candidate.normalized);
-  if (matchIndex < 0 || evidence.normalized.indexOf(candidate.normalized, matchIndex + 1) >= 0) {
-    return undefined;
+  const matches = new Map<string, { readonly start: number; readonly end: number }>();
+  for (const evidence of [
+    collapseWhitespaceWithOffsets(evidenceText),
+    collapseWhitespaceWithOffsets(evidenceText, true),
+  ]) {
+    let matchIndex = evidence.normalized.indexOf(candidate.normalized);
+    while (matchIndex >= 0) {
+      const sourceStart = evidence.starts[matchIndex];
+      const sourceEnd = evidence.ends[matchIndex + candidate.normalized.length - 1];
+      if (sourceStart !== undefined && sourceEnd !== undefined) {
+        matches.set(`${sourceStart}:${sourceEnd}`, { start: sourceStart, end: sourceEnd });
+      }
+      matchIndex = evidence.normalized.indexOf(candidate.normalized, matchIndex + 1);
+    }
   }
-
-  const sourceStart = evidence.starts[matchIndex];
-  const sourceEnd = evidence.ends[matchIndex + candidate.normalized.length - 1];
-  if (sourceStart === undefined || sourceEnd === undefined) return undefined;
-  return evidenceText.slice(sourceStart, sourceEnd);
+  if (matches.size !== 1) return undefined;
+  const match = [...matches.values()][0]!;
+  return evidenceText.slice(match.start, match.end);
 };
 
 const stripOuterPunctuation = (value: string) =>

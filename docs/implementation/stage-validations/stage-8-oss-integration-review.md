@@ -228,3 +228,44 @@ now `1.11.0`; rollback sets it to `1.10.0`, restoring the prior character
 allowlist while immutable SourceMap revisions remain readable. The real v8
 DeepSeek end-to-end run and remaining PDF quality limits are documented in the
 [finance PDF report](../vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-capm-subscript-and-direct-claim-v8-recheck).
+
+## 2026-10-02 VP-04 Korean PDF word-gap recovery
+
+Target: Stage 8 `PythonDocumentFormatAdapter`, its `PlainTextTransformerPort`,
+the Page/BBox SourceMap contract, and the supplied finance PDF. Visual review
+of page 9 showed the complete sentence
+`베타가 커질수록 요구되는 기대수익률도 커지는 방향`, while the adapter's
+default pdfplumber horizontal tolerance joined the Korean words into
+`베타가커질수록요구되는기대수익률도커지는방향`. Candidate Generation received
+that compact text and DeepSeek omitted the claim in repeated full-product runs.
+
+The existing locked `pdfplumber==0.11.10` remains `ADOPT` behind the Python
+document-format adapter and continues to own reading order, word geometry, and
+Page/BBox selectors. Its extraction call now uses horizontal tolerance `2.0`
+for PDF words. Because that setting can split a thousands separator into
+`1, 000`, the adapter rejoins only whitespace between a digit, comma, and digit;
+other recovered word boundaries and exact line selectors are preserved. The
+existing `pypdfium2==5.11.0` pin (`0168561b33a3fc32eceb6ae46cc252f6b0e90c19`,
+`Apache-2.0 OR BSD-3-Clause`) remains `AUGMENT` for geometry-aligned glyph and
+formula recovery. The two upstream pins, license, security, and maintenance
+reviews in `oss-source-registry.json` are unchanged. No new upstream code,
+package, lockfile, runtime, database schema, or migration was added. The
+Adapter stays behind `PythonDocumentFormatAdapter`/`PlainTextTransformerPort`;
+rollback restores adapter `1.11.0` and its previous horizontal tolerance,
+while immutable transformation revisions remain readable and sources can be
+retransformed.
+
+Python PDF glyph tests passed 23/23, Stage 8 format Golden tests passed 18/18,
+and the focused Stage 3/8 Evidence segmentation contracts passed 12/12. The
+actual adapter returned the visually matched beta sentence as one complete
+sentence and preserved grouped thousands. A Chromium upload with the actual
+10-page PDF, isolated PostgreSQL, and DeepSeek `deepseek-flash` then passed the
+complete extraction and cited-Ask characterization: 151 candidates and 151
+current assertions were `READY` with exact direct Evidence; 80/80 positive
+markers matched; all 11 non-claim canaries were excluded; the overview, NPV,
+and four page-grounded questions matched their expected answers and citations;
+projection replay matched with three settled relations and zero pending jobs.
+DeepSeek reported 18,235 tokens for extraction. The labels remain `CANDIDATE`,
+semantic validation is `NOT_RUN`, relation correctness is not independently
+adjudicated, and provider billing was not reconciled. This single-file run does
+not close VP-04/05. See the [full PDF report](../vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-korean-pdf-word-gap-recovery).

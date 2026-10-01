@@ -113,14 +113,85 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
     expect(request?.systemInstruction).toContain('complete standalone proposition');
     expect(request?.systemInstruction).toContain('isolated nouns');
     expect(request?.systemInstruction).toContain('partial equation fragments');
+    expect(request?.systemInstruction).toContain(
+      'return that line as its own exact-source candidate',
+    );
     expect(candidates[0]).toMatchObject({
       claimText: '1억원 = 6천만원 + 4천만원',
       status: 'READY',
-      providerCall: { promptVersion: 'direct-claim-v8' },
+      providerCall: { promptVersion: 'direct-claim-v10' },
     });
   });
 
-  it('drops the leading IRR condition fragment under direct-claim-v8', async () => {
+  it('rebinds a PDF soft-wrap claim to the exact source span before validation', async () => {
+    const sourceText = '현금은 아직 들어오지 않\n았을 수 있다 .';
+    const providerClaim = '현금은 아직 들어오지 않았을 수 있다 .';
+    const fake = new FakeAIProviderAdapter([{ claimText: providerClaim }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+    });
+    const command = directTextCommand('stage4-rebind-pdf-soft-wrap', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ claimText: sourceText, status: 'READY' });
+    const validation = (
+      await kernel.connector.query<ValidationResult>(
+        validationQuery(command, candidates[0]!.candidateId),
+      )
+    ).result.payload;
+    expect(validation.dimensions.find((dimension) => dimension.name === 'direct-text')).toEqual(
+      expect.objectContaining({ status: 'PASS' }),
+    );
+  });
+
+  it('keeps a complete Korean directional relationship as an exact source candidate in v9', async () => {
+    const direction = '베타가 커질수록 요구되는 기대수익률도 커지는 방향';
+    const fake = new FakeAIProviderAdapter([{ claimText: direction }]);
+    let request: StructuredGenerationRequest | undefined;
+    const provider: AIProviderAdapterPort = {
+      identity: fake.identity,
+      generateStructured(input) {
+        request = input;
+        return fake.generateStructured(input);
+      },
+    };
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: provider,
+      candidatePromptVersion: 'direct-claim-v9',
+    });
+    const command = directTextCommand(
+      'stage4-korean-direction-claim-v9',
+      `${direction}\n위험을 더 많이 부담한다면 투자자는 더 높은 수익률을 요구하기 때문이다 .`,
+    );
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(request?.systemInstruction).toContain(
+      'return that line as its own exact-source candidate',
+    );
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ claimText: direction, status: 'READY' });
+  });
+
+  it('drops the leading IRR condition fragment under the default direct-claim-v10 policy', async () => {
     const fragment = '이 되게 하는 수익률이 IRR 이다 .';
     const fake = new FakeAIProviderAdapter([{ claimText: fragment }]);
     let request: StructuredGenerationRequest | undefined;
@@ -151,6 +222,9 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
 
     expect(request?.systemInstruction).toContain('required condition is cut off at the beginning');
     expect(request?.systemInstruction).toContain('NPV=0');
+    expect(request?.systemInstruction).toContain(
+      'Do not deduplicate claims across different evidence items',
+    );
     expect(candidates).toEqual([]);
   });
 
@@ -521,7 +595,7 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
       extractionProfile: 'direct-only',
       providerCall: {
         provider: 'fake',
-        promptVersion: 'direct-claim-v8',
+        promptVersion: 'direct-claim-v10',
         policyVersion: 'direct-only-v1',
         structuredOutputValid: true,
         cost: { status: 'unavailable' },

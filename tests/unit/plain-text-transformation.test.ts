@@ -80,6 +80,22 @@ describe('Stage 3 Plain Text Transformation golden behavior', () => {
     }
   });
 
+  it('splits a complete Korean nominal direction line into exact sentence Evidence', () => {
+    const direction = '베타가 커질수록 요구되는 기대수익률도 커지는 방향';
+    const reason = '위험을 더 많이 부담한다면 투자자는 더 높은 수익률을 요구하기 때문이다.';
+    const revision = revisionFor(`${direction}\r\n${reason}`);
+    const sentences = revision.documentIR.blocks.flatMap((block) => block.sentences);
+    const evidence = buildEvidenceCandidates(revision, adapter).filter(
+      (item) => item.nodeKind === 'sentence',
+    );
+
+    expect(sentences.map((sentence) => sentence.text)).toEqual([direction, reason]);
+    expect(evidence.map((item) => item.quote.exact)).toEqual([direction, reason]);
+    for (const item of evidence) {
+      expect(item.exactHash).toBe(sha256Text(item.quote.exact));
+    }
+  });
+
   it('uses context to locate repeated quotes and refuses an ambiguous short quote', () => {
     const source = 'alpha common omega. beta common delta.';
 

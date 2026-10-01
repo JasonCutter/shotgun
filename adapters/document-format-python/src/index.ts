@@ -461,7 +461,7 @@ const errorFor = (
   });
 
 export class PythonDocumentFormatAdapter implements PlainTextTransformerPort {
-  readonly identity = { id: 'shotgun.document-formats', version: '1.11.0' } as const;
+  readonly identity = { id: 'shotgun.document-formats', version: '1.12.0' } as const;
   readonly #plainText = new LucasAugmentedPlainTextAdapter();
   readonly #pythonExecutable: string;
   readonly #workerPath: string;

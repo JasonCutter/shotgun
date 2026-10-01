@@ -15,6 +15,7 @@ from worker import (
     pdfium_page_glyphs,
     pdfium_recoverable_glyphs,
     pdfium_stacked_equation_words,
+    pdf_words_to_line_text,
     restore_pdfium_numbered_list_markers,
     restore_unmapped_safe_glyphs,
 )
@@ -33,6 +34,25 @@ def recoverable_glyph(
 
 
 class PdfGlyphRecoveryTests(unittest.TestCase):
+    def test_joins_pdf_words_with_readable_korean_spacing_without_splitting_thousands(self) -> None:
+        self.assertEqual(
+            pdf_words_to_line_text(
+                [
+                    {"text": "베타가"},
+                    {"text": "커질수록"},
+                    {"text": "요구되는"},
+                    {"text": "기대수익률도"},
+                    {"text": "커지는"},
+                    {"text": "방향"},
+                ]
+            ),
+            "베타가 커질수록 요구되는 기대수익률도 커지는 방향",
+        )
+        self.assertEqual(
+            pdf_words_to_line_text([{"text": "1,"}, {"text": "000"}, {"text": "원"}]),
+            "1,000 원",
+        )
+
     def test_pdf_block_preserves_visual_line_boundaries_and_segment_offsets(self) -> None:
         first = "현금과 이익은 다를 수 있다"
         second = "분산투자로 체계적 위험은 제거할 수 없다"

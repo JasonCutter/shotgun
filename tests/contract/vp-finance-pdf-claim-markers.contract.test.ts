@@ -11,8 +11,8 @@ describe('VP finance PDF claim marker corpus', () => {
     expect(vpFinancePDFClaimMarkerCorpus).toMatchObject({
       contractVersion: '1.0.0',
       corpusId: 'shotgun-vp-finance-pdf-claim-markers',
-      corpusVersion: '1.7.0',
-      labelSetRevision: 8,
+      corpusVersion: '1.9.0',
+      labelSetRevision: 10,
       labelReviewStatus: 'CANDIDATE',
       source: {
         sha256: 'bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01',
@@ -20,8 +20,11 @@ describe('VP finance PDF claim marker corpus', () => {
         dataClassification: 'USER_PROVIDED',
       },
     });
-    expect(vpFinancePDFClaimMarkerCorpus.markers).toHaveLength(24);
-    expect(vpFinancePDFClaimMarkerCorpus.nonClaims).toHaveLength(6);
+    expect(vpFinancePDFClaimMarkerCorpus.markers).toHaveLength(80);
+    expect(vpFinancePDFClaimMarkerCorpus.nonClaims).toHaveLength(11);
+    expect(new Set(vpFinancePDFClaimMarkerCorpus.markers.map((marker) => marker.page))).toEqual(
+      new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]),
+    );
     expect(
       vpFinancePDFClaimMarkerCorpus.markers.find((marker) => marker.id === 'irr-example')?.page,
     ).toBe(7);
@@ -52,6 +55,28 @@ describe('VP finance PDF claim marker corpus', () => {
         'threshold-condition',
         'limitation',
         'finance-decision',
+        'balance-sheet-definition',
+        'asset-liquidity',
+        'accounting-definition',
+        'liability-maturity',
+        'statement-period',
+        'accounting-equation',
+        'accounting-policy',
+        'cash-vs-profit',
+        'cash-flow-definition',
+        'cash-flow-example',
+        'statement-definition',
+        'investment-condition',
+        'time-value',
+        'investment-value',
+        'capital-cost',
+        'risk-definition',
+        'risk-measure',
+        'portfolio-definition',
+        'diversification',
+        'beta-definition',
+        'model-definition',
+        'risk-return-condition',
       ]),
     );
     expect(

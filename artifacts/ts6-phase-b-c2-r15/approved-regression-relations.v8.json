@@ -539,7 +539,7 @@
       "testEvidenceId": "test:tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts:re-enters the same durable event on a rotated job and snapshots the current DLQ job",
       "file": "tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts",
       "testName": "re-enters the same durable event on a rotated job and snapshots the current DLQ job",
-      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1199"],
+      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1292"],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "kernel.connector.publishEvent",
       "path": [
@@ -552,7 +552,7 @@
       "testEvidenceId": "test:tests/database/post-tf-risk002-connector-fencing-proof.test.ts:Scenario A: production recovery leaves a real running attempt behind",
       "file": "tests/database/post-tf-risk002-connector-fencing-proof.test.ts",
       "testName": "Scenario A: production recovery leaves a real running attempt behind",
-      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1389"],
+      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1516"],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "recoverProductionExpiredLeases",
       "path": [
@@ -732,7 +732,7 @@
       "testEvidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)",
       "file": "tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts",
       "testName": "commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)",
-      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1284"],
+      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1411"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresOrderingStore.commit",
       "path": ["PostgresOrderingStore.commit"]

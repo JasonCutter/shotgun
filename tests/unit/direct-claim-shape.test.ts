@@ -16,6 +16,18 @@ describe('direct claim source alignment', () => {
     ).toBe(source);
   });
 
+  it('restores PDF line wraps inserted inside Korean words without changing source text', () => {
+    const source = '현금은 아직 들어오지 않\n았을 수 있다 .';
+
+    expect(alignDirectClaimToEvidence(source, '현금은 아직 들어오지 않았을 수 있다 .')).toBe(
+      source,
+    );
+  });
+
+  it('refuses a soft-wrap match when it would select multiple source spans', () => {
+    expect(alignDirectClaimToEvidence('한글\n문장 한글\n문장', '한글문장')).toBe(undefined);
+  });
+
   it('leaves repeated or text-altered provider output unaligned', () => {
     expect(
       alignDirectClaimToEvidence(
@@ -26,7 +38,6 @@ describe('direct claim source alignment', () => {
     expect(alignDirectClaimToEvidence('수익률은 10%다.', '수익률은 12%다.')).toBe(undefined);
   });
 });
-
 describe('direct claim shape guard', () => {
   it.each([
     '토지',

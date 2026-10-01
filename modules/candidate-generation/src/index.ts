@@ -481,7 +481,9 @@ export const createCandidateGenerationModule = (
           generated.call.promptVersion === 'direct-claim-v5' ||
           generated.call.promptVersion === 'direct-claim-v6' ||
           generated.call.promptVersion === 'direct-claim-v7' ||
-          generated.call.promptVersion === 'direct-claim-v8';
+          generated.call.promptVersion === 'direct-claim-v8' ||
+          generated.call.promptVersion === 'direct-claim-v9' ||
+          generated.call.promptVersion === 'direct-claim-v10';
         const sourceAlignedModelClaimText = usesV4CandidatePolicy
           ? (alignDirectClaimToEvidence(sourceEvidence.quote.exact, modelClaimText) ??
             modelClaimText)
@@ -502,7 +504,9 @@ export const createCandidateGenerationModule = (
                   generated.call.promptVersion === 'direct-claim-v5' ||
                   generated.call.promptVersion === 'direct-claim-v6' ||
                   generated.call.promptVersion === 'direct-claim-v7' ||
-                  generated.call.promptVersion === 'direct-claim-v8'
+                  generated.call.promptVersion === 'direct-claim-v8' ||
+                  generated.call.promptVersion === 'direct-claim-v9' ||
+                  generated.call.promptVersion === 'direct-claim-v10'
                 ? preserveQualifiedV4Claim(sourceEvidence.quote.exact, candidateText)
                 : candidateText;
           const fingerprint = sha256Text(stableJson({ claimText, evidenceId: item.evidenceId }));
@@ -510,7 +514,9 @@ export const createCandidateGenerationModule = (
             !claimText ||
             seen.has(fingerprint) ||
             ((generated.call.promptVersion === 'direct-claim-v7' ||
-              generated.call.promptVersion === 'direct-claim-v8') &&
+              generated.call.promptVersion === 'direct-claim-v8' ||
+              generated.call.promptVersion === 'direct-claim-v9' ||
+              generated.call.promptVersion === 'direct-claim-v10') &&
               isClearlyIncompleteDirectClaimFragment(claimText))
           ) {
             return [];

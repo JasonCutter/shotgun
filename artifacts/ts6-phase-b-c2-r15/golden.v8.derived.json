@@ -3,7 +3,7 @@
   "baseSha": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
   "derivedFrom": {
     "parentArtifact": "artifacts/ts6-phase-b-c2-r15/approved-regression-relations.v8.json",
-    "parentSha256": "34db06542dc6201310fbf446615ea23b1201818cd3aca67cfe02d2d35a25cc92",
+    "parentSha256": "20bc9cd4303a16bbbf37d4e6a02b82bb27e3a202840006126d04b6546b8a355d",
     "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
     "authorityVersion": "ts6.phase-b.current-authority-manifest.v8"
   },
@@ -40,7 +40,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 1017,
+            "line": 1041,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -85,7 +85,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 573,
+            "line": 597,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -103,7 +103,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 932,
+            "line": 956,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -121,7 +121,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 1025,
+            "line": 1049,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -280,7 +280,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1292",
       "file": "adapters/connector-runtime-postgres/src/index.ts",
       "symbol": "PostgresOrderingStore",
       "method": "acquireNext",
@@ -310,7 +310,7 @@
             "bindingPort": "OrderingStorePort",
             "bindingVia": "field ordering of ConnectorRuntimeStatePort declared as OrderingStorePort",
             "receiverType": "OrderingStorePort",
-            "line": 686,
+            "line": 762,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -325,7 +325,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284",
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1411",
       "file": "adapters/connector-runtime-postgres/src/index.ts",
       "symbol": "PostgresOrderingStore",
       "method": "commit",
@@ -355,7 +355,7 @@
             "bindingPort": "OrderingStorePort",
             "bindingVia": "field ordering of ConnectorRuntimeStatePort declared as OrderingStorePort",
             "receiverType": "OrderingStorePort",
-            "line": 719,
+            "line": 812,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -370,7 +370,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "boundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1516",
       "file": "adapters/connector-runtime-postgres/src/index.ts",
       "symbol": "PostgresConnectorRuntimeState",
       "method": "recoverExpiredLeases",
@@ -400,7 +400,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresConnectorRuntimeState",
             "receiverType": "PostgresConnectorRuntimeState",
-            "line": 1367,
+            "line": 1494,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -9544,7 +9544,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 760,
+            "line": 784,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9589,7 +9589,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 844,
+            "line": 868,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9634,7 +9634,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 926,
+            "line": 950,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9679,7 +9679,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 876,
+            "line": 900,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -9697,7 +9697,7 @@
             "bindingPort": "AIProviderCallRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated AIProviderCallRepositoryPort",
             "receiverType": "AIProviderCallRepositoryPort",
-            "line": 970,
+            "line": 994,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9742,7 +9742,7 @@
             "bindingPort": "CandidateRepositoryPort",
             "bindingVia": "file-scope declaration of repository annotated CandidateRepositoryPort",
             "receiverType": "CandidateRepositoryPort",
-            "line": 540,
+            "line": 546,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -12463,7 +12463,7 @@
       "canonicalBoundaryId": "safe:adapters/ai-configuration-postgres/src/index.ts:106"
     },
     {
-      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199",
+      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1292",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/connector-runtime-postgres/src/index.ts",
@@ -12473,10 +12473,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1199"
+      "canonicalBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1292"
     },
     {
-      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284",
+      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1411",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/connector-runtime-postgres/src/index.ts",
@@ -12486,10 +12486,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1284"
+      "canonicalBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1411"
     },
     {
-      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389",
+      "candidateId": "safe:adapters/connector-runtime-postgres/src/index.ts:1516",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
       "file": "adapters/connector-runtime-postgres/src/index.ts",
@@ -12499,7 +12499,7 @@
       "productionReachable": true,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1389"
+      "canonicalBoundaryId": "safe:adapters/connector-runtime-postgres/src/index.ts:1516"
     },
     {
       "candidateId": "safe:adapters/credential-vault-postgres/src/index.ts:161",
@@ -15450,7 +15450,7 @@
       "file": "tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts",
       "testName": "re-enters the same durable event on a rotated job and snapshots the current DLQ job",
       "covers": [
-        "safe:adapters/connector-runtime-postgres/src/index.ts:1199"
+        "safe:adapters/connector-runtime-postgres/src/index.ts:1292"
       ],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "kernel.connector.publishEvent",
@@ -15465,7 +15465,7 @@
       "file": "tests/database/post-tf-risk002-connector-fencing-proof.test.ts",
       "testName": "Scenario A: production recovery leaves a real running attempt behind",
       "covers": [
-        "safe:adapters/connector-runtime-postgres/src/index.ts:1389"
+        "safe:adapters/connector-runtime-postgres/src/index.ts:1516"
       ],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "recoverProductionExpiredLeases",
@@ -15671,7 +15671,7 @@
       "file": "tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts",
       "testName": "commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)",
       "covers": [
-        "safe:adapters/connector-runtime-postgres/src/index.ts:1284"
+        "safe:adapters/connector-runtime-postgres/src/index.ts:1411"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresOrderingStore.commit",

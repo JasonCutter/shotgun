@@ -1,5 +1,8 @@
 import type { AIProviderConnectivityAdapter } from '../../../modules/ai-settings-backend/src/index.js';
-import type { StructuredGenerationResponse } from '../../../modules/ai-provider/src/index.js';
+import {
+  DEFAULT_CANDIDATE_EXTRACTION_TIMEOUT_MS,
+  type StructuredGenerationResponse,
+} from '../../../modules/ai-provider/src/index.js';
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
@@ -62,6 +65,7 @@ const parseObject = (rawText: string): Record<string, unknown> => {
 export type DeepSeekConnectivityAdapterOptions = {
   readonly baseUrl?: string;
   readonly timeoutMs?: number;
+  readonly generationTimeoutMs?: number;
   readonly fetch?: FetchLike;
 };
 
@@ -71,6 +75,7 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
   readonly supportsCancellation = true;
   private readonly endpoint: string;
   private readonly timeoutMs: number;
+  private readonly generationTimeoutMs: number;
   private readonly fetch: FetchLike;
 
   constructor(options: DeepSeekConnectivityAdapterOptions = {}) {
@@ -82,6 +87,11 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
     this.timeoutMs = options.timeoutMs ?? 60_000;
     if (!Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0) {
       throw new Error('DeepSeek timeout must be a positive number of milliseconds.');
+    }
+    this.generationTimeoutMs =
+      options.generationTimeoutMs ?? DEFAULT_CANDIDATE_EXTRACTION_TIMEOUT_MS;
+    if (!Number.isFinite(this.generationTimeoutMs) || this.generationTimeoutMs <= 0) {
+      throw new Error('DeepSeek generation timeout must be a positive number of milliseconds.');
     }
     this.fetch = options.fetch ?? globalThis.fetch;
   }
@@ -130,6 +140,7 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
           : { max_tokens: input.request.maxOutputTokens }),
       },
       input.signal,
+      this.generationTimeoutMs,
     );
     const rawText = this.outputText(response);
     parseObject(rawText);
@@ -161,11 +172,12 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
     apiKeyBytes: Uint8Array,
     body: Record<string, unknown>,
     signal?: AbortSignal,
+    timeoutMs = this.timeoutMs,
   ): Promise<DeepSeekResponse> {
     const apiKey = new TextDecoder().decode(apiKeyBytes);
     if (!apiKey.trim()) throw errorFor('AUTHENTICATION_FAILED', 'DeepSeek credential is empty.');
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     timeout.unref();
     const abort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', abort, { once: true });
@@ -180,6 +192,16 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
       try {
         return (await response.json()) as DeepSeekResponse;
       } catch (error) {
+        if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+          throw new ShotgunError({
+            code: 'TIMEOUT',
+            safeMessage: 'The DeepSeek request timed out.',
+            module: 'deepseek-ai-provider',
+            operation: 'connectivity',
+            retryable: true,
+            cause: error,
+          });
+        }
         throw errorFor('VALIDATION_ERROR', 'DeepSeek returned an invalid response.', error);
       }
     } catch (error) {

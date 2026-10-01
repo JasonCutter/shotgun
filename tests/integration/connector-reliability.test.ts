@@ -414,7 +414,7 @@ describe('Connector reliability', () => {
     async run<TResult>(
       identity: ConnectorSemanticIdentity,
       _correlationId: string,
-      operation: (attempt: AttemptRecord) => Promise<TResult>,
+      operation: (attempt: AttemptRecord, signal: AbortSignal) => Promise<TResult>,
     ): Promise<JobRunResult<TResult>> {
       const job: JobRecord = {
         jobId: identity.semanticKey,
@@ -434,8 +434,9 @@ describe('Connector reliability', () => {
         scheduledDelayMs: 0,
       };
       job.attempts.push(attempt);
+      const signal = new AbortController().signal;
       try {
-        const result = await operation(attempt);
+        const result = await operation(attempt, signal);
         attempt.status = 'succeeded';
         attempt.finishedAt = new Date().toISOString();
         job.status = 'succeeded';

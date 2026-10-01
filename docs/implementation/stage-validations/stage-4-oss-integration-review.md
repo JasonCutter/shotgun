@@ -126,3 +126,113 @@ adjudication and remain open. No dependency, model, Provider SDK, Candidate
 schema, or lockfile changed. Rollback restores default v7 and removes the v8
 instruction/guard; immutable provider output and candidate revisions remain
 available. See the [full finance PDF result](../vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-capm-subscript-and-direct-claim-v8-recheck).
+
+## 2026-10-02 structured-generation deadline and durable lease renewal
+
+Target: Stage 4 `GenerateStructured`, the existing `AIProviderAdapterPort`,
+DeepSeek adapter, and the PostgreSQL Connector Runtime. A finance-PDF run with
+111 Evidence spans received HTTP 200, but its body remained incomplete after
+both the prior 60-second and 300-second limits. Each provider attempt was
+recorded `OUTCOME_UNKNOWN`; no output was materialized and no automatic provider
+recall occurred. A selected one-case relation test also reached its 150-second
+test ceiling without a decision. This is evidence of long or stalled responses,
+not an answer-quality result.
+
+The official [DeepSeek rate-limit guidance](https://api-docs.deepseek.com/quick_start/rate_limit/)
+says non-streaming requests may remain open while the service sends empty lines,
+and the server may close a request if inference has not started within 10
+minutes. Shotgun's prior five-minute cutoff could therefore cancel before this
+documented queue interval elapsed. The generation deadline is now 15 minutes;
+connectivity probes retain their 60-second limit. The pending database response
+body is parsed only when complete, and timeout/cancellation still becomes a
+durable `OUTCOME_UNKNOWN` with no automatic provider recall.
+
+The same test exposed that PostgreSQL Job and partial-order leases were set to
+five minutes and never renewed. The existing Job renew Port and a new additive
+ordering renew method are now used at a 60-second cadence while their operation
+is active. A lost or uncertain lease aborts the handler signal; an expired
+lease cannot be renewed back to life. This lets a bounded long-running request
+keep its fencing authority while preserving fail-closed behavior after
+ownership is lost.
+
+| Candidate                                                         | Reviewed version                                       | Decision             | Scope                                                                                                                                                              |
+| ----------------------------------------------------------------- | ------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [garrytan/gbrain](https://github.com/garrytan/gbrain)             | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, MIT        | `REFERENCE_ONLY`     | Its Job/deadline/recovery patterns were reviewed; the Shotgun Connector Runtime and provider ledger keep owning execution and outcome meaning.                     |
+| [lucasastorian/llmwiki](https://github.com/lucasastorian/llmwiki) | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`, Apache-2.0 | `EXTRACT` (existing) | Its independent conversion and lint extracts do not implement provider deadlines or durable lease ownership.                                                       |
+| [ddsyasas/llm-wiki](https://github.com/ddsyasas/llm-wiki)         | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`, MIT        | `REFERENCE_ONLY`     | Its cost/model UX does not supply the Port contract or fenced lease behavior.                                                                                      |
+| [Inkeep OpenKnowledge](https://github.com/inkeep/open-knowledge)  | `f2834c237639e2cff603817ed88182b33f83cf91`, GPL-3.0    | `REFERENCE_ONLY`     | Its activity/review UX does not supply provider execution or lease renewal.                                                                                        |
+| [LiteLLM](https://github.com/BerriAI/litellm)                     | `1.83.7`                                               | `DEFER` (existing)   | A gateway is unnecessary for this bounded timeout/lease correction; re-evaluate if provider routing or failover becomes a separate requirement.                    |
+| Shotgun provider deadline and lease renewal contract              | No relevant OSS                                        | `NO_RELEVANT_OSS`    | No reviewed candidate provides the exact Provider Port, durable `OUTCOME_UNKNOWN`, fenced Job/ordering lease, cancellation, and no-auto-recall semantics together. |
+
+The existing PostgreSQL adapter was augmented without a migration, dependency,
+lockfile, or Source/Candidate schema change. The Job runtime now supplies an
+`AbortSignal` and renews its durable lease; the ordering Port renews the
+current job's ordering fence. Focused PostgreSQL, Stage 4, marker-contract, and
+provider deadline tests passed (46 passed; one separate live test was skipped
+without live credentials enabled). Targeted ESLint passed. Whole-repository
+typecheck and lint report only errors in separate user-owned, untracked TS-7
+tests and are not attributed to this change. The updated DeepSeek live run is
+recorded in the [finance PDF verification report](../vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-deepseek-body-stall-and-generation-deadline-correction).
+
+The Open-source Role Matrix remains unchanged because it already assigns
+gbrain's Job/recovery behavior `REFERENCE_ONLY` and PostgreSQL to the existing
+Shotgun Adapter boundary. Rollback restores the earlier provider deadline and
+removes only the new Job and ordering lease renewal paths/tests. The database
+schema is unchanged, so no data migration is needed; existing provider
+receipts, immutable Candidate revisions, and `OUTCOME_UNKNOWN` rows remain
+untouched.
+
+## 2026-10-02 PDF soft-wrap alignment and direct-claim-v9
+
+Target: the existing Stage 4 Candidate Generation and Validation contracts.
+Review of the supplied finance PDF confirmed that its page geometry creates
+line breaks inside Korean words. The model often removes that visual break;
+the former whitespace matcher treated the newline as a real word boundary and
+rejected otherwise exact source claims. The Candidate module now looks up both
+ordinary whitespace normalization and a line-break-omitted view, maps a unique
+match back to the original Evidence offsets, and persists only that exact
+source slice. If more than one source span matches, rebinding still fails
+closed. Validation's exact Evidence substring check is unchanged.
+
+The previously pinned Stage 4 candidates were reviewed again: `gbrain` at
+`a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (MIT), `llmwiki` at
+`ad626a3d81be1480e35ef4e94234de8dbb27a61e` (Apache-2.0), `ddsyasas/llm-wiki`
+at `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c` (MIT), Inkeep OpenKnowledge at
+`f2834c237639e2cff603817ed88182b33f83cf91` (GPL-3.0), and spaCy Sentencizer
+`v3.8.16` at `26b4d1dc04a812f426e4bef3e8a1b6f159d6f048` (MIT). Their recorded
+decisions remain `REFERENCE_ONLY`, `EXTRACT` for the existing llmwiki
+converter/lint components, or `NO_RELEVANT_OSS` for exact Korean claim-span
+rebinding. None supplies a line-wrap-aware unique Evidence-span adapter with
+Shotgun's contracts. No new repository, dependency, runtime, lockfile, or
+license/security review was introduced. The existing review records each
+candidate's source, pin, license, security, maintenance, and boundary.
+
+The default extraction prompt is now versioned `direct-claim-v9`. It retains
+the v8 exact-source and incomplete-IRR guard and clarifies that a complete
+Korean directional line may itself be a claim even without a final copula. The
+durable prompt version lets v8 and v9 runs remain distinguishable. Contract
+and unit tests passed 73/73, including exact Evidence restoration, direct
+Validation, and ambiguous-match refusal. The default v9 version is also
+covered by Stage 4 and quality-baseline contracts. `npm run quality:gate`
+passed with precision 0.636, recall 0.875, F1 0.737, unsupported-claim rate
+0, and search citation correctness 1.0.
+
+One real DeepSeek PDF run with v8 and the new exact-span lookup produced
+150/150 `READY` assertions, 80/80 revised page markers, and zero promotions of
+11 non-claim canaries. A v9 full Ask run produced 140/140 exact `READY`
+assertions and zero non-claim promotions, but missed one standalone beta
+expected-return direction marker (79/80). Its following explanation was
+extracted. The v9 prompt explicitly calls out this kind of directional line,
+so the live result shows that prompt wording alone does not establish stable
+completeness; the combined acceptance test remains failed at this assertion.
+All six real Ask scenarios nevertheless answered correctly with the expected
+PDF page citations, projection replay matched, and five relations settled with
+no pending jobs. The provider reported 31,620 tokens over 12 calls; billing
+was not reconciled. Semantic validation remains `NOT_RUN`, and the marker
+labels remain `CANDIDATE` pending independent adjudication.
+
+No migration is required. Rollback restores the default v8 prompt and removes
+the v9 instruction and unique soft-wrap lookup; already recorded exact Evidence
+and immutable Candidate revisions remain available for replay and re-extraction.
+VP-04/05 remain open until the golden labels, repeatable completeness, quality
+limits, and actual provider cost are resolved.

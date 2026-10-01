@@ -66,3 +66,15 @@ The Ask URL-freshness projection added code before existing transaction candidat
 Ten approved `covers[]` references to these boundaries were updated in `approved-regression-relations.v8.json`. Test IDs, names, coverage kinds, and the frozen v7 source SHA-256 are unchanged.
 
 Current totals remain 129 candidates, 122 transaction boundaries, and 11 raw transaction sites; classifications remain `TX_BOUNDARY 16`, `PORT_INFERRED 89`, `NON_TX 7`, and `TEST_ONLY_OR_DEAD 17`, with no participants, delegates, or review-required records. The v2-v7 historical artifacts are unchanged. After updating the reviewed manifest and approved coordinate references, `npm run ts6:v8:rebuild`, `npm run ts6:v8:check`, `npm run verify:ts6-c2`, and `npm run test:ts6-audit` reproduce and verify the current v8 lineage.
+
+## 2026-10-02 connector relation-job coordinate addendum
+
+VP connector relation-job changes moved three candidates in `adapters/connector-runtime-postgres/src/index.ts`. Each coordinate was matched to the same owning class and method in the previous source, with unchanged classification and production reachability:
+
+| Previous candidate ID | Current candidate ID | Method | Classification / reachability |
+| --- | --- | --- | --- |
+| `safe:adapters/connector-runtime-postgres/src/index.ts:1199` | `safe:adapters/connector-runtime-postgres/src/index.ts:1292` | `PostgresOrderingStore.acquireNext` | `PORT_INFERRED / PORT_INFERRED` |
+| `safe:adapters/connector-runtime-postgres/src/index.ts:1284` | `safe:adapters/connector-runtime-postgres/src/index.ts:1411` | `PostgresOrderingStore.commit` | `PORT_INFERRED / PORT_INFERRED` |
+| `safe:adapters/connector-runtime-postgres/src/index.ts:1389` | `safe:adapters/connector-runtime-postgres/src/index.ts:1516` | `PostgresConnectorRuntimeState.recoverExpiredLeases` | `TX_BOUNDARY / PROVEN` |
+
+Only the three current-authority IDs and their approved `covers[]` references were remapped. Candidate count, classifications, test evidence identities, and v2-v7 frozen history are unchanged. Verification: `npm run ts6:v8:rebuild`, `npm run ts6:v8:check`, `npm run verify:ts6-c2`, and `npm run test:ts6-audit`.

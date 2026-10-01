@@ -56,7 +56,7 @@ const revisionFor = (text: string): TransformationRevision => {
 
 describe('Issue #237 Markdown segmentation', () => {
   it('publishes the governed transformer identity for the corrected behavior', () => {
-    expect(adapter.identity).toEqual({ id: 'shotgun.plain-text', version: '1.0.2' });
+    expect(adapter.identity).toEqual({ id: 'shotgun.plain-text', version: '1.0.3' });
   });
 
   it('keeps Markdown ordinal prefixes attached to the meaningful sentence', () => {
@@ -132,7 +132,7 @@ describe('Issue #237 Markdown segmentation', () => {
   it('publishes the production transformer identity and delegates corrected Markdown behavior', async () => {
     expect(productionAdapter.identity).toEqual({
       id: 'shotgun.document-formats',
-      version: '1.11.0',
+      version: '1.12.0',
     });
 
     const text = ['---', '', '## 1. Heading', '', '1. Meaningful sentence.'].join('\n');
@@ -293,5 +293,58 @@ describe('Issue #237 Stage 3 to Stage 4 path', () => {
     expect(inputTexts).not.toContain('---');
     expect(inputTexts).not.toContain('# 1.');
     expect(candidates.map((candidate) => candidate.claimText)).not.toContain('---');
+  });
+
+  it('sends a complete Korean nominal direction line as separate exact Evidence', async () => {
+    const provider = new RecordingFakeAIProvider();
+    const { kernel } = await createStage4Harness({ aiProvider: provider });
+    const direction = '베타가 커질수록 요구되는 기대수익률도 커지는 방향';
+    const reason = '위험을 더 많이 부담한다면 투자자는 더 높은 수익률을 요구하기 때문이다.';
+    const command = fileCommand(
+      'issue-237-korean-direction',
+      'direction.md',
+      'text/markdown',
+      new TextEncoder().encode(`${direction}\n${reason}`),
+    );
+
+    await kernel.connector.sendCommand(command);
+
+    const prompt = JSON.parse(provider.prompts[0] ?? '{}') as {
+      readonly evidence?: readonly { readonly text: string }[];
+    };
+    const inputTexts = (prompt.evidence ?? []).map((item) => item.text);
+    expect(inputTexts).toContain(direction);
+    expect(inputTexts).toContain(reason);
+  });
+
+  it('retains related claims from separate Evidence items as distinct candidates', async () => {
+    const provider = new RecordingFakeAIProvider();
+    const { kernel } = await createStage4Harness({ aiProvider: provider });
+    const risk = '베타가 커질수록 시장변화에 민감하고 체계적 위험이 큰 방향';
+    const returnRequirement = '베타가 커질수록 요구되는 기대수익률도 커지는 방향';
+    const command = fileCommand(
+      'issue-237-related-direction-claims',
+      'related-directions.md',
+      'text/markdown',
+      new TextEncoder().encode(`${risk}\n${returnRequirement}`),
+    );
+
+    await kernel.connector.sendCommand(command);
+
+    const intake = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly { claimText: string }[] }>(
+        candidatesQuery(command, intake.sourceVersionId),
+      )
+    ).result.payload.items;
+    const prompt = JSON.parse(provider.prompts[0] ?? '{}') as {
+      readonly evidence?: readonly { readonly text: string }[];
+    };
+
+    expect(prompt.evidence?.map((item) => item.text)).toContain(risk);
+    expect(prompt.evidence?.map((item) => item.text)).toContain(returnRequirement);
+    expect(candidates.map((candidate) => candidate.claimText)).toEqual([risk, returnRequirement]);
   });
 });

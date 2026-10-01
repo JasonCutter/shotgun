@@ -757,3 +757,29 @@ additive and nullable; restoring the pre-migration database is the rollback
 path if the columns must be removed. No scheduled refresh worker or refresh
 failure receipt exists yet, so this partial slice does not pass the VP-08 OSS
 or Product gate. See the [implementation and verification record](../../implementation/vp-url-freshness-ask-projection-2026-10-02.md).
+
+## VP-04 / Stage 8 Korean PDF word-gap recovery — 2026-10-02
+
+The locked `pdfplumber==0.11.10` package remains `ADOPT` behind
+`PythonDocumentFormatAdapter`; it owns PDF reading order, word geometry, and
+Page/BBox selectors. A visual comparison of the supplied finance PDF showed
+that its default horizontal tolerance merged Korean words in a complete
+page-9 directional statement. Adapter-local `x_tolerance=2.0` restores those
+visually separated words. A bounded post-join correction removes only the
+false gap inside numeric thousands groups, preserving values such as `1,000`.
+The existing `pypdfium2==5.11.0` geometry adapter remains `AUGMENT`; no new
+package, upstream source, runtime, or lockfile is added. License, security,
+maintenance, and exact upstream pins remain in the Source Registry. The
+replacement boundary is unchanged: `PythonDocumentFormatAdapter` behind the
+Transformation Port with Page/BBox and SourceMap contracts. Adapter `1.12.0`
+is rollback-compatible with `1.11.0`; existing transformation revisions are
+immutable and can be regenerated.
+
+Python PDF tests passed 23/23 and focused Stage 8 Golden/Contract tests passed
+30/30. The real 10-page PDF flow with DeepSeek matched 80/80 candidate markers,
+excluded 11/11 non-claim canaries, and passed six cited Ask cases plus replay
+with no pending relation jobs. The corpus remains `CANDIDATE`; semantic and
+relation correctness adjudication, repeated quality runs, and billing
+reconciliation remain open. Details are in the
+[Stage 8 OSS review](../../implementation/stage-validations/stage-8-oss-integration-review.md#2026-10-02-vp-04-korean-pdf-word-gap-recovery)
+and [full PDF test record](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-korean-pdf-word-gap-recovery).

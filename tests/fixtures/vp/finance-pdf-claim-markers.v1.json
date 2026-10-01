@@ -1,9 +1,9 @@
 {
   "contractVersion": "1.0.0",
   "corpusId": "shotgun-vp-finance-pdf-claim-markers",
-  "corpusVersion": "1.5.0",
-  "labelSetRevision": 6,
-  "corpusDigest": "sha256:b49f0f7db3c66f9b56a5ce943cd9be96503e8cfd7d3d006f91503a5cc553ea3e",
+  "corpusVersion": "1.6.0",
+  "labelSetRevision": 7,
+  "corpusDigest": "sha256:81311ffe86689aa7675a0df5d195e525d2a49f66e4ddc683371a566a5e88ee7e",
   "labelReviewStatus": "CANDIDATE",
   "source": {
     "sha256": "bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01",
@@ -58,6 +58,7 @@
       "page": 7,
       "text": "IRR은 10%다",
       "requiredText": "IRR",
+      "requiredEvidenceText": "100 = 110/(1 + r)",
       "dimension": "numeric-return-rate"
     },
     {

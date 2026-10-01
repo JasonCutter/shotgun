@@ -167,3 +167,43 @@ for package, source, quality and rollback details.
 ## 2026-10-01 — VP-04 PDF line-boundary augmentation
 
 The pinned pdfplumber `0.11.10` `ADOPT` decision remains unchanged. Its existing physical word lines, PageSelector and BBox selectors are preserved inside each single DocumentIR paragraph using explicit newline separators and exact segment offsets. This is an adapter-local `AUGMENT`; no new library or upstream code was introduced. Stage 8 Python tests cover line/offset preservation, and Stage 4 Contract tests cover splitting newline-separated independent claims. Rollback returns to whitespace-collapsed PDF text under the earlier immutable transformation identity. The actual supplied-PDF DeepSeek browser flow with document-format adapter `1.7.0` passed after the page-grounded gate was added: all 20/20 marker Evidence selectors matched their printed pages; four Ask cases cited expected pages; replay matched; no relation jobs remained. The older adapter `1.6.0` 18/20 run remains historical evidence only.
+
+## 2026-10-02 VP-04 PDFium numeric stacked-fraction repair
+
+Integration decision: `AUGMENT` the already reviewed PDFium 7913 through the
+existing `PythonDocumentFormatAdapter` / Transformation Port. The official
+upstream repository is <https://github.com/pypdfium2-team/pypdfium2>; the exact
+package is `pypdfium2==5.11.0`, tag commit
+`0168561b33a3fc32eceb6ae46cc252f6b0e90c19`, licensed `Apache-2.0 OR BSD-3-Clause`.
+The pinned `pdfplumber==0.11.10` `ADOPT` remains the owner of reading order,
+paragraph segmentation, and Page/BBox selectors. PDFium supplies bounded text
+geometry only. Its existing upstream review found no published `SECURITY.md`
+policy or advisory on 2026-10-01; the pin, bundled PDFium 7913 license notices,
+and upgrade review gate are unchanged.
+
+The supplied PDF exposed an unsafe inline rendering: PDFium geometry placed
+`110` above `1 + r` under the numeric prefix `100 =`, but flattening omitted the
+denominator grouping and yielded `100 = 110/1 + r`. The adapter now writes a
+parenthesized inline denominator when its top-level arithmetic would otherwise
+change the fraction's meaning. The existing strict containment and numeric
+prefix checks remain; an observed numeric mismatch does not get replaced. No
+new upstream code, package, Python runtime, lockfile, database, or Canonical
+contract was added. This change does not adopt Docling or another PDF parser.
+
+Evidence: 21/21 PDF glyph Python tests, 30/30 focused Stage 8/SourceMap
+contracts, direct conversion of the supplied source, and the actual Chromium +
+isolated PostgreSQL + DeepSeek Product extraction flow passed. The live run
+matched 23/23 positive markers, excluded 6/6 non-claim canaries, produced 147
+direct-evidence assertions from 147 candidates, preserved exact Evidence text,
+and replayed with one current relation and no pending jobs. The extraction-only run reported 16,594 DeepSeek tokens. A second full-Ask run
+with the same adapter passed six queries with expected answers and citations
+on pages 2, 3, 5, and 9; it produced 139 candidates, replayed successfully,
+and left seven current relations with no pending jobs. Ask usage and invoice
+reconciliation were not recorded. The finance corpus remains
+`CANDIDATE`, so this evidence does not close VP-04 or VP-05.
+
+Migration/rollback is data-neutral: revert the denominator reconstruction and
+adapter identity from `1.10.0` to `1.9.0`; retain immutable prior transformation
+revisions. Replacing pypdfium2 still requires the Page/BBox, formula Golden,
+corrupt/encrypted input, and adapter replacement tests. Full details and source
+hash are in the [VP finance PDF report](../vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-direct-claim-v7-numeric-fraction-repair).

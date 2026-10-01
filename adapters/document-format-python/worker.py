@@ -20,7 +20,9 @@ MAX_HTML_TRACKED = 512
 MAX_PDF_PAGES = 1000
 MAX_PDFIUM_PAGE_CHARS = 100_000
 MAX_PDFIUM_TEXT_ROWS = 20_000
-PDFIUM_EQUATION_PREFIX_PATTERN = re.compile(r"^([A-Z]{1,8}|[가-힣]{2,16})\s*=")
+PDFIUM_EQUATION_PREFIX_PATTERN = re.compile(
+    r"^([A-Z]{1,8}|[가-힣]{2,16}|\d{1,9}(?:,\d{3})*(?:\.\d+)?)\s*="
+)
 MAX_PDF_BLOCKS = 8192
 MAX_CSV_BLOCKS = 8192
 MAX_CSV_DERIVED_FACT_CELLS = 256
@@ -367,6 +369,34 @@ def _pdfium_equation_text(row: list[dict[str, Any]]) -> str:
     return " ".join(output.strip().split())
 
 
+def _pdfium_fraction_denominator(text: str) -> str:
+    """Keep top-level arithmetic grouped when a stacked fraction is written inline."""
+    compact = "".join(char for char in text if not char.isspace())
+    outer_group_closes_at_end = False
+    if compact.startswith("("):
+        depth = 0
+        for index, char in enumerate(compact):
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    outer_group_closes_at_end = index == len(compact) - 1
+                    break
+    depth = 0
+    has_top_level_operator = False
+    for char in compact:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and char in "+−-×*/":
+            has_top_level_operator = True
+    if outer_group_closes_at_end or not has_top_level_operator:
+        return text
+    return f"({text})"
+
+
 def pdfium_horizontal_equation_words(page_glyphs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Rebuild only short, flat equations whose nearby glyph rows show no stacked layout."""
     rows = _pdfium_text_rows(page_glyphs)
@@ -522,8 +552,9 @@ def pdfium_stacked_equation_words(page_glyphs: list[dict[str, Any]]) -> list[dic
                 suffix_text = _pdfium_equation_text(suffix_glyphs) if suffix_glyphs else ""
                 if not PDFIUM_EQUATION_PREFIX_PATTERN.match(prefix_text):
                     continue
+                fraction_denominator = _pdfium_fraction_denominator(denominator_text)
                 rebuilt_text = " ".join(
-                    part for part in (prefix_text, f"{numerator_text}/{denominator_text}", suffix_text) if part
+                    part for part in (prefix_text, f"{numerator_text}/{fraction_denominator}", suffix_text) if part
                 )
                 if len(rebuilt_text) > 180:
                     continue

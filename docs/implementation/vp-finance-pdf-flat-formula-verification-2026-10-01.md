@@ -281,3 +281,62 @@ run passed in about 1.4 minutes.
 
 This is a successful end-to-end sample and a confirmed improvement for the
 β example, not a closure of VP-04/05.
+
+## 2026-10-02 direct-claim-v7 numeric fraction repair
+
+The exact supplied PDF was rerun through Chromium Product intake, an isolated
+PostgreSQL 16 database, `PythonDocumentFormatAdapter@1.10.0`, Candidate
+Generation `direct-claim-v7`, and the configured DeepSeek `deepseek-flash`
+provider. This run isolated extraction, with Ask disabled, and passed in about
+1.1 minutes. The prior PDFium geometry candidate had flattened the IRR example
+as `100 = 110/1 + r`, which changes the mathematical meaning. Inspection of
+the page's actual PDFium character coordinates showed that the denominator row
+was `1 + r` and the fraction bar covered that complete row. The adapter now
+groups top-level arithmetic in a stacked denominator when writing it inline,
+producing `100 = 110/(1 + r)`; simple denominators such as `1.1` and already
+grouped expressions remain unchanged. A mismatching numeric fragment still
+fails closed.
+
+- The local worker produced the corrected IRR expression from this exact PDF.
+  Python glyph-recovery tests passed 21/21, including a wrong-number negative
+  case; focused Stage 8/fixture/SourceMap Vitest tests passed 30/30.
+- The live run produced 147 current assertions from 147 generated candidates;
+  all 147 retained their exact Evidence substring. All 23 positive source
+  markers matched, six non-claim canaries were absent, and both NPV sign rules
+  remained present. The IRR evidence contains the repaired formula. Projection
+  replay matched with one current relation and zero pending relation jobs.
+- DeepSeek returned HTTP 200 and reported 8,375 input plus 8,219 output tokens
+  (16,594 total) for extraction. This is provider-reported usage, not a bill
+  reconciliation. Ask was disabled for this extraction-focused run.
+- Candidate counts vary between runs and the marker fixture `1.6.0` remains
+  `CANDIDATE`. This targeted repair does not establish whole-document
+  precision/recall, duplicate/fragment acceptability, independent blind
+  adjudication, multi-source relation quality, or actual billed cost. VP-04/05
+  remain open.
+
+The same change was then run once more through the full Chromium Product flow
+with Ask enabled. This run passed in about 1.5 minutes and produced 139 current
+assertions/candidates, again with exact Evidence containment, all 23 positive
+markers, and all six non-claim canaries excluded. The two overview questions,
+NPV sign question, and four page-specific questions returned expected answers;
+each page-specific answer cited the correct PDF SourceVersion and printed page
+(2, 3, 5, and 9). The NPV answer retained both the positive and negative rules.
+Projection replay matched with seven current relations and no pending jobs.
+DeepSeek reported 16,327 extraction tokens; Ask usage and account billing were
+not reconciled. The 139 candidates differ from the extraction-only run's 147,
+so candidate generation remains nondeterministic.
+
+Together, these runs show the repaired source formula survives the real
+ingestion, candidate, Evidence, relation, and query flow. They do not establish
+complete extraction precision/recall or independent blind labels, and the
+fixture remains `CANDIDATE`; VP-04/05 remain open.
+
+The existing OSS boundary remains: `pypdfium2==5.11.0` (upstream tag commit
+`0168561b33a3fc32eceb6ae46cc252f6b0e90c19`, Apache-2.0 OR BSD-3-Clause) is an
+adapter-local `AUGMENT`; pdfplumber still owns reading order and Page/BBox
+selectors. No dependency or lockfile changed. Rollback reverts this numeric
+prefix/denominator-grouping repair and the adapter identity to `1.9.0`; already
+stored immutable transformation revisions are not rewritten. The pinned
+dependency, license/security/maintenance review, exact boundary, and regression
+evidence are recorded in the [Stage 8 OSS review](./stage-validations/stage-8-oss-integration-review.md#2026-10-02-vp-04-pdfium-numeric-stacked-fraction-repair)
+and [open-source role matrix](../architecture/module-architecture/open-source-role-matrix.md#vp-04--stage-8-pdfium-numeric-stacked-fraction-repair--2026-10-02).

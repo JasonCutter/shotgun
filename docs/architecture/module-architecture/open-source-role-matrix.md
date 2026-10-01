@@ -696,4 +696,30 @@ The pinned `pdfplumber==0.11.10` (`ADOPT`, MIT; package version fixed in the wor
 
 After a real finance-PDF ingestion, a DeepSeek Ask search took about 239 seconds while the same SQL completed in about 244 ms once current planner statistics were collected. PostgreSQL's own `ANALYZE` was selected as an existing-runtime `AUGMENT`; no external search package, service, or dependency was added (`NO_RELEVANT_OSS` for a new package). Because the pinned PostgreSQL 16 runtime permits `ANALYZE` only to table owners or a superuser, Migration 126 assigns only the fixed search-statistics tables to the existing non-login `shotgun_schema_owner` and exposes a zero-argument, fixed-table `vp.refresh_search_statistics()` security-definer routine to `shotgun_runtime`. The routine has a pinned safe `search_path`, no caller-provided identifiers, and no `PUBLIC` execute grant. `VPKnowledgeLedgerPort` exposes an optional refresh operation; its PostgreSQL adapter calls the routine only after a bounded worker drain. PostgreSQL autovacuum remains fallback if refresh fails. Rollback restores the pre-migration database backup and prior code because the migration changes table ownership as well as adding the function; an in-place down migration is not provided. The backup/restore rollback path was rehearsed on an isolated PostgreSQL 16 source and restore database; all 11 pre-migration owners were recovered and the Migration 126 function/version were absent after restore. See the [Migration 126 rollback rehearsal](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#migration-126-rollback-rehearsal).
 
-The database test checks the refreshed `vp.assertions` statistics after a real worker drain. The supplied-PDF live DeepSeek flow completed with no manual database command. The latest `1.8.0` page-grounded run matched 23/23 curated markers, produced 164 assertions and 164 candidates, replayed successfully, recorded three relations and zero pending relation jobs, and passed six cited Ask checks. The marker labels remain `CANDIDATE`, no independent blind review or billing reconciliation was performed, and the broader VP quality and product gates remain open.
+The database test checks the refreshed `vp.assertions` statistics after a real worker drain. At the `1.8.0` checkpoint, the latest page-grounded run matched 23/23 curated markers, produced 164 assertions and 164 candidates, replayed successfully, recorded three relations and zero pending relation jobs, and passed six cited Ask checks. The marker labels remained `CANDIDATE`; no independent blind review or billing reconciliation was performed, and the broader VP quality and product gates remained open. The later `1.10.0` evidence is recorded below.
+
+## VP-04 / Stage 8 PDFium numeric stacked-fraction repair — 2026-10-02
+
+The existing `pypdfium2==5.11.0` pin (upstream tag commit
+`0168561b33a3fc32eceb6ae46cc252f6b0e90c19`, PDFium 7913,
+`Apache-2.0 OR BSD-3-Clause`) remains an adapter-local `AUGMENT` behind
+`PythonDocumentFormatAdapter` and the Transformation Port. pdfplumber remains
+the `ADOPT` owner of document reading order and Page/BBox selectors. No package,
+runtime, lockfile, or upstream source was added. The adapter now groups
+top-level arithmetic when it serializes a geometry-backed stacked fraction;
+this repairs `100 = 110/1 + r` to `100 = 110/(1 + r)` on the exact finance PDF.
+The existing numeric-prefix, glyph alignment, character-containment, and
+mismatch fail-closed checks remain. It only reconstructs source geometry; it
+does not infer a new Claim or assert the source is factually correct.
+
+The exact PDF was tested through the actual Chromium intake and DeepSeek
+extraction flow: 147/147 direct Evidence assertions, 23/23 positive markers,
+6/6 non-claim canaries excluded, replay matched, one current relation, and zero
+pending relation jobs. The 21 Python and 30 focused Stage 8/SourceMap tests
+passed. The extraction-only run reported 16,594 provider tokens. A separate full-Ask
+run with the same adapter passed six questions and their citations; actual
+invoice reconciliation was not performed. The corpus is still
+`CANDIDATE`, and wider precision/recall, independent labels, duplicates and
+multi-source relation quality remain open. Rollback reverts this reconstruction
+and adapter identity to `1.9.0`; old immutable transformation revisions remain
+readable. See the [focused VP-04 report](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-direct-claim-v7-numeric-fraction-repair).

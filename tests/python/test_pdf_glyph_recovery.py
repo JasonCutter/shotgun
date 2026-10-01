@@ -217,6 +217,44 @@ class PdfGlyphRecoveryTests(unittest.TestCase):
 
         self.assertEqual([word["text"] for word in rebuilt], ["unrelated", "PV = FV/(1 + r)^n"])
 
+    def test_rebuilds_a_stacked_fraction_with_a_numeric_left_side(self) -> None:
+        glyphs = formula_glyphs("100=", top=100, start_x=10)
+        glyphs.extend(formula_glyphs("110", top=90, start_x=80))
+        glyphs.extend(formula_glyphs("(1+r)", top=110, start_x=80))
+
+        candidates = pdfium_stacked_equation_words(glyphs)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["text"], "100 = 110/(1 + r)")
+        flattened = [{"text": "110 100 = 1 + r", "x0": 10, "x1": 110, "top": 99, "bottom": 120}]
+        rebuilt = apply_pdfium_stacked_equations(flattened, candidates)
+
+        self.assertEqual([word["text"] for word in rebuilt], ["100 = 110/(1 + r)"])
+
+    def test_groups_an_unparenthesized_stacked_denominator_when_rebuilding(self) -> None:
+        glyphs = formula_glyphs("100=", top=100, start_x=10)
+        glyphs.extend(formula_glyphs("110", top=90, start_x=80))
+        glyphs.extend(formula_glyphs("1+r", top=110, start_x=80))
+
+        candidates = pdfium_stacked_equation_words(glyphs)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["text"], "100 = 110/(1 + r)")
+        rebuilt = apply_pdfium_stacked_equations(
+            [{"text": "110 100 = 1 + r", "x0": 10, "x1": 110, "top": 99, "bottom": 120}],
+            candidates,
+        )
+        self.assertEqual([word["text"] for word in rebuilt], ["100 = 110/(1 + r)"])
+
+    def test_keeps_numeric_fraction_candidate_when_flat_text_has_a_different_number(self) -> None:
+        glyphs = formula_glyphs("100=", top=100, start_x=10)
+        glyphs.extend(formula_glyphs("110", top=90, start_x=80))
+        glyphs.extend(formula_glyphs("(1+r)", top=110, start_x=80))
+        candidates = pdfium_stacked_equation_words(glyphs)
+        flattened = [{"text": "110 105 = 1 + r", "x0": 10, "x1": 110, "top": 99, "bottom": 120}]
+
+        self.assertEqual(apply_pdfium_stacked_equations(flattened, candidates), flattened)
+
     def test_rebuilds_npv_fraction_with_series_and_suffix_when_flat_text_agrees(self) -> None:
         glyphs = formula_glyphs("NPV=∑", top=100, start_x=10)
         glyphs.extend(formula_glyphs("CFt", top=90, start_x=80, subscript="t"))

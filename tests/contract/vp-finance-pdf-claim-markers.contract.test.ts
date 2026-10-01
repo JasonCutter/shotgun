@@ -11,8 +11,8 @@ describe('VP finance PDF claim marker corpus', () => {
     expect(vpFinancePDFClaimMarkerCorpus).toMatchObject({
       contractVersion: '1.0.0',
       corpusId: 'shotgun-vp-finance-pdf-claim-markers',
-      corpusVersion: '1.6.0',
-      labelSetRevision: 7,
+      corpusVersion: '1.7.0',
+      labelSetRevision: 8,
       labelReviewStatus: 'CANDIDATE',
       source: {
         sha256: 'bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01',
@@ -20,7 +20,7 @@ describe('VP finance PDF claim marker corpus', () => {
         dataClassification: 'USER_PROVIDED',
       },
     });
-    expect(vpFinancePDFClaimMarkerCorpus.markers).toHaveLength(23);
+    expect(vpFinancePDFClaimMarkerCorpus.markers).toHaveLength(24);
     expect(vpFinancePDFClaimMarkerCorpus.nonClaims).toHaveLength(6);
     expect(
       vpFinancePDFClaimMarkerCorpus.markers.find((marker) => marker.id === 'irr-example')?.page,

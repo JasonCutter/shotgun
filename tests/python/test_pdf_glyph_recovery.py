@@ -185,6 +185,34 @@ class PdfGlyphRecoveryTests(unittest.TestCase):
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0]["text"], "FV = PV(1 + r)^n")
 
+    def test_rebuilds_a_bracketed_capm_formula_with_pdfium_subscript_geometry(self) -> None:
+        formula = "E(Ri)=Rf+[E(Rm)−Rf]βi"
+        glyphs = formula_glyphs(formula)
+        for glyph in glyphs:
+            if glyph["text"] in {"i", "f", "m"}:
+                glyph["top"] = float(glyph["top"]) + 6.0
+                glyph["bottom"] = float(glyph["top"]) + 4.0
+
+        candidates = pdfium_horizontal_equation_words(glyphs)
+
+        self.assertEqual(len(candidates), 1)
+        expected = "E(R_i) = R_f + [E(R_m) − R_f]β_i"
+        self.assertEqual(candidates[0]["text"], expected)
+        candidate = candidates[0]
+        flattened = [
+            {
+                "text": formula,
+                "x0": candidate["x0"],
+                "x1": candidate["x1"],
+                "top": float(candidate["baseline"]) - 6.0,
+                "bottom": float(candidate["baseline"]) + 6.0,
+            }
+        ]
+        self.assertEqual(
+            [word["text"] for word in apply_pdfium_horizontal_equations(flattened, candidates)],
+            [expected],
+        )
+
     def test_does_not_flatten_a_fraction_with_overlapping_rows(self) -> None:
         glyphs = formula_glyphs("NPV=SUM-I0")
         glyphs.extend(formula_glyphs("CFt", top=90, start_x=40))

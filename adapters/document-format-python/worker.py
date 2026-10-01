@@ -403,7 +403,7 @@ def pdfium_horizontal_equation_words(page_glyphs: list[dict[str, Any]]) -> list[
     if len(rows) > MAX_PDFIUM_TEXT_ROWS:
         return []
     candidates: list[dict[str, Any]] = []
-    allowed = set("=+−-×*/().,%:∑") | set("만원")
+    allowed = set("=+−-×*/().,%:∑[]β") | set("만원")
     for row_index, row in enumerate(rows):
         text = _pdfium_equation_text(row)
         if not text or "=" not in text or len(text) > 100:

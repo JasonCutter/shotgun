@@ -28,18 +28,25 @@ describe('direct claim source alignment', () => {
 });
 
 describe('direct claim shape guard', () => {
-  it.each(['토지', '건물', '기계장치', '100만원', 'i f m f i', 'β', '라고 연결하면 된다 .'])(
-    'drops the incomplete fragment %s',
-    (candidate) => {
-      expect(isClearlyIncompleteDirectClaimFragment(candidate)).toBe(true);
-    },
-  );
+  it.each([
+    '토지',
+    '건물',
+    '기계장치',
+    '100만원',
+    'i f m f i',
+    'β',
+    '라고 연결하면 된다 .',
+    '이 되게 하는 수익률이 IRR 이다 .',
+  ])('drops the incomplete fragment %s', (candidate) => {
+    expect(isClearlyIncompleteDirectClaimFragment(candidate)).toBe(true);
+  });
 
   it.each([
     '수익률은 증가한다.',
     'NPV > 0이면 투자로 기업가치가 증가한다.',
     'FV = PV(1 + r)^n',
     'PV가 미래에 받을 돈을 현재 시점의 가치로 바꾼 것이다.',
+    '이 식을 만족하는 r은 10% 이므로 IRR 은 10% 다 .',
   ])('keeps a proposition or complete equation: %s', (candidate) => {
     expect(isClearlyIncompleteDirectClaimFragment(candidate)).toBe(false);
   });

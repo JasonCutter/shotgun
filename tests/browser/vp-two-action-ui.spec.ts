@@ -33,7 +33,7 @@ test('VP browser journey uploads, revises, and answers from the latest source ve
     import.meta.url,
   )) as CrossPhaseBackend;
   const backend = await fixture.startFrontendCrossPhaseBackend({
-    aiCandidatePromptVersion: 'direct-claim-v7',
+    aiCandidatePromptVersion: 'direct-claim-v8',
   });
   let frontend: ViteDevServer | undefined;
 

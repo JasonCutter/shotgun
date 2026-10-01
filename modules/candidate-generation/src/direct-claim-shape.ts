@@ -160,6 +160,7 @@ export const isClearlyIncompleteDirectClaimFragment = (claimText: string): boole
   if (!text) return true;
 
   if (/^(?:라고|이라고)(?:\s|$)/u.test(text)) return true;
+  if (/^이\s+되게\s+하는(?:\s|$)/u.test(text)) return true;
 
   if (/^(?:[\p{L}\p{N}_]+\s+)*[\p{L}\p{N}_]+$/u.test(text)) {
     const tokens = text.split(/\s+/u);

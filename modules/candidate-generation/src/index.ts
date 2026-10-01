@@ -480,7 +480,8 @@ export const createCandidateGenerationModule = (
           generated.call.promptVersion === 'direct-claim-v4' ||
           generated.call.promptVersion === 'direct-claim-v5' ||
           generated.call.promptVersion === 'direct-claim-v6' ||
-          generated.call.promptVersion === 'direct-claim-v7';
+          generated.call.promptVersion === 'direct-claim-v7' ||
+          generated.call.promptVersion === 'direct-claim-v8';
         const sourceAlignedModelClaimText = usesV4CandidatePolicy
           ? (alignDirectClaimToEvidence(sourceEvidence.quote.exact, modelClaimText) ??
             modelClaimText)
@@ -500,14 +501,16 @@ export const createCandidateGenerationModule = (
               : generated.call.promptVersion === 'direct-claim-v4' ||
                   generated.call.promptVersion === 'direct-claim-v5' ||
                   generated.call.promptVersion === 'direct-claim-v6' ||
-                  generated.call.promptVersion === 'direct-claim-v7'
+                  generated.call.promptVersion === 'direct-claim-v7' ||
+                  generated.call.promptVersion === 'direct-claim-v8'
                 ? preserveQualifiedV4Claim(sourceEvidence.quote.exact, candidateText)
                 : candidateText;
           const fingerprint = sha256Text(stableJson({ claimText, evidenceId: item.evidenceId }));
           if (
             !claimText ||
             seen.has(fingerprint) ||
-            (generated.call.promptVersion === 'direct-claim-v7' &&
+            ((generated.call.promptVersion === 'direct-claim-v7' ||
+              generated.call.promptVersion === 'direct-claim-v8') &&
               isClearlyIncompleteDirectClaimFragment(claimText))
           ) {
             return [];

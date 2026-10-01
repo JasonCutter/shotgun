@@ -116,8 +116,42 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
     expect(candidates[0]).toMatchObject({
       claimText: '1억원 = 6천만원 + 4천만원',
       status: 'READY',
-      providerCall: { promptVersion: 'direct-claim-v7' },
+      providerCall: { promptVersion: 'direct-claim-v8' },
     });
+  });
+
+  it('drops the leading IRR condition fragment under direct-claim-v8', async () => {
+    const fragment = '이 되게 하는 수익률이 IRR 이다 .';
+    const fake = new FakeAIProviderAdapter([{ claimText: fragment }]);
+    let request: StructuredGenerationRequest | undefined;
+    const provider: AIProviderAdapterPort = {
+      identity: fake.identity,
+      generateStructured(input) {
+        request = input;
+        return fake.generateStructured(input);
+      },
+    };
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: provider,
+    });
+    const command = directTextCommand(
+      'stage4-incomplete-irr-prefix-v8',
+      `NPV = 0 이다 .\n${fragment}`,
+    );
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(request?.systemInstruction).toContain('required condition is cut off at the beginning');
+    expect(request?.systemInstruction).toContain('NPV=0');
+    expect(candidates).toEqual([]);
   });
 
   it('rejects a directly quoted claim with an undecodable replacement character', async () => {
@@ -487,7 +521,7 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
       extractionProfile: 'direct-only',
       providerCall: {
         provider: 'fake',
-        promptVersion: 'direct-claim-v7',
+        promptVersion: 'direct-claim-v8',
         policyVersion: 'direct-only-v1',
         structuredOutputValid: true,
         cost: { status: 'unavailable' },

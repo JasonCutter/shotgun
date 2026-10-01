@@ -1268,7 +1268,7 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       vpFinancePDFClaimMarkerCorpus.source.sha256,
     );
     const runtimePromptVersion =
-      process.env.VP_FINANCE_PDF_TEST_PROMPT_VERSION ?? 'direct-claim-v7';
+      process.env.VP_FINANCE_PDF_TEST_PROMPT_VERSION ?? 'direct-claim-v8';
     runtime = await startProductRuntime(isolated.databaseUrl, runtimePromptVersion, (diagnostic) =>
       providerResponses.push(diagnostic),
     );

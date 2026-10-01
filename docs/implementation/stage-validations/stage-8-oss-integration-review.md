@@ -207,3 +207,24 @@ adapter identity from `1.10.0` to `1.9.0`; retain immutable prior transformation
 revisions. Replacing pypdfium2 still requires the Page/BBox, formula Golden,
 corrupt/encrypted input, and adapter replacement tests. Full details and source
 hash are in the [VP finance PDF report](../vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-direct-claim-v7-numeric-fraction-repair).
+
+## VP-04 / Stage 8 PDFium CAPM subscript recovery — 2026-10-02
+
+The same pinned pypdfium2 `5.11.0` `AUGMENT` and pdfplumber `0.11.10`
+`ADOPT` boundaries remain. Direct inspection showed PDFium already retained the
+CAPM `i`, `f`, and `m` subscript geometry, while the adapter's conservative
+equation character allowlist omitted square brackets and Greek beta. The
+adapter now admits `[]` and `β` only in its existing aligned equation
+reconstruction; pdfplumber remains the source-text and selector owner. The
+supplied page 9 equation is restored as
+`E(R_i) = R_f + [E(R_m) − R_f]β_i`; the separated `i f m f i` fragment is
+excluded. Python glyph tests pass 22/22 and the focused Stage 8/SourceMap
+contracts pass 30/30.
+
+The existing upstream pin, license, security and maintenance review in
+`oss-source-registry.json` is unchanged. No dependency, lockfile, upstream code,
+worker boundary, database schema, or data migration was added. The adapter is
+now `1.11.0`; rollback sets it to `1.10.0`, restoring the prior character
+allowlist while immutable SourceMap revisions remain readable. The real v8
+DeepSeek end-to-end run and remaining PDF quality limits are documented in the
+[finance PDF report](../vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-capm-subscript-and-direct-claim-v8-recheck).

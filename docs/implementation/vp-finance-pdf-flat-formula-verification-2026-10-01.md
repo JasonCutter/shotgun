@@ -340,3 +340,55 @@ stored immutable transformation revisions are not rewritten. The pinned
 dependency, license/security/maintenance review, exact boundary, and regression
 evidence are recorded in the [Stage 8 OSS review](./stage-validations/stage-8-oss-integration-review.md#2026-10-02-vp-04-pdfium-numeric-stacked-fraction-repair)
 and [open-source role matrix](../architecture/module-architecture/open-source-role-matrix.md#vp-04--stage-8-pdfium-numeric-stacked-fraction-repair--2026-10-02).
+
+## 2026-10-02 CAPM subscript and direct-claim-v8 recheck
+
+The source remains the user-provided 10-page finance PDF with SHA-256
+`bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`.
+Candidate Generation first ran with the prior v7 prompt so the full current
+candidate set could be audited. Of 148 exact-evidence current claims, the audit
+found five normalized duplicate groups and one incomplete IRR clause
+(`이 되게 하는 수익률이 IRR 이다 .`). Short valid equations and definitions
+were not filtered based on length. This evidence led to a narrow, versioned
+v8 prompt/shape guard for that dependent clause; v7 remains replayable.
+
+The Stage 8 adapter now reconstructs the exact page 9 CAPM equation as
+`E(R_i) = R_f + [E(R_m) − R_f]β_i`. PDFium 7913 already retained the subscript
+geometry; the conservative adapter allowlist was missing brackets and beta.
+The rule remains aligned to pdfplumber's exact source glyphs and SourceMap.
+Python glyph tests passed 22/22, focused Stage 8/SourceMap contracts 30/30,
+and Stage 4 claim-shape/contract tests 61/61. The approved deterministic
+`quality:gate` also passed with precision 0.636, recall 0.875, F1 0.737,
+Evidence exact match 0.875, and unsupported-claim rate 0.
+
+The actual Chromium Product run used isolated PostgreSQL 16, adapter `1.11.0`,
+Candidate Generation `direct-claim-v8`, and DeepSeek `deepseek-flash`. It
+produced 141 candidate rows and 132 current assertions; every current assertion
+retained its exact Evidence text. All 24/24 positive markers matched on their
+expected pages, six non-claim canaries were absent, and both NPV sign rules
+remained in the current knowledge. The four page-specific Ask questions all
+matched their expected answers and citations on pages 2, 3, 5, and 9; the
+overview and NPV Ask checks also passed. Replay matched with 18 current
+relations and zero pending relation jobs. The run recorded 70,131 provider
+tokens across 33 responses, including 16,304 extraction tokens. These are
+provider-reported usage values, not a currency invoice reconciliation.
+
+Counts varied from v7's 148 audited current claims, through another v7 full
+Ask run's 150, to v8's 132 current assertions from 141 candidate rows. This
+proves the extraction remains nondeterministic; five duplicate groups and the
+earlier incomplete fragment require full adjudication. The 24-marker fixture
+is `CANDIDATE`, not independently labeled. Therefore this run does not close
+VP-04/05. Broader corpus precision/recall, omitted-claim review, independent
+labels, relation quality and cost reconciliation remain open.
+
+OSS decisions remain bounded: pypdfium2 `5.11.0` is `AUGMENT` behind the
+existing PythonDocumentFormatAdapter/Transformation Port; pdfplumber `0.11.10`
+remains `ADOPT` for reading order and Page/BBox. The pin, license, security and
+maintenance record are unchanged. Stage 4 still records `NO_RELEVANT_OSS` for
+Korean complete-claim checking and exact span rebinding; no new dependency,
+runtime, schema, or upstream code was introduced. Rollback returns adapter
+`1.11.0` to `1.10.0` and the default Candidate prompt `direct-claim-v8` to
+`direct-claim-v7`; stored Source, Candidate and Provider revisions remain
+immutable. See the [Stage 8 OSS review](./stage-validations/stage-8-oss-integration-review.md#vp-04--stage-8-pdfium-capm-subscript-recovery--2026-10-02),
+[Stage 4 OSS review](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-direct-claim-v8-incomplete-korean-clause-guard), and
+[Role Matrix](../architecture/module-architecture/open-source-role-matrix.md#vp-04--stage-8-pdfium-capm-subscript-recovery--2026-10-02).

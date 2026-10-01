@@ -208,7 +208,7 @@ LiteLLM 사용 여부와 관계없이 Shotgun `AIProviderPort`가 상위 계약�
 
 보조 NLP 결과는 후보를 자동 확정하지 않고 LLM 결과와 별도 Provenance를 가진다.
 
-VP-04의 단독 용어·수식 조각 제거와 정확한 원문 span 복구 결정은 [Stage 4 OSS Integration Review](../../implementation/stage-validations/stage-4-oss-integration-review.md#vp-04-direct-claim-shape-and-source-span-alignment-2026-10-01)에 기록한다.
+VP-04의 v7/v8 단독 용어·수식·불완전한 한국어 절 제거와 정확한 원문 span 복구 결정은 [Stage 4 OSS Integration Review](../../implementation/stage-validations/stage-4-oss-integration-review.md#vp-04-direct-claim-shape-and-source-span-alignment-2026-10-01)와 [v8 전체 검증](../../implementation/stage-validations/stage-4-oss-integration-review.md#2026-10-02-direct-claim-v8-incomplete-korean-clause-guard)에 기록한다.
 
 ### 4.8 Validation
 
@@ -723,3 +723,17 @@ invoice reconciliation was not performed. The corpus is still
 multi-source relation quality remain open. Rollback reverts this reconstruction
 and adapter identity to `1.9.0`; old immutable transformation revisions remain
 readable. See the [focused VP-04 report](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-direct-claim-v7-numeric-fraction-repair).
+
+## VP-04 / Stage 8 PDFium CAPM subscript recovery — 2026-10-02
+
+The pinned `pypdfium2==5.11.0` (`0168561b33a3fc32eceb6ae46cc252f6b0e90c19`,
+`Apache-2.0 OR BSD-3-Clause`) remains `AUGMENT` behind the existing Python
+document-format adapter. The fixed `pdfplumber==0.11.10` `ADOPT` remains the
+owner of source reading order and Page/BBox selectors. PDFium's exact geometry
+reconstructs the page 9 CAPM expression with its subscripts and brackets;
+Shotgun keeps the SourceMap and only allows aligned formula glyphs. No new
+dependency, runtime, schema, or upstream code was introduced. Existing
+security and maintenance review remains in `oss-source-registry.json`; rollback
+returns adapter `1.11.0` to `1.10.0`. See the
+[Stage 8 review](../../implementation/stage-validations/stage-8-oss-integration-review.md#vp-04--stage-8-pdfium-capm-subscript-recovery--2026-10-02)
+and [full PDF test record](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-capm-subscript-and-direct-claim-v8-recheck).

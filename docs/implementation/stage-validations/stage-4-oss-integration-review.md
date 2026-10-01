@@ -98,8 +98,31 @@ Target: Stage 4 `CandidateGenerationModule` behind its existing Candidate and Ev
 | [`ddsyasas/llm-wiki`](https://github.com/ddsyasas/llm-wiki)                        | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`, MIT                         | `REFERENCE_ONLY`              | Intake/Ask UX only; backend and model client remain excluded.                                                                                                                                                                                |
 | [`inkeep/open-knowledge`](https://github.com/inkeep/open-knowledge)                | `f2834c237639e2cff603817ed88182b33f83cf91`, GPL-3.0                     | `REFERENCE_ONLY`              | Review and graph UX only; no compatible Candidate Generation implementation is reused.                                                                                                                                                       |
 | [spaCy Sentencizer](https://github.com/explosion/spaCy)                            | `v3.8.16`, commit `26b4d1dc04a812f426e4bef3e8a1b6f159d6f048`, MIT       | `REFERENCE_ONLY`              | Punctuation boundaries do not classify Korean claim completeness or align model text to source geometry.                                                                                                                                     |
-| Standalone Korean complete-claim predicate and whitespace-only exact-span recovery | No relevant upstream OSS identified among the pinned Stage 4 candidates | `NO_RELEVANT_OSS`             | Keep the bounded shape guard and unique whitespace-normalized span lookup in Shotgun Candidate Generation; provider text is accepted only as an exact Source Evidence substring after recovery.                                              |
+| Standalone Korean complete-claim predicate and whitespace-only exact-span recovery | No relevant upstream OSS identified among the pinned Stage 4 candidates | `NO_RELEVANT_OSS`             | Keep the bounded v7/v8 shape guard and unique whitespace-normalized span lookup in Shotgun Candidate Generation; provider text is accepted only as an exact Source Evidence substring after recovery.                                        |
 
-The existing pinned-source security and maintenance reviews remain in [`oss-source-registry.json`](../oss-source-registry.json). No new dependency, model, runtime, or lockfile entry is introduced. The adapter mapping collapses whitespace only for lookup and returns the exact original Evidence slice; it refuses ambiguous matches or any changed non-whitespace character. The shape guard drops only isolated lexical/value tokens and bare single-letter sequences for `direct-claim-v7`; Korean predicate endings and complete equations remain eligible. The separate Validation module still requires the resulting claim to be an exact contiguous Evidence substring and does not claim semantic truth validation.
+The existing pinned-source security and maintenance reviews remain in [`oss-source-registry.json`](../oss-source-registry.json). No new dependency, model, runtime, or lockfile entry is introduced. The adapter mapping collapses whitespace only for lookup and returns the exact original Evidence slice; it refuses ambiguous matches or any changed non-whitespace character. The v7 shape guard drops isolated lexical/value tokens and bare single-letter sequences; v8 adds one bounded opening-fragment rule for a Korean clause whose preceding condition was omitted. Complete Korean predicate forms and equations remain eligible. The separate Validation module still requires the resulting claim to be an exact contiguous Evidence substring and does not claim semantic truth validation.
 
-Contract and unit coverage checks unique and ambiguous span matches, altered values, isolated terms/values/symbols, Korean propositions, and equations. The supplied-PDF DeepSeek browser run and its corpus result are recorded in the [finance PDF verification report](../vp-finance-pdf-flat-formula-verification-2026-10-01.md). No migration is required. Rollback changes the default back to `direct-claim-v6` and removes the v7-only shape guard and whitespace rebind; recorded Candidate/Provider revisions remain immutable and can be re-extracted through the existing Candidate materialization command.
+Contract and unit coverage checks unique and ambiguous span matches, altered values, isolated terms/values/symbols, Korean propositions, and equations. The supplied-PDF DeepSeek browser run and its corpus result are recorded in the [finance PDF verification report](../vp-finance-pdf-flat-formula-verification-2026-10-01.md). No migration is required. For the original v7 checkpoint, rollback restored v6 and removed the v7-only guard/rebind. The current v8 rollback restores default v7 and removes only the added v8 instruction/guard. Recorded Candidate/Provider revisions remain immutable and can be re-extracted through the existing Candidate materialization command.
+
+## 2026-10-02 direct-claim-v8 incomplete Korean clause guard
+
+The exact finance-PDF candidate audit found a repeated incomplete fragment:
+`이 되게 하는 수익률이 IRR 이다 .` It omits the condition that appears in
+preceding Evidence. The pinned Stage 4 candidates above were reviewed again;
+none provides Korean predicate completeness or safe Evidence rebinding, so the
+existing `CandidateGenerationModule` remains the boundary and the decision is
+still `NO_RELEVANT_OSS`. The default prompt is versioned as
+`direct-claim-v8`; its narrow shape guard drops this opening fragment while
+preserving complete clauses and equations. `direct-claim-v7` remains available
+for replay. Direct Evidence Validation still rejects any non-exact candidate.
+
+Unit and Stage 4 contract tests passed 61/61, and the already approved
+deterministic `quality:gate` passed unchanged (precision 0.636, recall 0.875,
+F1 0.737, unsupported-claim rate 0). A real Chromium + isolated PostgreSQL +
+DeepSeek run with v8 passed 24/24 positive markers and excluded all six
+non-claim canaries. It produced 141 candidate rows and 132 current assertions;
+the variation and non-promoted candidate disposition require complete corpus
+adjudication and remain open. No dependency, model, Provider SDK, Candidate
+schema, or lockfile changed. Rollback restores default v7 and removes the v8
+instruction/guard; immutable provider output and candidate revisions remain
+available. See the [full finance PDF result](../vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-capm-subscript-and-direct-claim-v8-recheck).

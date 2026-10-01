@@ -1,9 +1,9 @@
 {
   "contractVersion": "1.0.0",
   "corpusId": "shotgun-vp-finance-pdf-claim-markers",
-  "corpusVersion": "1.6.0",
-  "labelSetRevision": 7,
-  "corpusDigest": "sha256:81311ffe86689aa7675a0df5d195e525d2a49f66e4ddc683371a566a5e88ee7e",
+  "corpusVersion": "1.7.0",
+  "labelSetRevision": 8,
+  "corpusDigest": "sha256:acfc9c5d7e0007e66c2704fe1ada253d2333985e7bd6ebaca6926413232257f8",
   "labelReviewStatus": "CANDIDATE",
   "source": {
     "sha256": "bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01",
@@ -67,6 +67,13 @@
       "text": "1.5%",
       "requiredText": "움직이는 경향이 있다는 의미다",
       "dimension": "numeric-market-sensitivity"
+    },
+    {
+      "id": "capm-formula",
+      "page": 9,
+      "text": "E(R_i) = R_f + [E(R_m) − R_f]β_i",
+      "requiredEvidenceText": "E(R_i) = R_f + [E(R_m) − R_f]β_i",
+      "dimension": "numeric-equation"
     },
     {
       "id": "balance-sheet-identity",

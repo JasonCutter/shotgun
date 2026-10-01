@@ -3,6 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import { expect, it, vi } from 'vitest';
@@ -10,7 +12,10 @@ import { expect, it, vi } from 'vitest';
 import { PostgresVPRelationJobs } from '../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
 import { PostgresVPAskEvidenceSearch } from '../../adapters/vp-knowledge-postgres/src/ask-evidence-search.js';
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
-import { PostgresProjectAdministrationRepository } from '../../adapters/postgres/src/index.js';
+import {
+  createPostgresPool,
+  PostgresProjectAdministrationRepository,
+} from '../../adapters/postgres/src/index.js';
 import { VPRelationJobWorker } from '../../modules/vp-knowledge-ledger/src/index.js';
 import {
   type VPDecisionExecutionRepositoryPort,
@@ -23,8 +28,22 @@ import { vpRelationDecisionCorpus } from '../helpers/vp-relation-decision-corpus
 import { vpFinanceRelationCandidateCorpus } from '../helpers/vp-finance-relation-candidate.js';
 import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres-test-database.js';
 import { verifyVPProjectionReplay } from '../../scripts/vp-projection-replay.js';
+import {
+  createBackup,
+  createIsolatedRestoreDatabase,
+  dropIsolatedRestoreDatabase,
+  restoreBackup,
+} from '../../scripts/backup-restore.js';
+import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
+import { initializeSourceErasureJournal } from '../../scripts/source-erasure-journal.js';
 
 const hash = (text: string): string => `sha256:${createHash('sha256').update(text).digest('hex')}`;
+
+const canRunBackupAcceptance =
+  Boolean(process.env.TEST_DATABASE_URL?.trim()) &&
+  (process.env.SHOTGUN_PG_TOOL_MODE === 'docker-compose' ||
+    process.env.CI === 'true' ||
+    Boolean(process.env.PG_DUMP_BIN?.trim() && process.env.PG_RESTORE_BIN?.trim()));
 
 const createCommitAckLossPool = (
   basePool: Pool,
@@ -64,6 +83,7 @@ const seedAssertion = async (
     assertionId: string;
     text: string;
     sourceText?: string;
+    assetRoot?: string;
   },
 ): Promise<void> => {
   const sourceId = randomUUID();
@@ -76,11 +96,16 @@ const seedAssertion = async (
   const indexingId = randomUUID();
   const { projectId, principalId, assertionId, text } = input;
   const sourceText = input.sourceText ?? text;
+  const storageKey = `vp-priority-${assetId}`;
+  if (input.assetRoot) {
+    await mkdir(input.assetRoot, { recursive: true });
+    await writeFile(path.join(input.assetRoot, storageKey), sourceText);
+  }
   await pool.query(
     `INSERT INTO asset.original_assets
        (asset_id, content_hash, size_bytes, storage_key, created_at)
      VALUES ($1, $2, $3, $4, now())`,
-    [assetId, hash(sourceText), Buffer.byteLength(sourceText), `vp-priority-${assetId}`],
+    [assetId, hash(sourceText), Buffer.byteLength(sourceText), storageKey],
   );
   await pool.query(
     `INSERT INTO asset.sources (source_id, project_id, created_by_actor_id, created_at)
@@ -286,6 +311,249 @@ it('prioritizes the related cross-source pair before an older unrelated pair', a
     await database.dispose();
   }
 }, 60_000);
+
+it.runIf(canRunBackupAcceptance)(
+  'restores VP source evidence and a pending relation job, then converges it once',
+  async () => {
+    const parentDatabaseUrl = await requireTestDatabaseTarget();
+    const source = await createIsolatedPostgresTestDatabase();
+    const target = await createIsolatedRestoreDatabase(parentDatabaseUrl);
+    const sourcePool = source.createPool();
+    const targetPool = createPostgresPool(target.databaseUrl);
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'shotgun-vp-restore-recovery-'));
+    const journalRoot = await mkdtemp(path.join(os.tmpdir(), 'shotgun-vp-restore-journal-'));
+    const backupDirectory = path.join(temporaryRoot, 'backup');
+    const sourceAssetRoot = path.join(temporaryRoot, 'source-assets');
+    const targetAssetRoot = path.join(temporaryRoot, 'target-assets');
+    const journalKey = randomUUID() + randomUUID();
+    const priorJournalRoot = process.env.SHOTGUN_ERASURE_JOURNAL_ROOT;
+    const priorJournalKey = process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY;
+
+    try {
+      process.env.SHOTGUN_ERASURE_JOURNAL_ROOT = journalRoot;
+      process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY = journalKey;
+      await initializeSourceErasureJournal(
+        { root: journalRoot, hmacKey: journalKey },
+        temporaryRoot,
+      );
+
+      const projectId = `vp-backup-recovery-${randomUUID()}`;
+      const principal = await new PostgresAuthRepository(sourcePool).bootstrapLocalOwnerPrincipal({
+        accountId: `vp-backup-recovery-owner-${randomUUID()}`,
+      });
+      await new PostgresProjectAdministrationRepository(sourcePool).createProject({
+        commandId: randomUUID(),
+        clientRequestId: randomUUID(),
+        idempotencyKey: randomUUID(),
+        projectId,
+        name: 'VP backup restore recovery',
+        description: 'restore source evidence and pending relation work',
+        actorPrincipalId: principal.principalId,
+        expectedProjectRevision: 0,
+      });
+
+      const leftAssertionId = randomUUID();
+      const rightAssertionId = randomUUID();
+      const leftText = '할인율이 높아지면 현재가치는 낮아진다.';
+      const rightText = '미래 현금흐름과 기간이 같다면 할인율 상승은 현재가치를 낮춘다.';
+      await seedAssertion(sourcePool, {
+        projectId,
+        principalId: principal.principalId,
+        assertionId: leftAssertionId,
+        text: leftText,
+        assetRoot: sourceAssetRoot,
+      });
+      await seedAssertion(sourcePool, {
+        projectId,
+        principalId: principal.principalId,
+        assertionId: rightAssertionId,
+        text: rightText,
+        assetRoot: sourceAssetRoot,
+      });
+
+      const policyRevision = `vp-backup-recovery-${randomUUID()}`;
+      const sourceJobs = new PostgresVPRelationJobs(sourcePool);
+      expect(await sourceJobs.enqueueCurrentPairs(policyRevision, 1)).toBe(1);
+      const pendingBeforeBackup = await sourcePool.query<{ status: string }>(
+        `SELECT status FROM vp.relation_jobs
+          WHERE project_id = $1 AND policy_revision = $2`,
+        [projectId, policyRevision],
+      );
+      expect(pendingBeforeBackup.rows).toEqual([{ status: 'PENDING' }]);
+
+      const manifest = await createBackup({
+        databaseUrl: source.databaseUrl,
+        assetRoot: sourceAssetRoot,
+        outputDirectory: backupDirectory,
+        toolMode:
+          process.env.SHOTGUN_PG_TOOL_MODE === 'docker-compose' ? 'docker-compose' : 'local',
+      });
+      expect(manifest.formatVersion).toBe('shotgun-backup-v1');
+      expect(manifest.assets.files).toHaveLength(2);
+      await restoreBackup({
+        sourceDatabaseUrl: source.databaseUrl,
+        targetDatabaseUrl: target.databaseUrl,
+        targetAssetRoot,
+        backupDirectory,
+        backupRoot: temporaryRoot,
+        toolMode:
+          process.env.SHOTGUN_PG_TOOL_MODE === 'docker-compose' ? 'docker-compose' : 'local',
+      });
+
+      const restoredRows = await targetPool.query<{
+        readonly sources: string;
+        readonly source_versions: string;
+        readonly evidence_spans: string;
+        readonly assertions: string;
+        readonly current_assertions: string;
+        readonly pending_jobs: string;
+        readonly asset_count: string;
+      }>(
+        `SELECT
+           (SELECT count(*)::text FROM asset.sources WHERE project_id = $1) AS sources,
+           (SELECT count(*)::text FROM asset.source_versions version
+             JOIN asset.sources source USING (source_id)
+            WHERE source.project_id = $1) AS source_versions,
+           (SELECT count(*)::text FROM evidence.spans WHERE project_id = $1) AS evidence_spans,
+           (SELECT count(*)::text FROM vp.assertions WHERE project_id = $1) AS assertions,
+           (SELECT count(*)::text FROM vp.current_assertions WHERE project_id = $1) AS current_assertions,
+           (SELECT count(*)::text FROM vp.relation_jobs
+             WHERE project_id = $1 AND policy_revision = $2 AND status = 'PENDING') AS pending_jobs,
+           (SELECT count(*)::text FROM asset.original_assets) AS asset_count`,
+        [projectId, policyRevision],
+      );
+      expect(restoredRows.rows).toEqual([
+        {
+          sources: '2',
+          source_versions: '2',
+          evidence_spans: '2',
+          assertions: '2',
+          current_assertions: '2',
+          pending_jobs: '1',
+          asset_count: '2',
+        },
+      ]);
+      const restoredAssets = await targetPool.query<{ storage_key: string }>(
+        `SELECT asset.storage_key FROM asset.original_assets asset
+          JOIN asset.source_versions version ON version.original_asset_id = asset.asset_id
+          JOIN asset.sources source USING (source_id)
+         WHERE source.project_id = $1 ORDER BY asset.storage_key`,
+        [projectId],
+      );
+      for (const asset of restoredAssets.rows) {
+        expect(await readFile(path.join(targetAssetRoot, asset.storage_key), 'utf8')).toMatch(
+          /할인율/u,
+        );
+      }
+
+      let providerCalls = 0;
+      const probabilities = {
+        EQUIVALENT: 0.97,
+        SUPPORTS: 0.005,
+        QUALIFIES: 0.005,
+        CONTRADICTS: 0.005,
+        RELATED: 0.005,
+        UNRESOLVED: 0.01,
+      };
+      const resolver: AIProviderExecutionResolverPort = {
+        resolve: async () => ({
+          adapter: {
+            identity: {
+              provider: 'deepseek',
+              model: 'deepseek-restore-recovery-test',
+              adapterVersion: 'test',
+              dataPolicyVersion: 'test',
+            },
+            generateStructured: async () => {
+              providerCalls += 1;
+              return {
+                rawText: JSON.stringify({
+                  choice: 'EQUIVALENT',
+                  direction: 'NONE',
+                  confidence: 0.97,
+                  probabilities,
+                }),
+                providerResponseId: 'restore-recovery-provider-response',
+                modelVersion: 'deepseek-restore-recovery-test',
+                inputTokens: 40,
+                outputTokens: 8,
+              };
+            },
+          },
+          executionIdentity: {} as never,
+        }),
+      };
+      const restoredJobs = new PostgresVPRelationJobs(targetPool);
+      const worker = new VPRelationJobWorker(
+        restoredJobs,
+        new VPRelationDecisionRouter(
+          undefined,
+          new GeneralAIVPDecisionAdapter(resolver, restoredJobs),
+          {
+            revision: policyRevision,
+            minimumChoiceProbability: 0.9,
+            maximumDeepAnalysisScore: 0,
+            maximumInputTokens: 4_000,
+            maximumOutputTokens: 256,
+          },
+        ),
+        async () => true,
+        policyRevision,
+      );
+      expect(await worker.dispatchOnce()).toBe('DECIDED');
+      expect(await worker.dispatchOnce()).toBe('EMPTY');
+
+      const recoveryResult = await targetPool.query<{
+        readonly job_status: string;
+        readonly provider_call_state: string;
+        readonly receipt_count: string;
+        readonly relation_count: string;
+        readonly left_assertion_id: string;
+        readonly right_assertion_id: string;
+      }>(
+        `SELECT job.status AS job_status,
+                (SELECT provider_call.state FROM vp.relation_provider_calls AS provider_call
+                  WHERE provider_call.project_id = job.project_id
+                    AND provider_call.job_id = job.job_id) AS provider_call_state,
+                (SELECT count(*)::text FROM vp.decision_receipts receipt
+                  WHERE receipt.project_id = job.project_id
+                    AND receipt.task_kind = 'SEMANTIC_RELATION'
+                    AND receipt.policy_revision = job.policy_revision) AS receipt_count,
+                (SELECT count(*)::text FROM vp.relations relation
+                  WHERE relation.project_id = job.project_id) AS relation_count,
+                job.left_assertion_id::text,
+                job.right_assertion_id::text
+           FROM vp.relation_jobs job
+          WHERE job.project_id = $1 AND job.policy_revision = $2`,
+        [projectId, policyRevision],
+      );
+      expect(providerCalls).toBe(1);
+      expect(recoveryResult.rows).toEqual([
+        {
+          job_status: 'COMPLETED',
+          provider_call_state: 'OUTPUT_STORED',
+          receipt_count: '1',
+          relation_count: '1',
+          left_assertion_id: [leftAssertionId, rightAssertionId].sort()[0],
+          right_assertion_id: [leftAssertionId, rightAssertionId].sort()[1],
+        },
+      ]);
+    } finally {
+      if (priorJournalRoot === undefined) delete process.env.SHOTGUN_ERASURE_JOURNAL_ROOT;
+      else process.env.SHOTGUN_ERASURE_JOURNAL_ROOT = priorJournalRoot;
+      if (priorJournalKey === undefined) delete process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY;
+      else process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY = priorJournalKey;
+      await targetPool.end();
+      await dropIsolatedRestoreDatabase(parentDatabaseUrl, target.databaseName);
+      await source.dispose();
+      await Promise.all([
+        rm(temporaryRoot, { recursive: true, force: true }),
+        rm(journalRoot, { recursive: true, force: true }),
+      ]);
+    }
+  },
+  120_000,
+);
 
 it('keeps low-similarity exact relation candidates when paging the complete pair queue', async () => {
   const database = await createIsolatedPostgresTestDatabase();

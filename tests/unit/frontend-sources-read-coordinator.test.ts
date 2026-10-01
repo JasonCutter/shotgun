@@ -9,8 +9,11 @@ import {
 import { InMemoryEvidenceRepository } from '../../adapters/stage3-in-memory/src/index.js';
 import { FrontendSourcesReadCoordinator } from '../../modules/frontend-sources-product/src/index.js';
 import type { SourcesProjectionRecord } from '../../modules/frontend-sources-product/src/index.js';
-import { URL_SOURCE_FRESHNESS_TTL_MS } from '../../modules/url-acquisition/src/index.js';
-import { sha256Text, type SourcesSensitivity } from '../../packages/contracts/src/index.js';
+import {
+  EXTERNAL_SOURCE_FRESHNESS_TTL_MS,
+  sha256Text,
+  type SourcesSensitivity,
+} from '../../packages/contracts/src/index.js';
 
 const now = '2026-07-30T12:00:00.000Z';
 
@@ -156,20 +159,18 @@ describe('FrontendSourcesReadCoordinator', () => {
         () => new Date(currentTime),
       );
 
-    const current = await makeCoordinator(Date.parse(now) + URL_SOURCE_FRESHNESS_TTL_MS - 1).detail(
-      scope,
-      record.sourceId,
-    );
+    const current = await makeCoordinator(
+      Date.parse(now) + EXTERNAL_SOURCE_FRESHNESS_TTL_MS - 1,
+    ).detail(scope, record.sourceId);
     expect(current?.externalSourceFreshness).toEqual({
       lastCheckedAt: now,
-      expiresAt: new Date(Date.parse(now) + URL_SOURCE_FRESHNESS_TTL_MS).toISOString(),
+      expiresAt: new Date(Date.parse(now) + EXTERNAL_SOURCE_FRESHNESS_TTL_MS).toISOString(),
       state: 'CURRENT',
     });
 
-    const expired = await makeCoordinator(Date.parse(now) + URL_SOURCE_FRESHNESS_TTL_MS).detail(
-      scope,
-      record.sourceId,
-    );
+    const expired = await makeCoordinator(
+      Date.parse(now) + EXTERNAL_SOURCE_FRESHNESS_TTL_MS,
+    ).detail(scope, record.sourceId);
     expect(expired?.externalSourceFreshness?.state).toBe('EXPIRED');
   });
 

@@ -21,6 +21,7 @@ import {
   type AskTransitionSeedPayload,
   type AskTransitionSeedView,
   deriveAuthorizedSensitivities,
+  EXTERNAL_SOURCE_FRESHNESS_TTL_MS,
   type HybridCandidateResult,
   type HybridCitation,
   type HybridRetrievalCoordinatorPort,
@@ -28,7 +29,6 @@ import {
   sha256Text,
   stableJson,
 } from '../../../packages/contracts/src/index.js';
-import { URL_SOURCE_FRESHNESS_TTL_MS } from '../../../modules/url-acquisition/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   AskReadScope,
@@ -663,7 +663,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     const freshnessBySourceVersion = new Map<string, ExternalSourceFreshnessView>();
     for (const row of result.rows) {
       const lastCheckedAt = row.retrieved_at.toISOString();
-      const expiresAt = new Date(row.retrieved_at.getTime() + URL_SOURCE_FRESHNESS_TTL_MS);
+      const expiresAt = new Date(row.retrieved_at.getTime() + EXTERNAL_SOURCE_FRESHNESS_TTL_MS);
       freshnessBySourceVersion.set(row.source_version_id, {
         lastCheckedAt,
         expiresAt: expiresAt.toISOString(),

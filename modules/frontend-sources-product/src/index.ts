@@ -7,6 +7,7 @@ import {
   decodeSourceLibraryPageView,
   decodeSourcePreviewView,
   decodeSourceVersionHistoryView,
+  EXTERNAL_SOURCE_FRESHNESS_TTL_MS,
   ShotgunError,
   stableJson,
   type EvidenceListView,
@@ -20,7 +21,6 @@ import {
   type SourcesSensitivity,
   type SourceVersionHistoryView,
 } from '../../../packages/contracts/src/index.js';
-import { URL_SOURCE_FRESHNESS_TTL_MS } from '../../url-acquisition/src/index.js';
 
 export type SourcesProjectionRecord = {
   readonly projectId: string;
@@ -572,7 +572,7 @@ export class FrontendSourcesReadCoordinator {
     const lastCheckedAt = latest.externalSourceLastCheckedAt;
     const externalSourceFreshness = lastCheckedAt
       ? (() => {
-          const expiresAt = new Date(Date.parse(lastCheckedAt) + URL_SOURCE_FRESHNESS_TTL_MS);
+          const expiresAt = new Date(Date.parse(lastCheckedAt) + EXTERNAL_SOURCE_FRESHNESS_TTL_MS);
           return {
             lastCheckedAt,
             expiresAt: expiresAt.toISOString(),

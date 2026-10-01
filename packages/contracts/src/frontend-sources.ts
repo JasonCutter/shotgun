@@ -177,6 +177,10 @@ export type AskUsageState =
 export type SourceLifecycle = 'ACTIVE' | 'ARCHIVED' | 'ACTION_REQUIRED' | 'FAILED';
 export type SourcePreviewReadiness =
   'NOT_READY' | 'PROCESSING' | 'READY' | 'FAILED' | 'ACCESS_RESTRICTED';
+
+/** Default age limit for marking acquired external-source text as current in product reads. */
+export const EXTERNAL_SOURCE_FRESHNESS_TTL_MS = 24 * 60 * 60 * 1_000;
+
 export type ExternalSourceFreshnessView = {
   readonly lastCheckedAt: string;
   readonly expiresAt: string;

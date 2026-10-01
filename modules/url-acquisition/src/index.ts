@@ -3,9 +3,6 @@ import { isIP } from 'node:net';
 
 import { ShotgunError } from '../../../packages/contracts/src/index.js';
 
-/** Default freshness window for externally acquired text sources. */
-export const URL_SOURCE_FRESHNESS_TTL_MS = 24 * 60 * 60 * 1_000;
-
 export type UrlAcquisitionLimits = {
   readonly maxRedirects: number;
   readonly connectTimeoutMs: number;

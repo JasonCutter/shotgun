@@ -36,6 +36,7 @@ import {
   runOwnerCreate,
   runOwnerRestoreSafe,
 } from '../../scripts/backup-owner-core.js';
+import { startShotgunApplication } from '../../assemblies/shotgun-app/src/application.js';
 
 const hash = (text: string): string => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 
@@ -331,11 +332,13 @@ it.runIf(canRunBackupAcceptance)(
     const journalKey = randomUUID() + randomUUID();
     const priorJournalRoot = process.env.SHOTGUN_ERASURE_JOURNAL_ROOT;
     const priorJournalKey = process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY;
+    const priorStagingSecret = process.env.SOURCES_STAGING_SECRET;
     let testFailed = false;
     let testFailure: unknown;
     let cleanupFailure: AggregateError | undefined;
 
     try {
+      process.env.SOURCES_STAGING_SECRET = 'vp-backup-restore-test-staging-secret-32';
       process.env.SHOTGUN_ERASURE_JOURNAL_ROOT = journalRoot;
       process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY = journalKey;
       await initializeSourceErasureJournal(
@@ -580,6 +583,8 @@ it.runIf(canRunBackupAcceptance)(
       else process.env.SHOTGUN_ERASURE_JOURNAL_ROOT = priorJournalRoot;
       if (priorJournalKey === undefined) delete process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY;
       else process.env.SHOTGUN_ERASURE_JOURNAL_HMAC_KEY = priorJournalKey;
+      if (priorStagingSecret === undefined) delete process.env.SOURCES_STAGING_SECRET;
+      else process.env.SOURCES_STAGING_SECRET = priorStagingSecret;
       const cleanupErrors: unknown[] = [];
       if (targetPool) {
         try {
@@ -1018,7 +1023,7 @@ it('fences a second provider request when the worker process dies after HTTP suc
       assertionId: '00000000-0000-4000-8000-000000000032',
       text: '실질 GDP는 2025년에 2% 증가했다.',
     });
-    const policyRevision = `vp-http-crash-${randomUUID()}`;
+    const policyRevision = 'vp-deepseek-relation-v6-evidence-context';
     const jobs = new PostgresVPRelationJobs(pool);
     expect(await jobs.enqueueCurrentPairs(policyRevision, 1)).toBe(1);
 
@@ -1118,44 +1123,29 @@ it('fences a second provider request when the worker process dies after HTTP suc
         WHERE project_id = $1 AND policy_revision = $2 AND status = 'RUNNING'`,
       [projectId, policyRevision],
     );
-    let restartedProviderCalls = 0;
-    const restartedResolver: AIProviderExecutionResolverPort = {
-      resolve: async () => ({
-        adapter: {
-          identity: {
-            provider: 'deepseek',
-            model: 'deepseek-crash-test',
-            adapterVersion: 'restart-spy',
-            dataPolicyVersion: 'test-only',
-          },
-          generateStructured: async () => {
-            restartedProviderCalls += 1;
-            throw new Error('Unknown outcome must not be sent again.');
-          },
-        },
-        executionIdentity: {} as never,
-      }),
-    };
-    const policy = {
-      revision: policyRevision,
-      minimumChoiceProbability: 0.9,
-      maximumDeepAnalysisScore: 0,
-      maximumInputTokens: 4000,
-      maximumOutputTokens: 256,
-    };
-    const restartedWorker = new VPRelationJobWorker(
-      new PostgresVPRelationJobs(pool),
-      new VPRelationDecisionRouter(
-        undefined,
-        new GeneralAIVPDecisionAdapter(restartedResolver, new PostgresVPRelationJobs(pool)),
-        policy,
-      ),
-      async () => true,
-      policyRevision,
-    );
-    expect(await restartedWorker.dispatchOnce()).toBe('EMPTY');
-    expect(providerHttpAcceptances).toBe(1);
-    expect(restartedProviderCalls).toBe(0);
+    const runtimeAssetRoot = await mkdtemp(path.join(os.tmpdir(), 'shotgun-vp-runtime-recovery-'));
+    let application: Awaited<ReturnType<typeof startShotgunApplication>> | undefined;
+    try {
+      application = await startShotgunApplication({
+        databaseUrl: database.databaseUrl,
+        environmentProfile: 'runtime-test',
+        assetRoot: runtimeAssetRoot,
+        stagingSecret: 'vp-runtime-recovery-test-staging-secret',
+        host: '127.0.0.1',
+        port: 0,
+        noSignals: true,
+        disableAskWorker: true,
+        recoveryIntervalMs: false,
+        actionFeedbackOutboxIntervalMs: false,
+        aiDurableMaterializationRecoveryEnabled: false,
+      });
+      const health = await application.server.inject({ method: 'GET', url: '/health' });
+      expect(health.statusCode).toBe(200);
+      expect(providerHttpAcceptances).toBe(1);
+    } finally {
+      await application?.close();
+      await rm(runtimeAssetRoot, { recursive: true, force: true });
+    }
     const terminal = await pool.query<{
       readonly job_status: string;
       readonly call_state: string;
@@ -1196,7 +1186,7 @@ it('fences a second provider request when the worker process dies after HTTP suc
     }
     await database.dispose();
   }
-}, 60_000);
+}, 120_000);
 
 it('characterizes the all-pairs relation queue and daily decision budget at 64 assertions', async () => {
   const database = await createIsolatedPostgresTestDatabase();

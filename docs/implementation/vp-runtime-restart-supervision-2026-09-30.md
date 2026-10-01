@@ -1,7 +1,7 @@
 # VP-07 Runtime 재기동 감독 구현·검증
 
 **기록일:** 2026-10-01
-**상태:** 구현, 실제 격리 PostgreSQL 연결 장애와 PostgreSQL 서버 재기동 검증 통과; Job 데이터 수렴 및 운영 복구 Gate 미완료
+**상태:** 구현, 실제 격리 PostgreSQL 연결 장애·서버 재기동과 Shotgun owner Runtime의 provider 응답 불명확 Job 복구 검증 통과; 전체 Job 수렴 및 운영 복구 Gate 미완료
 
 ## 범위
 
@@ -21,6 +21,12 @@ Supervisor는 Product DB에 쓰지 않는다. 실제 장애 시험은 guarded `s
 고정된 `compose.yaml` PostgreSQL 이미지와 임시 loopback 포트로 disposable container/DB를 만들었다. 앱을 실제 child process로 시작한 뒤 컨테이너를 중지·재시작했다. PostgreSQL이 끊기자 maintenance lock 유실 경로가 앱 child를 fail-stop 했고, parent supervisor가 앱을 다시 시작했다. 컨테이너 재시작 뒤 같은 host port에서 PostgreSQL readiness를 확인한 다음, 새 child가 같은 local-owner session으로 저장된 프로젝트를 `/api/v1/projects` API에서 읽고, DB 직접 조회에서도 `pg_postmaster_start_time()`이 변경되고 프로젝트 row가 그대로 있음을 검증했다. 실제 실행은 23초였고, 격리 DB/container는 finally 경로에서 제거했다.
 
 장애 중 `pg` pool이 내보내는 idle-client `error` 이벤트가 미처리 Node.js 예외가 되지 않도록 `createPostgresPool`에 listener를 추가했다. 실제 재기동 시험에서 두 `57P01` 이벤트가 기록됐고 `Unhandled 'error' event`는 발생하지 않았다. 런타임의 유지보수 잠금 세션 유실은 기존 fail-stop 정책대로 앱 child를 종료하며, 복구는 같은 Pool의 in-place 연결 회복이 아니라 감독된 app child 교체로 이뤄진다. 이 시험은 사용자 Source나 미완료 relation/ask Job을 포함하지 않아 Job 중복·손실 및 ledger 수렴은 아직 증명하지 않는다.
+
+### 2026-10-01 실제 VP owner Runtime의 불명확 결과 복구
+
+`tests/database/vp-relation-priority.database.test.ts`의 isolated PostgreSQL 장애 주입은 test harness가 띄운 실제 VP relation Worker child process를 local HTTP provider stub의 성공 응답 직후 종료했다. lease가 만료된 같은 Source pair를 대상으로 `startShotgunApplication`의 정상 `runtime-test` application composition을 새로 시작했다. 앱 `/health`가 200을 반환했고, owner composition의 VP relation worker가 provider-call과 Job을 `OUTCOME_UNKNOWN`으로 수렴했다. local HTTP stub은 첫 요청만 받았고 재시도 요청은 없었다. Projection replay는 queue settled / incomplete, unknown Job 1건으로 일치했다. 호출 결과를 Shotgun이 저장하기 전에 프로세스가 종료된 경우에는 결과를 복원할 수 없으므로, provider를 다시 호출하는 대신 미해결 상태를 보존하는 것이 의도한 안전 동작이다.
+
+이 시험은 synthetic local HTTP response, disposable PostgreSQL database, fresh owner `startShotgunApplication` 구성을 사용했으며 실제 DeepSeek 청구는 발생시키지 않았다. 설치된 application/launcher 프로세스 자체를 종료한 시험은 아니다. DB 서버 중단과 provider 요청이 겹치는 경우, 실제 provider 청구 대사, 설치 launcher 강제 종료와 Windows 재부팅은 이 시험으로 입증되지 않는다.
 
 검증 명령: `VP_RUNTIME_POSTGRES_CONTAINER_RESTART=1 npx vitest run tests/integration/vp-runtime-postgres-server-restart.live.test.ts --reporter=verbose` (Windows PowerShell 환경 변수 방식으로 실행), 1 test passed.
 
@@ -45,7 +51,7 @@ Supervisor는 Product DB에 쓰지 않는다. 실제 장애 시험은 guarded `s
 
 ## VP-07에 남은 검증
 
-1. 기존 Source/미완료 Job이 있는 동안 장애를 만들어 중복·손실 없음, Job 자동 수렴, 답변 인용·projection watermark를 확인한다.
+1. Provider 응답 불명확 Job의 owner Runtime 재시작 시 `OUTCOME_UNKNOWN` 수렴과 중복 요청 방지는 통과했다. PostgreSQL 서버 중단이 data-bearing Job 처리와 겹치는 경우와 실제 provider 청구 대사, 사용자 답변 인용·projection watermark를 추가 확인한다.
 2. 실제 환경에서 database backup→clean restore, cutover, rollback 연습을 완료한다.
 3. owner launcher가 강제 종료된 상황 및 Windows 재부팅 후 아이콘 시작 정책을 검증한다. 이 구현은 owner가 살아 있을 때의 child 복구만 보장한다.
 

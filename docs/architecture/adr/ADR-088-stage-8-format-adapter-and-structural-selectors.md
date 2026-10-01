@@ -24,6 +24,13 @@
   fraction. Ambiguous equations retain the existing pdfplumber output. The
   Python format adapter advances to `1.3.0`; pdfplumber remains the sole owner
   of paragraph order and SourceMap layout.
+- 2026-10-01 — VP-04 amendment: the same locked pypdfium2 build may reconstruct
+  a stacked fraction only when numerator and denominator glyph rows overlap
+  horizontally around an uppercase equation prefix and every existing
+  pdfplumber fragment is contained in the geometry-backed formula. This
+  recovers the supplied PDF's PV and NPV formulas; mismatches retain the source
+  output. The adapter advances to `1.4.0`; pdfplumber still owns paragraph order
+  and SourceMap layout.
 
 ## 결정
 

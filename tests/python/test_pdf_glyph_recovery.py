@@ -9,8 +9,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "adapters" / "docum
 from worker import (
     MAX_PDFIUM_PAGE_CHARS,
     apply_pdfium_horizontal_equations,
+    apply_pdfium_stacked_equations,
     pdfium_horizontal_equation_words,
     pdfium_page_glyphs,
+    pdfium_stacked_equation_words,
     restore_unmapped_comparison_glyphs,
 )
 
@@ -109,6 +111,49 @@ class PdfGlyphRecoveryTests(unittest.TestCase):
 
         self.assertFalse(any(candidate["text"].startswith("NPV") or candidate["text"] == "PV =" for candidate in candidates))
 
+    def test_rebuilds_a_stacked_present_value_fraction_from_aligned_glyph_rows(self) -> None:
+        glyphs = formula_glyphs("PV=", top=100, start_x=20)
+        glyphs.extend(formula_glyphs("FV", top=90, start_x=80))
+        glyphs.extend(formula_glyphs("(1+r)n", top=110, start_x=75, superscript="n"))
+
+        candidates = pdfium_stacked_equation_words(glyphs)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["text"], "PV = FV/(1 + r)^n")
+        words = [
+            {"text": "PV = r)n", "x0": 20, "x1": 125, "top": 99, "bottom": 120},
+            {"text": "unrelated", "x0": 200, "x1": 250, "top": 99, "bottom": 120},
+        ]
+
+        rebuilt = apply_pdfium_stacked_equations(words, candidates)
+
+        self.assertEqual([word["text"] for word in rebuilt], ["unrelated", "PV = FV/(1 + r)^n"])
+
+    def test_rebuilds_npv_fraction_with_series_and_suffix_when_flat_text_agrees(self) -> None:
+        glyphs = formula_glyphs("NPV=∑", top=100, start_x=10)
+        glyphs.extend(formula_glyphs("CFt", top=90, start_x=80, subscript="t"))
+        glyphs.extend(formula_glyphs("(1+r)t", top=110, start_x=75, superscript="t"))
+        glyphs.extend(formula_glyphs("−I0", top=100, start_x=135, subscript="0"))
+
+        candidates = pdfium_stacked_equation_words(glyphs)
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["text"], "NPV = ∑ CF_t/(1 + r)^t − I_0")
+        words = [{"text": "NPV = t − I0", "x0": 10, "x1": 155, "top": 99, "bottom": 120}]
+        self.assertEqual(
+            apply_pdfium_stacked_equations(words, candidates)[0]["text"],
+            "NPV = ∑ CF_t/(1 + r)^t − I_0",
+        )
+
+    def test_keeps_a_stacked_candidate_when_pdfplumber_text_has_an_unrelated_glyph(self) -> None:
+        glyphs = formula_glyphs("PV=", top=100, start_x=20)
+        glyphs.extend(formula_glyphs("FV", top=90, start_x=80))
+        glyphs.extend(formula_glyphs("(1+r)n", top=110, start_x=75, superscript="n"))
+        candidates = pdfium_stacked_equation_words(glyphs)
+        words = [{"text": "PV = q)n", "x0": 20, "x1": 125, "top": 99, "bottom": 120}]
+
+        self.assertEqual(apply_pdfium_stacked_equations(words, candidates), words)
+
     def test_replaces_only_an_exactly_matching_pdfplumber_word_run(self) -> None:
         candidate = {
             "text": "FV = PV (1 + r)^n",
@@ -172,13 +217,19 @@ def formula_glyphs(
     top: float = 100.0,
     start_x: float = 10.0,
     superscript: str | None = None,
+    subscript: str | None = None,
 ) -> list[dict[str, object]]:
     output: list[dict[str, object]] = []
     x = start_x
     for index, char in enumerate(value):
         is_superscript = char == superscript
+        is_subscript = char == subscript
         glyph_top = top
+        if is_subscript:
+            glyph_top += 6.0
         height = 4.0 if is_superscript else 10.0
+        if is_subscript:
+            height = 4.0
         width = 4.0 if char in "=+-" else 6.0
         output.append(
             {

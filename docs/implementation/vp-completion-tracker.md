@@ -82,14 +82,15 @@ The documented Stage 8 Docling re-evaluation trigger was confirmed on pages
 left formula block text empty in its default mode; optional CodeFormulaV2
 exceeded six CPU minutes and approximately 1.9 GB memory without a result. The
 isolated environment occupied 854,390,083 bytes. Docling remains `DEFER`; the
-existing pdfplumber/pypdfium2 path stays active. The locked PDFium full-page
-text probe also split exponents and stacked fractions, though glyph geometry
-supported a bounded single-row augmentation with exact text agreement. The
-supplied PDF now reconstructs three flat formulas with page/BBox selectors;
-two stacked PV/NPV fractions remain unreadable and 23 unrelated glyph markers
-remain unresolved. The change uses the existing pypdfium2 pin and advances the
-format adapter to `1.3.0`. Formula-sensitive VP-04 quality and live post-change
-DeepSeek E2E remain open. [Docling re-evaluation](./vp-docling-finance-formula-reevaluation-2026-10-01.md),
+existing pdfplumber/pypdfium2 path stays active. Geometry-backed recovery now
+reconstructs the supplied PDF's flat and stacked PV/NPV formula segments with
+page/BBox selectors under adapter `1.4.0`. The actual DeepSeek browser flow
+passed once: 111 assertions, 120 candidates, 20/20 curated markers, four
+answer-and-citation checks, replay match, 12 current relations, and no pending
+relation jobs (35 provider responses, 51,502 reported tokens). Provider billing
+was not reconciled. 23 unrelated PDF replacement markers remain unresolved;
+the Golden labels remain candidate, and broad precision/recall plus independent
+adjudication remain open, so VP-04 is not complete. [Docling re-evaluation](./vp-docling-finance-formula-reevaluation-2026-10-01.md),
 [PDFium formula verification](./vp-finance-pdf-flat-formula-verification-2026-10-01.md).
 
 ## 남은 완료 조건

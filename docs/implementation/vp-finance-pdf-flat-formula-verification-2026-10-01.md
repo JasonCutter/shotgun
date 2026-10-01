@@ -1,4 +1,4 @@
-# VP-04 / Stage 8 — PDFium flat formula verification (2026-10-01)
+# VP-04 / Stage 8 — PDFium equation geometry verification (2026-10-01)
 
 **Status: narrow extraction augmentation implemented; VP-04 remains open.** This
 record covers one supplied finance PDF and does not establish general PDF
@@ -9,7 +9,7 @@ formula quality.
 - Target: Stage 8 `PythonDocumentFormatAdapter`, `DocumentIR`, and `SourceMap`.
 - Source: `재무제표재무관리__2026-09-27.pdf`, 10 pages, 797,599 bytes.
 - Source SHA-256: `bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`.
-- Output transformer identity: `shotgun.document-formats@1.3.0`.
+- Output transformer identity: `shotgun.document-formats@1.4.0`.
 - No project database or previously stored revision was changed by this
   verification. New transformations use the new adapter identity.
 
@@ -39,27 +39,33 @@ The isolated worker asks PDFium for page glyph geometry when pdfplumber reports
 a NUL glyph or an equals sign. The optional path fails closed when a page has
 more than 100,000 PDFium characters or produces more than 20,000 text rows.
 
-A formula candidate is limited to a short, single-row ASCII/math expression.
-Script markers are placed only from relative glyph size and position. The
-worker replaces pdfplumber words only when their compact character sequence
-exactly matches the reconstructed PDFium sequence. Nearby rows containing
-fraction-like layout prevent reconstruction. PDFium does not infer characters,
-denominators, mathematical meaning, or reading order.
+A flat formula candidate is limited to a short, single-row ASCII/math
+expression. Script markers are placed only from relative glyph size and
+position. A stacked fraction is reconstructed only when numerator and
+denominator glyph rows sit above and below the same equation baseline, overlap
+horizontally around an uppercase equation prefix, and every extracted
+pdfplumber character in the formula box occurs in the geometry-backed result.
+PDFium supplies the actual glyphs and coordinates; the adapter uses those
+positions to express the numerator/denominator relationship. It does not
+invent missing characters or infer mathematical meaning or reading order.
 
-For an ambiguous or stacked equation, the worker retains the existing
-pdfplumber text. That output can still contain flattened fragments; this
-adapter version does not yet carry a structured `formula-unresolved` signal.
-The original file and its selectors remain available, but downstream AI must
-not treat malformed formula fragments as verified facts. This is a remaining
-VP-04 product-quality issue.
+For a formula with ambiguous alignment or a text mismatch, the worker retains
+the existing pdfplumber output. That output can still contain flattened
+fragments; this adapter does not yet carry a structured `formula-unresolved`
+signal. The original file and selectors remain available, but downstream AI
+must not treat malformed formula fragments as verified facts. This is a
+remaining VP-04 product-quality issue.
 
 ## Supplied-PDF result
 
 The pinned PDFium 5.11.0 worker produced 21 blocks. It reconstructed these
-single-row formula segments and retained their source geometry:
+single-row and stacked equation segments and retained their source geometry:
 
 - Page 5: `FV = PV(1 + r)^n`.
 - Page 5: `FV = 100 × (1.1)^2 = 121만원`.
+- Page 5: `PV = FV/(1 + r)^n`.
+- Page 5: `PV = 110/1.1 = 100만원`.
+- Page 6: `NPV = ∑ CF_t/(1 + r)^t − I_0`.
 - Page 6: `NPV = 1,150 − 1,000 = 150만원`.
 
 Each segment retained a page-specific `BoundingBoxSelector` in points. The
@@ -67,27 +73,29 @@ separate `NPV = 0` line also retained its page/BBox selector. The existing
 strict comparison-glyph path still recovered exactly two signs (`NPV > 0` and
 `NPV < 0`); 23 other undecodable glyphs remained replacement markers.
 
-The stacked present-value equations on page 5 and general NPV equation on page
-6 were not reconstructed. Their current pdfplumber output still contains
-flattened fragments such as `PV = r)n` and `NPV = t − I`; these are not accepted
-as a successful formula extraction result. Docling `v2.130.0` remains `DEFER`
-under the separate [reevaluation record](./vp-docling-finance-formula-reevaluation-2026-10-01.md).
+Each reconstructed formula uses its original glyph Page/BBox and the existing
+selector contract. Docling `v2.130.0` remains `DEFER` under the separate
+[reevaluation record](./vp-docling-finance-formula-reevaluation-2026-10-01.md).
 
 ## Verification
 
-- Python unit tests: 10/10 passed, including exponent handling, stacked-fraction
-  rejection, exact text-sequence agreement, mismatch fallback, and the PDFium
-  character budget.
+- Python unit tests: 13/13 passed, including exponent/subscript markers,
+  numerator/denominator alignment, exact/contained text agreement, mismatch
+  fallback, and the PDFium character budget.
 - Supplied-PDF worker run: completed using the exact pypdfium2 5.11.0 package;
   formula text and Page/BBox selectors were inspected against rendered pages 5
   and 6.
 - Live DeepSeek ingestion, claim extraction, cited Ask, and replay using adapter
-  identity 1.3.0: passed twice on 2026-10-01 through the real browser flow. The
-  two runs produced 112/123 and 100/109 current assertions/candidates, matched
-  20/20 curated markers, and answered six cited questions each; replay matched
-  and pending relation jobs were zero in both. See the [query-scoped Ask
-  freshness report](./vp-ask-stale-snapshot-recovery-2026-10-01.md) for exact
-  run metrics and Ask retry/freshness verification.
+  identity 1.4.0: **passed once** through the browser product flow. Extraction
+  returned 111 assertions and 120 candidates; all 20 curated markers were
+  covered. The four finance Ask corpus questions matched their expected
+  answers and cited pages, including the recovered `PV = FV/(1 + r)^n`
+  expression. The NPV sign Ask returned one citation. Replay matched, 12
+  relations were current, and 0 relation jobs remained. The run made 35
+  successful DeepSeek provider responses totaling 51,502 reported tokens;
+  provider billing was not independently reconciled. The earlier two 1.3.0
+  live runs are documented in the [query-scoped Ask freshness
+  report](./vp-ask-stale-snapshot-recovery-2026-10-01.md).
 - Broad multi-document extraction precision/recall and independently reviewed
   Golden labels: **NOT RUN**; VP-04 remains open.
 
@@ -96,13 +104,13 @@ under the separate [reevaluation record](./vp-docling-finance-formula-reevaluati
 - `PythonDocumentFormatAdapter` output shape and `DocumentIR`/`SourceMap`
   contracts are unchanged. Reconstructed text uses the candidate's original
   PDFium coordinates for its BBox selector.
-- Adapter identity advances from `1.2.0` to `1.3.0`, so old immutable
+- Adapter identity advances from `1.3.0` to `1.4.0`, so old immutable
   transformation revisions are not silently rewritten or reused as if they
   came from the new transformation.
 - No database migration or lockfile update is required. Existing revisions
   remain readable.
-- Rollback reverts the optional equation augmentation and adapter identity to
-  `1.2.0`. Stored revisions remain immutable. A PDF parser replacement must
+- Rollback reverts stacked-fraction recovery and adapter identity to `1.3.0`.
+  Stored revisions remain immutable. A PDF parser replacement must
   pass Stage 8 Page/BBox, formula Golden, corrupt/encrypted, upper-contract, and
   adapter replacement tests.
 - The relevant record was added to the

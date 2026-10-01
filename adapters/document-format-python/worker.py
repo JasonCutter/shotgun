@@ -11,7 +11,7 @@ import re
 import sys
 import warnings
 import zipfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
 
@@ -316,12 +316,14 @@ def _pdfium_text_rows(page_glyphs: list[dict[str, Any]]) -> list[list[dict[str, 
 def _pdfium_equation_text(row: list[dict[str, Any]]) -> str:
     heights = [float(glyph["bottom"]) - float(glyph["top"]) for glyph in row]
     median_height = _median(heights)
-    baseline_glyphs = [height for height in heights if height >= median_height * 0.7]
+    baseline_height_floor = max(heights) * 0.8
+    baseline_glyphs = [height for height in heights if height >= baseline_height_floor]
+    baseline_height = _median(baseline_glyphs) if baseline_glyphs else median_height
     baseline_center = _median(
         [
             (float(glyph["top"]) + float(glyph["bottom"])) / 2.0
             for glyph in row
-            if float(glyph["bottom"]) - float(glyph["top"]) >= median_height * 0.7
+            if float(glyph["bottom"]) - float(glyph["top"]) >= baseline_height_floor
         ]
     ) if baseline_glyphs else _median([(float(glyph["top"]) + float(glyph["bottom"])) / 2.0 for glyph in row])
     output = ""
@@ -335,7 +337,7 @@ def _pdfium_equation_text(row: list[dict[str, Any]]) -> str:
             return ""
         height = float(glyph["bottom"]) - float(glyph["top"])
         center = (float(glyph["top"]) + float(glyph["bottom"])) / 2.0
-        is_script = value.isalnum() and height <= median_height * 0.72
+        is_script = value.isalnum() and height <= baseline_height * 0.75
         script_prefix = ""
         if is_script and center <= baseline_center - 2.0:
             script_prefix = "^"
@@ -445,6 +447,142 @@ def apply_pdfium_horizontal_equations(
         output.append(
             {
                 "text": rebuilt_text,
+                "x0": float(candidate["x0"]),
+                "x1": float(candidate["x1"]),
+                "top": float(candidate["top"]),
+                "bottom": float(candidate["bottom"]),
+            }
+        )
+    return output
+
+
+def pdfium_stacked_equation_words(page_glyphs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Rebuild a narrow fraction when PDFium geometry brackets a formula baseline."""
+    rows = _pdfium_text_rows(page_glyphs)
+    if len(rows) > MAX_PDFIUM_TEXT_ROWS:
+        return []
+    row_centers = [
+        _median([(float(glyph["top"]) + float(glyph["bottom"])) / 2.0 for glyph in row])
+        for row in rows
+    ]
+    candidates: list[dict[str, Any]] = []
+    for base_index, base_row in enumerate(rows):
+        base_center = row_centers[base_index]
+        if not any(str(glyph["text"]) == "=" for glyph in base_row):
+            continue
+        above = [
+            row_index
+            for row_index, center in enumerate(row_centers)
+            if 5.0 <= base_center - center <= 16.0
+        ]
+        below = [
+            row_index
+            for row_index, center in enumerate(row_centers)
+            if 5.0 <= center - base_center <= 16.0
+        ]
+        for numerator_index in above:
+            numerator_row = rows[numerator_index]
+            numerator_text = _pdfium_equation_text(numerator_row)
+            if sum(char.isalnum() for char in numerator_text) < 2:
+                continue
+            numerator_left = min(float(glyph["x0"]) for glyph in numerator_row)
+            numerator_right = max(float(glyph["x1"]) for glyph in numerator_row)
+            for denominator_index in below:
+                denominator_row = rows[denominator_index]
+                denominator_text = _pdfium_equation_text(denominator_row)
+                if sum(char.isalnum() for char in denominator_text) < 2:
+                    continue
+                denominator_left = min(float(glyph["x0"]) for glyph in denominator_row)
+                denominator_right = max(float(glyph["x1"]) for glyph in denominator_row)
+                fraction_left = max(numerator_left, denominator_left)
+                fraction_right = min(numerator_right, denominator_right)
+                if fraction_right - fraction_left < 8.0:
+                    continue
+                prefix_glyphs = [
+                    glyph for glyph in base_row if float(glyph["x1"]) <= fraction_left + 1.0
+                ]
+                suffix_glyphs = [
+                    glyph for glyph in base_row if float(glyph["x0"]) >= fraction_right - 1.0
+                ]
+                if (
+                    not prefix_glyphs
+                    or len(prefix_glyphs) + len(suffix_glyphs) != len(base_row)
+                ):
+                    continue
+                prefix_text = _pdfium_equation_text(prefix_glyphs)
+                suffix_text = _pdfium_equation_text(suffix_glyphs) if suffix_glyphs else ""
+                if not re.match(r"^[A-Z]{1,8}\s*=", prefix_text):
+                    continue
+                rebuilt_text = " ".join(
+                    part for part in (prefix_text, f"{numerator_text}/{denominator_text}", suffix_text) if part
+                )
+                if len(rebuilt_text) > 180:
+                    continue
+                combined_glyphs = [*prefix_glyphs, *numerator_row, *denominator_row, *suffix_glyphs]
+                candidates.append(
+                    {
+                        "text": rebuilt_text,
+                        "x0": min(float(glyph["x0"]) for glyph in combined_glyphs),
+                        "x1": max(float(glyph["x1"]) for glyph in combined_glyphs),
+                        "top": min(float(glyph["top"]) for glyph in combined_glyphs),
+                        "bottom": max(float(glyph["bottom"]) for glyph in combined_glyphs),
+                    }
+                )
+    unique: dict[tuple[str, float, float, float, float], dict[str, Any]] = {}
+    for candidate in candidates:
+        key = (
+            str(candidate["text"]),
+            round(float(candidate["x0"]), 1),
+            round(float(candidate["x1"]), 1),
+            round(float(candidate["top"]), 1),
+            round(float(candidate["bottom"]), 1),
+        )
+        unique[key] = candidate
+    return list(unique.values())
+
+
+def apply_pdfium_stacked_equations(
+    words: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Replace flattened fraction fragments only when all text fits the geometry-backed formula."""
+    output = list(words)
+
+    def compact(value: str) -> str:
+        return "".join(char for char in value if char.isalnum() or char in "=+−-×*/().,%:∑")
+
+    for candidate in candidates:
+        matched: list[dict[str, Any]] = []
+        for word in output:
+            try:
+                x0, x1 = float(word["x0"]), float(word["x1"])
+                top, bottom = float(word["top"]), float(word["bottom"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            center_x = (x0 + x1) / 2.0
+            center_y = (top + bottom) / 2.0
+            if (
+                float(candidate["x0"]) - 2.0 <= center_x <= float(candidate["x1"]) + 2.0
+                and float(candidate["top"]) - 2.0 <= center_y <= float(candidate["bottom"]) + 2.0
+            ):
+                matched.append(word)
+        if not matched:
+            continue
+        existing_text = "".join(
+            str(word.get("text", ""))
+            for word in sorted(matched, key=lambda word: (float(word["x0"]), float(word["top"])))
+        )
+        observed = Counter(compact(existing_text).casefold())
+        expected = Counter(compact(str(candidate["text"])).replace("^", "").replace("_", "").casefold())
+        if not observed or any(count > expected[char] for char, count in observed.items()):
+            continue
+        formula_name = re.match(r"^([A-Z]{1,8})\s*=", str(candidate["text"]))
+        if not formula_name or formula_name.group(1).casefold() not in compact(existing_text).casefold():
+            continue
+        output = [word for word in output if word not in matched]
+        output.append(
+            {
+                "text": str(candidate["text"]),
                 "x0": float(candidate["x0"]),
                 "x1": float(candidate["x1"]),
                 "top": float(candidate["top"]),
@@ -572,6 +710,10 @@ def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
                     words = apply_pdfium_horizontal_equations(
                         words,
                         pdfium_horizontal_equation_words(page_glyphs),
+                    )
+                    words = apply_pdfium_stacked_equations(
+                        words,
+                        pdfium_stacked_equation_words(page_glyphs),
                     )
                 except Exception:
                     # Keep pdfplumber's source text and geometry when this

@@ -1145,19 +1145,19 @@
         "evidence": "Official 5.11.0 README and release metadata; the bundled PDFium binary and its third-party license notices must ship with binary distributions"
       },
       "decision": "AUGMENT",
-      "scope": "Behind PythonDocumentFormatAdapter, geometrically recover unique pdfplumber NUL comparison signs and short flat equations only when compact PDFium glyph text exactly matches the existing pdfplumber word run; stacked or ambiguous formula layouts are not reconstructed",
-      "security": "PDFium runs only inside the isolated Python worker after existing byte/page preflight; formula extraction is capped at 100000 PDFium characters per page and 20000 text rows; the official upstream Security page showed no SECURITY.md policy and no published advisory on 2026-10-01; failures retain pdfplumber output",
+      "scope": "Behind PythonDocumentFormatAdapter, geometrically recover unique pdfplumber NUL comparison signs, short flat equations with exact compact text agreement, and bounded stacked fractions only when numerator/denominator rows align around an uppercase equation prefix and every existing pdfplumber fragment is contained in the reconstructed text",
+      "security": "PDFium runs only inside the isolated Python worker after existing byte/page preflight; formula extraction is capped at 100000 PDFium characters per page and 20000 text rows; stacked recovery requires horizontal overlap and strict character-multiset agreement; the official upstream Security page showed no SECURITY.md policy and no published advisory on 2026-10-01; failures retain pdfplumber output",
       "maintenance": "PyPI 5.11.0 is exact-locked; upstream tag commit 0168561b33a3fc32eceb6ae46cc252f6b0e90c19 embeds PDFium pin 7913; no new package was added; any upgrade requires the same Page/BBox, formula Golden, corrupt/encrypted and adapter replacement tests",
       "evidence": [
         "Pinned-stack read-only prototype recovered exactly the two page-6 NPV signs from 25 NUL glyphs in the supplied finance PDF; the other 23 had no qualifying comparison-sign geometry",
         "Official 5.11.0 release tag and bundled license terms reviewed",
-        "Implemented strict reciprocal comparison-sign matching and bounded single-row equation reconstruction; 10 Python geometry tests cover exact text agreement, exponent markers, stacked fractions, mismatched text and the PDFium character budget",
-        "The supplied 10-page finance PDF restored FV = PV(1 + r)^n, FV = 100 × (1.1)^2 = 121만원 and NPV = 1,150 − 1,000 = 150만원 with Page/BBox coordinates; two stacked PV/NPV fractions remain unreconstructed",
-        "The supplied finance PDF restored its two page-6 comparison signs and left 23 other replacement markers unresolved; formula-sensitive VP-04 quality and live post-change DeepSeek E2E remain open",
+        "Implemented strict reciprocal comparison-sign matching, bounded single-row reconstruction, and geometry-bracketed stacked fractions; 13 Python geometry tests cover exact/contained text agreement, exponent/subscript markers, stacked layouts, mismatch fallback and the PDFium character budget",
+        "The supplied 10-page finance PDF reconstructs PV = FV/(1 + r)^n, PV = 110/1.1 = 100만원, and NPV = ∑ CF_t/(1 + r)^t − I_0 with page-specific bounding-box selectors; flat FV equations remain covered",
+        "The supplied finance PDF restored its two page-6 comparison signs and left 23 other replacement markers unresolved; adapter 1.4.0 live DeepSeek browser verification passed once with 20/20 markers, four cited Ask corpus checks, replay match, and no pending relation jobs, while broad formula quality remains open",
         "Official pypdfium2 5.11.0 release and commit reviewed; no upstream security policy or published advisory was present on the official Security page on 2026-10-01"
       ],
       "boundary": "PythonDocumentFormatAdapter behind the Transformation Port; PDFium supplies character text and geometry only for bounded candidate repair; pdfplumber remains the sole reading-order, paragraph and Page/BBox selector owner",
-      "replacement": "Revert the formula augmentation and adapter identity to 1.2.0, or replace PDFium behind the same adapter; prior immutable TransformationRevisions remain readable and are not rewritten; rerun Page/BBox, formula Golden, corrupt/encrypted and upper-contract tests",
+      "replacement": "Revert stacked fraction repair and adapter identity to 1.3.0 to retain comparison-sign and single-row equation recovery, or replace PDFium behind the same adapter; prior immutable TransformationRevisions remain readable and are not rewritten; rerun Page/BBox, formula Golden, corrupt/encrypted and adapter replacement tests",
       "recheckTrigger": "PDFium version change, upstream security notice, a false glyph/equation repair, an adjudicated Golden corpus, or evidence that stacked formulas are causing wrong knowledge claims"
     },
     {

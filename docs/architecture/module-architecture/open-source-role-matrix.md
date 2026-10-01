@@ -140,26 +140,27 @@ Stage 0~2 재검증 결과 PostgreSQL, Ajv, content-addressed storage pattern은
 
 ### 4.4 Transformation
 
-| 후보                  | 담당 형식·역할                                     | 상태                |
-| --------------------- | -------------------------------------------------- | ------------------- |
-| lucasastorian/llmwiki | HTML cleaner·XLSX extractor                        | `EXTRACT`           |
-| Docling               | PDF·Office 구조와 layout 변환                      | `DEFERRED`          |
-| Apache Tika           | 범용 형식 감지·metadata·텍스트 fallback            | `ADAPTER_CANDIDATE` |
-| MarkItDown            | 경량 Markdown 변환                                 | `ADAPTER_CANDIDATE` |
-| PyMuPDF               | PDF text·page·bbox 처리                            | `ADAPTER_CANDIDATE` |
-| pypdfium2             | NUL 비교 기호와 안전한 한 줄 수식의 위치 한정 복구 | `AUGMENT`           |
-| python-docx           | DOCX 구조 추출                                     | `ADAPTER_CANDIDATE` |
-| python-pptx           | PPTX shape·text 추출                               | `ADAPTER_CANDIDATE` |
-| openpyxl              | XLSX cell·formula·sheet 추출                       | `ADAPTER_CANDIDATE` |
-| ffmpeg                | 오디오·영상 정규화                                 | `DEFERRED`          |
+| 후보                  | 담당 형식·역할                                          | 상태                |
+| --------------------- | ------------------------------------------------------- | ------------------- |
+| lucasastorian/llmwiki | HTML cleaner·XLSX extractor                             | `EXTRACT`           |
+| Docling               | PDF·Office 구조와 layout 변환                           | `DEFERRED`          |
+| Apache Tika           | 범용 형식 감지·metadata·텍스트 fallback                 | `ADAPTER_CANDIDATE` |
+| MarkItDown            | 경량 Markdown 변환                                      | `ADAPTER_CANDIDATE` |
+| PyMuPDF               | PDF text·page·bbox 처리                                 | `ADAPTER_CANDIDATE` |
+| pypdfium2             | NUL 비교 기호와 정렬된 한 줄·분수 수식의 위치 한정 복구 | `AUGMENT`           |
+| python-docx           | DOCX 구조 추출                                          | `ADAPTER_CANDIDATE` |
+| python-pptx           | PPTX shape·text 추출                                    | `ADAPTER_CANDIDATE` |
+| openpyxl              | XLSX cell·formula·sheet 추출                            | `ADAPTER_CANDIDATE` |
+| ffmpeg                | 오디오·영상 정규화                                      | `DEFERRED`          |
 
 하나의 범용 변환기를 강제하지 않는다. Format Adapter가 공통 `DocumentIR`과 `SourceMap`을 출력한다.
 
-VP-04에서 고정된 pypdfium2 `5.11.0`은 pdfplumber가 NUL로 반환한 `<`·`>` 글리프와,
-기존 텍스트 글자열이 정확히 일치하는 짧은 한 줄 수식만 위치로 보완한다. 세로로
-겹치는 분수·수식은 재구성하지 않는다. pdfplumber만 문단 순서와 Page/BBox Selector를
-만들며, 불확실한 수식은 기존 추출 결과 그대로 둔다. 상세 경계와 Golden 관찰은
-[VP-04 수식 검증](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md)에 기록했다.
+VP-04에서 고정된 pypdfium2 `5.11.0`은 pdfplumber가 NUL로 반환한 `<`·`>` 글리프,
+텍스트와 좌표가 일치하는 짧은 한 줄 수식, 분자·분모 glyph 행이 방정식 기준선과
+정렬되는 분수 수식을 위치로 보완한다. 분수는 PDFium에 실제 존재하는 글자와
+pdfplumber 조각이 모두 일치할 때만 복원한다. pdfplumber만 문단 순서와 Page/BBox
+Selector를 만들며, 불확실한 수식은 기존 추출 결과 그대로 둔다. 상세 경계와 Golden
+관찰은 [VP-04 수식 검증](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md)에 기록했다.
 
 Phase 1 Canonical 정책에 따라 Shotgun Assembly는 오디오·영상 파일 직접 분석, 자동 음성 전사와 영상 프레임·음성·장면 분석을 장기 범위에서도 제외한다. `ffmpeg`는 Shotgun 기본 구현 후보가 아니라 다른 Assembly 또는 향후 별도 정책 결정에 대비한 `DEFERRED` 후보로만 유지한다. 영상 URL은 접근 가능한 제목·설명·자막·스크립트를 텍스트로 확보하는 범위에서만 처리한다.
 
@@ -634,16 +635,17 @@ only latest versions are supported; no product dependency or production
 security scan was introduced. Full methodology, limitations, and rollback are
 in the [focused re-evaluation report](../../implementation/vp-docling-finance-formula-reevaluation-2026-10-01.md).
 
-## VP-04 / Stage 8 PDFium flat formula augmentation — 2026-10-01
+## VP-04 / Stage 8 PDFium equation geometry augmentation — 2026-10-01
 
 The exact locked pypdfium2 `5.11.0` (`0168561b33a3fc32eceb6ae46cc252f6b0e90c19`,
 PDFium pin `7913`, Apache-2.0 OR BSD-3-Clause) was augmented behind the existing
-Python format adapter. It restores a bounded single-row equation only when the
-PDFium glyph sequence matches the existing pdfplumber text after script markers
-are removed and adjacent geometry does not indicate a stacked formula. PDFium
-does not own paragraph order or selectors. The adapter identity advances to
-`1.3.0`; no dependency or lockfile changed. The official upstream Security page
-showed no `SECURITY.md` policy and no published advisory on 2026-10-01. The
+Python format adapter. Version `1.4.0` restores short single-row equations and
+fractions whose numerator/denominator rows overlap around an uppercase formula
+prefix; it replaces extracted words only if their characters are contained in
+the geometry-backed expression. PDFium does not own paragraph order or
+selectors. The adapter identity advances from `1.3.0` to `1.4.0`; no dependency
+or lockfile changed. The official upstream Security page showed no `SECURITY.md`
+policy and no published advisory on 2026-10-01. The
 [focused verification report](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md)
-records the supplied-PDF result, geometry and remaining fraction loss. Full-PDF
-quality and independent Golden adjudication remain open.
+records the supplied-PDF formulas, geometry and one successful live DeepSeek
+browser run. Full-PDF quality and independent Golden adjudication remain open.

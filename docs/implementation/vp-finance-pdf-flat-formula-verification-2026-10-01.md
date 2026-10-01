@@ -392,3 +392,24 @@ runtime, schema, or upstream code was introduced. Rollback returns adapter
 immutable. See the [Stage 8 OSS review](./stage-validations/stage-8-oss-integration-review.md#vp-04--stage-8-pdfium-capm-subscript-recovery--2026-10-02),
 [Stage 4 OSS review](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-direct-claim-v8-incomplete-korean-clause-guard), and
 [Role Matrix](../architecture/module-architecture/open-source-role-matrix.md#vp-04--stage-8-pdfium-capm-subscript-recovery--2026-10-02).
+
+### 2026-10-02 v8 candidate-disposition follow-up
+
+A second isolated Chromium extraction used the same PDF SHA-256, adapter
+`1.11.0`, Candidate prompt `direct-claim-v8`, and DeepSeek `deepseek-flash`,
+with Ask disabled to isolate the extraction and validation path. It produced
+140 candidate rows and 140 current assertions. All 140 were `READY`; schema,
+evidence-reference, direct-text, and policy dimensions each passed 140/140.
+All 140 had exact Evidence text, no candidate lacked validation, all 24/24
+page markers matched, and six non-claim canaries remained excluded. The
+semantic validation dimension was `NOT_RUN` in this path.
+
+This follow-up makes the earlier candidate/current difference explainable for
+this run: the validators did not reject candidates. It also confirms run-to-run
+extraction variability (prior v8 run: 141 candidate rows and 132 current
+assertions; follow-up: 140 and 140). The follow-up did not run Ask or adjudicate
+all claims and omissions, so it does not establish full-document precision,
+recall, or semantic correctness. The corpus remains `CANDIDATE`; VP-04/05 stay
+open. No runtime behavior, dependency, schema, or OSS decision changed; the
+existing Stage 4 `NO_RELEVANT_OSS` determination for Korean claim completeness
+and exact-span rebinding remains applicable.

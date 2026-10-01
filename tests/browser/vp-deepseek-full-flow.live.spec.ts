@@ -1406,6 +1406,25 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
         ORDER BY candidate.claim_text`,
       [source.sourceVersionId],
     );
+    const candidateStatusCounts: Record<string, number> = {};
+    const candidateValidationDimensionCounts: Record<string, Record<string, number>> = {};
+    let candidatesWithoutValidation = 0;
+    let exactEvidenceCandidateCount = 0;
+    for (const row of candidateRows.rows) {
+      candidateStatusCounts[row.status] = (candidateStatusCounts[row.status] ?? 0) + 1;
+      if (row.evidence_text.includes(row.claim_text)) exactEvidenceCandidateCount += 1;
+      if (!Array.isArray(row.validation_dimensions)) {
+        candidatesWithoutValidation += 1;
+        continue;
+      }
+      for (const value of row.validation_dimensions) {
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) continue;
+        const dimension = value as { readonly name?: unknown; readonly status?: unknown };
+        if (typeof dimension.name !== 'string' || typeof dimension.status !== 'string') continue;
+        const statuses = (candidateValidationDimensionCounts[dimension.name] ??= {});
+        statuses[dimension.status] = (statuses[dimension.status] ?? 0) + 1;
+      }
+    }
     const normalize = (value: string) => value.toLocaleLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
     const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
     const markerMatchesCandidate = (
@@ -1481,6 +1500,12 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
         nonClaimCount: vpFinancePDFClaimMarkerCorpus.nonClaims.length,
         assertions: assertionRows.rows.length,
         generatedCandidates: candidateRows.rows.length,
+        candidateDiagnostics: {
+          statusCounts: candidateStatusCounts,
+          validationDimensionCounts: candidateValidationDimensionCounts,
+          candidatesWithoutValidation,
+          exactEvidenceCandidateCount,
+        },
         missingMarkers: markers
           .filter((marker) => !marker.matched)
           .map((marker) => marker.markerId),

@@ -413,3 +413,28 @@ recall, or semantic correctness. The corpus remains `CANDIDATE`; VP-04/05 stay
 open. No runtime behavior, dependency, schema, or OSS decision changed; the
 existing Stage 4 `NO_RELEVANT_OSS` determination for Korean claim completeness
 and exact-span rebinding remains applicable.
+
+#### 2026-10-02 full Ask rerun
+
+With Ask enabled, a further isolated run produced 151 candidates: 140 `READY`
+and 11 `REJECTED` by the direct-text dimension. Schema, Evidence-reference,
+and policy checks passed 151/151; direct-text passed 140/151, and all 140
+active assertions retained exact Evidence. The 24/24 page markers matched and
+all six non-claim canaries remained excluded. This explains the candidate to
+active-assertion difference in this run; the exact rejected set was not
+compared across runs. Semantic validation remained `NOT_RUN`.
+
+The real DeepSeek Ask flow passed: the overview and NPV questions each returned
+two citations, both NPV sign rules were preserved, and all four page-grounded
+questions returned an expected answer with a citation to the expected page.
+Projection replay matched with five current relations and zero pending
+relation jobs. The run recorded 12 provider responses and 32,831 reported
+tokens (22,140 input; 10,691 output); billing was not reconciled.
+
+One preceding Ask-enabled run with the same setup failed because the first Ask
+remained `RUNNING` past its 120-second test wait; an immediate rerun passed.
+This is a real latency variance signal, not a confirmed answer-quality failure.
+Together with varying candidate counts, it keeps the corpus `CANDIDATE` and
+VP-04/05 open. The new failure diagnostics retain only run state, provider
+identity, timestamps, event counts, and partial-text length; they do not emit
+the question or answer body.

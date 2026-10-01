@@ -1746,13 +1746,25 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
           readonly mode: string;
           readonly attempt_number: number;
           readonly source_selection_count: number;
-          readonly attempt: Record<string, unknown> | null;
+          readonly attempt_state: string | null;
+          readonly attempt_provider: string | null;
+          readonly attempt_model: string | null;
+          readonly attempt_created_at: Date | null;
+          readonly attempt_updated_at: Date | null;
+          readonly attempt_completed_at: Date | null;
+          readonly attempt_failure_code: string | null;
         }>(
           `SELECT run.answer_run_id, run.state, run.mode, run.attempt_number,
                   (SELECT count(*)::int FROM frontend_ask.source_selections AS selection
                     WHERE selection.project_id = run.project_id
                       AND selection.answer_run_id = run.answer_run_id) AS source_selection_count,
-                  to_jsonb(attempt) AS attempt
+                  attempt.state AS attempt_state,
+                  attempt.provider_name AS attempt_provider,
+                  attempt.provider_model AS attempt_model,
+                  attempt.created_at AS attempt_created_at,
+                  attempt.updated_at AS attempt_updated_at,
+                  attempt.completed_at AS attempt_completed_at,
+                  attempt.failure_code AS attempt_failure_code
              FROM frontend_ask.answer_runs AS run
              LEFT JOIN frontend_ask.answer_run_attempts AS attempt
                ON attempt.answer_run_id = run.answer_run_id
@@ -1762,6 +1774,24 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
               AND run.question LIKE '이 자료의 예시에서 자산이%'
             ORDER BY run.created_at DESC LIMIT 1`,
         );
+        const answerEventDiagnostics = latestFinanceRun.rows[0]
+          ? await pool.query<{
+              readonly kind: string;
+              readonly state: string;
+              readonly event_count: number;
+              readonly max_ordinal: number;
+              readonly partial_characters: number;
+            }>(
+              `SELECT kind, state, count(*)::int AS event_count,
+                      max(ordinal)::int AS max_ordinal,
+                      coalesce(sum(char_length(partial_text)), 0)::int AS partial_characters
+                 FROM frontend_ask.answer_run_events
+                WHERE project_id = 'shotgun' AND answer_run_id = $1
+                GROUP BY kind, state
+                ORDER BY kind, state`,
+              [latestFinanceRun.rows[0].answer_run_id],
+            )
+          : { rows: [] };
         console.error(
           JSON.stringify({
             summary: 'vp-live-finance-pdf-ask-diagnostic-v1',
@@ -1774,10 +1804,13 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
                   mode: latestFinanceRun.rows[0].mode,
                   attemptNumber: latestFinanceRun.rows[0].attempt_number,
                   sourceSelectionCount: latestFinanceRun.rows[0].source_selection_count,
-                  attemptState: latestFinanceRun.rows[0].attempt?.state,
-                  attemptFailureCode: latestFinanceRun.rows[0].attempt?.failure_code,
-                  attemptFailureMessage: latestFinanceRun.rows[0].attempt?.failure_message,
-                  workerId: latestFinanceRun.rows[0].attempt?.worker_id,
+                  attemptState: latestFinanceRun.rows[0].attempt_state,
+                  provider: latestFinanceRun.rows[0].attempt_provider,
+                  model: latestFinanceRun.rows[0].attempt_model,
+                  attemptCreatedAt: latestFinanceRun.rows[0].attempt_created_at,
+                  attemptUpdatedAt: latestFinanceRun.rows[0].attempt_updated_at,
+                  attemptCompletedAt: latestFinanceRun.rows[0].attempt_completed_at,
+                  failureCode: latestFinanceRun.rows[0].attempt_failure_code,
                 }
               : undefined,
             latestNpvRun: latestNpvRun.rows[0]
@@ -1785,15 +1818,10 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
                   state: latestNpvRun.rows[0].state,
                   attemptState: latestNpvRun.rows[0].attempt?.state,
                   attemptFailureCode: latestNpvRun.rows[0].attempt?.failure_code,
-                  attemptFailureMessage: latestNpvRun.rows[0].attempt?.failure_message,
                 }
               : undefined,
+            answerEvents: answerEventDiagnostics.rows,
             providerResponses,
-            askStatus: await page
-              .locator('.ask-turn')
-              .last()
-              .innerText()
-              .catch(() => ''),
           }),
         );
         throw error;

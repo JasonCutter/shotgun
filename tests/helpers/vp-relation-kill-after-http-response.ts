@@ -21,6 +21,10 @@ const childProcess = process as NodeJS.Process & { send?: (message: unknown) => 
 if (typeof childProcess.send !== 'function') {
   throw new Error('This crash probe must run as a child process with an IPC channel.');
 }
+// Keep Node's IPC channel referenced while the parent observes the provider response and kills
+// this worker. A pending Promise alone does not keep the process alive after PostgreSQL releases
+// its idle socket, so an unreferenced child could exit naturally before the crash is injected.
+childProcess.on('message', () => undefined);
 
 const pool = new Pool({ connectionString: databaseUrl });
 const jobs = new PostgresVPRelationJobs(pool);

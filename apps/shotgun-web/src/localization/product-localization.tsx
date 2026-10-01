@@ -464,7 +464,7 @@ const enUS = {
     'Client preflight passed. The Server will validate again.',
   'sources.draft_message.file_unsupported':
     'Choose a TXT, Markdown, PDF, HTML, CSV, DOCX, XLSX, or PPTX file.',
-  'sources.draft_message.file_size': 'The file must be between 1 byte and one MiB.',
+  'sources.draft_message.file_size': 'The file must be between 1 byte and 10 MiB.',
   'sources.draft_message.file_preflight':
     'Client preflight passed. The Server will verify bytes, type and filename.',
   'sources.draft_message.url_accepted':
@@ -1329,7 +1329,7 @@ const koKR: Record<ProductMessageKey, string> = {
     '클라이언트 사전 검사를 통과했습니다. 서버가 다시 검증합니다.',
   'sources.draft_message.file_unsupported':
     'TXT, Markdown, PDF, HTML, CSV, DOCX, XLSX 또는 PPTX 파일을 선택하세요.',
-  'sources.draft_message.file_size': '파일 크기는 1바이트 이상 1 MiB 이하여야 합니다.',
+  'sources.draft_message.file_size': '파일 크기는 1바이트 이상 10 MiB 이하여야 합니다.',
   'sources.draft_message.file_preflight':
     '클라이언트 사전 검사를 통과했습니다. 서버가 바이트, 형식 및 파일 이름을 검증합니다.',
   'sources.draft_message.url_accepted':

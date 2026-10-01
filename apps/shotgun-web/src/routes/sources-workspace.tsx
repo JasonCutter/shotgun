@@ -11,6 +11,8 @@ import {
 
 import {
   createSourcesWriteClient,
+  SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES,
+  SOURCES_STAGING_MAX_FILE_BYTES,
   type ExactDuplicateDecisionView,
   type GlobalShellView,
   type IntakeSubmissionSnapshot,
@@ -442,11 +444,14 @@ export const SourcesWorkspace = () => {
       setMutationError(t('sources.draft_message.file_unsupported'));
       return;
     }
-    if (file && (file.size < 1 || file.size > 1_048_576)) {
+    if (file && (file.size < 1 || file.size > SOURCES_STAGING_MAX_FILE_BYTES)) {
       setMutationError(t('sources.draft_message.file_size'));
       return;
     }
-    if (intakeKind === 'DIRECT_TEXT' && new TextEncoder().encode(directText).length > 1_048_576) {
+    if (
+      intakeKind === 'DIRECT_TEXT' &&
+      new TextEncoder().encode(directText).length > SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES
+    ) {
       setMutationError(t('sources.draft_message.direct_text_too_large'));
       return;
     }
@@ -853,7 +858,7 @@ export const SourcesWorkspace = () => {
                 <textarea
                   id="source-intake-text"
                   value={directText}
-                  maxLength={1_048_576}
+                  maxLength={SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES}
                   onChange={(event) => setDirectText(event.target.value)}
                 />
               </>

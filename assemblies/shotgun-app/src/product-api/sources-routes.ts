@@ -8,6 +8,7 @@ import {
   createCommand,
   FrontendContractError,
   SOURCES_FRONTEND_COMMAND_TYPES,
+  SOURCES_STAGING_MAX_FILE_BYTES,
   SOURCES_STAGING_MEDIA_TYPES,
   ShotgunError,
   buildPrincipalScopedCommandSemanticDigestInput,
@@ -84,7 +85,7 @@ export const registerSourcesRoutes = (
   if (!server.hasContentTypeParser('application/octet-stream')) {
     server.addContentTypeParser(
       'application/octet-stream',
-      { parseAs: 'buffer', bodyLimit: 1_048_576 },
+      { parseAs: 'buffer', bodyLimit: SOURCES_STAGING_MAX_FILE_BYTES },
       (_request, body, done) => done(null, body),
     );
   }

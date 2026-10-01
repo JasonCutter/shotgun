@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   decodeIntakeDraftSeed,
+  SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES,
+  SOURCES_STAGING_MAX_FILE_BYTES,
   type IntakeDraftSeed,
   type SourcesSensitivity,
 } from '@shotgun/api-client';
@@ -96,7 +98,6 @@ export type SourceIntakeDraftItem =
       readonly messageCode: SourceIntakeDraftMessageCode;
     };
 
-const MAX_ACTIVE_BYTES = 1_048_576;
 const supportedFileTypes = new Set(['text/plain', 'text/markdown']);
 
 let nextDraftItemId = 0;
@@ -129,8 +130,14 @@ const decodeSeed = (
             ...common,
             kind: 'DIRECT_TEXT',
             text: decoded.input.text,
-            validation: decoded.input.text.trim() && size <= MAX_ACTIVE_BYTES ? 'READY' : 'INVALID',
-            messageCode: size <= MAX_ACTIVE_BYTES ? 'SEEDED_TEXT_REVIEW' : 'SEEDED_TEXT_TOO_LARGE',
+            validation:
+              decoded.input.text.trim() && size <= SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES
+                ? 'READY'
+                : 'INVALID',
+            messageCode:
+              size <= SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES
+                ? 'SEEDED_TEXT_REVIEW'
+                : 'SEEDED_TEXT_TOO_LARGE',
           },
         ],
       };
@@ -226,7 +233,8 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
     requestedClassification: SourcesSensitivity = 'private',
   ) => {
     const trimmed = text.trim();
-    const sizeValid = new TextEncoder().encode(text).byteLength <= MAX_ACTIVE_BYTES;
+    const sizeValid =
+      new TextEncoder().encode(text).byteLength <= SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES;
     updateItems((current) => [
       ...current,
       {
@@ -253,7 +261,7 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
     requestedClassification: SourcesSensitivity = 'private',
   ) => {
     const supported = supportedFileTypes.has(file.type);
-    const sizeValid = file.size > 0 && file.size <= MAX_ACTIVE_BYTES;
+    const sizeValid = file.size > 0 && file.size <= SOURCES_STAGING_MAX_FILE_BYTES;
     updateItems((current) => [
       ...current,
       {

@@ -223,6 +223,67 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Product write', () => {
     },
   );
 
+  it('persists a file larger than one MiB through product intake', async () => {
+    const context = await createContext();
+    const storage = new InMemoryAssetStorage();
+    const staging = new SealedSourcesStagingService(
+      storage,
+      'database-product-write-staging-secret-32-characters',
+    );
+    const stage3 = new RecordingStage3Pipeline();
+    const service = new PostgresSourcesProductService(pool!, staging, stage3);
+    const commandId = randomUUID();
+    const bytes = new Uint8Array(1_048_577).fill(0x61);
+    await insertAcceptedCommand({
+      commandId,
+      commandType: 'sources.intake.submit.v1',
+      principalId: context.principalId,
+      projectId: context.projectId,
+      payload: {
+        draftId: 'large-file-draft',
+        inputs: [{ kind: 'FILE', stagingReference: 'sealed' }],
+      },
+      now: context.now,
+    });
+    const receipt = await staging.stageBytes({
+      draftId: 'large-file-draft',
+      itemId: 'large-file-item',
+      projectId: context.projectId,
+      principalId: context.principalId,
+      kind: 'FILE',
+      label: 'Large text file',
+      mediaType: 'text/plain',
+      fileName: 'large.txt',
+      bytes,
+    });
+    const artifact = await staging.resolve({
+      stagingReference: receipt.stagingReference,
+      draftId: 'large-file-draft',
+      itemId: 'large-file-item',
+      projectId: context.projectId,
+      principalId: context.principalId,
+      kind: 'FILE',
+    });
+    const result = await service.submit({
+      submissionId: commandId,
+      commandId,
+      correlationId: `correlation-${commandId}`,
+      draftId: 'large-file-draft',
+      scope: context.scope,
+      items: [{ ...artifact, requestedClassification: 'public' }],
+      duplicateHandling: 'AUTOMATIC',
+      createdAt: context.now,
+    });
+    expect(result.state).toBe('SUCCEEDED');
+    const storedItem = await pool!.query<{ size_bytes: string }>(
+      `SELECT size_bytes FROM source_product.intake_submission_items
+       WHERE project_id = $1 AND submission_id = $2`,
+      [context.projectId, commandId],
+    );
+    expect(Number(storedItem.rows[0]?.size_bytes)).toBe(bytes.byteLength);
+    expect(stage3.calls).toHaveLength(1);
+  });
+
   it('creates one Source, requires an exact-duplicate decision, and reuses the pinned Version', async () => {
     const context = await createContext();
     const storage = new InMemoryAssetStorage();

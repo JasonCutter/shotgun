@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { SealedSourcesStagingService } from '../../adapters/frontend-sources-staging-sealed/src/index.js';
+import { decodeSourcesStagingReceipt } from '../../packages/contracts/src/frontend-sources-staging.js';
 import type { AssetStoragePort } from '../../modules/original-asset/src/index.js';
 
 class MemoryStorage implements AssetStoragePort {
@@ -118,7 +119,7 @@ describe('sealed Sources staging service', () => {
     ).rejects.toThrow(/does not match/);
   });
 
-  it('rejects expired references and inputs outside the active one MiB boundary', async () => {
+  it('enforces the per-kind direct-text and file byte limits', async () => {
     let now = new Date('2026-07-30T00:00:00.000Z');
     const service = new SealedSourcesStagingService(
       new MemoryStorage(),
@@ -126,11 +127,43 @@ describe('sealed Sources staging service', () => {
       undefined,
       () => now,
     );
-    const receipt = await service.stageBytes(base);
+    await expect(service.stageBytes({ ...base, bytes: new Uint8Array(1_048_577) })).rejects.toThrow(
+      /one MiB/,
+    );
+    const file = {
+      ...base,
+      kind: 'FILE' as const,
+      fileName: 'large.txt',
+      mediaType: 'text/plain' as const,
+      bytes: new Uint8Array(1_048_577).fill(0x61),
+    };
+    const receipt = await service.stageBytes(file);
+    expect(receipt.sizeBytes).toBe(1_048_577);
+    expect(decodeSourcesStagingReceipt(receipt).sizeBytes).toBe(1_048_577);
+    await expect(
+      service.stageBytes({ ...file, bytes: new Uint8Array(10 * 1024 * 1024 + 1).fill(0x61) }),
+    ).rejects.toThrow(/10 MiB/);
+    expect(() =>
+      decodeSourcesStagingReceipt({ ...receipt, sizeBytes: 10 * 1024 * 1024 + 1 }),
+    ).toThrow(/Invalid Sources staging size/);
+    expect(() =>
+      decodeSourcesStagingReceipt({ ...receipt, kind: 'DIRECT_TEXT', sizeBytes: 1_048_577 }),
+    ).toThrow(/Invalid Sources staging size/);
+    expect(() =>
+      decodeSourcesStagingReceipt({ ...receipt, kind: 'URL', sizeBytes: 1_048_577 }),
+    ).toThrow(/Invalid Sources staging size/);
+
+    const shortLivedService = new SealedSourcesStagingService(
+      new MemoryStorage(),
+      secret,
+      undefined,
+      () => now,
+    );
+    const expiringReceipt = await shortLivedService.stageBytes(base);
     now = new Date('2026-08-30T00:00:00.001Z');
     await expect(
-      service.resolve({
-        stagingReference: receipt.stagingReference,
+      shortLivedService.resolve({
+        stagingReference: expiringReceipt.stagingReference,
         draftId: 'draft-1',
         itemId: 'item-1',
         projectId: 'project-1',
@@ -138,10 +171,6 @@ describe('sealed Sources staging service', () => {
         kind: 'DIRECT_TEXT',
       }),
     ).rejects.toThrow(/expired/);
-
-    await expect(service.stageBytes({ ...base, bytes: new Uint8Array(1_048_577) })).rejects.toThrow(
-      /one MiB/,
-    );
   });
 
   it('stages a PDF as a file and rejects mismatched types or signatures', async () => {

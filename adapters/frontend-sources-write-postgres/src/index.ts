@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
-import { ShotgunError } from '../../../packages/contracts/src/index.js';
+import {
+  ShotgunError,
+  SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES,
+  SOURCES_STAGING_MAX_FILE_BYTES,
+  SOURCES_STAGING_MAX_URL_BYTES,
+} from '../../../packages/contracts/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   CreateExactDuplicateDecisionInput,
@@ -82,10 +87,16 @@ const validateItem = (item: SourcesIntakeStoredItemInput): void => {
       operation: 'validate-item-channel',
     });
   }
-  if (item.sizeBytes <= 0 || item.sizeBytes > 1_048_576) {
+  const maximumSizeBytes =
+    item.inputKind === 'FILE'
+      ? SOURCES_STAGING_MAX_FILE_BYTES
+      : item.inputKind === 'URL'
+        ? SOURCES_STAGING_MAX_URL_BYTES
+        : SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES;
+  if (item.sizeBytes <= 0 || item.sizeBytes > maximumSizeBytes) {
     throw new ShotgunError({
       code: 'VALIDATION_ERROR',
-      safeMessage: 'Sources Item exceeds the approved one MiB boundary.',
+      safeMessage: `Sources Item exceeds the approved ${item.inputKind === 'FILE' ? '10 MiB' : 'one MiB'} boundary.`,
       module: 'frontend-sources-write-postgres',
       operation: 'validate-item-size',
     });

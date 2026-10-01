@@ -110,10 +110,13 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
     expect(request?.systemInstruction).toContain('one atomic claim per candidate');
     expect(candidates).toHaveLength(1);
     expect(request?.systemInstruction).toContain('Evidence may contain visual PDF line breaks');
+    expect(request?.systemInstruction).toContain('complete standalone proposition');
+    expect(request?.systemInstruction).toContain('isolated nouns');
+    expect(request?.systemInstruction).toContain('partial equation fragments');
     expect(candidates[0]).toMatchObject({
       claimText: '1억원 = 6천만원 + 4천만원',
       status: 'READY',
-      providerCall: { promptVersion: 'direct-claim-v6' },
+      providerCall: { promptVersion: 'direct-claim-v7' },
     });
   });
 
@@ -484,7 +487,7 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
       extractionProfile: 'direct-only',
       providerCall: {
         provider: 'fake',
-        promptVersion: 'direct-claim-v6',
+        promptVersion: 'direct-claim-v7',
         policyVersion: 'direct-only-v1',
         structuredOutputValid: true,
         cost: { status: 'unavailable' },

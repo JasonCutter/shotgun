@@ -15,6 +15,10 @@ import listClaimCandidatesOutputSchema from '../../../packages/contracts/schemas
 import listClaimCandidatesSchema from '../../../packages/contracts/schemas/list-claim-candidates.v1.schema.json';
 import listClaimCandidatesByRevisionOutputSchema from '../../../packages/contracts/schemas/list-claim-candidates-by-revision-output.v1.schema.json';
 import listClaimCandidatesByRevisionSchema from '../../../packages/contracts/schemas/list-claim-candidates-by-revision.v1.schema.json';
+import {
+  alignDirectClaimToEvidence,
+  isClearlyIncompleteDirectClaimFragment,
+} from './direct-claim-shape.js';
 import listEvidenceSpansOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-output.v1.schema.json';
 import listEvidenceSpansSchema from '../../../packages/contracts/schemas/list-evidence-spans.v1.schema.json';
 import listEvidenceSpansByRevisionOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-by-revision-output.v1.schema.json';
@@ -527,14 +531,21 @@ export const createCandidateGenerationModule = (
           });
         }
         const modelClaimText = item.claimText.trim();
+        const usesV4CandidatePolicy =
+          generated.call.promptVersion === 'direct-claim-v4' ||
+          generated.call.promptVersion === 'direct-claim-v5' ||
+          generated.call.promptVersion === 'direct-claim-v6' ||
+          generated.call.promptVersion === 'direct-claim-v7';
+        const sourceAlignedModelClaimText = usesV4CandidatePolicy
+          ? (alignDirectClaimToEvidence(sourceEvidence.quote.exact, modelClaimText) ??
+            modelClaimText)
+          : modelClaimText;
         const candidateTexts =
-          (generated.call.promptVersion === 'direct-claim-v4' ||
-            generated.call.promptVersion === 'direct-claim-v5' ||
-            generated.call.promptVersion === 'direct-claim-v6') &&
-          modelClaimText.length > 0 &&
-          sourceEvidence.quote.exact.includes(modelClaimText)
-            ? splitV4CandidateStatements(modelClaimText)
-            : [modelClaimText];
+          usesV4CandidatePolicy &&
+          sourceAlignedModelClaimText.length > 0 &&
+          sourceEvidence.quote.exact.includes(sourceAlignedModelClaimText)
+            ? splitV4CandidateStatements(sourceAlignedModelClaimText)
+            : [sourceAlignedModelClaimText];
         return candidateTexts.flatMap((candidateText): ClaimCandidate[] => {
           const claimText =
             generated.call.promptVersion === 'direct-claim-v3' &&
@@ -543,11 +554,19 @@ export const createCandidateGenerationModule = (
               ? sourceEvidence.quote.exact
               : generated.call.promptVersion === 'direct-claim-v4' ||
                   generated.call.promptVersion === 'direct-claim-v5' ||
-                  generated.call.promptVersion === 'direct-claim-v6'
+                  generated.call.promptVersion === 'direct-claim-v6' ||
+                  generated.call.promptVersion === 'direct-claim-v7'
                 ? preserveQualifiedV4Claim(sourceEvidence.quote.exact, candidateText)
                 : candidateText;
           const fingerprint = sha256Text(stableJson({ claimText, evidenceId: item.evidenceId }));
-          if (!claimText || seen.has(fingerprint)) return [];
+          if (
+            !claimText ||
+            seen.has(fingerprint) ||
+            (generated.call.promptVersion === 'direct-claim-v7' &&
+              isClearlyIncompleteDirectClaimFragment(claimText))
+          ) {
+            return [];
+          }
           seen.add(fingerprint);
           return [
             {

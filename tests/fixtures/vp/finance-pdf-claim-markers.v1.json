@@ -1,9 +1,9 @@
 {
   "contractVersion": "1.0.0",
   "corpusId": "shotgun-vp-finance-pdf-claim-markers",
-  "corpusVersion": "1.2.0",
-  "labelSetRevision": 3,
-  "corpusDigest": "sha256:f6d315123e89593025f6336161d2a29a20314698852571abe3ac9ff8eb54e6cc",
+  "corpusVersion": "1.4.0",
+  "labelSetRevision": 5,
+  "corpusDigest": "sha256:552abba6e0c9a7370e2e93be3ff45a70c0a4ec834b553a42cf98033ac698395b",
   "labelReviewStatus": "CANDIDATE",
   "source": {
     "sha256": "bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01",
@@ -141,6 +141,49 @@
       "page": 8,
       "text": "분산투자로 완전히 제거할 수 없다",
       "dimension": "limitation"
+    },
+    {
+      "id": "investment-decision-purpose",
+      "page": 5,
+      "text": "어떤 자산이나 사업에 투자할 것인가",
+      "requiredEvidenceText": "투자결정",
+      "dimension": "finance-decision"
+    },
+    {
+      "id": "financing-decision-purpose",
+      "page": 5,
+      "text": "필요한 자금을 부채와 자기자본 중 어떤 방식으로 마련할 것인가",
+      "requiredEvidenceText": "자본조달결정",
+      "dimension": "finance-decision"
+    },
+    {
+      "id": "dividend-decision-purpose",
+      "page": 5,
+      "text": "벌어들인 이익 중 얼마를 주주에게 배당하고 얼마를 기업 내부에 남길 것인가",
+      "requiredEvidenceText": "배당결정",
+      "dimension": "finance-decision"
+    }
+  ],
+  "nonClaims": [
+    {
+      "id": "isolated-land-label",
+      "text": "토지",
+      "dimension": "incomplete-list-fragment"
+    },
+    {
+      "id": "isolated-building-label",
+      "text": "건물",
+      "dimension": "incomplete-list-fragment"
+    },
+    {
+      "id": "isolated-machinery-label",
+      "text": "기계장치",
+      "dimension": "incomplete-list-fragment"
+    },
+    {
+      "id": "fragmented-capm-symbols",
+      "text": "i f m f i",
+      "dimension": "incomplete-formula-fragment"
     }
   ]
 }

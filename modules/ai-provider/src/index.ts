@@ -182,7 +182,7 @@ export type AIProviderModuleOptions = {
 };
 
 export const DEFAULT_DEEPSEEK_CANDIDATE_MAX_OUTPUT_TOKENS = 16_384;
-export const DEFAULT_CANDIDATE_PROMPT_VERSION = 'direct-claim-v6';
+export const DEFAULT_CANDIDATE_PROMPT_VERSION = 'direct-claim-v7';
 
 type GenerateStructuredPayload = {
   readonly requestId: string;
@@ -262,6 +262,15 @@ const candidatePromptInstructions: Readonly<Record<string, string>> = {
     'Do not copy an entire paragraph or evidence block when a shorter complete source statement expresses the claim. Do not add a combined duplicate when separate atomic claims are already returned.',
     'Evidence may contain visual PDF line breaks. Split a line only when it completes an atomic claim; keep wrapped sentence fragments and stacked equation rows together. Return each standalone list item as its own candidate and never turn a heading into a claim.',
     'Return no candidate when an explicit claim is absent.',
+  ].join(' '),
+  'direct-claim-v7': [
+    'Extract only claims explicitly stated in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Extract every distinct explicit claim from each evidence item; do not stop after its first claim. Return one atomic claim per candidate. Split separate facts, formulas, examples, and conclusions into separate candidates when each can stand on its own, including when a document converter joined them into one Evidence item.',
+    'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
+    'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies the claim. For an equation or worked example, include its operands and stated result together.',
+    'Each candidate must be a complete standalone proposition, definition, relationship, condition, or complete equation. Do not return headings, category labels, isolated nouns, isolated values, bare variables, or partial equation fragments. A list item is a claim only when its text states a complete relationship, action, or condition; words such as 토지, 건물, or 기계장치 alone are labels, not claims.',
+    'Evidence may contain visual PDF line breaks. Keep wrapped sentence fragments and stacked equation rows together. Return a standalone list item only when it contains a complete claim; include its qualifier and linked label when both occur in the same evidence. For formulas, return the full expression with an operator and operands, never isolated symbols or variable fragments.',
+    'Never turn a heading or an incomplete fragment into a claim. Return no candidate when the evidence does not contain a complete standalone claim.',
   ].join(' '),
 };
 

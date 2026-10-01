@@ -662,6 +662,135 @@ def restore_unmapped_safe_glyphs(
     return restored
 
 
+def restore_pdfium_numbered_list_markers(
+    page_chars: list[dict[str, Any]],
+    page_glyphs: list[dict[str, Any]],
+) -> int:
+    """Restore a digit-period-space prefix only when PDFium text order and boxes agree."""
+    restored = 0
+    used_marker_glyphs: set[int] = set()
+
+    for char_index in range(max(0, len(page_chars) - 2)):
+        marker_chars = page_chars[char_index : char_index + 3]
+        if len(marker_chars) != 3 or any(char.get("text") != "\x00" for char in marker_chars):
+            continue
+        try:
+            boxes = [
+                tuple(float(char[key]) for key in ("x0", "x1", "top", "bottom"))
+                for char in marker_chars
+            ]
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not all(math.isfinite(value) for box in boxes for value in box):
+            continue
+        if any(box[1] <= box[0] or box[3] <= box[2] for box in boxes):
+            continue
+        if any(abs(box[2] - boxes[0][2]) > 0.05 or abs(box[3] - boxes[0][3]) > 0.05 for box in boxes[1:]):
+            continue
+        if any(abs(boxes[index][1] - boxes[index + 1][0]) > 0.05 for index in range(2)):
+            continue
+
+        first, second, third = boxes
+        cluster_center_y = (first[2] + first[3]) / 2.0
+        following_chars = []
+        for char in page_chars:
+            if char.get("text") in (None, "", "\x00"):
+                continue
+            try:
+                x0, top, bottom = float(char["x0"]), float(char["top"]), float(char["bottom"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if (
+                0.0 <= x0 - third[1] <= 8.0
+                and min(first[3], bottom) > max(first[2], top)
+                and str(char.get("text", ""))[:1].isprintable()
+            ):
+                following_chars.append(char)
+        if not following_chars:
+            continue
+        next_char = min(following_chars, key=lambda char: float(char["x0"]))
+        next_text = str(next_char.get("text", ""))
+        next_x0 = float(next_char["x0"])
+        if not next_text or not ("\uac00" <= next_text[0] <= "\ud7a3"):
+            continue
+
+        matching_rows: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]] = []
+        for glyph_index in range(max(0, len(page_glyphs) - 3)):
+            digit, period, space, first_korean = page_glyphs[glyph_index : glyph_index + 4]
+            if not all(
+                int(sequence_glyph["index"]) == int(digit["index"]) + offset
+                for offset, sequence_glyph in enumerate((digit, period, space, first_korean))
+            ):
+                continue
+            digit_value = str(digit.get("text", ""))
+            if len(digit_value) != 1 or not digit_value.isascii() or not digit_value.isdigit():
+                continue
+            if str(period.get("text")) != ".":
+                continue
+            if not str(space.get("text", "")).isspace():
+                continue
+            korean_value = str(first_korean.get("text", ""))
+            if not korean_value or not ("\uac00" <= korean_value[0] <= "\ud7a3"):
+                continue
+            row_center_y = _median([
+                (float(glyph["top"]) + float(glyph["bottom"])) / 2.0
+                for glyph in (digit, period, first_korean)
+            ])
+            if abs(row_center_y - cluster_center_y) > 3.0:
+                continue
+            if abs(float(first_korean["x0"]) - next_x0) > 1.5:
+                continue
+            if float(first_korean["x0"]) - float(period["x1"]) < 3.0:
+                continue
+            space_x0, space_x1 = float(space["x0"]), float(space["x1"])
+            if abs(space_x1 - space_x0) > 0.05 or abs(space_x0 - first[1]) > 0.05:
+                continue
+
+            digit_box = tuple(float(digit[key]) for key in ("x0", "x1", "top", "bottom"))
+            digit_center_distance = math.hypot(
+                (first[0] + first[1] - digit_box[0] - digit_box[1]) / 2,
+                (first[2] + first[3] - digit_box[2] - digit_box[3]) / 2,
+            )
+            digit_intersection = max(0.0, min(first[1], digit_box[1]) - max(first[0], digit_box[0])) * max(
+                0.0, min(first[3], digit_box[3]) - max(first[2], digit_box[2])
+            )
+            digit_min_area = min(
+                (first[1] - first[0]) * (first[3] - first[2]),
+                (digit_box[1] - digit_box[0]) * (digit_box[3] - digit_box[2]),
+            )
+            if digit_min_area <= 0 or digit_center_distance > 2.5 or digit_intersection / digit_min_area < 0.65:
+                continue
+
+            period_box = tuple(float(period[key]) for key in ("x0", "x1", "top", "bottom"))
+            period_x_overlap = max(0.0, min(second[1], period_box[1]) - max(second[0], period_box[0]))
+            period_width = period_box[1] - period_box[0]
+            if period_width <= 0 or period_x_overlap / period_width < 0.65:
+                continue
+            if abs((second[0] + second[1] - period_box[0] - period_box[1]) / 2) > 1.0:
+                continue
+            if abs(second[3] - period_box[3]) > 0.75:
+                continue
+            period_y_overlap = max(0.0, min(second[3], period_box[3]) - max(second[2], period_box[2]))
+            if period_box[3] <= period_box[2] or period_y_overlap / (period_box[3] - period_box[2]) < 0.65:
+                continue
+
+            marker_glyph_id = int(digit["index"])
+            if marker_glyph_id in used_marker_glyphs:
+                continue
+            matching_rows.append((digit, period, first_korean))
+
+        if len(matching_rows) != 1:
+            continue
+        digit, _, _ = matching_rows[0]
+        marker_chars[0]["text"] = str(digit["text"])
+        marker_chars[1]["text"] = "."
+        marker_chars[2]["text"] = " "
+        used_marker_glyphs.add(int(digit["index"]))
+        restored += 3
+
+    return restored
+
+
 def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
     from contextlib import ExitStack
 
@@ -705,6 +834,7 @@ def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
                         pdfium_page = pdfium_document[page_number - 1]
                         page_glyphs = pdfium_page_glyphs(pdfium_page)
                         if has_unmapped_glyph:
+                            restore_pdfium_numbered_list_markers(page_chars, page_glyphs)
                             restore_unmapped_safe_glyphs(
                                 page_chars,
                                 pdfium_recoverable_glyphs(pdfium_page, page_glyphs),

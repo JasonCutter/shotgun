@@ -15,6 +15,7 @@ from worker import (
     pdfium_page_glyphs,
     pdfium_recoverable_glyphs,
     pdfium_stacked_equation_words,
+    restore_pdfium_numbered_list_markers,
     restore_unmapped_safe_glyphs,
 )
 
@@ -137,6 +138,44 @@ class PdfGlyphRecoveryTests(unittest.TestCase):
         self.assertEqual([value for _, value, _ in recoverable], ["=", "1", "("])
         self.assertEqual(restored, 3)
         self.assertEqual([char["text"] for char in chars], ["=", "1", "("])
+
+    def test_restores_a_numbered_list_prefix_only_with_matching_pdfium_geometry(self) -> None:
+        chars = [
+            damaged_char(10, 18, 20, 32),
+            damaged_char(18, 22, 20, 32),
+            damaged_char(22, 26, 20, 32),
+            {"text": "투", "x0": 29, "x1": 35, "top": 21, "bottom": 33},
+        ]
+        glyphs = [
+            {"index": 1, "text": "1", "x0": 11, "x1": 16, "top": 22, "bottom": 32},
+            {"index": 2, "text": ".", "x0": 18.5, "x1": 20, "top": 30.5, "bottom": 32},
+            {"index": 3, "text": " ", "x0": 18, "x1": 18, "top": 32, "bottom": 32},
+            {"index": 4, "text": "투", "x0": 29, "x1": 35, "top": 21, "bottom": 33},
+        ]
+
+        restored = restore_pdfium_numbered_list_markers(chars, glyphs)
+
+        self.assertEqual(restored, 3)
+        self.assertEqual([char["text"] for char in chars], ["1", ".", " ", "투"])
+
+    def test_keeps_a_numbered_list_prefix_when_the_period_baseline_disagrees(self) -> None:
+        chars = [
+            damaged_char(10, 18, 20, 32),
+            damaged_char(18, 22, 20, 32),
+            damaged_char(22, 26, 20, 32),
+            {"text": "투", "x0": 29, "x1": 35, "top": 21, "bottom": 33},
+        ]
+        glyphs = [
+            {"index": 1, "text": "1", "x0": 11, "x1": 16, "top": 22, "bottom": 32},
+            {"index": 2, "text": ".", "x0": 18.5, "x1": 20, "top": 29, "bottom": 31},
+            {"index": 3, "text": " ", "x0": 18, "x1": 18, "top": 32, "bottom": 32},
+            {"index": 4, "text": "투", "x0": 29, "x1": 35, "top": 21, "bottom": 33},
+        ]
+
+        restored = restore_pdfium_numbered_list_markers(chars, glyphs)
+
+        self.assertEqual(restored, 0)
+        self.assertEqual([char["text"] for char in chars], ["\x00", "\x00", "\x00", "투"])
 
     def test_rebuilds_a_flat_formula_and_marks_its_superscript(self) -> None:
         glyphs = formula_glyphs("FV=PV(1+r)n", superscript="n")

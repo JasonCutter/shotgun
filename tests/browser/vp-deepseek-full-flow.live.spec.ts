@@ -1267,7 +1267,8 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
       vpFinancePDFClaimMarkerCorpus.source.sha256,
     );
-    const runtimePromptVersion = 'direct-claim-v6';
+    const runtimePromptVersion =
+      process.env.VP_FINANCE_PDF_TEST_PROMPT_VERSION ?? 'direct-claim-v7';
     runtime = await startProductRuntime(isolated.databaseUrl, runtimePromptVersion, (diagnostic) =>
       providerResponses.push(diagnostic),
     );
@@ -1388,13 +1389,18 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       claim_text: string;
       status: string;
       evidence_text: string;
+      validation_dimensions: unknown;
     }>(
       `SELECT candidate.claim_text, candidate.status,
-              evidence.quote->>'exact' AS evidence_text
+              evidence.quote->>'exact' AS evidence_text,
+              validation.dimensions AS validation_dimensions
          FROM candidate.claim_candidates AS candidate
          JOIN evidence.spans AS evidence
            ON evidence.project_id = candidate.project_id
           AND evidence.evidence_id = candidate.evidence_id
+         LEFT JOIN validation.results AS validation
+           ON validation.project_id = candidate.project_id
+          AND validation.candidate_id = candidate.candidate_id
         WHERE candidate.project_id = 'shotgun'
           AND candidate.source_version_id = $1::uuid
         ORDER BY candidate.claim_text`,
@@ -1447,6 +1453,12 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
         candidateRow,
       };
     });
+    const nonClaimMatches = vpFinancePDFClaimMarkerCorpus.nonClaims.map((nonClaim) => ({
+      nonClaimId: nonClaim.id,
+      matchedClaimTexts: assertionRows.rows
+        .filter((row) => normalize(row.claim_text) === normalize(nonClaim.text))
+        .map((row) => row.claim_text),
+    }));
     const npvRule = (operator: '>' | '<') => {
       const pattern = new RegExp(`NPV\\s*${operator}\\s*0`, 'iu');
       const matched = assertionRows.rows.find(
@@ -1466,11 +1478,13 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
         corpusDigest: vpFinancePDFClaimMarkerCorpusComputedDigest,
         labelReviewStatus: vpFinancePDFClaimMarkerCorpus.labelReviewStatus,
         markerCount: vpFinancePDFClaimMarkerCorpus.markers.length,
+        nonClaimCount: vpFinancePDFClaimMarkerCorpus.nonClaims.length,
         assertions: assertionRows.rows.length,
         generatedCandidates: candidateRows.rows.length,
         missingMarkers: markers
           .filter((marker) => !marker.matched)
           .map((marker) => marker.markerId),
+        nonClaimMatches: nonClaimMatches.filter((result) => result.matchedClaimTexts.length > 0),
         markerEvidenceMatches: vpFinancePDFClaimMarkerCorpus.markers
           .filter((marker) => !markers.find((result) => result.markerId === marker.id)?.matched)
           .map((marker) => ({
@@ -1482,6 +1496,9 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
                 status,
                 claimText: claim_text,
                 evidenceText: evidence_text,
+                validationDimensions: candidateRows.rows.find(
+                  (row) => row.claim_text === claim_text && row.evidence_text === evidence_text,
+                )?.validation_dimensions,
               })),
           })),
         relevantGeneratedCandidates: candidateRows.rows
@@ -1490,15 +1507,17 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
               row.claim_text,
             ),
           )
-          .map(({ status, claim_text, evidence_text }) => ({
+          .map(({ status, claim_text, evidence_text, validation_dimensions }) => ({
             status,
             claimText: claim_text,
             evidenceText: evidence_text,
+            validationDimensions: validation_dimensions,
           })),
       }),
     );
     expect(assertionRows.rows.length).toBeGreaterThan(0);
     expect(markers.filter((marker) => marker.matched)).toHaveLength(markers.length);
+    expect(nonClaimMatches.filter((result) => result.matchedClaimTexts.length > 0)).toEqual([]);
     expect(npvPositiveRule.matched, 'DeepSeek must preserve the source NPV > 0 rule').toBe(true);
     expect(npvNegativeRule.matched, 'DeepSeek must preserve the source NPV < 0 rule').toBe(true);
     expect(assertionRows.rows.every((row) => row.evidence_text.includes(row.claim_text))).toBe(

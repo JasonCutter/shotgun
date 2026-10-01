@@ -24,6 +24,11 @@ export type VPFinancePDFClaimMarkerCorpus = {
     readonly requiredEvidenceText?: string;
     readonly dimension: string;
   }[];
+  readonly nonClaims: readonly {
+    readonly id: string;
+    readonly text: string;
+    readonly dimension: string;
+  }[];
 };
 
 const schema = JSON.parse(

@@ -42,6 +42,12 @@
   align with fraction rows, all existing extracted characters must be present
   in the geometry-backed formula, and the original page/BBox is preserved.
   The Python adapter advances to `1.6.0`.
+- 2026-10-01 — VP-04 amendment: the locked pypdfium2 build may repair a
+  damaged numbered-list prefix only when its exact digit-period-space-Hangul
+  character sequence, digit and period geometry, PDFium whitespace position,
+  and pdfplumber source line agree. The original pdfplumber boxes remain the
+  selectors. The Python adapter advances to `1.8.0`; pdfplumber retains reading
+  order and SourceMap ownership.
 
 ## 결정
 

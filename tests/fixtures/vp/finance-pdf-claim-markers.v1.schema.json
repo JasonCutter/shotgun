@@ -12,7 +12,8 @@
     "corpusDigest",
     "labelReviewStatus",
     "source",
-    "markers"
+    "markers",
+    "nonClaims"
   ],
   "properties": {
     "contractVersion": { "const": "1.0.0" },
@@ -46,6 +47,21 @@
           "text": { "type": "string", "minLength": 1 },
           "requiredText": { "type": "string", "minLength": 1 },
           "requiredEvidenceText": { "type": "string", "minLength": 1 },
+          "dimension": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "nonClaims": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "dimension"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "text": { "type": "string", "minLength": 1 },
           "dimension": { "type": "string", "minLength": 1 }
         }
       }

@@ -457,6 +457,32 @@ const submitFinancePdf = async (page: Page, frontendUrl: string, filePath: strin
   return produced!;
 };
 
+const submitStage8FormatFixture = async (
+  page: Page,
+  frontendUrl: string,
+  input: { readonly fileName: string; readonly mediaType: string },
+) => {
+  await page.goto(`${frontendUrl}/sources?view=add`);
+  await page.locator('#source-intake-kind').selectOption('FILE');
+  await page.locator('#source-intake-file').setInputFiles({
+    name: input.fileName,
+    mimeType: input.mediaType,
+    buffer: readFileSync(path.resolve('tests/fixtures/stage-8', input.fileName)),
+  });
+  const submissionResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/product-api/frontend/sources/submissions') &&
+      response.request().method() === 'POST',
+  );
+  await page.locator('.source-intake-form button[type="submit"]').click();
+  const response = await submissionResponse;
+  expect(response.ok(), `${input.fileName} submission returned ${response.status()}`).toBe(true);
+  const body = (await response.json()) as SourceSubmission;
+  const produced = body.submission?.items?.[0]?.producedResource;
+  expect(produced, `${input.fileName} should produce a SourceVersion`).toBeDefined();
+  return produced!;
+};
+
 const waitForVPConvergence = async (
   pool: Pool,
   replayModule: ReplayModule,
@@ -1912,6 +1938,221 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
         currentRelations: replay.currentRelations,
         pendingRelationJobs: replay.pendingRelationJobs,
         relations: relationRows.rows,
+      }),
+    );
+  } finally {
+    if (runtime) {
+      await page.evaluate(() => {
+        localStorage.clear();
+        sessionStorage.clear();
+      });
+      await page.context().clearCookies();
+      await runtime.close();
+    }
+    await isolated.dispose();
+  }
+});
+
+test('VP live Stage 8 format Golden actual DeepSeek answers', async ({ page }) => {
+  test.skip(
+    !live || process.env.VP_LIVE_DEEPSEEK_FORMATS !== '1',
+    'Set VP_LIVE_DEEPSEEK=1 and VP_LIVE_DEEPSEEK_FORMATS=1 to run the live format acceptance.',
+  );
+  test.setTimeout(900_000);
+
+  const databaseFactory = (await tsImport(
+    '../helpers/isolated-postgres-test-database.ts',
+    import.meta.url,
+  )) as IsolatedDatabaseFactory;
+  const replayModule = (await tsImport(
+    '../../scripts/vp-projection-replay.ts',
+    import.meta.url,
+  )) as ReplayModule;
+  const isolated = await databaseFactory.createIsolatedPostgresTestDatabase();
+  const pool = isolated.createPool();
+  const providerResponses: ProviderResponseDiagnostic[] = [];
+  let runtime: ProductRuntime | undefined;
+  try {
+    runtime = await startProductRuntime(isolated.databaseUrl, 'direct-claim-v8', (diagnostic) =>
+      providerResponses.push(diagnostic),
+    );
+    await bootstrapProductSession(page, runtime.frontendUrl);
+
+    const formatCases = [
+      {
+        fileName: 'golden.html',
+        mediaType: 'text/html',
+        selectorType: 'CssSelector',
+        question: 'What does the uploaded web page say about evidence?',
+        expectedAnswerTerms: ['Evidence stays linked.'],
+        expectedEvidenceTerms: ['Evidence stays linked'],
+      },
+      {
+        fileName: 'golden.csv',
+        mediaType: 'text/csv',
+        selectorType: 'CellSelector',
+        question: 'What status does the uploaded CSV record?',
+        expectedAnswerTerms: ['Ready'],
+        expectedEvidenceTerms: ['Status: Ready'],
+      },
+      {
+        fileName: 'golden.docx',
+        mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        selectorType: 'CssSelector',
+        question: 'What does the Word document say about evidence?',
+        expectedAnswerTerms: ['Evidence stays linked.'],
+        expectedEvidenceTerms: ['Evidence stays linked'],
+      },
+      {
+        fileName: 'golden.xlsx',
+        mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        selectorType: 'CellSelector',
+        question: 'What formula does the uploaded spreadsheet specify?',
+        expectedAnswerTerms: ['=1+1', '1+1'],
+        expectedEvidenceTerms: ['Formula: =1+1'],
+      },
+      {
+        fileName: 'golden.pptx',
+        mediaType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        selectorType: 'ShapeSelector',
+        question: 'What does the presentation slide say about evidence?',
+        expectedAnswerTerms: ['Evidence stays linked.'],
+        expectedEvidenceTerms: ['Evidence stays linked'],
+      },
+    ] as const;
+    const formatFilter = process.env.VP_LIVE_DEEPSEEK_FORMAT_FILTER?.split(',')
+      .map((fileName) => fileName.trim())
+      .filter(Boolean);
+    const selectedFormatCases = formatFilter?.length
+      ? formatCases.filter((format) => formatFilter.includes(format.fileName))
+      : formatCases;
+    expect(
+      selectedFormatCases.length,
+      'The requested live format filter should match a fixture',
+    ).toBeGreaterThan(0);
+    const acceptedFormats: string[] = [];
+    const normalize = (value: string) =>
+      value.normalize('NFKC').toLocaleLowerCase().replace(/\s/gu, '');
+
+    for (const format of selectedFormatCases) {
+      const source = await submitStage8FormatFixture(page, runtime.frontendUrl, format);
+      await waitForVPConvergence(pool, replayModule);
+      const sourceAssertions = await pool.query<{ readonly evidence_text: string }>(
+        `SELECT evidence.quote->>'exact' AS evidence_text
+           FROM vp.current_assertions AS assertion
+           JOIN evidence.spans AS evidence
+             ON evidence.project_id = assertion.project_id
+            AND evidence.evidence_id = assertion.evidence_id
+          WHERE assertion.project_id = 'shotgun'
+            AND assertion.source_version_id = $1::uuid`,
+        [source.sourceVersionId],
+      );
+      const candidateDisposition = await pool.query<{
+        readonly candidate_status: string;
+        readonly direct_text_status: string | null;
+        readonly count: number;
+      }>(
+        `SELECT candidate.status AS candidate_status,
+                direct_text.status AS direct_text_status, count(*)::int AS count
+           FROM candidate.claim_candidates AS candidate
+           LEFT JOIN validation.results AS validation
+             ON validation.project_id = candidate.project_id
+            AND validation.candidate_id = candidate.candidate_id
+           LEFT JOIN LATERAL (
+             SELECT dimension->>'status' AS status
+               FROM jsonb_array_elements(validation.dimensions) AS dimension
+              WHERE dimension->>'name' = 'direct-text'
+              LIMIT 1
+           ) AS direct_text ON true
+          WHERE candidate.project_id = 'shotgun'
+            AND candidate.source_version_id = $1::uuid
+          GROUP BY candidate.status, direct_text.status
+          ORDER BY candidate.status, direct_text.status`,
+        [source.sourceVersionId],
+      );
+      expect(
+        sourceAssertions.rows.some((assertion) =>
+          format.expectedEvidenceTerms.some((term) =>
+            normalize(assertion.evidence_text).includes(normalize(term)),
+          ),
+        ),
+        `${format.fileName}: activate a direct claim grounded in the expected source text; candidates=${JSON.stringify(candidateDisposition.rows)}, activeAssertions=${sourceAssertions.rows.length}`,
+      ).toBe(true);
+      const answer = await askFinanceKnowledgeQuestion(page, runtime.frontendUrl, format.question);
+      expect(
+        format.expectedAnswerTerms.some((term) => normalize(answer.text).includes(normalize(term))),
+        `${format.fileName}: DeepSeek answer should use the fixture's expected answer`,
+      ).toBe(true);
+
+      const citations = await pool.query<{
+        readonly source_id: string;
+        readonly source_version_id: string;
+        readonly evidence_text: string;
+        readonly selectors: readonly { readonly type: string }[];
+      }>(
+        `SELECT citation.source_id::text, citation.source_version_id::text,
+                evidence.quote->>'exact' AS evidence_text, evidence.selectors
+           FROM frontend_ask.citations AS citation
+           JOIN frontend_ask.statements AS statement
+             ON statement.statement_id = citation.statement_id
+           JOIN frontend_ask.answer_runs AS answer_run
+             ON answer_run.answer_run_id = statement.answer_run_id
+           JOIN evidence.spans AS evidence
+             ON evidence.evidence_id = citation.evidence_id
+          WHERE citation.citation_id = ANY($1::text[])
+            AND answer_run.project_id = 'shotgun'`,
+        [answer.citationIds],
+      );
+      const sourceCitations = citations.rows.filter(
+        (citation) =>
+          citation.source_id === source.sourceId &&
+          citation.source_version_id === source.sourceVersionId,
+      );
+      expect(
+        sourceCitations.length,
+        `${format.fileName}: cite its uploaded SourceVersion`,
+      ).toBeGreaterThan(0);
+      expect(
+        sourceCitations.some((citation) =>
+          format.expectedEvidenceTerms.some((term) =>
+            normalize(citation.evidence_text).includes(normalize(term)),
+          ),
+        ),
+        `${format.fileName}: citation should retain the expected source text`,
+      ).toBe(true);
+      expect(
+        sourceCitations.some((citation) =>
+          citation.selectors.some((selector) => selector.type === format.selectorType),
+        ),
+        `${format.fileName}: citation should retain its ${format.selectorType} selector`,
+      ).toBe(true);
+      acceptedFormats.push(format.fileName);
+    }
+
+    const replay = await replayModule.verifyVPProjectionReplay(pool, 'shotgun');
+    expect(replay).toMatchObject({
+      matches: true,
+      relationQueueSettled: true,
+      pendingRelationJobs: 0,
+    });
+    const assertionCount = await pool.query<{ readonly count: number }>(
+      `SELECT count(*)::int AS count FROM vp.current_assertions WHERE project_id = 'shotgun'`,
+    );
+    console.info(
+      JSON.stringify({
+        summary: 'vp-live-stage8-format-ask-acceptance-v1',
+        adapterVersion: '1.11.0',
+        candidatePromptVersion: 'direct-claim-v8',
+        acceptedFormats,
+        assertionCount: assertionCount.rows[0]?.count ?? 0,
+        currentRelations: replay.currentRelations,
+        pendingRelationJobs: replay.pendingRelationJobs,
+        replayMatches: replay.matches,
+        providerResponseCount: providerResponses.length,
+        providerReportedTokens: providerResponses.reduce(
+          (total, response) => total + (response.totalTokens ?? 0),
+          0,
+        ),
       }),
     );
   } finally {

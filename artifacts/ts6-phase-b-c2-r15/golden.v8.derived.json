@@ -5134,7 +5134,7 @@
             "bindingPort": "FrontendCommandGatewayPort",
             "bindingVia": "field commandGateway of SourcesWriteRuntime declared as FrontendCommandGatewayPort",
             "receiverType": "FrontendCommandGatewayPort",
-            "line": 188,
+            "line": 189,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -5305,7 +5305,7 @@
             "bindingPort": "FrontendCommandGatewayPort",
             "bindingVia": "field commandGateway of SourcesWriteRuntime declared as FrontendCommandGatewayPort",
             "receiverType": "FrontendCommandGatewayPort",
-            "line": 214,
+            "line": 215,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -5323,7 +5323,7 @@
             "bindingPort": "FrontendCommandGatewayPort",
             "bindingVia": "field commandGateway of SourcesWriteRuntime declared as FrontendCommandGatewayPort",
             "receiverType": "FrontendCommandGatewayPort",
-            "line": 710,
+            "line": 711,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -8627,7 +8627,7 @@
             "bindingPort": "SourcesProductWriteServicePort",
             "bindingVia": "field productService of SourcesWriteRuntime declared as SourcesProductWriteServicePort",
             "receiverType": "SourcesProductWriteServicePort",
-            "line": 568,
+            "line": 569,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -8717,7 +8717,7 @@
             "bindingPort": "SourcesProductWriteServicePort",
             "bindingVia": "field productService of SourcesWriteRuntime declared as SourcesProductWriteServicePort",
             "receiverType": "SourcesProductWriteServicePort",
-            "line": 359,
+            "line": 360,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -8762,7 +8762,7 @@
             "bindingPort": null,
             "bindingVia": "value of sourcesProductService is the declared return type of a helper",
             "receiverType": "PostgresSourcesProductService",
-            "line": 1498,
+            "line": 1477,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -8915,7 +8915,7 @@
             "bindingPort": "SourcesProductWriteServicePort",
             "bindingVia": "field productService of SourcesWriteRuntime declared as SourcesProductWriteServicePort",
             "receiverType": "SourcesProductWriteServicePort",
-            "line": 453,
+            "line": 454,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]

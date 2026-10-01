@@ -32,9 +32,14 @@ export const SOURCES_STAGING_MEDIA_TYPES: readonly SourcesStagingMediaType[] = [
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 ];
 
-export const SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES = 1_048_576;
-export const SOURCES_STAGING_MAX_FILE_BYTES = 10 * 1024 * 1024;
-export const SOURCES_STAGING_MAX_URL_BYTES = 1_048_576;
+export const SOURCES_STAGING_MAX_BYTES = {
+  DIRECT_TEXT: 1_048_576,
+  FILE: 10 * 1024 * 1024,
+  URL: 1_048_576,
+} as const;
+export const SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES = SOURCES_STAGING_MAX_BYTES.DIRECT_TEXT;
+export const SOURCES_STAGING_MAX_FILE_BYTES = SOURCES_STAGING_MAX_BYTES.FILE;
+export const SOURCES_STAGING_MAX_URL_BYTES = SOURCES_STAGING_MAX_BYTES.URL;
 
 export type SourcesStagingReceipt = {
   readonly schemaVersion: typeof SOURCES_SCHEMA_VERSION;

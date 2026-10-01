@@ -56,6 +56,9 @@ Verification passed:
 - Changed-file ESLint, `docs:validate` (541 links), and `oss:verify` (73
   decisions) passed. Root typecheck remains blocked only by the pre-existing,
   user-owned untracked TS7 contract test importing obsolete contract symbols.
+- `verify:ts6-c2` passed after refreshing only the generated v8 derived lineage
+  line references for the touched adapter; frozen v2–v7 history and approved
+  relation inputs remain unchanged.
 
 Migration 127 only widens FILE checks; application rollback is safe with the
 wider schema left in place. Do not re-tighten the checks after accepting larger

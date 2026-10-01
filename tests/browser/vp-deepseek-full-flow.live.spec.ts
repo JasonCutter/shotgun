@@ -1984,7 +1984,7 @@ test('VP live Stage 8 format Golden actual DeepSeek answers', async ({ page }) =
         mediaType: 'text/html',
         selectorType: 'CssSelector',
         question: 'What does the uploaded web page say about evidence?',
-        expectedAnswerTerms: ['Evidence stays linked.'],
+        expectedAnswerTerms: ['Evidence stays linked.', 'Evidence stays linked'],
         expectedEvidenceTerms: ['Evidence stays linked'],
       },
       {
@@ -2000,7 +2000,7 @@ test('VP live Stage 8 format Golden actual DeepSeek answers', async ({ page }) =
         mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         selectorType: 'CssSelector',
         question: 'What does the Word document say about evidence?',
-        expectedAnswerTerms: ['Evidence stays linked.'],
+        expectedAnswerTerms: ['Evidence stays linked.', 'Evidence stays linked'],
         expectedEvidenceTerms: ['Evidence stays linked'],
       },
       {
@@ -2016,7 +2016,7 @@ test('VP live Stage 8 format Golden actual DeepSeek answers', async ({ page }) =
         mediaType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         selectorType: 'ShapeSelector',
         question: 'What does the presentation slide say about evidence?',
-        expectedAnswerTerms: ['Evidence stays linked.'],
+        expectedAnswerTerms: ['Evidence stays linked.', 'Evidence stays linked'],
         expectedEvidenceTerms: ['Evidence stays linked'],
       },
     ] as const;

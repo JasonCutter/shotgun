@@ -153,3 +153,36 @@ were 1,044 and 1,015 tokens. Provider latency p50 was 924 ms in both runs and
 p95 was 1,313 ms and 1,083 ms. The corpus remains `CANDIDATE`; these are model
 repeat measurements, not independent adjudication, cost reconciliation, or a
 calibrated quality estimate. See the [v1.2 revision report](./vp-finance-relation-label-revision-2026-10-01.md).
+
+## 2026-10-02 repeated 30-pair confidence-threshold observation
+
+Three additional direct DeepSeek runs exercised the same fixed 30-pair
+candidate corpus under `vp-deepseek-relation-v6-evidence-context`. Each run
+received 30/30 provider responses. The corpus has 23 strict, single-choice
+labels and seven deliberately cautious multi-choice cases; all labels remain
+`CANDIDATE`, without independent domain adjudication. These tests call the
+decision Adapter directly and do not write decisions to the VP ledger.
+
+| Run | Strict labels correct | Safe-choice set passed | Input / output tokens | p50 / p95 latency | Strict cases eligible at 0.90 | Eligible correct / incorrect | Withheld correct / incorrect |
+| --: | --------------------: | ---------------------: | --------------------: | ----------------: | ----------------------------: | ---------------------------: | ---------------------------: |
+|   1 |                 22/23 |                  28/30 |        22,961 / 2,195 |    908 / 1,165 ms |                         18/23 |                       18 / 0 |                        4 / 1 |
+|   2 |                 23/23 |                  29/30 |        22,961 / 2,167 |    939 / 1,166 ms |                         20/23 |                       20 / 0 |                        3 / 0 |
+|   3 |                 22/23 |                  28/30 |        22,961 / 2,188 |    789 / 1,126 ms |                         19/23 |                       19 / 0 |                        3 / 1 |
+
+For runs 1 and 2, the 0.90 eligibility counts were recomputed from their
+case-level reported probabilities; run 3 also emitted the threshold summary
+directly. On every run, the threshold withheld all strict-label errors, but it
+also withheld 3–4 correct cases. Across these repeated trials there were 57
+eligible outcomes and none were wrong, with ten correct and two incorrect
+outcomes withheld. These are repeated measurements of the same 23 labels, not
+69 independent examples, so the combined count must not be read as a general
+accuracy guarantee.
+
+Run 3's multiclass Brier score was 0.08563 and chosen-decision ECE was 0.06261
+on the 23 strict candidate labels only. Its 0.90 gate had 19 eligible cases
+(19 correct, zero incorrect) and withheld four (three correct, one incorrect).
+The calculation is descriptive: probabilities come from the model, and the
+labels are not reviewer-approved gold data. The unchanged threshold is not
+calibrated by this corpus, and these measurements do not close VP-04/05. The
+three calls used `deepseek-flash`; provider-reported usage totals 68,883 input
+and 6,550 output tokens. Actual billing was not reconciled.

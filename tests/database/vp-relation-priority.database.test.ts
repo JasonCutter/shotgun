@@ -25,6 +25,7 @@ import {
 import { GeneralAIVPDecisionAdapter } from '../../adapters/vp-decision-general-ai/src/index.js';
 import type { AIProviderExecutionResolverPort } from '../../modules/ai-provider/src/index.js';
 import { vpRelationDecisionCorpus } from '../helpers/vp-relation-decision-corpus.js';
+import { vpRelationPruningStressCorpus } from '../helpers/vp-relation-pruning-stress-corpus.js';
 import { vpFinanceRelationCandidateCorpus } from '../helpers/vp-finance-relation-candidate.js';
 import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres-test-database.js';
 import { verifyVPProjectionReplay } from '../../scripts/vp-projection-replay.js';
@@ -1277,7 +1278,7 @@ it('characterizes the all-pairs relation queue and daily decision budget at 64 a
   }
 }, 120_000);
 
-it('measures pg_trgm filtering recall against both VP relation candidate corpora', async () => {
+it('measures pg_trgm filtering recall against VP relation and stress corpora', async () => {
   const database = await createIsolatedPostgresTestDatabase();
   const pool = database.createPool();
   try {
@@ -1307,6 +1308,13 @@ it('measures pg_trgm filtering recall against both VP relation candidate corpora
         corpusDigest: vpFinanceRelationCandidateCorpus.corpusDigest,
         labelReviewStatus: vpFinanceRelationCandidateCorpus.labelReviewStatus,
         cases: vpFinanceRelationCandidateCorpus.cases,
+      },
+      {
+        corpusId: vpRelationPruningStressCorpus.corpusId,
+        corpusVersion: vpRelationPruningStressCorpus.corpusVersion,
+        corpusDigest: vpRelationPruningStressCorpus.corpusDigest,
+        labelReviewStatus: vpRelationPruningStressCorpus.labelReviewStatus,
+        cases: vpRelationPruningStressCorpus.cases,
       },
     ];
     const thresholds = [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3];
@@ -1355,8 +1363,8 @@ it('measures pg_trgm filtering recall against both VP relation candidate corpora
         };
       }),
     );
-    expect(measurements.map((sample) => sample.caseCount)).toEqual([16, 14]);
-    expect(measurements.map((sample) => sample.exactRelationCaseCount)).toEqual([10, 13]);
+    expect(measurements.map((sample) => sample.caseCount)).toEqual([16, 14, 64]);
+    expect(measurements.map((sample) => sample.exactRelationCaseCount)).toEqual([10, 13, 56]);
     expect(
       measurements.every((measurement) =>
         measurement.scores.every((sample) => sample.score >= 0 && sample.score <= 1),
@@ -1365,7 +1373,7 @@ it('measures pg_trgm filtering recall against both VP relation candidate corpora
 
     console.info(
       JSON.stringify({
-        summary: 'vp-relation-pg-trgm-filter-frontier-v2',
+        summary: 'vp-relation-pg-trgm-filter-frontier-v3',
         postgresVersion: runtime.rows[0]?.server_version,
         pgTrgmVersion: runtime.rows[0]?.trigram_version,
         pgvectorVersion: runtime.rows[0]?.vector_version,

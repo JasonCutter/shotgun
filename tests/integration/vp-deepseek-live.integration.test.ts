@@ -259,6 +259,8 @@ describe.skipIf(!live)('VP DeepSeek live decision proof', () => {
         readonly accepted: boolean;
         readonly choice?: string;
         readonly direction?: string;
+        readonly expectedChoice?: VPRelationChoice;
+        readonly probabilities?: VPRelationDecision['probabilities'];
       }[] = [];
       const failures: string[] = [];
       for (const sample of corpus) {
@@ -291,6 +293,10 @@ describe.skipIf(!live)('VP DeepSeek live decision proof', () => {
             accepted,
             choice: result.choice,
             direction: result.direction,
+            ...(sample.allowedChoices.length === 1
+              ? { expectedChoice: sample.allowedChoices[0] }
+              : {}),
+            probabilities: result.probabilities,
           });
           console.info(
             JSON.stringify({
@@ -339,6 +345,72 @@ describe.skipIf(!live)('VP DeepSeek live decision proof', () => {
       const percentile = (percent: number): number | undefined =>
         sortedLatency[Math.ceil((percent / 100) * sortedLatency.length) - 1];
       const strictOutcomes = outcomes.filter((outcome) => outcome.strictLabel);
+      const calibrationOutcomes = strictOutcomes.filter(
+        (
+          outcome,
+        ): outcome is typeof outcome & {
+          readonly expectedChoice: VPRelationChoice;
+          readonly probabilities: VPRelationDecision['probabilities'];
+          readonly choice: string;
+        } =>
+          outcome.expectedChoice !== undefined &&
+          outcome.probabilities !== undefined &&
+          outcome.choice !== undefined,
+      );
+      const multiclassBrierScores = calibrationOutcomes.map((outcome) =>
+        VP_RELATION_CHOICES.reduce((sum, choice) => {
+          const probability = outcome.probabilities[choice] ?? 0;
+          const observed = outcome.expectedChoice === choice ? 1 : 0;
+          return sum + (probability - observed) ** 2;
+        }, 0),
+      );
+      const decisionProbabilityCalibration = calibrationOutcomes.map((outcome) => ({
+        probability: outcome.probabilities[outcome.choice as VPRelationChoice] ?? 0,
+        correct: outcome.choice === outcome.expectedChoice,
+      }));
+      const reliabilityBands = [0, 0.5, 0.7, 0.9].map((lower, index, lowers) => {
+        const upper = lowers[index + 1] ?? 1.000001;
+        const band = decisionProbabilityCalibration.filter(
+          (sample) => sample.probability >= lower && sample.probability < upper,
+        );
+        return {
+          lowerInclusive: lower,
+          upperExclusive: upper,
+          sampleCount: band.length,
+          ...(band.length === 0
+            ? {}
+            : {
+                meanReportedDecisionProbability:
+                  band.reduce((sum, sample) => sum + sample.probability, 0) / band.length,
+                observedDecisionAccuracy:
+                  band.filter((sample) => sample.correct).length / band.length,
+              }),
+        };
+      });
+      const expectedCalibrationError =
+        calibrationOutcomes.length === 0
+          ? undefined
+          : reliabilityBands.reduce(
+              (sum, band) =>
+                sum +
+                (band.sampleCount / calibrationOutcomes.length) *
+                  Math.abs(
+                    (band.meanReportedDecisionProbability ?? 0) -
+                      (band.observedDecisionAccuracy ?? 0),
+                  ),
+              0,
+            );
+      const minimumChoiceProbability = 0.9;
+      const policyGateOutcomes = calibrationOutcomes.map((outcome) => {
+        const chosenProbability = outcome.probabilities[outcome.choice as VPRelationChoice] ?? 0;
+        return {
+          eligible:
+            outcome.choice !== 'UNRESOLVED' && chosenProbability >= minimumChoiceProbability,
+          correct: outcome.accepted,
+        };
+      });
+      const gateEligibleOutcomes = policyGateOutcomes.filter((outcome) => outcome.eligible);
+      const gateWithheldOutcomes = policyGateOutcomes.filter((outcome) => !outcome.eligible);
       console.info(
         JSON.stringify({
           summary: 'vp-deepseek-relation-candidate-corpora-v1',
@@ -369,6 +441,31 @@ describe.skipIf(!live)('VP DeepSeek live decision proof', () => {
           failedCount: failures.length,
           exactLabelCases: strictOutcomes.length,
           exactLabelCorrect: strictOutcomes.filter((outcome) => outcome.accepted).length,
+          probabilityCalibration: {
+            evaluatedCases: calibrationOutcomes.length,
+            excludedCautiousLabelCases: outcomes.filter((outcome) => !outcome.strictLabel).length,
+            meanMulticlassBrierScore:
+              multiclassBrierScores.length === 0
+                ? undefined
+                : multiclassBrierScores.reduce((sum, score) => sum + score, 0) /
+                  multiclassBrierScores.length,
+            chosenDecisionExpectedCalibrationError: expectedCalibrationError,
+            reliabilityBands,
+            currentPolicyThreshold: {
+              minimumChoiceProbability,
+              commitEligibleCases: gateEligibleOutcomes.length,
+              committedCorrectCases: gateEligibleOutcomes.filter((outcome) => outcome.correct)
+                .length,
+              committedIncorrectCases: gateEligibleOutcomes.filter((outcome) => !outcome.correct)
+                .length,
+              withheldCorrectCases: gateWithheldOutcomes.filter((outcome) => outcome.correct)
+                .length,
+              withheldIncorrectCases: gateWithheldOutcomes.filter((outcome) => !outcome.correct)
+                .length,
+            },
+            interpretation:
+              'Descriptive model-reported probabilities on candidate labels only; not a calibrated release threshold.',
+          },
           safeSetPassCount: outcomes.filter((outcome) => outcome.accepted).length,
           unresolvedInSafeEnvelopeCount: outcomes.filter(
             (outcome) =>

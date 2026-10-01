@@ -350,3 +350,42 @@ large relation queues, or actual account billing. Keep this as a benchmark
 prototype until the labels are independently reviewed and a durable batch
 protocol passes the Port contract, idempotency, security, replacement, and
 rollback gates. No production queue or migration changed.
+
+## 2026-10-02 fixed stress corpus for `pg_trgm` recall
+
+To broaden the earlier 16-case synthetic and 14-case finance score frontier,
+the database test now measures a versioned 64-pair generated corpus. Eight
+variants cover exact English counts, English numeric conflicts, Korean finance
+paraphrases and conflicts, scope qualification, disjoint NPV conditions,
+English/Korean translations, and different-year claims. The 56 single-label
+cases are deterministic test-authored examples; the remaining eight temporal
+cases deliberately keep cautious label envelopes. The corpus digest is
+`sha256:1008853d144c33b4592cf9473ff4117ed7337d3321f3fc12b853d9da998a735a`.
+Its status remains `CANDIDATE`; this is a generated stress set, not independent
+domain adjudication or a representative production distribution.
+
+| `pg_trgm` threshold | Retained pairs | Exact relation recall | Missed cases                      |
+| ------------------: | -------------: | --------------------: | --------------------------------- |
+|                0.01 |          64/64 |                 56/56 | none                              |
+|                0.05 |          56/64 |                 48/56 | all 8 English/Korean translations |
+|                0.10 |          56/64 |                 48/56 | all 8 English/Korean translations |
+|                0.15 |          56/64 |                 48/56 | all 8 English/Korean translations |
+
+The translated pairs score 0.0196–0.0417 because their wording uses different
+scripts. A 0.05 threshold would discard every one of these known equivalent
+pairs while reducing the synthetic set by only 12.5%. A 0.01 threshold retains
+all 64 and therefore provides no pruning. In the same run, the finance corpus
+retained all 13 exact relations at 0.15 while removing just one of 14 pairs;
+at 0.20 it missed four exact relations. No threshold is enabled.
+
+The test ran against the existing pinned PostgreSQL image
+`pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b`
+(PostgreSQL 16.15, `pg_trgm` 1.6, pgvector 0.8.6). This is measurement-only:
+`AUGMENT` continues to use PostgreSQL behind `VPRelationJobStorePort`, with
+similarity only as queue ordering; there is no new OSS runtime, dependency,
+schema, or production behavior. The focused PostgreSQL test passed 1/1 and the
+corpus contract passed 2/2. Rollback is removal of this fixture/helper, test
+measurement, and report section. This expands threshold-risk evidence but does
+not close VP-04/05: candidate-pair recall on reviewed multi-document data,
+actual provider costs, retry/scale behavior, and billing reconciliation remain
+open.

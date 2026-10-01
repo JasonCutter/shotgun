@@ -140,26 +140,27 @@ Stage 0~2 재검증 결과 PostgreSQL, Ajv, content-addressed storage pattern은
 
 ### 4.4 Transformation
 
-| 후보                  | 담당 형식·역할                                        | 상태                |
-| --------------------- | ----------------------------------------------------- | ------------------- |
-| lucasastorian/llmwiki | HTML cleaner·XLSX extractor                           | `EXTRACT`           |
-| Docling               | PDF·Office 구조와 layout 변환                         | `DEFERRED`          |
-| Apache Tika           | 범용 형식 감지·metadata·텍스트 fallback               | `ADAPTER_CANDIDATE` |
-| MarkItDown            | 경량 Markdown 변환                                    | `ADAPTER_CANDIDATE` |
-| PyMuPDF               | PDF text·page·bbox 처리                               | `ADAPTER_CANDIDATE` |
-| pypdfium2             | NUL 수식·숫자·괄호 기호와 정렬된 한 줄·분수 수식 복구 | `AUGMENT`           |
-| python-docx           | DOCX 구조 추출                                        | `ADAPTER_CANDIDATE` |
-| python-pptx           | PPTX shape·text 추출                                  | `ADAPTER_CANDIDATE` |
-| openpyxl              | XLSX cell·formula·sheet 추출                          | `ADAPTER_CANDIDATE` |
-| ffmpeg                | 오디오·영상 정규화                                    | `DEFERRED`          |
+| 후보                  | 담당 형식·역할                                    | 상태                |
+| --------------------- | ------------------------------------------------- | ------------------- |
+| lucasastorian/llmwiki | HTML cleaner·XLSX extractor                       | `EXTRACT`           |
+| Docling               | PDF·Office 구조와 layout 변환                     | `DEFERRED`          |
+| Apache Tika           | 범용 형식 감지·metadata·텍스트 fallback           | `ADAPTER_CANDIDATE` |
+| MarkItDown            | 경량 Markdown 변환                                | `ADAPTER_CANDIDATE` |
+| PyMuPDF               | PDF text·page·bbox 처리                           | `ADAPTER_CANDIDATE` |
+| pypdfium2             | NUL 수식 기호와 영어·한국어 레이블 분수 수식 복구 | `AUGMENT`           |
+| python-docx           | DOCX 구조 추출                                    | `ADAPTER_CANDIDATE` |
+| python-pptx           | PPTX shape·text 추출                              | `ADAPTER_CANDIDATE` |
+| openpyxl              | XLSX cell·formula·sheet 추출                      | `ADAPTER_CANDIDATE` |
+| ffmpeg                | 오디오·영상 정규화                                | `DEFERRED`          |
 
 하나의 범용 변환기를 강제하지 않는다. Format Adapter가 공통 `DocumentIR`과 `SourceMap`을 출력한다.
 
 VP-04에서 고정된 pypdfium2 `5.11.0`은 pdfplumber가 NUL로 반환한 `<`·`>`, `=`,
 괄호·콜론·숫자 중 중심 거리 2.5pt 이하, 상자 겹침 65% 이상인 일대일 기호와
 텍스트·좌표가 일치하는 짧은 한 줄 수식, 분자·분모 glyph 행이 방정식 기준선과
-정렬되는 분수 수식을 보완한다. 문자는 복원 대상에서 제외한다. 분수는 PDFium에 실제 존재하는
-글자와 pdfplumber 조각이 모두 일치할 때만 복원한다. pdfplumber만 문단 순서와
+정렬되는 분수 수식을 보완한다. 분수 접두어는 짧은 대문자 영문 또는 한글 수식 레이블만
+허용한다. 문자는 복원 대상에서 제외한다. 분수는 PDFium에 실제 존재하는 글자와
+pdfplumber 조각이 모두 일치할 때만 복원한다. pdfplumber만 문단 순서와
 Page/BBox Selector를 만들며, 불확실한 수식은 기존 추출 결과 그대로 둔다. 상세 경계와 Golden
 관찰은 [VP-04 수식 검증](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md)에 기록했다.
 
@@ -647,9 +648,22 @@ the geometry-backed expression. Version `1.5.0` additionally recovers only
 reciprocal one-to-one matches for `=`, parentheses, colon, digits, `<` and `>`
 when centers are within 2.5pt and boxes overlap by at least 65%; other glyphs
 are left untouched. PDFium does not own paragraph order or selectors. The
-adapter identity advances from `1.3.0` to `1.5.0`; no dependency or lockfile
+Version `1.6.0` also accepts stacked fractions with a short uppercase Latin or
+Korean formula label; it retains the same glyph alignment and text containment
+checks. The PDFium geometry-recovery behavior is at `1.6.0`; the enclosing
+document-format module advanced to `1.7.0` for physical-line offsets. No dependency or lockfile
 changed. The official upstream Security page showed no `SECURITY.md`
 policy and no published advisory on 2026-10-01. The
 [focused verification report](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md)
 records the supplied-PDF formulas, glyph coverage and live DeepSeek browser
 runs. Full-PDF quality and independent Golden adjudication remain open.
+
+## VP-04 / Stage 8 PDF physical-line preservation — 2026-10-01
+
+The pinned `pdfplumber==0.11.10` (`ADOPT`, MIT; package version fixed in the worker lockfile) continues to own PDF reading order, word geometry, page, and bounding-box selectors. Shotgun's `PythonDocumentFormatAdapter` now preserves physical line separators inside the existing one-block/one-paragraph boundary and maintains each line's exact segment offsets. This is an adapter-local `AUGMENT`; no upstream code, parser, or runtime was added. The `direct-claim-v6` Candidate Generation splitter consumes those line breaks so converter-merged list items can become separately evidenced candidates. The replacement boundary remains `PlainTextTransformerPort` plus the Stage 8 Page/BBox and SourceMap contract tests. spaCy Sentencizer `v3.8.16` was reviewed as `REFERENCE_ONLY`: its punctuation-based sentence boundaries do not preserve PDF geometry or resolve wrapped formula/claim boundaries. The updated supplied-PDF live result is recorded in the VP finance PDF report. Rollback removes the PDF-only line preservation and restores the prior adapter identity; existing immutable transformation revisions remain readable.
+
+## VP-03 / Stage 7 PostgreSQL search-statistics refresh — 2026-10-01
+
+After a real finance-PDF ingestion, a DeepSeek Ask search took about 239 seconds while the same SQL completed in about 244 ms once current planner statistics were collected. PostgreSQL's own `ANALYZE` was selected as an existing-runtime `AUGMENT`; no external search package, service, or dependency was added (`NO_RELEVANT_OSS` for a new package). Because the pinned PostgreSQL 16 runtime permits `ANALYZE` only to table owners or a superuser, Migration 126 assigns only the fixed search-statistics tables to the existing non-login `shotgun_schema_owner` and exposes a zero-argument, fixed-table `vp.refresh_search_statistics()` security-definer routine to `shotgun_runtime`. The routine has a pinned safe `search_path`, no caller-provided identifiers, and no `PUBLIC` execute grant. `VPKnowledgeLedgerPort` exposes an optional refresh operation; its PostgreSQL adapter calls the routine only after a bounded worker drain. PostgreSQL autovacuum remains fallback if refresh fails. Rollback restores the pre-migration database backup and prior code because the migration changes table ownership as well as adding the function; an in-place down migration is not provided. The backup/restore rollback path was rehearsed on an isolated PostgreSQL 16 source and restore database; all 11 pre-migration owners were recovered and the Migration 126 function/version were absent after restore. See the [Migration 126 rollback rehearsal](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#migration-126-rollback-rehearsal).
+
+The database test checks the refreshed `vp.assertions` statistics after a real worker drain. The supplied-PDF live DeepSeek flow completed with no manual database command. The latest page-grounded run matched 20/20 curated markers, produced 150 assertions and 153 candidates, replayed successfully, recorded four relations and zero pending relation jobs, and passed four cited Ask checks. The marker labels remain `CANDIDATE`, no independent blind review or billing reconciliation was performed, and the broader VP quality and product gates remain open.

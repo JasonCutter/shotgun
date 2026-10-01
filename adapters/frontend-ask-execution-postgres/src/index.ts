@@ -533,6 +533,18 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     };
   }
 
+  async getRunSnapshot(
+    scope: AskExecutionScope,
+    answerRunId: string,
+  ): Promise<AskAnswerRunSnapshot | undefined> {
+    try {
+      return await this.workspace.getAnswerRun({ ...readScope(scope), answerRunId });
+    } catch (error) {
+      if (error instanceof ShotgunError && error.code === 'NOT_FOUND') return undefined;
+      throw error;
+    }
+  }
+
   private async authoritativeContextStatus(
     scope: AskExecutionScope,
     snapshot: AskAnswerRunSnapshot,
@@ -1675,8 +1687,13 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     answerRunId: string,
     afterOrdinal = -1,
   ): Promise<readonly AskAnswerRunEventView[]> {
-    const context = await this.getRunContext(scope, answerRunId);
-    if (!context) throw notFound();
+    const run = await this.pool.query(
+      `SELECT 1
+       FROM frontend_ask.answer_runs
+       WHERE answer_run_id = $1 AND project_id = $2`,
+      [answerRunId, scope.projectId],
+    );
+    if (run.rowCount !== 1) throw notFound();
     const result = await this.pool.query<EventRow>(
       `SELECT event_id, answer_run_id, project_id, ordinal, kind, state,
               partial_text, answer_revision, created_at, attempt_id

@@ -1,3 +1,5 @@
+/* global process */
+
 if (process.env.SHOTGUN_TEST_WORKER_FAIL === '1') {
   process.send?.(
     {

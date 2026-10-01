@@ -204,15 +204,48 @@ const materialQualifiers = (statement: string): readonly string[] =>
     [...statement.matchAll(pattern)].map((match) => match[0].trim()).filter(Boolean),
   );
 
+const physicalLineLooksComplete = (line: string): boolean => {
+  const value = line.trim();
+  if (!value || /[,，;:：=+*\x2f×÷^-]$/u.test(value)) return false;
+  if (/[.!?。！？][\])}"'”’]*$/u.test(value)) return true;
+  if (
+    /(?:이다|입니다|있다|있습니다|없다|없습니다|한다|된다|않다|않습니다|있음|없음|다)$/u.test(value)
+  ) {
+    return true;
+  }
+  if (/[→⇒]\s*\S.+$/u.test(value)) return true;
+  if (/^[^=\n]{1,80}=\s*[^=\n].+$/u.test(value)) return true;
+  return /^[^:：\n]{1,40}[:：]\s*\S.+$/u.test(value);
+};
+
+const splitAtCompletePhysicalLines = (text: string): readonly string[] => {
+  const pieces = text.split(/(\r?\n+)/u);
+  const statements: string[] = [];
+  let current = pieces[0] ?? '';
+  for (let index = 1; index + 1 < pieces.length; index += 2) {
+    const separator = pieces[index] ?? '';
+    const next = pieces[index + 1] ?? '';
+    if (physicalLineLooksComplete(current.split(/\r?\n/u).at(-1) ?? current)) {
+      statements.push(current.trim());
+      current = next;
+    } else {
+      current += `${separator}${next}`;
+    }
+  }
+  statements.push(current.trim());
+  return statements.filter(Boolean);
+};
+
 const splitV4CandidateStatements = (claimText: string): readonly string[] =>
   claimText
     // Markdown headings label the following text; the label itself is not a
     // factual claim. Strip heading-only lines before splitting a model span.
     .replace(/^#{1,6}[ \t]+[^\r\n]*(?:\r?\n|$)/gmu, '')
     .split(
-      /(?<=[.!?。！？])(?:\s+|(?=[\p{L}]))|\r?\n+|(?=예를\s*들어|예컨대|for example\b|for instance\b|따라서|결론적으로|반면|다만|그러나|이때)|(?<=[%％원건개명회배년개월주일시간분초])\s+(?=[가-힣]{2,}[\s)\]\uFFFD]{0,6}(?:은|는)|(?:현재가치|순현재가치|내부수익률|매출총이익|영업이익|유동비율)\s+(?:PV|NPV|IRR|FV)\b)/giu,
+      /(?<=[.!?。！？])(?:\s+|(?=[\p{L}]))|(?=예를\s*들어|예컨대|for example\b|for instance\b|따라서|결론적으로|반면|다만|그러나|이때)|(?<=[%％원건개명회배년개월주일시간분초])\s+(?=[가-힣]{2,}[\s)\]\uFFFD]{0,6}(?:은|는)|(?:현재가치|순현재가치|내부수익률|매출총이익|영업이익|유동비율)\s+(?:PV|NPV|IRR|FV)\b)/giu,
     )
     .map((statement) => statement.trim())
+    .flatMap(splitAtCompletePhysicalLines)
     .filter(Boolean);
 
 const preserveQualifiedV4Claim = (sourceText: string, modelClaimText: string): string => {
@@ -496,7 +529,8 @@ export const createCandidateGenerationModule = (
         const modelClaimText = item.claimText.trim();
         const candidateTexts =
           (generated.call.promptVersion === 'direct-claim-v4' ||
-            generated.call.promptVersion === 'direct-claim-v5') &&
+            generated.call.promptVersion === 'direct-claim-v5' ||
+            generated.call.promptVersion === 'direct-claim-v6') &&
           modelClaimText.length > 0 &&
           sourceEvidence.quote.exact.includes(modelClaimText)
             ? splitV4CandidateStatements(modelClaimText)
@@ -508,7 +542,8 @@ export const createCandidateGenerationModule = (
             sourceEvidence.quote.exact.includes(modelClaimText)
               ? sourceEvidence.quote.exact
               : generated.call.promptVersion === 'direct-claim-v4' ||
-                  generated.call.promptVersion === 'direct-claim-v5'
+                  generated.call.promptVersion === 'direct-claim-v5' ||
+                  generated.call.promptVersion === 'direct-claim-v6'
                 ? preserveQualifiedV4Claim(sourceEvidence.quote.exact, candidateText)
                 : candidateText;
           const fingerprint = sha256Text(stableJson({ claimText, evidenceId: item.evidenceId }));

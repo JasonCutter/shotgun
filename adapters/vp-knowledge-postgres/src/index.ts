@@ -322,6 +322,13 @@ export class PostgresVPKnowledgeLedger implements VPKnowledgeLedgerPort {
     );
   }
 
+  async refreshSearchStatistics(): Promise<void> {
+    // The VP current-assertion and current-relation views span these tables.
+    // Refresh planner statistics once after a completed ingestion drain so the
+    // first project-wide Ask does not wait for asynchronous autovacuum analysis.
+    await this.pool.query('SELECT vp.refresh_search_statistics()');
+  }
+
   async listCurrentAssertions(scope: VPAssertionReadScope): Promise<readonly VPCurrentAssertion[]> {
     const result = await this.pool.query<CurrentAssertionRow>(
       `SELECT assertion_id::text, project_id, source_id::text,

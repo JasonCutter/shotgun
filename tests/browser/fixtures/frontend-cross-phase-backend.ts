@@ -241,14 +241,16 @@ export async function startFrontendCrossPhaseBackend(
     allowRestricted: false,
     dataPolicyVersion: 'cross-phase-ask-policy-v1',
   });
+  const vpEvidenceSearch = new PostgresVPAskEvidenceSearch(pool);
+  const askExecutionRepository = new PostgresAskAnswerExecutionRepository(
+    pool,
+    askWorkspaceProjection,
+    new OriginalAssetAskSourceVersionContextReader(originalAssetRepository, assetStorage),
+    undefined,
+    vpEvidenceSearch,
+  );
   const askAnswerExecution = new AskAnswerExecutionService(
-    new PostgresAskAnswerExecutionRepository(
-      pool,
-      askWorkspaceProjection,
-      new OriginalAssetAskSourceVersionContextReader(originalAssetRepository, assetStorage),
-      undefined,
-      new PostgresVPAskEvidenceSearch(pool),
-    ),
+    askExecutionRepository,
     askAnswerProvider,
     { maxConcurrency: 2 },
   );
@@ -475,14 +477,18 @@ export async function startFrontendCrossPhaseBackend(
     ).startWorker();
   }
   let stopAskWorker: () => Promise<void> = async () => {};
+  let askWorkerStartFailure: string | undefined;
   try {
     stopAskWorker = await askAnswerExecution.startWorker(250);
-  } catch {
-    // Worker start is best-effort for the journey; submissions can be polled.
+  } catch (error) {
+    askWorkerStartFailure = error instanceof Error ? error.message : String(error);
+    console.error('[ask-answer-worker] failed to start', askWorkerStartFailure);
   }
 
   let closing = false;
   return {
+    askWorkerStarted: askWorkerStartFailure === undefined,
+    ...(askWorkerStartFailure ? { askWorkerStartFailure } : {}),
     /**
      * Operator step (WP4 Round 1 fix E — there is intentionally NO browser
      * History refresh route): rebuild the federated History projection for a

@@ -35,12 +35,7 @@
       "pattern": "^sha256:[a-f0-9]{64}$"
     },
     "labelReviewStatus": {
-      "enum": [
-        "CANDIDATE",
-        "REVIEWED",
-        "APPROVED",
-        "RETIRED"
-      ]
+      "enum": ["CANDIDATE", "REVIEWED", "APPROVED", "RETIRED"]
     },
     "dataClassification": {
       "const": "SYNTHETIC"
@@ -55,14 +50,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "caseId",
-          "left",
-          "right",
-          "allowedChoices",
-          "dimension",
-          "rationale"
-        ],
+        "required": ["caseId", "left", "right", "allowedChoices", "dimension", "rationale"],
         "properties": {
           "caseId": {
             "type": "string",
@@ -81,13 +69,7 @@
             "minItems": 1,
             "uniqueItems": true,
             "items": {
-              "enum": [
-                "EQUIVALENT",
-                "QUALIFIES",
-                "CONTRADICTS",
-                "RELATED",
-                "UNRESOLVED"
-              ]
+              "enum": ["EQUIVALENT", "QUALIFIES", "CONTRADICTS", "RELATED", "UNRESOLVED"]
             }
           },
           "dimension": {

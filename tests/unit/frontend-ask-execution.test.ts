@@ -53,6 +53,25 @@ const provider = (execute: AskAnswerProviderPort['execute']): AskAnswerProviderP
 });
 
 describe('AskAnswerExecutionService', () => {
+  it('serves active run and event polls without resolving the Evidence context again', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot());
+    const resolveContext = vi.spyOn(repository, 'getRunContext');
+    const service = new AskAnswerExecutionService(
+      repository,
+      provider(async () => {
+        throw new Error('A queued status read must not invoke the provider.');
+      }),
+    );
+
+    const current = await service.getAnswerRun(scope, 'run-1');
+    const events = await service.events(scope, 'run-1');
+
+    expect(current.state).toBe('QUEUED');
+    expect(events.map((event) => [event.kind, event.state])).toEqual([['STATE', 'QUEUED']]);
+    expect(resolveContext).not.toHaveBeenCalled();
+  });
+
   it('persists partial events and validates citations before success', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
     repository.register(snapshot(), [

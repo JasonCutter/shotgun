@@ -311,6 +311,8 @@ export type VPAssertionReadScope = {
 export type VPKnowledgeLedgerPort = {
   ingestValidatedDirectClaims(limit?: number): Promise<number>;
   listCurrentAssertions(scope: VPAssertionReadScope): Promise<readonly VPCurrentAssertion[]>;
+  /** Refreshes PostgreSQL planner statistics after the current assertion batch drains. */
+  refreshSearchStatistics?(): Promise<void>;
 };
 
 /** A bounded, replayable worker. Persistence owns candidate and project fencing. */
@@ -332,15 +334,28 @@ export class VPAssertionLedgerWorker {
     this.stopped = false;
     const tick = async (): Promise<void> => {
       if (this.stopped) return;
+      let ingestedAny = false;
+      let drained = false;
       try {
         let ingested: number;
         let batches = 0;
         do {
           ingested = await this.dispatchOnce();
+          if (ingested > 0) ingestedAny = true;
+          else drained = true;
           batches += 1;
         } while (ingested > 0 && batches < 4 && !this.stopped);
       } catch (error) {
         console.error('[vp-assertion-ledger] ingestion failed', error);
+      }
+      if (ingestedAny && drained && this.ledger.refreshSearchStatistics) {
+        try {
+          await this.ledger.refreshSearchStatistics();
+        } catch (error) {
+          // PostgreSQL autovacuum remains the fallback if explicit statistics
+          // refresh is unavailable or fails for this deployment role.
+          console.error('[vp-assertion-ledger] search statistics refresh failed', error);
+        }
       }
       if (!this.stopped) {
         this.timer = setTimeout(() => {

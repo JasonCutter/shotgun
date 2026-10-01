@@ -182,7 +182,7 @@ export type AIProviderModuleOptions = {
 };
 
 export const DEFAULT_DEEPSEEK_CANDIDATE_MAX_OUTPUT_TOKENS = 16_384;
-export const DEFAULT_CANDIDATE_PROMPT_VERSION = 'direct-claim-v5';
+export const DEFAULT_CANDIDATE_PROMPT_VERSION = 'direct-claim-v6';
 
 type GenerateStructuredPayload = {
   readonly requestId: string;
@@ -252,6 +252,15 @@ const candidatePromptInstructions: Readonly<Record<string, string>> = {
     'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine separate claims, or add outside knowledge.',
     'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies that claim. For an equation or worked example, include its operands and stated result together.',
     'Do not copy an entire paragraph or evidence block when a shorter complete source statement expresses the claim. Do not add a combined duplicate when separate atomic claims are already returned.',
+    'Return no candidate when an explicit claim is absent.',
+  ].join(' '),
+  'direct-claim-v6': [
+    'Extract only claims explicitly stated in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Extract every distinct explicit claim from each evidence item; do not stop after its first claim. Return one atomic claim per candidate. Split separate facts, formulas, examples, and conclusions into separate candidates when each can stand on its own, including when a document converter joined them into one Evidence item.',
+    'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine separate claims, or add outside knowledge.',
+    'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies that claim. For an equation or worked example, include its operands and stated result together.',
+    'Do not copy an entire paragraph or evidence block when a shorter complete source statement expresses the claim. Do not add a combined duplicate when separate atomic claims are already returned.',
+    'Evidence may contain visual PDF line breaks. Split a line only when it completes an atomic claim; keep wrapped sentence fragments and stacked equation rows together. Return each standalone list item as its own candidate and never turn a heading into a claim.',
     'Return no candidate when an explicit claim is absent.',
   ].join(' '),
 };

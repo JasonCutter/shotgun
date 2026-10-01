@@ -8,14 +8,15 @@ import {
 } from '../../scripts/t3-storage-inventory.js';
 
 describe('T3 frozen storage inventory', () => {
-  it('is unique and covers the baseline, reset control tables, and seven VP tables', async () => {
+  it('is unique and covers the baseline, reset control tables, and eight VP tables', async () => {
     const register = await readFile(
       'docs/implementation/t3-storage-classification-register.md',
       'utf8',
     );
     const expected = parseT3ExpectedTables(register);
     expect(expected.schemas).toHaveLength(30);
-    expect(expected.tables).toHaveLength(202);
+    expect(expected.tables).toHaveLength(203);
+    expect(expected.tables).toContain('vp.relation_provider_calls');
     expect(
       expected.tables.filter(
         (table) =>
@@ -35,7 +36,8 @@ describe('T3 frozen storage inventory', () => {
   it('keeps the exact content-column inventory and additive migration non-destructive', async () => {
     const inventory = await readFile('docs/implementation/t3-content-column-inventory.tsv', 'utf8');
     const columns = parseT3ExpectedContentColumns(inventory);
-    expect(columns).toHaveLength(167);
+    expect(columns).toHaveLength(168);
+    expect(columns).toContain('vp.relation_provider_calls.output_json\tjsonb');
     expect(columns).toContain(
       'project_admin.project_knowledge_reset_requests.impact_counts\tjsonb',
     );

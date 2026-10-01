@@ -181,6 +181,13 @@ describe.runIf(pool)('TS-5 migration and PostgreSQL maintenance barrier', () => 
     const assetId = randomUUID();
     const contentHash = `sha256:${'f'.repeat(64)}`;
     const storageKey = `original/sha256/ff/${'f'.repeat(64)}.blob`;
+    const baseline = await pool!.query<{ count: string }>(
+      `SELECT COUNT(*) FILTER (WHERE version.original_asset_id IS NULL)::text AS count
+       FROM asset.original_assets AS original
+       LEFT JOIN asset.source_versions AS version
+         ON version.original_asset_id = original.asset_id`,
+    );
+    const baselineAnomalyCount = Number(baseline.rows[0]?.count ?? 0);
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'shotgun-ts5-anomaly-'));
     try {
       await pool!.query(
@@ -192,7 +199,7 @@ describe.runIf(pool)('TS-5 migration and PostgreSQL maintenance barrier', () => 
         databaseUrl: databaseUrl!,
         assetRoot: temporaryRoot,
       });
-      expect(report.dbAnomalyCount).toBe(1);
+      expect(report.dbAnomalyCount).toBe(baselineAnomalyCount + 1);
       expect(report.finalDbProtectedCount).toBeGreaterThanOrEqual(1);
     } finally {
       await pool!.query('DELETE FROM asset.original_assets WHERE asset_id = $1', [assetId]);

@@ -37,6 +37,11 @@
   Letters and other glyphs remain untouched; unmatched markers remain rejected
   by direct-text validation. The supplied PDF's recoverable NUL markers fell
   from 25 to 6 after this augmentation. The Python adapter advances to `1.5.0`.
+- 2026-10-01 — VP-04 amendment: stacked-fraction recovery may use a bounded
+  uppercase Latin or Korean equation label before `=`. The prefix must still
+  align with fraction rows, all existing extracted characters must be present
+  in the geometry-backed formula, and the original page/BBox is preserved.
+  The Python adapter advances to `1.6.0`.
 
 ## 결정
 
@@ -80,3 +85,7 @@
   고정하고, Resume은 원래 Provider record의 pin만 사용한다.
 - rollback은 migration 076 적용 전 snapshot/restore와 disposable DB backup/restore
   proof를 사용하며 live DB에서 destructive downgrade를 수행하지 않는다.
+
+## 2026-10-01 — VP-04 PDF physical-line preservation amendment
+
+The pinned `pdfplumber==0.11.10` remains the PDF layout owner. Its worker adapter preserves each physical line break and exact segment offset within a block while retaining the existing invariant `1 Python worker block == 1 DocumentIR paragraph`. This gives Candidate Generation's existing direct-claim splitter visible line boundaries for converter-merged lists. No dependency, PDFium behavior, SourceVersion contract, or selector type changes. `shotgun.document-formats` advances to `1.7.0`; old TransformationRevisions remain immutable. The Stage 8 worker unit test verifies line text/segment offset round-trip. The live DeepSeek ingestion/Ask/replay run and broad list-layout corpus remain open. Rollback restores space normalization and the previous transformation identity.

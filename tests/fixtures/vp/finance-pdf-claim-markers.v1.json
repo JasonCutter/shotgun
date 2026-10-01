@@ -1,9 +1,9 @@
 {
   "contractVersion": "1.0.0",
   "corpusId": "shotgun-vp-finance-pdf-claim-markers",
-  "corpusVersion": "1.0.0",
-  "labelSetRevision": 1,
-  "corpusDigest": "sha256:c7f8f5ba308f4d778e7d2423280561773fc012adc3a73f67cd673821e734deee",
+  "corpusVersion": "1.2.0",
+  "labelSetRevision": 3,
+  "corpusDigest": "sha256:f6d315123e89593025f6336161d2a29a20314698852571abe3ac9ff8eb54e6cc",
   "labelReviewStatus": "CANDIDATE",
   "source": {
     "sha256": "bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01",
@@ -55,7 +55,7 @@
     },
     {
       "id": "irr-example",
-      "page": 6,
+      "page": 7,
       "text": "IRR은 10%다",
       "requiredText": "IRR",
       "dimension": "numeric-return-rate"
@@ -81,20 +81,23 @@
     },
     {
       "id": "cash-flow-operating",
-      "page": 4,
-      "text": "영업활동 현금흐름",
+      "page": 3,
+      "text": "기업의 본업과 관련된 현금흐름이다",
+      "requiredEvidenceText": "영업활동 현금흐름",
       "dimension": "cash-flow-category"
     },
     {
       "id": "cash-flow-investing",
       "page": 4,
-      "text": "투자활동 현금흐름",
+      "text": "장기간 사용할 자산을 사고파는 활동과 관련된다",
+      "requiredEvidenceText": "투자활동 현금흐름",
       "dimension": "cash-flow-category"
     },
     {
       "id": "cash-flow-financing",
       "page": 4,
-      "text": "재무활동 현금흐름",
+      "text": "기업이 필요한 자금을 조달하거나 갚는 활동이다",
+      "requiredEvidenceText": "재무활동 현금흐름",
       "dimension": "cash-flow-category"
     },
     {

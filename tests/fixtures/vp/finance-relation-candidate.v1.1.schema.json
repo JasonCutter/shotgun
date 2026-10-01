@@ -61,7 +61,14 @@
             "minItems": 1,
             "uniqueItems": true,
             "items": {
-              "enum": ["EQUIVALENT", "SUPPORTS", "QUALIFIES", "CONTRADICTS", "RELATED", "UNRESOLVED"]
+              "enum": [
+                "EQUIVALENT",
+                "SUPPORTS",
+                "QUALIFIES",
+                "CONTRADICTS",
+                "RELATED",
+                "UNRESOLVED"
+              ]
             }
           },
           "allowedDirections": {

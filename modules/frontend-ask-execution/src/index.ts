@@ -315,6 +315,11 @@ export const validateAIExecutionPin = (
 export type AskAnswerExecutionRepositoryPort = {
   /** VP Ask stays queued while an authorized latest SourceVersion is indexing. */
   isProjectKnowledgePending?(scope: AskExecutionScope): Promise<boolean>;
+  /** A status read that does not rebuild or revalidate the answer's Evidence context. */
+  getRunSnapshot?(
+    scope: AskExecutionScope,
+    answerRunId: string,
+  ): Promise<AskAnswerRunSnapshot | undefined>;
   getRunContext(
     scope: AskExecutionScope,
     answerRunId: string,
@@ -703,10 +708,18 @@ export class AskAnswerExecutionService {
   }
 
   async getAnswerRun(scope: AskExecutionScope, answerRunId: string): Promise<AskAnswerRunSnapshot> {
+    const snapshot = this.repository.getRunSnapshot
+      ? await this.repository.getRunSnapshot(scope, answerRunId)
+      : (await this.repository.getRunContext(scope, answerRunId))?.snapshot;
+    if (!snapshot)
+      throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'get-answer-run');
+    if (snapshot.state !== 'SUCCEEDED' && snapshot.failure?.code !== 'POLICY_DENIED') {
+      return snapshot;
+    }
     const current = await this.repository.getRunContext(scope, answerRunId);
     if (!current)
       throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'get-answer-run');
-    if (current.snapshot.failure?.code !== 'POLICY_DENIED') return current.snapshot;
+    if (snapshot.failure?.code !== 'POLICY_DENIED') return current.snapshot;
     const provider = await this.resolveProvider(scope, current.executionPin);
     const eligibility = await this.resolveProviderPolicy(
       scope.projectId,
@@ -731,8 +744,8 @@ export class AskAnswerExecutionService {
     answerRunId: string,
     afterOrdinal?: number,
   ): Promise<readonly AskAnswerRunEventView[]> {
-    const context = await this.repository.getRunContext(scope, answerRunId);
-    if (!context) throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'events');
+    // The repository checks existence and project access using the run identity.
+    // Loading the full context here repeated VP Evidence search on every poll.
     return this.repository.getEvents(scope, answerRunId, afterOrdinal);
   }
 

@@ -31,7 +31,7 @@ describe('T3 storage classification coverage', () => {
     );
     const expected = parseT3ExpectedTables(register);
     expect(expected.schemas).toEqual([...managedSchemas].sort());
-    expect(expected.tables).toHaveLength(202);
+    expect(expected.tables).toHaveLength(203);
 
     const actual = await pool.query<{ schema_name: string; table_name: string }>(
       `SELECT table_schema AS schema_name, table_name
@@ -48,7 +48,7 @@ describe('T3 storage classification coverage', () => {
   it('matches every JSON, JSONB, and bytea column against the exact inventory', async () => {
     const inventory = await readFile('docs/implementation/t3-content-column-inventory.tsv', 'utf8');
     const expected = parseT3ExpectedContentColumns(inventory);
-    expect(expected).toHaveLength(167);
+    expect(expected).toHaveLength(168);
 
     const actual = await pool.query<{ qualified_column: string; postgres_type: string }>(
       `SELECT c.table_schema || '.' || c.table_name || '.' || c.column_name AS qualified_column,

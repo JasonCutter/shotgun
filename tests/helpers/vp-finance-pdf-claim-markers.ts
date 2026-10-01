@@ -21,6 +21,7 @@ export type VPFinancePDFClaimMarkerCorpus = {
     readonly page: number;
     readonly text: string;
     readonly requiredText?: string;
+    readonly requiredEvidenceText?: string;
     readonly dimension: string;
   }[];
 };

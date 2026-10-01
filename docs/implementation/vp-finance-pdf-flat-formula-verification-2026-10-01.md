@@ -9,7 +9,7 @@ formula quality.
 - Target: Stage 8 `PythonDocumentFormatAdapter`, `DocumentIR`, and `SourceMap`.
 - Source: `재무제표재무관리__2026-09-27.pdf`, 10 pages, 797,599 bytes.
 - Source SHA-256: `bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`.
-- Output transformer identity: `shotgun.document-formats@1.5.0`.
+- Output transformer identity: `shotgun.document-formats@1.7.0`.
 - No project database or previously stored revision was changed by this
   verification. New transformations use the new adapter identity.
 
@@ -46,7 +46,7 @@ A flat formula candidate is limited to a short, single-row ASCII/math
 expression. Script markers are placed only from relative glyph size and
 position. A stacked fraction is reconstructed only when numerator and
 denominator glyph rows sit above and below the same equation baseline, overlap
-horizontally around an uppercase equation prefix, and every extracted
+horizontally around a short uppercase Latin or Korean equation prefix, and every extracted
 pdfplumber character in the formula box occurs in the geometry-backed result.
 PDFium supplies the actual glyphs and coordinates; the adapter uses those
 positions to express the numerator/denominator relationship. It does not
@@ -64,6 +64,8 @@ remaining VP-04 product-quality issue.
 The pinned PDFium 5.11.0 worker produced 21 blocks. It reconstructed these
 single-row and stacked equation segments and retained their source geometry:
 
+- Page 2: `유동비율 = 유동자산/유동부채 × 100`.
+- Page 2: `유동비율 = 4,000/2,000 × 100 = 200%`.
 - Page 5: `FV = PV(1 + r)^n`.
 - Page 5: `FV = 100 × (1.1)^2 = 121만원`.
 - Page 5: `PV = FV/(1 + r)^n`.
@@ -84,13 +86,14 @@ selector contract. Docling `v2.130.0` remains `DEFER` under the separate
 
 ## Verification
 
-- Python unit tests: 14/14 passed, including the safe-glyph allowlist and
+- Python unit tests: 16/16 passed, including the safe-glyph allowlist and
   reciprocal matching, exponent/subscript markers,
   numerator/denominator alignment, exact/contained text agreement, mismatch
-  fallback, and the PDFium character budget.
+  fallback, the PDFium character budget, and preserved PDF line offsets.
 - Supplied-PDF worker run: completed using the exact pypdfium2 5.11.0 package;
-  19/25 replacement markers were restored, all six targeted PV/NPV equations
-  retained Page/BBox selectors, and rendered pages 5, 6 and 10 were inspected.
+  19/25 replacement markers were restored, the two current-ratio fractions and
+  six targeted PV/NPV equations retained Page/BBox selectors, and rendered
+  pages 2, 5, 6 and 10 were inspected.
 - Live DeepSeek ingestion, claim extraction, cited Ask, and replay using adapter
   identity 1.4.0 passed once before safe-glyph recovery; it returned 111
   assertions and 120 candidates, covered 20/20 curated markers, matched four
@@ -108,6 +111,19 @@ selector contract. Docling `v2.130.0` remains `DEFER` under the separate
   focused test now emits that state if a later run times out again. The earlier
   two 1.3.0 live runs are documented in the [query-scoped Ask freshness
   report](./vp-ask-stale-snapshot-recovery-2026-10-01.md).
+- Adapter `1.6.0` added Korean-labeled stacked fractions for the page-2 current
+  ratio formula and its numeric example. The live DeepSeek run completed
+  extraction but found only 18/20 curated markers (84 assertions, 85
+  candidates). The misses were the page-3 profit/cash qualification and the
+  page-8 diversification limit; the output combined the page-10 quick-review
+  list into one candidate. Because the live test stopped at that assertion,
+  Ask and replay were not run for this attempt.
+- Adapter `1.7.0` preserves physical PDF line breaks inside each existing
+  paragraph and keeps each line's exact SourceMap offsets. The 1:1
+  worker-block-to-paragraph contract remains unchanged. This gives structured
+  extraction visible list-item boundaries and lets the existing Stage 4
+  candidate splitter separate independent line claims. The product run with
+  `1.7.0`: **pending**.
 - Broad multi-document extraction precision/recall and independently reviewed
   Golden labels: **NOT RUN**; VP-04 remains open.
 
@@ -115,13 +131,15 @@ selector contract. Docling `v2.130.0` remains `DEFER` under the separate
 
 - `PythonDocumentFormatAdapter` output shape and `DocumentIR`/`SourceMap`
   contracts are unchanged. Reconstructed text uses the candidate's original
-  PDFium coordinates for its BBox selector.
-- Adapter identity advances from `1.4.0` to `1.5.0`, so old immutable
+  PDFium coordinates for its BBox selector. Physical lines remain within one
+  paragraph while their BBox selectors map to exact line offsets.
+- Adapter identity advances from `1.5.0` to `1.7.0`, so old immutable
   transformation revisions are not silently rewritten or reused as if they
   came from the new transformation.
 - No database migration or lockfile update is required. Existing revisions
   remain readable.
-- Rollback reverts safe-glyph recovery and adapter identity to `1.4.0`.
+- Rollback reverts Korean-labeled fraction recovery and PDF line-break
+  preservation, then restores adapter identity `1.5.0`.
   Stored revisions remain immutable. A PDF parser replacement must
   pass Stage 8 Page/BBox, formula Golden, corrupt/encrypted, upper-contract, and
   adapter replacement tests.
@@ -129,3 +147,25 @@ selector contract. Docling `v2.130.0` remains `DEFER` under the separate
   [OSS source registry](./oss-source-registry.json),
   [Open-source Role Matrix](../architecture/module-architecture/open-source-role-matrix.md),
   and [ADR-088 amendment history](../architecture/adr/ADR-088-stage-8-format-adapter-and-structural-selectors.md).
+
+## 2026-10-01 full live flow after PostgreSQL planner-statistics refresh
+
+The previous full Ask attempt could spend about 239 seconds inside search, beyond the browser flow's 120-second question timeout. The exact query took about 244 ms when run directly after statistics were current. The cause was stale PostgreSQL planner statistics after the large new assertion batch. `VPAssertionLedgerWorker` now asks the existing PostgreSQL adapter to refresh the fixed search inputs once after a bounded assertion-ledger drain; the worker does not refresh after each page. Migration 126 provides a zero-argument, fixed-table `SECURITY DEFINER` routine because PostgreSQL 16 denies direct `ANALYZE` to the runtime role. The database integration test checks that `vp.assertions.analyze_count` increases after drain and that the separate erasure executor role cannot call the refresh routine. The product test does not issue SQL or call `ANALYZE` manually.
+
+### Migration 126 rollback rehearsal
+
+On 2026-10-01, an isolated PostgreSQL 16 database was migrated through version 125 and backed up with the repository's `pg_dump` backup flow. Migration 126 was then applied and verified to transfer the 11 fixed search-input tables to `shotgun_schema_owner` and install `vp.refresh_search_statistics()`. The pre-126 backup was restored into a separate `shotgun_restore_*` database. The restored state matched all 11 pre-migration table owners, omitted migration 126 and its function, and completed backup integrity verification. The disposable databases and temporary backup were removed. Rollback for this migration is therefore verified as restore of the pre-126 backup plus the previous application code; no in-place downgrade exists.
+
+The supplied PDF was reprocessed end to end with the pinned `direct-claim-v6` extraction policy and configured DeepSeek `deepseek-flash` provider. One live Chromium run passed in about 1.4 minutes, inside the Ask timeout. It matched all 20/20 curated markers, produced 172 current assertions and 175 candidates, replayed the ledger to the same projection, recorded three relations with zero pending relation jobs, and passed the four topic Ask/citation checks with expected PDF-page evidence. The run reported 8,179 input and 8,928 output tokens (17,107 total). This is provider-reported usage, not an independently reconciled invoice.
+
+This resolved the unattended-search timeout reproduced for that supplied-PDF flow. The run above preceded the page-grounded marker assertion and is historical evidence only for wording coverage.
+
+## 2026-10-01 source-first marker review
+
+I rendered all 10 pages of the exact 797,599-byte user-provided file at 120 dpi and reviewed the source pages before opening the candidate marker fixture. I then compared each marker's wording and printed page number with the source image. All 20 text claims are present on their cited page after correction. The review caught one fixture error: `IRR은 10%다` is on printed page 7, while the prior marker listed page 6. The marker is now corpus `1.2.0`, label revision 3, and its page is 7.
+
+The browser marker gate now requires the current assertion's source Evidence to carry a `PageSelector` matching the marker page; the prior gate checked the wording but ignored the `page` field. The contract test locks the corrected page. This is a source-first second-pass by one automated reviewer, not a second human adjudication or a full annotation of every extracted assertion. The fixture therefore stays `CANDIDATE`.
+
+The updated actual DeepSeek Chromium full-flow test passed on the same 797,599-byte PDF: 20/20 markers had a current assertion with an exact matching printed-page `PageSelector`; the marker on page 7 (IRR) passed. The run recorded 150 current assertions, 153 generated candidates, matching projection replay, four current relations, zero pending relation jobs, and all four topic Ask cases with expected answer and page-grounded citation. Provider-reported usage was 30,260 tokens across 11 responses; this is not invoice-reconciled. The run took 3.7 minutes for the full five-test live suite, including the four independent DeepSeek scenarios.
+
+The page-grounded PDF flow is now verified. VP-04/05 remain open: the 20 labels are still `CANDIDATE`; independent blind adjudication, full-document precision/recall and omission review, multi-document conflict/equivalence quality, production scale, and actual billing reconciliation remain unverified. Formula handling also retains the unresolved marker limitations described above.

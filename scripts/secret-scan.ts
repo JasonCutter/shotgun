@@ -6,13 +6,24 @@ import { fileURLToPath } from 'node:url';
 const rootDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const candidateFiles = execFileSync(
   'git',
-  ['ls-files', '--cached', '--others', '--exclude-standard'],
+  [
+    'ls-files',
+    '--cached',
+    '--others',
+    '--exclude-standard',
+    '-z',
+    '--',
+    ':(exclude)tmp/**',
+    ':(exclude)**/__pycache__/**',
+  ],
   {
     cwd: rootDirectory,
-    encoding: 'utf8',
+    encoding: 'buffer',
+    maxBuffer: 16 * 1024 * 1024,
   },
 )
-  .split(/\r?\n/)
+  .toString('utf8')
+  .split('\0')
   .filter(Boolean);
 
 const patterns: readonly [string, RegExp][] = [

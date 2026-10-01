@@ -11,7 +11,10 @@ import { PostgresKnowledgeResetImpactInspector } from '../../adapters/source-kno
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
 import { PostgresProjectAdministrationRepository } from '../../adapters/postgres/src/index.js';
 import type { AIProviderExecutionResolverPort } from '../../modules/ai-provider/src/index.js';
-import { VPRelationJobWorker } from '../../modules/vp-knowledge-ledger/src/index.js';
+import {
+  VPAssertionLedgerWorker,
+  VPRelationJobWorker,
+} from '../../modules/vp-knowledge-ledger/src/index.js';
 import { VPRelationDecisionRouter } from '../../modules/vp-decision/src/index.js';
 import { verifyVPProjectionReplay } from '../../scripts/vp-projection-replay.js';
 import {
@@ -191,9 +194,36 @@ describe('VP validated direct assertion ledger', () => {
     });
     runtimePool = new Pool({ connectionString: database!.databaseUrl, max: 1 });
     await runtimePool.query('SET ROLE shotgun_runtime');
+    const analyzeCountBefore = await pool.query<{ readonly analyze_count: string }>(
+      `SELECT analyze_count::text
+         FROM pg_stat_user_tables
+        WHERE schemaname = 'vp' AND relname = 'assertions'`,
+    );
     const ledger = new PostgresVPKnowledgeLedger(runtimePool);
-    expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
+    const stopLedgerWorker = await new VPAssertionLedgerWorker(ledger).startWorker();
+    await stopLedgerWorker();
     expect(await ledger.ingestValidatedDirectClaims()).toBe(0);
+    const assertionPlannerStats = await pool.query<{
+      readonly analyze_count: string;
+    }>(
+      `SELECT analyze_count::text
+         FROM pg_stat_user_tables
+        WHERE schemaname = 'vp' AND relname = 'assertions'`,
+    );
+    expect(Number(assertionPlannerStats.rows[0]?.analyze_count)).toBeGreaterThan(
+      Number(analyzeCountBefore.rows[0]?.analyze_count),
+    );
+    const executorPool = new Pool({ connectionString: database!.databaseUrl, max: 1 });
+    try {
+      await executorPool.query('SET ROLE shotgun_erasure_executor');
+      await expect(
+        executorPool.query('SELECT vp.refresh_search_statistics()'),
+      ).rejects.toMatchObject({
+        code: '42501',
+      });
+    } finally {
+      await executorPool.end();
+    }
     expect((await verifyVPProjectionReplay(pool, projectId)).matches).toBe(true);
     const originalAssertion = (
       await ledger.listCurrentAssertions({
@@ -737,6 +767,7 @@ describe('VP validated direct assertion ledger', () => {
       );
       expect(before.rows[0]?.status.assertions).toBe(5);
       expect(before.rows[0]?.status.jobs).toBe(4);
+      expect(before.rows[0]?.status.provider_calls).toBeGreaterThan(0);
       await executor.query('SELECT vp.t3_erase_project($1, $2::uuid)', [projectId, resetRequestId]);
       const after = await executor.query<{ status: Record<string, number> }>(
         'SELECT vp.t3_project_status($1, $2::uuid) AS status',
@@ -792,7 +823,7 @@ describe('VP validated direct assertion ledger', () => {
         expect.objectContaining({ exact_quote: npvNegativeText }),
       ]),
     );
-  });
+  }, 15_000);
 
   it('advances the knowledge epoch when an empty or fully rejected batch becomes current', async () => {
     const suffix = randomUUID();

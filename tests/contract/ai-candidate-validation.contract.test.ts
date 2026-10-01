@@ -109,10 +109,11 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
     expect(request?.systemInstruction).toContain('Extract every distinct explicit claim');
     expect(request?.systemInstruction).toContain('one atomic claim per candidate');
     expect(candidates).toHaveLength(1);
+    expect(request?.systemInstruction).toContain('Evidence may contain visual PDF line breaks');
     expect(candidates[0]).toMatchObject({
       claimText: '1억원 = 6천만원 + 4천만원',
       status: 'READY',
-      providerCall: { promptVersion: 'direct-claim-v5' },
+      providerCall: { promptVersion: 'direct-claim-v6' },
     });
   });
 
@@ -309,6 +310,83 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
     expect(candidates.every((candidate) => candidate.evidenceIds.length === 1)).toBe(true);
   });
 
+  it('splits independent claims from preserved PDF line boundaries', async () => {
+    const firstClaim = '이익과 현금은 같지 않을 수 있다';
+    const secondClaim = '분산투자로 체계적 위험은 제거할 수 없다';
+    const sourceText = `${firstClaim}\n${secondClaim}`;
+    const fake = new FakeAIProviderAdapter([{ claimText: sourceText }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+      candidatePromptVersion: 'direct-claim-v5',
+    });
+    const command = directTextCommand('stage4-split-pdf-lines-v5', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates.map((candidate) => candidate.claimText)).toEqual([firstClaim, secondClaim]);
+    expect(candidates.every((candidate) => candidate.status === 'READY')).toBe(true);
+  });
+
+  it('keeps wrapped PDF claim lines and incomplete equation rows together', async () => {
+    const sourceText =
+      '분산투자는 일부 위험을 줄일 수\n있지만 시장 전체의 체계적 위험은 제거할 수 없다\n' +
+      '110\n100 =\n1 + r\n이 식을 만족하는 r은 10% 이므로 IRR 은 10% 다.';
+    const fake = new FakeAIProviderAdapter([{ claimText: sourceText }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+      candidatePromptVersion: 'direct-claim-v5',
+    });
+    const command = directTextCommand('stage4-keep-pdf-wraps-v5', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates.map((candidate) => candidate.claimText)).toEqual([
+      '분산투자는 일부 위험을 줄일 수\n있지만 시장 전체의 체계적 위험은 제거할 수 없다',
+      '110\n100 =\n1 + r\n이 식을 만족하는 r은 10% 이므로 IRR 은 10% 다.',
+    ]);
+    expect(candidates.every((candidate) => candidate.status === 'READY')).toBe(true);
+  });
+
+  it('keeps Korean postposition continuations attached to the previous PDF line', async () => {
+    const sourceText =
+      '베타가 클수록 시장 변화에 민감하고 체계적 위험이 큰 방향\n으로 이해하면 된다 .';
+    const fake = new FakeAIProviderAdapter([{ claimText: sourceText }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+      candidatePromptVersion: 'direct-claim-v6',
+    });
+    const command = directTextCommand('stage4-korean-pdf-line-continuation-v6', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates.map((candidate) => candidate.claimText)).toEqual([sourceText]);
+    expect(candidates.every((candidate) => candidate.status === 'READY')).toBe(true);
+  });
+
   it('drops a Markdown heading without splitting a product version from its claim', async () => {
     const expectedClaim = 'Shotgun v1.2 출시일은 2026-08-01이다.';
     const sourceText = `# Release\n${expectedClaim}`;
@@ -406,7 +484,7 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
       extractionProfile: 'direct-only',
       providerCall: {
         provider: 'fake',
-        promptVersion: 'direct-claim-v5',
+        promptVersion: 'direct-claim-v6',
         policyVersion: 'direct-only-v1',
         structuredOutputValid: true,
         cost: { status: 'unavailable' },

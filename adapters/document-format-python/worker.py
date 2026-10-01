@@ -20,6 +20,7 @@ MAX_HTML_TRACKED = 512
 MAX_PDF_PAGES = 1000
 MAX_PDFIUM_PAGE_CHARS = 100_000
 MAX_PDFIUM_TEXT_ROWS = 20_000
+PDFIUM_EQUATION_PREFIX_PATTERN = re.compile(r"^([A-Z]{1,8}|[가-힣]{2,16})\s*=")
 MAX_PDF_BLOCKS = 8192
 MAX_CSV_BLOCKS = 8192
 MAX_SELECTORS = 16384
@@ -145,11 +146,17 @@ def block(
     text: object,
     selectors: list[dict[str, Any]],
     segments: list[dict[str, Any]] | None = None,
+    preserve_line_breaks: bool = False,
 ) -> dict[str, Any] | None:
     # PDF font maps (and some other source formats) can yield U+0000 for an
     # unmapped glyph. PostgreSQL text/jsonb cannot store NUL; replacing one
     # code point with one visible marker preserves physical segment offsets.
-    value = " ".join(str(text).split()).replace("\x00", "\ufffd")
+    raw_value = str(text)
+    if preserve_line_breaks:
+        value = "\n".join(line.strip() for line in raw_value.splitlines())
+    else:
+        value = " ".join(raw_value.split())
+    value = value.replace("\x00", "\ufffd")
     if not value:
         return None
     if segments is None:
@@ -512,7 +519,7 @@ def pdfium_stacked_equation_words(page_glyphs: list[dict[str, Any]]) -> list[dic
                     continue
                 prefix_text = _pdfium_equation_text(prefix_glyphs)
                 suffix_text = _pdfium_equation_text(suffix_glyphs) if suffix_glyphs else ""
-                if not re.match(r"^[A-Z]{1,8}\s*=", prefix_text):
+                if not PDFIUM_EQUATION_PREFIX_PATTERN.match(prefix_text):
                     continue
                 rebuilt_text = " ".join(
                     part for part in (prefix_text, f"{numerator_text}/{denominator_text}", suffix_text) if part
@@ -577,7 +584,7 @@ def apply_pdfium_stacked_equations(
         expected = Counter(compact(str(candidate["text"])).replace("^", "").replace("_", "").casefold())
         if not observed or any(count > expected[char] for char, count in observed.items()):
             continue
-        formula_name = re.match(r"^([A-Z]{1,8})\s*=", str(candidate["text"]))
+        formula_name = PDFIUM_EQUATION_PREFIX_PATTERN.match(str(candidate["text"]))
         if not formula_name or formula_name.group(1).casefold() not in compact(existing_text).casefold():
             continue
         output = [word for word in output if word not in matched]
@@ -817,7 +824,7 @@ def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
                 for paragraph_lines in semantic_paragraph:
                     words_in_paragraph = [value for line in paragraph_lines for value in line]
                     line_texts = [" ".join(str(value["text"]) for value in line) for line in paragraph_lines]
-                    text = " ".join(line_texts)
+                    text = "\n".join(line_texts)
                     segments: list[dict[str, Any]] = []
                     block_offset = 0
                     for line in paragraph_lines:
@@ -842,7 +849,7 @@ def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
                             }
                         )
                         block_offset += len(line_text) + 1
-                    item = block(text, [], segments)
+                    item = block(text, [], segments, preserve_line_breaks=True)
                     if item:
                         output.append(item)
                         if len(output) > MAX_PDF_BLOCKS:

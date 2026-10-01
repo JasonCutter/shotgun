@@ -27,9 +27,12 @@ export type VPRelationDecisionCorpus = {
 };
 
 const schema = JSON.parse(
-  readFileSync(new URL('../fixtures/vp/relation-decision-corpus.v1.2.schema.json', import.meta.url), {
-    encoding: 'utf8',
-  }),
+  readFileSync(
+    new URL('../fixtures/vp/relation-decision-corpus.v1.2.schema.json', import.meta.url),
+    {
+      encoding: 'utf8',
+    },
+  ),
 ) as object;
 const corpus = JSON.parse(
   readFileSync(new URL('../fixtures/vp/relation-decision-corpus.v1.2.json', import.meta.url), {

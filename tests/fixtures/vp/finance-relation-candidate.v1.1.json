@@ -18,9 +18,7 @@
       "caseId": "finance-balance-sheet-identity",
       "left": "자산 = 부채 + 자본",
       "right": "기업의 자산은 부채와 소유주 자본의 합이다.",
-      "allowedChoices": [
-        "EQUIVALENT"
-      ],
+      "allowedChoices": ["EQUIVALENT"],
       "dimension": "cross-source-accounting-identity",
       "rationale": "Both state the accounting identity that assets equal liabilities plus equity.",
       "leftProvenance": {
@@ -36,9 +34,7 @@
       "caseId": "finance-current-ratio-calculation",
       "left": "유동비율 = 4,000 / 2,000 × 100 = 200%",
       "right": "유동자산 4,000만원을 유동부채 2,000만원으로 나눈 유동비율은 200%다.",
-      "allowedChoices": [
-        "EQUIVALENT"
-      ],
+      "allowedChoices": ["EQUIVALENT"],
       "dimension": "cross-source-numeric-ratio",
       "rationale": "Both use the same current-asset and current-liability amounts and report 200 percent.",
       "leftProvenance": {
@@ -54,9 +50,7 @@
       "caseId": "finance-operating-profit-calculation",
       "left": "영업이익 = 900 − 500 = 400만원",
       "right": "매출총이익 900만원에서 판매비와관리비 500만원을 빼면 영업이익은 400만원이다.",
-      "allowedChoices": [
-        "EQUIVALENT"
-      ],
+      "allowedChoices": ["EQUIVALENT"],
       "dimension": "cross-source-numeric-result",
       "rationale": "The companion expands the same arithmetic and reports the same operating-profit result.",
       "leftProvenance": {
@@ -72,9 +66,7 @@
       "caseId": "finance-profit-cash-distinction",
       "left": "이익이 증가했다고 해서 현금도 같은 금액만큼 증가한 것은 아니다",
       "right": "회계상 이익이 늘어도 현금이 같은 액수만큼 늘었다고 단정할 수 없다.",
-      "allowedChoices": [
-        "EQUIVALENT"
-      ],
+      "allowedChoices": ["EQUIVALENT"],
       "dimension": "cross-source-qualification",
       "rationale": "Both reject the inference that increased profit guarantees an equal cash increase.",
       "leftProvenance": {
@@ -90,9 +82,7 @@
       "caseId": "finance-positive-npv-rule",
       "left": "NPV > 0 → 투자로 기업가치가 증가하는 방향",
       "right": "NPV가 양수이면 투자로 기업가치가 증가하는 방향이다.",
-      "allowedChoices": [
-        "EQUIVALENT"
-      ],
+      "allowedChoices": ["EQUIVALENT"],
       "dimension": "cross-source-sign-condition",
       "rationale": "Both state the positive-NPV decision direction under the same condition.",
       "leftProvenance": {
@@ -108,9 +98,7 @@
       "caseId": "finance-complementary-npv-branches",
       "left": "NPV > 0 → 투자로 기업가치가 증가하는 방향",
       "right": "NPV < 0 → 투자로 기업가치가 감소하는 방향",
-      "allowedChoices": [
-        "RELATED"
-      ],
+      "allowedChoices": ["RELATED"],
       "dimension": "mutually-exclusive-finance-conditions",
       "rationale": "The sign conditions differ; both rules can be true and are related rather than contradictory.",
       "leftProvenance": {
@@ -126,9 +114,7 @@
       "caseId": "finance-irr-definition",
       "left": "NPV가 0이 되도록 만드는 할인율",
       "right": "IRR은 순현재가치(NPV)를 0으로 만드는 할인율이다.",
-      "allowedChoices": [
-        "EQUIVALENT"
-      ],
+      "allowedChoices": ["EQUIVALENT"],
       "dimension": "cross-source-definition",
       "rationale": "Both define IRR as the discount rate at which NPV equals zero.",
       "leftProvenance": {
@@ -144,9 +130,7 @@
       "caseId": "finance-discount-rate-present-value",
       "left": "할인율이 높아질수록 현재가치는 낮아진다",
       "right": "같은 미래 현금흐름과 기간에서는 할인율 상승이 현재가치를 낮춘다.",
-      "allowedChoices": [
-        "EQUIVALENT"
-      ],
+      "allowedChoices": ["EQUIVALENT"],
       "dimension": "cross-source-directional-condition",
       "rationale": "The companion states the same inverse direction while making the held-constant scope explicit.",
       "leftProvenance": {
@@ -162,9 +146,7 @@
       "caseId": "finance-beta-complementary-branches",
       "left": "β > 1: 시장보다 더 크게 움직이는 경향",
       "right": "β < 1: 시장보다 덜 민감하게 움직이는 경향",
-      "allowedChoices": [
-        "RELATED"
-      ],
+      "allowedChoices": ["RELATED"],
       "dimension": "mutually-exclusive-beta-conditions",
       "rationale": "These describe different beta ranges and can both be true for different assets; they are not contradictory.",
       "leftProvenance": {
@@ -180,9 +162,7 @@
       "caseId": "finance-beta-1-5-example",
       "left": "β > 1: 시장보다 더 크게 움직이는 경향",
       "right": "베타가 1보다 큰 자산은 시장 변동보다 더 크게 움직이는 경향이 있다.",
-      "allowedChoices": [
-        "EQUIVALENT"
-      ],
+      "allowedChoices": ["EQUIVALENT"],
       "dimension": "cross-source-numeric-beta-example",
       "rationale": "Both give the same beta example and average directional relationship.",
       "leftProvenance": {
@@ -198,10 +178,7 @@
       "caseId": "finance-npv-numeric-conflict",
       "left": "같은 예시에서 NPV = 1,150만원 − 1,000만원 = 150만원이다.",
       "right": "같은 투자 예시의 NPV는 140만원이다.",
-      "allowedChoices": [
-        "CONTRADICTS",
-        "UNRESOLVED"
-      ],
+      "allowedChoices": ["CONTRADICTS", "UNRESOLVED"],
       "dimension": "same-scenario-numeric-conflict",
       "rationale": "If the companion refers to the same example, the claimed NPV values conflict; unresolved is safe if the shared scope is not established.",
       "leftProvenance": {
@@ -217,12 +194,8 @@
       "caseId": "finance-profit-cash-coexistence",
       "left": "이익이 증가했다고 해서 현금도 같은 금액만큼 증가한 것은 아니다",
       "right": "이 예시에서는 이익이 증가했지만 해당 기간 현금은 증가하지 않았다.",
-      "allowedChoices": [
-        "SUPPORTS"
-      ],
-      "allowedDirections": [
-        "RIGHT_TO_LEFT"
-      ],
+      "allowedChoices": ["SUPPORTS"],
+      "allowedDirections": ["RIGHT_TO_LEFT"],
       "dimension": "non-implication-and-instance",
       "rationale": "The example on the right supplies a counterexample to equal profit/cash growth and therefore supports the broader non-implication on the left; the direction is right-to-left. The label remains a candidate pending independent review.",
       "leftProvenance": {
@@ -238,10 +211,7 @@
       "caseId": "finance-unrelated-measures",
       "left": "유동비율 = 4,000 / 2,000 × 100 = 200%",
       "right": "영업이익 = 900 − 500 = 400만원",
-      "allowedChoices": [
-        "UNRESOLVED",
-        "RELATED"
-      ],
+      "allowedChoices": ["UNRESOLVED", "RELATED"],
       "dimension": "different-financial-measures",
       "rationale": "Both concern financial management but measure distinct properties; do not merge their values.",
       "leftProvenance": {
@@ -257,10 +227,7 @@
       "caseId": "finance-current-ratio-same-scope-conflict",
       "left": "같은 예시에서 유동자산 4,000만원, 유동부채 2,000만원의 유동비율은 200%다.",
       "right": "같은 예시의 유동비율은 150%다.",
-      "allowedChoices": [
-        "CONTRADICTS",
-        "UNRESOLVED"
-      ],
+      "allowedChoices": ["CONTRADICTS", "UNRESOLVED"],
       "dimension": "same-scope-ratio-conflict",
       "rationale": "For the same example and amounts the ratio is 200 percent; if that scope is not preserved, leave the pair unresolved.",
       "leftProvenance": {

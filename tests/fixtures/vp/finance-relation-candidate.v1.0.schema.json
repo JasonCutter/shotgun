@@ -36,12 +36,7 @@
       "pattern": "^sha256:[a-f0-9]{64}$"
     },
     "labelReviewStatus": {
-      "enum": [
-        "CANDIDATE",
-        "REVIEWED",
-        "APPROVED",
-        "RETIRED"
-      ]
+      "enum": ["CANDIDATE", "REVIEWED", "APPROVED", "RETIRED"]
     },
     "dataClassification": {
       "const": "MIXED_USER_PROVIDED_AND_TEST_AUTHORED"
@@ -53,12 +48,7 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "sha256",
-        "pageCount",
-        "companionSourceId",
-        "companionFile"
-      ],
+      "required": ["sha256", "pageCount", "companionSourceId", "companionFile"],
       "properties": {
         "sha256": {
           "type": "string",
@@ -112,13 +102,7 @@
             "minItems": 1,
             "uniqueItems": true,
             "items": {
-              "enum": [
-                "EQUIVALENT",
-                "QUALIFIES",
-                "CONTRADICTS",
-                "RELATED",
-                "UNRESOLVED"
-              ]
+              "enum": ["EQUIVALENT", "QUALIFIES", "CONTRADICTS", "RELATED", "UNRESOLVED"]
             }
           },
           "dimension": {
@@ -132,10 +116,7 @@
           "leftProvenance": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "page",
-              "markerId"
-            ],
+            "required": ["page", "markerId"],
             "properties": {
               "page": {
                 "type": "integer",
@@ -152,10 +133,7 @@
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "page",
-                  "markerId"
-                ],
+                "required": ["page", "markerId"],
                 "properties": {
                   "page": {
                     "type": "integer",
@@ -170,10 +148,7 @@
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "sourceId",
-                  "claimId"
-                ],
+                "required": ["sourceId", "claimId"],
                 "properties": {
                   "sourceId": {
                     "type": "string",

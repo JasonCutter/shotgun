@@ -10,6 +10,7 @@ from worker import (
     MAX_PDFIUM_PAGE_CHARS,
     apply_pdfium_horizontal_equations,
     apply_pdfium_stacked_equations,
+    block,
     pdfium_horizontal_equation_words,
     pdfium_page_glyphs,
     pdfium_recoverable_glyphs,
@@ -31,6 +32,32 @@ def recoverable_glyph(
 
 
 class PdfGlyphRecoveryTests(unittest.TestCase):
+    def test_pdf_block_preserves_visual_line_boundaries_and_segment_offsets(self) -> None:
+        first = "현금과 이익은 다를 수 있다"
+        second = "분산투자로 체계적 위험은 제거할 수 없다"
+        combined = f"{first}\n{second}"
+
+        result = block(
+            combined,
+            [],
+            [
+                {"start": 0, "end": len(first), "selectors": [{"type": "PageSelector", "page": 3}]},
+                {
+                    "start": len(first) + 1,
+                    "end": len(combined),
+                    "selectors": [{"type": "PageSelector", "page": 8}],
+                },
+            ],
+            preserve_line_breaks=True,
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["text"], combined)
+        self.assertEqual(
+            [result["text"][segment["start"] : segment["end"]] for segment in result["segments"]],
+            [first, second],
+        )
+
     def test_restores_a_unique_overlapping_comparison_sign(self) -> None:
         chars = [damaged_char(), {"text": "N", "x0": 2, "x1": 8, "top": 20, "bottom": 32}]
 
@@ -165,6 +192,26 @@ class PdfGlyphRecoveryTests(unittest.TestCase):
         self.assertEqual(
             apply_pdfium_stacked_equations(words, candidates)[0]["text"],
             "NPV = ∑ CF_t/(1 + r)^t − I_0",
+        )
+
+    def test_rebuilds_a_korean_labeled_fraction_with_a_formula_suffix(self) -> None:
+        glyphs = formula_glyphs("유동비율=", top=100, start_x=10)
+        glyphs.extend(formula_glyphs("유동자산", top=90, start_x=60))
+        glyphs.extend(formula_glyphs("유동부채", top=110, start_x=60))
+        glyphs.extend(formula_glyphs("×100", top=100, start_x=95))
+
+        candidates = pdfium_stacked_equation_words(glyphs)
+
+        self.assertEqual(len(candidates), 1)
+        expected = "유동비율 = 유동자산/유동부채 × 100"
+        self.assertEqual(candidates[0]["text"], expected)
+        words = [
+            {"text": "유동비율=유동자산유동부채×100", "x0": 10, "x1": 119, "top": 99, "bottom": 120}
+        ]
+
+        self.assertEqual(
+            apply_pdfium_stacked_equations(words, candidates)[0]["text"],
+            expected,
         )
 
     def test_keeps_a_stacked_candidate_when_pdfplumber_text_has_an_unrelated_glyph(self) -> None:

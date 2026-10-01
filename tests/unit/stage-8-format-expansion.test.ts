@@ -54,10 +54,10 @@ const selectorsOf = (
 ): readonly SourceSelector[] => output.sourceMap.entries.flatMap((entry) => entry.selectors ?? []);
 
 describe('Stage 8 format Golden Corpus', () => {
-  it('versions PDF formula recovery as a distinct transformation revision', () => {
+  it('versions PDF formula and visual-line recovery as a distinct transformation revision', () => {
     const adapter = new PythonDocumentFormatAdapter({ pythonExecutable });
 
-    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.5.0' });
+    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.7.0' });
   });
 
   it.each([
@@ -241,5 +241,5 @@ describe('Stage 8 format Golden Corpus', () => {
     expect(Object.keys(second.sourceMap).sort()).toEqual(
       Object.keys(first.output.sourceMap).sort(),
     );
-  });
+  }, 20_000);
 });

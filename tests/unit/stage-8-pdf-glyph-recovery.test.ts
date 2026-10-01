@@ -16,7 +16,7 @@ describe('Stage 8 PDFium glyph recovery and formula extraction', () => {
     expect(result.error?.message).toBeUndefined();
     const output = result.stdout + result.stderr;
     expect(result.status, output).toBe(0);
-    expect(output).toContain('Ran 14 tests');
+    expect(output).toContain('Ran 16 tests');
     expect(output).toContain('OK');
   });
 });

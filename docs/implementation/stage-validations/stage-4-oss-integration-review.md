@@ -74,3 +74,15 @@ Gemini Adapter
 - Semantic Validation은 기본 프로필에서 `NOT_RUN`이다.
 - 두 번째 실제 공급자는 Stage 4 완료에 포함하지 않고 공통 Fake Adapter 계약으로
   교체 가능성을 고정한다.
+
+## VP-04 PDF 물리 줄 경계 Candidate 분할 재검토 (2026-10-01)
+
+| 후보              | 검토 버전                                                         | 결정             | 범위와 근거                                                                                                                                                                                                                                                                    |
+| ----------------- | ----------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| spaCy Sentencizer | `v3.8.16`, commit `26b4d1dc04a812f426e4bef3e8a1b6f159d6f048`, MIT | `REFERENCE_ONLY` | 공식 컴포넌트는 punctuation 기반 규칙 문장 경계를 제공한다. 이번 작업은 PDF의 시각적 줄·페이지·BBox Evidence를 유지하면서 줄 바꿈 문장과 수식 행을 붙이고 독립 항목만 분리해야 하므로, 일반 문장 분할기는 대상 문제를 해결하지 않는다. spaCy runtime과 모델은 도입하지 않는다. |
+
+- 공식 [Sentencizer 문서](https://spacy.io/api/sentencizer/)와 [v3.8.16 release](https://github.com/explosion/spaCy/releases/tag/v3.8.16), [MIT License](https://github.com/explosion/spaCy/blob/v3.8.16/LICENSE)를 확인했다.
+- GitHub 보안 페이지에는 `SECURITY.md`가 없고 검토일 기준 게시된 보안 권고가 없다. 최신 release는 2026-08-24다.
+- Candidate Generation은 추출된 exact source substring만 분리한다. 물리 줄의 BBox와 offsets는 Stage 8의 고정 `pdfplumber` adapter가 소유한다. 이 구분에 대한 회귀·계약 결과는 [VP finance PDF verification](../vp-finance-pdf-flat-formula-verification-2026-10-01.md)에 기록한다.
+- 직접 구현 근거: `Sentencizer`는 punctuation boundary만 제공하며 PDF geometry, 수식 행, 완전한 claim 경계와 한글 조사로 이어지는 줄 바꿈은 판정하지 않는다. 이미 확보한 Candidate Generation Port와 exact Evidence 검증을 사용하고 새로운 NLP runtime은 추가하지 않는다.
+- 재평가 조건: 여러 문서 형식에서 공통 문장 분할이 필요한 Golden corpus가 정해지면 한국어·수식·목록 경계를 포함한 정밀도/재현율 benchmark를 실행한다.

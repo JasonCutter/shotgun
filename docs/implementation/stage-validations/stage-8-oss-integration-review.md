@@ -129,3 +129,7 @@ remains `DEFER`; no dependency or product adapter changed. Re-evaluate when
 bounded hardware can pass an adjudicated formula Golden corpus. See the
 [focused Docling report](../vp-docling-finance-formula-reevaluation-2026-10-01.md)
 for package, source, quality and rollback details.
+
+## 2026-10-01 — VP-04 PDF line-boundary augmentation
+
+The pinned pdfplumber `0.11.10` `ADOPT` decision remains unchanged. Its existing physical word lines, PageSelector and BBox selectors are preserved inside each single DocumentIR paragraph using explicit newline separators and exact segment offsets. This is an adapter-local `AUGMENT`; no new library or upstream code was introduced. Stage 8 Python tests cover line/offset preservation, and Stage 4 Contract tests cover splitting newline-separated independent claims. Rollback returns to whitespace-collapsed PDF text under the earlier immutable transformation identity. The actual supplied-PDF DeepSeek browser flow with document-format adapter `1.7.0` passed after the page-grounded gate was added: all 20/20 marker Evidence selectors matched their printed pages; four Ask cases cited expected pages; replay matched; no relation jobs remained. The older adapter `1.6.0` 18/20 run remains historical evidence only.

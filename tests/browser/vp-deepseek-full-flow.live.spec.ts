@@ -30,7 +30,11 @@ type CrossPhaseBackend = {
     aiProviderPolicy: { allowPrivate: true; allowRestricted: false; maxAttempts: 2 };
     aiCandidatePromptVersion: string;
     enableVPRelationWorker: true;
-  }): Promise<{ close(): Promise<void> }>;
+  }): Promise<{
+    close(): Promise<void>;
+    askWorkerStarted: boolean;
+    askWorkerStartFailure?: string;
+  }>;
 };
 
 type IsolatedDatabaseFactory = {
@@ -341,6 +345,12 @@ const startProductRuntime = async (
     aiCandidatePromptVersion: candidatePromptVersion,
     enableVPRelationWorker: true,
   });
+  if (!backend.askWorkerStarted || backend.askWorkerStartFailure) {
+    await backend.close();
+    throw new Error(
+      `Ask answer worker failed to start: ${backend.askWorkerStartFailure ?? 'unknown startup failure'}`,
+    );
+  }
   let frontend: ViteDevServer | undefined;
   try {
     const backendUrl = 'http://127.0.0.1:3002';
@@ -1257,7 +1267,7 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
       vpFinancePDFClaimMarkerCorpus.source.sha256,
     );
-    const runtimePromptVersion = 'direct-claim-v5';
+    const runtimePromptVersion = 'direct-claim-v6';
     runtime = await startProductRuntime(isolated.databaseUrl, runtimePromptVersion, (diagnostic) =>
       providerResponses.push(diagnostic),
     );
@@ -1346,8 +1356,10 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
     const assertionRows = await pool.query<{
       claim_text: string;
       evidence_text: string;
+      evidence_selectors: readonly { readonly type: string; readonly page?: number }[];
     }>(
-      `SELECT assertion.claim_text, evidence.quote->>'exact' AS evidence_text
+      `SELECT assertion.claim_text, evidence.quote->>'exact' AS evidence_text,
+              evidence.selectors AS evidence_selectors
          FROM vp.current_assertions AS assertion
          JOIN evidence.spans AS evidence
            ON evidence.project_id = assertion.project_id
@@ -1392,7 +1404,11 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
     const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
     const markerMatchesCandidate = (
       candidate: string,
-      marker: { readonly text: string; readonly requiredText?: string },
+      marker: {
+        readonly text: string;
+        readonly requiredText?: string;
+        readonly requiredEvidenceText?: string;
+      },
     ) => {
       if (marker.requiredText && !normalize(candidate).includes(normalize(marker.requiredText))) {
         return false;
@@ -1413,7 +1429,15 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
     };
     const markers = vpFinancePDFClaimMarkerCorpus.markers.map((marker) => {
       const matchingRows = assertionRows.rows
-        .filter((row) => markerMatchesCandidate(row.claim_text, marker))
+        .filter(
+          (row) =>
+            markerMatchesCandidate(row.claim_text, marker) &&
+            row.evidence_selectors.some(
+              (selector) => selector.type === 'PageSelector' && selector.page === marker.page,
+            ) &&
+            (!marker.requiredEvidenceText ||
+              normalize(row.evidence_text).includes(normalize(marker.requiredEvidenceText))),
+        )
         .sort((left, right) => left.claim_text.length - right.claim_text.length);
       const candidateRow = matchingRows[0];
       return {
@@ -1447,9 +1471,24 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
         missingMarkers: markers
           .filter((marker) => !marker.matched)
           .map((marker) => marker.markerId),
+        markerEvidenceMatches: vpFinancePDFClaimMarkerCorpus.markers
+          .filter((marker) => !markers.find((result) => result.markerId === marker.id)?.matched)
+          .map((marker) => ({
+            markerId: marker.id,
+            markerText: marker.text,
+            evidenceMatches: candidateRows.rows
+              .filter((row) => normalize(row.evidence_text).includes(normalize(marker.text)))
+              .map(({ status, claim_text, evidence_text }) => ({
+                status,
+                claimText: claim_text,
+                evidenceText: evidence_text,
+              })),
+          })),
         relevantGeneratedCandidates: candidateRows.rows
           .filter((row) =>
-            /PV|현재가치|IRR|내부수익률|10\s*%|100|110|분산|체계적|위험/iu.test(row.claim_text),
+            /PV|현재가치|IRR|내부수익률|10\s*%|100|110|분산|체계적|위험|현금흐름|영업활동|투자활동|재무활동/iu.test(
+              row.claim_text,
+            ),
           )
           .map(({ status, claim_text, evidence_text }) => ({
             status,
@@ -1657,11 +1696,34 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
               AND run.question LIKE 'NPV가 0보다 클 때%'
             ORDER BY run.created_at DESC LIMIT 1`,
         );
+        const latestFinanceRun = await pool.query<{
+          readonly state: string;
+          readonly attempt: Record<string, unknown> | null;
+        }>(
+          `SELECT run.state, to_jsonb(attempt) AS attempt
+             FROM frontend_ask.answer_runs AS run
+             LEFT JOIN frontend_ask.answer_run_attempts AS attempt
+               ON attempt.answer_run_id = run.answer_run_id
+              AND attempt.project_id = run.project_id
+              AND attempt.attempt_number = run.attempt_number
+            WHERE run.project_id = 'shotgun'
+              AND run.question LIKE '이 자료의 예시에서 자산이%'
+            ORDER BY run.created_at DESC LIMIT 1`,
+        );
         console.error(
           JSON.stringify({
             summary: 'vp-live-finance-pdf-ask-diagnostic-v1',
             sourceVersionId: source.sourceVersionId,
             knowledgePending,
+            latestFinanceRun: latestFinanceRun.rows[0]
+              ? {
+                  state: latestFinanceRun.rows[0].state,
+                  attemptState: latestFinanceRun.rows[0].attempt?.state,
+                  attemptFailureCode: latestFinanceRun.rows[0].attempt?.failure_code,
+                  attemptFailureMessage: latestFinanceRun.rows[0].attempt?.failure_message,
+                  workerId: latestFinanceRun.rows[0].attempt?.worker_id,
+                }
+              : undefined,
             latestNpvRun: latestNpvRun.rows[0]
               ? {
                   state: latestNpvRun.rows[0].state,

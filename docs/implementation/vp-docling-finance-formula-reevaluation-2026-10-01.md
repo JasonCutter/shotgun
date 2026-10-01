@@ -56,6 +56,16 @@ incorrect reading order and replacement characters. The exact source audit
 records examples and the source-to-fixture checks in
 [the finance relation source audit](./vp-finance-relation-source-fidelity-audit-2026-09-30.md).
 
+A separate probe used the already locked `pypdfium2==5.11.0` full-page text
+API. It returned the formula glyphs, but separated exponents, fraction
+numerators and denominators into independent lines or appended them after the
+surrounding prose. Its character boxes did place a simple horizontal example
+(`FV = 100 × (1.1)^2 = 121만원`) at consistent x/y coordinates. This suggests
+a geometry-based prototype for simple equations, but does not recover the
+stacked PV/NPV fractions safely. Keep PDFium's product role limited to strict
+comparison-glyph repair until that prototype passes a formula Golden corpus;
+do not treat raw PDFium text as canonical extraction.
+
 ## Integration decision and rollback
 
 Keep Docling `DEFER` for production. The non-enriched path leaves formula
@@ -74,5 +84,8 @@ Re-open this decision when a bounded, supported host can run CodeFormulaV2
 within the product's ingest limits and it passes a page-image adjudicated
 formula corpus for expression, variable, exponent, order and surrounding
 assumptions. Then run DocumentIR/SourceMap Contract, Golden, security and
-adapter-replacement tests before considering `ADOPT` or `AUGMENT`. The relation
+adapter-replacement tests before considering `ADOPT` or `AUGMENT`. A smaller
+alternative is a geometry-based PDFium prototype for unambiguous horizontal
+equations, with stacked or ambiguous formulas preserved as unresolved; it
+must pass the same source-image corpus before product integration. The relation
 corpus remains `CANDIDATE`; this result does not close VP-04/05.

@@ -82,7 +82,9 @@ The documented Stage 8 Docling re-evaluation trigger was confirmed on pages
 left formula block text empty in its default mode; optional CodeFormulaV2
 exceeded six CPU minutes and approximately 1.9 GB memory without a result. The
 isolated environment occupied 854,390,083 bytes. Docling remains `DEFER`; the
-existing pdfplumber/pypdfium2 path stays active, and formula-sensitive VP-04
+existing pdfplumber/pypdfium2 path stays active. The locked PDFium full-page
+text probe also split exponents and stacked fractions, though glyph geometry
+may support a smaller horizontal-equation prototype. Formula-sensitive VP-04
 quality remains open. [Re-evaluation and evidence](./vp-docling-finance-formula-reevaluation-2026-10-01.md).
 
 ## 남은 완료 조건

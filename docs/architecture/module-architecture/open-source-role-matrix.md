@@ -822,11 +822,11 @@ for Source selector retrieval, persisted citation readback, and existing query-
 plan replay compatibility. Changed-file ESLint, Prettier, full documentation
 validation, frontend production build, and `git diff --check` passed.
 
-**Golden status:** the installed DeepSeek run that exposed the issue used the
-supplied finance PDF; its authorized Source detail showed the asset/liability/
-equity Evidence on page 1. The post-fix installed-icon run remains pending, so
-this is still a candidate Golden and VP-09 is not complete. **Benchmark:** no
-extra provider call was added; the prompt-token delta from page metadata has
-not been measured. Rollback removes the optional page-number field and
-rendering; it requires no data migration and leaves the underlying Evidence
-selectors and citations intact.
+**Golden status:** an installed-MAIN readback now renders the saved real-
+DeepSeek answer and links its Evidence to PDF page 2; details are in the
+[installed verification](../../implementation/vp-ask-page-citation-installed-verification-2026-10-02.md).
+This single saved answer remains a candidate Golden and does not close VP-09.
+**Benchmark:** no extra provider call was added; the prompt-token delta from
+page metadata has not been measured. Rollback removes the optional page-number
+field and rendering; it requires no data migration and leaves the underlying
+Evidence selectors and citations intact.

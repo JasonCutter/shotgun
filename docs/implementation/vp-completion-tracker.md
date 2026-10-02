@@ -188,6 +188,8 @@ VP-08 stays unchecked. [Details](./vp-url-freshness-ask-projection-2026-10-02.md
 
 고정된 사용자 PDF를 격리 PostgreSQL과 실제 DeepSeek `deepseek-flash`로 다시 처리했다. `direct-claim-v10`, temperature `0.2` 실행은 약 1.7분에 통과했다. 147개 직접 주장은 모두 Evidence 원문에 포함됐고 80/80 page marker, 11/11 비주장 canary 제외, 고정 Ask 질문 4/4의 예상 답·페이지 인용(2, 3, 5, 9쪽), projection replay 일치가 확인됐다. 관계 8개(동등 6, 관련 2)는 대기 0건으로 수렴했다. Provider 응답 14회·34,717 tokens(입력 25,331/출력 9,386)이며 공식 캐시 미스 가격 기준 추정치는 비혼잡 $0.009431/혼잡 $0.018863이다. 실제 계정 청구액은 대사하지 않았다. 주장·관계 수는 반복 실행 간 변동한다. 독립 semantic Golden 판정은 `NOT_RUN`, corpus label은 `CANDIDATE`이고 Ask 대기 간헐 문제도 미해결이므로 VP-04/05는 계속 미완료다. [Stage 4 실측 기록](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-repeated-actual-pdf-run-after-stable-replay-polling).
 
+뒤이은 serial 전체 흐름 2회도 3.4분 안에 통과했다. 각 실행은 직접 주장 142/147개를 만들었으며 두 번 모두 80/80 marker, 11/11 non-claim 제외, 정답과 예상 PDF 페이지 인용을 갖춘 Ask 4/4, projection replay 일치, 관계 대기 0건이었다. 관계 수는 6→12로 달라졌다. 이번 두 실행에서는 Ask 대기 실패가 없었지만 과거 세 번의 `QUEUED` 무시도 확인돼 큐 Gate는 열어 둔다. 후보 수와 관계 수 변동 및 semantic Golden 독립 판정 미실행 때문에 VP-04/05도 계속 미완료다. [Stage 4 실측 기록](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-repeated-actual-pdf-run-after-stable-replay-polling).
+
 ## 다음 작업 순서
 
 ### 2026-10-02 회귀 재검증 (이전 v9 실행)

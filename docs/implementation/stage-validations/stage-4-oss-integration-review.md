@@ -354,3 +354,15 @@ semantic review. The assertion count and current relation set differ from
 the preceding runs. Labels remain `CANDIDATE`, semantic validation is
 `NOT_RUN`, and the prior intermittent queued-Ask failures remain unexplained;
 VP-04/05 are still open.
+
+Two serial Chromium/isolated-PostgreSQL repetitions of the same full Product
+flow then passed in 3.4 minutes total. The runs created 142 and 147 direct
+assertions; both matched all 80/80 page markers, promoted none of the 11
+non-claim canaries, answered all four fixed questions with their expected
+answers and PDF pages (2, 3, 5, and 9), matched projection replay, and settled
+the relation queue with zero pending jobs. Current relation counts differed
+(6, then 12). No first-Ask timeout occurred in these two runs, but the earlier
+three queued-without-attempt timeouts remain unexplained. The changing claim
+and relation counts still need independent adjudication and a documented
+quality bound; the corpus is `CANDIDATE`, semantic validation remains
+`NOT_RUN`, and VP-04/05 remain open.

@@ -501,20 +501,55 @@ const waitForVPConvergence = async (
   pool: Pool,
   replayModule: ReplayModule,
   expectedCardinality?: { readonly currentAssertions: number; readonly currentRelations: number },
-) => {
+): Promise<ReplayResult> => {
+  let lastReplay: ReplayResult | undefined;
+  let previousSettledSignature: string | undefined;
+  let stableSamples = 0;
   await expect
-    .poll(() => replayModule.verifyVPProjectionReplay(pool, 'shotgun'), {
-      timeout: 180_000,
-      intervals: [500, 1000, 2000, 3000],
-    })
+    .poll(
+      async () => {
+        const replay = await replayModule.verifyVPProjectionReplay(pool, 'shotgun');
+        lastReplay = replay;
+        const cardinalityMatches =
+          !expectedCardinality ||
+          (replay.currentAssertions === expectedCardinality.currentAssertions &&
+            replay.currentRelations === expectedCardinality.currentRelations);
+        const settled =
+          replay.matches &&
+          replay.sourceProcessingComplete &&
+          replay.candidateMaterializationComplete &&
+          replay.relationQueueComplete &&
+          replay.pendingRelationJobs === 0 &&
+          replay.failedRelationJobs === 0 &&
+          replay.unknownRelationJobs === 0 &&
+          cardinalityMatches;
+        const signature = settled
+          ? JSON.stringify({
+              currentAssertions: replay.currentAssertions,
+              currentRelations: replay.currentRelations,
+              expectedAssertions: replay.expectedAssertions,
+              expectedRelations: replay.expectedRelations,
+            })
+          : undefined;
+        stableSamples = signature
+          ? signature === previousSettledSignature
+            ? stableSamples + 1
+            : 1
+          : 0;
+        previousSettledSignature = signature;
+        return { settled, stableSamples, replay };
+      },
+      {
+        timeout: 180_000,
+        intervals: [1000],
+      },
+    )
     .toMatchObject({
-      matches: true,
-      sourceProcessingComplete: true,
-      candidateMaterializationComplete: true,
-      relationQueueSettled: true,
-      pendingRelationJobs: 0,
-      ...(expectedCardinality ?? {}),
+      settled: true,
+      stableSamples: 3,
     });
+  if (!lastReplay) throw new Error('VP convergence polling completed without a replay result.');
+  return lastReplay;
 };
 
 const waitForCandidatePromptVersion = async (pool: Pool, promptVersion: string) => {
@@ -1527,7 +1562,7 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       const matched = assertionRows.rows.find(
         (row) => pattern.test(row.claim_text) && pattern.test(row.evidence_text),
       );
-      return { matched: matched !== undefined, claim: matched?.claim_text };
+      return { matched: matched !== undefined };
     };
     const npvPositiveRule = npvRule('>');
     const npvNegativeRule = npvRule('<');
@@ -1553,35 +1588,25 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
         missingMarkers: markers
           .filter((marker) => !marker.matched)
           .map((marker) => marker.markerId),
-        nonClaimMatches: nonClaimMatches.filter((result) => result.matchedClaimTexts.length > 0),
+        nonClaimMatches: nonClaimMatches
+          .filter((result) => result.matchedClaimTexts.length > 0)
+          .map(({ nonClaimId, matchedClaimTexts }) => ({
+            nonClaimId,
+            promotedCount: matchedClaimTexts.length,
+          })),
         markerEvidenceMatches: vpFinancePDFClaimMarkerCorpus.markers
           .filter((marker) => !markers.find((result) => result.markerId === marker.id)?.matched)
           .map((marker) => ({
             markerId: marker.id,
-            markerText: marker.text,
-            evidenceMatches: candidateRows.rows
-              .filter((row) => normalize(row.evidence_text).includes(normalize(marker.text)))
-              .map(({ status, claim_text, evidence_text }) => ({
-                status,
-                claimText: claim_text,
-                evidenceText: evidence_text,
-                validationDimensions: candidateRows.rows.find(
-                  (row) => row.claim_text === claim_text && row.evidence_text === evidence_text,
-                )?.validation_dimensions,
-              })),
+            evidenceMatchCount: candidateRows.rows.filter((row) =>
+              normalize(row.evidence_text).includes(normalize(marker.text)),
+            ).length,
           })),
-        relevantGeneratedCandidates: candidateRows.rows
-          .filter((row) =>
-            /PV|현재가치|IRR|내부수익률|10\s*%|100|110|분산|체계적|위험|현금흐름|영업활동|투자활동|재무활동/iu.test(
-              row.claim_text,
-            ),
-          )
-          .map(({ status, claim_text, evidence_text, validation_dimensions }) => ({
-            status,
-            claimText: claim_text,
-            evidenceText: evidence_text,
-            validationDimensions: validation_dimensions,
-          })),
+        relevantGeneratedCandidateCount: candidateRows.rows.filter((row) =>
+          /PV|현재가치|IRR|내부수익률|10\s*%|100|110|분산|체계적|위험|현금흐름|영업활동|투자활동|재무활동/iu.test(
+            row.claim_text,
+          ),
+        ).length,
       }),
     );
     expect(assertionRows.rows.length).toBeGreaterThan(0);
@@ -1619,7 +1644,6 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
           markerId,
           matched,
           matchingCandidateCount,
-          candidate: candidateRow?.claim_text,
           candidateLength: candidateRow?.claim_text.length,
           evidenceLength: candidateRow?.evidence_text.length,
           candidateToEvidenceRatio:
@@ -1663,7 +1687,7 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       answerMatched: boolean;
       citationCount: number;
       citedPageMatched: boolean;
-      citedEvidence: readonly string[];
+      citedEvidenceCount: number;
     }[] = [];
     if (askRequested) {
       try {
@@ -1739,67 +1763,110 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
             answerMatched,
             citationCount: result.citationIds.length,
             citedPageMatched,
-            citedEvidence: relevantRows.map((row) => row.evidence_text),
+            citedEvidenceCount: relevantRows.length,
           });
         }
       } catch (error) {
-        const [{ PostgresAskAnswerExecutionRepository }, { PostgresVPAskEvidenceSearch }] =
-          (await Promise.all([
-            tsImport(
-              '../../adapters/frontend-ask-execution-postgres/src/index.ts',
-              import.meta.url,
-            ),
-            tsImport(
-              '../../adapters/vp-knowledge-postgres/src/ask-evidence-search.ts',
-              import.meta.url,
-            ),
-          ])) as [
-            {
-              PostgresAskAnswerExecutionRepository: new (
-                pool: Pool,
-                workspace: never,
-                sourceContextReader: { resolve: () => Promise<undefined> },
-                hybridRetrieval: undefined,
-                vpEvidenceSearch: object,
-              ) => {
-                isProjectKnowledgePending(scope: {
+        const [
+          { PostgresAskAnswerExecutionRepository },
+          { PostgresVPAskEvidenceSearch },
+          { PostgresAskWorkspaceProjection },
+        ] = (await Promise.all([
+          tsImport('../../adapters/frontend-ask-execution-postgres/src/index.ts', import.meta.url),
+          tsImport(
+            '../../adapters/vp-knowledge-postgres/src/ask-evidence-search.ts',
+            import.meta.url,
+          ),
+          tsImport('../../adapters/frontend-ask-write-postgres/src/index.ts', import.meta.url),
+        ])) as [
+          {
+            PostgresAskAnswerExecutionRepository: new (
+              pool: Pool,
+              workspace: object,
+              sourceContextReader: { resolve: () => Promise<undefined> },
+              hybridRetrieval: undefined,
+              vpEvidenceSearch: object,
+            ) => {
+              isProjectKnowledgePending(scope: {
+                principalId: string;
+                projectId: string;
+                accessRevision: string;
+                policyContextRevision: string;
+                sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
+                accessScope: readonly string[];
+              }): Promise<boolean>;
+              getRunContext(
+                scope: {
                   principalId: string;
                   projectId: string;
                   accessRevision: string;
                   policyContextRevision: string;
                   sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
                   accessScope: readonly string[];
-                }): Promise<boolean>;
-                getRunContext(
-                  scope: {
-                    principalId: string;
-                    projectId: string;
-                    accessRevision: string;
-                    policyContextRevision: string;
-                    sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
-                    accessScope: readonly string[];
-                  },
-                  answerRunId: string,
-                ): Promise<
-                  | {
-                      readonly snapshot: { readonly state: string };
-                      readonly contextStatus: string;
-                      readonly evidence: readonly unknown[];
-                      readonly vpKnowledgeEpoch?: string;
-                      readonly vpSourceWatermark?: string;
-                    }
-                  | undefined
-                >;
-              };
-            },
-            { PostgresVPAskEvidenceSearch: new (pool: Pool) => object },
-          ];
+                },
+                answerRunId: string,
+              ): Promise<
+                | {
+                    readonly snapshot: { readonly state: string };
+                    readonly contextStatus: string;
+                    readonly evidence: readonly unknown[];
+                    readonly vpKnowledgeEpoch?: string;
+                    readonly vpSourceWatermark?: string;
+                  }
+                | undefined
+              >;
+              claimQueuedForWorker(workerId: string, limit: number): Promise<readonly unknown[]>;
+            };
+          },
+          { PostgresVPAskEvidenceSearch: new (pool: Pool) => object },
+          { PostgresAskWorkspaceProjection: new (pool: Pool) => object },
+        ];
         const askReadinessRepository = new PostgresAskAnswerExecutionRepository(
           pool,
-          {} as never,
+          new PostgresAskWorkspaceProjection(pool),
           { resolve: async () => undefined },
           undefined,
           new PostgresVPAskEvidenceSearch(pool),
+        );
+        const latestFinanceRun = await pool.query<{
+          readonly answer_run_id: string;
+          readonly state: string;
+          readonly mode: string;
+          readonly attempt_number: number;
+          readonly access_scope: readonly string[];
+          readonly sensitivity_clearance: 'public' | 'internal' | 'private' | 'restricted';
+          readonly access_revision: string;
+          readonly policy_context_revision: string;
+          readonly source_selection_count: number;
+          readonly attempt_state: string | null;
+          readonly attempt_provider: string | null;
+          readonly attempt_model: string | null;
+          readonly attempt_created_at: Date | null;
+          readonly attempt_updated_at: Date | null;
+          readonly attempt_completed_at: Date | null;
+          readonly attempt_failure_code: string | null;
+        }>(
+          `SELECT run.answer_run_id, run.state, run.mode, run.attempt_number,
+                  run.access_scope, run.sensitivity_clearance, run.access_revision,
+                  run.policy_context_revision,
+                  (SELECT count(*)::int FROM frontend_ask.source_selections AS selection
+                    WHERE selection.project_id = run.project_id
+                      AND selection.answer_run_id = run.answer_run_id) AS source_selection_count,
+                  attempt.state AS attempt_state,
+                  attempt.provider_name AS attempt_provider,
+                  attempt.provider_model AS attempt_model,
+                  attempt.created_at AS attempt_created_at,
+                  attempt.updated_at AS attempt_updated_at,
+                  attempt.completed_at AS attempt_completed_at,
+                  attempt.failure_code AS attempt_failure_code
+             FROM frontend_ask.answer_runs AS run
+             LEFT JOIN frontend_ask.answer_run_attempts AS attempt
+               ON attempt.answer_run_id = run.answer_run_id
+              AND attempt.project_id = run.project_id
+              AND attempt.attempt_number = run.attempt_number
+            WHERE run.project_id = 'shotgun'
+              AND run.question LIKE '이 자료의 예시에서 자산이%'
+            ORDER BY run.created_at DESC LIMIT 1`,
         );
         const workerScope = {
           principalId: 'ask-worker',
@@ -1858,6 +1925,10 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
             };
           }
         }
+        const diagnosticClaims = await askReadinessRepository.claimQueuedForWorker(
+          'vp-live-diagnostic-only',
+          1,
+        );
         const latestNpvRun = await pool.query<{
           readonly state: string;
           readonly attempt: Record<string, unknown> | null;
@@ -1870,46 +1941,6 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
               AND attempt.attempt_number = run.attempt_number
             WHERE run.project_id = 'shotgun'
               AND run.question LIKE 'NPV가 0보다 클 때%'
-            ORDER BY run.created_at DESC LIMIT 1`,
-        );
-        const latestFinanceRun = await pool.query<{
-          readonly answer_run_id: string;
-          readonly state: string;
-          readonly mode: string;
-          readonly attempt_number: number;
-          readonly access_scope: readonly string[];
-          readonly sensitivity_clearance: 'public' | 'internal' | 'private' | 'restricted';
-          readonly access_revision: string;
-          readonly policy_context_revision: string;
-          readonly source_selection_count: number;
-          readonly attempt_state: string | null;
-          readonly attempt_provider: string | null;
-          readonly attempt_model: string | null;
-          readonly attempt_created_at: Date | null;
-          readonly attempt_updated_at: Date | null;
-          readonly attempt_completed_at: Date | null;
-          readonly attempt_failure_code: string | null;
-        }>(
-          `SELECT run.answer_run_id, run.state, run.mode, run.attempt_number,
-                  run.access_scope, run.sensitivity_clearance, run.access_revision,
-                  run.policy_context_revision,
-                  (SELECT count(*)::int FROM frontend_ask.source_selections AS selection
-                    WHERE selection.project_id = run.project_id
-                      AND selection.answer_run_id = run.answer_run_id) AS source_selection_count,
-                  attempt.state AS attempt_state,
-                  attempt.provider_name AS attempt_provider,
-                  attempt.provider_model AS attempt_model,
-                  attempt.created_at AS attempt_created_at,
-                  attempt.updated_at AS attempt_updated_at,
-                  attempt.completed_at AS attempt_completed_at,
-                  attempt.failure_code AS attempt_failure_code
-             FROM frontend_ask.answer_runs AS run
-             LEFT JOIN frontend_ask.answer_run_attempts AS attempt
-               ON attempt.answer_run_id = run.answer_run_id
-              AND attempt.project_id = run.project_id
-              AND attempt.attempt_number = run.attempt_number
-            WHERE run.project_id = 'shotgun'
-              AND run.question LIKE '이 자료의 예시에서 자산이%'
             ORDER BY run.created_at DESC LIMIT 1`,
         );
         const answerEventDiagnostics = latestFinanceRun.rows[0]
@@ -1936,6 +1967,7 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
             sourceVersionId: source.sourceVersionId,
             knowledgePending,
             workerContextDiagnostic,
+            diagnosticClaimCount: diagnosticClaims.length,
             latestFinanceRun: latestFinanceRun.rows[0]
               ? {
                   answerRunId: latestFinanceRun.rows[0].answer_run_id,
@@ -1960,14 +1992,16 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
                 }
               : undefined,
             answerEvents: answerEventDiagnostics.rows,
+            replay: await replayModule.verifyVPProjectionReplay(pool, 'shotgun'),
             providerResponses,
           }),
         );
         throw error;
       }
     }
+    let replay: ReplayResult;
     try {
-      await waitForVPConvergence(pool, replayModule);
+      replay = await waitForVPConvergence(pool, replayModule);
     } catch (error) {
       const pendingJobs = await pool.query<{
         readonly jobId: string;
@@ -1979,8 +2013,8 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
         readonly leaseExpiresAt: Date | null;
         readonly providerState: string | null;
         readonly providerFailureCode: string | null;
-        readonly leftClaim: string;
-        readonly rightClaim: string;
+        readonly leftAssertionId: string;
+        readonly rightAssertionId: string;
       }>(
         `SELECT job.job_id::text AS "jobId", job.status,
                 job.attempt_count AS "attemptCount", job.max_attempts AS "maxAttempts",
@@ -1989,15 +2023,9 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
                 job.lease_expires_at AS "leaseExpiresAt",
                 provider.state AS "providerState",
                 provider.failure_code AS "providerFailureCode",
-                left_claim.claim_text AS "leftClaim",
-                right_claim.claim_text AS "rightClaim"
+                job.left_assertion_id::text AS "leftAssertionId",
+                job.right_assertion_id::text AS "rightAssertionId"
            FROM vp.relation_jobs AS job
-           JOIN vp.assertions AS left_claim
-             ON left_claim.project_id = job.project_id
-            AND left_claim.assertion_id = job.left_assertion_id
-           JOIN vp.assertions AS right_claim
-             ON right_claim.project_id = job.project_id
-            AND right_claim.assertion_id = job.right_assertion_id
            LEFT JOIN vp.relation_provider_calls AS provider
              ON provider.project_id = job.project_id AND provider.job_id = job.job_id
           WHERE job.project_id = 'shotgun'
@@ -2014,24 +2042,19 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       );
       throw error;
     }
-    const replay = await replayModule.verifyVPProjectionReplay(pool, 'shotgun');
-    expect(replay).toMatchObject({ matches: true, pendingRelationJobs: 0 });
-    const relationRows = await pool.query<{
-      relation_kind: string;
-      left_claim: string;
-      right_claim: string;
-    }>(
-      `SELECT relation.relation_kind, left_claim.claim_text AS left_claim,
-              right_claim.claim_text AS right_claim
-         FROM vp.current_relations AS relation
-         JOIN vp.current_assertions AS left_claim
-           ON left_claim.project_id = relation.project_id
-          AND left_claim.assertion_id = relation.left_assertion_id
-         JOIN vp.current_assertions AS right_claim
-           ON right_claim.project_id = relation.project_id
-          AND right_claim.assertion_id = relation.right_assertion_id
-        WHERE relation.project_id = 'shotgun'
-        ORDER BY relation.relation_kind, left_claim.claim_text, right_claim.claim_text`,
+    expect(replay).toMatchObject({
+      matches: true,
+      relationQueueComplete: true,
+      pendingRelationJobs: 0,
+      failedRelationJobs: 0,
+      unknownRelationJobs: 0,
+    });
+    const relationRows = await pool.query<{ relation_kind: string; relation_count: number }>(
+      `SELECT relation_kind, count(*)::int AS relation_count
+         FROM vp.current_relations
+        WHERE project_id = 'shotgun'
+        GROUP BY relation_kind
+        ORDER BY relation_kind`,
     );
     const citations = answer?.citations;
     if (askRequested) expect(citations).toBeGreaterThan(0);
@@ -2039,9 +2062,8 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       ...extractionSummary,
       askAttempted: askRequested,
       askCitations: citations,
-      npvRules: { positive: npvPositiveRule, negative: npvNegativeRule },
+      npvRules: { positive: npvPositiveRule.matched, negative: npvNegativeRule.matched },
       npvAskCitations: npvAnswer?.citations,
-      npvAskAnswer: npvAnswer?.text,
       askCorpusId: vpFinancePDFAskCorpus.corpusId,
       askCorpusVersion: vpFinancePDFAskCorpus.corpusVersion,
       askCorpusDigest: vpFinancePDFAskCorpusComputedDigest,

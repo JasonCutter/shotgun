@@ -263,8 +263,16 @@ passed once with no test temperature override: 151/151 ready assertions, 80/80
 markers, 0/11 non-claim promotions, the balance-sheet and NPV answers with
 citations, 4/4 fixed Ask cases with correct PDF page citations, replay matched,
 5 relations settled, 0 pending, and 31,046 provider-reported tokens over 11
-calls. The stored provider revision matched
+calls (21,903 input and 9,143 output). The stored provider revision matched
 `a8-vault-routed-provider-v1/deepseek-chat-completions-v2-temperature-0.2`.
+Using DeepSeek's official [pricing table](https://api-docs.deepseek.com/quick_start/pricing/)
+as of 2026-10-02, `deepseek-flash` cache-miss prices estimate this usage at
+$0.008771 off-peak or $0.017542 at peak. The estimate does not account for
+cached input tokens because the local diagnostic did not retain the cache-hit
+breakdown. DeepSeek says returned API token usage is the source of truth for
+tokens and bills according to current prices ([token usage](https://api-docs.deepseek.com/quick_start/token_usage/)),
+but the account balance/invoice has not been reconciled, so neither estimate
+is recorded as the actual charge.
 However, the two preceding no-override runs timed out waiting for the first Ask
 answer; the answer run stayed `QUEUED` with no attempt while the same-scope
 knowledge-pending check was false. A third run passed in 1.5 minutes. The live
@@ -284,3 +292,44 @@ API default 1 or restore the previous adapter revision. Semantic validation
 remains `NOT_RUN`, marker labels remain `CANDIDATE` pending independent
 adjudication, and actual provider billing is not reconciled. VP-04/05 remain
 open.
+
+## 2026-10-02 stable replay, source fidelity, and live audit
+
+The full-flow test now requires three consecutive successful, unchanged replay
+observations with the relation queue complete and no pending, failed, or
+unknown jobs. This closes the test's prior race where a single zero-pending
+snapshot was followed by a newly visible relation job. It changes the test
+synchronization only; no production queue behavior changed.
+
+Two additional default-temperature (`0.2`) runs passed the actual PDF intake,
+DeepSeek extraction, relation processing, Ask answers, citations, and replay.
+The first produced 151 assertions, 80/80 page markers, 0/11 exact non-claim
+promotions, 4/4 fixed Ask answers with the expected page citations, 10 current
+relations (7 `EQUIVALENT`, 3 `RELATED`), and 0 pending jobs. It used 16 provider
+calls and 37,081 reported tokens (27,589 input, 9,492 output); the no-cache
+price estimate is $0.009834 off-peak or $0.019667 at peak. The second produced
+148 assertions, again 80/80 markers and 0/11 exact non-claim promotions, 4/4
+fixed Ask answers with the expected page citations, 8 current relations (5
+`EQUIVALENT`, 3 `RELATED`), and 0 pending jobs. It used 13 calls and 33,457
+reported tokens (24,168 input, 9,289 output); the no-cache estimate is $0.009199
+off-peak or $0.018397 at peak. Both estimates use the official [DeepSeek price
+table](https://api-docs.deepseek.com/quick_start/pricing/) and exclude cached
+input discounts. They are not reconciled to the provider invoice.
+
+An opt-in audit of the second run found that all 148 stored direct assertions
+were exact substrings of their attached Evidence. A separate `pypdf 6.10.0`
+read found 73/80 marker phrases verbatim on their expected PDF page; the other
+seven are formula/symbol text on pages 5, 6, and 9 and were verified in rendered
+page images. This is a source-location check, not a semantic gold review. The
+audit also found five normalized duplicate groups across repeated pages. The
+11 non-claim examples had zero exact promotions, while semantic validation is
+still `NOT_RUN`; the corpus remains `CANDIDATE` and VP-04/05 remain open.
+
+Three default-temperature live runs have now timed out on the first Ask with a
+`QUEUED` run and no attempt despite a same-scope `knowledgePending=false` check.
+The last failure's test-only context diagnostic used an incomplete workspace
+stub and returned `TypeError`; it has been changed to use the real PostgreSQL
+Ask workspace projection and to record a bounded claimability diagnostic in
+the disposable test database. Two subsequent live runs passed, but neither
+exercised that failure diagnostic. Ask queue availability is therefore still
+unresolved, and VP-04/05 remain open.

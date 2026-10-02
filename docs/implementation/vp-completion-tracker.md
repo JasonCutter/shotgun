@@ -190,6 +190,8 @@ VP-08 stays unchecked. [Details](./vp-url-freshness-ask-projection-2026-10-02.md
 
 뒤이은 serial 전체 흐름 2회도 3.4분 안에 통과했다. 각 실행은 직접 주장 142/147개를 만들었으며 두 번 모두 80/80 marker, 11/11 non-claim 제외, 정답과 예상 PDF 페이지 인용을 갖춘 Ask 4/4, projection replay 일치, 관계 대기 0건이었다. 관계 수는 6→12로 달라졌다. 이번 두 실행에서는 Ask 대기 실패가 없었지만 과거 세 번의 `QUEUED` 무시도 확인돼 큐 Gate는 열어 둔다. 후보 수와 관계 수 변동 및 semantic Golden 독립 판정 미실행 때문에 VP-04/05도 계속 미완료다. [Stage 4 실측 기록](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-repeated-actual-pdf-run-after-stable-replay-polling).
 
+2026-10-02 원문 독립 점검에서 positive marker 80개(정규화 텍스트 75개와 시각 확인 5개), 11개 negative fragment canary, Ask 4개 답·페이지를 대조했다. 한 실측의 147 assertion은 모두 Evidence와 정확히 연결됐고 pypdf 본문 대조 131개·페이지 이미지 대조 16개였다. 정규화 중복 공식 4쌍을 확인했으며, 완전한 문서 gold 목록·전체 누락 상한·독립 blind label은 아직 없다. 상세 [source audit](./vp-finance-pdf-independent-source-audit-2026-10-02.md). Corpus 상태는 `CANDIDATE` 유지, VP-04/05 미완료.
+
 ## 다음 작업 순서
 
 ### 2026-10-02 회귀 재검증 (이전 v9 실행)

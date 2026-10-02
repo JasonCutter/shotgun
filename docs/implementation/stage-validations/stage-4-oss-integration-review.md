@@ -366,3 +366,9 @@ three queued-without-attempt timeouts remain unexplained. The changing claim
 and relation counts still need independent adjudication and a documented
 quality bound; the corpus is `CANDIDATE`, semantic validation remains
 `NOT_RUN`, and VP-04/05 remain open.
+
+The separate [independent source audit](../vp-finance-pdf-independent-source-audit-2026-10-02.md)
+checked the selected positive/negative markers, four Ask labels, and one
+generated assertion set against the original PDF. It verified source location
+for that sample; it does not replace a complete gold inventory or bound
+document-wide precision/recall.

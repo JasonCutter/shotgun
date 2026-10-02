@@ -105,7 +105,7 @@ const currentEmptyBatchesSql = `
 
 const exactPairDigest = (left: string, right: string, claimText: string): string =>
   `sha256:${createHash('sha256')
-    .update(JSON.stringify([left, right, claimText]))
+    .update(JSON.stringify([left, right, claimText, 'vp-normalized-exact-claim-v2']))
     .digest('hex')}`;
 export class PostgresVPKnowledgeLedger implements VPKnowledgeLedgerPort {
   constructor(private readonly pool: Pool) {}
@@ -200,17 +200,37 @@ export class PostgresVPKnowledgeLedger implements VPKnowledgeLedgerPort {
             ],
           );
           if (!inserted.rowCount) continue;
-          const exactMatches = await client.query<{ assertion_id: string }>(
-            `SELECT assertion_id::text FROM vp.current_assertions
-              WHERE project_id = $1 AND claim_text = $2 AND assertion_id <> $3
+          // Resolve only canonical Unicode and whitespace differences here.
+          // Claim text and Evidence remain unchanged; punctuation, values,
+          // operators, qualifiers, and negation still require relation review.
+          const exactMatches = await client.query<{
+            assertion_id: string;
+            normalized_claim_text: string;
+          }>(
+            `SELECT assertion_id::text,
+                    btrim(regexp_replace(normalize(claim_text, NFC), '[[:space:]]+', ' ', 'g'))
+                      COLLATE "C" AS normalized_claim_text
+               FROM vp.current_assertions
+              WHERE project_id = $1
+                AND btrim(regexp_replace(normalize(claim_text, NFC), '[[:space:]]+', ' ', 'g'))
+                      COLLATE "C" =
+                    btrim(regexp_replace(normalize($2, NFC), '[[:space:]]+', ' ', 'g'))
+                      COLLATE "C"
+                AND assertion_id <> $3
                 AND access_scope = $4::text[] AND sensitivity = $5
                 AND source_version_id <> $6::uuid
              UNION
-             SELECT previous.assertion_id::text
+             SELECT previous.assertion_id::text,
+                    btrim(regexp_replace(normalize(previous.claim_text, NFC), '[[:space:]]+', ' ', 'g'))
+                      COLLATE "C" AS normalized_claim_text
                FROM vp.assertions AS previous
                JOIN candidate.claim_candidates AS prior_candidate
                  ON prior_candidate.candidate_id = previous.candidate_id
-              WHERE previous.project_id = $1 AND previous.claim_text = $2
+              WHERE previous.project_id = $1
+                AND btrim(regexp_replace(normalize(previous.claim_text, NFC), '[[:space:]]+', ' ', 'g'))
+                      COLLATE "C" =
+                    btrim(regexp_replace(normalize($2, NFC), '[[:space:]]+', ' ', 'g'))
+                      COLLATE "C"
                 AND previous.assertion_id <> $3
                 AND previous.access_scope = $4::text[]
                 AND previous.sensitivity = $5
@@ -237,11 +257,11 @@ export class PostgresVPKnowledgeLedger implements VPKnowledgeLedgerPort {
                  decision_id, project_id, method, task_kind, policy_revision,
                  input_digest, outcome
                ) VALUES ($1, $2, 'DETERMINISTIC', 'EXACT_TEXT_EQUIVALENCE',
-                         'vp-exact-claim-v1', $3, 'EQUIVALENT')`,
+                         'vp-normalized-exact-claim-v2', $3, 'EQUIVALENT')`,
               [
                 decisionId,
                 candidate.project_id,
-                exactPairDigest(left, right, candidate.claim_text),
+                exactPairDigest(left, right, match.normalized_claim_text),
               ],
             );
             await client.query(

@@ -449,11 +449,53 @@ and duplicate links inside one `REPEATABLE READ` snapshot to avoid mixing
 different worker states. With 142 assertions it found 10,009 eligible pairs,
 25 jobs (all completed), 25 claimed attempts, and 9,984 pairs without a job.
 The snapshot contained 18 relations (13 `EQUIVALENT`, 4 `RELATED`, 1
-`SUPPORTS`) and five normalized duplicate formula groups, each connected by an
-`EQUIVALENT` edge. All four page-grounded Ask checks passed and replay matched.
+`SUPPORTS`) and five normalized duplicate claim groups (four equations and one
+repeated expression), each connected by an `EQUIVALENT` edge. All four
+page-grounded Ask checks passed and replay matched.
 This is a consistent measurement of a partial frontier, not full source-wide
 pair coverage. Eligible pairs are broad syntactic work candidates, not 10,009
 known semantic relationships; only an independently reviewed recall corpus
 can define which are relevant. The candidate backlog is about 99.75% of this
 broad frontier after the observed work, and the replay completion flag still
 does not include unqueued pairs.
+
+## 2026-10-02 deterministic normalized exact-claim linking
+
+Target: the existing `VPKnowledgeLedgerPort` and its PostgreSQL Adapter. The
+direct-claim ingestion path now links a pair as `EQUIVALENT` without a provider
+call only when NFC Unicode normalization and whitespace-run folding produce
+identical text. The comparison uses PostgreSQL's `C` collation. Punctuation,
+numbers, operators, negation, qualifiers, and word order are not normalized.
+Each assertion still stores its original claim and Source Evidence; no claims
+are merged or deleted. The append-only `DETERMINISTIC` receipt records
+`EXACT_TEXT_EQUIVALENCE`, policy `vp-normalized-exact-claim-v2`, and a digest
+bound to the sorted assertion IDs and normalized text.
+
+| Candidate / reference                                                                                                                                                                                                 | Pin and license                                                                                                          | Decision and boundary                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| PostgreSQL `REL_16_15` commit `7d3e000c5961a544302072058a1184e9a588837b`; the pinned runtime is `pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b` (PostgreSQL License) | PostgreSQL 16.15 in the pinned test runtime; `normalize` and POSIX whitespace handling use built-in PostgreSQL behavior. | Existing PostgreSQL `ADOPT` behind the Shotgun Adapter; no new dependency or OSS-owned schema.                                 |
+| `pg_trgm` 1.6                                                                                                                                                                                                         | PostgreSQL License; same pinned PostgreSQL runtime                                                                       | Existing `AUGMENT` remains ranking-only. It is not used to establish equivalence or prune semantic pairs.                      |
+| `garrytan/gbrain`, `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (MIT)                                                                                                                                                   | Existing pinned Stage 4 reference                                                                                        | `REFERENCE_ONLY` for relation/history patterns; its Runtime and schema are not imported.                                       |
+| Standalone exact-claim normalization package                                                                                                                                                                          | No relevant package identified among the pinned Stage 4 candidates                                                       | `NO_RELEVANT_OSS`; the bounded whitespace/NFC comparison is a small adapter-local rule and does not transform Source Evidence. |
+
+The PostgreSQL integration regression feeds a Korean assertion with a line break
+and decomposed Hangul jamo, then verifies a deterministic equivalent relation,
+unchanged raw assertion text, no cross-sensitivity link, and matching projection
+replay. No migration is required. The existing adapter contract and DB boundary
+remain in place; no new Port was added. Rollback restores byte-exact matching
+and policy `vp-exact-claim-v1`; already-recorded equivalent receipts remain
+append-only because the linked texts differ only by the documented canonical
+and whitespace normalization. Open-source Role Matrix decisions are unchanged;
+this records use of the already pinned PostgreSQL Adapter, not adoption of a
+new component.
+
+Security and maintenance status remain those in the pinned
+[OSS source registry](../oss-source-registry.json); this change adds no package
+to scan and no new upstream code. The PostgreSQL runtime image and upstream
+source commit are immutable pins, and the replacement boundary remains
+`VPKnowledgeLedgerPort`.
+
+This only short-circuits formatting-only duplicates. It does not reduce or
+complete the remaining semantic pair frontier, validate relation quality on an
+independently adjudicated corpus, or establish provider billing. VP-04/05 remain
+open pending those broader quality, backlog, cost, and repeatability gates.

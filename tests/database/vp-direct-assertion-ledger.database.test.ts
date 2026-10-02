@@ -61,7 +61,7 @@ describe('VP validated direct assertion ledger', () => {
     };
     await createProject(projectId);
 
-    const claimText = 'The shared verification code is 42.';
+    const claimText = '공유 검증 코드는 42이다.';
     const seedCandidate = async (
       index: number,
       sensitivity: 'public' | 'private',
@@ -299,7 +299,7 @@ describe('VP validated direct assertion ledger', () => {
       /VP ledger .* cannot be truncated/,
     );
 
-    const second = await seedCandidate(2, 'public');
+    const second = await seedCandidate(2, 'public', claimText.replace(' ', '\n').normalize('NFD'));
     expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
     const third = await seedCandidate(3, 'private');
     expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
@@ -313,6 +313,9 @@ describe('VP validated direct assertion ledger', () => {
     expect(new Set(assertions.map((item) => item.evidenceId))).toEqual(
       new Set([first.evidenceId, second.evidenceId, third.evidenceId]),
     );
+    expect(
+      assertions.some((item) => item.claimText === claimText.replace(' ', '\n').normalize('NFD')),
+    ).toBe(true);
     expect(
       await ledger.listCurrentAssertions({
         projectId,
@@ -333,6 +336,24 @@ describe('VP validated direct assertion ledger', () => {
       [projectId],
     );
     expect(links.rows[0]?.count).toBe('1');
+    const exactReceipt = await pool.query<{
+      readonly method: string;
+      readonly policy_revision: string;
+      readonly outcome: string;
+    }>(
+      `SELECT method, policy_revision, outcome
+         FROM vp.decision_receipts
+        WHERE project_id = $1 AND task_kind = 'EXACT_TEXT_EQUIVALENCE'`,
+      [projectId],
+    );
+    expect(exactReceipt.rows).toEqual([
+      {
+        method: 'DETERMINISTIC',
+        policy_revision: 'vp-normalized-exact-claim-v2',
+        outcome: 'EQUIVALENT',
+      },
+    ]);
+    expect(await verifyVPProjectionReplay(pool, projectId)).toMatchObject({ matches: true });
     const epoch = await pool.query<{ current_epoch: string }>(
       `SELECT current_epoch::text FROM vp.project_epochs WHERE project_id = $1`,
       [projectId],
@@ -504,9 +525,13 @@ describe('VP validated direct assertion ledger', () => {
     );
     const job = await jobs.claimNext('vp-test-policy');
     expect(job).toBeDefined();
-    expect(new Set([job!.left.claimText, job!.right.claimText])).toEqual(
-      new Set([claimText, 'The shared verification code is 43.']),
-    );
+    expect(
+      new Set(
+        [job!.left.claimText, job!.right.claimText].map((text) =>
+          text.normalize('NFC').replace(/\s+/gu, ' ').trim(),
+        ),
+      ),
+    ).toEqual(new Set([claimText, 'The shared verification code is 43.']));
     const decision = {
       jobId: job!.jobId,
       leaseToken: job!.leaseToken,

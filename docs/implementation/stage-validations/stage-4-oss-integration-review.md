@@ -333,3 +333,24 @@ Ask workspace projection and to record a bounded claimability diagnostic in
 the disposable test database. Two subsequent live runs passed, but neither
 exercised that failure diagnostic. Ask queue availability is therefore still
 unresolved, and VP-04/05 remain open.
+
+## 2026-10-02 repeated actual-PDF run after stable replay polling
+
+A further full Product run used the supplied finance PDF, the configured
+DeepSeek `deepseek-flash` provider, `direct-claim-v10`, temperature `0.2`, and
+an isolated PostgreSQL database. It passed in about 1.7 minutes. The run
+created 147 direct assertions; all 147 matched their attached Evidence text,
+all 80 page markers were found, and none of the 11 exact non-claim canaries
+were promoted. All four fixed page-specific Ask cases returned the expected
+answer with citations on pages 2, 3, 5, and 9. Replay matched; eight current
+relations (six `EQUIVALENT`, two `RELATED`) settled with zero pending jobs.
+Fourteen provider responses reported 34,717 tokens (25,331 input and 9,386
+output). Using the DeepSeek [official price table](https://api-docs.deepseek.com/quick_start/pricing/)
+cache-miss prices, this is an estimated $0.009431 off-peak or $0.018863 at
+peak before cache discounts. The account invoice was not reconciled.
+
+This is another successful run of this single candidate corpus, not a gold
+semantic review. The assertion count and current relation set differ from
+the preceding runs. Labels remain `CANDIDATE`, semantic validation is
+`NOT_RUN`, and the prior intermittent queued-Ask failures remain unexplained;
+VP-04/05 are still open.

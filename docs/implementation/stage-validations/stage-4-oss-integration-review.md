@@ -471,6 +471,14 @@ are merged or deleted. The append-only `DETERMINISTIC` receipt records
 `EXACT_TEXT_EQUIVALENCE`, policy `vp-normalized-exact-claim-v2`, and a digest
 bound to the sorted assertion IDs and normalized text.
 
+The relation-job adapter now excludes a pair from semantic provider work only
+when `vp.relations` contains its deterministic exact-equivalence receipt. It
+checks the append-only relation table directly so the all-pairs candidate query
+does not repeatedly expand the current-relation projection. This prevents a
+normalized duplicate from being judged a second time by AI while leaving
+changed values and other non-identical claims eligible for semantic comparison.
+The live frontier diagnostic uses the same receipt-based definition.
+
 | Candidate / reference                                                                                                                                                                                                 | Pin and license                                                                                                          | Decision and boundary                                                                                                          |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
 | PostgreSQL `REL_16_15` commit `7d3e000c5961a544302072058a1184e9a588837b`; the pinned runtime is `pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b` (PostgreSQL License) | PostgreSQL 16.15 in the pinned test runtime; `normalize` and POSIX whitespace handling use built-in PostgreSQL behavior. | Existing PostgreSQL `ADOPT` behind the Shotgun Adapter; no new dependency or OSS-owned schema.                                 |
@@ -478,10 +486,11 @@ bound to the sorted assertion IDs and normalized text.
 | `garrytan/gbrain`, `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (MIT)                                                                                                                                                   | Existing pinned Stage 4 reference                                                                                        | `REFERENCE_ONLY` for relation/history patterns; its Runtime and schema are not imported.                                       |
 | Standalone exact-claim normalization package                                                                                                                                                                          | No relevant package identified among the pinned Stage 4 candidates                                                       | `NO_RELEVANT_OSS`; the bounded whitespace/NFC comparison is a small adapter-local rule and does not transform Source Evidence. |
 
-The PostgreSQL integration regression feeds a Korean assertion with a line break
-and decomposed Hangul jamo, then verifies a deterministic equivalent relation,
-unchanged raw assertion text, no cross-sensitivity link, and matching projection
-replay. No migration is required. The existing adapter contract and DB boundary
+The PostgreSQL integration regressions feed a Korean assertion with a line break
+and decomposed Hangul jamo, then verify a deterministic equivalent relation,
+unchanged raw assertion text, no cross-sensitivity link, no semantic job for an
+already recorded duplicate, preservation of jobs for changed values, and
+matching projection replay. No migration is required. The existing adapter contract and DB boundary
 remain in place; no new Port was added. Rollback restores byte-exact matching
 and policy `vp-exact-claim-v1`; already-recorded equivalent receipts remain
 append-only because the linked texts differ only by the documented canonical
@@ -494,6 +503,49 @@ Security and maintenance status remain those in the pinned
 to scan and no new upstream code. The PostgreSQL runtime image and upstream
 source commit are immutable pins, and the replacement boundary remains
 `VPKnowledgeLedgerPort`.
+
+## 2026-10-02 Ask snapshot validity during relation updates
+
+The real DeepSeek PDF flow reproduced the intermittent Ask stall: after
+151 claims were materialized, the first question remained `QUEUED` for 120
+seconds without a provider attempt while relation work was still adding jobs.
+The worker had resolved a supported context with six Evidence items, but the
+relation-expanded evidence result could change between Ask resolution and its
+claim transaction. The prior validity check reran the full search and required
+the same evidence-ID list, so a relation-only change could keep the queued Ask
+from starting even though its selected source Evidence remained current.
+
+`PostgresVPAskEvidenceSearch.isSnapshotCurrent` now compares the accessible
+source-version watermark and verifies that every selected Evidence ID still
+belongs to an accessible, authorized latest SourceVersion. It does not reject
+the pinned Evidence because relation discovery expanded or reordered the
+search result. This does not relax source-version, access-scope, sensitivity,
+or reset-epoch checks. The `frontend-ask-execution` contract remains unchanged;
+the fix is inside the existing PostgreSQL Adapter. PostgreSQL remains the
+existing pinned `ADOPT`, gbrain remains `REFERENCE_ONLY`, and no new package,
+schema, or migration was added.
+
+The isolated PostgreSQL regression captures a one-source result before a
+semantic relation exists, creates the relation, confirms search now includes
+the related source, and verifies that the original source Evidence snapshot
+remains current. It also confirms an inaccessible/missing Evidence ID and a
+changed source watermark fail the check. The targeted direct-ledger database
+suite passed 2/2.
+
+The actual Chromium + DeepSeek PDF flow then passed in 1.6 minutes: 151/151
+claims had direct Evidence links; 80/80 curated page markers matched; 0/11
+non-claim canaries were promoted; the balance-sheet, NPV, and four fixed
+page-cited Ask checks passed; and replay matched. The first run before the
+fix failed at the first Ask after 120 seconds queued. After the fix, Ask
+completed and the worker claimed six Ask runs without claim errors.
+
+The relation gate remains open. At the post-run diagnostic snapshot, replay
+had observed zero pending jobs, while a subsequent consistent diagnostic found
+seven persisted jobs (six complete, one pending) and 11,317 eligible pairs
+without a job out of 11,324. This is another measured example that persisted
+job convergence is not full frontier completion. Independent semantic labels,
+relation quality limits, high-recall candidate coverage, and account billing
+reconciliation remain unverified; VP-04/05 remain open.
 
 This only short-circuits formatting-only duplicates. It does not reduce or
 complete the remaining semantic pair frontier, validate relation quality on an

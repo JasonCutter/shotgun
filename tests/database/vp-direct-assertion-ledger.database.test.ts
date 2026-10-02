@@ -496,10 +496,20 @@ describe('VP validated direct assertion ledger', () => {
       sourceProcessingComplete: false,
       candidateMaterializationComplete: false,
     });
-    const fourth = await seedCandidate(4, 'public', 'The shared verification code is 43.');
+    const fourthClaimText = 'The shared verification code is 43; quasar.';
+    const fourth = await seedCandidate(4, 'public', fourthClaimText);
     expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
     const jobs = new PostgresVPRelationJobs(runtimePool);
     expect(await jobs.enqueueCurrentPairs('vp-test-policy')).toBe(1);
+    const vpSearch = new PostgresVPAskEvidenceSearch(runtimePool);
+    const beforeSemanticRelation = await vpSearch.search({
+      projectId,
+      question: 'quasar',
+      accessScope: ['owner'],
+      authorizedSensitivities: ['public'],
+      limit: 12,
+    });
+    expect(beforeSemanticRelation.evidenceIds).toEqual([fourth.evidenceId]);
     expect(await verifyVPProjectionReplay(pool, projectId)).toMatchObject({
       relationQueueSettled: false,
       pendingRelationJobs: 1,
@@ -531,7 +541,7 @@ describe('VP validated direct assertion ledger', () => {
           text.normalize('NFC').replace(/\s+/gu, ' ').trim(),
         ),
       ),
-    ).toEqual(new Set([claimText, 'The shared verification code is 43.']));
+    ).toEqual(new Set([claimText, fourthClaimText]));
     const decision = {
       jobId: job!.jobId,
       leaseToken: job!.leaseToken,
@@ -552,6 +562,25 @@ describe('VP validated direct assertion ledger', () => {
       [projectId],
     );
     expect(semanticLinks.rows[0]?.count).toBe('1');
+    const afterSemanticRelation = await vpSearch.search({
+      projectId,
+      question: 'quasar',
+      accessScope: ['owner'],
+      authorizedSensitivities: ['public'],
+      limit: 12,
+    });
+    expect(afterSemanticRelation.evidenceIds).toContain(second.evidenceId);
+    expect(
+      await vpSearch.isSnapshotCurrent({
+        projectId,
+        question: 'quasar',
+        accessScope: ['owner'],
+        authorizedSensitivities: ['public'],
+        snapshot: beforeSemanticRelation,
+        evidenceIds: beforeSemanticRelation.evidenceIds,
+        limit: 12,
+      }),
+    ).toBe(true);
     expect(await jobs.enqueueCurrentPairs('vp-revised-policy')).toBe(1);
     const revisedJob = await jobs.claimNext('vp-revised-policy');
     expect(revisedJob).toBeDefined();
@@ -627,7 +656,6 @@ describe('VP validated direct assertion ledger', () => {
     expect(deepseekReceipt.rows).toEqual([
       { method: 'GENERAL_AI', provider_model: 'deepseek/deepseek-flash' },
     ]);
-    const vpSearch = new PostgresVPAskEvidenceSearch(runtimePool);
     const relatedEvidence = await vpSearch.search({
       projectId,
       question: '43',
@@ -669,7 +697,7 @@ describe('VP validated direct assertion ledger', () => {
         accessScope: ['owner'],
         authorizedSensitivities: ['public'],
         snapshot: relatedEvidence,
-        evidenceIds: relatedEvidence.evidenceIds.slice(1),
+        evidenceIds: [...relatedEvidence.evidenceIds, randomUUID()],
         limit: 12,
       }),
     ).toBe(false);

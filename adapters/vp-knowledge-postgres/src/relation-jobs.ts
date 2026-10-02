@@ -227,6 +227,19 @@ export class PostgresVPRelationJobs
          LEFT JOIN project_admin.project_knowledge_epoch AS reset_epoch
            ON reset_epoch.project_id = left_claim.project_id
         WHERE (reset_epoch.state IS NULL OR reset_epoch.state = 'READY')
+          AND NOT EXISTS (
+            SELECT 1
+              FROM vp.relations AS exact_relation
+              JOIN vp.decision_receipts AS exact_receipt
+                ON exact_receipt.project_id = exact_relation.project_id
+               AND exact_receipt.decision_id = exact_relation.decision_id
+             WHERE exact_relation.project_id = left_claim.project_id
+               AND exact_relation.left_assertion_id = left_claim.assertion_id
+               AND exact_relation.right_assertion_id = right_claim.assertion_id
+               AND exact_relation.relation_kind = 'EQUIVALENT'
+               AND exact_receipt.method = 'DETERMINISTIC'
+               AND exact_receipt.task_kind = 'EXACT_TEXT_EQUIVALENCE'
+          )
           AND COALESCE(
             (SELECT claimed_count FROM vp.relation_call_budget
               WHERE budget_day = CURRENT_DATE), 0

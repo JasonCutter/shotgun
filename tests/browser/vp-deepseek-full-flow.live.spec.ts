@@ -2095,6 +2095,19 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
                 AND left_claim.access_scope = right_claim.access_scope
                 AND left_claim.sensitivity = right_claim.sensitivity
               WHERE left_claim.project_id = 'shotgun'
+                AND NOT EXISTS (
+                  SELECT 1
+                    FROM vp.relations AS exact_relation
+                    JOIN vp.decision_receipts AS exact_receipt
+                      ON exact_receipt.project_id = exact_relation.project_id
+                     AND exact_receipt.decision_id = exact_relation.decision_id
+                   WHERE exact_relation.project_id = left_claim.project_id
+                     AND exact_relation.left_assertion_id = left_claim.assertion_id
+                     AND exact_relation.right_assertion_id = right_claim.assertion_id
+                     AND exact_relation.relation_kind = 'EQUIVALENT'
+                     AND exact_receipt.method = 'DETERMINISTIC'
+                     AND exact_receipt.task_kind = 'EXACT_TEXT_EQUIVALENCE'
+                )
            ), job_status_counts AS (
              SELECT status, count(*)::int AS count
                FROM vp.relation_jobs

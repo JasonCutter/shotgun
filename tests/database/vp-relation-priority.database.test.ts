@@ -365,6 +365,92 @@ it('prioritizes the related cross-source pair before an older unrelated pair', a
   }
 }, 60_000);
 
+it('does not enqueue canonically identical claims for semantic comparison', async () => {
+  const database = await createIsolatedPostgresTestDatabase();
+  const pool = database.createPool();
+  try {
+    const projectId = `vp-normalized-pair-${randomUUID()}`;
+    const principal = await new PostgresAuthRepository(pool).bootstrapLocalOwnerPrincipal({
+      accountId: `vp-normalized-pair-owner-${randomUUID()}`,
+    });
+    await new PostgresProjectAdministrationRepository(pool).createProject({
+      commandId: randomUUID(),
+      clientRequestId: randomUUID(),
+      idempotencyKey: randomUUID(),
+      projectId,
+      name: 'VP normalized relation candidate',
+      description: 'formatting-only duplicates bypass semantic provider jobs',
+      actorPrincipalId: principal.principalId,
+      expectedProjectRevision: 0,
+    });
+
+    const exactId = '00000000-0000-4000-8000-000000000011';
+    const variantId = '00000000-0000-4000-8000-000000000012';
+    const changedId = '00000000-0000-4000-8000-000000000013';
+    const canonicalText = '공유 검증 코드는 42이다.';
+    const whitespaceVariant = canonicalText.replace(' ', '\n').normalize('NFD');
+    const changedValue = '공유 검증 코드는 43이다.';
+    await seedAssertion(pool, {
+      projectId,
+      principalId: principal.principalId,
+      assertionId: exactId,
+      text: canonicalText,
+    });
+    await seedAssertion(pool, {
+      projectId,
+      principalId: principal.principalId,
+      assertionId: variantId,
+      text: whitespaceVariant,
+    });
+    await seedAssertion(pool, {
+      projectId,
+      principalId: principal.principalId,
+      assertionId: changedId,
+      text: changedValue,
+    });
+
+    const policyRevision = 'vp-normalized-exact-claim-v2';
+    const decisionId = randomUUID();
+    await pool.query(
+      `INSERT INTO vp.decision_receipts
+         (decision_id, project_id, method, task_kind, policy_revision,
+          input_digest, outcome)
+       VALUES ($1, $2, 'DETERMINISTIC', 'EXACT_TEXT_EQUIVALENCE', $3, $4, 'EQUIVALENT')`,
+      [
+        decisionId,
+        projectId,
+        policyRevision,
+        hash(JSON.stringify([exactId, variantId, canonicalText, policyRevision])),
+      ],
+    );
+    await pool.query(
+      `INSERT INTO vp.relations
+         (relation_id, project_id, left_assertion_id, right_assertion_id,
+          relation_kind, decision_id)
+       VALUES ($1, $2, $3, $4, 'EQUIVALENT', $5)`,
+      [randomUUID(), projectId, exactId, variantId, decisionId],
+    );
+
+    const jobs = new PostgresVPRelationJobs(pool);
+    expect(await jobs.enqueueCurrentPairs(policyRevision, 32)).toBe(2);
+    const queuedPairs = await pool.query<{
+      readonly left_assertion_id: string;
+      readonly right_assertion_id: string;
+    }>(
+      `SELECT left_assertion_id::text, right_assertion_id::text
+         FROM vp.relation_jobs WHERE project_id = $1 ORDER BY left_assertion_id, right_assertion_id`,
+      [projectId],
+    );
+    expect(queuedPairs.rows).toEqual([
+      { left_assertion_id: exactId, right_assertion_id: changedId },
+      { left_assertion_id: variantId, right_assertion_id: changedId },
+    ]);
+    expect(await jobs.enqueueCurrentPairs(policyRevision, 32)).toBe(0);
+  } finally {
+    await database.dispose();
+  }
+}, 60_000);
+
 it.runIf(canRunBackupAcceptance)(
   'restores VP source evidence and a pending relation job, then converges it once',
   async () => {

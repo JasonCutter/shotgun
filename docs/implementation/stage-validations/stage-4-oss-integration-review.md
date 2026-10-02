@@ -590,3 +590,25 @@ visibility, installed desktop launcher, and repeated question behavior remain
 open. It also does not establish broad semantic precision/recall, relation
 coverage, or invoice-level cost. See the existing [live browser
 scenario](../../../tests/browser/vp-deepseek-full-flow.live.spec.ts).
+
+Follow-up actual DeepSeek browser cases also passed:
+
+- A same-scope `150%` vs `200%` case was recorded as `CONTRADICTS` at 0.94.
+  Ask cited both sources, stated that the source values disagree, and did not
+  choose a winner without evidence. Replay matched; four provider calls used
+  2,723 reported tokens.
+- Two NPV sign conditions produced a `RELATED` model choice at 0.88, below the
+  durable-relation threshold, so no relation was written and the receipt stayed
+  `INSUFFICIENT_EVIDENCE`. Ask still answered both conditional branches with
+  two citations; replay matched. Four provider calls used 2,489 tokens.
+- A 42/43-source flow, A revised to 44, and an empty-database rebuild at the
+  current prompt were logically identical: each had two current assertions,
+  one relation, and two Ask citations. The revised answer included 44 and 43
+  and excluded the obsolete 42. One relation readback diagnostic appeared
+  during the run, but the bounded flow converged and the test passed in 1.2
+  minutes.
+
+These cases add positive equivalence, contradiction, conservative abstention,
+latest-version exclusion, and incremental-vs-clean-rebuild evidence. They do
+not verify the installed launcher or bound broad extraction/relation quality,
+so VP-03/04/05 remain open.

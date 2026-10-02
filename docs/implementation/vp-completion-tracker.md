@@ -203,9 +203,9 @@ VP-08 stays unchecked. [Details](./vp-url-freshness-ask-projection-2026-10-02.md
 
 2026-10-02 첫 `QUEUED` 정체 수정은 relation-expanded Evidence 목록이 바뀌어도 이전 shortlist를 유효하게 인정했다. ADR-172 §12 재검토 후 이 변경이 정확한 ordered Evidence-ID·SourceVersion watermark 비교를 완화함을 확인해 되돌렸다. 현재 worker는 epoch share lock 획득 후 동일 PostgreSQL transaction에서 최신 context를 다시 검색하고, 그 ordered shortlist와 watermark를 재검증한 뒤 claim한다. 변경된 shortlist 자체를 최신으로 재승인하지 않고 새 context를 명시적으로 만든다. DB 회귀 3/3 및 실제 Chromium·DeepSeek 전체 흐름 2.6분 통과: 직접 Evidence 주장 148개, marker 80/80, 비주장 승격 0/11, 고정 Ask·페이지 인용 4/4, replay 일치, worker claim 오류 0건·6건 claim, 중복 그룹 5/5 EQUIVALENT. 진단 시 생성된 relation job 22/22 완료였지만 eligible pair 10,876개 중 10,854개는 미생성 상태다. 독립 semantic 판정, 전체 정밀도/재현율, relation coverage, 실제 청구 대사는 남아 VP-04/05 미완료다. [정확 shortlist 갱신 및 실측](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-exact-shortlist-refresh-under-the-epoch-lock).
 
-### 2026-10-02 actual two-source DeepSeek product flow
+### 2026-10-02 actual DeepSeek multi-source and revision flows
 
-실제 Chromium·DeepSeek 다중 자료 제품 흐름에서 빈 격리 지식공간에 별도 Markdown 자료 A/B를 넣었다. 직접 주장 2개가 서로 다른 Source에 귀속됐고 DeepSeek 관계 판단 `EQUIVALENT` 0.99, 질문 답변 200% 및 양쪽 자료 인용 2개, projection replay 일치가 통과했다. 제공자 응답 4회·2,654 tokens였다. 이 증거는 한정된 다중 자료 사례만 확인한다. A 수정본, 충돌·시점·실패 상태, 설치된 launcher는 확인하지 않아 VP-03 미완료다. [실제 다중 자료 흐름](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-actual-two-source-deepseek-product-flow).
+실제 Chromium·DeepSeek에서 빈 격리 공간에 별도 자료를 넣어 다중 자료 흐름을 확인했다. 동등한 유동비율 주장은 `EQUIVALENT` 0.99, 같은 범위의 150%/200% 주장은 `CONTRADICTS` 0.94로 정리했고 Ask는 각 자료를 인용했다. NPV의 양·음 조건은 모델 선택 `RELATED` 0.88이 threshold 아래라 관계를 기록하지 않고 `INSUFFICIENT_EVIDENCE`로 보류했지만 양 조건 답변·인용은 제공했다. A=42/B=43에서 A의 수정본 44 투입 후 A=44/B=43 질문은 구버전 42를 제외했고, 증분 projection과 빈 DB의 최신 정책 전체 재구축이 일치했다(각 주장 2개·관계 1개·Ask 인용 2개). 수정본 실행 중 relation readback 경고가 한 차례 출력됐으나 bounded run은 1.2분 내 수렴·통과했다. 이 네 흐름은 대표 사례일 뿐이며 launcher, broad corpus precision/recall, relation coverage, provider 청구액은 남아 VP-03/04/05 미완료다. [실제 다중 자료·수정 흐름과 한계](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-actual-two-source-deepseek-product-flow).
 
 ## 다음 작업 순서
 

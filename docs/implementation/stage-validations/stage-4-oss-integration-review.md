@@ -575,3 +575,18 @@ This only short-circuits formatting-only duplicates. It does not reduce or
 complete the remaining semantic pair frontier, validate relation quality on an
 independently adjudicated corpus, or establish provider billing. VP-04/05 remain
 open pending those broader quality, backlog, cost, and repeatability gates.
+
+## 2026-10-02 actual two-source DeepSeek product flow
+
+The Chromium product path uploaded two separately named Markdown sources into
+an isolated empty PostgreSQL knowledge space, extracted one direct assertion
+from each, and called the real DeepSeek provider for the relation and Ask. The
+relation was `EQUIVALENT` at 0.99; Ask answered 200% and cited both sources.
+Projection replay matched. Four provider calls reported 2,654 total tokens.
+
+This verifies one bounded cross-source case, not the full VP-03 acceptance:
+the same source's edited revision, conflict and supersession behavior, failure
+visibility, installed desktop launcher, and repeated question behavior remain
+open. It also does not establish broad semantic precision/recall, relation
+coverage, or invoice-level cost. See the existing [live browser
+scenario](../../../tests/browser/vp-deepseek-full-flow.live.spec.ts).

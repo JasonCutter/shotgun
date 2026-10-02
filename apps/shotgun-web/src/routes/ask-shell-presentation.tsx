@@ -409,6 +409,9 @@ export const ConversationPane = ({
                                     }}
                                   >
                                     {t('ask.open_evidence')}
+                                    {citation.pageNumbers
+                                      ? ` · ${t('ask.page')} ${citation.pageNumbers.join(', ')}`
+                                      : ''}
                                   </Link>
                                   {citation.externalSourceFreshness ? (
                                     <>

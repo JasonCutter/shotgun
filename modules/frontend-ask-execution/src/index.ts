@@ -49,6 +49,8 @@ export type AskExecutionEvidence = {
   readonly sourceVersionId: string;
   readonly exactQuote: string;
   readonly sensitivity: AskExecutionScope['sensitivityClearance'];
+  /** Page locations explicitly preserved by the SourceMap for this Evidence span. */
+  readonly pageNumbers?: readonly number[];
   readonly externalSourceFreshness?: ExternalSourceFreshnessView;
 };
 
@@ -569,6 +571,7 @@ export const askExecutionContextDigest = (input: {
               sourceId: item.sourceId,
               sourceVersionId: item.sourceVersionId,
               exactQuote: item.exactQuote,
+              ...(item.pageNumbers === undefined ? {} : { pageNumbers: item.pageNumbers }),
               ...(item.externalSourceFreshness === undefined
                 ? {}
                 : { externalSourceFreshness: item.externalSourceFreshness }),
@@ -593,8 +596,8 @@ const markdownFor = (snapshot: AskAnswerRunSnapshot): string => {
   const citationLines = citations.map(
     (citation) =>
       `- ${citation.sourceId}/${citation.sourceVersionId}/${citation.evidenceId}${
-        citation.exactQuote ? `: "${citation.exactQuote}"` : ''
-      }`,
+        citation.pageNumbers ? ` (pages ${citation.pageNumbers.join(', ')})` : ''
+      }${citation.exactQuote ? `: "${citation.exactQuote}"` : ''}`,
   );
   return [
     `# ${snapshot.question}`,
@@ -1354,6 +1357,7 @@ export class AskAnswerExecutionService {
         sourceVersionId: evidence.sourceVersionId,
         evidenceId: evidence.evidenceId,
         exactQuote: evidence.exactQuote,
+        ...(evidence.pageNumbers === undefined ? {} : { pageNumbers: evidence.pageNumbers }),
         ...(evidence.externalSourceFreshness === undefined
           ? {}
           : { externalSourceFreshness: evidence.externalSourceFreshness }),

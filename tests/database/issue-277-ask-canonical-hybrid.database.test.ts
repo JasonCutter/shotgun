@@ -589,7 +589,7 @@ describe('Issue #277 Ask CANONICAL_ONLY hybrid retrieval boundary', () => {
 
     expect(context).toMatchObject({
       contextStatus: 'SUPPORTED',
-      queryPlanRevision: 'ask-query-plan-v5',
+      queryPlanRevision: 'ask-query-plan-v7',
     });
     expect(context?.evidence.map((item) => item.evidenceId)).toEqual(
       chain.claims.flatMap((claim) => claim.evidenceIds).sort(),
@@ -689,7 +689,7 @@ describe('Issue #277 Ask CANONICAL_ONLY hybrid retrieval boundary', () => {
 
     expect(context).toMatchObject({
       contextStatus: 'NO_SUPPORTED_ANSWER',
-      queryPlanRevision: 'ask-query-plan-v5',
+      queryPlanRevision: 'ask-query-plan-v7',
       evidence: [],
       context: [],
     });
@@ -715,7 +715,7 @@ describe('Issue #277 Ask CANONICAL_ONLY hybrid retrieval boundary', () => {
 
     expect(context).toMatchObject({
       contextStatus: 'NO_SUPPORTED_ANSWER',
-      queryPlanRevision: 'ask-query-plan-v5',
+      queryPlanRevision: 'ask-query-plan-v7',
       evidence: [],
       context: [],
     });
@@ -778,7 +778,7 @@ describe('Issue #277 Ask CANONICAL_ONLY hybrid retrieval boundary', () => {
     const submission = await submitCanonicalOnly(fixture, 'Legacy v4 compatibility miss');
     const context = await repository.getRunContext(fixture.scope, submission.answerRun.answerRunId);
 
-    expect(context?.queryPlanRevision).toBe('ask-query-plan-v5');
+    expect(context?.queryPlanRevision).toBe('ask-query-plan-v7');
     expect(context?.contextStatus).toBe('NO_SUPPORTED_ANSWER');
     expect(context?.evidence).toEqual([]);
   });
@@ -795,7 +795,7 @@ describe('Issue #277 Ask CANONICAL_ONLY hybrid retrieval boundary', () => {
       submission.answerRun.answerRunId,
       'issue-277-v4-worker-1',
     );
-    expect(first?.attempt.queryPlanRevision).toBe('ask-query-plan-v5');
+    expect(first?.attempt.queryPlanRevision).toBe('ask-query-plan-v7');
     const historicalDigest = askExecutionContextDigest({
       queryPlanRevision: 'ask-query-plan-v4',
       projectId: fixture.projectId,

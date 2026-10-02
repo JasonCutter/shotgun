@@ -169,6 +169,29 @@ describe('Frontend Ask contracts', () => {
     ).toThrow(FrontendContractError);
   });
 
+  it('accepts only sorted, unique, positive page locations on citations', () => {
+    expect(
+      decodeAskCitationView({
+        citationId: 'citation-page',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        evidenceId: 'evidence-1',
+        pageNumbers: [1, 3],
+      }),
+    ).toMatchObject({ pageNumbers: [1, 3] });
+    for (const pageNumbers of [[0], [2, 1], [1, 1], []]) {
+      expect(() =>
+        decodeAskCitationView({
+          citationId: 'citation-page',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          evidenceId: 'evidence-1',
+          pageNumbers,
+        }),
+      ).toThrow(FrontendContractError);
+    }
+  });
+
   it('decodes the server workspace and authoritative ACTION_REQUIRED answer-run envelope', () => {
     expect(decodeAskWorkspaceView(workspace)).toEqual(workspace);
     expect(

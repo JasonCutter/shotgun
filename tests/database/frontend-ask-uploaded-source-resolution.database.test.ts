@@ -105,9 +105,9 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
       await pool.query(
         `INSERT INTO evidence.spans
            (evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
-            node_kind, origin, position, quote, exact_hash, access_scope, sensitivity, created_at)
+            node_kind, origin, position, quote, selectors, exact_hash, access_scope, sensitivity, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, 'sentence', 'source', $7::jsonb, $8::jsonb,
-                 $9, '{owner}', 'private', now())`,
+                 $9::jsonb, $10, '{owner}', 'private', now())`,
         [
           evidenceId,
           revisionId,
@@ -117,6 +117,7 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
           `/paragraph[${index + 1}]/sentence[1]`,
           JSON.stringify({ start: index * 40, end: index * 40 + quote.length }),
           JSON.stringify({ exact: quote }),
+          JSON.stringify([{ type: 'PageSelector', page: index < 5 ? 1 : 2 }]),
           hash(quote),
         ],
       );
@@ -133,9 +134,9 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
       await pool.query(
         `INSERT INTO evidence.spans
            (evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
-            node_kind, origin, position, quote, exact_hash, access_scope, sensitivity, created_at)
-         VALUES ($1, $2, $3, $4, $5, $10,
-                 'sentence', 'source', $6::jsonb, $7::jsonb, $8, '{owner}', $9, now())`,
+            node_kind, origin, position, quote, selectors, exact_hash, access_scope, sensitivity, created_at)
+         VALUES ($1, $2, $3, $4, $5, $11,
+                 'sentence', 'source', $6::jsonb, $7::jsonb, $8::jsonb, $9, '{owner}', $10, now())`,
         [
           evidenceId,
           revisionId,
@@ -144,6 +145,7 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
           sourceVersionId,
           JSON.stringify({ start: 500, end: 500 + quote.length }),
           JSON.stringify({ exact: quote }),
+          JSON.stringify([{ type: 'PageSelector', page: 11 + index }]),
           hash(quote),
           sensitivity,
           `/paragraph[${11 + index}]/sentence[1]`,
@@ -229,8 +231,10 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
 
     expect(context).toBeDefined();
     expect(context?.contextStatus).toBe('SUPPORTED');
-    expect(context?.queryPlanRevision).toBe('ask-query-plan-v4');
+    expect(context?.queryPlanRevision).toBe('ask-query-plan-v6');
     expect(context?.evidence).toHaveLength(8);
+    expect(context?.evidence[0]?.pageNumbers).toEqual([1]);
+    expect(context?.evidence[7]?.pageNumbers).toEqual([2]);
     expect(context?.context.filter((item) => item.kind === 'EVIDENCE')).toHaveLength(8);
     expect(context?.context).not.toContainEqual(
       expect.objectContaining({ kind: 'SOURCE_VERSION' }),
@@ -303,7 +307,7 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
     );
     expect(automaticContext).toMatchObject({
       contextStatus: 'NO_SUPPORTED_ANSWER',
-      queryPlanRevision: 'ask-query-plan-vp4',
+      queryPlanRevision: 'ask-query-plan-vp5',
     });
     expect(automaticContext?.evidence).toHaveLength(0);
     const vpAugmented = new PostgresAskAnswerExecutionRepository(
@@ -324,9 +328,10 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
       executionScope,
       automatic.answerRun.answerRunId,
     );
-    expect(augmentedContext?.queryPlanRevision).toBe('ask-query-plan-vp4');
+    expect(augmentedContext?.queryPlanRevision).toBe('ask-query-plan-vp5');
     expect(augmentedContext?.evidence.map((item) => item.evidenceId)).toContain(vpLinkedEvidenceId);
     expect(augmentedContext?.evidence).toHaveLength(1);
+    expect(augmentedContext?.evidence[0]?.pageNumbers).toEqual([11]);
     expect(augmentedContext?.vpKnowledgeEpoch).toBe('1');
     expect(augmentedContext?.vpSourceWatermark).toBe(hash('ask-vp-source-watermark'));
     expect(augmentedContext?.evidence.map((item) => item.evidenceId)).not.toContain(
@@ -551,10 +556,10 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
     await pool.query(
       `INSERT INTO evidence.spans
          (evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
-          node_kind, origin, position, quote, exact_hash, access_scope,
+          node_kind, origin, position, quote, selectors, exact_hash, access_scope,
           sensitivity, created_at)
        VALUES ($1, $2, $3, $4, $5, '/paragraph[2]/sentence[1]', 'sentence',
-               'source', $6::jsonb, $7::jsonb, $8, '{owner}', 'private', now())`,
+               'source', $6::jsonb, $7::jsonb, $8::jsonb, $9, '{owner}', 'private', now())`,
       [
         relationExpandedEvidenceId,
         newerRevisionId,
@@ -563,6 +568,7 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
         newerVersionId,
         JSON.stringify({ start: 1000, end: 1000 + relationExpandedQuote.length }),
         JSON.stringify({ exact: relationExpandedQuote }),
+        JSON.stringify([{ type: 'PageSelector', page: 12 }]),
         hash(relationExpandedQuote),
       ],
     );
@@ -649,10 +655,12 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
     );
     const resumed = await movingExecutionRepository.claimQueuedForWorker('vp-wait-worker', 1);
     expect(resumed).toHaveLength(1);
+    expect(resumed[0]?.claimed.context.snapshot.answerRunId).toBe(automatic.answerRun.answerRunId);
     expect(resumed[0]?.claimed.context.contextStatus).toBe('SUPPORTED');
     expect(resumed[0]?.claimed.context.evidence.map((item) => item.evidenceId)).toEqual([
       relationExpandedEvidenceId,
     ]);
+    expect(resumed[0]?.claimed.context.evidence[0]?.pageNumbers).toEqual([12]);
     expect(transactionBoundSearchObserved).toBe(true);
     const pinnedAttempt = resumed[0]!.claimed.attempt;
     const persistedPin = await pool.query<{
@@ -704,5 +712,47 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
       [automatic.answerRun.answerRunId],
     );
     expect(unpublished.rows[0]?.statements).toBe('0');
+
+    const citationReadback = await automaticCoordinator.submitQuestion({
+      ...scope,
+      request: {
+        schemaVersion: ASK_SCHEMA_VERSION,
+        clientRequestId: `ask-vp-citation-readback-request-${suffix}`,
+        idempotencyKey: `ask-vp-citation-readback-idempotency-${suffix}`,
+        question: 'Show the page for this Evidence.',
+        mode: 'AUTO_PROJECT_KNOWLEDGE',
+        sourceSelections: [],
+      },
+    });
+    const statementId = `ask-vp-citation-readback-statement-${suffix}`;
+    await pool.query(
+      `INSERT INTO frontend_ask.statements (
+         statement_id, answer_run_id, ordinal, text, statement_revision
+       ) VALUES ($1, $2, 0, 'The recorded Evidence is on page 11.', 'revision-1')`,
+      [statementId, citationReadback.answerRun.answerRunId],
+    );
+    await pool.query(
+      `INSERT INTO frontend_ask.citations (
+         citation_id, statement_id, citation_ordinal, source_id, source_version_id,
+         evidence_id, exact_quote
+       ) VALUES ($1, $2, 0, $3, $4, $5, 'Unrelated archive note')`,
+      [
+        `ask-vp-citation-readback-citation-${suffix}`,
+        statementId,
+        sourceId,
+        sourceVersionId,
+        vpLinkedEvidenceId,
+      ],
+    );
+    const readback = await projection.getConversation({
+      ...scope,
+      conversationId: citationReadback.answerRun.conversationId,
+    });
+    expect(readback.branches[0]?.turns[0]?.answerRun.statements[0]?.citations[0]).toMatchObject({
+      sourceId,
+      sourceVersionId,
+      evidenceId: vpLinkedEvidenceId,
+      pageNumbers: [11],
+    });
   });
 });

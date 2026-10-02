@@ -81,6 +81,7 @@ describe('AskAnswerExecutionService', () => {
         sourceVersionId: 'version-1',
         exactQuote: 'The source quote.',
         sensitivity: 'internal',
+        pageNumbers: [2, 4],
       },
     ]);
     const service = new AskAnswerExecutionService(
@@ -105,6 +106,7 @@ describe('AskAnswerExecutionService', () => {
 
     expect(result.state).toBe('SUCCEEDED');
     expect(result.statements[0]?.citations[0]?.evidenceId).toBe('evidence-1');
+    expect(result.statements[0]?.citations[0]?.pageNumbers).toEqual([2, 4]);
     expect(result.provider?.model).toBe('test-model');
     expect(result.usage?.totalTokens).toBe(15);
     expect(events.map((event) => event.kind)).toEqual([

@@ -59,6 +59,7 @@
 - 현재 MAIN 기반 작업 브랜치에서 SourceMap의 명시적 `PageSelector`/`BoundingBoxSelector.page`만 추출해 provider 문맥, context digest, export, 저장된 인용 projection 및 Ask 링크 label로 전달한다. `vp5`/`v6`/`v7` query-plan revision을 새로 두어 이미 저장된 기존 digest와 retry 문맥은 바꾸지 않는다. 없는 page metadata는 비워 두며 생성하거나 추정하지 않는다.
 - 네 고정 OSS 후보를 다시 판정했다. 이 selector-to-citation 변환에 재사용할 관련 부품이 없어 `NO_RELEVANT_OSS`; 기존 Postgres/Shotgun Contract 경계는 유지한다. [OSS 결정](../architecture/module-architecture/open-source-role-matrix.md#vp-09--ask-evidence-page-location-propagation--2026-10-02)
 - 검증: root typecheck 통과, Ask execution/provider unit 및 Ask contract 37/37, 웹 Ask 화면 30/30, 격리 PostgreSQL Source selector·citation readback·기존 query-plan replay 6/6, 변경 파일 ESLint·Prettier·diff check, 전체 문서 검증 및 frontend production build 통과. PR/Required Gates 및 수정본을 설치 아이콘에서 재실행하는 검증은 남아 VP-09/11은 미완료다.
+- PR #378 첫 CI에서 TS-6 좌표 4건과 Ask E2E 2건이 실패했다. 좌표는 같은 메서드·분류·도달성으로 재감사하고 v8 manifest 및 회귀 연결을 갱신했다. E2E 실패는 FakeAIProviderAdapter가 새 Ask 프롬프트 `vp4`를 허용하지 않은 테스트 fixture 결함으로 재현해 수정했다. 두 실패 브라우저 여정은 재실행 2/2 통과, TS-6 audit 45/45 통과; 전체 PR CI 재실행과 설치 아이콘 재검증은 남아 있다. [TS-6 좌표 감사](./ts6-current-authority-coordinate-audit-2026-10-01.md#2026-10-02-ask-sourcemap-page-location-projection-addendum).
 
 ### 2026-10-01 실제 재무 PDF의 전체 DeepSeek 흐름 및 검색 지연 보강
 
@@ -222,7 +223,7 @@ VP-08 stays unchecked. [Details](./vp-url-freshness-ask-projection-2026-10-02.md
 - 브라우저 자료 투입·수정·질문 여정은 v9 설정에서 1/1 통과했다(48.5초). 직전 실행의 제출 500은 재현되지 않았다. 이는 결정적 UI fixture 결과이고 실 DeepSeek 검증은 아니다.
 - Stage 12.1 내구성 DB 회귀는 테스트용 격리 PostgreSQL에서 10/10 통과했다. 기존 공유 테스트 DB에 append-only VP 이력이 있어 전체 `TRUNCATE`가 거부되는 점을 확인하고, 이 테스트 파일이 격리 DB를 만들고 폐기하도록 수정했다. 기존 VP 이력은 변경하지 않았다.
 - 재검증: `quality:gate`, `test:architecture`, `docs:validate`(545 Markdown 링크, ADR 1–171), 변경 파일 ESLint, `git diff --check` 통과. 전체 `typecheck`/`lint`에는 앞서 기록한 사용자 소유 미추적 TS-7 파일 오류가 계속 남아 있다.
-- PR CI의 TS-6 좌표 불일치는 VP adapter의 AST 좌표만 재대조해 해결했다. owner method·분류·reachability는 동일하며 v8 authority manifest와 Ask 회귀 관계 두 곳의 좌표만 갱신했다. v2–v7 고정 이력은 바뀌지 않았다. `ts6:v8:check`, `verify:ts6-c2`, `test:ts6-audit` 45/45 통과. [좌표 감사](./ts6-current-authority-coordinate-audit-2026-10-01.md#2026-10-02-ask-epoch-lock-shortlist-refresh-addendum).
+- PR CI의 TS-6 좌표 불일치는 VP adapter의 AST 좌표만 재대조해 해결했다. owner method·분류·reachability는 동일하며 v8 authority manifest와 Ask 회귀 관계 좌표 네 곳을 갱신했다. v2–v7 고정 이력은 바뀌지 않았다. `ts6:v8:check`, `verify:ts6-c2`, `test:ts6-audit` 45/45 통과. [좌표 감사](./ts6-current-authority-coordinate-audit-2026-10-01.md#2026-10-02-ask-sourcemap-page-location-projection-addendum).
 
 1. **VP-04/05** 80개 page marker와 11개 non-claim의 독립 판정을 마치고 전체 정밀도/재현율, 누락·오탐 상한을 고정한다. 151개 주장 PDF에서 11,324 eligible pair 중 11,319개가 아직 job으로 만들어지지 않은 것을 확인했다. `relationQueueComplete`는 현재 job만 수렴시키므로, 고재현율 pair frontier와 진행 중 backlog의 정확한 표시, 반복 실행에서 4개 정규화 공식의 연결 일관성, 후보 축소 recall, 재시도 비용 및 실제 청구액을 측정한다. 80/80 marker 반복은 전체 주장 의미 정밀도·재현율을 대신하지 않는다.
 2. **VP-06/07** provider/DB 장애, 무인 재기동, 백업·복구·배포 cutover/rollback과 Windows 재부팅 Gate를 끝낸다.

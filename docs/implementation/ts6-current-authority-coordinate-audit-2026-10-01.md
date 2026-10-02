@@ -103,3 +103,23 @@ classification totals (129 candidates, 122 boundaries, 11 raw transaction
 sites), test evidence identities, and v2-v7 frozen history are unchanged. The
 rebuilt v8 authority passes `npm run ts6:v8:check`, `npm run verify:ts6-c2`,
 and `npm run test:ts6-audit` (45/45).
+
+## 2026-10-02 Ask SourceMap page-location projection addendum
+
+Page-location propagation added SQL selector retrieval and row mapping before
+four Ask transaction methods. The AST inventory remains 129 candidates, 122
+transaction boundaries, and 11 raw transaction sites. Each moved candidate was
+matched to the same owner method and `withSafePostgresTransaction` source needle;
+classification and production reachability did not change:
+
+| Previous candidate ID                                             | Current candidate ID                                              | Method                                                 | Classification / reachability   |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------- |
+| `safe:adapters/frontend-ask-execution-postgres/src/index.ts:2166` | `safe:adapters/frontend-ask-execution-postgres/src/index.ts:2207` | `PostgresAskAnswerExecutionRepository.transaction`     | `PORT_INFERRED / PORT_INFERRED` |
+| `safe:adapters/frontend-ask-execution-postgres/src/index.ts:2904` | `safe:adapters/frontend-ask-execution-postgres/src/index.ts:2948` | `PostgresAskAnswerExecutionRepository.poolTransaction` | `TX_BOUNDARY / PROVEN`          |
+| `safe:adapters/frontend-ask-write-postgres/src/index.ts:177`      | `safe:adapters/frontend-ask-write-postgres/src/index.ts:180`      | `PostgresAskConversationRepository.transaction`        | `PORT_INFERRED / PORT_INFERRED` |
+| `safe:adapters/frontend-ask-write-postgres/src/index.ts:649`      | `safe:adapters/frontend-ask-write-postgres/src/index.ts:652`      | `PostgresAskWorkspaceProjection.loadConversation`      | `TX_BOUNDARY / PROVEN`          |
+
+Only the current v8 authority manifest, its four approved `covers[]` references,
+and regenerated `golden.v8.derived.json` changed. Frozen v2-v7 artifacts remain
+unchanged. Verification: `npm run ts6:v8:rebuild`, `npm run ts6:v8:check`,
+`npm run verify:ts6-c2`, and `npm run test:ts6-audit` (45/45).

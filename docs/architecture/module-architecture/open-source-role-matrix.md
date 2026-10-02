@@ -783,3 +783,50 @@ relation correctness adjudication, repeated quality runs, and billing
 reconciliation remain open. Details are in the
 [Stage 8 OSS review](../../implementation/stage-validations/stage-8-oss-integration-review.md#2026-10-02-vp-04-korean-pdf-word-gap-recovery)
 and [full PDF test record](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-korean-pdf-word-gap-recovery).
+
+## VP-09 / Ask Evidence page-location propagation — 2026-10-02
+
+**Target:** `AskAnswerProviderPort`, `AskExecutionEvidence`, the existing
+PostgreSQL Ask repository, and the Ask citation view. Source locations already
+belong to Shotgun's `EvidenceSpan.selectors`; this change carries verified
+`PageSelector` and `BoundingBoxSelector.page` values to the provider context and
+the citation link label. It does not create a second page-number authority or
+infer a page from quote text.
+
+The four previously pinned references were checked against this narrow scope:
+
+| Candidate                                                           | Reviewed pin and license                                     | Decision for selector-to-citation page mapping                                                                                                                              |
+| ------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`garrytan/gbrain`](https://github.com/garrytan/gbrain)             | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, MIT              | `REFERENCE_ONLY`; its citation/search patterns do not supply Shotgun Evidence selectors or SourceVersion binding.                                                           |
+| [`lucasastorian/llmwiki`](https://github.com/lucasastorian/llmwiki) | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`, Apache-2.0       | Existing locator/highlight work remains relevant to source viewing, but no upstream code is needed to read Shotgun's persisted selectors. `REFERENCE_ONLY` for this change. |
+| [`ddsyasas/llm-wiki`](https://github.com/ddsyasas/llm-wiki)         | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`, MIT              | `REFERENCE_ONLY`; Ask presentation only, no citation-location contract or backend reuse.                                                                                    |
+| [Inkeep OpenKnowledge](https://github.com/inkeep/open-knowledge)    | `f2834c237639e2cff603817ed88182b33f83cf91`, GPL-3.0-or-later | `REFERENCE_ONLY`; visual/source UX only, no GPL code or runtime is introduced.                                                                                              |
+
+**Integration decision:** `NO_RELEVANT_OSS` for the exact SourceMap-selector to
+Ask-citation mapping. PostgreSQL and the Evidence/SourceMap contracts are
+existing Shotgun-owned dependencies. No new package, dependency, runtime,
+schema, or migration is needed. The replaceable boundary remains
+`AskAnswerExecutionRepositoryPort` plus the typed Ask contracts; provider
+adapters receive only page metadata attached to the already-authorized exact
+Evidence. Source text remains untrusted, access and sensitivity checks are
+unchanged, and missing page metadata remains absent rather than guessed.
+Page-aware retrieval uses new query-plan revisions (`ask-query-plan-vp5`,
+`ask-query-plan-v6`, and `ask-query-plan-v7`); historical revisions retain
+their prior context digest and retry behavior.
+
+**Prototype result:** the deterministic helper accepts only positive integral
+`PageSelector` and `BoundingBoxSelector.page` values. On the MAIN-based branch,
+root typecheck passed; Ask execution/provider unit and Ask contract tests passed
+37/37; Ask workspace UI passed 30/30; and isolated PostgreSQL tests passed 6/6
+for Source selector retrieval, persisted citation readback, and existing query-
+plan replay compatibility. Changed-file ESLint, Prettier, full documentation
+validation, frontend production build, and `git diff --check` passed.
+
+**Golden status:** the installed DeepSeek run that exposed the issue used the
+supplied finance PDF; its authorized Source detail showed the asset/liability/
+equity Evidence on page 1. The post-fix installed-icon run remains pending, so
+this is still a candidate Golden and VP-09 is not complete. **Benchmark:** no
+extra provider call was added; the prompt-token delta from page metadata has
+not been measured. Rollback removes the optional page-number field and
+rendering; it requires no data migration and leaves the underlying Evidence
+selectors and citations intact.

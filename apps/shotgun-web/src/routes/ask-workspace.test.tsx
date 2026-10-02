@@ -151,6 +151,7 @@ const mockWorkspace: AskWorkspaceView = {
                       sourceId: 'src-1',
                       sourceVersionId: 'ver-1',
                       evidenceId: 'ev-1',
+                      pageNumbers: [1],
                       externalSourceFreshness: {
                         lastCheckedAt: '2026-07-30T07:00:00.000Z',
                         expiresAt: '2026-07-31T07:00:00.000Z',
@@ -709,9 +710,9 @@ describe('AskWorkspace', () => {
     expect(screen.getByText('What is canonical?')).toBeTruthy();
     expect(screen.getByText('Canonical knowledge is authoritative.')).toBeTruthy();
     expect(screen.queryByText('Completed')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Open pinned Evidence' }).getAttribute('href')).toBe(
-      '/sources/src-1?version=ver-1',
-    );
+    expect(
+      screen.getByRole('link', { name: 'Open pinned Evidence · page 1' }).getAttribute('href'),
+    ).toBe('/sources/src-1?version=ver-1');
     await waitFor(() => expect(mockClient.getAnswerRunEvents).toHaveBeenCalled());
     expect(mockClient.getAnswerRunEvents).toHaveBeenCalledWith(
       'run-1',
@@ -1069,7 +1070,7 @@ describe('AskWorkspace', () => {
     const actions = await screen.findByRole('button', { name: 'Answer actions' });
     const question = screen.getByText('What is canonical?').closest('p');
     const answer = screen.getByRole('heading', { name: 'Answer' });
-    const evidence = screen.getByRole('link', { name: 'Open pinned Evidence' });
+    const evidence = screen.getByRole('link', { name: 'Open pinned Evidence · page 1' });
     expect(question?.compareDocumentPosition(answer)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(answer.compareDocumentPosition(evidence)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(evidence.compareDocumentPosition(actions)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);

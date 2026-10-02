@@ -17,11 +17,13 @@ import {
   type AskAnswerExportFormat,
   type AskAnswerFeedbackKind,
   type AskCitationView,
+  type SourceSelector,
   type AskTransitionSeedKind,
   type AskTransitionSeedPayload,
   type AskTransitionSeedView,
   deriveAuthorizedSensitivities,
   EXTERNAL_SOURCE_FRESHNESS_TTL_MS,
+  pageNumbersFromSourceSelectors,
   type HybridCandidateResult,
   type HybridCitation,
   type HybridRetrievalCoordinatorPort,
@@ -111,9 +113,15 @@ type EvidenceRow = QueryResultRow & {
   readonly source_version_id: string;
   readonly exact_quote: string;
   readonly sensitivity: AskExecutionScope['sensitivityClearance'];
+  readonly selectors?: readonly SourceSelector[] | null;
   readonly external_source_last_checked_at?: Date | null;
   readonly external_source_freshness_expires_at?: Date | null;
   readonly external_source_freshness_state?: ExternalSourceFreshnessView['state'] | null;
+};
+
+const pageNumbersFor = (selectors: readonly SourceSelector[] | null | undefined) => {
+  const pageNumbers = pageNumbersFromSourceSelectors(selectors);
+  return pageNumbers.length > 0 ? { pageNumbers } : {};
 };
 
 type EventRow = QueryResultRow & {
@@ -171,19 +179,30 @@ const sensitivityRank = {
 const AUTOMATIC_SOURCE_EVIDENCE_LIMIT = 8;
 const ASK_QUERY_PLAN_REVISION_V4 = 'ask-query-plan-v4';
 const ASK_QUERY_PLAN_REVISION_V5 = 'ask-query-plan-v5';
+const ASK_QUERY_PLAN_REVISION_V6 = 'ask-query-plan-v6';
+const ASK_QUERY_PLAN_REVISION_V7 = 'ask-query-plan-v7';
 const ASK_QUERY_PLAN_REVISION_VP1 = 'ask-query-plan-vp1';
 const ASK_QUERY_PLAN_REVISION_VP2 = 'ask-query-plan-vp2';
 const ASK_QUERY_PLAN_REVISION_VP3 = 'ask-query-plan-vp3';
 const ASK_QUERY_PLAN_REVISION_VP4 = 'ask-query-plan-vp4';
+const ASK_QUERY_PLAN_REVISION_VP5 = 'ask-query-plan-vp5';
 
 const isAskQueryPlanWithSourceReplay = (revision: string): boolean =>
   revision === 'ask-query-plan-v3' ||
   revision === ASK_QUERY_PLAN_REVISION_V4 ||
   revision === ASK_QUERY_PLAN_REVISION_V5 ||
+  revision === ASK_QUERY_PLAN_REVISION_V6 ||
+  revision === ASK_QUERY_PLAN_REVISION_V7 ||
   revision === ASK_QUERY_PLAN_REVISION_VP1 ||
   revision === ASK_QUERY_PLAN_REVISION_VP2 ||
   revision === ASK_QUERY_PLAN_REVISION_VP3 ||
-  revision === ASK_QUERY_PLAN_REVISION_VP4;
+  revision === ASK_QUERY_PLAN_REVISION_VP4 ||
+  revision === ASK_QUERY_PLAN_REVISION_VP5;
+
+const hasAskQueryPlanPageLocations = (revision: string): boolean =>
+  revision === ASK_QUERY_PLAN_REVISION_V6 ||
+  revision === ASK_QUERY_PLAN_REVISION_V7 ||
+  revision === ASK_QUERY_PLAN_REVISION_VP5;
 
 const isAllowedSensitivity = (
   sensitivity: AskExecutionScope['sensitivityClearance'],
@@ -894,7 +913,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
                 await queryable.query<EvidenceRow>(
                   `SELECT spans.evidence_id::text, spans.source_id::text,
                         spans.source_version_id::text,
-                        spans.quote ->> 'exact' AS exact_quote, spans.sensitivity
+                        spans.quote ->> 'exact' AS exact_quote, spans.sensitivity,
+                        spans.selectors
                    FROM evidence.spans AS spans
                    JOIN asset.sources AS source
                      ON source.source_id = spans.source_id
@@ -962,6 +982,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
             sourceVersionId: row.source_version_id,
             exactQuote: row.exact_quote,
             sensitivity: row.sensitivity,
+            ...pageNumbersFor(row.selectors),
           }))
         : hybridCanonicalCitations !== undefined
           ? hybridCanonicalCitations.length === 0
@@ -973,7 +994,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
                  spans.source_id::text,
                  spans.source_version_id::text,
                  spans.quote ->> 'exact' AS exact_quote,
-                 spans.sensitivity
+                 spans.sensitivity,
+                 spans.selectors
                FROM evidence.spans AS spans
                 WHERE spans.project_id = $1
                   AND spans.evidence_id::text = ANY($2::text[])
@@ -993,6 +1015,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
                 sourceVersionId: row.source_version_id,
                 exactQuote: row.exact_quote,
                 sensitivity: row.sensitivity,
+                ...pageNumbersFor(row.selectors),
               }))
           : evidenceIds.length === 0
             ? []
@@ -1003,7 +1026,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
                  spans.source_id::text,
                  spans.source_version_id::text,
                  spans.quote ->> 'exact' AS exact_quote,
-                 spans.sensitivity
+                 spans.sensitivity,
+                 spans.selectors
                FROM evidence.spans AS spans
                 WHERE spans.project_id = $1
                   AND spans.evidence_id::text = ANY($2::text[])
@@ -1017,6 +1041,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
                 sourceVersionId: row.source_version_id,
                 exactQuote: row.exact_quote,
                 sensitivity: row.sensitivity,
+                ...pageNumbersFor(row.selectors),
               }));
     const evidence = await this.attachExternalSourceFreshness(scope.projectId, baseEvidence);
     const evidenceById = new Map(evidence.map((row) => [row.evidenceId, row]));
@@ -1094,10 +1119,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     ];
     const queryPlanRevision =
       snapshot.mode === 'AUTO_PROJECT_KNOWLEDGE'
-        ? ASK_QUERY_PLAN_REVISION_VP4
+        ? ASK_QUERY_PLAN_REVISION_VP5
         : useHybridCanonicalContext
-          ? ASK_QUERY_PLAN_REVISION_V5
-          : ASK_QUERY_PLAN_REVISION_V4;
+          ? ASK_QUERY_PLAN_REVISION_V7
+          : ASK_QUERY_PLAN_REVISION_V6;
     return {
       evidence,
       context,
@@ -1191,16 +1216,25 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     );
     const row = attempt.rows[0];
     if (!row) return undefined;
+    const queryPlanRevision = row.query_plan_revision ?? 'ask-query-plan-v2';
     const evidence = await this.pool.query<EvidenceRow>(
-      `SELECT evidence_id::text, source_id::text, source_version_id::text,
-              exact_quote, sensitivity, external_source_last_checked_at,
-              external_source_freshness_expires_at, external_source_freshness_state
-       FROM frontend_ask.answer_attempt_evidence
-       WHERE attempt_id = (
+      `SELECT attempt_evidence.evidence_id, attempt_evidence.source_id,
+              attempt_evidence.source_version_id, attempt_evidence.exact_quote,
+              attempt_evidence.sensitivity, spans.selectors,
+              attempt_evidence.external_source_last_checked_at,
+              attempt_evidence.external_source_freshness_expires_at,
+              attempt_evidence.external_source_freshness_state
+       FROM frontend_ask.answer_attempt_evidence AS attempt_evidence
+       LEFT JOIN evidence.spans AS spans
+         ON spans.evidence_id::text = attempt_evidence.evidence_id
+        AND spans.project_id = $2
+        AND spans.source_id::text = attempt_evidence.source_id
+        AND spans.source_version_id::text = attempt_evidence.source_version_id
+       WHERE attempt_evidence.attempt_id = (
          SELECT attempt_id FROM frontend_ask.answer_run_attempts
          WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $3
        )
-       ORDER BY evidence_ordinal`,
+       ORDER BY attempt_evidence.evidence_ordinal`,
       [snapshot.answerRunId, scope.projectId, attemptNumber],
     );
     const mappedEvidence = evidence.rows.map((item) => ({
@@ -1209,6 +1243,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       sourceVersionId: item.source_version_id,
       exactQuote: item.exact_quote,
       sensitivity: item.sensitivity,
+      ...(hasAskQueryPlanPageLocations(queryPlanRevision) ? pageNumbersFor(item.selectors) : {}),
       ...(item.external_source_last_checked_at &&
       item.external_source_freshness_expires_at &&
       item.external_source_freshness_state
@@ -1221,13 +1256,14 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           }
         : {}),
     }));
-    const queryPlanRevision = row.query_plan_revision ?? 'ask-query-plan-v2';
     const sourceSelectionsWithoutResolvedEvidence = snapshot.sourceSelections.filter(
       (selection) =>
         selection.evidenceIds.length === 0 &&
         (queryPlanRevision === 'ask-query-plan-v3' ||
           ((queryPlanRevision === ASK_QUERY_PLAN_REVISION_V4 ||
-            queryPlanRevision === ASK_QUERY_PLAN_REVISION_V5) &&
+            queryPlanRevision === ASK_QUERY_PLAN_REVISION_V5 ||
+            queryPlanRevision === ASK_QUERY_PLAN_REVISION_V6 ||
+            queryPlanRevision === ASK_QUERY_PLAN_REVISION_V7) &&
             !mappedEvidence.some(
               (evidenceItem) =>
                 evidenceItem.sourceId === selection.sourceId &&
@@ -1235,7 +1271,9 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
             ))),
     );
     const sourceVersions =
-      queryPlanRevision === 'ask-query-plan-v3' || queryPlanRevision === ASK_QUERY_PLAN_REVISION_V4
+      queryPlanRevision === 'ask-query-plan-v3' ||
+      queryPlanRevision === ASK_QUERY_PLAN_REVISION_V4 ||
+      queryPlanRevision === ASK_QUERY_PLAN_REVISION_V6
         ? (
             await Promise.all(
               sourceSelectionsWithoutResolvedEvidence.map((selection) =>
@@ -1534,7 +1572,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         }))
       )
         return;
-      if (input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP4) {
+      if (
+        input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP4 ||
+        input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP5
+      ) {
         if (!this.vpEvidenceSearch) throw staleVPCompletion();
         await client.query(
           `SELECT current_epoch::text
@@ -2535,7 +2576,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     executionPin?: AIExecutionPin,
   ): Promise<AskClaimedExecution> {
     const pin = executionPin ?? context.executionPin;
-    if (context.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP4) {
+    if (
+      context.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP4 ||
+      context.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP5
+    ) {
       if (!context.vpKnowledgeEpoch || !context.vpSourceWatermark) {
         throw invalid('The VP knowledge snapshot is incomplete.');
       }

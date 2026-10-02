@@ -615,7 +615,7 @@
       "testEvidenceId": "test:tests/database/frontend-ask-write-postgres.database.test.ts:commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
       "file": "tests/database/frontend-ask-write-postgres.database.test.ts",
       "testName": "commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
-      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2904"],
+      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2948"],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "executionService.startWorker",
       "path": [
@@ -849,7 +849,7 @@
       "testEvidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:commits work performed through the Ask execution transaction boundary",
       "file": "tests/database/a9-final-closure-evidence.test.ts",
       "testName": "commits work performed through the Ask execution transaction boundary",
-      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2166"],
+      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2207"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskAnswerExecutionRepository.transaction",
       "path": ["transaction"]
@@ -858,7 +858,7 @@
       "testEvidenceId": "test:tests/unit/frontend-ask-write-postgres.test.ts:does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error",
       "file": "tests/unit/frontend-ask-write-postgres.test.ts",
       "testName": "does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error",
-      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:177"],
+      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:180"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskConversationRepository.transaction",
       "path": ["transaction"]
@@ -1005,7 +1005,7 @@
       "testEvidenceId": "test:tests/database/t3-product-acceptance.database.test.ts:creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
       "file": "tests/database/t3-product-acceptance.database.test.ts",
       "testName": "creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
-      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:649"],
+      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:652"],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "askForSource",
       "path": [

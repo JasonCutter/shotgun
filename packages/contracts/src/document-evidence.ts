@@ -178,6 +178,22 @@ export type SourceSelector =
   | CssSelector
   | MarkdownHeadingContextSelector;
 
+/** Returns only positive, integral page locations explicitly recorded by SourceMap selectors. */
+export const pageNumbersFromSourceSelectors = (
+  selectors: readonly SourceSelector[] | null | undefined,
+): readonly number[] => {
+  const pages = new Set<number>();
+  for (const selector of selectors ?? []) {
+    if (!selector || typeof selector !== 'object') continue;
+    const page =
+      selector.type === 'PageSelector' || selector.type === 'BoundingBoxSelector'
+        ? selector.page
+        : undefined;
+    if (typeof page === 'number' && Number.isSafeInteger(page) && page > 0) pages.add(page);
+  }
+  return [...pages].sort((left, right) => left - right);
+};
+
 export type DocumentIRSentence = {
   readonly id: string;
   readonly kind: 'sentence';

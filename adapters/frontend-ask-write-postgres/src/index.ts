@@ -13,6 +13,8 @@ import {
   type AskSourceSelectionView,
   type AskWorkspaceView,
   type ExternalSourceFreshnessView,
+  type SourceSelector,
+  pageNumbersFromSourceSelectors,
 } from '../../../packages/contracts/src/index.js';
 import { askSucceededCapabilitiesForContextStatus } from '../../../modules/frontend-ask-execution/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
@@ -117,6 +119,7 @@ type CitationRow = QueryResultRow & {
   readonly source_version_id: string;
   readonly evidence_id: string;
   readonly exact_quote: string | null;
+  readonly selectors: readonly SourceSelector[] | null;
   readonly external_source_last_checked_at: Date | null;
   readonly external_source_freshness_expires_at: Date | null;
   readonly external_source_freshness_state: ExternalSourceFreshnessView['state'] | null;
@@ -716,12 +719,18 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
                  citation.exact_quote,
                  citation.external_source_last_checked_at,
                  citation.external_source_freshness_expires_at,
-                 citation.external_source_freshness_state
+                 citation.external_source_freshness_state,
+                 spans.selectors
                FROM frontend_ask.citations AS citation
                JOIN frontend_ask.statements AS statement
                  ON statement.statement_id = citation.statement_id
                JOIN frontend_ask.answer_runs AS run
                  ON run.answer_run_id = statement.answer_run_id
+               LEFT JOIN evidence.spans AS spans
+                 ON spans.evidence_id = citation.evidence_id
+                AND spans.project_id = run.project_id
+                AND spans.source_id = citation.source_id
+                AND spans.source_version_id = citation.source_version_id
               WHERE run.conversation_id = $1
               ORDER BY citation.statement_id, citation.citation_ordinal`,
             [conversationId],
@@ -766,6 +775,9 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
         sourceVersionId: row.source_version_id,
         evidenceId: row.evidence_id,
         ...(row.exact_quote ? { exactQuote: row.exact_quote } : {}),
+        ...(pageNumbersFromSourceSelectors(row.selectors).length > 0
+          ? { pageNumbers: pageNumbersFromSourceSelectors(row.selectors) }
+          : {}),
         ...(row.external_source_last_checked_at &&
         row.external_source_freshness_expires_at &&
         row.external_source_freshness_state

@@ -44,6 +44,7 @@ export type AskCitationView = {
   readonly evidenceId: string;
   readonly evidenceIds?: readonly string[];
   readonly exactQuote?: string;
+  readonly pageNumbers?: readonly number[];
   readonly externalSourceFreshness?: ExternalSourceFreshnessView;
 };
 
@@ -537,6 +538,7 @@ export const decodeAskCitationView = (value: unknown, path = 'citation'): AskCit
       'evidenceId',
       'evidenceIds',
       'exactQuote',
+      'pageNumbers',
       'externalSourceFreshness',
     ],
     path,
@@ -569,6 +571,22 @@ export const decodeAskCitationView = (value: unknown, path = 'citation'): AskCit
 
   const exactQuote =
     obj.exactQuote !== undefined ? text(obj.exactQuote, `${path}.exactQuote`, 0, 10000) : undefined;
+  const pageNumbers =
+    obj.pageNumbers === undefined
+      ? undefined
+      : array(obj.pageNumbers, `${path}.pageNumbers`, (item, index) => {
+          if (typeof item !== 'number' || !Number.isSafeInteger(item) || item < 1) {
+            fail(`${path}.pageNumbers[${index}] must be a positive integer.`);
+          }
+          return item as number;
+        });
+  if (
+    pageNumbers !== undefined &&
+    (pageNumbers.length === 0 ||
+      pageNumbers.some((page, index) => index > 0 && pageNumbers[index - 1]! >= page))
+  ) {
+    fail(`${path}.pageNumbers must be non-empty, unique, and sorted in ascending order.`);
+  }
   const freshnessInput = obj.externalSourceFreshness;
   const externalSourceFreshness =
     freshnessInput === undefined
@@ -608,6 +626,7 @@ export const decodeAskCitationView = (value: unknown, path = 'citation'): AskCit
     evidenceId,
     ...(evidenceIds ? { evidenceIds } : {}),
     ...(exactQuote !== undefined ? { exactQuote } : {}),
+    ...(pageNumbers ? { pageNumbers } : {}),
     ...(externalSourceFreshness ? { externalSourceFreshness } : {}),
   };
 };

@@ -63,7 +63,8 @@ export class FakeAIProviderAdapter implements AIProviderAdapterPort {
     if (
       parsed.task === 'shotgun-ask-answer-v1' ||
       parsed.task === 'shotgun-ask-answer-vp2' ||
-      parsed.task === 'shotgun-ask-answer-vp3'
+      parsed.task === 'shotgun-ask-answer-vp3' ||
+      parsed.task === 'shotgun-ask-answer-vp4'
     ) {
       const context = parsed.context ?? [];
       const answer = context.length

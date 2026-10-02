@@ -506,6 +506,12 @@ source commit are immutable pins, and the replacement boundary remains
 
 ## 2026-10-02 Ask snapshot validity during relation updates
 
+**Superseded correction:** the initial implementation recorded here relaxed the
+ADR-172 shortlist comparison to tolerate relation-expanded result changes. That
+change was reverted after review because ADR-172 §12 requires an exact ordered
+Evidence-ID and source-watermark comparison. Keep this section as the original
+failed experiment; the accepted fix and its verification are recorded below.
+
 The real DeepSeek PDF flow reproduced the intermittent Ask stall: after
 151 claims were materialized, the first question remained `QUEUED` for 120
 seconds without a provider attempt while relation work was still adding jobs.
@@ -515,29 +521,47 @@ claim transaction. The prior validity check reran the full search and required
 the same evidence-ID list, so a relation-only change could keep the queued Ask
 from starting even though its selected source Evidence remained current.
 
-`PostgresVPAskEvidenceSearch.isSnapshotCurrent` now compares the accessible
-source-version watermark and verifies that every selected Evidence ID still
-belongs to an accessible, authorized latest SourceVersion. It does not reject
-the pinned Evidence because relation discovery expanded or reordered the
-search result. This does not relax source-version, access-scope, sensitivity,
-or reset-epoch checks. The `frontend-ask-execution` contract remains unchanged;
-the fix is inside the existing PostgreSQL Adapter. PostgreSQL remains the
-existing pinned `ADOPT`, gbrain remains `REFERENCE_ONLY`, and no new package,
-schema, or migration was added.
+The first fix compared only the accessible source-version watermark and
+verified each selected Evidence ID against its latest SourceVersion. Although
+that removed the observed stall, it did not preserve ADR-172 §12's exact
+shortlist contract and was reverted. No part of that relaxed freshness rule is
+the current implementation.
 
-The isolated PostgreSQL regression captures a one-source result before a
+The isolated PostgreSQL regression now captures a one-source result before a
 semantic relation exists, creates the relation, confirms search now includes
-the related source, and verifies that the original source Evidence snapshot
-remains current. It also confirms an inaccessible/missing Evidence ID and a
-changed source watermark fail the check. The targeted direct-ledger database
-suite passed 2/2.
+the related source, and verifies that the original shortlist is stale. A
+missing Evidence ID and changed source watermark also fail the check. The
+uploaded-Source regression verifies that a queued worker refreshes the
+shortlist inside its epoch-locked transaction, then validates and claims that
+same exact list. Both focused database files passed, 3/3 tests total.
 
-The actual Chromium + DeepSeek PDF flow then passed in 1.6 minutes: 151/151
-claims had direct Evidence links; 80/80 curated page markers matched; 0/11
-non-claim canaries were promoted; the balance-sheet, NPV, and four fixed
-page-cited Ask checks passed; and replay matched. The first run before the
-fix failed at the first Ask after 120 seconds queued. After the fix, Ask
-completed and the worker claimed six Ask runs without claim errors.
+The actual Chromium + DeepSeek PDF run under the relaxed implementation passed
+in 1.6 minutes, but is retained only as diagnostic evidence and is not a
+verification of the current strict contract. The first run before that fix
+failed at the first Ask after 120 seconds queued.
+
+### 2026-10-02 exact-shortlist refresh under the epoch lock
+
+The worker now acquires the project knowledge epoch share lock, checks that
+knowledge processing is settled, resolves the current context through that same
+database transaction, and reruns the exact ordered Evidence-ID and
+source-watermark check before it creates the provider attempt. This keeps the
+ADR-172 fail-closed rule: if the shortlist changes after refresh, claim fails
+and is retried. The change stays behind the existing Ask Evidence Search Port
+and PostgreSQL Adapter; PostgreSQL is pinned `ADOPT`, gbrain is
+`REFERENCE_ONLY`, and no package or migration was added.
+
+The isolated PostgreSQL regressions passed 3/3. A fresh actual Chromium +
+DeepSeek run using the supplied finance PDF passed in 2.6 minutes: 148/148
+claims had direct Evidence links; 80/80 curated markers matched; 0/11
+non-claim canaries were promoted; all four fixed Ask answers and expected page
+citations passed; and projection replay matched. Five normalized duplicate
+groups all had `EQUIVALENT` relations. The worker claimed six Ask runs with zero
+claim errors; the relation diagnostic saw 17 active relations and 22/22
+generated jobs complete. This is job-queue convergence only: 10,854 of 10,876
+eligible pairs still had no job. Independent semantic labels, full-document
+precision/recall, high-recall relation coverage, and provider account billing
+remain unverified, so VP-04/05 remain open.
 
 The relation gate remains open. At the post-run diagnostic snapshot, replay
 had observed zero pending jobs, while a subsequent consistent diagnostic found

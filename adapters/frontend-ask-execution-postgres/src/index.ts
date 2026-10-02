@@ -55,6 +55,7 @@ import type {
   AskInitialExecutionIdentityResolver,
   AskSourceVersionContextReaderPort,
   AskKnowledgeEvidenceSearchPort,
+  AskKnowledgeQueryExecutor,
   AskWorkerLeaseState,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 
@@ -679,6 +680,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
   private async resolveContext(
     scope: AskExecutionScope,
     snapshot: AskAnswerRunSnapshot,
+    queryExecutor?: AskKnowledgeQueryExecutor,
   ): Promise<
     Pick<
       AskExecutionRunContext,
@@ -691,7 +693,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       | 'vpSourceWatermark'
     >
   > {
-    const selections = await this.pool.query<{
+    const queryable = queryExecutor ?? this.pool;
+    const selections = await queryable.query<{
       readonly selection_id: string;
       readonly source_id: string;
       readonly source_version_id: string;
@@ -738,7 +741,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     if (snapshot.mode !== 'CANONICAL_ONLY') {
       for (const [selectionId, selection] of selectionGroups) {
         if (selection.evidenceIds.length > 0) continue;
-        const result = await this.pool.query<EvidenceRow>(
+        const result = await queryable.query<EvidenceRow>(
           `WITH query_terms AS (
              SELECT regexp_split_to_table(
                trim(regexp_replace(lower($4), '[^[:alnum:]가-힣]+', ' ', 'g')),
@@ -845,7 +848,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         }
       } else {
         canonicalEvidenceIds = (
-          await this.pool.query<{ readonly evidence_id: string }>(
+          await queryable.query<{ readonly evidence_id: string }>(
             `SELECT DISTINCT evidence_id
              FROM projection.search_documents AS document,
                   unnest(document.evidence_ids) AS evidence_id
@@ -863,7 +866,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         ).rows.map((row) => row.evidence_id);
       }
     }
-    let vpEvidenceRows: EvidenceRow[] | undefined;
+    let vpEvidenceRows: readonly EvidenceRow[] | undefined;
     let vpSnapshot:
       { readonly knowledgeEpoch: string; readonly sourceWatermark: string } | undefined;
     if (snapshot.mode === 'AUTO_PROJECT_KNOWLEDGE') {
@@ -877,6 +880,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           accessScope: scope.accessScope ?? [],
           authorizedSensitivities: allowedSensitivities,
           limit: 12,
+          ...(queryExecutor ? { queryExecutor } : {}),
         });
         const candidateSnapshot = {
           knowledgeEpoch: search.knowledgeEpoch,
@@ -887,7 +891,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           candidateIds.length === 0
             ? []
             : (
-                await this.pool.query<EvidenceRow>(
+                await queryable.query<EvidenceRow>(
                   `SELECT spans.evidence_id::text, spans.source_id::text,
                         spans.source_version_id::text,
                         spans.quote ->> 'exact' AS exact_quote, spans.sensitivity
@@ -925,6 +929,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           snapshot: candidateSnapshot,
           evidenceIds: candidateRows.map((row) => row.evidence_id),
           limit: 12,
+          ...(queryExecutor ? { queryExecutor } : {}),
         });
         if (snapshotCurrent) {
           vpSnapshot = candidateSnapshot;
@@ -962,7 +967,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           ? hybridCanonicalCitations.length === 0
             ? []
             : (
-                await this.pool.query<EvidenceRow>(
+                await queryable.query<EvidenceRow>(
                   `SELECT
                  spans.evidence_id::text,
                  spans.source_id::text,
@@ -992,7 +997,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           : evidenceIds.length === 0
             ? []
             : (
-                await this.pool.query<EvidenceRow>(
+                await queryable.query<EvidenceRow>(
                   `SELECT
                  spans.evidence_id::text,
                  spans.source_id::text,
@@ -2541,14 +2546,30 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           FOR SHARE`,
         [scope.projectId],
       );
+      if (await this.isProjectKnowledgePending(scope, client)) {
+        throw staleVPResolution();
+      }
+      // A queued run may have resolved its shortlist just before a relation
+      // update committed. Refresh the context under the shared epoch lock so
+      // the attempt is pinned to one complete, current shortlist; the strict
+      // ID-and-watermark check below still fails closed on later changes.
+      const refreshed = await this.resolveContext(scope, context.snapshot, client);
+      if (!refreshed.vpKnowledgeEpoch || !refreshed.vpSourceWatermark) {
+        throw staleVPResolution();
+      }
+      context = {
+        ...context,
+        ...refreshed,
+        snapshot: normalizeAskAnswerRunCapabilities(context.snapshot, refreshed.contextStatus),
+      };
       const current = await this.vpEvidenceSearch?.isSnapshotCurrent({
         projectId: scope.projectId,
         question: context.snapshot.question,
         accessScope: scope.accessScope ?? [],
         authorizedSensitivities: deriveAuthorizedSensitivities(scope.sensitivityClearance),
         snapshot: {
-          knowledgeEpoch: context.vpKnowledgeEpoch,
-          sourceWatermark: context.vpSourceWatermark,
+          knowledgeEpoch: refreshed.vpKnowledgeEpoch,
+          sourceWatermark: refreshed.vpSourceWatermark,
         },
         evidenceIds: context.evidence.map((evidence) => evidence.evidenceId),
         limit: 12,

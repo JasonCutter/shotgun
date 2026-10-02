@@ -248,12 +248,12 @@
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2161",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2166",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2883",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2904",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
@@ -618,27 +618,27 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:256",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:269",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:387",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:400",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:506",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:519",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:591",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:604",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:641",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:654",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     }

@@ -85,7 +85,7 @@ export class PostgresVPAskEvidenceSearch implements AskKnowledgeEvidenceSearchPo
   async search(
     input: Parameters<AskKnowledgeEvidenceSearchPort['search']>[0],
   ): Promise<Awaited<ReturnType<AskKnowledgeEvidenceSearchPort['search']>>> {
-    return this.searchWithExecutor(this.pool, input);
+    return this.searchWithExecutor(input.queryExecutor ?? this.pool, input);
   }
 
   private async searchWithExecutor(
@@ -197,51 +197,11 @@ export class PostgresVPAskEvidenceSearch implements AskKnowledgeEvidenceSearchPo
     readonly limit: number;
     readonly queryExecutor?: AskKnowledgeQueryExecutor;
   }): Promise<boolean> {
-    const executor = input.queryExecutor ?? this.pool;
-    const current = await readSnapshot(executor, input);
-    if (current.sourceWatermark !== input.snapshot.sourceWatermark) return false;
-    if (input.evidenceIds.length === 0) return true;
-
-    // Relation discoveries can expand or reorder search results while Ask is
-    // being claimed. They do not invalidate the exact Evidence already pinned
-    // in this context. Revalidate every selected Evidence against the current
-    // source version and security boundary instead of requiring the mutable
-    // relation-expanded result set to remain byte-for-byte identical.
-    const evidence = await executor.query<{
-      readonly requested_count: number;
-      readonly current_count: number;
-    }>(
-      `WITH requested AS (
-         SELECT evidence_id FROM unnest($2::text[]) AS requested(evidence_id)
-       ), current_evidence AS (
-         SELECT DISTINCT spans.evidence_id::text AS evidence_id
-           FROM evidence.spans AS spans
-           JOIN asset.sources AS source
-             ON source.source_id = spans.source_id
-            AND source.project_id = spans.project_id
-           JOIN asset.source_versions AS version
-             ON version.source_version_id = spans.source_version_id
-            AND version.source_id = source.source_id
-          WHERE spans.project_id = $1
-            AND spans.evidence_id::text = ANY($2::text[])
-            AND spans.access_scope <@ $3::text[]
-            AND spans.sensitivity = ANY($4::text[])
-            AND version.access_scope <@ $3::text[]
-            AND version.sensitivity = ANY($4::text[])
-            AND version.version_number = (
-              SELECT max(newer.version_number)
-                FROM asset.source_versions AS newer
-               WHERE newer.source_id = source.source_id
-            )
-       )
-       SELECT (SELECT count(*)::int FROM requested) AS requested_count,
-              (SELECT count(*)::int FROM current_evidence) AS current_count`,
-      [input.projectId, input.evidenceIds, input.accessScope, input.authorizedSensitivities],
-    );
-    const row = evidence.rows[0];
+    const current = await this.searchWithExecutor(input.queryExecutor ?? this.pool, input);
     return (
-      row?.requested_count === input.evidenceIds.length &&
-      row.current_count === input.evidenceIds.length
+      current.sourceWatermark === input.snapshot.sourceWatermark &&
+      current.evidenceIds.length === input.evidenceIds.length &&
+      current.evidenceIds.every((evidenceId, index) => evidenceId === input.evidenceIds[index])
     );
   }
 }

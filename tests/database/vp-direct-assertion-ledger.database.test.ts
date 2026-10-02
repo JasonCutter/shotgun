@@ -580,7 +580,7 @@ describe('VP validated direct assertion ledger', () => {
         evidenceIds: beforeSemanticRelation.evidenceIds,
         limit: 12,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(await jobs.enqueueCurrentPairs('vp-revised-policy')).toBe(1);
     const revisedJob = await jobs.claimNext('vp-revised-policy');
     expect(revisedJob).toBeDefined();

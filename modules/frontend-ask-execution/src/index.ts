@@ -79,6 +79,8 @@ export type AskKnowledgeEvidenceSearchPort = {
     readonly accessScope: readonly string[];
     readonly authorizedSensitivities: readonly AskExecutionScope['sensitivityClearance'][];
     readonly limit: number;
+    /** Optional caller transaction for a stable Ask resolution and claim. */
+    readonly queryExecutor?: AskKnowledgeQueryExecutor;
   }): Promise<AskKnowledgeEvidenceSearchResult>;
   isSnapshotCurrent(input: {
     readonly projectId: string;

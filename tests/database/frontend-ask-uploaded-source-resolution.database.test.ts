@@ -14,7 +14,10 @@ import { PostgresProjectAdministrationRepository } from '../../adapters/postgres
 import { PostgresAuthRepository } from '../../adapters/postgres-auth/src/index.js';
 import { PostgresVPAskEvidenceSearch } from '../../adapters/vp-knowledge-postgres/src/ask-evidence-search.js';
 import { AskCommandCoordinator } from '../../modules/frontend-ask-write/src/index.js';
-import type { AskExecutionScope } from '../../modules/frontend-ask-execution/src/index.js';
+import type {
+  AskExecutionScope,
+  AskKnowledgeEvidenceSearchPort,
+} from '../../modules/frontend-ask-execution/src/index.js';
 import { ASK_SCHEMA_VERSION } from '../../packages/contracts/src/index.js';
 import {
   createIsolatedPostgresTestDatabase,
@@ -525,6 +528,7 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
 
     const newerRevisionId = randomUUID();
     const newerEvidenceId = randomUUID();
+    const relationExpandedEvidenceId = randomUUID();
     const newerQuote = 'Verification number A is 99 in the revised document.';
     await pool.query(
       `INSERT INTO transformation.revisions
@@ -541,6 +545,25 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
         hash(newerContent),
         hash(newerQuote),
         hash('newer-map'),
+      ],
+    );
+    const relationExpandedQuote = 'Verification number A is 100 in the revised document.';
+    await pool.query(
+      `INSERT INTO evidence.spans
+         (evidence_id, revision_id, project_id, source_id, source_version_id, pointer,
+          node_kind, origin, position, quote, exact_hash, access_scope,
+          sensitivity, created_at)
+       VALUES ($1, $2, $3, $4, $5, '/paragraph[2]/sentence[1]', 'sentence',
+               'source', $6::jsonb, $7::jsonb, $8, '{owner}', 'private', now())`,
+      [
+        relationExpandedEvidenceId,
+        newerRevisionId,
+        projectId,
+        sourceId,
+        newerVersionId,
+        JSON.stringify({ start: 1000, end: 1000 + relationExpandedQuote.length }),
+        JSON.stringify({ exact: relationExpandedQuote }),
+        hash(relationExpandedQuote),
       ],
     );
     await pool.query(
@@ -596,10 +619,41 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
       [randomUUID(), projectId, newerVersionId, newerRevisionId, `newer-empty-batch-${suffix}`],
     );
     expect(await executionRepository.isProjectKnowledgePending(executionScope)).toBe(false);
-    const resumed = await executionRepository.claimQueuedForWorker('vp-wait-worker', 1);
+    let transactionBoundSearchObserved = false;
+    const movingEvidenceSearch: AskKnowledgeEvidenceSearchPort = {
+      search: async (input) => {
+        if (input.queryExecutor) transactionBoundSearchObserved = true;
+        return {
+          knowledgeEpoch: '0',
+          sourceWatermark: hash(`vp-ask-moving-${projectId}`),
+          evidenceIds: [input.queryExecutor ? relationExpandedEvidenceId : newerEvidenceId],
+        };
+      },
+      isSnapshotCurrent: async (input) => {
+        const expectedEvidenceId = input.queryExecutor
+          ? relationExpandedEvidenceId
+          : newerEvidenceId;
+        return (
+          input.snapshot.sourceWatermark === hash(`vp-ask-moving-${projectId}`) &&
+          input.evidenceIds.length === 1 &&
+          input.evidenceIds[0] === expectedEvidenceId
+        );
+      },
+    };
+    const movingExecutionRepository = new PostgresAskAnswerExecutionRepository(
+      pool,
+      projection,
+      { resolve: async () => undefined },
+      undefined,
+      movingEvidenceSearch,
+    );
+    const resumed = await movingExecutionRepository.claimQueuedForWorker('vp-wait-worker', 1);
     expect(resumed).toHaveLength(1);
-    expect(resumed[0]?.claimed.context.contextStatus).toBe('NO_SUPPORTED_ANSWER');
-    expect(resumed[0]?.claimed.context.evidence).toEqual([]);
+    expect(resumed[0]?.claimed.context.contextStatus).toBe('SUPPORTED');
+    expect(resumed[0]?.claimed.context.evidence.map((item) => item.evidenceId)).toEqual([
+      relationExpandedEvidenceId,
+    ]);
+    expect(transactionBoundSearchObserved).toBe(true);
     const pinnedAttempt = resumed[0]!.claimed.attempt;
     const persistedPin = await pool.query<{
       readonly vp_knowledge_epoch: string;

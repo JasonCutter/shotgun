@@ -167,3 +167,4 @@ source_product.url_provenance_receipts.response_metadata	jsonb
 transformation.revisions.document_ir	jsonb
 transformation.revisions.source_map	jsonb
 validation.results.dimensions	jsonb
+vp.relation_provider_calls.output_json	jsonb

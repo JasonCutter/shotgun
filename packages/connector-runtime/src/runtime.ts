@@ -45,6 +45,10 @@ import type {
   ConnectorSemanticIdentity,
   ReplayAuthorization,
 } from './ports.js';
+import {
+  CONNECTOR_RUNTIME_LEASE_DURATION_MS,
+  CONNECTOR_RUNTIME_LEASE_HEARTBEAT_MS,
+} from './ports.js';
 
 export type RuntimeOptions = {
   readonly jobs?: InMemoryJobRuntime;
@@ -206,6 +210,75 @@ const postHandlerOutcomeUnknown = (
     correlationId,
     cause: error,
   });
+
+const startOrderingLeaseHeartbeat = (
+  state: ConnectorRuntimeStatePort,
+  input: {
+    readonly identity: ConnectorSemanticIdentity;
+    readonly envelope: CommandEnvelope | EventEnvelope;
+    readonly jobId: string;
+    readonly fencingToken: number;
+  },
+): { readonly signal?: AbortSignal; stop(): Promise<void> } => {
+  if (input.envelope.orderingKey === undefined || input.envelope.sequence === undefined) {
+    return { stop: async () => undefined };
+  }
+
+  const controller = new AbortController();
+  let stopped = false;
+  let leaseLoss: ShotgunError | undefined;
+  let heartbeatInFlight: Promise<void> | undefined;
+  const renewLease = async (): Promise<void> => {
+    try {
+      const renewed = await state.ordering.renew({
+        ...input,
+        leaseDurationMs: CONNECTOR_RUNTIME_LEASE_DURATION_MS,
+      });
+      if (!renewed) {
+        throw new ShotgunError({
+          code: 'OUTCOME_UNKNOWN',
+          safeMessage: 'The partial-order lease was lost while its handler was running.',
+          module: 'connector-runtime',
+          operation: 'ordering-heartbeat',
+          correlationId: input.envelope.correlationId,
+        });
+      }
+    } catch (error) {
+      if (!leaseLoss) {
+        leaseLoss = toShotgunError(error, {
+          code: 'OUTCOME_UNKNOWN',
+          safeMessage: 'The partial-order lease could not be renewed safely.',
+          module: 'connector-runtime',
+          operation: 'ordering-heartbeat',
+          correlationId: input.envelope.correlationId,
+        });
+        controller.abort(leaseLoss);
+      }
+    }
+  };
+  const heartbeat = setInterval(() => {
+    if (stopped || heartbeatInFlight || leaseLoss) return;
+    const pending = renewLease();
+    heartbeatInFlight = pending;
+    void pending.finally(() => {
+      if (heartbeatInFlight === pending) heartbeatInFlight = undefined;
+    });
+  }, CONNECTOR_RUNTIME_LEASE_HEARTBEAT_MS);
+  heartbeat.unref();
+
+  return {
+    signal: controller.signal,
+    async stop() {
+      if (!stopped) {
+        stopped = true;
+        clearInterval(heartbeat);
+      }
+      const pendingHeartbeat = heartbeatInFlight;
+      if (pendingHeartbeat) await pendingHeartbeat;
+      if (leaseLoss) throw leaseLoss;
+    },
+  };
+};
 
 export class ConnectorRuntime {
   readonly jobs: InMemoryJobRuntime;
@@ -682,67 +755,94 @@ export class ConnectorRuntime {
     let orderingFence: { readonly fencingToken: number } | undefined;
     let handlerSucceeded = false;
     try {
-      const execution = await state.jobs.run(identity, envelope.correlationId, async (attempt) => {
-        const acquiredFence = await state.ordering.acquireNext(
-          identity,
-          envelope,
-          attempt.jobId,
-          300_000,
-        );
-        orderingFence = acquiredFence;
-        let active = true;
-        const deliveredEnvelope = {
-          ...envelope,
-          job: {
+      const execution = await state.jobs.run(
+        identity,
+        envelope.correlationId,
+        async (attempt, jobSignal) => {
+          const acquiredFence = await state.ordering.acquireNext(
+            identity,
+            envelope,
+            attempt.jobId,
+            CONNECTOR_RUNTIME_LEASE_DURATION_MS,
+          );
+          orderingFence = acquiredFence;
+          const orderingHeartbeat = startOrderingLeaseHeartbeat(state, {
+            identity,
+            envelope,
             jobId: attempt.jobId,
-            attemptId: attempt.attemptId,
-            attemptNumber: attempt.attemptNumber,
-          },
-        };
-        const operation = (signal: AbortSignal) =>
-          kind === 'command'
-            ? (route as RegisteredCommandHandler).handler.handle(
-                deliveredEnvelope as CommandEnvelope,
-                this.context(route, deliveredEnvelope, attempt, signal, () => active),
-              )
-            : (route as RegisteredEventHandler).handler.handle(
-                deliveredEnvelope as EventEnvelope,
-                this.context(route, deliveredEnvelope, attempt, signal, () => active),
-              );
-        try {
-          const result = await this.invoke(route, deliveredEnvelope, attempt, operation, () => {
-            active = false;
+            fencingToken: acquiredFence.fencingToken,
           });
-          handlerSucceeded = true;
-          active = false;
+          const operationSignal = orderingHeartbeat.signal
+            ? AbortSignal.any([jobSignal, orderingHeartbeat.signal])
+            : jobSignal;
+          let active = true;
+          const deliveredEnvelope = {
+            ...envelope,
+            job: {
+              jobId: attempt.jobId,
+              attemptId: attempt.attemptId,
+              attemptNumber: attempt.attemptNumber,
+            },
+          };
+          const operation = (signal: AbortSignal) =>
+            kind === 'command'
+              ? (route as RegisteredCommandHandler).handler.handle(
+                  deliveredEnvelope as CommandEnvelope,
+                  this.context(route, deliveredEnvelope, attempt, signal, () => active),
+                )
+              : (route as RegisteredEventHandler).handler.handle(
+                  deliveredEnvelope as EventEnvelope,
+                  this.context(route, deliveredEnvelope, attempt, signal, () => active),
+                );
           try {
-            await state.ordering.commit(identity, envelope, acquiredFence.fencingToken);
-          } catch (error) {
-            throw postHandlerOutcomeUnknown(
-              error,
-              route.module.manifest.id,
-              'commit-partial-order',
-              envelope.correlationId,
-              'The handler succeeded but ordering completion is ambiguous.',
+            const result = await this.invoke(
+              route,
+              deliveredEnvelope,
+              attempt,
+              operation,
+              () => {
+                active = false;
+              },
+              operationSignal,
             );
-          }
-          orderingFence = undefined;
-          return result as TResult;
-        } catch (error) {
-          const handlerError = toShotgunError(error, {
-            code: 'TERMINAL_FAILURE',
-            safeMessage: 'The durable connector handler failed.',
-            module: route.module.manifest.id,
-            operation: envelope.messageType,
-            correlationId: envelope.correlationId,
-          });
-          if (handlerError.code !== 'OUTCOME_UNKNOWN' && orderingFence) {
-            await state.ordering.release(identity, envelope, acquiredFence.fencingToken);
+            await orderingHeartbeat.stop();
+            handlerSucceeded = true;
+            active = false;
+            try {
+              await state.ordering.commit(identity, envelope, acquiredFence.fencingToken);
+            } catch (error) {
+              throw postHandlerOutcomeUnknown(
+                error,
+                route.module.manifest.id,
+                'commit-partial-order',
+                envelope.correlationId,
+                'The handler succeeded but ordering completion is ambiguous.',
+              );
+            }
             orderingFence = undefined;
+            return result as TResult;
+          } catch (error) {
+            let observedError = error;
+            try {
+              await orderingHeartbeat.stop();
+            } catch (heartbeatError) {
+              observedError = heartbeatError;
+            }
+            const handlerError = toShotgunError(observedError, {
+              code: 'TERMINAL_FAILURE',
+              safeMessage: 'The durable connector handler failed.',
+              module: route.module.manifest.id,
+              operation: envelope.messageType,
+              correlationId: envelope.correlationId,
+            });
+            if (handlerError.code !== 'OUTCOME_UNKNOWN' && orderingFence) {
+              await state.ordering.release(identity, envelope, acquiredFence.fencingToken);
+              orderingFence = undefined;
+            }
+            throw handlerError;
           }
-          throw handlerError;
-        }
-      });
+        },
+      );
       await state.dedup.complete({
         identity,
         fenceToken: began.record.fenceToken,
@@ -863,7 +963,7 @@ export class ConnectorRuntime {
         const execution = await state.jobs.run(
           identity,
           envelope.correlationId,
-          async (attempt) => {
+          async (attempt, jobSignal) => {
             let active = true;
             const deliveredEnvelope = {
               ...envelope,
@@ -885,7 +985,7 @@ export class ConnectorRuntime {
               () => {
                 active = false;
               },
-              parentSignal,
+              parentSignal ? AbortSignal.any([parentSignal, jobSignal]) : jobSignal,
             );
             active = false;
             this.registry.schemas.validateOutput(

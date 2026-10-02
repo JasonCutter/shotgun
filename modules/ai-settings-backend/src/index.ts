@@ -147,6 +147,8 @@ export type StructuredGenerationResponse = {
 
 export type AIProviderConnectivityAdapter = {
   readonly providerId: string;
+  /** Optional pinned generation implementation/configuration identity. */
+  readonly adapterVersion?: string;
   /** True only when generateStructured forwards maxOutputTokens. */
   readonly supportsOutputTokenLimit?: boolean;
   /** True only when generateStructured forwards AbortSignal. */

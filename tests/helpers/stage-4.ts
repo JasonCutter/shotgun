@@ -42,6 +42,7 @@ type HarnessOptions = {
   readonly transport?: MessageTransport;
   readonly aiProvider?: AIProviderAdapterPort;
   readonly aiProviderPolicy?: AIProviderPolicy;
+  readonly candidatePromptVersion?: string;
   readonly aiProviderRepository?: InMemoryAIProviderCallRepository;
   readonly candidateRepository?: InMemoryCandidateRepository;
   readonly validationRepository?: InMemoryValidationRepository;
@@ -74,6 +75,9 @@ export const createStage4Harness = async (options: HarnessOptions = {}) => {
         allowRestricted: false,
         maxAttempts: 2,
       },
+      options.candidatePromptVersion === undefined
+        ? {}
+        : { candidatePromptVersion: options.candidatePromptVersion },
     ),
     createCandidateGenerationModule(candidateRepository),
     createValidationModule(validationRepository),

@@ -108,6 +108,38 @@ OriginalAssetStored
 - HTML, PDF, Office, 이미지 OCR은 Stage 8 Format Adapter 범위다.
 - directory watcher와 reconcile은 계속 `DEFER`다.
 
+## 2026-09-29 VP-04 Markdown heading Evidence 보강
+
+- Target: Stage 3 `PlainTextTransformerPort`와 `EvidenceLocatorPort`; Stage 4는
+  생성된 정확한 sentence Evidence만 사용한다.
+- [lucasastorian/llmwiki](https://github.com/lucasastorian/llmwiki) commit
+  `ad626a3d81be1480e35ef4e94234de8dbb27a61e` / Apache-2.0은 기존 `EXTRACT`
+  결정대로 quote·위치 패턴만 적용한다. Python/SQLite/VaultFS 전체 Runtime은
+  제외한다. Pinned commit만 사용하고 upstream을 자동 갱신하지 않는다.
+- W3C Web Annotation Recommendation `2017-02-23` / W3C-20150513은 기존
+  `AUGMENT` 결정대로 position/quote 의미를 제공한다. Heading context는
+  Shotgun-owned additive selector다. gbrain MIT commit
+  `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`는 Fact/Graph 역할이므로 이번
+  Evidence 변환에는 `REFERENCE_ONLY`이며 Runtime·DB를 추가하지 않는다.
+- 구현 근거: 기존 직접 문장 분리기가 ATX heading과 다음 문장을 같은
+  paragraph/sentence Evidence에 넣어 승인 Golden의 exact Evidence를 놓쳤다.
+  새 source-map segmentation test, Stage 3 replacement/round-trip test와 Stage 4
+  Candidate contract에서 이를 검사했다. 승인 `shotgun-quality-baseline@1.0.0`은
+  내용·threshold를 바꾸지 않고 현재 경로에서 전체 `quality:gate`를 통과했다.
+- Security/maintenance: heading text는 untrusted source content로만 보존하고
+  실행·지시로 처리하지 않는다. 기존 1 MiB Markdown 입력 한도와 SourceVersion,
+  Unicode offset, quote/hash 검증을 유지한다. 신규 Package·dependency는 없다.
+  Upstream pin/license와 독립 adapter boundary는 기존 Registry 평가대로 유지한다.
+  `npm run oss:audit`의 high-severity gate는 통과했으며 기존 Vitest/@vitest-mocker와
+  jsdom/undici development dependency에 moderate advisory 네 건이 보고됐다.
+- Migration/rollback: DB migration은 없다. transformer identity를 1.0.2로 올려
+  기존 1.0.1 revision과 새 revision을 덮어쓰지 않는다. Rollback은 1.0.2 출력
+  생성을 중지하고 selector 읽기 지원을 유지한 채 이전 transformer를 사용한다.
+  `Open-source Role Matrix`의 채택·추출 결정은 변하지 않았다.
+- 실제 finance PDF와 synthetic 9-case corpus의 결과 및 나머지 VP-04 제한은
+  [VP-04 quality verification](../vp-direct-claim-v5-quality-verification-2026-09-29.md)에
+  기록했다. 이 보강만으로 Stage 3 또는 VP 전체를 다시 완료 판정하지 않는다.
+
 ## 다음 계약 Version 후보
 
 - `DocumentIR.v2`: heading, list, table, code block

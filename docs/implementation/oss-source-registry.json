@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "reviewedAt": "2026-07-22",
+  "reviewedAt": "2026-10-02",
   "decisionValues": [
     "ADOPT",
     "EXTRACT",
@@ -18,20 +18,22 @@
       "officialSource": "https://github.com/postgres/postgres",
       "pin": {
         "type": "docker-digest",
-        "value": "postgres:16.14-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
+        "value": "pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b"
       },
       "license": {
         "spdx": "PostgreSQL",
         "status": "VERIFIED",
-        "evidence": "Official PostgreSQL distribution and Docker Official Image"
+        "evidence": "PostgreSQL upstream distribution and the digest-pinned pgvector PostgreSQL image used by compose.yaml"
       },
       "decision": "ADOPT",
       "scope": "Development database, Stage 2 asset metadata, Stage 3 transformation/evidence persistence, Stage 6 Canonical transaction and Outbox, Stage 7 FTS/pg_trgm projection, Stage 10 Compiled Truth, Stage 11 Action approval and append-only Audit, and Stage 12.1 pg_dump/pg_restore clean restore",
       "security": "Local credentials only; production secrets remain outside source control",
-      "maintenance": "Major version 16 is fixed; patch and image digest updates require a registry change",
+      "maintenance": "compose.yaml pins the pgvector PostgreSQL image digest; the observed server is PostgreSQL 16.15. Patch and image digest updates require a registry review",
       "evidence": [
         "docker image digest verified",
-        "PostgreSQL 16.14 runtime verified",
+        "PostgreSQL 16.15 runtime verified from the pinned Compose image",
+        "PostgreSQL REL_16_15 source commit 7d3e000c5961a544302072058a1184e9a588837b verified",
+        "compose.yaml db and db-test services use the same immutable image digest",
         "Stage 6 atomic rollback, restart, row-lock concurrency, append-only, and SKIP LOCKED Outbox tests",
         "Stage 7 FTS, trigram, GIN index, Watermark restart, and atomic rebuild tests",
         "Stage 11 restart, concurrent execution claim, immutable approval, and append-only Audit tests",
@@ -123,20 +125,20 @@
       "id": "postgresql-pg-trgm",
       "name": "PostgreSQL pg_trgm",
       "stages": [7, 10],
-      "officialSource": "https://github.com/postgres/postgres/tree/REL_16_14/contrib/pg_trgm",
+      "officialSource": "https://github.com/postgres/postgres/tree/REL_16_15/contrib/pg_trgm",
       "pin": {
         "type": "git-commit",
-        "value": "0d1c00c624fa7367d4a895f44381887757289682"
+        "value": "7d3e000c5961a544302072058a1184e9a588837b"
       },
       "license": {
         "spdx": "PostgreSQL",
         "status": "VERIFIED",
-        "evidence": "PostgreSQL REL_16_14 source tree and COPYRIGHT"
+        "evidence": "PostgreSQL REL_16_15 source tree and COPYRIGHT"
       },
       "decision": "ADOPT",
       "scope": "Typo-tolerant Canonical Claim search behind SearchProjectionRepositoryPort",
       "security": "Extension runs inside the pinned PostgreSQL image and receives only access-filtered Projection text",
-      "maintenance": "Version follows the pinned PostgreSQL 16.14 image and source commit",
+      "maintenance": "Version follows the PostgreSQL 16.15 source tag and pinned Compose image digest",
       "evidence": [
         "pg_trgm extension availability and migration verified",
         "GIN trigram index and typo retrieval database tests"
@@ -165,6 +167,7 @@
       "maintenance": "pgvector 0.8.x extension on PostgreSQL 16 image digest verified",
       "evidence": [
         "official exact and approximate nearest-neighbor capabilities reviewed",
+        "pgvector 0.8.6 extension observed in the digest-pinned Compose runtime",
         "AKP-1 WP2 database integration tests for variable dimensions, security-before-Top-K, and deterministic tie-breaking"
       ],
       "boundary": "Only adapters/semantic-index-postgres imports pgvector SQL operators behind SemanticIndexRepositoryPort",
@@ -745,6 +748,33 @@
       "recheckTrigger": "SDK or model upgrade, paid-service tier change, or enabling private evidence"
     },
     {
+      "id": "spacy-sentencizer-vp04",
+      "name": "spaCy Sentencizer",
+      "stages": [4],
+      "officialSource": "https://github.com/explosion/spaCy",
+      "pin": {
+        "type": "git-commit",
+        "value": "26b4d1dc04a812f426e4bef3e8a1b6f159d6f048"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "LICENSE at v3.8.16"
+      },
+      "decision": "REFERENCE_ONLY",
+      "scope": "Candidate Generation sentence boundary comparison for VP-04 PDF physical-line claim splitting",
+      "security": "Official GitHub security page has no SECURITY.md and no published advisories as of 2026-10-01; no package or model is added to runtime",
+      "maintenance": "v3.8.16 is the latest official release, published 2026-08-24; no runtime dependency or lockfile entry is consumed",
+      "evidence": [
+        "Official Sentencizer documentation reviewed: rule-based sentence boundaries use punctuation characters",
+        "The supplied PDF needs physical page and BBox preservation, wrapped formula grouping, and atomic claim boundaries beyond punctuation splitting",
+        "Candidate Generation retains exact source substrings and Stage 8 retains geometry-backed Evidence selectors"
+      ],
+      "boundary": "Reference only; CandidateGenerationModule owns claim splitting behind the existing Candidate Generation contract, while the PythonDocumentFormatAdapter owns PDF line and SourceMap offsets",
+      "replacement": "Re-evaluate behind Candidate Generation and Transformation ports after a Korean formula/list Golden benchmark demonstrates better precision and recall",
+      "recheckTrigger": "A cross-format sentence segmentation requirement with an adjudicated Korean/formula/list Golden corpus"
+    },
+    {
       "id": "litellm",
       "name": "LiteLLM",
       "stages": [4],
@@ -1040,23 +1070,27 @@
       "name": "Docling",
       "stages": [8],
       "officialSource": "https://github.com/docling-project/docling",
-      "pin": { "type": "git-tag", "value": "v2.113.0" },
+      "pin": { "type": "git-tag", "value": "v2.130.0" },
       "license": {
         "spdx": "MIT",
         "status": "VERIFIED",
-        "evidence": "Official repository license at v2.113.0"
+        "evidence": "Official repository LICENSE at v2.130.0"
       },
       "decision": "DEFER",
       "scope": "Advanced PDF and Office layout, table, formula, and image understanding",
-      "security": "Model downloads and a large parser dependency graph require an isolated worker and resource limits",
-      "maintenance": "Deferred because the MVP Golden corpus does not justify its runtime and model footprint",
+      "security": "Upstream security policy supports latest versions only; v2.130.0 was evaluated in an isolated temporary environment, and no production security/dependency gate was run",
+      "maintenance": "v2.130.0 was the reviewed release baseline; the tested formula model path exceeded the local CPU time and memory budget",
       "evidence": [
-        "v2.113.0 reviewed",
-        "Current format-specific adapters passed selector and structure Golden tests without model downloads"
+        "Initial v2.113.0 review retained as historical baseline",
+        "v2.130.0 tag commit 92fc74c36bbd20db9838d7665d38900e5c958319 reviewed; official LICENSE is MIT",
+        "Temporary Python 3.12 environment resolved 50 distributions and occupied 854390083 bytes",
+        "Finance PDF pages 5-6 default conversion kept formula blocks but exported empty formula text and formula-not-decoded placeholders",
+        "Optional CodeFormulaV2 local CPU conversion exceeded six minutes and approximately 1.9 GB process memory without a result",
+        "No application dependency, lockfile, adapter, or production behavior changed"
       ],
       "boundary": "Document format adapter",
       "replacement": "Can replace PDF or Office adapters only through DocumentIR and SourceMap contract tests",
-      "recheckTrigger": "Scanned PDF, complex table, formula, or chart loss exceeds the Stage 8 tolerance"
+      "recheckTrigger": "A bounded supported host is available and CodeFormulaV2 passes a page-image adjudicated finance formula Golden corpus within ingest time and memory limits"
     },
     {
       "id": "markitdown",
@@ -1114,16 +1148,50 @@
         "evidence": "Official repository LICENSE"
       },
       "decision": "ADOPT",
-      "scope": "PDF word text, PageSelector, and BoundingBoxSelector extraction",
+      "scope": "PDF word text, deterministic reading order, PageSelector, BoundingBoxSelector extraction, and physical line segment offsets preserved within one paragraph",
       "security": "Runs in a child process; corrupt and encrypted inputs return explicit terminal statuses",
       "maintenance": "Exact PyPI version is locked in the Stage 8 worker requirements",
       "evidence": [
         "PDF Golden retained 6 words with page and BBox selectors",
-        "Median cold worker time 452 ms over 3 local runs"
+        "Median cold worker time 452 ms over 3 local runs",
+        "Adapter 1.7.0 preserves physical PDF line boundaries and exact BBox segment offsets while retaining one worker block per DocumentIR paragraph; the Stage 8 test and finance PDF DeepSeek characterization are recorded in the VP-04 formula verification report"
       ],
       "boundary": "PythonDocumentFormatAdapter",
-      "replacement": "Any PDF replacement must pass the same Page, BBox, corrupt, encrypted, and upper-contract tests",
-      "recheckTrigger": "PDF table or reading-order loss exceeds the documented tolerance"
+      "replacement": "Any PDF replacement must pass the same Page, BBox, physical-line SourceMap, corrupt, encrypted, and upper-contract tests",
+      "recheckTrigger": "PDF table or reading-order loss, line-boundary mapping, or list-claim extraction falls below the documented tolerance"
+    },
+    {
+      "id": "pypdfium2",
+      "name": "pypdfium2",
+      "stages": [8],
+      "officialSource": "https://github.com/pypdfium2-team/pypdfium2",
+      "pin": {
+        "type": "pypi-lock",
+        "package": "pypdfium2",
+        "value": "5.11.0"
+      },
+      "license": {
+        "spdx": "Apache-2.0 OR BSD-3-Clause",
+        "status": "VERIFIED",
+        "evidence": "Official 5.11.0 README and release metadata; the bundled PDFium binary and its third-party license notices must ship with binary distributions"
+      },
+      "decision": "AUGMENT",
+      "scope": "Behind PythonDocumentFormatAdapter, geometrically recover unique NUL '=', parentheses, colon, digits, '<', and '>' only from a small safe glyph set with reciprocal tight overlap; recover one digit-period-space-Hangul list prefix only when its exact PDFium sequence, digit/period geometry, whitespace position, and pdfplumber source line agree; recover short flat equations with exact compact text agreement and bounded stacked fractions only when numerator/denominator rows align around a short uppercase Latin, Korean, or numeric equation prefix, group top-level denominator arithmetic when an inline slash would change the geometry-backed fraction meaning, and require every existing pdfplumber fragment to be contained in reconstructed text",
+      "security": "PDFium runs only inside the isolated Python worker after existing byte/page preflight; formula extraction is capped at 100000 PDFium characters per page and 20000 text rows; numbered-list repair requires the exact contiguous character sequence and source-coordinate alignment; stacked recovery requires horizontal overlap, strict character-multiset agreement, a numeric or short labeled equation prefix, and explicit grouping only for top-level arithmetic in the denominator; the official upstream Security page showed no SECURITY.md policy and no published advisory on 2026-10-01; failures retain pdfplumber output",
+      "maintenance": "PyPI 5.11.0 is exact-locked; upstream tag commit 0168561b33a3fc32eceb6ae46cc252f6b0e90c19 embeds PDFium pin 7913; no new package was added; any upgrade requires the same Page/BBox, formula Golden, corrupt/encrypted and adapter replacement tests",
+      "evidence": [
+        "Pinned-stack read-only prototype recovered exactly the two page-6 NPV signs from 25 NUL glyphs in the supplied finance PDF; the other 23 had no qualifying comparison-sign geometry",
+        "Official 5.11.0 release tag and bundled license terms reviewed",
+        "Implemented strict reciprocal safe-glyph matching for '=', parentheses, colon, digits, '<', and '>', bounded single-row reconstruction, geometry-bracketed stacked fractions with bounded English or Korean labels, and exact-sequence numbered-list prefix recovery; 18 Python geometry tests cover safe glyphs, reciprocal matching, numbered-list positive/negative geometry, exact/contained text agreement, exponent/subscript markers, stacked layouts, mismatch fallback, Korean fraction labels and the PDFium character budget",
+        "The supplied 10-page finance PDF reconstructs PV = FV/(1 + r)^n, PV = 110/1.1 = 100만원, and NPV = ∑ CF_t/(1 + r)^t − I_0 with page-specific bounding-box selectors; flat FV equations remain covered",
+        "On the supplied finance PDF the strict safe-glyph path restored 19 of 25 replacement markers, leaving 6 unmatched; adapter 1.5.0 live DeepSeek browser flow passed once at 112 assertions and 113 candidates with 20/20 content markers, four cited Ask corpus checks, replay match and no pending relation jobs; a separate 119-assertion run timed out after 180 seconds with one relation job pending, and the cause was not captured; document-format adapter 1.7.0 (with PDFium recovery behavior 1.6.0) passed the updated live run with 20/20 exact PageSelector matches, 150 assertions, 153 candidates, four expected-page Ask citations, replay match and no pending relation jobs; broad formula quality remains open",
+        "Document-format adapter 1.8.0 safely restored the supplied PDF's three digit-period-space list prefixes from the exact PDFium text sequence and aligned glyph geometry; 18 geometry tests passed; the live DeepSeek Product run matched 23/23 page-grounded candidate markers with 164 assertions, six cited Ask checks, replay match, three relation rows, and zero pending jobs; full-PDF precision/recall and candidate quality remain open",
+        "Document-format adapter 1.10.0 preserves the pypdfium2 5.11.0 pin and reconstructs the supplied PDF's numeric-left stacked IRR fraction as 100 = 110/(1 + r), grouping the unparenthesized top-level arithmetic denominator while leaving simple 1.1 and already grouped expressions unchanged; 21 Python glyph tests and 30 focused Stage 8/SourceMap contract tests passed; actual Chromium + isolated PostgreSQL + DeepSeek extraction produced 147/147 exact-Evidence candidates, matched 23/23 positive markers, excluded 6/6 non-claim canaries, and replayed with one relation and zero pending jobs; extraction reported 16594 tokens without invoice reconciliation; a separate same-adapter full-Ask run passed six answer/citation checks; candidate labels, independent adjudication, broad precision/recall, multi-source relation quality, and cost remain open",
+        "Official pypdfium2 5.11.0 release and commit reviewed; no upstream security policy or published advisory was present on the official Security page on 2026-10-01"
+      ],
+      "boundary": "PythonDocumentFormatAdapter behind the Transformation Port; PDFium supplies character text and geometry only for bounded candidate repair; pdfplumber remains the sole reading-order, paragraph and Page/BBox selector owner",
+      "replacement": "Revert the numeric-prefix and top-level denominator grouping repair plus adapter identity from 1.10.0 to 1.9.0 to retain safe-glyph, prior formula, Korean-labeled fraction, numbered-list, and physical-line recovery; prior immutable TransformationRevisions remain readable and are not rewritten. To replace PDFium, keep the same adapter boundary and rerun Page/BBox, formula/list Golden, corrupt/encrypted and adapter replacement tests",
+      "recheckTrigger": "PDFium version change, upstream security notice, a false glyph/equation repair, an adjudicated Golden corpus, or evidence that stacked formulas are causing wrong knowledge claims"
     },
     {
       "id": "python-docx",
@@ -1579,7 +1647,7 @@
       "pin": {
         "type": "npm-lock",
         "package": "vitest",
-        "value": "4.1.10"
+        "value": "4.1.11"
       },
       "license": {
         "spdx": "MIT",
@@ -1588,8 +1656,8 @@
       },
       "decision": "ADOPT",
       "scope": "Frontend Section 1 jsdom component suite and root Backend/TS-6 audit suites; test runner only",
-      "security": "Test-only dependency with no browser production bundle path",
-      "maintenance": "Exact root and workspace version 4.1.10 is locked. Reviewed tag v4.1.10 at upstream commit db616d2; the v4 line includes upstream PR #8297's worker RPC timeout fix and supports Vite 8 and Node.js 24.",
+      "security": "Test-only dependency with no browser production bundle path; 4.1.11 includes the upstream fix for GHSA-82fw-gwwq-j7x9",
+      "maintenance": "Exact root version 4.1.11 is locked. Reviewed official tag v4.1.11 at upstream commit 9bd8d464e6328c567c2dbcd8fdd977d57a9425c2; this release fixes GHSA-82fw-gwwq-j7x9. Test-only dependency; the v4 line includes upstream PR #8297's worker RPC timeout fix and supports Vite 8 and Node.js 24.",
       "evidence": [
         "Frontend component suite passes independently",
         "TS-6 audit negative tests and authority lineage validation run as a dedicated CI gate"
@@ -1705,6 +1773,90 @@
       "boundary": "Would be limited to non-authoritative presentation state",
       "replacement": "Continue with local React state until measured complexity requires a store",
       "recheckTrigger": "Approved shared presentation state cannot be maintained locally"
+    },
+    {
+      "id": "node-child-process-supervision",
+      "name": "Node.js child_process.fork and IPC",
+      "stages": [12],
+      "officialSource": "https://github.com/nodejs/node",
+      "pin": {
+        "type": "runtime-baseline",
+        "value": "v24.15.0 local baseline; built-in API, no package dependency"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "Node.js project license at the official repository"
+      },
+      "decision": "NO_RELEVANT_OSS",
+      "scope": "Existing Node runtime child process and IPC boundary for local application restart supervision",
+      "security": "Fixed local script and arguments; child inherits the launcher trust domain and environment; child cannot reserve or rewrite canonical runtime identity",
+      "maintenance": "Part of the existing Node.js runtime; distribution must pin and update Node independently of npm lockfile",
+      "evidence": [
+        "tests/unit/launch-supervisor.test.ts",
+        "tests/integration/launch-supervisor-process.test.ts",
+        "No package or lockfile dependency was added"
+      ],
+      "boundary": "launch-local.ts owns runtime identity; RuntimeSupervisorDeps is the parent/child IPC boundary",
+      "replacement": "A replacement supervisor must pass startup retry, terminal failure, ready/start phase, shutdown, real IPC and canonical identity ownership tests",
+      "recheckTrigger": "Node.js major upgrade or a desktop distribution that bundles a different runtime"
+    },
+    {
+      "id": "pm2-local-launcher-supervision",
+      "name": "PM2",
+      "stages": [12],
+      "officialSource": "https://github.com/Unitech/pm2",
+      "pin": {
+        "type": "git-commit",
+        "value": "cd6b1b4c592117212d7349d6932288613f336c15",
+        "release": "v7.0.4"
+      },
+      "license": {
+        "spdx": "AGPL-3.0",
+        "status": "VERIFIED",
+        "evidence": "LICENSE at the pinned official repository commit"
+      },
+      "decision": "REJECT",
+      "scope": "Candidate process supervisor for local Shotgun application restarts",
+      "security": "Not installed or executed; no dependency audit required for integration because rejected before adoption",
+      "maintenance": "Release v7.0.4 reviewed 2026-09-30; Windows startup hook documentation requires an external package",
+      "evidence": [
+        "Official repository describes the Windows runtime and AGPL-3.0 license",
+        "Official v7.0.4 release commit verified",
+        "Official startup-hook documentation identifies the Windows external package requirement",
+        "Would add a separate daemon/process identity authority beside Shotgun canonical launcher"
+      ],
+      "boundary": "Excluded from Shotgun runtime and package lockfiles",
+      "replacement": "Re-evaluate only if Shotgun changes its canonical local process identity contract and the deployment license review accepts PM2",
+      "recheckTrigger": "Canonical launcher ownership model changes or PM2 license/deployment terms materially change"
+    },
+    {
+      "id": "vp-ask-stale-snapshot-recovery",
+      "name": "VP Ask stale snapshot recovery",
+      "stages": [7],
+      "officialSource": "https://github.com/garrytan/gbrain",
+      "pin": {
+        "type": "git-commit",
+        "value": "a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a"
+      },
+      "license": {
+        "spdx": "MIT",
+        "status": "VERIFIED",
+        "evidence": "LICENSE at the previously pinned official gbrain repository commit"
+      },
+      "decision": "NO_RELEVANT_OSS",
+      "scope": "Bounded recovery when a known DeepSeek Ask response cannot publish because the VP knowledge snapshot changed",
+      "security": "Reject the stale answer; retry one initial attempt against a newly resolved accessible VP snapshot; never replay OUTCOME_UNKNOWN",
+      "maintenance": "No package, runtime, database schema, or provider egress dependency; use the existing Shotgun AnswerRun retry and AI execution pin boundaries",
+      "evidence": [
+        "docs/implementation/vp-ask-stale-snapshot-recovery-2026-10-01.md",
+        "tests/unit/frontend-ask-execution.test.ts",
+        "tests/database/frontend-ask-uploaded-source-resolution.database.test.ts",
+        "tests/browser/vp-deepseek-full-flow.live.spec.ts"
+      ],
+      "boundary": "AskAnswerExecutionService and AskAnswerExecutionRepositoryPort; Shotgun retains AnswerRun, VP epoch, SourceVersion watermark, Evidence citation, and retry history",
+      "replacement": "Any replacement must pass the typed stale completion contract, one bounded current-policy retry, no stale publication, and no OUTCOME_UNKNOWN replay tests",
+      "recheckTrigger": "A future OSS adapter is proposed for Shotgun's durable Ask and VP snapshot transaction contract"
     },
     {
       "id": "content-addressed-storage",

@@ -43,6 +43,9 @@ export type ReplayAuthorization = {
   readonly reason: string;
 };
 
+export const CONNECTOR_RUNTIME_LEASE_DURATION_MS = 300_000;
+export const CONNECTOR_RUNTIME_LEASE_HEARTBEAT_MS = 60_000;
+
 export type DedupStorePort = {
   begin<TResult>(
     input: ConnectorSemanticIdentity & { readonly jobId: string },
@@ -119,7 +122,7 @@ export type JobRuntimePort = {
   run<TResult>(
     identity: ConnectorSemanticIdentity,
     correlationId: string,
-    operation: (attempt: AttemptRecord) => Promise<TResult>,
+    operation: (attempt: AttemptRecord, signal: AbortSignal) => Promise<TResult>,
   ): Promise<JobRunResult<TResult>>;
   list(): Promise<readonly JobRecord[]>;
   find(identity: ConnectorSemanticIdentity): Promise<JobRecord | undefined>;
@@ -144,6 +147,13 @@ export type OrderingStorePort = {
     jobId: string,
     leaseDurationMs: number,
   ): Promise<{ readonly fencingToken: number }>;
+  renew(input: {
+    readonly identity: ConnectorSemanticIdentity;
+    readonly envelope: AnyEnvelope;
+    readonly jobId: string;
+    readonly fencingToken: number;
+    readonly leaseDurationMs: number;
+  }): Promise<boolean>;
   commit(
     identity: ConnectorSemanticIdentity,
     envelope: AnyEnvelope,

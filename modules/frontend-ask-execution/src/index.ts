@@ -19,6 +19,7 @@ import {
   type AskTransitionSeedView,
   type AskCitationView,
   type AskCapability,
+  type ExternalSourceFreshnessView,
   type AskProviderPolicyResolverPort,
   sha256Text,
   stableJson,
@@ -48,9 +49,29 @@ export type AskExecutionEvidence = {
   readonly sourceVersionId: string;
   readonly exactQuote: string;
   readonly sensitivity: AskExecutionScope['sensitivityClearance'];
+  readonly externalSourceFreshness?: ExternalSourceFreshnessView;
 };
 
-/** Optional VP read boundary; Ask rechecks every returned Evidence ID. */
+export type AskKnowledgeSnapshot = {
+  /** Monotonic project epoch observed with this shortlist. */
+  readonly knowledgeEpoch: string;
+  /** Digest of the accessible latest SourceVersions at the same read point. */
+  readonly sourceWatermark: string;
+};
+
+export type AskKnowledgeEvidenceSearchResult = AskKnowledgeSnapshot & {
+  readonly evidenceIds: readonly string[];
+};
+
+/** Minimal SQL boundary used to keep a VP freshness check in its caller's transaction. */
+export type AskKnowledgeQueryExecutor = {
+  query<T extends Record<string, unknown> = Record<string, unknown>>(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ readonly rows: readonly T[] }>;
+};
+
+/** VP is the authoritative knowledge read boundary for AUTO_PROJECT_KNOWLEDGE. */
 export type AskKnowledgeEvidenceSearchPort = {
   search(input: {
     readonly projectId: string;
@@ -58,7 +79,19 @@ export type AskKnowledgeEvidenceSearchPort = {
     readonly accessScope: readonly string[];
     readonly authorizedSensitivities: readonly AskExecutionScope['sensitivityClearance'][];
     readonly limit: number;
-  }): Promise<readonly string[]>;
+    /** Optional caller transaction for a stable Ask resolution and claim. */
+    readonly queryExecutor?: AskKnowledgeQueryExecutor;
+  }): Promise<AskKnowledgeEvidenceSearchResult>;
+  isSnapshotCurrent(input: {
+    readonly projectId: string;
+    readonly question: string;
+    readonly accessScope: readonly string[];
+    readonly authorizedSensitivities: readonly AskExecutionScope['sensitivityClearance'][];
+    readonly snapshot: AskKnowledgeSnapshot;
+    readonly evidenceIds: readonly string[];
+    readonly limit: number;
+    readonly queryExecutor?: AskKnowledgeQueryExecutor;
+  }): Promise<boolean>;
 };
 
 export type AskExecutionSourceVersionContext = {
@@ -139,6 +172,8 @@ export type AskExecutionAttempt = {
   readonly policyContextRevision: string;
   readonly resolvedContextDigest: string;
   readonly queryPlanRevision: string;
+  readonly vpKnowledgeEpoch?: string;
+  readonly vpSourceWatermark?: string;
   readonly resolvedSensitivity: AskExecutionScope['sensitivityClearance'];
   readonly dataPolicyVersion?: string;
   readonly effectiveProviderPolicyFingerprint?: string;
@@ -184,6 +219,8 @@ export type AskExecutionRunContext = {
   readonly contextStatus: AskExecutionContextStatus;
   readonly resolvedContextDigest: string;
   readonly queryPlanRevision: string;
+  readonly vpKnowledgeEpoch?: string;
+  readonly vpSourceWatermark?: string;
   readonly executionPin?: AIExecutionPin;
 };
 
@@ -282,6 +319,11 @@ export const validateAIExecutionPin = (
 export type AskAnswerExecutionRepositoryPort = {
   /** VP Ask stays queued while an authorized latest SourceVersion is indexing. */
   isProjectKnowledgePending?(scope: AskExecutionScope): Promise<boolean>;
+  /** A status read that does not rebuild or revalidate the answer's Evidence context. */
+  getRunSnapshot?(
+    scope: AskExecutionScope,
+    answerRunId: string,
+  ): Promise<AskAnswerRunSnapshot | undefined>;
   getRunContext(
     scope: AskExecutionScope,
     answerRunId: string,
@@ -470,7 +512,11 @@ const retryableFailureCodes = new Set([
   'TIMEOUT',
   'RETRYABLE_DEPENDENCY',
   'VALIDATION_ERROR',
+  'STALE_VERSION',
 ]);
+
+/** Ask may refresh a moving VP snapshot twice, then fails closed. */
+const MAX_AUTOMATIC_STALE_VP_ATTEMPTS = 3;
 
 const sensitivityRank = {
   public: 0,
@@ -502,6 +548,8 @@ export const askExecutionContextDigest = (input: {
   readonly mode: AskAnswerRunSnapshot['mode'];
   readonly question: string;
   readonly context: readonly AskExecutionContextItem[];
+  readonly vpKnowledgeEpoch?: string;
+  readonly vpSourceWatermark?: string;
 }): string =>
   sha256Text(
     stableJson({
@@ -509,6 +557,10 @@ export const askExecutionContextDigest = (input: {
       projectId: input.projectId,
       mode: input.mode,
       question: input.question,
+      ...(input.vpKnowledgeEpoch === undefined ? {} : { vpKnowledgeEpoch: input.vpKnowledgeEpoch }),
+      ...(input.vpSourceWatermark === undefined
+        ? {}
+        : { vpSourceWatermark: input.vpSourceWatermark }),
       context: input.context.map((item) =>
         item.kind === 'EVIDENCE'
           ? {
@@ -517,6 +569,9 @@ export const askExecutionContextDigest = (input: {
               sourceId: item.sourceId,
               sourceVersionId: item.sourceVersionId,
               exactQuote: item.exactQuote,
+              ...(item.externalSourceFreshness === undefined
+                ? {}
+                : { externalSourceFreshness: item.externalSourceFreshness }),
             }
           : {
               kind: item.kind,
@@ -660,10 +715,18 @@ export class AskAnswerExecutionService {
   }
 
   async getAnswerRun(scope: AskExecutionScope, answerRunId: string): Promise<AskAnswerRunSnapshot> {
+    const snapshot = this.repository.getRunSnapshot
+      ? await this.repository.getRunSnapshot(scope, answerRunId)
+      : (await this.repository.getRunContext(scope, answerRunId))?.snapshot;
+    if (!snapshot)
+      throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'get-answer-run');
+    if (snapshot.state !== 'SUCCEEDED' && snapshot.failure?.code !== 'POLICY_DENIED') {
+      return snapshot;
+    }
     const current = await this.repository.getRunContext(scope, answerRunId);
     if (!current)
       throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'get-answer-run');
-    if (current.snapshot.failure?.code !== 'POLICY_DENIED') return current.snapshot;
+    if (snapshot.failure?.code !== 'POLICY_DENIED') return current.snapshot;
     const provider = await this.resolveProvider(scope, current.executionPin);
     const eligibility = await this.resolveProviderPolicy(
       scope.projectId,
@@ -688,8 +751,8 @@ export class AskAnswerExecutionService {
     answerRunId: string,
     afterOrdinal?: number,
   ): Promise<readonly AskAnswerRunEventView[]> {
-    const context = await this.repository.getRunContext(scope, answerRunId);
-    if (!context) throw executionError('NOT_FOUND', 'The AnswerRun was not found.', 'events');
+    // The repository checks existence and project access using the run identity.
+    // Loading the full context here repeated VP Evidence search on every poll.
     return this.repository.getEvents(scope, answerRunId, afterOrdinal);
   }
 
@@ -937,7 +1000,7 @@ export class AskAnswerExecutionService {
         workerId,
       });
       if (context.contextStatus === 'NO_SUPPORTED_ANSWER') {
-        return this.repository.complete({
+        return await this.repository.complete({
           scope,
           answerRunId: context.snapshot.answerRunId,
           attemptNumber: attempt.attemptNumber,
@@ -1027,7 +1090,7 @@ export class AskAnswerExecutionService {
         });
       }
       const citations = this.validateCitations(context, result.citations);
-      return this.repository.complete({
+      return await this.repository.complete({
         scope,
         answerRunId: context.snapshot.answerRunId,
         attemptNumber: attempt.attemptNumber,
@@ -1080,7 +1143,7 @@ export class AskAnswerExecutionService {
         });
       }
       const failure = this.failureFrom(error);
-      return this.repository.fail({
+      const failed = await this.repository.fail({
         scope,
         answerRunId: context.snapshot.answerRunId,
         attemptNumber: attempt.attemptNumber,
@@ -1088,6 +1151,31 @@ export class AskAnswerExecutionService {
         failure,
         workerId,
       });
+      if (
+        error instanceof ShotgunError &&
+        error.code === 'STALE_VERSION' &&
+        error.operation === 'complete-vp-snapshot' &&
+        attempt.attemptNumber < MAX_AUTOMATIC_STALE_VP_ATTEMPTS &&
+        failed.state === 'FAILED'
+      ) {
+        clearInterval(heartbeat);
+        try {
+          const refreshed = await this.repository.retryAndClaim({
+            scope,
+            answerRunId: context.snapshot.answerRunId,
+            mode: 'CURRENT_POLICY',
+            workerId,
+          });
+          return await this.executeClaimed(scope, refreshed);
+        } catch (retryError) {
+          console.error(
+            '[ask-answer-worker] stale VP snapshot refresh retry failed',
+            context.snapshot.answerRunId,
+            retryError instanceof Error ? retryError.message : retryError,
+          );
+        }
+      }
+      return failed;
     } finally {
       clearInterval(heartbeat);
       const current = this.active.get(context.snapshot.answerRunId);
@@ -1266,6 +1354,9 @@ export class AskAnswerExecutionService {
         sourceVersionId: evidence.sourceVersionId,
         evidenceId: evidence.evidenceId,
         exactQuote: evidence.exactQuote,
+        ...(evidence.externalSourceFreshness === undefined
+          ? {}
+          : { externalSourceFreshness: evidence.externalSourceFreshness }),
       };
     });
   }

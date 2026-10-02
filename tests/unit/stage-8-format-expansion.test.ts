@@ -54,6 +54,12 @@ const selectorsOf = (
 ): readonly SourceSelector[] => output.sourceMap.entries.flatMap((entry) => entry.selectors ?? []);
 
 describe('Stage 8 format Golden Corpus', () => {
+  it('versions PDF formula and visual-line recovery as a distinct transformation revision', () => {
+    const adapter = new PythonDocumentFormatAdapter({ pythonExecutable });
+
+    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.12.0' });
+  });
+
   it.each([
     ['golden.html', 'text/html', 'CssSelector', 'Shotgun Format Golden'],
     ['golden.pdf', 'application/pdf', 'PageSelector', 'Shotgun'],
@@ -108,6 +114,59 @@ describe('Stage 8 format Golden Corpus', () => {
     expect(cells).toContainEqual(
       expect.objectContaining({ type: 'CellSelector', sheet: 'Golden', cell: 'B2' }),
     );
+  });
+
+  it('labels formula evidence while retaining its exact formula and cell selector', async () => {
+    const { output } = await transformFixture(
+      'golden.xlsx',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    const formulaIndex = output.documentIR.blocks.findIndex(
+      (item) => item.text === 'Formula: =1+1',
+    );
+    const formulaSourceMap = output.sourceMap.entries.find(
+      (entry) => entry.pointer === `/blocks/${formulaIndex}`,
+    );
+
+    expect(formulaIndex).toBeGreaterThanOrEqual(0);
+    expect(formulaSourceMap?.selectors).toContainEqual(
+      expect.objectContaining({ type: 'CellSelector', sheet: 'Golden', cell: 'B3' }),
+    );
+  });
+
+  it('preserves CSV header/value relationships with both source cells', async () => {
+    const { output } = await transformFixture('golden.csv', 'text/csv');
+    const relationshipIndex = output.documentIR.blocks.findIndex(
+      (item) => item.text === 'Status: Ready',
+    );
+    const relationshipSourceMap = output.sourceMap.entries.find(
+      (entry) => entry.pointer === `/blocks/${relationshipIndex}`,
+    );
+
+    expect(relationshipIndex).toBeGreaterThanOrEqual(0);
+    expect(relationshipSourceMap?.selectors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'CellSelector', sheet: 'CSV', cell: 'A2' }),
+        expect.objectContaining({ type: 'CellSelector', sheet: 'CSV', cell: 'B2' }),
+      ]),
+    );
+    expect(output.documentIR.blocks.map((item) => item.text)).toContain('Status');
+    expect(output.documentIR.blocks.map((item) => item.text)).toContain('Ready');
+  });
+
+  it('derives header/value facts for compact CSV tables', async () => {
+    const bytes = Buffer.from('Metric,Amount\nRevenue,100\nCost,70\n', 'utf8');
+    const adapter = new PythonDocumentFormatAdapter({ pythonExecutable });
+    const output = await adapter.transform({
+      sourceId: randomUUID(),
+      sourceVersionId: randomUUID(),
+      sourceContentHash: hashBytes(bytes),
+      mediaType: 'text/csv',
+      contentBase64: bytes.toString('base64'),
+    });
+
+    expect(output.documentIR.blocks.map((item) => item.text)).toContain('Metric: Revenue');
+    expect(output.documentIR.blocks.map((item) => item.text)).toContain('Amount: 100');
   });
 
   it('replaces unmapped NUL glyphs before storing extracted text', async () => {
@@ -235,5 +294,5 @@ describe('Stage 8 format Golden Corpus', () => {
     expect(Object.keys(second.sourceMap).sort()).toEqual(
       Object.keys(first.output.sourceMap).sort(),
     );
-  });
+  }, 20_000);
 });

@@ -142,7 +142,18 @@ import {
 const dbConfigured = Boolean(process.env.TEST_DATABASE_URL?.trim());
 let isolatedTestDatabase: IsolatedPostgresTestDatabase | undefined;
 let pool: Pool | undefined;
-const now = '2026-09-01T03:00:00.000Z';
+// Keep Approval fixtures valid against the live clock while preserving one frozen scheduler time.
+const nowInstant = new Date();
+const now = nowInstant.toISOString();
+const latestDueTuesday = new Date(nowInstant);
+const daysSinceTuesday = (latestDueTuesday.getUTCDay() - 2 + 7) % 7;
+latestDueTuesday.setUTCDate(latestDueTuesday.getUTCDate() - daysSinceTuesday);
+latestDueTuesday.setUTCHours(2, 0, 0, 0);
+if (latestDueTuesday.getTime() > nowInstant.getTime()) {
+  latestDueTuesday.setUTCDate(latestDueTuesday.getUTCDate() - 7);
+}
+const dueOccurrenceAt = latestDueTuesday.toISOString();
+const dueOccurrenceKey = `${dueOccurrenceAt.slice(0, 16)}@UTC`;
 const digest = (value: string): string => sha256Text(value);
 
 const providerEmbeddingDouble = (dimension: number): ProviderEmbeddingConnectivityPort => ({
@@ -805,8 +816,8 @@ describe.runIf(dbConfigured)('AKP-8 WP2 cross-section causal PostgreSQL acceptan
       timezone: 'UTC',
       dayOfWeek: 2,
       localTime: '02:00',
-      nextOccurrenceAt: '2026-09-01T02:00:00.000Z',
-      nextOccurrenceKey: '2026-09-01T02:00@UTC',
+      nextOccurrenceAt: dueOccurrenceAt,
+      nextOccurrenceKey: dueOccurrenceKey,
       updatedAt: now,
     };
     expect(await schedules.saveSchedule(dueSchedule)).toBe('CREATED');
@@ -1257,7 +1268,8 @@ describe.runIf(dbConfigured)('AKP-8 WP2 cross-section causal PostgreSQL acceptan
     // the accepted A/B/C journey.  The two approved relation groups are read
     // by the real Postgres conflict authority; no Finding or Canonical conflict
     // row is inserted by this fixture.
-    let causalNow = '2026-09-01T05:00:00.000Z';
+    const causalStartInstant = new Date();
+    let causalNow = causalStartInstant.toISOString();
     const typedRelationCandidates: readonly RelationCandidate[] = [
       {
         candidateId: `akp-8-m-support:${projectId}`,
@@ -1559,7 +1571,7 @@ describe.runIf(dbConfigured)('AKP-8 WP2 cross-section causal PostgreSQL acceptan
       ]),
     );
 
-    causalNow = '2026-09-01T05:02:00.000Z';
+    causalNow = new Date(causalStartInstant.getTime() + 2 * 60 * 1_000).toISOString();
     const mSecondCommit = await commitCausalClaim(canonical, {
       projectId,
       sourceVersionId,
@@ -1699,7 +1711,7 @@ describe.runIf(dbConfigured)('AKP-8 WP2 cross-section causal PostgreSQL acceptan
     // intentionally the old derived Finding for the later reconciliation;
     // the refreshed compiled-truth projection records its changed relation
     // state through the normal projection repository.
-    causalNow = '2026-09-01T06:00:00.000Z';
+    causalNow = new Date(causalStartInstant.getTime() + 60 * 60 * 1_000).toISOString();
     const pTrigger = new DiscoveryTriggerCoordinator(
       canonicalSource,
       new PostgresDiscoveryProjectionReadinessAdapter(compiledTruth, semanticIndex),
@@ -1808,7 +1820,7 @@ describe.runIf(dbConfigured)('AKP-8 WP2 cross-section causal PostgreSQL acceptan
     });
     expect(pReadiness.status).toBe('READY');
 
-    causalNow = '2026-09-01T06:02:00.000Z';
+    causalNow = new Date(causalStartInstant.getTime() + 62 * 60 * 1_000).toISOString();
     const pLaterCommit = await commitCausalClaim(canonical, {
       projectId,
       sourceVersionId,

@@ -1,0 +1,43 @@
+{
+  "contractVersion": "1.0.0",
+  "corpusId": "shotgun-vp-finance-pdf-ask",
+  "corpusVersion": "1.0.0",
+  "labelSetRevision": 1,
+  "corpusDigest": "sha256:a5a4a4f74c18265a8f2d8b5821074a9136bff588123823ef21325117ce3036df",
+  "labelReviewStatus": "CANDIDATE",
+  "source": {
+    "sha256": "bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01",
+    "pageCount": 10,
+    "dataClassification": "USER_PROVIDED"
+  },
+  "questions": [
+    {
+      "id": "current-ratio-example",
+      "page": 2,
+      "question": "자료의 예에서 유동자산 4천만원과 유동부채 2천만원으로 계산한 유동비율은 얼마인가요?",
+      "expectedAnswerTerms": ["200%"],
+      "expectedEvidenceTerms": ["유동비율", "4,000", "2,000"]
+    },
+    {
+      "id": "operating-income-example",
+      "page": 3,
+      "question": "자료의 손익계산서 예시에서 계산한 영업이익은 얼마인가요?",
+      "expectedAnswerTerms": ["400만원", "400만 원"],
+      "expectedEvidenceTerms": ["영업이익", "400만원"]
+    },
+    {
+      "id": "present-value-example",
+      "page": 5,
+      "question": "자료의 현재가치 예시에서 1년 뒤 110만원을 할인율 10%로 할인하면 현재가치는 얼마인가요?",
+      "expectedAnswerTerms": ["100만원", "100만 원"],
+      "expectedEvidenceTerms": ["PV", "110만원", "100만원"]
+    },
+    {
+      "id": "beta-sensitivity-example",
+      "page": 9,
+      "question": "자료의 β=1.5 예시에서 시장수익률이 1% 움직이면 해당 자산 수익률은 평균 얼마나 움직이나요?",
+      "expectedAnswerTerms": ["1.5%", "1.5배"],
+      "expectedEvidenceTerms": ["β", "1.5%", "1%"]
+    }
+  ]
+}

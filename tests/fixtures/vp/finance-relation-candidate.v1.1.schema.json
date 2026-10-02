@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://shotgun.local/schemas/vp/finance-relation-candidate.v1.1.schema.json",
+  "title": "VP Finance Relation Candidate Corpus v1.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "corpusId",
+    "corpusVersion",
+    "labelSetRevision",
+    "corpusDigest",
+    "labelReviewStatus",
+    "dataClassification",
+    "licenseSummary",
+    "source",
+    "cases"
+  ],
+  "properties": {
+    "contractVersion": { "const": "1.1.0" },
+    "corpusId": { "const": "shotgun-vp-finance-relation-candidate" },
+    "corpusVersion": { "type": "string", "minLength": 1 },
+    "labelSetRevision": { "type": "integer", "minimum": 1 },
+    "corpusDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "labelReviewStatus": { "enum": ["CANDIDATE", "REVIEWED", "APPROVED", "RETIRED"] },
+    "dataClassification": { "const": "MIXED_USER_PROVIDED_AND_TEST_AUTHORED" },
+    "licenseSummary": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "pageCount", "companionSourceId", "companionFile"],
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "pageCount": { "type": "integer", "minimum": 1 },
+        "companionSourceId": { "type": "string", "minLength": 1 },
+        "companionFile": { "type": "string", "minLength": 1 }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "caseId",
+          "left",
+          "right",
+          "allowedChoices",
+          "dimension",
+          "rationale",
+          "leftProvenance",
+          "rightProvenance"
+        ],
+        "properties": {
+          "caseId": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "left": { "type": "string", "minLength": 1 },
+          "right": { "type": "string", "minLength": 1 },
+          "allowedChoices": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "EQUIVALENT",
+                "SUPPORTS",
+                "QUALIFIES",
+                "CONTRADICTS",
+                "RELATED",
+                "UNRESOLVED"
+              ]
+            }
+          },
+          "allowedDirections": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "enum": ["LEFT_TO_RIGHT", "RIGHT_TO_LEFT"] }
+          },
+          "dimension": { "type": "string", "minLength": 1 },
+          "rationale": { "type": "string", "minLength": 1 },
+          "leftProvenance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["page", "markerId"],
+            "properties": {
+              "page": { "type": "integer", "minimum": 1 },
+              "markerId": { "type": "string", "minLength": 1 }
+            }
+          },
+          "rightProvenance": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["page", "markerId"],
+                "properties": {
+                  "page": { "type": "integer", "minimum": 1 },
+                  "markerId": { "type": "string", "minLength": 1 }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["sourceId", "claimId"],
+                "properties": {
+                  "sourceId": { "type": "string", "minLength": 1 },
+                  "claimId": { "type": "string", "minLength": 1 }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

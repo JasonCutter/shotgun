@@ -66,5 +66,20 @@ npm run test:database
 ## 제한
 
 - 문장 분리는 MVP 구두점 규칙이며 언어별 NLP 문장 분석기가 아니다.
-- Markdown 문법 구조는 아직 DocumentIR heading/list로 변환하지 않는다.
+- Markdown ATX heading은 별도 원문 범위로 분리하고 후속 Evidence에
+  `MarkdownHeadingContext`를 부여한다. List, table, code block 등 전체 문법을
+  DocumentIR 구조로 변환하지는 않는다.
 - 번역·요약·주석은 Source origin과 분리되며 EvidenceSpan으로 승격되지 않는다.
+
+## 2026-09-29 VP-04 — Markdown heading context
+
+동일 Markdown 문단에 heading과 본문 문장이 붙어 있을 때 Candidate Evidence가
+heading까지 포함하던 품질 결함을 보완했다. ATX heading의 원문 범위는 별도 SourceMap
+entry로 남기고 본문 문단·문장에는 부모 heading 경로를 담은
+`MarkdownHeadingContext` selector를 상속한다. Candidate는 본문 sentence Evidence를
+사용하고, Ask Citation은 정확한 본문 위치와 heading 문맥을 함께 보존한다.
+
+이 동작은 additive `SourceSelector` contract이며 DB migration을 요구하지 않는다.
+새 출력은 `shotgun.plain-text@1.0.2`로 고정하고 과거 변환 Revision을 덮어쓰지 않는다.
+회귀 근거는 [VP-04 quality verification](../implementation/vp-direct-claim-v5-quality-verification-2026-09-29.md)
+및 [Issue #237 Markdown segmentation contract](../../tests/contract/issue-237-markdown-evidence-segmentation.contract.test.ts)다.

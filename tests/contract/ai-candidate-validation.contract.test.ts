@@ -106,13 +106,468 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
         candidatesQuery(command, sourceVersionId),
       )
     ).result.payload.items;
-    expect(request?.systemInstruction).toContain('Explicit numerical examples and equations');
+    expect(request?.systemInstruction).toContain('Extract every distinct explicit claim');
+    expect(request?.systemInstruction).toContain('one atomic claim per candidate');
     expect(candidates).toHaveLength(1);
+    expect(request?.systemInstruction).toContain('Evidence may contain visual PDF line breaks');
+    expect(request?.systemInstruction).toContain('complete standalone proposition');
+    expect(request?.systemInstruction).toContain('isolated nouns');
+    expect(request?.systemInstruction).toContain('partial equation fragments');
+    expect(request?.systemInstruction).toContain(
+      'return that line as its own exact-source candidate',
+    );
     expect(candidates[0]).toMatchObject({
       claimText: '1억원 = 6천만원 + 4천만원',
       status: 'READY',
-      providerCall: { promptVersion: 'direct-claim-v2' },
+      providerCall: { promptVersion: 'direct-claim-v10' },
     });
+  });
+
+  it('rebinds a PDF soft-wrap claim to the exact source span before validation', async () => {
+    const sourceText = '현금은 아직 들어오지 않\n았을 수 있다 .';
+    const providerClaim = '현금은 아직 들어오지 않았을 수 있다 .';
+    const fake = new FakeAIProviderAdapter([{ claimText: providerClaim }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+    });
+    const command = directTextCommand('stage4-rebind-pdf-soft-wrap', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ claimText: sourceText, status: 'READY' });
+    const validation = (
+      await kernel.connector.query<ValidationResult>(
+        validationQuery(command, candidates[0]!.candidateId),
+      )
+    ).result.payload;
+    expect(validation.dimensions.find((dimension) => dimension.name === 'direct-text')).toEqual(
+      expect.objectContaining({ status: 'PASS' }),
+    );
+  });
+
+  it('keeps a complete Korean directional relationship as an exact source candidate in v9', async () => {
+    const direction = '베타가 커질수록 요구되는 기대수익률도 커지는 방향';
+    const fake = new FakeAIProviderAdapter([{ claimText: direction }]);
+    let request: StructuredGenerationRequest | undefined;
+    const provider: AIProviderAdapterPort = {
+      identity: fake.identity,
+      generateStructured(input) {
+        request = input;
+        return fake.generateStructured(input);
+      },
+    };
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: provider,
+      candidatePromptVersion: 'direct-claim-v9',
+    });
+    const command = directTextCommand(
+      'stage4-korean-direction-claim-v9',
+      `${direction}\n위험을 더 많이 부담한다면 투자자는 더 높은 수익률을 요구하기 때문이다 .`,
+    );
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(request?.systemInstruction).toContain(
+      'return that line as its own exact-source candidate',
+    );
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ claimText: direction, status: 'READY' });
+  });
+
+  it('drops the leading IRR condition fragment under the default direct-claim-v10 policy', async () => {
+    const fragment = '이 되게 하는 수익률이 IRR 이다 .';
+    const fake = new FakeAIProviderAdapter([{ claimText: fragment }]);
+    let request: StructuredGenerationRequest | undefined;
+    const provider: AIProviderAdapterPort = {
+      identity: fake.identity,
+      generateStructured(input) {
+        request = input;
+        return fake.generateStructured(input);
+      },
+    };
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: provider,
+    });
+    const command = directTextCommand(
+      'stage4-incomplete-irr-prefix-v8',
+      `NPV = 0 이다 .\n${fragment}`,
+    );
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(request?.systemInstruction).toContain('required condition is cut off at the beginning');
+    expect(request?.systemInstruction).toContain('NPV=0');
+    expect(request?.systemInstruction).toContain(
+      'Do not deduplicate claims across different evidence items',
+    );
+    expect(candidates).toEqual([]);
+  });
+
+  it('rejects a directly quoted claim with an undecodable replacement character', async () => {
+    const damagedClaim = 'NPV � 0 → investment value increases';
+    const expectedClaim = `${damagedClaim} when the net present value is positive.`;
+    const fake = new FakeAIProviderAdapter([{ claimText: damagedClaim }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+      candidatePromptVersion: 'direct-claim-v5',
+    });
+    const command = directTextCommand(
+      'stage4-undecodable-npv-sign',
+      `${damagedClaim} when the net present value is positive.`,
+    );
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ claimText: expectedClaim, status: 'REJECTED' });
+    const validation = (
+      await kernel.connector.query<ValidationResult>(
+        validationQuery(command, candidates[0]!.candidateId),
+      )
+    ).result.payload;
+    expect(validation.dimensions.find((dimension) => dimension.name === 'direct-text')).toEqual(
+      expect.objectContaining({
+        status: 'FAIL',
+        reason: 'Claim text contains an undecodable replacement character.',
+      }),
+    );
+  });
+
+  it('uses a durable 16K response cap for DeepSeek claim extraction', async () => {
+    const fake = new FakeAIProviderAdapter([{ claimText: '1억원 = 6천만원 + 4천만원' }]);
+    let request: StructuredGenerationRequest | undefined;
+    const provider: AIProviderAdapterPort = {
+      identity: { ...fake.identity, provider: 'deepseek' },
+      generateStructured(input) {
+        request = input;
+        return fake.generateStructured(input);
+      },
+    };
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: provider,
+      candidatePromptVersion: 'direct-claim-v5',
+    });
+    const command = directTextCommand(
+      'stage4-deepseek-output-cap-v5',
+      '1억원 = 6천만원 + 4천만원.',
+    );
+    await kernel.connector.sendCommand(command);
+
+    expect(request?.maxOutputTokens).toBe(16_384);
+  });
+
+  it('keeps a qualified sentence intact when direct-claim-v3 returns only a fragment', async () => {
+    const sourceSentence = 'The demo archive contained exactly 44 records on 2025-01-01.';
+    const fake = new FakeAIProviderAdapter([{ claimText: 'exactly 44 records' }]);
+    let request: StructuredGenerationRequest | undefined;
+    const provider: AIProviderAdapterPort = {
+      identity: fake.identity,
+      generateStructured(input) {
+        request = input;
+        return fake.generateStructured(input);
+      },
+    };
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: provider,
+      candidatePromptVersion: 'direct-claim-v3',
+    });
+    const command = directTextCommand('stage4-qualified-v3', sourceSentence);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(request?.systemInstruction).toContain('entire matching source sentence');
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      claimText: sourceSentence,
+      status: 'READY',
+      providerCall: { promptVersion: 'direct-claim-v3' },
+    });
+  });
+
+  it('keeps compact atomic claims when direct-claim-v4 retains all equation qualifiers', async () => {
+    const sourceText =
+      'Balance-sheet equation: 1억원 = 6천만원 + 4천만원. Operating profit is 400만원.';
+    const equation = '1억원 = 6천만원 + 4천만원';
+    const fake = new FakeAIProviderAdapter([{ claimText: equation }]);
+    let request: StructuredGenerationRequest | undefined;
+    const provider: AIProviderAdapterPort = {
+      identity: fake.identity,
+      generateStructured(input) {
+        request = input;
+        return fake.generateStructured(input);
+      },
+    };
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: provider,
+      candidatePromptVersion: 'direct-claim-v4',
+    });
+    const command = directTextCommand('stage4-atomic-v4', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(request?.systemInstruction).toContain('one atomic claim per candidate');
+    expect(request?.systemInstruction).toContain('Do not copy an entire paragraph');
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      claimText: equation,
+      status: 'READY',
+      providerCall: { promptVersion: 'direct-claim-v4' },
+    });
+  });
+
+  it('restores omitted numeric and date qualifiers from the containing sentence in v5', async () => {
+    const sourceSentence = 'The demo archive contained exactly 44 records on 2025-01-01.';
+    const fake = new FakeAIProviderAdapter([{ claimText: 'exactly 44 records' }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+      candidatePromptVersion: 'direct-claim-v5',
+    });
+    const command = directTextCommand('stage4-qualifier-v4', sourceSentence);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      claimText: sourceSentence,
+      status: 'READY',
+      providerCall: { promptVersion: 'direct-claim-v5' },
+    });
+  });
+
+  it('splits independent claims joined inside one v5 Evidence span', async () => {
+    const firstClaim = '1억원 = 6천만원 + 4천만원';
+    const secondClaim = '재무상태표는 일정 기간의 흐름이 아니라 그날 현재의 상태를 보여준다';
+    const sourceText = `${firstClaim} ${secondClaim}.`;
+    const fake = new FakeAIProviderAdapter([{ claimText: sourceText }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+      candidatePromptVersion: 'direct-claim-v5',
+    });
+    const command = directTextCommand('stage4-split-v5-evidence', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates.map((candidate) => candidate.claimText)).toEqual([
+      firstClaim,
+      `${secondClaim}.`,
+    ]);
+    expect(candidates.every((candidate) => candidate.status === 'READY')).toBe(true);
+    expect(candidates.every((candidate) => candidate.evidenceIds.length === 1)).toBe(true);
+  });
+
+  it('splits independent claims from preserved PDF line boundaries', async () => {
+    const firstClaim = '이익과 현금은 같지 않을 수 있다';
+    const secondClaim = '분산투자로 체계적 위험은 제거할 수 없다';
+    const sourceText = `${firstClaim}\n${secondClaim}`;
+    const fake = new FakeAIProviderAdapter([{ claimText: sourceText }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+      candidatePromptVersion: 'direct-claim-v5',
+    });
+    const command = directTextCommand('stage4-split-pdf-lines-v5', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates.map((candidate) => candidate.claimText)).toEqual([firstClaim, secondClaim]);
+    expect(candidates.every((candidate) => candidate.status === 'READY')).toBe(true);
+  });
+
+  it('keeps wrapped PDF claim lines and incomplete equation rows together', async () => {
+    const sourceText =
+      '분산투자는 일부 위험을 줄일 수\n있지만 시장 전체의 체계적 위험은 제거할 수 없다\n' +
+      '110\n100 =\n1 + r\n이 식을 만족하는 r은 10% 이므로 IRR 은 10% 다.';
+    const fake = new FakeAIProviderAdapter([{ claimText: sourceText }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+      candidatePromptVersion: 'direct-claim-v5',
+    });
+    const command = directTextCommand('stage4-keep-pdf-wraps-v5', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates.map((candidate) => candidate.claimText)).toEqual([
+      '분산투자는 일부 위험을 줄일 수\n있지만 시장 전체의 체계적 위험은 제거할 수 없다',
+      '110\n100 =\n1 + r\n이 식을 만족하는 r은 10% 이므로 IRR 은 10% 다.',
+    ]);
+    expect(candidates.every((candidate) => candidate.status === 'READY')).toBe(true);
+  });
+
+  it('keeps Korean postposition continuations attached to the previous PDF line', async () => {
+    const sourceText =
+      '베타가 클수록 시장 변화에 민감하고 체계적 위험이 큰 방향\n으로 이해하면 된다 .';
+    const fake = new FakeAIProviderAdapter([{ claimText: sourceText }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+      candidatePromptVersion: 'direct-claim-v6',
+    });
+    const command = directTextCommand('stage4-korean-pdf-line-continuation-v6', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates.map((candidate) => candidate.claimText)).toEqual([sourceText]);
+    expect(candidates.every((candidate) => candidate.status === 'READY')).toBe(true);
+  });
+
+  it('drops a Markdown heading without splitting a product version from its claim', async () => {
+    const expectedClaim = 'Shotgun v1.2 출시일은 2026-08-01이다.';
+    const sourceText = `# Release\n${expectedClaim}`;
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      candidatePromptVersion: 'direct-claim-v5',
+    });
+    const command = directTextCommand('stage4-markdown-heading-v5', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates.map((candidate) => candidate.claimText)).toEqual([expectedClaim]);
+    expect(candidates[0]?.status).toBe('READY');
+  });
+
+  it('restores qualifiers from the matching local v5 statement without absorbing its neighbor', async () => {
+    const equation = '1억원 = 6천만원 + 4천만원';
+    const neighboringClaim = '재무상태표는 일정 기간의 흐름이 아니라 그날 현재의 상태를 보여준다';
+    const sourceText = `${equation} ${neighboringClaim}.`;
+    const fake = new FakeAIProviderAdapter([{ claimText: '4천만원' }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+      candidatePromptVersion: 'direct-claim-v5',
+    });
+    const command = directTextCommand('stage4-local-qualifier-v5', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates.map((candidate) => candidate.claimText)).toEqual([equation]);
+    expect(candidates[0]?.claimText).not.toContain('재무상태표');
+  });
+
+  it('splits worked-example results from converter-merged follow-up explanations', async () => {
+    const example =
+      '예를 들어, 매출액 2,000만원, 매출원가 1,100만원, 판매비와관리비 500만원이면 영업이익은 400만원이다.';
+    const explanation = '영업이익은본업에서벌어들인성과를보는중요한지표다.';
+    const sourceText = `${example}${explanation}`;
+    const fake = new FakeAIProviderAdapter([{ claimText: sourceText }]);
+    const { kernel } = await createStage4Harness({
+      transport: createTransport(),
+      aiProvider: fake,
+      candidatePromptVersion: 'direct-claim-v5',
+    });
+    const command = directTextCommand('stage4-example-follow-up-v5', sourceText);
+    await kernel.connector.sendCommand(command);
+    const sourceVersionId = (
+      await kernel.connector.query<{ sourceVersionId: string }>(intakeResultQuery(command))
+    ).result.payload.sourceVersionId;
+    const candidates = (
+      await kernel.connector.query<{ items: readonly ClaimCandidate[] }>(
+        candidatesQuery(command, sourceVersionId),
+      )
+    ).result.payload.items;
+
+    expect(candidates.map((candidate) => candidate.claimText)).toEqual([example, explanation]);
   });
 
   it('creates only evidence-backed READY candidates with provider provenance', async () => {
@@ -140,7 +595,7 @@ describe.each(transports)('%s Stage 4 contract', (_name, createTransport) => {
       extractionProfile: 'direct-only',
       providerCall: {
         provider: 'fake',
-        promptVersion: 'direct-claim-v2',
+        promptVersion: 'direct-claim-v10',
         policyVersion: 'direct-only-v1',
         structuredOutputValid: true,
         cost: { status: 'unavailable' },

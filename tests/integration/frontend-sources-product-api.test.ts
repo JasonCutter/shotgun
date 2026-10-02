@@ -313,6 +313,48 @@ describe('Frontend Sources Product API', () => {
     await application.server.close();
   });
 
+  it('accepts a file larger than one MiB through the authenticated staging route', async () => {
+    const fixture = await createFixture();
+    const bytes = Buffer.alloc(1_048_577, 0x61);
+    let receivedBytes = 0;
+    const removeRuntime = configureSourcesWriteRuntime({
+      commandGateway: new InMemoryFrontendCommandGateway(),
+      staging: {
+        async stageBytes(input: { readonly bytes: Uint8Array }) {
+          receivedBytes = input.bytes.byteLength;
+          return { sizeBytes: receivedBytes };
+        },
+      } as never,
+      productService: {} as never,
+    });
+    try {
+      const query = new URLSearchParams({
+        draftId: 'large-file-draft',
+        itemId: 'large-file-item',
+        kind: 'FILE',
+        label: 'Large file',
+        mediaType: 'text/plain',
+        fileName: 'large.txt',
+      });
+      const response = await fixture.application.server.inject({
+        method: 'POST',
+        url: `/product-api/frontend/sources/staging/bytes?${query.toString()}`,
+        headers: {
+          cookie: fixture.cookie,
+          'x-csrf-token': fixture.csrf,
+          'content-type': 'application/octet-stream',
+        },
+        payload: bytes,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(receivedBytes).toBe(bytes.byteLength);
+      expect(response.json()).toMatchObject({ receipt: { sizeBytes: bytes.byteLength } });
+    } finally {
+      removeRuntime();
+      await fixture.close();
+    }
+  });
+
   it('masks inaccessible Source identity as NOT_FOUND', async () => {
     const { application, cookie } = await createFixture();
     const response = await application.server.inject({

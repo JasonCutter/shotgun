@@ -140,19 +140,29 @@ Stage 0~2 재검증 결과 PostgreSQL, Ajv, content-addressed storage pattern은
 
 ### 4.4 Transformation
 
-| 후보                  | 담당 형식·역할                          | 상태                |
-| --------------------- | --------------------------------------- | ------------------- |
-| lucasastorian/llmwiki | HTML cleaner·XLSX extractor             | `EXTRACT`           |
-| Docling               | PDF·Office 구조와 layout 변환           | `ADAPTER_CANDIDATE` |
-| Apache Tika           | 범용 형식 감지·metadata·텍스트 fallback | `ADAPTER_CANDIDATE` |
-| MarkItDown            | 경량 Markdown 변환                      | `ADAPTER_CANDIDATE` |
-| PyMuPDF               | PDF text·page·bbox 처리                 | `ADAPTER_CANDIDATE` |
-| python-docx           | DOCX 구조 추출                          | `ADAPTER_CANDIDATE` |
-| python-pptx           | PPTX shape·text 추출                    | `ADAPTER_CANDIDATE` |
-| openpyxl              | XLSX cell·formula·sheet 추출            | `ADAPTER_CANDIDATE` |
-| ffmpeg                | 오디오·영상 정규화                      | `DEFERRED`          |
+| 후보                  | 담당 형식·역할                                  | 상태                |
+| --------------------- | ----------------------------------------------- | ------------------- |
+| lucasastorian/llmwiki | HTML cleaner·XLSX extractor                     | `EXTRACT`           |
+| Docling               | PDF·Office 구조와 layout 변환                   | `DEFERRED`          |
+| Apache Tika           | 범용 형식 감지·metadata·텍스트 fallback         | `ADAPTER_CANDIDATE` |
+| MarkItDown            | 경량 Markdown 변환                              | `ADAPTER_CANDIDATE` |
+| PyMuPDF               | PDF text·page·bbox 처리                         | `ADAPTER_CANDIDATE` |
+| pypdfium2             | NUL 수식 기호·분수·검증된 번호 목록 접두어 복구 | `AUGMENT`           |
+| python-docx           | DOCX 구조 추출                                  | `ADAPTER_CANDIDATE` |
+| python-pptx           | PPTX shape·text 추출                            | `ADAPTER_CANDIDATE` |
+| openpyxl              | XLSX cell·formula·sheet 추출                    | `ADAPTER_CANDIDATE` |
+| ffmpeg                | 오디오·영상 정규화                              | `DEFERRED`          |
 
 하나의 범용 변환기를 강제하지 않는다. Format Adapter가 공통 `DocumentIR`과 `SourceMap`을 출력한다.
+
+VP-04에서 고정된 pypdfium2 `5.11.0`은 pdfplumber가 NUL로 반환한 `<`·`>`, `=`,
+괄호·콜론·숫자 중 중심 거리 2.5pt 이하, 상자 겹침 65% 이상인 일대일 기호와
+텍스트·좌표가 일치하는 짧은 한 줄 수식, 분자·분모 glyph 행이 방정식 기준선과
+정렬되는 분수 수식을 보완한다. 분수 접두어는 짧은 대문자 영문 또는 한글 수식 레이블만
+허용한다. 문자는 복원 대상에서 제외한다. 분수는 PDFium에 실제 존재하는 글자와
+pdfplumber 조각이 모두 일치할 때만 복원한다. pdfplumber만 문단 순서와
+Page/BBox Selector를 만들며, 불확실한 수식은 기존 추출 결과 그대로 둔다. 상세 경계와 Golden
+관찰은 [VP-04 수식 검증](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md)에 기록했다.
 
 Phase 1 Canonical 정책에 따라 Shotgun Assembly는 오디오·영상 파일 직접 분석, 자동 음성 전사와 영상 프레임·음성·장면 분석을 장기 범위에서도 제외한다. `ffmpeg`는 Shotgun 기본 구현 후보가 아니라 다른 Assembly 또는 향후 별도 정책 결정에 대비한 `DEFERRED` 후보로만 유지한다. 영상 URL은 접근 가능한 제목·설명·자막·스크립트를 텍스트로 확보하는 범위에서만 처리한다.
 
@@ -187,15 +197,18 @@ LiteLLM 사용 여부와 관계없이 Shotgun `AIProviderPort`가 상위 계약�
 
 ### 4.7 Candidate Generation
 
-| 후보                     | 역할                             | 상태                   |
-| ------------------------ | -------------------------------- | ---------------------- |
-| spaCy                    | 문장 분할·tokenization·기본 NER  | `ADAPTER_CANDIDATE`    |
-| GLiNER                   | zero-shot entity extraction 보조 | `ADAPTER_CANDIDATE`    |
-| dateparser 또는 Duckling | 시간 표현 파싱                   | `ADAPTER_CANDIDATE`    |
-| DeepKE                   | 관계·속성 추출 연구·benchmark    | `REFERENCE`            |
-| GPT·Gemini·Claude        | structured candidate extraction  | `FOUNDATION_CANDIDATE` |
+| 후보                                                                | 역할                                                                  | 상태                   |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------- |
+| spaCy                                                               | 문장 분할·tokenization·기본 NER                                       | `ADAPTER_CANDIDATE`    |
+| GLiNER                                                              | zero-shot entity extraction 보조                                      | `ADAPTER_CANDIDATE`    |
+| dateparser 또는 Duckling                                            | 시간 표현 파싱                                                        | `ADAPTER_CANDIDATE`    |
+| DeepKE                                                              | 관계·속성 추출 연구·benchmark                                         | `REFERENCE`            |
+| GPT·Gemini·Claude                                                   | structured candidate extraction                                       | `FOUNDATION_CANDIDATE` |
+| Korean complete-claim predicate and whitespace-only Evidence rebind | No matching standalone package; Shotgun Candidate Generation contract | `NO_RELEVANT_OSS`      |
 
 보조 NLP 결과는 후보를 자동 확정하지 않고 LLM 결과와 별도 Provenance를 가진다.
+
+VP-04의 v7/v8 단독 용어·수식·불완전한 한국어 절 제거와 정확한 원문 span 복구 결정은 [Stage 4 OSS Integration Review](../../implementation/stage-validations/stage-4-oss-integration-review.md#vp-04-direct-claim-shape-and-source-span-alignment-2026-10-01)와 [v8 전체 검증](../../implementation/stage-validations/stage-4-oss-integration-review.md#2026-10-02-direct-claim-v8-incomplete-korean-clause-guard)에 기록한다.
 
 ### 4.8 Validation
 
@@ -369,8 +382,8 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 
 ### Stage 6 확정 결정
 
-- PostgreSQL 16.14를 Canonical transaction, project row lock, append-only History와
-  Transactional Outbox 저장소로 `ADOPTED`한다.
+- Compose에 digest로 고정한 PostgreSQL 16.15 runtime을 Canonical transaction, project row
+  lock, append-only History와 Transactional Outbox 저장소로 `ADOPTED`한다.
 - gbrain의 Page·Fact·Timeline·migration·recovery는 `REFERENCE`로 사용하되 gbrain runtime과
   DB를 Shotgun Canonical 원장으로 사용하지 않는다.
 - `Claim`은 `Fact`로 자동 승격하지 않으며 승인 Manifest와 Snapshot precondition을 Shotgun이
@@ -387,43 +400,43 @@ UI framework는 Domain Module 계약에 영향을 주지 않는다.
 Stage 0~3의 재검증된 exact pin과 결정은
 [`oss-source-registry.json`](../../implementation/oss-source-registry.json)을 기준으로 한다.
 
-| 후보                  | 공식 저장소·규격                                              | Version / Commit baseline                              | 라이선스 검토                      | 현재 상태              |
-| --------------------- | ------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------- | ---------------------- |
-| garrytan/gbrain       | https://github.com/garrytan/gbrain                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`             | MIT 확인                           | `REFERENCE`            |
-| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`             | Apache-2.0 확인                    | `EXTRACT`              |
-| ddsyasas/llm-wiki     | https://github.com/ddsyasas/llm-wiki                          | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`             | MIT 확인                           | `REFERENCE`            |
-| Inkeep OpenKnowledge  | https://github.com/inkeep/open-knowledge                      | `f2834c237639e2cff603817ed88182b33f83cf91`             | GPL-3.0-or-later 확인, 패턴 참고만 | `REFERENCE`            |
-| NetworkX              | https://github.com/networkx/networkx                          | `3.6.1` / `7530809bfa1ea7ed6fdf918a4d1431488953cb1f`   | BSD-3-Clause 확인                  | `ADOPTED`              |
-| W3C Web Annotation    | https://www.w3.org/TR/2017/REC-annotation-model-20170223/     | Recommendation `2017-02-23`                            | W3C-20150513 확인                  | `AUGMENT`              |
-| JSON Pointer          | https://www.rfc-editor.org/rfc/rfc6901                        | RFC 6901                                               | IETF Trust 확인                    | `ADOPTED`              |
-| JSON Schema           | https://github.com/json-schema-org/json-schema-spec           | 구현 선택 시 draft와 validator pin                     | 대기                               | `FOUNDATION_CANDIDATE` |
-| OpenAPI               | https://github.com/OAI/OpenAPI-Specification                  | 구현 선택 시 spec version pin                          | 대기                               | `FOUNDATION_CANDIDATE` |
-| AsyncAPI              | https://github.com/asyncapi/spec                              | 구현 선택 시 spec version pin                          | 대기                               | `ADAPTER_CANDIDATE`    |
-| CloudEvents           | https://github.com/cloudevents/spec                           | mapping 검증 시 spec version pin                       | 대기                               | `REFERENCE`            |
-| Temporal              | https://github.com/temporalio/temporal                        | benchmark 시 release pin                               | 대기                               | `ADAPTER_CANDIDATE`    |
-| NATS JetStream        | https://github.com/nats-io/nats-server                        | benchmark 시 release pin                               | 대기                               | `ADAPTER_CANDIDATE`    |
-| Redis Streams         | https://github.com/redis/redis                                | benchmark 시 release pin                               | 대기                               | `ADAPTER_CANDIDATE`    |
-| Docling               | https://github.com/docling-project/docling                    | golden corpus 평가 시 commit pin                       | 대기                               | `ADAPTER_CANDIDATE`    |
-| Apache Tika           | https://github.com/apache/tika                                | golden corpus 평가 시 release pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
-| MarkItDown            | https://github.com/microsoft/markitdown                       | golden corpus 평가 시 commit pin                       | 대기                               | `ADAPTER_CANDIDATE`    |
-| ffmpeg                | https://github.com/FFmpeg/FFmpeg                              | Shotgun Assembly에서는 pin하지 않음                    | 범위 재결정 전 대기                | `DEFERRED`             |
-| LiteLLM               | https://github.com/BerriAI/litellm                            | provider benchmark 시 release pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
-| Langfuse              | https://github.com/langfuse/langfuse                          | observability 평가 시 release pin                      | 대기                               | `ADAPTER_CANDIDATE`    |
-| OpenTelemetry         | https://github.com/open-telemetry/opentelemetry-specification | SDK 언어 결정 후 pin                                   | 대기                               | `FOUNDATION_CANDIDATE` |
-| pgvector              | https://github.com/pgvector/pgvector                          | PostgreSQL version과 함께 pin                          | 대기                               | `ADAPTER_CANDIDATE`    |
-| Apache AGE            | https://github.com/apache/age                                 | graph benchmark 시 release pin                         | 대기                               | `ADAPTER_CANDIDATE`    |
-| Open Policy Agent     | https://github.com/open-policy-agent/opa                      | `v1.18.2` / `e695c9ef8edb0f8b9f13d014d7bc8a7fbcc57297` | Apache-2.0 확인                    | `DEFERRED`             |
-| Casbin                | https://github.com/apache/casbin-node-casbin                  | `v5.51.1` / `2d90c7d8c3b522415605cf3d25481e763e73381e` | Apache-2.0 확인                    | `DEFERRED`             |
-| OpenFGA               | https://github.com/openfga/openfga                            | `v1.18.1` / `69efbd95b3d44afb2e2567d485dcc792c7d79e3f` | Apache-2.0 확인                    | `DEFERRED`             |
-| MCP SDK·Specification | https://github.com/modelcontextprotocol/typescript-sdk        | `v1.29.0` / `e12cbd7078db388152f6e839abdbe09ba01f3f32` | Apache-2.0·MIT 확인                | `DEFERRED`             |
-| Temporal TypeScript   | https://github.com/temporalio/sdk-typescript                  | `v1.20.3` / `ae823d7f9dd513f3b90aeba8c66854c59c39a359` | MIT 확인                           | `DEFERRED`             |
-| Octokit.js            | https://github.com/octokit/octokit.js                         | `v5.0.5` / `45c56ffaa6d1799dd4ebaf83f06a8fc64fc39c49`  | MIT 확인                           | `DEFERRED`             |
-| Tiptap                | https://github.com/ueberdosis/tiptap                          | Review UI prototype 시 release pin                     | 대기                               | `ADAPTER_CANDIDATE`    |
-| Yjs                   | https://github.com/yjs/yjs                                    | 협업 기능 승인 후 pin                                  | 대기                               | `DEFERRED`             |
-| Cytoscape.js          | https://github.com/cytoscape/cytoscape.js                     | `3.34.0` / `22716bfb75834b56fa6679648b0abb06f4ae691c`  | MIT 확인                           | `ADOPTED`              |
-| Apache AGE            | https://github.com/apache/age                                 | `6876abcab0a3281eb65a7e2a91238e0b5abfdea7`             | Apache-2.0 확인                    | `DEFERRED`             |
-| OpenSearch            | https://github.com/opensearch-project/OpenSearch              | `1d71f7b405359d277e9d365bb0d206acce8e559b`             | Apache-2.0 확인                    | `DEFERRED`             |
-| Qdrant                | https://github.com/qdrant/qdrant                              | `44ad62f8cd69642be5afa6441612525e24a0d063`             | Apache-2.0 확인                    | `DEFERRED`             |
+| 후보                  | 공식 저장소·규격                                              | Version / Commit baseline                                    | 라이선스 검토                      | 현재 상태              |
+| --------------------- | ------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------- | ---------------------- |
+| garrytan/gbrain       | https://github.com/garrytan/gbrain                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`                   | MIT 확인                           | `REFERENCE`            |
+| lucasastorian/llmwiki | https://github.com/lucasastorian/llmwiki                      | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`                   | Apache-2.0 확인                    | `EXTRACT`              |
+| ddsyasas/llm-wiki     | https://github.com/ddsyasas/llm-wiki                          | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`                   | MIT 확인                           | `REFERENCE`            |
+| Inkeep OpenKnowledge  | https://github.com/inkeep/open-knowledge                      | `f2834c237639e2cff603817ed88182b33f83cf91`                   | GPL-3.0-or-later 확인, 패턴 참고만 | `REFERENCE`            |
+| NetworkX              | https://github.com/networkx/networkx                          | `3.6.1` / `7530809bfa1ea7ed6fdf918a4d1431488953cb1f`         | BSD-3-Clause 확인                  | `ADOPTED`              |
+| W3C Web Annotation    | https://www.w3.org/TR/2017/REC-annotation-model-20170223/     | Recommendation `2017-02-23`                                  | W3C-20150513 확인                  | `AUGMENT`              |
+| JSON Pointer          | https://www.rfc-editor.org/rfc/rfc6901                        | RFC 6901                                                     | IETF Trust 확인                    | `ADOPTED`              |
+| JSON Schema           | https://github.com/json-schema-org/json-schema-spec           | 구현 선택 시 draft와 validator pin                           | 대기                               | `FOUNDATION_CANDIDATE` |
+| OpenAPI               | https://github.com/OAI/OpenAPI-Specification                  | 구현 선택 시 spec version pin                                | 대기                               | `FOUNDATION_CANDIDATE` |
+| AsyncAPI              | https://github.com/asyncapi/spec                              | 구현 선택 시 spec version pin                                | 대기                               | `ADAPTER_CANDIDATE`    |
+| CloudEvents           | https://github.com/cloudevents/spec                           | mapping 검증 시 spec version pin                             | 대기                               | `REFERENCE`            |
+| Temporal              | https://github.com/temporalio/temporal                        | benchmark 시 release pin                                     | 대기                               | `ADAPTER_CANDIDATE`    |
+| NATS JetStream        | https://github.com/nats-io/nats-server                        | benchmark 시 release pin                                     | 대기                               | `ADAPTER_CANDIDATE`    |
+| Redis Streams         | https://github.com/redis/redis                                | benchmark 시 release pin                                     | 대기                               | `ADAPTER_CANDIDATE`    |
+| Docling               | https://github.com/docling-project/docling                    | `v2.130.0` / `92fc74c36bbd20db9838d7665d38900e5c958319`; MIT | MIT 확인                           | `DEFERRED`             |
+| Apache Tika           | https://github.com/apache/tika                                | golden corpus 평가 시 release pin                            | 대기                               | `ADAPTER_CANDIDATE`    |
+| MarkItDown            | https://github.com/microsoft/markitdown                       | golden corpus 평가 시 commit pin                             | 대기                               | `ADAPTER_CANDIDATE`    |
+| ffmpeg                | https://github.com/FFmpeg/FFmpeg                              | Shotgun Assembly에서는 pin하지 않음                          | 범위 재결정 전 대기                | `DEFERRED`             |
+| LiteLLM               | https://github.com/BerriAI/litellm                            | provider benchmark 시 release pin                            | 대기                               | `ADAPTER_CANDIDATE`    |
+| Langfuse              | https://github.com/langfuse/langfuse                          | observability 평가 시 release pin                            | 대기                               | `ADAPTER_CANDIDATE`    |
+| OpenTelemetry         | https://github.com/open-telemetry/opentelemetry-specification | SDK 언어 결정 후 pin                                         | 대기                               | `FOUNDATION_CANDIDATE` |
+| pgvector              | https://github.com/pgvector/pgvector                          | PostgreSQL version과 함께 pin                                | 대기                               | `ADAPTER_CANDIDATE`    |
+| Apache AGE            | https://github.com/apache/age                                 | graph benchmark 시 release pin                               | 대기                               | `ADAPTER_CANDIDATE`    |
+| Open Policy Agent     | https://github.com/open-policy-agent/opa                      | `v1.18.2` / `e695c9ef8edb0f8b9f13d014d7bc8a7fbcc57297`       | Apache-2.0 확인                    | `DEFERRED`             |
+| Casbin                | https://github.com/apache/casbin-node-casbin                  | `v5.51.1` / `2d90c7d8c3b522415605cf3d25481e763e73381e`       | Apache-2.0 확인                    | `DEFERRED`             |
+| OpenFGA               | https://github.com/openfga/openfga                            | `v1.18.1` / `69efbd95b3d44afb2e2567d485dcc792c7d79e3f`       | Apache-2.0 확인                    | `DEFERRED`             |
+| MCP SDK·Specification | https://github.com/modelcontextprotocol/typescript-sdk        | `v1.29.0` / `e12cbd7078db388152f6e839abdbe09ba01f3f32`       | Apache-2.0·MIT 확인                | `DEFERRED`             |
+| Temporal TypeScript   | https://github.com/temporalio/sdk-typescript                  | `v1.20.3` / `ae823d7f9dd513f3b90aeba8c66854c59c39a359`       | MIT 확인                           | `DEFERRED`             |
+| Octokit.js            | https://github.com/octokit/octokit.js                         | `v5.0.5` / `45c56ffaa6d1799dd4ebaf83f06a8fc64fc39c49`        | MIT 확인                           | `DEFERRED`             |
+| Tiptap                | https://github.com/ueberdosis/tiptap                          | Review UI prototype 시 release pin                           | 대기                               | `ADAPTER_CANDIDATE`    |
+| Yjs                   | https://github.com/yjs/yjs                                    | 협업 기능 승인 후 pin                                        | 대기                               | `DEFERRED`             |
+| Cytoscape.js          | https://github.com/cytoscape/cytoscape.js                     | `3.34.0` / `22716bfb75834b56fa6679648b0abb06f4ae691c`        | MIT 확인                           | `ADOPTED`              |
+| Apache AGE            | https://github.com/apache/age                                 | `6876abcab0a3281eb65a7e2a91238e0b5abfdea7`                   | Apache-2.0 확인                    | `DEFERRED`             |
+| OpenSearch            | https://github.com/opensearch-project/OpenSearch              | `1d71f7b405359d277e9d365bb0d206acce8e559b`                   | Apache-2.0 확인                    | `DEFERRED`             |
+| Qdrant                | https://github.com/qdrant/qdrant                              | `44ad62f8cd69642be5afa6441612525e24a0d063`                   | Apache-2.0 확인                    | `DEFERRED`             |
 
 ### Stage 10 확정 결정
 
@@ -441,8 +454,8 @@ Stage 0~3의 재검증된 exact pin과 결정은
 - gbrain의 contract-first operation 정의, mutating/write scope, remote default-deny와
   side-effect adversarial test를 `REFERENCE_ONLY`로 재사용한다. gbrain MCP runtime·DB·operation을
   Shotgun 실행 권한으로 사용하지 않는다.
-- PostgreSQL 16.14를 Action 상태, 원자적 실행 claim, 불변 Approval과 append-only Audit 저장소로
-  `ADOPTED`한다.
+- Compose에 digest로 고정한 PostgreSQL 16.15 runtime을 Action 상태, 원자적 실행 claim,
+  불변 Approval과 append-only Audit 저장소로 `ADOPTED`한다.
 - R0~R4는 다섯 operation mapping과 restricted·compensation 하한만 필요한 MVP이므로
   `stage11.action-risk.v1` 결정적 코드 정책을 사용한다. OPA v1.18.2와 Casbin v5.51.1은
   정책 규모 또는 다중 서비스 요구가 확인될 때까지 `DEFERRED`다.
@@ -471,7 +484,7 @@ Stage 0~3의 재검증된 exact pin과 결정은
 
 ### Stage 12.1 Durability Recovery 확정 결정
 
-- 고정된 PostgreSQL 16.14 image의 `pg_dump`·`pg_restore`를 Backup Database Adapter로 `ADOPT`한다. Shotgun이 Asset·Contract·Integrity Manifest와 clean-restore 정책을 계속 소유한다.
+- Compose에 digest로 고정한 PostgreSQL 16.15 image의 `pg_dump`·`pg_restore`를 Backup Database Adapter로 `ADOPT`한다. Shotgun이 Asset·Contract·Integrity Manifest와 clean-restore 정책을 계속 소유한다.
 - gbrain의 migration·recovery·idempotency 패턴은 `REFERENCE_ONLY`로 유지하고 gbrain Runtime·DB를 Outbox나 Projection 권위 저장소로 도입하지 않는다.
 - pgBackRest 2.58.0, WAL-G 3.0.8, Barman 3.19.1은 PITR·WAL archive·외부 저장소·다중 Server DR 요구가 승인될 때까지 `DEFER`한다.
 - Canonical Outbox 복구는 Stage 6 Repository Port를, Search와 Compiled Truth 재생성은 Stage 7·10 Module Contract를 재사용한다. 외부 도구의 ID·Schema·Metadata를 Canonical Contract로 노출하지 않는다.
@@ -577,8 +590,196 @@ Stage 0~3의 재검증된 exact pin과 결정은
 
 2026-09-26 임시 대체 결정은 신규 OSS 채택이 아닌 **기존 DeepSeek 연결 재사용(`AUGMENT`)**이다. 기존 Project AI resolver, Vault, DeepSeek HTTP Adapter와 현재 Project에 고정된 모델을 사용한다. VP Port와 Shadow Ledger 작업자는 제공자 유형·자격 증명을 직접 소유하지 않는다. Jev Adapter는 구성하지 않는다. 합성 문장 5쌍의 실 API 분류와 격리 PostgreSQL의 작업자→결정 영수증·관계 기록은 통과했다. 품질 Golden Corpus·대규모 비용 benchmark·Adapter 교체 검증은 미완료이며 활성 Ask 권위 전환의 Gate로 남긴다. 전환 전 롤백은 VP 관계 작업자 중지, 작업·영수증·관계 이력 보존, 기존 Ask 경로 유지다.
 
-VP 관계 기반 Ask 근거 확장은 기존 PostgreSQL 검색과 gbrain Search/Graph 검증 패턴을 재사용하되, gbrain Runtime·DB는 `REFERENCE_ONLY`로 유지한다. `AskKnowledgeEvidenceSearchPort`가 교체 경계이고 VP Adapter는 인가된 현재 주장과 두 관계 종류에서 Evidence ID만 제안한다. Ask는 자체 Source/Evidence 권한·최신성 검증을 다시 수행한다. 새로운 OSS 의존성이나 Migration은 없다. Adapter 제거가 롤백이며 원문 Ask 검색과 과거 AnswerRun Context는 그대로 남는다. 대규모 검색 품질·비용 benchmark와 전체 제품 E2E는 아직 Gate에 남는다.
+2026-09-29 VP Ask 전환은 기존 PostgreSQL FTS·`pg_trgm` 검색을 `AUGMENT`하고, gbrain Search/Graph는 검증 패턴만 `REFERENCE_ONLY`로 유지한다. `AskKnowledgeEvidenceSearchPort`는 교체 가능한 경계다. `AUTO_PROJECT_KNOWLEDGE`는 VP 현재 주장과 현재 관계에서 얻은 Evidence만 사용하고 raw Evidence 전체 검색으로 대체하지 않는다. Ask는 SourceVersion·Evidence 접근/민감도·활성 버전을 재검증하며, 최신 활성 버전의 Stage 3 인덱싱과 Candidate 검증·원장 기록이 끝나지 않았으면 질문을 대기시킨다. AnswerRun 시도에는 VP epoch, 접근 가능한 최신 SourceVersion 집합의 watermark, 인용 Evidence를 고정한다. 컨텍스트 확인과 답변 게시 직전 스냅샷을 재검증하고, epoch가 바뀌면 답변을 게시하지 않는다. 검증은 PostgreSQL 격리 DB의 VP 검색·원장 테스트와 Ask 소스 버전 대기·고정·오래된 스냅샷 게시 거부 테스트로 수행했다. Migration 121은 기존 AnswerRun 이력을 보존하는 nullable 감사 열만 추가한다. 새 OSS 의존성은 없다. 롤백은 VP Ask 실행 코드 이전으로 복구하는 방식이며, Migration 121 열은 보존한다. 대규모 검색 품질·비용 benchmark와 실제 설치 제품 E2E는 VP 완료 Gate에 남는다.
+
+2026-10-01 stale AnswerRun 복구는 `garrytan/gbrain` Job/Attempt 패턴을 `REFERENCE_ONLY`로 재검토했지만, gbrain Runtime·DB는 Shotgun의 AnswerRun·VP snapshot 계약과 맞지 않아 도입하지 않는다. `ddsyasas/llm-wiki`는 기존과 같이 Ask UX만 `REFERENCE_ONLY`다. Shotgun은 기존 `AskAnswerExecutionRepositoryPort`의 영속 `CURRENT_POLICY` retry를 써서, provider 결과는 알았지만 게시 직전 VP snapshot이 바뀐 최초 시도에 한해 현재 snapshot으로 한 번만 재실행한다. `OUTCOME_UNKNOWN`은 재시도하지 않는다. 이 상호작용에 해당하는 외부 Runtime/Package는 없어 `NO_RELEVANT_OSS`로 결정했다. 추가 egress·DB migration은 없고, unit·PostgreSQL adapter·실제 PDF DeepSeek E2E를 검증한다. 되돌릴 때는 제한된 자동 재시도 분기만 제거하고 awaited completion, typed stale failure, stale 답변 게시 거부는 유지한다.
 
 VP 수정 자료 투입은 이미 채택한 Shotgun `Source`·`SourceVersion`·Stage 3 Adapter를 `AUGMENT`한다. 외부 Runtime을 추가하지 않는다. gbrain의 Fact/Timeline과 lucas의 Evidence 패턴은 위 결정대로 참고·추출 경계에 두며, 프로젝트/보안 범위가 고정된 기존 Source의 버전 번호와 원본 계보는 Shotgun이 계속 소유한다. 새 버전 투입은 현재 Source의 보안 메타데이터 일치를 검사하고, 다른 프로젝트 Source ID는 거부한다. 되돌리기는 새 투입 UI를 비활성화하고 과거 SourceVersion을 보존하는 방식이며, 이미 생성된 버전을 삭제하지 않는다. 격리 PostgreSQL 브라우저 여정에서 파일 투입→인용 답변→수정 파일 투입→새 버전 인용 및 프로젝트 간 갱신 거부를 검증했다. DeepSeek 판단을 포함한 전체 제품 인수와 증분/전체 재생성 동등성은 아직 Gate에 남는다.
 
 2026-09-26 단일 지식 공간 결정은 새 VP에서 Project를 사용자 제품 범위로 노출하지 않는 변경이다. 사용자는 과거 자료·원본·대화·지식·프로젝트 설정의 이관을 요구하지 않으며 빈 공간에서 시작한다. gbrain Search/Graph와 ddsyasas의 단순 Intake/Ask UX는 각각 `REFERENCE_ONLY`이며, PostgreSQL Source/Evidence/Ask Port는 `AUGMENT`한다. OSS 내부 namespace/DB는 공통 지식 권위로 채택하지 않는다. Shotgun이 내부 저장·인가 키 하나를 자동 생성하고, 빈 저장소에서 투입·질문·인용·관계가 작동하는 Golden Corpus·보안 음성 테스트를 통과해야 한다. DeepSeek 자격 증명은 새 공간에 별도로 구성한다. 롤백은 새 실행 대상을 중지하고 이전 실행 설정으로 복귀하는 방식이며, 과거 자료를 새 지식 공간에 혼합하지 않는다.
+
+2026-09-30 방향성 관계 분류는 ADR-172의 Shotgun 소유 `SUPPORTS` 의미를 구현한다. `garrytan/gbrain`의 기존 고정 기준 `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (MIT)는 Fact/Relation 저장 구조와 Graph 동작 참고에 한정해 `REFERENCE_ONLY`다. gbrain runtime/schema를 반입하면 SourceVersion·Evidence 및 relation orientation의 Shotgun 계약과 결합되므로 채택하지 않는다. PostgreSQL은 기존 `ADOPT` 인프라를 VP relation adapter 뒤에서 사용하고, `pg_trgm`은 후보 순위에만 `AUGMENT`로 남긴다. 이 관계 분류·방향 계약 자체에는 재사용할 외부 OSS 구현이 없어 `NO_RELEVANT_OSS`로 기록한다. 기존 DeepSeek DecisionProvider Adapter를 재사용해 새 의존성·provider egress 범위를 늘리지 않았다. `DecisionProviderPort`와 PostgreSQL Adapter를 교체 경계로 유지하며 migration 125는 방향 불변 조건을 적용한다. 격리 PostgreSQL recovery test는 방향이 있는 SUPPORTS 판단을 재시작 뒤 한 번만 저장하고 Ask가 연결된 사례 Evidence를 찾는 것을 확인한다. 전체 Golden Corpus·adapter replacement·최종 VP-10 Gate는 아직 열려 있다.
+
+## 11. VP-07 로컬 Runtime 재기동
+
+Shotgun 로컬 Runtime은 기존 canonical launcher identity 소유권을 유지하기 위해 Node.js `child_process.fork` IPC를 사용한다. Node core는 추가 OSS package가 아닌 기존 Node runtime 표준 API이며, 프로세스 실행·재기동은 `launch-local.ts`가 독점한다. Node runtime은 로컬 검증 시 `v24.15.0`이었다.
+
+| 후보                                                                | 범위                                                                   | 결정                                                                                                                     |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Node.js `child_process.fork`                                        | Shotgun launcher와 replaceable app child 사이의 IPC/readiness/shutdown | 기존 runtime 표준 API, dependency 없음                                                                                   |
+| PM2 `v7.0.4` (`cd6b1b4c592117212d7349d6932288613f336c15`, AGPL-3.0) | 외부 daemon 기반 process supervision                                   | `REJECTED`: 별도 process identity authority와 배포 copyleft 검토를 추가하며 Windows startup hook에 외부 package가 필요함 |
+| gbrain Minion (`a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, MIT)     | Job retry/lease 패턴                                                   | `REFERENCE_ONLY`: 앱 프로세스의 로컬 수명 감독은 제공하지 않음                                                           |
+
+선택 근거·보안 범위·회복 계약·교체 및 롤백은 [ADR-167 VP-07 amendment](../adr/ADR-167-canonical-desktop-launcher-repository-and-runtime-identity.md#2026-09-30--vp-07-supervised-application-restart)와 [VP 재기동 시험 보고](../../implementation/vp-runtime-restart-supervision-2026-09-30.md)에 기록한다. 앱 자식 재기동의 unit·실제 Node IPC 시험과 PostgreSQL server container 재기동 후 persisted project API read 시험이 통과했다. Synthetic HTTP 200 직후 isolated test Worker process를 종료하고 새 `startShotgunApplication` 구성으로 재기동한 시험은 `/health` 200, provider-call/Job `OUTCOME_UNKNOWN`, 재호출 0건을 확인했다. 이는 test process와 local HTTP 경계이며 PostgreSQL 장애와 Provider 호출이 겹치는 복구, 배포 cutover/rollback, 설치 Runtime 강제 종료와 Windows 재부팅 검증은 아직 VP-07 완료 Gate로 남는다.
+
+2026-10-01 VP-07 source/job backup recovery extends the existing PostgreSQL backup decision; it does not add another runtime. PostgreSQL `pg_dump`/`pg_restore` remain `ADOPT` behind the Shotgun-owned `shotgun-backup-v1` boundary per [ADR-097](../adr/ADR-097-stage-12-1-outbox-projection-clean-restore.md) and its [Stage 12.1 OSS review](../../implementation/stage-validations/stage-12-1-durability-recovery-oss-review.md). The Windows isolated acceptance ran against the repository-pinned `pg16` Compose image digest `sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b`; `SHOW server_version` returned `16.15` (the earlier Stage 12.1 review recorded 16.14, so both the image digest and observed version are retained as evidence). The acceptance exercised owner `runOwnerCreate` (automatic full verification) and `runOwnerRestoreSafe`, including the existing startup recovery application against the restored database and asset root (all five readiness/readability flags true). It restored Sources, SourceVersions, Evidence, VP assertions, original bytes, and a pending relation Job into a clean disposable target, verified the source remained unchanged with no cutover, and dispatched the restored Job once through Shotgun's existing VP worker/provider-execution ledger. `garrytan/gbrain` remains `REFERENCE_ONLY`; pgBackRest, WAL-G, and Barman remain `DEFER` under ADR-097. No new dependency, migration, OSS-owned schema, or Port was introduced. The deterministic test resolver is not live-provider or installed-owner recovery acceptance; VP-07 remains open. See the [VP-07 backup/restore acceptance report](../../implementation/vp-backup-restore-recovery-2026-10-01.md).
+
+## 2026-10-02 VP-05 PostgreSQL runtime pin reconciliation
+
+Read-only inspection confirmed `compose.yaml` uses the same immutable `pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b` image for `db` and `db-test`. The running runtime reports PostgreSQL `16.15`, `pg_trgm` `1.6`, and pgvector `0.8.6`. The PostgreSQL and `pg_trgm` entries in `oss-source-registry.json` now match that image and the official PostgreSQL `REL_16_15` commit `7d3e000c5961a544302072058a1184e9a588837b`; previous Stage 12.1 evidence for `16.14` remains historical. Existing PostgreSQL `ADOPT`, `pg_trgm` `AUGMENT`, and pgvector `ADOPT` decisions and Shotgun adapter ownership are unchanged. No dependency, migration, or production behavior changed; rollback is a documentation/registry revert. The 2026-10-02 data-bearing Provider/PostgreSQL outage test also passed; details are in the [VP Runtime restart report](../../implementation/vp-runtime-restart-supervision-2026-09-30.md).
+
+## VP-04 Decision Evidence context — 2026-10-01
+
+Target: `VPDecisionProviderPort@1.2.0` and `VPRelationJobStorePort`, behind the existing Shotgun relation-job and AI provider adapters.
+
+| Candidate                                                             | Decision          | Boundary                                                                                                                                                                                          |
+| --------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL `evidence.spans` and existing VP relation store            | `AUGMENT`         | Read a bounded exact quote only when project, source, SourceVersion, Evidence ID, access scope, and sensitivity match the current assertion. PostgreSQL remains behind the Shotgun-owned adapter. |
+| DeepSeek through existing `DecisionProviderPort` adapter              | `AUGMENT`         | Pass the same authorized claim pair plus optional bounded Evidence context; preserve provider resolver, Vault, egress checks, daily attempt cap, and durable request digest.                      |
+| `garrytan/gbrain` at `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` / MIT | `REFERENCE_ONLY`  | Relation and evidence patterns only; no runtime, database schema, or identifier is imported.                                                                                                      |
+| External relation-context package/runtime                             | `NO_RELEVANT_OSS` | The change is exact-source retrieval and prompt-boundary handling; no standalone package fits the Shotgun provenance and security contract.                                                       |
+
+No dependency, migration, or OSS-owned contract was added. General AI and Jev adapters share the versioned input shape. Contract tests cover hostile source text, over-limit rejection before provider resolution, and distinct durable request digests when Evidence context differs. PostgreSQL integration verifies exact Evidence lineage/security matching and the 2,000-character truncation signal. Rollback reverts the additive request field and the v6 relation policy revision; append-only decisions remain auditable and require no data migration. Finance corpus v1.2 remains `CANDIDATE`; this change does not close VP-04/05.
+
+## VP-04 / Stage 8 Docling finance formula re-evaluation — 2026-10-01
+
+The documented formula-loss trigger was reproduced on the supplied 10-page
+finance PDF. Docling `v2.130.0` (`92fc74c36bbd20db9838d7665d38900e5c958319`, MIT)
+was evaluated only in a temporary Python 3.12 environment. The default
+two-page conversion retained layout but emitted empty formula text and
+`formula-not-decoded` placeholders; optional CodeFormulaV2 did not finish
+within six CPU minutes at about 1.9 GB memory. The temporary environment
+resolved 50 distributions and occupied 854,390,083 bytes. Decision remains
+`DEFER`: do not add it to the product until formula text passes an adjudicated
+page-image Golden corpus within bounded runtime. Upstream security policy says
+only latest versions are supported; no product dependency or production
+security scan was introduced. Full methodology, limitations, and rollback are
+in the [focused re-evaluation report](../../implementation/vp-docling-finance-formula-reevaluation-2026-10-01.md).
+
+## VP-04 / Stage 8 PDFium equation geometry augmentation — 2026-10-01
+
+The exact locked pypdfium2 `5.11.0` (`0168561b33a3fc32eceb6ae46cc252f6b0e90c19`,
+PDFium pin `7913`, Apache-2.0 OR BSD-3-Clause) was augmented behind the existing
+Python format adapter. Version `1.4.0` restores short single-row equations and
+fractions whose numerator/denominator rows overlap around an uppercase formula
+prefix; it replaces extracted words only if their characters are contained in
+the geometry-backed expression. Version `1.5.0` additionally recovers only
+reciprocal one-to-one matches for `=`, parentheses, colon, digits, `<` and `>`
+when centers are within 2.5pt and boxes overlap by at least 65%; other glyphs
+are left untouched. PDFium does not own paragraph order or selectors. The
+Version `1.6.0` also accepts stacked fractions with a short uppercase Latin or
+Korean formula label; it retains the same glyph alignment and text containment
+checks. Version `1.8.0` adds one narrow numbered-list repair: PDFium must expose
+the contiguous digit-period-space-Hangul sequence, the digit and baseline-aligned
+period must match the first two pdfplumber NUL boxes, the PDFium space must align
+with the original character boundary, and the following Hangul source character
+must match. It preserves pdfplumber's original boxes and reading order. The
+enclosing document-format module is now `1.8.0`; the prior `1.7.0` release
+preserves physical-line offsets. No dependency or lockfile changed. The official upstream Security page showed no `SECURITY.md`
+policy and no published advisory on 2026-10-01. The
+[focused verification report](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md)
+records the supplied-PDF formulas, glyph coverage and live DeepSeek browser
+runs. Full-PDF quality and independent Golden adjudication remain open.
+
+## VP-04 / Stage 8 PDFium numbered-list glyph repair — 2026-10-01
+
+The same exact pypdfium2 `5.11.0` pin and existing isolated Python adapter
+remain the `AUGMENT` boundary; no new package, runtime, or lockfile was added.
+Adapter `1.8.0` repairs a list prefix only when PDFium exposes the consecutive
+digit-period-space-Hangul text sequence, the first two pdfplumber NUL boxes
+match the digit and baseline-aligned period, the PDFium whitespace origin aligns
+with the original character boundary, and the following Korean source glyph
+matches. pdfplumber still owns reading order, SourceMap offsets, and the original
+Page/BBox selectors. Eighteen Python geometry tests cover the positive and
+negative match; the supplied PDF recovered all three decision lines, and the
+live DeepSeek run matched 23/23 page-grounded markers with 164 assertions,
+replay match, six cited Ask checks, and zero pending relation jobs. This is a
+single-source result; broad PDF quality and independent Golden adjudication
+remain open. Revert only this repair and adapter identity to `1.7.0` to retain
+the previous PDFium and physical-line behavior.
+
+## VP-04 / Stage 8 PDF physical-line preservation — 2026-10-01
+
+The pinned `pdfplumber==0.11.10` (`ADOPT`, MIT; package version fixed in the worker lockfile) continues to own PDF reading order, word geometry, page, and bounding-box selectors. Shotgun's `PythonDocumentFormatAdapter` now preserves physical line separators inside the existing one-block/one-paragraph boundary and maintains each line's exact segment offsets. This is an adapter-local `AUGMENT`; no upstream code, parser, or runtime was added. The `direct-claim-v6` Candidate Generation splitter consumes those line breaks so converter-merged list items can become separately evidenced candidates. The replacement boundary remains `PlainTextTransformerPort` plus the Stage 8 Page/BBox and SourceMap contract tests. spaCy Sentencizer `v3.8.16` was reviewed as `REFERENCE_ONLY`: its punctuation-based sentence boundaries do not preserve PDF geometry or resolve wrapped formula/claim boundaries. The updated supplied-PDF live result is recorded in the VP finance PDF report. Rollback removes the PDF-only line preservation and restores the prior adapter identity; existing immutable transformation revisions remain readable.
+
+## VP-03 / Stage 7 PostgreSQL search-statistics refresh — 2026-10-01
+
+After a real finance-PDF ingestion, a DeepSeek Ask search took about 239 seconds while the same SQL completed in about 244 ms once current planner statistics were collected. PostgreSQL's own `ANALYZE` was selected as an existing-runtime `AUGMENT`; no external search package, service, or dependency was added (`NO_RELEVANT_OSS` for a new package). Because the pinned PostgreSQL 16 runtime permits `ANALYZE` only to table owners or a superuser, Migration 126 assigns only the fixed search-statistics tables to the existing non-login `shotgun_schema_owner` and exposes a zero-argument, fixed-table `vp.refresh_search_statistics()` security-definer routine to `shotgun_runtime`. The routine has a pinned safe `search_path`, no caller-provided identifiers, and no `PUBLIC` execute grant. `VPKnowledgeLedgerPort` exposes an optional refresh operation; its PostgreSQL adapter calls the routine only after a bounded worker drain. PostgreSQL autovacuum remains fallback if refresh fails. Rollback restores the pre-migration database backup and prior code because the migration changes table ownership as well as adding the function; an in-place down migration is not provided. The backup/restore rollback path was rehearsed on an isolated PostgreSQL 16 source and restore database; all 11 pre-migration owners were recovered and the Migration 126 function/version were absent after restore. See the [Migration 126 rollback rehearsal](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#migration-126-rollback-rehearsal).
+
+The database test checks the refreshed `vp.assertions` statistics after a real worker drain. At the `1.8.0` checkpoint, the latest page-grounded run matched 23/23 curated markers, produced 164 assertions and 164 candidates, replayed successfully, recorded three relations and zero pending relation jobs, and passed six cited Ask checks. The marker labels remained `CANDIDATE`; no independent blind review or billing reconciliation was performed, and the broader VP quality and product gates remained open. The later `1.10.0` evidence is recorded below.
+
+## VP-04 / Stage 8 PDFium numeric stacked-fraction repair — 2026-10-02
+
+The existing `pypdfium2==5.11.0` pin (upstream tag commit
+`0168561b33a3fc32eceb6ae46cc252f6b0e90c19`, PDFium 7913,
+`Apache-2.0 OR BSD-3-Clause`) remains an adapter-local `AUGMENT` behind
+`PythonDocumentFormatAdapter` and the Transformation Port. pdfplumber remains
+the `ADOPT` owner of document reading order and Page/BBox selectors. No package,
+runtime, lockfile, or upstream source was added. The adapter now groups
+top-level arithmetic when it serializes a geometry-backed stacked fraction;
+this repairs `100 = 110/1 + r` to `100 = 110/(1 + r)` on the exact finance PDF.
+The existing numeric-prefix, glyph alignment, character-containment, and
+mismatch fail-closed checks remain. It only reconstructs source geometry; it
+does not infer a new Claim or assert the source is factually correct.
+
+The exact PDF was tested through the actual Chromium intake and DeepSeek
+extraction flow: 147/147 direct Evidence assertions, 23/23 positive markers,
+6/6 non-claim canaries excluded, replay matched, one current relation, and zero
+pending relation jobs. The 21 Python and 30 focused Stage 8/SourceMap tests
+passed. The extraction-only run reported 16,594 provider tokens. A separate full-Ask
+run with the same adapter passed six questions and their citations; actual
+invoice reconciliation was not performed. The corpus is still
+`CANDIDATE`, and wider precision/recall, independent labels, duplicates and
+multi-source relation quality remain open. Rollback reverts this reconstruction
+and adapter identity to `1.9.0`; old immutable transformation revisions remain
+readable. See the [focused VP-04 report](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-direct-claim-v7-numeric-fraction-repair).
+
+## VP-04 / Stage 8 PDFium CAPM subscript recovery — 2026-10-02
+
+The pinned `pypdfium2==5.11.0` (`0168561b33a3fc32eceb6ae46cc252f6b0e90c19`,
+`Apache-2.0 OR BSD-3-Clause`) remains `AUGMENT` behind the existing Python
+document-format adapter. The fixed `pdfplumber==0.11.10` `ADOPT` remains the
+owner of source reading order and Page/BBox selectors. PDFium's exact geometry
+reconstructs the page 9 CAPM expression with its subscripts and brackets;
+Shotgun keeps the SourceMap and only allows aligned formula glyphs. No new
+dependency, runtime, schema, or upstream code was introduced. Existing
+security and maintenance review remains in `oss-source-registry.json`; rollback
+returns adapter `1.11.0` to `1.10.0`. See the
+[Stage 8 review](../../implementation/stage-validations/stage-8-oss-integration-review.md#vp-04--stage-8-pdfium-capm-subscript-recovery--2026-10-02)
+and [full PDF test record](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-capm-subscript-and-direct-claim-v8-recheck).
+
+## VP-08 / Stage 8 external URL freshness propagation — 2026-10-02
+
+The existing Shotgun `SecureUrlAcquisitionCoordinator` and PostgreSQL URL
+provenance receipts have Integration Decision `AUGMENT`: the latest successful
+`retrieved_at` now flows through Source detail, Ask context digest, attempt Evidence, provider
+prompt, and saved citation. A 24-hour Shotgun TTL marks expired external text
+historical. No dependency or upstream code was added.
+`lucasastorian/llmwiki` at `ad626a3d81be1480e35ef4e94234de8dbb27a61e`
+(`Apache-2.0`) remains `REFERENCE_ONLY`; its Watcher/runtime is excluded by the
+existing Role Matrix. `garrytan/gbrain` at
+`a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (`MIT`) remains
+`REFERENCE_ONLY` for Job patterns. There is no relevant standalone OSS package
+for Shotgun's TTL-to-citation meaning (`NO_RELEVANT_OSS`). The PostgreSQL
+repositories and `ExternalSourceFreshnessView` are the replacement boundary.
+Contract, UI, unit, and focused PostgreSQL tests passed. Migration 128 is
+additive and nullable; restoring the pre-migration database is the rollback
+path if the columns must be removed. No scheduled refresh worker or refresh
+failure receipt exists yet, so this partial slice does not pass the VP-08 OSS
+or Product gate. See the [implementation and verification record](../../implementation/vp-url-freshness-ask-projection-2026-10-02.md).
+
+## VP-04 / Stage 8 Korean PDF word-gap recovery — 2026-10-02
+
+The locked `pdfplumber==0.11.10` package remains `ADOPT` behind
+`PythonDocumentFormatAdapter`; it owns PDF reading order, word geometry, and
+Page/BBox selectors. A visual comparison of the supplied finance PDF showed
+that its default horizontal tolerance merged Korean words in a complete
+page-9 directional statement. Adapter-local `x_tolerance=2.0` restores those
+visually separated words. A bounded post-join correction removes only the
+false gap inside numeric thousands groups, preserving values such as `1,000`.
+The existing `pypdfium2==5.11.0` geometry adapter remains `AUGMENT`; no new
+package, upstream source, runtime, or lockfile is added. License, security,
+maintenance, and exact upstream pins remain in the Source Registry. The
+replacement boundary is unchanged: `PythonDocumentFormatAdapter` behind the
+Transformation Port with Page/BBox and SourceMap contracts. Adapter `1.12.0`
+is rollback-compatible with `1.11.0`; existing transformation revisions are
+immutable and can be regenerated.
+
+Python PDF tests passed 23/23 and focused Stage 8 Golden/Contract tests passed
+30/30. The real 10-page PDF flow with DeepSeek matched 80/80 candidate markers,
+excluded 11/11 non-claim canaries, and passed six cited Ask cases plus replay
+with no pending relation jobs. The corpus remains `CANDIDATE`; semantic and
+relation correctness adjudication, repeated quality runs, and billing
+reconciliation remain open. Details are in the
+[Stage 8 OSS review](../../implementation/stage-validations/stage-8-oss-integration-review.md#2026-10-02-vp-04-korean-pdf-word-gap-recovery)
+and [full PDF test record](../../implementation/vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-korean-pdf-word-gap-recovery).

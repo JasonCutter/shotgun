@@ -175,7 +175,15 @@ export type AIProviderModuleOptions = {
   /** Optional request-time Project authority. When supplied, the static
    * adapter is only the compatibility fallback for existing harnesses. */
   readonly executionResolver?: AIProviderExecutionResolverPort;
+  /** Version of direct-claim extraction semantics, used in durable request identity. */
+  readonly candidatePromptVersion?: string;
+  /** Optional cap for one source-claim response; included in durable input identity. */
+  readonly candidateMaxOutputTokens?: number;
 };
+
+export const DEFAULT_DEEPSEEK_CANDIDATE_MAX_OUTPUT_TOKENS = 16_384;
+export const DEFAULT_CANDIDATE_EXTRACTION_TIMEOUT_MS = 15 * 60_000;
+export const DEFAULT_CANDIDATE_PROMPT_VERSION = 'direct-claim-v10';
 
 type GenerateStructuredPayload = {
   readonly requestId: string;
@@ -217,12 +225,103 @@ const candidateBatchSchema = {
   },
 } as const;
 
-const systemInstruction = [
-  'You extract only claims that are explicitly written in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
-  'Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
-  'claimText must be an exact contiguous substring of the matching evidence text.',
-  'Return no candidate when an explicit claim is absent.',
-].join(' ');
+const candidatePromptInstructions: Readonly<Record<string, string>> = {
+  'direct-claim-v2': [
+    'You extract only claims that are explicitly written in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
+    'claimText must be an exact contiguous substring of the matching evidence text.',
+    'Return no candidate when an explicit claim is absent.',
+  ].join(' '),
+  'direct-claim-v3': [
+    'You extract only claims that are explicitly written in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
+    'For each candidate, claimText must be the entire matching source sentence copied verbatim, never a shortened fragment.',
+    'This policy stores one sentence-level claim per evidence sentence so its dates, time ranges, units, and conditions remain attached to the stated value.',
+    'Return no candidate when an explicit claim is absent.',
+  ].join(' '),
+  'direct-claim-v4': [
+    'Extract only claims explicitly stated in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Return one atomic claim per candidate. Split separate facts, formulas, examples, and conclusions into separate candidates when each can stand on its own, including when a document converter joined them into one Evidence item.',
+    'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine separate claims, or add outside knowledge.',
+    'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies that claim. For an equation or worked example, include its operands and stated result together.',
+    'Do not copy an entire paragraph or evidence block when a shorter complete source statement expresses the claim. Do not add a combined duplicate when separate atomic claims are already returned.',
+    'Return no candidate when an explicit claim is absent.',
+  ].join(' '),
+  'direct-claim-v5': [
+    'Extract only claims explicitly stated in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Extract every distinct explicit claim from each evidence item; do not stop after its first claim. Return one atomic claim per candidate. Split separate facts, formulas, examples, and conclusions into separate candidates when each can stand on its own, including when a document converter joined them into one Evidence item.',
+    'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine separate claims, or add outside knowledge.',
+    'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies that claim. For an equation or worked example, include its operands and stated result together.',
+    'Do not copy an entire paragraph or evidence block when a shorter complete source statement expresses the claim. Do not add a combined duplicate when separate atomic claims are already returned.',
+    'Return no candidate when an explicit claim is absent.',
+  ].join(' '),
+  'direct-claim-v6': [
+    'Extract only claims explicitly stated in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Extract every distinct explicit claim from each evidence item; do not stop after its first claim. Return one atomic claim per candidate. Split separate facts, formulas, examples, and conclusions into separate candidates when each can stand on its own, including when a document converter joined them into one Evidence item.',
+    'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine separate claims, or add outside knowledge.',
+    'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies that claim. For an equation or worked example, include its operands and stated result together.',
+    'Do not copy an entire paragraph or evidence block when a shorter complete source statement expresses the claim. Do not add a combined duplicate when separate atomic claims are already returned.',
+    'Evidence may contain visual PDF line breaks. Split a line only when it completes an atomic claim; keep wrapped sentence fragments and stacked equation rows together. Return each standalone list item as its own candidate and never turn a heading into a claim.',
+    'Return no candidate when an explicit claim is absent.',
+  ].join(' '),
+  'direct-claim-v7': [
+    'Extract only claims explicitly stated in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Extract every distinct explicit claim from each evidence item; do not stop after its first claim. Return one atomic claim per candidate. Split separate facts, formulas, examples, and conclusions into separate candidates when each can stand on its own, including when a document converter joined them into one Evidence item.',
+    'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
+    'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies the claim. For an equation or worked example, include its operands and stated result together.',
+    'Each candidate must be a complete standalone proposition, definition, relationship, condition, or complete equation. Do not return headings, category labels, isolated nouns, isolated values, bare variables, or partial equation fragments. A list item is a claim only when its text states a complete relationship, action, or condition; words such as 토지, 건물, or 기계장치 alone are labels, not claims.',
+    'Evidence may contain visual PDF line breaks. Keep wrapped sentence fragments and stacked equation rows together. Return a standalone list item only when it contains a complete claim; include its qualifier and linked label when both occur in the same evidence. For formulas, return the full expression with an operator and operands, never isolated symbols or variable fragments.',
+    'Never turn a heading or an incomplete fragment into a claim. Return no candidate when the evidence does not contain a complete standalone claim.',
+  ].join(' '),
+  'direct-claim-v8': [
+    'Extract only claims explicitly stated in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Extract every distinct explicit claim from each evidence item; do not stop after its first claim. Return one atomic claim per candidate. Split separate facts, formulas, examples, and conclusions into separate candidates when each can stand on its own, including when a document converter joined them into one Evidence item.',
+    'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
+    'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies the claim. For an equation or worked example, include its operands and stated result together.',
+    'Each candidate must be a complete standalone proposition, definition, relationship, condition, or complete equation. Do not return headings, category labels, isolated nouns, isolated values, bare variables, or partial equation fragments. A list item is a claim only when its text states a complete relationship, action, or condition; words such as 토지, 건물, or 기계장치 alone are labels, not claims.',
+    'Evidence may contain visual PDF line breaks. Keep wrapped sentence fragments and stacked equation rows together. Return a standalone list item only when it contains a complete claim; include its qualifier and linked label when both occur in the same evidence. For formulas, return the full expression with an operator and operands, never isolated symbols or variable fragments.',
+    'Do not return a dependent clause whose required condition is cut off at the beginning, such as “이 되게 하는 수익률이 IRR이다” without its preceding “NPV=0”. Return the complete source statement or omit the fragment.',
+    'Never turn a heading or an incomplete fragment into a claim. Return no candidate when the evidence does not contain a complete standalone claim.',
+  ].join(' '),
+  'direct-claim-v9': [
+    'Extract only claims explicitly stated in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Extract every distinct explicit claim from each evidence item; do not stop after its first claim. Return one atomic claim per candidate. Split separate facts, formulas, examples, and conclusions into separate candidates when each can stand on its own, including when a document converter joined them into one Evidence item.',
+    'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
+    'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies that claim. For an equation or worked example, include its operands and stated result together.',
+    'Each candidate must be a complete standalone proposition, definition, relationship, condition, or complete equation. Do not return headings, category labels, isolated nouns, isolated values, bare variables, or partial equation fragments. A list item is a claim only when its text states a complete relationship, action, or condition; words such as 토지, 건물, or 기계장치 alone are labels, not claims.',
+    'Evidence may contain visual PDF line breaks. Keep wrapped sentence fragments and stacked equation rows together. Return a standalone list item only when it contains a complete claim; include its qualifier and linked label when both occur in the same evidence. For formulas, return the full expression with an operator and operands, never isolated symbols or variable fragments.',
+    'If a visually separate line explicitly states a complete relationship but uses Korean nominal wording such as “...커지는 방향” without a final copula, return that line as its own exact-source candidate. If a following line explains the reason, return the reason separately too; do not omit the relationship or merge it into its explanation.',
+    'Do not return a dependent clause whose required condition is cut off at the beginning, such as “이 되게 하는 수익률이 IRR이다” without its preceding “NPV=0”. Return the complete source statement or omit the fragment.',
+    'Never turn a heading or an incomplete fragment into a claim. Return no candidate when the evidence does not contain a complete standalone claim.',
+  ].join(' '),
+  'direct-claim-v10': [
+    'Extract only claims explicitly stated in the supplied evidence. Explicit numerical examples and equations are claims too; copy their stated values without calculating or correcting them.',
+    'Extract every distinct explicit claim from each evidence item; do not stop after its first claim. Return one atomic claim per candidate. Split separate facts, formulas, examples, and conclusions into separate candidates when each can stand on its own, including when a document converter joined them into one Evidence item.',
+    'Copy each claim as an exact contiguous substring of its matching evidence. Never infer, summarize, translate, combine evidence items, or add outside knowledge.',
+    'Keep every number, unit, date, time range, condition, exception, negation, and uncertainty that qualifies that claim. For an equation or worked example, include its operands and stated result together.',
+    'Each candidate must be a complete standalone proposition, definition, relationship, condition, or complete equation. Do not return headings, category labels, isolated nouns, isolated values, bare variables, or partial equation fragments. A list item is a claim only when its text states a complete relationship, action, or condition; words such as 토지, 건물, or 기계장치 alone are labels, not claims.',
+    'Evidence may contain visual PDF line breaks. Keep wrapped sentence fragments and stacked equation rows together. Return a standalone list item only when it contains a complete claim; include its qualifier and linked label when both occur in the same evidence. For formulas, return the full expression with an operator and operands, never isolated symbols or variable fragments.',
+    'If a visually separate line explicitly states a complete relationship but uses Korean nominal wording such as “...커지는 방향” without a final copula, return that line as its own exact-source candidate. If a following line explains the reason, return the reason separately too; do not omit the relationship or merge it into its explanation.',
+    'Do not deduplicate claims across different evidence items because they discuss the same topic or have similar meanings. Preserve each distinct subject-predicate relationship stated by each source span, even when another evidence item makes a related claim.',
+    'Do not return a dependent clause whose required condition is cut off at the beginning, such as “이 되게 하는 수익률이 IRR이다” without its preceding “NPV=0”. Return the complete source statement or omit the fragment.',
+    'Never turn a heading or an incomplete fragment into a claim. Return no candidate when the evidence does not contain a complete standalone claim.',
+  ].join(' '),
+};
+
+const resolveCandidatePromptPolicy = (promptVersion: string) => {
+  if (
+    !promptVersion.trim() ||
+    promptVersion.length > 128 ||
+    promptVersion.trim() !== promptVersion
+  ) {
+    throw new Error('Candidate extraction prompt version must be a bounded, trimmed value.');
+  }
+  const systemInstruction = candidatePromptInstructions[promptVersion];
+  if (!systemInstruction) {
+    throw new Error(`Unsupported candidate extraction prompt version: ${promptVersion}`);
+  }
+  return { promptVersion, systemInstruction };
+};
 
 const promptFor = (payload: GenerateStructuredPayload): string =>
   stableJson({
@@ -248,7 +347,12 @@ const errorCode = (error: unknown): ErrorCode =>
 const isRetryable = (error: ShotgunError) =>
   error.retryable || isRetryableAIProviderErrorCode(error.code);
 
-const snapshotDigest = (projectId: string, payload: GenerateStructuredPayload) =>
+const snapshotDigest = (
+  projectId: string,
+  payload: GenerateStructuredPayload,
+  promptVersion: string,
+  maxOutputTokens: number | undefined,
+) =>
   sha256Text(
     stableJson({
       version: 'ai-generation-input-v1',
@@ -265,20 +369,27 @@ const snapshotDigest = (projectId: string, payload: GenerateStructuredPayload) =
       dataClassification: payload.dataClassification,
       taskProfile: payload.taskProfile,
       schema: { name: payload.schemaName, version: '1.0.0' },
-      promptVersion: 'direct-claim-v2',
+      promptVersion,
       policyVersion: payload.policyVersion,
+      ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
     }),
   );
 
-const requestDigest = (payload: GenerateStructuredPayload, inputSnapshotDigest: string) =>
+const requestDigest = (
+  payload: GenerateStructuredPayload,
+  inputSnapshotDigest: string,
+  promptVersion: string,
+  maxOutputTokens: number | undefined,
+) =>
   sha256Text(
     stableJson({
       version: 'ai-generation-request-v1',
       taskProfile: payload.taskProfile,
       schemaName: payload.schemaName,
       schemaVersion: '1.0.0',
-      promptVersion: 'direct-claim-v2',
+      promptVersion,
       policyVersion: payload.policyVersion,
+      ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
       inputSnapshotDigest,
       ...(payload.generationEpochId === undefined
         ? {}
@@ -465,9 +576,12 @@ export const createAIProviderModule = (
         messageType: 'GenerateStructured',
         version: '1.0.0',
         requiredAccessScopes: ['owner'],
-        timeoutMs: 60_000,
+        timeoutMs: DEFAULT_CANDIDATE_EXTRACTION_TIMEOUT_MS,
         async handle(envelope, context: HandlerContext) {
           const payload = envelope.payload as GenerateStructuredPayload;
+          const { promptVersion, systemInstruction } = resolveCandidatePromptPolicy(
+            options.candidatePromptVersion ?? DEFAULT_CANDIDATE_PROMPT_VERSION,
+          );
           const { projectId, security } = assertContext(envelope);
           const cancellationError = () =>
             new ShotgunError({
@@ -615,8 +729,36 @@ export const createAIProviderModule = (
               correlationId: envelope.correlationId,
             });
           }
-          const inputSnapshotDigest = snapshotDigest(projectId, payload);
-          const durableRequestDigest = requestDigest(payload, inputSnapshotDigest);
+          const candidateMaxOutputTokens =
+            options.candidateMaxOutputTokens ??
+            (activeAdapter.identity.provider === 'deepseek'
+              ? DEFAULT_DEEPSEEK_CANDIDATE_MAX_OUTPUT_TOKENS
+              : undefined);
+          if (
+            candidateMaxOutputTokens !== undefined &&
+            (!Number.isSafeInteger(candidateMaxOutputTokens) || candidateMaxOutputTokens < 1)
+          ) {
+            throw new ShotgunError({
+              code: 'VALIDATION_ERROR',
+              safeMessage: 'The candidate output token limit must be a positive integer.',
+              module: 'stage4.ai-provider',
+              operation: 'validate-candidate-output-token-limit',
+              correlationId: envelope.correlationId,
+              retryable: false,
+            });
+          }
+          const inputSnapshotDigest = snapshotDigest(
+            projectId,
+            payload,
+            promptVersion,
+            candidateMaxOutputTokens,
+          );
+          const durableRequestDigest = requestDigest(
+            payload,
+            inputSnapshotDigest,
+            promptVersion,
+            candidateMaxOutputTokens,
+          );
           const revisionIds = [...new Set(payload.evidence.map((item) => item.revisionId))];
           if (revisionIds.length !== 1 || !revisionIds[0]) {
             throw new ShotgunError({
@@ -647,7 +789,7 @@ export const createAIProviderModule = (
             revisionId,
             provider: activeAdapter.identity.provider,
             model: activeAdapter.identity.model,
-            promptVersion: 'direct-claim-v2',
+            promptVersion,
             policyVersion: payload.policyVersion,
             schemaName: payload.schemaName,
             dataClassification: payload.dataClassification,
@@ -732,20 +874,17 @@ export const createAIProviderModule = (
               await markCancellationAndThrow(claimed.attempt.attemptId);
             }
             try {
+              const request = {
+                systemInstruction,
+                prompt: promptFor(payload),
+                responseSchema: candidateBatchSchema,
+                ...(candidateMaxOutputTokens === undefined
+                  ? {}
+                  : { maxOutputTokens: candidateMaxOutputTokens }),
+              };
               response = await (activeAdapter.generateStructuredWithSignal
-                ? activeAdapter.generateStructuredWithSignal(
-                    {
-                      systemInstruction,
-                      prompt: promptFor(payload),
-                      responseSchema: candidateBatchSchema,
-                    },
-                    context.signal,
-                  )
-                : activeAdapter.generateStructured({
-                    systemInstruction,
-                    prompt: promptFor(payload),
-                    responseSchema: candidateBatchSchema,
-                  }));
+                ? activeAdapter.generateStructuredWithSignal(request, context.signal)
+                : activeAdapter.generateStructured(request));
             } catch (error) {
               if (context.signal.aborted) {
                 await markCancellationAndThrow(claimed.attempt.attemptId);
@@ -785,7 +924,7 @@ export const createAIProviderModule = (
               model: activeAdapter.identity.model,
               schemaName: payload.schemaName,
               schemaVersion: '1.0.0' as const,
-              promptVersion: 'direct-claim-v2' as const,
+              promptVersion,
               policyVersion: payload.policyVersion,
               dataPolicyVersion: activeAdapter.identity
                 .dataPolicyVersion as AIProviderCall['dataPolicyVersion'],
@@ -880,7 +1019,7 @@ export const createAIProviderModule = (
               adapterVersion: activeAdapter.identity.adapterVersion,
               model: activeAdapter.identity.model,
               modelVersion: draft.modelVersion,
-              promptVersion: 'direct-claim-v2',
+              promptVersion,
               policyVersion: payload.policyVersion,
               dataPolicyVersion: activeAdapter.identity
                 .dataPolicyVersion as AIProviderCall['dataPolicyVersion'],

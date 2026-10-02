@@ -1,0 +1,583 @@
+# VP-04 / Stage 8 — PDFium equation geometry verification (2026-10-01)
+
+**Status: narrow extraction augmentation implemented; VP-04 remains open.** This
+record covers one supplied finance PDF and does not establish general PDF
+formula quality.
+
+## Target and source
+
+- Target: Stage 8 `PythonDocumentFormatAdapter`, `DocumentIR`, and `SourceMap`.
+- Source: `재무제표재무관리__2026-09-27.pdf`, 10 pages, 797,599 bytes.
+- Source SHA-256: `bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`.
+- Output transformer identity: `shotgun.document-formats@1.7.0`.
+- No project database or previously stored revision was changed by this
+  verification. New transformations use the new adapter identity.
+
+## OSS decision
+
+`AUGMENT` the already adopted `pdfplumber` PDF adapter with the existing pinned
+`pypdfium2` glyph geometry. Do not add another parser or package.
+
+- Official repository: [pypdfium2](https://github.com/pypdfium2-team/pypdfium2).
+- Exact package: `pypdfium2==5.11.0`, tag commit
+  [`0168561b33a3fc32eceb6ae46cc252f6b0e90c19`](https://github.com/pypdfium2-team/pypdfium2/commit/0168561b33a3fc32eceb6ae46cc252f6b0e90c19).
+- Embedded PDFium build: `7913`, from the official [5.11.0 release](https://github.com/pypdfium2-team/pypdfium2/releases/tag/5.11.0).
+- Binding license: Apache-2.0 OR BSD-3-Clause. Binary distributions must retain
+  PDFium and bundled third-party license notices as described by the upstream
+  [license information](https://github.com/pypdfium2-team/pypdfium2#licensing).
+- Security review: the official [Security page](https://github.com/pypdfium2-team/pypdfium2/security)
+  showed no `SECURITY.md` policy and no published advisory on 2026-10-01.
+- Maintenance: retain the exact lock. Re-evaluate on a PDFium update, upstream
+  security notice, false repair, or adjudicated Golden corpus change.
+
+`pdfplumber==0.11.10` remains the paragraph-order, reading-layout, and selector
+owner. PDFium supplies bounded character text and coordinates only.
+
+## Repair boundary
+
+The isolated worker asks PDFium for page glyph geometry when pdfplumber reports
+a NUL glyph or an equals sign. For general NUL repair, it accepts only the
+small allowlist `<`, `>`, `=`, parentheses, colon, and digits, with reciprocal
+one-to-one glyph matches, center distance at most 2.5 points, and at least 65%
+box overlap. A separate numbered-list rule accepts only the contiguous PDFium
+digit-period-space-Hangul sequence when the digit, bottom-aligned period,
+whitespace position, and pdfplumber source line agree. It retains the original
+pdfplumber boxes. The optional path fails closed when a page has more than
+100,000 PDFium characters or produces more than 20,000 text rows.
+
+A flat formula candidate is limited to a short, single-row ASCII/math
+expression. Script markers are placed only from relative glyph size and
+position. A stacked fraction is reconstructed only when numerator and
+denominator glyph rows sit above and below the same equation baseline, overlap
+horizontally around a short uppercase Latin or Korean equation prefix, and every extracted
+pdfplumber character in the formula box occurs in the geometry-backed result.
+PDFium supplies the actual glyphs and coordinates; the adapter uses those
+positions to express the numerator/denominator relationship. It does not
+invent missing characters or infer mathematical meaning or reading order.
+
+For a formula with ambiguous alignment or a text mismatch, the worker retains
+the existing pdfplumber output. That output can still contain flattened
+fragments; this adapter does not yet carry a structured `formula-unresolved`
+signal. The original file and selectors remain available, but downstream AI
+must not treat malformed formula fragments as verified facts. This is a
+remaining VP-04 product-quality issue.
+
+## Supplied-PDF result
+
+The pinned PDFium 5.11.0 worker produced 21 blocks. It reconstructed these
+single-row and stacked equation segments and retained their source geometry:
+
+- Page 2: `유동비율 = 유동자산/유동부채 × 100`.
+- Page 2: `유동비율 = 4,000/2,000 × 100 = 200%`.
+- Page 5: `FV = PV(1 + r)^n`.
+- Page 5: `FV = 100 × (1.1)^2 = 121만원`.
+- Page 5: `PV = FV/(1 + r)^n`.
+- Page 5: `PV = 110/1.1 = 100만원`.
+- Page 6: `NPV = ∑ CF_t/(1 + r)^t − I_0`.
+- Page 6: `NPV = 1,150 − 1,000 = 150만원`.
+
+Each segment retained a page-specific `BoundingBoxSelector` in points. The
+separate `NPV = 0` line also retained its page/BBox selector. The strict
+geometry matcher now recovers 19 of the PDF's 25 replacement markers: the page 6
+signs (`NPV > 0` and `NPV < 0`), exact-position digits, equals signs,
+parentheses, and a colon. Six other glyphs have no qualifying one-to-one match
+and remain replacement markers; direct-text validation still rejects them.
+
+Each reconstructed formula uses its original glyph Page/BBox and the existing
+selector contract. Docling `v2.130.0` remains `DEFER` under the separate
+[reevaluation record](./vp-docling-finance-formula-reevaluation-2026-10-01.md).
+
+## Verification
+
+- Python unit tests: 16/16 passed, including the safe-glyph allowlist and
+  reciprocal matching, exponent/subscript markers,
+  numerator/denominator alignment, exact/contained text agreement, mismatch
+  fallback, the PDFium character budget, and preserved PDF line offsets.
+- Supplied-PDF worker run: completed using the exact pypdfium2 5.11.0 package;
+  19/25 replacement markers were restored, the two current-ratio fractions and
+  six targeted PV/NPV equations retained Page/BBox selectors, and rendered
+  pages 2, 5, 6 and 10 were inspected.
+- Live DeepSeek ingestion, claim extraction, cited Ask, and replay using adapter
+  identity 1.4.0 passed once before safe-glyph recovery; it returned 111
+  assertions and 120 candidates, covered 20/20 curated markers, matched four
+  answer-and-citation checks, replayed successfully, and left 0 pending relation
+  jobs (35 responses, 51,502 reported tokens).
+- The 1.5.0 live browser flow passed once: 112 assertions, 113 candidates,
+  20/20 curated markers, four answer-and-citation checks, replay match, 7
+  current relations, and 0 pending relation jobs (15 responses, 32,920 reported
+  tokens). The NPV sign Ask returned 3 citations. All four topic corpus answers
+  matched and cited the expected page. Provider billing was not independently
+  reconciled.
+- A separate 1.5.0 run returned 119 assertions and 121 candidates but timed out
+  after 180 seconds with one relation job pending. That run did not capture the
+  pending job's durable failure/provider state, so its cause is undiagnosed. The
+  focused test now emits that state if a later run times out again. The earlier
+  two 1.3.0 live runs are documented in the [query-scoped Ask freshness
+  report](./vp-ask-stale-snapshot-recovery-2026-10-01.md).
+- Adapter `1.6.0` added Korean-labeled stacked fractions for the page-2 current
+  ratio formula and its numeric example. The live DeepSeek run completed
+  extraction but found only 18/20 curated markers (84 assertions, 85
+  candidates). The misses were the page-3 profit/cash qualification and the
+  page-8 diversification limit; the output combined the page-10 quick-review
+  list into one candidate. Because the live test stopped at that assertion,
+  Ask and replay were not run for this attempt.
+- Adapter `1.7.0` preserves physical PDF line breaks inside each existing
+  paragraph and keeps each line's exact SourceMap offsets. The 1:1
+  worker-block-to-paragraph contract remains unchanged. This gives structured
+  extraction visible list-item boundaries and lets the existing Stage 4
+  candidate splitter separate independent line claims.
+- Broad multi-document extraction precision/recall and independently reviewed
+  Golden labels: **NOT RUN**; VP-04 remains open.
+
+## Contract, rollback, and replacement
+
+- `PythonDocumentFormatAdapter` output shape and `DocumentIR`/`SourceMap`
+  contracts are unchanged. Reconstructed text uses the candidate's original
+  PDFium coordinates for its BBox selector. Physical lines remain within one
+  paragraph while their BBox selectors map to exact line offsets.
+- Adapter identity advances from `1.5.0` through `1.8.0`, so old immutable
+  transformation revisions are not silently rewritten or reused as if they
+  came from the new transformation.
+- No database migration or lockfile update is required. Existing revisions
+  remain readable.
+- Rollback reverts Korean-labeled fraction recovery and PDF line-break
+  preservation, then restores adapter identity `1.5.0`.
+  Stored revisions remain immutable. A PDF parser replacement must
+  pass Stage 8 Page/BBox, formula Golden, corrupt/encrypted, upper-contract, and
+  adapter replacement tests.
+- The relevant record was added to the
+  [OSS source registry](./oss-source-registry.json),
+  [Open-source Role Matrix](../architecture/module-architecture/open-source-role-matrix.md),
+  and [ADR-088 amendment history](../architecture/adr/ADR-088-stage-8-format-adapter-and-structural-selectors.md).
+
+## 2026-10-01 full live flow after PostgreSQL planner-statistics refresh
+
+The previous full Ask attempt could spend about 239 seconds inside search, beyond the browser flow's 120-second question timeout. The exact query took about 244 ms when run directly after statistics were current. The cause was stale PostgreSQL planner statistics after the large new assertion batch. `VPAssertionLedgerWorker` now asks the existing PostgreSQL adapter to refresh the fixed search inputs once after a bounded assertion-ledger drain; the worker does not refresh after each page. Migration 126 provides a zero-argument, fixed-table `SECURITY DEFINER` routine because PostgreSQL 16 denies direct `ANALYZE` to the runtime role. The database integration test checks that `vp.assertions.analyze_count` increases after drain and that the separate erasure executor role cannot call the refresh routine. The product test does not issue SQL or call `ANALYZE` manually.
+
+### Migration 126 rollback rehearsal
+
+On 2026-10-01, an isolated PostgreSQL 16 database was migrated through version 125 and backed up with the repository's `pg_dump` backup flow. Migration 126 was then applied and verified to transfer the 11 fixed search-input tables to `shotgun_schema_owner` and install `vp.refresh_search_statistics()`. The pre-126 backup was restored into a separate `shotgun_restore_*` database. The restored state matched all 11 pre-migration table owners, omitted migration 126 and its function, and completed backup integrity verification. The disposable databases and temporary backup were removed. Rollback for this migration is therefore verified as restore of the pre-126 backup plus the previous application code; no in-place downgrade exists.
+
+The supplied PDF was reprocessed end to end with the pinned `direct-claim-v6` extraction policy and configured DeepSeek `deepseek-flash` provider. One live Chromium run passed in about 1.4 minutes, inside the Ask timeout. It matched all 20/20 curated markers, produced 172 current assertions and 175 candidates, replayed the ledger to the same projection, recorded three relations with zero pending relation jobs, and passed the four topic Ask/citation checks with expected PDF-page evidence. The run reported 8,179 input and 8,928 output tokens (17,107 total). This is provider-reported usage, not an independently reconciled invoice.
+
+This resolved the unattended-search timeout reproduced for that supplied-PDF flow. The run above preceded the page-grounded marker assertion and is historical evidence only for wording coverage.
+
+## 2026-10-01 source-first marker review
+
+I rendered all 10 pages of the exact 797,599-byte user-provided file at 120 dpi and reviewed the source pages before opening the candidate marker fixture. I then compared each marker's wording and printed page number with the source image. All 20 text claims are present on their cited page after correction. The review caught one fixture error: `IRR은 10%다` is on printed page 7, while the prior marker listed page 6. The marker is now corpus `1.2.0`, label revision 3, and its page is 7.
+
+The browser marker gate now requires the current assertion's source Evidence to carry a `PageSelector` matching the marker page; the prior gate checked the wording but ignored the `page` field. The contract test locks the corrected page. This is a source-first second-pass by one automated reviewer, not a second human adjudication or a full annotation of every extracted assertion. The fixture therefore stays `CANDIDATE`.
+
+The updated actual DeepSeek Chromium full-flow test passed on the same 797,599-byte PDF: 20/20 markers had a current assertion with an exact matching printed-page `PageSelector`; the marker on page 7 (IRR) passed. The run recorded 150 current assertions, 153 generated candidates, matching projection replay, four current relations, zero pending relation jobs, and all four topic Ask cases with expected answer and page-grounded citation. Provider-reported usage was 30,260 tokens across 11 responses; this is not invoice-reconciled. The run took 3.7 minutes for the full five-test live suite, including the four independent DeepSeek scenarios.
+
+The curated page-grounded marker gate is verified. VP-04/05 remain open: the 20 labels are still `CANDIDATE`; independent blind adjudication, full-document precision/recall and omission review, multi-document conflict/equivalence quality, production scale, and actual billing reconciliation remain unverified. Formula handling also retains the unresolved marker limitations described above.
+
+## 2026-10-01 second page-grounded live run — claim-quality review
+
+The same 10-page, 797,599-byte PDF (SHA-256 above) was ingested again through the real Chromium Product path using the pinned `direct-claim-v6` policy, `PythonDocumentFormatAdapter@1.7.0`, isolated PostgreSQL 16, and configured DeepSeek `deepseek-flash` provider. This run passed in about 1.6 minutes.
+
+- It produced **173 candidates**: 169 `READY` assertions and four `REJECTED` candidates. I independently checked the saved run output: all 169 current assertions are exact substrings of their attached Evidence text, and the 20/20 curated marker assertions each have the expected printed-page `PageSelector`.
+- The six targeted Ask checks returned expected answers with page-grounded citations. Projection replay matched, four current relation rows were present, and no relation job remained pending. The four relation rows include same-document repeated statements and a formula pair; this is not evidence of broad cross-document relation quality.
+- DeepSeek reported 30,689 tokens across nine responses for the full run. The extraction response alone reported 8,178 input plus 10,725 output tokens (18,903 total). These provider numbers have not been reconciled against account billing.
+- The earlier page-grounded run with the same source and policy produced 150 assertions and 153 candidates. This later run produced 169 and 173. The extraction output therefore varies between runs; the marker gate alone does not prove stable coverage.
+- Three rejected candidates are the source's clearly readable investment, financing, and dividend decision bullets, but their extracted text contains replacement glyphs (`��`). The fourth rejected candidate's generated claim substituted Chinese `重要的` for the Korean `중요한` present in Evidence; exact Evidence validation rejected it. Several other `READY` candidates are context-dependent list fragments such as single asset names, and a CAPM equation was split into symbol fragments. Evidence containment proves textual grounding, not that each row is a useful, atomic knowledge claim.
+
+The PDF pages are legible when rendered; these errors arise in the extracted text/claim path. The live run is a useful end-to-end pass and a concrete quality finding, not full-document precision/recall or an independent human adjudication. Keep the corpus `CANDIDATE` and VP-04/05 open until the complete extracted set, omissions, fragments, cross-source labels, scale, and actual costs have bounded acceptance results.
+
+## 2026-10-01 numbered-list glyph repair — local adapter verification
+
+The source-first review exposed three adjacent pdfplumber NUL characters on
+each of the page-5 investment, financing, and dividend decision lines. The
+locked PDFium character stream contains a consecutive digit, period, whitespace,
+and Korean letter, but the period is baseline-aligned near the bottom of the
+pdfplumber box and did not pass the generic center-distance matcher. The
+adapter now repairs only this exact sequence when the digit box, period's
+horizontal overlap and bottom edge, PDFium whitespace position, and following
+Korean source character all match. It retains pdfplumber's boxes and paragraph
+order. No OCR or new package was introduced; the `AUGMENT` remains behind the
+existing Python format adapter with the same pypdfium2 pin, license, and
+replacement boundary.
+
+The supplied PDF worker now emits all three lines as `1. 투자결정`, `2.
+자본조달결정`, and `3. 배당결정` with their full Korean statements and no
+replacement characters. Python geometry tests pass 18/18, including a negative
+case that refuses a mismatched period baseline. The adapter identity advances
+to `shotgun.document-formats@1.8.0`; prior transformation revisions remain
+immutable.
+
+## 2026-10-01 adapter 1.8.0 live AI Product run
+
+The full Chromium Product path was rerun on the same source with the pinned
+`direct-claim-v6` policy, `PythonDocumentFormatAdapter@1.8.0`, isolated
+PostgreSQL 16, and the configured DeepSeek `deepseek-flash` provider. It passed
+in about 1.5 minutes.
+
+- The current projection contained 164 assertions from 164 candidates; each
+  assertion was directly grounded in its Evidence text. All 23 candidate
+  markers had a matching current assertion and the expected printed-page
+  `PageSelector`.
+- The three repaired lines each materialized as their own READY assertion with
+  page-5 Evidence: investment decision, capital-funding decision, and dividend
+  decision. None contains replacement characters.
+- Six Ask checks returned expected answers with page-grounded citations. The
+  finance and NPV answers each displayed two citations. Projection replay
+  matched, three relation rows remained, and no relation job was pending.
+- DeepSeek reported 8,224 input plus 8,754 output tokens (16,978 total) for
+  extraction. This does not include independently reconciled account billing.
+
+This verifies the repair on one source and one live provider run. The corpus
+remains `CANDIDATE`: output counts have varied across runs, and full-PDF
+precision/recall, omissions, list-fragment quality, formula quality, cross-source
+labels, independent blind adjudication, scale, and actual cost reconciliation
+remain open. VP-04/05 therefore remain incomplete.
+
+## 2026-10-01 direct-claim-v7 shape canaries
+
+The supplied 10-page finance PDF (SHA-256 `bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`) was reprocessed through the actual Chromium Product path with isolated PostgreSQL 16, `PythonDocumentFormatAdapter@1.8.0`, and DeepSeek `deepseek-flash`. Candidate Generation used `direct-claim-v7`. The run passed in about 1.1 minutes with Ask disabled so this run isolates extraction and candidate quality.
+
+- It produced 143 current assertions from 143 candidates. Every current assertion passed the exact Evidence substring gate.
+- All 23 page-grounded positive markers matched. Four pinned negative canaries (`토지`, `건물`, `기계장치`, and `i f m f i`) were absent from current assertions. The NPV positive and negative rules were both present.
+- Projection replay matched; two current relations remained and no relation job was pending. DeepSeek reported 8,379 input and 7,864 output tokens (16,243 total) for extraction. This is provider-reported usage, not invoice reconciliation.
+- Unit and Candidate/fixture contract checks passed 56/56. The corpus digest is `sha256:552abba6e0c9a7370e2e93be3ff45a70c0a4ec834b553a42cf98033ac698395b`; its labels remain `CANDIDATE`.
+
+This is one stochastic model run and four negative canaries, not a full-document precision/recall score or independent blind adjudication. The earlier v7 run produced a different candidate count and exposed one bare noun; this run followed the whitespace-only exact-span recovery and v7 shape guard. Full-PDF omissions, all-candidate precision, cross-source relation quality, independent review, scale, and actual cost remain open.
+
+## 2026-10-01 direct-claim-v7 full Ask run
+
+The full actual Product flow was run a second time with Ask enabled against a new isolated PostgreSQL 16 database and the same exact PDF. Chromium passed in about 1.5 minutes.
+
+- It produced 142 current assertions from 142 candidates. All 23 page-grounded positive markers matched and all four negative canaries remained absent. The corpus is still labeled `CANDIDATE`.
+- All four fixed finance Ask questions returned the expected answer and citations on the printed source pages. The separate NPV sign question explained both `NPV > 0` and `NPV < 0` from the source. The finance and NPV overview checks each returned two citations.
+- Projection replay matched with seven current relations and zero pending relation jobs.
+- DeepSeek recorded 12 responses and 31,132 provider-reported tokens across extraction, relation processing, and Ask. Actual account billing was not reconciled.
+
+The second run reinforces the bounded marker and Ask result while also showing nondeterministic extraction counts: 143 claims with Ask disabled, 142 with Ask enabled. It still does not establish full-PDF precision/recall, because the 23 positive and four negative labels are a candidate corpus and have not had independent blind adjudication. VP-04/05 remain incomplete.
+
+## 2026-10-01 direct-claim-v7 full Ask rerun after line-boundary repair
+
+The supplied PDF was run again through Chromium Product intake, isolated
+PostgreSQL 16, `PythonDocumentFormatAdapter@1.8.0`, Candidate Generation
+`direct-claim-v7`, and the configured DeepSeek `deepseek-flash` provider. This
+run passed in about 1.4 minutes.
+
+- The current projection contained 150 assertions from 150 candidates. All 23
+  curated positive markers had current matching assertions and all six
+  negative canaries were absent. The β=1.5 example retained its two-line
+  qualifier as one complete source-grounded claim. Every assertion retained
+  its exact Evidence substring.
+- The two overview questions and four page-specific corpus questions returned
+  their expected answers with source-page Evidence citations. The balance
+  sheet answer cited two Evidence records; both NPV sign conditions appeared
+  in the answer with two citations. Each of the four page-specific answers
+  cited the expected printed page.
+- Projection replay matched. Three current relations remained and no relation
+  job was pending. DeepSeek reported 17,237 tokens for extraction; the complete
+  run's usage was not reconciled against provider billing.
+- The previous v7 runs produced 142 and 143 candidates. The change to 150 is
+  further evidence that extraction is nondeterministic. The marker fixture is
+  still `CANDIDATE`; complete precision/recall, omitted-claim review, fragment
+  quality, independent blind labels, cross-source relation quality, scale,
+  and billed-cost reconciliation remain open.
+
+This is a successful end-to-end sample and a confirmed improvement for the
+β example, not a closure of VP-04/05.
+
+## 2026-10-02 direct-claim-v7 numeric fraction repair
+
+The exact supplied PDF was rerun through Chromium Product intake, an isolated
+PostgreSQL 16 database, `PythonDocumentFormatAdapter@1.10.0`, Candidate
+Generation `direct-claim-v7`, and the configured DeepSeek `deepseek-flash`
+provider. This run isolated extraction, with Ask disabled, and passed in about
+1.1 minutes. The prior PDFium geometry candidate had flattened the IRR example
+as `100 = 110/1 + r`, which changes the mathematical meaning. Inspection of
+the page's actual PDFium character coordinates showed that the denominator row
+was `1 + r` and the fraction bar covered that complete row. The adapter now
+groups top-level arithmetic in a stacked denominator when writing it inline,
+producing `100 = 110/(1 + r)`; simple denominators such as `1.1` and already
+grouped expressions remain unchanged. A mismatching numeric fragment still
+fails closed.
+
+- The local worker produced the corrected IRR expression from this exact PDF.
+  Python glyph-recovery tests passed 21/21, including a wrong-number negative
+  case; focused Stage 8/fixture/SourceMap Vitest tests passed 30/30.
+- The live run produced 147 current assertions from 147 generated candidates;
+  all 147 retained their exact Evidence substring. All 23 positive source
+  markers matched, six non-claim canaries were absent, and both NPV sign rules
+  remained present. The IRR evidence contains the repaired formula. Projection
+  replay matched with one current relation and zero pending relation jobs.
+- DeepSeek returned HTTP 200 and reported 8,375 input plus 8,219 output tokens
+  (16,594 total) for extraction. This is provider-reported usage, not a bill
+  reconciliation. Ask was disabled for this extraction-focused run.
+- Candidate counts vary between runs and the marker fixture `1.6.0` remains
+  `CANDIDATE`. This targeted repair does not establish whole-document
+  precision/recall, duplicate/fragment acceptability, independent blind
+  adjudication, multi-source relation quality, or actual billed cost. VP-04/05
+  remain open.
+
+The same change was then run once more through the full Chromium Product flow
+with Ask enabled. This run passed in about 1.5 minutes and produced 139 current
+assertions/candidates, again with exact Evidence containment, all 23 positive
+markers, and all six non-claim canaries excluded. The two overview questions,
+NPV sign question, and four page-specific questions returned expected answers;
+each page-specific answer cited the correct PDF SourceVersion and printed page
+(2, 3, 5, and 9). The NPV answer retained both the positive and negative rules.
+Projection replay matched with seven current relations and no pending jobs.
+DeepSeek reported 16,327 extraction tokens; Ask usage and account billing were
+not reconciled. The 139 candidates differ from the extraction-only run's 147,
+so candidate generation remains nondeterministic.
+
+Together, these runs show the repaired source formula survives the real
+ingestion, candidate, Evidence, relation, and query flow. They do not establish
+complete extraction precision/recall or independent blind labels, and the
+fixture remains `CANDIDATE`; VP-04/05 remain open.
+
+The existing OSS boundary remains: `pypdfium2==5.11.0` (upstream tag commit
+`0168561b33a3fc32eceb6ae46cc252f6b0e90c19`, Apache-2.0 OR BSD-3-Clause) is an
+adapter-local `AUGMENT`; pdfplumber still owns reading order and Page/BBox
+selectors. No dependency or lockfile changed. Rollback reverts this numeric
+prefix/denominator-grouping repair and the adapter identity to `1.9.0`; already
+stored immutable transformation revisions are not rewritten. The pinned
+dependency, license/security/maintenance review, exact boundary, and regression
+evidence are recorded in the [Stage 8 OSS review](./stage-validations/stage-8-oss-integration-review.md#2026-10-02-vp-04-pdfium-numeric-stacked-fraction-repair)
+and [open-source role matrix](../architecture/module-architecture/open-source-role-matrix.md#vp-04--stage-8-pdfium-numeric-stacked-fraction-repair--2026-10-02).
+
+## 2026-10-02 CAPM subscript and direct-claim-v8 recheck
+
+The source remains the user-provided 10-page finance PDF with SHA-256
+`bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`.
+Candidate Generation first ran with the prior v7 prompt so the full current
+candidate set could be audited. Of 148 exact-evidence current claims, the audit
+found five normalized duplicate groups and one incomplete IRR clause
+(`이 되게 하는 수익률이 IRR 이다 .`). Short valid equations and definitions
+were not filtered based on length. This evidence led to a narrow, versioned
+v8 prompt/shape guard for that dependent clause; v7 remains replayable.
+
+The Stage 8 adapter now reconstructs the exact page 9 CAPM equation as
+`E(R_i) = R_f + [E(R_m) − R_f]β_i`. PDFium 7913 already retained the subscript
+geometry; the conservative adapter allowlist was missing brackets and beta.
+The rule remains aligned to pdfplumber's exact source glyphs and SourceMap.
+Python glyph tests passed 22/22, focused Stage 8/SourceMap contracts 30/30,
+and Stage 4 claim-shape/contract tests 61/61. The approved deterministic
+`quality:gate` also passed with precision 0.636, recall 0.875, F1 0.737,
+Evidence exact match 0.875, and unsupported-claim rate 0.
+
+The actual Chromium Product run used isolated PostgreSQL 16, adapter `1.11.0`,
+Candidate Generation `direct-claim-v8`, and DeepSeek `deepseek-flash`. It
+produced 141 candidate rows and 132 current assertions; every current assertion
+retained its exact Evidence text. All 24/24 positive markers matched on their
+expected pages, six non-claim canaries were absent, and both NPV sign rules
+remained in the current knowledge. The four page-specific Ask questions all
+matched their expected answers and citations on pages 2, 3, 5, and 9; the
+overview and NPV Ask checks also passed. Replay matched with 18 current
+relations and zero pending relation jobs. The run recorded 70,131 provider
+tokens across 33 responses, including 16,304 extraction tokens. These are
+provider-reported usage values, not a currency invoice reconciliation.
+
+Counts varied from v7's 148 audited current claims, through another v7 full
+Ask run's 150, to v8's 132 current assertions from 141 candidate rows. This
+proves the extraction remains nondeterministic; five duplicate groups and the
+earlier incomplete fragment require full adjudication. The 24-marker fixture
+is `CANDIDATE`, not independently labeled. Therefore this run does not close
+VP-04/05. Broader corpus precision/recall, omitted-claim review, independent
+labels, relation quality and cost reconciliation remain open.
+
+OSS decisions remain bounded: pypdfium2 `5.11.0` is `AUGMENT` behind the
+existing PythonDocumentFormatAdapter/Transformation Port; pdfplumber `0.11.10`
+remains `ADOPT` for reading order and Page/BBox. The pin, license, security and
+maintenance record are unchanged. Stage 4 still records `NO_RELEVANT_OSS` for
+Korean complete-claim checking and exact span rebinding; no new dependency,
+runtime, schema, or upstream code was introduced. Rollback returns adapter
+`1.11.0` to `1.10.0` and the default Candidate prompt `direct-claim-v8` to
+`direct-claim-v7`; stored Source, Candidate and Provider revisions remain
+immutable. See the [Stage 8 OSS review](./stage-validations/stage-8-oss-integration-review.md#vp-04--stage-8-pdfium-capm-subscript-recovery--2026-10-02),
+[Stage 4 OSS review](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-direct-claim-v8-incomplete-korean-clause-guard), and
+[Role Matrix](../architecture/module-architecture/open-source-role-matrix.md#vp-04--stage-8-pdfium-capm-subscript-recovery--2026-10-02).
+
+### 2026-10-02 v8 candidate-disposition follow-up
+
+A second isolated Chromium extraction used the same PDF SHA-256, adapter
+`1.11.0`, Candidate prompt `direct-claim-v8`, and DeepSeek `deepseek-flash`,
+with Ask disabled to isolate the extraction and validation path. It produced
+140 candidate rows and 140 current assertions. All 140 were `READY`; schema,
+evidence-reference, direct-text, and policy dimensions each passed 140/140.
+All 140 had exact Evidence text, no candidate lacked validation, all 24/24
+page markers matched, and six non-claim canaries remained excluded. The
+semantic validation dimension was `NOT_RUN` in this path.
+
+This follow-up makes the earlier candidate/current difference explainable for
+this run: the validators did not reject candidates. It also confirms run-to-run
+extraction variability (prior v8 run: 141 candidate rows and 132 current
+assertions; follow-up: 140 and 140). The follow-up did not run Ask or adjudicate
+all claims and omissions, so it does not establish full-document precision,
+recall, or semantic correctness. The corpus remains `CANDIDATE`; VP-04/05 stay
+open. No runtime behavior, dependency, schema, or OSS decision changed; the
+existing Stage 4 `NO_RELEVANT_OSS` determination for Korean claim completeness
+and exact-span rebinding remains applicable.
+
+#### 2026-10-02 full Ask rerun
+
+With Ask enabled, a further isolated run produced 151 candidates: 140 `READY`
+and 11 `REJECTED` by the direct-text dimension. Schema, Evidence-reference,
+and policy checks passed 151/151; direct-text passed 140/151, and all 140
+active assertions retained exact Evidence. The 24/24 page markers matched and
+all six non-claim canaries remained excluded. This explains the candidate to
+active-assertion difference in this run; the exact rejected set was not
+compared across runs. Semantic validation remained `NOT_RUN`.
+
+The real DeepSeek Ask flow passed: the overview and NPV questions each returned
+two citations, both NPV sign rules were preserved, and all four page-grounded
+questions returned an expected answer with a citation to the expected page.
+Projection replay matched with five current relations and zero pending
+relation jobs. The run recorded 12 provider responses and 32,831 reported
+tokens (22,140 input; 10,691 output); billing was not reconciled.
+
+One preceding Ask-enabled run with the same setup failed because the first Ask
+remained `RUNNING` past its 120-second test wait; an immediate rerun passed.
+This is a real latency variance signal, not a confirmed answer-quality failure.
+Together with varying candidate counts, it keeps the corpus `CANDIDATE` and
+VP-04/05 open. The new failure diagnostics retain only run state, provider
+identity, timestamps, event counts, and partial-text length; they do not emit
+the question or answer body.
+
+#### 2026-10-02 DeepSeek body stall and generation deadline correction
+
+The source PDF is 10 pages with SHA-256
+`bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`. Marker
+corpus `1.8.0` adds page-grounded positive markers and incomplete/non-claim
+canaries; its digest is
+`sha256:cc338181b5531120890781e02f7b026776bb2c65dac2c445b0c019029890d080`.
+The marker contract tests passed, but labels remain `CANDIDATE` and this corpus
+is a recall sentinel, not a precision/recall adjudication.
+
+Two isolated real-product DeepSeek attempts used the source's 111 Evidence
+spans. The earlier 60-second run and the later 300-second run each received HTTP
+200 but no complete response body, completion reason, usage, provider output, or
+materialized candidates. Each produced one durable `OUTCOME_UNKNOWN` provider
+attempt and was not automatically recalled. A separate selected finance
+relation request reached its 150-second integration-test ceiling without a
+decision; this does not establish the result of a longer request.
+
+Review of the official [DeepSeek rate-limit documentation](https://api-docs.deepseek.com/quick_start/rate_limit/)
+found that non-streaming calls may remain open with empty-line keepalives and
+that inference may take up to 10 minutes to start before the server closes the
+request. Shotgun's 5-minute generation deadline could abort before that window.
+The handler and DeepSeek generation adapter now share a 15-minute deadline,
+while connectivity probes remain at 60 seconds. The browser acceptance timeout
+and selected one-case live test window were raised to observe that deadline.
+
+The same investigation found that durable Jobs and partial-order reservations
+were leased for five minutes without renewal. PostgreSQL Job and ordering leases
+now renew every 60 seconds while a handler is active. The runtime passes an
+abort signal to the handler; failure to renew fences the operation, and an
+expired lease cannot be resurrected. Focused PostgreSQL lease, Stage 4 replay,
+AI settings, and finance marker contract tests passed 27/27. The full-document
+live flow must be rerun with these changes before any extraction or Ask result
+can be claimed. VP-04/05 remain open.
+
+#### 2026-10-02 soft-wrap rebinding and full Ask rerun
+
+Visual review confirmed that the PDF converter preserves printed line endings,
+including line wraps inside Korean words. Candidate Generation now tries both
+ordinary whitespace normalization and a lookup that omits only line-break
+characters. It accepts a match only when both lookups resolve to one unique
+source span, and it always stores the exact original Evidence slice. Candidate
+Validation still requires the stored claim to be an exact substring of that
+Evidence. Focused Stage 4, quality-baseline, unit, and contract tests passed
+73/73; an ambiguous match and changed source text remain rejected. The current
+`quality:gate` also passed after v9 became the default (precision 0.636, recall
+0.875, F1 0.737, unsupported-claim rate 0; search citation correctness 1.0).
+
+The 1.8.0 marker corpus contained a paraphrase for the page-2 net-income
+sentence. Visual comparison against the supplied page corrected that marker to
+the source wording and advanced the candidate corpus to 1.9.0, label revision
+10, digest `sha256:eefc1cdcf35bc92a382f366eebf2f647edea283bf3dbb6b300f1cf1bab75aa5d`.
+Its status remains `CANDIDATE`; the correction is not independent label
+adjudication.
+
+With the exact-span fix, one real DeepSeek run using the previous v8 prompt
+produced 150 candidates and 150 current assertions. All candidates were
+`READY`, all direct-text checks passed, all 80/80 revised markers matched, and
+none of the 11 non-claim canaries became an assertion. This run disabled Ask.
+
+A subsequent real DeepSeek v9 run completed the full product flow. It produced
+140 candidates and 140 current assertions; all 140 were `READY` with exact
+Evidence, and none of the 11 non-claim canaries matched. It matched 79/80
+markers, omitting the standalone page-9 statement that higher beta increases
+the required expected return. A following sentence explaining why was
+extracted. The v9 prompt explicitly asks for the direction line; this run
+shows that the prompt alone does not make its extraction repeatable. The full
+combined test remains failed at that completeness assertion.
+
+Despite that extraction gap, all six live Ask scenarios passed with citations
+to the expected PDF pages: the standard and NPV questions returned two and
+three citations, and all four page-grounded questions matched their answer and
+page expectations. Projection replay matched, five current relations were
+materialized, and no relation job remained pending. DeepSeek reported 31,620
+tokens across 12 responses for extraction, comparison, and Ask; billing was
+not reconciled. Semantic validation remains `NOT_RUN`. VP-04/05 remain open
+until the claim set is independently adjudicated, completeness is repeatable,
+and quality and actual cost limits are fixed.
+
+## 2026-10-02 Korean PDF word-gap recovery
+
+The source is the user-provided 10-page finance PDF, SHA-256
+`bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`.
+Visual review of page 9 confirms the printed sentence
+`베타가 커질수록 요구되는 기대수익률도 커지는 방향`. The prior
+`pdfplumber==0.11.10` default word-gap tolerance emitted one compact token,
+`베타가커질수록요구되는기대수익률도커지는방향`. An intervening DeepSeek
+full-flow run with a stronger prompt still produced 79/80 markers, so prompt
+rewording and Candidate input ordering were removed as ineffective fixes.
+
+The existing Stage 8 Python adapter now requests PDF words with horizontal
+tolerance `2.0`. This recovers the visible Korean word boundaries while
+retaining the same physical line and Page/BBox source geometry. That tolerance
+can also separate a thousands separator (`1, 000`), so the adapter rejoins only
+whitespace directly between digits around a comma. An exact transformation
+with adapter `1.12.0` returned the complete beta sentence and no malformed
+thousands groups. No new package, dependency, lockfile, schema, or migration
+was introduced. `pdfplumber==0.11.10` remains `ADOPT` for PDF text/geometry;
+`pypdfium2==5.11.0` remains the geometry-only `AUGMENT`. The Stage 8 OSS
+review records the fixed upstream pins, existing license/security/maintenance
+review, adapter boundary, and rollback to `1.11.0`.
+
+The local checks passed: Python PDF glyph tests 23/23; Stage 8 format Golden
+tests 18/18; focused Stage 3/8 segmentation contracts 12/12. The supplied
+PDF was then uploaded in the actual Chromium product flow into isolated
+PostgreSQL and processed by DeepSeek `deepseek-flash` using the existing
+`direct-claim-v10` prompt. The run produced 151 candidates and 151 current
+assertions. All candidates were `READY`, with exact direct Evidence and
+schema/reference/text/policy checks passing; semantic validation was
+`NOT_RUN`. All 80/80 page markers matched, including the beta expected-return
+statement. None of the 11 non-claim canaries became a claim. The overview and
+NPV answers had two and four citations, respectively, and all four
+page-grounded questions matched their expected answers and pages. Projection
+replay matched with three settled relations and zero pending relation jobs.
+DeepSeek reported 18,235 extraction tokens. These are provider-reported
+tokens, not invoice amounts.
+
+This run shows the extraction gap was caused by PDF word segmentation for this
+sentence, rather than an insufficient Candidate prompt. It is one source and
+one full extraction run; marker labels remain `CANDIDATE`. It does not establish
+independently adjudicated full-document precision/recall, repeatability,
+relation correctness, calibrated error limits, total workload cost, or actual
+billing. VP-04/05 remain open. See the [Stage 8 Integration Review](./stage-validations/stage-8-oss-integration-review.md#2026-10-02-vp-04-korean-pdf-word-gap-recovery)
+and [Open-source Role Matrix](../architecture/module-architecture/open-source-role-matrix.md#vp-04--stage-8-korean-pdf-word-gap-recovery--2026-10-02).
+
+## 2026-10-02 repeated Korean finance PDF live runs
+
+To check the fixed segmentation through the real product repeatedly, the
+Chromium live test was run twice serially with the same PDF SHA-256
+`bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01`,
+`direct-claim-v10`, isolated PostgreSQL databases, and actual DeepSeek
+credentials. Both tests passed (1.9 and 1.7 minutes). The first produced 138
+current assertions and the second 142; every assertion was `READY` with exact
+direct Evidence. Both matched 80/80 positive markers, promoted none of the 11
+non-claim canaries, passed the overview, NPV, and four page-grounded Ask cases,
+and replayed to a settled queue. The observed current relation counts were 3
+and 4. A prior run of the same PDF/prompt produced 151 assertions and also
+matched 80/80 markers. Thus all three observed runs preserve the marker set,
+while candidate and relation counts vary. Semantic validation remains
+`NOT_RUN`; the fixture remains `CANDIDATE`; no independent full-source
+adjudication or billing reconciliation was performed. These reruns confirm
+the repaired beta statement is repeatably extracted but do not close VP-04/05.

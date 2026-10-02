@@ -355,6 +355,117 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
     ).rejects.not.toThrow('do-not-leak');
   });
 
+  it('uses separate DeepSeek deadlines for quick connectivity checks and structured generation', async () => {
+    let calls = 0;
+    const deepseek = new DeepSeekConnectivityAdapter({
+      timeoutMs: 20,
+      generationTimeoutMs: 100,
+      fetch: async (_input, init) => {
+        calls += 1;
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, 45);
+          init?.signal?.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer);
+              reject(new DOMException('request aborted', 'AbortError'));
+            },
+            { once: true },
+          );
+        });
+        return response(
+          calls === 1
+            ? { choices: [{ message: { content: '{"ready":true}' } }] }
+            : { choices: [{ message: { content: '{"candidates":[]}' } }] },
+        );
+      },
+    });
+
+    await expect(
+      deepseek.testConnection({ modelId: 'deepseek-flash', apiKey: Buffer.from('secret') }),
+    ).rejects.toMatchObject({ code: 'TIMEOUT' });
+    await expect(
+      deepseek.generateStructured({
+        modelId: 'deepseek-flash',
+        apiKey: Buffer.from('secret'),
+        request: {
+          systemInstruction: 'Return JSON only.',
+          prompt: 'Extract claims.',
+          responseSchema: { type: 'object' },
+        },
+      }),
+    ).resolves.toMatchObject({ rawText: '{"candidates":[]}' });
+  });
+
+  it.each([
+    { configured: undefined, expected: 0.2 },
+    { configured: 0.7, expected: 0.7 },
+  ])(
+    'forwards the DeepSeek structured-generation temperature ($expected)',
+    async ({ configured, expected }) => {
+      let body: Record<string, unknown> | undefined;
+      const deepseek = new DeepSeekConnectivityAdapter({
+        ...(configured === undefined ? {} : { temperature: configured }),
+        fetch: async (_input, init) => {
+          body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          return response({ choices: [{ message: { content: '{"candidates":[]}' } }] });
+        },
+      });
+
+      await deepseek.generateStructured({
+        modelId: 'deepseek-flash',
+        apiKey: Buffer.from('secret'),
+        request: {
+          systemInstruction: 'Return JSON only.',
+          prompt: 'Extract claims.',
+          responseSchema: { type: 'object' },
+        },
+      });
+
+      expect(body).toMatchObject({ model: 'deepseek-flash', temperature: expected });
+      expect(JSON.stringify(body)).not.toContain('secret');
+    },
+  );
+
+  it.each([-0.1, 2.1, Number.NaN])('rejects an out-of-range DeepSeek temperature %s', (value) => {
+    expect(() => new DeepSeekConnectivityAdapter({ temperature: value })).toThrow(
+      'DeepSeek generation temperature must be between 0 and 2.',
+    );
+  });
+
+  it('classifies a stalled HTTP 200 response body as a provider timeout', async () => {
+    const deepseek = new DeepSeekConnectivityAdapter({
+      timeoutMs: 1000,
+      generationTimeoutMs: 20,
+      fetch: async (_input, init) =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{"choices":['));
+              init?.signal?.addEventListener(
+                'abort',
+                () => controller.error(new DOMException('request aborted', 'AbortError')),
+                { once: true },
+              );
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    });
+
+    await expect(
+      deepseek.generateStructured({
+        modelId: 'deepseek-flash',
+        apiKey: Buffer.from('secret'),
+        request: {
+          systemInstruction: 'Return JSON only.',
+          prompt: 'Extract claims.',
+          responseSchema: { type: 'object' },
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'TIMEOUT', retryable: true });
+  });
+
   it('projects a definite provider terminal failure as FAILED rather than Model unavailable', async () => {
     const { backend } = createBackend({
       providerId: 'openai',

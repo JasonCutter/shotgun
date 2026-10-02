@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   SourcesStage3TestPipeline,
@@ -375,10 +375,22 @@ describe('durable Sources Stage 4 continuation dispatcher', () => {
       },
       { intervalMs: 1, failureBackoffMs: 25, maxFailureBackoffMs: 25 },
     );
-    const stop = await dispatcher.startWorker();
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    await stop();
-    expect(scans).toBe(1);
+    vi.useFakeTimers();
+    let stop: (() => Promise<void>) | undefined;
+    try {
+      stop = await dispatcher.startWorker();
+      expect(scans).toBe(1);
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(5);
+      expect(scans).toBe(1);
+      expect(vi.getTimerCount()).toBe(1);
+      await stop();
+      stop = undefined;
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      await stop?.();
+      vi.useRealTimers();
+    }
   });
 
   it('distinguishes normal deferred work from an open outage breaker', async () => {

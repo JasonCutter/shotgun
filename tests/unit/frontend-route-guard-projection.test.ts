@@ -50,6 +50,14 @@ describe('InMemoryRouteGuardProjection', () => {
     });
   });
 
+  it('denies legacy Review through the route guard in automatic knowledge mode', async () => {
+    const projection = new InMemoryRouteGuardProjection(async () => true, true);
+
+    await expect(
+      projection.decide({ ...scope, requestedRoute: reviewRoute }),
+    ).resolves.toMatchObject({ decision: 'FEATURE_UNAVAILABLE' });
+  });
+
   it('returns a typed unavailable decision without a target route when Review is unavailable', async () => {
     const projection = new InMemoryRouteGuardProjection(async () => false);
 

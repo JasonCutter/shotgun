@@ -89,6 +89,53 @@ describe.runIf(pool)('TS-5 migration and PostgreSQL maintenance barrier', () => 
     ).rejects.toThrow();
   });
 
+  it('allows 10 MiB file leases while retaining the one MiB URL limit', async () => {
+    const issuedAt = new Date('2026-09-19T00:00:00.000Z');
+    const expiresAt = new Date(issuedAt.getTime() + 720 * 60 * 60 * 1_000).toISOString();
+    const fileLeaseId = randomUUID();
+    const fileBytes = 1_048_577;
+    try {
+      await pool!.query(
+        `INSERT INTO asset.staging_asset_leases (
+           lease_id, reference_digest, project_id, draft_id, item_id, principal_id,
+           input_kind, storage_key, content_hash, size_bytes, issued_at, expires_at
+         ) VALUES ($1, $2, $3, 'draft', 'item', 'principal', 'FILE', $4, $5, $6, $7, $8)`,
+        [
+          fileLeaseId,
+          `sha256:${'d'.repeat(64)}`,
+          `ts5-file-size-${fileLeaseId}`,
+          'original/sha256/aa/' + 'a'.repeat(64) + '.blob',
+          `sha256:${'a'.repeat(64)}`,
+          fileBytes,
+          issuedAt.toISOString(),
+          expiresAt,
+        ],
+      );
+      await expect(
+        pool!.query(
+          `INSERT INTO asset.staging_asset_leases (
+             lease_id, reference_digest, project_id, draft_id, item_id, principal_id,
+             input_kind, storage_key, content_hash, size_bytes, issued_at, expires_at
+           ) VALUES ($1, $2, $3, 'draft', 'item', 'principal', 'URL', $4, $5, $6, $7, $8)`,
+          [
+            randomUUID(),
+            `sha256:${'e'.repeat(64)}`,
+            `ts5-url-size-${randomUUID()}`,
+            'original/sha256/aa/' + 'b'.repeat(64) + '.blob',
+            `sha256:${'b'.repeat(64)}`,
+            fileBytes,
+            issuedAt.toISOString(),
+            expiresAt,
+          ],
+        ),
+      ).rejects.toThrow();
+    } finally {
+      await pool!.query('DELETE FROM asset.staging_asset_leases WHERE lease_id = $1', [
+        fileLeaseId,
+      ]);
+    }
+  });
+
   it('enforces the runtime shared / maintenance exclusive lock graph', async () => {
     const runtime = await pool!.connect();
     const backup = await pool!.connect();
@@ -181,6 +228,13 @@ describe.runIf(pool)('TS-5 migration and PostgreSQL maintenance barrier', () => 
     const assetId = randomUUID();
     const contentHash = `sha256:${'f'.repeat(64)}`;
     const storageKey = `original/sha256/ff/${'f'.repeat(64)}.blob`;
+    const baseline = await pool!.query<{ count: string }>(
+      `SELECT COUNT(*) FILTER (WHERE version.original_asset_id IS NULL)::text AS count
+       FROM asset.original_assets AS original
+       LEFT JOIN asset.source_versions AS version
+         ON version.original_asset_id = original.asset_id`,
+    );
+    const baselineAnomalyCount = Number(baseline.rows[0]?.count ?? 0);
     const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), 'shotgun-ts5-anomaly-'));
     try {
       await pool!.query(
@@ -192,7 +246,7 @@ describe.runIf(pool)('TS-5 migration and PostgreSQL maintenance barrier', () => 
         databaseUrl: databaseUrl!,
         assetRoot: temporaryRoot,
       });
-      expect(report.dbAnomalyCount).toBe(1);
+      expect(report.dbAnomalyCount).toBe(baselineAnomalyCount + 1);
       expect(report.finalDbProtectedCount).toBeGreaterThanOrEqual(1);
     } finally {
       await pool!.query('DELETE FROM asset.original_assets WHERE asset_id = $1', [assetId]);

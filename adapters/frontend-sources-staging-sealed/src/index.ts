@@ -8,7 +8,10 @@ import type {
 } from '../../../modules/url-acquisition/src/index.js';
 import {
   ShotgunError,
+  SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES,
+  SOURCES_STAGING_MAX_FILE_BYTES,
   SOURCES_STAGING_MEDIA_TYPES,
+  SOURCES_STAGING_MAX_URL_BYTES,
   SOURCES_SCHEMA_VERSION,
   type SourcesStagingInputKind,
   type SourcesStagingMediaType,
@@ -35,7 +38,12 @@ export const DEFAULT_SOURCES_URL_LIMITS: UrlAcquisitionLimits = {
   maxDecompressedBytes: 1_048_576,
 };
 
-const MAX_BYTES = 1_048_576;
+const maxBytesForKind = (kind: 'DIRECT_TEXT' | 'FILE' | 'URL'): number =>
+  kind === 'FILE'
+    ? SOURCES_STAGING_MAX_FILE_BYTES
+    : kind === 'URL'
+      ? SOURCES_STAGING_MAX_URL_BYTES
+      : SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES;
 const TOKEN_PREFIX = 'sources-stage-v1.';
 const sha256 = (bytes: Uint8Array): string =>
   `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
@@ -99,7 +107,8 @@ const isArtifact = (value: unknown): value is ResolvedSourcesStagingArtifact => 
     /^sha256:[a-f0-9]{64}$/.test(candidate['contentHash']) &&
     Number.isInteger(candidate['sizeBytes']) &&
     Number(candidate['sizeBytes']) > 0 &&
-    Number(candidate['sizeBytes']) <= MAX_BYTES &&
+    Number(candidate['sizeBytes']) <=
+      maxBytesForKind(candidate['kind'] as 'DIRECT_TEXT' | 'FILE' | 'URL') &&
     typeof candidate['storageKey'] === 'string' &&
     typeof candidate['issuedAt'] === 'string' &&
     !Number.isNaN(Date.parse(candidate['issuedAt'])) &&
@@ -139,8 +148,12 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
   }): Promise<SourcesStagingReceipt> {
     return this.withShared(async () => {
       this.assertCommon(input);
-      if (input.bytes.byteLength <= 0 || input.bytes.byteLength > MAX_BYTES) {
-        return fail('VALIDATION_ERROR', 'Sources staging accepts between 1 byte and one MiB.');
+      const maximumBytes = maxBytesForKind(input.kind);
+      if (input.bytes.byteLength <= 0 || input.bytes.byteLength > maximumBytes) {
+        return fail(
+          'VALIDATION_ERROR',
+          `Sources staging accepts between 1 byte and ${input.kind === 'FILE' ? '10 MiB' : 'one MiB'}.`,
+        );
       }
       if (input.kind === 'DIRECT_TEXT' && input.mediaType !== 'text/plain') {
         return fail('VALIDATION_ERROR', 'Direct Text staging requires text/plain.');

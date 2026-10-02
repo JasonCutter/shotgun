@@ -4,6 +4,7 @@ import {
   validateCorpus,
   validateRecordedPredictionSet,
 } from '../../packages/quality-evaluation/src/index.js';
+import { DEFAULT_CANDIDATE_PROMPT_VERSION } from '../../modules/ai-provider/src/index.js';
 import { loadQualityCorpus } from '../helpers/quality-evaluation.js';
 import { executeStage4ClaimBaseline } from '../helpers/quality-stage4.js';
 
@@ -26,7 +27,7 @@ describe('Quality Claim Baseline Stage 4 execution', () => {
       recordingSource: 'stage4-runtime',
       providerName: 'fake',
       providerModel: 'shotgun-direct-copy',
-      promptVersion: 'direct-claim-v1',
+      promptVersion: DEFAULT_CANDIDATE_PROMPT_VERSION,
       policyVersion: 'direct-only-v1',
     });
     expect(first.predictions.outputDigest).toBe(second.predictions.outputDigest);

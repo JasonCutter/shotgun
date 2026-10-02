@@ -1,0 +1,578 @@
+{
+  "contractVersion": "1.0.0",
+  "corpusId": "shotgun-vp-finance-pdf-claim-markers",
+  "corpusVersion": "1.9.0",
+  "labelSetRevision": 10,
+  "corpusDigest": "sha256:eefc1cdcf35bc92a382f366eebf2f647edea283bf3dbb6b300f1cf1bab75aa5d",
+  "labelReviewStatus": "CANDIDATE",
+  "source": {
+    "sha256": "bb413ea6a4864f4a0e21b8979b3f8eef1a9b99b42198eb1a8eef79e156b90d01",
+    "pageCount": 10,
+    "dataClassification": "USER_PROVIDED",
+    "note": "The source PDF remains external; this fixture stores its hash and short page-grounded markers only."
+  },
+  "markers": [
+    {
+      "id": "balance-sheet-equation",
+      "page": 1,
+      "text": "1억원=6천만원+4천만원",
+      "dimension": "numeric-equation"
+    },
+    {
+      "id": "current-ratio-result",
+      "page": 2,
+      "text": "200%",
+      "requiredText": "유동비율",
+      "dimension": "numeric-ratio"
+    },
+    {
+      "id": "operating-profit-result",
+      "page": 3,
+      "text": "400만원",
+      "requiredText": "영업이익",
+      "dimension": "numeric-result"
+    },
+    {
+      "id": "future-value-example",
+      "page": 5,
+      "text": "121만원",
+      "requiredText": "FV =",
+      "dimension": "numeric-time-value"
+    },
+    {
+      "id": "present-value-example",
+      "page": 5,
+      "text": "100만원",
+      "requiredText": "PV =",
+      "dimension": "numeric-time-value"
+    },
+    {
+      "id": "npv-example",
+      "page": 6,
+      "text": "150만원",
+      "requiredText": "NPV",
+      "dimension": "numeric-investment-value"
+    },
+    {
+      "id": "irr-example",
+      "page": 7,
+      "text": "IRR은 10%다",
+      "requiredText": "IRR",
+      "requiredEvidenceText": "100 = 110/(1 + r)",
+      "dimension": "numeric-return-rate"
+    },
+    {
+      "id": "beta-example",
+      "page": 9,
+      "text": "1.5%",
+      "requiredText": "움직이는 경향이 있다는 의미다",
+      "dimension": "numeric-market-sensitivity"
+    },
+    {
+      "id": "capm-formula",
+      "page": 9,
+      "text": "E(R_i) = R_f + [E(R_m) − R_f]β_i",
+      "requiredEvidenceText": "E(R_i) = R_f + [E(R_m) − R_f]β_i",
+      "dimension": "numeric-equation"
+    },
+    {
+      "id": "balance-sheet-identity",
+      "page": 1,
+      "text": "자산=부채+자본",
+      "dimension": "accounting-identity"
+    },
+    {
+      "id": "cash-vs-profit-distinction",
+      "page": 3,
+      "text": "이익이 증가했다고 해서 현금도 같은 금액만큼 증가한 것은 아니다",
+      "dimension": "qualification"
+    },
+    {
+      "id": "cash-flow-operating",
+      "page": 3,
+      "text": "기업의 본업과 관련된 현금흐름이다",
+      "requiredEvidenceText": "영업활동 현금흐름",
+      "dimension": "cash-flow-category"
+    },
+    {
+      "id": "cash-flow-investing",
+      "page": 4,
+      "text": "장기간 사용할 자산을 사고파는 활동과 관련된다",
+      "requiredEvidenceText": "투자활동 현금흐름",
+      "dimension": "cash-flow-category"
+    },
+    {
+      "id": "cash-flow-financing",
+      "page": 4,
+      "text": "기업이 필요한 자금을 조달하거나 갚는 활동이다",
+      "requiredEvidenceText": "재무활동 현금흐름",
+      "dimension": "cash-flow-category"
+    },
+    {
+      "id": "discount-rate-present-value",
+      "page": 6,
+      "text": "할인율이 높아질수록 현재가치는 낮아진다",
+      "dimension": "directional-condition"
+    },
+    {
+      "id": "npv-positive-investment-direction",
+      "page": 6,
+      "text": "NPV > 0 → 투자로 기업가치가 증가하는 방향",
+      "dimension": "sign-condition"
+    },
+    {
+      "id": "npv-negative-investment-direction",
+      "page": 6,
+      "text": "NPV < 0 → 투자로 기업가치가 감소하는 방향",
+      "dimension": "sign-condition"
+    },
+    {
+      "id": "irr-definition",
+      "page": 6,
+      "text": "NPV가 0이 되도록 만드는 할인율",
+      "dimension": "definition"
+    },
+    {
+      "id": "beta-above-one",
+      "page": 9,
+      "text": "β > 1: 시장보다 더 크게 움직이는 경향",
+      "dimension": "threshold-condition"
+    },
+    {
+      "id": "beta-below-one",
+      "page": 9,
+      "text": "β < 1: 시장보다 덜 민감하게 움직이는 경향",
+      "dimension": "threshold-condition"
+    },
+    {
+      "id": "systematic-risk-diversification-limit",
+      "page": 8,
+      "text": "분산투자로 완전히 제거할 수 없다",
+      "dimension": "limitation"
+    },
+    {
+      "id": "investment-decision-purpose",
+      "page": 5,
+      "text": "어떤 자산이나 사업에 투자할 것인가",
+      "requiredEvidenceText": "투자결정",
+      "dimension": "finance-decision"
+    },
+    {
+      "id": "financing-decision-purpose",
+      "page": 5,
+      "text": "필요한 자금을 부채와 자기자본 중 어떤 방식으로 마련할 것인가",
+      "requiredEvidenceText": "자본조달결정",
+      "dimension": "finance-decision"
+    },
+    {
+      "id": "dividend-decision-purpose",
+      "page": 5,
+      "text": "벌어들인 이익 중 얼마를 주주에게 배당하고 얼마를 기업 내부에 남길 것인가",
+      "requiredEvidenceText": "배당결정",
+      "dimension": "finance-decision"
+    },
+    {
+      "id": "balance-sheet-point-in-time",
+      "page": 1,
+      "text": "재무상태표는 특정 시점에 기업이 무엇을 가지고",
+      "dimension": "balance-sheet-definition"
+    },
+    {
+      "id": "asset-economic-resource",
+      "page": 1,
+      "text": "보유하거나 통제하는 경제적 자원",
+      "requiredEvidenceText": "자산",
+      "dimension": "balance-sheet-definition"
+    },
+    {
+      "id": "liability-future-obligation",
+      "page": 1,
+      "text": "앞으로 갚아야 할 의무",
+      "requiredEvidenceText": "부채",
+      "dimension": "balance-sheet-definition"
+    },
+    {
+      "id": "equity-shareholder-residual",
+      "page": 1,
+      "text": "자산에서 부채를 뺀 주주의 몫",
+      "requiredEvidenceText": "자본",
+      "dimension": "balance-sheet-definition"
+    },
+    {
+      "id": "current-asset-definition",
+      "page": 1,
+      "text": "1년 이내에 현금화되거나 사용될 가능성",
+      "dimension": "asset-liquidity"
+    },
+    {
+      "id": "noncurrent-asset-definition",
+      "page": 1,
+      "text": "장기간 기업 활동에 사용되는 자산",
+      "dimension": "asset-liquidity"
+    },
+    {
+      "id": "receivable-uncollected-credit-sale",
+      "page": 2,
+      "text": "외상으로 판매하고 아직 받지 못한 돈",
+      "requiredEvidenceText": "매출채권",
+      "dimension": "accounting-definition"
+    },
+    {
+      "id": "current-liability-one-year",
+      "page": 2,
+      "text": "1년 이내에 갚아야 할 부채",
+      "dimension": "liability-maturity"
+    },
+    {
+      "id": "noncurrent-liability-over-one-year",
+      "page": 2,
+      "text": "상환기간이 1년을 넘는 장기부채",
+      "dimension": "liability-maturity"
+    },
+    {
+      "id": "liability-maturity-near-term-capacity",
+      "page": 2,
+      "text": "가까운 시기에 갚아야 할 돈을 감당할 수 있는지",
+      "dimension": "liability-maturity"
+    },
+    {
+      "id": "income-statement-period-performance",
+      "page": 2,
+      "text": "일정 기간 동안 기업이 얼마나 벌고 얼마나 비용을 썼는지",
+      "dimension": "statement-period"
+    },
+    {
+      "id": "gross-profit-equation",
+      "page": 2,
+      "text": "매출총이익 = 매출액 − 매출원가",
+      "dimension": "accounting-equation"
+    },
+    {
+      "id": "operating-profit-equation",
+      "page": 2,
+      "text": "영업이익 = 매출총이익 − 판매비와관리비",
+      "dimension": "accounting-equation"
+    },
+    {
+      "id": "net-income-after-other-items",
+      "page": 2,
+      "text": "영업외수익·영업외비용과 법인세 등을 반영하면 최종적으로 당기순이익이 계산된다",
+      "dimension": "accounting-definition"
+    },
+    {
+      "id": "operating-profit-core-business",
+      "page": 3,
+      "text": "영업이익은 본업에서 벌어들인 성과",
+      "dimension": "accounting-definition"
+    },
+    {
+      "id": "accrual-basis-event-timing",
+      "page": 3,
+      "text": "거래가 발생한 시점을 기준으로 수익과 비용을 인식",
+      "dimension": "accounting-policy"
+    },
+    {
+      "id": "credit-sale-revenue-before-cash",
+      "page": 3,
+      "text": "매출은 발생할 수 있지만 현금은 아직 들어오지 않았을 수 있다",
+      "dimension": "cash-vs-profit"
+    },
+    {
+      "id": "credit-sale-creates-receivable",
+      "page": 3,
+      "text": "현금 대신 매출채권이 생긴다",
+      "dimension": "cash-vs-profit"
+    },
+    {
+      "id": "financial-statements-and-cashflow-together",
+      "page": 3,
+      "text": "손익계산서와 현금흐름표를 함께 봐야 한다",
+      "dimension": "cash-vs-profit"
+    },
+    {
+      "id": "cashflow-actual-in-and-out",
+      "page": 3,
+      "text": "실제 현금이 어디에서 들어오고 어디로 나갔는지",
+      "dimension": "cash-flow-definition"
+    },
+    {
+      "id": "operating-cashflow-business-activity",
+      "page": 3,
+      "text": "기업의 본업과 관련된 현금흐름",
+      "dimension": "cash-flow-category"
+    },
+    {
+      "id": "investing-cashflow-long-lived-assets",
+      "page": 4,
+      "text": "장기간 사용할 자산을 사고파는 활동",
+      "dimension": "cash-flow-category"
+    },
+    {
+      "id": "equipment-purchase-investing-outflow",
+      "page": 4,
+      "text": "투자활동 현금유출",
+      "requiredEvidenceText": "기계장치를 현금으로 구입하면",
+      "dimension": "cash-flow-example"
+    },
+    {
+      "id": "financing-cashflow-funding-repayment",
+      "page": 4,
+      "text": "필요한 자금을 조달하거나 갚는 활동",
+      "dimension": "cash-flow-category"
+    },
+    {
+      "id": "equity-changes-over-period",
+      "page": 4,
+      "text": "일정 기간 동안 자본이 어떻게 변했는지",
+      "requiredEvidenceText": "자본변동표",
+      "dimension": "statement-period"
+    },
+    {
+      "id": "notes-supplement-detail",
+      "page": 4,
+      "text": "재무제표 본문만으로 설명하기 어려운 세부 내용을 보충",
+      "requiredEvidenceText": "주석",
+      "dimension": "statement-definition"
+    },
+    {
+      "id": "finance-management-three-decisions",
+      "page": 4,
+      "text": "돈을 어떻게 조달하고, 어디에 투자하며, 이익을 어떻게 배분할지",
+      "dimension": "finance-decision"
+    },
+    {
+      "id": "investment-return-above-capital-cost",
+      "page": 5,
+      "text": "투자수익률이 자금조달비용보다 높은지를",
+      "dimension": "investment-condition"
+    },
+    {
+      "id": "today-money-more-valuable",
+      "page": 5,
+      "text": "오늘의 돈과 미래의 돈은 가치가 다르다",
+      "dimension": "time-value"
+    },
+    {
+      "id": "future-value-definition",
+      "page": 5,
+      "text": "현재 돈이 미래에 얼마가 되는지를 계산",
+      "dimension": "time-value"
+    },
+    {
+      "id": "future-value-equation",
+      "page": 5,
+      "text": "FV = PV (1 + r)^n",
+      "dimension": "numeric-equation"
+    },
+    {
+      "id": "present-value-definition",
+      "page": 5,
+      "text": "미래에 받을 돈을 현재 시점의 가치로 바꾼 것",
+      "dimension": "time-value"
+    },
+    {
+      "id": "present-value-equation",
+      "page": 5,
+      "text": "PV = FV/(1 + r)^n",
+      "dimension": "numeric-equation"
+    },
+    {
+      "id": "lower-discount-rate-higher-present-value",
+      "page": 6,
+      "text": "할인율이 낮아지면 현재가치는 높아진다",
+      "dimension": "directional-condition"
+    },
+    {
+      "id": "npv-definition",
+      "page": 6,
+      "text": "투자안이 기업가치를 얼마나 증가시키는지를 금액으로 판단",
+      "dimension": "investment-value"
+    },
+    {
+      "id": "npv-equation",
+      "page": 6,
+      "text": "NPV = 미래 현금흐름의 현재가치 합 − 초기투자액",
+      "dimension": "numeric-equation"
+    },
+    {
+      "id": "npv-measured-as-amount",
+      "page": 6,
+      "text": "NPV는 금액으로 판단한다",
+      "dimension": "investment-value"
+    },
+    {
+      "id": "irr-measures-return-rate",
+      "page": 7,
+      "text": "IRR: 투자안 자체의 수익률이 몇 % 인지",
+      "dimension": "investment-value"
+    },
+    {
+      "id": "capital-has-cost",
+      "page": 7,
+      "text": "주주가 기대하는 수익률이 있기 때문에 공짜 자금이 아니다",
+      "dimension": "capital-cost"
+    },
+    {
+      "id": "equity-capital-cost-definition",
+      "page": 7,
+      "text": "주주가 제공한 자금에 대해 요구하는 수익률",
+      "requiredEvidenceText": "자기자본비용",
+      "dimension": "capital-cost"
+    },
+    {
+      "id": "debt-capital-cost-definition",
+      "page": 7,
+      "text": "부채를 통해 조달한 자금의 비용",
+      "requiredEvidenceText": "타인자본비용",
+      "dimension": "capital-cost"
+    },
+    {
+      "id": "capital-cost-hurdle-rate",
+      "page": 7,
+      "text": "투자안이 최소한 넘어야 할 기준수익률",
+      "dimension": "capital-cost"
+    },
+    {
+      "id": "wacc-total-capital-cost",
+      "page": 7,
+      "text": "기업의 전체 자본비용을 의미",
+      "dimension": "capital-cost"
+    },
+    {
+      "id": "wacc-equation",
+      "page": 7,
+      "text": "자기자본비중 × 자기자본비용 + 부채비중 × 세후타인자본비용",
+      "requiredEvidenceText": "WACC",
+      "dimension": "numeric-equation"
+    },
+    {
+      "id": "risk-return-volatility",
+      "page": 8,
+      "text": "미래 수익률이 기대한 수준과 달라질 가능성",
+      "dimension": "risk-definition"
+    },
+    {
+      "id": "variance-measures-dispersion",
+      "page": 8,
+      "text": "분산이 클수록 수익률이 넓게 퍼져 있다",
+      "dimension": "risk-measure"
+    },
+    {
+      "id": "standard-deviation-measures-volatility",
+      "page": 8,
+      "text": "표준편차가 클수록 수익률 변동성이 크다",
+      "dimension": "risk-measure"
+    },
+    {
+      "id": "volatility-increases-risk",
+      "page": 8,
+      "text": "변동성이 클수록 일반적으로 위험이 큰 방향",
+      "dimension": "risk-measure"
+    },
+    {
+      "id": "portfolio-multiple-assets",
+      "page": 8,
+      "text": "포트폴리오는 여러 자산을 함께 보유하는 것",
+      "dimension": "portfolio-definition"
+    },
+    {
+      "id": "diversification-reduces-company-risk",
+      "page": 8,
+      "text": "여러 종목에 나누어 투자하면 특정 기업에서 발생하는 위험을 줄일 수 있다",
+      "dimension": "diversification"
+    },
+    {
+      "id": "beta-definition",
+      "page": 9,
+      "text": "시장이 움직일 때 개별 자산이 얼마나 민감하게 움직이는지",
+      "dimension": "beta-definition"
+    },
+    {
+      "id": "beta-equals-market-movement",
+      "page": 9,
+      "text": "β = 1: 시장과 비슷한 정도로 움직이는 경향",
+      "dimension": "threshold-condition"
+    },
+    {
+      "id": "beta-increases-systematic-risk",
+      "page": 9,
+      "text": "베타가 클수록 시장 변화에 민감하고 체계적 위험이 큰 방향",
+      "dimension": "threshold-condition"
+    },
+    {
+      "id": "capm-explains-risk-and-return",
+      "page": 9,
+      "text": "위험과 기대수익률의 관계를 설명하는 모형",
+      "dimension": "model-definition"
+    },
+    {
+      "id": "beta-increases-required-return",
+      "page": 9,
+      "text": "베타가 커질수록 요구되는 기대수익률도 커지는 방향",
+      "dimension": "investment-condition"
+    },
+    {
+      "id": "higher-risk-requires-higher-return",
+      "page": 9,
+      "text": "위험을 더 많이 부담한다면 투자자는 더 높은 수익률을 요구",
+      "dimension": "risk-return-condition"
+    }
+  ],
+  "nonClaims": [
+    {
+      "id": "isolated-land-label",
+      "text": "토지",
+      "dimension": "incomplete-list-fragment"
+    },
+    {
+      "id": "isolated-building-label",
+      "text": "건물",
+      "dimension": "incomplete-list-fragment"
+    },
+    {
+      "id": "isolated-machinery-label",
+      "text": "기계장치",
+      "dimension": "incomplete-list-fragment"
+    },
+    {
+      "id": "fragmented-capm-symbols",
+      "text": "i f m f i",
+      "dimension": "incomplete-formula-fragment"
+    },
+    {
+      "id": "dangling-conclusion-marker",
+      "text": "라고 연결하면 된다 .",
+      "dimension": "incomplete-sentence-continuation"
+    },
+    {
+      "id": "beta-example-explanation-fragment",
+      "text": "움직이는 경향이 있다는 의미다 .",
+      "dimension": "incomplete-sentence-continuation"
+    },
+    {
+      "id": "isolated-cash-label",
+      "text": "현금",
+      "dimension": "incomplete-list-fragment"
+    },
+    {
+      "id": "isolated-inventory-label",
+      "text": "재고자산",
+      "dimension": "incomplete-list-fragment"
+    },
+    {
+      "id": "isolated-payroll-action",
+      "text": "급여 지급",
+      "dimension": "incomplete-list-fragment"
+    },
+    {
+      "id": "isolated-interest-rate-risk-example",
+      "text": "금리 급등",
+      "dimension": "incomplete-list-fragment"
+    },
+    {
+      "id": "orphan-equation-symbol",
+      "text": "NPV",
+      "dimension": "incomplete-formula-fragment"
+    }
+  ]
+}

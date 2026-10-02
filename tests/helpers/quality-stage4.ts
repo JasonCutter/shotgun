@@ -1,4 +1,6 @@
 import { FakeAIProviderAdapter } from '../../adapters/ai-provider-fake/src/index.js';
+import { LucasAugmentedPlainTextAdapter } from '../../adapters/plain-text-lucas-augmented/src/index.js';
+import { DEFAULT_CANDIDATE_PROMPT_VERSION } from '../../modules/ai-provider/src/index.js';
 import type {
   ClaimCandidate,
   EvidenceSpan,
@@ -29,6 +31,7 @@ export type Stage4ClaimBaselineTrace = {
   readonly readyCandidateCount: number;
   readonly rejectedCandidateCount: number;
   readonly validationCount: number;
+  readonly plainTextAdapterVersion: string;
 };
 
 const metricEvidence = (evidence: EvidenceSpan): GoldenEvidence => ({
@@ -84,7 +87,10 @@ export const executeStage4ClaimBaseline = async (
   readonly trace: Stage4ClaimBaselineTrace;
 }> => {
   const provider = new FakeAIProviderAdapter();
-  const { kernel } = await createStage4Harness({ aiProvider: provider });
+  const { kernel } = await createStage4Harness({
+    aiProvider: provider,
+    candidatePromptVersion: DEFAULT_CANDIDATE_PROMPT_VERSION,
+  });
   let candidateCount = 0;
   let readyCandidateCount = 0;
   let rejectedCandidateCount = 0;
@@ -161,7 +167,7 @@ export const executeStage4ClaimBaseline = async (
     providerAdapterVersion: provider.identity.adapterVersion,
     providerModel: provider.identity.model,
     providerModelVersion: provider.identity.model,
-    promptVersion: 'direct-claim-v1',
+    promptVersion: DEFAULT_CANDIDATE_PROMPT_VERSION,
     policyVersion: 'direct-only-v1',
     outputDigest: `sha256:${'0'.repeat(64)}`,
     cases,
@@ -176,6 +182,7 @@ export const executeStage4ClaimBaseline = async (
       readyCandidateCount,
       rejectedCandidateCount,
       validationCount,
+      plainTextAdapterVersion: new LucasAugmentedPlainTextAdapter().identity.version,
     },
   };
 };

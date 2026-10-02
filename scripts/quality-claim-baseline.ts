@@ -46,7 +46,7 @@ const run = createEvaluationRun(corpus.manifest, results, {
   },
   adapterVersions: {
     'fake-ai-provider': predictions.providerAdapterVersion,
-    'lucas-augmented-plain-text': '1.0.0',
+    'lucas-augmented-plain-text': trace.plainTextAdapterVersion,
     'stage2-in-memory': '1.0.0',
     'stage3-in-memory': '1.0.0',
     'stage4-in-memory': '1.0.0',

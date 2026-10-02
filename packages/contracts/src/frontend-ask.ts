@@ -4,6 +4,7 @@ import {
   decodeSourceLibraryQuery,
   type SourceLibraryItemView,
   type SourceLibraryQuery,
+  type ExternalSourceFreshnessView,
 } from './frontend-sources.js';
 
 export const ASK_SCHEMA_VERSION = '1.0.0' as const;
@@ -43,6 +44,7 @@ export type AskCitationView = {
   readonly evidenceId: string;
   readonly evidenceIds?: readonly string[];
   readonly exactQuote?: string;
+  readonly externalSourceFreshness?: ExternalSourceFreshnessView;
 };
 
 export type AskAnswerRunFailure = {
@@ -528,7 +530,15 @@ export const decodeAskSourceSelectionView = (
 export const decodeAskCitationView = (value: unknown, path = 'citation'): AskCitationView => {
   const obj = strictObject(
     value,
-    ['citationId', 'sourceId', 'sourceVersionId', 'evidenceId', 'evidenceIds', 'exactQuote'],
+    [
+      'citationId',
+      'sourceId',
+      'sourceVersionId',
+      'evidenceId',
+      'evidenceIds',
+      'exactQuote',
+      'externalSourceFreshness',
+    ],
     path,
   );
   const citationId = idString(obj.citationId, `${path}.citationId`);
@@ -559,6 +569,37 @@ export const decodeAskCitationView = (value: unknown, path = 'citation'): AskCit
 
   const exactQuote =
     obj.exactQuote !== undefined ? text(obj.exactQuote, `${path}.exactQuote`, 0, 10000) : undefined;
+  const freshnessInput = obj.externalSourceFreshness;
+  const externalSourceFreshness =
+    freshnessInput === undefined
+      ? undefined
+      : (() => {
+          const freshness = strictObject(
+            freshnessInput,
+            ['lastCheckedAt', 'expiresAt', 'state'],
+            `${path}.externalSourceFreshness`,
+          );
+          if (freshness.state !== 'CURRENT' && freshness.state !== 'EXPIRED') {
+            fail(`${path}.externalSourceFreshness.state is unsupported.`);
+          }
+          const state = freshness.state as ExternalSourceFreshnessView['state'];
+          const lastCheckedAt = timestamp(
+            freshness.lastCheckedAt,
+            `${path}.externalSourceFreshness.lastCheckedAt`,
+          );
+          const expiresAt = timestamp(
+            freshness.expiresAt,
+            `${path}.externalSourceFreshness.expiresAt`,
+          );
+          if (Date.parse(expiresAt) <= Date.parse(lastCheckedAt)) {
+            fail(`${path}.externalSourceFreshness.expiresAt must follow lastCheckedAt.`);
+          }
+          return {
+            lastCheckedAt,
+            expiresAt,
+            state,
+          } satisfies ExternalSourceFreshnessView;
+        })();
 
   return {
     citationId,
@@ -567,6 +608,7 @@ export const decodeAskCitationView = (value: unknown, path = 'citation'): AskCit
     evidenceId,
     ...(evidenceIds ? { evidenceIds } : {}),
     ...(exactQuote !== undefined ? { exactQuote } : {}),
+    ...(externalSourceFreshness ? { externalSourceFreshness } : {}),
   };
 };
 

@@ -1,5 +1,6 @@
 export const VP_RELATION_CHOICES = [
   'EQUIVALENT',
+  'SUPPORTS',
   'QUALIFIES',
   'CONTRADICTS',
   'RELATED',
@@ -8,14 +9,25 @@ export const VP_RELATION_CHOICES = [
 
 export type VPRelationChoice = (typeof VP_RELATION_CHOICES)[number];
 
+export const VP_RELATION_DIRECTIONS = ['NONE', 'LEFT_TO_RIGHT', 'RIGHT_TO_LEFT'] as const;
+
+export type VPRelationDirection = (typeof VP_RELATION_DIRECTIONS)[number];
+
+export const VP_DECISION_PROVIDER_PORT_CONTRACT_VERSION = '1.2.0';
+
 export type VPDecisionAssertion = {
   readonly assertionId: string;
   readonly sourceVersionId: string;
   readonly evidenceId: string;
   readonly text: string;
+  /** Bounded exact quote from the same authorized EvidenceSpan, when useful context differs from the claim. */
+  readonly evidenceContext?: string;
+  readonly evidenceContextTruncated?: boolean;
   readonly accessScope: readonly string[];
   readonly sensitivity: 'public' | 'internal' | 'private' | 'restricted';
 };
+
+export const VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT = 2_000;
 
 export type VPRelationDecisionRequest = {
   readonly projectId: string;
@@ -26,10 +38,17 @@ export type VPRelationDecisionRequest = {
   /** Computed by the server from the project and provider privacy policy. */
   readonly externalEgressAllowed: boolean;
   readonly policyRevision: string;
+  /** Present for durable background relation jobs. Interactive corpus probes may omit it. */
+  readonly execution?: {
+    readonly jobId: string;
+    readonly leaseToken: string;
+  };
 };
 
 export type VPRelationDecision = {
   readonly choice: VPRelationChoice;
+  /** Required for SUPPORTS/QUALIFIES; direction is relative to request.left/right. */
+  readonly direction?: VPRelationDirection;
   readonly confidence: number;
   readonly probabilities: Readonly<Partial<Record<VPRelationChoice, number>>>;
   readonly deepAnalysisScore: number;
@@ -43,9 +62,54 @@ export type VPDecisionProviderPort = {
   decideRelation(input: VPRelationDecisionRequest): Promise<VPRelationDecision>;
 };
 
+export type VPDecisionExecutionClaim =
+  | { readonly status: 'STARTED' }
+  | { readonly status: 'OUTPUT_STORED'; readonly decision: VPRelationDecision }
+  | { readonly status: 'OUTCOME_UNKNOWN' };
+
+/** Durable provider-call boundary owned by the VP relation job Adapter. */
+export type VPDecisionExecutionRepositoryPort = {
+  claim(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly leaseToken: string;
+    readonly executionKey: string;
+    readonly requestDigest: string;
+    readonly providerIdentity: string;
+  }): Promise<VPDecisionExecutionClaim>;
+  storeOutput(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly executionKey: string;
+    readonly requestDigest: string;
+    readonly decision: VPRelationDecision;
+  }): Promise<VPRelationDecision>;
+  markOutcomeUnknown(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly executionKey: string;
+    readonly requestDigest: string;
+    readonly code: string;
+  }): Promise<void>;
+};
+
+export class VPDecisionOutcomeUnknownError extends Error {
+  readonly code = 'VP_PROVIDER_OUTCOME_UNKNOWN';
+
+  constructor(
+    message = 'The provider outcome is unknown and will not be sent again automatically.',
+  ) {
+    super(message);
+    this.name = 'VPDecisionOutcomeUnknownError';
+  }
+}
+
 export const validVPRelationDecision = (value: VPRelationDecision): boolean => {
   if (
     !VP_RELATION_CHOICES.includes(value.choice) ||
+    (value.choice === 'SUPPORTS' || value.choice === 'QUALIFIES'
+      ? value.direction !== 'LEFT_TO_RIGHT' && value.direction !== 'RIGHT_TO_LEFT'
+      : value.direction !== undefined && value.direction !== 'NONE') ||
     !value.model ||
     !Number.isFinite(value.confidence) ||
     value.confidence < 0 ||
@@ -94,7 +158,8 @@ export type VPResolvedDecision =
   | {
       readonly status: 'UNRESOLVED';
       readonly reason: 'NO_AUTHORIZED_PROVIDER' | 'PROVIDER_FAILED' | 'INSUFFICIENT_EVIDENCE';
-    };
+    }
+  | { readonly status: 'OUTCOME_UNKNOWN' };
 
 /** The policy, rather than either provider, decides whether a result may proceed. */
 export class VPRelationDecisionRouter {
@@ -140,7 +205,12 @@ export class VPRelationDecisionRouter {
         ) {
           return { status: 'DECIDED', provider: 'JEV', decision };
         }
-      } catch {
+      } catch (error) {
+        // An ambiguous result may already have been accepted and billed.
+        // Never route the same pair to a second provider in that case.
+        if (error instanceof VPDecisionOutcomeUnknownError) {
+          return { status: 'OUTCOME_UNKNOWN' };
+        }
         fastFailed = true;
       }
     }
@@ -161,7 +231,10 @@ export class VPRelationDecisionRouter {
         return { status: 'DECIDED', provider: 'GENERAL_AI', decision };
       }
       return { status: 'UNRESOLVED', reason: 'INSUFFICIENT_EVIDENCE' };
-    } catch {
+    } catch (error) {
+      if (error instanceof VPDecisionOutcomeUnknownError) {
+        return { status: 'OUTCOME_UNKNOWN' };
+      }
       return { status: 'UNRESOLVED', reason: 'PROVIDER_FAILED' };
     }
   }
@@ -185,6 +258,11 @@ export const assertVPDecisionEgress = (input: VPRelationDecisionRequest): void =
       !assertion.sourceVersionId ||
       !assertion.evidenceId ||
       !assertion.text.trim() ||
+      (assertion.evidenceContext !== undefined &&
+        (!assertion.evidenceContext.trim() ||
+          Array.from(assertion.evidenceContext).length >
+            VP_RELATION_EVIDENCE_CONTEXT_CHAR_LIMIT)) ||
+      (assertion.evidenceContextTruncated === true && assertion.evidenceContext === undefined) ||
       assertion.sensitivity === 'restricted' ||
       !input.authorizedSensitivities.includes(assertion.sensitivity) ||
       assertion.accessScope.length === 0 ||

@@ -36,7 +36,8 @@
                     "BoundingBoxSelector",
                     "CellSelector",
                     "ShapeSelector",
-                    "CssSelector"
+                    "CssSelector",
+                    "MarkdownHeadingContext"
                   ]
                 },
                 "page": { "type": "integer", "minimum": 1 },

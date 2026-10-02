@@ -321,5 +321,10 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
         },
       ],
     });
+    const projectedSources = await new PostgresOriginalAssetRepository(
+      pool!,
+    ).listProjectSourceVersions(context.projectId);
+    expect(projectedSources).toHaveLength(1);
+    expect(projectedSources[0]?.externalSourceLastCheckedAt).toBe(context.now);
   });
 });

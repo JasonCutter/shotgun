@@ -7,6 +7,7 @@ import {
   decodeSourceLibraryPageView,
   decodeSourcePreviewView,
   decodeSourceVersionHistoryView,
+  EXTERNAL_SOURCE_FRESHNESS_TTL_MS,
   ShotgunError,
   stableJson,
   type EvidenceListView,
@@ -35,6 +36,8 @@ export type SourcesProjectionRecord = {
   readonly accessScope: readonly string[];
   readonly sensitivity: SourcesSensitivity;
   readonly createdAt: string;
+  /** Last successful fetch for an externally acquired URL SourceVersion. */
+  readonly externalSourceLastCheckedAt?: string;
   readonly stage3State?:
     | 'MATERIALIZED'
     | 'STAGE3_RUNNING'
@@ -277,6 +280,7 @@ export class FrontendSourcesReadCoordinator {
     private readonly storage: SourcesAssetReaderPort,
     private readonly evidence: SourcesEvidenceReaderPort,
     private readonly candidates?: SourcesCandidateReaderPort,
+    private readonly now: () => Date = () => new Date(),
   ) {}
 
   private async authorizedRecords(scope: ServerAuthorizedProjectSourcesReadScope) {
@@ -565,6 +569,20 @@ export class FrontendSourcesReadCoordinator {
     );
     const latest = latestBySource(records)[0];
     if (!latest) return null;
+    const lastCheckedAt = latest.externalSourceLastCheckedAt;
+    const externalSourceFreshness = lastCheckedAt
+      ? (() => {
+          const expiresAt = new Date(Date.parse(lastCheckedAt) + EXTERNAL_SOURCE_FRESHNESS_TTL_MS);
+          return {
+            lastCheckedAt,
+            expiresAt: expiresAt.toISOString(),
+            state:
+              this.now().getTime() < expiresAt.getTime()
+                ? ('CURRENT' as const)
+                : ('EXPIRED' as const),
+          };
+        })()
+      : undefined;
     return decodeSourceDetailView({
       schemaVersion: '1.0.0',
       sourceId,
@@ -586,6 +604,7 @@ export class FrontendSourcesReadCoordinator {
       createdAt: [...records].sort((left, right) => left.versionNumber - right.versionNumber)[0]!
         .createdAt,
       updatedAt: latest.createdAt,
+      ...(externalSourceFreshness ? { externalSourceFreshness } : {}),
     });
   }
 

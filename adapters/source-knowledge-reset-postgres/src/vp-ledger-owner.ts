@@ -6,7 +6,15 @@ import {
   type KnowledgeResetOwnerPort,
 } from '../../../modules/source-knowledge-reset/src/index.js';
 
-const KEYS = ['jobs', 'assertions', 'relations', 'decisions', 'events', 'epochs'] as const;
+const KEYS = [
+  'jobs',
+  'provider_calls',
+  'assertions',
+  'relations',
+  'decisions',
+  'events',
+  'epochs',
+] as const;
 type Status = Readonly<Record<(typeof KEYS)[number], number>>;
 
 const readStatus = async (pool: Pool, context: KnowledgeResetOwnerContext): Promise<Status> => {

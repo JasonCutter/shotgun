@@ -119,3 +119,55 @@ records the recorded and current start tokens, and reserves a fresh identity.
 The reused live PID is never terminated. This is a recovery clarification
 within the existing local launcher boundary and does not create a new Product
 or runtime authority.
+
+### 2026-09-30 — VP-07 supervised application restart
+
+The canonical launcher remains the sole owner of `.data/launcher/runtime.json`
+and now supervises a replaceable application child through Node's built-in
+`child_process.fork` IPC. The child executes the existing `runLaunch` path,
+including environment validation, SPA build, non-destructive database/schema
+checks, T3 launch recovery, application startup, and the existing HTTP/SPA
+readiness test. It sends `ready` only after that complete boundary succeeds.
+The parent then marks the runtime `ready` and opens the browser once. If the
+child exits, the parent immediately returns the identity to `starting`, applies
+bounded exponential restart delay (1 to 30 seconds), and retries temporary
+database/network startup failures or an unexpected post-readiness exit. A
+configuration, schema, port, or build failure is reported and ends supervision
+without retry. SIGINT/SIGTERM stop the child and release only the parent's
+matching PID/nonce identity. If the owner process disappears, the child
+fail-closes on IPC disconnect.
+
+The process supervisor does not write Product data or claim that backup,
+database restore, cutover, rollback, or full VP-07 recovery acceptance has
+passed. These remain separately verified launch/release gates.
+
+#### OSS integration decision
+
+| Candidate                 | Source and reviewed pin                                                                                              | Decision          | Scope and boundary                                                                                                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node.js child process API | [nodejs/node](https://github.com/nodejs/node), runtime `v24.15.0`; MIT                                               | `NO_RELEVANT_OSS` | Existing Node runtime's built-in `fork`/IPC only; no new dependency or lockfile entry. The runtime version is recorded as the local verification baseline, not as a Shotgun package adoption. |
+| PM2                       | [Unitech/pm2](https://github.com/Unitech/pm2), `v7.0.4`, commit `cd6b1b4c592117212d7349d6932288613f336c15`; AGPL-3.0 | `REJECT`          | Would add a separate daemon/process-identity authority and copyleft deployment review. Its Windows startup hook also requires an external package. No PM2 code or runtime is included.        |
+| gbrain Minion recovery    | [garrytan/gbrain](https://github.com/garrytan/gbrain), commit `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`; MIT        | `REFERENCE_ONLY`  | Existing Job retry/lease patterns were reviewed; the gbrain runtime does not supervise this local desktop process or own its launcher identity.                                               |
+
+This change adds a Shotgun-owned runtime process boundary because no examined
+OSS supervisor fits the canonical PID/nonce ownership and local Windows
+launcher contract. `tests/unit/launch-supervisor.test.ts` covers transient and
+terminal startup failures, readiness, phase transitions, browser-once behavior
+and restart; `tests/integration/launch-supervisor-process.test.ts` exercises
+the real Node child process and IPC shutdown/restart path. No database
+migration is required. On 2026-10-01, a guarded disposable PostgreSQL database
+and local TCP proxy test also verified active session loss, a failed child
+startup while connections were blocked, and application readiness after
+connections returned. A second disposable-container test then stopped and
+restarted the pinned PostgreSQL server: after the database returned at the
+same loopback address, the supervisor started a replacement child and its
+authenticated project-list API returned the persisted project. The test also
+confirmed the PostgreSQL postmaster start time changed and the row remained.
+Idle-client `57P01` pool events are handled and logged rather than emitted as
+uncaught process errors. The existing maintenance-lock contract still
+fail-stops the child on session loss; recovery occurs through supervised child
+replacement. These tests do not establish data-bearing Job convergence,
+backup/restore, cutover, or rollback. Full details are in the
+[VP-07 restart report](../../implementation/vp-runtime-restart-supervision-2026-09-30.md).
+Rollback restores the previous in-process launcher entry and removes the
+supervisor module/tests; application modules and Product data remain unchanged.

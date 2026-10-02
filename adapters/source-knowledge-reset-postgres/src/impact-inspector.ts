@@ -8,11 +8,11 @@ import type {
   KnowledgeResetImpactPort,
 } from '../../../modules/source-knowledge-reset/src/index.js';
 
-const EXPECTED_TABLE_COUNT = 202;
-const EXPECTED_TABLE_DIGEST = '11283547b47dd38b50e56d7a0c4949f869fd593a97323d44de09d5f655039532';
-const EXPECTED_CONTENT_COLUMN_COUNT = 167;
+const EXPECTED_TABLE_COUNT = 203;
+const EXPECTED_TABLE_DIGEST = 'af1fca30a9879affd19b17fef16bee8e9973e909b407c4c23179a9b4fe705a3c';
+const EXPECTED_CONTENT_COLUMN_COUNT = 168;
 const EXPECTED_CONTENT_COLUMN_DIGEST =
-  '6e62325d2d2757c8c7c877ebd8b17faaeb67e856645363685a2313b695a309b2';
+  'b4056141bd5994b1eafb7f537d854f529f815d17ae4e575c1a4c52c75777efcb';
 
 type ScopeRow = Readonly<{
   schema_name: string;

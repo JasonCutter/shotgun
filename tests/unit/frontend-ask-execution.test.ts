@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { InMemoryAskAnswerExecutionRepository } from '../../adapters/frontend-ask-execution-in-memory/src/index.js';
 import {
@@ -53,6 +53,25 @@ const provider = (execute: AskAnswerProviderPort['execute']): AskAnswerProviderP
 });
 
 describe('AskAnswerExecutionService', () => {
+  it('serves active run and event polls without resolving the Evidence context again', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot());
+    const resolveContext = vi.spyOn(repository, 'getRunContext');
+    const service = new AskAnswerExecutionService(
+      repository,
+      provider(async () => {
+        throw new Error('A queued status read must not invoke the provider.');
+      }),
+    );
+
+    const current = await service.getAnswerRun(scope, 'run-1');
+    const events = await service.events(scope, 'run-1');
+
+    expect(current.state).toBe('QUEUED');
+    expect(events.map((event) => [event.kind, event.state])).toEqual([['STATE', 'QUEUED']]);
+    expect(resolveContext).not.toHaveBeenCalled();
+  });
+
   it('persists partial events and validates citations before success', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
     repository.register(snapshot(), [
@@ -95,6 +114,111 @@ describe('AskAnswerExecutionService', () => {
       'PARTIAL',
       'COMPLETED',
     ]);
+  });
+
+  it('refreshes a moving VP snapshot at most twice before publishing Ask', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot(), [
+      {
+        evidenceId: 'evidence-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        exactQuote: 'The source quote.',
+        sensitivity: 'internal',
+      },
+    ]);
+    const persist = repository.complete.bind(repository);
+    let completionAttempts = 0;
+    vi.spyOn(repository, 'complete').mockImplementation(async (input) => {
+      completionAttempts += 1;
+      if (completionAttempts < 3) {
+        throw new ShotgunError({
+          code: 'STALE_VERSION',
+          safeMessage: 'The VP snapshot changed during Ask.',
+          module: 'frontend-ask-execution-postgres',
+          operation: 'complete-vp-snapshot',
+          retryable: true,
+        });
+      }
+      return persist(input);
+    });
+    let providerCalls = 0;
+    const service = new AskAnswerExecutionService(
+      repository,
+      provider(async () => {
+        providerCalls += 1;
+        return {
+          answer: 'The source quote.',
+          citations: [{ evidenceId: 'evidence-1' }],
+          provider: { provider: 'test-provider', model: 'test-model' },
+        };
+      }),
+    );
+
+    const stop = await service.startWorker(5);
+    try {
+      await expect
+        .poll(async () => (await repository.getRunContext(scope, 'run-1'))?.snapshot.state)
+        .toBe('SUCCEEDED');
+      const completed = await repository.getRunContext(scope, 'run-1');
+      expect(completed?.snapshot.attemptNumber).toBe(3);
+      expect(completed?.snapshot.statements[0]?.text).toBe('The source quote.');
+      expect(providerCalls).toBe(3);
+      expect(completionAttempts).toBe(3);
+    } finally {
+      await stop();
+    }
+  });
+
+  it('stops after three failed VP snapshot publication attempts', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot(), [
+      {
+        evidenceId: 'evidence-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        exactQuote: 'The source quote.',
+        sensitivity: 'internal',
+      },
+    ]);
+    let completionAttempts = 0;
+    vi.spyOn(repository, 'complete').mockImplementation(async () => {
+      completionAttempts += 1;
+      throw new ShotgunError({
+        code: 'STALE_VERSION',
+        safeMessage: 'The VP snapshot changed during Ask.',
+        module: 'frontend-ask-execution-postgres',
+        operation: 'complete-vp-snapshot',
+        retryable: true,
+      });
+    });
+    let providerCalls = 0;
+    const service = new AskAnswerExecutionService(
+      repository,
+      provider(async () => {
+        providerCalls += 1;
+        return {
+          answer: 'The source quote.',
+          citations: [{ evidenceId: 'evidence-1' }],
+          provider: { provider: 'test-provider', model: 'test-model' },
+        };
+      }),
+    );
+
+    const stop = await service.startWorker(5);
+    try {
+      await expect
+        .poll(async () => (await repository.getRunContext(scope, 'run-1'))?.snapshot.state)
+        .toBe('FAILED');
+      const failed = await repository.getRunContext(scope, 'run-1');
+      expect(failed?.snapshot.attemptNumber).toBe(3);
+      expect(failed?.snapshot.failure?.code).toBe('STALE_VERSION');
+      expect(failed?.snapshot.statements).toEqual([]);
+      expect(providerCalls).toBe(3);
+      expect(completionAttempts).toBe(3);
+    } finally {
+      await stop();
+    }
   });
 
   it('fails closed for a citation outside the selected Evidence', async () => {

@@ -24,6 +24,10 @@ import type {
   OrderingStorePort,
   ReplayAuthorization,
 } from '../../../packages/connector-runtime/src/ports.js';
+import {
+  CONNECTOR_RUNTIME_LEASE_DURATION_MS,
+  CONNECTOR_RUNTIME_LEASE_HEARTBEAT_MS,
+} from '../../../packages/connector-runtime/src/ports.js';
 import type {
   DeadLetterEntry,
   DeadLetterKind,
@@ -401,12 +405,31 @@ const mapJob = (row: JobRow, attempts: readonly AttemptRow[]): JobRecord => ({
 
 export class PostgresJobRuntime implements JobRuntimePort {
   private readonly workerId = `connector-runtime:${process.pid}:${randomUUID()}`;
+  private readonly leaseDurationMs: number;
+  private readonly heartbeatIntervalMs: number;
 
   constructor(
     private readonly pool: Pool,
     private readonly maxAttempts = 3,
     private readonly baseDelayMs = 1,
-  ) {}
+    options: {
+      readonly leaseDurationMs?: number;
+      readonly heartbeatIntervalMs?: number;
+    } = {},
+  ) {
+    this.leaseDurationMs = options.leaseDurationMs ?? CONNECTOR_RUNTIME_LEASE_DURATION_MS;
+    this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? CONNECTOR_RUNTIME_LEASE_HEARTBEAT_MS;
+    if (!Number.isSafeInteger(this.leaseDurationMs) || this.leaseDurationMs <= 0) {
+      throw new Error('Connector job lease duration must be a positive safe integer.');
+    }
+    if (
+      !Number.isSafeInteger(this.heartbeatIntervalMs) ||
+      this.heartbeatIntervalMs <= 0 ||
+      this.heartbeatIntervalMs >= this.leaseDurationMs
+    ) {
+      throw new Error('Connector job lease heartbeat must be positive and shorter than its lease.');
+    }
+  }
 
   async enqueue(input: {
     readonly jobId: string;
@@ -467,7 +490,8 @@ export class PostgresJobRuntime implements JobRuntimePort {
     const result = await this.pool.query(
       `UPDATE connector.jobs
        SET lease_expires_at=clock_timestamp() + ($4 * interval '1 millisecond'), updated_at=clock_timestamp()
-       WHERE job_id=$1 AND lease_owner=$2 AND fencing_token=$3 AND status='running'`,
+       WHERE job_id=$1 AND lease_owner=$2 AND fencing_token=$3 AND status='running'
+         AND lease_expires_at IS NOT NULL AND lease_expires_at > clock_timestamp()`,
       [input.jobId, input.leaseOwner, input.fencingToken, input.leaseDurationMs],
     );
     return result.rowCount === 1;
@@ -584,7 +608,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
   async run<TResult>(
     identity: ConnectorSemanticIdentity,
     correlationId: string,
-    operation: (attempt: AttemptRecord) => Promise<TResult>,
+    operation: (attempt: AttemptRecord, signal: AbortSignal) => Promise<TResult>,
   ): Promise<JobRunResult<TResult>> {
     const dedup = await this.pool.query<{ dedup_record_id: string; job_id: string }>(
       `SELECT dedup_record_id, job_id FROM connector.dedup_records
@@ -648,7 +672,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
       const lease = await this.claim({
         jobId,
         leaseOwner: this.workerId,
-        leaseDurationMs: 300_000,
+        leaseDurationMs: this.leaseDurationMs,
       });
       if (!lease) {
         throw new ShotgunError({
@@ -685,8 +709,70 @@ export class PostgresJobRuntime implements JobRuntimePort {
       );
       let operationSucceeded = false;
       try {
-        const result = await operation(attempt);
+        const leaseController = new AbortController();
+        let leaseLoss: ShotgunError | undefined;
+        let heartbeatInFlight: Promise<void> | undefined;
+        const renewLease = async (): Promise<void> => {
+          try {
+            const renewed = await this.renew({
+              jobId,
+              leaseOwner: this.workerId,
+              fencingToken,
+              leaseDurationMs: this.leaseDurationMs,
+            });
+            if (!renewed) {
+              throw new ShotgunError({
+                code: 'OUTCOME_UNKNOWN',
+                safeMessage: 'The durable job lease was lost while its handler was running.',
+                module: 'connector-runtime-postgres',
+                operation: 'job-heartbeat',
+                correlationId,
+              });
+            }
+          } catch (error) {
+            if (!leaseLoss) {
+              leaseLoss = toShotgunError(error, {
+                code: 'OUTCOME_UNKNOWN',
+                safeMessage: 'The durable job lease could not be renewed safely.',
+                module: 'connector-runtime-postgres',
+                operation: 'job-heartbeat',
+                correlationId,
+              });
+              leaseController.abort(leaseLoss);
+            }
+          }
+        };
+        const heartbeat = setInterval(() => {
+          if (heartbeatInFlight || leaseLoss) return;
+          const pending = renewLease();
+          heartbeatInFlight = pending;
+          void pending.finally(() => {
+            if (heartbeatInFlight === pending) heartbeatInFlight = undefined;
+          });
+        }, this.heartbeatIntervalMs);
+        heartbeat.unref();
+        let result: TResult | undefined;
+        let operationReturned = false;
+        let operationFailed = false;
+        let operationError: unknown;
+        try {
+          result = await operation(attempt, leaseController.signal);
+          operationReturned = true;
+        } catch (error) {
+          operationFailed = true;
+          operationError = error;
+        } finally {
+          clearInterval(heartbeat);
+          const pendingHeartbeat = heartbeatInFlight;
+          if (pendingHeartbeat) await pendingHeartbeat;
+        }
+        if (leaseLoss) {
+          operationSucceeded = operationReturned;
+          throw leaseLoss;
+        }
+        if (operationFailed) throw operationError;
         operationSucceeded = true;
+        const completedResult = result as TResult;
         const attemptCompletion = await this.pool.query(
           `UPDATE connector.job_attempts AS a
            SET status='succeeded', finished_at=clock_timestamp()
@@ -710,7 +796,14 @@ export class PostgresJobRuntime implements JobRuntimePort {
             correlationId,
           });
         }
-        if (!(await this.complete({ jobId, leaseOwner: this.workerId, fencingToken, result }))) {
+        if (
+          !(await this.complete({
+            jobId,
+            leaseOwner: this.workerId,
+            fencingToken,
+            result: completedResult,
+          }))
+        ) {
           throw new ShotgunError({
             code: 'OUTCOME_UNKNOWN',
             safeMessage: 'The job lease was lost before completion was acknowledged.',
@@ -729,7 +822,7 @@ export class PostgresJobRuntime implements JobRuntimePort {
             correlationId,
           });
         }
-        return { result, job };
+        return { result: completedResult, job };
       } catch (error) {
         const observedError = toShotgunError(error, {
           code: 'TERMINAL_FAILURE',
@@ -1273,6 +1366,40 @@ export class PostgresOrderingStore implements OrderingStorePort {
       },
       { module: 'connector-runtime-postgres', operation: 'acquire-partial-order' },
     );
+  }
+
+  async renew(input: {
+    readonly identity: ConnectorSemanticIdentity;
+    readonly envelope: AnyEnvelope;
+    readonly jobId: string;
+    readonly fencingToken: number;
+    readonly leaseDurationMs: number;
+  }): Promise<boolean> {
+    if (input.envelope.orderingKey === undefined || input.envelope.sequence === undefined) {
+      return true;
+    }
+    const result = await this.pool.query(
+      `UPDATE connector.ordering_checkpoints
+       SET claim_expires_at=clock_timestamp() + ($9 * interval '1 millisecond'),
+           updated_at=clock_timestamp()
+       WHERE project_id=$1 AND security_scope=$2 AND consumer_id=$3
+         AND message_kind=$4 AND message_type=$5 AND ordering_key=$6
+         AND claim_sequence=$7 AND claim_job_id=$8 AND claim_fence_token=$10
+         AND claim_expires_at IS NOT NULL AND claim_expires_at > clock_timestamp()`,
+      [
+        input.identity.projectId,
+        input.identity.securityScope,
+        input.identity.consumerId,
+        input.identity.messageKind,
+        input.identity.messageType,
+        input.envelope.orderingKey,
+        input.envelope.sequence,
+        input.jobId,
+        input.leaseDurationMs,
+        input.fencingToken,
+      ],
+    );
+    return result.rowCount === 1;
   }
 
   async commit(

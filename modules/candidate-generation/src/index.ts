@@ -15,6 +15,12 @@ import listClaimCandidatesOutputSchema from '../../../packages/contracts/schemas
 import listClaimCandidatesSchema from '../../../packages/contracts/schemas/list-claim-candidates.v1.schema.json';
 import listClaimCandidatesByRevisionOutputSchema from '../../../packages/contracts/schemas/list-claim-candidates-by-revision-output.v1.schema.json';
 import listClaimCandidatesByRevisionSchema from '../../../packages/contracts/schemas/list-claim-candidates-by-revision.v1.schema.json';
+import {
+  alignDirectClaimToEvidence,
+  findCompleteSourceStatement,
+  isClearlyIncompleteDirectClaimFragment,
+  splitAtCompletePhysicalLines,
+} from './direct-claim-shape.js';
 import listEvidenceSpansOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-output.v1.schema.json';
 import listEvidenceSpansSchema from '../../../packages/contracts/schemas/list-evidence-spans.v1.schema.json';
 import listEvidenceSpansByRevisionOutputSchema from '../../../packages/contracts/schemas/list-evidence-spans-by-revision-output.v1.schema.json';
@@ -168,6 +174,41 @@ const reextractBatchKey = (
   requestId: string,
 ) =>
   `${projectId}:${sourceVersionId}:${revisionId}:candidate-reextract:${requestId}:direct-claim-v2:direct-only-v1`;
+
+const materialQualifierPatterns = [
+  /[-+]?\d[\d,]*(?:\.\d+)?\s*(?:%|％|퍼센트|(?:천만|백만|조|억|천|백|십|만)?(?:원|달러|유로|위안)|개|명|건|회|배|년|개월|주|일|시간|분|초|kg|mg|g|km|cm|mm|m|L|ml|℃|°C)?/giu,
+  /(?:이상이면|이하이면|초과하면|미만이면|이내이면|이상|이하|초과|미만|이내|까지|부터|동안|이후|이전|현재|당시|전후|불가|없(?:다|는|으며|습니다)|않(?:다|는|으며|습니다)|아니(?:다|며|고)|\bnot\b|\bnever\b|\bonly\b|\bif\b|\bwhen\b|\bunless\b|\bbefore\b|\bafter\b|\bduring\b|\bwithin\b|\bat least\b|\bat most\b|\bmore than\b|\bless than\b|\bapproximately\b|\babout\b)/giu,
+];
+
+const materialQualifiers = (statement: string): readonly string[] =>
+  materialQualifierPatterns.flatMap((pattern) =>
+    [...statement.matchAll(pattern)].map((match) => match[0].trim()).filter(Boolean),
+  );
+
+const splitV4CandidateStatements = (claimText: string): readonly string[] =>
+  claimText
+    // Markdown headings label the following text; the label itself is not a
+    // factual claim. Strip heading-only lines before splitting a model span.
+    .replace(/^#{1,6}[ \t]+[^\r\n]*(?:\r?\n|$)/gmu, '')
+    .split(
+      /(?<=[.!?。！？])(?:\s+|(?=[\p{L}]))|(?=예를\s*들어|예컨대|for example\b|for instance\b|따라서|결론적으로|반면|다만|그러나|이때)|(?<=[%％원건개명회배년개월주일시간분초])[ \t]+(?=[가-힣]{2,}[\s)\]\uFFFD]{0,6}(?:은|는)|(?:현재가치|순현재가치|내부수익률|매출총이익|영업이익|유동비율)\s+(?:PV|NPV|IRR|FV)\b)/giu,
+    )
+    .map((statement) => statement.trim())
+    .flatMap(splitAtCompletePhysicalLines)
+    .filter(Boolean);
+
+const preserveQualifiedV4Claim = (sourceText: string, modelClaimText: string): string => {
+  if (!modelClaimText || !sourceText.includes(modelClaimText)) return modelClaimText;
+  const sentence = findCompleteSourceStatement(sourceText, modelClaimText);
+  if (!sentence) return modelClaimText;
+  const statement =
+    splitV4CandidateStatements(sentence).find((part) => part.includes(modelClaimText)) ?? sentence;
+  const claimLower = modelClaimText.toLocaleLowerCase();
+  const omittedQualifier = materialQualifiers(statement).some(
+    (qualifier) => !claimLower.includes(qualifier.toLocaleLowerCase()),
+  );
+  return omittedQualifier ? statement : modelClaimText;
+};
 
 const publishGenerated = async (
   context: Parameters<NonNullable<ShotgunModule['handlers']['events'][number]['handle']>>[1],
@@ -421,10 +462,11 @@ export const createCandidateGenerationModule = (
     });
     let batch: CandidateBatch;
     try {
-      const allowedEvidence = new Set(evidence.map((item) => item.evidenceId));
+      const evidenceById = new Map(evidence.map((item) => [item.evidenceId, item]));
       const seen = new Set<string>();
       const candidates = generated.candidates.flatMap((item): ClaimCandidate[] => {
-        if (!allowedEvidence.has(item.evidenceId)) {
+        const sourceEvidence = evidenceById.get(item.evidenceId);
+        if (!sourceEvidence) {
           throw new ShotgunError({
             code: 'VALIDATION_ERROR',
             safeMessage: 'AI output referred to evidence outside the request.',
@@ -433,28 +475,72 @@ export const createCandidateGenerationModule = (
             correlationId: envelope.correlationId,
           });
         }
-        const claimText = item.claimText.trim();
-        const fingerprint = sha256Text(stableJson({ claimText, evidenceId: item.evidenceId }));
-        if (!claimText || seen.has(fingerprint)) return [];
-        seen.add(fingerprint);
-        return [
-          {
-            candidateId: randomUUID(),
-            batchId: '',
-            revisionNumber: 1,
-            projectId,
-            sourceVersionId: payload.sourceVersionId,
-            claimText,
-            evidenceIds: [item.evidenceId],
-            evidenceMode: 'DIRECT_EVIDENCE',
-            extractionProfile: 'direct-only',
-            status: 'PENDING_VALIDATION',
-            providerCall: generated.call,
-            accessScope: [...security.accessScope],
-            sensitivity: security.sensitivity,
-            createdAt: envelope.createdAt,
-          },
-        ];
+        const modelClaimText = item.claimText.trim();
+        const usesV4CandidatePolicy =
+          generated.call.promptVersion === 'direct-claim-v4' ||
+          generated.call.promptVersion === 'direct-claim-v5' ||
+          generated.call.promptVersion === 'direct-claim-v6' ||
+          generated.call.promptVersion === 'direct-claim-v7' ||
+          generated.call.promptVersion === 'direct-claim-v8' ||
+          generated.call.promptVersion === 'direct-claim-v9' ||
+          generated.call.promptVersion === 'direct-claim-v10';
+        const sourceAlignedModelClaimText = usesV4CandidatePolicy
+          ? (alignDirectClaimToEvidence(sourceEvidence.quote.exact, modelClaimText) ??
+            modelClaimText)
+          : modelClaimText;
+        const candidateTexts =
+          usesV4CandidatePolicy &&
+          sourceAlignedModelClaimText.length > 0 &&
+          sourceEvidence.quote.exact.includes(sourceAlignedModelClaimText)
+            ? splitV4CandidateStatements(sourceAlignedModelClaimText)
+            : [sourceAlignedModelClaimText];
+        return candidateTexts.flatMap((candidateText): ClaimCandidate[] => {
+          const claimText =
+            generated.call.promptVersion === 'direct-claim-v3' &&
+            modelClaimText.length > 0 &&
+            sourceEvidence.quote.exact.includes(modelClaimText)
+              ? sourceEvidence.quote.exact
+              : generated.call.promptVersion === 'direct-claim-v4' ||
+                  generated.call.promptVersion === 'direct-claim-v5' ||
+                  generated.call.promptVersion === 'direct-claim-v6' ||
+                  generated.call.promptVersion === 'direct-claim-v7' ||
+                  generated.call.promptVersion === 'direct-claim-v8' ||
+                  generated.call.promptVersion === 'direct-claim-v9' ||
+                  generated.call.promptVersion === 'direct-claim-v10'
+                ? preserveQualifiedV4Claim(sourceEvidence.quote.exact, candidateText)
+                : candidateText;
+          const fingerprint = sha256Text(stableJson({ claimText, evidenceId: item.evidenceId }));
+          if (
+            !claimText ||
+            seen.has(fingerprint) ||
+            ((generated.call.promptVersion === 'direct-claim-v7' ||
+              generated.call.promptVersion === 'direct-claim-v8' ||
+              generated.call.promptVersion === 'direct-claim-v9' ||
+              generated.call.promptVersion === 'direct-claim-v10') &&
+              isClearlyIncompleteDirectClaimFragment(claimText))
+          ) {
+            return [];
+          }
+          seen.add(fingerprint);
+          return [
+            {
+              candidateId: randomUUID(),
+              batchId: '',
+              revisionNumber: 1,
+              projectId,
+              sourceVersionId: payload.sourceVersionId,
+              claimText,
+              evidenceIds: [item.evidenceId],
+              evidenceMode: 'DIRECT_EVIDENCE',
+              extractionProfile: 'direct-only',
+              status: 'PENDING_VALIDATION',
+              providerCall: generated.call,
+              accessScope: [...security.accessScope],
+              sensitivity: security.sensitivity,
+              createdAt: envelope.createdAt,
+            },
+          ];
+        });
       });
       const batchId = existing?.batchId ?? randomUUID();
       batch = await repository.saveBatch({

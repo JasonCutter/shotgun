@@ -454,6 +454,13 @@ describe('Sources Workspace', () => {
     await user.selectOptions(screen.getByLabelText('Input type'), 'FILE');
     expect((screen.getByLabelText('File') as HTMLInputElement).accept).toContain('.pptx');
     expect((screen.getByLabelText('File') as HTMLInputElement).accept).toContain('.pdf');
+    const largerThanOneMiB = new File([new Uint8Array(1_048_577)], 'larger-than-one-mib.txt', {
+      type: 'text/plain',
+    });
+    await user.upload(screen.getByLabelText('File'), largerThanOneMiB);
+    expect((screen.getByRole('button', { name: 'Add source' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
   });
 
   it('loads only the exact linked IntakeSubmission and exposes its owner action', async () => {

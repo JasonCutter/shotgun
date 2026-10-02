@@ -4,6 +4,7 @@ import { InMemoryAIProviderCallRepository } from '../../adapters/stage4-in-memor
 import { InProcessTransport } from '../../adapters/transport-in-process/src/index.js';
 import {
   createAIProviderModule,
+  DEFAULT_CANDIDATE_EXTRACTION_TIMEOUT_MS,
   type AIProviderAdapterPort,
 } from '../../modules/ai-provider/src/index.js';
 import {
@@ -56,6 +57,25 @@ const makeQuery = () =>
   });
 
 describe('Stage 4 provider module terminal replay guard', () => {
+  it('gives durable structured extraction the bounded five-minute provider deadline', () => {
+    const module = createAIProviderModule(new InMemoryAIProviderCallRepository(), {
+      identity: {
+        provider: 'test-provider',
+        adapterVersion: 'test-provider-v1',
+        model: 'test-model',
+        dataPolicyVersion: 'test-policy-v1',
+      },
+      async generateStructured() {
+        return { rawText: '{"candidates":[]}' };
+      },
+    });
+
+    expect(
+      module.handlers.queries.find((handler) => handler.messageType === 'GenerateStructured')
+        ?.timeoutMs,
+    ).toBe(DEFAULT_CANDIDATE_EXTRACTION_TIMEOUT_MS);
+  });
+
   it('does not resolve or invoke a provider again after a durable terminal failure', async () => {
     let calls = 0;
     const provider: AIProviderAdapterPort = {

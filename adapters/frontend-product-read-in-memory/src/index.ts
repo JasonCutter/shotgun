@@ -77,6 +77,7 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
   constructor(
     private readonly reviewAvailability?: ReviewNavigationAvailability,
     private readonly sourceCountProjection?: SourceCountProjection,
+    private readonly automaticKnowledgeEnabled = false,
   ) {}
 
   async getShell(
@@ -84,7 +85,9 @@ export class InMemoryGlobalShellProjection implements GlobalShellProjectionPort 
   ): Promise<Omit<GlobalShellView, 'background' | 'notifications'>> {
     const projectReady = input.activeProject !== null;
     const reviewAvailable =
-      projectReady && this.reviewAvailability ? await this.reviewAvailability(input) : false;
+      projectReady && !this.automaticKnowledgeEnabled && this.reviewAvailability
+        ? await this.reviewAvailability(input)
+        : false;
     const sourceCount =
       projectReady && this.sourceCountProjection
         ? await this.sourceCountProjection(input)
@@ -265,7 +268,10 @@ export class InMemoryGlobalSearch implements GlobalSearchPort {
 export type ReviewRouteAvailability = (input: FrontendReadScope) => Promise<boolean>;
 
 export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
-  constructor(private readonly reviewAvailability?: ReviewRouteAvailability) {}
+  constructor(
+    private readonly reviewAvailability?: ReviewRouteAvailability,
+    private readonly automaticKnowledgeEnabled = false,
+  ) {}
 
   async decide(
     input: Parameters<RouteGuardProjectionPort['decide']>[0],
@@ -287,7 +293,8 @@ export class InMemoryRouteGuardProjection implements RouteGuardProjectionPort {
     ]).has(input.requestedRoute.routeId);
     const reviewAvailable =
       input.requestedRoute.routeId !== 'review' ||
-      (input.activeProject !== null &&
+      (!this.automaticKnowledgeEnabled &&
+        input.activeProject !== null &&
         (this.reviewAvailability ? await this.reviewAvailability(input) : false));
     const decision =
       input.resourceProjectId && !resourceProject

@@ -74,3 +74,541 @@ Gemini Adapter
 - Semantic Validation은 기본 프로필에서 `NOT_RUN`이다.
 - 두 번째 실제 공급자는 Stage 4 완료에 포함하지 않고 공통 Fake Adapter 계약으로
   교체 가능성을 고정한다.
+
+## VP-04 PDF 물리 줄 경계 Candidate 분할 재검토 (2026-10-01)
+
+| 후보              | 검토 버전                                                         | 결정             | 범위와 근거                                                                                                                                                                                                                                                                    |
+| ----------------- | ----------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| spaCy Sentencizer | `v3.8.16`, commit `26b4d1dc04a812f426e4bef3e8a1b6f159d6f048`, MIT | `REFERENCE_ONLY` | 공식 컴포넌트는 punctuation 기반 규칙 문장 경계를 제공한다. 이번 작업은 PDF의 시각적 줄·페이지·BBox Evidence를 유지하면서 줄 바꿈 문장과 수식 행을 붙이고 독립 항목만 분리해야 하므로, 일반 문장 분할기는 대상 문제를 해결하지 않는다. spaCy runtime과 모델은 도입하지 않는다. |
+
+- 공식 [Sentencizer 문서](https://spacy.io/api/sentencizer/)와 [v3.8.16 release](https://github.com/explosion/spaCy/releases/tag/v3.8.16), [MIT License](https://github.com/explosion/spaCy/blob/v3.8.16/LICENSE)를 확인했다.
+- GitHub 보안 페이지에는 `SECURITY.md`가 없고 검토일 기준 게시된 보안 권고가 없다. 최신 release는 2026-08-24다.
+- Candidate Generation은 추출된 exact source substring만 분리한다. 물리 줄의 BBox와 offsets는 Stage 8의 고정 `pdfplumber` adapter가 소유한다. 이 구분에 대한 회귀·계약 결과는 [VP finance PDF verification](../vp-finance-pdf-flat-formula-verification-2026-10-01.md)에 기록한다.
+- 직접 구현 근거: `Sentencizer`는 punctuation boundary만 제공하며 PDF geometry, 수식 행, 완전한 claim 경계와 한글 조사로 이어지는 줄 바꿈은 판정하지 않는다. 이미 확보한 Candidate Generation Port와 exact Evidence 검증을 사용하고 새로운 NLP runtime은 추가하지 않는다.
+- 재평가 조건: 여러 문서 형식에서 공통 문장 분할이 필요한 Golden corpus가 정해지면 한국어·수식·목록 경계를 포함한 정밀도/재현율 benchmark를 실행한다.
+
+## VP-04 Direct claim shape and source-span alignment (2026-10-01)
+
+Target: Stage 4 `CandidateGenerationModule` behind its existing Candidate and Evidence contracts; no Provider SDK or Candidate schema change.
+
+| Candidate                                                                          | Reviewed pin and license                                                | Decision                      | Scope and exclusion                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`garrytan/gbrain`](https://github.com/garrytan/gbrain)                            | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, MIT                         | `REFERENCE_ONLY`              | Fact and Job patterns do not supply Korean claim-shape or exact Evidence-span alignment; no Runtime or DB is imported.                                                                                                                       |
+| [`lucasastorian/llmwiki`](https://github.com/lucasastorian/llmwiki)                | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`, Apache-2.0                  | `EXTRACT` (existing decision) | Existing independent conversion and lint extracts remain bounded to their reviewed modules; they do not classify Korean propositions or repair provider whitespace against a unique Evidence span. No new code is extracted for this change. |
+| [`ddsyasas/llm-wiki`](https://github.com/ddsyasas/llm-wiki)                        | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`, MIT                         | `REFERENCE_ONLY`              | Intake/Ask UX only; backend and model client remain excluded.                                                                                                                                                                                |
+| [`inkeep/open-knowledge`](https://github.com/inkeep/open-knowledge)                | `f2834c237639e2cff603817ed88182b33f83cf91`, GPL-3.0                     | `REFERENCE_ONLY`              | Review and graph UX only; no compatible Candidate Generation implementation is reused.                                                                                                                                                       |
+| [spaCy Sentencizer](https://github.com/explosion/spaCy)                            | `v3.8.16`, commit `26b4d1dc04a812f426e4bef3e8a1b6f159d6f048`, MIT       | `REFERENCE_ONLY`              | Punctuation boundaries do not classify Korean claim completeness or align model text to source geometry.                                                                                                                                     |
+| Standalone Korean complete-claim predicate and whitespace-only exact-span recovery | No relevant upstream OSS identified among the pinned Stage 4 candidates | `NO_RELEVANT_OSS`             | Keep the bounded v7/v8 shape guard and unique whitespace-normalized span lookup in Shotgun Candidate Generation; provider text is accepted only as an exact Source Evidence substring after recovery.                                        |
+
+The existing pinned-source security and maintenance reviews remain in [`oss-source-registry.json`](../oss-source-registry.json). No new dependency, model, runtime, or lockfile entry is introduced. The adapter mapping collapses whitespace only for lookup and returns the exact original Evidence slice; it refuses ambiguous matches or any changed non-whitespace character. The v7 shape guard drops isolated lexical/value tokens and bare single-letter sequences; v8 adds one bounded opening-fragment rule for a Korean clause whose preceding condition was omitted. Complete Korean predicate forms and equations remain eligible. The separate Validation module still requires the resulting claim to be an exact contiguous Evidence substring and does not claim semantic truth validation.
+
+Contract and unit coverage checks unique and ambiguous span matches, altered values, isolated terms/values/symbols, Korean propositions, and equations. The supplied-PDF DeepSeek browser run and its corpus result are recorded in the [finance PDF verification report](../vp-finance-pdf-flat-formula-verification-2026-10-01.md). No migration is required. For the original v7 checkpoint, rollback restored v6 and removed the v7-only guard/rebind. The current v8 rollback restores default v7 and removes only the added v8 instruction/guard. Recorded Candidate/Provider revisions remain immutable and can be re-extracted through the existing Candidate materialization command.
+
+## 2026-10-02 direct-claim-v8 incomplete Korean clause guard
+
+The exact finance-PDF candidate audit found a repeated incomplete fragment:
+`이 되게 하는 수익률이 IRR 이다 .` It omits the condition that appears in
+preceding Evidence. The pinned Stage 4 candidates above were reviewed again;
+none provides Korean predicate completeness or safe Evidence rebinding, so the
+existing `CandidateGenerationModule` remains the boundary and the decision is
+still `NO_RELEVANT_OSS`. The default prompt is versioned as
+`direct-claim-v8`; its narrow shape guard drops this opening fragment while
+preserving complete clauses and equations. `direct-claim-v7` remains available
+for replay. Direct Evidence Validation still rejects any non-exact candidate.
+
+Unit and Stage 4 contract tests passed 61/61, and the already approved
+deterministic `quality:gate` passed unchanged (precision 0.636, recall 0.875,
+F1 0.737, unsupported-claim rate 0). A real Chromium + isolated PostgreSQL +
+DeepSeek run with v8 passed 24/24 positive markers and excluded all six
+non-claim canaries. It produced 141 candidate rows and 132 current assertions;
+the variation and non-promoted candidate disposition require complete corpus
+adjudication and remain open. No dependency, model, Provider SDK, Candidate
+schema, or lockfile changed. Rollback restores default v7 and removes the v8
+instruction/guard; immutable provider output and candidate revisions remain
+available. See the [full finance PDF result](../vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-capm-subscript-and-direct-claim-v8-recheck).
+
+## 2026-10-02 structured-generation deadline and durable lease renewal
+
+Target: Stage 4 `GenerateStructured`, the existing `AIProviderAdapterPort`,
+DeepSeek adapter, and the PostgreSQL Connector Runtime. A finance-PDF run with
+111 Evidence spans received HTTP 200, but its body remained incomplete after
+both the prior 60-second and 300-second limits. Each provider attempt was
+recorded `OUTCOME_UNKNOWN`; no output was materialized and no automatic provider
+recall occurred. A selected one-case relation test also reached its 150-second
+test ceiling without a decision. This is evidence of long or stalled responses,
+not an answer-quality result.
+
+The official [DeepSeek rate-limit guidance](https://api-docs.deepseek.com/quick_start/rate_limit/)
+says non-streaming requests may remain open while the service sends empty lines,
+and the server may close a request if inference has not started within 10
+minutes. Shotgun's prior five-minute cutoff could therefore cancel before this
+documented queue interval elapsed. The generation deadline is now 15 minutes;
+connectivity probes retain their 60-second limit. The pending database response
+body is parsed only when complete, and timeout/cancellation still becomes a
+durable `OUTCOME_UNKNOWN` with no automatic provider recall.
+
+The same test exposed that PostgreSQL Job and partial-order leases were set to
+five minutes and never renewed. The existing Job renew Port and a new additive
+ordering renew method are now used at a 60-second cadence while their operation
+is active. A lost or uncertain lease aborts the handler signal; an expired
+lease cannot be renewed back to life. This lets a bounded long-running request
+keep its fencing authority while preserving fail-closed behavior after
+ownership is lost.
+
+| Candidate                                                         | Reviewed version                                       | Decision             | Scope                                                                                                                                                              |
+| ----------------------------------------------------------------- | ------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [garrytan/gbrain](https://github.com/garrytan/gbrain)             | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`, MIT        | `REFERENCE_ONLY`     | Its Job/deadline/recovery patterns were reviewed; the Shotgun Connector Runtime and provider ledger keep owning execution and outcome meaning.                     |
+| [lucasastorian/llmwiki](https://github.com/lucasastorian/llmwiki) | `ad626a3d81be1480e35ef4e94234de8dbb27a61e`, Apache-2.0 | `EXTRACT` (existing) | Its independent conversion and lint extracts do not implement provider deadlines or durable lease ownership.                                                       |
+| [ddsyasas/llm-wiki](https://github.com/ddsyasas/llm-wiki)         | `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c`, MIT        | `REFERENCE_ONLY`     | Its cost/model UX does not supply the Port contract or fenced lease behavior.                                                                                      |
+| [Inkeep OpenKnowledge](https://github.com/inkeep/open-knowledge)  | `f2834c237639e2cff603817ed88182b33f83cf91`, GPL-3.0    | `REFERENCE_ONLY`     | Its activity/review UX does not supply provider execution or lease renewal.                                                                                        |
+| [LiteLLM](https://github.com/BerriAI/litellm)                     | `1.83.7`                                               | `DEFER` (existing)   | A gateway is unnecessary for this bounded timeout/lease correction; re-evaluate if provider routing or failover becomes a separate requirement.                    |
+| Shotgun provider deadline and lease renewal contract              | No relevant OSS                                        | `NO_RELEVANT_OSS`    | No reviewed candidate provides the exact Provider Port, durable `OUTCOME_UNKNOWN`, fenced Job/ordering lease, cancellation, and no-auto-recall semantics together. |
+
+The existing PostgreSQL adapter was augmented without a migration, dependency,
+lockfile, or Source/Candidate schema change. The Job runtime now supplies an
+`AbortSignal` and renews its durable lease; the ordering Port renews the
+current job's ordering fence. Focused PostgreSQL, Stage 4, marker-contract, and
+provider deadline tests passed (46 passed; one separate live test was skipped
+without live credentials enabled). Targeted ESLint passed. Whole-repository
+typecheck and lint report only errors in separate user-owned, untracked TS-7
+tests and are not attributed to this change. The updated DeepSeek live run is
+recorded in the [finance PDF verification report](../vp-finance-pdf-flat-formula-verification-2026-10-01.md#2026-10-02-deepseek-body-stall-and-generation-deadline-correction).
+
+The Open-source Role Matrix remains unchanged because it already assigns
+gbrain's Job/recovery behavior `REFERENCE_ONLY` and PostgreSQL to the existing
+Shotgun Adapter boundary. Rollback restores the earlier provider deadline and
+removes only the new Job and ordering lease renewal paths/tests. The database
+schema is unchanged, so no data migration is needed; existing provider
+receipts, immutable Candidate revisions, and `OUTCOME_UNKNOWN` rows remain
+untouched.
+
+## 2026-10-02 PDF soft-wrap alignment and direct-claim-v9
+
+Target: the existing Stage 4 Candidate Generation and Validation contracts.
+Review of the supplied finance PDF confirmed that its page geometry creates
+line breaks inside Korean words. The model often removes that visual break;
+the former whitespace matcher treated the newline as a real word boundary and
+rejected otherwise exact source claims. The Candidate module now looks up both
+ordinary whitespace normalization and a line-break-omitted view, maps a unique
+match back to the original Evidence offsets, and persists only that exact
+source slice. If more than one source span matches, rebinding still fails
+closed. Validation's exact Evidence substring check is unchanged.
+
+The previously pinned Stage 4 candidates were reviewed again: `gbrain` at
+`a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (MIT), `llmwiki` at
+`ad626a3d81be1480e35ef4e94234de8dbb27a61e` (Apache-2.0), `ddsyasas/llm-wiki`
+at `e8dd69ebba0dc7c395c1b8217bb1c30c14e8c84c` (MIT), Inkeep OpenKnowledge at
+`f2834c237639e2cff603817ed88182b33f83cf91` (GPL-3.0), and spaCy Sentencizer
+`v3.8.16` at `26b4d1dc04a812f426e4bef3e8a1b6f159d6f048` (MIT). Their recorded
+decisions remain `REFERENCE_ONLY`, `EXTRACT` for the existing llmwiki
+converter/lint components, or `NO_RELEVANT_OSS` for exact Korean claim-span
+rebinding. None supplies a line-wrap-aware unique Evidence-span adapter with
+Shotgun's contracts. No new repository, dependency, runtime, lockfile, or
+license/security review was introduced. The existing review records each
+candidate's source, pin, license, security, maintenance, and boundary.
+
+The default extraction prompt is now versioned `direct-claim-v9`. It retains
+the v8 exact-source and incomplete-IRR guard and clarifies that a complete
+Korean directional line may itself be a claim even without a final copula. The
+durable prompt version lets v8 and v9 runs remain distinguishable. Contract
+and unit tests passed 73/73, including exact Evidence restoration, direct
+Validation, and ambiguous-match refusal. The default v9 version is also
+covered by Stage 4 and quality-baseline contracts. `npm run quality:gate`
+passed with precision 0.636, recall 0.875, F1 0.737, unsupported-claim rate
+0, and search citation correctness 1.0.
+
+One real DeepSeek PDF run with v8 and the new exact-span lookup produced
+150/150 `READY` assertions, 80/80 revised page markers, and zero promotions of
+11 non-claim canaries. A v9 full Ask run produced 140/140 exact `READY`
+assertions and zero non-claim promotions, but missed one standalone beta
+expected-return direction marker (79/80). Its following explanation was
+extracted. The v9 prompt explicitly calls out this kind of directional line,
+so the live result shows that prompt wording alone does not establish stable
+completeness; the combined acceptance test remains failed at this assertion.
+All six real Ask scenarios nevertheless answered correctly with the expected
+PDF page citations, projection replay matched, and five relations settled with
+no pending jobs. The provider reported 31,620 tokens over 12 calls; billing
+was not reconciled. Semantic validation remains `NOT_RUN`, and the marker
+labels remain `CANDIDATE` pending independent adjudication.
+
+No migration is required. Rollback restores the default v8 prompt and removes
+the v9 instruction and unique soft-wrap lookup; already recorded exact Evidence
+and immutable Candidate revisions remain available for replay and re-extraction.
+VP-04/05 remain open until the golden labels, repeatable completeness, quality
+limits, and actual provider cost are resolved.
+
+## 2026-10-02 DeepSeek structured-generation repeatability
+
+Target: the existing Stage 4 Candidate Generation and Validation contracts and
+the DeepSeek Decision Port adapter. The current adapter was augmented in
+place (`AUGMENT`); no new OSS runtime, package, database, or canonical boundary
+was introduced. The official [Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion/)
+and [parameter guidance](https://api-docs.deepseek.com/quick_start/parameter_settings/)
+were reviewed on 2026-10-02. The API defaults `temperature` to 1 and recommends
+lower values for more focused, consistent output. Shotgun now defaults the
+DeepSeek structured-generation adapter to `temperature=0.2`, permits a
+constructor override from 0 through 2, and records the exact setting in the
+provider adapter revision (`deepseek-chat-completions-v2-temperature-0.2`).
+This makes a configuration change distinguishable in provider history.
+
+Three repeated real-PDF extraction runs using the previous API default produced
+142, 149, and 161 ready assertions; pairwise normalized claim-set Jaccard
+similarities were 0.912, 0.826, and 0.847 (164-claim union). Three real-PDF
+extraction runs at 0.2 produced 151, 152, and 151 ready assertions; similarities
+were 0.98, 1.00, and 0.98 (149-claim union). All six runs retained 80/80 page
+markers and promoted none of the 11 non-claim canaries. A full Ask run at 0.2
+also passed its four fixed answer-and-page-citation cases, projection replay,
+and relation settlement (5 settled, 0 pending). The full product flow then
+passed once with no test temperature override: 151/151 ready assertions, 80/80
+markers, 0/11 non-claim promotions, the balance-sheet and NPV answers with
+citations, 4/4 fixed Ask cases with correct PDF page citations, replay matched,
+5 relations settled, 0 pending, and 31,046 provider-reported tokens over 11
+calls (21,903 input and 9,143 output). The stored provider revision matched
+`a8-vault-routed-provider-v1/deepseek-chat-completions-v2-temperature-0.2`.
+Using DeepSeek's official [pricing table](https://api-docs.deepseek.com/quick_start/pricing/)
+as of 2026-10-02, `deepseek-flash` cache-miss prices estimate this usage at
+$0.008771 off-peak or $0.017542 at peak. The estimate does not account for
+cached input tokens because the local diagnostic did not retain the cache-hit
+breakdown. DeepSeek says returned API token usage is the source of truth for
+tokens and bills according to current prices ([token usage](https://api-docs.deepseek.com/quick_start/token_usage/)),
+but the account balance/invoice has not been reconciled, so neither estimate
+is recorded as the actual charge.
+However, the two preceding no-override runs timed out waiting for the first Ask
+answer; the answer run stayed `QUEUED` with no attempt while the same-scope
+knowledge-pending check was false. A third run passed in 1.5 minutes. The live
+test now records a bounded worker-context diagnostic if this recurs. This
+intermittency remains a product reliability issue to investigate. These runs
+establish improved repeatability for this PDF corpus, not independent claim
+correctness or a general quality guarantee. The supplied finance-PDF audit
+dump is opt-in and writes candidate/evidence detail only to the local
+operating-system temp directory; it is not checked into the repository.
+
+Unit tests cover the 0.2 default, a caller override, and invalid values;
+adapter/contract checks verify that the versioned identity reaches persisted
+provider diagnostics. The no-override full-flow test passed and asserted that
+identity, but its two preceding queue timeouts mean Ask availability is not yet
+stable. No migration is required. Rollback can set the adapter override to the
+API default 1 or restore the previous adapter revision. Semantic validation
+remains `NOT_RUN`, marker labels remain `CANDIDATE` pending independent
+adjudication, and actual provider billing is not reconciled. VP-04/05 remain
+open.
+
+## 2026-10-02 stable replay, source fidelity, and live audit
+
+The full-flow test now requires three consecutive successful, unchanged replay
+observations with the relation queue complete and no pending, failed, or
+unknown jobs. This closes the test's prior race where a single zero-pending
+snapshot was followed by a newly visible relation job. It changes the test
+synchronization only; no production queue behavior changed.
+
+Two additional default-temperature (`0.2`) runs passed the actual PDF intake,
+DeepSeek extraction, relation processing, Ask answers, citations, and replay.
+The first produced 151 assertions, 80/80 page markers, 0/11 exact non-claim
+promotions, 4/4 fixed Ask answers with the expected page citations, 10 current
+relations (7 `EQUIVALENT`, 3 `RELATED`), and 0 pending jobs. It used 16 provider
+calls and 37,081 reported tokens (27,589 input, 9,492 output); the no-cache
+price estimate is $0.009834 off-peak or $0.019667 at peak. The second produced
+148 assertions, again 80/80 markers and 0/11 exact non-claim promotions, 4/4
+fixed Ask answers with the expected page citations, 8 current relations (5
+`EQUIVALENT`, 3 `RELATED`), and 0 pending jobs. It used 13 calls and 33,457
+reported tokens (24,168 input, 9,289 output); the no-cache estimate is $0.009199
+off-peak or $0.018397 at peak. Both estimates use the official [DeepSeek price
+table](https://api-docs.deepseek.com/quick_start/pricing/) and exclude cached
+input discounts. They are not reconciled to the provider invoice.
+
+An opt-in audit of the second run found that all 148 stored direct assertions
+were exact substrings of their attached Evidence. A separate `pypdf 6.10.0`
+read found 73/80 marker phrases verbatim on their expected PDF page; the other
+seven are formula/symbol text on pages 5, 6, and 9 and were verified in rendered
+page images. This is a source-location check, not a semantic gold review. The
+audit also found five normalized duplicate groups across repeated pages. The
+11 non-claim examples had zero exact promotions, while semantic validation is
+still `NOT_RUN`; the corpus remains `CANDIDATE` and VP-04/05 remain open.
+
+Three default-temperature live runs have now timed out on the first Ask with a
+`QUEUED` run and no attempt despite a same-scope `knowledgePending=false` check.
+The last failure's test-only context diagnostic used an incomplete workspace
+stub and returned `TypeError`; it has been changed to use the real PostgreSQL
+Ask workspace projection and to record a bounded claimability diagnostic in
+the disposable test database. Two subsequent live runs passed, but neither
+exercised that failure diagnostic. Ask queue availability is therefore still
+unresolved, and VP-04/05 remain open.
+
+## 2026-10-02 repeated actual-PDF run after stable replay polling
+
+A further full Product run used the supplied finance PDF, the configured
+DeepSeek `deepseek-flash` provider, `direct-claim-v10`, temperature `0.2`, and
+an isolated PostgreSQL database. It passed in about 1.7 minutes. The run
+created 147 direct assertions; all 147 matched their attached Evidence text,
+all 80 page markers were found, and none of the 11 exact non-claim canaries
+were promoted. All four fixed page-specific Ask cases returned the expected
+answer with citations on pages 2, 3, 5, and 9. Replay matched; eight current
+relations (six `EQUIVALENT`, two `RELATED`) settled with zero pending jobs.
+Fourteen provider responses reported 34,717 tokens (25,331 input and 9,386
+output). Using the DeepSeek [official price table](https://api-docs.deepseek.com/quick_start/pricing/)
+cache-miss prices, this is an estimated $0.009431 off-peak or $0.018863 at
+peak before cache discounts. The account invoice was not reconciled.
+
+This is another successful run of this single candidate corpus, not a gold
+semantic review. The assertion count and current relation set differ from
+the preceding runs. Labels remain `CANDIDATE`, semantic validation is
+`NOT_RUN`, and the prior intermittent queued-Ask failures remain unexplained;
+VP-04/05 are still open.
+
+Two serial Chromium/isolated-PostgreSQL repetitions of the same full Product
+flow then passed in 3.4 minutes total. The runs created 142 and 147 direct
+assertions; both matched all 80/80 page markers, promoted none of the 11
+non-claim canaries, answered all four fixed questions with their expected
+answers and PDF pages (2, 3, 5, and 9), matched projection replay, and settled
+the relation queue with zero pending jobs. Current relation counts differed
+(6, then 12). No first-Ask timeout occurred in these two runs, but the earlier
+three queued-without-attempt timeouts remain unexplained. The changing claim
+and relation counts still need independent adjudication and a documented
+quality bound; the corpus is `CANDIDATE`, semantic validation remains
+`NOT_RUN`, and VP-04/05 remain open.
+
+The separate [independent source audit](../vp-finance-pdf-independent-source-audit-2026-10-02.md)
+checked the selected positive/negative markers, four Ask labels, and one
+generated assertion set against the original PDF. It verified source location
+for that sample; it does not replace a complete gold inventory or bound
+document-wide precision/recall.
+
+## 2026-10-02 Ask worker instrumentation and duplicate-relation variability
+
+To investigate the intermittent first-Ask timeout without changing production
+behavior, the live browser fixture now counts calls and outcomes for
+`recoverInterrupted()` and `claimQueuedForWorker()`. The diagnostic no longer
+claims a queued answer itself. The counters are test-only and expose counts,
+not source text or credentials. Focused TypeScript checking, ESLint, Prettier,
+and `git diff --check` passed for the two changed browser files. The full
+repository typecheck still reports errors in the user-owned, untracked TS7
+acceptance test; that file is unchanged.
+
+One instrumented run completed the supplied PDF product flow using an isolated
+PostgreSQL database and live DeepSeek `deepseek-flash`. It produced 145 direct
+assertions and 145 candidates; all assertions were exact substrings of their
+attached Evidence, all 80 page markers matched, and none of the 11 non-claim
+canaries were promoted. The four fixed Ask cases matched their expected answer
+and page citations (2, 3, 5, 9), replay matched, and all relation work settled.
+The Ask worker recorded 295 recovery scans, 295 queue scans, six claimed runs,
+zero errors, and 289 empty scans. The run used 34 provider responses and
+57,818 reported tokens (45,837 input, 11,981 output); the test does not retain
+the invoice charge or cached-token breakdown.
+
+This run found four normalized duplicate formula groups and an equivalent
+relation for all four. A preceding instrumented product run found only three
+of the same four groups connected by `EQUIVALENT`; its total relation set had
+five edges versus 20 in the later run. All fixed Ask checks passed in both.
+This variance, together with earlier `QUEUED`-without-attempt timeouts, means
+the duplicate consolidation and Ask reliability gates are not established.
+The current successful run shows the worker polling and claiming normally in
+that run; it does not identify the prior stall's cause. Semantic validation
+remains `NOT_RUN`, candidate labels remain `CANDIDATE`, and VP-04/05 remain
+open.
+
+Two serial repetitions with the same test-only counters also passed. They
+created 147 and 151 assertions, each returned all four expected page-grounded
+Ask answers, matched replay, and settled the relation queue. The worker made
+274 and 306 recovery/queue scans, claimed six runs per repetition, and recorded
+no errors. Relation totals were six (3 `EQUIVALENT`, 3 `RELATED`) and ten
+(7 `EQUIVALENT`, 3 `RELATED`). Three of four normalized duplicate formula
+groups had an equivalent edge in the first run; all four did in the second.
+Provider usage was 12 calls / 32,283 tokens and 16 calls / 38,362 tokens.
+These passes show the failure did not recur in this pair; historical queued
+timeouts remain unexplained, and changing claim/relation/edge counts prevent a
+quality or consistency conclusion.
+
+## 2026-10-02 relation candidate frontier measurement
+
+The live fixture now counts eligible assertion pairs separately from persisted
+relation jobs. On the same 151-assertion PDF run, the database contained 11,324
+eligible distinct-text pairs for the current scope and sensitivity. Only five
+had a job under the active policy (four completed, one pending), four provider
+attempts had been claimed, and 11,319 eligible pairs had no job. The replay
+poll had reported zero pending jobs immediately before this diagnostic query.
+The normalized duplicate audit found four of four formula pairs equivalent in
+this particular run.
+
+This demonstrates that replay's `relationQueueComplete` means every persisted
+job is terminal; it does not mean the eligible-pair frontier was exhausted.
+Pair enumeration proceeds incrementally while the worker runs, so a brief
+zero-pending interval can coexist with more eligible pairs and can be followed
+by a newly queued job. Earlier statements that the relation queue “settled”
+refer only to persisted jobs and must not be read as full relation coverage.
+The current default daily attempt ceiling is 100; exhaustive pair comparison
+is not an acceptable completion criterion for an 11k-pair source. Before VP-05
+can pass, Shotgun needs a measured high-recall candidate frontier or deterministic
+duplicate path, plus a truthful backlog/coverage signal and regression tests.
+The existing threshold stress corpus found that the tested `pg_trgm` 0.05
+cutoff lost eight cross-language equivalent examples, so it cannot be adopted
+as a shortcut. No production behavior changed in this measurement. See the
+[VP relation scale characterization](../vp-relation-scale-characterization-2026-09-29.md).
+
+A follow-up run now reads relation counts, job states, eligible-pair counts,
+and duplicate links inside one `REPEATABLE READ` snapshot to avoid mixing
+different worker states. With 142 assertions it found 10,009 eligible pairs,
+25 jobs (all completed), 25 claimed attempts, and 9,984 pairs without a job.
+The snapshot contained 18 relations (13 `EQUIVALENT`, 4 `RELATED`, 1
+`SUPPORTS`) and five normalized duplicate claim groups (four equations and one
+repeated expression), each connected by an `EQUIVALENT` edge. All four
+page-grounded Ask checks passed and replay matched.
+This is a consistent measurement of a partial frontier, not full source-wide
+pair coverage. Eligible pairs are broad syntactic work candidates, not 10,009
+known semantic relationships; only an independently reviewed recall corpus
+can define which are relevant. The candidate backlog is about 99.75% of this
+broad frontier after the observed work, and the replay completion flag still
+does not include unqueued pairs.
+
+## 2026-10-02 deterministic normalized exact-claim linking
+
+Target: the existing `VPKnowledgeLedgerPort` and its PostgreSQL Adapter. The
+direct-claim ingestion path now links a pair as `EQUIVALENT` without a provider
+call only when NFC Unicode normalization and whitespace-run folding produce
+identical text. The comparison uses PostgreSQL's `C` collation. Punctuation,
+numbers, operators, negation, qualifiers, and word order are not normalized.
+Each assertion still stores its original claim and Source Evidence; no claims
+are merged or deleted. The append-only `DETERMINISTIC` receipt records
+`EXACT_TEXT_EQUIVALENCE`, policy `vp-normalized-exact-claim-v2`, and a digest
+bound to the sorted assertion IDs and normalized text.
+
+The relation-job adapter now excludes a pair from semantic provider work only
+when `vp.relations` contains its deterministic exact-equivalence receipt. It
+checks the append-only relation table directly so the all-pairs candidate query
+does not repeatedly expand the current-relation projection. This prevents a
+normalized duplicate from being judged a second time by AI while leaving
+changed values and other non-identical claims eligible for semantic comparison.
+The live frontier diagnostic uses the same receipt-based definition.
+
+| Candidate / reference                                                                                                                                                                                                 | Pin and license                                                                                                          | Decision and boundary                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| PostgreSQL `REL_16_15` commit `7d3e000c5961a544302072058a1184e9a588837b`; the pinned runtime is `pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b` (PostgreSQL License) | PostgreSQL 16.15 in the pinned test runtime; `normalize` and POSIX whitespace handling use built-in PostgreSQL behavior. | Existing PostgreSQL `ADOPT` behind the Shotgun Adapter; no new dependency or OSS-owned schema.                                 |
+| `pg_trgm` 1.6                                                                                                                                                                                                         | PostgreSQL License; same pinned PostgreSQL runtime                                                                       | Existing `AUGMENT` remains ranking-only. It is not used to establish equivalence or prune semantic pairs.                      |
+| `garrytan/gbrain`, `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` (MIT)                                                                                                                                                   | Existing pinned Stage 4 reference                                                                                        | `REFERENCE_ONLY` for relation/history patterns; its Runtime and schema are not imported.                                       |
+| Standalone exact-claim normalization package                                                                                                                                                                          | No relevant package identified among the pinned Stage 4 candidates                                                       | `NO_RELEVANT_OSS`; the bounded whitespace/NFC comparison is a small adapter-local rule and does not transform Source Evidence. |
+
+The PostgreSQL integration regressions feed a Korean assertion with a line break
+and decomposed Hangul jamo, then verify a deterministic equivalent relation,
+unchanged raw assertion text, no cross-sensitivity link, no semantic job for an
+already recorded duplicate, preservation of jobs for changed values, and
+matching projection replay. No migration is required. The existing adapter contract and DB boundary
+remain in place; no new Port was added. Rollback restores byte-exact matching
+and policy `vp-exact-claim-v1`; already-recorded equivalent receipts remain
+append-only because the linked texts differ only by the documented canonical
+and whitespace normalization. Open-source Role Matrix decisions are unchanged;
+this records use of the already pinned PostgreSQL Adapter, not adoption of a
+new component.
+
+Security and maintenance status remain those in the pinned
+[OSS source registry](../oss-source-registry.json); this change adds no package
+to scan and no new upstream code. The PostgreSQL runtime image and upstream
+source commit are immutable pins, and the replacement boundary remains
+`VPKnowledgeLedgerPort`.
+
+## 2026-10-02 Ask snapshot validity during relation updates
+
+**Superseded correction:** the initial implementation recorded here relaxed the
+ADR-172 shortlist comparison to tolerate relation-expanded result changes. That
+change was reverted after review because ADR-172 §12 requires an exact ordered
+Evidence-ID and source-watermark comparison. Keep this section as the original
+failed experiment; the accepted fix and its verification are recorded below.
+
+The real DeepSeek PDF flow reproduced the intermittent Ask stall: after
+151 claims were materialized, the first question remained `QUEUED` for 120
+seconds without a provider attempt while relation work was still adding jobs.
+The worker had resolved a supported context with six Evidence items, but the
+relation-expanded evidence result could change between Ask resolution and its
+claim transaction. The prior validity check reran the full search and required
+the same evidence-ID list, so a relation-only change could keep the queued Ask
+from starting even though its selected source Evidence remained current.
+
+The first fix compared only the accessible source-version watermark and
+verified each selected Evidence ID against its latest SourceVersion. Although
+that removed the observed stall, it did not preserve ADR-172 §12's exact
+shortlist contract and was reverted. No part of that relaxed freshness rule is
+the current implementation.
+
+The isolated PostgreSQL regression now captures a one-source result before a
+semantic relation exists, creates the relation, confirms search now includes
+the related source, and verifies that the original shortlist is stale. A
+missing Evidence ID and changed source watermark also fail the check. The
+uploaded-Source regression verifies that a queued worker refreshes the
+shortlist inside its epoch-locked transaction, then validates and claims that
+same exact list. Both focused database files passed, 3/3 tests total.
+
+The actual Chromium + DeepSeek PDF run under the relaxed implementation passed
+in 1.6 minutes, but is retained only as diagnostic evidence and is not a
+verification of the current strict contract. The first run before that fix
+failed at the first Ask after 120 seconds queued.
+
+### 2026-10-02 exact-shortlist refresh under the epoch lock
+
+The worker now acquires the project knowledge epoch share lock, checks that
+knowledge processing is settled, resolves the current context through that same
+database transaction, and reruns the exact ordered Evidence-ID and
+source-watermark check before it creates the provider attempt. This keeps the
+ADR-172 fail-closed rule: if the shortlist changes after refresh, claim fails
+and is retried. The change stays behind the existing Ask Evidence Search Port
+and PostgreSQL Adapter; PostgreSQL is pinned `ADOPT`, gbrain is
+`REFERENCE_ONLY`, and no package or migration was added.
+
+The isolated PostgreSQL regressions passed 3/3. A fresh actual Chromium +
+DeepSeek run using the supplied finance PDF passed in 2.6 minutes: 148/148
+claims had direct Evidence links; 80/80 curated markers matched; 0/11
+non-claim canaries were promoted; all four fixed Ask answers and expected page
+citations passed; and projection replay matched. Five normalized duplicate
+groups all had `EQUIVALENT` relations. The worker claimed six Ask runs with zero
+claim errors; the relation diagnostic saw 17 active relations and 22/22
+generated jobs complete. This is job-queue convergence only: 10,854 of 10,876
+eligible pairs still had no job. Independent semantic labels, full-document
+precision/recall, high-recall relation coverage, and provider account billing
+remain unverified, so VP-04/05 remain open.
+
+The relation gate remains open. At the post-run diagnostic snapshot, replay
+had observed zero pending jobs, while a subsequent consistent diagnostic found
+seven persisted jobs (six complete, one pending) and 11,317 eligible pairs
+without a job out of 11,324. This is another measured example that persisted
+job convergence is not full frontier completion. Independent semantic labels,
+relation quality limits, high-recall candidate coverage, and account billing
+reconciliation remain unverified; VP-04/05 remain open.
+
+This only short-circuits formatting-only duplicates. It does not reduce or
+complete the remaining semantic pair frontier, validate relation quality on an
+independently adjudicated corpus, or establish provider billing. VP-04/05 remain
+open pending those broader quality, backlog, cost, and repeatability gates.
+
+## 2026-10-02 actual two-source DeepSeek product flow
+
+The Chromium product path uploaded two separately named Markdown sources into
+an isolated empty PostgreSQL knowledge space, extracted one direct assertion
+from each, and called the real DeepSeek provider for the relation and Ask. The
+relation was `EQUIVALENT` at 0.99; Ask answered 200% and cited both sources.
+Projection replay matched. Four provider calls reported 2,654 total tokens.
+
+This verifies one bounded cross-source case, not the full VP-03 acceptance:
+the same source's edited revision, conflict and supersession behavior, failure
+visibility, installed desktop launcher, and repeated question behavior remain
+open. It also does not establish broad semantic precision/recall, relation
+coverage, or invoice-level cost. See the existing [live browser
+scenario](../../../tests/browser/vp-deepseek-full-flow.live.spec.ts).
+
+Follow-up actual DeepSeek browser cases also passed:
+
+- A same-scope `150%` vs `200%` case was recorded as `CONTRADICTS` at 0.94.
+  Ask cited both sources, stated that the source values disagree, and did not
+  choose a winner without evidence. Replay matched; four provider calls used
+  2,723 reported tokens.
+- Two NPV sign conditions produced a `RELATED` model choice at 0.88, below the
+  durable-relation threshold, so no relation was written and the receipt stayed
+  `INSUFFICIENT_EVIDENCE`. Ask still answered both conditional branches with
+  two citations; replay matched. Four provider calls used 2,489 tokens.
+- A 42/43-source flow, A revised to 44, and an empty-database rebuild at the
+  current prompt were logically identical: each had two current assertions,
+  one relation, and two Ask citations. The revised answer included 44 and 43
+  and excluded the obsolete 42. One relation readback diagnostic appeared
+  during the run, but the bounded flow converged and the test passed in 1.2
+  minutes.
+
+These cases add positive equivalence, contradiction, conservative abstention,
+latest-version exclusion, and incremental-vs-clean-rebuild evidence. They do
+not verify the installed launcher or bound broad extraction/relation quality,
+so VP-03/04/05 remain open.

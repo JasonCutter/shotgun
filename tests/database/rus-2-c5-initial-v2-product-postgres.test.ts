@@ -573,8 +573,8 @@ describeDatabase('RUS-2 C5 fresh initial V2 Product PostgreSQL lifecycle', () =>
       expect(afterAHome.attention.some((item) => item.kind === 'REVIEW_DECISION')).toBe(false);
       const afterAGuard = await apiClient.getRouteGuardDecision(reviewRoute);
       expect(afterAGuard).toMatchObject({
-        decision: 'ALLOW',
-        targetRoute: reviewRoute,
+        decision: 'FEATURE_UNAVAILABLE',
+        masked: false,
         activeProjectId: projectId,
       });
 

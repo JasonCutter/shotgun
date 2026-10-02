@@ -32,6 +32,15 @@ export const SOURCES_STAGING_MEDIA_TYPES: readonly SourcesStagingMediaType[] = [
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 ];
 
+export const SOURCES_STAGING_MAX_BYTES = {
+  DIRECT_TEXT: 1_048_576,
+  FILE: 10 * 1024 * 1024,
+  URL: 1_048_576,
+} as const;
+export const SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES = SOURCES_STAGING_MAX_BYTES.DIRECT_TEXT;
+export const SOURCES_STAGING_MAX_FILE_BYTES = SOURCES_STAGING_MAX_BYTES.FILE;
+export const SOURCES_STAGING_MAX_URL_BYTES = SOURCES_STAGING_MAX_BYTES.URL;
+
 export type SourcesStagingReceipt = {
   readonly schemaVersion: typeof SOURCES_SCHEMA_VERSION;
   readonly draftId: string;
@@ -306,7 +315,17 @@ export const decodeSourcesStagingReceipt = (input: unknown): SourcesStagingRecei
     throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Document staging requires a file.');
   }
   const sizeBytes = value['sizeBytes'];
-  if (!Number.isInteger(sizeBytes) || Number(sizeBytes) <= 0 || Number(sizeBytes) > 1_048_576) {
+  const maximumSizeBytes =
+    kind === 'FILE'
+      ? SOURCES_STAGING_MAX_FILE_BYTES
+      : kind === 'URL'
+        ? SOURCES_STAGING_MAX_URL_BYTES
+        : SOURCES_STAGING_MAX_DIRECT_TEXT_BYTES;
+  if (
+    !Number.isInteger(sizeBytes) ||
+    Number(sizeBytes) <= 0 ||
+    Number(sizeBytes) > maximumSizeBytes
+  ) {
     throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Invalid Sources staging size.');
   }
   const contentHash = stringValue(value['contentHash'], 'SourcesStagingReceipt.contentHash', 80);

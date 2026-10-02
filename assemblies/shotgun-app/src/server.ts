@@ -797,6 +797,8 @@ export type ApplicationOptions = {
   readonly validationRepository?: ValidationRepositoryPort;
   readonly aiProvider?: AIProviderAdapterPort;
   readonly aiProviderPolicy?: AIProviderPolicy;
+  /** Version of candidate extraction semantics used for durable Stage 4 runs. */
+  readonly aiCandidatePromptVersion?: string;
   /** Production Stage 4 request-time Project AI authority. */
   readonly aiProviderExecutionResolver?: AIProviderExecutionResolverPort;
   readonly canonicalSnapshot?: CanonicalSnapshotPort;
@@ -2593,9 +2595,14 @@ const createApplicationCore = async (
       allowRestricted: false,
       maxAttempts: 2,
     },
-    options.aiProviderExecutionResolver === undefined
-      ? {}
-      : { executionResolver: options.aiProviderExecutionResolver },
+    {
+      ...(options.aiProviderExecutionResolver === undefined
+        ? {}
+        : { executionResolver: options.aiProviderExecutionResolver }),
+      ...(options.aiCandidatePromptVersion === undefined
+        ? {}
+        : { candidatePromptVersion: options.aiCandidatePromptVersion }),
+    },
   );
   const candidateGeneration = createCandidateGenerationModule(candidateRepository);
   const validation = createValidationModule(validationRepository);
@@ -3017,40 +3024,6 @@ const createApplicationCore = async (
       activityCoordinator,
     ),
   );
-  const reviewNavigationAvailability = async (input: {
-    readonly principalId: string;
-    readonly sessionId: string;
-    readonly activeProject: {
-      readonly id: string;
-      readonly sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
-    } | null;
-    readonly accessRevision: string;
-    readonly policyContextRevision: string;
-    readonly accessScope?: readonly string[];
-  }): Promise<boolean> => {
-    if (!input.activeProject) return false;
-    try {
-      const queue = await frontendReviewCoordinator.listReviewQueue(
-        {
-          principalId: input.principalId,
-          sessionId: input.sessionId,
-          activeProjectId: input.activeProject.id,
-          accessRevision: input.accessRevision,
-          policyContextRevision: input.policyContextRevision,
-          sensitivityClearance: input.activeProject.sensitivityClearance,
-          accessScope: input.accessScope ?? [],
-        },
-        {
-          schemaVersion: '1.0.0',
-          pageSize: 1,
-          attentionReasons: ['REQUIRES_ACTION', 'STALE', 'OUTCOME_UNKNOWN', 'DEPENDENCY_BLOCKED'],
-        },
-      );
-      return queue.items.length > 0;
-    } catch {
-      return false;
-    }
-  };
   const frontendProductReadCoordinator =
     options.frontendProductReadCoordinator ??
     options.frontendProductReadCoordinatorFactory?.(
@@ -3059,23 +3032,27 @@ const createApplicationCore = async (
       frontendSourcesReadCoordinator,
     ) ??
     new FrontendProductReadCoordinator(
-      new InMemoryGlobalShellProjection(reviewNavigationAvailability, async (input) => {
-        if (!input.activeProject) return undefined;
-        return frontendSourcesReadCoordinator.countUniqueSources({
-          principalId: input.principalId,
-          sessionId: input.sessionId,
-          authorizedProjectId: input.activeProject.id,
-          accessScopes: input.accessScope ?? [],
-          sensitivityClearance: input.activeProject.sensitivityClearance,
-          accessRevision: input.accessRevision,
-          policyContextRevision: input.policyContextRevision,
-        });
-      }),
+      new InMemoryGlobalShellProjection(
+        undefined,
+        async (input) => {
+          if (!input.activeProject) return undefined;
+          return frontendSourcesReadCoordinator.countUniqueSources({
+            principalId: input.principalId,
+            sessionId: input.sessionId,
+            authorizedProjectId: input.activeProject.id,
+            accessScopes: input.accessScope ?? [],
+            sensitivityClearance: input.activeProject.sensitivityClearance,
+            accessRevision: input.accessRevision,
+            policyContextRevision: input.policyContextRevision,
+          });
+        },
+        true,
+      ),
       actionCenterProjection,
       new InMemoryBackgroundSummaryProjection(),
       new InMemoryNotificationSummaryProjection(),
       new PostgresSourceLibraryGlobalSearch(frontendSourcesReadCoordinator),
-      new InMemoryRouteGuardProjection(reviewNavigationAvailability),
+      new InMemoryRouteGuardProjection(undefined, true),
       inMemoryAskWorkspace,
     );
   const frontendDiscoveryProductReadCoordinator =

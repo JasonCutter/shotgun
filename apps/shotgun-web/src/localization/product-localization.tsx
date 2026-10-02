@@ -464,7 +464,7 @@ const enUS = {
     'Client preflight passed. The Server will validate again.',
   'sources.draft_message.file_unsupported':
     'Choose a TXT, Markdown, PDF, HTML, CSV, DOCX, XLSX, or PPTX file.',
-  'sources.draft_message.file_size': 'The file must be between 1 byte and one MiB.',
+  'sources.draft_message.file_size': 'The file must be between 1 byte and 10 MiB.',
   'sources.draft_message.file_preflight':
     'Client preflight passed. The Server will verify bytes, type and filename.',
   'sources.draft_message.url_accepted':
@@ -524,6 +524,13 @@ const enUS = {
   'source_detail.evidence_revision': 'Evidence revision',
   'source_detail.source_id': 'Source ID',
   'source_detail.source_version_id': 'SourceVersion ID',
+  'source_detail.url_checked': 'External source checked',
+  'source_detail.url_current_until': 'Fresh until',
+  'source_detail.url_freshness_current': 'Current',
+  'source_detail.url_freshness_expired':
+    'Refresh is due. Answers must treat this external source as historical until it is checked again.',
+  'ask.source_checked': 'External source checked',
+  'ask.source_expired': 'This source may be outdated; its claims were treated as historical.',
   'source_detail.vp_auto_heading': 'Automatic knowledge processing',
   'source_detail.vp_auto_explanation':
     'Shotgun processes this source in the background. You can inspect its original text, evidence, and version history while asking questions.',
@@ -1329,7 +1336,7 @@ const koKR: Record<ProductMessageKey, string> = {
     '클라이언트 사전 검사를 통과했습니다. 서버가 다시 검증합니다.',
   'sources.draft_message.file_unsupported':
     'TXT, Markdown, PDF, HTML, CSV, DOCX, XLSX 또는 PPTX 파일을 선택하세요.',
-  'sources.draft_message.file_size': '파일 크기는 1바이트 이상 1 MiB 이하여야 합니다.',
+  'sources.draft_message.file_size': '파일 크기는 1바이트 이상 10 MiB 이하여야 합니다.',
   'sources.draft_message.file_preflight':
     '클라이언트 사전 검사를 통과했습니다. 서버가 바이트, 형식 및 파일 이름을 검증합니다.',
   'sources.draft_message.url_accepted':
@@ -1389,6 +1396,13 @@ const koKR: Record<ProductMessageKey, string> = {
   'source_detail.evidence_revision': '근거 리비전',
   'source_detail.source_id': '소스 ID',
   'source_detail.source_version_id': '소스 버전 ID',
+  'source_detail.url_checked': '외부 자료 확인 시각',
+  'source_detail.url_current_until': '최신성 만료 시각',
+  'source_detail.url_freshness_current': '최신 확인됨',
+  'source_detail.url_freshness_expired':
+    '갱신이 필요합니다. 다시 확인할 때까지 이 외부 자료는 과거 정보로 취급해야 합니다.',
+  'ask.source_checked': '외부 자료 확인 시각',
+  'ask.source_expired': '이 자료는 오래되었을 수 있어 주장을 과거 정보로 처리했습니다.',
   'source_detail.vp_auto_heading': '자동 지식 처리',
   'source_detail.vp_auto_explanation':
     '샷건이 이 자료를 백그라운드에서 처리합니다. 원문·근거·버전 기록을 확인하면서 질문할 수 있습니다.',

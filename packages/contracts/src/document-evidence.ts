@@ -165,8 +165,18 @@ export type CssSelector = {
   readonly value: string;
 };
 
+export type MarkdownHeadingContextSelector = {
+  readonly type: 'MarkdownHeadingContext';
+  readonly value: string;
+};
+
 export type SourceSelector =
-  PageSelector | BoundingBoxSelector | CellSelector | ShapeSelector | CssSelector;
+  | PageSelector
+  | BoundingBoxSelector
+  | CellSelector
+  | ShapeSelector
+  | CssSelector
+  | MarkdownHeadingContextSelector;
 
 export type DocumentIRSentence = {
   readonly id: string;

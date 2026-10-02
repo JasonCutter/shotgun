@@ -5,20 +5,28 @@ import csv
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import sys
 import warnings
 import zipfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
 
 MAX_RAW_BYTES = 10 * 1024 * 1024
 MAX_HTML_TRACKED = 512
 MAX_PDF_PAGES = 1000
+MAX_PDFIUM_PAGE_CHARS = 100_000
+MAX_PDFIUM_TEXT_ROWS = 20_000
+PDF_WORD_X_TOLERANCE = 2.0
+PDFIUM_EQUATION_PREFIX_PATTERN = re.compile(
+    r"^([A-Z]{1,8}|[가-힣]{2,16}|\d{1,9}(?:,\d{3})*(?:\.\d+)?)\s*="
+)
 MAX_PDF_BLOCKS = 8192
 MAX_CSV_BLOCKS = 8192
+MAX_CSV_DERIVED_FACT_CELLS = 256
 MAX_SELECTORS = 16384
 MAX_IMAGE_DESCRIPTION = 128000
 MAX_IMAGE_DIMENSION = 8192
@@ -142,11 +150,17 @@ def block(
     text: object,
     selectors: list[dict[str, Any]],
     segments: list[dict[str, Any]] | None = None,
+    preserve_line_breaks: bool = False,
 ) -> dict[str, Any] | None:
     # PDF font maps (and some other source formats) can yield U+0000 for an
     # unmapped glyph. PostgreSQL text/jsonb cannot store NUL; replacing one
     # code point with one visible marker preserves physical segment offsets.
-    value = " ".join(str(text).split()).replace("\x00", "\ufffd")
+    raw_value = str(text)
+    if preserve_line_breaks:
+        value = "\n".join(line.strip() for line in raw_value.splitlines())
+    else:
+        value = " ".join(raw_value.split())
+    value = value.replace("\x00", "\ufffd")
     if not value:
         return None
     if segments is None:
@@ -168,6 +182,12 @@ def block(
     if len(flattened) > MAX_SELECTORS_PER_BLOCK:
         raise ValidationOverflow("VALIDATION_ERROR: block selector budget exceeded")
     return {"text": value, "selectors": flattened, "segments": segments}
+
+
+def pdf_words_to_line_text(words: list[dict[str, Any]]) -> str:
+    """Join PDF words while keeping thousands separators attached to their digits."""
+    joined = " ".join(str(word["text"]) for word in words)
+    return re.sub(r"(?<=\d),\s+(?=\d)", ",", joined)
 
 
 def html_blocks(data: bytes) -> list[dict[str, Any]]:
@@ -220,19 +240,666 @@ def html_blocks(data: bytes) -> list[dict[str, Any]]:
     return output
 
 
+def pdfium_page_glyphs(pdfium_page: Any) -> list[dict[str, Any]]:
+    """Return bounded PDFium character boxes in pdfplumber's top-origin coordinates."""
+    text_page = pdfium_page.get_textpage()
+    try:
+        if text_page.count_chars() > MAX_PDFIUM_PAGE_CHARS:
+            return []
+        text = text_page.get_text_range()
+        page_height = float(pdfium_page.get_height())
+        output: list[dict[str, Any]] = []
+        for index, value in enumerate(text):
+            try:
+                x0, y0, x1, y1 = (float(part) for part in text_page.get_charbox(index))
+            except Exception:
+                continue
+            if not all(math.isfinite(part) for part in (x0, y0, x1, y1)):
+                continue
+            top, bottom = page_height - y1, page_height - y0
+            # Whitespace often has a zero-area PDFium box; retain it as a
+            # positional hint while rejecting malformed visible glyphs.
+            if not value.isspace() and (x1 <= x0 or bottom <= top):
+                continue
+            output.append(
+                {
+                    "index": index,
+                    "text": value,
+                    "x0": x0,
+                    "x1": x1,
+                    "top": top,
+                    "bottom": bottom,
+                }
+            )
+        return output
+    finally:
+        text_page.close()
+
+
+def pdfium_recoverable_glyphs(
+    pdfium_page: Any,
+    page_glyphs: list[dict[str, Any]] | None = None,
+) -> list[tuple[int, str, tuple[float, float, float, float]]]:
+    """Return a small, safe symbol subset with PDFium page-coordinate boxes."""
+    glyphs = page_glyphs if page_glyphs is not None else pdfium_page_glyphs(pdfium_page)
+    recoverable_values = frozenset("<>=():0123456789")
+    return [
+        (
+            int(glyph["index"]),
+            str(glyph["text"]),
+            (float(glyph["x0"]), float(glyph["x1"]), float(glyph["top"]), float(glyph["bottom"])),
+        )
+        for glyph in glyphs
+        if glyph.get("text") in recoverable_values
+    ]
+
+
+def _median(values: list[float]) -> float:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2.0
+
+
+def _pdfium_text_rows(page_glyphs: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    visible = [
+        glyph
+        for glyph in page_glyphs
+        if isinstance(glyph.get("text"), str)
+        and glyph["text"]
+        and not glyph["text"].isspace()
+        and glyph["text"].isprintable()
+        and float(glyph["x1"]) > float(glyph["x0"])
+        and float(glyph["bottom"]) > float(glyph["top"])
+    ]
+    visible.sort(key=lambda glyph: ((float(glyph["top"]) + float(glyph["bottom"])) / 2.0, float(glyph["x0"])))
+    rows: list[list[dict[str, Any]]] = []
+    row_centers: list[list[float]] = []
+    for glyph in visible:
+        center = (float(glyph["top"]) + float(glyph["bottom"])) / 2.0
+        centers = row_centers[-1] if row_centers else []
+        row_center = (centers[(len(centers) - 1) // 2] + centers[len(centers) // 2]) / 2.0 if centers else None
+        if row_center is None or abs(center - row_center) > 5.5:
+            rows.append([glyph])
+            row_centers.append([center])
+        else:
+            rows[-1].append(glyph)
+            centers.append(center)
+    for row in rows:
+        row.sort(key=lambda glyph: (float(glyph["x0"]), int(glyph["index"])))
+    return rows
+
+
+def _pdfium_equation_text(row: list[dict[str, Any]]) -> str:
+    heights = [float(glyph["bottom"]) - float(glyph["top"]) for glyph in row]
+    median_height = _median(heights)
+    baseline_height_floor = max(heights) * 0.8
+    baseline_glyphs = [height for height in heights if height >= baseline_height_floor]
+    baseline_height = _median(baseline_glyphs) if baseline_glyphs else median_height
+    baseline_center = _median(
+        [
+            (float(glyph["top"]) + float(glyph["bottom"])) / 2.0
+            for glyph in row
+            if float(glyph["bottom"]) - float(glyph["top"]) >= baseline_height_floor
+        ]
+    ) if baseline_glyphs else _median([(float(glyph["top"]) + float(glyph["bottom"])) / 2.0 for glyph in row])
+    output = ""
+    previous: dict[str, Any] | None = None
+    operators = "=+−-×*/∑"
+    no_space_before = "),.%:"
+    no_space_after = "(,."
+    for glyph in row:
+        value = str(glyph["text"])
+        if len(value) != 1:
+            return ""
+        height = float(glyph["bottom"]) - float(glyph["top"])
+        center = (float(glyph["top"]) + float(glyph["bottom"])) / 2.0
+        is_script = value.isalnum() and height <= baseline_height * 0.75
+        script_prefix = ""
+        if is_script and center <= baseline_center - 2.0:
+            script_prefix = "^"
+        elif is_script and center >= baseline_center + 2.0:
+            script_prefix = "_"
+        if previous is not None:
+            previous_value = str(previous["text"])
+            gap = float(glyph["x0"]) - float(previous["x1"])
+            space = gap >= max(2.8, median_height * 0.28)
+            if previous_value in operators or value in operators:
+                space = True
+            if value in no_space_before or previous_value in no_space_after or script_prefix:
+                space = False
+            if space and output and not output.endswith(" "):
+                output += " "
+        output += script_prefix + value
+        previous = glyph
+    return " ".join(output.strip().split())
+
+
+def _pdfium_fraction_denominator(text: str) -> str:
+    """Keep top-level arithmetic grouped when a stacked fraction is written inline."""
+    compact = "".join(char for char in text if not char.isspace())
+    outer_group_closes_at_end = False
+    if compact.startswith("("):
+        depth = 0
+        for index, char in enumerate(compact):
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    outer_group_closes_at_end = index == len(compact) - 1
+                    break
+    depth = 0
+    has_top_level_operator = False
+    for char in compact:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and char in "+−-×*/":
+            has_top_level_operator = True
+    if outer_group_closes_at_end or not has_top_level_operator:
+        return text
+    return f"({text})"
+
+
+def pdfium_horizontal_equation_words(page_glyphs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Rebuild only short, flat equations whose nearby glyph rows show no stacked layout."""
+    rows = _pdfium_text_rows(page_glyphs)
+    if len(rows) > MAX_PDFIUM_TEXT_ROWS:
+        return []
+    candidates: list[dict[str, Any]] = []
+    allowed = set("=+−-×*/().,%:∑[]β") | set("만원")
+    for row_index, row in enumerate(rows):
+        text = _pdfium_equation_text(row)
+        if not text or "=" not in text or len(text) > 100:
+            continue
+        if not any(char.isascii() and char.isalnum() for char in text):
+            continue
+        if any(not (char.isspace() or (char.isascii() and char.isalnum()) or char in allowed or char in "^_") for char in text):
+            continue
+        baseline = _median([(float(glyph["top"]) + float(glyph["bottom"])) / 2.0 for glyph in row])
+        x0 = min(float(glyph["x0"]) for glyph in row)
+        x1 = max(float(glyph["x1"]) for glyph in row)
+        adjacent_rows: list[list[dict[str, Any]]] = []
+        for other_index in range(max(0, row_index - 3), min(len(rows), row_index + 4)):
+            if other_index == row_index:
+                continue
+            other_row = rows[other_index]
+            other_center = _median([(float(glyph["top"]) + float(glyph["bottom"])) / 2.0 for glyph in other_row])
+            vertical_distance = abs(other_center - baseline)
+            if not 5.5 < vertical_distance <= 20.0:
+                continue
+            other_x0 = min(float(glyph["x0"]) for glyph in other_row)
+            other_x1 = max(float(glyph["x1"]) for glyph in other_row)
+            overlap = max(0.0, min(x1, other_x1) - max(x0, other_x0))
+            horizontal_gap = max(0.0, max(x0, other_x0) - min(x1, other_x1))
+            if overlap >= 8.0 or horizontal_gap <= 32.0:
+                adjacent_rows.append(other_row)
+        adjacent_text = ["".join(str(glyph["text"]) for glyph in row) for row in adjacent_rows]
+        has_fraction_structure = any(any(char in text for char in "()/∑") for text in adjacent_text)
+        has_adjacent_operands = any(
+            sum(char.isascii() and char.isalnum() for char in text) >= 2
+            for text in adjacent_text
+        )
+        if has_fraction_structure and has_adjacent_operands:
+            continue
+        candidates.append(
+            {
+                "text": text,
+                "x0": x0,
+                "x1": x1,
+                "top": min(float(glyph["top"]) for glyph in row),
+                "bottom": max(float(glyph["bottom"]) for glyph in row),
+                "baseline": baseline,
+            }
+        )
+    return candidates
+
+
+def apply_pdfium_horizontal_equations(
+    words: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Replace a pdfplumber word run only when its compact glyph sequence agrees exactly."""
+    output = list(words)
+
+    def compact(value: str) -> str:
+        return "".join(char for char in value if char.isalnum() or char in "=+−-×*/().,%:∑")
+
+    for candidate in candidates:
+        matched: list[dict[str, Any]] = []
+        for word in output:
+            try:
+                x0, x1 = float(word["x0"]), float(word["x1"])
+                top, bottom = float(word["top"]), float(word["bottom"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            center_x = (x0 + x1) / 2.0
+            center_y = (top + bottom) / 2.0
+            if (
+                float(candidate["x0"]) - 2.0 <= center_x <= float(candidate["x1"]) + 2.0
+                and abs(center_y - float(candidate["baseline"])) <= 6.0
+            ):
+                matched.append(word)
+        if not matched:
+            continue
+        existing_text = "".join(str(word.get("text", "")) for word in sorted(matched, key=lambda word: float(word["x0"])))
+        rebuilt_text = str(candidate["text"])
+        if not compact(existing_text) or compact(existing_text) != compact(rebuilt_text.replace("^", "").replace("_", "")):
+            continue
+        output = [word for word in output if word not in matched]
+        output.append(
+            {
+                "text": rebuilt_text,
+                "x0": float(candidate["x0"]),
+                "x1": float(candidate["x1"]),
+                "top": float(candidate["top"]),
+                "bottom": float(candidate["bottom"]),
+            }
+        )
+    return output
+
+
+def pdfium_stacked_equation_words(page_glyphs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Rebuild a narrow fraction when PDFium geometry brackets a formula baseline."""
+    rows = _pdfium_text_rows(page_glyphs)
+    if len(rows) > MAX_PDFIUM_TEXT_ROWS:
+        return []
+    row_centers = [
+        _median([(float(glyph["top"]) + float(glyph["bottom"])) / 2.0 for glyph in row])
+        for row in rows
+    ]
+    candidates: list[dict[str, Any]] = []
+    for base_index, base_row in enumerate(rows):
+        base_center = row_centers[base_index]
+        if not any(str(glyph["text"]) == "=" for glyph in base_row):
+            continue
+        above = [
+            row_index
+            for row_index, center in enumerate(row_centers)
+            if 5.0 <= base_center - center <= 16.0
+        ]
+        below = [
+            row_index
+            for row_index, center in enumerate(row_centers)
+            if 5.0 <= center - base_center <= 16.0
+        ]
+        for numerator_index in above:
+            numerator_row = rows[numerator_index]
+            numerator_text = _pdfium_equation_text(numerator_row)
+            if sum(char.isalnum() for char in numerator_text) < 2:
+                continue
+            numerator_left = min(float(glyph["x0"]) for glyph in numerator_row)
+            numerator_right = max(float(glyph["x1"]) for glyph in numerator_row)
+            for denominator_index in below:
+                denominator_row = rows[denominator_index]
+                denominator_text = _pdfium_equation_text(denominator_row)
+                if sum(char.isalnum() for char in denominator_text) < 2:
+                    continue
+                denominator_left = min(float(glyph["x0"]) for glyph in denominator_row)
+                denominator_right = max(float(glyph["x1"]) for glyph in denominator_row)
+                fraction_left = max(numerator_left, denominator_left)
+                fraction_right = min(numerator_right, denominator_right)
+                if fraction_right - fraction_left < 8.0:
+                    continue
+                prefix_glyphs = [
+                    glyph for glyph in base_row if float(glyph["x1"]) <= fraction_left + 1.0
+                ]
+                suffix_glyphs = [
+                    glyph for glyph in base_row if float(glyph["x0"]) >= fraction_right - 1.0
+                ]
+                if (
+                    not prefix_glyphs
+                    or len(prefix_glyphs) + len(suffix_glyphs) != len(base_row)
+                ):
+                    continue
+                prefix_text = _pdfium_equation_text(prefix_glyphs)
+                suffix_text = _pdfium_equation_text(suffix_glyphs) if suffix_glyphs else ""
+                if not PDFIUM_EQUATION_PREFIX_PATTERN.match(prefix_text):
+                    continue
+                fraction_denominator = _pdfium_fraction_denominator(denominator_text)
+                rebuilt_text = " ".join(
+                    part for part in (prefix_text, f"{numerator_text}/{fraction_denominator}", suffix_text) if part
+                )
+                if len(rebuilt_text) > 180:
+                    continue
+                combined_glyphs = [*prefix_glyphs, *numerator_row, *denominator_row, *suffix_glyphs]
+                candidates.append(
+                    {
+                        "text": rebuilt_text,
+                        "x0": min(float(glyph["x0"]) for glyph in combined_glyphs),
+                        "x1": max(float(glyph["x1"]) for glyph in combined_glyphs),
+                        "top": min(float(glyph["top"]) for glyph in combined_glyphs),
+                        "bottom": max(float(glyph["bottom"]) for glyph in combined_glyphs),
+                    }
+                )
+    unique: dict[tuple[str, float, float, float, float], dict[str, Any]] = {}
+    for candidate in candidates:
+        key = (
+            str(candidate["text"]),
+            round(float(candidate["x0"]), 1),
+            round(float(candidate["x1"]), 1),
+            round(float(candidate["top"]), 1),
+            round(float(candidate["bottom"]), 1),
+        )
+        unique[key] = candidate
+    return list(unique.values())
+
+
+def apply_pdfium_stacked_equations(
+    words: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Replace flattened fraction fragments only when all text fits the geometry-backed formula."""
+    output = list(words)
+
+    def compact(value: str) -> str:
+        return "".join(char for char in value if char.isalnum() or char in "=+−-×*/().,%:∑")
+
+    for candidate in candidates:
+        matched: list[dict[str, Any]] = []
+        for word in output:
+            try:
+                x0, x1 = float(word["x0"]), float(word["x1"])
+                top, bottom = float(word["top"]), float(word["bottom"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            center_x = (x0 + x1) / 2.0
+            center_y = (top + bottom) / 2.0
+            if (
+                float(candidate["x0"]) - 2.0 <= center_x <= float(candidate["x1"]) + 2.0
+                and float(candidate["top"]) - 2.0 <= center_y <= float(candidate["bottom"]) + 2.0
+            ):
+                matched.append(word)
+        if not matched:
+            continue
+        existing_text = "".join(
+            str(word.get("text", ""))
+            for word in sorted(matched, key=lambda word: (float(word["x0"]), float(word["top"])))
+        )
+        observed = Counter(compact(existing_text).casefold())
+        expected = Counter(compact(str(candidate["text"])).replace("^", "").replace("_", "").casefold())
+        if not observed or any(count > expected[char] for char, count in observed.items()):
+            continue
+        formula_name = PDFIUM_EQUATION_PREFIX_PATTERN.match(str(candidate["text"]))
+        if not formula_name or formula_name.group(1).casefold() not in compact(existing_text).casefold():
+            continue
+        output = [word for word in output if word not in matched]
+        output.append(
+            {
+                "text": str(candidate["text"]),
+                "x0": float(candidate["x0"]),
+                "x1": float(candidate["x1"]),
+                "top": float(candidate["top"]),
+                "bottom": float(candidate["bottom"]),
+            }
+        )
+    return output
+
+
+def restore_unmapped_safe_glyphs(
+    page_chars: list[dict[str, Any]],
+    recoverable_glyphs: list[tuple[int, str, tuple[float, float, float, float]]],
+) -> int:
+    """Replace NUL chars only with a unique, tightly overlapping safe PDFium glyph."""
+    center_distance_limit = 2.5
+    smaller_box_overlap_minimum = 0.65
+    proposals: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    glyph_values: dict[int, str] = {}
+
+    for char in page_chars:
+        if char.get("text") != "\x00":
+            continue
+        try:
+            char_box = tuple(float(char[key]) for key in ("x0", "x1", "top", "bottom"))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not all(math.isfinite(part) for part in char_box):
+            continue
+        char_x0, char_x1, char_top, char_bottom = char_box
+        char_width = char_x1 - char_x0
+        char_height = char_bottom - char_top
+        char_area = char_width * char_height
+        if char_width <= 0 or char_height <= 0:
+            continue
+
+        matches: list[tuple[int, str]] = []
+        for glyph_id, glyph_value, glyph_box in recoverable_glyphs:
+            glyph_x0, glyph_x1, glyph_top, glyph_bottom = glyph_box
+            glyph_width = glyph_x1 - glyph_x0
+            glyph_height = glyph_bottom - glyph_top
+            glyph_area = glyph_width * glyph_height
+            if glyph_width <= 0 or glyph_height <= 0:
+                continue
+            center_distance = math.hypot(
+                (char_x0 + char_x1 - glyph_x0 - glyph_x1) / 2,
+                (char_top + char_bottom - glyph_top - glyph_bottom) / 2,
+            )
+            intersection_width = max(0.0, min(char_x1, glyph_x1) - max(char_x0, glyph_x0))
+            intersection_height = max(0.0, min(char_bottom, glyph_bottom) - max(char_top, glyph_top))
+            overlap_fraction = (intersection_width * intersection_height) / min(char_area, glyph_area)
+            if (
+                center_distance <= center_distance_limit
+                and overlap_fraction >= smaller_box_overlap_minimum
+            ):
+                matches.append((glyph_id, glyph_value))
+
+        if len(matches) == 1:
+            glyph_id, glyph_value = matches[0]
+            proposals[glyph_id].append(char)
+            glyph_values[glyph_id] = glyph_value
+
+    restored = 0
+    for glyph_id, matched_chars in proposals.items():
+        # Require a reciprocal one-to-one match. A sign near multiple damaged
+        # characters, or multiple signs near one character, is left unresolved.
+        if len(matched_chars) == 1:
+            matched_chars[0]["text"] = glyph_values[glyph_id]
+            restored += 1
+    return restored
+
+
+def restore_pdfium_numbered_list_markers(
+    page_chars: list[dict[str, Any]],
+    page_glyphs: list[dict[str, Any]],
+) -> int:
+    """Restore a digit-period-space prefix only when PDFium text order and boxes agree."""
+    restored = 0
+    used_marker_glyphs: set[int] = set()
+
+    for char_index in range(max(0, len(page_chars) - 2)):
+        marker_chars = page_chars[char_index : char_index + 3]
+        if len(marker_chars) != 3 or any(char.get("text") != "\x00" for char in marker_chars):
+            continue
+        try:
+            boxes = [
+                tuple(float(char[key]) for key in ("x0", "x1", "top", "bottom"))
+                for char in marker_chars
+            ]
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not all(math.isfinite(value) for box in boxes for value in box):
+            continue
+        if any(box[1] <= box[0] or box[3] <= box[2] for box in boxes):
+            continue
+        if any(abs(box[2] - boxes[0][2]) > 0.05 or abs(box[3] - boxes[0][3]) > 0.05 for box in boxes[1:]):
+            continue
+        if any(abs(boxes[index][1] - boxes[index + 1][0]) > 0.05 for index in range(2)):
+            continue
+
+        first, second, third = boxes
+        cluster_center_y = (first[2] + first[3]) / 2.0
+        following_chars = []
+        for char in page_chars:
+            if char.get("text") in (None, "", "\x00"):
+                continue
+            try:
+                x0, top, bottom = float(char["x0"]), float(char["top"]), float(char["bottom"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if (
+                0.0 <= x0 - third[1] <= 8.0
+                and min(first[3], bottom) > max(first[2], top)
+                and str(char.get("text", ""))[:1].isprintable()
+            ):
+                following_chars.append(char)
+        if not following_chars:
+            continue
+        next_char = min(following_chars, key=lambda char: float(char["x0"]))
+        next_text = str(next_char.get("text", ""))
+        next_x0 = float(next_char["x0"])
+        if not next_text or not ("\uac00" <= next_text[0] <= "\ud7a3"):
+            continue
+
+        matching_rows: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]] = []
+        for glyph_index in range(max(0, len(page_glyphs) - 3)):
+            digit, period, space, first_korean = page_glyphs[glyph_index : glyph_index + 4]
+            if not all(
+                int(sequence_glyph["index"]) == int(digit["index"]) + offset
+                for offset, sequence_glyph in enumerate((digit, period, space, first_korean))
+            ):
+                continue
+            digit_value = str(digit.get("text", ""))
+            if len(digit_value) != 1 or not digit_value.isascii() or not digit_value.isdigit():
+                continue
+            if str(period.get("text")) != ".":
+                continue
+            if not str(space.get("text", "")).isspace():
+                continue
+            korean_value = str(first_korean.get("text", ""))
+            if not korean_value or not ("\uac00" <= korean_value[0] <= "\ud7a3"):
+                continue
+            row_center_y = _median([
+                (float(glyph["top"]) + float(glyph["bottom"])) / 2.0
+                for glyph in (digit, period, first_korean)
+            ])
+            if abs(row_center_y - cluster_center_y) > 3.0:
+                continue
+            if abs(float(first_korean["x0"]) - next_x0) > 1.5:
+                continue
+            if float(first_korean["x0"]) - float(period["x1"]) < 3.0:
+                continue
+            space_x0, space_x1 = float(space["x0"]), float(space["x1"])
+            if abs(space_x1 - space_x0) > 0.05 or abs(space_x0 - first[1]) > 0.05:
+                continue
+
+            digit_box = tuple(float(digit[key]) for key in ("x0", "x1", "top", "bottom"))
+            digit_center_distance = math.hypot(
+                (first[0] + first[1] - digit_box[0] - digit_box[1]) / 2,
+                (first[2] + first[3] - digit_box[2] - digit_box[3]) / 2,
+            )
+            digit_intersection = max(0.0, min(first[1], digit_box[1]) - max(first[0], digit_box[0])) * max(
+                0.0, min(first[3], digit_box[3]) - max(first[2], digit_box[2])
+            )
+            digit_min_area = min(
+                (first[1] - first[0]) * (first[3] - first[2]),
+                (digit_box[1] - digit_box[0]) * (digit_box[3] - digit_box[2]),
+            )
+            if digit_min_area <= 0 or digit_center_distance > 2.5 or digit_intersection / digit_min_area < 0.65:
+                continue
+
+            period_box = tuple(float(period[key]) for key in ("x0", "x1", "top", "bottom"))
+            period_x_overlap = max(0.0, min(second[1], period_box[1]) - max(second[0], period_box[0]))
+            period_width = period_box[1] - period_box[0]
+            if period_width <= 0 or period_x_overlap / period_width < 0.65:
+                continue
+            if abs((second[0] + second[1] - period_box[0] - period_box[1]) / 2) > 1.0:
+                continue
+            if abs(second[3] - period_box[3]) > 0.75:
+                continue
+            period_y_overlap = max(0.0, min(second[3], period_box[3]) - max(second[2], period_box[2]))
+            if period_box[3] <= period_box[2] or period_y_overlap / (period_box[3] - period_box[2]) < 0.65:
+                continue
+
+            marker_glyph_id = int(digit["index"])
+            if marker_glyph_id in used_marker_glyphs:
+                continue
+            matching_rows.append((digit, period, first_korean))
+
+        if len(matching_rows) != 1:
+            continue
+        digit, _, _ = matching_rows[0]
+        marker_chars[0]["text"] = str(digit["text"])
+        marker_chars[1]["text"] = "."
+        marker_chars[2]["text"] = " "
+        used_marker_glyphs.add(int(digit["index"]))
+        restored += 3
+
+    return restored
+
+
 def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
+    from contextlib import ExitStack
+
     import pdfplumber
 
     if b"/Encrypt" in data:
         raise PermissionError("encrypted PDF")
     output: list[dict[str, Any]] = []
-    with pdfplumber.open(io.BytesIO(data)) as document:
+    with ExitStack() as resources:
+        document = resources.enter_context(pdfplumber.open(io.BytesIO(data)))
         if document.metadata.get("Encrypted") is True:
             raise PermissionError("encrypted PDF")
         if len(document.pages) > MAX_PDF_PAGES:
             raise ValidationOverflow("VALIDATION_ERROR: PDF page budget exceeded")
+        pdfium_document = None
+        pdfium_open_attempted = False
         for page_number, page in enumerate(document.pages, 1):
-            words = page.extract_words(use_text_flow=False, keep_blank_chars=False)
+            page_chars = page.chars
+            page_glyphs: list[dict[str, Any]] = []
+            has_unmapped_glyph = any(char.get("text") == "\x00" for char in page_chars)
+            has_equation_candidate = any(char.get("text") == "=" for char in page_chars)
+            if has_unmapped_glyph or has_equation_candidate:
+                if not pdfium_open_attempted:
+                    pdfium_open_attempted = True
+                    try:
+                        import pypdfium2
+
+                        candidate_pdfium_document = pypdfium2.PdfDocument(data)
+                        if len(candidate_pdfium_document) == len(document.pages):
+                            pdfium_document = candidate_pdfium_document
+                            resources.callback(pdfium_document.close)
+                        else:
+                            candidate_pdfium_document.close()
+                    except Exception:
+                        # This is a safe, optional correction path. Failure
+                        # leaves NULs for block() to mark as U+FFFD; direct-text
+                        # validation then prevents damaged claims from entering knowledge.
+                        pdfium_document = None
+                if pdfium_document is not None:
+                    try:
+                        pdfium_page = pdfium_document[page_number - 1]
+                        page_glyphs = pdfium_page_glyphs(pdfium_page)
+                        if has_unmapped_glyph:
+                            restore_pdfium_numbered_list_markers(page_chars, page_glyphs)
+                            restore_unmapped_safe_glyphs(
+                                page_chars,
+                                pdfium_recoverable_glyphs(pdfium_page, page_glyphs),
+                            )
+                    except Exception:
+                        # Keep pdfplumber's layout output and undecodable marker.
+                        page_glyphs = []
+            words = page.extract_words(
+                use_text_flow=False,
+                keep_blank_chars=False,
+                x_tolerance=PDF_WORD_X_TOLERANCE,
+            )
+            if page_glyphs:
+                try:
+                    words = apply_pdfium_horizontal_equations(
+                        words,
+                        pdfium_horizontal_equation_words(page_glyphs),
+                    )
+                    words = apply_pdfium_stacked_equations(
+                        words,
+                        pdfium_stacked_equation_words(page_glyphs),
+                    )
+                except Exception:
+                    # Keep pdfplumber's source text and geometry when this
+                    # bounded, optional formula-reconstruction path fails.
+                    pass
             sorted_words = sorted(
                 words,
                 key=lambda value: (float(value["top"]), float(value["x0"]), value["text"]),
@@ -329,12 +996,12 @@ def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
                         previous.append(line)
                 for paragraph_lines in semantic_paragraph:
                     words_in_paragraph = [value for line in paragraph_lines for value in line]
-                    line_texts = [" ".join(str(value["text"]) for value in line) for line in paragraph_lines]
-                    text = " ".join(line_texts)
+                    line_texts = [pdf_words_to_line_text(line) for line in paragraph_lines]
+                    text = "\n".join(line_texts)
                     segments: list[dict[str, Any]] = []
                     block_offset = 0
                     for line in paragraph_lines:
-                        line_text = " ".join(str(value["text"]) for value in line)
+                        line_text = pdf_words_to_line_text(line)
                         line_selectors = [
                             {"type": "PageSelector", "page": page_number},
                             {
@@ -355,7 +1022,7 @@ def pdf_blocks(data: bytes) -> list[dict[str, Any]]:
                             }
                         )
                         block_offset += len(line_text) + 1
-                    item = block(text, [], segments)
+                    item = block(text, [], segments, preserve_line_breaks=True)
                     if item:
                         output.append(item)
                         if len(output) > MAX_PDF_BLOCKS:
@@ -530,8 +1197,11 @@ def xlsx_blocks(data: bytes) -> list[dict[str, Any]]:
             for cell_value in row:
                 if cell_value.value is None:
                     continue
+                cell_text = cell_value.value
+                if isinstance(cell_text, str) and cell_text.startswith("="):
+                    cell_text = f"Formula: {cell_text}"
                 item = block(
-                    cell_value.value,
+                    cell_text,
                     [
                         {
                             "type": "CellSelector",
@@ -551,8 +1221,10 @@ def xlsx_blocks(data: bytes) -> list[dict[str, Any]]:
 def csv_blocks(data: bytes) -> list[dict[str, Any]]:
     from openpyxl.utils import get_column_letter
 
-    output: list[dict[str, Any]] = []
-    for row_number, row in enumerate(csv.reader(io.StringIO(data.decode("utf-8"))), 1):
+    rows = list(csv.reader(io.StringIO(data.decode("utf-8"))))
+    cells: list[dict[str, Any]] = []
+    row_facts: list[dict[str, Any]] = []
+    for row_number, row in enumerate(rows, 1):
         for column_number, value in enumerate(row, 1):
             item = block(
                 value,
@@ -567,10 +1239,82 @@ def csv_blocks(data: bytes) -> list[dict[str, Any]]:
                 ],
             )
             if item:
-                output.append(item)
-                if len(output) > MAX_CSV_BLOCKS:
+                cells.append(item)
+                if len(cells) > MAX_CSV_BLOCKS:
                     raise ValidationOverflow("VALIDATION_ERROR: CSV logical block budget exceeded")
-    return output
+
+    headers = rows[0] if rows else []
+    key_value_table = (
+        len(headers) == 2
+        and headers[0].strip().casefold()
+        in {"key", "name", "field", "property", "항목", "이름", "키"}
+        and headers[1].strip().casefold() in {"value", "값", "내용"}
+    )
+    if len(cells) > MAX_CSV_DERIVED_FACT_CELLS:
+        return cells
+
+    for row_number, row in enumerate(rows[1:], 2):
+        facts: list[tuple[str, list[dict[str, Any]]]] = []
+        if key_value_table and len(row) >= 2:
+            label, value = row[0], row[1]
+            if label.strip() and value.strip():
+                facts.append(
+                    (
+                        f"{label.strip()}: {value.strip()}",
+                        [
+                            {
+                                "type": "CellSelector",
+                                "sheet": "CSV",
+                                "cell": f"A{row_number}",
+                                "row": row_number,
+                                "column": 1,
+                            },
+                            {
+                                "type": "CellSelector",
+                                "sheet": "CSV",
+                                "cell": f"B{row_number}",
+                                "row": row_number,
+                                "column": 2,
+                            },
+                        ],
+                    )
+                )
+        else:
+            for column_number, value in enumerate(row, 1):
+                header = headers[column_number - 1] if column_number <= len(headers) else ""
+                if not header.strip() or not value.strip():
+                    continue
+                facts.append(
+                    (
+                        f"{header.strip()}: {value.strip()}",
+                        [
+                            {
+                                "type": "CellSelector",
+                                "sheet": "CSV",
+                                "cell": f"{get_column_letter(column_number)}1",
+                                "row": 1,
+                                "column": column_number,
+                            },
+                            {
+                                "type": "CellSelector",
+                                "sheet": "CSV",
+                                "cell": f"{get_column_letter(column_number)}{row_number}",
+                                "row": row_number,
+                                "column": column_number,
+                            },
+                        ],
+                    )
+                )
+        for fact_text, selectors in facts:
+            if len(cells) + len(row_facts) >= MAX_CSV_BLOCKS:
+                raise ValidationOverflow("VALIDATION_ERROR: CSV logical block budget exceeded")
+            item = block(
+                fact_text,
+                selectors,
+            )
+            if item:
+                row_facts.append(item)
+    return [*cells, *row_facts]
 
 
 def pptx_blocks(data: bytes) -> list[dict[str, Any]]:
@@ -657,20 +1401,21 @@ def main() -> None:
     json.dump({"status": "OK", "blocks": blocks}, sys.stdout, ensure_ascii=False)
 
 
-try:
-    main()
-except NotImplementedError as error:
-    json.dump({"status": "FORMAT_UNSUPPORTED", "message": str(error)}, sys.stdout)
-except PermissionError as error:
-    json.dump({"status": "FORMAT_ENCRYPTED", "message": str(error)}, sys.stdout)
-except RuntimeError as error:
-    status = str(error) if str(error) == "MULTIMODAL_VALIDATION_REQUIRED" else "FORMAT_CORRUPT"
-    json.dump({"status": status, "message": str(error)}, sys.stdout)
-except ValidationOverflow as error:
-    status = "FORMAT_CORRUPT" if str(error).startswith("FORMAT_CORRUPT:") else "VALIDATION_ERROR"
-    json.dump({"status": status, "message": str(error)}, sys.stdout)
-except Exception as error:
-    message = str(error)
-    lowered = f"{error.__class__.__name__} {message}".lower()
-    status = "FORMAT_ENCRYPTED" if "password" in lowered or "encrypted" in lowered else "FORMAT_CORRUPT"
-    json.dump({"status": status, "message": message or error.__class__.__name__}, sys.stdout)
+if __name__ == "__main__":
+    try:
+        main()
+    except NotImplementedError as error:
+        json.dump({"status": "FORMAT_UNSUPPORTED", "message": str(error)}, sys.stdout)
+    except PermissionError as error:
+        json.dump({"status": "FORMAT_ENCRYPTED", "message": str(error)}, sys.stdout)
+    except RuntimeError as error:
+        status = str(error) if str(error) == "MULTIMODAL_VALIDATION_REQUIRED" else "FORMAT_CORRUPT"
+        json.dump({"status": status, "message": str(error)}, sys.stdout)
+    except ValidationOverflow as error:
+        status = "FORMAT_CORRUPT" if str(error).startswith("FORMAT_CORRUPT:") else "VALIDATION_ERROR"
+        json.dump({"status": status, "message": str(error)}, sys.stdout)
+    except Exception as error:
+        message = str(error)
+        lowered = f"{error.__class__.__name__} {message}".lower()
+        status = "FORMAT_ENCRYPTED" if "password" in lowered or "encrypted" in lowered else "FORMAT_CORRUPT"
+        json.dump({"status": status, "message": message or error.__class__.__name__}, sys.stdout)

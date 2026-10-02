@@ -8,7 +8,9 @@
     "golden.v7 independently passed the C2-R15 regression-evidence resolver before T3",
     "artifacts/ts6-phase-b-c2-r15/19-authority-correction-adopted.json records the relation graph as approved and not reopened by the reachability correction",
     "T3 added a direct regression relation for the newly implemented Source knowledge reset persistence boundary",
-    "T3 added a production-path regression relation for consistent Ask workspace snapshots, verified through Product citations"
+    "T3 added a production-path regression relation for consistent Ask workspace snapshots, verified through Product citations",
+    "2026-10-01 coordinate audit: eight approved covers[] references were remapped to the same audited functions at current AST coordinates; labels, tests, and the frozen v7 source digest were unchanged. See docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md.",
+    "2026-10-02 URL freshness projection coordinate audit: ten covers[] references were remapped to the same owning methods after checking live functionKey, sourceNeedle, classification, and reachability. Test identities, labels, and frozen v7 source digest remain unchanged. See the 2026-10-02 addendum in docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md."
   ],
   "records": [
     {
@@ -501,7 +503,7 @@
       "testEvidenceId": "test:tests/database/frontend-section3-bootstrap-postgres.test.ts:persists Project, one Owner, active Session, operation binding, and recoverable outcome",
       "file": "tests/database/frontend-section3-bootstrap-postgres.test.ts",
       "testName": "persists Project, one Owner, active Session, operation binding, and recoverable outcome",
-      "covers": ["safe:adapters/postgres/src/index.ts:1229"],
+      "covers": ["safe:adapters/postgres/src/index.ts:1255"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresProjectBootstrapUnitOfWork.bootstrap",
       "path": ["PostgresProjectBootstrapUnitOfWork.bootstrap"]
@@ -510,7 +512,7 @@
       "testEvidenceId": "test:tests/database/frontend-ask-uploaded-source-resolution.database.test.ts:resolves bounded Evidence for the Browser source-only selection without calling the original reader",
       "file": "tests/database/frontend-ask-uploaded-source-resolution.database.test.ts",
       "testName": "resolves bounded Evidence for the Browser source-only selection without calling the original reader",
-      "covers": ["safe:adapters/postgres/src/index.ts:818"],
+      "covers": ["safe:adapters/postgres/src/index.ts:844"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresProjectAdministrationRepository.createProject",
       "path": ["PostgresProjectAdministrationRepository.createProject"]
@@ -537,7 +539,7 @@
       "testEvidenceId": "test:tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts:re-enters the same durable event on a rotated job and snapshots the current DLQ job",
       "file": "tests/database/runtime-data-integrity-wp05-connector-current-job.test.ts",
       "testName": "re-enters the same durable event on a rotated job and snapshots the current DLQ job",
-      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1199"],
+      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1292"],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "kernel.connector.publishEvent",
       "path": [
@@ -550,7 +552,7 @@
       "testEvidenceId": "test:tests/database/post-tf-risk002-connector-fencing-proof.test.ts:Scenario A: production recovery leaves a real running attempt behind",
       "file": "tests/database/post-tf-risk002-connector-fencing-proof.test.ts",
       "testName": "Scenario A: production recovery leaves a real running attempt behind",
-      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1389"],
+      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1516"],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "recoverProductionExpiredLeases",
       "path": [
@@ -613,7 +615,7 @@
       "testEvidenceId": "test:tests/database/frontend-ask-write-postgres.database.test.ts:commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
       "file": "tests/database/frontend-ask-write-postgres.database.test.ts",
       "testName": "commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
-      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2658"],
+      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2904"],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "executionService.startWorker",
       "path": [
@@ -680,7 +682,7 @@
       "testEvidenceId": "test:tests/database/section2-postgres.test.ts:updates PostgreSQL project metadata through the transaction owner",
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "updates PostgreSQL project metadata through the transaction owner",
-      "covers": ["safe:adapters/postgres/src/index.ts:971"],
+      "covers": ["safe:adapters/postgres/src/index.ts:997"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "projectAdminRepo.updateProject",
       "path": [
@@ -692,7 +694,7 @@
       "testEvidenceId": "test:tests/database/section2-postgres.test.ts:updates PostgreSQL principal preferences through the transaction owner",
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "updates PostgreSQL principal preferences through the transaction owner",
-      "covers": ["safe:adapters/postgres/src/index.ts:1500"],
+      "covers": ["safe:adapters/postgres/src/index.ts:1526"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "settingsRepo.updatePrincipalPreferences",
       "path": [
@@ -730,7 +732,7 @@
       "testEvidenceId": "test:tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts:commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)",
       "file": "tests/database/akp-8-wp2-cross-section-causal-acceptance.database.test.ts",
       "testName": "commits the partial-ordering checkpoint after acquiring its fence (PostgresOrderingStore)",
-      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1284"],
+      "covers": ["safe:adapters/connector-runtime-postgres/src/index.ts:1411"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresOrderingStore.commit",
       "path": ["PostgresOrderingStore.commit"]
@@ -847,7 +849,7 @@
       "testEvidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:commits work performed through the Ask execution transaction boundary",
       "file": "tests/database/a9-final-closure-evidence.test.ts",
       "testName": "commits work performed through the Ask execution transaction boundary",
-      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:1976"],
+      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2166"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskAnswerExecutionRepository.transaction",
       "path": ["transaction"]
@@ -856,7 +858,7 @@
       "testEvidenceId": "test:tests/unit/frontend-ask-write-postgres.test.ts:does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error",
       "file": "tests/unit/frontend-ask-write-postgres.test.ts",
       "testName": "does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error",
-      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:173"],
+      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:177"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskConversationRepository.transaction",
       "path": ["transaction"]
@@ -955,7 +957,7 @@
       "testEvidenceId": "test:tests/database/section2-postgres.test.ts:keeps PostgreSQL Project lifecycle status and active state in parity",
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "keeps PostgreSQL Project lifecycle status and active state in parity",
-      "covers": ["safe:adapters/postgres/src/index.ts:1106"],
+      "covers": ["safe:adapters/postgres/src/index.ts:1132"],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "PostgresProjectAdministrationRepository.archiveProject",
       "path": [
@@ -967,7 +969,7 @@
       "testEvidenceId": "test:tests/database/section2-postgres.test.ts:rolls back cleanly on transaction errors without leaving corrupted revisions",
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "rolls back cleanly on transaction errors without leaving corrupted revisions",
-      "covers": ["safe:adapters/postgres/src/index.ts:1813"],
+      "covers": ["safe:adapters/postgres/src/index.ts:1839"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSettingsRepository.applySettingsCommand",
       "path": ["applySettingsCommand"]
@@ -1003,7 +1005,7 @@
       "testEvidenceId": "test:tests/database/t3-product-acceptance.database.test.ts:creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
       "file": "tests/database/t3-product-acceptance.database.test.ts",
       "testName": "creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
-      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:645"],
+      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:649"],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "askForSource",
       "path": [

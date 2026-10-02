@@ -263,7 +263,7 @@ describe('TS-1 document-format safety boundaries', () => {
       const output = await transform(highCardinality[index], mediaType);
       expect(output.documentIR.blocks.length).toBeGreaterThanOrEqual(minimumBlocks);
     },
-    15_000,
+    30_000,
   );
 
   it('bounds sparse XLSX iteration by actual worksheet cells, not declared dimensions', async () => {

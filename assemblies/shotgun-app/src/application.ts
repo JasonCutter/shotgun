@@ -1269,18 +1269,7 @@ export const startShotgunApplication = async (
       ) =>
         new FrontendProductReadCoordinator(
           new InMemoryGlobalShellProjection(
-            async (input) => {
-              if (!input.activeProject) return false;
-              try {
-                const home = await actionCenterProjection.getHome({
-                  ...input,
-                  activeProject: input.activeProject,
-                });
-                return home.attention.some((item) => item.kind === 'REVIEW_DECISION');
-              } catch {
-                return false;
-              }
-            },
+            undefined,
             async (input) => {
               if (!input.activeProject) return undefined;
               return frontendSourcesReadCoordinator.countUniqueSources({
@@ -1293,23 +1282,13 @@ export const startShotgunApplication = async (
                 policyContextRevision: input.policyContextRevision,
               });
             },
+            true,
           ),
           actionCenterProjection,
           new InMemoryBackgroundSummaryProjection(),
           new InMemoryNotificationSummaryProjection(),
           new PostgresSourceLibraryGlobalSearch(frontendSourcesReadCoordinator),
-          new InMemoryRouteGuardProjection(async (input) => {
-            if (!input.activeProject) return false;
-            try {
-              const home = await actionCenterProjection.getHome({
-                ...input,
-                activeProject: input.activeProject,
-              });
-              return home.attention.some((item) => item.kind === 'REVIEW_DECISION');
-            } catch {
-              return false;
-            }
-          }),
+          new InMemoryRouteGuardProjection(undefined, true),
           askWorkspaceProjection,
           new PostgresKnowledgeWorkspaceProjection({
             query: async <TResult>({
@@ -1521,16 +1500,18 @@ export const startShotgunApplication = async (
       // DeepSeek is the sole semantic decision provider until Jev can be
       // evaluated. The existing project AI resolver enforces credentials,
       // standing policy, deployment egress and the DeepSeek-only provider pin.
+      const vpRelationJobs = new PostgresVPRelationJobs(
+        pool,
+        Number(process.env.VP_MAX_DAILY_RELATION_PROVIDER_ATTEMPTS ?? '100'),
+        Number(process.env.VP_MAX_RELATION_JOB_ATTEMPTS ?? '3'),
+      );
       const vpRelationWorker = new VPRelationJobWorker(
-        new PostgresVPRelationJobs(
-          pool,
-          Number(process.env.VP_MAX_DAILY_RELATION_PROVIDER_ATTEMPTS ?? '100'),
-        ),
+        vpRelationJobs,
         new VPRelationDecisionRouter(
           undefined,
-          new GeneralAIVPDecisionAdapter(stage4AIExecutionResolver),
+          new GeneralAIVPDecisionAdapter(stage4AIExecutionResolver, vpRelationJobs),
           {
-            revision: 'vp-deepseek-relation-v2',
+            revision: 'vp-deepseek-relation-v6-evidence-context',
             minimumChoiceProbability: 0.9,
             maximumDeepAnalysisScore: 0,
             maximumInputTokens: 4_000,
@@ -1542,7 +1523,7 @@ export const startShotgunApplication = async (
           job.right.sensitivity !== 'restricted' &&
           job.left.accessScope.length > 0 &&
           job.left.accessScope.every((entry) => job.right.accessScope.includes(entry)),
-        'vp-deepseek-relation-v2',
+        'vp-deepseek-relation-v6-evidence-context',
         60_000,
         1,
       );

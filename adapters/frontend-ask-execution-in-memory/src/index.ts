@@ -137,6 +137,14 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     };
   }
 
+  async getRunSnapshot(
+    scope: AskExecutionScope,
+    answerRunId: string,
+  ): Promise<AskAnswerRunSnapshot | undefined> {
+    const record = this.authorized(scope, answerRunId, false);
+    return record?.snapshot;
+  }
+
   async claimInitial(
     scope: AskExecutionScope,
     answerRunId: string,

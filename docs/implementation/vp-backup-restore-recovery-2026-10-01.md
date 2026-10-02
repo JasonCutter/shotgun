@@ -1,0 +1,40 @@
+# VP-07 Source Backup, Restore, and Pending Relation Recovery
+
+- Date: 2026-10-01
+- Status: **NARROW ISOLATED ACCEPTANCE PASSED; VP-07 REMAINS IN PROGRESS**
+- Target: VP-07 Operations; `VPRelationJobStorePort`, `VPDecisionExecutionRepositoryPort`, and the existing Shotgun Backup/Restore Port boundary.
+
+## OSS integration decision
+
+| Candidate                                                                                                             | Reviewed version / license                                                                                                                                                     | Decision for this flow                 | Boundary and reason                                                                                                                                                                                                                                                                                                     |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL `pg_dump` / `pg_restore` ([official backup documentation](https://www.postgresql.org/docs/16/backup.html)) | Repository-pinned `pg16` container digest `sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b`; isolated test server reported `16.15`; PostgreSQL License | `ADOPT` (existing Stage 12.1 decision) | Reuse the existing `shotgun-backup-v1` bundle and clean-target restore commands. No PostgreSQL internal ID or schema becomes a Shotgun contract. The prior Stage 12.1 review recorded 16.14; the pinned image currently reports 16.15, so release inventory must retain the observed image digest and version together. |
+| `garrytan/gbrain`                                                                                                     | `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a`; MIT                                                                                                                                | `REFERENCE_ONLY`                       | Reuse only Job/recovery/idempotency design patterns. Do not add its runtime or database.                                                                                                                                                                                                                                |
+| pgBackRest / WAL-G / Barman                                                                                           | `2.58.0` MIT / `3.0.8` Apache-2.0 (optional LZO GPL-3.0+) / `3.19.1` GPL-3.0                                                                                                   | `DEFER`                                | Existing Stage 12.1 review deferred them pending PITR, WAL archive, remote encrypted storage, or multi-server DR requirements. This acceptance only proves logical backup and clean restore.                                                                                                                            |
+
+The full prior evaluation is [Stage 12.1 Durability Recovery OSS Integration Review](./stage-validations/stage-12-1-durability-recovery-oss-review.md), with its design in [ADR-097](../architecture/adr/ADR-097-stage-12-1-outbox-projection-clean-restore.md) and operating steps in the [Backup and Clean Restore Runbook](../engineering/stage-12-1-backup-restore-runbook.md). PM2 remains `REJECTED` and Node `child_process.fork` remains the existing supervisor boundary per the [VP-07 Runtime OSS record](../architecture/module-architecture/open-source-role-matrix.md#11-vp-07-로컬-runtime-재기동).
+
+No new package, lockfile, migration, or provider egress was added. The test reuses the existing Shotgun PostgreSQL adapters and `shotgun-backup-v1` format; the Worker and provider execution ledgers remain Shotgun-owned. There is no separate OSS Adapter replacement test for this change because no adapter implementation or dependency changed. The full-source restore Contract and existing Stage 12.1 backup tests remain required gates.
+
+## Isolated acceptance
+
+Test: `tests/database/vp-relation-priority.database.test.ts` — `restores VP source evidence and a pending relation job, then converges it once`.
+
+Command used on Windows with the repository's disposable PostgreSQL Compose services:
+
+```powershell
+$env:SHOTGUN_PG_TOOL_MODE = 'docker-compose'
+node --env-file-if-exists=.env --env-file-if-exists=.env.test node_modules/vitest/vitest.mjs run tests/database/vp-relation-priority.database.test.ts --maxWorkers=1 --testNamePattern 'restores VP source evidence' --testTimeout=180000
+```
+
+Result: **1 passed** on PostgreSQL 16.15. The test creates a uniquely named isolated source database and temporary asset/backup/journal directories. It exercises owner `runOwnerCreate` (including automatic full verification) and `runOwnerRestoreSafe` into a new `shotgun_restore_*` target, then starts the existing recovery application against the restored database and asset root; all five recovery/readiness results must be true. It never targets `DATABASE_URL` or the user's application database. The seed includes two real Source/SourceVersion rows, two Evidence spans, two VP assertions/current assertions, original asset bytes, and one `PENDING` cross-source relation job.
+
+After owner restore and startup recovery, readback verified 2 Sources, 2 SourceVersions, 2 Evidence spans, 2 VP assertions, 2 current assertions, 2 original assets with matching bytes, and the same pending job. A source-side read confirmed the two assertions and pending Job stayed unchanged, so the owner workflow performed no cutover. The restored job then ran through `VPRelationJobWorker` and `GeneralAIVPDecisionAdapter` with a deterministic test resolver response (not a live DeepSeek request). One provider execution was recorded as `OUTPUT_STORED`, one decision receipt and one relation were committed, the Job became `COMPLETED`, a second dispatch returned `EMPTY`, and the test observed exactly one provider call. Both isolated databases and temporary files were cleaned up.
+
+`git diff --check`, ESLint for the changed PostgreSQL test, and Prettier checks for the test, this report, and the role matrix passed. The complete `vp-relation-priority.database.test.ts` PostgreSQL suite passed (11/11). Whole-repository local typecheck is currently blocked by pre-existing errors in user-owned, untracked TS7/proof tests; those files were not modified. Exact-head CI remains required after this change is committed.
+
+## Rollback and remaining VP-07 work
+
+This test adds no schema or runtime behavior, so it has no migration rollback. The owner API retains a successfully verified restore target for inspection; the test harness then drops only its unique `shotgun_restore_*` target and disposable source database and removes its temporary asset/backup/journal directories. The source remains unchanged. This does not prove deployment cutover or product-level rollback.
+
+VP-07 stays open. Still required: resume a data-bearing in-flight/unknown provider Job through the actual owner Runtime after a process or database outage; rehearse deployment cutover and rollback using the owner backup; force-stop the installed owner process and test Windows reboot/startup recovery; verify final launcher, database, and asset-root identity. The deterministic provider is not a live DeepSeek quality, latency, or billing test. See the [VP completion tracker](./vp-completion-tracker.md#남은-완료-조건).

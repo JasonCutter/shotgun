@@ -193,7 +193,10 @@ test('Direct Text SourceVersion answers both selected and automatic project ques
 
     expect(completed?.state).toBe('SUCCEEDED');
     expect(completed?.provider?.provider).toBe('fake');
-    expect(completed?.statements?.[0]?.text).toContain(sourceText);
+    expect(completed?.statements?.[0]?.text).toContain(
+      '2026-08-11 Shotgun local execution completed.',
+    );
+    expect(completed?.statements?.[0]?.text).toContain('The first project was JasonNote.');
     const citations = completed?.statements?.[0]?.citations ?? [];
     expect(citations.length).toBeGreaterThan(0);
     for (const citation of citations) {
@@ -238,13 +241,21 @@ test('Direct Text SourceVersion answers both selected and automatic project ques
     }
 
     expect(automaticRun?.state).toBe('SUCCEEDED');
-    expect(automaticRun?.statements?.[0]?.text).toContain(sourceText);
+    expect(automaticRun?.statements?.[0]?.text).toContain(
+      '2026-08-11 Shotgun local execution completed.',
+    );
+    expect(automaticRun?.statements?.[0]?.text).toContain('The first project was JasonNote.');
     expect(automaticRun?.statements?.[0]?.citations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           sourceId: source?.sourceId,
           sourceVersionId: source?.selectedSourceVersionId,
-          exactQuote: sourceText,
+          exactQuote: '2026-08-11 Shotgun local execution completed.',
+        }),
+        expect.objectContaining({
+          sourceId: source?.sourceId,
+          sourceVersionId: source?.selectedSourceVersionId,
+          exactQuote: 'The first project was JasonNote.',
         }),
       ]),
     );

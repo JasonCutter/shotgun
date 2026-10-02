@@ -397,6 +397,42 @@ describe('A6 AI settings backend and multi-provider connectivity', () => {
     ).resolves.toMatchObject({ rawText: '{"candidates":[]}' });
   });
 
+  it.each([
+    { configured: undefined, expected: 0.2 },
+    { configured: 0.7, expected: 0.7 },
+  ])(
+    'forwards the DeepSeek structured-generation temperature ($expected)',
+    async ({ configured, expected }) => {
+      let body: Record<string, unknown> | undefined;
+      const deepseek = new DeepSeekConnectivityAdapter({
+        ...(configured === undefined ? {} : { temperature: configured }),
+        fetch: async (_input, init) => {
+          body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          return response({ choices: [{ message: { content: '{"candidates":[]}' } }] });
+        },
+      });
+
+      await deepseek.generateStructured({
+        modelId: 'deepseek-flash',
+        apiKey: Buffer.from('secret'),
+        request: {
+          systemInstruction: 'Return JSON only.',
+          prompt: 'Extract claims.',
+          responseSchema: { type: 'object' },
+        },
+      });
+
+      expect(body).toMatchObject({ model: 'deepseek-flash', temperature: expected });
+      expect(JSON.stringify(body)).not.toContain('secret');
+    },
+  );
+
+  it.each([-0.1, 2.1, Number.NaN])('rejects an out-of-range DeepSeek temperature %s', (value) => {
+    expect(() => new DeepSeekConnectivityAdapter({ temperature: value })).toThrow(
+      'DeepSeek generation temperature must be between 0 and 2.',
+    );
+  });
+
   it('classifies a stalled HTTP 200 response body as a provider timeout', async () => {
     const deepseek = new DeepSeekConnectivityAdapter({
       timeoutMs: 1000,

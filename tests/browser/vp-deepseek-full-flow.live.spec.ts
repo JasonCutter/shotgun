@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
@@ -79,6 +79,7 @@ type ProviderResponseDiagnostic = {
   readonly providerRequestId?: string;
   readonly model?: string;
   readonly requestedMaxOutputTokens?: number;
+  readonly requestedTemperature?: number;
   readonly finishReasons: readonly string[];
   readonly promptTokens?: number;
   readonly completionTokens?: number;
@@ -134,6 +135,7 @@ const resolveDeepSeekForProject = async (
     ]);
     const { DeepSeekConnectivityAdapter } = deepSeekModule as {
       DeepSeekConnectivityAdapter: new (options?: {
+        temperature?: number;
         fetch?: (input: string | URL, init?: RequestInit) => Promise<Response>;
       }) => object;
     };
@@ -218,6 +220,9 @@ const resolveDeepSeekForProject = async (
     }
     return createCredentialBackedAIProviderAdapter({
       connectivity: new DeepSeekConnectivityAdapter({
+        ...(process.env.VP_FINANCE_PDF_TEST_TEMPERATURE?.trim()
+          ? { temperature: Number(process.env.VP_FINANCE_PDF_TEST_TEMPERATURE) }
+          : {}),
         fetch: async (input, init) => {
           const response = await fetch(input, init);
           if (onProviderResponse) {
@@ -230,11 +235,20 @@ const resolveDeepSeekForProject = async (
             };
             try {
               if (typeof init?.body === 'string') {
-                const requestBody = JSON.parse(init.body) as { readonly max_tokens?: unknown };
+                const requestBody = JSON.parse(init.body) as {
+                  readonly max_tokens?: unknown;
+                  readonly temperature?: unknown;
+                };
                 if (typeof requestBody.max_tokens === 'number') {
                   diagnostic = {
                     ...diagnostic,
                     requestedMaxOutputTokens: requestBody.max_tokens,
+                  };
+                }
+                if (typeof requestBody.temperature === 'number') {
+                  diagnostic = {
+                    ...diagnostic,
+                    requestedTemperature: requestBody.temperature,
                   };
                 }
               }
@@ -1402,11 +1416,13 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       provider: string;
       model: string;
       prompt_version: string;
+      adapter_version: string;
       usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
     }>(
       `SELECT provider_call->>'provider' AS provider,
               provider_call->>'model' AS model,
               provider_call->>'promptVersion' AS prompt_version,
+              provider_call->>'adapterVersion' AS adapter_version,
               provider_call->'usage' AS usage
          FROM candidate.batches
         WHERE project_id = 'shotgun' AND source_version_id = $1::uuid
@@ -1580,6 +1596,7 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
     expect(providerRows.rows[0]).toMatchObject({
       provider: 'deepseek',
       prompt_version: runtimePromptVersion,
+      adapter_version: 'a8-vault-routed-provider-v1/deepseek-chat-completions-v2-temperature-0.2',
     });
     expect(providerResponses[0]).toMatchObject({
       requestedMaxOutputTokens: 16_384,
@@ -1616,6 +1633,25 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       extractionUsage: providerRows.rows[0]?.usage,
       providerResponses,
     };
+    const auditOutputPath = process.env.VP_FINANCE_PDF_AUDIT_OUTPUT?.trim();
+    if (auditOutputPath) {
+      writeFileSync(
+        path.resolve(auditOutputPath),
+        `${JSON.stringify(
+          {
+            schema: 'vp-finance-pdf-claim-audit-v1',
+            sourceSha256: vpFinancePDFClaimMarkerCorpus.source.sha256,
+            promptVersion: runtimePromptVersion,
+            extractionSummary,
+            assertions: assertionRows.rows,
+            candidates: candidateRows.rows,
+          },
+          null,
+          2,
+        )}\n`,
+        'utf8',
+      );
+    }
     console.info(JSON.stringify(extractionSummary));
 
     const askRequested = process.env.VP_FINANCE_PDF_ASK !== '0';
@@ -1731,9 +1767,29 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
                   projectId: string;
                   accessRevision: string;
                   policyContextRevision: string;
-                  sensitivityClearance: 'private';
+                  sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
                   accessScope: readonly string[];
                 }): Promise<boolean>;
+                getRunContext(
+                  scope: {
+                    principalId: string;
+                    projectId: string;
+                    accessRevision: string;
+                    policyContextRevision: string;
+                    sensitivityClearance: 'public' | 'internal' | 'private' | 'restricted';
+                    accessScope: readonly string[];
+                  },
+                  answerRunId: string,
+                ): Promise<
+                  | {
+                      readonly snapshot: { readonly state: string };
+                      readonly contextStatus: string;
+                      readonly evidence: readonly unknown[];
+                      readonly vpKnowledgeEpoch?: string;
+                      readonly vpSourceWatermark?: string;
+                    }
+                  | undefined
+                >;
               };
             },
             { PostgresVPAskEvidenceSearch: new (pool: Pool) => object },
@@ -1745,14 +1801,63 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
           undefined,
           new PostgresVPAskEvidenceSearch(pool),
         );
-        const knowledgePending = await askReadinessRepository.isProjectKnowledgePending({
-          principalId: 'ask-worker-diagnostic',
+        const workerScope = {
+          principalId: 'ask-worker',
           projectId: 'shotgun',
-          accessRevision: 'diagnostic',
-          policyContextRevision: 'diagnostic',
-          sensitivityClearance: 'private',
-          accessScope: ['owner'],
-        });
+          accessRevision: latestFinanceRun.rows[0]?.access_revision ?? 'diagnostic',
+          policyContextRevision: latestFinanceRun.rows[0]?.policy_context_revision ?? 'diagnostic',
+          sensitivityClearance: latestFinanceRun.rows[0]?.sensitivity_clearance ?? 'private',
+          accessScope: latestFinanceRun.rows[0]?.access_scope ?? ['owner'],
+        } as const;
+        const knowledgePending =
+          await askReadinessRepository.isProjectKnowledgePending(workerScope);
+        let workerContextDiagnostic:
+          | {
+              readonly resolved: true;
+              readonly state: string;
+              readonly contextStatus: string;
+              readonly evidenceCount: number;
+              readonly hasKnowledgeEpoch: boolean;
+              readonly hasSourceWatermark: boolean;
+            }
+          | {
+              readonly resolved: false;
+              readonly code?: string;
+              readonly module?: string;
+              readonly operation?: string;
+              readonly name?: string;
+            } = { resolved: false };
+        if (latestFinanceRun.rows[0]) {
+          try {
+            const workerContext = await askReadinessRepository.getRunContext(
+              workerScope,
+              latestFinanceRun.rows[0].answer_run_id,
+            );
+            workerContextDiagnostic = workerContext
+              ? {
+                  resolved: true,
+                  state: workerContext.snapshot.state,
+                  contextStatus: workerContext.contextStatus,
+                  evidenceCount: workerContext.evidence.length,
+                  hasKnowledgeEpoch: workerContext.vpKnowledgeEpoch !== undefined,
+                  hasSourceWatermark: workerContext.vpSourceWatermark !== undefined,
+                }
+              : { resolved: false, code: 'NOT_FOUND' };
+          } catch (contextError) {
+            const error = contextError as {
+              readonly code?: unknown;
+              readonly module?: unknown;
+              readonly operation?: unknown;
+            };
+            workerContextDiagnostic = {
+              resolved: false,
+              ...(typeof error.code === 'string' ? { code: error.code } : {}),
+              ...(typeof error.module === 'string' ? { module: error.module } : {}),
+              ...(typeof error.operation === 'string' ? { operation: error.operation } : {}),
+              ...(contextError instanceof Error ? { name: contextError.name } : {}),
+            };
+          }
+        }
         const latestNpvRun = await pool.query<{
           readonly state: string;
           readonly attempt: Record<string, unknown> | null;
@@ -1772,6 +1877,10 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
           readonly state: string;
           readonly mode: string;
           readonly attempt_number: number;
+          readonly access_scope: readonly string[];
+          readonly sensitivity_clearance: 'public' | 'internal' | 'private' | 'restricted';
+          readonly access_revision: string;
+          readonly policy_context_revision: string;
           readonly source_selection_count: number;
           readonly attempt_state: string | null;
           readonly attempt_provider: string | null;
@@ -1782,6 +1891,8 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
           readonly attempt_failure_code: string | null;
         }>(
           `SELECT run.answer_run_id, run.state, run.mode, run.attempt_number,
+                  run.access_scope, run.sensitivity_clearance, run.access_revision,
+                  run.policy_context_revision,
                   (SELECT count(*)::int FROM frontend_ask.source_selections AS selection
                     WHERE selection.project_id = run.project_id
                       AND selection.answer_run_id = run.answer_run_id) AS source_selection_count,
@@ -1824,6 +1935,7 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
             summary: 'vp-live-finance-pdf-ask-diagnostic-v1',
             sourceVersionId: source.sourceVersionId,
             knowledgePending,
+            workerContextDiagnostic,
             latestFinanceRun: latestFinanceRun.rows[0]
               ? {
                   answerRunId: latestFinanceRun.rows[0].answer_run_id,
@@ -1923,24 +2035,40 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
     );
     const citations = answer?.citations;
     if (askRequested) expect(citations).toBeGreaterThan(0);
-    console.info(
-      JSON.stringify({
-        ...extractionSummary,
-        askAttempted: askRequested,
-        askCitations: citations,
-        npvRules: { positive: npvPositiveRule, negative: npvNegativeRule },
-        npvAskCitations: npvAnswer?.citations,
-        npvAskAnswer: npvAnswer?.text,
-        askCorpusId: vpFinancePDFAskCorpus.corpusId,
-        askCorpusVersion: vpFinancePDFAskCorpus.corpusVersion,
-        askCorpusDigest: vpFinancePDFAskCorpusComputedDigest,
-        askCorpusResults,
-        replayMatches: replay.matches,
-        currentRelations: replay.currentRelations,
-        pendingRelationJobs: replay.pendingRelationJobs,
-        relations: relationRows.rows,
-      }),
-    );
+    const finalRunSummary = {
+      ...extractionSummary,
+      askAttempted: askRequested,
+      askCitations: citations,
+      npvRules: { positive: npvPositiveRule, negative: npvNegativeRule },
+      npvAskCitations: npvAnswer?.citations,
+      npvAskAnswer: npvAnswer?.text,
+      askCorpusId: vpFinancePDFAskCorpus.corpusId,
+      askCorpusVersion: vpFinancePDFAskCorpus.corpusVersion,
+      askCorpusDigest: vpFinancePDFAskCorpusComputedDigest,
+      askCorpusResults,
+      replayMatches: replay.matches,
+      currentRelations: replay.currentRelations,
+      pendingRelationJobs: replay.pendingRelationJobs,
+      relations: relationRows.rows,
+    };
+    console.info(JSON.stringify(finalRunSummary));
+    if (auditOutputPath) {
+      writeFileSync(
+        path.resolve(auditOutputPath),
+        `${JSON.stringify(
+          {
+            schema: 'vp-finance-pdf-claim-audit-v1',
+            sourceSha256: vpFinancePDFClaimMarkerCorpus.source.sha256,
+            ...finalRunSummary,
+            assertions: assertionRows.rows,
+            candidates: candidateRows.rows,
+          },
+          null,
+          2,
+        )}\n`,
+        'utf8',
+      );
+    }
     expect(markers.filter((marker) => marker.matched)).toHaveLength(markers.length);
   } finally {
     if (runtime) {

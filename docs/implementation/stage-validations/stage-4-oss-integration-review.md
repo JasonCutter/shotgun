@@ -236,3 +236,51 @@ the v9 instruction and unique soft-wrap lookup; already recorded exact Evidence
 and immutable Candidate revisions remain available for replay and re-extraction.
 VP-04/05 remain open until the golden labels, repeatable completeness, quality
 limits, and actual provider cost are resolved.
+
+## 2026-10-02 DeepSeek structured-generation repeatability
+
+Target: the existing Stage 4 Candidate Generation and Validation contracts and
+the DeepSeek Decision Port adapter. The current adapter was augmented in
+place (`AUGMENT`); no new OSS runtime, package, database, or canonical boundary
+was introduced. The official [Chat Completions API](https://api-docs.deepseek.com/api/create-chat-completion/)
+and [parameter guidance](https://api-docs.deepseek.com/quick_start/parameter_settings/)
+were reviewed on 2026-10-02. The API defaults `temperature` to 1 and recommends
+lower values for more focused, consistent output. Shotgun now defaults the
+DeepSeek structured-generation adapter to `temperature=0.2`, permits a
+constructor override from 0 through 2, and records the exact setting in the
+provider adapter revision (`deepseek-chat-completions-v2-temperature-0.2`).
+This makes a configuration change distinguishable in provider history.
+
+Three repeated real-PDF extraction runs using the previous API default produced
+142, 149, and 161 ready assertions; pairwise normalized claim-set Jaccard
+similarities were 0.912, 0.826, and 0.847 (164-claim union). Three real-PDF
+extraction runs at 0.2 produced 151, 152, and 151 ready assertions; similarities
+were 0.98, 1.00, and 0.98 (149-claim union). All six runs retained 80/80 page
+markers and promoted none of the 11 non-claim canaries. A full Ask run at 0.2
+also passed its four fixed answer-and-page-citation cases, projection replay,
+and relation settlement (5 settled, 0 pending). The full product flow then
+passed once with no test temperature override: 151/151 ready assertions, 80/80
+markers, 0/11 non-claim promotions, the balance-sheet and NPV answers with
+citations, 4/4 fixed Ask cases with correct PDF page citations, replay matched,
+5 relations settled, 0 pending, and 31,046 provider-reported tokens over 11
+calls. The stored provider revision matched
+`a8-vault-routed-provider-v1/deepseek-chat-completions-v2-temperature-0.2`.
+However, the two preceding no-override runs timed out waiting for the first Ask
+answer; the answer run stayed `QUEUED` with no attempt while the same-scope
+knowledge-pending check was false. A third run passed in 1.5 minutes. The live
+test now records a bounded worker-context diagnostic if this recurs. This
+intermittency remains a product reliability issue to investigate. These runs
+establish improved repeatability for this PDF corpus, not independent claim
+correctness or a general quality guarantee. The supplied finance-PDF audit
+dump is opt-in and writes candidate/evidence detail only to the local
+operating-system temp directory; it is not checked into the repository.
+
+Unit tests cover the 0.2 default, a caller override, and invalid values;
+adapter/contract checks verify that the versioned identity reaches persisted
+provider diagnostics. The no-override full-flow test passed and asserted that
+identity, but its two preceding queue timeouts mean Ask availability is not yet
+stable. No migration is required. Rollback can set the adapter override to the
+API default 1 or restore the previous adapter revision. Semantic validation
+remains `NOT_RUN`, marker labels remain `CANDIDATE` pending independent
+adjudication, and actual provider billing is not reconciled. VP-04/05 remain
+open.

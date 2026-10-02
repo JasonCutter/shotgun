@@ -66,16 +66,19 @@ export type DeepSeekConnectivityAdapterOptions = {
   readonly baseUrl?: string;
   readonly timeoutMs?: number;
   readonly generationTimeoutMs?: number;
+  readonly temperature?: number;
   readonly fetch?: FetchLike;
 };
 
 export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapter {
   readonly providerId = 'deepseek';
+  readonly adapterVersion: string;
   readonly supportsOutputTokenLimit = true;
   readonly supportsCancellation = true;
   private readonly endpoint: string;
   private readonly timeoutMs: number;
   private readonly generationTimeoutMs: number;
+  private readonly temperature: number;
   private readonly fetch: FetchLike;
 
   constructor(options: DeepSeekConnectivityAdapterOptions = {}) {
@@ -93,6 +96,12 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
     if (!Number.isFinite(this.generationTimeoutMs) || this.generationTimeoutMs <= 0) {
       throw new Error('DeepSeek generation timeout must be a positive number of milliseconds.');
     }
+    const temperature = options.temperature ?? 0.2;
+    if (!Number.isFinite(temperature) || temperature < 0 || temperature > 2) {
+      throw new Error('DeepSeek generation temperature must be between 0 and 2.');
+    }
+    this.temperature = temperature;
+    this.adapterVersion = `deepseek-chat-completions-v2-temperature-${temperature}`;
     this.fetch = options.fetch ?? globalThis.fetch;
   }
 
@@ -135,6 +144,7 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
         response_format: { type: 'json_object' },
         thinking: { type: 'disabled' },
         stream: false,
+        temperature: this.temperature,
         ...(input.request.maxOutputTokens === undefined
           ? {}
           : { max_tokens: input.request.maxOutputTokens }),

@@ -372,3 +372,88 @@ checked the selected positive/negative markers, four Ask labels, and one
 generated assertion set against the original PDF. It verified source location
 for that sample; it does not replace a complete gold inventory or bound
 document-wide precision/recall.
+
+## 2026-10-02 Ask worker instrumentation and duplicate-relation variability
+
+To investigate the intermittent first-Ask timeout without changing production
+behavior, the live browser fixture now counts calls and outcomes for
+`recoverInterrupted()` and `claimQueuedForWorker()`. The diagnostic no longer
+claims a queued answer itself. The counters are test-only and expose counts,
+not source text or credentials. Focused TypeScript checking, ESLint, Prettier,
+and `git diff --check` passed for the two changed browser files. The full
+repository typecheck still reports errors in the user-owned, untracked TS7
+acceptance test; that file is unchanged.
+
+One instrumented run completed the supplied PDF product flow using an isolated
+PostgreSQL database and live DeepSeek `deepseek-flash`. It produced 145 direct
+assertions and 145 candidates; all assertions were exact substrings of their
+attached Evidence, all 80 page markers matched, and none of the 11 non-claim
+canaries were promoted. The four fixed Ask cases matched their expected answer
+and page citations (2, 3, 5, 9), replay matched, and all relation work settled.
+The Ask worker recorded 295 recovery scans, 295 queue scans, six claimed runs,
+zero errors, and 289 empty scans. The run used 34 provider responses and
+57,818 reported tokens (45,837 input, 11,981 output); the test does not retain
+the invoice charge or cached-token breakdown.
+
+This run found four normalized duplicate formula groups and an equivalent
+relation for all four. A preceding instrumented product run found only three
+of the same four groups connected by `EQUIVALENT`; its total relation set had
+five edges versus 20 in the later run. All fixed Ask checks passed in both.
+This variance, together with earlier `QUEUED`-without-attempt timeouts, means
+the duplicate consolidation and Ask reliability gates are not established.
+The current successful run shows the worker polling and claiming normally in
+that run; it does not identify the prior stall's cause. Semantic validation
+remains `NOT_RUN`, candidate labels remain `CANDIDATE`, and VP-04/05 remain
+open.
+
+Two serial repetitions with the same test-only counters also passed. They
+created 147 and 151 assertions, each returned all four expected page-grounded
+Ask answers, matched replay, and settled the relation queue. The worker made
+274 and 306 recovery/queue scans, claimed six runs per repetition, and recorded
+no errors. Relation totals were six (3 `EQUIVALENT`, 3 `RELATED`) and ten
+(7 `EQUIVALENT`, 3 `RELATED`). Three of four normalized duplicate formula
+groups had an equivalent edge in the first run; all four did in the second.
+Provider usage was 12 calls / 32,283 tokens and 16 calls / 38,362 tokens.
+These passes show the failure did not recur in this pair; historical queued
+timeouts remain unexplained, and changing claim/relation/edge counts prevent a
+quality or consistency conclusion.
+
+## 2026-10-02 relation candidate frontier measurement
+
+The live fixture now counts eligible assertion pairs separately from persisted
+relation jobs. On the same 151-assertion PDF run, the database contained 11,324
+eligible distinct-text pairs for the current scope and sensitivity. Only five
+had a job under the active policy (four completed, one pending), four provider
+attempts had been claimed, and 11,319 eligible pairs had no job. The replay
+poll had reported zero pending jobs immediately before this diagnostic query.
+The normalized duplicate audit found four of four formula pairs equivalent in
+this particular run.
+
+This demonstrates that replay's `relationQueueComplete` means every persisted
+job is terminal; it does not mean the eligible-pair frontier was exhausted.
+Pair enumeration proceeds incrementally while the worker runs, so a brief
+zero-pending interval can coexist with more eligible pairs and can be followed
+by a newly queued job. Earlier statements that the relation queue “settled”
+refer only to persisted jobs and must not be read as full relation coverage.
+The current default daily attempt ceiling is 100; exhaustive pair comparison
+is not an acceptable completion criterion for an 11k-pair source. Before VP-05
+can pass, Shotgun needs a measured high-recall candidate frontier or deterministic
+duplicate path, plus a truthful backlog/coverage signal and regression tests.
+The existing threshold stress corpus found that the tested `pg_trgm` 0.05
+cutoff lost eight cross-language equivalent examples, so it cannot be adopted
+as a shortcut. No production behavior changed in this measurement. See the
+[VP relation scale characterization](../vp-relation-scale-characterization-2026-09-29.md).
+
+A follow-up run now reads relation counts, job states, eligible-pair counts,
+and duplicate links inside one `REPEATABLE READ` snapshot to avoid mixing
+different worker states. With 142 assertions it found 10,009 eligible pairs,
+25 jobs (all completed), 25 claimed attempts, and 9,984 pairs without a job.
+The snapshot contained 18 relations (13 `EQUIVALENT`, 4 `RELATED`, 1
+`SUPPORTS`) and five normalized duplicate formula groups, each connected by an
+`EQUIVALENT` edge. All four page-grounded Ask checks passed and replay matched.
+This is a consistent measurement of a partial frontier, not full source-wide
+pair coverage. Eligible pairs are broad syntactic work candidates, not 10,009
+known semantic relationships; only an independently reviewed recall corpus
+can define which are relevant. The candidate backlog is about 99.75% of this
+broad frontier after the observed work, and the replay completion flag still
+does not include unqueued pairs.

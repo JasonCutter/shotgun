@@ -249,8 +249,50 @@ export async function startFrontendCrossPhaseBackend(
     undefined,
     vpEvidenceSearch,
   );
+  const askWorkerDiagnostics = {
+    recoverInterruptedCalls: 0,
+    recoveredRuns: 0,
+    recoverErrorCount: 0,
+    claimCalls: 0,
+    claimsReturned: 0,
+    emptyClaimCalls: 0,
+    claimErrorCount: 0,
+  };
+  const measuredAskExecutionRepository = new Proxy(askExecutionRepository, {
+    get(target, property) {
+      const member = Reflect.get(target, property, target) as unknown;
+      if (property === 'recoverInterrupted' && typeof member === 'function') {
+        return async (...args: unknown[]) => {
+          askWorkerDiagnostics.recoverInterruptedCalls += 1;
+          try {
+            const recoveredRuns = (await member.apply(target, args)) as number;
+            askWorkerDiagnostics.recoveredRuns += recoveredRuns;
+            return recoveredRuns;
+          } catch (error) {
+            askWorkerDiagnostics.recoverErrorCount += 1;
+            throw error;
+          }
+        };
+      }
+      if (property === 'claimQueuedForWorker' && typeof member === 'function') {
+        return async (...args: unknown[]) => {
+          askWorkerDiagnostics.claimCalls += 1;
+          try {
+            const claims = (await member.apply(target, args)) as readonly unknown[];
+            askWorkerDiagnostics.claimsReturned += claims.length;
+            if (claims.length === 0) askWorkerDiagnostics.emptyClaimCalls += 1;
+            return claims;
+          } catch (error) {
+            askWorkerDiagnostics.claimErrorCount += 1;
+            throw error;
+          }
+        };
+      }
+      return typeof member === 'function' ? member.bind(target) : member;
+    },
+  });
   const askAnswerExecution = new AskAnswerExecutionService(
-    askExecutionRepository,
+    measuredAskExecutionRepository,
     askAnswerProvider,
     { maxConcurrency: 2 },
   );
@@ -489,6 +531,7 @@ export async function startFrontendCrossPhaseBackend(
   return {
     askWorkerStarted: askWorkerStartFailure === undefined,
     ...(askWorkerStartFailure ? { askWorkerStartFailure } : {}),
+    getAskWorkerDiagnostics: () => ({ ...askWorkerDiagnostics }),
     /**
      * Operator step (WP4 Round 1 fix E — there is intentionally NO browser
      * History refresh route): rebuild the federated History projection for a

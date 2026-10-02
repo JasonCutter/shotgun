@@ -192,6 +192,14 @@ VP-08 stays unchecked. [Details](./vp-url-freshness-ask-projection-2026-10-02.md
 
 2026-10-02 원문 독립 점검에서 positive marker 80개(정규화 텍스트 75개와 시각 확인 5개), 11개 negative fragment canary, Ask 4개 답·페이지를 대조했다. 한 실측의 147 assertion은 모두 Evidence와 정확히 연결됐고 pypdf 본문 대조 131개·페이지 이미지 대조 16개였다. 정규화 중복 공식 4쌍을 확인했으며, 완전한 문서 gold 목록·전체 누락 상한·독립 blind label은 아직 없다. 상세 [source audit](./vp-finance-pdf-independent-source-audit-2026-10-02.md). Corpus 상태는 `CANDIDATE` 유지, VP-04/05 미완료.
 
+2026-10-02 Ask worker 진단을 test fixture에만 추가하고 전체 재무 PDF 흐름을 실제 DeepSeek로 통과했다. 한 실행은 145/145 주장이 직접 Evidence에 포함되고, marker 80/80, non-claim 0/11 승격, Ask 4/4 답과 페이지 인용, replay 일치, 관계 작업 종료를 확인했다. worker는 recovery/queue scan 295회씩, 작업 6건 획득, 오류 0회를 기록했다. provider 응답은 34회·57,818 tokens였다. 정규화 중복 공식 4쌍 모두 `EQUIVALENT`였으나 직전 실행에서는 3/4만 연결됐고 전체 relation 수가 5→20으로 변동했다. 이 실행의 정상 polling은 과거 `QUEUED` 정체 원인을 설명하지 않으며, semantic golden 독립 판정도 없다. [Stage 4 진단 실측](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-ask-worker-instrumentation-and-duplicate-relation-variability); VP-04/05 미완료.
+
+같은 계측으로 직렬 실행한 2회도 통과했다. 147·151 assertion 각각 Ask 4/4 페이지 근거, replay 일치, pending relation 0을 기록했다. worker는 274·306회 scan에서 각 6개를 claim했고 오류는 없었다. relation 수는 6(동등 3, 관련 3)→10(동등 7, 관련 3)이었으며 정규화 공식 4쌍 중 동등 연결은 3→4개로 달랐다. 과거 `QUEUED` 무시의 원인은 확인되지 않았고 관계 정합성·gold adjudication도 남아 VP-04/05는 미완료다. 상세 [Stage 4 진단 실측](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-ask-worker-instrumentation-and-duplicate-relation-variability).
+
+추가 pair frontier 계측에서 151개 주장으로 생성 가능한 서로 다른 주장 쌍 11,324개 중 active policy job은 5개(완료 4, 대기 1), 미생성 쌍은 11,319개였다. 직전 replay snapshot의 pending 0은 곧바로 새 job이 생기기 전의 짧은 빈 구간이었다. 따라서 현재 `relationQueueComplete`는 이미 만들어진 job 상태만 의미하며 전체 후보 조사가 끝났다는 뜻이 아니다. 일일 provider 한도 100과 `pg_trgm` 임계값 회귀(0.05에서 교차언어 동등 8건 누락)를 고려한 고재현율 후보 생성, 정확 중복의 안정적 연결, backlog/coverage 표시는 VP-05에서 선결해야 한다. 상세 [pair frontier 실측](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-relation-candidate-frontier-measurement). VP-04/05 미완료.
+
+관계 표·job·후보 쌍·중복 링크를 하나의 `REPEATABLE READ` snapshot에서 측정한 후속 실제 흐름도 통과했다. 142 assertion에서 10,009 eligible pair 중 job 25개가 완료됐고 9,984개가 미생성 상태였다. 현재 relation 18개(동등 13, 관련 4, 지지 1), 중복 공식 5쌍 `EQUIVALENT` 5/5, Ask 4/4 및 replay 일치를 확인했다. 이 수치는 계산 가능한 넓은 후보 frontier이지 모두 의미상 관련된다는 뜻은 아니며, 전체 recall은 독립 adjudicated corpus로 정의해야 한다. 넓은 frontier의 약 99.75%가 남았으므로 `relationQueueComplete`와 전체 관계 통합은 구분한다. [일관 snapshot 실측](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-relation-candidate-frontier-measurement); VP-05 미완료.
+
 ## 다음 작업 순서
 
 ### 2026-10-02 회귀 재검증 (이전 v9 실행)
@@ -201,7 +209,7 @@ VP-08 stays unchecked. [Details](./vp-url-freshness-ask-projection-2026-10-02.md
 - Stage 12.1 내구성 DB 회귀는 테스트용 격리 PostgreSQL에서 10/10 통과했다. 기존 공유 테스트 DB에 append-only VP 이력이 있어 전체 `TRUNCATE`가 거부되는 점을 확인하고, 이 테스트 파일이 격리 DB를 만들고 폐기하도록 수정했다. 기존 VP 이력은 변경하지 않았다.
 - 재검증: `quality:gate`, `test:architecture`, `docs:validate`(545 Markdown 링크, ADR 1–171), 변경 파일 ESLint, `git diff --check` 통과. 전체 `typecheck`/`lint`에는 앞서 기록한 사용자 소유 미추적 TS-7 파일 오류가 계속 남아 있다.
 
-1. **VP-04/05** 80개 page marker와 11개 non-claim의 독립 판정을 마치고 전체 정밀도/재현율, 누락·오탐 상한을 고정한다. 세 번의 실 실행에서 marker 80/80은 유지됐지만 주장 수는 151/138/142, 관계 수는 3/4로 달라 추가 후보·관계 일관성 평가가 필요하다. 대량 관계 처리·후보 축소 recall·재시도 비용과 실제 청구액도 대사한다.
+1. **VP-04/05** 80개 page marker와 11개 non-claim의 독립 판정을 마치고 전체 정밀도/재현율, 누락·오탐 상한을 고정한다. 151개 주장 PDF에서 11,324 eligible pair 중 11,319개가 아직 job으로 만들어지지 않은 것을 확인했다. `relationQueueComplete`는 현재 job만 수렴시키므로, 고재현율 pair frontier와 진행 중 backlog의 정확한 표시, 반복 실행에서 4개 정규화 공식의 연결 일관성, 후보 축소 recall, 재시도 비용 및 실제 청구액을 측정한다. 80/80 marker 반복은 전체 주장 의미 정밀도·재현율을 대신하지 않는다.
 2. **VP-06/07** provider/DB 장애, 무인 재기동, 백업·복구·배포 cutover/rollback과 Windows 재부팅 Gate를 끝낸다.
 3. **VP-08/09** 형식별 Golden과 freshness 자동 갱신, 제품 상태 표시, 인용 누출·미인가 egress 음성 검증을 마친다.
 4. **VP-03** 수정본 포함 빈 지식공간부터 자료 투입·질문까지 실제 설치 제품 인수검증을 완료한다.

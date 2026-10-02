@@ -34,6 +34,15 @@ type CrossPhaseBackend = {
     close(): Promise<void>;
     askWorkerStarted: boolean;
     askWorkerStartFailure?: string;
+    getAskWorkerDiagnostics(): {
+      readonly recoverInterruptedCalls: number;
+      readonly recoveredRuns: number;
+      readonly recoverErrorCount: number;
+      readonly claimCalls: number;
+      readonly claimsReturned: number;
+      readonly emptyClaimCalls: number;
+      readonly claimErrorCount: number;
+    };
   }>;
 };
 
@@ -321,6 +330,15 @@ const resolveDeepSeekForProject = async (
 
 type ProductRuntime = {
   readonly frontendUrl: string;
+  askWorkerDiagnostics(): {
+    readonly recoverInterruptedCalls: number;
+    readonly recoveredRuns: number;
+    readonly recoverErrorCount: number;
+    readonly claimCalls: number;
+    readonly claimsReturned: number;
+    readonly emptyClaimCalls: number;
+    readonly claimErrorCount: number;
+  };
   close(): Promise<void>;
 };
 
@@ -391,6 +409,7 @@ const startProductRuntime = async (
     await frontend.listen();
     return {
       frontendUrl,
+      askWorkerDiagnostics: backend.getAskWorkerDiagnostics,
       close: async () => {
         await frontend?.close();
         await backend.close();
@@ -1815,7 +1834,6 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
                   }
                 | undefined
               >;
-              claimQueuedForWorker(workerId: string, limit: number): Promise<readonly unknown[]>;
             };
           },
           { PostgresVPAskEvidenceSearch: new (pool: Pool) => object },
@@ -1925,10 +1943,6 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
             };
           }
         }
-        const diagnosticClaims = await askReadinessRepository.claimQueuedForWorker(
-          'vp-live-diagnostic-only',
-          1,
-        );
         const latestNpvRun = await pool.query<{
           readonly state: string;
           readonly attempt: Record<string, unknown> | null;
@@ -1967,7 +1981,7 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
             sourceVersionId: source.sourceVersionId,
             knowledgePending,
             workerContextDiagnostic,
-            diagnosticClaimCount: diagnosticClaims.length,
+            backgroundAskWorker: runtime?.askWorkerDiagnostics(),
             latestFinanceRun: latestFinanceRun.rows[0]
               ? {
                   answerRunId: latestFinanceRun.rows[0].answer_run_id,
@@ -2049,13 +2063,130 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       failedRelationJobs: 0,
       unknownRelationJobs: 0,
     });
-    const relationRows = await pool.query<{ relation_kind: string; relation_count: number }>(
-      `SELECT relation_kind, count(*)::int AS relation_count
-         FROM vp.current_relations
-        WHERE project_id = 'shotgun'
-        GROUP BY relation_kind
-        ORDER BY relation_kind`,
+    const { relationRows, relationProcessingDiagnostics, relationEdges } = await (async () => {
+      const connection = await pool.connect();
+      try {
+        await connection.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+        const relationRows = await connection.query<{
+          relation_kind: string;
+          relation_count: number;
+        }>(
+          `SELECT relation_kind, count(*)::int AS relation_count
+             FROM vp.current_relations
+            WHERE project_id = 'shotgun'
+            GROUP BY relation_kind
+            ORDER BY relation_kind`,
+        );
+        const relationProcessingDiagnostics = await connection.query<{
+          readonly eligiblePairCount: number;
+          readonly unqueuedEligiblePairCount: number;
+          readonly relationJobCount: number;
+          readonly jobStatusCounts: Record<string, number>;
+          readonly claimedProviderAttempts: number;
+        }>(
+          `WITH eligible_pairs AS (
+             SELECT left_claim.assertion_id AS left_assertion_id,
+                    right_claim.assertion_id AS right_assertion_id
+               FROM vp.current_assertions AS left_claim
+               JOIN vp.current_assertions AS right_claim
+                 ON right_claim.project_id = left_claim.project_id
+                AND left_claim.assertion_id < right_claim.assertion_id
+                AND left_claim.claim_text <> right_claim.claim_text
+                AND left_claim.access_scope = right_claim.access_scope
+                AND left_claim.sensitivity = right_claim.sensitivity
+              WHERE left_claim.project_id = 'shotgun'
+           ), job_status_counts AS (
+             SELECT status, count(*)::int AS count
+               FROM vp.relation_jobs
+              WHERE project_id = 'shotgun'
+              GROUP BY status
+           )
+           SELECT (SELECT count(*)::int FROM eligible_pairs) AS "eligiblePairCount",
+                  (SELECT count(*)::int
+                     FROM eligible_pairs AS pair
+                    WHERE NOT EXISTS (
+                      SELECT 1 FROM vp.relation_jobs AS job
+                       WHERE job.project_id = 'shotgun'
+                         AND job.left_assertion_id = pair.left_assertion_id
+                         AND job.right_assertion_id = pair.right_assertion_id
+                         AND job.policy_revision = 'vp-deepseek-relation-v6-evidence-context'
+                    )) AS "unqueuedEligiblePairCount",
+                  (SELECT count(*)::int FROM vp.relation_jobs
+                    WHERE project_id = 'shotgun'
+                      AND policy_revision = 'vp-deepseek-relation-v6-evidence-context') AS "relationJobCount",
+                  coalesce((SELECT jsonb_object_agg(status, count) FROM job_status_counts), '{}'::jsonb)
+                    AS "jobStatusCounts",
+                  coalesce((SELECT claimed_count FROM vp.relation_call_budget
+                             WHERE budget_day = CURRENT_DATE), 0)::int AS "claimedProviderAttempts"`,
+        );
+        const relationEdges = await connection.query<{
+          relation_kind: string;
+          left_claim_text: string;
+          right_claim_text: string;
+        }>(
+          `SELECT relation.relation_kind,
+                  left_assertion.claim_text AS left_claim_text,
+                  right_assertion.claim_text AS right_claim_text
+             FROM vp.current_relations AS relation
+             JOIN vp.current_assertions AS left_assertion
+               ON left_assertion.project_id = relation.project_id
+              AND left_assertion.assertion_id = relation.left_assertion_id
+             JOIN vp.current_assertions AS right_assertion
+               ON right_assertion.project_id = relation.project_id
+              AND right_assertion.assertion_id = relation.right_assertion_id
+            WHERE relation.project_id = 'shotgun'
+              AND left_assertion.source_version_id = $1::uuid
+              AND right_assertion.source_version_id = $1::uuid`,
+          [source.sourceVersionId],
+        );
+        await connection.query('COMMIT');
+        return { relationRows, relationProcessingDiagnostics, relationEdges };
+      } catch (error) {
+        await connection.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        connection.release();
+      }
+    })();
+    const normalizedClaimGroups = new Map<string, number>();
+    for (const row of assertionRows.rows) {
+      const key = normalize(row.claim_text);
+      normalizedClaimGroups.set(key, (normalizedClaimGroups.get(key) ?? 0) + 1);
+    }
+    const duplicateClaimKeys = [...normalizedClaimGroups.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([key]) => key);
+    const duplicateRelationKinds = new Map<string, Set<string>>();
+    for (const edge of relationEdges.rows) {
+      const normalizedLeft = normalize(edge.left_claim_text);
+      const normalizedRight = normalize(edge.right_claim_text);
+      if (normalizedLeft !== normalizedRight || !duplicateClaimKeys.includes(normalizedLeft)) {
+        continue;
+      }
+      const relationKinds = duplicateRelationKinds.get(normalizedLeft) ?? new Set<string>();
+      relationKinds.add(edge.relation_kind);
+      duplicateRelationKinds.set(normalizedLeft, relationKinds);
+    }
+    const equivalentDuplicateClaimKeys = new Set(
+      [...duplicateRelationKinds.entries()]
+        .filter(([, relationKinds]) => relationKinds.has('EQUIVALENT'))
+        .map(([key]) => key),
     );
+    const duplicateNormalizationAudit = {
+      normalizedDuplicateGroupCount: duplicateClaimKeys.length,
+      groupsWithEquivalentRelation: duplicateClaimKeys.filter((key) =>
+        equivalentDuplicateClaimKeys.has(key),
+      ).length,
+      groupsWithoutEquivalentRelation: duplicateClaimKeys.filter(
+        (key) => !equivalentDuplicateClaimKeys.has(key),
+      ).length,
+      groups: duplicateClaimKeys.map((key) => ({
+        groupDigest: createHash('sha256').update(key).digest('hex'),
+        assertionCount: normalizedClaimGroups.get(key),
+        hasEquivalentRelation: equivalentDuplicateClaimKeys.has(key),
+        relationKinds: [...(duplicateRelationKinds.get(key) ?? [])].sort(),
+      })),
+    };
     const citations = answer?.citations;
     if (askRequested) expect(citations).toBeGreaterThan(0);
     const finalRunSummary = {
@@ -2071,7 +2202,11 @@ test('VP live finance PDF extraction and cited Ask characterization', async ({ p
       replayMatches: replay.matches,
       currentRelations: replay.currentRelations,
       pendingRelationJobs: replay.pendingRelationJobs,
+      backgroundAskWorker: runtime.askWorkerDiagnostics(),
       relations: relationRows.rows,
+      currentRelationsAtDiagnosticSnapshot: relationEdges.rows.length,
+      relationProcessingDiagnostics: relationProcessingDiagnostics.rows[0],
+      duplicateNormalizationAudit,
     };
     console.info(JSON.stringify(finalRunSummary));
     if (auditOutputPath) {

@@ -14,6 +14,8 @@ Role Matrix와 4-레퍼런스 전략의 상태는 초기 기준선이다. 실제
 
 ## 2. 평가 우선 원칙
 
+[ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)에 따라 제품 인수와 신뢰할 수 있는 기준으로 필요성을 확인한 다음 OSS 후보를 검토한다. 실험 도구 채택을 제품 병목 증명의 대체로 삼지 않는다. 기존 Port·version/license/security·replacement Gate와 Role Matrix는 유지한다.
+
 Shotgun은 **OSS-first, not OSS-forced** 원칙을 사용한다.
 
 - 관련 후보가 있으면 새 구현 전에 평가한다.
@@ -44,15 +46,15 @@ VERIFIED → RE_EVALUATING
 
 ### 3.2 결정 결과
 
-| 결과 | 의미 |
-|---|---|
-| `ADOPT` | 공식 패키지를 Adapter 뒤에서 사용 |
-| `EXTRACT` | 일부 코드를 독립 Package로 추출·개작 |
-| `AUGMENT` | 핵심 패턴·코드를 사용하고 Shotgun 계약·정책으로 보완 |
-| `REFERENCE_ONLY` | 설계·테스트 패턴만 참고 |
-| `DEFER` | 현재 필요성이 없어 재평가 조건과 함께 연기 |
-| `REJECT` | 범위·품질·보안·라이선스·결합도 문제로 제외 |
-| `NO_RELEVANT_OSS` | 관련 후보가 없음을 조사 범위와 함께 기록 |
+| 결과              | 의미                                                 |
+| ----------------- | ---------------------------------------------------- |
+| `ADOPT`           | 공식 패키지를 Adapter 뒤에서 사용                    |
+| `EXTRACT`         | 일부 코드를 독립 Package로 추출·개작                 |
+| `AUGMENT`         | 핵심 패턴·코드를 사용하고 Shotgun 계약·정책으로 보완 |
+| `REFERENCE_ONLY`  | 설계·테스트 패턴만 참고                              |
+| `DEFER`           | 현재 필요성이 없어 재평가 조건과 함께 연기           |
+| `REJECT`          | 범위·품질·보안·라이선스·결합도 문제로 제외           |
+| `NO_RELEVANT_OSS` | 관련 후보가 없음을 조사 범위와 함께 기록             |
 
 신규 구현은 후보별 `REJECT`·`DEFER` 또는 `NO_RELEVANT_OSS` 근거를 남기고 Port와 교체 경계를 먼저 정의해야 한다.
 
@@ -208,6 +210,8 @@ Shotgun Canonical·Approval·Evidence 의미를 바꿔야 한다면 채택하지
 
 ### 6.6 Quality and Performance
 
+**ADR-173 보고 조건:** corpus/label의 승인 수준, 실제 제공 문맥, 정의·분모, 미평가 범위와 표본 한계를 먼저 명시한다. 의미 판정·형식·발행·원본 안정성·발행 안정성·비용을 분리하고 빈 품질 분모는 N/A로 보고한다. 후보 또는 모델 합의의 점수로 객관적 의미 품질을 인증하지 않는다. 기존 frozen metric/result를 소급 수정하지 않으며 새 비교 계약은 별도 revision으로 고정한다.
+
 모듈별 Golden Corpus·Benchmark로 다음을 비교한다.
 
 - Correctness
@@ -235,21 +239,21 @@ Shotgun Canonical·Approval·Evidence 의미를 바꿔야 한다면 채택하지
 
 ## 7. Stage별 평가 큐
 
-| Stage | 필수 후보 범주 |
-|---|---|
-| 0 | PostgreSQL, JSON Schema, OpenTelemetry, 4개 레퍼런스 baseline |
-| 1 | gbrain Minion, CloudEvents, PostgreSQL Job Table, Temporal·NATS·Redis 비교 |
-| 2 | ddsyasas Intake UX, fsspec, S3-compatible Asset, Tika MIME |
-| 3 | lucas Highlight·Lint·Watcher·Reconcile, W3C Annotation |
-| 4 | 공식 AI SDK, LiteLLM, Pydantic/Zod, Langfuse, ddsyasas 비용 UX |
-| 5 | OpenKnowledge Activity·Burst Diff, diff 도구, ddsyasas Action UX |
-| 6 | gbrain Fact·Relation·Timeline·migration, PostgreSQL, Outbox |
-| 7 | gbrain Search·Citation·Gap, PostgreSQL FTS, pgvector, ddsyasas Ask UX |
-| 8 | lucas HTML/XLSX, Docling, Tika, MarkItDown, PyMuPDF, Office library |
-| 9 | gbrain Graph, NetworkX, OpenKnowledge 2D Graph·Entity Vault, Cytoscape.js |
-| 10 | gbrain Dream Cycle·Projection, pgvector, AGE, OpenSearch·Qdrant 조건부 |
-| 11 | gbrain MCP 패턴, MCP SDK, Provider SDK, OPA·Casbin·OpenFGA, Temporal 조건부 |
-| 12 | Adapter 교체, OSS 제거, Extract Package 독립 재사용 |
+| Stage | 필수 후보 범주                                                              |
+| ----- | --------------------------------------------------------------------------- |
+| 0     | PostgreSQL, JSON Schema, OpenTelemetry, 4개 레퍼런스 baseline               |
+| 1     | gbrain Minion, CloudEvents, PostgreSQL Job Table, Temporal·NATS·Redis 비교  |
+| 2     | ddsyasas Intake UX, fsspec, S3-compatible Asset, Tika MIME                  |
+| 3     | lucas Highlight·Lint·Watcher·Reconcile, W3C Annotation                      |
+| 4     | 공식 AI SDK, LiteLLM, Pydantic/Zod, Langfuse, ddsyasas 비용 UX              |
+| 5     | OpenKnowledge Activity·Burst Diff, diff 도구, ddsyasas Action UX            |
+| 6     | gbrain Fact·Relation·Timeline·migration, PostgreSQL, Outbox                 |
+| 7     | gbrain Search·Citation·Gap, PostgreSQL FTS, pgvector, ddsyasas Ask UX       |
+| 8     | lucas HTML/XLSX, Docling, Tika, MarkItDown, PyMuPDF, Office library         |
+| 9     | gbrain Graph, NetworkX, OpenKnowledge 2D Graph·Entity Vault, Cytoscape.js   |
+| 10    | gbrain Dream Cycle·Projection, pgvector, AGE, OpenSearch·Qdrant 조건부      |
+| 11    | gbrain MCP 패턴, MCP SDK, Provider SDK, OPA·Casbin·OpenFGA, Temporal 조건부 |
+| 12    | Adapter 교체, OSS 제거, Extract Package 독립 재사용                         |
 
 세부 적용은 [OSS Integration Roadmap](./oss-integration-roadmap.md)을 따른다.
 
@@ -270,23 +274,28 @@ Shotgun Canonical·Approval·Evidence 의미를 바꿔야 한다면 채택하지
 
 ```markdown
 ## Problem
+
 - 구현할 기능과 Target Port
 
 ## OSS reviewed
+
 - 후보와 version/commit
 - Prototype·code review 범위
 
 ## Reuse decision
+
 - Adopt/Extract/Augment가 불가능한 이유
 - Reject/Defer 근거
 
 ## Custom implementation
+
 - 범위
 - 예상 유지보수 비용
 - 교체 가능한 Port
 - Contract Test
 
 ## Exit
+
 - 향후 OSS 교체 조건
 - Migration·rollback
 ```
@@ -297,12 +306,14 @@ Shotgun Canonical·Approval·Evidence 의미를 바꿔야 한다면 채택하지
 
 ```markdown
 ## Candidate
+
 - Repository:
 - Version / Tag / Commit:
 - License:
 - Target Stage, module and Port:
 
 ## Evaluation
+
 - Alternatives:
 - Golden corpus / benchmark:
 - Quality:
@@ -311,6 +322,7 @@ Shotgun Canonical·Approval·Evidence 의미를 바꿔야 한다면 채택하지
 - Maintenance:
 
 ## Integration
+
 - Adopt / Extract / Augment:
 - Adapter or fork boundary:
 - Data owned or stored:
@@ -318,6 +330,7 @@ Shotgun Canonical·Approval·Evidence 의미를 바꿔야 한다면 채택하지
 - Telemetry:
 
 ## Operations
+
 - Migration:
 - Rollback:
 - Upgrade policy:
@@ -325,6 +338,7 @@ Shotgun Canonical·Approval·Evidence 의미를 바꿔야 한다면 채택하지
 - SBOM and lockfile:
 
 ## Decision
+
 - Result:
 - Reason:
 - Known limits:

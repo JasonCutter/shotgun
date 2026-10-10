@@ -6,6 +6,20 @@
 
 ## 갱신 규칙
 
+### 2026-10-10 현재 우선순위와 보류 상태
+
+[ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)와 [전략 실행 기준](./development-strategy-reset-2026-10-10/execution-plan.md)을 따른다. ADR-172의 제품·원장·Frontier 계약과 기존 Gate/ID는 유지한다. 아래 체크된 좁은 증거는 보존하며 이번 문서 정비로 새 상위 Gate를 완료 처리하지 않는다.
+
+| 대상                                           | 현재 판정 / 다음 종료 근거                                                                            |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| VP-04/05                                       | 미완료. 정답 검증 상태·제품 영향·scale/cost/calibration·청구 대사·후보 recall의 남은 요건을 먼저 정리 |
+| 기존 72쌍 / 432회 / B v1 12회                  | 노출된 개발·역사 증거 보존. 독립 승인 Gold·객관적 의미 오류율로 사용하지 않음                         |
+| SSC / 새 모델 / prompt/schema / B v1 잔여 24회 | HOLD / 재개 금지. v11·0.9 유지, 제품 병목과 신뢰 가능한 비교 기준 확인 전 기술 변경 착수 안 함        |
+| 중지된 평가 구현 draft                         | 미검증·미채택. 보존 stash/byte manifest를 유지하며 자동 재개 안 함                                    |
+| VP-06 및 후속 Gate                             | 기존 STOP. VP-05 종료 적격성·기존 의존성·별도 승인 없이는 진행 안 함                                  |
+
+미검증 기준을 제외한 인증 지표와 후보 진단 지표를 분리한다. 조건부 방향의 올바른 채택 분모가 0이면 N/A다. CandidateFrontier가 관계 완료의 모집단이며, 이론적 PairUniverse의 미생성 쌍 전부를 backlog나 필수 실행 대상으로 다시 정의하지 않는다.
+
 - `[x]`는 **표에 적힌 좁은 범위의 증거가 통과했다**는 뜻이다. 관련 상위 Gate가 완료됐다는 뜻이 아니다.
 - `[ ]`는 완료 조건이 남았다는 뜻이다. 구현이 일부 있거나 단일 사례가 통과했어도 전체 인수 기준이 미달이면 체크하지 않는다.
 - `VP-01`~`VP-11`은 추적용 고정 ID이며 구현 순서를 뜻하지 않는다. 실제 선후 관계는 아래 **다음 작업 순서**와 각 Gate의 의존성을 따른다.
@@ -226,6 +240,15 @@ VP-08 stays unchecked. [Details](./vp-url-freshness-ask-projection-2026-10-02.md
 실제 Chromium·DeepSeek에서 빈 격리 공간에 별도 자료를 넣어 다중 자료 흐름을 확인했다. 동등한 유동비율 주장은 `EQUIVALENT` 0.99, 같은 범위의 150%/200% 주장은 `CONTRADICTS` 0.94로 정리했고 Ask는 각 자료를 인용했다. NPV의 양·음 조건은 모델 선택 `RELATED` 0.88이 threshold 아래라 관계를 기록하지 않고 `INSUFFICIENT_EVIDENCE`로 보류했지만 양 조건 답변·인용은 제공했다. A=42/B=43에서 A의 수정본 44 투입 후 A=44/B=43 질문은 구버전 42를 제외했고, 증분 projection과 빈 DB의 최신 정책 전체 재구축이 일치했다(각 주장 2개·관계 1개·Ask 인용 2개). 수정본 실행 중 relation readback 경고가 한 차례 출력됐으나 bounded run은 1.2분 내 수렴·통과했다. 이 네 흐름은 대표 사례일 뿐이며 launcher, broad corpus precision/recall, relation coverage, provider 청구액은 남아 VP-03/04/05 미완료다. [실제 다중 자료·수정 흐름과 한계](./stage-validations/stage-4-oss-integration-review.md#2026-10-02-actual-two-source-deepseek-product-flow).
 
 ## 다음 작업 순서
+
+### 2026-10-10 현재 착수 기준
+
+1. ADR-173의 A 평가 신뢰성: 제공 입력·정답 검증·분쟁·복수 kind/direction/warrant·metric 분모를 구분한다.
+2. B 제품 진단: 자료 A/B/수정본·질문·원문·활성 버전·대기/재개·실패의 실제 증거로 병목을 분해한다.
+3. C 방식 필요성 비교 후 D에서 필요한 최소 보완만 제안·구현·검증한다. 운영/권위 변경은 별도 승인이다.
+4. E에서 기존 VP-04/05와 이후 Gate를 원래 인수 조건·의존성에 따라 판정한다. COMPLETE_WITH_LIMITS와 VP-06 착수는 자동 허용되지 않는다.
+
+아래 2026-10-02 진단과 당시 순서는 역사 기록이다. 현행 기술 착수 지시·모든 N² 쌍의 필수 평가 요구로 사용하지 않는다.
 
 ### 2026-10-02 회귀 재검증 (이전 v9 실행)
 

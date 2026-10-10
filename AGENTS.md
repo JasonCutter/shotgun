@@ -2,6 +2,16 @@
 
 이 파일은 Shotgun 저장소 전체에 적용한다.
 
+## 0. 현재 개발 전략 — ADR-173
+
+[ADR-173](docs/architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)의 사용자 승인 전략에 따라 `제품 인수 결과 → 평가 신뢰성 → 실제 병목 → 관련 OSS 재사용 판단 → 최소 구현 → Gate 검증` 순서로 작업한다. 방법은 목표·완료 기준·기존 안전 경계 안에서 실행 에이전트가 선택하고, 요청서보다 나은 수정·절충과 검증 결과를 보고한다. 사용자의 명시적 제약과 아래의 필수 Contract·OSS·안전 Gate는 유지한다.
+
+VP의 자료 투입/질문 두 동작, VP Ledger·SourceVersion·Evidence·권한·예산·복구·멱등성은 보존한다. 후보/동결 점수, anchor 위치, 높은 confidence를 인증된 의미 정답이나 객관적 Fact로 보고하지 않는다. 빈 품질 분모는 N/A이고 원본 선언 안정성·발행 안정성을 구분한다.
+
+VP-05의 평가 신뢰성과 제품 병목이 입증될 때까지 prompt/schema 즉흥 변경, SSC 연속 설계, 새 모델 비교·대량 재실험은 HOLD다. B v1 잔여 24회와 중지된 평가 draft는 자동 재개하지 않는다. v11·0.9 gate 유지, Gold-B-7·운영 정책·생산 데이터·권위 변경·push/PR/merge·VP-06은 별도 명시적 승인 대상이다. 문서 정비 승인과 이 실행 승인을 혼동하지 않는다.
+
+ADR-173은 기존 ADR 전체를 폐기하지 않는다. 로컬 사용자 승인과 Git `main`의 Canonical 게시 상태를 구분하고, [정합성 정리](docs/implementation/development-strategy-reset-2026-10-10/reconciliation.md)의 절별 변경 관계를 따른다.
+
 ## 1. 기준 문서와 우선순위
 
 Stage 구현 또는 완료 판정 전에 다음 문서를 확인한다.
@@ -40,6 +50,8 @@ Runtime이나 내부 DB를 Shotgun 공통 경계로 승격하지 않는다.
 6. OSS Integration Gate를 포함한 Definition of Done 판정
 
 즉, 기본 흐름은 다음과 같다.
+
+아래 흐름은 §0에서 필요성이 확인된 구현 범위 안에 적용한다. 연구 후보가 제안되었다는 이유만으로 보류된 기술 실험을 착수하지 않는다.
 
 `관련 OSS 검토 → 재사용 방식 결정 → 구현 → Contract 검증`
 

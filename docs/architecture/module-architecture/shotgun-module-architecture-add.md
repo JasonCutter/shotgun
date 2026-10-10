@@ -35,6 +35,10 @@ VP Assertion은 원문이 주장한 내용이며 자동으로 객관적 Fact가 
 
 ## 1. 배경과 문제
 
+### ADR-173 개발 전략 적용
+
+[ADR-173](../adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)의 제품/평가/병목 우선순위를 구현 착수와 완료 보고에 적용한다. 이는 위 §0.2의 VP 권위 또는 이 ADD의 Module·Port·데이터 소유권 변경이 아니다. 사전 관계 축적/질문 시 평가/혼합형은 필요성 비교를 위한 미검증 대안이며, 현행 Ledger·Frontier·증분/replay·원문·보안·실행 경계를 자동 대체하지 않는다. OSS의 기존 역할과 전체 runtime/내부 DB 제외 결정은 유지한다.
+
 Shotgun은 입력, 원본 보존, 변환, Evidence 생성, AI 후보 추출, 검증, 비교, 승인, Canonical 반영, Projection, Discovery, 결과 생성, 외부 Action 실행과 피드백 재진입까지 긴 Knowledge Flow를 가진다.
 
 이 전체 흐름을 하나의 애플리케이션과 데이터 모델로 강하게 결합하면 다음 문제가 생긴다.

@@ -27,7 +27,7 @@ This directory and the registered consolidated ADR documents form the global ADR
 | ADR-095         | Reserved Legacy Gap                                                            |
 | ADR-096–ADR-099 | Individual files in this directory                                             |
 | ADR-100–ADR-113 | [Frontend consolidated record](../frontend/adr-100-113-consolidated-record.md) |
-| ADR-114–ADR-172 | Individual files in this directory                                             |
+| ADR-114–ADR-173 | Individual files in this directory                                             |
 
 The Phase records under `docs/architecture/add/` retain their approved 2026-07-16 decision text. ADR-100–113 preserve the accepted Frontend decisions and later Contract Normalization outcomes in one Git owner record while the individual Notion pages remain Legacy References.
 
@@ -45,6 +45,8 @@ The current latest accepted pre-T3 individual decision is
 [ADR-170 — Asset CAS Liveness, Staging Leases, and Maintenance GC](ADR-170-asset-cas-liveness-staging-leases-and-maintenance-gc.md), accepted on 2026-09-19. [ADR-171 — T3 Project Source Knowledge Reset](ADR-171-t3-project-source-knowledge-reset.md) records the T3 design baseline; it does not implement or execute a reset. ADR-169 remains the preceding authority-critical PostgreSQL decision. New generative execution is DeepSeek-only while embedding provider identity remains governed by the independent embedding authority.
 
 [ADR-172 — VP Autonomous Knowledge Authority](ADR-172-vp-autonomous-knowledge-authority.md) is the accepted authority for the new single-space, two-action VP Product path. Its rollout and remaining gates are tracked in the [VP implementation plan](../../implementation/vp-vampire-implementation-plan.md); older approval-driven knowledge contracts remain historical for the new empty VP space.
+
+[ADR-173 — Product-first Development and Evaluation Trust Strategy](ADR-173-product-first-development-and-evaluation-trust-strategy.md) records the user's 2026-10-10 strategy decision. It amends future evaluation reporting and VP work priority while retaining ADR-098's label/knowledge separation and ADR-172's Product, Ledger, Evidence, Frontier and execution contracts. No whole ADR is superseded. SSC/model/query-time alternatives remain unadopted, and VP-06 stays stopped. Its local decision acceptance and pending reviewed `main` publication are separate states under ADR-117/120. The [reconciliation record](../../implementation/development-strategy-reset-2026-10-10/reconciliation.md) identifies clause-level changes. The owner registry now covers ADR-172 and ADR-173; neither uses a reserved gap.
 
 ADR-150 is an accepted implementation-discovered refinement for the bounded AKP-7
 WP4 implementation. It does not create a new AKP Section, expand the accepted AKP

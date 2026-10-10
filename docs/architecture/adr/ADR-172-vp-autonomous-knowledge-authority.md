@@ -94,3 +94,11 @@ This is an additive `DecisionProviderPort@1.2.0` input. It does not broaden the 
 `vp.project_epochs.current_epoch` remains pinned to each Ask attempt as audit context, but a change to an unrelated relation or assertion no longer makes that answer stale by itself. At resolution, before provider execution, and immediately before publication, Ask re-runs the same question under the same access and sensitivity scope and compares the ordered Evidence IDs used by the attempt. It also compares the accessible latest-SourceVersion watermark. A changed shortlist or source watermark fails closed and may use the bounded stale-snapshot retry; an epoch-only change with the same shortlist and watermark does not.
 
 The PostgreSQL Adapter performs the start and completion rechecks through the caller's transaction while holding a shared lock on the project's VP epoch row, so relation updates cannot interleave between the relevant VP shortlist check and the Ask state transition. This keeps background comparison work independent of an unrelated question while retaining current-source and citation freshness checks. The pinned epoch is preserved for audit and replay diagnostics; it is not used as the sole freshness predicate.
+
+## 13. 2026-10-10 amendment — ADR-173 제품 우선 전략과 평가 신뢰성
+
+[ADR-173](ADR-173-product-first-development-and-evaluation-trust-strategy.md)는 개발 우선순위와 향후 평가 보고를 보완한다. 이 ADR의 두 동작 제품 계약, VP Ledger, SourceVersion/Evidence, Claim/Fact, 권한, CandidateFrontier, READY/관계 농축 분리, 증분/full rebuild, 예산과 실행/복구 경계는 유지한다.
+
+로컬 VP 개발 기준선의 CandidateFrontier/frozen Gold recall은 그 기준의 검증 상태와 실제 제공 입력 범위 안에서 증거를 해석해야 한다. 100.0% critical와 ≥99.0% overall candidate recall이라는 요구 자체는 변경하지 않으며, 후보 기준의 동결·재현 가능성만으로 독립 의미 승인을 주장하지 않는다. 기존 frozen scorer/결과는 보존하고 새 reference/metric 적용은 별도 versioned 계약으로 명시한다.
+
+Jev·SSC·모델 교체·질문 시 관계 평가는 필요한 제품 병목과 신뢰할 수 있는 비교 기준이 확인되기 전에는 보류된 대안이다. 질문 시 평가가 현행 자동 사전 관계 기록이나 Frontier completeness를 대체하도록 승인한 것은 아니다. 운영 정책·데이터 권위 변경과 VP-06 진입은 별도 사용자 결정이 필요하다. 로컬의 추가 Frontier/runtime 변경은 이 문서 PR에 포함하지 않으며 현재 main에 이미 통합됐다고 주장하지 않는다. 기존 main의 이전 amendment 원문을 보존한다.

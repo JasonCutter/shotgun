@@ -1,0 +1,853 @@
+{
+  "generator": "node node_modules/tsx/dist/cli.mjs scripts/audit-development-strategy.ts",
+  "generatorRevision": "PUBLICATION_MAIN_WITH_BOUNDED_SECURITY_PATCH_V2",
+  "generatorNormalizedLfSha256": "b390d8d9bfd15dc56b7fe99752ff08b51d85b9ba2cf22826340b3dfbe7a20b28",
+  "authority": "DERIVED_PUBLICATION_SCOPE_INVENTORY_NOT_RUNTIME_OR_SEMANTIC_APPROVAL",
+  "publicationBase": "e08449982cbf2247b9b1e7a7ef39281eab09166a",
+  "sourceStrategyCommit": "1a36c7b55562783372dbc73c3188b9d797737c7e",
+  "productionChanges": [],
+  "dependencyChanges": [
+    "package-lock.json",
+    "package.json"
+  ],
+  "dependencyPatch": {
+    "package": "source-map-js",
+    "from": "1.2.1",
+    "to": "1.2.2",
+    "advisory": "GHSA-68fv-2mgg-jv7q",
+    "unrelatedManifestAndLockfileChanges": false
+  },
+  "existingScriptsChanged": [],
+  "productionBaseCodeTreeSha256": "0acd2ac8ce0a0526310b0869d085f1e7ecca843ef2566f131143956171c35cc5",
+  "publishedMainRuntimePolicy": "vp-deepseek-relation-v6-evidence-context",
+  "originalLocalSemanticDigest": {
+    "digest": "996ad83ba1fd74e8b50c07ed0811adbe8a4e7e6a1b801c893c251929615bf463",
+    "scope": "LOCAL_VP_LINEAGE_ONLY_NOT_CURRENT_MAIN_RUNTIME"
+  },
+  "inventoryCount": 158,
+  "inventory": [
+    {
+      "path": "docs/architecture/add/README.md",
+      "normalizedLfSha256": "3f59a046b17824c1794f9302636f7ea749798f59d38c6f748a15bbcbf0145d39",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/README.md",
+      "normalizedLfSha256": "0c8064aaec3e724875373c0016f0e65fd9e16743e8005d3a421652b8f0f794f6",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/add.md",
+      "normalizedLfSha256": "1b06669de2fc073130536695bd6267fea81a7a1c0302691247706b1e79d5b1dc",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-01-input-channels.md",
+      "normalizedLfSha256": "1961def5bd695109ccc995cf4e8a111b333c6b16d31b514e80fdbf55b5d308d8",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-02-file-input.md",
+      "normalizedLfSha256": "5f2bac1454c8cc0f6508bbd4d2b6889cb9686d60a1d71ea23d28385234742bbf",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-03-text-input.md",
+      "normalizedLfSha256": "700104644119348439d354788e06883b75d3b765f2339534cea90fb448bd1532",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-04-url-input.md",
+      "normalizedLfSha256": "33d574e09caea05f7775bf070854ae640bd27586308f8e1536a62c35f6f8cbbf",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-05-conversation-input.md",
+      "normalizedLfSha256": "143804b2ff678dd53fecd6a5e21feaac8305c556b1390f87561d6dbd8ce851fa",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-06-batch-input.md",
+      "normalizedLfSha256": "c14ba2e857db07a791250ed7eecf870215d64dab7dc75bacd26c884003ac8eae",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-07-user-provided-information.md",
+      "normalizedLfSha256": "b980a0b4e6a971dab9c8fb737f80c31b8f3e7c26df17c688fa1ca32db5cf9a6e",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-08-processing-instructions.md",
+      "normalizedLfSha256": "c3d06c6cb5d76651e3cfcc10f1f7e770bff37f9ac89c67b0b3c665325786c5a1",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-09-completion-boundary.md",
+      "normalizedLfSha256": "a911af95f362332245f1064583133c5fa7e112ae5f749621bb88449fb54763de",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-01-format-identification.md",
+      "normalizedLfSha256": "bbc0d16823798e2629a06601e5bc654ed3e6801f2c91b36d1b6190e1af622692",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-02-encoding-integrity.md",
+      "normalizedLfSha256": "18b3c0e060c7f5c6bcc89bfd3585256cc6870cb2b0fac55cafdeda636631866f",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-03-structural-processability.md",
+      "normalizedLfSha256": "3401c8be506e8ed1da8632e2be486323268715413fcfe85cb7dd7652934dbadb",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-04-safety-isolation.md",
+      "normalizedLfSha256": "59b9c9663fa935e58f261cd1a8fcaad8c7b088df8256145334c880745da45aa6",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-05-exact-duplicate.md",
+      "normalizedLfSha256": "6054c326d3213c9a084781b6694b04448fbf63b0f95250ad434442bdb2c9db05",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-06-duplicate-choice.md",
+      "normalizedLfSha256": "218df3a6c95e0eabacb516c0cf387f90b2def6be11370d6c5346d015b1990f35",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-07-validation-retry.md",
+      "normalizedLfSha256": "7667bd54d912aff16a98ef8093a12a77b828b742145ba78b2705ad929deea812",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-08-output-contract.md",
+      "normalizedLfSha256": "e820871d01235a0490af5c19749f9b1855e0290f949c6da5670e8b7ef09ead24",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-01-asset-boundary.md",
+      "normalizedLfSha256": "2902967e6bc4c967a384df284be4438cf7a285a4e1f6cc325ed5290782f21f15",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-02-immutable-storage.md",
+      "normalizedLfSha256": "219a7d87c0890e5c6d921331277500a092567ae3d51d475802faebb6be5a0c42",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-03-url-representation.md",
+      "normalizedLfSha256": "0e46a032567e8e20c5f5430879537570f3b9c27720b4b634fa9bf140b5985058",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-04-intake-provenance.md",
+      "normalizedLfSha256": "d781c439d0c7f1beef3336ab2725fc962a78cf1a13f569ed4f86e8362f8c4eb0",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-05-access-sensitivity.md",
+      "normalizedLfSha256": "fa0a8210ed795f866aa2f49d0f100da753842ebf78451d62779cebb0b275ba0b",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-06-state-idempotency.md",
+      "normalizedLfSha256": "7b60bf93f27279cfe2fa845df331c310507267e0d64551d078a48832ea23a273",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-07-retention-recovery.md",
+      "normalizedLfSha256": "c0bae89d61565eb110875923a84b2b01b9dbbfc32337b4032f5ef52dc834b06c",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-08-phase2-contract.md",
+      "normalizedLfSha256": "191d4da6ee52dca4ebdfa4449290318e9f34bc53eb8541fcda14e2b9a0f8970f",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/step-01-input.md",
+      "normalizedLfSha256": "0a4ab003b9ff297606fc494d75272181577cd1f0a567492e3f754d1545b02c20",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/step-02-validation.md",
+      "normalizedLfSha256": "15a5eb50b5bc39cdc0c905529dfa8d40fae2eb16c3548c3b0e05c68ce81486cc",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/step-03-original-preservation.md",
+      "normalizedLfSha256": "d2b769f2419f8db73f579f8d6b7dbe937b2f3d9cb318da280a911c22124eb93b",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/README.md",
+      "normalizedLfSha256": "b8e63e173b552fb44897e4323e226574479a8448b474191ece88886132875270",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/add.md",
+      "normalizedLfSha256": "30a7e181f811418c9a76a6c52fb1dee855c465bdba32d4dd93d09d16c36dfa4c",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/architecture-decision-records.md",
+      "normalizedLfSha256": "ef2b07083c8781515bc14f69b3e81e693ed2c252022464a3593363bafbccda8c",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/change-log.md",
+      "normalizedLfSha256": "bf075506988375e45596161422e12aa89f7fff02c8de85ba5ec2218ccbb6238d",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/implementation-validation.md",
+      "normalizedLfSha256": "f817125e40a6995fcff365a6f26f9608f404800ea2f8855ed4b4290122216a95",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/user-decisions.md",
+      "normalizedLfSha256": "2d4494a3d6b75793dc359eeffbea8860e2e0f9bcc423fe39a8e1716914c5a336",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/README.md",
+      "normalizedLfSha256": "5ae5346c30a246b9f34f7861effb032acefa1d93522c4a0fa41f5644f03d8bf6",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/add.md",
+      "normalizedLfSha256": "de539981d6d0ef8d9bf753c84b7968cfaaaffa738296c1f7fa62830d38cbbcaa",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/architecture-decision-records.md",
+      "normalizedLfSha256": "3d24ca247848a727e5a735c7fcb6989d1e9736eec5059a2c4bc5e1b9ad0e9dfb",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/change-log.md",
+      "normalizedLfSha256": "44f78cc1607516f25f7731989a3f8655f0a40696e63715f00ed79778149f9643",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/implementation-validation.md",
+      "normalizedLfSha256": "87adf3fb645553494b6d0066e84ad992f02861b722de9b6c1c70a3a9e0cac50d",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/user-decisions.md",
+      "normalizedLfSha256": "4f24586e123614df86c6dee95122dc730ffdf7a39119e68ae5ea1d05e8514082",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-04-comparison-change-approval/README.md",
+      "normalizedLfSha256": "93c36152d8c8331fe5d2251cec56948e9e4111c77791159dee5f1057e10e2879",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-04-comparison-change-approval/add.md",
+      "normalizedLfSha256": "954d50a11b5f494a5e21f8041e77e8d0f1e1848018faf1e6fcb12d02244d06e2",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-04-comparison-change-approval/architecture-decision-records.md",
+      "normalizedLfSha256": "3d8913586dfe01094f498a3623d8ecc75c75373bcf674921644c42e66b322b7f",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-04-comparison-change-approval/change-log.md",
+      "normalizedLfSha256": "527d0df964201ab852bc050f59bfaadd0621bca7006eb6ffa745b23223a91f53",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-04-comparison-change-approval/implementation-validation.md",
+      "normalizedLfSha256": "a203e8981904b96fbbd4e5a74a1c536c34914548c7373b6097105f2cf39212b2",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/README.md",
+      "normalizedLfSha256": "386ed309b44d3608a007782feda8d5be1efca459a8335baa1c1bda1884ba696f",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/add.md",
+      "normalizedLfSha256": "f2a403c38be05f69fb1e2a8823f64cca7d8fc38da00233ce76f89b0d385d8d4f",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/akp-0-latest-main-revalidation-2026-08-18.md",
+      "normalizedLfSha256": "7b3ba410be80042e1e2796924b53d52574f473d6565ce7419caf52e5f5450937",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/akp-v1-accepted-amendment-2026-08-12.md",
+      "normalizedLfSha256": "227f61388b441068d835eca0fd0271a8c64dc2fcf1014b23407ccad793c449ff",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/architecture-decision-records.md",
+      "normalizedLfSha256": "84fb67d23003ec171a9813f77abcd163272cc747b5a320ba7cf2a71154f3a7e6",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/change-log.md",
+      "normalizedLfSha256": "0934aae666f229c8c7b35217a736d712dfc2f2badfcfb783d98e4296388396c0",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/implementation-validation.md",
+      "normalizedLfSha256": "34c9af641e3f3cd60cbdfbacb5987b14103aaa99d271b35fa0fe23af545e0c38",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/README.md",
+      "normalizedLfSha256": "d3ec5ad8c7a4e0c2abf742a640bcb5d34526bd96e7bdb85ffa9d1f767457c986",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/add.md",
+      "normalizedLfSha256": "c5e9f36cf280b793c75b77f52acda4829899adb8e155599e884a74e8df34b60b",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/akp-v1-accepted-amendment-2026-08-12.md",
+      "normalizedLfSha256": "4f498af8d99305f323bbb569aeef84f6855e8fa8884ca5b927e04d0356549c60",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/architecture-decision-records.md",
+      "normalizedLfSha256": "83a03ff65df3ee6df8ae4ca6c233a08b824a1c708890b2ac03b2d149de433f56",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/change-log.md",
+      "normalizedLfSha256": "f17d0acbc66d87a44faa6388d82a0d2f9aee5595b0fc395d059d749b9af31fff",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/implementation-validation.md",
+      "normalizedLfSha256": "f88da7d35c0d960b36d126add25b81f32e8d446e5550cf20f6d86678ca00f45c",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/step-18-generation.md",
+      "normalizedLfSha256": "b2200977b7358896ce0064f4996d89e28bee5bce0c578317d052789668fab516",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/step-19-risk-review.md",
+      "normalizedLfSha256": "a76e37105b8a41522a21dcc4dcb940b19e28741b1b741f17cc8f0c02d3d68956",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/step-20-delivery-and-read-api.md",
+      "normalizedLfSha256": "bac556a0658f457225eb8a1ab1932808fabf4415f0580c7bcbc2aa7ed4af642c",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/step-21-external-action-execution.md",
+      "normalizedLfSha256": "6531c65be0d37c268e67e64b9419330831139729cd0e7305c4e63e15fac3b5b7",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/step-22-feedback-reentry.md",
+      "normalizedLfSha256": "a2ef0b66eda8c0dc3c2732e941f8c306b88ccdaf1fce0cf1f498da985a5b23ef",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-079-stage-0-engineering-foundation.md",
+      "normalizedLfSha256": "1f4cebc39f097d39fd7b40640e0776f0742f1252f1030b8c75b2c9b6e714ffc5",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-080-stage-1-kernel-contracts-and-runtime.md",
+      "normalizedLfSha256": "c645f9cd8bdd75f726c1da166bbe2515418808f663b6c4d24db172c3341feea8",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-081-stage-2-intake-and-original-asset.md",
+      "normalizedLfSha256": "6f3c7c3e756cee31135d9f3616e29739307b8ad78a28ae41bf2019c9d171b9dc",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-082-stage-0-to-2-oss-first-retrospective.md",
+      "normalizedLfSha256": "7c7c02cf24fcdd0588306a5ab604d7163854d60bd94673dc0785b066fff5f100",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-083-stage-3-plain-text-transformation-and-evidence.md",
+      "normalizedLfSha256": "926bef99611540d2a5227514c736c37ee481c43c241c2439196edb85d41f70d5",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-084-stage-4-ai-candidate-validation.md",
+      "normalizedLfSha256": "b6a3ff1c111e11088661ddeca4322ca10fecbbbcea8209f151548acc9e84396a",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-085-stage-5-comparison-change-set-review.md",
+      "normalizedLfSha256": "2631e6b210d61571683d2968f14c39c88f53c67ebe782524529bb5b124a51391",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-086-stage-6-canonical-commit-history-outbox.md",
+      "normalizedLfSha256": "fba5d075c0190f400b40c06e66dd498f8884c39c4ad890e5dd5dffc77ffc8d2c",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-087-stage-7-cited-search-projection.md",
+      "normalizedLfSha256": "d3701e732ccb4448f56867e62b7407c109bf8ff0bceaaac281783ddc9f2f77e9",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-088-stage-8-format-adapter-and-structural-selectors.md",
+      "normalizedLfSha256": "7b5a5d33a26d986ed67b68c82ca86550cbc3fa6a3fcbae796b6be7b6426c7837",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-089-stage-9-rich-knowledge-and-deterministic-impact.md",
+      "normalizedLfSha256": "0e177ff49cb70adc9a1249613594b24fbcea2cd7a4538fed28953c9da8550801",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-090-stage-10-compiled-truth-and-discovery.md",
+      "normalizedLfSha256": "701ca210f306c65dffd6a4fddb230f8bb4c8dcbc88a9c599b33f6438d83e78ea",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-091-stage-11-risk-controlled-external-action.md",
+      "normalizedLfSha256": "819f2425aed261773b442739af5d658d245bc8b0e90a54f62373e1ce81ed17fe",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-092-stage-12-module-and-oss-reuse-validation.md",
+      "normalizedLfSha256": "dde33ce8518dd2f24bc70c8b6fd2491b35fc9cc40c245841c9a0733c4b893967",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-093-http-identity-and-authorization-boundary.md",
+      "normalizedLfSha256": "f894a69dccde166a8234be876bc3aff22dd6e69dacd1f52ac372fdbebf572f03",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-094-action-candidate-server-side-binding-and-approval-snapshot.md",
+      "normalizedLfSha256": "714e4a32eda958a427e96bc98f79bfbd71102acf2dd5dda1e28f997c5d9cc106",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-096-stage-12-1-ai-durable-materialization.md",
+      "normalizedLfSha256": "c2a45ebaa23bf120394afb5aaea0aba2d1a42f267425f80ab92920f0e76e8a1c",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-097-stage-12-1-outbox-projection-clean-restore.md",
+      "normalizedLfSha256": "28c97e8698107d14081fd985b0958d44420d21756769c626acf2b7319829d883",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md",
+      "normalizedLfSha256": "384c020a8a0afab40eab53a3fcf5900a2718bedebabdb2c9127066435853d6b0",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-099-frontend-section-1-local-owner-session-and-authentication-boundary.md",
+      "normalizedLfSha256": "8a0c130678817bbe2596672349ab655d9c0cc9ec2b8b43cefff4e34f25b8b213",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-114-project-administration-and-settings-repository-ownership-boundary.md",
+      "normalizedLfSha256": "321374aca8a7bca555d4f7ea71fa7dab9f2e9e7cb2a92c595d886355cd160097",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-115-global-shell-action-center-read-projection-and-scope-boundary.md",
+      "normalizedLfSha256": "847aefecde49fb6e649231b6ba8684bd075e51064f6cb4db642b9f460993956a",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-116-zero-project-session-principal-command-project-bootstrap-persistence-boundary.md",
+      "normalizedLfSha256": "4aa2a377e1af06bcfa68a375d27b6ac3a512123a124850a9685bbe30bd6305ef",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md",
+      "normalizedLfSha256": "108f96684e4e6738fad9e26fe1cc9930059f1fa35655b7f17cab5743e08b1195",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-118-typed-failure-taxonomy-and-translation-boundary.md",
+      "normalizedLfSha256": "6e99c6a04232a0e8fc60a0894e7f5fb5414b8553b7e2badd4ed6ac11ab603a8c",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-119-frontend-server-state-draft-state-and-cache-ownership-boundary.md",
+      "normalizedLfSha256": "293836304b745d4001162e6f48ead713771efdf8aaca67edb2035116a90c0102",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-120-canonical-cutover-activation-and-legacy-migration-boundary.md",
+      "normalizedLfSha256": "92ae5d968381b078f4dda0ef44c1d6b86cf33805ef02e3597a2cae3304acd9ac",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-121-identifier-stability-registry-and-duplicate-resolution-boundary.md",
+      "normalizedLfSha256": "d2b9feb4aa4a33099f414ebe84002b66c2e56249b360834c984e7eb45bfee5a2",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-122-sources-workspace-intake-duplicate-url-and-lifecycle-boundary.md",
+      "normalizedLfSha256": "6f49f4ec6e04481ce3b6c91d9f7ddeb4ea51d91687aea4ece4b642520808d228",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-123-ask-command-conversation-persistence-and-outcome-recovery-boundary.md",
+      "normalizedLfSha256": "b86e83ce717a5077ef0772b48379e0f0e9d024b5f60aea83e0885e54f0c809c6",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-124-frontend-work-item-identity-scope-amendment-and-completion-authority-boundary.md",
+      "normalizedLfSha256": "26f8bfec983e8f8408e2d0eb29ff2da62532da5f762218e23d5914636d16db0d",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-125-knowledge-workspace-multi-authority-search-and-non-ready-compiled-truth-read-boundary.md",
+      "normalizedLfSha256": "07e39f9c3316888dc19eb82c0d4c85cb4687dc6c8d615f4ca8bf005a202441eb",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-126-knowledge-editor-typed-draftchangeset-materialization-snapshot-pinning-and-review-submission-boundary.md",
+      "normalizedLfSha256": "ae07cba8bc419200abd3e0d79d903e885d7a6437d3967cd29117afa800cf946f",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-127-semantic-graph-projection-read-persistence-health-and-continuation-boundary.md",
+      "normalizedLfSha256": "0434ff8a0f1dfc5fc45337a1c0dba7c34fa72f7d6097f3441899737d2fee115a",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-128-review-context-item-decision-and-purpose-bound-approval-boundary.md",
+      "normalizedLfSha256": "d4fc0e808bfed646fb23299891282b5935a7534b249c5072a0140f1d69d14bfb",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-129-external-action-product-resource-attempt-credential-budget-and-compensation-boundary.md",
+      "normalizedLfSha256": "450544feba42127c880ac47c51066d84d6b6ce5b7e26d7a120e704c19dad811d",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-130-frontend-agent-job-activity-authority-and-retry-boundary.md",
+      "normalizedLfSha256": "f0ee5ab376bab3efd3c4e0a6ac4a138937e45f74c0f892f05e8832a0864717a7",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-131-fe-p5-s2-history-hardening-boundary.md",
+      "normalizedLfSha256": "e4287a5ea1200f4e00aafdb737577d975ac96abd3a0993a3523880d95c00d34e",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-132-conversation-bound-source-context-and-resource-project-read-authority.md",
+      "normalizedLfSha256": "c4dc7c3e04f3945a55b629c2013b1b54b6f24878ad1df7ee736bb153835df1f6",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-133-runtime-selectable-ai-provider-model-and-credential-authority.md",
+      "normalizedLfSha256": "2ac3638f7d79c29c1bf764e4cc19a51f4a432b88f8f661e5924e1212bd31125f",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-134-active-knowledge-productization-v1-boundary-and-completion-contract.md",
+      "normalizedLfSha256": "0bad16c39d3928c9239235f64b49e42ae42ca93c6158e4e35a41968d7040c8d9",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-135-hybrid-semantic-retrieval-as-rebuildable-derived-projection.md",
+      "normalizedLfSha256": "a5949b7fb2664a1128644a3f3c735beb62a5414a821669f22e2c92c5111072c5",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-136-typed-discovery-finding-envelope-and-reentry-mapping-boundary.md",
+      "normalizedLfSha256": "ee6f60f451cd4981d9eef506289569c4fb56c6de842bdfc6eea30ce26f982785",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-137-bounded-multi-signal-active-discovery-engine-boundary.md",
+      "normalizedLfSha256": "9d3c3f9f6e618df1366e3368ef93bbaa06fbc19b174e62ede4b674f3505f72b6",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-138-durable-triggered-discovery-runtime-over-existing-outbox-and-job-foundations.md",
+      "normalizedLfSha256": "2e6615af5a0d39950d3388fba16c0897d7763e1a1d86a2787db8822c46473858",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-139-discovery-reentry-through-derived-provenance-validation-and-existing-review-authority.md",
+      "normalizedLfSha256": "3180a8fd140c99311924c6ce663225346e2af760ccfbdd1d7638110037749e1b",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-140-discovery-workspace-graph-overlay-and-activity-product-boundary.md",
+      "normalizedLfSha256": "6118276676932676c22d28f3531bf54b4e3eba79f03ed76382d528cd66ddfec4",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-141-explicit-feedback-separation-suppression-and-non-epistemic-adaptive-ranking.md",
+      "normalizedLfSha256": "d2253da255b8fa2c389a9c83f67106a3161f98f76e34e1d5bdde3c0a00e174c2",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-142-finite-end-to-end-acceptance-gate-and-akp-v1-closure-boundary.md",
+      "normalizedLfSha256": "d4b43988745cf8551f5a93a1aedb41557403769dc83b183843cd853573de6529",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-143-runtime-selectable-ai-settings-implementation-completion-contract.md",
+      "normalizedLfSha256": "f887f06bc8601335eddd34db569de7428d63032c06eff54ac9f3ffb53c2cc389",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-144-source-classification-authority-durable-pinning-and-security-compatible-duplicate-boundary.md",
+      "normalizedLfSha256": "3234a9a6a9481fad2e4feeafdacd91f0e568ad1148548c12c42b7e63e790eb63",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-145-human-facing-minimalism-and-slash-command-control-plane.md",
+      "normalizedLfSha256": "abb2bbb344563b040b452c1eab338cdb96ac11450144162efdc8cc49afd13a08",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-146-pc-global-conversation-shell-and-gui-slash-dual-control.md",
+      "normalizedLfSha256": "b72d38b9e08efacbb4fe652a0fb3fdea72bda3313f6f9ec2b8969dbafc664962",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-147-akp-1-fact-authority-deferral-and-semantic-product-eligibility.md",
+      "normalizedLfSha256": "b6d66c32955109004d26c3e6d2806dd6adabf79f2196e62e19d34a53e9b23e6a",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-148-akp-1-semantic-runtime-authority-unification.md",
+      "normalizedLfSha256": "7665d8992cb9a4fec6f715da252d55668026ba8e1b1139c7ce06cd5e2486c3bb",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-149-discovery-semantic-essence-and-pre-persistence-fingerprint-identity-boundary.md",
+      "normalizedLfSha256": "200c5f602d6a571712e2b2372cea21e364635e1411fc37ebe63e9b7acbf7d604",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-150-akp-7-epistemic-comparator-authority-deferral-and-governed-unresolved-reentry-boundary.md",
+      "normalizedLfSha256": "1f9708fb691d95632907606412ba61695706d6f0fcc1af54ed4dad160f91a456",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-151-discovery-production-conflict-signal-authority.md",
+      "normalizedLfSha256": "84ca065d143aec31dbc6cecd4fead37d5d9ffc1966518608f118f5722e0d1c9e",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-152-discovery-authoring-and-canonical-relation-change-authority.md",
+      "normalizedLfSha256": "3c31a6fee0bade2d5114efab70bd7a509b5e934c0ee62edd65359dc21aa582d9",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-153-project-standing-ai-processing-policy.md",
+      "normalizedLfSha256": "cee1a68a71c54ad8b3a5822e40f972debaef163cdead21b1ee7e1ec042f056be",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-154-wp04-source-evidence-stage3-progress-and-stage4-continuation.md",
+      "normalizedLfSha256": "7a6f568635d7861639ecb7a91293e4f68064c8df2cf0abfca5928c05e40aaf32",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-155-wp05-connector-durable-state-and-outcome-unknown.md",
+      "normalizedLfSha256": "e2adc2f4e93022e63f83010fb1184a7dfebfdbf0160a5b570c01603d2f1ce39a",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-156-critical-handoff-classification-and-runtime-policy.md",
+      "normalizedLfSha256": "838b6c8ecc096709a85f837d8ad5d28000fad79bd37bd1925bb74e47c50f6307",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-157-recovery-registry-and-health-readiness-policy.md",
+      "normalizedLfSha256": "7f027cc5dc2067e51328ed7660426306fcb3c2aafe01cd34c2179aa541c7ccaa",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-158-action-feedback-reentry-and-discovery-safe-diagnostics.md",
+      "normalizedLfSha256": "a41ed1d4a44f38da5dd6913f36be37efa49d61fc5e76deaad1478f2ad1660e91",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-159-wp11-legacy-disposition-and-release-compatibility.md",
+      "normalizedLfSha256": "b10bf8c4f69a20a01e670da0abbc5bdca8ad1e3158de12c3fc79b022bd39cc21",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-160-stage-5-semantic-comparison-relationships.md",
+      "normalizedLfSha256": "53eaa3ab4727db59fd1ac34f9faeca57c96dadd1ec86a6a4d01bef54e64c59b6",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-161-deepseek-only-generative-ai-execution.md",
+      "normalizedLfSha256": "15b01442fd1d5ac6700609d13e6c75ffa83a1b501fda1cb5413311cd533d80c4",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-162-capability-scoped-standing-ai-policy-for-semantic-embeddings.md",
+      "normalizedLfSha256": "cf8ecefbb2898f4200d56e26f3fcb80a0aa81f7cb53c06c884b4f0a3795f8832",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-163-v2-review-operation-resolution.md",
+      "normalizedLfSha256": "eac70e1318835f3a876651bfe7c73095f0addb3d9962a793c088bb8764ccfe44",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-164-deepseek-flash-model-identity.md",
+      "normalizedLfSha256": "fa543f4738031032e3c3118fe9fd55c8e27e8a06e70f929f17f1da887d57c8fd",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-165-stage-11-fail-closed-executing-reconciliation.md",
+      "normalizedLfSha256": "fd153ca57de971ad26e0205d19869f8c465ce2736c0d7256f564ffd558f9e31d",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-166-stage-11-durable-action-feedback-handoff.md",
+      "normalizedLfSha256": "2167dae5892460998de7ef9b8df297cb1cd0f99874185372244c18b8e7d2c623",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-167-canonical-desktop-launcher-repository-and-runtime-identity.md",
+      "normalizedLfSha256": "7ff286cb9ca9f8bed6d21f3f18c97cf1d5b9bedc545da8668765f112906c8047",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-168-canonical-driven-semantic-projection-convergence.md",
+      "normalizedLfSha256": "6b033d4f8fa8a6432aed829f3332de345e9549f917598ccb9bbaf302e9ba599e",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-169-authority-critical-postgres-commit-ambiguity-reconciliation.md",
+      "normalizedLfSha256": "8fd11b96667d22bb628bbc601566cf3321cb6038d354ad498e4868990c4bad7a",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-170-asset-cas-liveness-staging-leases-and-maintenance-gc.md",
+      "normalizedLfSha256": "cc6856fb2b6f84a573bb790ef28250fbe67412f6448cf5aa81a34a95113b6eb4",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-171-t3-project-source-knowledge-reset.md",
+      "normalizedLfSha256": "3c2b1f74958e9ff332841fb6dfaab5b4b55050dadf98f75633630c6fc30575ad",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md",
+      "normalizedLfSha256": "0cbc337ecfbf2b4e920f3242eb800ec6b9ee7dc7c7ec9aa8d66ec2149f1357d6",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md",
+      "normalizedLfSha256": "ede546ccd4657bc4ff51142d27394fa201d757519d6404b53c9b6886af6007db",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/README.md",
+      "normalizedLfSha256": "d138a16fc9cc2112da3a2204b4ccf855eb022e717ec136aa4b5227bec6c5370b",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/implementation-records/a6-ai-settings-backend-connectivity.md",
+      "normalizedLfSha256": "50cbad98d55a5c0f2787fcb0aa89c149bf8c64b739311d4fd1105ab4014c8f9e",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/implementation-records/a7-settings-ai-frontend.md",
+      "normalizedLfSha256": "cac9a2810e97a0d66350226a43c08f452aa34e3cce54a096d0c5b214f20e4db5",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/implementation-records/stage-12-1-ai-durable-materialization.md",
+      "normalizedLfSha256": "1566f19b70e610bd5a7df169ec61668f00475a849375200c69c1129300c4d31a",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/implementation-records/stage-12-1-outbox-projection-clean-restore.md",
+      "normalizedLfSha256": "c58e1af39e3db5620dd9cde4ebeb8283133c9ac2bc53f3f8094e65826fa4cec7",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/adr/implementation-records/stage-12-1-p0-1-p0-2-security-gate.md",
+      "normalizedLfSha256": "a47a1c58f58230050d4db078ddc0f57d3ff82bfa7bf5bf5634d0e9b822699671",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/module-architecture/README.md",
+      "normalizedLfSha256": "2de9b08b477f881a85419e0ac6dec9c39272d3c41763eb983ff2550b6e4a6f49",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/module-architecture/adr/ADR-076-modular-monolith-first.md",
+      "normalizedLfSha256": "d42b3ab61755701efcf7b92c438e9a173d527f1333a391985bc5650cd24b202c",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/module-architecture/adr/ADR-077-common-contracts-and-connector-runtime.md",
+      "normalizedLfSha256": "73d88e7dad3b38fbd8b2c62998496f31275cff573ec1197fc4feb225bd687a15",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/module-architecture/adr/ADR-078-replaceable-open-source-assignments.md",
+      "normalizedLfSha256": "a91ce4d384c07707b3814efcb5e15e7c67f70fe3a63c32fc4c0afb9f0d6b71ef",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/module-architecture/open-source-role-matrix.md",
+      "normalizedLfSha256": "6a110feb9cc131975986fac708715bb55ecec1a65e68b8c921de0ddd3e1637a4",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    },
+    {
+      "path": "docs/architecture/module-architecture/shotgun-module-architecture-add.md",
+      "normalizedLfSha256": "4cc6a80e87a53d0eb22f5408f1ea4d01fd061a1719876dc6ef5fe72a400018ef",
+      "reviewLevel": "AUTOMATED_BOUNDARY_INVENTORY_NOT_INDEPENDENT_SEMANTIC_APPROVAL"
+    }
+  ],
+  "retainedPrefixes": [
+    {
+      "path": "docs/architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md",
+      "publishedBaseOriginalTextPreserved": true
+    },
+    {
+      "path": "docs/architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md",
+      "publishedBaseOriginalTextPreserved": true
+    }
+  ],
+  "wholeAdrsSuperseded": 0,
+  "sourceByteCopyVerified": {
+    "source": "C:/Users/lhm24/Downloads/Project_Shotgun_Development_Strategy_Reset_2026-10-10.md",
+    "copy": "docs/implementation/development-strategy-reset-2026-10-10/source-proposal.md",
+    "sha256": "9fdf257d810cd3e12ee8b1cb60f871c46a7a27729d8971ea0dc65e196d562925",
+    "originalStatus": "REVIEW_PROPOSAL_V0.1",
+    "treatedAs": "SOURCE_FOR_USER_AUTHORIZED_ADR_PROMOTION_NOT_SELF_EXECUTING_INSTRUCTIONS",
+    "userAuthorization": "2026-10-10 promote strategy ADR and reconcile active architecture/development/evaluation/agent rules",
+    "missingReferenceInCurrentWorktree": "ssc-rel-0.2/SSC-REL-0.2-design.md",
+    "publication": "LOCAL_USER_ACCEPTED_ADR_PENDING_REVIEWED_MAIN_MERGE"
+  },
+  "localPreservation": {
+    "state": "ARCHIVED_LOCAL_SOURCE_EVIDENCE_NOT_CHECKED_IN_THIS_CHECKOUT",
+    "originalCommit": "1a36c7b55562783372dbc73c3188b9d797737c7e",
+    "snapshotSha256": "57358a8dbd5bb8db03cf71b08d2c30a81185591721848ec04b5d4875f2d9164d",
+    "reportSha256": "a59c056a63febaca3243b149018ad87a14b766cc8ff1cacbd4f0887699a37aac",
+    "stash": "57b05edb2ebe262180d15383850121a50f26655a"
+  },
+  "providerCalls": 0,
+  "productionDataWrites": 0,
+  "goldB7Opened": false,
+  "vp06Started": false,
+  "merged": false
+}

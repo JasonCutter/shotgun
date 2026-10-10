@@ -1,0 +1,10 @@
+{
+  "source": "C:/Users/lhm24/Downloads/Project_Shotgun_Development_Strategy_Reset_2026-10-10.md",
+  "copy": "docs/implementation/development-strategy-reset-2026-10-10/source-proposal.md",
+  "sha256": "9fdf257d810cd3e12ee8b1cb60f871c46a7a27729d8971ea0dc65e196d562925",
+  "originalStatus": "REVIEW_PROPOSAL_V0.1",
+  "treatedAs": "SOURCE_FOR_USER_AUTHORIZED_ADR_PROMOTION_NOT_SELF_EXECUTING_INSTRUCTIONS",
+  "userAuthorization": "2026-10-10 promote strategy ADR and reconcile active architecture/development/evaluation/agent rules",
+  "missingReferenceInCurrentWorktree": "ssc-rel-0.2/SSC-REL-0.2-design.md",
+  "publication": "LOCAL_USER_ACCEPTED_ADR_PENDING_REVIEWED_MAIN_MERGE"
+}

@@ -31,15 +31,43 @@ const productionChanges = gitText(
   publicationBase,
   '--',
   ...protectedRoots,
-  'package.json',
-  'package-lock.json',
   'tsconfig.json',
 );
-assert.equal(
-  productionChanges,
-  '',
-  'Production/test/workflow/dependency changes are outside this review PR',
-);
+assert.equal(productionChanges, '', 'Production/test/workflow changes are outside this review PR');
+// The 2026-10-11 repository audit authorized this single upstream security patch.
+// Verify its entire manifest/lockfile delta rather than allowing arbitrary upgrades.
+const dependencyChanges = gitText(
+  'diff',
+  '--name-only',
+  publicationBase,
+  '--',
+  'package.json',
+  'package-lock.json',
+)
+  .split('\n')
+  .filter(Boolean);
+if (dependencyChanges.length > 0) {
+  const baseManifest = JSON.parse(git('show', `${publicationBase}:package.json`).toString('utf8'));
+  const manifest = JSON.parse(read('package.json'));
+  assert.equal(manifest.overrides['source-map-js'], '1.2.2');
+  delete manifest.overrides['source-map-js'];
+  assert.deepEqual(manifest, baseManifest, 'Unrelated manifest change');
+  const baseLock = JSON.parse(git('show', `${publicationBase}:package-lock.json`).toString('utf8'));
+  const lock = JSON.parse(read('package-lock.json'));
+  const patched = lock.packages['node_modules/source-map-js'];
+  assert.equal(patched.version, '1.2.2');
+  assert.equal(
+    patched.resolved,
+    'https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.2.tgz',
+  );
+  assert.equal(
+    patched.integrity,
+    'sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==',
+  );
+  const original = baseLock.packages['node_modules/source-map-js'];
+  for (const field of ['version', 'resolved', 'integrity']) patched[field] = original[field];
+  assert.deepEqual(lock, baseLock, 'Unrelated dependency lockfile change');
+}
 const existingScripts = gitText('ls-tree', '-r', '--name-only', publicationBase, 'scripts')
   .split('\n')
   .filter(Boolean);
@@ -159,7 +187,7 @@ for (const id of [172, 173])
   assert.equal(registry.ownerRules.filter((r) => id >= r.start && id <= r.end).length, 1);
 const result = {
   generator: 'node node_modules/tsx/dist/cli.mjs scripts/audit-development-strategy.ts',
-  generatorRevision: 'PUBLICATION_MAIN_DOC_ONLY_V1',
+  generatorRevision: 'PUBLICATION_MAIN_WITH_BOUNDED_SECURITY_PATCH_V2',
   generatorNormalizedLfSha256: hash(
     read('scripts/audit-development-strategy.ts').replaceAll('\r\n', '\n'),
   ),
@@ -167,6 +195,17 @@ const result = {
   publicationBase,
   sourceStrategyCommit: originalCommit,
   productionChanges: [],
+  dependencyChanges,
+  dependencyPatch:
+    dependencyChanges.length > 0
+      ? {
+          package: 'source-map-js',
+          from: '1.2.1',
+          to: '1.2.2',
+          advisory: 'GHSA-68fv-2mgg-jv7q',
+          unrelatedManifestAndLockfileChanges: false,
+        }
+      : null,
   existingScriptsChanged: [],
   productionBaseCodeTreeSha256: codeTreeDigest,
   publishedMainRuntimePolicy: 'vp-deepseek-relation-v6-evidence-context',
@@ -192,6 +231,7 @@ console.log(
     inventory: inventory.length,
     publicationBase,
     productionChanges: [],
+    dependencyChanges,
     codeTreeDigest,
     localPreservation,
     currentMainPolicy: result.publishedMainRuntimePolicy,

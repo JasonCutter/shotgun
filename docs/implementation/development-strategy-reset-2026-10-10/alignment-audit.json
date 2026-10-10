@@ -1,11 +1,22 @@
 {
   "generator": "node node_modules/tsx/dist/cli.mjs scripts/audit-development-strategy.ts",
-  "generatorRevision": "PUBLICATION_MAIN_DOC_ONLY_V1",
-  "generatorNormalizedLfSha256": "6de2c2bbb377643e5fb80520280573c63eac2130c316e86c8128faa34fe58f1d",
+  "generatorRevision": "PUBLICATION_MAIN_WITH_BOUNDED_SECURITY_PATCH_V2",
+  "generatorNormalizedLfSha256": "b390d8d9bfd15dc56b7fe99752ff08b51d85b9ba2cf22826340b3dfbe7a20b28",
   "authority": "DERIVED_PUBLICATION_SCOPE_INVENTORY_NOT_RUNTIME_OR_SEMANTIC_APPROVAL",
   "publicationBase": "e08449982cbf2247b9b1e7a7ef39281eab09166a",
   "sourceStrategyCommit": "1a36c7b55562783372dbc73c3188b9d797737c7e",
   "productionChanges": [],
+  "dependencyChanges": [
+    "package-lock.json",
+    "package.json"
+  ],
+  "dependencyPatch": {
+    "package": "source-map-js",
+    "from": "1.2.1",
+    "to": "1.2.2",
+    "advisory": "GHSA-68fv-2mgg-jv7q",
+    "unrelatedManifestAndLockfileChanges": false
+  },
   "existingScriptsChanged": [],
   "productionBaseCodeTreeSha256": "0acd2ac8ce0a0526310b0869d085f1e7ecca843ef2566f131143956171c35cc5",
   "publishedMainRuntimePolicy": "vp-deepseek-relation-v6-evidence-context",

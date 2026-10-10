@@ -31,3 +31,7 @@
 4. 기존 로컬 보고/감사를 snapshot으로 보존하고 현재 PR 기준선 검증과 구분한다.
 
 평가 reference 승격, 실호출, 운영 정책/데이터 변경, Gold-B-7 개봉, VP-06, main push와 merge는 이번 승인 범위가 아니다. PR exact head와 CI 결과는 GitHub PR 및 완료 응답에서 보고한다.
+
+# 2026-10-11 보안 Gate 후속 수정
+
+사용자가 저장소 정합성 감사에서 PR #380의 취약점 해결을 승인했다. 아래 최초 게시 head의 의존성 불변 기록은 유지하고, 후속 head의 제한된 source-map-js 1.2.2 변경은 [보안 패치 기록](./security-patch-2026-10-11.md)과 별도 dependency delta로 구분한다. main 병합·운영 변경·중단된 실험 재개는 포함하지 않는다.

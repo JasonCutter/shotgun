@@ -169,7 +169,8 @@
         "docs/implementation/development-strategy-reset-2026-10-10/paused-drafts.json",
         "docs/implementation/development-strategy-reset-2026-10-10/original-local-alignment-audit.json",
         "docs/implementation/development-strategy-reset-2026-10-10/original-local-report.md",
-        "docs/implementation/development-strategy-reset-2026-10-10/publication-notes.md"
+        "docs/implementation/development-strategy-reset-2026-10-10/publication-notes.md",
+        "docs/implementation/development-strategy-reset-2026-10-10/security-patch-2026-10-11.md"
       ],
       "generator": "node node_modules/tsx/dist/cli.mjs scripts/audit-development-strategy.ts",
       "regenerationTrigger": "approved strategy/document publication alignment; full clone with publication-base Git object available",

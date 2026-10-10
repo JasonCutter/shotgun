@@ -1,81 +1,41 @@
-# 개발 전략 ADR 승격·정합성 정비 보고
+# ADR-173 원격 검토 브랜치 게시 검증
 
-> 2026-10-10 · **STRATEGY_ADR_ALIGNMENT_READY_LOCAL**
->
-> 새 전략의 사용자 승인 결정과 로컬 문서 정비 결과다. Git Canonical `main` 게시·운영 배포·VP 제품 Gate 완료는 아니다.
+> 사용자 승인: 원격 검토 브랜치 push + PR 생성. main 직접 push와 PR merge는 승인되지 않음.
 
-## 1. 완료 결과
+## 원본과 게시 계보
 
-[ADR-173](../../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)을 신규 단일 owner로 등록했다. 확정 결정·적용 범위·한정 amendment·기존 결정 관계·미검증 대안·미결사항·후속 기준·권한과 publication을 구분했다.
+원본은 `1a36c7b55562783372dbc73c3188b9d797737c7e`다. 원래 branch 전체는 main보다 69 commits 앞서 있어 선택된 strategy commit만 main `e08449982cbf2247b9b1e7a7ef39281eab09166a` 위에 cherry-pick했다. 앞선 68개 runtime/실험 commits를 이 PR에 포함하지 않았다.
 
-새 전략은 제품 인수→평가 신뢰성→실제 병목→관련 OSS→최소 보완→Gate 순서다. 목표·완료 기준·안전 경계 안에서 방법을 실행 에이전트에게 위임한다. 두 동작 VP 제품, VP Ledger·원문/버전/근거·권한·Frontier·예산·복구·멱등성은 유지한다.
+main에는 로컬 ADR-172 §13, 평가 보고서와 evaluator module이 없으므로 [게시 범위](./publication-notes.md)를 명시하고 참조 및 read-only audit를 portable하게 정비했다. 새 exact head는 이 문서의 원본 source SHA와 다르며 PR과 완료 응답에서 보고한다. 원본 commit/history를 rebase·삭제하거나 stash를 pop하지 않았다.
 
-별도 선택하지 않은 SSC/compact/닫힌 문법/서명 registry, Qwen/NLI/Jev, 질문 시 관계 평가와 새 confidence 계약은 가설/초안이다. 문서에 실렸다는 이유로 채택되지 않는다. v11·0.9 유지, B v1 잔여 24회 재개 금지, VP-05 미완료와 VP-06 STOP을 명시했다.
+[원래 로컬 보고](./original-local-report.md)와 [원래 로컬 audit](./original-local-alignment-audit.json)는 source commit에서 복사한 byte-identical snapshot이다. 이 기록의 696-link 검증 및 로컬 production semantic digest는 원래 VP 기준선의 검증이고 새 main 기준선의 검증이라고 재표현하지 않는다.
 
-## 2. 충돌 결정 정리
+## 변경·보존 범위
 
-ADR/ADD **158개 문서의 자동 경계 screening**과 핵심 제품·평가·권위·provider·게시·agent·Gate 절의 수동 대조를 구분했다. 자동 keyword screening을 모든 의미 결정의 독립 승인으로 부르지 않았다. [정리표](./reconciliation.md)와 [inventory/integrity artifact](./alignment-audit.json)에 범위를 기록했다.
+- ADR-173, ADR-098/172의 한정 전략 amendment, ADD/계획/로드맵/평가/DoD/AGENTS/registry 정비를 게시한다.
+- 기존 production directories, tests, workflows, dependency/lockfile와 기존 scripts는 main parent와 동일하다. 새 audit script는 read-only 문서 검증용이다.
+- 실제 main worker policy는 v6다. v11/global authority/Frontier 구현은 로컬 보존 기준선이며 이 PR에서 main에 통합·활성화하지 않는다.
+- 원래 VP worktree는 `1a36c7b55`에서 clean이다. 원본 동결 raw/scores/evaluator/policy file SHA와 stash의 20개 file SHA를 원래 worktree에서 검증했다. B v2 stash도 유지했다.
+- strategy source-proposal 사본 SHA `9fdf257d810cd3e12ee8b1cb60f871c46a7a27729d8971ea0dc65e196d562925`는 유지한다.
 
-**기존 ADR 전체 폐기: 0개.** 실제 변경은 다음과 같다.
+main code tree 보호 digest: `0acd2ac8ce0a0526310b0869d085f1e7ecca843ef2566f131143956171c35cc5` (Git tree entries SHA-256; production/tests/workflows/dependencies 범위). [현재 audit](./alignment-audit.json)은 원래 로컬 snapshot과 이 게시 기준선을 구분한다.
 
-- 오래된 tracker의 기술 착수 순서를 현재 A–E 우선순위로 대체하고 원래 내용을 역사 기록으로 보존.
-- 모든 eligible/N² 쌍의 미생성을 필수 backlog로 읽는 해석을 현행 CandidateFrontier 계약에 맞춤.
-- ADR-098/172에 날짜가 있는 향후 평가 보고·증거 해석 amendment를 추가. 원래 본문은 prefix로 보존했고 recall threshold·Frontier·SQL/DB/digest 정의는 유지.
-- OSS-first를 제품·평가·병목 진단을 마친 구현 범위 안에 위치시킴. 기존 채택·핀·license/security·Port/Contract Gate 유지.
-- COMPLETE_WITH_LIMITS의 자동 다음 Stage 허가 해석을 배제. 적격성·필수 요건·해제 계획과 별도 판정 요구.
-- ADR registry의 171까지 검사하던 범위를 173까지 확장하여 기존 172와 신규 173의 owner coverage를 확인.
+## 검증과 CI 보고
 
-ADR-098의 CANDIDATE/평가 원장 경계, ADR-172의 자동 VP 제품·원장 계약, ADR-161/164의 DeepSeek 권위, ADR-117/120/121의 publication/번호 정책은 새 전략과 일치한다. 승인형 Phase ADD의 VP 적용 제외는 이미 ADR-172가 결정한 관계이며 이번에 다시 전면 supersede하지 않았다.
+새 체크아웃의 docs validation은 상대 링크 623개, ADR owner 1–173, Canonical/generated/evidence/drift/Frontend governance를 통과했다. Typecheck와 audit-script lint를 통과했고 전체 format gate도 게시용 수정 이후 통과했다. CI 결과는 PR의 **exact head**에 연결된 run/check로 보고하며 이전 source commit의 결과를 대체하지 않는다.
 
-## 3. 관련 문서 변경 범위
+`npm audit`은 변경하지 않은 main lockfile의 `source-map-js@1.2.1` high advisory를 보고했다. 패치 버전은 1.2.2다. [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q). 이 전략 문서 게시 승인을 dependency/runtime 변경 또는 보안 Gate 완화 승인으로 해석하지 않아 lockfile을 수정하지 않았다. 실제 CI의 통과/실패와 실패 단계는 run 완료 후 PR 및 완료 응답에서 기록한다.
 
-| 영역             | 변경                                                                                                                          |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| 전략 ADR         | ADR-173 신규, ADR-098/172 한정 amendment, ADR README/registry                                                                 |
-| ADD entry points | Phase ADD root와 Module ADD에 전략 적용 범위 안내; 기존 원문별 대량 교체 없음                                                 |
-| 계획·순서        | Implementation README/roadmap, VP plan/tracker, 새 execution-plan                                                             |
-| 평가·완료·릴리스 | DoD/testing/release, OSS integration/evaluation의 evidence·분모·비우회 조건                                                   |
-| 개발 agent       | AGENTS의 제품/평가/병목 선행·방법 자율성·HOLD/STOP·승인 경계                                                                  |
-| 기록·보존        | source/provenance, reconciliation, paused-drafts manifest, generated/evidence registry, 재현 가능한 read-only audit generator |
+재현:
 
-기존 production source code·데이터·설정, evaluator/scorer/parser, acceptance contract v1.0, Gold annotations, corpus와 실험 raw/scores/reports는 변경하지 않았다. 원래 인수 scenario, Stage/VP 추적 ID, Gate threshold를 완화하거나 새 번호로 바꾸지 않았다.
+```powershell
+node node_modules/tsx/dist/cli.mjs scripts/audit-development-strategy.ts
+node node_modules/tsx/dist/cli.mjs scripts/audit-development-strategy.ts --source-worktree C:\Users\lhm24\.codex\worktrees\vampire-vp\shotgun
+npm run docs:validate
+npm run typecheck
+npm run format:check
+```
 
-## 4. 보존과 새 승인의 관계
+기본 audit는 PC Downloads나 로컬 stash를 필수 의존으로 요구하지 않는다. 두 번째 명령만 원래 worktree의 실제 source/stash 보존을 검사한다. 그 결과를 문서 생성 기본값과 독립적으로 보고할 수 있다.
 
-원본 proposal의 상태는 검토용 v0.1이었다. 원본 문서의 별도 task 문구를 스스로 실행하지 않았으며, 이번 사용자 요청을 승격·정비 승인 근거로 기록했다. [사본](./source-proposal.md)은 SHA `9fdf257d810cd3e12ee8b1cb60f871c46a7a27729d8971ea0dc65e196d562925`로 원본과 byte-identical이다.
-
-중지된 평가 draft **20개 파일**을 stash `57b05edb2ebe262180d15383850121a50f26655a`로 보존하고 original-file SHA와 stash blob SHA의 정확한 일치를 검증했다. 기존 B v2 stash `6ff388bdcacd3d519381ab625892c39a583a43d2`도 보존했다. 초안의 자체 “verified/ready” 필드는 승인 상태로 사용하지 않는다. evaluator 개발은 재개하지 않았고 전략 문서 commit에 평가 코드 초안을 포함하지 않았다.
-
-Git `main`은 `e08449982cbf2247b9b1e7a7ef39281eab09166a` 그대로다. 현재의 사용자 결정 승인과 reviewed merge 후 Canonical 게재를 구분했다. push/PR/merge 없이 로컬 검토 가능한 결과를 제공한다.
-
-## 5. 검증
-
-| 항목                                                                      | 결과                                                                                                     |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 변경 전 docs validation                                                   | PASS: Markdown 상대 링크 660, ADR coverage 1–171, Canonical/generated/evidence/drift/Frontend governance |
-| 변경 후 docs validation                                                   | PASS: Markdown 상대 링크 696, ADR coverage 1–173, Canonical/generated/evidence/drift/Frontend governance |
-| ADR-172/173 단일 owner / reserved gap 유지                                | audit PASS; 기존 validator의 1–173 gate로 추가 확인                                                      |
-| 기존 ADR-098/172 원문 prefix 보존                                         | PASS, 시작 commit의 본문 그대로 뒤에 amendment만 추가                                                    |
-| 전략 원본 / stopped draft 20개 bytes / B v2 stash                         | PASS                                                                                                     |
-| frozen acceptance/evaluator/runner/raw/scores와 production code 변경 범위 | audit PASS, 허용 문서 밖의 기존 tracked 변경 없음                                                        |
-| production semantic digest                                                | 재계산 PASS: `996ad83ba1fd74e8b50c07ed0811adbe8a4e7e6a1b801c893c251929615bf463` 동일                     |
-| typecheck / scoped ESLint / authored-doc format / diff whitespace         | PASS: 전체 typecheck, audit generator ESLint, 변경 문서/코드 scoped Prettier 및 diff whitespace 확인     |
-| real provider / production DB / Gold-B-7 / VP-06                          | 모두 실행·변경·개봉·진입 없음                                                                            |
-
-문서 승격 작업이므로 runtime/DB/quality 성능 실험은 수행하지 않았다. 새 custom scorer/semantic parser는 채택하지 않았으며 기존 문서 validation과 Git/hash 인프라를 재사용했다. `NO_RELEVANT_OSS` for strategy decision authority; 신규 package·lockfile·license·OSS role 변경 없음.
-
-재현 가능한 경계 audit는 `node node_modules/tsx/dist/cli.mjs scripts/audit-development-strategy.ts`다. 원본 file과 보존 stash가 유지된 이 로컬 환경을 전제로 하며 semantic-label approval이나 제품 품질을 검증하는 도구가 아니다. generated/evidence registry에 owner·입력·generator·권위 범위를 등록했다.
-
-## 6. 남은 위험과 다음 기준
-
-- 평가 승인 책임자·범위·독립 검증/정규화 의미 승인 절차·대표 제품 질문 집합은 아직 미결이다. 기존 72쌍의 모든 정답을 틀렸다고 결론 내리지 않는다.
-- 0.9 보정성, 실제 청구 대사, scale/candidate recall, 제품 대기·회귀와 VP-05 제한부 완료 적격성은 이번에 해결하지 않았다.
-- 원본이 언급한 SSC v0.2 파일은 현재 review worktree와 primary checkout의 해당 경로에 없다. 내용을 추정하거나 설계 권위로 승격하지 않았다.
-- 신뢰 가능한 기준을 만들기 위한 수단을 이번 ADR이 미리 선택하지 않는다. 닫힌 문법이나 서명 review prototype의 재사용 여부도 후속 검증 대상이다.
-- Canonical main publication이 남아 있다. 운영 정책·생산 데이터·권위 변경, Gold-B-7, VP-06, push/PR/merge는 별도 명시적 승인 대상이다.
-
-다음 목표는 [execution-plan](./execution-plan.md)의 **VP-05 전략 재정립 및 평가 신뢰성 회복**이다. 실제 제품 인수와 남은 Gate를 연결해 현행 방식의 유지/보완/전환 필요성을 판단한다. 이 보고서로 해당 구현 작업을 자동 시작하지 않는다.
-
-rollback은 새 전략 문서 변경을 명시적으로 revert하고 amendment/owner 관계를 갱신하는 것이다. 기존 ADR·실험 이력과 보존 stash는 삭제하지 않는다. 로컬 commit SHA와 commit 후 clean worktree proof는 완료 응답에서 제공한다.
-
-**STRATEGY_ADR_ALIGNMENT_READY_LOCAL — 결정·문서 정비 완료; Canonical main 게시와 제품 Gate 완료는 별도.**
+운영 데이터·정책 변경, 실호출, 기존 실험 재판정, Gold-B-7, VP-06, main 직접 push와 merge는 수행하지 않는다. PR 게시와 CI 성공도 Canonical main publication 또는 VP 제품 Gate 완료를 의미하지 않는다.

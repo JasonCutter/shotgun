@@ -1,0 +1,2351 @@
+{
+  "generator": "node node_modules/tsx/dist/cli.mjs scripts/audit-development-strategy.ts",
+  "generatorSha256": "1e03893704f211f7ec80e159a7ba3551b9f2f04d2699a87538c89452d2d517e8",
+  "canonicalInputsAfterPublication": [
+    "docs/architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md",
+    "docs/architecture/adr/adr-registry.json",
+    "docs/implementation/development-strategy-reset-2026-10-10/reconciliation.md",
+    "docs/implementation/development-strategy-reset-2026-10-10/source-provenance.json",
+    "docs/implementation/development-strategy-reset-2026-10-10/paused-drafts.json"
+  ],
+  "authority": "DERIVED_DOC_INVENTORY_AND_INTEGRITY_EVIDENCE_NOT_PRODUCT_OR_SEMANTIC_APPROVAL",
+  "baseCommit": "6be130125d211ac4da6d45a29fd1db101387a296",
+  "primaryMainUnchanged": "e08449982cbf2247b9b1e7a7ef39281eab09166a",
+  "publication": "LOCAL_USER_ACCEPTED_DECISION_PENDING_REVIEWED_MAIN_MERGE",
+  "inventoryCount": 158,
+  "inventory": [
+    {
+      "path": "docs/architecture/add/README.md",
+      "sha256": "700a9ab14fe7b135658e1ad051ec5f896c26da50c9e08cd501842b190ded8606",
+      "title": "# Project Shotgun ADD",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/README.md",
+      "sha256": "792fae0b0975dcfb0cb007eee2316720f62957f77d1c3cd411a9e9de25428aff",
+      "title": "# Phase 1 — 입력·원본 보존",
+      "statusText": "- 설계 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/add.md",
+      "sha256": "76ecce5cb32bf24dfc9e81465e8612706afec16172c8a8c391b76a50ab7cdac2",
+      "title": null,
+      "statusText": "- 상태: **완료**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-01-input-channels.md",
+      "sha256": "412b793409470694cedf2fcb21186561f859cfa746e34c27c6d9afaff735d1e2",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-02-file-input.md",
+      "sha256": "0d22db4246069682819c8965ea9957dcc6dcf8050030202d4837f8e3cf47115c",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-03-text-input.md",
+      "sha256": "0f48b63ed9cc9c0a8dc91c7fdbaa16d9e8294fc9b71a8478342c7a66e15c4d7d",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-04-url-input.md",
+      "sha256": "4b9f0b9877ed224f3c954ef3353b4489da0da8b99b5c18679eec882f84770475",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-05-conversation-input.md",
+      "sha256": "e299d36bf201a432429edbed67cae4b4bb3aeda7963dc9556fd737b344321c49",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-06-batch-input.md",
+      "sha256": "2c32a5cc4163cd3b4f705d57679210a6baf1ca6d2d9e45b9aa3fffa2d87d4d85",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-07-user-provided-information.md",
+      "sha256": "cc10d490bde1ed4d288cf9566cb7d1c7c2601b38756c4c3b372541f916bbd90a",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-08-processing-instructions.md",
+      "sha256": "dbfc99b51f88372055deac74e468bb36065bd00b8e684d8776b39474b68b461a",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-01-09-completion-boundary.md",
+      "sha256": "7b114eee787c11d03a184db5e6ba60b6bdd29a695f7cf8c528d5af3e4e5af8c7",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-01-format-identification.md",
+      "sha256": "6043730d9ec4182db496e6adad36ba61ef650e739dd9aa3adf7af3a3f3184bb9",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-02-encoding-integrity.md",
+      "sha256": "4fb8543c6fcd9c2b5e16384a5624a388e5348cd7bd6d52ce75dc32cf6efee6c9",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-03-structural-processability.md",
+      "sha256": "8e6223e14a9272923e0d33aecf239e67446d8224eb5cc909a12853ee7b9e9e77",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-04-safety-isolation.md",
+      "sha256": "960f1bedff56a88a42442060a15283fc4e074780c88b4450b192138af4bf70e3",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-05-exact-duplicate.md",
+      "sha256": "bce8047211833063e8e696285f00c5d0eca3c35a1d845b65032075efdce8a38d",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-06-duplicate-choice.md",
+      "sha256": "ea7a66cd06ccda6cfd0f09864e80f19082c77148296cd05a3442e3c3422aff1c",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-07-validation-retry.md",
+      "sha256": "c470033f5309febdb06c303ecd1b2ae3f8b9f861361d4a016865cb9e0b1e1769",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-02-08-output-contract.md",
+      "sha256": "b5c2dcc81997e54257edc656f04b4d3c3f4ab595bf6648b2f0fa0abba4933512",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-01-asset-boundary.md",
+      "sha256": "c2287ccf1b17b469d073a41f1be8af8805bc4b51b83a999a6efbef9082567f48",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-02-immutable-storage.md",
+      "sha256": "143aa0b17cf2a3447d7aefcce3652d791413a14397587b482e86457be2c7f57e",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-03-url-representation.md",
+      "sha256": "215fa467aaadf2942813a141628294452681860501c892c370fe41ea8746ee96",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-04-intake-provenance.md",
+      "sha256": "0abaaee5740efad1b47e06e99bd6be57d2dc78a70f8cd19d0593d5b5f40966a6",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-05-access-sensitivity.md",
+      "sha256": "9fce9cce73135f0b74c510b207d4b797ddd50bc02650ebb4452ff7d1ba1c1003",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-06-state-idempotency.md",
+      "sha256": "0826323bba82c03ba306e25821ae48125f989e8a69f93f8b2533a40d8ed05af5",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-07-retention-recovery.md",
+      "sha256": "610ca5a1f457d49167a904f0b53d831de2815917fe8b51bc476c41e09202c0b2",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/section-03-08-phase2-contract.md",
+      "sha256": "aac8af201cd957a7eeff336d28cd0e0e017db2858c62f0f263f25f9e528c940f",
+      "title": null,
+      "statusText": "회의 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/step-01-input.md",
+      "sha256": "c1f39459d348c9a8cc9fedfda3efab49bf2599fa48562bdf078eef394e77f224",
+      "title": null,
+      "statusText": "- 회의 상태: **완료**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/step-02-validation.md",
+      "sha256": "e4bc5f67288e00a2ffb61f37de5f799196020bced76fdb97118367811a7b1fd1",
+      "title": null,
+      "statusText": "- 회의 상태: **완료**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-01-input-and-original-preservation/step-03-original-preservation.md",
+      "sha256": "cce397423f1600b58e2803313e16849489469c2e9824ea312fb99a6983821523",
+      "title": null,
+      "statusText": "- 회의 상태: **완료**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/README.md",
+      "sha256": "a7ea746dbc5487d993bf311e88b2ed29102eacb9ac9ce464a2a623ba9f0e2316",
+      "title": "# Phase 2 — 변환·근거화",
+      "statusText": "- 설계 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/add.md",
+      "sha256": "33ecf2e59e6f8c677e0587c9ddce2c543b3718c6cb80d786fb0ea9c2f48298d3",
+      "title": null,
+      "statusText": "- 상태: **완료**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/architecture-decision-records.md",
+      "sha256": "0236a99205c710a1330258e39c1366719b1981070fa3db60f9f907f422c67f11",
+      "title": null,
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/change-log.md",
+      "sha256": "c5fe64952fd0dca51077d2f39393dbe2719d432178f75361b6d4c6fd5e94199e",
+      "title": null,
+      "statusText": "- 상태: **누적 기록**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/implementation-validation.md",
+      "sha256": "2d9a69e8e74297d45ca779c07586fa9f7cf716173c8e010df131b032614baabf",
+      "title": null,
+      "statusText": "- 상태: **추적 중**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-02-transformation-and-grounding/user-decisions.md",
+      "sha256": "e0566c19c66f7bc01e56eb1828d203d7188cc6f6c729751510181e857d1dcf09",
+      "title": null,
+      "statusText": "- 상태: **사용자 결정 완료 · Canonical ADD 반영 완료**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/README.md",
+      "sha256": "306efc80d023592883b027fefbeed7a96240f7d3535903bdc818b13c0874cb1d",
+      "title": "# Phase 3 — 지식 후보 생성",
+      "statusText": "- 설계 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/add.md",
+      "sha256": "a606f0d7c79e15a6c7cc2b20a77e1734750763546d3a15a99298786d59f7cee3",
+      "title": "# Step 8. Claim·Entity·Relation·Event·Decision·Action 후보 추출",
+      "statusText": "- 상태: **완료**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/architecture-decision-records.md",
+      "sha256": "ece300f58a296968fe79b44c8be5225c45d38ec13ce7eed90b5ff45acad6bcb7",
+      "title": null,
+      "statusText": "- 상태: **ADR-027\\~036 Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/change-log.md",
+      "sha256": "40895219264855d867be5540280003e29d4c192de424595b214f65879dfa8e37",
+      "title": null,
+      "statusText": "- 상태: **누적 기록**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/implementation-validation.md",
+      "sha256": "80daa0ea752dd4dd738f5263534b3b9e84efa0c9d70e88c321d3518ec8fbdb8d",
+      "title": null,
+      "statusText": "- 상태: **사용자 결정 1건 · 구현 검증 추적 중**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-03-knowledge-candidate-generation/user-decisions.md",
+      "sha256": "efa50bdd56607741ba8b69872d088967d533afcb4d30a7c0e30438485b9528d6",
+      "title": null,
+      "statusText": "- 상태: **확정**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-04-comparison-change-approval/README.md",
+      "sha256": "5d3c806bb27773ec1438fa3d034d0c28fe912f5f6a5d9f92582ee27fc16fa475",
+      "title": "# Phase 4 — 비교·변경안·승인",
+      "statusText": "- 설계 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-04-comparison-change-approval/add.md",
+      "sha256": "b3f83eebbef4286d5dc787a5e3a5bd98a3f09fcb3aeb2273cc0c7d53e3c87538",
+      "title": "# Step 10. 기존 Canonical 지식·User Directive·Fact Priority와 비교",
+      "statusText": "- 상태: **완료**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-04-comparison-change-approval/architecture-decision-records.md",
+      "sha256": "a8d712f1b9a9a009965ef6a3c4d85c2b9aa10b780bca9d8d220742828e1cc92d",
+      "title": null,
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-04-comparison-change-approval/change-log.md",
+      "sha256": "da619bcc7842e0f1656dc9eac4105dda2e3dfb16a029fbaf87ff156df305975f",
+      "title": null,
+      "statusText": "- 상태: **누적 기록**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-04-comparison-change-approval/implementation-validation.md",
+      "sha256": "4c3d5413f519121b5f5f2bbcb7704ff4bca1451e3c6cd405c7c47427feddd005",
+      "title": null,
+      "statusText": "- 상태: **추적 중**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/README.md",
+      "sha256": "c5b051954e01cb6e614fc89975b4568cbc9645391a8d77a9d480bb641e3a01bc",
+      "title": "# Phase 5 — 공식 지식·확장",
+      "statusText": "- 설계 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/add.md",
+      "sha256": "ed780113be077fa1ef3737d540321dc38c565ef954a7dd0dfb4cd6d450373458",
+      "title": "# Step 15. Canonical Fact·Claim 반영·HistoryEvent 기록",
+      "statusText": "- 상태: **완료**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/akp-0-latest-main-revalidation-2026-08-18.md",
+      "sha256": "f096efb5bef233a6c8a2130ca5f61407c82b70e8f1e044ae668cee5e4a66d6e7",
+      "title": "# AKP-0 — Latest-main Revalidation and Baseline Freeze",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/akp-v1-accepted-amendment-2026-08-12.md",
+      "sha256": "3593db4257d9dcb30147e953913797d59ca61802a556a7627f7d08a6d3396ecf",
+      "title": "# Phase 5 ADD — AKP v1 Accepted Amendment",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/architecture-decision-records.md",
+      "sha256": "549c338a510fc40b70fdd8c27716398be37c0e87cf03557d85e6114f0393ec11",
+      "title": null,
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/change-log.md",
+      "sha256": "0fc07a8d63386448e85dba9dd1095e2072b0618e72d02d84bded6fcd6000cb1f",
+      "title": null,
+      "statusText": "- 상태: **누적 기록**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-05-canonical-knowledge-and-discovery/implementation-validation.md",
+      "sha256": "0f261c51650d43aa094b4e87f4f988b5353ad13353d970244cb3cd0b2e693006",
+      "title": null,
+      "statusText": "- 상태: **추적 중**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/README.md",
+      "sha256": "93c564d46d1147b939a756d3d096bb0d05cfe566a64e57c89ccf59bea940382e",
+      "title": "# Phase 6 — 활용·결과·피드백",
+      "statusText": "- 설계 상태: 완료",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/add.md",
+      "sha256": "17d9b7ab884d3c84670d749392acca6ba145f9db74b7a7ada66d3ff0cb946c37",
+      "title": null,
+      "statusText": "- 상태: **완료**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/akp-v1-accepted-amendment-2026-08-12.md",
+      "sha256": "b79c9b0d493b8df16837e20e0b8650ac69f3f53ad86d0851fbd15eb45a3293df",
+      "title": "# Phase 6 ADD — AKP v1 Accepted Amendment",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/architecture-decision-records.md",
+      "sha256": "4807ba7bf22c64ee33e6c859baef0fe6eb98b64f7bc0ab76c3203daf28354845",
+      "title": null,
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/change-log.md",
+      "sha256": "6762f57779115fe01f334f14a5a5b23dfc0a80fbb30ee7a5ef652414f77df3cf",
+      "title": null,
+      "statusText": "- 상태: **누적 기록**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/implementation-validation.md",
+      "sha256": "5f1b0fd086ff23e915f9150ae4557cb45978586012939a0273585bffaf06a6ee",
+      "title": null,
+      "statusText": "- 상태: **추적 중**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/step-18-generation.md",
+      "sha256": "2253496fc161b9f173def8ad979ceea4999278325b434b779b42e715a844f8e9",
+      "title": null,
+      "statusText": "- 상태: **확정 설계**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/step-19-risk-review.md",
+      "sha256": "a386ddc6c8551f2c90f315174fc4d0df7c40adc2ec10524d78072d6eba9c39d0",
+      "title": null,
+      "statusText": "- 상태: **확정 설계**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/step-20-delivery-and-read-api.md",
+      "sha256": "e6beb7c579b043e754f5b4964acffb48a350c0157f33708b5a62cc0acf81c82a",
+      "title": null,
+      "statusText": "- 상태: **확정 설계**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/step-21-external-action-execution.md",
+      "sha256": "afceb5c1a78e4387dd7fce176d76e17f95c13cb57aad4edd5611be31084aec9d",
+      "title": null,
+      "statusText": "- 상태: **확정 설계**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/add/phase-06-utilization-results-feedback/step-22-feedback-reentry.md",
+      "sha256": "361351854d27136c4efccfc05aadef40b1c5a729e103466cf9c2bd6732d50b1d",
+      "title": null,
+      "statusText": "- 상태: **확정 설계**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-079-stage-0-engineering-foundation.md",
+      "sha256": "d7044dd3931b613060029c0373a905714454441f1ba7469c53404cd4c571a1a1",
+      "title": "# ADR-079 — Stage 0 Engineering Foundation",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-080-stage-1-kernel-contracts-and-runtime.md",
+      "sha256": "a76306b0fd4e20f08171e1eeca1be7d54261682be188c8cfd04d92bb58dc295d",
+      "title": "# ADR-080 — Stage 1 Kernel, Contracts and Connector Runtime",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-081-stage-2-intake-and-original-asset.md",
+      "sha256": "b40ad16ad9d48c2c438246d444ce6c8f1a57b817dbbc4e89a93cca96aa1f33f5",
+      "title": "# ADR-081 — Stage 2 Intake and Original Asset",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-082-stage-0-to-2-oss-first-retrospective.md",
+      "sha256": "76c2f5e57a99c2f266042a4f6015d6a1577185afe57b5e35f56afc303a2f95c2",
+      "title": "# ADR-082 — Stage 0~2 OSS-first Retrospective",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": false,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-083-stage-3-plain-text-transformation-and-evidence.md",
+      "sha256": "d234b6266455b43f22127ad8191fb3d02c4e7bcb173131c7505394d230ac3374",
+      "title": "# ADR-083: Stage 3 Plain Text Transformation and Evidence",
+      "statusText": "- 상태: Accepted",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-084-stage-4-ai-candidate-validation.md",
+      "sha256": "2a70c3baa358eecd08454f146169dc7b3e1c86f389e15d83256edcf961b409bd",
+      "title": "# ADR-084: Stage 4 AI Provider, Direct Claim Candidate and Validation",
+      "statusText": "- 상태: Accepted",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-085-stage-5-comparison-change-set-review.md",
+      "sha256": "604401252712e7c394bb3ad2b4fe280d7ef17f76a9cf3ffc2ba51e49a7918fd7",
+      "title": "# ADR-085: Stage 5 Comparison, Change Set and Human Review",
+      "statusText": "- 상태: Accepted",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-086-stage-6-canonical-commit-history-outbox.md",
+      "sha256": "86970183708ac439d5aa1c3002f79e018e25df98b841e969397f49deae95dff1",
+      "title": "# ADR-086: Stage 6 Canonical Commit, History and Outbox",
+      "statusText": "- 상태: Accepted",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-087-stage-7-cited-search-projection.md",
+      "sha256": "ffa70cdc1dc5ab0f8e4b794aa50f76d5b1646c6496bf4148a8fc99903392db3f",
+      "title": "# ADR-087: Stage 7 Cited Search Projection",
+      "statusText": "- 상태: Accepted",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-088-stage-8-format-adapter-and-structural-selectors.md",
+      "sha256": "86ba4f47c8fbd77e85b8f50dfd9a56e35592316b4d295c841bd216409d534db8",
+      "title": "# ADR-088 — Stage 8 Format Adapter and Structural Selectors",
+      "statusText": "- 상태: Accepted",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-089-stage-9-rich-knowledge-and-deterministic-impact.md",
+      "sha256": "458d5a84b0bb2ecd128bab94e42a60828415408f6f3c1b786f70b48145d92980",
+      "title": "# ADR-089 — Stage 9 Rich Knowledge and Deterministic Impact",
+      "statusText": "- 상태: Accepted",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-090-stage-10-compiled-truth-and-discovery.md",
+      "sha256": "62871d7f1f9856b0e23fc6956a23d014d85f077c17bd880a48a9e089e422031f",
+      "title": "# ADR-090 — Stage 10 Compiled Truth and Discovery",
+      "statusText": "- 상태: Accepted",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-091-stage-11-risk-controlled-external-action.md",
+      "sha256": "7fd889de486e7d57b489dc6568ad6f6453b171c3068beefac2b6acadacf14d68",
+      "title": "# ADR-091 — Stage 11 Risk-controlled External Action",
+      "statusText": "- 상태: Accepted",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-092-stage-12-module-and-oss-reuse-validation.md",
+      "sha256": "5ee9a2a16289e2822f6c94378bccfda137a8e2444429ce6b48f046c4060076b2",
+      "title": "# ADR-092 — Stage 12 Module and OSS Reuse Validation",
+      "statusText": "- 상태: Accepted",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-093-http-identity-and-authorization-boundary.md",
+      "sha256": "3c7a685925570adb26186098d1dc862b537f79fe97bc6606e59c45bffb7e0ab4",
+      "title": "# ADR-093 - HTTP Identity and Authorization Boundary",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-094-action-candidate-server-side-binding-and-approval-snapshot.md",
+      "sha256": "6b0743b2e16312aefb6b3bb5bfa354d48a36b803d9fb23574acbc85d640c4777",
+      "title": "# ADR-094 - Action Candidate Server-side Binding and Approval Snapshot",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-096-stage-12-1-ai-durable-materialization.md",
+      "sha256": "363fe56404b809fbe6f7681e8016a32c93d85eb9d9442b8784cd9f118f007f89",
+      "title": "# ADR-096: Stage 12.1 AI Durable Materialization",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-097-stage-12-1-outbox-projection-clean-restore.md",
+      "sha256": "6e41ba292441e29f4592079fb4ba0128f19fa69ae7e13ae8ebf94ca005c6ca77",
+      "title": "# ADR-097: Stage 12.1 Canonical Outbox, Projection Recovery and Clean Restore",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md",
+      "sha256": "61bd61632e72bbdddbf97ff11af6c881f858c3e5d810e6b8b6594569b413b755",
+      "title": "# ADR-098: Stage 12.1 Quality Evaluation Contract",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-099-frontend-section-1-local-owner-session-and-authentication-boundary.md",
+      "sha256": "9abda71bfbae9407ebbe7df979d5305244cbcfae507118f6bd7653b2f19935c7",
+      "title": "# ADR-099: Frontend Section 1 — Local Owner Session 및 Method-Neutral Authentication Boundary",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": false,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-114-project-administration-and-settings-repository-ownership-boundary.md",
+      "sha256": "0620e13ef913e63ed17e5057a5a40a746a830bcf89a7b6b2ea3c4a27491a14a1",
+      "title": "# ADR-114 — Project Administration and Settings Repository Ownership Boundary",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-115-global-shell-action-center-read-projection-and-scope-boundary.md",
+      "sha256": "b612c71f34be3092c376bfc6af062e4925ec840b5d821ee9b274174dd6d43dc9",
+      "title": "# ADR-115 — Global Shell·Action Center Read Projection and Scope Boundary",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-116-zero-project-session-principal-command-project-bootstrap-persistence-boundary.md",
+      "sha256": "63ccd7336e54c696672958d4c0f6ec749b252609978420c6f0dcbc767bd60a33",
+      "title": "# ADR-116 — Zero-project Session·Principal Command·Project Bootstrap Persistence Boundary",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md",
+      "sha256": "fe1d7c6e0969ea1b636bc3f6e9d4a95f60dd57b515385c1e0c63ffc5009fd558",
+      "title": "# ADR-117 — Documentation Source of Truth·Canonicalization·Publication Boundary",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-118-typed-failure-taxonomy-and-translation-boundary.md",
+      "sha256": "631d6a80841cfcaa5d11cc9c79c9feeb8df105983a36688810eb24f64cfe6f35",
+      "title": "# ADR-118 — Typed Failure Taxonomy and Translation Boundary",
+      "statusText": "- Status: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-119-frontend-server-state-draft-state-and-cache-ownership-boundary.md",
+      "sha256": "8bbf1cbc59c155051b08e9e9db4bd1e4d21ebffd0ce595199b76f18e57c79d09",
+      "title": "# ADR-119 — Frontend Server State, Draft State and Cache Ownership Boundary",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-120-canonical-cutover-activation-and-legacy-migration-boundary.md",
+      "sha256": "9787b0015a55ba484a09892846f96145308b0ebc6f791d8a2db44896959aab54",
+      "title": "# ADR-120 — Canonical Cutover Activation and Legacy Migration Boundary",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-121-identifier-stability-registry-and-duplicate-resolution-boundary.md",
+      "sha256": "2541705979eb125af91001717bb88ad8eaaf6254f76ad0017b162a2ecbd5edcb",
+      "title": "# ADR-121 — ADR Identifier Stability, Registry and Duplicate Resolution Boundary",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-122-sources-workspace-intake-duplicate-url-and-lifecycle-boundary.md",
+      "sha256": "699eafbc6685db21412305b1c85e31f5fb68474048dceb7f108a2858aa0f3e50",
+      "title": "# ADR-122 — Sources Workspace Intake Draft, Duplicate Resolution, URL Acquisition and Source Lifecycle Boundary",
+      "statusText": "- Status: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-123-ask-command-conversation-persistence-and-outcome-recovery-boundary.md",
+      "sha256": "c141627e7e96e8e903581e4492c14fbcaaf017450459a7a95ac934bfa52a3962",
+      "title": "# ADR-123 — Ask Command, Conversation Aggregate, Persistence and Outcome Recovery Boundary",
+      "statusText": "- Status: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-124-frontend-work-item-identity-scope-amendment-and-completion-authority-boundary.md",
+      "sha256": "5d999fd9bf70a4463ad2183f825c872af8c8777e2e9959cd586a86c74db6cfbe",
+      "title": "# ADR-124 — Frontend Work Item Identity, Scope Amendment, and Completion Authority Boundary",
+      "statusText": "- Status: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-125-knowledge-workspace-multi-authority-search-and-non-ready-compiled-truth-read-boundary.md",
+      "sha256": "a5af6663272274fe967d9af512c89e85a0ec100aa69526f141d8c9797acef6e8",
+      "title": "# ADR-125 — Knowledge Workspace Multi-Authority Search and Non-Ready Compiled Truth Read Boundary",
+      "statusText": "- Status: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-126-knowledge-editor-typed-draftchangeset-materialization-snapshot-pinning-and-review-submission-boundary.md",
+      "sha256": "d65d25a339285aea235d1a7abeb42f9f813027bb3e3aa5500b5b5a7f330c3fa9",
+      "title": "# ADR-126 — Knowledge Editor Typed DraftChangeSet Materialization, Snapshot Pinning and Review Submission Boundary",
+      "statusText": "- Status: **ACCEPTED_PENDING_PUBLICATION**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-127-semantic-graph-projection-read-persistence-health-and-continuation-boundary.md",
+      "sha256": "a116e3f9160ab14505358e5d71acc63e05b24f7dd032089b3b640e1e0260dbf0",
+      "title": "# ADR-127 — Semantic Graph Projection Read Persistence, Health and Continuation Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-128-review-context-item-decision-and-purpose-bound-approval-boundary.md",
+      "sha256": "15a639c6d81cfbf276006d22db92a1ac0af674191bd23dae26674150d4e6ba07",
+      "title": "# ADR-128 — Review Context Revision, Item Decision and Purpose-bound Approval Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-129-external-action-product-resource-attempt-credential-budget-and-compensation-boundary.md",
+      "sha256": "2a81e1bfd1d4027dfe457e23e89596f3db6f8f0e9600d5817f18646bb6ccf043",
+      "title": "# ADR-129 — External Action Product Resource, Attempt, Credential, Budget and Compensation Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-130-frontend-agent-job-activity-authority-and-retry-boundary.md",
+      "sha256": "9d8d96a3025ee0cc0b20b7490c5af25e086a8bc958aba33e26adac0a41822fb5",
+      "title": "# ADR-130 — Frontend Agent·Job Activity Federated Projection, Identity and Retry Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-131-fe-p5-s2-history-hardening-boundary.md",
+      "sha256": "f80490966a0b51c0f0a39e22a0d889efaa244f2f793e217a36ec0c724f808474",
+      "title": "# ADR-131 — FE-P5-S2 History Workspace Federated Projection, Identity, Retention and Reversal Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-132-conversation-bound-source-context-and-resource-project-read-authority.md",
+      "sha256": "b0d5b17c21fd19e8934d1c94101ca12653b669ef93d9dca7682657684234d5ef",
+      "title": "# ADR-132 — Conversation-Bound Source Context and Resource-Project Read Authority",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-133-runtime-selectable-ai-provider-model-and-credential-authority.md",
+      "sha256": "67683f9ae57fa8bcfd6a1b4abbe1d9dff21bc85935184f78fc93ff78c131bf11",
+      "title": "# ADR-133 — Runtime-selectable AI Provider, Model & Credential Authority",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-134-active-knowledge-productization-v1-boundary-and-completion-contract.md",
+      "sha256": "cc6f2c76701588b1ff6f589c2cdf2a31cc7cda3ee2b077967ab44a81479c1f4f",
+      "title": "# ADR-134 — Active Knowledge Productization v1 Boundary and Completion Contract",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-135-hybrid-semantic-retrieval-as-rebuildable-derived-projection.md",
+      "sha256": "a5a33cbddc85b8ba0a60ca62d055981cb521a24ddced58df356d2af0ccf22a76",
+      "title": "# ADR-135 — Hybrid Semantic Retrieval as a Rebuildable Derived Projection",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-136-typed-discovery-finding-envelope-and-reentry-mapping-boundary.md",
+      "sha256": "e05d9d5c67270ecc53dd6bb1dc1969735f3e19eec64b47f320b1eafb228a7728",
+      "title": "# ADR-136 — Typed Discovery Finding Envelope and Re-entry Mapping Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-137-bounded-multi-signal-active-discovery-engine-boundary.md",
+      "sha256": "eb6d695a325ab619e1f88c37d5797476014657b4e52689c255b46731756574ac",
+      "title": "# ADR-137 — Bounded Multi-Signal Active Discovery Engine Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-138-durable-triggered-discovery-runtime-over-existing-outbox-and-job-foundations.md",
+      "sha256": "54814cfa0ba5db2207413068b873d46a1494087f7e4906ae3f84a5ea665e29cf",
+      "title": "# ADR-138 — Durable Triggered Discovery Runtime over Existing Outbox and Job Foundations",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-139-discovery-reentry-through-derived-provenance-validation-and-existing-review-authority.md",
+      "sha256": "88b9c5d7d2c5a10d1e730946c5b1d18d19971204a77d27c471bd46f044ccadec",
+      "title": "# ADR-139 — Discovery Re-entry through Derived-Provenance Validation and Existing Review Authority",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-140-discovery-workspace-graph-overlay-and-activity-product-boundary.md",
+      "sha256": "c3d5adf6af992c43b831146102f5b3fc0f2d5cd7b5a512dbc3ac992e3779b702",
+      "title": "# ADR-140 — Discovery Workspace, Graph Overlay and Activity Product Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-141-explicit-feedback-separation-suppression-and-non-epistemic-adaptive-ranking.md",
+      "sha256": "46e7f22ef5471e4fbec7cb28dd0f2f733654d9d4cfcf2ce0d9faea67a2f1bfa0",
+      "title": "# ADR-141 — Explicit Feedback Separation, Suppression and Non-Epistemic Adaptive Ranking",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-142-finite-end-to-end-acceptance-gate-and-akp-v1-closure-boundary.md",
+      "sha256": "1c14d5ecc8782c91b27884d34e77dde6fb652e3d7c97303632ca8df149eeeda8",
+      "title": "# ADR-142 — Finite End-to-End Acceptance Gate and AKP v1 Closure Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-143-runtime-selectable-ai-settings-implementation-completion-contract.md",
+      "sha256": "e279fa13a01e41caece5db0c33a931f9a7028c1a02d0ef9c6f2a08a04eb3b017",
+      "title": "# ADR-143 — Runtime-selectable AI Settings Implementation Completion Contract",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-144-source-classification-authority-durable-pinning-and-security-compatible-duplicate-boundary.md",
+      "sha256": "2677540ed10cf78e2bcd35dd84d2a50b129a350803c8d71882f920eaf416dc23",
+      "title": "# ADR-144 — Source Classification Authority, Durable Pinning, and Security-Compatible Duplicate Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-145-human-facing-minimalism-and-slash-command-control-plane.md",
+      "sha256": "3b68568509fd8f0f831fa0258c7075b5e0a717e4b5334000a4a4f9bfa46c86e5",
+      "title": "# ADR-145 — Human-Facing Minimalism and Slash Command Control Plane",
+      "statusText": "- Status: ACCEPTED",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-146-pc-global-conversation-shell-and-gui-slash-dual-control.md",
+      "sha256": "93985d8e21ed33572ab94f2edcc7dae4544e4f017873db094bf08727886ef2a8",
+      "title": "# ADR-146 — PC Global Conversation Shell and GUI/Slash Dual-Control",
+      "statusText": "- **Status:** ACCEPTED",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-147-akp-1-fact-authority-deferral-and-semantic-product-eligibility.md",
+      "sha256": "da42f966a58f77a3d444de25873e27425853d1463fde4aff0f3eac2961e8c543",
+      "title": "# ADR-147 — AKP-1 FACT Authority Deferral and Semantic Product Eligibility",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-148-akp-1-semantic-runtime-authority-unification.md",
+      "sha256": "c0de98765b8f5788ae5604a536cba6ba18b4ff3a5f72c546a418f893e7377668",
+      "title": "# ADR-148 — AKP-1 Semantic Runtime Authority Unification",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-149-discovery-semantic-essence-and-pre-persistence-fingerprint-identity-boundary.md",
+      "sha256": "706b91b972c5644208ef0634d68d041b9860e1ca1d88b398e57f4e4994ff837b",
+      "title": "# ADR-149 — Discovery Semantic Essence and Pre-Persistence Fingerprint Identity Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-150-akp-7-epistemic-comparator-authority-deferral-and-governed-unresolved-reentry-boundary.md",
+      "sha256": "3485a015642c18f6d5b559d1bf585418e025c3dc7044e8527223c5c2989d287b",
+      "title": "# ADR-150 — AKP-7 Epistemic Comparator Authority Deferral and Governed Unresolved Re-entry Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-151-discovery-production-conflict-signal-authority.md",
+      "sha256": "b7e120d37fa4666be277c49f433e88f565bbc0f753a14fa29fff051f3487deab",
+      "title": "# ADR-151 — Discovery Production Conflict Signal Authority",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-152-discovery-authoring-and-canonical-relation-change-authority.md",
+      "sha256": "81d42d9ba8f72d171f8b90f1774cd463d257789e55c37ca24503d6d97047e05f",
+      "title": "# ADR-152 — Discovery Authoring and Canonical Relation Change Authority",
+      "statusText": "- Status: **ACCEPTED BY USER / BOUNDED PRODUCT REMEDIATION AUTHORIZED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-153-project-standing-ai-processing-policy.md",
+      "sha256": "b99b547cb11bb5dc01a1448f92891078c70c7ba0ee1acdf54bbe9382c2b1131a",
+      "title": "# ADR-153 — Project Standing AI Processing Policy",
+      "statusText": "- Status: **ACCEPTED BY USER / IMPLEMENTATION AUTHORIZED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-154-wp04-source-evidence-stage3-progress-and-stage4-continuation.md",
+      "sha256": "3c40876bc540c31f201d7e5df553a3412c3afd059f2056cd14efc1ee95aaee1c",
+      "title": "# ADR-154: WP-04 Source/Evidence Stage 3 Progress and Stage 4 Continuation",
+      "statusText": "- Status: Accepted for WP-04 implementation",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-155-wp05-connector-durable-state-and-outcome-unknown.md",
+      "sha256": "8588b17bbfbc9a2204d5a0c481208ebd3fe99583397c257149acb817f76dbf0b",
+      "title": "# ADR-155: WP-05 Connector Durable State and Outcome-Unknown Recovery",
+      "statusText": "- Status: **Accepted for WP-05 implementation**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-156-critical-handoff-classification-and-runtime-policy.md",
+      "sha256": "07520a6550721f9e6acc9b3dd30045b4694b6c628e02b719ee225335513c2451",
+      "title": "# ADR-156 — Critical Handoff Classification and Runtime Policy",
+      "statusText": "- Status: **Accepted for WP-07 implementation**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-157-recovery-registry-and-health-readiness-policy.md",
+      "sha256": "3a2d5226dd8edcb8d078b2744cdb94a83c80f1f52245ef41cf2069c3360c1263",
+      "title": "# ADR-157 — Recovery Registry and Health Readiness Policy",
+      "statusText": "- Status: **Accepted for WP-08 implementation**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-158-action-feedback-reentry-and-discovery-safe-diagnostics.md",
+      "sha256": "5c1afb87d9f637839953e2e558f9fbfd069b6c6bdc26196ac67c7fda7d5e0b42",
+      "title": "# ADR-158: Action feedback re-entry and Discovery safe diagnostics",
+      "statusText": "_Status: Accepted for WP-10 (RIC-N7/RIC-N8)_",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-159-wp11-legacy-disposition-and-release-compatibility.md",
+      "sha256": "151ed41d89f9eec3e11eb4dd9cb89360945fd9683cfa5978628e87d90b17f214",
+      "title": "# ADR-159 — WP-11 Legacy Disposition and Release Compatibility",
+      "statusText": "- Status: **Accepted for WP-11 implementation**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-160-stage-5-semantic-comparison-relationships.md",
+      "sha256": "6b89a91f55453b9a17df51fb5d5213e8235930492cc762cd2abe69eb6cc76295",
+      "title": "# ADR-160 — Stage 5 Semantic Comparison and Durable Multi-Relationship Boundary",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-161-deepseek-only-generative-ai-execution.md",
+      "sha256": "1062d3a133c24fd91fb13453a0caaa9757960f52cdca75bbbc5af358fa6fc89e",
+      "title": "# ADR-161 — DeepSeek-only Generative AI Execution",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-162-capability-scoped-standing-ai-policy-for-semantic-embeddings.md",
+      "sha256": "502cbd4087a60c3b23637bde8859ed366b5513fd9fa6a30a7ff47cabf7b97f2a",
+      "title": "# ADR-162 — Capability-Scoped Standing AI Policy for Semantic Embeddings",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": false,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-163-v2-review-operation-resolution.md",
+      "sha256": "e75586a447d610ef44837f11b6bf8929b6ba6c3682f48d63bcbe4b6f0ee55a14",
+      "title": "# ADR-163 — V2 Review Operation Resolution for `MODIFY_REVIEW`",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-164-deepseek-flash-model-identity.md",
+      "sha256": "d0fd6bd30a1cc46de644bbecad11b93af5ba8abc8b8c993163a6f70fb5f5c915",
+      "title": "# ADR-164 — DeepSeek V4.1 Flash Model Identity",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-165-stage-11-fail-closed-executing-reconciliation.md",
+      "sha256": "bdf3e10fecfa06ecf0ec9fc2e4373c63dba9d20b3f6134bd0cc737846b36d803",
+      "title": "# ADR-165 — Stage 11 Fail-Closed `EXECUTING` Reconciliation",
+      "statusText": "- Status: **ACCEPTED**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-166-stage-11-durable-action-feedback-handoff.md",
+      "sha256": "0bf8af57ca34782ee81037a2d54bdb49424243e4d231814695cf1063837da831",
+      "title": "# ADR-166 — Stage 11 Durable Action Feedback Handoff",
+      "statusText": "_Status: Accepted for RUS-1D-D D11-4 (2026-09-15)_",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-167-canonical-desktop-launcher-repository-and-runtime-identity.md",
+      "sha256": "c1633c696b24c9ca27e3bab75ebad3d3ec7362b55c00dd382c1e69717ba2921b",
+      "title": "# ADR-167 — Canonical Desktop Launcher Repository and Runtime Identity",
+      "statusText": "_Status: Accepted for RUS-2-C1 (2026-09-15)_",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-168-canonical-driven-semantic-projection-convergence.md",
+      "sha256": "cc9126eb3e0048a01662a6f7c55a6fa1fdc0da636632cf47b8199f5aeb476ff9",
+      "title": "# ADR-168 — Canonical-Driven Semantic Projection Convergence and Recovery",
+      "statusText": "_Status: Accepted for RUS-2-C7 (2026-09-16)_",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-169-authority-critical-postgres-commit-ambiguity-reconciliation.md",
+      "sha256": "446e8da0592390378b2e8fe352843de56c2a858b8223843ff18382f8eda6c6a3",
+      "title": "# ADR-169 — Authority-Critical PostgreSQL Commit-Ambiguity Reconciliation",
+      "statusText": "Status: Accepted for Issue #335 (2026-09-17)",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-170-asset-cas-liveness-staging-leases-and-maintenance-gc.md",
+      "sha256": "3c1b93eb944218de9f580349b50c58b5194caa852d5a46872a3f1aa4808dacbe",
+      "title": "# ADR-170 — Asset CAS Liveness, Staging Leases, and Maintenance GC",
+      "statusText": "Status: Accepted for TS-5 Phase B correction (2026-09-19)",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-171-t3-project-source-knowledge-reset.md",
+      "sha256": "b85f5a513f74448cfd13ffb86e53ddd9bbbb80e9df47e37e43db435f47a674e4",
+      "title": "# ADR-171 — T3 Project Source Knowledge Reset",
+      "statusText": "- Status: **ACCEPTED — implementation in progress; destructive apply disabled**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md",
+      "sha256": "8953d060a652a4d5bb4f9a15bdc42b7f90ac199d2ff94c21ca5231662408ee38",
+      "title": "# ADR-172 — VP 자동 지식 권위와 두 동작 제품 계약",
+      "statusText": "> 상태: **ACCEPTED · 단계별 구현 진행 중**  ",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md",
+      "sha256": "cfc680968bdcd6199a958937038124ff975563c1ff7962a8364541e741415151",
+      "title": "# ADR-173 — 제품 우선 개발 전략과 평가 신뢰성 경계",
+      "statusText": "- Status: **ACCEPTED — USER decision, 2026-10-10**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/README.md",
+      "sha256": "60c29b1eab3fc8b488b1fa792faccb5da8b18443a128f199a332d1c2ab8b18b3",
+      "title": "# Project Shotgun Architecture Decision Records",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/adr/implementation-records/a6-ai-settings-backend-connectivity.md",
+      "sha256": "c697c2fdb11749454555e6284d49c3b87f4017efd02237b575a076ed71d254a4",
+      "title": "# A6 AI Settings Backend and Multi-Provider Connectivity Implementation Record",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/implementation-records/a7-settings-ai-frontend.md",
+      "sha256": "a4a651d75c3e65ce4e5fa1d73802d95d4467f2f3c810e9d54787fa8192bc5804",
+      "title": "# A7 Implementation Record — Settings → AI Frontend Product",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/implementation-records/stage-12-1-ai-durable-materialization.md",
+      "sha256": "0a9a9279c22846073c318840bcef5d6a0ae6b14bc955a50fc90953ccb3f41417",
+      "title": "# Stage 12.1 AI Durable Materialization Implementation Record",
+      "statusText": "- 상태: **COMPLETE — Implemented, Verified and Approved**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/implementation-records/stage-12-1-outbox-projection-clean-restore.md",
+      "sha256": "cb8f936597cd7770f075a226e337402813c39f7df913bd442e4417159ac8c781",
+      "title": "# Stage 12.1 Outbox, Projection and Clean Restore Implementation Record",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/adr/implementation-records/stage-12-1-p0-1-p0-2-security-gate.md",
+      "sha256": "6d10bef3410407acbc21ac9748ad159ee044b06495eba9472109b3c3f035da79",
+      "title": "# Stage 12.1 P0-1/P0-2 Security Gate Implementation Record",
+      "statusText": "- 상태: **Implemented and Verified**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/module-architecture/README.md",
+      "sha256": "132ccc7e9249e6a9ac10ae9c8225fa70a408b65d292a43dfc369046815b04b5e",
+      "title": "# Shotgun Module Architecture",
+      "statusText": "> 상태: **Architecture Baseline v0.1**  ",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": false,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/module-architecture/adr/ADR-076-modular-monolith-first.md",
+      "sha256": "a811f44fdbc6b76637f535cd750a7f08f4cfc23cbe50921ce424c2beaf82c382",
+      "title": "# ADR-076 — Modular Monolith First",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/module-architecture/adr/ADR-077-common-contracts-and-connector-runtime.md",
+      "sha256": "1566670201873af2124f83682d40953346732991cbc1a418a10798f07f5acfb8",
+      "title": "# ADR-077 — Common Contracts and Connector Runtime",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": false,
+        "sourceSecurity": false,
+        "evaluation": false,
+        "executionRecovery": true,
+        "reuse": false
+      }
+    },
+    {
+      "path": "docs/architecture/module-architecture/adr/ADR-078-replaceable-open-source-assignments.md",
+      "sha256": "d80b20a346ec10954032ff4bb3f60432a209a590cd58032fd18914ae2f5bd638",
+      "title": "# ADR-078 — Replaceable Open-source Assignments",
+      "statusText": "- 상태: **Accepted**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": false,
+        "evaluation": true,
+        "executionRecovery": false,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/module-architecture/open-source-role-matrix.md",
+      "sha256": "bd1ec24a65a06b42aa82097e612358adecf3c6a4eef06c1e1b7fa59f2bf94dc5",
+      "title": "# Shotgun Open-source Role Matrix",
+      "statusText": null,
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    },
+    {
+      "path": "docs/architecture/module-architecture/shotgun-module-architecture-add.md",
+      "sha256": "031bb2348d4279d84da9dd3ffaed784adfe11cbe426d20265146fd34658ccade",
+      "title": "# Shotgun Module Architecture ADD",
+      "statusText": "- 문서 상태: **Accepted Architecture Baseline v0.1**",
+      "reviewLevel": "AUTOMATED_FULL_TEXT_BOUNDARY_SCREENING_NOT_INDEPENDENT_SEMANTIC_APPROVAL",
+      "cues": {
+        "knowledgeAuthority": true,
+        "sourceSecurity": true,
+        "evaluation": true,
+        "executionRecovery": true,
+        "reuse": true
+      }
+    }
+  ],
+  "targetedClauseReview": "docs/implementation/development-strategy-reset-2026-10-10/reconciliation.md",
+  "targetedClauseReviewSha256": "612eca084300268bfbb84bc8504f2f9cf5cfaa4f35660d96fcc33c71ab28b494",
+  "wholeAdrsSuperseded": 0,
+  "retainedPrefixes": [
+    {
+      "path": "docs/architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md",
+      "originalRecordPreservedAsPrefix": true,
+      "baseline": "6be130125d211ac4da6d45a29fd1db101387a296"
+    },
+    {
+      "path": "docs/architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md",
+      "originalRecordPreservedAsPrefix": true,
+      "baseline": "6be130125d211ac4da6d45a29fd1db101387a296"
+    }
+  ],
+  "pausedDrafts": {
+    "stash": "57b05edb2ebe262180d15383850121a50f26655a",
+    "count": 20,
+    "bytesMatchOriginal": true,
+    "resumed": false,
+    "adoptedAsEvaluator": false,
+    "priorB2StashPreserved": true
+  },
+  "sourceByteCopyVerified": {
+    "source": "C:/Users/lhm24/Downloads/Project_Shotgun_Development_Strategy_Reset_2026-10-10.md",
+    "copy": "docs/implementation/development-strategy-reset-2026-10-10/source-proposal.md",
+    "sha256": "9fdf257d810cd3e12ee8b1cb60f871c46a7a27729d8971ea0dc65e196d562925",
+    "originalStatus": "REVIEW_PROPOSAL_V0.1",
+    "treatedAs": "SOURCE_FOR_USER_AUTHORIZED_ADR_PROMOTION_NOT_SELF_EXECUTING_INSTRUCTIONS",
+    "userAuthorization": "2026-10-10 promote strategy ADR and reconcile active architecture/development/evaluation/agent rules",
+    "missingReferenceInCurrentWorktree": "ssc-rel-0.2/SSC-REL-0.2-design.md",
+    "publication": "LOCAL_USER_ACCEPTED_ADR_PENDING_REVIEWED_MAIN_MERGE"
+  },
+  "changedOriginalPaths": [
+    "AGENTS.md",
+    "docs/architecture/add/README.md",
+    "docs/architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md",
+    "docs/architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md",
+    "docs/architecture/adr/README.md",
+    "docs/architecture/adr/adr-registry.json",
+    "docs/architecture/module-architecture/shotgun-module-architecture-add.md",
+    "docs/engineering/evidence-registry.json",
+    "docs/generated-artifacts.json",
+    "docs/implementation/README.md",
+    "docs/implementation/definition-of-done.md",
+    "docs/implementation/implementation-roadmap.md",
+    "docs/implementation/oss-evaluation-plan.md",
+    "docs/implementation/oss-integration-roadmap.md",
+    "docs/implementation/release-strategy.md",
+    "docs/implementation/testing-strategy.md",
+    "docs/implementation/vp-completion-tracker.md",
+    "docs/implementation/vp-vampire-implementation-plan.md"
+  ],
+  "protectedFiles": [
+    {
+      "path": "docs/implementation/vp-05-relation-ab-final-evidence.json",
+      "sha256": "b980cf9063cf6041c1511c9c3e39ccfb7942a79b3c86d5fec01fd0a25c76f929",
+      "changed": false
+    },
+    {
+      "path": "docs/implementation/vp-05-relation-ab-final-scores.json",
+      "sha256": "f4282878cc5bae90259c5b04034206ae0c4180c96ba0b8e5dc8c1c1d01505c35",
+      "changed": false
+    },
+    {
+      "path": "docs/implementation/vp-05-relation-b-live-screen-evidence.json",
+      "sha256": "3303be8de9e829216956caa00a12e6521060a77eb79a599fceb10bb1a7fb3784",
+      "changed": false
+    },
+    {
+      "path": "docs/implementation/vp-04-05-acceptance-contract-v1.0.md",
+      "sha256": "e268a69b3080f3167427fba42b88dd7db1720d4dcba4c5683cdb32cdc5a4c463",
+      "changed": false
+    },
+    {
+      "path": "scripts/vp-acceptance-evaluator-engine.ts",
+      "sha256": "e7943e2f17cdd120aaf171c9ff95347e800b93f4bfe675ae1e47f521a6ddba4d",
+      "changed": false
+    },
+    {
+      "path": "scripts/vp-relation-a-b.ts",
+      "sha256": "1a0b43170be1f4a314066a8dfc8ced6de5534641a0e66a3f37fd74efbe479fb5",
+      "changed": false
+    },
+    {
+      "path": "scripts/vp-relation-a-b-score.ts",
+      "sha256": "3c90315e3f02f4876c68a333e553afe4c96e99508aaae70ae5e3dc9617bec6a0",
+      "changed": false
+    },
+    {
+      "path": "scripts/vp-structured-relation-candidate.ts",
+      "sha256": "a7a8a0ee63dc0ea5b554d04004796b193f56da90c68cdc041715eac2fa8daaf3",
+      "changed": false
+    },
+    {
+      "path": "adapters/vp-decision-general-ai/src/index.ts",
+      "sha256": "f5130058fc0e16f6ed3445fc3d0fb987793bd8eef5cf320e088014ec080e62de",
+      "changed": false
+    },
+    {
+      "path": "modules/vp-decision/src/index.ts",
+      "sha256": "0e5134c846839b01c8745ac9de9f6bded080c28f2496537f8ea6b2b606e4ef98",
+      "changed": false
+    },
+    {
+      "path": "docs/CANONICAL.md",
+      "sha256": "61b07f1bf84e1c4b54e4a2d67da8c1f961fcfd81e0ee7588137e5c1e8704b595",
+      "changed": false
+    },
+    {
+      "path": "docs/canonical-manifest.yaml",
+      "sha256": "9f29d430a92953e6e975a1da161aa63cc3879fe897ba9bdd29de453e839849a1",
+      "changed": false
+    }
+  ],
+  "productionSemanticDigest": "996ad83ba1fd74e8b50c07ed0811adbe8a4e7e6a1b801c893c251929615bf463",
+  "providerCalls": 0,
+  "productionDataWrites": 0,
+  "goldB7Opened": false,
+  "vp06Started": false,
+  "empiricalProductOrQualityGateClosed": false
+}

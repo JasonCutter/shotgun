@@ -166,11 +166,14 @@
         "docs/architecture/adr/adr-registry.json",
         "docs/implementation/development-strategy-reset-2026-10-10/reconciliation.md",
         "docs/implementation/development-strategy-reset-2026-10-10/source-provenance.json",
-        "docs/implementation/development-strategy-reset-2026-10-10/paused-drafts.json"
+        "docs/implementation/development-strategy-reset-2026-10-10/paused-drafts.json",
+        "docs/implementation/development-strategy-reset-2026-10-10/original-local-alignment-audit.json",
+        "docs/implementation/development-strategy-reset-2026-10-10/original-local-report.md",
+        "docs/implementation/development-strategy-reset-2026-10-10/publication-notes.md"
       ],
       "generator": "node node_modules/tsx/dist/cli.mjs scripts/audit-development-strategy.ts",
-      "regenerationTrigger": "approved strategy/document alignment change; preservation stash retained",
-      "authority": "derived path/hash/integrity inventory; not independent semantic approval or product completion"
+      "regenerationTrigger": "approved strategy/document publication alignment; full clone with publication-base Git object available",
+      "authority": "derived publication-scope inventory; original local evidence is separately archived; no semantic/runtime approval"
     }
   ]
 }

@@ -2,6 +2,10 @@
 
 > 2026-10-10 · 사용자 승인 결정의 로컬 문서 정비. Canonical `main` 게시와 운영 변경은 별도다.
 
+## GitHub 게시 범위
+
+원본 로컬 정리와 현재 main 통합 상태는 [publication-notes](./publication-notes.md)로 구분한다. 아래 ADR-172 §13/Frontier 참조는 미게시 로컬 VP 기준선의 관계이며 이 PR이 해당 runtime/상세 계약을 main에 도입한다는 뜻이 아니다. 원본 실험과 stash는 원래 worktree에 보존한다.
+
 ## 검토 방법과 범위
 
 ADR registry의 개별·통합 owner, Phase ADD, Module ADD, VP 계획/tracker, DoD, OSS·평가·릴리스 및 agent 원칙을 대조했다. [alignment-audit.json](./alignment-audit.json)은 ADR/ADD 파일의 전체 텍스트를 읽어 수행한 **자동 경계 screening**의 path/SHA/상태·주제 신호를 기록한다. 이 screening을 모든 의미 결정의 독립 승인 또는 무충돌의 수학적 증명으로 표시하지 않는다.
@@ -37,7 +41,7 @@ R1은 실제 활성 일정 지시의 대체이고 R2는 이미 승인된 Frontie
 | Module ADD §0.2·Port/데이터 소유권             | RETAINED                          | 전략 적용 안내 추가, owner/type/DB/공통 계약 변화 없음                                                    |
 | 기존 UI/Approval·외부 Action 결정              | RETAINED IN THEIR SCOPE           | 일반 VP 지식 승인 클릭은 ADR-172에 따라 없음. 외부 Action 승인은 유지                                     |
 | 기존 OSS Role Matrix·ADR-079–092               | RETAINED                          | 필요한 범위의 관련 후보 검토와 공통 Gate. runtime·내부 DB 전체 도입 안 함                                 |
-| VP-0~VP-4 / VP-01~VP-11 / DoD                  | RETAINED + PRIORITY CLARIFIED     | A–E는 전략 우선순위. 추적 ID·제품 단계·Gate 재번호화/완료 강등 없음                                       |
+| VP-0~~VP-4 / VP-01~~VP-11 / DoD                | RETAINED + PRIORITY CLARIFIED     | A–E는 전략 우선순위. 추적 ID·제품 단계·Gate 재번호화/완료 강등 없음                                       |
 | SSC·Qwen/NLI/Jev·질문 시 관계 평가             | UNSELECTED HYPOTHESIS             | 자동 관계 기록과 충돌하는 새 운영 결정은 아직 하지 않음. 실제 전환 시 별도 ADR 필요                       |
 
 ## 문서 변경 owner

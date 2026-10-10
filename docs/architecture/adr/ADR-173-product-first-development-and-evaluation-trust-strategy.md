@@ -3,19 +3,23 @@
 - Status: **ACCEPTED — USER decision, 2026-10-10**
 - Decision owner: USER (Project owner)
 - Acceptance authority: 사용자의 “개발 전략 ADR 승격 및 기존 결정 정합성 재정비” 요청
-- Publication: **LOCAL COMMIT; reviewed `main` merge 전에는 Git Canonical 게시 완료가 아님**
+- Publication: **USER-AUTHORIZED GITHUB REVIEW BRANCH / PR; reviewed `main` merge 전에는 Git Canonical 게시 완료가 아님**
 - Subject base: local VP worktree `6be130125d211ac4da6d45a29fd1db101387a296`
 - Scope: Project Shotgun 개발·평가·작업 운영 전략. 즉시 적용 대상은 VP-05의 우선순위와 증거 해석
 - Supersedes whole ADRs: **NONE**
-- Amends: ADR-098의 향후 평가 보고 조건, ADR-172 §13.1의 평가 증거 해석 및 선택적 최적화 착수 조건
+- Amends: ADR-098의 향후 평가 보고 조건, ADR-172의 평가 증거 해석 및 선택적 최적화 착수 조건. 아래 Frontier 절 번호는 미게시 로컬 기준선의 번호다.
 - Related: ADR-079–098, ADR-117/120/121, ADR-133/143, ADR-160/161/164, ADR-169/172
 - Runtime / production data implementation: **NOT AUTHORIZED by this documentation task**
 
 ## 1. Context와 승인 근거
 
+### GitHub 검토 게시 범위
+
+원본 `1a36c7b55`의 전략 변경만 `origin/main@e08449982cbf2247b9b1e7a7ef39281eab09166a` 기준으로 옮겼다. 원래 VP 브랜치의 앞선 runtime·평가·실험 commit 68개는 이 PR에 포함하지 않는다. 로컬 v11·global authority·Frontier·동결 결과에 대한 문구는 해당 미게시 로컬 기준선의 보존 요구다. 현재 main에 이미 구현됐다는 주장이 아니다. 실제 main worker는 v6이고 이 문서 PR은 이를 v11로 변경하지 않는다. [게시 범위·출처](../../implementation/development-strategy-reset-2026-10-10/publication-notes.md)를 따른다.
+
 Shotgun의 성공은 관계 분류기의 개별 점수가 아니라, 자료 투입과 질문만으로 최신의 권한 있는 근거를 사용하는 지식 제품 인수 결과다. 관계 실험은 이 제품 목표의 문제를 설명하고 해결할 때 필요하다.
 
-2026-10-10 [기준 감사](../../implementation/ssc-rel-0-1-review/reference-audit-report.md)는 기존 72쌍 중 30쌍의 CANDIDATE 상태와 나머지 42쌍의 조사된 annotation에서 독립 승인 기록 미확인을 보고했다. 세 mixed 사례는 QUALIFIES를 허용하면서 유효한 방향이 없었다. 합성 채점 입력에서는 관계 채택 0건에도 방향 지표 100%가 나왔다. 이는 72쌍 전부가 틀렸거나 모델의 실제 의미 오류율이 확정되었다는 뜻이 아니다.
+2026-10-10 [기준 감사](../../implementation/development-strategy-reset-2026-10-10/publication-notes.md)는 기존 72쌍 중 30쌍의 CANDIDATE 상태와 나머지 42쌍의 조사된 annotation에서 독립 승인 기록 미확인을 보고했다. 세 mixed 사례는 QUALIFIES를 허용하면서 유효한 방향이 없었다. 합성 채점 입력에서는 관계 채택 0건에도 방향 지표 100%가 나왔다. 이는 72쌍 전부가 틀렸거나 모델의 실제 의미 오류율이 확정되었다는 뜻이 아니다.
 
 사용자는 [개발 전략 재정립 제안 v0.1](../../implementation/development-strategy-reset-2026-10-10/source-proposal.md)을 공식 ADR로 승격하고 관련 문서·원칙을 정비하도록 명시적으로 요청했다. 제안의 “사용자 확정 전” 표시는 원본 이력으로 보존한다. 본 ADR의 결정 승인 근거는 이번 사용자 요청이며 원본 문서가 스스로 부여한 권한이 아니다.
 
@@ -91,7 +95,7 @@ ADR-098의 “AI 제안 label은 사람 검토 전 CANDIDATE”, 평가 원장�
 | D 최소 수정        | 재현된 제품 병목에 필요한 변경만 구현                      | 신뢰 가능한 개선·회귀·비용·실행 안정성 증거                     |
 | E 잔여 Gate 복귀   | VP-04/05와 이후 패키지를 기존 의존성대로 판정              | tracker/DoD의 필수 Gate와 기존 인수 기준 충족                   |
 
-A–E는 우선순위이며 VP-01~VP-11 tracker ID 또는 VP-0~VP-4 제품 단계의 번호/계약을 바꾸지 않는다. COMPLETE_WITH_LIMITS는 제한·해제 계획·승인된 적격성 판단을 필요로 하며 필수 안전·제품·평가·OSS Gate를 우회하는 상태가 아니다.
+A–E는 우선순위이며 VP-01~~VP-11 tracker ID 또는 VP-0~~VP-4 제품 단계의 번호/계약을 바꾸지 않는다. COMPLETE_WITH_LIMITS는 제한·해제 계획·승인된 적격성 판단을 필요로 하며 필수 안전·제품·평가·OSS Gate를 우회하는 상태가 아니다.
 
 ## 4. 기존 결정과의 정확한 관계
 

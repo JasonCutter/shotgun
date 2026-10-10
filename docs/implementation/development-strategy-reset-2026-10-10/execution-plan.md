@@ -2,6 +2,10 @@
 
 > 우선순위: 제품 인수 결과 → 평가 신뢰성 → 병목 → 최소 보완 → 기존 Gate. 이 문서는 함수/라이브러리/구현 순서를 지시하는 상세 요청서가 아니다.
 
+## 게시 기준선 구분
+
+[publication-notes](./publication-notes.md)의 v11/Frontier/global authority는 로컬 VP 보존 기준선이다. 이 PR의 main parent worker는 v6이며 실행 code는 변경하지 않는다. 후속 작업은 실제 checkout/runtime identity를 먼저 확인하고 별도 승인 없는 통합·활성화를 하지 않는다.
+
 ## 현재 지시와 중지 상태
 
 [ADR-173](../../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)의 사용자 승인 전략과 ADR-172 제품 계약을 함께 적용한다. 이번 작업은 ADR 승격과 정합성 정비까지다. 아래 기술 작업, 중지된 평가 draft, B v1 잔여 24회, 새 모델 호출을 자동 시작하지 않는다.

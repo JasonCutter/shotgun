@@ -10,6 +10,12 @@ VP를 `COMPLETE`로 보고하려면 [VP 구현계획](./vp-vampire-implementatio
 
 ## 1. 완료의 다섯 가지 Gate
 
+### ADR-173 전략·증거 조건
+
+[ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)는 아래 Gate를 줄이지 않는다. 목표의 실제 제품 인수 결과와 실패 원인, 평가 기준의 승인 수준·제공 입력·분모, 비용/지연과 회귀 증거를 구분해서 보고해야 한다. schema/anchor/높은 confidence/동결 후보 점수 또는 비발행 안정성을 인증된 의미 품질·전체 완료의 근거로 단독 사용하지 않는다. 빈 조건부 품질 분모는 N/A이며 완료로 해석하지 않는다.
+
+VP-05의 COMPLETE_WITH_LIMITS 적격성은 아직 결정되지 않았다. 필수 안전·제품·평가·OSS Gate 위반은 제한 상태로 우회할 수 없고 VP-06의 STOP도 유지한다. 평가 정답 검토를 일반 VP 사용자에게 추가 Review·Approval 클릭으로 요구하지 않는다.
+
 모든 기능, 모듈과 Stage는 다음 다섯 Gate를 통과해야 한다.
 
 1. Module Gate

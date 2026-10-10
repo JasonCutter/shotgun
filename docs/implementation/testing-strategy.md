@@ -4,6 +4,14 @@
 
 ## 1. 테스트 피라미드
 
+### 현재 VP 평가 적용 — ADR-173
+
+[ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)의 제품 인수·평가 신뢰성 우선순위를 따른다. 아래 승인형 Canonical E2E는 해당 기존 경로의 회귀 검사이고, VP 제품 인수는 자료 A→질문→B/A 수정→재질문·활성 버전·원문 인용·조건/충돌·대기 재개·실패 노출의 두 동작 시나리오로 별도 검증한다.
+
+새 관계 평가는 후보/검증/분쟁/문맥 부족을 구분하고 실제 입력·정답 revision·source digest를 고정한다. 복수 해석은 kind/direction/warrant 튜플로 기록한다. 의미 정확도·형식·확률 gate·채택 방향·발행·원본 선언 안정성·발행 상태 안정성은 다른 지표다. 올바른 directed 관계 채택이 0이면 조건부 방향 정확도는 N/A다. 정답 검증 범위·분모·미평가 비율·표본 한계를 함께 보고한다.
+
+기존 72쌍/432회/B v1 12회는 개발/역사 증거로 보존한다. 기존 scorer의 수치와 frozen 결과를 덮어쓰지 않으며 새로운 정의는 새 계약 revision에서만 적용한다. AI가 제안한 정답이나 중지된 evaluator 초안은 자동으로 신뢰 기준이 되지 않는다. 모델 교체·대량 실호출·SSC 후속 버전은 실제 병목과 비교 기준 확인 전까지 HOLD다.
+
 ```text
 Architecture and Contract Tests
            ↑

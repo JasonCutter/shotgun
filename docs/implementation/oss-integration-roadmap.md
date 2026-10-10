@@ -6,6 +6,8 @@
 
 ## 1. 목적
 
+[ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)의 제품·평가·병목 우선순위가 기술 통합 착수보다 먼저다. 필요성이 확인된 범위에서 이 문서의 후보 검토·Integration Decision·Contract·Golden/Security/Replacement 검증을 유지한다. 새 전략은 기존 OSS 채택·핀·라이선스·역할을 바꾸지 않고, 전체 runtime/내부 DB를 Shotgun 권위로 승격하지 않는다.
+
 이 문서는 Shotgun 구현 Stage마다 어떤 오픈소스·레퍼런스를 우선 검토하고, 어떤 방식으로 재사용하며, 어떤 증거가 있어야 새로 구현할 수 있는지를 정의한다.
 
 OSS Integration Roadmap은 [Implementation Roadmap](./implementation-roadmap.md)을 대체하지 않는다. Implementation Roadmap이 기능과 의존성 순서를 정의한다면, 이 문서는 각 Stage에서 수행해야 할 OSS 조사·추출·Adapter·채택·제외 작업을 정의한다.

@@ -1326,6 +1326,14 @@
       "prState": "OPEN / UNMERGED",
       "merge": "NOT_AUTHORIZED",
       "postMergeAcceptance": "PENDING"
+    },
+    {
+      "id": "ADR-173-STRATEGY-ALIGNMENT-20261010",
+      "path": "docs/implementation/development-strategy-reset-2026-10-10/report.md",
+      "class": "AUDIT_REPORT",
+      "scope": "development-strategy-and-vp05-evidence-interpretation",
+      "statusAuthority": "LOCAL_AUDIT_NOT_PRODUCT_COMPLETION",
+      "canonicalPublication": "PENDING_REVIEWED_MAIN_MERGE"
     }
   ],
   "rules": {

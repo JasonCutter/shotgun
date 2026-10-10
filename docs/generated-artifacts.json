@@ -154,6 +154,23 @@
       "generator": "npm run docs:frontend-projections:write (bounded FRONTEND-WORK-ITEM-STATUS block only)",
       "regenerationTrigger": "approved Frontend Work Item or completion-manifest status change",
       "authority": "bounded status projection only; historical ADD and correction text remain handwritten"
+    },
+    {
+      "id": "ADR-173-DOCUMENT-ALIGNMENT-AUDIT",
+      "class": "GENERATED_REPRODUCIBLE",
+      "target": "docs/implementation/development-strategy-reset-2026-10-10/alignment-audit.json",
+      "versioned": true,
+      "owner": "project-development-strategy-governance",
+      "canonicalInputs": [
+        "docs/architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md",
+        "docs/architecture/adr/adr-registry.json",
+        "docs/implementation/development-strategy-reset-2026-10-10/reconciliation.md",
+        "docs/implementation/development-strategy-reset-2026-10-10/source-provenance.json",
+        "docs/implementation/development-strategy-reset-2026-10-10/paused-drafts.json"
+      ],
+      "generator": "node node_modules/tsx/dist/cli.mjs scripts/audit-development-strategy.ts",
+      "regenerationTrigger": "approved strategy/document alignment change; preservation stash retained",
+      "authority": "derived path/hash/integrity inventory; not independent semantic approval or product completion"
     }
   ]
 }

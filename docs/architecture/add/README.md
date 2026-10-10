@@ -8,6 +8,8 @@ Project Shotgun의 승인된 Phase 1–6 Architecture Design Document(ADD)를 �
 
 ## 문서 기준
 
+[ADR-173](../adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)는 현재 개발 우선순위와 향후 평가 보고를 보완한다. [ADR-172](../adr/ADR-172-vp-autonomous-knowledge-authority.md)의 VP 제품·원장 권위와 기존 Phase 승인형 기록의 적용 범위는 유지한다. 이번 전략은 Phase ADR 원문 전체를 대체하지 않으며, SSC/모델/질문 시 관계 평가를 승인된 설계로 승격하지 않는다. 사용자 승인 결정과 Git `main` 게시 상태의 구분은 ADR-173의 Publication 항목을 따른다.
+
 - Canonical 정책은 [`docs/CANONICAL.md`](../../CANONICAL.md)를 따른다.
 - 승인된 원문 정책, ADR, 사용자 결정, 미결사항, 구현 검증 대기와 변경 이력을 임의로 삭제하거나 조용히 재작성하지 않는다.
 - 각 문서의 Notion URL은 Legacy Source 식별자다. Notion 단독 변경은 Candidate이며 Git PR과 `main` 병합 전에는 Canonical이 아니다.

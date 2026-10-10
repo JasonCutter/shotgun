@@ -1,0 +1,90 @@
+{
+  "state": "PAUSED_UNVALIDATED_NOT_AN_ACCEPTANCE_REFERENCE",
+  "userStopPreserved": true,
+  "stash": "57b05edb2ebe262180d15383850121a50f26655a",
+  "originalFiles": [
+    {
+      "path": "docs/implementation/relation-evaluation-v1/.gitattributes",
+      "sha256": "366cb730eff13de32a6f00dc04ad0ff21e5bb8ede475bf4c0a66f43a5cc0c578"
+    },
+    {
+      "path": "docs/implementation/relation-evaluation-v1/adjudication-packets.json",
+      "sha256": "8ed047b74e87304e4f2f20a4ea1b2ab4301cac4edda0aa02571998e43914f0ba"
+    },
+    {
+      "path": "docs/implementation/relation-evaluation-v1/blind-review-packets.json",
+      "sha256": "98c0bfc3c1a5f223afbe45fd5ce08add2b96fd3dbf941079406dba38f1f79285"
+    },
+    {
+      "path": "docs/implementation/relation-evaluation-v1/case-status.csv",
+      "sha256": "1ec22bfac9537361299cf68bd525d5c9a9ac88e790d21e405031fc775245ffdf"
+    },
+    {
+      "path": "docs/implementation/relation-evaluation-v1/freeze.json",
+      "sha256": "355960650f6792d4f9257565db411499b2c4833076ef66a18ebc69978ce07aff"
+    },
+    {
+      "path": "docs/implementation/relation-evaluation-v1/observation.schema.json",
+      "sha256": "71d084f612e0b1637a8467d0b86f31fff25341280fcaaaa739308158c2b21288"
+    },
+    {
+      "path": "docs/implementation/relation-evaluation-v1/plan.schema.json",
+      "sha256": "4a6cfdbaaac337a4c49a09a2755509d495b6c28c9b5bda6ad35db44e9c48f792"
+    },
+    {
+      "path": "docs/implementation/relation-evaluation-v1/profile.json",
+      "sha256": "e43bec2775bbe6e0ae8801c55a2489d57b3ea4529af3333a9ff6e6401577203b"
+    },
+    {
+      "path": "docs/implementation/relation-evaluation-v1/proposed-pilot-plan.json",
+      "sha256": "375fc539088de3d7ae5223f1e095bab319e62298890ea42cc3238d79fa1666a9"
+    },
+    {
+      "path": "docs/implementation/relation-evaluation-v1/readiness.json",
+      "sha256": "1c775a6846041e7bee46522629c111c04d1afdf1be95ba0960cffc7a7105df72"
+    },
+    {
+      "path": "docs/implementation/relation-evaluation-v1/reference.schema.json",
+      "sha256": "a954636610140aa177114a82a8b9bbc63a6e298ecaa7fb9dcdf58460d7c965ac"
+    },
+    {
+      "path": "docs/implementation/relation-evaluation-v1/references.json",
+      "sha256": "e2833ecf5bb4eca59bd2874ddc7049339ad312ea8f7040ada66af5eaec9c99b9"
+    },
+    {
+      "path": "scripts/relation-evaluation/build.ts",
+      "sha256": "23e73982021affc870de3af905ff50233148921208972ddae37ee53557eb80af"
+    },
+    {
+      "path": "scripts/relation-evaluation/contracts.ts",
+      "sha256": "1084dfb853af3feadcffa0dd8ea957938930b54770f4954ebc30de2e902e0dfd"
+    },
+    {
+      "path": "scripts/relation-evaluation/engine.ts",
+      "sha256": "107f7c4a134f01451774d4f25a14de4e25f676c26447d5d26efd7fbe4751cb3f"
+    },
+    {
+      "path": "scripts/relation-evaluation/formal.ts",
+      "sha256": "a35d625e2c336bea9e63695206b38d4d87530097af679cfb2857ba92f3f5ff67"
+    },
+    {
+      "path": "scripts/relation-evaluation/observations.ts",
+      "sha256": "2033540f9b6f6b7174701660f7964464bb806f0a47faf425a9ea3851c0252e82"
+    },
+    {
+      "path": "scripts/relation-evaluation/references.ts",
+      "sha256": "30bb3a66d81ab0f56f1b5517da0ddff8265487f9d9e4da7ba29446c9b027491d"
+    },
+    {
+      "path": "scripts/relation-evaluation/review.ts",
+      "sha256": "2b08aa8d342ccdd8bcc7419a982805514a813e5cdbce437e47f3841f60c5e6c4"
+    },
+    {
+      "path": "scripts/relation-evaluation/schemas.ts",
+      "sha256": "710c99fc3f10fdf0d431b55965a8a62dd0ef2d3b0019de60471efd3395db7089"
+    }
+  ],
+  "priorB2Stash": "6ff388bdcacd3d519381ab625892c39a583a43d2",
+  "resumed": false,
+  "reclassifiedAsVerified": false
+}

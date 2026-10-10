@@ -1,0 +1,3 @@
+# Keep strategy source and audit snapshots byte-identical across Windows checkouts.
+* -text
+source-proposal.md whitespace=-blank-at-eol

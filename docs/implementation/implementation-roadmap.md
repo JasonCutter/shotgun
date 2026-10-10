@@ -5,6 +5,8 @@
 
 ## 1. 로드맵 목적
 
+현재 VP 작업 우선순위는 [ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)의 A 평가 신뢰성 → B 제품 진단 → C 방식 필요성 → D 최소 수정 → E 잔여 Gate 복귀다. 이는 아래 Stage 번호, VP-01~VP-11 추적 ID, VP-0~VP-4 계약 및 기존 의존성의 재번호화가 아니다. [전략 실행 기준](./development-strategy-reset-2026-10-10/execution-plan.md)은 후속 목표와 종료 증거를 명시한다.
+
 이 문서는 Shotgun을 어떤 순서로 구현하며 각 Stage가 언제 완료됐다고 판단하는지 정의한다.
 
 로드맵은 달력 일정이 아니라 **의존성·사용자 가치·안전 경계·OSS 검증 순서**를 기준으로 한다. 실제 기간은 구현 속도, 기술 선택과 OSS 평가 결과에 따라 조정한다.
@@ -22,7 +24,11 @@ Stage별 OSS 후보와 세부 적용 방식은 [OSS Integration Roadmap](./oss-i
 
 `COMPLETE_WITH_LIMITS`는 다음 Stage 진행을 허용할 수 있지만 제한, OSS 결정과 제거 계획을 Release Note에 기록해야 한다.
 
+**ADR-173 보완:** 이 가능성은 자동 진행 권한이 아니다. 적용 Gate의 제한부 완료 적격성·미완료 필수 조건·해제 계획을 명시적으로 판정해야 한다. 의미 정답 미검증이나 제품·보안·근거·OSS 필수 Gate 위반을 제한 표기로 우회할 수 없다. 현재 VP-05의 종료 또는 VP-06 착수는 승인되지 않았다.
+
 ## 3. 모든 Stage에 적용하는 개발 규칙
+
+아래 OSS-first 규칙은 제품 목표·평가 신뢰성·실제 필요성을 확인한 구현 범위 안에서 적용한다. 보류된 SSC/모델/prompt 실험을 새로운 OSS 검토라는 이름으로 자동 재개하지 않는다.
 
 1. 관련 OSS 후보를 먼저 평가한다.
 2. 결과를 `ADOPT`, `EXTRACT`, `AUGMENT`, `REFERENCE_ONLY`, `DEFER`, `REJECT` 중 하나로 기록한다.

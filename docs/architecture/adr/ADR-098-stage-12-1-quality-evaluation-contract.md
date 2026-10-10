@@ -63,3 +63,9 @@ and Operations Gate 또는 Stage 12.1 전체의 승인이 아니다.
 - 2026-07-22: Section 4 사용자 승인과 Quality Gate 완료를 기록. Policy status를
   `APPROVED`로 전환하고 digest를 갱신했으며 Baseline·Threshold는 변경하지 않음.
   Sections 5A·5B는 Frontend 선행 원칙과 실제 사용 증거 대기를 이유로 `DEFERRED`.
+
+## 2026-10-10 amendment — ADR-173 평가 보고 적용
+
+[ADR-173](ADR-173-product-first-development-and-evaluation-trust-strategy.md)는 향후 VP 관계 평가의 정답 승인 수준, 실제 제공 문맥, 복수 kind/direction/warrant, 분모·미평가 비율, 원본 선언/발행 안정성과 조건부 채택 방향 지표의 분리를 명시한다. 올바른 directed 관계 채택 분모가 0이면 N/A이고, frozen 후보 점수를 인증 의미 품질로 보고하지 않는다.
+
+위 Decision 1–8의 평가/생산 권위 분리, 사람 검토 전 CANDIDATE, source/revision/digest, 결정적 metric, Record/Fake/live 구분과 기존 승인 이력은 유지한다. baseline 특성 조사 후 비교 기준을 정하는 것과, 새 prospective 비교 전에 기준을 고정하는 것을 구분한다. 기존 Claim/Search threshold·frozen evaluator·결과를 소급 변경하지 않는다. 새 전략은 SSC/모델/평가기 초안의 운영 채택이나 별도 Quality Gate 완료가 아니다.

@@ -4,6 +4,8 @@
 
 ## 1. 릴리스 단위
 
+[ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)의 전략 문서 완료를 VP 제품 출시 인수로 취급하지 않는다. 후보 benchmark, 제한 표기 또는 국소 PoC로 미완료 제품·안전·근거·평가·OSS Gate를 우회하지 않는다. 기존 VP-03~VP-11 tracker/DoD 의존성, VP-06 STOP, 배포/운영 변경의 별도 승인 경계는 유지한다.
+
 Shotgun의 릴리스는 단순 코드 버전이 아니라 사용 가능한 수직 기능과 Contract 집합이다.
 
 릴리스 유형:

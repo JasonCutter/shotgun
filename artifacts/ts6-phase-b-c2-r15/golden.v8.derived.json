@@ -3,7 +3,7 @@
   "baseSha": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
   "derivedFrom": {
     "parentArtifact": "artifacts/ts6-phase-b-c2-r15/approved-regression-relations.v8.json",
-    "parentSha256": "14fd16991aae25bffcb2f7b99a97e81fe2416541b67baf501b19c09d6cd6bbb9",
+    "parentSha256": "5ed74ea14145721def7453d8dac6bfc4bf19d02e478a391c2f779d436c3fa847",
     "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
     "authorityVersion": "ts6.phase-b.current-authority-manifest.v8"
   },
@@ -233,6 +233,144 @@
       "regressionEvidenceIds": [
         "test:tests/database/akp-8-wp3-remaining-e2e-acceptance.database.test.ts:removes an obsolete resource from active semantic membership and proves incremental/full equivalence"
       ]
+    },
+    {
+      "boundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "claim",
+      "ownership": {
+        "kind": "RAW",
+        "primitive": "manual PostgreSQL transaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "claim(workloadIdentity: string): Promise<GlobalRelationBudgetClaim>;",
+        "transactionNeedle": "await client.query('BEGIN');"
+      },
+      "productionReachability": {
+        "status": "TEST_ONLY_OR_DEAD",
+        "callers": []
+      },
+      "legacyRecordedCallers": 4,
+      "ackLossPolicy": {
+        "kind": "OTHER_EXISTING_POLICY",
+        "evidence": "existing manual transaction code"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "ownership": {
+        "kind": "RAW",
+        "primitive": "manual PostgreSQL transaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async reserveAttempt(",
+        "transactionNeedle": "await client.query('BEGIN');"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "adapters/vp-global-provider-budget-postgres/src/execution-boundary.ts",
+            "symbol": "budget.reserveAttempt",
+            "callExpression": "budget.reserveAttempt(...)",
+            "callNeedle": "budget.reserveAttempt(",
+            "bindingEvidence": [
+              "async reserveAttempt("
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "GlobalRelationBudgetPort",
+            "bindingVia": "file-scope declaration of budget annotated GlobalRelationBudgetPort",
+            "receiverType": "GlobalRelationBudgetPort",
+            "line": 181,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 1,
+      "ackLossPolicy": {
+        "kind": "OTHER_EXISTING_POLICY",
+        "evidence": "existing manual transaction code"
+      },
+      "regressionEvidenceIds": []
+    },
+    {
+      "boundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "releaseUnused",
+      "ownership": {
+        "kind": "RAW",
+        "primitive": "manual PostgreSQL transaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "releaseUnused(claim: GlobalRelationBudgetClaim): Promise<void>;",
+        "transactionNeedle": "await client.query('BEGIN');"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "adapters/vp-global-provider-budget-postgres/src/execution-boundary.ts",
+            "symbol": "budget.releaseUnused",
+            "callExpression": "budget.releaseUnused(...)",
+            "callNeedle": "budget.releaseUnused(",
+            "bindingEvidence": [
+              "releaseUnused(claim: GlobalRelationBudgetClaim): Promise<void>;"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "GlobalRelationBudgetPort",
+            "bindingVia": "file-scope declaration of budget annotated GlobalRelationBudgetPort",
+            "receiverType": "GlobalRelationBudgetPort",
+            "line": 179,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/vp-global-provider-budget-postgres/src/execution-boundary.ts",
+            "symbol": "budget.releaseUnused",
+            "callExpression": "budget.releaseUnused(...)",
+            "callNeedle": "budget.releaseUnused(",
+            "bindingEvidence": [
+              "releaseUnused(claim: GlobalRelationBudgetClaim): Promise<void>;"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "GlobalRelationBudgetPort",
+            "bindingVia": "file-scope declaration of budget annotated GlobalRelationBudgetPort",
+            "receiverType": "GlobalRelationBudgetPort",
+            "line": 225,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/vp-global-provider-budget-postgres/src/execution-boundary.ts",
+            "symbol": "this.budget.releaseUnused",
+            "callExpression": "this.budget.releaseUnused(...)",
+            "callNeedle": "this.budget.releaseUnused(",
+            "bindingEvidence": [
+              "releaseUnused(claim: GlobalRelationBudgetClaim): Promise<void>;"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "SOLE",
+            "bindingPort": "GlobalRelationBudgetPort",
+            "bindingVia": "field budget of ExecutionBoundVPRelationDispatcher declared as GlobalRelationBudgetPort",
+            "receiverType": "GlobalRelationBudgetPort",
+            "line": 304,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 3,
+      "ackLossPolicy": {
+        "kind": "OTHER_EXISTING_POLICY",
+        "evidence": "existing manual transaction code"
+      },
+      "regressionEvidenceIds": []
     },
     {
       "boundaryId": "safe:adapters/ai-configuration-postgres/src/index.ts:106",
@@ -2731,7 +2869,7 @@
             "bindingPort": null,
             "bindingVia": "value of discoveryRuntimeRepository is the declared return type of a helper",
             "receiverType": "PostgresDiscoveryRuntimeRepository",
-            "line": 1007,
+            "line": 1017,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -2776,7 +2914,7 @@
             "bindingPort": null,
             "bindingVia": "value of discoveryRuntimeRepository is the declared return type of a helper",
             "receiverType": "PostgresDiscoveryRuntimeRepository",
-            "line": 1028,
+            "line": 1038,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -8762,7 +8900,7 @@
             "bindingPort": null,
             "bindingVia": "value of sourcesProductService is the declared return type of a helper",
             "receiverType": "PostgresSourcesProductService",
-            "line": 1477,
+            "line": 1487,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -9414,7 +9552,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 3,
+      "legacyRecordedCallers": 4,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -9639,7 +9777,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 2,
+      "legacyRecordedCallers": 3,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -11964,7 +12102,7 @@
             "bindingPort": null,
             "bindingVia": "value of knowledgeResetPersistence is the declared return type of a helper",
             "receiverType": "PostgresKnowledgeResetPersistence",
-            "line": 1225,
+            "line": 1235,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -12020,7 +12158,70 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:269",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:274",
+      "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+      "symbol": "PostgresVPRelationJobs",
+      "method": "recoverExpiredExecutions",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async recoverExpiredExecutions(): Promise<void> {",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PROVEN",
+        "callers": [
+          {
+            "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+            "symbol": "this.recoverExpiredExecutions",
+            "callExpression": "this.recoverExpiredExecutions(...)",
+            "callNeedle": "this.recoverExpiredExecutions(",
+            "bindingEvidence": [
+              "async recoverExpiredExecutions(): Promise<void> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/vp05-p0-crash.database.test.ts:preserves attempts across pre-activation crashes and fences an activated unknown egress"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "this in PostgresVPRelationJobs",
+            "receiverType": "PostgresVPRelationJobs",
+            "line": 342,
+            "evidenceGrade": "DIRECT_CALLER"
+          },
+          {
+            "file": "assemblies/shotgun-app/src/application.ts",
+            "symbol": "vpRelationJobs.recoverExpiredExecutions",
+            "callExpression": "vpRelationJobs.recoverExpiredExecutions(...)",
+            "callNeedle": "vpRelationJobs.recoverExpiredExecutions(",
+            "bindingEvidence": [
+              "async recoverExpiredExecutions(): Promise<void> {"
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/vp05-p0-crash.database.test.ts:preserves attempts across pre-activation crashes and fences an activated unknown egress"
+            ],
+            "bindingKind": "DIRECT",
+            "bindingPort": null,
+            "bindingVia": "value of vpRelationJobs is the declared return type of a helper",
+            "receiverType": "PostgresVPRelationJobs",
+            "line": 1519,
+            "evidenceGrade": "DIRECT_CALLER"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 2,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/vp05-p0-crash.database.test.ts:preserves attempts across pre-activation crashes and fences an activated unknown egress"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:343",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "claimNext",
@@ -12061,7 +12262,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:400",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:409",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "claim",
@@ -12089,12 +12290,28 @@
             "bindingPort": "VPDecisionExecutionRepositoryPort",
             "bindingVia": "field executions of GeneralAIVPDecisionAdapter declared as VPDecisionExecutionRepositoryPort",
             "receiverType": "VPDecisionExecutionRepositoryPort",
-            "line": 124,
+            "line": 131,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/vp-global-provider-budget-postgres/src/execution-boundary.ts",
+            "symbol": "ledger.claim",
+            "callExpression": "ledger.claim(...)",
+            "callNeedle": "ledger.claim(",
+            "bindingEvidence": [
+              "async claim("
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "PORT",
+            "bindingPort": "ExecutionBoundRelationLedger",
+            "bindingVia": "file-scope declaration of ledger annotated ExecutionBoundRelationLedger",
+            "receiverType": "ExecutionBoundRelationLedger",
+            "line": 197,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 3,
+      "legacyRecordedCallers": 4,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -12102,7 +12319,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:519",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:648",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "storeOutput",
@@ -12130,12 +12347,28 @@
             "bindingPort": "VPDecisionExecutionRepositoryPort",
             "bindingVia": "field executions of GeneralAIVPDecisionAdapter declared as VPDecisionExecutionRepositoryPort",
             "receiverType": "VPDecisionExecutionRepositoryPort",
-            "line": 178,
+            "line": 185,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/vp-global-provider-budget-postgres/src/execution-boundary.ts",
+            "symbol": "ledger.storeOutput",
+            "callExpression": "ledger.storeOutput(...)",
+            "callNeedle": "ledger.storeOutput(",
+            "bindingEvidence": [
+              "async storeOutput(input: Parameters<VPDecisionExecutionRepositoryPort['storeOutput']>[0]) {"
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "PORT",
+            "bindingPort": "ExecutionBoundRelationLedger",
+            "bindingVia": "file-scope declaration of ledger annotated ExecutionBoundRelationLedger",
+            "receiverType": "ExecutionBoundRelationLedger",
+            "line": 81,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 2,
+      "legacyRecordedCallers": 3,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -12143,7 +12376,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:604",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:733",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "markOutcomeUnknown",
@@ -12171,12 +12404,28 @@
             "bindingPort": "VPDecisionExecutionRepositoryPort",
             "bindingVia": "field executions of GeneralAIVPDecisionAdapter declared as VPDecisionExecutionRepositoryPort",
             "receiverType": "VPDecisionExecutionRepositoryPort",
-            "line": 190,
+            "line": 197,
+            "evidenceGrade": "PORT_INFERRED"
+          },
+          {
+            "file": "adapters/vp-global-provider-budget-postgres/src/execution-boundary.ts",
+            "symbol": "ledger.markOutcomeUnknown",
+            "callExpression": "ledger.markOutcomeUnknown(...)",
+            "callNeedle": "ledger.markOutcomeUnknown(",
+            "bindingEvidence": [
+              "async markOutcomeUnknown("
+            ],
+            "regressionEvidenceIds": [],
+            "bindingKind": "PORT",
+            "bindingPort": "ExecutionBoundRelationLedger",
+            "bindingVia": "file-scope declaration of ledger annotated ExecutionBoundRelationLedger",
+            "receiverType": "ExecutionBoundRelationLedger",
+            "line": 82,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
       },
-      "legacyRecordedCallers": 14,
+      "legacyRecordedCallers": 15,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -12184,7 +12433,7 @@
       "regressionEvidenceIds": []
     },
     {
-      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:654",
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:783",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
       "symbol": "PostgresVPRelationJobs",
       "method": "completeDecision",
@@ -12316,6 +12565,55 @@
       "symbol": "PostgresSemanticCorpusSourceSnapshotReader",
       "reason": "DUPLICATE",
       "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/semantic-corpus-postgres/src/index.ts:151."
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:181",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "reason": "DUPLICATE",
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148."
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:191",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "reason": "DUPLICATE",
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148."
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:260",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "reason": "DUPLICATE",
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223."
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:297",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "reason": "DUPLICATE",
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223."
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:307",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "reason": "DUPLICATE",
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223."
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:484",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "reason": "DUPLICATE",
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452."
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:488",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "reason": "DUPLICATE",
+      "evidence": "Lifecycle statement belongs to raw boundary raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452."
     }
   ],
   "candidateReconciliation": [
@@ -12448,6 +12746,136 @@
       "transactionOwner": false,
       "transactionParticipant": false,
       "canonicalBoundaryId": "raw:adapters/semantic-corpus-postgres/src/index.ts:151"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "TEST_ONLY_OR_DEAD",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "claim",
+      "reason": "No qualified production call site remains after receiver resolution.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:181",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "claim",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:191",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "claim",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:260",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:297",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:307",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "releaseUnused",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:484",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "releaseUnused",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:488",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "releaseUnused",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452"
     },
     {
       "candidateId": "safe:adapters/ai-configuration-postgres/src/index.ts:106",
@@ -13932,7 +14360,20 @@
       "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/index.ts:114"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:269",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:274",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+      "symbol": "PostgresVPRelationJobs",
+      "method": "recoverExpiredExecutions",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:274"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:343",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -13942,10 +14383,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:269"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:343"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:400",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:409",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -13955,10 +14396,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:400"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:409"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:519",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:648",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -13968,10 +14409,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:519"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:648"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:604",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:733",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -13981,10 +14422,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:604"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:733"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:654",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:783",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
@@ -13994,7 +14435,7 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:654"
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:783"
     }
   ],
   "historicalReconciliation": [
@@ -14736,6 +15177,116 @@
       "method": "readSnapshot",
       "text": "await client.query('ROLLBACK');",
       "functionKey": "adapters/semantic-corpus-postgres/src/index.ts:PostgresSemanticCorpusSourceSnapshotReader.readSnapshot"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148",
+      "kind": "RAW",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "line": 148,
+      "sourceNeedle": "await client.query('BEGIN');",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "claim",
+      "text": "await client.query('BEGIN');",
+      "functionKey": "adapters/vp-global-provider-budget-postgres/src/index.ts:PostgresGlobalRelationBudget.claim"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:181",
+      "kind": "RAW",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "line": 181,
+      "sourceNeedle": "await client.query('COMMIT');",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "claim",
+      "text": "await client.query('COMMIT');",
+      "functionKey": "adapters/vp-global-provider-budget-postgres/src/index.ts:PostgresGlobalRelationBudget.claim"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:191",
+      "kind": "RAW",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "line": 191,
+      "sourceNeedle": "await client.query('ROLLBACK');",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "claim",
+      "text": "await client.query('ROLLBACK');",
+      "functionKey": "adapters/vp-global-provider-budget-postgres/src/index.ts:PostgresGlobalRelationBudget.claim"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223",
+      "kind": "RAW",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "line": 223,
+      "sourceNeedle": "await client.query('BEGIN');",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "text": "await client.query('BEGIN');",
+      "functionKey": "adapters/vp-global-provider-budget-postgres/src/index.ts:PostgresGlobalRelationBudget.reserveAttempt"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:260",
+      "kind": "RAW",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "line": 260,
+      "sourceNeedle": "await client.query('COMMIT');",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "text": "await client.query('COMMIT');",
+      "functionKey": "adapters/vp-global-provider-budget-postgres/src/index.ts:PostgresGlobalRelationBudget.reserveAttempt"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:297",
+      "kind": "RAW",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "line": 297,
+      "sourceNeedle": "await client.query('COMMIT');",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "text": "await client.query('COMMIT');",
+      "functionKey": "adapters/vp-global-provider-budget-postgres/src/index.ts:PostgresGlobalRelationBudget.reserveAttempt"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:307",
+      "kind": "RAW",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "line": 307,
+      "sourceNeedle": "await client.query('ROLLBACK');",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "text": "await client.query('ROLLBACK');",
+      "functionKey": "adapters/vp-global-provider-budget-postgres/src/index.ts:PostgresGlobalRelationBudget.reserveAttempt"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452",
+      "kind": "RAW",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "line": 452,
+      "sourceNeedle": "await client.query('BEGIN');",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "releaseUnused",
+      "text": "await client.query('BEGIN');",
+      "functionKey": "adapters/vp-global-provider-budget-postgres/src/index.ts:PostgresGlobalRelationBudget.releaseUnused"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:484",
+      "kind": "RAW",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "line": 484,
+      "sourceNeedle": "await client.query('COMMIT');",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "releaseUnused",
+      "text": "await client.query('COMMIT');",
+      "functionKey": "adapters/vp-global-provider-budget-postgres/src/index.ts:PostgresGlobalRelationBudget.releaseUnused"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:488",
+      "kind": "RAW",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "line": 488,
+      "sourceNeedle": "await client.query('ROLLBACK');",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "releaseUnused",
+      "text": "await client.query('ROLLBACK');",
+      "functionKey": "adapters/vp-global-provider-budget-postgres/src/index.ts:PostgresGlobalRelationBudget.releaseUnused"
     }
   ],
   "regressionEvidence": [
@@ -16055,6 +16606,19 @@
       "path": [
         "PostgresSourcesProductService.reconcileCompletedAutomaticSubmissions"
       ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/vp05-p0-crash.database.test.ts:preserves attempts across pre-activation crashes and fences an activated unknown egress",
+      "file": "tests/database/vp05-p0-crash.database.test.ts",
+      "testName": "preserves attempts across pre-activation crashes and fences an activated unknown egress",
+      "covers": [
+        "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:274"
+      ],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresVPRelationJobs.recoverExpiredExecutions",
+      "path": [
+        "PostgresVPRelationJobs.recoverExpiredExecutions"
+      ]
     }
   ],
   "historical": {
@@ -16063,16 +16627,16 @@
     "c2r1CandidateRows": 120
   },
   "summary": {
-    "TX_BOUNDARY": 16,
-    "PORT_INFERRED": 89,
+    "TX_BOUNDARY": 17,
+    "PORT_INFERRED": 91,
     "TX_PARTICIPANT": 0,
     "TX_DELEGATE": 0,
-    "NON_TX": 7,
-    "TEST_ONLY_OR_DEAD": 17,
+    "NON_TX": 14,
+    "TEST_ONLY_OR_DEAD": 18,
     "REVIEW_REQUIRED": 0,
-    "c2r1CandidateRecords": 129,
-    "uniqueCandidateIdentities": 129,
-    "reconciliationTotal": 129,
+    "c2r1CandidateRecords": 140,
+    "uniqueCandidateIdentities": 140,
+    "reconciliationTotal": 140,
     "historicalRows": 87,
     "historicalRowsExplained": 87,
     "historicalRowsUnexplained": 0

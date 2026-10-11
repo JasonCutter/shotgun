@@ -1,0 +1,339 @@
+{
+  "sourceHead": "7821a3fa7bed125f226361864347e6f3c381d312",
+  "remapped": [
+    {
+      "old": {
+        "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:269",
+        "c2r1Classification": "SAFE_HELPER",
+        "c2r2Classification": "PORT_INFERRED",
+        "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+        "symbol": "PostgresVPRelationJobs",
+        "method": "claimNext",
+        "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+        "productionReachable": false,
+        "transactionOwner": true,
+        "transactionParticipant": false,
+        "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:269"
+      },
+      "new": {
+        "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:343",
+        "c2r1Classification": "SAFE_HELPER",
+        "c2r2Classification": "PORT_INFERRED",
+        "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+        "symbol": "PostgresVPRelationJobs",
+        "method": "claimNext",
+        "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+        "productionReachable": false,
+        "transactionOwner": true,
+        "transactionParticipant": false,
+        "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:343"
+      }
+    },
+    {
+      "old": {
+        "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:400",
+        "c2r1Classification": "SAFE_HELPER",
+        "c2r2Classification": "PORT_INFERRED",
+        "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+        "symbol": "PostgresVPRelationJobs",
+        "method": "claim",
+        "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+        "productionReachable": false,
+        "transactionOwner": true,
+        "transactionParticipant": false,
+        "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:400"
+      },
+      "new": {
+        "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:409",
+        "c2r1Classification": "SAFE_HELPER",
+        "c2r2Classification": "PORT_INFERRED",
+        "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+        "symbol": "PostgresVPRelationJobs",
+        "method": "claim",
+        "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+        "productionReachable": false,
+        "transactionOwner": true,
+        "transactionParticipant": false,
+        "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:409"
+      }
+    },
+    {
+      "old": {
+        "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:519",
+        "c2r1Classification": "SAFE_HELPER",
+        "c2r2Classification": "PORT_INFERRED",
+        "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+        "symbol": "PostgresVPRelationJobs",
+        "method": "storeOutput",
+        "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+        "productionReachable": false,
+        "transactionOwner": true,
+        "transactionParticipant": false,
+        "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:519"
+      },
+      "new": {
+        "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:648",
+        "c2r1Classification": "SAFE_HELPER",
+        "c2r2Classification": "PORT_INFERRED",
+        "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+        "symbol": "PostgresVPRelationJobs",
+        "method": "storeOutput",
+        "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+        "productionReachable": false,
+        "transactionOwner": true,
+        "transactionParticipant": false,
+        "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:648"
+      }
+    },
+    {
+      "old": {
+        "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:604",
+        "c2r1Classification": "SAFE_HELPER",
+        "c2r2Classification": "PORT_INFERRED",
+        "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+        "symbol": "PostgresVPRelationJobs",
+        "method": "markOutcomeUnknown",
+        "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+        "productionReachable": false,
+        "transactionOwner": true,
+        "transactionParticipant": false,
+        "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:604"
+      },
+      "new": {
+        "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:733",
+        "c2r1Classification": "SAFE_HELPER",
+        "c2r2Classification": "PORT_INFERRED",
+        "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+        "symbol": "PostgresVPRelationJobs",
+        "method": "markOutcomeUnknown",
+        "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+        "productionReachable": false,
+        "transactionOwner": true,
+        "transactionParticipant": false,
+        "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:733"
+      }
+    },
+    {
+      "old": {
+        "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:654",
+        "c2r1Classification": "SAFE_HELPER",
+        "c2r2Classification": "PORT_INFERRED",
+        "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+        "symbol": "PostgresVPRelationJobs",
+        "method": "completeDecision",
+        "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+        "productionReachable": false,
+        "transactionOwner": true,
+        "transactionParticipant": false,
+        "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:654"
+      },
+      "new": {
+        "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:783",
+        "c2r1Classification": "SAFE_HELPER",
+        "c2r2Classification": "PORT_INFERRED",
+        "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+        "symbol": "PostgresVPRelationJobs",
+        "method": "completeDecision",
+        "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+        "productionReachable": false,
+        "transactionOwner": true,
+        "transactionParticipant": false,
+        "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:783"
+      }
+    }
+  ],
+  "added": [
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "TEST_ONLY_OR_DEAD",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "claim",
+      "reason": "No qualified production call site remains after receiver resolution.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:181",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "claim",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:191",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "claim",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:260",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:297",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:307",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "reserveAttempt",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "releaseUnused",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:484",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "releaseUnused",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:488",
+      "c2r1Classification": "RAW",
+      "c2r2Classification": "NON_TX",
+      "file": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "symbol": "PostgresGlobalRelationBudget",
+      "method": "releaseUnused",
+      "reason": "Duplicate COMMIT/ROLLBACK lifecycle statement.",
+      "productionReachable": true,
+      "transactionOwner": false,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:274",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "TX_BOUNDARY",
+      "file": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+      "symbol": "PostgresVPRelationJobs",
+      "method": "recoverExpiredExecutions",
+      "reason": "A production call site names the concrete boundary receiver.",
+      "productionReachable": true,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:274"
+    }
+  ],
+  "counts": {
+    "TX_BOUNDARY": 17,
+    "PORT_INFERRED": 91,
+    "TX_PARTICIPANT": 0,
+    "TX_DELEGATE": 0,
+    "NON_TX": 14,
+    "TEST_ONLY_OR_DEAD": 18,
+    "REVIEW_REQUIRED": 0
+  },
+  "newRegressionRecord": {
+    "testEvidenceId": "test:tests/database/vp05-p0-crash.database.test.ts:preserves attempts across pre-activation crashes and fences an activated unknown egress",
+    "file": "tests/database/vp05-p0-crash.database.test.ts",
+    "testName": "preserves attempts across pre-activation crashes and fences an activated unknown egress",
+    "covers": ["safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:274"],
+    "coverageKind": "DIRECT_BOUNDARY",
+    "entrySymbol": "PostgresVPRelationJobs.recoverExpiredExecutions",
+    "path": ["PostgresVPRelationJobs.recoverExpiredExecutions"]
+  },
+  "frozenHistoryVerified": [
+    {
+      "path": "tests/fixtures/ts6-phase-b-transaction-authority-golden.v2.json",
+      "sha256": "256e5906db0afbdeb175c1e754c2c8ec3a1213139ae4f805e95c5396086586cd"
+    },
+    {
+      "path": "ts6-c2-r3-boundary-count-crosswalk.json",
+      "sha256": "e4861d67b1ebc4885fa9034245c0b2734e25e3865de278a4ff660c0b4b0621d2"
+    },
+    {
+      "path": "artifacts/ts6-phase-b-c2-r15/golden.v3.derived.json",
+      "sha256": "274f282be06fe47eaac524350cd15e4c432551c3007814f372d0968093b1a0ea"
+    },
+    {
+      "path": "artifacts/ts6-phase-b-c2-r15/golden.v4.derived.json",
+      "sha256": "8d7b20f6df676f8f37637e53ad48cf46f989c90bcd3cc70b8241c4e8cd8f93db"
+    },
+    {
+      "path": "artifacts/ts6-phase-b-c2-r15/golden.v5.derived.json",
+      "sha256": "d5cb331b4060a7632ba5435292fd5e755cd196d7488d85face8d8d78c26abe60"
+    },
+    {
+      "path": "artifacts/ts6-phase-b-c2-r15/golden.v6.derived.json",
+      "sha256": "d80f400f9b0388d0eb128a052f2a543312c03f2354aceada61a4baae18ff5eb8"
+    },
+    {
+      "path": "artifacts/ts6-phase-b-c2-r15/golden.v7.derived.json",
+      "sha256": "3d973d0ec484ca6907be1ed4020ea8ad3b0501714c8ad0fe2b1057a3ce959337"
+    }
+  ],
+  "validatorRulesChanged": false
+}

@@ -36,10 +36,10 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
   it('derives the complete C2-R1 candidate set and canonical inventory', () => {
     const audit = buildAuditShape(ROOT);
 
-    expect(audit.candidates).toHaveLength(129);
-    expect(new Set(audit.candidates.map((candidate) => candidate.candidateId)).size).toBe(129);
-    expect(audit.rawTransactionSites).toHaveLength(11);
-    expect(audit.boundaries).toHaveLength(122);
+    expect(audit.candidates).toHaveLength(140);
+    expect(new Set(audit.candidates.map((candidate) => candidate.candidateId)).size).toBe(140);
+    expect(audit.rawTransactionSites).toHaveLength(21);
+    expect(audit.boundaries).toHaveLength(126);
     expect(audit.participants).toHaveLength(1);
     // Current categories are taken from the independently frozen T3 manifest.
     const boundaries = new Map(audit.boundaries.map((boundary) => [boundary.boundaryId, boundary]));
@@ -63,12 +63,12 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
 
     // The live inventory includes the VP boundaries; legacy scoring uses the
     // current source inventory while the frozen v2 fixture remains unchanged.
-    expect(legacy.candidates).toHaveLength(129);
-    expect(legacy.boundaries).toHaveLength(122);
-    expect(legacy.rawTransactionSites).toHaveLength(11);
+    expect(legacy.candidates).toHaveLength(140);
+    expect(legacy.boundaries).toHaveLength(126);
+    expect(legacy.rawTransactionSites).toHaveLength(21);
     expect(legacy.counts).toMatchObject({
-      TX_BOUNDARY: 109,
-      NON_TX: 7,
+      TX_BOUNDARY: 113,
+      NON_TX: 14,
       TEST_ONLY_OR_DEAD: 13,
       REVIEW_REQUIRED: 0,
     });
@@ -78,7 +78,7 @@ describe('TS-6 C2-R3 transaction authority validator', () => {
     const result = validateCorpus(loadCorpus(), ROOT);
 
     expect(result.issues.map((issue) => issue.code)).not.toContain('HISTORICAL_DELTA');
-    expect(result.candidates).toHaveLength(129);
+    expect(result.candidates).toHaveLength(140);
     // The frozen fixture is a record of the LEGACY authority, so its own
     // classification is read back from it rather than from the live authority.
     expect(loadCorpus().summary.TX_BOUNDARY).toBe(100);

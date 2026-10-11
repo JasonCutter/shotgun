@@ -10,7 +10,8 @@
     "T3 added a direct regression relation for the newly implemented Source knowledge reset persistence boundary",
     "T3 added a production-path regression relation for consistent Ask workspace snapshots, verified through Product citations",
     "2026-10-01 coordinate audit: eight approved covers[] references were remapped to the same audited functions at current AST coordinates; labels, tests, and the frozen v7 source digest were unchanged. See docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md.",
-    "2026-10-02 URL freshness projection coordinate audit: ten covers[] references were remapped to the same owning methods after checking live functionKey, sourceNeedle, classification, and reachability. Test identities, labels, and frozen v7 source digest remain unchanged. See the 2026-10-02 addendum in docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md."
+    "2026-10-02 URL freshness projection coordinate audit: ten covers[] references were remapped to the same owning methods after checking live functionKey, sourceNeedle, classification, and reachability. Test identities, labels, and frozen v7 source digest remain unchanged. See the 2026-10-02 addendum in docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md.",
+    "2026-10-11 VP-05 P0: five existing VP method coordinates remapped with owning method/classification/reachability unchanged; eleven new source candidates audited (three global raw owners, seven lifecycle statements, one concrete expired-execution recovery owner). Added direct regression evidence for the new PROVEN recovery boundary. Validator rules and frozen v2-v7 inputs unchanged. See docs/implementation/vp05-p0-execution-authority-2026-10-11/ts6-coordinate-audit.md."
   ],
   "records": [
     {
@@ -1022,6 +1023,15 @@
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesProductService.reconcileCompletedAutomaticSubmissions",
       "path": ["PostgresSourcesProductService.reconcileCompletedAutomaticSubmissions"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/vp05-p0-crash.database.test.ts:preserves attempts across pre-activation crashes and fences an activated unknown egress",
+      "file": "tests/database/vp05-p0-crash.database.test.ts",
+      "testName": "preserves attempts across pre-activation crashes and fences an activated unknown egress",
+      "covers": ["safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:274"],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresVPRelationJobs.recoverExpiredExecutions",
+      "path": ["PostgresVPRelationJobs.recoverExpiredExecutions"]
     }
   ]
 }

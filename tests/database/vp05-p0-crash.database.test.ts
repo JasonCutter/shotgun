@@ -157,6 +157,7 @@ it('preserves attempts across pre-activation crashes and fences an activated unk
       "UPDATE vp.relation_jobs SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE job_id = $1",
       [resumed.jobId],
     );
+    await jobs.recoverExpiredExecutions();
     expect(await jobs.claimNext(policyRevision)).toBeUndefined();
     const unknown = await pool.query<{ status: string; attempt_count: number; state: string }>(
       `SELECT job.status, job.attempt_count, call.state

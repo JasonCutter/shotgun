@@ -48,6 +48,49 @@
       "classification": "NON_TX"
     },
     {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:148",
+      "classification": "TEST_ONLY_OR_DEAD",
+      "reachabilityStatus": "TEST_ONLY_OR_DEAD"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:181",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:191",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:223",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:260",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:297",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:307",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:452",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:484",
+      "classification": "NON_TX"
+    },
+    {
+      "candidateId": "raw:adapters/vp-global-provider-budget-postgres/src/index.ts:488",
+      "classification": "NON_TX"
+    },
+    {
       "candidateId": "safe:adapters/ai-configuration-postgres/src/index.ts:106",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
@@ -618,29 +661,35 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:269",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:274",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:343",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:400",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:409",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:519",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:648",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:604",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:733",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:654",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:783",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     }
-  ]
+  ],
+  "auditNotes": " 2026-10-11 VP-05 P0: five existing VP method coordinates remapped with owning method/classification/reachability unchanged; eleven new source candidates audited (three global raw owners, seven lifecycle statements, one concrete expired-execution recovery owner). Added direct regression evidence for the new PROVEN recovery boundary. Validator rules and frozen v2-v7 inputs unchanged. See docs/implementation/vp05-p0-execution-authority-2026-10-11/ts6-coordinate-audit.md."
 }

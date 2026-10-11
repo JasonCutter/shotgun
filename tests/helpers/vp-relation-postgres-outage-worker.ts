@@ -24,7 +24,7 @@ if (typeof childProcess.send !== 'function') {
 
 const pool = new Pool({ connectionString: databaseUrl });
 pool.on('error', () => undefined);
-const jobs = new PostgresVPRelationJobs(pool);
+const jobs = new PostgresVPRelationJobs(pool, 100, 3, false);
 const resolver: AIProviderExecutionResolverPort = {
   resolve: async () => ({
     adapter: {

@@ -63,12 +63,18 @@ export type VPDecisionProviderPort = {
 };
 
 export type VPDecisionExecutionClaim =
-  | { readonly status: 'STARTED' }
+  | { readonly status: 'STARTED'; readonly callId?: string }
   | { readonly status: 'OUTPUT_STORED'; readonly decision: VPRelationDecision }
   | { readonly status: 'OUTCOME_UNKNOWN' };
 
 /** Durable provider-call boundary owned by the VP relation job Adapter. */
 export type VPDecisionExecutionRepositoryPort = {
+  /** Recovery reads stored output without resolving a fresh credential or authorizing egress. */
+  readStoredByJob?(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly leaseToken: string;
+  }): Promise<VPRelationDecision | undefined>;
   claim(input: {
     readonly projectId: string;
     readonly jobId: string;
@@ -76,6 +82,8 @@ export type VPDecisionExecutionRepositoryPort = {
     readonly executionKey: string;
     readonly requestDigest: string;
     readonly providerIdentity: string;
+    readonly globalClaimId?: string;
+    readonly semanticAttemptId?: string;
   }): Promise<VPDecisionExecutionClaim>;
   storeOutput(input: {
     readonly projectId: string;

@@ -1,0 +1,200 @@
+{
+  "sourceHead": "1a36c7b55562783372dbc73c3188b9d797737c7e",
+  "sourceClean": true,
+  "canonicalMain": "083e779ec64e3216df78eb327a5ba73b3996a21c",
+  "canonicalMainClean": true,
+  "stashHashes": [
+    "57b05edb2ebe262180d15383850121a50f26655a",
+    "6ff388bdcacd3d519381ab625892c39a583a43d2",
+    "3fff856c7dc1de544d3db450452d4994e9444ac0",
+    "89c02b1d91bda434fc7e4235da9e9a4a04efd004",
+    "04cc5effa8248255b2c51f4880433edfd46ad324",
+    "8553a0df618285c0c3658fa98de629d51a0c9261"
+  ],
+  "uniqueProtectedFileCount": 32,
+  "protectedFiles": [
+    {
+      "path": "docs/implementation/vp-05-relation-ab-final-evidence.json",
+      "sha256": "b980cf9063cf6041c1511c9c3e39ccfb7942a79b3c86d5fec01fd0a25c76f929",
+      "matchesBefore": true
+    },
+    {
+      "path": "docs/implementation/vp-05-relation-ab-final-scores.json",
+      "sha256": "f4282878cc5bae90259c5b04034206ae0c4180c96ba0b8e5dc8c1c1d01505c35",
+      "matchesBefore": true
+    },
+    {
+      "path": "docs/implementation/vp-05-relation-b-live-screen-evidence.json",
+      "sha256": "3303be8de9e829216956caa00a12e6521060a77eb79a599fceb10bb1a7fb3784",
+      "matchesBefore": true
+    },
+    {
+      "path": "docs/implementation/vp-04-05-acceptance-contract-v1.0.md",
+      "sha256": "e268a69b3080f3167427fba42b88dd7db1720d4dcba4c5683cdb32cdc5a4c463",
+      "matchesBefore": true
+    },
+    {
+      "path": "scripts/vp-acceptance-evaluator-engine.ts",
+      "sha256": "e7943e2f17cdd120aaf171c9ff95347e800b93f4bfe675ae1e47f521a6ddba4d",
+      "matchesBefore": true
+    },
+    {
+      "path": "scripts/vp-relation-a-b.ts",
+      "sha256": "1a0b43170be1f4a314066a8dfc8ced6de5534641a0e66a3f37fd74efbe479fb5",
+      "matchesBefore": true
+    },
+    {
+      "path": "scripts/vp-relation-a-b-score.ts",
+      "sha256": "3c90315e3f02f4876c68a333e553afe4c96e99508aaae70ae5e3dc9617bec6a0",
+      "matchesBefore": true
+    },
+    {
+      "path": "scripts/vp-structured-relation-candidate.ts",
+      "sha256": "a7a8a0ee63dc0ea5b554d04004796b193f56da90c68cdc041715eac2fa8daaf3",
+      "matchesBefore": true
+    },
+    {
+      "path": "adapters/vp-decision-general-ai/src/index.ts",
+      "sha256": "f5130058fc0e16f6ed3445fc3d0fb987793bd8eef5cf320e088014ec080e62de",
+      "matchesBefore": true
+    },
+    {
+      "path": "modules/vp-decision/src/index.ts",
+      "sha256": "0e5134c846839b01c8745ac9de9f6bded080c28f2496537f8ea6b2b606e4ef98",
+      "matchesBefore": true
+    },
+    {
+      "path": "docs/CANONICAL.md",
+      "sha256": "61b07f1bf84e1c4b54e4a2d67da8c1f961fcfd81e0ee7588137e5c1e8704b595",
+      "matchesBefore": true
+    },
+    {
+      "path": "docs/canonical-manifest.yaml",
+      "sha256": "9f29d430a92953e6e975a1da161aa63cc3879fe897ba9bdd29de453e839849a1",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/vp/relation-architecture-dev-corpus.v1.json",
+      "sha256": "f7f3c4640093d1259b673b4e5cbb1510865aa2002d4d3a67c244230eb6d0396e",
+      "matchesBefore": true
+    },
+    {
+      "path": "docs/implementation/vp-05-relation-postmortem-audit.json",
+      "sha256": "f126b4f2bc83373da0a145bbd639219564504ecabb46ff438bf7ff5b2d79a99e",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/vp/finance-relation-candidate.v1.2.json",
+      "sha256": "2b2d56ef18390fcf8fc22ff52e944b42a53eae9fbf096ef99b68335f41b0c1a0",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/vp/relation-decision-corpus.v1.2.json",
+      "sha256": "2104069c852ef08894bb92bc7a29bb3471287987bf6c1333edeb8bd32e7f2094",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b2/annotations/domain1-finance-deposit-insurance.annotations.json",
+      "sha256": "8f990d565a1d81556c65ac7a0c3b3212698d4abbe5d135363502cc07381237eb",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b2/annotations/domain2-technical-tls13.annotations.json",
+      "sha256": "cf45ef003651e0885164c4deffffdf26e3364492f1a6ac0f98f6eedb39196f7a",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b2/annotations/domain3-reference-geophysics.annotations.json",
+      "sha256": "213ef9f13e1dd23b5bf86587a648f8ed06c60f801e397ae704c726e85cfdc298",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b3/annotations/domain1-finance-ifrs9.annotations.json",
+      "sha256": "a19424a8a7417f4be1698bd27ced9264fbf0000c1822ef564ce9397987bb2669",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b3/annotations/domain2-technical-quic.annotations.json",
+      "sha256": "05b4dd2ba47e5f46575c02ba08f9263ea20074ef81b0ec7216fefdef6831b613",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b3/annotations/domain3-reference-coriolis.annotations.json",
+      "sha256": "f1f68916b041148c095a161312d46c5ffeee8ae12c92b06c70672465ac602f67",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b4/annotations/domain1-finance-ucc9.annotations.json",
+      "sha256": "08586429dbde352a75f80d291e0c66027caeaceb69a58b922134862be42848cd",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b4/annotations/domain2-technical-tcp.annotations.json",
+      "sha256": "f930efc34d5f04e088f8a67146325929f7cc832420b2c5ee17ae330ecc0692ab",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b4/annotations/domain3-reference-optics.annotations.json",
+      "sha256": "c45c60cdf2f1ff8ff6d2068e40980889b506b95b470845d434f980515871e5ab",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b5/annotations/domain1-finance-incoterms-cif.annotations.json",
+      "sha256": "f888b235510e2bdfabfdd683d1708618654297b485956e92a050286e819ce597",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b5/annotations/domain2-technical-bgp4.annotations.json",
+      "sha256": "21df2a5205d1d48d169181378f8bfa901b3860a698fbdc514e1f45abcc583903",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b5/annotations/domain3-reference-photoelectric.annotations.json",
+      "sha256": "c6e32f7d625dcda0ea34e1fb95bd1840ec851a1e5881b00cf8ec620a14e16552",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b6/annotations/domain1-finance-tips.annotations.json",
+      "sha256": "e178a7a1ca5bbaf74b7423f3509506d999a03bbe91c18b1d99c658de2c8f7124",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b6/annotations/domain2-technical-totp.annotations.json",
+      "sha256": "00de57de86cbf820a1571b05242140c8ae73c2cdfc25cb23019279e6ce1b9a2b",
+      "matchesBefore": true
+    },
+    {
+      "path": "tests/fixtures/gold-b6/annotations/domain3-reference-water-cycle.annotations.json",
+      "sha256": "d8f83d4527a5105f86c264514c740556996f491fd211ca9d58e67e4492387cdb",
+      "matchesBefore": true
+    },
+    {
+      "path": "docs/implementation/vp-05-relation-ab-final-evidence.json",
+      "sha256": "b980cf9063cf6041c1511c9c3e39ccfb7942a79b3c86d5fec01fd0a25c76f929",
+      "matchesBefore": true
+    },
+    {
+      "path": "docs/implementation/vp-05-relation-ab-final-scores.json",
+      "sha256": "f4282878cc5bae90259c5b04034206ae0c4180c96ba0b8e5dc8c1c1d01505c35",
+      "matchesBefore": true
+    },
+    {
+      "path": "docs/implementation/vp-05-relation-b-live-screen-evidence.json",
+      "sha256": "3303be8de9e829216956caa00a12e6521060a77eb79a599fceb10bb1a7fb3784",
+      "matchesBefore": true
+    },
+    {
+      "path": "scripts/vp-relation-a-b-score.ts",
+      "sha256": "3c90315e3f02f4876c68a333e553afe4c96e99508aaae70ae5e3dc9617bec6a0",
+      "matchesBefore": true
+    },
+    {
+      "path": "scripts/vp-relation-b-live-screen.ts",
+      "sha256": "9ca442fe6c86a27f0a717d7f64480edb6cf03075ab0598703aff29ed5800bb47",
+      "matchesBefore": true
+    }
+  ],
+  "goldB7": "NOT_OPENED",
+  "experiments": "NOT_RESUMED",
+  "heartbeatStatus": "PAUSED"
+}

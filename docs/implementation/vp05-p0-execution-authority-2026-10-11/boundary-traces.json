@@ -1,0 +1,371 @@
+{
+  "scope": "ISOLATED_FAKE_EXECUTION_SAFETY_ONLY",
+  "liveProviderCalls": 0,
+  "traces": [
+    {
+      "label": "AUTHORITY_UNAVAILABLE",
+      "projectId": "p0-868e05df-108f-4937-929f-8b01ccba9f39",
+      "local": [
+        {
+          "job_id": "dde47021-ea2d-4ac7-a300-fab1cb0a2487",
+          "status": "RETRYABLE",
+          "attempt_count": 0,
+          "call_id": null,
+          "global_claim_id": null,
+          "semantic_attempt_id": null,
+          "call_state": null
+        }
+      ],
+      "global": [],
+      "claimedCount": 0,
+      "providerCalls": 0
+    },
+    {
+      "label": "EXHAUSTED",
+      "projectId": "p0-af19f2b8-8661-4360-9918-3f1b89d2c176",
+      "local": [
+        {
+          "job_id": "32dea98d-f47b-4adb-8631-802a59b7a3f2",
+          "status": "RETRYABLE",
+          "attempt_count": 0,
+          "call_id": null,
+          "global_claim_id": null,
+          "semantic_attempt_id": null,
+          "call_state": null
+        }
+      ],
+      "global": [],
+      "claimedCount": 100,
+      "providerCalls": 0
+    },
+    {
+      "label": "GLOBAL_BIND_FAILURE",
+      "projectId": "p0-c681c7c5-4e23-4d36-b93a-02ece72d2298",
+      "local": [
+        {
+          "job_id": "e1da0c3b-43f8-4784-a4e9-5dc6db9d661e",
+          "status": "RETRYABLE",
+          "attempt_count": 0,
+          "call_id": null,
+          "global_claim_id": null,
+          "semantic_attempt_id": null,
+          "call_state": null
+        }
+      ],
+      "global": [],
+      "claimedCount": 0,
+      "providerCalls": 0
+    },
+    {
+      "label": "LOCAL_ACTIVATION_FAILED_AFTER_GLOBAL_ARM",
+      "projectId": "p0-35b62a74-6fb2-4d86-85c7-f6afad8f9f14",
+      "local": [
+        {
+          "job_id": "0e3e9c12-9402-4257-a3aa-1edc9665d0f9",
+          "status": "RETRYABLE",
+          "attempt_count": 0,
+          "call_id": null,
+          "global_claim_id": null,
+          "semantic_attempt_id": null,
+          "call_state": null
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "c97d2912-dcdd-43d1-8686-c40d05f6298c",
+          "state": "RESERVED",
+          "execution_authorized": true
+        }
+      ],
+      "claimedCount": 1,
+      "providerCalls": 0
+    },
+    {
+      "label": "ARMED_WITHOUT_LOCAL_RECEIPT_RESTART",
+      "projectId": "p0-35b62a74-6fb2-4d86-85c7-f6afad8f9f14",
+      "local": [
+        {
+          "job_id": "0e3e9c12-9402-4257-a3aa-1edc9665d0f9",
+          "status": "RETRYABLE",
+          "attempt_count": 0,
+          "call_id": null,
+          "global_claim_id": null,
+          "semantic_attempt_id": null,
+          "call_state": null
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "c97d2912-dcdd-43d1-8686-c40d05f6298c",
+          "state": "RESERVED",
+          "execution_authorized": true
+        }
+      ],
+      "claimedCount": 1,
+      "providerCalls": 0
+    },
+    {
+      "label": "CRASH_BEFORE_RESERVATION",
+      "projectId": "p0-a149af0d-6217-4ed6-89aa-903608021e6f",
+      "local": [
+        {
+          "job_id": "babf1c70-8153-4597-b901-af0324aeaa98",
+          "status": "RUNNING",
+          "attempt_count": 0,
+          "call_id": null,
+          "global_claim_id": null,
+          "semantic_attempt_id": null,
+          "call_state": null
+        }
+      ],
+      "global": [],
+      "claimedCount": 0,
+      "providerCalls": 0
+    },
+    {
+      "label": "RESUMED_AFTER_LEASE_ONLY_CRASH",
+      "projectId": "p0-a149af0d-6217-4ed6-89aa-903608021e6f",
+      "local": [
+        {
+          "job_id": "babf1c70-8153-4597-b901-af0324aeaa98",
+          "status": "COMPLETED",
+          "attempt_count": 1,
+          "call_id": "45240b30-f521-4e29-87b9-9a36cb13051a",
+          "global_claim_id": "1c609ad2-a969-4dc2-a20b-61d4c8585f03",
+          "semantic_attempt_id": "0105ae0a-e0b2-4b45-8f69-9e513873f0c2",
+          "call_state": "OUTPUT_STORED"
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "1c609ad2-a969-4dc2-a20b-61d4c8585f03",
+          "state": "PROVIDER_SUCCEEDED",
+          "execution_authorized": true
+        }
+      ],
+      "claimedCount": 1,
+      "providerCalls": 1
+    },
+    {
+      "label": "CRASH_AFTER_RESERVE_BEFORE_ARM",
+      "projectId": "p0-65a915ea-8282-4dce-9400-a8027d6566b5",
+      "local": [
+        {
+          "job_id": "a9634c27-558f-4b68-8bf9-d720e1bac654",
+          "status": "RUNNING",
+          "attempt_count": 0,
+          "call_id": null,
+          "global_claim_id": null,
+          "semantic_attempt_id": null,
+          "call_state": null
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "171fd395-bbe9-4458-b213-d3a8c204dc6d",
+          "state": "RESERVED",
+          "execution_authorized": false
+        }
+      ],
+      "claimedCount": 1,
+      "providerCalls": 0
+    },
+    {
+      "label": "UNARMED_RESERVATION_RECLAIMED",
+      "projectId": "p0-65a915ea-8282-4dce-9400-a8027d6566b5",
+      "local": [
+        {
+          "job_id": "a9634c27-558f-4b68-8bf9-d720e1bac654",
+          "status": "COMPLETED",
+          "attempt_count": 1,
+          "call_id": "4ce15f2b-9810-4591-99b9-2f51b46e36ce",
+          "global_claim_id": "3466c663-e7b0-47ed-b86d-ea6857b72e1c",
+          "semantic_attempt_id": "8b427935-33c2-4e25-a41d-48f29665bec4",
+          "call_state": "OUTPUT_STORED"
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "3466c663-e7b0-47ed-b86d-ea6857b72e1c",
+          "state": "PROVIDER_SUCCEEDED",
+          "execution_authorized": true
+        },
+        {
+          "claim_id": "171fd395-bbe9-4458-b213-d3a8c204dc6d",
+          "state": "RELEASED",
+          "execution_authorized": false
+        }
+      ],
+      "claimedCount": 1,
+      "providerCalls": 1
+    },
+    {
+      "label": "EGRESS_BEFORE_PERSISTENCE_LOSS",
+      "projectId": "p0-38f60352-9179-40d4-b72b-156042f9c6f4",
+      "local": [
+        {
+          "job_id": "0bbd8992-48b9-4494-bf95-c860093b917f",
+          "status": "OUTCOME_UNKNOWN",
+          "attempt_count": 1,
+          "call_id": "51a475ca-0376-4548-900f-0f9de4628bd2",
+          "global_claim_id": "4df8a82b-6357-4a74-8e62-20a237cba819",
+          "semantic_attempt_id": "3ea07fa6-e3bb-499f-a4fb-9241c1ff282e",
+          "call_state": "OUTCOME_UNKNOWN"
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "4df8a82b-6357-4a74-8e62-20a237cba819",
+          "state": "PROVIDER_SUCCEEDED",
+          "execution_authorized": true
+        }
+      ],
+      "claimedCount": 1,
+      "providerCalls": 1
+    },
+    {
+      "label": "OUTPUT_STORED_BEFORE_FINALIZATION_CRASH",
+      "projectId": "p0-d154d75a-3a57-466f-9ae9-1caf4d85fea9",
+      "local": [
+        {
+          "job_id": "46954fac-de11-4d70-a819-2f401e97d789",
+          "status": "COMPLETED",
+          "attempt_count": 1,
+          "call_id": "8fdb7208-f838-44f8-bfb8-8e49595a05cb",
+          "global_claim_id": "7a77bb78-caa0-476e-af35-8d8b0575cc75",
+          "semantic_attempt_id": "e9c43cbe-c365-488c-bed1-92e19b0c6198",
+          "call_state": "OUTPUT_STORED"
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "7a77bb78-caa0-476e-af35-8d8b0575cc75",
+          "state": "PROVIDER_SUCCEEDED",
+          "execution_authorized": true
+        }
+      ],
+      "claimedCount": 1,
+      "providerCalls": 1
+    },
+    {
+      "label": "GLOBAL_ARM_SURVIVES_MISSING_LOCAL_RECEIPT",
+      "projectId": "p0-ed72f461-b1f0-41cd-a315-cee9c167d9f2",
+      "local": [
+        {
+          "job_id": "59dfa3f2-92db-43cb-aa54-96afb6455800",
+          "status": "RETRYABLE",
+          "attempt_count": 0,
+          "call_id": null,
+          "global_claim_id": null,
+          "semantic_attempt_id": null,
+          "call_state": null
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "a05b27b9-f58d-41ed-8f9a-246b86aafcae",
+          "state": "RESERVED",
+          "execution_authorized": true
+        }
+      ],
+      "claimedCount": 1,
+      "providerCalls": 0
+    },
+    {
+      "label": "CROSS_WORKLOAD_B",
+      "projectId": "p0-faf1c40c-321f-4c07-b63e-64e4d56d9966",
+      "local": [
+        {
+          "job_id": "47970d94-fb25-4944-829c-fe98e1c74eaa",
+          "status": "COMPLETED",
+          "attempt_count": 1,
+          "call_id": "603381b5-a486-4507-9da0-e090c2e8e9bc",
+          "global_claim_id": "8d03f994-28e7-499f-9ade-6ca66b1063c9",
+          "semantic_attempt_id": "3c3e3387-91a5-4550-8fea-e56c5036f954",
+          "call_state": "OUTPUT_STORED"
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "8d03f994-28e7-499f-9ade-6ca66b1063c9",
+          "state": "PROVIDER_SUCCEEDED",
+          "execution_authorized": true
+        }
+      ],
+      "claimedCount": 100,
+      "providerCalls": 1
+    },
+    {
+      "label": "CROSS_WORKLOAD_A",
+      "projectId": "p0-34dfd1e7-05ab-49da-a766-f02e402ddda7",
+      "local": [
+        {
+          "job_id": "45702128-1998-4299-b6b3-bdc86a45c755",
+          "status": "RETRYABLE",
+          "attempt_count": 0,
+          "call_id": null,
+          "global_claim_id": null,
+          "semantic_attempt_id": null,
+          "call_state": null
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "8d03f994-28e7-499f-9ade-6ca66b1063c9",
+          "state": "PROVIDER_SUCCEEDED",
+          "execution_authorized": true
+        }
+      ],
+      "claimedCount": 100,
+      "providerCalls": 0
+    },
+    {
+      "label": "LOST_GLOBAL_ARM_ACKNOWLEDGEMENT",
+      "projectId": "p0-b05af781-bbdd-4365-aaee-7a417a959fb9",
+      "local": [
+        {
+          "job_id": "689c7ec8-3f24-4c06-bfb9-a5fe713be774",
+          "status": "RETRYABLE",
+          "attempt_count": 0,
+          "call_id": null,
+          "global_claim_id": null,
+          "semantic_attempt_id": null,
+          "call_state": null
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "92839428-4045-4950-bcda-40ef99f1b178",
+          "state": "RESERVED",
+          "execution_authorized": true
+        }
+      ],
+      "claimedCount": 1,
+      "providerCalls": 0
+    },
+    {
+      "label": "LOST_LOCAL_ACTIVATION_ACKNOWLEDGEMENT",
+      "projectId": "p0-95972648-645d-41a3-8fc0-81e035b979b8",
+      "local": [
+        {
+          "job_id": "9467c33f-d9fa-493c-abe8-3cf087b5ee43",
+          "status": "OUTCOME_UNKNOWN",
+          "attempt_count": 1,
+          "call_id": "4c5560ba-12be-4fe7-b5c9-94750b930a0d",
+          "global_claim_id": "1b2c935a-dc3f-4ed1-b95b-b9c66365890a",
+          "semantic_attempt_id": "d35a9575-4717-47b3-9ce7-210c013192f9",
+          "call_state": "OUTCOME_UNKNOWN"
+        }
+      ],
+      "global": [
+        {
+          "claim_id": "1b2c935a-dc3f-4ed1-b95b-b9c66365890a",
+          "state": "RESERVED",
+          "execution_authorized": true
+        }
+      ],
+      "claimedCount": 1,
+      "providerCalls": 0
+    }
+  ]
+}

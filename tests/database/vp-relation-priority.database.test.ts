@@ -307,7 +307,7 @@ it('prioritizes the related cross-source pair before an older unrelated pair', a
         'NPV 공식에서 미래 현금흐름과 기간이 고정될 때 할인율이 높아질수록 현재가치는 낮아진다. ' +
         '같은 미래 현금흐름과 기간이 유지되면 할인율 상승은 현재가치를 낮춘다.',
     });
-    const jobs = new PostgresVPRelationJobs(pool);
+    const jobs = new PostgresVPRelationJobs(pool, 100, 3, false);
     const policyRevision = `vp-priority-${randomUUID()}`;
     expect(await jobs.enqueueCurrentPairs(policyRevision, 1)).toBe(1);
     const selected = await pool.query<{ left_assertion_id: string; right_assertion_id: string }>(
@@ -431,7 +431,7 @@ it('does not enqueue canonically identical claims for semantic comparison', asyn
       [randomUUID(), projectId, exactId, variantId, decisionId],
     );
 
-    const jobs = new PostgresVPRelationJobs(pool);
+    const jobs = new PostgresVPRelationJobs(pool, 100, 3, false);
     expect(await jobs.enqueueCurrentPairs(policyRevision, 32)).toBe(2);
     const queuedPairs = await pool.query<{
       readonly left_assertion_id: string;
@@ -519,7 +519,7 @@ it.runIf(canRunBackupAcceptance)(
       });
 
       const policyRevision = `vp-backup-recovery-${randomUUID()}`;
-      const sourceJobs = new PostgresVPRelationJobs(sourcePool);
+      const sourceJobs = new PostgresVPRelationJobs(sourcePool, 100, 3, false);
       expect(await sourceJobs.enqueueCurrentPairs(policyRevision, 1)).toBe(1);
       const pendingBeforeBackup = await sourcePool.query<{ status: string }>(
         `SELECT status FROM vp.relation_jobs
@@ -658,7 +658,7 @@ it.runIf(canRunBackupAcceptance)(
           executionIdentity: {} as never,
         }),
       };
-      const restoredJobs = new PostgresVPRelationJobs(restoredPool);
+      const restoredJobs = new PostgresVPRelationJobs(restoredPool, 100, 3, false);
       const worker = new VPRelationJobWorker(
         restoredJobs,
         new VPRelationDecisionRouter(
@@ -819,7 +819,7 @@ it('keeps low-similarity exact relation candidates when paging the complete pair
     }
 
     const policyRevision = `vp-relation-no-prune-${randomUUID()}`;
-    const jobs = new PostgresVPRelationJobs(pool);
+    const jobs = new PostgresVPRelationJobs(pool, 100, 3, false);
     let enqueuedCount = 0;
     while (true) {
       const inserted = await jobs.enqueueCurrentPairs(policyRevision, 1);
@@ -883,7 +883,7 @@ it('replays a stored provider decision after worker loss without a second egress
       text: '이 예시에서는 이익이 증가했지만 해당 기간 현금은 증가하지 않았다.',
     });
     const policyRevision = `vp-response-replay-${randomUUID()}`;
-    const jobs = new PostgresVPRelationJobs(pool);
+    const jobs = new PostgresVPRelationJobs(pool, 100, 3, false);
     expect(await jobs.enqueueCurrentPairs(policyRevision, 1)).toBe(1);
     const probabilities = {
       EQUIVALENT: 0.005,
@@ -960,7 +960,7 @@ it('replays a stored provider decision after worker loss without a second egress
         WHERE project_id = $1 AND policy_revision = $2 AND status = 'RUNNING'`,
       [projectId, policyRevision],
     );
-    const restartedJobs = new PostgresVPRelationJobs(pool);
+    const restartedJobs = new PostgresVPRelationJobs(pool, 100, 3, false);
     const restartedWorker = new VPRelationJobWorker(
       restartedJobs,
       new VPRelationDecisionRouter(
@@ -1064,7 +1064,7 @@ it('terminalizes an uncertain provider response without retrying it after restar
       text: '실질 GDP는 2024년에 감소했다.',
     });
     const policyRevision = `vp-response-unknown-${randomUUID()}`;
-    const jobs = new PostgresVPRelationJobs(pool);
+    const jobs = new PostgresVPRelationJobs(pool, 100, 3, false);
     expect(await jobs.enqueueCurrentPairs(policyRevision, 1)).toBe(1);
     let providerCalls = 0;
     const resolver: AIProviderExecutionResolverPort = {
@@ -1103,7 +1103,9 @@ it('terminalizes an uncertain provider response without retrying it after restar
     );
     expect(await worker.dispatchOnce()).toBe('OUTCOME_UNKNOWN');
     expect(providerCalls).toBe(1);
-    expect(await new PostgresVPRelationJobs(pool).claimNext(policyRevision)).toBeUndefined();
+    expect(
+      await new PostgresVPRelationJobs(pool, 100, 3, false).claimNext(policyRevision),
+    ).toBeUndefined();
     const unknown = await pool.query<{ readonly state: string; readonly status: string }>(
       `SELECT provider_call.state, job.status
          FROM vp.relation_provider_calls provider_call
@@ -1162,7 +1164,7 @@ it('fences a second provider request when the worker process dies after HTTP suc
       text: '실질 GDP는 2025년에 2% 증가했다.',
     });
     const policyRevision = 'vp-deepseek-relation-v6-evidence-context';
-    const jobs = new PostgresVPRelationJobs(pool);
+    const jobs = new PostgresVPRelationJobs(pool, 100, 3, false);
     expect(await jobs.enqueueCurrentPairs(policyRevision, 1)).toBe(1);
 
     await new Promise<void>((resolve, reject) => {
@@ -1371,7 +1373,7 @@ it('characterizes the all-pairs relation queue and daily decision budget at 64 a
     const expectedPairCount = (assertionCount * (assertionCount - 1)) / 2;
     expect(eligiblePairCount).toBe(expectedPairCount);
 
-    const jobs = new PostgresVPRelationJobs(pool);
+    const jobs = new PostgresVPRelationJobs(pool, 100, 3, false);
     const started = performance.now();
     let enqueueBatchCount = 0;
     let enqueuedCount = 0;
@@ -1556,71 +1558,51 @@ it('moves an exhausted relation job to terminal FAILED and keeps it out of repla
     });
 
     const policyRevision = 'vp-retry-cap-policy-v1';
-    const jobs = new PostgresVPRelationJobs(pool, 100, 2);
+    const jobs = new PostgresVPRelationJobs(pool, 100, 2, false);
     expect(await jobs.enqueueCurrentPairs(policyRevision)).toBe(1);
-    const firstAttempt = await jobs.claimNext(policyRevision);
-    expect(firstAttempt?.attemptCount).toBe(1);
+    // Failed authorization/inspection cycles do not consume semantic attempts.
+    for (let cycle = 0; cycle < 4; cycle++) {
+      const lease = (await jobs.claimNext(policyRevision))!;
+      expect(lease.attemptCount).toBe(0);
+      expect(
+        await jobs.retry({
+          jobId: lease.jobId,
+          leaseToken: lease.leaseToken,
+          code: 'PROVIDER_FAILED',
+          nextAttemptAt: new Date(Date.now() - 1000).toISOString(),
+        }),
+      ).toBe('RETRYABLE');
+    }
+    // Preserve historical counters from main: an already exhausted job is terminal.
+    await pool.query(
+      `UPDATE vp.relation_jobs SET attempt_count=max_attempts WHERE project_id=$1 AND policy_revision=$2`,
+      [projectId, policyRevision],
+    );
     expect(
-      await jobs.retry({
-        jobId: firstAttempt!.jobId,
-        leaseToken: firstAttempt!.leaseToken,
-        code: 'PROVIDER_FAILED',
-        nextAttemptAt: new Date(Date.now() - 1_000).toISOString(),
-      }),
-    ).toBe('RETRYABLE');
-
-    const lastAttempt = await jobs.claimNext(policyRevision);
-    expect(lastAttempt?.attemptCount).toBe(2);
-    expect(
-      await jobs.retry({
-        jobId: lastAttempt!.jobId,
-        leaseToken: lastAttempt!.leaseToken,
-        code: 'PROVIDER_FAILED',
-        nextAttemptAt: new Date(Date.now() - 1_000).toISOString(),
-      }),
-    ).toBe('FAILED');
-
-    const restartedAdapter = new PostgresVPRelationJobs(pool, 100, 2);
-    expect(await restartedAdapter.claimNext(policyRevision)).toBeUndefined();
-    const failed = await pool.query<{
-      status: string;
-      attempt_count: number;
-      max_attempts: number;
-    }>(
-      `SELECT status, attempt_count, max_attempts FROM vp.relation_jobs
-        WHERE project_id = $1 AND policy_revision = $2`,
+      await new PostgresVPRelationJobs(pool, 100, 2, false).claimNext(policyRevision),
+    ).toBeUndefined();
+    const failed = await pool.query(
+      'SELECT status,attempt_count,max_attempts FROM vp.relation_jobs WHERE project_id=$1 AND policy_revision=$2',
       [projectId, policyRevision],
     );
     expect(failed.rows).toEqual([{ status: 'FAILED', attempt_count: 2, max_attempts: 2 }]);
-
     const crashedPolicyRevision = 'vp-retry-cap-crash-policy-v1';
-    const oneAttemptJobs = new PostgresVPRelationJobs(pool, 100, 1);
+    const oneAttemptJobs = new PostgresVPRelationJobs(pool, 100, 1, false);
     expect(await oneAttemptJobs.enqueueCurrentPairs(crashedPolicyRevision)).toBe(1);
-    const crashedAttempt = await oneAttemptJobs.claimNext(crashedPolicyRevision);
-    expect(crashedAttempt?.attemptCount).toBe(1);
+    const crashed = (await oneAttemptJobs.claimNext(crashedPolicyRevision))!;
+    expect(crashed.attemptCount).toBe(0);
     await pool.query(
-      `UPDATE vp.relation_jobs
-          SET lease_expires_at = clock_timestamp() - interval '1 second'
-        WHERE job_id = $1`,
-      [crashedAttempt!.jobId],
+      `UPDATE vp.relation_jobs SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE job_id=$1`,
+      [crashed.jobId],
     );
-    expect(await new PostgresVPRelationJobs(pool, 100, 1).claimNext(crashedPolicyRevision)).toBe(
-      undefined,
-    );
-    const crashState = await pool.query<{ status: string; last_failure_code: string }>(
-      `SELECT status, last_failure_code FROM vp.relation_jobs WHERE job_id = $1`,
-      [crashedAttempt!.jobId],
-    );
-    expect(crashState.rows).toEqual([
-      { status: 'FAILED', last_failure_code: 'MAX_ATTEMPTS_EXCEEDED' },
-    ]);
-    expect(await verifyVPProjectionReplay(pool, projectId)).toMatchObject({
-      relationQueueSettled: true,
-      relationQueueComplete: false,
-      pendingRelationJobs: 0,
-      failedRelationJobs: 2,
-      unknownRelationJobs: 0,
-    });
+    const resumed = (await new PostgresVPRelationJobs(pool, 100, 1, false).claimNext(
+      crashedPolicyRevision,
+    ))!;
+    expect(resumed).toMatchObject({ jobId: crashed.jobId, attemptCount: 0 });
+    expect(resumed.leaseToken).not.toBe(crashed.leaseToken);
+    expect(
+      (await pool.query('SELECT count(*)::int AS n FROM vp.relation_provider_calls')).rows[0].n,
+    ).toBe(0);
   } finally {
     await database.dispose();
   }
@@ -1658,10 +1640,10 @@ it('reclaims an expired relation lease after Adapter restart without duplicating
     });
 
     const policyRevision = 'vp-restart-relation-policy-v1';
-    const firstProcess = new PostgresVPRelationJobs(pool);
+    const firstProcess = new PostgresVPRelationJobs(pool, 100, 3, false);
     expect(await firstProcess.enqueueCurrentPairs(policyRevision)).toBe(1);
     const interrupted = await firstProcess.claimNext(policyRevision);
-    expect(interrupted?.attemptCount).toBe(1);
+    expect(interrupted?.attemptCount).toBe(0);
     await pool.query(
       `UPDATE vp.relation_jobs
           SET lease_expires_at = clock_timestamp() - interval '1 second'
@@ -1669,9 +1651,9 @@ it('reclaims an expired relation lease after Adapter restart without duplicating
       [interrupted!.jobId],
     );
 
-    const restartedProcess = new PostgresVPRelationJobs(pool);
+    const restartedProcess = new PostgresVPRelationJobs(pool, 100, 3, false);
     const recovered = await restartedProcess.claimNext(policyRevision);
-    expect(recovered).toMatchObject({ jobId: interrupted!.jobId, attemptCount: 2 });
+    expect(recovered).toMatchObject({ jobId: interrupted!.jobId, attemptCount: 0 });
     expect(
       await restartedProcess.completeDecision({
         jobId: recovered!.jobId,
@@ -1703,7 +1685,7 @@ it('reclaims an expired relation lease after Adapter restart without duplicating
       [projectId, policyRevision],
     );
     expect(persisted.rows).toEqual([
-      { job_status: 'COMPLETED', attempt_count: 2, receipt_count: '1', relation_count: '1' },
+      { job_status: 'COMPLETED', attempt_count: 0, receipt_count: '1', relation_count: '1' },
     ]);
   } finally {
     await database.dispose();
@@ -1751,7 +1733,7 @@ it('does not duplicate a provider call or relation when the committed decision a
         acknowledgementLossInjected = true;
       },
     );
-    const jobs = new PostgresVPRelationJobs(ackLossPool);
+    const jobs = new PostgresVPRelationJobs(ackLossPool, 100, 3, false);
     const readOutcome = vi.spyOn(jobs, 'readDecisionOutcome');
     const provider: VPDecisionProviderPort = {
       decideRelation: async () => {

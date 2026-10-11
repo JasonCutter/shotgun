@@ -70,9 +70,20 @@ export const managedSchemas = [
   'connector',
   'discovery',
   'vp',
+  'vp_global_budget',
 ] as const;
 
 const dropManagedSchemas = async (client: Client): Promise<void> => {
+  const store = await client.query<{ name: string | null }>(
+    "SELECT to_regclass('vp_global_budget.authority_store')::text AS name",
+  );
+  if (store.rows[0]?.name) {
+    const provisioned = await client.query(
+      'SELECT 1 FROM vp_global_budget.authority_store LIMIT 1',
+    );
+    if (provisioned.rowCount)
+      throw new Error('Refusing to reset a provisioned global authority store.');
+  }
   for (const schema of managedSchemas) {
     await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
   }

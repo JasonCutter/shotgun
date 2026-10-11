@@ -1,0 +1,73 @@
+{
+  "sourceHeadRetained": "1a36c7b55562783372dbc73c3188b9d797737c7e",
+  "acceptedLineage": [
+    "375100d2beb4dc1775cb93eeb60f71753d2ff769",
+    "f0eb075b64dcb3f65b2bb7d5465de8ac9719ce37",
+    "86296e2f755fa7e77d398cd6a167ba5def573e99"
+  ],
+  "copiedWholeCommits": false,
+  "components": [
+    {
+      "path": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "sourceCommit": "86296e2f755fa7e77d398cd6a167ba5def573e99",
+      "sourceFileSha256LF": "7311b2c7f377b6553f08b0ed40f0d06811963007ffdec3716fc80c7308ab2174",
+      "currentFileSha256LF": "38a963c956a1f26ff4f91d6d738c22b5a66107af190fdf1b7b08524d135b29af",
+      "decision": "AUGMENT"
+    },
+    {
+      "path": "adapters/vp-global-provider-budget-postgres/src/config.ts",
+      "sourceCommit": "86296e2f755fa7e77d398cd6a167ba5def573e99",
+      "sourceFileSha256LF": "6a77395e030561498de04fa27853272694b5d7a5510d6b31fd0c5d2400c61033",
+      "currentFileSha256LF": "e5d1365ff4d6718826dc32366c5aec09e51c22357acedfa5d056b9cf8c5e7442",
+      "decision": "AUGMENT"
+    },
+    {
+      "path": "adapters/vp-global-provider-budget-postgres/src/execution-boundary.ts",
+      "sourceCommit": "86296e2f755fa7e77d398cd6a167ba5def573e99",
+      "sourceFileSha256LF": "cdc795005fb76dd8133ffbb71151e84b573565ddab75a203ea5e4d7f5c40e7fc",
+      "currentFileSha256LF": "7e01ba3079511181989c7b38e797c69dc31662eb855856ea22b4ddce02b8c2ef",
+      "decision": "AUGMENT"
+    },
+    {
+      "path": "adapters/ai-provider-router/src/index.ts",
+      "sourceCommit": "86296e2f755fa7e77d398cd6a167ba5def573e99",
+      "sourceFileSha256LF": "540ad113913bd607f3acf44ba9833987a99320701815ad654039418fd9847ad2",
+      "currentFileSha256LF": "2d18fec6cac191f0130e7192b1200c9e8570da78ea940c0afa90b36e277c3c00",
+      "decision": "PARTIAL_EXTRACTION_AUGMENT"
+    },
+    {
+      "path": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+      "sourceCommit": "86296e2f755fa7e77d398cd6a167ba5def573e99",
+      "sourceFileSha256LF": "c2abea703d482ccf0eb76559098f391f58a20db9d3d5609f9ae55bef6caab255",
+      "currentFileSha256LF": "2cf485ee9ff8daf3dbf8070f48858814f84934ffbb7ecc00733a1d7c259f0316",
+      "decision": "PARTIAL_EXTRACTION_AUGMENT"
+    },
+    {
+      "path": "assemblies/shotgun-app/src/application.ts",
+      "sourceCommit": "86296e2f755fa7e77d398cd6a167ba5def573e99",
+      "sourceFileSha256LF": "680b23e062442b4e86d88848ca6f038c27075d79ceba400d325f30da8db15e9d",
+      "currentFileSha256LF": "be9f1106337c12d9edbbfae55c48055643cbe278325b6a26da177a041e98586f",
+      "decision": "PARTIAL_EXTRACTION_WITH_MAIN_V6_RETAINED"
+    }
+  ],
+  "excluded": [
+    "v11 activation",
+    "direct-claim-v12 activation",
+    "NO_RELATION taxonomy change",
+    "candidate-frontier",
+    "experiment-checkpoint",
+    "A/B runners and scoring",
+    "SSC/B candidate changes"
+  ],
+  "migrationMapping": {
+    "source130+132+133": "main-compatible129",
+    "source134": "main-compatible130",
+    "newOneUseExecutionFence": "authority migration001 (approval required)"
+  },
+  "dependenciesChanged": false,
+  "pgVersion": "8.22.0",
+  "pgLicense": "MIT",
+  "postgresImage": "pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b",
+  "observedServerVersion": "16.15",
+  "nodeVersion": "24.15.0"
+}

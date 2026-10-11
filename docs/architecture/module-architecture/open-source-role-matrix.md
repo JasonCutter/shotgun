@@ -830,3 +830,15 @@ This single saved answer remains a candidate Golden and does not close VP-09.
 page metadata has not been measured. Rollback removes the optional page-number
 field and rendering; it requires no data migration and leaves the underlying
 Evidence selectors and citations intact.
+
+## VP-05 P0 execution authority alignment — 2026-10-11
+
+Target: existing `VPDecisionExecutionRepositoryPort`, `AIProviderExecutionResolverPort`, relation jobs and the accepted dedicated global PostgreSQL budget adapter. [P0 review and verification](../../implementation/vp05-p0-execution-authority-2026-10-11/report.md) retain Canonical-main v6 / 0.9 semantics; local v11 activation and experimental Frontier/B/SSC work are outside this integration.
+
+- Existing node-postgres `pg 8.22.0` / MIT and repository-pinned `pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b` / observed PostgreSQL 16.15: retain `ADOPT`, `AUGMENT` the Shotgun adapter; lockfile and dependencies unchanged.
+- `garrytan/gbrain` at the existing reviewed `a25209bbb2bacf1b88e06fd5282b27f1bf4a3e7a` / MIT: `REFERENCE_ONLY` for job/lease/idempotency. Its runtime/schema/IDs do not replace Shotgun authority. Existing lucas/ddsyasas/OpenKnowledge assignments remain unchanged.
+- Reuse accepted local lineage through `86296e2f755fa7e77d398cd6a167ba5def573e99` selectively; no whole commit cherry-pick. Shotgun owns the credential pin and cross-store receipt semantics; no new OSS runtime or production authority is adopted.
+- Contracts: fake Port and PostgreSQL authority, credential mismatch, exhaustion, two workload databases, OS processes, real app bootstrap, lost acknowledgements, stored-output replay and runtime database privileges. No live provider call.
+- Migration/rollback: additive nullable local bindings and an approved-only one-use fence upgrade for the existing authority. Preserve historical rows/counters; block authority reset and unverified automatic refund. Pause egress before code rollback and retain the audit receipts. Replacement must pass the same negative/recovery/global contracts.
+
+This is local implementation review evidence. Canonical publication, authority/config/schema operation and live acceptance require separate authorization; VP-05 remains incomplete.

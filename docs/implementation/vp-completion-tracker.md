@@ -264,3 +264,9 @@ VP-08 stays unchecked. [Details](./vp-url-freshness-ask-projection-2026-10-02.md
 4. **VP-03** 수정본 포함 빈 지식공간부터 자료 투입·질문까지 실제 설치 제품 인수검증을 완료한다.
 5. **VP-10/11** 공통 OSS·Architecture Gate를 판정하고 PR을 Required Gates로 병합한 뒤 설치 아이콘으로 MAIN을 검증한다.
 6. 모든 필수 Gate가 증거를 갖출 때만 VP를 완료로 보고한다.
+
+## 2026-10-11 VP-05 P0 실행 권위 정합 (로컬 검토)
+
+[P0 결과](./vp05-p0-execution-authority-2026-10-11/report.md)는 main `083e779…`에서 분리한 로컬 브랜치의 fake provider·격리 PostgreSQL·실제 앱 bootstrap 검증이다. global authority/실제 credential/one-use execution/local attempt를 연결하고 재시작·불명 결과·예산 고갈을 검증했다. main v6·0.9·Ledger·SourceVersion·Evidence·Ask를 유지했다. 원래 로컬 v11 및 동결 실험·stash는 보존했다.
+
+판정은 `P0_LOCAL_INTEGRATION_READY / CANONICAL_AND_OPERATIONS_APPROVAL_PENDING`이다. 게시/운영 schema·authority configuration 및 live 제품 인수는 이 증거에 포함하지 않으며 VP-05 전체를 COMPLETE로 올리지 않는다. 의미 평가 신뢰성, 전체 제품 인수, v11 활성화, Gold-B-7·VP-06은 별도 Gate다.

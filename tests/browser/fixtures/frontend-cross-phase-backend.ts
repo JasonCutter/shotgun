@@ -494,7 +494,7 @@ export async function startFrontendCrossPhaseBackend(
     const decisionResolver: AIProviderExecutionResolverPort = {
       resolve: async () => ({ adapter: aiProvider, executionIdentity: {} as never }),
     };
-    const relationJobs = new PostgresVPRelationJobs(pool);
+    const relationJobs = new PostgresVPRelationJobs(pool, 100, 3, false);
     stopVPRelationWorker = await new VPRelationJobWorker(
       relationJobs,
       new VPRelationDecisionRouter(

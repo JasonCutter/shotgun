@@ -499,7 +499,7 @@ describe('VP validated direct assertion ledger', () => {
     const fourthClaimText = 'The shared verification code is 43; quasar.';
     const fourth = await seedCandidate(4, 'public', fourthClaimText);
     expect(await ledger.ingestValidatedDirectClaims()).toBe(1);
-    const jobs = new PostgresVPRelationJobs(runtimePool);
+    const jobs = new PostgresVPRelationJobs(runtimePool, 100, 3, false);
     expect(await jobs.enqueueCurrentPairs('vp-test-policy')).toBe(1);
     const vpSearch = new PostgresVPAskEvidenceSearch(runtimePool);
     const beforeSemanticRelation = await vpSearch.search({
@@ -520,7 +520,7 @@ describe('VP validated direct assertion ledger', () => {
        VALUES (CURRENT_DATE, 1) ON CONFLICT (budget_day)
        DO UPDATE SET claimed_count = 1`,
     );
-    const cappedJobs = new PostgresVPRelationJobs(runtimePool, 1);
+    const cappedJobs = new PostgresVPRelationJobs(runtimePool, 1, 3, false);
     expect(await cappedJobs.claimNext('vp-test-policy')).toBeUndefined();
     expect(await cappedJobs.enqueueCurrentPairs('vp-capped-policy')).toBe(0);
     expect(

@@ -301,12 +301,12 @@
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:180",
+      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:182",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:652",
+      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:674",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },

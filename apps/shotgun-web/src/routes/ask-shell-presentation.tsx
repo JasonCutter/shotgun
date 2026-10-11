@@ -370,6 +370,11 @@ export const ConversationPane = ({
                     <p className="ask-turn-question">
                       <strong>{t('ask.question')}:</strong> {turn.userMessage}
                     </p>
+                    {answerRun.stale ? (
+                      <p className="ask-answer-status" role="status">
+                        {t('ask.answer_historical')}
+                      </p>
+                    ) : null}
                     {latestPartial || (answerRun.statements ?? []).length > 0 ? (
                       <div className="ask-answer-content">
                         <h3>{t('ask.answer')}</h3>

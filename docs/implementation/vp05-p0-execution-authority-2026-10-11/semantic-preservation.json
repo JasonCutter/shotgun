@@ -1,0 +1,99 @@
+{
+  "scope": "REVIEW_PRESERVATION_SEAL_NOT_NEW_PRODUCTION_SEMANTIC_AUTHORITY",
+  "base": "083e779ec64e3216df78eb327a5ba73b3996a21c",
+  "fragments": [
+    {
+      "path": "modules/vp-decision/src/index.ts",
+      "component": "taxonomy, request contract and provider contract",
+      "baseSha256LF": "fc2fe8453d8c35084a21e4bb55eaaa69adc47cb8ecdf61f9fe46a9cf82834639",
+      "currentSha256LF": "fc2fe8453d8c35084a21e4bb55eaaa69adc47cb8ecdf61f9fe46a9cf82834639",
+      "identical": true
+    },
+    {
+      "path": "modules/vp-decision/src/index.ts",
+      "component": "decision validation, routing, confidence and egress semantics",
+      "baseSha256LF": "6a907e554fac819b805f24b14ef6948e7d1973dd7f72504163e26d5344c4b250",
+      "currentSha256LF": "6a907e554fac819b805f24b14ef6948e7d1973dd7f72504163e26d5344c4b250",
+      "identical": true
+    },
+    {
+      "path": "adapters/vp-decision-general-ai/src/index.ts",
+      "component": "v6 instruction, evidence formatting and six-choice response schema",
+      "baseSha256LF": "1a41ed5e9c0d2d26ddddf531ee7219caaab405f14cfaddc5b1abc12dd3418cb2",
+      "currentSha256LF": "1a41ed5e9c0d2d26ddddf531ee7219caaab405f14cfaddc5b1abc12dd3418cb2",
+      "identical": true
+    },
+    {
+      "path": "adapters/ai-provider-router/src/index.ts",
+      "component": "existing provider resolver and all pre-existing adapter behavior",
+      "baseSha256LF": "78211a6a867d6ab6c0c75e8e55b6c00c7fd1c0f393296ddde3e07c6a0e448daf",
+      "currentSha256LF": "78211a6a867d6ab6c0c75e8e55b6c00c7fd1c0f393296ddde3e07c6a0e448daf",
+      "identical": true
+    },
+    {
+      "path": "modules/vp-knowledge-ledger/src/index.ts",
+      "component": "complete existing file",
+      "baseSha256LF": "d5867c65e7499d6b62b8d0a494e9ddbcbd2100bd488f71a85091ac389eabd010",
+      "currentSha256LF": "d5867c65e7499d6b62b8d0a494e9ddbcbd2100bd488f71a85091ac389eabd010",
+      "identical": true
+    },
+    {
+      "path": "adapters/vp-knowledge-postgres/src/index.ts",
+      "component": "complete existing file",
+      "baseSha256LF": "535f6ddd8cdd075966f0fb8cdca7eb61c3f50b9f7ccc9289274eb6e161c4f323",
+      "currentSha256LF": "535f6ddd8cdd075966f0fb8cdca7eb61c3f50b9f7ccc9289274eb6e161c4f323",
+      "identical": true
+    },
+    {
+      "path": "adapters/vp-knowledge-postgres/src/ask-evidence-search.ts",
+      "component": "complete existing file",
+      "baseSha256LF": "3ab4dca8ea42ec9dd98b6536e1c7cf1d6a13d9b7a388ccc8a9cf06d2eeb72ba1",
+      "currentSha256LF": "3ab4dca8ea42ec9dd98b6536e1c7cf1d6a13d9b7a388ccc8a9cf06d2eeb72ba1",
+      "identical": true
+    },
+    {
+      "path": "assemblies/shotgun-app/src/server.ts",
+      "component": "complete existing file",
+      "baseSha256LF": "6c45885161c976cf7e0503b9b49885a6c26fad6b05015411b2243c340c324d9a",
+      "currentSha256LF": "6c45885161c976cf7e0503b9b49885a6c26fad6b05015411b2243c340c324d9a",
+      "identical": true
+    },
+    {
+      "path": "assemblies/shotgun-app/src/vp-candidate-policy-refresh.ts",
+      "component": "complete existing file",
+      "baseSha256LF": "874b6e28d4e6ae50ffcae9915ff4e76b41a6dd0ffebb086ddb9fb9fe50657610",
+      "currentSha256LF": "874b6e28d4e6ae50ffcae9915ff4e76b41a6dd0ffebb086ddb9fb9fe50657610",
+      "identical": true
+    },
+    {
+      "path": "adapters/ai-provider-deepseek/src/index.ts",
+      "component": "complete existing file",
+      "baseSha256LF": "4d332af7e2b55e42f6dbfeb7576e35a6f6e71a6f93e8ed14294137b106bea45e",
+      "currentSha256LF": "4d332af7e2b55e42f6dbfeb7576e35a6f6e71a6f93e8ed14294137b106bea45e",
+      "identical": true
+    },
+    {
+      "path": "package-lock.json",
+      "component": "complete existing file",
+      "baseSha256LF": "15a5fb79032fc7ab52b15e476346aff9dfc514fea7afe058980f8cff40f3ae1f",
+      "currentSha256LF": "15a5fb79032fc7ab52b15e476346aff9dfc514fea7afe058980f8cff40f3ae1f",
+      "identical": true
+    },
+    {
+      "path": "package.json",
+      "component": "complete existing file",
+      "baseSha256LF": "73f425925cf8a33c9d82cda6c755685a3d0e9c2802abd81e2de9bf01d30aa95f",
+      "currentSha256LF": "73f425925cf8a33c9d82cda6c755685a3d0e9c2802abd81e2de9bf01d30aa95f",
+      "identical": true
+    },
+    {
+      "path": "assemblies/shotgun-app/src/application.ts",
+      "component": "normal application active semantic policy/gate",
+      "baseSha256LF": "3ac1314fd10a895aacce931af26632f3df4f4b967e02282b22c20b8b772edb94",
+      "currentSha256LF": "3ac1314fd10a895aacce931af26632f3df4f4b967e02282b22c20b8b772edb94",
+      "identical": true
+    }
+  ],
+  "v6ActualInstructionSha256": "e84485451ff0aefe441cb30ee778df21fb2a4d666e4ef06c412230a262a013dd",
+  "preservationSealSha256": "0424c2be7a26c52a3af987ba58ffa71b0e37f9064c8eeb12eb7613212453c417"
+}

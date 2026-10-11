@@ -1,0 +1,161 @@
+{
+  "scope": "FAKE_PROVIDER_AND_ISOLATED_POSTGRES_EXECUTION_AND_MAIN_REGRESSION_NOT_MODEL_QUALITY",
+  "groups": {
+    "unit": {
+      "passed": 1360
+    },
+    "contract": {
+      "passed": 775
+    },
+    "integration": {
+      "passed": 516,
+      "skipped": 6
+    },
+    "database": {
+      "passed": 44,
+      "skipped": 2
+    }
+  },
+  "runs": [
+    {
+      "file": "vp05-p0-regression-final.json",
+      "sha256": "818c3f96db37c3ba8b79c399db5fa68ba0ffb77db72cdb9b50ba17a003be269e",
+      "passed": 2651,
+      "failed": 0,
+      "skipped": 6
+    },
+    {
+      "file": "vp05-p0-db-final.json",
+      "sha256": "282b319b3a848a1e193db44dcefa4182aef8438f09182a610b34201946019d7c",
+      "passed": 40,
+      "failed": 0,
+      "skipped": 2
+    },
+    {
+      "file": "vp05-p0-authority-final.json",
+      "sha256": "f43176d65155433ad50b3435f9dd75d1ea621eba0011a0151b569740e4bcb149",
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "vp05-p0-process-crash-final.json",
+      "sha256": "173cb38b683237730b87136272cf8d0425aafd85f098723dd55aa4f52f469df9",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "vp05-p0-boundary-final.json",
+      "sha256": "856fdc20137aa293f29f9669d5c55cb2d38213752c19802784f42507e0227436",
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "vp05-p0-runtime-final.json",
+      "sha256": "00640183d7a31f1d5d1418516a825ff517f1f6aedb07fd2a7f3db9d975c71993",
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "vp05-p0-credential-final.json",
+      "sha256": "1dc365e043016aa32016b9d7a72c1956c2d7023aed3074e71013465ff9c8f710",
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "file": "vp05-p0-app-complete.json",
+      "sha256": "2e72b810d9331389ce6c750860e96d704068028e924fbe79ded7324fe307948b",
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "skipped": [
+    {
+      "file": "tests/integration/vp-ask-conflict-live.integration.test.ts",
+      "name": "VP Ask answer live proof attributes conflicting synthetic claims to both sources",
+      "status": "skipped"
+    },
+    {
+      "file": "tests/integration/vp-ask-conflict-live.integration.test.ts",
+      "name": "VP Ask answer live proof ignores a prompt injection embedded in public source evidence",
+      "status": "skipped"
+    },
+    {
+      "file": "tests/integration/vp-deepseek-extraction-replay.integration.test.ts",
+      "name": "VP DeepSeek source extraction replay extracts a direct claim from transformed input and reuses the pinned output on retry",
+      "status": "skipped"
+    },
+    {
+      "file": "tests/integration/vp-deepseek-live.integration.test.ts",
+      "name": "VP DeepSeek live decision proof classifies the versioned relation candidate corpora with the configured Vault credential",
+      "status": "skipped"
+    },
+    {
+      "file": "tests/integration/vp-runtime-database-recovery.live.test.ts",
+      "name": "VP-07 real PostgreSQL recovery through the launched app restarts the app after its database session is lost and resumes after connectivity returns",
+      "status": "skipped"
+    },
+    {
+      "file": "tests/integration/vp-runtime-postgres-server-restart.live.test.ts",
+      "name": "VP-07 PostgreSQL server restart recovery restarts the actual PostgreSQL container and restores app readiness with persisted data",
+      "status": "skipped"
+    },
+    {
+      "file": "tests/database/vp-relation-priority.database.test.ts",
+      "name": "restores VP source evidence and a pending relation job, then converges it once",
+      "status": "skipped"
+    },
+    {
+      "file": "tests/database/vp-relation-priority.database.test.ts",
+      "name": "keeps a data-bearing provider result unknown when PostgreSQL is down and owner runtime restarts",
+      "status": "skipped"
+    }
+  ],
+  "browser": {
+    "canonicalMain": "083e779ec64e3216df78eb327a5ba73b3996a21c",
+    "databaseName": "shotgun_test_iso_1791679424322_c130427b05f2",
+    "exitCode": 0,
+    "fixture": "unchanged main VP browser journey; fake provider; runtime server composition fixture; explicit project setup; relation worker not enabled by this journey",
+    "scope": "upload A, revise A, add B, Ask current citations, cross-project rejection; not live-model or installed-launcher acceptance",
+    "liveProviderCalls": 0,
+    "cleanup": "isolated database disposed in finally"
+  },
+  "typecheck": "PASS",
+  "lint": "PASS (0 errors; 2 pre-existing authentication warnings)",
+  "architecture": "PASS",
+  "liveProviderCalls": 0,
+  "productionDataWrites": 0,
+  "authorityStoreReplaced": false,
+  "localHistoryStashAndFrozenEvidencePreserved": true,
+  "initialProbeCleanup": {
+    "workload": "shotgun_test_iso_1791679896861_f8c61fcda561",
+    "authority": "shotgun_test_iso_1791679901871_c1e0795847ab",
+    "local": [
+      {
+        "job_id": "55d93354-0143-49f8-81df-4075232aa5ac",
+        "project_id": "process-0a195dcb-b1ea-4296-9c7b-e0400a23a44f",
+        "status": "OUTCOME_UNKNOWN",
+        "global_claim_id": "9e006c30-41b4-4dea-8fdc-3b0a88c4705b"
+      }
+    ],
+    "global": [
+      {
+        "claim_id": "9e006c30-41b4-4dea-8fdc-3b0a88c4705b",
+        "project_id": "process-0a195dcb-b1ea-4296-9c7b-e0400a23a44f",
+        "relation_job_id": "55d93354-0143-49f8-81df-4075232aa5ac",
+        "account_fingerprint": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    ],
+    "reason": "First OS-crash test cleanup waited twice for an already exited child. Guard fixed; final test passes.",
+    "disposed": true,
+    "otherPreexistingDatabasesUntouched": true
+  },
+  "documentationValidation": "PASS (635 relative links, ADR 1-173, canonical/evidence/drift/manifest/frontend gates)",
+  "formatCheck": "PASS (full configured scope and P0 docs)",
+  "diffCheck": "PASS"
+}

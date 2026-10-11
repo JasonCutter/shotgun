@@ -64,6 +64,13 @@ export class GeneralAIVPDecisionAdapter implements VPDecisionProviderPort {
         'A durable VP relation job cannot call a provider without an execution ledger.',
       );
     }
+    if (input.execution && this.executions?.readStoredByJob) {
+      const stored = await this.executions.readStoredByJob({
+        projectId: input.projectId,
+        ...input.execution,
+      });
+      if (stored) return stored;
+    }
     const requestId = `vp-relation:${input.policyRevision}:${[
       input.left.assertionId,
       input.right.assertionId,

@@ -67,10 +67,10 @@ describe('C2-R15 regression-evidence authority correction', () => {
   it('applies legacy method-name scoring to current code while preserving historical totals', () => {
     const audit = buildAuditShape(ROOT, { legacyAuthority: true });
     expect(audit.counts).toMatchObject({
-      TX_BOUNDARY: 109,
+      TX_BOUNDARY: 113,
       TX_PARTICIPANT: 0,
       TX_DELEGATE: 0,
-      NON_TX: 7,
+      NON_TX: 14,
       TEST_ONLY_OR_DEAD: 13,
       REVIEW_REQUIRED: 0,
     });
@@ -100,11 +100,11 @@ describe('C2-R15 regression-evidence authority correction', () => {
       return counts;
     }, {});
     expect(audit.counts).toMatchObject(expectedCounts);
-    // The current audit includes three additional VP method boundaries; the
+    // The current audit includes reviewed VP-05 P0 transaction candidates; the
     // frozen v2 history above remains unchanged at its original inventory totals.
-    expect(audit.candidates).toHaveLength(129);
-    expect(audit.boundaries).toHaveLength(122);
-    expect(audit.rawTransactionSites).toHaveLength(11);
+    expect(audit.candidates).toHaveLength(140);
+    expect(audit.boundaries).toHaveLength(126);
+    expect(audit.rawTransactionSites).toHaveLength(21);
   }, 120_000);
 
   it('derives the T3 v8 lineage from the same authority and validates clean', () => {

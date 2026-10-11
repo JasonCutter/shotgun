@@ -8,15 +8,21 @@ import {
 } from '../../scripts/t3-storage-inventory.js';
 
 describe('T3 frozen storage inventory', () => {
-  it('is unique and covers the baseline, reset control tables, and eight VP tables', async () => {
+  it('is unique and covers the baseline, reset control tables, VP tables, and preserved global authority', async () => {
     const register = await readFile(
       'docs/implementation/t3-storage-classification-register.md',
       'utf8',
     );
     const expected = parseT3ExpectedTables(register);
-    expect(expected.schemas).toHaveLength(30);
-    expect(expected.tables).toHaveLength(203);
+    expect(expected.schemas).toHaveLength(31);
+    expect(expected.tables).toHaveLength(207);
     expect(expected.tables).toContain('vp.relation_provider_calls');
+    expect(expected.tables.filter((table) => table.startsWith('vp_global_budget.'))).toEqual([
+      'vp_global_budget.authority_store',
+      'vp_global_budget.claims',
+      'vp_global_budget.daily_usage',
+      'vp_global_budget.policies',
+    ]);
     expect(
       expected.tables.filter(
         (table) =>

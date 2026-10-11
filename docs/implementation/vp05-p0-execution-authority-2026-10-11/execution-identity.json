@@ -1,0 +1,61 @@
+{
+  "scope": "LOCAL_EXECUTION_IMPLEMENTATION_REVIEW_IDENTITY",
+  "format": "sha256 of UTF-8 canonical JSON (sorted keys, no whitespace), files hashed with LF normalization",
+  "base": "083e779ec64e3216df78eb327a5ba73b3996a21c",
+  "semanticPreservationSeal": "0424c2be7a26c52a3af987ba58ffa71b0e37f9064c8eeb12eb7613212453c417",
+  "files": [
+    {
+      "path": "adapters/ai-provider-router/src/index.ts",
+      "sha256LF": "2d18fec6cac191f0130e7192b1200c9e8570da78ea940c0afa90b36e277c3c00"
+    },
+    {
+      "path": "adapters/vp-decision-general-ai/src/index.ts",
+      "sha256LF": "f7c28d38b1531f85e50e44a006eef73da0aeef7510a9948a5487c6be2c3a631f"
+    },
+    {
+      "path": "adapters/vp-global-provider-budget-postgres/src/config.ts",
+      "sha256LF": "e5d1365ff4d6718826dc32366c5aec09e51c22357acedfa5d056b9cf8c5e7442"
+    },
+    {
+      "path": "adapters/vp-global-provider-budget-postgres/src/execution-boundary.ts",
+      "sha256LF": "7e01ba3079511181989c7b38e797c69dc31662eb855856ea22b4ddce02b8c2ef"
+    },
+    {
+      "path": "adapters/vp-global-provider-budget-postgres/src/index.ts",
+      "sha256LF": "38a963c956a1f26ff4f91d6d738c22b5a66107af190fdf1b7b08524d135b29af"
+    },
+    {
+      "path": "adapters/vp-knowledge-postgres/src/relation-jobs.ts",
+      "sha256LF": "2cf485ee9ff8daf3dbf8070f48858814f84934ffbb7ecc00733a1d7c259f0316"
+    },
+    {
+      "path": "assemblies/shotgun-app/src/application.ts",
+      "sha256LF": "be9f1106337c12d9edbbfae55c48055643cbe278325b6a26da177a041e98586f"
+    },
+    {
+      "path": "db/authority-migrations/001_relation_execution_fence.sql",
+      "sha256LF": "f1348e8274fc103157734cd243e98e5f5641907f7f948faaf89fdb162ccc5f3d"
+    },
+    {
+      "path": "db/migrations/129_vp_global_relation_budget_authority.sql",
+      "sha256LF": "1e8d438463c9d1a027014e780b83bebcd15035571114061b1235cb420d5f7be3"
+    },
+    {
+      "path": "db/migrations/130_vp_relation_egress_activation_binding.sql",
+      "sha256LF": "b7a00f1606dfef1e56f201fb92fe0d2177db744f7c4d6431665bf167111e4a4a"
+    },
+    {
+      "path": "modules/vp-decision/src/index.ts",
+      "sha256LF": "477bb3a01605bd06e02bf28bafe6cfe4e2a8136007a91613625a7ee823768a14"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256LF": "15a5fb79032fc7ab52b15e476346aff9dfc514fea7afe058980f8cff40f3ae1f"
+    },
+    {
+      "path": "scripts/database.ts",
+      "sha256LF": "7278fef96805404fa69dc987117ea1f8c9f1950888ba6ff7c41674aca4b4ce74"
+    }
+  ],
+  "executionSealSha256": "aab939746f6a7281a2b01a79a39dc520cc23424becbf7b43cd133131f90edb80"
+}

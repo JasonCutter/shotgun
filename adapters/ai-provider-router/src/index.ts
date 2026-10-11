@@ -65,6 +65,60 @@ export class CredentialBackedAIProviderAdapter implements AIProviderAdapterPort 
     };
   }
 
+  /** Bind the exact verified credential bytes before an external budget claim. */
+  async captureSingleUse(
+    verify: (secret: Uint8Array, metadata: CredentialMetadata) => void,
+  ): Promise<AIProviderAdapterPort & { discardCapturedCredential(): void }> {
+    if (!this.vault || this.legacyCredential) {
+      throw routerError('A vault-backed credential is required.', 'capture-credential');
+    }
+    const capturedIdentity = Object.freeze({ ...this.identity });
+    const capturedScope = Object.freeze({ ...this.scope });
+    let captured: Uint8Array | undefined;
+    await this.vault.withCredential(capturedScope, async (secret, metadata) => {
+      if (
+        !metadata ||
+        metadata.projectId !== capturedScope.projectId ||
+        metadata.providerId !== capturedScope.providerId ||
+        metadata.credentialId !== capturedScope.credentialId ||
+        metadata.credentialRevision !== capturedScope.credentialRevision ||
+        metadata.lifecycleState !== 'active'
+      ) {
+        throw routerError('The pinned credential revision is unavailable.', 'capture-credential');
+      }
+      verify(secret, metadata);
+      captured = Uint8Array.from(secret);
+      return { status: 'SUCCEEDED' };
+    });
+    if (!captured)
+      throw routerError('The pinned credential was not captured.', 'capture-credential');
+    let used = false;
+    return {
+      identity: capturedIdentity,
+      discardCapturedCredential: () => {
+        captured?.fill(0);
+        captured = undefined;
+      },
+      generateStructured: async (request) => {
+        if (used || !captured) {
+          throw routerError('The captured credential has already been used.', 'capture-credential');
+        }
+        used = true;
+        const secret = captured;
+        captured = undefined;
+        try {
+          return await this.connectivity.generateStructured({
+            modelId: capturedIdentity.model,
+            apiKey: secret,
+            request,
+          });
+        } finally {
+          secret.fill(0);
+        }
+      },
+    };
+  }
+
   generateStructured(request: StructuredGenerationRequest): Promise<StructuredGenerationResponse> {
     return this.generateStructuredWithSignal(request, undefined);
   }

@@ -1,0 +1,9 @@
+{
+  "canonicalMain": "083e779ec64e3216df78eb327a5ba73b3996a21c",
+  "databaseName": "shotgun_test_iso_1791679424322_c130427b05f2",
+  "exitCode": 0,
+  "fixture": "unchanged main VP browser journey; fake provider; runtime server composition fixture; explicit project setup; relation worker not enabled by this journey",
+  "scope": "upload A, revise A, add B, Ask current citations, cross-project rejection; not live-model or installed-launcher acceptance",
+  "liveProviderCalls": 0,
+  "cleanup": "isolated database disposed in finally"
+}

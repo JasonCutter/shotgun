@@ -1,0 +1,51 @@
+{
+  "authority": "ISOLATED_FAKE_DIAGNOSTIC_NOT_MODEL_QUALITY_OR_PRODUCT_ACCEPTANCE",
+  "canonicalMain": "083e779ec64e3216df78eb327a5ba73b3996a21c",
+  "databaseName": "shotgun_test_iso_1791681091266_20e17db0dff3",
+  "projectId": "vp05-audit-8bdbad93-8c2b-46f7-b5dc-f9d9eb4002e6",
+  "trace": {
+    "policy_revision": "vp-deepseek-relation-v6-evidence-context",
+    "job_id": "62d38724-4121-4b4e-a79e-558759ab4ceb",
+    "attempt_count": 1,
+    "call_id": "335b5182-b36d-4115-9fa7-c31194746627",
+    "request_digest": "sha256:69b37f4f0b193b50b7c5fa3ce6afc03e6a159ed0ec98fbf8c9aeffea7b01bc74",
+    "provider_identity": "deepseek/deepseek-flash",
+    "global_claim_id": "1556fc90-8641-4090-873b-2df7e4ac69ac",
+    "semantic_attempt_id": "f4b4a55d-1d17-4e71-a97c-c3128bd756c9",
+    "decision_id": "83d29d63-34ea-4ea4-bd22-d44deffafe28"
+  },
+  "fakeCalls": [
+    {
+      "model": "deepseek-flash",
+      "promptSha256": "60c5388b3a0b502ad1d2837b249feeb525b171d4b604c5d5ad0f34a944242159",
+      "systemInstructionSha256": "e84485451ff0aefe441cb30ee778df21fb2a4d666e4ef06c412230a262a013dd"
+    }
+  ],
+  "blockedNetworkRequests": 0,
+  "liveProviderCalls": 0,
+  "globalAuthorityConfiguration": "ISOLATED_TEST_STORE",
+  "authorityDatabaseName": "shotgun_test_iso_1791681096035_e7461d4e339e",
+  "storeId": "a3408ee7-2c0a-483b-b2ca-3b2c66c6405a",
+  "authorityId": "e3ae9be4-9993-4986-b165-3207c83b6ffc",
+  "credentialFingerprint": "b5dfec8effcce39b96aa32d49e6c357d9380aa0f99a2d102ca9460956f202759",
+  "global": [
+    {
+      "claim_id": "1556fc90-8641-4090-873b-2df7e4ac69ac",
+      "authority_id": "e3ae9be4-9993-4986-b165-3207c83b6ffc",
+      "relation_job_id": "62d38724-4121-4b4e-a79e-558759ab4ceb",
+      "semantic_attempt_id": "f4b4a55d-1d17-4e71-a97c-c3128bd756c9",
+      "execution_key": "sha256:015e18478f889d621ba72d0cf4cdc52f73849d0356a1f7eb110986e9d2b17249",
+      "provider_identity": "deepseek/deepseek-flash",
+      "provider_request_id": "vp05-audit-fake-response",
+      "state": "PROVIDER_SUCCEEDED"
+    }
+  ],
+  "globalClaimColumn": true,
+  "semanticAttemptIdentityColumn": true,
+  "evidenceBefore": ["1687af25-f2c8-453f-ad2b-a3fdfa75851f"],
+  "pendingRelationJobsBeforeSearch": 1,
+  "evidenceAfter": ["1687af25-f2c8-453f-ad2b-a3fdfa75851f", "3db41ba2-9429-4ff3-9452-74684c1ef6a9"],
+  "relevantOldSnapshotRejected": true,
+  "fixtureScope": "Source assertions seeded; extraction refresh suspended; Ask worker disabled; normal app relation worker unchanged",
+  "cleanup": "Isolated database disposed in finally; synthetic asset files retained only in temporary audit root"
+}

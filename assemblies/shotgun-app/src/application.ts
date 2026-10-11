@@ -1,3 +1,13 @@
+import { CredentialBackedAIProviderAdapter } from '../../../adapters/ai-provider-router/src/index.js';
+import {
+  globalRelationBudgetFromEnvironment,
+  relationCredentialFingerprint,
+} from '../../../adapters/vp-global-provider-budget-postgres/src/config.js';
+import {
+  ExecutionBoundVPRelationDispatcher,
+  executionBoundRelationLedger,
+  executionBoundRelationResolver,
+} from '../../../adapters/vp-global-provider-budget-postgres/src/execution-boundary.js';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
@@ -1504,30 +1514,85 @@ export const startShotgunApplication = async (
         pool,
         Number(process.env.VP_MAX_DAILY_RELATION_PROVIDER_ATTEMPTS ?? '100'),
         Number(process.env.VP_MAX_RELATION_JOB_ATTEMPTS ?? '3'),
+        true,
       );
-      const vpRelationWorker = new VPRelationJobWorker(
-        vpRelationJobs,
-        new VPRelationDecisionRouter(
-          undefined,
-          new GeneralAIVPDecisionAdapter(stage4AIExecutionResolver, vpRelationJobs),
+      await vpRelationJobs.recoverExpiredExecutions();
+      const relationFingerprint =
+        process.env.VP_GLOBAL_RELATION_BUDGET_ACCOUNT_FINGERPRINT?.trim() ?? '';
+      let relationBudget: ReturnType<typeof globalRelationBudgetFromEnvironment> | undefined;
+      try {
+        relationBudget = globalRelationBudgetFromEnvironment(databaseUrl, relationFingerprint);
+        await relationBudget.budget.status();
+      } catch (error) {
+        await relationBudget?.close();
+        relationBudget = undefined;
+        console.warn(
+          '[vp-relation-jobs] RELATION_BUDGET_PAUSED: global authority unavailable',
+          error,
+        );
+      }
+      if (relationBudget) {
+        cleanupStack.add('VP global relation budget pool', relationBudget.close);
+        const globalBudget = relationBudget.budget;
+        const relationResolver = executionBoundRelationResolver(
+          stage4AIExecutionResolver,
+          vpRelationJobs,
+          globalBudget,
           {
-            revision: 'vp-deepseek-relation-v6-evidence-context',
-            minimumChoiceProbability: 0.9,
-            maximumDeepAnalysisScore: 0,
-            maximumInputTokens: 4_000,
-            maximumOutputTokens: 256,
+            requiredProvider: 'deepseek',
+            verifyCredential: async (identity, projectId, adapter) => {
+              if (
+                !(adapter instanceof CredentialBackedAIProviderAdapter) ||
+                identity.providerId !== 'deepseek'
+              )
+                throw new Error('RELATION_BUDGET_PAUSED: provider context mismatch');
+              return adapter.captureSingleUse((secret, metadata) => {
+                if (
+                  metadata.projectId !== projectId ||
+                  metadata.providerId !== identity.providerId ||
+                  metadata.credentialId !== identity.credentialId ||
+                  metadata.credentialRevision !== identity.credentialRevision ||
+                  relationCredentialFingerprint(secret) !== relationFingerprint
+                ) {
+                  throw new Error('RELATION_BUDGET_PAUSED: credential account mismatch');
+                }
+              });
+            },
           },
-        ),
-        async (job) =>
-          job.left.sensitivity !== 'restricted' &&
-          job.right.sensitivity !== 'restricted' &&
-          job.left.accessScope.length > 0 &&
-          job.left.accessScope.every((entry) => job.right.accessScope.includes(entry)),
-        'vp-deepseek-relation-v6-evidence-context',
-        60_000,
-        1,
-      );
-      cleanupStack.add('VP DeepSeek relation worker', await vpRelationWorker.startWorker());
+        );
+        const vpRelationWorker = new VPRelationJobWorker(
+          vpRelationJobs,
+          new VPRelationDecisionRouter(
+            undefined,
+            new GeneralAIVPDecisionAdapter(
+              relationResolver,
+              executionBoundRelationLedger(vpRelationJobs),
+            ),
+            {
+              revision: 'vp-deepseek-relation-v6-evidence-context',
+              minimumChoiceProbability: 0.9,
+              maximumDeepAnalysisScore: 0,
+              maximumInputTokens: 4_000,
+              maximumOutputTokens: 256,
+            },
+          ),
+          async (job) =>
+            job.left.sensitivity !== 'restricted' &&
+            job.right.sensitivity !== 'restricted' &&
+            job.left.accessScope.length > 0 &&
+            job.left.accessScope.every((entry) => job.right.accessScope.includes(entry)),
+          'vp-deepseek-relation-v6-evidence-context',
+          60_000,
+          1,
+        );
+        const budgetedWorker = new ExecutionBoundVPRelationDispatcher(
+          vpRelationWorker,
+          globalBudget,
+          'shotgun-app',
+          vpRelationJobs,
+        );
+        cleanupStack.add('VP DeepSeek relation worker', await budgetedWorker.startWorker(60_000));
+      }
     }
     const { server } = application;
 

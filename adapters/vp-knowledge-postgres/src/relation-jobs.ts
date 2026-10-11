@@ -173,6 +173,9 @@ export class PostgresVPRelationJobs
     private readonly pool: Pool,
     private readonly maxDailyProviderAttempts = 100,
     private readonly maxAttemptsPerJob = 3,
+    // Explicit false is reserved for isolated fake/legacy replay harnesses.
+    // Application composition always requires the shared global authority.
+    private readonly globalAuthorityRequired = true,
   ) {
     if (!Number.isSafeInteger(maxDailyProviderAttempts) || maxDailyProviderAttempts < 1) {
       throw new Error('VP daily provider attempt ceiling must be a positive integer.');
@@ -240,10 +243,10 @@ export class PostgresVPRelationJobs
                AND exact_receipt.method = 'DETERMINISTIC'
                AND exact_receipt.task_kind = 'EXACT_TEXT_EQUIVALENCE'
           )
-          AND COALESCE(
+          AND ($5 OR COALESCE(
             (SELECT claimed_count FROM vp.relation_call_budget
               WHERE budget_day = CURRENT_DATE), 0
-          ) < $3
+          ) < $3)
           AND NOT EXISTS (
             SELECT 1 FROM vp.relation_jobs AS existing
              WHERE existing.project_id = left_claim.project_id
@@ -260,13 +263,15 @@ export class PostgresVPRelationJobs
         Math.max(1, Math.min(128, Math.floor(limit))),
         this.maxDailyProviderAttempts,
         this.maxAttemptsPerJob,
+        this.globalAuthorityRequired,
       ],
     );
     return result.rowCount ?? 0;
   }
 
-  async claimNext(policyRevision: string): Promise<VPRelationJob | undefined> {
-    return withSafePostgresTransaction(
+  /** Recovery does not need a provider credential or global authorization. */
+  async recoverExpiredExecutions(): Promise<void> {
+    await withSafePostgresTransaction(
       this.pool,
       async (client) => {
         await client.query(
@@ -328,6 +333,16 @@ export class PostgresVPRelationJobs
                    AND reset_epoch.state <> 'READY'
               )`,
         );
+      },
+      { module: 'vp-knowledge-postgres', operation: 'recover-relation-executions' },
+    );
+  }
+
+  async claimNext(policyRevision: string): Promise<VPRelationJob | undefined> {
+    await this.recoverExpiredExecutions();
+    return withSafePostgresTransaction(
+      this.pool,
+      async (client) => {
         const selected = await client.query<PairRow>(
           `SELECT ${pairProjection}
              FROM vp.relation_jobs AS job
@@ -349,25 +364,14 @@ export class PostgresVPRelationJobs
         );
         const row = selected.rows[0];
         if (!row) return undefined;
-        if (!row.has_stored_provider_output) {
-          await client.query(
-            `INSERT INTO vp.relation_call_budget (budget_day, claimed_count)
-             VALUES (CURRENT_DATE, 0) ON CONFLICT DO NOTHING`,
+        // Explicit legacy fake/replay callers retain their local ceiling, but
+        // selection never consumes an attempt. Normal app mode uses the global authority.
+        if (!this.globalAuthorityRequired && !row.has_stored_provider_output) {
+          const usage = await client.query<{ claimed_count: number }>(
+            'SELECT claimed_count FROM vp.relation_call_budget WHERE budget_day = CURRENT_DATE',
           );
-          const budget = await client.query<{ claimed_count: number }>(
-            `SELECT claimed_count FROM vp.relation_call_budget
-              WHERE budget_day = CURRENT_DATE FOR UPDATE`,
-          );
-          if (
-            (budget.rows[0]?.claimed_count ?? this.maxDailyProviderAttempts) >=
-            this.maxDailyProviderAttempts
-          ) {
+          if ((usage.rows[0]?.claimed_count ?? 0) >= this.maxDailyProviderAttempts)
             return undefined;
-          }
-          await client.query(
-            `UPDATE vp.relation_call_budget SET claimed_count = claimed_count + 1
-              WHERE budget_day = CURRENT_DATE`,
-          );
         }
         const leaseToken = randomUUID();
         await client.query(
@@ -375,10 +379,9 @@ export class PostgresVPRelationJobs
               SET status = 'RUNNING', lease_token = $2,
                   lease_expires_at = clock_timestamp() + interval '2 minutes',
                   next_attempt_at = NULL,
-                  attempt_count = attempt_count + CASE WHEN $3 THEN 0 ELSE 1 END,
                   updated_at = clock_timestamp()
             WHERE job_id = $1`,
-          [row.job_id, leaseToken, row.has_stored_provider_output],
+          [row.job_id, leaseToken],
         );
         return {
           jobId: row.job_id,
@@ -386,7 +389,7 @@ export class PostgresVPRelationJobs
           projectId: row.project_id,
           left: assertion(row, 'left'),
           right: assertion(row, 'right'),
-          attemptCount: row.attempt_count + (row.has_stored_provider_output ? 0 : 1),
+          attemptCount: row.attempt_count,
         };
       },
       { module: 'vp-knowledge-postgres', operation: 'claim-relation-job' },
@@ -396,12 +399,18 @@ export class PostgresVPRelationJobs
   async claim(
     input: Parameters<VPDecisionExecutionRepositoryPort['claim']>[0],
   ): Promise<VPDecisionExecutionClaim> {
+    if (
+      this.globalAuthorityRequired &&
+      (!input.globalClaimId || input.semanticAttemptId !== input.leaseToken)
+    ) {
+      throw new Error('A bound global claim is required before VP relation provider egress.');
+    }
     try {
       return await withSafePostgresTransaction<VPDecisionExecutionClaim>(
         this.pool,
         async (client) => {
-          const active = await client.query(
-            `SELECT 1 FROM vp.relation_jobs
+          const active = await client.query<{ attempt_count: number; max_attempts: number }>(
+            `SELECT attempt_count, max_attempts FROM vp.relation_jobs
               WHERE project_id = $1 AND job_id = $2 AND lease_token = $3
                 AND status = 'RUNNING' AND lease_expires_at > clock_timestamp()
               FOR UPDATE`,
@@ -410,8 +419,9 @@ export class PostgresVPRelationJobs
           if (!active.rowCount) throw new Error('VP relation execution lease is no longer active.');
           const inserted = await client.query(
             `INSERT INTO vp.relation_provider_calls
-               (project_id, job_id, execution_key, request_digest, provider_identity, state)
-             VALUES ($1, $2, $3, $4, $5, 'RUNNING')
+               (project_id, job_id, execution_key, request_digest, provider_identity,
+                global_claim_id, semantic_attempt_id, state)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'RUNNING')
              ON CONFLICT (job_id, execution_key) DO NOTHING
              RETURNING call_id`,
             [
@@ -420,15 +430,41 @@ export class PostgresVPRelationJobs
               input.executionKey,
               input.requestDigest,
               input.providerIdentity,
+              input.globalClaimId ?? null,
+              input.semanticAttemptId ?? null,
             ],
           );
+          if (inserted.rowCount === 1) {
+            if (active.rows[0]!.attempt_count >= active.rows[0]!.max_attempts) {
+              throw new Error('VP relation semantic attempt limit exhausted.');
+            }
+            const budget = await client.query(
+              `INSERT INTO vp.relation_call_budget (budget_day, claimed_count)
+               VALUES (CURRENT_DATE, 1)
+               ON CONFLICT (budget_day) DO UPDATE
+                 SET claimed_count = vp.relation_call_budget.claimed_count + 1
+                 WHERE vp.relation_call_budget.claimed_count < $1
+               RETURNING claimed_count`,
+              [this.globalAuthorityRequired ? 2147483647 : this.maxDailyProviderAttempts],
+            );
+            if (!budget.rowCount) throw new Error('VP local relation provider budget exhausted.');
+            await client.query(
+              `UPDATE vp.relation_jobs SET attempt_count = attempt_count + 1,
+                 updated_at = clock_timestamp()
+               WHERE project_id = $1 AND job_id = $2 AND lease_token = $3`,
+              [input.projectId, input.jobId, input.leaseToken],
+            );
+          }
           const stored = await client.query<{
             readonly request_digest: string;
             readonly provider_identity: string;
+            readonly global_claim_id: string | null;
+            readonly semantic_attempt_id: string | null;
             readonly state: 'RUNNING' | 'OUTPUT_STORED' | 'OUTCOME_UNKNOWN';
             readonly output_json: VPRelationDecision | null;
           }>(
-            `SELECT request_digest, provider_identity, state, output_json
+            `SELECT request_digest, provider_identity, global_claim_id::text,
+                    semantic_attempt_id::text, state, output_json
                FROM vp.relation_provider_calls
               WHERE project_id = $1 AND job_id = $2 AND execution_key = $3
               FOR UPDATE`,
@@ -438,7 +474,9 @@ export class PostgresVPRelationJobs
           if (!row) throw new Error('VP relation provider call was not stored.');
           if (
             row.request_digest !== input.requestDigest ||
-            row.provider_identity !== input.providerIdentity
+            row.provider_identity !== input.providerIdentity ||
+            row.global_claim_id !== (input.globalClaimId ?? null) ||
+            row.semantic_attempt_id !== (input.semanticAttemptId ?? null)
           ) {
             throw new Error('VP relation provider call identity is already bound to other input.');
           }
@@ -448,7 +486,9 @@ export class PostgresVPRelationJobs
             }
             return { status: 'OUTPUT_STORED' as const, decision: row.output_json };
           }
-          if (inserted.rowCount === 1) return { status: 'STARTED' as const };
+          if (inserted.rowCount === 1) {
+            return { status: 'STARTED' as const, callId: inserted.rows[0]!.call_id as string };
+          }
 
           await client.query(
             `UPDATE vp.relation_provider_calls
@@ -484,10 +524,13 @@ export class PostgresVPRelationJobs
       const durable = await this.pool.query<{
         readonly request_digest: string;
         readonly provider_identity: string;
+        readonly global_claim_id: string | null;
+        readonly semantic_attempt_id: string | null;
         readonly state: 'RUNNING' | 'OUTPUT_STORED' | 'OUTCOME_UNKNOWN';
         readonly output_json: VPRelationDecision | null;
       }>(
-        `SELECT request_digest, provider_identity, state, output_json
+        `SELECT request_digest, provider_identity, global_claim_id::text,
+                semantic_attempt_id::text, state, output_json
            FROM vp.relation_provider_calls
           WHERE project_id = $1 AND job_id = $2 AND execution_key = $3`,
         [input.projectId, input.jobId, input.executionKey],
@@ -496,7 +539,9 @@ export class PostgresVPRelationJobs
       if (
         !row ||
         row.request_digest !== input.requestDigest ||
-        row.provider_identity !== input.providerIdentity
+        row.provider_identity !== input.providerIdentity ||
+        row.global_claim_id !== (input.globalClaimId ?? null) ||
+        row.semantic_attempt_id !== (input.semanticAttemptId ?? null)
       ) {
         throw error;
       }
@@ -509,6 +554,90 @@ export class PostgresVPRelationJobs
       }
       return { status: 'OUTCOME_UNKNOWN' };
     }
+  }
+
+  /** Readback never starts a call or consumes a semantic attempt. */
+  async readExecution(
+    input: Parameters<VPDecisionExecutionRepositoryPort['claim']>[0],
+  ): Promise<VPDecisionExecutionClaim | undefined> {
+    const result = await this.pool.query<{
+      request_digest: string;
+      provider_identity: string;
+      state: 'RUNNING' | 'OUTPUT_STORED' | 'OUTCOME_UNKNOWN';
+      output_json: VPRelationDecision | null;
+    }>(
+      `SELECT request_digest, provider_identity, state, output_json
+         FROM vp.relation_provider_calls
+        WHERE project_id = $1 AND job_id = $2 AND execution_key = $3`,
+      [input.projectId, input.jobId, input.executionKey],
+    );
+    const row = result.rows[0];
+    if (!row) return undefined;
+    if (
+      row.request_digest !== input.requestDigest ||
+      row.provider_identity !== input.providerIdentity
+    ) {
+      throw new Error('VP relation provider call identity is already bound to other input.');
+    }
+    if (row.state === 'OUTPUT_STORED') {
+      if (!row.output_json || !validVPRelationDecision(row.output_json)) {
+        throw new Error('Stored VP relation provider output failed integrity validation.');
+      }
+      return { status: 'OUTPUT_STORED', decision: row.output_json };
+    }
+    return { status: 'OUTCOME_UNKNOWN' };
+  }
+
+  async readStoredByJob(input: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly leaseToken: string;
+  }): Promise<VPRelationDecision | undefined> {
+    const result = await this.pool.query<{ output_json: VPRelationDecision }>(
+      `SELECT call.output_json
+         FROM vp.relation_jobs AS job
+         JOIN vp.relation_provider_calls AS call USING (project_id, job_id)
+        WHERE job.project_id = $1 AND job.job_id = $2 AND job.lease_token = $3
+          AND job.status = 'RUNNING' AND job.lease_expires_at > clock_timestamp()
+          AND call.state = 'OUTPUT_STORED'`,
+      [input.projectId, input.jobId, input.leaseToken],
+    );
+    if (result.rows.length === 0) return undefined;
+    if (result.rows.length !== 1 || !validVPRelationDecision(result.rows[0]!.output_json)) {
+      throw new Error('Stored VP relation output failed single-call integrity validation.');
+    }
+    return result.rows[0]!.output_json;
+  }
+
+  async hasActivatedAttempt(input: {
+    readonly jobId: string;
+    readonly semanticAttemptId: string;
+    readonly globalClaimId: string;
+  }): Promise<boolean> {
+    const result = await this.pool.query(
+      `SELECT 1 FROM vp.relation_provider_calls
+        WHERE job_id = $1 AND semantic_attempt_id = $2 AND global_claim_id = $3`,
+      [input.jobId, input.semanticAttemptId, input.globalClaimId],
+    );
+    return result.rowCount === 1;
+  }
+
+  /** A failed authorization returns the lease without inflating semantic attempts. */
+  async pauseUnstarted(input: {
+    readonly jobId: string;
+    readonly leaseToken: string;
+    readonly code: string;
+  }): Promise<void> {
+    await this.pool.query(
+      `UPDATE vp.relation_jobs AS job
+          SET status = 'RETRYABLE', lease_token = NULL, lease_expires_at = NULL,
+              next_attempt_at = clock_timestamp() + interval '1 minute',
+              last_failure_code = $3, updated_at = clock_timestamp()
+        WHERE job_id = $1 AND lease_token = $2 AND status = 'RUNNING'
+          AND NOT EXISTS (SELECT 1 FROM vp.relation_provider_calls AS call
+            WHERE call.project_id = job.project_id AND call.job_id = job.job_id)`,
+      [input.jobId, input.leaseToken, input.code],
+    );
   }
 
   async storeOutput(input: Parameters<VPDecisionExecutionRepositoryPort['storeOutput']>[0]) {
@@ -817,6 +946,9 @@ export class PostgresVPRelationJobs
               END,
               last_failure_code = $4, updated_at = clock_timestamp()
         WHERE job_id = $1 AND lease_token = $2 AND status = 'RUNNING'
+          AND NOT EXISTS (SELECT 1 FROM vp.relation_provider_calls AS call
+            WHERE call.job_id = vp.relation_jobs.job_id
+              AND call.state IN ('RUNNING', 'OUTCOME_UNKNOWN', 'OUTPUT_STORED'))
         RETURNING status`,
       [input.jobId, input.leaseToken, input.nextAttemptAt, input.code],
     );

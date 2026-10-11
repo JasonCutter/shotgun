@@ -147,6 +147,14 @@ skip은 live DeepSeek 4건, opt-in 기존 VP runtime recovery 2건 및 기존 da
 
 ## 9. 후속 우선순위
 
+### Canonical PR 검증 보완
+
+PR #381의 첫 CI는 P0 변경으로 이동한 transaction method 좌표가 current TS6 v8 inventory에 반영되지 않아 실패했다. [좌표 감사](./ts6-coordinate-audit.md)로 현행 inventory와 직접 recovery evidence를 갱신했다. 동결 TS6 history, 판정 validator, CI worker 수와 timeout은 유지했다.
+
+두 번째 CI에서는 이 gate와 전체 일반 테스트가 통과했으나 PostgreSQL storage inventory에서 새 `vp_global_budget` schema가 기존 T3 분류표에 없어 실패했다. [소유권 분류표](../t3-storage-classification-register.md)에 보존 전용 네 테이블을 등록하고 정확한 table 수를 203에서 207로 갱신했다. JSON·JSONB·bytea column은 168개로 동일하다. Project reset owner를 추가하거나 전역 예산 삭제를 허용하지 않았다. 기존 provisioned authority reset 거부 검증을 유지한다.
+
+이 보완은 소유권 문서·검증 기준을 additive migration에 맞춘 것이며 실행·의미 정책 bytes를 바꾸지 않는다. 최종 head, 필수 CI 및 원본/stash 보존 확인은 PR 게시 receipt로 별도 기록한다. Merge와 운영 적용은 승인되지 않았다.
+
 P0 변경 검토·승인 → 운영 전환 조건 확인 → 현행 의미 정책으로 VP 제품 인수 → 정답 신뢰성·복수 해석·분모를 분리한 의미 평가. v11 활성화·새 구조 채택·Gold-B-7·VP-06은 별도 결정이다. 실행 안전 통과만으로 relation 의미 품질·SSC 우수성 또는 전체 VP-05 완료를 주장하지 않는다.
 
 **본 실행은 P0 결과 보고 후 종료한다.**

@@ -1,15 +1,15 @@
 # T3 Project Source 지식 저장소 분류표
 
-> - 상태: **IMPLEMENTATION — migration 113~125의 VP 원장과 26번째 reset owner 포함; 제품 인수 미완료**
+> - 상태: **IMPLEMENTATION — migration 113~125의 VP 원장과 26번째 reset owner, migration 129~130의 보존 전용 실행·예산 권위 포함; 제품 인수 미완료**
 > - DB 기준선: migration 001–077의 190 application base table / 29 schema; T3 reset control table 5개와 VP 원장·작업 table 7개, 전역 호출 예산 table 1개 추가
-> - 기준 content inventory: 203개 table / 168개 JSON·JSONB·bytea column; 검증 migration 001–125, 2026-10-01
+> - 기준 content inventory: 207개 table / 31 schema / 168개 JSON·JSONB·bytea column; 검증 migration 001–130, 2026-10-11
 > - 권위: [ADR-171](../architecture/adr/ADR-171-t3-project-source-knowledge-reset.md)
 
-이 표는 SQL `information_schema.tables`의 전체 190개 base table 목록을 schema별로 묶은 것이다. 구현은 같은 목록을 fresh DB에서 다시 추출해 **새 테이블·누락 테이블이 있으면 Preview와 CI를 실패**시킨다. “프로젝트 전체”라는 이름만으로 보존 대상의 데이터를 지우지 않는다. JSON/파일/캐시도 아래 별도 규칙을 적용한다.
+이 표는 SQL `information_schema.tables`의 전체 207개 base table 목록을 schema별로 묶은 것이다. 구현은 같은 목록을 fresh DB에서 다시 추출해 **새 테이블·누락 테이블이 있으면 Preview와 CI를 실패**시킨다. “프로젝트 전체”라는 이름만으로 보존 대상의 데이터를 지우지 않는다. JSON/파일/캐시도 아래 별도 규칙을 적용한다.
 
 Migration 078의 reset control-plane 3개 table과 migration 101의 Canonical owner snapshot 2개 table은 기존 190개 데이터 지도 밖의 명시적 예외다. Canonical snapshot에는 request 동안만 opaque row identity와 baseline Canonical version/digest를 보관한다. Canonical purge가 성공하면 같은 transaction에서 지우고, 첫 content mutation 전에 실행이 BLOCKED 되면 지우며, OUTCOME_UNKNOWN 상태에서는 forward recovery가 끝날 때까지 유지한다. Migration 079는 durable request에 opaque 설정·owner fingerprint만 추가하고, migration 080은 별도 역할과 Project content write fence, migration 081은 executor 전용 Source Product, migration 082는 Intake submissions purge/readback, 083은 executor control-plane routine, 084–086은 Evidence·Transformation·Ask owner routine과 Ask write fence, 087–089는 Comparison·Validation·Candidate owner routine, 090은 Source-version·revision·Evidence가 모두 일치하는 AI Provider 출력 삭제 및 불명확 호출 blocker, 091은 대상 Project의 Source·Version·영수증·staging lease 정리와 참조되지 않는 CAS DB root 제거, 092는 Knowledge Graph snapshot·overlay health·continuation 무효화, 093은 별도 retention 경계인 Project tombstone·audit scope가 발견되면 실행을 차단하는 guard, 094는 Source 명령 및 Source-linked Ask 명령 payload의 선택적 scrub과 미지원·불명확 command blocker, 095는 External Action snapshot·purge·audit redaction, 096은 Stage 11 Action Candidate/Preview/Approval erasure와 identity tombstone, 097은 Canonical 선행 FK 확인 뒤 Discovery runtime/finding/re-entry 무효화, 098은 Source lineage가 입증된 Knowledge Draft 제거 및 독립 page 보존, 099는 Review payload 삭제와 opaque decision/approval identity 보존, 100은 Search·Compiled Truth·semantic projection purge/readback, 101은 Canonical append-only owner 예외·History scrub·empty-state event를 추가한다. 다른 Project가 사용하는 CAS root는 보존하며 실제 파일은 ADR-170 GC의 quarantine/sweep로 처리한다. 런타임 스키마 검증은 기준 목록과 이 추가 목록의 합집합만 허용한다. reset control-plane에는 Source 원문을 기록하지 않는다.
 
-동일 schema에서 JSON/JSONB/bytea **167개 컬럼(108개 테이블)**을 추출한 정확한 목록은 [T3 content-column inventory](./t3-content-column-inventory.tsv)에 있다. 각 컬럼은 이 표의 row 분류를 상속한다. C 또는 R인 row는 owner가 payload 내부 Source ID·원문·인용·프롬프트 필드의 판정과 scrub 결과를 증명한다. 새 컬럼이나 schema drift는 분류 전까지 U로 취급한다.
+동일 schema에서 JSON/JSONB/bytea **168개 컬럼(110개 테이블)**을 추출한 정확한 목록은 [T3 content-column inventory](./t3-content-column-inventory.tsv)에 있다. 각 컬럼은 이 표의 row 분류를 상속한다. C 또는 R인 row는 owner가 payload 내부 Source ID·원문·인용·프롬프트 필드의 판정과 scrub 결과를 증명한다. 새 컬럼이나 schema drift는 분류 전까지 U로 취급한다.
 
 기호: **P** 보존, **D** Source-derived content 삭제, **R** payload scrub 후 최소 identity 유지, **B** 재구성, **S** 다른 참조 확인 후 CAS GC, **C** Source lineage 조건부, **U** 판정 불가 시 실행 차단.
 
@@ -46,6 +46,17 @@ Migration 078의 reset control-plane 3개 table과 migration 101의 Canonical ow
 | `validation` (1)                | `results`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 대상 Candidate의 D.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 | `vp` (8) | `assertions`, `decision_receipts`, `history_events`, `project_epochs`, `relation_call_budget`, `relation_jobs`, `relation_provider_calls`, `relations` | D. VP 직접 주장·판단·관계·작업·응답은 Source 파생 지식이며 `vp-ledger` owner가 Candidate/Evidence보다 먼저 삭제·검증한다. `relation_call_budget`는 프로젝트 내용을 담지 않는 전역 운영 예산으로 P이며 Project reset에서 유지한다. |
+
+
+| `vp_global_budget` (4) | `authority_store`, `claims`, `daily_usage`, `policies` | P. 독립 전역 실행·예산 권위의 store identity, 정책, UTC 일별 사용량, claim binding과 disposition이다. Project Source reset의 삭제 owner가 아니며 consumed/UNKNOWN 예산을 보존한다. |
+
+### Migration 129–130: 전역 실행·예산 권위 보존
+
+네 테이블의 owner는 `vp-global-provider-budget-postgres`다. 정상 provider 실행은 workload DB와 분리된 기존 persistent authority store를 사용한다. Workload migration은 비어 있는 호환 schema만 생성하며 store/policy를 provision하지 않는다. 운영 권위의 채택·upgrade·reconciliation은 별도 승인 대상이다.
+
+이 schema는 Source 원문, Evidence, provider 응답 또는 credential 비밀을 보관하지 않는다. Credential SHA-256 fingerprint와 opaque job/lease/execution/attempt identity는 감사·중복 방지용 metadata로 보존한다. Project reset의 26개 content owner 순서에 추가하거나 Source 삭제로 budget usage/claim을 해제하지 않는다. `relation_provider_calls`의 새 nullable binding column은 기존 VP receipt row 분류를 상속하며 JSON·JSONB·bytea inventory를 늘리지 않는다.
+
+개발 DB schema reset은 `authority_store`에 identity row가 있으면 거부한다. 미설정 workload copy의 schema reset과 운영 전역 권위 reset은 같은 절차가 아니다. 코드 rollback에서도 전역 사용량·claim·실행 receipt를 보존하고 relation egress를 먼저 정지한다. 격리 DB 검증 근거는 [P0 실행 권위 보고서](./vp05-p0-execution-authority-2026-10-11/report.md)와 `vp05-p0-migration.database.test.ts`, `t3-storage-inventory.database.test.ts`다.
 
 ## Migration 078 additions
 

@@ -3,7 +3,7 @@
   "baseSha": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
   "derivedFrom": {
     "parentArtifact": "artifacts/ts6-phase-b-c2-r15/approved-regression-relations.v8.json",
-    "parentSha256": "5ed74ea14145721def7453d8dac6bfc4bf19d02e478a391c2f779d436c3fa847",
+    "parentSha256": "fab4ac8c7f6e2c4e5b79a5033a860ccfa0e838366ea2f0646c1262cbe7a49d09",
     "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
     "authorityVersion": "ts6.phase-b.current-authority-manifest.v8"
   },
@@ -4198,7 +4198,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:180",
+      "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:182",
       "file": "adapters/frontend-ask-write-postgres/src/index.ts",
       "symbol": "PostgresAskConversationRepository",
       "method": "transaction",
@@ -5035,7 +5035,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:652",
+      "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:674",
       "file": "adapters/frontend-ask-write-postgres/src/index.ts",
       "symbol": "PostgresAskWorkspaceProjection",
       "method": "loadConversation",
@@ -5044,7 +5044,7 @@
         "primitive": "withSafePostgresTransaction"
       },
       "sourceEvidence": {
-        "declarationNeedle": "? await this.loadConversation(input.conversationId, projectId)",
+        "declarationNeedle": "? await this.loadConversation(input.conversationId, projectId, input)",
         "transactionNeedle": "withSafePostgresTransaction"
       },
       "productionReachability": {
@@ -5056,7 +5056,7 @@
             "callExpression": "this.loadConversation(...)",
             "callNeedle": "this.loadConversation(",
             "bindingEvidence": [
-              "? await this.loadConversation(input.conversationId, projectId)"
+              "? await this.loadConversation(input.conversationId, projectId, input)"
             ],
             "regressionEvidenceIds": [
               "test:tests/database/t3-product-acceptance.database.test.ts:creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source"
@@ -5065,7 +5065,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskWorkspaceProjection",
             "receiverType": "PostgresAskWorkspaceProjection",
-            "line": 543,
+            "line": 545,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -5074,7 +5074,7 @@
             "callExpression": "this.loadConversation(...)",
             "callNeedle": "this.loadConversation(",
             "bindingEvidence": [
-              "? await this.loadConversation(input.conversationId, projectId)"
+              "? await this.loadConversation(input.conversationId, projectId, input)"
             ],
             "regressionEvidenceIds": [
               "test:tests/database/t3-product-acceptance.database.test.ts:creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source"
@@ -5083,7 +5083,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskWorkspaceProjection",
             "receiverType": "PostgresAskWorkspaceProjection",
-            "line": 589,
+            "line": 591,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -5092,7 +5092,7 @@
             "callExpression": "this.loadConversation(...)",
             "callNeedle": "this.loadConversation(",
             "bindingEvidence": [
-              "? await this.loadConversation(input.conversationId, projectId)"
+              "? await this.loadConversation(input.conversationId, projectId, input)"
             ],
             "regressionEvidenceIds": [
               "test:tests/database/t3-product-acceptance.database.test.ts:creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source"
@@ -5101,7 +5101,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskWorkspaceProjection",
             "receiverType": "PostgresAskWorkspaceProjection",
-            "line": 615,
+            "line": 617,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -13424,7 +13424,7 @@
       "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2948"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:180",
+      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:182",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/frontend-ask-write-postgres/src/index.ts",
@@ -13434,10 +13434,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:180"
+      "canonicalBoundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:182"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:652",
+      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:674",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
       "file": "adapters/frontend-ask-write-postgres/src/index.ts",
@@ -13447,7 +13447,7 @@
       "productionReachable": true,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:652"
+      "canonicalBoundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:674"
     },
     {
       "candidateId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:110",
@@ -16384,7 +16384,7 @@
       "file": "tests/unit/frontend-ask-write-postgres.test.ts",
       "testName": "does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error",
       "covers": [
-        "safe:adapters/frontend-ask-write-postgres/src/index.ts:180"
+        "safe:adapters/frontend-ask-write-postgres/src/index.ts:182"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskConversationRepository.transaction",
@@ -16584,7 +16584,7 @@
       "file": "tests/database/t3-product-acceptance.database.test.ts",
       "testName": "creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
       "covers": [
-        "safe:adapters/frontend-ask-write-postgres/src/index.ts:652"
+        "safe:adapters/frontend-ask-write-postgres/src/index.ts:674"
       ],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "askForSource",

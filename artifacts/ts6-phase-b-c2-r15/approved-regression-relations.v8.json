@@ -859,7 +859,7 @@
       "testEvidenceId": "test:tests/unit/frontend-ask-write-postgres.test.ts:does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error",
       "file": "tests/unit/frontend-ask-write-postgres.test.ts",
       "testName": "does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error",
-      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:180"],
+      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:182"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskConversationRepository.transaction",
       "path": ["transaction"]
@@ -1006,7 +1006,7 @@
       "testEvidenceId": "test:tests/database/t3-product-acceptance.database.test.ts:creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
       "file": "tests/database/t3-product-acceptance.database.test.ts",
       "testName": "creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
-      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:652"],
+      "covers": ["safe:adapters/frontend-ask-write-postgres/src/index.ts:674"],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "askForSource",
       "path": [

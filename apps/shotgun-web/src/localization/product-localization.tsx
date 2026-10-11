@@ -532,6 +532,8 @@ const enUS = {
     'Refresh is due. Answers must treat this external source as historical until it is checked again.',
   'ask.source_checked': 'External source checked',
   'ask.source_expired': 'This source may be outdated; its claims were treated as historical.',
+  'ask.answer_historical':
+    'This answer cites a previous source version. Its original answer and citations are preserved.',
   'source_detail.vp_auto_heading': 'Automatic knowledge processing',
   'source_detail.vp_auto_explanation':
     'Shotgun processes this source in the background. You can inspect its original text, evidence, and version history while asking questions.',
@@ -1405,6 +1407,8 @@ const koKR: Record<ProductMessageKey, string> = {
     '갱신이 필요합니다. 다시 확인할 때까지 이 외부 자료는 과거 정보로 취급해야 합니다.',
   'ask.source_checked': '외부 자료 확인 시각',
   'ask.source_expired': '이 자료는 오래되었을 수 있어 주장을 과거 정보로 처리했습니다.',
+  'ask.answer_historical':
+    '이 답변은 자료의 이전 버전을 인용합니다. 당시 답변과 인용은 그대로 보존됩니다.',
   'source_detail.vp_auto_heading': '자동 지식 처리',
   'source_detail.vp_auto_explanation':
     '샷건이 이 자료를 백그라운드에서 처리합니다. 원문·근거·버전 기록을 확인하면서 질문할 수 있습니다.',

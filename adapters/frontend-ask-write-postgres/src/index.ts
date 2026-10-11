@@ -112,6 +112,8 @@ type StatementRow = QueryResultRow & {
 };
 
 type CitationRow = QueryResultRow & {
+  readonly citation_authorized: boolean;
+  readonly source_stale: boolean;
   readonly citation_id: string;
   readonly statement_id: string;
   readonly citation_ordinal: number;
@@ -540,7 +542,7 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
     );
 
     const selectedConversation = input.conversationId
-      ? await this.loadConversation(input.conversationId, projectId)
+      ? await this.loadConversation(input.conversationId, projectId, input)
       : undefined;
     const resourceAuthority = input.conversationId
       ? input.executionAuthorities?.[projectId]
@@ -586,7 +588,7 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
   ): Promise<AskConversationView> {
     const projectId = await this.projectForConversation(input.conversationId);
     if (!this.hasProjectAccess(input, projectId)) throw notFound('get-conversation');
-    return this.loadConversation(input.conversationId, projectId);
+    return this.loadConversation(input.conversationId, projectId, input);
   }
 
   async getBranch(
@@ -612,7 +614,12 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
     );
     const row = identity.rows[0];
     if (!row || !this.hasProjectAccess(input, row.project_id)) throw notFound('get-answer-run');
-    const conversation = await this.loadConversation(row.conversation_id, row.project_id);
+    const conversation = await this.loadConversation(
+      row.conversation_id,
+      row.project_id,
+      input,
+      input.answerRunId,
+    );
     for (const branch of conversation.branches) {
       for (const turn of branch.turns) {
         if (turn.answerRun.answerRunId === input.answerRunId) return turn.answerRun;
@@ -640,7 +647,22 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
   private async loadConversation(
     conversationId: string,
     projectId: string,
+    input: FrontendReadScope,
+    answerRunId?: string,
   ): Promise<AskConversationView> {
+    const project = input.accessibleProjects.find((candidate) => candidate.id === projectId);
+    if (!project) throw notFound('load-conversation');
+    const authority = input.executionAuthorities?.[projectId];
+    // Active-project scopes cannot authorize citations belonging to another project.
+    const accessScope =
+      authority?.accessScope ??
+      (input.activeProject?.id === projectId ? input.accessScope : undefined) ??
+      (project.isOwner ? ['owner'] : []);
+    const clearance = authority?.sensitivityClearance ?? project.sensitivityClearance;
+    const sensitivities = Object.keys(sensitivityRank).filter(
+      (level) =>
+        sensitivityRank[level as keyof typeof sensitivityRank] <= sensitivityRank[clearance],
+    );
     const [
       conversationResult,
       branchesResult,
@@ -720,7 +742,17 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
                  citation.external_source_last_checked_at,
                  citation.external_source_freshness_expires_at,
                  citation.external_source_freshness_state,
-                 spans.selectors
+                 spans.selectors,
+                 COALESCE(source.source_id IS NOT NULL
+                   AND cited_version.source_version_id IS NOT NULL
+                   AND spans.evidence_id IS NOT NULL
+                   AND cited_version.access_scope <@ $3::text[]
+                   AND cited_version.sensitivity = ANY($4::text[])
+                   AND spans.access_scope <@ $3::text[]
+                   AND spans.sensitivity = ANY($4::text[]), false) AS citation_authorized,
+                 NOT COALESCE(cited_version.source_version_id = current_version.source_version_id
+                   AND current_version.access_scope <@ $3::text[]
+                   AND current_version.sensitivity = ANY($4::text[]), false) AS source_stale
                FROM frontend_ask.citations AS citation
                JOIN frontend_ask.statements AS statement
                  ON statement.statement_id = citation.statement_id
@@ -731,9 +763,21 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
                 AND spans.project_id = run.project_id
                 AND spans.source_id = citation.source_id
                 AND spans.source_version_id = citation.source_version_id
-              WHERE run.conversation_id = $1
+               LEFT JOIN asset.sources AS source
+                 ON source.source_id = citation.source_id AND source.project_id = run.project_id
+               LEFT JOIN asset.source_versions AS cited_version
+                 ON cited_version.source_version_id = citation.source_version_id
+                AND cited_version.source_id = source.source_id
+               LEFT JOIN LATERAL (
+                 SELECT version.source_version_id, version.access_scope, version.sensitivity
+                   FROM asset.source_versions AS version
+                  WHERE version.source_id = source.source_id
+                  ORDER BY version.version_number DESC LIMIT 1
+               ) AS current_version ON true
+              WHERE run.conversation_id = $1 AND run.project_id = $2
+                AND ($5::text IS NULL OR run.answer_run_id = $5)
               ORDER BY citation.statement_id, citation.citation_ordinal`,
-            [conversationId],
+            [conversationId, projectId, accessScope, sensitivities, answerRunId ?? null],
           ),
         ] as const,
       {
@@ -767,7 +811,10 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
     }
 
     const citationsByStatement = new Map<string, AskCitationView[]>();
+    const staleStatements = new Set<string>();
     for (const row of citationsResult.rows) {
+      if (!row.citation_authorized) throw notFound('load-conversation-citation');
+      if (row.source_stale) staleStatements.add(row.statement_id);
       const citations = citationsByStatement.get(row.statement_id) ?? [];
       citations.push({
         citationId: row.citation_id,
@@ -858,7 +905,9 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
           policyContextRevision: row.policy_context_revision,
           createdAt: row.created_at.toISOString(),
           updatedAt: row.updated_at.toISOString(),
-          stale: false,
+          stale: (statementsByRun.get(row.answer_run_id) ?? []).some((statement) =>
+            staleStatements.has(statement.statementId),
+          ),
           ...(row.attempt_number > 0 ? { attemptNumber: row.attempt_number } : {}),
           ...(row.event_revision > 0 ? { eventRevision: row.event_revision } : {}),
           ...(row.partial_text === null ? {} : { partialText: row.partial_text }),

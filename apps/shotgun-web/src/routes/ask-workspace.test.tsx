@@ -435,71 +435,91 @@ describe('AskWorkspace', () => {
     expect(getProviderEligibility).toHaveBeenCalledTimes(3);
   });
 
-  it('renders ko-KR owner controls while preserving Source and answer content', async () => {
-    const runtime = createRuntime();
-    const mockClient: AskWorkspaceClient = {
-      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
-      getWorkspace: vi.fn().mockResolvedValue(mockWorkspace),
-      getConversation: vi.fn().mockResolvedValue(mockWorkspace.selectedConversation!),
-      getConversationSourceContext: vi.fn(),
-      getBranch: vi.fn(),
-      getAnswerRun: vi
-        .fn()
-        .mockResolvedValue(mockWorkspace.selectedConversation!.branches[0]!.turns[0]!.answerRun),
-      getAnswerRunEvents: vi.fn().mockResolvedValue({
-        schemaVersion: '1.0.0',
-        answerRunId: 'run-1',
-        events: [],
-      }),
-      submitQuestion: vi.fn(),
-      getQuestionSubmissionByClientRequestId: vi.fn(),
-    };
-    const router = createMemoryRouter(
-      [
-        {
-          path: '/',
-          element: <LocalizedShellOutlet />,
-          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+  it.each([false, true])(
+    'renders historical freshness=%s without changing answer content',
+    async (stale) => {
+      const runtime = createRuntime();
+      const workspace: AskWorkspaceView = {
+        ...mockWorkspace,
+        selectedConversation: {
+          ...mockWorkspace.selectedConversation!,
+          branches: mockWorkspace.selectedConversation!.branches.map((branch) => ({
+            ...branch,
+            turns: branch.turns.map((turn) => ({
+              ...turn,
+              answerRun: { ...turn.answerRun, stale },
+            })),
+          })),
         },
-      ],
-      { initialEntries: ['/ask'] },
-    );
-    render(
-      <AppProviders runtime={runtime}>
-        <RouterProvider router={router} />
-      </AppProviders>,
-    );
+      };
+      const mockClient: AskWorkspaceClient = {
+        getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+        getWorkspace: vi.fn().mockResolvedValue(workspace),
+        getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
+        getConversationSourceContext: vi.fn(),
+        getBranch: vi.fn(),
+        getAnswerRun: vi
+          .fn()
+          .mockResolvedValue(workspace.selectedConversation!.branches[0]!.turns[0]!.answerRun),
+        getAnswerRunEvents: vi.fn().mockResolvedValue({
+          schemaVersion: '1.0.0',
+          answerRunId: 'run-1',
+          events: [],
+        }),
+        submitQuestion: vi.fn(),
+        getQuestionSubmissionByClientRequestId: vi.fn(),
+      };
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/',
+            element: <LocalizedShellOutlet />,
+            children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+          },
+        ],
+        { initialEntries: ['/ask'] },
+      );
+      render(
+        <AppProviders runtime={runtime}>
+          <RouterProvider router={router} />
+        </AppProviders>,
+      );
 
-    expect(await screen.findByRole('heading', { name: '질문', level: 1 })).toBeTruthy();
-    const askMode = screen.getByLabelText('질문 방식');
-    expect(within(askMode).getByRole('option', { name: '검증된 지식만 사용' })).toBeTruthy();
-    expect(within(askMode).getByRole('option', { name: '선택한 소스 사용' })).toBeTruthy();
-    await userEvent.selectOptions(askMode, 'SOURCE_EXPLORATION');
-    expect((await screen.findAllByText('소스 범위')).length).toBeGreaterThan(0);
-    expect(await screen.findByText('질문에 사용 가능')).toBeTruthy();
-    expect(screen.getAllByText('버전 1').length).toBeGreaterThan(0);
-    expect(screen.getByText('Canonical knowledge is authoritative.')).toBeTruthy();
-    expect(
-      screen.getByText('이 자료는 오래되었을 수 있어 주장을 과거 정보로 처리했습니다.'),
-    ).toBeTruthy();
-    expect(screen.getByText('(현재 대화)')).toBeTruthy();
-    expect(screen.queryByText('Ask mode')).toBeNull();
-    expect(screen.queryByText('Source context')).toBeNull();
-    expect(screen.queryByText('Available for questions')).toBeNull();
-    expect(
-      screen.queryByText(
-        '현재 배포 정책에서는 이 질문에 필요한 지식 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
-      ),
-    ).toBeNull();
-    expect(
-      screen.queryByText(
-        '이 질문에 필요한 지식 내용을 AI 제공자에게 보내려면 개인정보 전송 허가가 필요합니다.',
-      ),
-    ).toBeNull();
-    expect(
-      screen.queryByText('전송이 제한된 지식 내용은 구성된 AI 제공자에게 보낼 수 없습니다.'),
-    ).toBeNull();
-  });
+      expect(await screen.findByRole('heading', { name: '질문', level: 1 })).toBeTruthy();
+      const askMode = screen.getByLabelText('질문 방식');
+      expect(within(askMode).getByRole('option', { name: '검증된 지식만 사용' })).toBeTruthy();
+      expect(within(askMode).getByRole('option', { name: '선택한 소스 사용' })).toBeTruthy();
+      await userEvent.selectOptions(askMode, 'SOURCE_EXPLORATION');
+      expect((await screen.findAllByText('소스 범위')).length).toBeGreaterThan(0);
+      expect(await screen.findByText('질문에 사용 가능')).toBeTruthy();
+      expect(screen.getAllByText('버전 1').length).toBeGreaterThan(0);
+      expect(screen.getByText('Canonical knowledge is authoritative.')).toBeTruthy();
+      const historicalNotice = screen.queryByText(
+        '이 답변은 자료의 이전 버전을 인용합니다. 당시 답변과 인용은 그대로 보존됩니다.',
+      );
+      expect(Boolean(historicalNotice)).toBe(stale);
+      expect(
+        screen.getByText('이 자료는 오래되었을 수 있어 주장을 과거 정보로 처리했습니다.'),
+      ).toBeTruthy();
+      expect(screen.getByText('(현재 대화)')).toBeTruthy();
+      expect(screen.queryByText('Ask mode')).toBeNull();
+      expect(screen.queryByText('Source context')).toBeNull();
+      expect(screen.queryByText('Available for questions')).toBeNull();
+      expect(
+        screen.queryByText(
+          '현재 배포 정책에서는 이 질문에 필요한 지식 내용을 구성된 AI 제공자에게 보낼 수 없습니다.',
+        ),
+      ).toBeNull();
+      expect(
+        screen.queryByText(
+          '이 질문에 필요한 지식 내용을 AI 제공자에게 보내려면 개인정보 전송 허가가 필요합니다.',
+        ),
+      ).toBeNull();
+      expect(
+        screen.queryByText('전송이 제한된 지식 내용은 구성된 AI 제공자에게 보낼 수 없습니다.'),
+      ).toBeNull();
+    },
+  );
 
   it('shows server-authoritative ACTION_REQUIRED and blocks predictable policy denial', async () => {
     const runtime = createRuntime();

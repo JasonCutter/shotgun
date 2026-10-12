@@ -1,10 +1,10 @@
 # VP-05 A2 — 평가 입력 문맥 및 provenance
 
-- Section decision: **DECIDED_UNDER_USER_DELEGATION — 2026-10-12**
+- Section decision: **A2_CONDITIONALLY_ACCEPTED / A1_DEPENDENCY_CORRECTED / PUBLICATION_HOLD — 2026-10-12**
 - Record identity: `VP05-EVAL-A2-20261012`
-- Dependency: [A1 승인 책임 계약](./a1-reference-review-responsibility.md)을 먼저 확정함
+- Dependency: [A1 검증 책임 계약](./a1-reference-review-responsibility.md)의 후속 사용자 정정 적용. 사용자의 개별 Reference 검토·승인·reviewer 지정 의무 없음
 - Subject: Canonical `main@cd3cc258dcc5033cb61d7f1dc2f221f5e5016ab6`
-- Publication: **LOCAL / PENDING_CANONICALIZATION**. reviewed merge 전 Canonical 아님
+- Publication: **LOCAL / PUBLICATION_HOLD**. reviewed merge 전 Canonical 아님
 - New evaluations / provider calls / individual Reference approvals: **0 / 0 / 0**
 
 ## 1. 확정 결정 — 제품 문맥을 primary로, claim-only를 별도로
@@ -67,15 +67,15 @@ context 부재는 `null/undefined`의 실제 상태로 기록하며, primary pro
 
 ## 5. 문맥 부족 및 미평가 처리
 
-| 상황                                                   | 결정                                                                | 점수/승인 경계                                                                                                       |
-| ------------------------------------------------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| 전달 입력과 허용 형식 규칙으로 충분                    | 정확한 입력에 대해 A1 인간 review/승인 진행                         | 승인된 tuple/reference만 미래 의미 지표 사용 가능                                                                    |
-| 제목/조건/대상/formula/인과 bridge가 없음 또는 crop 밖 | `CONTEXT_INSUFFICIENT`와 누락 요소·위치를 기록                      | 기존 positive label을 강제하지 않음. 충분 입력의 positive/negative certification 분모에서 제외하고 제외 수/비율 공개 |
-| 입력 부족 자체를 실제 인간이 확인·승인                 | 별도 insufficient-input/abstention diagnostic reference로 기록 가능 | 현재 target API가 지원하는 UNRESOLVED 및 불확실성 표시에 관한 검토. positive miss로 자동 처리하지 않음               |
-| 여러 타당한 해석                                       | 각 warrant와 승인 범위를 기록                                       | 자동 단일 label 또는 AI 다수결 금지. A3 taxonomy/metric 미결정 보존                                                  |
-| source/hash/version/context 재구성 불일치              | `INPUT_PROVENANCE_INVALID`                                          | 의미 채점 중단, 모델 오판으로 합산하지 않음                                                                          |
-| 인가/DB 권위 조회 실패, evidence 접근 불가             | `AUTHORITY_OR_ACCESS_FAILURE`                                       | 다른 근거로 우회하지 않고 실행·보안 문제로 분리. NO_RELATION/semantic abstention 성공으로 위장하지 않음              |
-| provider 결과/commit 불명                              | 기존 OUTCOME_UNKNOWN 증거 유지                                      | 자동 재호출·새 input 재구성으로 결과 교체 금지                                                                       |
+| 상황                                                                     | 결정                                                                | 점수/승인 경계                                                                                                       |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 전달 입력과 허용 형식 규칙으로 충분                                      | 보정 A1의 외부 적격 인간/동등 reference 검증 provenance 확인        | 확인된 범위의 tuple/reference만 인증 측정 후보. 사용자 review/승인 요구 없음                                         |
+| 제목/조건/대상/formula/인과 bridge가 없음 또는 crop 밖                   | `CONTEXT_INSUFFICIENT`와 누락 요소·위치를 기록                      | 기존 positive label을 강제하지 않음. 충분 입력의 positive/negative certification 분모에서 제외하고 제외 수/비율 공개 |
+| 입력 부족 자체의 외부 독립 인간 검증 또는 동등 reference provenance 확인 | 별도 insufficient-input/abstention diagnostic reference로 기록 가능 | 현재 target API가 지원하는 UNRESOLVED 및 불확실성 표시에 관한 검토. positive miss로 자동 처리하지 않음               |
+| 여러 타당한 해석                                                         | 각 warrant와 승인 범위를 기록                                       | 자동 단일 label 또는 AI 다수결 금지. A3 taxonomy/metric 미결정 보존                                                  |
+| source/hash/version/context 재구성 불일치                                | `INPUT_PROVENANCE_INVALID`                                          | 의미 채점 중단, 모델 오판으로 합산하지 않음                                                                          |
+| 인가/DB 권위 조회 실패, evidence 접근 불가                               | `AUTHORITY_OR_ACCESS_FAILURE`                                       | 다른 근거로 우회하지 않고 실행·보안 문제로 분리. NO_RELATION/semantic abstention 성공으로 위장하지 않음              |
+| provider 결과/commit 불명                                                | 기존 OUTCOME_UNKNOWN 증거 유지                                      | 자동 재호출·새 input 재구성으로 결과 교체 금지                                                                       |
 
 분모 제외는 사례를 삭제하는 것이 아니다. 원래 제출 수, 적격 수, 제외·분쟁·부족·invalid/runtime 수와 이유를 함께 보존한다. missing context를 정답처럼 채워 넣는 것도, 모든 어려운 사례를 숨겨 점수를 높이는 것도 허용하지 않는다. 구체적인 metric 공식·threshold·실행 표본은 A2로 확정하지 않는다.
 
@@ -98,8 +98,9 @@ Phase A에서 IRR/현재가치 2쌍의 evaluator-only 문맥과 432 claim-only v
 
 영향은 미래 평가 input profile과 human reference의 판정 범위에 한정한다. 실제 source 선택·context SQL·prompt/schema·model·confidence gate·Source/Evidence/권한·Ledger·budget/실행 authority는 변경하지 않는다. A1과 ADR-098/172/173의 인간 검증/제품 경계를 보완하며 상위 정책을 대체하지 않는다.
 
-미결사항은 taxonomy/metric(A3 이후), 대표 집합의 case별 인간 검토와 critical/question obligations, 실제 reviewer 지정, 미래 실행/게시 승인이다. 위 profile 선택과 외부 전제·부족 처리 기준은 이 Section에서 결정 완료했다. 새로운 문맥 권위를 채택할 필요는 없었다.
+미결사항은 taxonomy/metric(A3 이후), 대표 집합의 외부 독립 검증 provenance와 critical/question obligations, 미래 실행/게시 허가다. 증거 확보·분류 운영은 상위 에이전트가 담당하고 사용자에게 reviewer 지정/Reference 검토·승인을 요구하지 않는다. 기존 profile 선택·외부 전제·부족 처리 기준을 유지하며 새로운 문맥 권위를 도입하지 않는다.
 
 ## 7. 변경 이력
 
 - 2026-10-12: A1 확정 후 A2를 결정. 기존 2,000 code-point 동일 EvidenceSpan Port/projection을 primary 기준으로 재사용, claim-only 분리. runtime ellipsis와 raw quote의 차이, provenance 강도 및 현재 v6 6종/로컬 v11 7종 차이를 명시. 어떤 과거 label/점수도 재작성하지 않음.
+- 2026-10-12, 후속 사용자 정정: A2 조건부 수용과 publication HOLD를 기록하고 A1 종속 검증 주체 표현만 정합화. EvidenceSpan primary, claim-only 분리, 외부 전제·실제 input provenance·v6/v11·문맥 부족 처리 계약은 그대로 유지.

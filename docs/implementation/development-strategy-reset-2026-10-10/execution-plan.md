@@ -49,4 +49,4 @@ Canonical 게시 상태는 ADR-173의 Publication을 따른다. 이 문서와 �
 
 ## 2026-10-12 후속 결정 — A1·A2 위임 구체화
 
-위 미결사항은 2026-10-10 기록으로 보존한다. 사용자의 후속 위임에 따라 [A1·A2](../../architecture/add/vp05-evaluation-trust/README.md)를 로컬 결정했다. A1의 인간 승인 owner/독립 reviewer·증빙 절차와 A2의 product context primary/claim-only 별도·외부 전제·provenance·부족 처리 기준은 구체화 완료다. 실제 사람 지정/Reference 검토·승인은 미수행이며 taxonomy/metric/대표 집합과 실험·게시 승인은 남는다. 기존 Phase A 초안은 역사 기록으로 보존하고 새 Gold나 평가 권위로 자동 채택하지 않는다. 두 Section 완료 후 STOP하며 다른 A–E 작업을 시작하지 않는다.
+위 미결사항은 2026-10-10 역사 기록으로 보존한다. 선행 A1·A2 위임 결정 `e8d0f7d769722f4482ff26a9828812f37e1270cc` 이후 사용자 독립 검토 정정에 따라 [현재 A1·A2](../../architecture/add/vp05-evaluation-trust/README.md)를 보정했다. 사용자 최종 Reference 승인·reviewer 지정 구조는 대체됐으며, 자료 준비·기계 검증·외부 독립 검증 증거 수집·분류·측정 운영은 상위 에이전트 책임이다. 사용자는 개별 reviewer/approver·검토자 지정 의무를 맡지 않는다. 확인된 외부 적격 인간/동등 reference provenance가 없으면 CANDIDATE/UNVERIFIED로 유지하고 제품에 승인 클릭을 추가하지 않는다. A2 context primary/claim-only 별도·외부 전제·input provenance·v6/v11·부족 처리는 유지한다. 실제 Gold 확보와 taxonomy/metric/대표 집합·평가 실행은 미수행이다. Phase A 초안은 비활성 역사 기록으로 보존하고 publication HOLD 및 후속 작업 STOP을 유지한다.

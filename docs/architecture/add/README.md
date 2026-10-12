@@ -74,4 +74,4 @@ PR #48의 Ask Write·Persistence·Outcome Recovery 구현과 검증은 유효한
 
 ## 2026-10-12 VP 평가 Section 구체화 — 로컬 게시 대기
 
-[VP-05 A1·A2 결정 기록](vp05-evaluation-trust/README.md)은 사용자가 위임한 정답 승인 책임 및 평가 문맥의 구체화다. A1을 먼저 결정한 뒤 A2를 결정했으며, 기존 Phase 승인 이력과 상위 ADR은 유지한다. 개별 Gold 인간 승인·새 평가 실행·Canonical 게시·VP-05 완료는 아니다. reviewed main merge 전에는 로컬 결정 기록이며 [결과 보고](../../implementation/vp05-evaluation-trust-a1-a2-2026-10-12/report.md)의 상태를 따른다.
+[VP-05 A1·A2 기록](vp05-evaluation-trust/README.md)은 선행 위임 결정 뒤의 명시적 사용자 독립 검토 정정을 반영한다. 사용자 최종 Reference 승인·reviewer 지정 의무를 제거하고 agent 운영과 사용자 외부 독립 의미 검증/동등 reference provenance를 분리했다. A2 문맥 계약과 기존 Phase 승인 이력은 유지한다. 선행 A1은 Git 이력으로 보존하되 현재 사용자 의무로 적용하지 않는다. 새 Gold·평가 실행·Canonical 게시·VP-05 완료가 아니며 publication HOLD와 [결과 보고](../../implementation/vp05-evaluation-trust-a1-a2-2026-10-12/report.md)의 상태를 따른다.

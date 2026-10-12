@@ -1,30 +1,32 @@
 # VP-05 A1 — Reference 승인 책임 및 독립 검토
 
-- Section decision: **DECIDED_UNDER_USER_DELEGATION — 2026-10-12**
+- Section decision: **CORRECTED_PER_USER_REVIEW / PUBLICATION_HOLD — 2026-10-12**
 - Record identity: `VP05-EVAL-A1-20261012`
 - Subject: Canonical `main@cd3cc258dcc5033cb61d7f1dc2f221f5e5016ab6`
-- Decision maker: 상위 실행 에이전트, 사용자의 A1·A2 구체적 계약 결정 위임 범위
-- Publication: **LOCAL / PENDING_CANONICALIZATION**. reviewed merge 전 Canonical 아님
+- Decision maker: 상위 실행 에이전트, A1·A2 위임과 후속 명시적 사용자 정정 범위
+- Review subject: `e8d0f7d769722f4482ff26a9828812f37e1270cc`; 후속 `A1_CHANGES_REQUIRED / A2_CONDITIONALLY_ACCEPTED / PUBLICATION_HOLD`가 현재 적용 계약
+- Publication: **LOCAL / PUBLICATION_HOLD**. reviewed merge 전 Canonical 아님
 - Individual Reference approvals issued by this Section: **0**
 - Governing policies: [ADR-098](../../adr/ADR-098-stage-12-1-quality-evaluation-contract.md), [ADR-173](../../adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md), [문서 권위](../../../CANONICAL.md)
 
 ## 1. 확정 결정
 
-평가 계약의 구체화는 위임받은 에이전트가 수행하되 **개별 의미 Reference의 승인 책임자는 현재 Project Shotgun 사용자/프로젝트 소유자인 실제 사람**으로 고정한다. 에이전트는 자료 정리, 구조 검사, 대안 및 반례 제안, 절차 운영을 맡는다. 개별 정답의 인간 검증·최종 승인 권한은 에이전트에게 주어지지 않는다.
+**Shotgun 사용자는 개별 Reference의 reviewer/approver가 아니며 reviewer 지정 의무도 없다.** Project Owner는 아키텍처·정책·게시·실행 범위에 관한 승인 역할을 유지한다. 그 역할과 개별 reference의 의미 검증은 별개다. 일반 자료 투입·질문·관계·AI 결과에 사용자 Review/Approval 클릭을 추가하지 않는다.
 
-기본 최소 절차는 **작성자 + 독립 인간 검토자 1명 이상 + 검토자와 다른 인간 최종 승인자**다. 최종 승인자는 기술 검토를 전부 다시 수행하는 역할이 아니라 검토의 범위·근거·미결사항과 책임을 확인해 해당 reference revision을 승인하는 역할이다. 전문성이 없는 승인자의 수락을 두 번째 분야 검증으로 세지 않는다.
+상위 에이전트가 평가 자료 준비·기계적 검증·증거 수집·분류·측정 운영을 담당한다. 인증에 필요한 독립 의미 검증은 **사용자 외부의 적격 인간 검토자** 또는 **동등한 독립 의미 검증 provenance를 확인한 외부 reference**로 충족한다. 에이전트가 이 증거를 확보하지 못하면 CANDIDATE/UNVERIFIED로 유지한다. 이를 사용자의 승인 대기로 돌리거나 AI 검증으로 대신 채우지 않는다.
 
 ### 역할과 실제 책임
 
-| 역할                  | 담당 / 권한                                                                                             | 하지 않는 일                                                                 |
-| --------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| 계약·packet 운영자    | 위임받은 상위 에이전트. exact input, source/provenance, 이력, 후보 tuple, validation 결과를 준비        | AI 간 합의나 자신의 해석을 인간 의미 검증으로 인증하지 않음                  |
-| Reference 작성자      | 사람 또는 AI. 작성 방식·사용 모델/보조 도구·자신의 개입을 기록                                          | 자신의 label을 독립 검증한 것으로 세지 않음                                  |
-| 독립 의미 검토자      | 소유자가 지정한 실제 사람. case별 독립성·전문성·검토 범위를 확인한 후 판단                              | 해당 case label/프롬프트/판정기 개선의 작성자가 자신의 기준을 심사하지 않음  |
-| 최종 Reference 승인자 | 현재 실제 사용자/프로젝트 소유자. 검토자와 다른 사람. 명시적 case/input/tuple revision을 승인·거부·보류 | 전체 corpus freeze, 실행 허가, 문서 위임을 개별 label 승인으로 치환하지 않음 |
-| 추가 adjudicator      | 의미 이견이 해소되지 않을 때 소유자가 지정하는 다른 적격 인간 검토자                                    | 표결/다수결로 타당한 반대 해석을 지우지 않음                                 |
+| 역할                              | 담당 / 권한                                                                                                          | 하지 않는 일                                                                                         |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 계약·packet 운영자                | 위임받은 상위 에이전트. exact input, source/provenance, 이력, 후보 tuple, validation 결과를 준비                     | AI 간 합의나 자신의 해석을 인간 의미 검증으로 인증하지 않음                                          |
+| Reference 작성자                  | 사람 또는 AI. 작성 방식·사용 모델/보조 도구·자신의 개입을 기록                                                       | 자신의 label을 독립 검증한 것으로 세지 않음                                                          |
+| 독립 의미 검토자 / 외부 검증 주체 | 사용자 외부의 적격 실제 사람 또는 그 검토를 입증하는 외부 reference의 검증 주체. case별 전문성·독립성·검증 범위 기록 | 해당 case의 작성자가 자신을 독립 reviewer로 세거나 AI 검증을 인간 검증으로 표시하지 않음             |
+| 평가 증거 운영자                  | 상위 에이전트. 적격 검토/외부 검증 provenance 확보 경로를 관리하고 exact input과 검증 범위의 대응·보존을 확인        | 사용자를 reviewer 지정자/개별 의미 승인자로 배정하지 않음; 자신의 판단만으로 인증 Gold를 만들지 않음 |
+| 추가 외부 검토자                  | 이견이 해소되지 않을 때 적격성과 독립성을 확인할 다른 사용자 외부 인간 검토자                                        | 증거가 없으면 미해결 유지. 표결로 타당한 반대 해석을 지우지 않음                                     |
+| Project Owner                     | 아키텍처·평가 정책·게시·실행 권한의 승인 범위 유지                                                                   | 개별 Reference 검토·검증·승인 또는 reviewer 지정 의무를 맡지 않음                                    |
 
-현재 검토자로 지정·확인된 사람은 없다. 이것은 A1 계약의 미결정이 아니라 **개별 Reference 검토의 미수행 상태**다. 에이전트가 실존하지 않는 reviewer 이름이나 승인 receipt를 만들지 않는다. 지정된 사람이 없으면 해당 case는 CANDIDATE/승인 미확인으로 남는다. 최종 승인자의 교체나 인간 승인을 AI에게 넘기는 변경은 이번 위임에 포함하지 않는다.
+현재 이 작업에서 적격 외부 검토자나 동등한 외부 reference 검증 증거를 확보한 것은 없다. **새 인증 Gold는 0건**이다. 실존하지 않는 reviewer·review·승인 receipt를 만들지 않는다. 증거 미확보는 평가 인증 수준의 제한이며 정상 제품 사용에 사용자 승인 절차를 추가하는 사유가 아니다. 이번 작업에서 외부 사람에게 연락하거나 reference를 새로 채점하지 않는다.
 
 ### 전문성·독립성 요건
 
@@ -34,28 +36,42 @@
 4. 첫 판단은 제공될 입력·정책 정의·허용 전제로 수행하며 기존 label·모델 응답·점수를 가린다. 그 후 기존 기록과 비교하고 이견을 기록한다. 과거 노출이 있으면 공개한다. 이 절차가 노출된 72쌍을 새 blind holdout으로 바꾸지는 않는다.
 5. AI 도구의 사용은 공개한다. 사람이 원문·논증·반대 해석을 실제로 확인하고 자기 판단에 책임질 때만 인간 검토로 기록한다. AI 결과를 읽지 않고 전달/서명하는 것은 독립 검토가 아니다.
 
-Critical case를 포함해 최소 독립 인간 검토 1명과 별도 승인자 원칙을 유지한다. material disagreement 또는 reviewer의 전문성 범위를 넘는 전제가 있으면 별도의 적격 reviewer/adjudicator가 필요하며 해소 전 승인하지 않는다. 모든 간단한 문장에 다수 모델/다수 전문가를 의무 호출하는 절차는 도입하지 않는다.
+Critical case에도 독립 인간 의미 검증의 범위·근거를 확인한다. material disagreement 또는 전문성 부족이 해소되지 않으면 분쟁/UNVERIFIED로 유지한다. 외부 검증 기관의 역할 분리와 추가 검토가 실제로 있다면 그대로 기록하며, 없는 두 번째 승인자나 두 번의 독립 검토를 만들어 세지 않는다. 사용자 최종 승인자 또는 일률적인 두 인간 승인 단계를 인증 조건으로 요구하지 않는다.
 
 ## 2. 실제 검토와 승인 증빙
 
-1. 운영자가 기존 label과 구분된 versioned packet을 준비한다. input 범위는 A1 완료 후 결정할 A2를 따른다. 이 단계에서 AI 후보를 approved로 표시하지 않는다.
-2. 소유자가 사람을 지정하고 stable reviewer identity, 역할, 전문성 범위, 독립성/노출 선언을 기록한다. pseudonym은 가능하나 소유자가 실제 사람 및 책임 대응 관계를 확인할 수 있어야 한다. 계정명·Git author만으로 인간 여부를 추정하지 않는다.
-3. reviewer가 동일 입력에서 관계 종류·방향·근거·허용 가정·반대 해석·판정 가능성을 직접 기록한다. 구조 검사 성공은 의미 검토 결과와 별도로 남긴다.
+1. 상위 에이전트가 기존 label과 구분된 versioned packet을 준비하고 A2의 exact input·권한·version·digest를 기계적으로 확인한다. AI 후보는 CANDIDATE다.
+2. 사용자 외부의 적격 검토 증거나 외부 reference provenance를 확보·확인한다. 인간 identity/역할·전문성·독립성·검토 시점·범위를 확인할 수 있어야 한다. pseudonym은 가능하나 감사 가능한 책임 대응이 필요하다. 계정명·Git author·기관 이름만으로 인간 검증을 추정하지 않는다. 증거 확보를 사용자 지정 의무로 넘기지 않는다.
+3. 새 외부 인간 검토 경로에서는 동일 입력의 종류·방향·근거·가정·반대 해석·판정 가능성 및 검증 결과를 기록한다. 이미 검증된 외부 reference 경로에서는 그 검증 기록과 아래의 동등성 요건을 확인한다. 구조 검사와 의미 검증은 별도다.
 4. 단일 정답을 강제하지 않는다. 복수의 타당한 해석은 근거에 결합된 허용 tuple로 제시하며, 분쟁·문맥 부족·구조 불능은 미해결로 남긴다. 구체적인 taxonomy와 metric 결정은 이번 A1의 범위를 넘으며 미확정 계약을 조용히 채택하지 않는다.
-5. 최종 승인자가 정확한 packet/reference revision과 digest, 승인/거부/보류, 이유·범위·날짜를 명시한다. case ID 목록과 각 digest가 있으면 일괄 승인도 가능하지만 단순 "72쌍 승인" 또는 "실험 진행"으로는 부족하다.
-6. 승인 기록과 검토 원문을 Git-backed artifact로 보존한다. chat에서 명시한 사람의 승인도 원문 출처와 대상 digest를 안전하게 Git 기록으로 옮겨 reviewed merge를 거쳐야 한다. 파일 이동이나 승인자 교체로 기존 이력을 지우지 않는다.
+5. 외부 검증 주체의 실제 검증/승인 결과를 정확한 case/input/tuple revision·digest·날짜·범위·제한과 연결한다. 기존 검증 자료의 재사용도 실제 기록이 있어야 하며 에이전트가 그 사람을 대신해 승인하지 않는다. 단순 "72쌍 승인"·실험 허가·모델 합의는 개별 의미 검증 증거가 아니다.
+6. 원래 검토·검증·승인 provenance와 에이전트의 대응 검사 결과를 Git-backed artifact 또는 checksum/access/retention을 가진 안전한 reference manifest로 보존한다. 문서 main 게시와 인증 수준을 구분한다. 자료 이관으로 과거 검토자를 현재 새 case의 승인자로 바꾸지 않는다.
+
+### 외부 reference의 동등한 검증 provenance
+
+외부 자료를 인증 기준으로 사용할 때는 source/label/input revision과 실제 인간 의미 검증 절차·책임·결과·이견 처리를 추적할 수 있어야 한다. 검증이 관계 종류뿐인지, 방향·근거·조건까지 포함하는지 범위를 확인한다. 라이선스·접근·보존 권한과 exact bytes/digest도 확인한다.
+
+외부 label 정의와 Shotgun target policy/input profile의 대응은 별도다. 외부 NLI entailment label을 SUPPORTS/QUALIFIES 정답으로 자동 변환하거나, 원문 fact의 공식 출처를 Shotgun 관계 검증으로 취급하지 않는다. 변환/문맥 축소/label mapping으로 의미가 달라지면 해당 대응의 독립 의미 검증이 추가로 확인돼야 한다. 단순 기계적 mapping 또는 에이전트의 "동등하다"는 해석은 인증 근거가 아니다. 증명된 범위 밖은 UNVERIFIED다. A2의 미전달 문맥 금지와 v6/v11 구분을 그대로 적용한다.
 
 **최소 증빙 필드**
 
 - case/reference revision, actual input bundle digest, 허용 tuple/evidence/warrant/assumption digest, 적용 policy/profile identity.
-- 작성자/작성 방식, reviewer의 확인 가능한 인간 identity 및 지정 근거, 승인자의 확인 가능한 인간 identity.
+- 작성자/작성 방식, 사용자 외부 검증 주체의 확인 가능한 인간 identity/책임·적격성 근거 또는 동등한 외부 검증 절차의 provenance.
 - reviewer의 전문성·독립성·기존 노출·AI 보조 사용과 실제 review note/반대 해석.
-- 승인 대상 목록, 결정·시각·범위·이유와 원문 승인 증거의 위치/digest.
+- 실제 검증 대상·결과·시각·범위·이유, 존재하는 경우 원래 승인 기록의 위치/digest. 에이전트 대응 검사는 별도 필드.
 - 구조 검사 결과, unresolved 사유, 이전 revision/승인과의 관계, 보존 위치, Git publication 상태.
 
 기존 versioned Markdown/JSON과 Git provenance로 기록한다. 새 서명 서비스, owner DB, OS SID receipt, Vault 또는 운영 Approval Runtime을 만들지 않는다. P0 유지보수의 OS→owner 권한 위임은 평가 정답 승인 증거로 재사용하지 않는다.
 
-사람의 명시적 승인과 검토는 `HUMAN_REVIEWED / APPROVED_PENDING_CANONICALIZATION`의 증거 차원이고, Git main 게시가 Canonical publication 차원이다. 둘을 합치지 않는다. **인증 Gold 사용에는 둘 모두와 일치하는 input/profile/reference identity가 필요하다.** merge만으로 미승인 label이 Gold가 되지 않으며, label 승인도 새로운 평가 실행 권한을 주지 않는다. 이 명칭들은 문서의 증거 상태이며 생산 상태 enum 변경이 아니다.
+독립 인간 의미 검증(또는 그와 동등함이 확인된 외부 검증 provenance), exact input/profile/reference 대응, Git main의 평가 기준 게시, 실제 실행 허가는 서로 다른 차원이다. **인증 Gold는 실제 검증 증거가 커버하는 범위에만 한정한다.** 자동 검증·AI 합의·confidence·main merge·Project Owner의 정책 승인을 인간 의미 승인으로 기록하지 않는다. 새로운 평가 실행은 별도 허가가 필요하다. 아래는 평가 문서의 상태이며 생산 enum 변경이 아니다.
+
+| 증거 상태                                            | 향후 채점 가능 범위 / 보고                                                                      | 경계                                                           |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| CANDIDATE / UNVERIFIED                               | 허가된 미래 진단에서 구조 검사, provenance/일관성, 후보 기준과의 일치 등을 명시적으로 보고 가능 | 인증 의미 정확도·객관 오류율·인간 승인으로 보고하지 않음       |
+| INDEPENDENT_SEMANTIC_EVIDENCE_CONFIRMED              | 외부 인간/동등 외부 reference 검증과 exact profile이 커버하는 종류·방향·근거만 인증 측정 후보   | 미검증 field/mapping/context는 N/A 또는 UNVERIFIED로 별도 보고 |
+| DISPUTED / CONTEXT_INSUFFICIENT / PROVENANCE_INVALID | 문제·제외 수/비율, 승인된 부족 입력 diagnostic이 있으면 그 범위만 사용                          | 어려운 사례를 숨겨 점수를 높이거나 모델 오판으로 단정하지 않음 |
+
+이번 작업은 증거 분류 계약 보정이며 새 평가 실행·Gold 채택·threshold 변경을 수행하지 않는다. 인증 Gold가 없어도 기존 정책·원장·근거·권한·불확실성 표시를 유지한 일반 Shotgun 자료 투입/질문은 사용자 검토 클릭 없이 동작한다. 그 제품 동작을 인증 의미 품질로 과장하지 않는다.
 
 ## 3. 근거와 기존 승인 이력
 
@@ -65,22 +81,25 @@ Critical case를 포함해 최소 독립 인간 검토 1명과 별도 승인자 
 - [Phase 4 ADD](../phase-04-comparison-change-approval/add.md)의 AI 보조/다수결 비권위 원칙은 유지한다. 평가 label은 test oracle이고 제품 Claim/Fact 또는 VP 지식 승인과 별개다.
 - ADR-117/120 및 docs/CANONICAL.md의 승인·merge 분리는 유지한다. 기존 ADR-098의 2026-07-22 Claim/Search 승인과 제품·P0·PR 승인들은 원래 범위 그대로 보존한다.
 
-이번 사용자의 위임은 **계약의 구체적 결정을 에이전트가 완료하도록 허용**한 것이다. 기존 "사용자가 세부 절차를 모두 다시 선택해야 한다"는 Phase A의 대기 해석은 이 Section 범위에서 해소한다. **개별 의미 label 승인과 핵심 승인 권위의 위임은 포함하지 않는다.** 기존 사용자 결정의 취소/대체는 없다.
+선행 A1 위임 결정의 사용자 최종 Reference 승인/검토자 지정 구조는 후속 명시적 사용자 정정으로 **대체됐다**. 그 구조는 `e8d0f7d769722f4482ff26a9828812f37e1270cc`의 역사 기록에 보존한다. 현재 적용 계약은 사용자 개인의 지식·관계·AI 결과 검토 의무를 제외하며, ADR-098의 인간 의미 검증 경계와 ADR-172/173의 자동 제품 사용 원칙을 함께 유지한다. Owner의 아키텍처·정책 승인, 과거 실제 승인 기록의 원래 범위는 유지한다.
 
 ## 4. 제외 대안·영향·미결사항
 
-| 대안                                                           | 제외 이유                                                          |
-| -------------------------------------------------------------- | ------------------------------------------------------------------ |
-| 상위 에이전트를 Gold 최종 승인자로 지정                        | ADR-098/173 및 이번 위임의 인간 검증 경계 위반                     |
-| 여러 AI의 합의 또는 confidence로 독립 review 대체              | 서로 다른 모델도 인간 승인 증거가 아니며 공통 오류 가능            |
-| corpus 실행/freeze 승인을 label 승인으로 간주                  | 승인 대상·의미·digest와 책임이 다름                                |
-| reviewer와 approver를 같은 사람으로 채우고 두 독립 검토로 계산 | 역할·검증 수준을 부풀림                                            |
-| 새 registry/서명/운영 DB 구축                                  | 문서·기존 Git만으로 필요한 범위를 충족하며 불필요한 핵심 권위 추가 |
+| 대안                                                            | 제외 이유                                                          |
+| --------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 사용자를 개별 Reference 검토/승인자 또는 reviewer 지정자로 강제 | 후속 사용자 정정 및 Shotgun의 자료 투입·질문 자동 제품 원칙과 충돌 |
+| 상위 에이전트의 판단을 독립 인간 의미 검증으로 기록             | ADR-098/173의 인간 검증 경계 위반                                  |
+| 여러 AI의 합의 또는 confidence로 독립 review 대체               | 서로 다른 모델도 인간 승인 증거가 아니며 공통 오류 가능            |
+| corpus 실행/freeze 승인을 label 승인으로 간주                   | 승인 대상·의미·digest와 책임이 다름                                |
+| 존재하지 않는 별도 approver 또는 두 독립 검토를 기록            | 실제 provenance 이상의 역할·검증 수준을 부풀림                     |
+| 공식 원문/외부 dataset이라는 이름만으로 Gold 지정               | 원문 사실성·라벨 검증·Shotgun tuple/input 대응은 다른 증거         |
+| 새 registry/서명/운영 DB 구축                                   | 문서·기존 Git만으로 필요한 범위를 충족하며 불필요한 핵심 권위 추가 |
 
 영향은 미래 평가 packet의 책임·검토·승인 증거 요건에 한정한다. Ledger·제품 사용 흐름·SourceVersion·보안·예산·모델·prompt/schema·0.9·현재 v6 또는 보존 v11은 변경하지 않는다. 72/432/B 원본과 과거 승인 상태는 그대로다.
 
-남은 것은 실제 사람의 지정/독립 검토·개별 승인의 수행, taxonomy/측정 계약 및 대표 집합의 미확정 항목, Git 게시 승인이다. A2의 문맥 계약은 다음 순서로 결정한다. 이 문서는 그 수행이나 전체 Phase A/VP-05 Gate 완료를 인증하지 않는다.
+남은 것은 상위 에이전트의 외부 적격 검증 증거 확보·동등성 확인, taxonomy/측정 계약 및 대표 집합의 미확정 항목, 별도 게시/실행 허가다. 사용자에게 개별 검토·승인·reviewer 지정 의무를 부과하지 않는다. A2의 기존 문맥 계약은 유지한다. 이 문서는 실제 외부 검토, 인증 Gold 또는 전체 VP-05 Gate 완료를 주장하지 않는다.
 
 ## 5. 변경 이력
 
-- 2026-10-12: 사용자의 A1·A2 결정 위임에 따라 **A1 먼저 확정**. 상위 정책 변경 없이 현재 인간 소유자 + 독립 reviewer + 별도 승인자의 절차와 증빙을 구체화. 새 Reference 승인 0, 미게시 상태 유지.
+- 2026-10-12, 선행 위임 결정/승인 기록: A1 먼저 구체화했고 사용자 최종 Reference 승인/검토자 지정 구조를 기록한 local head는 `e8d0f7d769722f4482ff26a9828812f37e1270cc`다. 새 Reference 승인 0. 이 구조는 현재 적용하지 않으며 Git 이력에 보존한다.
+- 2026-10-12, 이후 독립 검토 정정: `A1_CHANGES_REQUIRED / A2_CONDITIONALLY_ACCEPTED / PUBLICATION_HOLD`. 앞선 사용자 의무를 제거하고 외부 적격 인간/동등 검증 provenance 및 agent 운영으로 책임을 보정했다. **뒤의 명시적 정정이 현재 적용 계약**이며 게시 HOLD·새 Gold 0을 유지한다.

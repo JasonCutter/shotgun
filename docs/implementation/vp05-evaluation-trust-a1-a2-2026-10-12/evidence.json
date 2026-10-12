@@ -1,63 +1,84 @@
 {
-  "recordId": "VP05-EVALUATION-A1-A2-20261012",
+  "recordId": "VP05-EVALUATION-A1-REVIEW-CORRECTION-20261012",
   "class": "ARCHITECTURE_VERIFICATION",
-  "state": "LOCAL_VERIFIED_PENDING_CANONICALIZATION",
+  "state": "LOCAL_REVIEW_CORRECTED_PUBLICATION_HOLD",
   "date": "2026-10-12 Asia/Seoul",
   "subjectCanonical": "cd3cc258dcc5033cb61d7f1dc2f221f5e5016ab6",
+  "reviewSubject": "e8d0f7d769722f4482ff26a9828812f37e1270cc",
   "branch": "codex/vp05-evaluation-trust-a1-a2",
-  "authorization": {
-    "source": "Human request: VP-05 evaluation reliability A1/A2 decision delegation",
-    "scope": "Concrete contract decisions and minimum local documentation; no individual human Gold approval or publication permission",
-    "decisionMaker": "Top-level execution agent under explicit human delegation"
+  "humanReviewDecision": {
+    "formalDecision": "A1_CHANGES_REQUIRED / A2_CONDITIONALLY_ACCEPTED / PUBLICATION_HOLD",
+    "source": "Later explicit human user correction in this chat",
+    "scope": "Remove user per-reference review/approval/reviewer-selection obligations; maintain A2 input contract",
+    "currentPrecedence": "LATER_EXPLICIT_CORRECTION_SUPERSEDES_EARLIER_A1_USER_OBLIGATIONS"
+  },
+  "history": [
+    {
+      "order": 1,
+      "record": "e8d0f7d769722f4482ff26a9828812f37e1270cc",
+      "event": "Prior delegated A1/A2 decision/approval record; user final-reference-approval and reviewer selection requirement",
+      "status": "USER_OBLIGATION_SUPERSEDED_NOT_CURRENT",
+      "retention": "Original tracked documents retained in Git commit"
+    },
+    {
+      "order": 2,
+      "event": "Later explicit human independent-review correction",
+      "status": "CURRENT_CONTRACT",
+      "individualReferenceApproval": false
+    }
+  ],
+  "responsibilities": {
+    "projectOwner": "Architecture/policy/publication/execution-scope approvals only",
+    "userPerReferenceReview": false,
+    "userPerReferenceVerification": false,
+    "userPerReferenceApproval": false,
+    "userReviewerSelectionDuty": false,
+    "topAgent": [
+      "prepare evaluation materials",
+      "mechanical verification",
+      "collect verification evidence",
+      "classify scope and trust level",
+      "operate measurement only when separately authorized"
+    ],
+    "certificationEvidence": "Qualified human review outside Shotgun user or external reference with confirmed equivalent independent human semantic verification provenance",
+    "missingEvidence": "CANDIDATE_OR_UNVERIFIED_NO_PRODUCT_APPROVAL_CLICK",
+    "aiConsensusOrConfidenceGrantsHumanApproval": false
   },
   "order": [
     {
       "section": "A1",
-      "order": 1,
       "path": "docs/architecture/add/vp05-evaluation-trust/a1-reference-review-responsibility.md",
-      "sha256": "40b0e0fc07354a1a2b1e7d847ea4ea2a281309b78351e7f75c3e22253018d49f",
-      "status": "DECIDED_UNDER_USER_DELEGATION"
+      "sha256": "37fc8bc46b610140819cf6273586c2b20d54e2c638368e54257e83365085f445",
+      "status": "CORRECTED_PER_USER_REVIEW"
     },
     {
       "section": "A2",
-      "order": 2,
       "path": "docs/architecture/add/vp05-evaluation-trust/a2-evaluation-input-context.md",
-      "sha256": "552aa73ac03a2367cd5b94b02eb7e0874792a4e667f1821636eadfa7ee5a5d0b",
-      "status": "DECIDED_UNDER_USER_DELEGATION"
+      "sha256": "c9ac2dd3cde49f3420c20fa97b7980e0131c16168d45173a0b11af4e70cb6dfc",
+      "status": "CONDITIONALLY_ACCEPTED_DEPENDENCY_CORRECTED_CORE_RETAINED"
     }
   ],
-  "individualHumanReferenceReviews": 0,
-  "individualHumanReferenceApprovals": 0,
-  "newGoldPromotions": 0,
-  "prefixProof": [
-    {
-      "path": "docs/architecture/add/README.md",
-      "originalSha256": "700a9ab14fe7b135658e1ad051ec5f896c26da50c9e08cd501842b190ded8606",
-      "currentSha256": "968a1fcd132c18c02748595f695ec9ab5cb0369d8d5cb06794d2d7f920936e1e",
-      "originalBytePrefixPreserved": true,
-      "addedBytes": 584
-    },
-    {
-      "path": "docs/architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md",
-      "originalSha256": "61bd61632e72bbdddbf97ff11af6c881f858c3e5d810e6b8b6594569b413b755",
-      "currentSha256": "5dc9dbe6838605b40b8da6087380b0a15839b384bfbbc29e6de8bc7ee30aa496",
-      "originalBytePrefixPreserved": true,
-      "addedBytes": 818
-    },
-    {
-      "path": "docs/architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md",
-      "originalSha256": "0ee748a0d44a1a78fbc607e7e86e8f5b2d79cc97b2a5ac46aada1284028caa53",
-      "currentSha256": "116fc461a64fefcc4e10fc3becf74402deb880b45726a506c57936a4c84cd07e",
-      "originalBytePrefixPreserved": true,
-      "addedBytes": 880
-    },
-    {
-      "path": "docs/implementation/development-strategy-reset-2026-10-10/execution-plan.md",
-      "originalSha256": "a206187b8897361a7e8cd1f324a1c80a4d02bb7890340c51a92d5bc92b8c1eb0",
-      "currentSha256": "806433e15241c263ba275d0f2d15df6820a310d065dafab5c400a92096a4d1dc",
-      "originalBytePrefixPreserved": true,
-      "addedBytes": 756
-    }
+  "checks": {
+    "activeUserObligationInspection": "PASS_OLD_MANDATES_ABSENT_CURRENT_ROLE_PROCEDURE_STATUS_MANUALLY_REVIEWED",
+    "checkAuthority": "TOP_AGENT_DOCUMENT_INSPECTION_NOT_INDEPENDENT_HUMAN_SEMANTIC_GOLD_REVIEW",
+    "a2CoreSections1To4": "PASS_UNCHANGED",
+    "canonicalBodyPrefix": "PASS_UNCHANGED",
+    "originalPhaseAAndFrozenSources": "PASS",
+    "protectedOriginalBytesChecked": 79,
+    "protectedAuthorities": "PASS_6_FILES_UNCHANGED",
+    "repositoryAndStash": "PASS",
+    "documentationGate": "PASS_ALL_670_LINKS_ADR_1_173_CANONICAL_DRIFT",
+    "knowledgeFlow": "PASS",
+    "format": "PASS_9_CHANGED_DOCUMENTS",
+    "runtimeDatabaseTypecheck": "NOT_RUN_DOCUMENT_ONLY"
+  },
+  "protectedAuthoritiesUnchanged": [
+    "docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md",
+    "docs/architecture/adr/ADR-120-canonical-cutover-activation-and-legacy-migration-boundary.md",
+    "docs/architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md",
+    "docs/CANONICAL.md",
+    "docs/canonical-manifest.yaml",
+    "docs/architecture/adr/adr-registry.json"
   ],
   "originalPhaseADrafts": [
     {
@@ -73,32 +94,6 @@
       "sha256": "c938106a66ebdd1a917255efad38a253495836e0fa2df7de338769a2093ca959"
     }
   ],
-  "protectedOriginalFiles": {
-    "inspectedManifestFiles": 82,
-    "unchangedExcludingExplicitAdditiveNotes": 79,
-    "changesExcluded": [
-      "docs/architecture/add/README.md",
-      "docs/architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md",
-      "docs/architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md",
-      "docs/implementation/development-strategy-reset-2026-10-10/execution-plan.md"
-    ],
-    "frozenSourceBytesUnchanged": true
-  },
-  "protectedAuthoritiesUnchanged": [
-    "docs/architecture/adr/ADR-117-documentation-source-of-truth-canonicalization-and-publication-boundary.md",
-    "docs/architecture/adr/ADR-120-canonical-cutover-activation-and-legacy-migration-boundary.md",
-    "docs/architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md",
-    "docs/CANONICAL.md",
-    "docs/canonical-manifest.yaml",
-    "docs/architecture/adr/adr-registry.json"
-  ],
-  "repositoryPreservation": {
-    "sourceHead": "1a36c7b55562783372dbc73c3188b9d797737c7e",
-    "sourceWorktreeClean": true,
-    "operatingHead": "23be30072521b99fbe2469e66ee066930985f9b7",
-    "operatingWorktreeClean": true,
-    "stashUnchanged": true
-  },
   "externalReferences": [
     {
       "role": "REFERENCE_EVIDENCE_NOT_GOLD",
@@ -125,6 +120,11 @@
       "canonicalStatus": "EXTERNAL_REFERENCE_NOT_CANONICAL"
     }
   ],
+  "individualHumanReferenceReviews": 0,
+  "individualHumanReferenceApprovals": 0,
+  "newExternalReferenceVerificationEvidence": 0,
+  "newGoldPromotions": 0,
+  "newEvaluations": 0,
   "implementationAuthority": {
     "port": "DecisionProviderPort@1.2.0",
     "contextCodePointLimit": 2000,
@@ -134,6 +134,13 @@
     "canonicalChoices": 6,
     "preservedLocalV11Choices": 7,
     "productionCodeChanged": false
+  },
+  "repositoryPreservation": {
+    "sourceHead": "1a36c7b55562783372dbc73c3188b9d797737c7e",
+    "sourceWorktreeClean": true,
+    "operatingHead": "23be30072521b99fbe2469e66ee066930985f9b7",
+    "operatingWorktreeClean": true,
+    "stashUnchanged": true
   },
   "boundaries": {
     "providerCalls": 0,
@@ -148,29 +155,113 @@
     "pr": false,
     "merge": false
   },
-  "checks": {
-    "prefixAndHistory": "PASS",
-    "protectedInputsAndAuthorityBytes": "PASS",
-    "sourceOperatingWorktreesAndStash": "PASS",
-    "documentationGate": "PASS_ALL_MODES_670_LINKS_ADR_1_173",
-    "knowledgeFlowCheck": "PASS",
-    "format": "PASS_12_DOCUMENTS",
-    "runtimeDatabaseTypecheck": "NOT_RUN_DOCUMENT_ONLY"
-  },
-  "priorAttempts": [
-    {
-      "check": "docs validation all",
-      "result": "BLOCKED_BEFORE_EXECUTION",
-      "cause": "AJV not resolvable in isolated worktree",
-      "resolution": "Reused installed node_modules through ignored junction in audit worktree only; no installation/global env change"
-    },
-    {
-      "check": "docs validation all before report creation",
-      "result": "FAIL",
-      "cause": "2 links pointed to not-yet-written completion report",
-      "resolution": "Wrote the report and reran the same unmodified validator"
-    }
+  "changedFiles": [
+    "docs/architecture/add/README.md",
+    "docs/architecture/add/vp05-evaluation-trust/README.md",
+    "docs/architecture/add/vp05-evaluation-trust/a1-reference-review-responsibility.md",
+    "docs/architecture/add/vp05-evaluation-trust/a2-evaluation-input-context.md",
+    "docs/architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md",
+    "docs/architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md",
+    "docs/implementation/development-strategy-reset-2026-10-10/execution-plan.md",
+    "docs/implementation/vp05-evaluation-trust-a1-a2-2026-10-12/evidence.json",
+    "docs/implementation/vp05-evaluation-trust-a1-a2-2026-10-12/report.md"
   ],
+  "historicalVerification": {
+    "subjectCommit": "e8d0f7d769722f4482ff26a9828812f37e1270cc",
+    "checks": {
+      "prefixAndHistory": "PASS",
+      "protectedInputsAndAuthorityBytes": "PASS",
+      "sourceOperatingWorktreesAndStash": "PASS",
+      "documentationGate": "PASS_ALL_MODES_670_LINKS_ADR_1_173",
+      "knowledgeFlowCheck": "PASS",
+      "format": "PASS_12_DOCUMENTS",
+      "runtimeDatabaseTypecheck": "NOT_RUN_DOCUMENT_ONLY"
+    },
+    "prefixProof": [
+      {
+        "path": "docs/architecture/add/README.md",
+        "originalSha256": "700a9ab14fe7b135658e1ad051ec5f896c26da50c9e08cd501842b190ded8606",
+        "currentSha256": "968a1fcd132c18c02748595f695ec9ab5cb0369d8d5cb06794d2d7f920936e1e",
+        "originalBytePrefixPreserved": true,
+        "addedBytes": 584
+      },
+      {
+        "path": "docs/architecture/adr/ADR-098-stage-12-1-quality-evaluation-contract.md",
+        "originalSha256": "61bd61632e72bbdddbf97ff11af6c881f858c3e5d810e6b8b6594569b413b755",
+        "currentSha256": "5dc9dbe6838605b40b8da6087380b0a15839b384bfbbc29e6de8bc7ee30aa496",
+        "originalBytePrefixPreserved": true,
+        "addedBytes": 818
+      },
+      {
+        "path": "docs/architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md",
+        "originalSha256": "0ee748a0d44a1a78fbc607e7e86e8f5b2d79cc97b2a5ac46aada1284028caa53",
+        "currentSha256": "116fc461a64fefcc4e10fc3becf74402deb880b45726a506c57936a4c84cd07e",
+        "originalBytePrefixPreserved": true,
+        "addedBytes": 880
+      },
+      {
+        "path": "docs/implementation/development-strategy-reset-2026-10-10/execution-plan.md",
+        "originalSha256": "a206187b8897361a7e8cd1f324a1c80a4d02bb7890340c51a92d5bc92b8c1eb0",
+        "currentSha256": "806433e15241c263ba275d0f2d15df6820a310d065dafab5c400a92096a4d1dc",
+        "originalBytePrefixPreserved": true,
+        "addedBytes": 756
+      }
+    ],
+    "order": [
+      {
+        "section": "A1",
+        "order": 1,
+        "path": "docs/architecture/add/vp05-evaluation-trust/a1-reference-review-responsibility.md",
+        "sha256": "40b0e0fc07354a1a2b1e7d847ea4ea2a281309b78351e7f75c3e22253018d49f",
+        "status": "DECIDED_UNDER_USER_DELEGATION"
+      },
+      {
+        "section": "A2",
+        "order": 2,
+        "path": "docs/architecture/add/vp05-evaluation-trust/a2-evaluation-input-context.md",
+        "sha256": "552aa73ac03a2367cd5b94b02eb7e0874792a4e667f1821636eadfa7ee5a5d0b",
+        "status": "DECIDED_UNDER_USER_DELEGATION"
+      }
+    ],
+    "priorAttempts": [
+      {
+        "check": "docs validation all",
+        "result": "BLOCKED_BEFORE_EXECUTION",
+        "cause": "AJV not resolvable in isolated worktree",
+        "resolution": "Reused installed node_modules through ignored junction in audit worktree only; no installation/global env change"
+      },
+      {
+        "check": "docs validation all before report creation",
+        "result": "FAIL",
+        "cause": "2 links pointed to not-yet-written completion report",
+        "resolution": "Wrote the report and reran the same unmodified validator"
+      }
+    ],
+    "commands": [
+      {
+        "command": "node C:/dev/shotgun/node_modules/tsx/dist/cli.mjs scripts/docs-validation.ts all",
+        "exitCode": 0,
+        "status": "PASS",
+        "log": "C:/dev/artifacts/vp05-evaluation-trust-a1-a2-2026-10-12/docs-validation.log",
+        "logSha256": "164c64c3992a06a48a856c38ae305ea403165fdd0c2353db8244e3b37d006dd0"
+      },
+      {
+        "command": "node scripts/render-knowledge-flow-baseline.mjs --check",
+        "exitCode": 0,
+        "status": "PASS",
+        "log": "C:/dev/artifacts/vp05-evaluation-trust-a1-a2-2026-10-12/knowledge-flow.log",
+        "logSha256": "1fc318b60f605b202ce2eb40edfd27a85a65b6ce95da57e391748cd2f00e57ed"
+      },
+      {
+        "command": "prettier --check (12 exact changed/preserved document paths)",
+        "exitCode": 0,
+        "status": "PASS",
+        "log": "C:/dev/artifacts/vp05-evaluation-trust-a1-a2-2026-10-12/format.log",
+        "logSha256": "f20510a9da4717c51c4cffee6d0dd88d6c9a723d0a83711d01216f5b48961283"
+      }
+    ],
+    "interpretation": "Prior documentation gates passed; later human review required A1 correction. No prior gate certifies current human-semantic approval."
+  },
   "dependencies": {
     "tsx": "4.23.1",
     "typescript": "5.9.3",
@@ -178,27 +269,27 @@
     "ajv": "8.20.0"
   },
   "node": "v24.15.0",
-  "subjectLocalPreservationCommit": "50c09ba37184b203615bcebeea499563e99a8e24",
+  "publication": "HOLD_NO_PUSH_PR_MERGE",
   "commands": [
     {
       "command": "node C:/dev/shotgun/node_modules/tsx/dist/cli.mjs scripts/docs-validation.ts all",
-      "exitCode": 0,
       "status": "PASS",
-      "log": "C:/dev/artifacts/vp05-evaluation-trust-a1-a2-2026-10-12/docs-validation.log",
+      "exitCode": 0,
+      "log": "C:/dev/artifacts/vp05-evaluation-trust-a1-correction-2026-10-12/docs-validation.log",
       "logSha256": "164c64c3992a06a48a856c38ae305ea403165fdd0c2353db8244e3b37d006dd0"
     },
     {
       "command": "node scripts/render-knowledge-flow-baseline.mjs --check",
-      "exitCode": 0,
       "status": "PASS",
-      "log": "C:/dev/artifacts/vp05-evaluation-trust-a1-a2-2026-10-12/knowledge-flow.log",
+      "exitCode": 0,
+      "log": "C:/dev/artifacts/vp05-evaluation-trust-a1-correction-2026-10-12/knowledge-flow.log",
       "logSha256": "1fc318b60f605b202ce2eb40edfd27a85a65b6ce95da57e391748cd2f00e57ed"
     },
     {
-      "command": "prettier --check (12 exact changed/preserved document paths)",
-      "exitCode": 0,
+      "command": "prettier --check (9 exact changed documentation files)",
       "status": "PASS",
-      "log": "C:/dev/artifacts/vp05-evaluation-trust-a1-a2-2026-10-12/format.log",
+      "exitCode": 0,
+      "log": "C:/dev/artifacts/vp05-evaluation-trust-a1-correction-2026-10-12/format.log",
       "logSha256": "f20510a9da4717c51c4cffee6d0dd88d6c9a723d0a83711d01216f5b48961283"
     }
   ]

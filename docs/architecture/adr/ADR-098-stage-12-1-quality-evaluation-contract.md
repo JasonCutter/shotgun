@@ -69,3 +69,7 @@ and Operations Gate 또는 Stage 12.1 전체의 승인이 아니다.
 [ADR-173](ADR-173-product-first-development-and-evaluation-trust-strategy.md)는 향후 VP 관계 평가의 정답 승인 수준, 실제 제공 문맥, 복수 kind/direction/warrant, 분모·미평가 비율, 원본 선언/발행 안정성과 조건부 채택 방향 지표의 분리를 명시한다. 올바른 directed 관계 채택 분모가 0이면 N/A이고, frozen 후보 점수를 인증 의미 품질로 보고하지 않는다.
 
 위 Decision 1–8의 평가/생산 권위 분리, 사람 검토 전 CANDIDATE, source/revision/digest, 결정적 metric, Record/Fake/live 구분과 기존 승인 이력은 유지한다. baseline 특성 조사 후 비교 기준을 정하는 것과, 새 prospective 비교 전에 기준을 고정하는 것을 구분한다. 기존 Claim/Search threshold·frozen evaluator·결과를 소급 변경하지 않는다. 새 전략은 SSC/모델/평가기 초안의 운영 채택이나 별도 Quality Gate 완료가 아니다.
+
+## 2026-10-12 implementation note — delegated VP evaluation Sections
+
+사용자가 A1·A2의 구체적 계약 결정을 위임하여 [A1](../add/vp05-evaluation-trust/a1-reference-review-responsibility.md)의 실제 인간 owner/독립 reviewer 및 exact 승인 증빙과 [A2](../add/vp05-evaluation-trust/a2-evaluation-input-context.md)의 product Evidence context primary/claim-only 분리·외부 전제·provenance·부족 처리를 로컬 결정 기록으로 구체화했다. 개별 Reference 승인은 0건이며 Decision 2의 인간 검증 전 CANDIDATE 원칙, 과거 Claim/Search 승인 이력, 생산 권위 분리 및 metric 승인 경계는 변경하지 않는다. Section 결정과 reviewed main 게시를 구분한다. 새 상위 정책·Gold·평가 실행을 이 note로 승인하지 않는다.

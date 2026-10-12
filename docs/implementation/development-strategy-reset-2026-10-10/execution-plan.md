@@ -46,3 +46,7 @@
 정답 승인 책임자/범위, 독립 검증·의미 정규화 승인 방식, 대표 제품 질문 집합, 추출/검색/관계/답변 실패 분해, v11/SSC/새 모델의 실제 병목 여부, 0.9 보정성, 청구 대사·관계 후보 축소 품질, VP-05 COMPLETE_WITH_LIMITS 적격성은 아직 결정되지 않았다.
 
 Canonical 게시 상태는 ADR-173의 Publication을 따른다. 이 문서와 전략의 로컬 승인은 운영 배포나 `main` merge를 증명하지 않는다.
+
+## 2026-10-12 후속 결정 — A1·A2 위임 구체화
+
+위 미결사항은 2026-10-10 기록으로 보존한다. 사용자의 후속 위임에 따라 [A1·A2](../../architecture/add/vp05-evaluation-trust/README.md)를 로컬 결정했다. A1의 인간 승인 owner/독립 reviewer·증빙 절차와 A2의 product context primary/claim-only 별도·외부 전제·provenance·부족 처리 기준은 구체화 완료다. 실제 사람 지정/Reference 검토·승인은 미수행이며 taxonomy/metric/대표 집합과 실험·게시 승인은 남는다. 기존 Phase A 초안은 역사 기록으로 보존하고 새 Gold나 평가 권위로 자동 채택하지 않는다. 두 Section 완료 후 STOP하며 다른 A–E 작업을 시작하지 않는다.

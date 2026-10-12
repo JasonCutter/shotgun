@@ -71,3 +71,7 @@ PR #48의 Ask Write·Persistence·Outcome Recovery 구현과 검증은 유효한
 - 최초 Git Export commit: `f0d7f7a65a11f28dc9e3bc3a6e47a084b46541eb`
 - 최초 Export PR: `#1` — 폐쇄·미병합된 역사적 Export
 - 현재 이관은 해당 Export를 현재 `main` Canonical 정책에 맞춰 재검증한 뒤 병합한다.
+
+## 2026-10-12 VP 평가 Section 구체화 — 로컬 게시 대기
+
+[VP-05 A1·A2 결정 기록](vp05-evaluation-trust/README.md)은 사용자가 위임한 정답 승인 책임 및 평가 문맥의 구체화다. A1을 먼저 결정한 뒤 A2를 결정했으며, 기존 Phase 승인 이력과 상위 ADR은 유지한다. 개별 Gold 인간 승인·새 평가 실행·Canonical 게시·VP-05 완료는 아니다. reviewed main merge 전에는 로컬 결정 기록이며 [결과 보고](../../implementation/vp05-evaluation-trust-a1-a2-2026-10-12/report.md)의 상태를 따른다.

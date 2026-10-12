@@ -142,3 +142,7 @@ A–E는 우선순위이며 VP-01~~VP-11 tracker ID 또는 VP-0~~VP-4 제품 단
 ## Change history
 
 - 2026-10-10: 사용자 요청으로 전략 v0.1을 신규 ADR-173의 결정으로 승격. 원본 draft와 Git Canonical 게시 경계 보존. 기존 ADR 전체 폐기 없음.
+
+## 2026-10-12 implementation note — A1·A2 decision delegation
+
+사용자가 정답 승인 책임 구조(A1)와 평가 입력 문맥(A2)의 구체적 계약 결정을 상위 에이전트에게 위임했다. [Section 결정 기록](../add/vp05-evaluation-trust/README.md)은 A1 먼저, A2 다음 순서로 완료한 로컬 구체화다. D2/D5의 AI 해석과 독립 인간 승인 분리, D4의 frozen/STOP 및 ADR-117/120의 reviewed main 게시 경계를 유지한다. A1/A2 방법 선택은 더 이상 사용자 세부 선택 대기 사유가 아니지만, 실제 사람의 case별 검토·승인, taxonomy/metric·대표 집합, 실행/게시 승인은 별도다. 현재 main v6와 보존 v11의 입력/종류 차이를 A2에서 명시했으며 어느 정책도 수정·활성화하지 않는다. 새 핵심 권위 또는 이 ADR 상위 정책을 변경하지 않는다.

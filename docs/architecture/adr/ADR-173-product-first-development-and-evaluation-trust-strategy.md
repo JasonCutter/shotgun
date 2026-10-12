@@ -142,3 +142,7 @@ A–E는 우선순위이며 VP-01~~VP-11 tracker ID 또는 VP-0~~VP-4 제품 단
 ## Change history
 
 - 2026-10-10: 사용자 요청으로 전략 v0.1을 신규 ADR-173의 결정으로 승격. 원본 draft와 Git Canonical 게시 경계 보존. 기존 ADR 전체 폐기 없음.
+
+## 2026-10-12 implementation note — A1·A2 decision delegation
+
+사용자의 A1·A2 위임으로 A1 다음 A2를 구체화한 local head는 `e8d0f7d769722f4482ff26a9828812f37e1270cc`다. 이후 `A1_CHANGES_REQUIRED / A2_CONDITIONALLY_ACCEPTED / PUBLICATION_HOLD` 정정이 사용자 최종 Reference 승인·reviewer 지정 의무를 대체했다. [현재 Section 기록](../add/vp05-evaluation-trust/README.md)은 Project Owner의 아키텍처·정책 승인과 개별 의미 검증을 분리하고, 준비·기계 검증·증거 수집·분류·측정 운영은 상위 에이전트가 담당한다. 인증에는 사용자 외부 적격 인간 검증 또는 동등한 외부 reference provenance가 필요하며, 증거가 없으면 CANDIDATE/UNVERIFIED다. 사용자가 개별 지식·관계·AI 결과를 review/승인하거나 reviewer를 지정할 의무는 없고, 인증 Gold 부재로 제품에 승인 클릭을 추가하지 않는다. A2 문맥·v6/v11 구분, D2/D4/D5 및 ADR-117/120 게시 경계는 유지한다. 선행 승인/위임 기록은 보존하며 뒤의 명시적 정정을 현재 계약으로 적용한다. 새 실행·운영 권위 없이 게시 HOLD를 유지한다.

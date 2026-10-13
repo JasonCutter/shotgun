@@ -54,10 +54,10 @@ const selectorsOf = (
 ): readonly SourceSelector[] => output.sourceMap.entries.flatMap((entry) => entry.selectors ?? []);
 
 describe('Stage 8 format Golden Corpus', () => {
-  it('versions PDF formula and visual-line recovery as a distinct transformation revision', () => {
+  it('versions image annotation origin independently from prior format revisions', () => {
     const adapter = new PythonDocumentFormatAdapter({ pythonExecutable });
 
-    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.12.0' });
+    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.13.0' });
   });
 
   it.each([
@@ -195,6 +195,11 @@ describe('Stage 8 format Golden Corpus', () => {
     });
     const { output } = await transformFixture('golden.png', 'image/png', true);
     expect(output.documentIR.blocks[0]?.text).toBe('Blue validation image.');
+    expect(output.sourceMap.entries.length).toBeGreaterThan(0);
+    expect(output.sourceMap.entries.every((entry) => entry.origin === 'annotation')).toBe(true);
+    expect(output.sourceMap.entries.find((entry) => entry.pointer === '')?.origin).toBe(
+      'annotation',
+    );
     expect(selectorsOf(output)).toContainEqual(
       expect.objectContaining({
         type: 'BoundingBoxSelector',

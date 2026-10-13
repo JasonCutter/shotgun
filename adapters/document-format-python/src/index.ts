@@ -461,7 +461,7 @@ const errorFor = (
   });
 
 export class PythonDocumentFormatAdapter implements PlainTextTransformerPort {
-  readonly identity = { id: 'shotgun.document-formats', version: '1.12.0' } as const;
+  readonly identity = { id: 'shotgun.document-formats', version: '1.13.0' } as const;
   readonly #plainText = new LucasAugmentedPlainTextAdapter();
   readonly #pythonExecutable: string;
   readonly #workerPath: string;
@@ -689,6 +689,10 @@ export class PythonDocumentFormatAdapter implements PlainTextTransformerPort {
       ...output.sourceMap,
       entries: output.sourceMap.entries.map((entry) => ({
         ...entry,
+        // A model description is a derived annotation of the image, including
+        // the document root. It cannot become literal source Evidence merely
+        // because the generated text round-trips through DocumentIR.
+        ...(isImage ? { origin: 'annotation' as const } : {}),
         selectors: selectorsFor(entry),
       })),
     };

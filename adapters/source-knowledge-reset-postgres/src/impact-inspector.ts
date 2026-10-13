@@ -8,8 +8,8 @@ import type {
   KnowledgeResetImpactPort,
 } from '../../../modules/source-knowledge-reset/src/index.js';
 
-const EXPECTED_TABLE_COUNT = 203;
-const EXPECTED_TABLE_DIGEST = 'af1fca30a9879affd19b17fef16bee8e9973e909b407c4c23179a9b4fe705a3c';
+const EXPECTED_TABLE_COUNT = 206;
+const EXPECTED_TABLE_DIGEST = 'b5408d14f5400ba945a2c1486cb0e0d9779f4789f24998dcb211300a93cde2c8';
 const EXPECTED_CONTENT_COLUMN_COUNT = 168;
 const EXPECTED_CONTENT_COLUMN_DIGEST =
   'b4056141bd5994b1eafb7f537d854f529f815d17ae4e575c1a4c52c75777efcb';
@@ -1057,6 +1057,7 @@ const sourceAssetSnapshot = async (pool: Pool, projectId: string) => {
     version_fingerprint: string;
     active_lease_count: string;
     active_intake_count: string;
+    active_refresh_count: string;
   }>(
     `WITH selected_sources AS (
        SELECT source_id FROM asset.sources WHERE project_id = $1
@@ -1087,7 +1088,10 @@ const sourceAssetSnapshot = async (pool: Pool, projectId: string) => {
          WHERE project_id = $1 AND expires_at > clock_timestamp())::text AS active_lease_count,
        (SELECT count(*) FROM source_product.intake_submissions
          WHERE project_id = $1
-           AND state NOT IN ('SUCCEEDED', 'FAILED', 'CANCELLED'))::text AS active_intake_count`,
+           AND state NOT IN ('SUCCEEDED', 'FAILED', 'CANCELLED'))::text AS active_intake_count,
+       (SELECT count(*) FROM source_product.url_refresh_jobs
+         WHERE project_id = $1
+           AND phase IN ('ACQUIRING', 'SUBMITTING', 'OUTCOME_UNKNOWN'))::text AS active_refresh_count`,
     [projectId],
   );
   const row = result.rows[0];
@@ -1099,6 +1103,7 @@ const sourceAssetSnapshot = async (pool: Pool, projectId: string) => {
     versionFingerprint: row.version_fingerprint,
     activeLeaseCount: Number(row.active_lease_count),
     activeIntakeCount: Number(row.active_intake_count),
+    activeRefreshCount: Number(row.active_refresh_count),
   };
 };
 
@@ -1235,6 +1240,7 @@ export class PostgresKnowledgeResetImpactInspector implements KnowledgeResetImpa
     if (
       assets.activeLeaseCount > 0 ||
       assets.activeIntakeCount > 0 ||
+      assets.activeRefreshCount > 0 ||
       ask.activeAnswerRunCount > 0 ||
       ask.activeAttemptCount > 0 ||
       ai.activeWorkCount > 0 ||
@@ -1328,6 +1334,7 @@ export class PostgresKnowledgeResetImpactInspector implements KnowledgeResetImpa
           .reduce((count, snapshot) => count + snapshot.rowCount, 0) +
         assets.activeLeaseCount +
         assets.activeIntakeCount +
+        assets.activeRefreshCount +
         ask.activeAnswerRunCount +
         ask.activeAttemptCount +
         ask.unresolvedEvidenceCount +

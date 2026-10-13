@@ -7,6 +7,8 @@ import {
 } from '../../../modules/source-knowledge-reset/src/index.js';
 
 const KEYS = [
+  'frontiers',
+  'frontier_members',
   'jobs',
   'provider_calls',
   'assertions',

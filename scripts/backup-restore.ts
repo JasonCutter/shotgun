@@ -186,7 +186,7 @@ const vpIntegrityTables: Readonly<Record<string, readonly string[]>> = {
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
-  profile: 'legacy-v1' | typeof VP_BACKUP_INTEGRITY_PROFILE = VP_BACKUP_INTEGRITY_PROFILE,
+  profile: 'legacy-v1' | typeof VP_BACKUP_INTEGRITY_PROFILE = 'legacy-v1',
 ): readonly string[] => {
   const applied = new Set(migrations);
   if (
@@ -552,7 +552,7 @@ const withClient = async <T>(databaseUrl: string, action: (client: Client) => Pr
 export const snapshotAuthoritativeIntegrity = async (
   databaseUrl: string,
   migrations?: readonly string[],
-  profile: 'legacy-v1' | typeof VP_BACKUP_INTEGRITY_PROFILE = VP_BACKUP_INTEGRITY_PROFILE,
+  profile: 'legacy-v1' | typeof VP_BACKUP_INTEGRITY_PROFILE = 'legacy-v1',
 ): Promise<Readonly<Record<string, BackupIntegrityEntry>>> =>
   withClient(databaseUrl, async (client) => {
     const appliedMigrations = migrations ?? (await listMigrations(databaseUrl));
@@ -767,7 +767,11 @@ const createBackupUnlocked = async (options: CreateBackupOptions): Promise<Backu
   await ensureEmptyDirectory(outputDirectory, 'Backup output directory');
   await assertPostgresMajorVersion(options.databaseUrl);
   const migrations = await listMigrations(options.databaseUrl);
-  const before = await snapshotAuthoritativeIntegrity(options.databaseUrl, migrations);
+  const before = await snapshotAuthoritativeIntegrity(
+    options.databaseUrl,
+    migrations,
+    VP_BACKUP_INTEGRITY_PROFILE,
+  );
   const dumpFile = path.join(outputDirectory, DATABASE_DUMP_FILE);
   await runPostgresTool({
     tool: 'pg_dump',
@@ -777,7 +781,11 @@ const createBackupUnlocked = async (options: CreateBackupOptions): Promise<Backu
     postgresService: options.postgresService ?? 'db',
     outputFile: dumpFile,
   });
-  const after = await snapshotAuthoritativeIntegrity(options.databaseUrl, migrations);
+  const after = await snapshotAuthoritativeIntegrity(
+    options.databaseUrl,
+    migrations,
+    VP_BACKUP_INTEGRITY_PROFILE,
+  );
   if (stableJson(before) !== stableJson(after)) {
     throw new Error('Authoritative data changed while the backup was being created.');
   }
@@ -788,7 +796,11 @@ const createBackupUnlocked = async (options: CreateBackupOptions): Promise<Backu
     migrations,
   );
   const contracts = await copyContracts(outputDirectory);
-  const final = await snapshotAuthoritativeIntegrity(options.databaseUrl, migrations);
+  const final = await snapshotAuthoritativeIntegrity(
+    options.databaseUrl,
+    migrations,
+    VP_BACKUP_INTEGRITY_PROFILE,
+  );
   if (stableJson(after) !== stableJson(final)) {
     throw new Error('Authoritative data changed while Backup assets were being copied.');
   }

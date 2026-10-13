@@ -376,6 +376,77 @@ describe('VP relation measurement synthetic contract only', () => {
       ]),
     );
   });
+  it.each([
+    [
+      'missing disagreement status',
+      { unresolvedMaterialDisagreement: undefined },
+      'EXTERNAL_DISAGREEMENT_STATUS_INVALID',
+    ],
+    [
+      'null disagreement status',
+      { unresolvedMaterialDisagreement: null },
+      'EXTERNAL_DISAGREEMENT_STATUS_INVALID',
+    ],
+    [
+      'string disagreement status',
+      { unresolvedMaterialDisagreement: 'false' },
+      'EXTERNAL_DISAGREEMENT_STATUS_INVALID',
+    ],
+    [
+      'string scope',
+      { verificationScope: 'KIND DIRECTION WARRANT INPUT_SUFFICIENCY' },
+      'EXTERNAL_SCOPE_INVALID',
+    ],
+    [
+      'unknown scope role',
+      {
+        verificationScope: ['KIND', 'DIRECTION', 'WARRANT', 'INPUT_SUFFICIENCY', 'CANONICAL_OWNER'],
+      },
+      'EXTERNAL_SCOPE_INVALID',
+    ],
+    [
+      'duplicate scope',
+      { verificationScope: ['KIND', 'DIRECTION', 'WARRANT', 'INPUT_SUFFICIENCY', 'KIND'] },
+      'EXTERNAL_SCOPE_INVALID',
+    ],
+    ['invalid external method', { method: 'AI_CONSENSUS' }, 'EXTERNAL_METHOD_INVALID'],
+    [
+      'material disagreement',
+      { unresolvedMaterialDisagreement: true },
+      'UNRESOLVED_MATERIAL_DISAGREEMENT',
+    ],
+  ] as const)(
+    'excludes %s provenance from certification and Frontier membership',
+    (_label, malformed, reason) => {
+      const original = reference();
+      // Round-trip represents supplied JSON artifacts, including an absent mandatory field.
+      const verification = JSON.parse(
+        JSON.stringify({
+          ...externalFormatExample(original.referenceDigest),
+          ...malformed,
+        }),
+      ) as ExternalVerification;
+      const entry: RelationReference = {
+        ...original,
+        assurance: { status: 'EXTERNALLY_VERIFIED', verification },
+      };
+      const base: RelationEvaluationPlan = { ...plan([entry]), lane: 'CERTIFICATION' };
+      const report = evaluateRelationObservations(base, []);
+      expect(report.exclusions[0]?.reasons).toContain(reason);
+      expect(report.counts.externallyVerifiedReferences).toBe(0);
+      expect(report.coverage.referenceCertification!.value).toBe(0);
+      const frontier = measureVerifiedFrontierCoverage(base, {
+        frontierRevision: 'synthetic-format-only',
+        selectionEvidenceDigest: hash('synthetic-format-only'),
+        referenceSetDigest: relationArtifactDigest(base.references),
+        selectedCaseIds: [entry.caseId],
+      });
+      expect(frontier.exclusions[0]?.reasons).toContain(reason);
+      expect(frontier.eligiblePositive).toBe(0);
+      expect(frontier.overallRecall.value).toBeNull();
+      expect(frontier.criticalRecall.value).toBeNull();
+    },
+  );
   it('keeps frozen reconstruction below actual product-input capture certification', () => {
     const original = reference();
     const withInput = seal({

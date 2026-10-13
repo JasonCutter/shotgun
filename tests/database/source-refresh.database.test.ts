@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { Pool } from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Pool } from 'pg';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PostgresSourceRefreshStore } from '../../adapters/source-refresh-postgres/src/index.js';
 import { SourceRefreshCoordinator } from '../../modules/frontend-sources-write/src/source-refresh.js';
 import { SealedSourcesStagingService } from '../../adapters/frontend-sources-staging-sealed/src/index.js';
@@ -15,19 +15,40 @@ import {
 } from '../helpers/isolated-postgres-test-database.js';
 import { requireTestDatabaseTarget } from '../../scripts/database-target-guard.js';
 import { ShotgunError } from '../../packages/contracts/src/index.js';
+import { PostgresSourceProductKnowledgeResetOwner } from '../../adapters/source-knowledge-reset-postgres/src/source-product-owner.js';
+import { PostgresVPKnowledgeResetOwner } from '../../adapters/source-knowledge-reset-postgres/src/vp-ledger-owner.js';
+import { PostgresCandidateFrontier } from '../../adapters/vp-knowledge-postgres/src/frontier-store.js';
+import { seedAssertion } from '../helpers/vp-frontier-assertion.js';
+import { PostgresKnowledgeResetImpactInspector } from '../../adapters/source-knowledge-reset-postgres/src/impact-inspector.js';
 
 const target = await requireTestDatabaseTarget();
 const hash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`;
 let database: IsolatedPostgresTestDatabase;
 let pool: Pool;
+let executorPool: Pool;
+let runtimePool: Pool;
 describe.skipIf(!target)(
   'durable URL refresh on isolated PostgreSQL with fake bounded acquisition',
   () => {
     beforeAll(async () => {
       database = await createIsolatedPostgresTestDatabase();
       pool = database.createPool();
+      const password = randomUUID();
+      for (const role of ['shotgun_erasure_executor', 'shotgun_runtime']) {
+        await pool.query(`ALTER ROLE ${role} LOGIN PASSWORD '${password}'`);
+      }
+      const connection = new URL(database.databaseUrl);
+      connection.password = password;
+      connection.username = 'shotgun_erasure_executor';
+      executorPool = new Pool({ connectionString: connection.toString(), max: 1 });
+      connection.username = 'shotgun_runtime';
+      runtimePool = new Pool({ connectionString: connection.toString(), max: 1 });
     }, 60_000);
     afterAll(async () => {
+      await executorPool?.end();
+      await runtimePool?.end();
+      await pool?.query('ALTER ROLE shotgun_erasure_executor NOLOGIN PASSWORD NULL');
+      await pool?.query('ALTER ROLE shotgun_runtime NOLOGIN PASSWORD NULL');
       await database?.dispose();
     });
 
@@ -180,6 +201,7 @@ describe.skipIf(!target)(
         v1,
         store,
         coordinator,
+        storage,
         calls: () => calls,
         setBody: (value: string) => {
           body = value;
@@ -325,6 +347,37 @@ describe.skipIf(!target)(
         records.find((record) => record.sourceVersionId === f.v1)?.externalSourceRefreshFailed,
       ).toBe(true);
     });
+    it('holds ambiguous staging storage immediately UNKNOWN without reacquiring or changing its version', async () => {
+      const f = await fixture();
+      vi.spyOn(f.storage, 'put').mockRejectedValueOnce(
+        new Error('Fake storage acknowledgement unknown'),
+      );
+      expect(await f.coordinator.drainOnce('worker')).toBe('FAILED');
+      expect(
+        (
+          await pool.query(
+            `SELECT phase,attempts,safe_failure_code,lease_token,produced_source_version_id
+             FROM source_product.url_refresh_jobs WHERE project_id=$1`,
+            [f.projectId],
+          )
+        ).rows[0],
+      ).toEqual({
+        phase: 'OUTCOME_UNKNOWN',
+        attempts: 1,
+        safe_failure_code: 'URL_REFRESH_STAGING_OUTCOME_UNKNOWN',
+        lease_token: null,
+        produced_source_version_id: null,
+      });
+      expect(await f.coordinator.drainOnce('restart')).toBe('IDLE');
+      expect(f.calls()).toBe(2);
+      expect(
+        (
+          await pool.query('SELECT count(*)::int n FROM asset.source_versions WHERE source_id=$1', [
+            f.sourceId,
+          ])
+        ).rows[0].n,
+      ).toBe(1);
+    });
     it('rejects refresh after a concurrent user version commits between authorization and submit', async () => {
       const f = await fixture();
       const originalPrepare = f.authorization.prepareSubmission;
@@ -395,5 +448,183 @@ describe.skipIf(!target)(
         ).rows[0].n,
       ).toBe(0);
     });
+
+    it.each(['ACQUIRING', 'SUBMITTING', 'OUTCOME_UNKNOWN'] as const)(
+      'T3 refuses direct purge of %s refresh and erases terminal refresh/frontier journals only through its executor',
+      async (phase) => {
+        const f = await fixture();
+        const scope = (await f.authorization.authorize())!;
+        const jobId = randomUUID();
+        await pool.query(
+          `INSERT INTO source_product.url_refresh_jobs (
+             job_id,project_id,source_id,source_version_id,principal_id,session_id,
+             provenance_receipt_id,requested_url,label,sensitivity,access_scope,phase,
+             staging_reference,submission_id,item_id,command_id)
+           SELECT $1,receipt.project_id,$2,receipt.source_version_id,submission.principal_id,
+             submission.session_id,receipt.url_provenance_receipt_id,'https://example.org/fake',
+             'T3 fake refresh',version.sensitivity,version.access_scope,$3,'synthetic-stage',
+             $4,$5,$6
+           FROM source_product.url_provenance_receipts receipt
+           JOIN source_product.intake_submissions submission USING(submission_id)
+           JOIN asset.source_versions version USING(source_version_id)
+           WHERE receipt.project_id=$7 AND receipt.source_version_id=$8`,
+          [jobId, f.sourceId, phase, randomUUID(), randomUUID(), randomUUID(), f.projectId, f.v1],
+        );
+        const policy = 'vp-deepseek-relation-v6-evidence-context';
+        for (const suffix of ['42', '43']) {
+          await seedAssertion(pool, {
+            projectId: f.projectId,
+            principalId: scope.principalId,
+            assertionId: randomUUID(),
+            text: `${f.projectId} pressure is ${suffix} kPa.`,
+          });
+        }
+        await new PostgresCandidateFrontier(pool, 3).ensure(policy);
+        const requestId = randomUUID();
+        await pool.query(
+          `INSERT INTO project_admin.project_knowledge_epoch(project_id,epoch,state)
+           VALUES($1,1,'RESET_PENDING')`,
+          [f.projectId],
+        );
+        await pool.query(
+          `INSERT INTO project_admin.project_knowledge_reset_requests (
+             request_id,preview_id,project_id,actor_principal_id,project_revision,
+             expected_knowledge_epoch,resulting_knowledge_epoch,manifest_digest,
+             owner_manifest_digest,preserved_configuration_digest,idempotency_key,state,impact_counts)
+           VALUES($1,$2,$3,$4,1,0,1,$5,$6,$7,$8,'PURGING','{}'::jsonb)`,
+          [
+            requestId,
+            randomUUID(),
+            f.projectId,
+            scope.principalId,
+            hash('reset-manifest'),
+            hash('owner-manifest'),
+            hash('preserved-config'),
+            randomUUID(),
+          ],
+        );
+        await expect(
+          executorPool.query('SELECT source_product.t3_erase_project_source_product($1,$2)', [
+            f.projectId,
+            requestId,
+          ]),
+        ).rejects.toMatchObject({ constraint: 'active_job_outcome_unknown' });
+        const counts = async () =>
+          (
+            await pool.query(
+              `SELECT
+                 (SELECT count(*)::int FROM source_product.url_refresh_jobs WHERE project_id=$1) AS refresh,
+                 (SELECT count(*)::int FROM source_product.url_provenance_receipts WHERE project_id=$1) AS receipts,
+                 (SELECT count(*)::int FROM vp.candidate_frontiers WHERE project_id=$1) AS frontiers,
+                 (SELECT count(*)::int FROM vp.candidate_frontier_members WHERE project_id=$1) AS members`,
+              [f.projectId],
+            )
+          ).rows[0];
+        expect(await counts()).toEqual({ refresh: 1, receipts: 1, frontiers: 1, members: 1 });
+        for (const table of [
+          'source_product.url_refresh_jobs',
+          'vp.candidate_frontiers',
+          'vp.candidate_frontier_members',
+        ]) {
+          await expect(
+            runtimePool.query(`DELETE FROM ${table} WHERE project_id=$1`, [f.projectId]),
+          ).rejects.toMatchObject({ code: '42501' });
+        }
+        await expect(
+          runtimePool.query('UPDATE source_product.url_refresh_jobs SET label=$2 WHERE job_id=$1', [
+            jobId,
+            'fenced runtime mutation',
+          ]),
+        ).rejects.toMatchObject({ constraint: 'project_knowledge_reset_write_fence' });
+        // Only the owned synthetic journal is moved to a known terminal fixture
+        // state; no transport/provider execution or operating job is involved.
+        // Restore READY only for the owned admin fixture setup, then reinstate
+        // the reset fence before invoking either dedicated purge routine.
+        await pool.query(
+          "UPDATE project_admin.project_knowledge_epoch SET state='READY' WHERE project_id=$1",
+          [f.projectId],
+        );
+        await pool.query(
+          "UPDATE source_product.url_refresh_jobs SET phase='FAILED' WHERE job_id=$1",
+          [jobId],
+        );
+        await pool.query(
+          "UPDATE project_admin.project_knowledge_epoch SET state='RESET_PENDING' WHERE project_id=$1",
+          [f.projectId],
+        );
+        const context = {
+          projectId: f.projectId,
+          requestId,
+          knowledgeEpoch: 1,
+          manifestDigest: hash('reset-manifest') as `sha256:${string}`,
+        };
+        const sourceOwner = new PostgresSourceProductKnowledgeResetOwner(executorPool);
+        const vpOwner = new PostgresVPKnowledgeResetOwner(executorPool);
+        await expect(sourceOwner.fence(context)).resolves.toBeUndefined();
+        await expect(vpOwner.fence(context)).resolves.toBeUndefined();
+        await expect(vpOwner.verify(context)).resolves.toEqual({
+          verified: false,
+          blockerCodes: ['UNCLASSIFIED_CONTENT'],
+        });
+        await sourceOwner.purge(context);
+        await vpOwner.purge(context);
+        expect(await counts()).toEqual({ refresh: 0, receipts: 0, frontiers: 0, members: 0 });
+        await expect(sourceOwner.verify(context)).resolves.toEqual({
+          verified: true,
+          blockerCodes: [],
+        });
+        await expect(vpOwner.verify(context)).resolves.toEqual({
+          verified: true,
+          blockerCodes: [],
+        });
+        expect(f.calls()).toBe(1);
+      },
+      60_000,
+    );
+
+    it('T3 preview accepts the reviewed schema, counts unknown refresh, and rejects an extra table', async () => {
+      const projectId = `t3-preview-${randomUUID()}`;
+      await pool.query(
+        `INSERT INTO project_admin.projects(id,name,status,active) VALUES($1,'T3 preview','ACTIVE',true)`,
+        [projectId],
+      );
+      const inspector = new PostgresKnowledgeResetImpactInspector(pool, true);
+      expect((await inspector.inspectProjectSourceKnowledge(projectId)).blockers).toEqual([]);
+
+      const f = await fixture();
+      const before = await inspector.inspectProjectSourceKnowledge(f.projectId);
+      const jobId = randomUUID();
+      await pool.query(
+        `INSERT INTO source_product.url_refresh_jobs (
+           job_id,project_id,source_id,source_version_id,principal_id,session_id,
+           provenance_receipt_id,requested_url,label,sensitivity,access_scope,phase,
+           submission_id,item_id,command_id)
+         SELECT $1,receipt.project_id,$2,receipt.source_version_id,submission.principal_id,
+           submission.session_id,receipt.url_provenance_receipt_id,'https://example.org/fake',
+           'T3 unknown refresh',version.sensitivity,version.access_scope,'OUTCOME_UNKNOWN',$3,$4,$5
+         FROM source_product.url_provenance_receipts receipt
+         JOIN source_product.intake_submissions submission USING(submission_id)
+         JOIN asset.source_versions version USING(source_version_id)
+         WHERE receipt.project_id=$6 AND receipt.source_version_id=$7`,
+        [jobId, f.sourceId, randomUUID(), randomUUID(), randomUUID(), f.projectId, f.v1],
+      );
+      const unknown = await inspector.inspectProjectSourceKnowledge(f.projectId);
+      expect(unknown.blockers).toContain('ACTIVE_JOB_OUTCOME_UNKNOWN');
+      expect(unknown.blockers).not.toContain('UNCLASSIFIED_CONTENT');
+      expect(unknown.counts.blockedRecordCount).toBe(before.counts.blockedRecordCount + 1);
+      expect(unknown.counts.sourceDerivedRecordCount).toBe(
+        before.counts.sourceDerivedRecordCount + 1,
+      );
+
+      await pool.query('CREATE TABLE vp.t3_unreviewed_fixture(project_id text)');
+      try {
+        expect((await inspector.inspectProjectSourceKnowledge(projectId)).blockers).toContain(
+          'UNCLASSIFIED_CONTENT',
+        );
+      } finally {
+        await pool.query('DROP TABLE vp.t3_unreviewed_fixture');
+      }
+      expect(f.calls()).toBe(1);
+    }, 60_000);
   },
 );

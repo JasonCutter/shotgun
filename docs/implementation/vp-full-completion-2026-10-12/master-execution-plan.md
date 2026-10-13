@@ -2,7 +2,7 @@
 
 > **IN_PROGRESS — NOT_IMPLEMENTATION_COMPLETE / NOT_FINAL_ACCEPTANCE_COMPLETE**
 >
-> 사용자 실행 지시 2026-10-12, Canonical base `aba6ff27f9620ee1a3f408f8df81e8aad21cc584`. 개발 branch `codex/vp-full-completion`. VP-01~~11 ID와 VP-0~~4 계약은 유지한다.
+> 사용자 실행 지시 2026-10-12, Canonical base `aba6ff27f9620ee1a3f408f8df81e8aad21cc584`. 개발 branch `codex/vp-full-completion`. `VP-01`–`VP-11` ID와 `VP-0`–`VP-4` 계약은 유지한다.
 
 ## 1. 실행 권한과 이전 STOP의 관계
 

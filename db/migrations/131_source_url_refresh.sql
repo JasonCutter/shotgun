@@ -41,7 +41,7 @@ CREATE INDEX url_refresh_jobs_project_phase ON source_product.url_refresh_jobs(p
 CREATE INDEX url_refresh_jobs_receipt ON source_product.url_refresh_jobs(provenance_receipt_id);
 GRANT SELECT, INSERT, UPDATE ON source_product.url_refresh_jobs TO shotgun_runtime;
 GRANT SELECT, DELETE ON source_product.url_refresh_jobs TO shotgun_schema_owner;
-CREATE TRIGGER url_refresh_jobs_write_fence BEFORE INSERT OR UPDATE OR DELETE ON source_product.url_refresh_jobs
+CREATE TRIGGER url_refresh_jobs_write_fence BEFORE INSERT OR UPDATE ON source_product.url_refresh_jobs
   FOR EACH ROW EXECUTE FUNCTION project_admin.t3_guard_project_knowledge_write();
 
 CREATE OR REPLACE FUNCTION source_product.t3_source_product_status(
@@ -139,6 +139,10 @@ BEGIN
     SELECT 1 FROM source_product.url_acquisition_attempts
     WHERE project_id = target_project_id
       AND state IN ('VALIDATING', 'CONNECTING', 'READING', 'CANCEL_REQUESTED', 'OUTCOME_INDETERMINATE')
+  ) OR EXISTS (
+    SELECT 1 FROM source_product.url_refresh_jobs
+    WHERE project_id = target_project_id
+      AND phase IN ('ACQUIRING', 'SUBMITTING', 'OUTCOME_UNKNOWN')
   ) THEN
     RAISE EXCEPTION 'Source Product work has not reached a known terminal outcome'
       USING ERRCODE = '55000', CONSTRAINT = 'active_job_outcome_unknown';

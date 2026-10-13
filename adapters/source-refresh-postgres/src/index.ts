@@ -163,7 +163,7 @@ export class PostgresSourceRefreshStore implements SourceRefreshStorePort {
   async transition(input: Parameters<SourceRefreshStorePort['transition']>[0]): Promise<void> {
     const allowed: Readonly<Record<SourceRefreshPhase, readonly SourceRefreshPhase[]>> = {
       READY: ['ACQUIRING', 'FAILED'],
-      ACQUIRING: ['STAGED', 'FAILED'],
+      ACQUIRING: ['STAGED', 'FAILED', 'OUTCOME_UNKNOWN'],
       STAGED: ['SUBMITTING', 'FAILED'],
       SUBMITTING: ['SUBMITTING', 'SUCCEEDED', 'FAILED', 'OUTCOME_UNKNOWN'],
       SUCCEEDED: [],

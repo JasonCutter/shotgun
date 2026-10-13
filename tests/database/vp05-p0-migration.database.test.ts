@@ -55,11 +55,23 @@ it('upgrades main 128 additively, preserves a historical receipt, and resets an 
     ).rows;
     const before = (await pool.query('SELECT count(*)::int AS n FROM runtime.schema_migrations'))
       .rows[0].n;
-    await migrateUpTo(undefined, db.databaseUrl);
-    await migrateUpTo(undefined, db.databaseUrl);
+    // Preserve the accepted 128 -> 129/130 upgrade as an explicit historical gate.
+    await migrateUpTo('130_vp_relation_egress_activation_binding.sql', db.databaseUrl);
+    await migrateUpTo('130_vp_relation_egress_activation_binding.sql', db.databaseUrl);
     expect(
       (await pool.query('SELECT count(*)::int AS n FROM runtime.schema_migrations')).rows[0].n,
     ).toBe(before + 2);
+    expect(
+      (
+        await pool.query(
+          `SELECT name FROM runtime.schema_migrations
+           WHERE name > '128_ask_external_source_freshness.sql' ORDER BY name`,
+        )
+      ).rows,
+    ).toEqual([
+      { name: '129_vp_global_relation_budget_authority.sql' },
+      { name: '130_vp_relation_egress_activation_binding.sql' },
+    ]);
     const columns = (
       await pool.query(
         `SELECT column_name,is_nullable FROM information_schema.columns WHERE table_schema='vp' AND table_name='relation_provider_calls' AND column_name IN ('global_claim_id','semantic_attempt_id') ORDER BY column_name`,
@@ -90,6 +102,62 @@ it('upgrades main 128 additively, preserves a historical receipt, and resets an 
       (await pool.query('SELECT count(*)::int AS n FROM vp_global_budget.authority_store')).rows[0]
         .n,
     ).toBe(0);
+    // Current URL/Frontier migrations are additive and must preserve the same frozen receipt.
+    await migrateUpTo(undefined, db.databaseUrl);
+    await migrateUpTo(undefined, db.databaseUrl);
+    expect(
+      (await pool.query('SELECT count(*)::int AS n FROM runtime.schema_migrations')).rows[0].n,
+    ).toBe(before + 4);
+    expect(
+      (
+        await pool.query(
+          `SELECT name FROM runtime.schema_migrations
+           WHERE name > '128_ask_external_source_freshness.sql' ORDER BY name`,
+        )
+      ).rows,
+    ).toEqual([
+      { name: '129_vp_global_relation_budget_authority.sql' },
+      { name: '130_vp_relation_egress_activation_binding.sql' },
+      { name: '131_source_url_refresh.sql' },
+      { name: '132_vp_candidate_frontier.sql' },
+    ]);
+    expect(
+      (
+        await pool.query(
+          `SELECT table_schema || '.' || table_name AS name
+           FROM information_schema.tables WHERE table_type = 'BASE TABLE'
+             AND (table_schema || '.' || table_name) = ANY($1::text[])
+           ORDER BY name`,
+          [
+            [
+              'source_product.url_refresh_jobs',
+              'vp.candidate_frontier_members',
+              'vp.candidate_frontiers',
+            ],
+          ],
+        )
+      ).rows,
+    ).toEqual([
+      { name: 'source_product.url_refresh_jobs' },
+      { name: 'vp.candidate_frontier_members' },
+      { name: 'vp.candidate_frontiers' },
+    ]);
+    expect(
+      (
+        await pool.query(
+          `SELECT job.attempt_count,call.call_id::text,call.state,call.request_digest,call.failure_code FROM vp.relation_jobs job JOIN vp.relation_provider_calls call USING(project_id,job_id) WHERE job.job_id=$1`,
+          [jobId],
+        )
+      ).rows,
+    ).toEqual(historical);
+    expect(
+      (
+        await pool.query(
+          `SELECT global_claim_id,semantic_attempt_id FROM vp.relation_provider_calls WHERE job_id=$1`,
+          [jobId],
+        )
+      ).rows,
+    ).toEqual([{ global_claim_id: null, semantic_attempt_id: null }]);
     await dropSchemas(db.databaseUrl);
     await migrateUpTo(undefined, db.databaseUrl);
     expect(

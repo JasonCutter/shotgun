@@ -43,6 +43,10 @@ describe('versioned VP backup integrity coverage', () => {
     expect(authoritativeIntegrityTablesForMigrations(migrations, 'legacy-v1')).not.toContain(
       'vp.assertions',
     );
+    // Unversioned callers still construct the historical manifest shape.
+    expect(authoritativeIntegrityTablesForMigrations(migrations)).toEqual(
+      authoritativeIntegrityTablesForMigrations(migrations, 'legacy-v1'),
+    );
     expect(authoritativeIntegrityTablesForMigrations([])).not.toContain(
       'source_product.url_refresh_jobs',
     );

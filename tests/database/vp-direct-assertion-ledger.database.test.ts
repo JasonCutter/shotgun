@@ -821,6 +821,17 @@ describe('VP validated direct assertion ledger', () => {
       expect(before.rows[0]?.status.assertions).toBe(5);
       expect(before.rows[0]?.status.jobs).toBe(4);
       expect(before.rows[0]?.status.provider_calls).toBeGreaterThan(0);
+      expect(Object.keys(before.rows[0]!.status).sort()).toEqual([
+        'assertions',
+        'decisions',
+        'epochs',
+        'events',
+        'frontier_members',
+        'frontiers',
+        'jobs',
+        'provider_calls',
+        'relations',
+      ]);
       await executor.query('SELECT vp.t3_erase_project($1, $2::uuid)', [projectId, resetRequestId]);
       const after = await executor.query<{ status: Record<string, number> }>(
         'SELECT vp.t3_project_status($1, $2::uuid) AS status',
@@ -834,6 +845,8 @@ describe('VP validated direct assertion ledger', () => {
         decisions: 0,
         events: 0,
         epochs: 0,
+        frontiers: 0,
+        frontier_members: 0,
       });
     } finally {
       if (resetAuthorization) await executor.query('RESET SESSION AUTHORIZATION');

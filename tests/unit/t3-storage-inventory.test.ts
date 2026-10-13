@@ -7,7 +7,7 @@ import {
   parseT3ExpectedTables,
 } from '../../scripts/t3-storage-inventory.js';
 
-describe('T3 frozen storage inventory', () => {
+describe('T3 current storage inventory and preserved historical baseline', () => {
   it('is unique and covers the baseline, reset control tables, VP tables, and preserved global authority', async () => {
     const register = await readFile(
       'docs/implementation/t3-storage-classification-register.md',
@@ -15,7 +15,19 @@ describe('T3 frozen storage inventory', () => {
     );
     const expected = parseT3ExpectedTables(register);
     expect(expected.schemas).toHaveLength(31);
-    expect(expected.tables).toHaveLength(207);
+    expect(expected.tables).toHaveLength(210);
+    const currentAdditions = [
+      'source_product.url_refresh_jobs',
+      'vp.candidate_frontier_members',
+      'vp.candidate_frontiers',
+    ];
+    expect(expected.tables.filter((table) => currentAdditions.includes(table))).toEqual(
+      currentAdditions,
+    );
+    expect(expected.tables.filter((table) => !currentAdditions.includes(table))).toHaveLength(207);
+    expect(register).toContain('migration 001–130의 207개 table');
+    expect(register).toContain('`source_product.url_refresh_jobs`: D');
+    expect(register).toContain('`vp.candidate_frontiers`와 `vp.candidate_frontier_members`: D+B');
     expect(expected.tables).toContain('vp.relation_provider_calls');
     expect(expected.tables.filter((table) => table.startsWith('vp_global_budget.'))).toEqual([
       'vp_global_budget.authority_store',

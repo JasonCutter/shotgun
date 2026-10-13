@@ -127,6 +127,34 @@ SUCCEEDED·stale=true·원문/citation 불변을 확인했고 AI worker는 비�
 
 ## 실제 잔여 조건
 
+### PR384 독립 검토·첫 CI의 후속 보정
+
+첫 게시 head `0c0729c8fa6bc6302c43cc2b6c31408c33812f16`의 CI
+`38333081667`은 Frontend SUCCESS, Quality/Required Gates FAILURE였다.
+Database는688 PASS·18 FAIL·2 기존 SKIP이며 실패 원본을 보존한다. 독립 검토는
+[실행/T3 보정](./review-execution-correction.md)과
+[평가 구조 보정](./review-measurement-correction.md)에 기록했다.
+
+새 journal과 기존 T3 owner/status/schema fingerprint·active preview·SQL purge
+계약을 맞췄다. INSERT/UPDATE용 기존 fence를 DELETE에 연결하지 않으며 runtime
+DELETE 권한을 추가하지 않는다. 불명 refresh는 직접 purge에서도 거부하고,
+known terminal journal은 승인 executor로 실제 삭제/readback한다. 실제 store의
+ACQUIRING→OUTCOME_UNKNOWN 경로도 module 계약과 일치시켰다.
+
+평가 provenance는 필수 boolean 이견 상태와 닫힌 unique scope 배열을 요구한다.
+누락/문자열/중복/잘못된 역할을 Gold 또는 Frontier 적격 증거로 세지 않는다.
+순수 구조 검사는 인간 의미 검증이나 invoice 인증으로 승격되지 않는다.
+
+기존 exported backup helper의 unversioned 기본값은 legacy-v1로 보존했다.
+새 backup 생성은 vp-execution-v2를 명시적으로 선택한다. 원래 T3 restore
+preflight test를 변경하지 않고 재검증해, 오래된 epoch의 backup을 target 변경
+전에 거부하는지 확인했다. Backup unit14+실제 PostgreSQL preflight1 PASS다.
+T3 owner unit6+fresh PostgreSQL 음성/양성5, 평가 unit32 PASS다.
+후속 root typecheck/docs·TS6 byte reproducibility PASS이며 기존129 owners와
+분류·좌표가 동일해 이번 review에서는 TS6 artifact diff를 추가하지 않았다.
+기존 schema/ledger/migration/register의 fixture 기대값은 exact 새 테이블/상태
+계약과 역사 baseline 보존을 함께 검증한다. 보정 head의 전체 CI는 별도로 확인한다.
+
 독립 offline pack/install/import 검증1 PASS로 새 평가 package의 공개 export 및
 transitive compiled imports를 fresh consumer에서 확인했다. npm config/cache는
 격리하고 lifecycle script·registry 호출은 비활성이다. 전체 저장소·운영 env·동결

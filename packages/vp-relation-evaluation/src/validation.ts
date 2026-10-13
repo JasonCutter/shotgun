@@ -61,9 +61,20 @@ export const externalVerificationErrors = (
   if (!verification.checkedAt || !Number.isFinite(Date.parse(verification.checkedAt)))
     errors.push('EXTERNAL_CHECK_DATE_INVALID');
   if (verification.subjectDigest !== subjectDigest) errors.push('EXTERNAL_SUBJECT_MISMATCH');
-  if (scopes.some((scope) => !verification.verificationScope.includes(scope)))
+  const verificationScopes = verification.verificationScope;
+  const validScopes =
+    Array.isArray(verificationScopes) &&
+    verificationScopes.every((scope) =>
+      ['KIND', 'DIRECTION', 'WARRANT', 'INPUT_SUFFICIENCY'].includes(scope),
+    ) &&
+    new Set(verificationScopes).size === verificationScopes.length;
+  if (!validScopes) errors.push('EXTERNAL_SCOPE_INVALID');
+  else if (scopes.some((scope) => !verificationScopes.includes(scope)))
     errors.push('EXTERNAL_SCOPE_INCOMPLETE');
-  if (verification.unresolvedMaterialDisagreement) errors.push('UNRESOLVED_MATERIAL_DISAGREEMENT');
+  if (typeof verification.unresolvedMaterialDisagreement !== 'boolean')
+    errors.push('EXTERNAL_DISAGREEMENT_STATUS_INVALID');
+  else if (verification.unresolvedMaterialDisagreement)
+    errors.push('UNRESOLVED_MATERIAL_DISAGREEMENT');
   return errors;
 };
 

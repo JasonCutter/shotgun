@@ -28,9 +28,11 @@ CREATE TABLE vp.candidate_frontier_members (
 GRANT SELECT,INSERT,UPDATE ON vp.candidate_frontiers TO shotgun_runtime;
 GRANT SELECT,INSERT ON vp.candidate_frontier_members TO shotgun_runtime;
 GRANT SELECT,DELETE ON vp.candidate_frontiers,vp.candidate_frontier_members TO shotgun_schema_owner;
-CREATE TRIGGER candidate_frontiers_write_fence BEFORE INSERT OR UPDATE OR DELETE ON vp.candidate_frontiers
+-- The existing write guard returns NEW and is defined for INSERT/UPDATE only.
+-- Runtime has no DELETE grant; dedicated reset routines authorize erasure.
+CREATE TRIGGER candidate_frontiers_write_fence BEFORE INSERT OR UPDATE ON vp.candidate_frontiers
   FOR EACH ROW EXECUTE FUNCTION project_admin.t3_guard_project_knowledge_write();
-CREATE TRIGGER candidate_frontier_members_write_fence BEFORE INSERT OR UPDATE OR DELETE ON vp.candidate_frontier_members
+CREATE TRIGGER candidate_frontier_members_write_fence BEFORE INSERT OR UPDATE ON vp.candidate_frontier_members
   FOR EACH ROW EXECUTE FUNCTION project_admin.t3_guard_project_knowledge_write();
 
 CREATE OR REPLACE FUNCTION vp.t3_project_status(target_project_id text, reset_request_id uuid)

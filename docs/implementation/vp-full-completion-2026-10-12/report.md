@@ -320,3 +320,9 @@ DB/asset 보존 assertion과 기존 bounded timeout은 유지한다.
 generation0이므로 generation1 조회가 최초 메시지를 선택했다는 별도의
 가설은 현재 fixture에서 재현되지 않았고, 그 이유로 불필요한 observer
 재설계나 추가 테스트를 수행하지 않았다.
+
+Native image의 sparse array가 `.map`에서 누락되어 null image block의 Fake HTTP
+호출을 허용하는 추가 경계 결함도2개 음성 fixture로 재현했다. 고정된 상한의
+모든 own slot을 검증해 호출 전에 거부하며 크기·hash·MIME 제한은 유지한다.
+native28+prepared26=54 PASS, 원본2 FAIL 로그를 보존한다. 이 후속 code를 포함한
+exact head CI로 최종 게시 적격성을 확인한다.

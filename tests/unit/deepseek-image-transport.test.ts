@@ -58,6 +58,20 @@ const fixture = (
   };
 };
 describe('prepared DeepSeek native inline image transport, fake HTTP only', () => {
+  it.each([
+    { name: 'all sparse', images: new Array<DeepSeekInlineImage>(1) },
+    {
+      name: 'sparse suffix',
+      images: Object.assign(new Array<DeepSeekInlineImage>(2), { 0: image }),
+    },
+  ])('rejects $name image batches before egress', async ({ images }) => {
+    const f = fixture();
+    await expect(f.adapter.generateImageStructured({ ...f.input, images })).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+    expect(f.fetch).not.toHaveBeenCalled();
+  });
+
   it('accepts a canonical 10 MiB pinned image envelope without recursive regex failure', async () => {
     const f = fixture();
     const maximum = sizedImage(10 * 1024 * 1024);

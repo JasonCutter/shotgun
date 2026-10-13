@@ -97,10 +97,12 @@ const base64EnvelopeIsValid = (value: string): boolean => {
 };
 
 const inlineImages = (images: readonly DeepSeekInlineImage[]) => {
-  if (!Array.isArray(images) || images.length < 1 || images.length > 4)
+  const imageCount = Array.isArray(images) ? images.length : 0;
+  if (imageCount < 1 || imageCount > 4)
     throw errorFor('VALIDATION_ERROR', 'A bounded nonempty image batch is required.');
   let totalBytes = 0;
-  return images.map((image) => {
+  return Array.from({ length: imageCount }, (_, index) => {
+    const image = Object.hasOwn(images, index) ? images[index] : undefined;
     if (
       !image ||
       !['image/png', 'image/jpeg'].includes(image.mediaType) ||

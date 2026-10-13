@@ -37,6 +37,14 @@ log is `C:/dev/artifacts/vp-full-completion-2026-10-12/media-native-base64-corre
 
 ## Remaining product boundary
 
+A subsequent negative test reproduced a sparse-array gap: `Array.map` skipped
+missing image slots and allowed a fake HTTP call containing null content blocks.
+The adapter now captures the bounded batch length and visits every own slot;
+all-sparse and sparse-suffix batches fail before any HTTP request. Existing
+content/hash/MIME/envelope limits remain unchanged. Native28 plus preparation26
+tests pass (54 total, including the owned real decoder); original two failures
+remain `native-image-sparse-failure.log`, correction `native-image-sparse-corrected.log`.
+
 The current usable-capability catalog and intake continue to reject images. Legacy string descriptions must not be silently promoted to literal original text or objective Fact. Media alignment, source/analysis provenance, bounded producer, actual authorized execution persistence, user display and source-grounded image quality still require integration/verification. The inactive transport is a concrete reusable prerequisite, not image/audio/video product acceptance.
 
 Rollback removes the prepared method/types and tests; existing text transport and persisted data remain unchanged. Relevant OSS decision: AUGMENT existing pinned adapter/protocol; no new production adoption. FFmpeg/transcription decisions remain separate.

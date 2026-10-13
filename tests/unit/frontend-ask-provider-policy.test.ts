@@ -276,24 +276,28 @@ describe('Ask provider policy and stream boundary', () => {
     expect(observedSignal).toBeDefined();
   });
 
-  it('retains the final provider guard when Project policy is not eligible', async () => {
-    const generateStructured = vi.fn();
-    const adapter = new StructuredAskAnswerProviderAdapter(adapterWith({ generateStructured }), {
-      allowPrivate: true,
-      allowRestricted: false,
-      dataPolicyVersion: 'ask-policy-v2',
-    });
-    await expect(
-      adapter.execute({
-        ...request('private'),
-        effectiveProviderPolicy: {
-          eligible: false,
-          policyFingerprint: 'ask-provider-effective-policy-v2:denied',
-        },
-      }),
-    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
-    expect(generateStructured).not.toHaveBeenCalled();
-  });
+  it.each(['public', 'internal', 'private'] as const)(
+    'retains the final provider guard for %s when Project policy is not eligible',
+    async (sensitivity) => {
+      const generateStructured = vi.fn();
+      const adapter = new StructuredAskAnswerProviderAdapter(adapterWith({ generateStructured }), {
+        allowPrivate: true,
+        allowRestricted: false,
+        dataPolicyVersion: 'ask-policy-v2',
+      });
+      await expect(
+        adapter.execute({
+          ...request('public'),
+          context: [{ ...request('public').context[0]!, sensitivity }],
+          effectiveProviderPolicy: {
+            eligible: false,
+            policyFingerprint: 'ask-provider-effective-policy-v2:denied',
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+      expect(generateStructured).not.toHaveBeenCalled();
+    },
+  );
 
   it('allows an approved SourceVersion-only context without inventing Evidence citations', async () => {
     const generateStructured = vi.fn(async () => ({

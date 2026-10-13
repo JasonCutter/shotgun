@@ -146,7 +146,7 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
     );
   });
 
-  it('creates the seven relations, expands the Stage 2 channel, and backfills no history', async () => {
+  it('creates the eight intake and URL relations, expands the Stage 2 channel, and backfills no history', async () => {
     expect(
       await pool!.query<{ count: string }>(
         `SELECT count(*)::text AS count
@@ -154,7 +154,26 @@ describe.runIf(pool)('Frontend Phase 2 Section 1 Sources persistence', () => {
          WHERE table_schema = 'source_product'
            AND table_name <> 'source_stage3_progress'`,
       ),
-    ).toMatchObject({ rows: [{ count: '7' }] });
+    ).toMatchObject({ rows: [{ count: '8' }] });
+    expect(
+      (
+        await pool!.query<{ table_name: string }>(
+          `SELECT table_name FROM information_schema.tables
+           WHERE table_schema = 'source_product' AND table_type = 'BASE TABLE'
+             AND table_name <> 'source_stage3_progress'
+           ORDER BY table_name`,
+        )
+      ).rows.map((row) => row.table_name),
+    ).toEqual([
+      'exact_duplicate_decisions',
+      'exact_duplicate_dispositions',
+      'intake_attempts',
+      'intake_submission_items',
+      'intake_submissions',
+      'url_acquisition_attempts',
+      'url_provenance_receipts',
+      'url_refresh_jobs',
+    ]);
     await pool!.query(
       `INSERT INTO intake.submissions (
          submission_key, submission_id, project_id, actor_id, channel,

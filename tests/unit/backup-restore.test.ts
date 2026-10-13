@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   BACKUP_FORMAT_VERSION,
   authoritativeIntegrityTablesForMigrations,
+  VP_BACKUP_INTEGRITY_PROFILE,
   type BackupManifest,
   readManifest,
   restoreBackup,
@@ -15,6 +16,42 @@ import {
 } from '../../scripts/backup-restore.js';
 
 const temporaryDirectories: string[] = [];
+
+describe('versioned VP backup integrity coverage', () => {
+  it('includes VP execution, source refresh and Frontier while preserving historical coverage identity', () => {
+    const migrations = [
+      '113_vp_direct_assertion_ledger.sql',
+      '115_vp_semantic_relation_jobs.sql',
+      '123_vp_durable_relation_provider_calls.sql',
+      '129_vp_global_relation_budget_authority.sql',
+      '131_source_url_refresh.sql',
+      '132_vp_candidate_frontier.sql',
+    ];
+    expect(
+      authoritativeIntegrityTablesForMigrations(migrations, VP_BACKUP_INTEGRITY_PROFILE),
+    ).toEqual(
+      expect.arrayContaining([
+        'vp.assertions',
+        'vp.history_events',
+        'vp.relation_jobs',
+        'vp.relation_provider_calls',
+        'vp_global_budget.claims',
+        'source_product.url_refresh_jobs',
+        'vp.candidate_frontier_members',
+      ]),
+    );
+    expect(authoritativeIntegrityTablesForMigrations(migrations, 'legacy-v1')).not.toContain(
+      'vp.assertions',
+    );
+    // Unversioned callers still construct the historical manifest shape.
+    expect(authoritativeIntegrityTablesForMigrations(migrations)).toEqual(
+      authoritativeIntegrityTablesForMigrations(migrations, 'legacy-v1'),
+    );
+    expect(authoritativeIntegrityTablesForMigrations([])).not.toContain(
+      'source_product.url_refresh_jobs',
+    );
+  });
+});
 const sha256 = (bytes: Uint8Array): string =>
   `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 
@@ -96,6 +133,33 @@ describe('Backup Bundle verification', () => {
     expect(manifest.integrity.tables).not.toHaveProperty('discovery.findings');
     await expect(readManifest(directory)).resolves.toEqual(manifest);
     await expect(verifyBackup(directory)).resolves.toEqual(manifest);
+  });
+
+  it('rejects an unsupported integrity profile during bundle verification before any restore', async () => {
+    const { directory, manifest } = await fixture();
+    const invalidManifest = {
+      ...manifest,
+      integrity: { ...manifest.integrity, profile: 'vp-unreviewed-v999' },
+    };
+    await writeFile(path.join(directory, 'manifest.json'), `${JSON.stringify(invalidManifest)}\n`);
+    await expect(readManifest(directory)).rejects.toThrow('Unsupported backup integrity profile.');
+    await expect(verifyBackup(directory)).rejects.toThrow('Unsupported backup integrity profile.');
+  });
+
+  it('uses the historical table subset only when the profile is absent', () => {
+    const migrations = [
+      '113_vp_direct_assertion_ledger.sql',
+      '123_vp_durable_relation_provider_calls.sql',
+    ];
+    const historical = authoritativeIntegrityTablesForMigrations(migrations, 'legacy-v1');
+    const current = authoritativeIntegrityTablesForMigrations(
+      migrations,
+      VP_BACKUP_INTEGRITY_PROFILE,
+    );
+    expect(historical).not.toContain('vp.relation_provider_calls');
+    expect(current).toContain('vp.relation_provider_calls');
+    expect(current).toEqual(expect.arrayContaining([...historical]));
+    expect(current).not.toContain('vp_global_budget.claims');
   });
 
   it('rejects T3 bundles that cannot prove owners and ACLs were preserved', async () => {

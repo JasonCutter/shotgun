@@ -713,6 +713,72 @@ describe('PostgreSQL uploaded Source automatic Evidence resolution', () => {
     );
     expect(unpublished.rows[0]?.statements).toBe('0');
 
+    const requeued = await executionRepository.fail({
+      scope: executionScope,
+      answerRunId: automatic.answerRun.answerRunId,
+      attemptNumber: pinnedAttempt.attemptNumber,
+      workerId: 'vp-wait-worker',
+      state: 'FAILED',
+      failure: {
+        code: 'STALE_VERSION',
+        message: 'Known stale publication.',
+        retryable: true,
+        outcomeUnknown: false,
+      },
+      requeueForCurrentKnowledge: true,
+    });
+    expect(requeued.state).toBe('QUEUED');
+    expect(requeued.attemptNumber).toBe(pinnedAttempt.attemptNumber);
+    expect(requeued.statements).toEqual([]);
+    const preservedAttempt = await pool.query(
+      `SELECT state, failure_code, failure_outcome_unknown, resolved_context_digest,
+              lease_owner FROM frontend_ask.answer_run_attempts WHERE attempt_id = $1`,
+      [pinnedAttempt.attemptId],
+    );
+    expect(preservedAttempt.rows).toEqual([
+      {
+        state: 'FAILED',
+        failure_code: 'STALE_VERSION',
+        failure_outcome_unknown: false,
+        resolved_context_digest: pinnedAttempt.resolvedContextDigest,
+        lease_owner: null,
+      },
+    ]);
+    const restartRepository = new PostgresAskAnswerExecutionRepository(
+      pool,
+      projection,
+      { resolve: async () => undefined },
+      undefined,
+      new PostgresVPAskEvidenceSearch(pool),
+    );
+    expect(await restartRepository.claimQueuedForWorker('restart-vp-worker', 1)).toEqual([]);
+    expect(
+      (await restartRepository.getRunSnapshot(executionScope, automatic.answerRun.answerRunId))
+        ?.state,
+    ).toBe('QUEUED');
+    // A repeated failure ACK cannot add another queue event or attempt.
+    const eventsBeforeDuplicate = await restartRepository.getEvents(
+      executionScope,
+      automatic.answerRun.answerRunId,
+    );
+    await restartRepository.fail({
+      scope: executionScope,
+      answerRunId: automatic.answerRun.answerRunId,
+      attemptNumber: pinnedAttempt.attemptNumber,
+      workerId: 'vp-wait-worker',
+      state: 'FAILED',
+      failure: {
+        code: 'STALE_VERSION',
+        message: 'Known stale publication.',
+        retryable: true,
+        outcomeUnknown: false,
+      },
+      requeueForCurrentKnowledge: true,
+    });
+    expect(
+      await restartRepository.getEvents(executionScope, automatic.answerRun.answerRunId),
+    ).toEqual(eventsBeforeDuplicate);
+
     const citationReadback = await automaticCoordinator.submitQuestion({
       ...scope,
       request: {

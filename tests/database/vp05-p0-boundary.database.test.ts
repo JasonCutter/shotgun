@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { PostgresVPRelationJobs } from '../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
 import {
@@ -34,7 +36,10 @@ beforeAll(async () => {
     .query('INSERT INTO vp_global_budget.authority_store(store_id) VALUES($1)', [storeId]);
 }, 120000);
 afterAll(async () => {
-  const output = 'docs/implementation/vp05-p0-execution-authority-2026-10-11';
+  // Regression execution must not rewrite the accepted historical evidence.
+  const output =
+    process.env.VP05_P0_TRACE_OUTPUT ??
+    path.join(os.tmpdir(), `shotgun-vp05-p0-boundary-${randomUUID()}`);
   await mkdir(output, { recursive: true });
   await writeFile(
     output + '/boundary-traces.json',

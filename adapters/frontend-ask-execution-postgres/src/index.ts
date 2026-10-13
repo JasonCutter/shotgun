@@ -38,6 +38,7 @@ import type {
 } from '../../../modules/frontend-ask-write/src/index.js';
 import {
   askExecutionContextDigest,
+  canRequeueStaleAskPublication,
   highestSensitivity,
   askSucceededCapabilitiesForContextStatus,
   sameAIExecutionPin,
@@ -664,10 +665,18 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     const result = await this.pool.query<{
       readonly source_version_id: string;
       readonly retrieved_at: Date;
+      readonly refresh_failed: boolean;
     }>(
       `SELECT DISTINCT ON (provenance.source_version_id)
               provenance.source_version_id::text,
-              provenance.retrieved_at
+              provenance.retrieved_at,
+              EXISTS (
+                SELECT 1 FROM source_product.url_refresh_jobs AS refresh
+                WHERE refresh.project_id = provenance.project_id
+                  AND refresh.source_version_id = provenance.source_version_id
+                  AND refresh.phase IN ('FAILED', 'OUTCOME_UNKNOWN')
+                  AND refresh.completed_at >= provenance.retrieved_at
+              ) AS refresh_failed
        FROM source_product.url_provenance_receipts AS provenance
        WHERE provenance.project_id = $1
          AND provenance.source_version_id::text = ANY($2::text[])
@@ -687,7 +696,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       freshnessBySourceVersion.set(row.source_version_id, {
         lastCheckedAt,
         expiresAt: expiresAt.toISOString(),
-        state: now < expiresAt.getTime() ? 'CURRENT' : 'EXPIRED',
+        state: !row.refresh_failed && now < expiresAt.getTime() ? 'CURRENT' : 'EXPIRED',
       });
     }
     return evidence.map((item) => {
@@ -1164,7 +1173,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         row,
         context,
         scope,
-        'INITIAL',
+        Number(row.attempt_number) > 0 ? 'RETRY_CURRENT_POLICY' : 'INITIAL',
         workerId ?? `ask-worker-${process.pid}-${randomUUID()}`,
         executionPin,
       );
@@ -1731,6 +1740,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly failure: AskAnswerRunFailure;
     readonly state: Extract<AskAnswerRunState, 'FAILED' | 'OUTCOME_UNKNOWN' | 'CANCELLED'>;
     readonly workerId: string;
+    readonly requeueForCurrentKnowledge?: boolean;
   }): Promise<AskAnswerRunSnapshot> {
     await this.poolTransaction(async (client) => {
       const row = await this.lockRun(client, input.scope, input.answerRunId);
@@ -1792,10 +1802,31 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         undefined,
         attemptId,
       );
+      if (input.requeueForCurrentKnowledge && canRequeueStaleAskPublication(input)) {
+        // The failed attempt and its failure event remain durable; a restart
+        // observes QUEUED and uses the normal pending/context/identity gate.
+        await this.updateRun(client, input.scope, input.answerRunId, {
+          state: 'QUEUED',
+          capabilities: ['CANCEL'],
+          failure: null,
+          partialText: null,
+          eventRevision: eventRevision + 1,
+        });
+        await this.appendEvent(
+          client,
+          input.scope,
+          input.answerRunId,
+          'STATE',
+          'QUEUED',
+          eventRevision + 1,
+          undefined,
+          attemptId,
+        );
+      }
     });
-    const current = await this.getRunContext(input.scope, input.answerRunId);
+    const current = await this.getRunSnapshot(input.scope, input.answerRunId);
     if (!current) throw notFound();
-    return current.snapshot;
+    return current;
   }
 
   async getEvents(
@@ -2520,7 +2551,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
               row,
               candidate.context,
               candidate.scope,
-              'INITIAL',
+              Number(row.attempt_number) > 0 ? 'RETRY_CURRENT_POLICY' : 'INITIAL',
               owner,
               candidate.executionPin,
             );

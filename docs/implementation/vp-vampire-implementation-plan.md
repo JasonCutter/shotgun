@@ -6,9 +6,11 @@
 
 현재 통과 증거와 미완료 조건은 [VP 완료 현황표](./vp-completion-tracker.md)를 따른다. 이 계획의 날짜별 체크포인트는 작성 당시 상태이며 최신 완료 판정을 대체하지 않는다.
 
+2026-10-12 후속 [전체 연속 구현 승인](./vp-full-completion-2026-10-12/execution-directive.md)의 현재 기준은 `main@aba6ff27f9620ee1a3f408f8df81e8aad21cc584`다. [Master Plan](./vp-full-completion-2026-10-12/master-execution-plan.md)에서 기존 성과를 재사용하고 A3·VP-03~11을 개발·격리 검증한다. 현재 app v6·0.9와 보존된 로컬 v11을 구분하며, 이 승인으로 v11/SSC나 새 평가 권위를 자동 활성화하지 않는다. 활성 문서 파일의 한도는 migration127 이후 10 MiB, URL은 1 MiB이며 형식별 Golden·지원 범위·정확한 미지원 처리를 별도 검증한다. 과거 1 MiB 파일 한도와 STOP은 당시 기록이다.
+
 ## 현재 전략 적용 — ADR-173 (2026-10-10)
 
-[ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)의 제품 인수→평가 신뢰성→실제 병목→최소 보완 우선순위를 적용한다. [전략 실행 기준](./development-strategy-reset-2026-10-10/execution-plan.md)은 A–E의 목표·종료 증거를 정의하며, 이 계획의 VP-0~VP-4 제품 단계나 tracker의 VP-01~VP-11 ID를 바꾸지 않는다. 아래 §1 인수 시나리오, §4의 Ledger·Source/Evidence·권한·Frontier·증분/replay 계약과 기존 Gate는 유지한다.
+[ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)의 제품 인수→평가 신뢰성→실제 병목→최소 보완 우선순위를 적용한다. [전략 실행 기준](./development-strategy-reset-2026-10-10/execution-plan.md)은 A–E의 목표·종료 증거를 정의하며, 이 계획의 VP-0~~VP-4 제품 단계나 tracker의 VP-01~~VP-11 ID를 바꾸지 않는다. 아래 §1 인수 시나리오, §4의 Ledger·Source/Evidence·권한·Frontier·증분/replay 계약과 기존 Gate는 유지한다.
 
 VP-05는 미완료이고 VP-06은 STOP이다. SSC·모델·prompt/schema 반복 실험과 B v1 잔여 24회는 재개하지 않는다. v11과 0.9 gate는 현재 기준이며 calibration이 독립적으로 입증됐다는 뜻이 아니다. §4.3의 Jev/후속 최적화는 선택적 후보로 유지하되 제품 병목과 신뢰할 수 있는 비교 기준이 확인된 후에만 평가를 제안한다. 질문 시 관계 평가는 현행 사전 관계 기록의 대체 결정이 아니다.
 

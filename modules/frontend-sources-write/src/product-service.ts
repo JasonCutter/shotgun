@@ -34,6 +34,8 @@ export type ResolvedSourcesStagingArtifact = {
   readonly expiresAt: string;
   readonly requestedClassification?: SourcesSensitivity;
   readonly requestedSourceId?: string;
+  /** Server-owned refresh compare-and-set; never accepted from browser staging. */
+  readonly expectedSourceVersionId?: string;
 };
 
 export type SourcesStagingServicePort = {

@@ -16,6 +16,7 @@ import {
   validVPRelationDecision,
 } from '../../../modules/vp-decision/src/index.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
+import { PostgresCandidateFrontier } from './frontier-store.js';
 
 type PairRow = QueryResultRow & {
   readonly job_id: string;
@@ -176,6 +177,7 @@ export class PostgresVPRelationJobs
     // Explicit false is reserved for isolated fake/legacy replay harnesses.
     // Application composition always requires the shared global authority.
     private readonly globalAuthorityRequired = true,
+    private readonly frontierMode = false,
   ) {
     if (!Number.isSafeInteger(maxDailyProviderAttempts) || maxDailyProviderAttempts < 1) {
       throw new Error('VP daily provider attempt ceiling must be a positive integer.');
@@ -214,6 +216,7 @@ export class PostgresVPRelationJobs
                AND current_right.assertion_id = job.right_assertion_id
           ))`,
     );
+    if (limit === 0) return 0;
     const result = await this.pool.query<{ job_id: string }>(
       `INSERT INTO vp.relation_jobs (
          job_id, project_id, left_assertion_id, right_assertion_id, policy_revision, max_attempts
@@ -267,6 +270,19 @@ export class PostgresVPRelationJobs
       ],
     );
     return result.rowCount ?? 0;
+  }
+
+  async ensureCurrentFrontier(policyRevision: string): Promise<void> {
+    if (!this.frontierMode) throw new Error('FRONTIER_RUNTIME_BINDING_REQUIRED');
+    await this.enqueueCurrentPairs(policyRevision, 0);
+    await new PostgresCandidateFrontier(this.pool, this.maxAttemptsPerJob).ensure(policyRevision);
+  }
+
+  async readCurrentFrontierStatus(projectId: string, policyRevision: string) {
+    return new PostgresCandidateFrontier(this.pool, this.maxAttemptsPerJob).status(
+      projectId,
+      policyRevision,
+    );
   }
 
   /** Recovery does not need a provider credential or global authorization. */
@@ -358,9 +374,17 @@ export class PostgresVPRelationJobs
                    AND provider_call.state = 'OUTPUT_STORED'
               ))
               AND (reset_epoch.state IS NULL OR reset_epoch.state = 'READY')
+              AND ($2::boolean = false OR EXISTS (
+                SELECT 1 FROM vp.candidate_frontier_members member
+                JOIN vp.candidate_frontiers frontier USING(project_id,frontier_id)
+                JOIN project_admin.projects project ON project.id=frontier.project_id
+                WHERE member.project_id=job.project_id AND member.job_id=job.job_id
+                  AND frontier.is_current AND frontier.policy_revision=$1
+                  AND project.active AND project.status='ACTIVE'
+              ))
             ORDER BY job.created_at, job.job_id
             LIMIT 1 FOR UPDATE OF job SKIP LOCKED`,
-          [policyRevision],
+          [policyRevision, this.frontierMode],
         );
         const row = selected.rows[0];
         if (!row) return undefined;

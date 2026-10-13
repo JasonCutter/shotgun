@@ -54,7 +54,7 @@ export type SourcesUrlSuccessProvenance = {
   readonly redirectObservations: readonly Readonly<Record<string, unknown>>[];
   readonly dnsObservations: readonly Readonly<Record<string, unknown>>[];
   readonly responseStatus: number;
-  readonly responseContentType: 'text/plain' | 'text/markdown';
+  readonly responseContentType: 'text/plain' | 'text/markdown' | 'text/html';
   readonly responseContentLength?: number;
   readonly compressedBytes: number;
   readonly decompressedBytes: number;

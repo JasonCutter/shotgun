@@ -54,7 +54,7 @@ export type UrlAcquisitionReceipt = {
     readonly addressSetDigest: string;
   }[];
   readonly responseStatus: number;
-  readonly responseContentType: 'text/plain' | 'text/markdown';
+  readonly responseContentType: 'text/plain' | 'text/markdown' | 'text/html';
   readonly responseContentLength: number;
   readonly compressedBytes: number;
   readonly decompressedBytes: number;
@@ -263,9 +263,19 @@ const normalize = (value: string): URL => {
   return parsed;
 };
 
-const contentType = (value: string | undefined): 'text/plain' | 'text/markdown' => {
+const contentType = (value: string | undefined): UrlAcquisitionReceipt['responseContentType'] => {
   const normalized = value?.split(';', 1)[0]?.trim().toLocaleLowerCase();
-  if (normalized === 'text/plain' || normalized === 'text/markdown') return normalized;
+  const charset = /(?:^|;)\s*charset\s*=\s*(?:"([^"]+)"|([^;\s]+))/iu.exec(value ?? '');
+  const encoding = (charset?.[1] ?? charset?.[2])?.trim().toLowerCase();
+  if (encoding && !['utf-8', 'utf8', 'us-ascii'].includes(encoding)) {
+    return fail(
+      'URL text encoding is not supported; UTF-8 is required.',
+      'validate-text-encoding',
+      'VALIDATION_ERROR',
+    );
+  }
+  if (normalized === 'text/plain' || normalized === 'text/markdown' || normalized === 'text/html')
+    return normalized;
   return fail(
     'URL response content type is not supported.',
     'validate-content-type',
@@ -381,6 +391,11 @@ export class SecureUrlAcquisitionCoordinator {
         );
       }
       const mediaType = contentType(response.headers['content-type']);
+      try {
+        new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(response.body);
+      } catch {
+        return fail('URL body is not valid UTF-8.', 'validate-text-encoding', 'VALIDATION_ERROR');
+      }
       const responseMetadata: Record<string, string> = {};
       for (const key of ['cache-control', 'etag', 'last-modified'] as const) {
         const value = response.headers[key];

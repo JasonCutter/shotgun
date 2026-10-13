@@ -311,7 +311,12 @@ export const decodeSourcesStagingReceipt = (input: unknown): SourcesStagingRecei
       'Unsupported Sources staging media type.',
     );
   }
-  if (mediaType !== 'text/plain' && mediaType !== 'text/markdown' && kind !== 'FILE') {
+  if (
+    mediaType !== 'text/plain' &&
+    mediaType !== 'text/markdown' &&
+    kind !== 'FILE' &&
+    !(kind === 'URL' && mediaType === 'text/html')
+  ) {
     throw new FrontendContractError('UNSUPPORTED_SCHEMA', 'Document staging requires a file.');
   }
   const sizeBytes = value['sizeBytes'];

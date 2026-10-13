@@ -31,7 +31,19 @@ describe('T3 storage classification coverage', () => {
     );
     const expected = parseT3ExpectedTables(register);
     expect(expected.schemas).toEqual([...managedSchemas].sort());
-    expect(expected.tables).toHaveLength(207);
+    expect(expected.tables).toHaveLength(210);
+    const currentAdditions = [
+      'source_product.url_refresh_jobs',
+      'vp.candidate_frontier_members',
+      'vp.candidate_frontiers',
+    ];
+    expect(expected.tables.filter((table) => currentAdditions.includes(table))).toEqual(
+      currentAdditions,
+    );
+    expect(expected.tables.filter((table) => !currentAdditions.includes(table))).toHaveLength(207);
+    expect(register).toContain('migration 001–130의 207개 table');
+    expect(register).toContain('`source_product.url_refresh_jobs`: D');
+    expect(register).toContain('`vp.candidate_frontiers`와 `vp.candidate_frontier_members`: D+B');
 
     const actual = await pool.query<{ schema_name: string; table_name: string }>(
       `SELECT table_schema AS schema_name, table_name

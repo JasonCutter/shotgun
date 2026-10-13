@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "shotgun.vp.local-evidence-manifest.v1",
+  "startDate": "2026-10-12 Asia/Seoul",
+  "updatedDate": "2026-10-13 Asia/Seoul",
+  "base": "aba6ff27f9620ee1a3f408f8df81e8aad21cc584",
+  "scope": "LOCAL_FAKE_OR_ISOLATED_FUNCTIONAL_EVIDENCE_NOT_SEMANTIC_GOLD",
+  "actualLiveAIProviderCalls": 0,
+  "productionActivated": false,
+  "oldExperimentsRescored": false,
+  "GoldB7Opened": false,
+  "items": [
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/baseline.json",
+      "sha256": "8b6b9c1344ec1d64b86a727e89c1eebc6bcf32ed5326a00d86da42dd13284c5d",
+      "bytes": 27067
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/preservation-current.json",
+      "sha256": "ea9ca541706438258f9f282f41c8ca9ce427919817e72af8afb4ad99a32f166e",
+      "bytes": 18374
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/app-acceptance-integrated/result.json",
+      "sha256": "9d34611cfce2bf444a9f25153a5697dd48dbf41e32b32886637c259e89e312fc",
+      "bytes": 31187
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/browser-actual-app-final2/result.json",
+      "sha256": "232d6c5fdf379b19e9a8b76224c79bde0a4bb8b4824e722f4efafb7033743562",
+      "bytes": 1029
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/backup-proof.json",
+      "sha256": "52abc51455f63182dd7f7fa86269b8e04b27c08514a5c527cde84fd3e883742b",
+      "bytes": 666
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/restart-restore-proof.json",
+      "sha256": "4ac34a436d2b8a58df42d48e43561d91747e7510af17e051439e17f01e6ae267",
+      "bytes": 567
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/final-unit-contract.log",
+      "sha256": "0c0366ce4fb89eaf66f0211d58f7b61440bbd042c94896b1cf343ea5ade7dd8f",
+      "bytes": 51883
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/frontend-tests.log",
+      "sha256": "35d8c7d71129a0f5bafea30c750dc0b9f7b8288890f9f822fe61e335f91de67c",
+      "bytes": 20738
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/checkpoint-unit.log",
+      "sha256": "565b7e6a1d5e6f7295a1e25516ff939b72b1cf97d95583266be614ee15f2e1e7",
+      "bytes": 636
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/checkpoint-pg.log",
+      "sha256": "ebf4cd60fe61969494c2ccd882e6f7e9f4551249b22a40a5b3a631039981d6ce",
+      "bytes": 871
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/final-docs-gate.log",
+      "sha256": "88a217b53dbdc7abf997a230965fa5476a9353292b2d5740f109980c23672205",
+      "bytes": 571
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/oss-gate.log",
+      "sha256": "22fac6f90086cf6d31d95f6a4561b26df85b3e032d5f96f2d8838de2c56eebdf",
+      "bytes": 85
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/secret-scan.log",
+      "sha256": "a7f5207a12307c2907f432b4029ffce934498f1815190ad2c97dbb5dd92a22bc",
+      "bytes": 21
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/publish-typecheck.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/publish-format.log",
+      "sha256": "f20510a9da4717c51c4cffee6d0dd88d6c9a723d0a83711d01216f5b48961283",
+      "bytes": 68
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/publish-ts6-release.log",
+      "sha256": "258a97ff24ceed00b8c2f9fec156092aba8d38a15baf233bf4176b40f3ec3aea",
+      "bytes": 1629
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/publish-secret-scan.log",
+      "sha256": "a7f5207a12307c2907f432b4029ffce934498f1815190ad2c97dbb5dd92a22bc",
+      "bytes": 21
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/publish-application-pg.log",
+      "sha256": "1939ae51eaf274021097e31bf7bc3fa76d6ee459769aa503717d04cf6d92c32f",
+      "bytes": 1125
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/publish-application-pg-resumed.log",
+      "sha256": "9db61bd3f02043f67fc4fd3f5f3cf3cf03177ad31041c8e69fb1de6fe0c267df",
+      "bytes": 2341
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12/publish-application-first-case.log",
+      "sha256": "ff1d13029a64fddfe25d80a04a46feefde868ad168f05cc013cbb2673bd1c890",
+      "bytes": 1075
+    }
+  ]
+}

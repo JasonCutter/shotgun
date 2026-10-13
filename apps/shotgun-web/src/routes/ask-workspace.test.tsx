@@ -380,6 +380,50 @@ const LocalizedShellOutlet = () => (
 );
 
 describe('AskWorkspace', () => {
+  it('explains queued source work and continues polling the same question automatically', async () => {
+    const runtime = createRuntime();
+    const workspace = workspaceWithRunState('QUEUED');
+    const run = workspace.selectedConversation!.branches[0]!.turns[0]!.answerRun;
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace: vi.fn().mockResolvedValue(workspace),
+      getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn().mockResolvedValue(run),
+      getAnswerRunEvents: vi
+        .fn()
+        .mockResolvedValue({ schemaVersion: '1.0.0', answerRunId: 'run-1', events: [] }),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <LocalizedShellOutlet />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+    expect(
+      await screen.findByText(
+        '자료 처리와 실행 준비를 기다리는 중입니다. 준비되면 같은 질문이 자동으로 이어집니다.',
+      ),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(mockClient.getAnswerRun).toHaveBeenCalledWith('run-1', expect.any(Object)),
+    );
+    expect(mockClient.submitQuestion).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '현재 정책으로 다시 시도' })).toBeNull();
+  });
+
   it('converges the mounted Global Composer when standing policy toggles without reload', async () => {
     const runtime = createRuntime();
     let standingPolicyEnabled = false;

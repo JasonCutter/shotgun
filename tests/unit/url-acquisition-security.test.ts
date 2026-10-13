@@ -61,6 +61,43 @@ const coordinator = (
 };
 
 describe('secure URL acquisition policy', () => {
+  it.each([
+    response({ headers: { 'content-type': 'text/html; charset=windows-1252' } }),
+    response({
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body: Uint8Array.from([0xff, 0xfe, 0xfd]),
+    }),
+  ])(
+    'rejects unsupported or malformed text encoding without creating lossy evidence',
+    async (res) => {
+      const { service } = coordinator({ 'example.com': [['93.184.216.34'], ['93.184.216.34']] }, [
+        res,
+      ]);
+      await expect(
+        service.acquire({ requestedUrl: 'https://example.com/document', limits }),
+      ).rejects.toThrow(/encoding|UTF-8/);
+    },
+  );
+  it('acquires HTML as immutable bytes without executing or stripping its content', async () => {
+    const body = Buffer.from(
+      '<html><body><p>Only after 2026: 42 mg.</p><script>fetch("https://evil.invalid")</script></body></html>',
+    );
+    const { service, transport } = coordinator(
+      { 'example.com': [['93.184.216.34'], ['93.184.216.34']] },
+      [
+        response({
+          headers: { 'content-type': 'Text/HTML; charset=utf-8' },
+          body,
+          compressedBytes: body.length,
+        }),
+      ],
+    );
+    const receipt = await service.acquire({ requestedUrl: 'https://example.com/document', limits });
+    expect(receipt.responseContentType).toBe('text/html');
+    expect(Buffer.from(receipt.body)).toEqual(body);
+    expect(transport.requests).toHaveLength(1);
+    expect(receipt.responseMetadata).not.toHaveProperty('set-cookie');
+  });
   it('parses compressed and case-insensitive embedded IPv4 forms', () => {
     expect(isPublicAcquisitionAddress('::FFFF:0808:0808')).toBe(true);
     expect(isPublicAcquisitionAddress('::ffff:192.0.2.1')).toBe(false);
@@ -204,7 +241,7 @@ describe('secure URL acquisition policy', () => {
     ).rejects.toThrow(/redirect loop/);
 
     const unsupported = coordinator({ 'example.com': [['93.184.216.34'], ['93.184.216.34']] }, [
-      response({ headers: { 'content-type': 'text/html' } }),
+      response({ headers: { 'content-type': 'application/pdf' } }),
     ]);
     await expect(
       unsupported.service.acquire({ requestedUrl: 'https://example.com/', limits }),

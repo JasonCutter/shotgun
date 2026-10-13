@@ -11,7 +11,8 @@
     "T3 added a production-path regression relation for consistent Ask workspace snapshots, verified through Product citations",
     "2026-10-01 coordinate audit: eight approved covers[] references were remapped to the same audited functions at current AST coordinates; labels, tests, and the frozen v7 source digest were unchanged. See docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md.",
     "2026-10-02 URL freshness projection coordinate audit: ten covers[] references were remapped to the same owning methods after checking live functionKey, sourceNeedle, classification, and reachability. Test identities, labels, and frozen v7 source digest remain unchanged. See the 2026-10-02 addendum in docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md.",
-    "2026-10-11 VP-05 P0: five existing VP method coordinates remapped with owning method/classification/reachability unchanged; eleven new source candidates audited (three global raw owners, seven lifecycle statements, one concrete expired-execution recovery owner). Added direct regression evidence for the new PROVEN recovery boundary. Validator rules and frozen v2-v7 inputs unchanged. See docs/implementation/vp05-p0-execution-authority-2026-10-11/ts6-coordinate-audit.md."
+    "2026-10-11 VP-05 P0: five existing VP method coordinates remapped with owning method/classification/reachability unchanged; eleven new source candidates audited (three global raw owners, seven lifecycle statements, one concrete expired-execution recovery owner). Added direct regression evidence for the new PROVEN recovery boundary. Validator rules and frozen v2-v7 inputs unchanged. See docs/implementation/vp05-p0-execution-authority-2026-10-11/ts6-coordinate-audit.md.",
+    "2026-10-12 VP full completion delegated mechanical audit: 126 inherited transaction owners mapped uniquely by file/class/method/ownership kind with unchanged reachability; three new owners receive qualified DIRECT_BOUNDARY PostgreSQL evidence, including PORT_INFERRED source refresh and PROVEN Frontier ensure/status. New relations are implementation acceptance, not human semantic Gold; frozen v2-v7 and source digest unchanged. See docs/implementation/vp-full-completion-2026-10-12/reliability-ts6-coordinate-audit.md."
   ],
   "records": [
     {
@@ -303,7 +304,7 @@
       "testEvidenceId": "test:tests/database/frontend-phase-2-section-1-product-write.test.ts:creates one Source, requires an exact-duplicate decision, and reuses the pinned Version",
       "file": "tests/database/frontend-phase-2-section-1-product-write.test.ts",
       "testName": "creates one Source, requires an exact-duplicate decision, and reuses the pinned Version",
-      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:884"],
+      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:885"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesProductService.resolveDuplicate",
       "path": ["PostgresSourcesProductService.resolveDuplicate"]
@@ -312,7 +313,7 @@
       "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:retries the outcome-indeterminate Sources item through the product service boundary",
       "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
       "testName": "retries the outcome-indeterminate Sources item through the product service boundary",
-      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1074"],
+      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1075"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesProductService.retry",
       "path": ["PostgresSourcesProductService.retry"]
@@ -504,7 +505,7 @@
       "testEvidenceId": "test:tests/database/frontend-section3-bootstrap-postgres.test.ts:persists Project, one Owner, active Session, operation binding, and recoverable outcome",
       "file": "tests/database/frontend-section3-bootstrap-postgres.test.ts",
       "testName": "persists Project, one Owner, active Session, operation binding, and recoverable outcome",
-      "covers": ["safe:adapters/postgres/src/index.ts:1255"],
+      "covers": ["safe:adapters/postgres/src/index.ts:1265"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresProjectBootstrapUnitOfWork.bootstrap",
       "path": ["PostgresProjectBootstrapUnitOfWork.bootstrap"]
@@ -513,7 +514,7 @@
       "testEvidenceId": "test:tests/database/frontend-ask-uploaded-source-resolution.database.test.ts:resolves bounded Evidence for the Browser source-only selection without calling the original reader",
       "file": "tests/database/frontend-ask-uploaded-source-resolution.database.test.ts",
       "testName": "resolves bounded Evidence for the Browser source-only selection without calling the original reader",
-      "covers": ["safe:adapters/postgres/src/index.ts:844"],
+      "covers": ["safe:adapters/postgres/src/index.ts:854"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresProjectAdministrationRepository.createProject",
       "path": ["PostgresProjectAdministrationRepository.createProject"]
@@ -616,7 +617,7 @@
       "testEvidenceId": "test:tests/database/frontend-ask-write-postgres.database.test.ts:commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
       "file": "tests/database/frontend-ask-write-postgres.database.test.ts",
       "testName": "commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
-      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2948"],
+      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2979"],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "executionService.startWorker",
       "path": [
@@ -629,7 +630,7 @@
       "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:Stage3 first attempt throws → retry → same SourceId/SourceVersionId → Stage3 completes → Evidence exists → no duplicate SourceVersion",
       "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
       "testName": "Stage3 first attempt throws → retry → same SourceId/SourceVersionId → Stage3 completes → Evidence exists → no duplicate SourceVersion",
-      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:600"],
+      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:601"],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "service.submit",
       "path": [
@@ -643,8 +644,8 @@
       "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
       "testName": "mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL",
       "covers": [
-        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:641",
-        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1704"
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:642",
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1705"
       ],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "mixedService.submit",
@@ -683,7 +684,7 @@
       "testEvidenceId": "test:tests/database/section2-postgres.test.ts:updates PostgreSQL project metadata through the transaction owner",
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "updates PostgreSQL project metadata through the transaction owner",
-      "covers": ["safe:adapters/postgres/src/index.ts:997"],
+      "covers": ["safe:adapters/postgres/src/index.ts:1007"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "projectAdminRepo.updateProject",
       "path": [
@@ -695,7 +696,7 @@
       "testEvidenceId": "test:tests/database/section2-postgres.test.ts:updates PostgreSQL principal preferences through the transaction owner",
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "updates PostgreSQL principal preferences through the transaction owner",
-      "covers": ["safe:adapters/postgres/src/index.ts:1526"],
+      "covers": ["safe:adapters/postgres/src/index.ts:1536"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "settingsRepo.updatePrincipalPreferences",
       "path": [
@@ -850,7 +851,7 @@
       "testEvidenceId": "test:tests/database/a9-final-closure-evidence.test.ts:commits work performed through the Ask execution transaction boundary",
       "file": "tests/database/a9-final-closure-evidence.test.ts",
       "testName": "commits work performed through the Ask execution transaction boundary",
-      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2207"],
+      "covers": ["safe:adapters/frontend-ask-execution-postgres/src/index.ts:2238"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskAnswerExecutionRepository.transaction",
       "path": ["transaction"]
@@ -958,7 +959,7 @@
       "testEvidenceId": "test:tests/database/section2-postgres.test.ts:keeps PostgreSQL Project lifecycle status and active state in parity",
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "keeps PostgreSQL Project lifecycle status and active state in parity",
-      "covers": ["safe:adapters/postgres/src/index.ts:1132"],
+      "covers": ["safe:adapters/postgres/src/index.ts:1142"],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "PostgresProjectAdministrationRepository.archiveProject",
       "path": [
@@ -970,7 +971,7 @@
       "testEvidenceId": "test:tests/database/section2-postgres.test.ts:rolls back cleanly on transaction errors without leaving corrupted revisions",
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "rolls back cleanly on transaction errors without leaving corrupted revisions",
-      "covers": ["safe:adapters/postgres/src/index.ts:1839"],
+      "covers": ["safe:adapters/postgres/src/index.ts:1849"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSettingsRepository.applySettingsCommand",
       "path": ["applySettingsCommand"]
@@ -1019,7 +1020,7 @@
       "testEvidenceId": "test:tests/database/frontend-sources-stage3-recovery.test.ts:VP automatic intake is finalized by the recovery worker without a user retry",
       "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
       "testName": "VP automatic intake is finalized by the recovery worker without a user retry",
-      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:518"],
+      "covers": ["safe:adapters/frontend-sources-write-postgres/src/product-service.ts:519"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesProductService.reconcileCompletedAutomaticSubmissions",
       "path": ["PostgresSourcesProductService.reconcileCompletedAutomaticSubmissions"]
@@ -1028,10 +1029,37 @@
       "testEvidenceId": "test:tests/database/vp05-p0-crash.database.test.ts:preserves attempts across pre-activation crashes and fences an activated unknown egress",
       "file": "tests/database/vp05-p0-crash.database.test.ts",
       "testName": "preserves attempts across pre-activation crashes and fences an activated unknown egress",
-      "covers": ["safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:274"],
+      "covers": ["safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:290"],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresVPRelationJobs.recoverExpiredExecutions",
       "path": ["PostgresVPRelationJobs.recoverExpiredExecutions"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/source-refresh.database.test.ts:claims one job across independent connections and fences duplicate activation:PostgresSourceRefreshStore.claimNext",
+      "file": "tests/database/source-refresh.database.test.ts",
+      "testName": "claims one job across independent connections and fences duplicate activation",
+      "covers": ["safe:adapters/source-refresh-postgres/src/index.ts:45"],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresSourceRefreshStore.claimNext",
+      "path": ["PostgresSourceRefreshStore.claimNext"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/vp-candidate-frontier.database.test.ts:persists empty completeness instead of returning an unpersisted random identity:PostgresCandidateFrontier.ensure",
+      "file": "tests/database/vp-candidate-frontier.database.test.ts",
+      "testName": "persists empty completeness instead of returning an unpersisted random identity",
+      "covers": ["safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:98"],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresCandidateFrontier.ensure",
+      "path": ["PostgresCandidateFrontier.ensure"]
+    },
+    {
+      "testEvidenceId": "test:tests/database/vp-candidate-frontier.database.test.ts:persists empty completeness instead of returning an unpersisted random identity:PostgresCandidateFrontier.status",
+      "file": "tests/database/vp-candidate-frontier.database.test.ts",
+      "testName": "persists empty completeness instead of returning an unpersisted random identity",
+      "covers": ["safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:172"],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresCandidateFrontier.status",
+      "path": ["PostgresCandidateFrontier.status"]
     }
   ]
 }

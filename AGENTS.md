@@ -4,6 +4,10 @@
 
 ## 0. 현재 개발 전략 — ADR-173
 
+### 2026-10-12 VP 전체 연속 구현 승인
+
+[후속 사용자 지시](docs/implementation/vp-full-completion-2026-10-12/execution-directive.md)와 [Master Plan](docs/implementation/vp-full-completion-2026-10-12/master-execution-plan.md)을 적용한다. A3와 VP-03~11의 비파괴적 개발·격리 검증은 승인됐다. 아래의 과거 VP-06/07 개발 STOP은 이 범위에서 대체되며, 역사 기록은 보존한다. 실제 AI 검증은 기존 인가 credential·egress·전역 예산이 유효한 격리 workload에서만 가능하다. 동결 72/432/B12·B 잔여24·Gold-B-7 보존, 운영 권위·데이터·release 안전 경계와 별도 merge 승인은 유지한다. v6·0.9 현행 정책은 이번 기능 보완에서 유지하고 v11 활성화·SSC·새 모델 채택은 자동 승인으로 해석하지 않는다. 사용자 개별 지식 검토는 추가하지 않는다.
+
 [ADR-173](docs/architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)의 사용자 승인 전략에 따라 `제품 인수 결과 → 평가 신뢰성 → 실제 병목 → 관련 OSS 재사용 판단 → 최소 구현 → Gate 검증` 순서로 작업한다. 방법은 목표·완료 기준·기존 안전 경계 안에서 실행 에이전트가 선택하고, 요청서보다 나은 수정·절충과 검증 결과를 보고한다. 사용자의 명시적 제약과 아래의 필수 Contract·OSS·안전 Gate는 유지한다.
 
 VP의 자료 투입/질문 두 동작, VP Ledger·SourceVersion·Evidence·권한·예산·복구·멱등성은 보존한다. 후보/동결 점수, anchor 위치, 높은 confidence를 인증된 의미 정답이나 객관적 Fact로 보고하지 않는다. 빈 품질 분모는 N/A이고 원본 선언 안정성·발행 안정성을 구분한다.

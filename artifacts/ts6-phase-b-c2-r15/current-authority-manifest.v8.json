@@ -2,7 +2,7 @@
   "schemaVersion": "ts6.phase-b.current-authority-manifest.v8",
   "status": "FROZEN_BASELINE_EXPECTATIONS",
   "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
-  "reviewBasis": "Static expected classifications and reachability for the T3 source inventory, Source knowledge reset persistence, and Ask workspace read snapshot; source-coordinate updates require an audited function/method/classification/reachability match, and CI never rewrites this manifest. 2026-10-01 VP reconciliation: 11 inherited functions were matched to unchanged methods, classifications, and reachability; three added VP transaction candidates are recorded after auditing, with the claim/storeOutput closures inlined into owning Port methods. See docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md. 2026-10-02 URL freshness projection: ten existing candidate coordinates were remapped by functionKey after confirming unchanged owning methods, candidate kinds, classifications, and reachability; ten approved test relations were remapped to those same boundaries. No candidate was added or removed, and classification totals are unchanged. 2026-10-02 Ask page-location propagation moved four Ask adapter candidate coordinates; all four methods, classifications, and reachability grades were re-audited, with approved relation references updated. See the 2026-10-01 coordinate audit's 2026-10-02 addendum.",
+  "reviewBasis": "Static expected classifications and reachability for the T3 source inventory, Source knowledge reset persistence, and Ask workspace read snapshot; source-coordinate updates require an audited function/method/classification/reachability match, and CI never rewrites this manifest. 2026-10-01 VP reconciliation: 11 inherited functions were matched to unchanged methods, classifications, and reachability; three added VP transaction candidates are recorded after auditing, with the claim/storeOutput closures inlined into owning Port methods. See docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md. 2026-10-02 URL freshness projection: ten existing candidate coordinates were remapped by functionKey after confirming unchanged owning methods, candidate kinds, classifications, and reachability; ten approved test relations were remapped to those same boundaries. No candidate was added or removed, and classification totals are unchanged. 2026-10-02 Ask page-location propagation moved four Ask adapter candidate coordinates; all four methods, classifications, and reachability grades were re-audited, with approved relation references updated. See the 2026-10-01 coordinate audit's 2026-10-02 addendum. 2026-10-12 VP full completion: 126 inherited owners retain qualified reachability and three actual new safe owners are inventoried; classifications derive as 19 TX_BOUNDARY, 92 PORT_INFERRED, 14 NON_TX, 18 TEST_ONLY_OR_DEAD. New direct PostgreSQL relations and current source coordinates are reviewed under delegated implementation authority. See docs/implementation/vp-full-completion-2026-10-12/reliability-ts6-coordinate-audit.md.",
   "entries": [
     {
       "candidateId": "raw:adapters/postgres-stage4/src/index.ts:574",
@@ -291,12 +291,12 @@
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2207",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2238",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2948",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2979",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
@@ -396,12 +396,12 @@
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1074",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1075",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1704",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1705",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
@@ -411,22 +411,22 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:518",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:519",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:600",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:601",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:641",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:642",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:884",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:885",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
@@ -586,22 +586,27 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1132",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1007",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/postgres/src/index.ts:1142",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1255",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1265",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1526",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1536",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1839",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1849",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
@@ -611,12 +616,7 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:844",
-      "classification": "PORT_INFERRED",
-      "reachabilityStatus": "PORT_INFERRED"
-    },
-    {
-      "candidateId": "safe:adapters/postgres/src/index.ts:997",
+      "candidateId": "safe:adapters/postgres/src/index.ts:854",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
@@ -656,37 +656,52 @@
       "reachabilityStatus": "PROVEN"
     },
     {
+      "candidateId": "safe:adapters/source-refresh-postgres/src/index.ts:45",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:172",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:98",
+      "classification": "TX_BOUNDARY",
+      "reachabilityStatus": "PROVEN"
+    },
+    {
       "candidateId": "safe:adapters/vp-knowledge-postgres/src/index.ts:114",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:274",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:290",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:343",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:359",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:409",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:433",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:648",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:672",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:733",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:757",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:783",
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/relation-jobs.ts:807",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     }

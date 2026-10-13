@@ -22,6 +22,7 @@ import {
 } from '../../../packages/contracts/src/index.js';
 import {
   askExecutionContextDigest,
+  canRequeueStaleAskPublication,
   askSucceededCapabilitiesForContextStatus,
   highestSensitivity,
   normalizeAskAnswerRunCapabilities,
@@ -167,7 +168,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     const attempt: AskExecutionAttempt = {
       attemptId: `attempt-${randomUUID()}`,
       attemptNumber: record.attempts.length + 1,
-      kind: 'INITIAL',
+      kind: record.attempts.length === 0 ? 'INITIAL' : 'RETRY_CURRENT_POLICY',
       accessRevision: record.snapshot.accessRevision,
       policyContextRevision: record.snapshot.policyContextRevision,
       resolvedContextDigest: context.resolvedContextDigest,
@@ -394,6 +395,7 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly failure: AskAnswerRunFailure;
     readonly state: Extract<AskAnswerRunState, 'FAILED' | 'OUTCOME_UNKNOWN' | 'CANCELLED'>;
     readonly workerId: string;
+    readonly requeueForCurrentKnowledge?: boolean;
   }): Promise<AskAnswerRunSnapshot> {
     const record = this.authorized(input.scope, input.answerRunId);
     if (
@@ -418,6 +420,15 @@ export class InMemoryAskAnswerExecutionRepository implements AskAnswerExecutionR
       failure: input.failure,
       eventRevision: (record.snapshot.eventRevision ?? 0) + 1,
     });
+    if (input.requeueForCurrentKnowledge && canRequeueStaleAskPublication(input)) {
+      this.update(record, {
+        state: 'QUEUED',
+        capabilities: ['CANCEL'],
+        failure: undefined,
+        partialText: undefined,
+        eventRevision: (record.snapshot.eventRevision ?? 0) + 1,
+      });
+    }
     return record.snapshot;
   }
 

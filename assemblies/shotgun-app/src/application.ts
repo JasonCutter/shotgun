@@ -26,6 +26,8 @@ import { DeepSeekConnectivityAdapter } from '../../../adapters/ai-provider-deeps
 import { PostgresCredentialVaultRepository } from '../../../adapters/credential-vault-postgres/src/index.js';
 import { PostgresProjectAIConfigurationRepository } from '../../../adapters/ai-configuration-postgres/src/index.js';
 import { PostgresStandingAIProcessingPolicyRepository } from '../../../adapters/project-standing-ai-policy-postgres/src/index.js';
+import { createSourceRefreshRuntime, startSourceRefreshWorker } from './source-refresh-runtime.js';
+import { startVPFrontierDiscovery } from './vp-frontier-discovery.js';
 import { PostgresProviderExternalTransferApprovalRepository } from '../../../adapters/provider-privacy-deployment-postgres/src/index.js';
 import { StructuredAskAnswerProviderAdapter } from '../../../adapters/ai-provider-ask/src/index.js';
 import { PostgresFrontendCommandGateway } from '../../../adapters/frontend-command-gateway-postgres/src/index.js';
@@ -297,6 +299,9 @@ export type StartShotgunApplicationOptions = {
   readonly recoveryIntervalMs?: number | false;
   /** Disable or override the bounded Stage 11 Action feedback dispatcher. */
   readonly actionFeedbackOutboxIntervalMs?: number | false;
+  /** Test/recovery scheduling override; normal URL refresh remains bounded.
+   * This never grants owner, source or provider authority. */
+  readonly sourceRefreshIntervalMs?: number | false;
   /** LPA-WP5 (D12 recovery harness): do not install SIGINT/SIGTERM handlers. */
   readonly noSignals?: boolean;
   /** LPA-WP5 (D12 recovery harness): do NOT start the Ask answer background
@@ -1479,6 +1484,22 @@ export const startShotgunApplication = async (
     // recovery.  Do not claim or publish pending Stage 4 work against the
     // restored database while the recovery harness is running.
     if (!recoveryHarness) {
+      const sourceRefresh = createSourceRefreshRuntime({
+        pool,
+        auth: authRepository,
+        settings: settingsRepository,
+        ownerAccountId: configuration.runtimeOwnerAccountId,
+        executionResolver: stage4AIExecutionResolver,
+        commandGateway,
+        staging,
+        product: sourcesProductService,
+      });
+      if (options.sourceRefreshIntervalMs !== false) {
+        cleanupStack.add(
+          'URL source freshness worker',
+          await startSourceRefreshWorker(sourceRefresh, options.sourceRefreshIntervalMs),
+        );
+      }
       const stage3RecoveryDispatcher = new SourcesStage3RecoveryDispatcher(
         stage3Progress,
         sourcesStage3Pipeline,
@@ -1515,8 +1536,13 @@ export const startShotgunApplication = async (
         Number(process.env.VP_MAX_DAILY_RELATION_PROVIDER_ATTEMPTS ?? '100'),
         Number(process.env.VP_MAX_RELATION_JOB_ATTEMPTS ?? '3'),
         true,
+        true,
       );
       await vpRelationJobs.recoverExpiredExecutions();
+      cleanupStack.add(
+        'VP candidate discovery',
+        startVPFrontierDiscovery(vpRelationJobs, 'vp-deepseek-relation-v6-evidence-context'),
+      );
       const relationFingerprint =
         process.env.VP_GLOBAL_RELATION_BUDGET_ACCOUNT_FINGERPRINT?.trim() ?? '';
       let relationBudget: ReturnType<typeof globalRelationBudgetFromEnvironment> | undefined;
@@ -1584,6 +1610,7 @@ export const startShotgunApplication = async (
           'vp-deepseek-relation-v6-evidence-context',
           60_000,
           1,
+          'FRONTIER',
         );
         const budgetedWorker = new ExecutionBoundVPRelationDispatcher(
           vpRelationWorker,

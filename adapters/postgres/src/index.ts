@@ -524,6 +524,7 @@ export class PostgresOriginalAssetRepository
       active_evidence_status: 'INDEXED' | 'NO_EVIDENCE' | null;
       active_evidence_count: number | null;
       external_source_last_checked_at: Date | null;
+      external_source_refresh_failed: boolean;
     }>(
       `SELECT source.project_id,
               source.source_id::text,
@@ -543,7 +544,15 @@ export class PostgresOriginalAssetRepository
               indexing.revision_id::text AS active_revision_id,
               indexing.status AS active_evidence_status,
               indexing.evidence_count AS active_evidence_count,
-              url_provenance.retrieved_at AS external_source_last_checked_at
+              url_provenance.retrieved_at AS external_source_last_checked_at,
+              EXISTS (
+                SELECT 1 FROM source_product.url_refresh_jobs AS refresh
+                WHERE refresh.project_id = source.project_id
+                  AND refresh.source_id = source.source_id
+                  AND refresh.source_version_id = version.source_version_id
+                  AND refresh.phase IN ('FAILED', 'OUTCOME_UNKNOWN')
+                  AND refresh.completed_at >= url_provenance.retrieved_at
+              ) AS external_source_refresh_failed
        FROM asset.source_versions AS version
        JOIN asset.sources AS source ON source.source_id = version.source_id
        JOIN asset.original_assets AS original ON original.asset_id = version.original_asset_id
@@ -608,6 +617,7 @@ export class PostgresOriginalAssetRepository
       ...(row.external_source_last_checked_at === null
         ? {}
         : { externalSourceLastCheckedAt: row.external_source_last_checked_at.toISOString() }),
+      ...(row.external_source_refresh_failed ? { externalSourceRefreshFailed: true } : {}),
       ...(row.stage3_state === null ? {} : { stage3State: row.stage3_state }),
       ...(row.active_indexing_result_id !== null &&
       row.active_revision_id !== null &&

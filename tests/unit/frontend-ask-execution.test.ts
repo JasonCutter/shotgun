@@ -172,6 +172,118 @@ describe('AskAnswerExecutionService', () => {
     }
   });
 
+  it('durably queues a known stale response before restarting the worker', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot(), [
+      {
+        evidenceId: 'evidence-1',
+        sourceId: 'source-1',
+        sourceVersionId: 'version-1',
+        exactQuote: 'The source quote.',
+        sensitivity: 'internal',
+      },
+    ]);
+    const persist = repository.complete.bind(repository);
+    vi.spyOn(repository, 'complete')
+      .mockRejectedValueOnce(
+        new ShotgunError({
+          code: 'STALE_VERSION',
+          safeMessage: 'The VP snapshot changed during Ask.',
+          module: 'frontend-ask-execution-postgres',
+          operation: 'complete-vp-snapshot',
+          retryable: true,
+        }),
+      )
+      .mockImplementation(persist);
+    const execute = vi.fn(async () => ({
+      answer: 'The source quote.',
+      citations: [{ evidenceId: 'evidence-1' }],
+      provider: { provider: 'test-provider', model: 'test-model' },
+    }));
+    const first = new AskAnswerExecutionService(repository, provider(execute));
+    const queued = await first.execute(scope, 'run-1');
+    expect(queued.state).toBe('QUEUED');
+    expect(queued.attemptNumber).toBe(1);
+    expect(queued.statements).toEqual([]);
+    expect(execute).toHaveBeenCalledTimes(1);
+    const events = await first.events(scope, 'run-1');
+    expect(events.slice(-2).map((event) => [event.kind, event.state])).toEqual([
+      ['FAILED', 'FAILED'],
+      ['STATE', 'QUEUED'],
+    ]);
+    const next = new AskAnswerExecutionService(repository, provider(execute));
+    const stop = await next.startWorker(5);
+    try {
+      await expect
+        .poll(async () => (await repository.getRunSnapshot(scope, 'run-1'))?.state)
+        .toBe('SUCCEEDED');
+      expect((await repository.getRunSnapshot(scope, 'run-1'))?.attemptNumber).toBe(2);
+      expect(execute).toHaveBeenCalledTimes(2);
+    } finally {
+      await stop();
+    }
+  });
+
+  it('never queues an unknown or unrelated stale failure for automatic execution', async () => {
+    for (const failure of [
+      new ShotgunError({
+        code: 'OUTCOME_UNKNOWN',
+        safeMessage: 'Provider outcome unknown.',
+        module: 'test-provider',
+        operation: 'execute',
+      }),
+      new ShotgunError({
+        code: 'STALE_VERSION',
+        safeMessage: 'Explicit selection is stale.',
+        module: 'test-provider',
+        operation: 'verify-same-context-retry',
+        retryable: true,
+      }),
+    ]) {
+      const repository = new InMemoryAskAnswerExecutionRepository();
+      repository.register(snapshot(), [
+        {
+          evidenceId: 'evidence-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          exactQuote: 'The source quote.',
+          sensitivity: 'internal',
+        },
+      ]);
+      const execute = vi.fn(async () => {
+        throw failure;
+      });
+      const service = new AskAnswerExecutionService(repository, provider(execute));
+      const result = await service.execute(scope, 'run-1');
+      expect(result.state).toBe(failure.code === 'OUTCOME_UNKNOWN' ? 'OUTCOME_UNKNOWN' : 'FAILED');
+      expect(await repository.claimQueuedForWorker('restarted-worker')).toEqual([]);
+      expect(execute).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('rejects automatic queue activation for an outcome-unknown failure at the repository boundary', async () => {
+    const repository = new InMemoryAskAnswerExecutionRepository();
+    repository.register(snapshot());
+    const claimed = await repository.claimInitial(scope, 'run-1', 'unknown-worker');
+    expect(claimed).toBeDefined();
+    const result = await repository.fail({
+      scope,
+      answerRunId: 'run-1',
+      attemptNumber: claimed!.attempt.attemptNumber,
+      state: 'OUTCOME_UNKNOWN',
+      workerId: 'unknown-worker',
+      failure: {
+        code: 'STALE_VERSION',
+        message: 'Uncertain persistence.',
+        retryable: true,
+        outcomeUnknown: true,
+      },
+      requeueForCurrentKnowledge: true,
+    });
+    expect(result.state).toBe('OUTCOME_UNKNOWN');
+    expect(await repository.claimQueuedForWorker('restart-worker')).toEqual([]);
+  });
+
   it('stops after three failed VP snapshot publication attempts', async () => {
     const repository = new InMemoryAskAnswerExecutionRepository();
     repository.register(snapshot(), [

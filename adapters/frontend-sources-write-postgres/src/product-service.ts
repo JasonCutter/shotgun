@@ -335,6 +335,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
               input.scope.projectId,
               artifact.requestedSourceId,
               security,
+              artifact.expectedSourceVersionId,
             );
             const materialized = await this.materialize(
               client,
@@ -1939,16 +1940,28 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     projectId: string,
     sourceId: string,
     security: SourcesResourceSecurityMetadata,
+    expectedSourceVersionId?: string,
   ): Promise<string> {
+    // Acquire the Source lock in a separate statement before reading its latest
+    // version. A waiting SELECT's old snapshot must not approve stale refresh
+    // bytes after a concurrent user version has committed.
+    if (expectedSourceVersionId) {
+      const locked = await client.query(
+        `SELECT source_id FROM asset.sources WHERE project_id = $1 AND source_id = $2 FOR UPDATE`,
+        [projectId, sourceId],
+      );
+      if (locked.rowCount !== 1) throw this.notFound();
+    }
     const result = await client.query<{
+      source_version_id: string;
       content_hash: string;
       access_scope: string[];
       sensitivity: SourcesSensitivity;
     }>(
-      `SELECT original.content_hash, version.access_scope, version.sensitivity
+      `SELECT version.source_version_id::text, original.content_hash, version.access_scope, version.sensitivity
        FROM asset.sources AS source
        JOIN LATERAL (
-         SELECT original_asset_id, access_scope, sensitivity
+         SELECT source_version_id, original_asset_id, access_scope, sensitivity
          FROM asset.source_versions
          WHERE source_id = source.source_id
          ORDER BY version_number DESC LIMIT 1
@@ -1961,6 +1974,14 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
     );
     const current = result.rows[0];
     if (!current) throw this.notFound();
+    if (expectedSourceVersionId && current.source_version_id !== expectedSourceVersionId) {
+      throw new ShotgunError({
+        code: 'STALE_VERSION',
+        safeMessage: 'The Source changed after this refresh was selected.',
+        module: 'frontend-sources-write-postgres',
+        operation: 'validate-target-source-version',
+      });
+    }
     if (
       !sourceSecurityMetadataEqual(
         { accessScope: current.access_scope, sensitivity: current.sensitivity },

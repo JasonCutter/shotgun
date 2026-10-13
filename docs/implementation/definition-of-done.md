@@ -4,6 +4,8 @@
 
 ## VP 적용 범위
 
+2026-10-12 [VP 전체 구현 승인](./vp-full-completion-2026-10-12/execution-directive.md)은 VP-06/07을 포함한 안전한 개발·격리 검증의 후속 실행 권한이다. 아래 과거 STOP과 당시 품질 미검증 기록은 보존한다. IMPLEMENTATION_COMPLETE와 VP_FINAL_ACCEPTANCE_COMPLETE를 분리하고, 승인된 의미 근거·실청구·실제 설치본·Canonical 반영 및 공통 Gate가 없으면 최종 완료를 선언하지 않는다. 사용자 개별 Reference 승인 동작을 추가하지 않는다.
+
 [ADR-172](../architecture/adr/ADR-172-vp-autonomous-knowledge-authority.md)의 빈 단일 지식 공간에서는 사용자가 자료를 투입하고 질문하는 두 동작만 필수다. 아래 승인형 Canonical·Review 규칙은 기존 경로의 검증 기준이며, VP Knowledge Ledger의 자동 기록을 사용자 승인으로 위장하지 않는다. VP의 지식 기록 Gate는 원문 Evidence와 현재 SourceVersion 확인, 접근·민감도 및 제공자 전송 정책, 결정 영수증, 멱등 재생, 미해결·충돌 보존으로 판정한다. 외부 Action 실행의 별도 승인 경계는 그대로 적용한다.
 
 VP를 `COMPLETE`로 보고하려면 [VP 구현계획](./vp-vampire-implementation-plan.md)의 VP-0~VP-4 Gate와 이 문서의 공통 Module·Flow·Product·Architecture·OSS Integration Gate를 모두 통과해야 한다. 자료 A·B·수정 버전의 실제 제품 흐름, 형식별 Golden Corpus, 재시작·전체 재생성과 증분 결과의 동등성, DeepSeek 품질·보안·비용 한도, 빈 공간 초기화와 설치된 런처의 MAIN 실행을 검증한다. 미검증 Gate는 정확히 남겨 보고하고 완료로 표시하지 않는다.

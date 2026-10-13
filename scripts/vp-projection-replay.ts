@@ -1,4 +1,8 @@
 import type { Pool, QueryResultRow } from 'pg';
+import {
+  readCandidateFrontierStatus,
+  type CurrentFrontierStatus,
+} from '../adapters/vp-knowledge-postgres/src/frontier-store.js';
 
 type VersionRow = QueryResultRow & {
   readonly source_id: string;
@@ -105,6 +109,7 @@ const orderedPair = (left: string, right: string): string => `${left}:${right}`;
 export async function verifyVPProjectionReplay(
   pool: Pool,
   projectId: string,
+  relationPolicyRevision = 'vp-deepseek-relation-v6-evidence-context',
 ): Promise<{
   readonly matches: boolean;
   readonly historyValid: boolean;
@@ -116,6 +121,7 @@ export async function verifyVPProjectionReplay(
   readonly candidateMaterializationComplete: boolean;
   readonly relationQueueSettled: boolean;
   readonly relationQueueComplete: boolean;
+  readonly relationFrontier: CurrentFrontierStatus;
   readonly pendingRelationJobs: number;
   readonly failedRelationJobs: number;
   readonly unknownRelationJobs: number;
@@ -279,6 +285,11 @@ export async function verifyVPProjectionReplay(
     const epochRow = await client.query<{ current_epoch: string }>(
       `SELECT current_epoch::text FROM vp.project_epochs WHERE project_id = $1`,
       [projectId],
+    );
+    const relationFrontier = await readCandidateFrontierStatus(
+      client,
+      projectId,
+      relationPolicyRevision,
     );
     await client.query('COMMIT');
 
@@ -446,8 +457,8 @@ export async function verifyVPProjectionReplay(
       sourceProcessingComplete,
       candidateMaterializationComplete,
       relationQueueSettled: pendingRelationJobs === 0,
-      relationQueueComplete:
-        pendingRelationJobs === 0 && failedRelationJobs === 0 && unknownRelationJobs === 0,
+      relationQueueComplete: relationFrontier.executionComplete,
+      relationFrontier,
       pendingRelationJobs,
       failedRelationJobs,
       unknownRelationJobs,

@@ -387,6 +387,9 @@ export type AskAnswerExecutionRepositoryPort = {
     readonly failure: AskAnswerRunFailure;
     readonly state: Extract<AskAnswerRunState, 'FAILED' | 'OUTCOME_UNKNOWN' | 'CANCELLED'>;
     readonly workerId: string;
+    /** Additive v1 Port option: atomically retain the failed attempt and queue a
+     * known stale publication for fresh authorized context. Never for UNKNOWN. */
+    readonly requeueForCurrentKnowledge?: boolean;
   }): Promise<AskAnswerRunSnapshot>;
   getEvents(
     scope: AskExecutionScope,
@@ -518,7 +521,18 @@ const retryableFailureCodes = new Set([
 ]);
 
 /** Ask may refresh a moving VP snapshot twice, then fails closed. */
-const MAX_AUTOMATIC_STALE_VP_ATTEMPTS = 3;
+export const MAX_AUTOMATIC_STALE_VP_ATTEMPTS = 3;
+
+export const canRequeueStaleAskPublication = (input: {
+  readonly state: AskAnswerRunState;
+  readonly failure: AskAnswerRunFailure;
+  readonly attemptNumber: number;
+}): boolean =>
+  input.state === 'FAILED' &&
+  input.failure.code === 'STALE_VERSION' &&
+  input.failure.retryable &&
+  !input.failure.outcomeUnknown &&
+  input.attemptNumber < MAX_AUTOMATIC_STALE_VP_ATTEMPTS;
 
 const sensitivityRank = {
   public: 0,
@@ -1146,39 +1160,23 @@ export class AskAnswerExecutionService {
         });
       }
       const failure = this.failureFrom(error);
-      const failed = await this.repository.fail({
+      return await this.repository.fail({
         scope,
         answerRunId: context.snapshot.answerRunId,
         attemptNumber: attempt.attemptNumber,
         state: failure.outcomeUnknown ? 'OUTCOME_UNKNOWN' : 'FAILED',
         failure,
         workerId,
+        requeueForCurrentKnowledge:
+          error instanceof ShotgunError &&
+          error.code === 'STALE_VERSION' &&
+          error.operation === 'complete-vp-snapshot' &&
+          canRequeueStaleAskPublication({
+            state: failure.outcomeUnknown ? 'OUTCOME_UNKNOWN' : 'FAILED',
+            failure,
+            attemptNumber: attempt.attemptNumber,
+          }),
       });
-      if (
-        error instanceof ShotgunError &&
-        error.code === 'STALE_VERSION' &&
-        error.operation === 'complete-vp-snapshot' &&
-        attempt.attemptNumber < MAX_AUTOMATIC_STALE_VP_ATTEMPTS &&
-        failed.state === 'FAILED'
-      ) {
-        clearInterval(heartbeat);
-        try {
-          const refreshed = await this.repository.retryAndClaim({
-            scope,
-            answerRunId: context.snapshot.answerRunId,
-            mode: 'CURRENT_POLICY',
-            workerId,
-          });
-          return await this.executeClaimed(scope, refreshed);
-        } catch (retryError) {
-          console.error(
-            '[ask-answer-worker] stale VP snapshot refresh retry failed',
-            context.snapshot.answerRunId,
-            retryError instanceof Error ? retryError.message : retryError,
-          );
-        }
-      }
-      return failed;
     } finally {
       clearInterval(heartbeat);
       const current = this.active.get(context.snapshot.answerRunId);

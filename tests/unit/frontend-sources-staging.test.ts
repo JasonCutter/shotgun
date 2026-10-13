@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { SealedSourcesStagingService } from '../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { decodeSourcesStagingReceipt } from '../../packages/contracts/src/frontend-sources-staging.js';
 import type { AssetStoragePort } from '../../modules/original-asset/src/index.js';
+import { SecureUrlAcquisitionCoordinator } from '../../modules/url-acquisition/src/index.js';
 
 class MemoryStorage implements AssetStoragePort {
   readonly values = new Map<string, Uint8Array>();
@@ -39,6 +40,42 @@ const base = {
 };
 
 describe('sealed Sources staging service', () => {
+  it('seals HTML URL bytes through the same immutable staging contract as HTML files', async () => {
+    const storage = new MemoryStorage();
+    const bytes = Buffer.from(
+      '<html><body><h1>조건</h1><p>면제 대상 제외: 42 mg, 2026년 이후.</p></body></html>',
+    );
+    const acquisition = new SecureUrlAcquisitionCoordinator(
+      { resolve: async () => ['93.184.216.34'] },
+      {
+        request: async () => ({
+          status: 200,
+          connectedAddress: '93.184.216.34',
+          headers: { 'content-type': 'text/html' },
+          body: bytes,
+          compressedBytes: bytes.length,
+        }),
+      },
+    );
+    const service = new SealedSourcesStagingService(storage, secret, acquisition);
+    const input = {
+      draftId: 'html-draft',
+      itemId: 'html-item',
+      projectId: 'project',
+      principalId: 'owner',
+      label: 'HTML URL',
+      requestedUrl: 'https://example.org/article',
+    };
+    const receipt = decodeSourcesStagingReceipt(await service.stageUrl(input));
+    expect(receipt.mediaType).toBe('text/html');
+    const resolved = await service.resolve({
+      ...input,
+      kind: 'URL',
+      stagingReference: receipt.stagingReference,
+    });
+    expect(Buffer.from(await storage.read(resolved.storageKey))).toEqual(bytes);
+    expect(resolved.urlProvenance?.responseContentType).toBe('text/html');
+  });
   it('stores immutable bytes and returns an opaque context-bound reference', async () => {
     const storage = new MemoryStorage();
     const service = new SealedSourcesStagingService(

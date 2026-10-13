@@ -6,6 +6,10 @@
 
 ## 갱신 규칙
 
+### 2026-10-12 후속 전체 구현 승인
+
+[사용자 연속 실행 지시](./vp-full-completion-2026-10-12/execution-directive.md)에 따라 A3 및 VP-03~11의 개발·격리 검증을 진행한다. 아래 2026-10-10 STOP은 당시 기록이며 현재 안전한 개발 착수의 차단 조건이 아니다. [Master Plan](./vp-full-completion-2026-10-12/master-execution-plan.md)에 신규 구현·실제 앱 Fake 인수·복원·미검증 항목을 분리한다. 기존 Gate/ID/동결 증거와 별도 merge·운영 전환 승인은 유지한다. 이 추가 기록은 전체 VP 완료 판정이 아니다.
+
 ### 2026-10-10 현재 우선순위와 보류 상태
 
 [ADR-173](../architecture/adr/ADR-173-product-first-development-and-evaluation-trust-strategy.md)와 [전략 실행 기준](./development-strategy-reset-2026-10-10/execution-plan.md)을 따른다. ADR-172의 제품·원장·Frontier 계약과 기존 Gate/ID는 유지한다. 아래 체크된 좁은 증거는 보존하며 이번 문서 정비로 새 상위 Gate를 완료 처리하지 않는다.

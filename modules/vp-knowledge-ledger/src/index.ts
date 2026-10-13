@@ -33,6 +33,7 @@ export type VPRelationJobDecision = {
 };
 
 export type VPRelationJobStorePort = {
+  ensureCurrentFrontier?(policyRevision: string): Promise<void>;
   enqueueCurrentPairs(policyRevision: string, limit?: number): Promise<number>;
   claimNext(policyRevision: string): Promise<VPRelationJob | undefined>;
   completeDecision(input: VPRelationJobDecision): Promise<boolean>;
@@ -112,12 +113,18 @@ export class VPRelationJobWorker {
     private readonly policyRevision: string,
     private readonly intervalMs = 5_000,
     private readonly maxJobsPerTick = 4,
+    private readonly candidateMode: 'FRONTIER' | 'LEGACY_TEST' = 'LEGACY_TEST',
   ) {}
 
   async dispatchOnce(): Promise<
     'EMPTY' | 'DECIDED' | 'UNRESOLVED' | 'RETRYING' | 'FAILED' | 'OUTCOME_UNKNOWN'
   > {
-    await this.jobs.enqueueCurrentPairs(this.policyRevision, 1);
+    if (this.candidateMode === 'FRONTIER') {
+      if (!this.jobs.ensureCurrentFrontier) throw new Error('FRONTIER_STORE_REQUIRED');
+      await this.jobs.ensureCurrentFrontier(this.policyRevision);
+    } else {
+      await this.jobs.enqueueCurrentPairs(this.policyRevision, 1);
+    }
     const job = await this.jobs.claimNext(this.policyRevision);
     if (!job) return 'EMPTY';
     try {

@@ -4,6 +4,8 @@
 
 ## 게시 기준선 구분
 
+2026-10-12 PR #383 게시 후 `main@aba6ff27f9620ee1a3f408f8df81e8aad21cc584` 기준으로 [VP 전체 구현 지시](../vp-full-completion-2026-10-12/execution-directive.md)가 도착했다. [Master Plan](../vp-full-completion-2026-10-12/master-execution-plan.md)은 A3·VP-06/07 등 안전한 개발·격리 검증의 후속 권한을 기록한다. 아래 문서 PR의 코드 미변경·STOP은 작성 당시 범위이며 이 승인된 후속 구현을 막지 않는다. 필수 의미 검증과 비용·배포·merge 승인 경계는 줄이지 않는다.
+
 [publication-notes](./publication-notes.md)의 v11/Frontier/global authority는 로컬 VP 보존 기준선이다. 이 PR의 main parent worker는 v6이며 실행 code는 변경하지 않는다. 후속 작업은 실제 checkout/runtime identity를 먼저 확인하고 별도 승인 없는 통합·활성화를 하지 않는다.
 
 ## 현재 지시와 중지 상태

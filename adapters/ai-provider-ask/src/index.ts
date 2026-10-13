@@ -186,11 +186,11 @@ export class StructuredAskAnswerProviderAdapter implements AskAnswerProviderPort
 
   async execute(request: AskAnswerProviderRequest): Promise<AskAnswerProviderResult> {
     if (
+      !request.effectiveProviderPolicy.eligible ||
       request.context.some(
         (item) =>
           item.sensitivity === 'restricted' ||
-          (item.sensitivity === 'private' &&
-            (!this.policy.allowPrivate || !request.effectiveProviderPolicy.eligible)),
+          (item.sensitivity === 'private' && !this.policy.allowPrivate),
       )
     ) {
       throw new ShotgunError({

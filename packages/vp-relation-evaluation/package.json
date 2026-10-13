@@ -1,0 +1,23 @@
+{
+  "name": "@shotgun/vp-relation-evaluation",
+  "version": "0.1.0",
+  "description": "Offline VP relation-reference and deterministic measurement artifacts; no production authority.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/packages/vp-relation-evaluation/src/index.d.ts",
+      "import": "./dist/packages/vp-relation-evaluation/src/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
+  }
+}

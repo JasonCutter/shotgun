@@ -316,6 +316,8 @@ const enUS = {
   'ask.open_evidence': 'Open pinned Evidence',
   'ask.page': 'page',
   'ask.answer_status': 'Answer status',
+  'ask.automatic_waiting':
+    'Waiting for source processing and execution readiness. This question will continue automatically when ready.',
   'ask.cancel_answer': 'Cancel answer',
   'ask.answer_export': 'Answer export',
   'ask.create_or_select_project': 'Create or select a Project before asking questions.',
@@ -1195,6 +1197,8 @@ const koKR: Record<ProductMessageKey, string> = {
   'ask.open_evidence': '고정된 근거 열기',
   'ask.page': '페이지',
   'ask.answer_status': '답변 상태',
+  'ask.automatic_waiting':
+    '자료 처리와 실행 준비를 기다리는 중입니다. 준비되면 같은 질문이 자동으로 이어집니다.',
   'ask.cancel_answer': '답변 취소',
   'ask.answer_export': '답변 내보내기 결과',
   'ask.create_or_select_project': '질문하려면 프로젝트를 만들거나 선택하세요.',

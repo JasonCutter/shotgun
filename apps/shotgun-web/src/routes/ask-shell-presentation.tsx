@@ -443,6 +443,9 @@ export const ConversationPane = ({
                         {t('ask.answer_status')}: {hfmOwnerLabel(t, 'answerRun', answerRun.state)}
                       </p>
                     )}
+                    {answerRun.state === 'QUEUED' ? (
+                      <p role="status">{t('ask.automatic_waiting')}</p>
+                    ) : null}
                     {answerRun.failure ? (
                       <p className="ask-answer-failure" role="alert">
                         {answerRun.failure.message}

@@ -110,7 +110,7 @@ export class NodeUrlHopTransport implements UrlHopTransportPort {
           path: `${parsed.pathname}${parsed.search}`,
           servername: parsed.protocol === 'https:' ? parsed.hostname : undefined,
           headers: {
-            accept: 'text/plain, text/markdown;q=0.9',
+            accept: 'text/plain, text/markdown;q=0.9, text/html;q=0.8',
             'accept-encoding': 'identity',
             'user-agent': 'Shotgun-Source-Acquisition/1.0',
           },

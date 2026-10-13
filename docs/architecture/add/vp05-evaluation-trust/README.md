@@ -1,5 +1,9 @@
 # VP-05 평가 신뢰성 — A1·A2 결정 기록
 
+## 2026-10-12 후속 구현 상태
+
+A1·A2는 PR #383, `main@aba6ff27f9620ee1a3f408f8df81e8aad21cc584`에 게시됐으며 아래 PUBLICATION_HOLD는 당시 기록이다. 후속 전체 구현 승인으로 [A3 관계 Reference·측정 계약](./a3-relation-reference-measurement.md)의 오프라인 구현과 합성 계약 검증을 진행한다. 새 인증 Gold는 0, 실모델 의미 품질은 N/A다. 과거 Phase A 초안 및 72/432/B12 재채점이나 운영 평가 권위 변경은 하지 않는다. [연속 실행 기준](../../../implementation/vp-full-completion-2026-10-12/master-execution-plan.md)을 따른다.
+
 > **A1_REVIEW_CORRECTED / A2_CONDITIONALLY_ACCEPTED / PUBLICATION_HOLD**
 >
 > 기준 `main@cd3cc258dcc5033cb61d7f1dc2f221f5e5016ab6`. 2026-10-12 선행 위임 결정 `e8d0f7d769722f4482ff26a9828812f37e1270cc` 뒤의 명시적 사용자 정정을 현재 계약으로 적용한다. 개별 Gold 검증·평가 실행·Canonical 게시는 완료하지 않았다.

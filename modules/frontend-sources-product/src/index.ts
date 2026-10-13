@@ -38,6 +38,7 @@ export type SourcesProjectionRecord = {
   readonly createdAt: string;
   /** Last successful fetch for an externally acquired URL SourceVersion. */
   readonly externalSourceLastCheckedAt?: string;
+  readonly externalSourceRefreshFailed?: boolean;
   readonly stage3State?:
     | 'MATERIALIZED'
     | 'STAGE3_RUNNING'
@@ -577,7 +578,7 @@ export class FrontendSourcesReadCoordinator {
             lastCheckedAt,
             expiresAt: expiresAt.toISOString(),
             state:
-              this.now().getTime() < expiresAt.getTime()
+              !latest.externalSourceRefreshFailed && this.now().getTime() < expiresAt.getTime()
                 ? ('CURRENT' as const)
                 : ('EXPIRED' as const),
           };

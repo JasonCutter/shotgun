@@ -101,9 +101,92 @@ const T3_CANONICAL_ERASURE_MIGRATION = '101_t3_canonical_erasure.sql';
 const FRONTEND_ACTIVITY_MIGRATION = '029_frontend_activity_read_model.sql';
 const FRONTEND_HISTORY_MIGRATION = '030_frontend_history_projection.sql';
 const KNOWLEDGE_MODEL_MIGRATION = '009_stage9_knowledge_model.sql';
+export const VP_BACKUP_INTEGRITY_PROFILE = 'vp-execution-v2' as const;
+// Reuse the existing backup owner; extend its measured table coverage only.
+const vpIntegrityTables: Readonly<Record<string, readonly string[]>> = {
+  '016_stage1_section2_settings_project_admin.sql': [
+    'project_admin.projects',
+    'project_admin.project_revisions',
+    'settings.principal_preferences',
+    'settings.project_settings',
+    'settings.system_settings',
+    'settings.resource_settings',
+    'settings.settings_revisions',
+    'settings.policy_context_revisions',
+    'settings.settings_commands',
+    'settings.settings_command_results',
+    'settings.settings_review_proposals',
+    'settings.settings_audit_events',
+  ],
+  '018_frontend_command_request_outcome_contract.sql': ['frontend_command.command_ledger'],
+  '020_frontend_phase2_sources_product_persistence.sql': [
+    'source_product.intake_submissions',
+    'source_product.intake_submission_items',
+    'source_product.intake_attempts',
+    'source_product.exact_duplicate_decisions',
+    'source_product.exact_duplicate_dispositions',
+    'source_product.url_acquisition_attempts',
+    'source_product.url_provenance_receipts',
+  ],
+  '021_frontend_phase2_ask_product_persistence.sql': [
+    'frontend_ask.conversations',
+    'frontend_ask.branches',
+    'frontend_ask.turns',
+    'frontend_ask.answer_runs',
+    'frontend_ask.source_selections',
+    'frontend_ask.source_selection_evidence',
+    'frontend_ask.statements',
+    'frontend_ask.citations',
+  ],
+  '022_frontend_phase2_ask_execution.sql': [
+    'frontend_ask.answer_run_attempts',
+    'frontend_ask.answer_run_events',
+    'frontend_ask.answer_exports',
+    'frontend_ask.answer_feedback',
+    'frontend_ask.transition_seeds',
+  ],
+  '023_frontend_phase2_ask_execution_recovery.sql': ['frontend_ask.answer_attempt_evidence'],
+  '036_a2_credential_vault.sql': ['ai.provider_credentials'],
+  '037_a3_project_ai_configuration.sql': [
+    'ai.project_ai_configuration_revisions',
+    'ai.project_ai_configurations',
+  ],
+  '038_a4_provider_external_transfer_authority.sql': [
+    'settings.provider_external_transfer_approval_revisions',
+    'settings.provider_external_transfer_approvals',
+  ],
+  '060_project_standing_ai_processing_policy.sql': [
+    'ai.project_standing_ai_processing_policy_revisions',
+    'ai.project_standing_ai_processing_policies',
+  ],
+  '062_runtime_data_integrity_wp04_source_evidence_continuation.sql': [
+    'evidence.indexing_results',
+    'evidence.stage4_continuations',
+    'source_product.source_stage3_progress',
+  ],
+  '113_vp_direct_assertion_ledger.sql': [
+    'vp.project_epochs',
+    'vp.assertions',
+    'vp.decision_receipts',
+    'vp.relations',
+    'vp.history_events',
+  ],
+  '115_vp_semantic_relation_jobs.sql': ['vp.relation_jobs'],
+  '119_vp_relation_call_budget.sql': ['vp.relation_call_budget'],
+  '123_vp_durable_relation_provider_calls.sql': ['vp.relation_provider_calls'],
+  '129_vp_global_relation_budget_authority.sql': [
+    'vp_global_budget.policies',
+    'vp_global_budget.daily_usage',
+    'vp_global_budget.claims',
+    'vp_global_budget.authority_store',
+  ],
+  '131_source_url_refresh.sql': ['source_product.url_refresh_jobs'],
+  '132_vp_candidate_frontier.sql': ['vp.candidate_frontiers', 'vp.candidate_frontier_members'],
+};
 
 export const authoritativeIntegrityTablesForMigrations = (
   migrations: readonly string[],
+  profile: 'legacy-v1' | typeof VP_BACKUP_INTEGRITY_PROFILE = VP_BACKUP_INTEGRITY_PROFILE,
 ): readonly string[] => {
   const applied = new Set(migrations);
   if (
@@ -166,6 +249,11 @@ export const authoritativeIntegrityTablesForMigrations = (
   }
   return [
     ...baseAuthoritativeTables,
+    ...(profile === VP_BACKUP_INTEGRITY_PROFILE
+      ? Object.entries(vpIntegrityTables)
+          .filter(([migration]) => applied.has(migration))
+          .flatMap(([, tables]) => tables)
+      : []),
     ...(applied.has(STAGE5_COMPARISON_V2_MIGRATION)
       ? ['comparison.results_v2', 'comparison.analysis_revisions_v2', 'comparison.relationships_v2']
       : []),
@@ -273,6 +361,8 @@ export type BackupManifest = {
     readonly files: readonly BackupFileEntry[];
   };
   readonly integrity: {
+    /** Absent means historical v1 coverage, never full VP safety coverage. */
+    readonly profile?: typeof VP_BACKUP_INTEGRITY_PROFILE;
     readonly tables: Readonly<Record<string, BackupIntegrityEntry>>;
   };
   /** Present when migration 078 is included; absent in historical backups. */
@@ -462,11 +552,14 @@ const withClient = async <T>(databaseUrl: string, action: (client: Client) => Pr
 export const snapshotAuthoritativeIntegrity = async (
   databaseUrl: string,
   migrations?: readonly string[],
+  profile: 'legacy-v1' | typeof VP_BACKUP_INTEGRITY_PROFILE = VP_BACKUP_INTEGRITY_PROFILE,
 ): Promise<Readonly<Record<string, BackupIntegrityEntry>>> =>
   withClient(databaseUrl, async (client) => {
     const appliedMigrations = migrations ?? (await listMigrations(databaseUrl));
     const entries: Record<string, BackupIntegrityEntry> = {};
-    for (const table of authoritativeIntegrityTablesForMigrations(appliedMigrations)) {
+    for (const table of [
+      ...new Set(authoritativeIntegrityTablesForMigrations(appliedMigrations, profile)),
+    ]) {
       const result = await client.query<{ value: unknown }>(
         `SELECT to_jsonb(row_value) AS value FROM ${table} AS row_value`,
       );
@@ -521,8 +614,18 @@ const listMigrations = async (databaseUrl: string): Promise<readonly string[]> =
   });
 
 const assertManifestIntegrityTableSet = (manifest: BackupManifest): void => {
+  if (
+    manifest.integrity.profile !== undefined &&
+    manifest.integrity.profile !== VP_BACKUP_INTEGRITY_PROFILE
+  )
+    throw new Error('Unsupported backup integrity profile.');
   const expected = [
-    ...new Set(authoritativeIntegrityTablesForMigrations(manifest.database.migrations)),
+    ...new Set(
+      authoritativeIntegrityTablesForMigrations(
+        manifest.database.migrations,
+        manifest.integrity.profile ?? 'legacy-v1',
+      ),
+    ),
   ].sort();
   const actual = Object.keys(manifest.integrity.tables).sort();
   if (stableJson(actual) !== stableJson(expected)) {
@@ -718,7 +821,7 @@ const createBackupUnlocked = async (options: CreateBackupOptions): Promise<Backu
     },
     assets: { storage: 'local-content-addressed', files: assets },
     contracts: { files: contracts },
-    integrity: { tables: after },
+    integrity: { profile: VP_BACKUP_INTEGRITY_PROFILE, tables: after },
     ...(projectKnowledgeEpochs ? { projectKnowledgeEpochs } : {}),
     configuration: {
       secretsIncluded: false,
@@ -753,6 +856,12 @@ export const readManifest = async (backupDirectory: string): Promise<BackupManif
   ) as BackupManifest;
   if (parsed.formatVersion !== BACKUP_FORMAT_VERSION) {
     throw new Error(`Unsupported Backup format: ${String(parsed.formatVersion)}`);
+  }
+  if (
+    parsed.integrity.profile !== undefined &&
+    parsed.integrity.profile !== VP_BACKUP_INTEGRITY_PROFILE
+  ) {
+    throw new Error('Unsupported backup integrity profile.');
   }
   if (
     parsed.database.migrations.includes(T3_PROJECT_RESET_MIGRATION) &&
@@ -909,6 +1018,7 @@ const restoreBackupUnlocked = async (options: RestoreBackupOptions): Promise<Bac
   const restored = await snapshotAuthoritativeIntegrity(
     options.targetDatabaseUrl,
     manifest.database.migrations,
+    manifest.integrity.profile ?? 'legacy-v1',
   );
   if (stableJson(restored) !== stableJson(manifest.integrity.tables)) {
     throw new Error('Restored authoritative data does not match the Backup Manifest.');

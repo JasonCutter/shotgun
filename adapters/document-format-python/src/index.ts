@@ -556,6 +556,19 @@ export class PythonDocumentFormatAdapter implements PlainTextTransformerPort {
             contentBase64: input.contentBase64,
           })
         : undefined;
+    if (
+      isImage &&
+      this.#multimodal &&
+      (typeof imageDescription !== 'string' || imageDescription.trim().length === 0)
+    ) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'The multimodal provider returned an invalid image description.',
+        module: 'stage8.document-format-python',
+        operation: 'validate-image-description',
+        retryable: false,
+      });
+    }
     if (imageDescription !== undefined && [...imageDescription].length > 128_000) {
       throw new ShotgunError({
         code: 'VALIDATION_ERROR',

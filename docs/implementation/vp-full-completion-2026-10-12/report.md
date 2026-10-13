@@ -296,3 +296,15 @@ assertion을 완화하지 않았다. 이 관측만으로 전체 suite PASS를 �
 TS6·architecture·OSS·secret·문서 Gate PASS다. 사용자 원본 directive를 보존하기
 위해 비표준 추가 문서 format 검사에서 나온 그 원본의 기존 style 경고를
 수정하지 않았다. 표준 repository format Gate와 새 작성 문서는 따로 검사한다.
+
+### PR385 첫 CI의 플랫폼 fixture 보정
+
+Draft PR385의 첫 head `178e1632425f3b5d39ce62451c965058ada035cd`,
+CI38369646597 Quality는 unit1547 PASS/1 FAIL이었다. Windows 전용 missing-runtime
+경로 문자열이 Linux에서 상대 경로가 되어 `VALIDATION_ERROR`를 올바르게
+반환했지만, 새 테스트는 `CONFIGURATION_REQUIRED`를 기대했다. 실제 missing
+runtime을 검증하도록 OS-native absolute temp 경로와 고유 suffix로 fixture만
+보정했다. 실행 경로·validation·assertion·timeout·skip은 바꾸지 않았다.
+원본 실패는 `pr385-initial-quality-failed.log`에 보존하며 새 exact head CI로
+후속 상태를 판정한다. 이 첫 CI에서 contracts/integration/database는 선행
+unit 실패 때문에 실행되지 않았으므로 PASS로 계산하지 않는다.

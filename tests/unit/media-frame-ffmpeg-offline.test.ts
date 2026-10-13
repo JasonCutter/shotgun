@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   FfmpegOfflineMediaAdapter,
@@ -205,9 +208,9 @@ describe('inactive offline FFmpeg replacement contract', () => {
     const runner = new Fake();
     await new FfmpegOfflineMediaAdapter(runner).extract(asset());
     await expect(
-      new PinnedFfmpegOfflineRunner('C:/dev/shotgun-no-runtime-offline-prototype').run(
-        runner.calls[0]!,
-      ),
+      new PinnedFfmpegOfflineRunner(
+        path.join(os.tmpdir(), `shotgun-no-runtime-offline-prototype-${randomUUID()}`),
+      ).run(runner.calls[0]!),
     ).rejects.toMatchObject({
       code: 'CONFIGURATION_REQUIRED',
       safeMessage: 'Pinned offline media runtime unavailable',

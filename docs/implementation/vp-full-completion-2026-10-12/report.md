@@ -308,3 +308,15 @@ runtime을 검증하도록 OS-native absolute temp 경로와 고유 suffix로 fi
 원본 실패는 `pr385-initial-quality-failed.log`에 보존하며 새 exact head CI로
 후속 상태를 판정한다. 이 첫 CI에서 contracts/integration/database는 선행
 unit 실패 때문에 실행되지 않았으므로 PASS로 계산하지 않는다.
+
+추가 독립 검토는 새 installation proof의 orphan 확인에서 `kill(pid,0)`의
+모든 오류를 종료로 간주하던 경계를 보정했다. `ESRCH`만 사라짐의 증거로
+처리하며, Linux에서 명시적으로 종료한 zombie 상태를 `/proc/<pid>/stat`로
+구분한다. 다른 권한/관측 오류는 PASS로 숨기지 않는다. HTTP 재기동·nonce·
+DB/asset 보존 assertion과 기존 bounded timeout은 유지한다.
+[Linux kill 의미](https://man7.org/linux/man-pages/man2/kill.2.html)와
+[proc state](https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html)를
+확인했으며 이 후속 코드는 새 exact head CI에서 검증한다. 최초 `starting`은
+generation0이므로 generation1 조회가 최초 메시지를 선택했다는 별도의
+가설은 현재 fixture에서 재현되지 않았고, 그 이유로 불필요한 observer
+재설계나 추가 테스트를 수행하지 않았다.

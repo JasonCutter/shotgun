@@ -414,10 +414,24 @@ it.skipIf(!process.env.TEST_DATABASE_URL)(
       await waitFor(async () => {
         try {
           process.kill(restarted.childPid!, 0);
-          return undefined;
-        } catch {
-          return true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ESRCH') return true;
+          throw error;
         }
+        if (process.platform === 'linux') {
+          try {
+            // A zombie has exited execution, although kill(pid, 0) still sees
+            // its unreaped PID. Other errors are not proof of termination.
+            const stat = await readFile(`/proc/${restarted.childPid!}/stat`, 'utf8');
+            const closingParen = stat.lastIndexOf(')');
+            if (closingParen < 0) throw new Error('Invalid owned process state.');
+            if (stat.slice(closingParen + 2).split(' ')[0] === 'Z') return true;
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            // A concurrent exit is confirmed by ESRCH on the next observation.
+          }
+        }
+        return undefined;
       }, 'orphan recovery child exits on owner disconnect');
       const second = launch();
       await awaitMessage(second, 'rehearsal-ready', 1);

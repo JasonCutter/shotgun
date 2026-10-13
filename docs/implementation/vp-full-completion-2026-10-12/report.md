@@ -177,3 +177,152 @@ transitive compiled imports를 fresh consumer에서 확인했다. npm config/cac
 남은 권한/외부 검증 자료는 하나의 제한된 승인·증거 요청으로 정리하고,
 그 전에 가능한 코드·CI·격리 검증을 수행한다. 이 checkpoint로 전체 VP
 COMPLETE 또는 COMPLETE_WITH_LIMITS를 선언하지 않는다.
+
+## 2026-10-13 후속 checkpoint — Canonical 및 격리 설치·media 준비
+
+앞선 checkpoint의 승인 대기·Docker offline·CI 미확인 항목은 당시 이력이다.
+후속 관측으로 확인한 아래 범위만 갱신하며 원본 실패와 보호 증거를 유지한다.
+
+### PR384 Canonical 완료
+
+- 승인된 exact head: `27ff952398869b7ba956b01c39db709ed2a43b6a`.
+- Exact-head CI: `38335693426`, Quality·Frontend·Required Gates SUCCESS.
+- Canonical merge: `e3abc1163918809a0dbb88f4a5f7841d60c47b8a`.
+- 승인 head/병합 tree: `85c36572bc75dfe520e6711a7d6b14b33c9d1c46`, 동일.
+- [Post-merge main CI](https://github.com/JasonCutter/shotgun/actions/runs/38339274706):
+  Quality·Frontend·Required Gates SUCCESS.
+
+[PR384](https://github.com/JasonCutter/shotgun/pull/384)는 별도 사용자 merge
+승인에 따라 완료됐다. 후속 media/설치 검증의 local diff는 새
+`codex/vp-media-completion` branch에서 위 merge를 기준으로 작성하며, PR384
+exact diff나 승인 tree에 포함된 것처럼 보고하지 않는다. 운영 checkout/설정을
+갱신하거나 운영 앱을 시작한 결과가 아니다.
+
+### Fresh application 및 Python 실행
+
+실제 source allowlist를 fresh 설치한 후 기존 launcher/preflight/supervisor와
+full recovery assembly로 owner/child 종료·재시작, 새 nonce·identity/readiness,
+DB/asset marker 보존을 검증했다. 같은 fresh installation에서 실제 normal
+application/worker 및 Fake Provider로 A→질문→B→A revision→질문을 실행했다.
+Outer rehearsal1 PASS(406.77초), nested normal journey1 PASS(122.80초),
+53 HTTP requests·자료3회·질문3회, Fake extraction3/answer3/relation1이다.
+실제 relation v6의 claim/attempt와 최신 A/B 인용·과거 답변 불변/stale를 확인했다.
+기존 launcher 회귀55 PASS를 별도 실행했다.
+
+이 설치 source base는 위 e3 merge지만 local runtime 변경을 포함한다.
+858 runtime files·441 lockfile entries의 manifest digest는
+`fc6e7074b2aa42d87283d57bb4c10d95da23c355690d0382761ec4203ee79212`,
+synthetic main은 `52f45b6bcdee053e033435b15b33cc0ba3b0a543`, archive digest는
+`b0766018e7aed5d2ff4fb144c978dbcba6d642f26ba6bfe4379c85f1980c5f75`다.
+최종 Canonical 또는 운영 desktop 설치의 identity로 혼동하지 않는다.
+
+독립 후속으로 owned fresh Python venv에 기존17 exact dependency pins를
+설치했다. 기존 unchanged adapter/worker로 HTML/PDF/DOCX/CSV/XLSX/PPTX
+6개 fixture의 marker·locator·SourceVersion/hash·원본 bytes 보존이 PASS했다.
+host Python3.14를 seed로 사용했으며 global Python/PATH/configuration은
+변경하지 않았다. 전체 의미 품질·standalone interpreter 설치를 인증하지 않는다.
+실행 방법과 exact artifacts는 [설치 proof](./reliability-application-distribution-proof.md),
+[Python proof](./fresh-python-converter-proof.md)에 있다.
+
+Original fresh installation은 cleanup됐고 보존된 copied directory는
+SOURCE_EVIDENCE_ONLY다. Computed workspace junction 제거/재생성은 자동 승인
+검토에서 "blocked by policy"로 거부됐고 수행·재시도하지 않았다. 성공한 proof는
+원래 fresh installation에서 실행됐으며 dangling copied links를 실행 증거로
+사용하지 않는다.
+
+### Media의 구현된 준비 범위 및 한계
+
+- [Alignment v1](./media-alignment-foundation.md): 42 unit+3 contract PASS,
+  기존 Stage3 8 PASS. 정확한 source/version/hash·time/frame/Unicode mapping을
+  검사하되 generated transcript/description은 UNVERIFIED/DECLARED다.
+- [Offline producer](./media-frame-offline-proof.md): FFmpeg9.0.2 exact pin,
+  upstream commit `946fcce07b6dcd0331c8cc609192aeff5e1924f8`, GPLv3 supplier
+  build를 격리 실행했다. 신규32+기존59=91 PASS. 실제 VFR PTS
+  `[0,100,400,900]` ms 중 selected `[0,1,3]`과 exact PNG hashes를 보존했고
+  synthetic WAV duration1250ms를 확인했다. **Audio는 전사하지 않았다.**
+- [Native image transport](./native-image-transport-preparation.md): 기존
+  deepseek-flash가 image 입력을 지원한다는 공식 문서를 확인해 새 모델이 반드시
+  필요하다는 선행 추론을 보정했다. 별도 prepared inline 경로는 새21+기존19
+  Fake HTTP tests PASS다. 기존 text payload·v6/.9·active catalog는 그대로다.
+- [Prepared chain](./media-analysis-preparation.md): original bytes→decoded
+  selected frames→native Fake HTTP→generated alignment를 연결했다.
+  23 contracts+3 integrations PASS이며 이 중 real pinned decoder1개는 이
+  host에서 실행됐다. 해당 runtime 없는 host에서는 그1개만 SKIP이며 portable
+  2개는 실행한다. Identity/callable substitution은 consumption/호출 전에 거부한다.
+
+이 media 경로는 inactive다. Process-local one-use는 restart-safe durable
+claim/attempt 보장이 아니며, unsampled scenes·speech·speaker·전체 의미는
+검증되지 않았다. Native support나 decoded frame hash가 권한·AI 의미 정확성·
+청구 또는 원문 Evidence 권위를 인증하지 않는다. Production FFmpeg DEFER,
+현재 제품 media support-negative 계약과 기존 Evidence/Ledger authority를 유지한다.
+
+### 현재 잔여 조건
+
+PR384의 Canonical CI/merge blocker는 해결됐다. Fresh JavaScript/Python 및
+actual normal Fake path로 설치 검증 범위는 확대됐지만, 최종 Canonical installed
+owner/desktop/reboot·운영 전환 승인은 별도다. 기존 persistent execution/budget
+권위와 media durable provenance·활성 제품 intake/preview/Ask 연결, 원문과 생성
+내용의 분리, 대표 content fidelity가 아직 필요하다. Audio ASR 또는 whole-video
+support를 구현됐다고 계산하지 않는다.
+
+외부 독립 의미 reference/warrant, Frontier recall/calibration, 인가된 isolated
+실호출 정책/credential/global authority readiness, usage/latency/invoice 대사,
+외부 Vault master 및 authority 복구 조건도 남아 있다. 새 Gold0·실제 AI 호출0,
+동결 원본/Gold-B-7/중단 실험과 운영 worker-OFF를 유지한다.
+**VP_FULL_IMPLEMENTATION_IN_PROGRESS / VP_FINAL_ACCEPTANCE_NOT_COMPLETE**를
+유지하며 가능한 독립 구현·검증을 계속한다.
+
+### 같은 날의 독립 안전 검토 후 보정
+
+기존 inactive 이미지 설명 seam이 Lucas text 변환을 통해 `source` origin을
+상속하는 잠재 결함을 보정했다. Adapter `1.13.0`은 root까지 모두 `annotation`을
+사용하고 기존 Evidence source-only 경계와 positive-count 성공 계약을 유지한다.
+원문 bytes/BBox/생성문은 보존되며, 위조한 성공 알림도 실제 Candidate module에서
+provider attempt/Candidate 생성 전에 거부된다. 기존 형식·보안 회귀와 합쳐
+74 PASS다. [수정 근거](./image-description-origin-safety.md)에 캐시 identity·
+과거 revision 보존·초기 잘못된 테스트 기대와 rollback을 기록했다.
+
+Prepared executor의 실제 private field 테스트를 추가해 원래 인스턴스 호출을
+확인했다. Native image의 이전 nested base64 regex는 허용된 10 MiB 입력에서
+V8 RangeError를 발생시켰다. 선형 검사로 바꾸되 canonical round-trip/hash/
+padding/기존 크기 상한을 유지했다. 10 MiB 성공과 초과·잘못된 padding의
+호출 전 거부를 포함해 native26+기존19 PASS, 관련 alignment/prepared suite와
+합쳐116 PASS다. 최초 실패 로그도 보존한다.
+
+전체 unit/contract의 로컬 동시 실행은2354 PASS/4 timeout(기존 Stage8 표준5초)
+이었다. 동일 제한의 해당 파일과 관련6개 scoped suite는74 PASS다. Timeout이나
+assertion을 완화하지 않았다. 이 관측만으로 전체 suite PASS를 주장하지 않으며
+새 게시 head의 정식 CI를 별도로 확인한다. Full lint는0 errors/기존2 warnings,
+TS6·architecture·OSS·secret·문서 Gate PASS다. 사용자 원본 directive를 보존하기
+위해 비표준 추가 문서 format 검사에서 나온 그 원본의 기존 style 경고를
+수정하지 않았다. 표준 repository format Gate와 새 작성 문서는 따로 검사한다.
+
+### PR385 첫 CI의 플랫폼 fixture 보정
+
+Draft PR385의 첫 head `178e1632425f3b5d39ce62451c965058ada035cd`,
+CI38369646597 Quality는 unit1547 PASS/1 FAIL이었다. Windows 전용 missing-runtime
+경로 문자열이 Linux에서 상대 경로가 되어 `VALIDATION_ERROR`를 올바르게
+반환했지만, 새 테스트는 `CONFIGURATION_REQUIRED`를 기대했다. 실제 missing
+runtime을 검증하도록 OS-native absolute temp 경로와 고유 suffix로 fixture만
+보정했다. 실행 경로·validation·assertion·timeout·skip은 바꾸지 않았다.
+원본 실패는 `pr385-initial-quality-failed.log`에 보존하며 새 exact head CI로
+후속 상태를 판정한다. 이 첫 CI에서 contracts/integration/database는 선행
+unit 실패 때문에 실행되지 않았으므로 PASS로 계산하지 않는다.
+
+추가 독립 검토는 새 installation proof의 orphan 확인에서 `kill(pid,0)`의
+모든 오류를 종료로 간주하던 경계를 보정했다. `ESRCH`만 사라짐의 증거로
+처리하며, Linux에서 명시적으로 종료한 zombie 상태를 `/proc/<pid>/stat`로
+구분한다. 다른 권한/관측 오류는 PASS로 숨기지 않는다. HTTP 재기동·nonce·
+DB/asset 보존 assertion과 기존 bounded timeout은 유지한다.
+[Linux kill 의미](https://man7.org/linux/man-pages/man2/kill.2.html)와
+[proc state](https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html)를
+확인했으며 이 후속 코드는 새 exact head CI에서 검증한다. 최초 `starting`은
+generation0이므로 generation1 조회가 최초 메시지를 선택했다는 별도의
+가설은 현재 fixture에서 재현되지 않았고, 그 이유로 불필요한 observer
+재설계나 추가 테스트를 수행하지 않았다.
+
+Native image의 sparse array가 `.map`에서 누락되어 null image block의 Fake HTTP
+호출을 허용하는 추가 경계 결함도2개 음성 fixture로 재현했다. 고정된 상한의
+모든 own slot을 검증해 호출 전에 거부하며 크기·hash·MIME 제한은 유지한다.
+native28+prepared26=54 PASS, 원본2 FAIL 로그를 보존한다. 이 후속 code를 포함한
+exact head CI로 최종 게시 적격성을 확인한다.

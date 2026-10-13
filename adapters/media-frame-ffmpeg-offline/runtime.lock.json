@@ -1,0 +1,15 @@
+{
+  "scope": "OFFLINE_PROTOTYPE_ONLY",
+  "supplier": "https://www.gyan.dev/ffmpeg/builds/",
+  "upstream": "https://github.com/FFmpeg/FFmpeg",
+  "tag": "n9.0.2",
+  "commit": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
+  "supplierRelease": "9.0.2",
+  "publishedAt": "2026-09-20T06:40:33Z",
+  "archiveUrl": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+  "archiveSha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+  "ffmpegSha256": "3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec",
+  "ffprobeSha256": "f0d36ecbbdd3bcfac3efa078c96c7271c2e68b3810595552ac3b7f17e9a65c52",
+  "license": "GPL-3.0-or-later",
+  "productionDecision": "DEFERRED"
+}

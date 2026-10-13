@@ -12,6 +12,7 @@ export * from './discovery-ai.js';
 export * from './discovery-execution.js';
 export * from './discovery-finding-serialization.js';
 export * from './document-evidence.js';
+export * from './media-alignment.js';
 export * from './knowledge-model.js';
 export * from './errors.js';
 export * from './failure-contract.js';

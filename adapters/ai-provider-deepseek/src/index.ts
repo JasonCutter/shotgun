@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { AIProviderConnectivityAdapter } from '../../../modules/ai-settings-backend/src/index.js';
 import {
   DEFAULT_CANDIDATE_EXTRACTION_TIMEOUT_MS,
@@ -68,6 +69,72 @@ export type DeepSeekConnectivityAdapterOptions = {
   readonly generationTimeoutMs?: number;
   readonly temperature?: number;
   readonly fetch?: FetchLike;
+};
+
+/** Prepared transport only. Pins must come from an authorized immutable asset
+ * read; these declarations do not authenticate a user or activate image intake.
+ * Existing Python image preflight remains responsible for complete decoding. */
+export type DeepSeekInlineImage = {
+  readonly mediaType: 'image/png' | 'image/jpeg';
+  readonly contentBase64: string;
+  readonly expectedContentHash: string;
+};
+export const DEEPSEEK_IMAGE_TRANSPORT_REVISION = 'deepseek-inline-vision-v1' as const;
+export type DeepSeekImageGenerationResponse = StructuredGenerationResponse & {
+  readonly imageTransportRevision: typeof DEEPSEEK_IMAGE_TRANSPORT_REVISION;
+  readonly imageRequestDigest: string;
+  readonly imageContentHashes: readonly string[];
+};
+
+const base64EnvelopeIsValid = (value: string): boolean => {
+  if (!value.length || value.length % 4 !== 0) return false;
+  const paddingStart = value.indexOf('=');
+  const alphabet = paddingStart === -1 ? value : value.slice(0, paddingStart);
+  if (/[^A-Za-z0-9+/]/u.test(alphabet)) return false;
+  if (paddingStart === -1) return true;
+  const paddingLength = value.length - paddingStart;
+  return paddingLength <= 2 && value.slice(paddingStart) === '='.repeat(paddingLength);
+};
+
+const inlineImages = (images: readonly DeepSeekInlineImage[]) => {
+  const imageCount = Array.isArray(images) ? images.length : 0;
+  if (imageCount < 1 || imageCount > 4)
+    throw errorFor('VALIDATION_ERROR', 'A bounded nonempty image batch is required.');
+  let totalBytes = 0;
+  return Array.from({ length: imageCount }, (_, index) => {
+    const image = Object.hasOwn(images, index) ? images[index] : undefined;
+    if (
+      !image ||
+      !['image/png', 'image/jpeg'].includes(image.mediaType) ||
+      typeof image.contentBase64 !== 'string' ||
+      image.contentBase64.length > 14_000_000 ||
+      !base64EnvelopeIsValid(image.contentBase64) ||
+      !/^sha256:[a-f0-9]{64}$/u.test(image.expectedContentHash)
+    )
+      throw errorFor('VALIDATION_ERROR', 'The pinned inline image is invalid.');
+    const bytes = Buffer.from(image.contentBase64, 'base64');
+    totalBytes += bytes.length;
+    const signatureMatches =
+      image.mediaType === 'image/png'
+        ? bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+        : bytes.length >= 4 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+    if (
+      !bytes.length ||
+      bytes.length > 10 * 1024 * 1024 ||
+      totalBytes > 20 * 1024 * 1024 ||
+      bytes.toString('base64') !== image.contentBase64 ||
+      !signatureMatches ||
+      `sha256:${createHash('sha256').update(bytes).digest('hex')}` !== image.expectedContentHash
+    )
+      throw errorFor('VALIDATION_ERROR', 'The image bytes do not match their immutable pin.');
+    return {
+      type: 'image_url',
+      image_url: {
+        url: `data:${image.mediaType};base64,${bytes.toString('base64')}`,
+        detail: 'original',
+      },
+    };
+  });
 };
 
 export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapter {
@@ -152,12 +219,78 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
       input.signal,
       this.generationTimeoutMs,
     );
+    return this.structuredResult(response, input.modelId);
+  }
+
+  /** Existing deepseek-flash native transport. No external URL/Files API,
+   * alternate model fallback, retry loop or implicit credential resolution. */
+  async generateImageStructured(
+    input: Parameters<AIProviderConnectivityAdapter['generateStructured']>[0] & {
+      readonly images: readonly DeepSeekInlineImage[];
+    },
+  ): Promise<DeepSeekImageGenerationResponse> {
+    const modelId = input.modelId;
+    const signal = input.signal;
+    if (signal?.aborted)
+      throw errorFor('TERMINAL_FAILURE', 'The image request was cancelled before execution.');
+    if (modelId !== 'deepseek-flash')
+      throw errorFor(
+        'VALIDATION_ERROR',
+        'The pinned model has no configured native image transport.',
+      );
+    const images = inlineImages(input.images);
+    const body = {
+      model: modelId,
+      messages: [
+        {
+          role: 'system',
+          content: `${input.request.systemInstruction}\nReturn only a JSON object matching this JSON Schema: ${JSON.stringify(input.request.responseSchema)}`,
+        },
+        { role: 'user', content: [{ type: 'text', text: input.request.prompt }, ...images] },
+      ],
+      response_format: { type: 'json_object' },
+      thinking: { type: 'disabled' },
+      stream: false,
+      temperature: this.temperature,
+      ...(input.request.maxOutputTokens === undefined
+        ? {}
+        : { max_tokens: input.request.maxOutputTokens }),
+    };
+    const serializedBody = JSON.stringify(body);
+    if (Buffer.byteLength(serializedBody, 'utf8') > 32 * 1024 * 1024)
+      throw errorFor(
+        'VALIDATION_ERROR',
+        'The image request exceeds its configured envelope limit.',
+      );
+    const response = await this.request(input.apiKey, body, signal, this.generationTimeoutMs);
+    if (!response || typeof response !== 'object' || response.model !== modelId)
+      throw errorFor(
+        'VALIDATION_ERROR',
+        'The image response did not confirm the pinned model identity.',
+      );
+    return Object.freeze({
+      ...this.structuredResult(response, modelId),
+      imageTransportRevision: DEEPSEEK_IMAGE_TRANSPORT_REVISION,
+      imageRequestDigest: `sha256:${createHash('sha256').update(serializedBody).digest('hex')}`,
+      imageContentHashes: Object.freeze(
+        images.map((imagePart) => {
+          const data = imagePart.image_url.url.split(',')[1]!;
+          return `sha256:${createHash('sha256').update(Buffer.from(data, 'base64')).digest('hex')}`;
+        }),
+      ),
+    });
+  }
+
+  private structuredResult(
+    response: DeepSeekResponse,
+    modelId: string,
+  ): StructuredGenerationResponse {
     const rawText = this.outputText(response);
     parseObject(rawText);
     return {
       rawText,
       ...(typeof response.id === 'string' ? { providerResponseId: response.id } : {}),
-      modelVersion: typeof response.model === 'string' ? response.model : input.modelId,
+      modelVersion: typeof response.model === 'string' ? response.model : modelId,
       ...(numberOrUndefined(response.usage?.prompt_tokens) === undefined
         ? {}
         : { inputTokens: numberOrUndefined(response.usage?.prompt_tokens) }),

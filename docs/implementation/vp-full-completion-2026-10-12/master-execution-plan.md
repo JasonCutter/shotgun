@@ -88,3 +88,57 @@ semantic-attempt 기록까지 PASS했다. source의3개 cases는 모두 CI 실�
 [패키지·런처 proof](./reliability-package-launcher-proof.md)에 기록한다.
 최종 root typecheck·standard formatting·TS6 release·secret scan PASS다.
 Draft 게시 뒤 동일 exact head의 정식 CI와 독립 검토를 확인하며 merge는 별도 승인이다.
+
+## 9. 2026-10-13 Canonical 게시 및 독립 후속 구현
+
+이 절은 앞선 checkpoint 이후의 현재 상태다. 앞선 base/branch·CI 실패·Docker
+관측·잔여 조건은 당시 기록으로 보존하며, 아래에서 확인된 항목만 갱신한다.
+
+사용자는 PR384의 exact head `27ff952398869b7ba956b01c39db709ed2a43b6a`
+병합을 별도로 승인했다. 해당 head의 CI `38335693426`은 SUCCESS이며,
+Canonical merge는 `e3abc1163918809a0dbb88f4a5f7841d60c47b8a`다.
+병합 tree `85c36572bc75dfe520e6711a7d6b14b33c9d1c46`은 승인 head와
+동일하다. Post-merge main CI `38339274706`에서 Quality·Frontend·Required
+Gates가 모두 SUCCESS다. 초기 실패를 삭제하거나 최신 결과로 덮어쓰지 않았다.
+후속 개발 branch는 `codex/vp-media-completion`이고 위 merge를 기준으로 한다.
+이 후속 변경에는 별도의 게시/병합 검증이 필요하며 PR384 승인에 포함되지 않는다.
+
+| 범위                         | 새로 확보한 실행 증거                                                                                                                                                             | 남은 경계                                                                                           |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| VP-03/07/11 설치·복구        | allowlist source의 fresh npm ci, 실제 launcher/recovery assembly 3세대, owner/child crash·재시작·identity readback 및 같은 fresh installation의 normal Fake worker HTTP 여정 PASS | local runtime 변경을 포함한 synthetic main이므로 운영 또는 최종 Canonical desktop 설치 인증 아님    |
+| VP-04 형식 runtime           | 새 owned Python venv에 기존17 pins 설치, unchanged worker/adapter로 HTML/PDF/DOCX/CSV/XLSX/PPTX 6개 구조 fixture PASS                                                             | host interpreter를 venv seed로 재사용; 독립 의미 Gold·전 형식 recall·운영 Python 배포 인증 아님     |
+| VP-08 alignment              | source/version/hash·time/actual frame PTS·pixel·generated text mapping을 보존하는 inactive 계약 42 unit+3 contract PASS; 기존 Stage3 8 PASS                                       | generated text는 UNVERIFIED/DECLARED이며 source-origin Evidence 또는 Fact로 승격하지 않음           |
+| VP-08 decoder                | exact-pin FFmpeg/ffprobe로 VFR MP4와 WAV 실제 offline 실행; 32 producer tests와 기존59 회귀 PASS                                                                                  | production FFmpeg DEFER 유지; sample frame/metadata이며 audio transcription·전체 의미 coverage 아님 |
+| VP-08 native image transport | 기존 deepseek-flash의 별도 inline PNG/JPEG 준비 경로, 새21+기존19 Fake HTTP tests PASS                                                                                            | active catalog/intake·모델/관계 정책 불변; provider 인가·durable ledger·제품 연결 미완료            |
+| VP-08 prepared chain         | bounded original bytes→selected frames→native Fake HTTP→generated alignment 연결, executor substitution 거부까지 22 contracts+3 integrations PASS                                 | process-local one-use만 제공; restart-safe execution/budget 권위 또는 active Ask 의미 인수 아님     |
+
+각 실행 identity·pin/license/OSS decision·초기 실패·제외 범위는
+[설치·복구 proof](./reliability-application-distribution-proof.md),
+[fresh Python proof](./fresh-python-converter-proof.md),
+[alignment foundation](./media-alignment-foundation.md),
+[offline frame proof](./media-frame-offline-proof.md),
+[native image 준비](./native-image-transport-preparation.md),
+[prepared 연결](./media-analysis-preparation.md)에 기록한다.
+
+현재 실제 AI 호출0, 새 인증 Gold0이다. 운영 DB/authority/Vault/configuration,
+정상 운영 app/worker, 동결72/432/B12·B 잔여24·Gold-B-7·stash를 이번 검증으로
+변경하거나 실행하지 않았다. 운영 설치를 자동 갱신하지 않는다.
+
+다음 구현의 우선순위는 기존 durable execution/budget 및 SourceVersion/Evidence
+경계를 재사용하는 media 제품 연결의 적격성 확인이다. 생성된 설명을 원문으로
+취급하지 않으며, audio 미전사·unsampled video 의미·provider 승인/청구·외부
+의미 검증·운영 배포/최종 installed identity를 완료로 계산하지 않는다.
+현재 판정은 **VP_FULL_IMPLEMENTATION_IN_PROGRESS /
+VP_FINAL_ACCEPTANCE_NOT_COMPLETE**다. 준비된 adapter와 Fake/구조 PASS를
+근거로 전체 지원 또는 전체 완료를 선언하지 않는다.
+
+후속 독립 검토에서 기존 이미지 생성문은 adapter1.13.0의 `annotation`으로
+분리하고 원문 Evidence로 승격되지 않는 실제 Stage3/4 음성 계약을 추가했다
+([74 PASS](./image-description-origin-safety.md)). Prepared executor의 private
+instance binding과 허용10MiB native base64 처리도 보정·검증했다. 최종 수치와
+전체 실행의 기존5초 timeout 이력은 [통합 보고](./report.md)에 구분한다.
+
+Raw audio/video는 ADR-088의 명시적 제외 범위여서 prototype 성공을 근거로
+활성화하지 않는다. Image의 다음 제품 연결은 생성된 관측과 원문 인용을
+구별하는 기존 권위 계약의 적격성 검토가 선행돼야 한다. 단순한 string descriptor,
+pixel 좌표 또는 높은 confidence로 이 경계를 우회하지 않는다.

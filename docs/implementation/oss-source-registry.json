@@ -1314,7 +1314,8 @@
       "maintenance": "Exact PyPI version locked",
       "evidence": [
         "PNG Golden verified as 320 by 180 pixels",
-        "Missing multimodal validation returns an explicit required status"
+        "Missing multimodal validation returns an explicit required status",
+        "Adapter 1.13.0 keeps generated image descriptions as annotation on every SourceMap node, including the root; existing Evidence and Candidate gates reject promotion to original-source evidence without changing image preflight, BBox or dependency pins"
       ],
       "boundary": "PythonDocumentFormatAdapter image handler",
       "replacement": "Replacement must preserve image verification, BBox, and multimodal-required policy",

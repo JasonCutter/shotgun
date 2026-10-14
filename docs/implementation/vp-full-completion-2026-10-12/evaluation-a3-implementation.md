@@ -66,3 +66,13 @@ Migration: 없음. Rollback/replacement: 이 offline package와 호출부를 제
 외부 verification 필드 검사의 가상 fixture는 `FICTIONAL_FORMAT_TEST_NOT_A_PERSON`과 synthetic locator로 명시한다. 이 fixture를 인증 reference로 저장하거나 실제 사람/승인 이력으로 보고하지 않았다. confidence/selected probability는 구조 range와 별도 관측 count만 검사하며 calibration 또는 0.9 gate 정확도 PASS로 보고하지 않는다. 기존 frozen output을 읽어 이 metric으로 재계산한 결과는 없다.
 
 Export는 `packages/vp-relation-evaluation/src/index.ts`에서 types/digest/validation/metrics/frontier 함수만 제공한다. 전체 workspaces/tsconfig의 기존 `packages/*`/`packages/**/*.ts`가 발견하므로 공유 barrel 수정은 필요 없다. workspace lockfile 등록과 전체 documentation/architecture Gate는 상위 통합 단계의 범위다. 새 package를 운영 bootstrap/worker에 import하지 않는다.
+
+## 6. 2026-10-14 외부 원본 검증 범위 확보
+
+이전 dataset 미다운로드 기록은 당시 이력이다. 후속 전체 실행에서 exact e-SNLI
+commit과 공식 SNLI archive를 확보하고 12건의 원문·native label·5 annotator vote를
+대조했다. 원본 pair/label은 12/12 일치하며 Shotgun 인증 reference는 **0**이다.
+Label을 보여준 뒤 작성한 인간 설명과 독립 label 검증, native NLI와 현재 v6
+tuple/Evidence Context의 동등성을 구분했다. Dataset import·Gold 채택·새 평가
+실행은 하지 않았다. [확보 결과와 남은 조건](./external-reference-readiness.md),
+[exact 외부 증거 manifest](./external-reference-readiness-manifest.json)를 따른다.

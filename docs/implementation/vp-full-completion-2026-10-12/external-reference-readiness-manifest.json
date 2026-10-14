@@ -1,0 +1,85 @@
+{
+  "recordId": "VP05-EXTERNAL-REFERENCE-READINESS-20261014",
+  "status": "LOCAL_EVIDENCE_NOT_CERTIFIED_REFERENCE",
+  "sourceBase": "85e3a88a3be010c047fe32d6b917bcef70635837",
+  "sourceTree": "678640b5b7aae147f32edd736440475461292f37",
+  "nativeRecordJoins": 12,
+  "certifiedShotgunReferences": 0,
+  "liveProviderCalls": 0,
+  "frozenResultsRescored": false,
+  "productionActivated": false,
+  "policyFile": "adapters/vp-decision-general-ai/src/index.ts",
+  "policySha256": "be5990383c1c8e40654ad7d5f6a6ee943e35051977c6b1dc15d56e47afbd885d",
+  "items": [
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\prepare_packet.py",
+      "bytes": 9107,
+      "sha256": "a401a8fa91a3bf90bf2d94c93e9800647b01feb0b47f380c8d2c4b03d2ef8ddb"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\native-reference-packet.json",
+      "bytes": 42062,
+      "sha256": "b696509d1bbff2e86f14f743ea4f72aede85165a77d7ef1db6bbc5b28385c16a"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\prospective-review-input.json",
+      "bytes": 3997,
+      "sha256": "944c4bd638e5f567d3c1413ef290993d1d17bcf09fdf83183ca83f4e20b2cf2a"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\offline-integrity-result.json",
+      "bytes": 647,
+      "sha256": "85d2e50e9372012d4859570891f954dd66dd6c74e01377c2c87bbc6b078ad37a"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\esnli_dev.csv",
+      "bytes": 7501310,
+      "sha256": "d7a656d196eea18fd827d6f5486b00f5d4cf469dbf13a252cc211495a186bcb4"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\upstream-LICENSE",
+      "bytes": 1061,
+      "sha256": "1346b2949ed1927b55d5067206ffa7c62923e97cd1e0149914842c3a177c38f5"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\upstream-README.md",
+      "bytes": 3558,
+      "sha256": "2af33d1b7705dd3e7386fb94e79a206a7594f04d5712c58a3f5f09d4c2c13280"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\snli_1.0.zip",
+      "bytes": 94550081,
+      "sha256": "afb3d70a5af5d8de0d9d81e2637e0fb8c22d1235c2749d83125ca43dab0dbd3e"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\snli-original-README.txt",
+      "bytes": 5828,
+      "sha256": "a27e78bf4ba7bc26033fac15a6596dd41c7ff47b4909e739199c59f91cf1bd4e"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\esnli-paper.pdf",
+      "bytes": 110966,
+      "sha256": "a33d5f4fa65575ed772490f0fe6952ae02eda6b2dd99f0991f9ade1c2e40150a"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\snli-paper.pdf",
+      "bytes": 255879,
+      "sha256": "7c57361a3046e360750747fb2a9bfe6caac873ac8e16035e52178712d859fdd4"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\contractnli-paper.pdf",
+      "bytes": 1118938,
+      "sha256": "a60bfb31fb5d9b5aa7697715380e241a47704049913f0b8dd3c48401fd2bccd3"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\validation-history.txt",
+      "bytes": 642,
+      "sha256": "4b4fadafcbd36006a807acf88aeb2ceb6a109f24039a2f8c10a47d8e917fc496"
+    },
+    {
+      "locator": "C:\\dev\\artifacts\\vp-full-completion-2026-10-12\\external-reference-readiness-2026-10-14\\preservation-after-reference-preparation.json",
+      "bytes": 18383,
+      "sha256": "fc300b614cf455cf8aa7c9ceae07c81278b2240fee6396e0a5ffa6252f112a4c"
+    }
+  ]
+}

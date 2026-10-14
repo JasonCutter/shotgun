@@ -326,3 +326,49 @@ Native image의 sparse array가 `.map`에서 누락되어 null image block의 Fa
 모든 own slot을 검증해 호출 전에 거부하며 크기·hash·MIME 제한은 유지한다.
 native28+prepared26=54 PASS, 원본2 FAIL 로그를 보존한다. 이 후속 code를 포함한
 exact head CI로 최종 게시 적격성을 확인한다.
+
+## 2026-10-14 — PR #385 Canonical 완료 및 승인된 이미지 격리 제품 구현
+
+PR #385의 승인 head `88ec8dfd3aae71e6dd380e99effb495239e16c20`을
+main `3675a95961cfdbb28f992356a2968b4613e6f426`에 병합했다. 병합 tree는
+승인 tree `edba03800f32518682fe816411f1e31c7d37143d`와 동일하며,
+CI38372113568과 post-merge CI38394700999의 Quality·Frontend·Required Gates가
+모두 성공했다. 앞 절의 최초 실패·취소 이력은 원본대로 보존한다.
+
+후속 사용자 승인에 따라 별도 로컬 브랜치에서
+[이미지 제품 계약](./image-product-contract.md)을 구현했다. 기존 VP Ledger의
+미검증 관측, AI owner의 고정 call/attempt, Source의 별도 완료 상태, Ask의
+별도 생성 참조·기권·과거 최신성, 인가된 원본 preview, reset/backup 경계를
+연결했다. 운영 이미지 기능은 OFF이고 실제 AI 호출은0회다.
+
+실제 application의 이미지/텍스트/버전 변경·과거 stale와 대기/UNKNOWN 흐름,
+Edge+실제 SPA의 이미지 투입·Ask·고정 원본 열기, 영속 실행8건, VP 관측16건,
+reset 소유권7건 및 실제136-table 백업 복원이 통과했다. 전체 단위·계약2478건,
+Frontend405건, TS6감사50건이 통과했다. source-aware 반복 분석 재사용은 원본
+bytes 변경 시 재검사하며 기존 validator·5초 제한·동결 v2–v7을 유지한다.
+
+초기 test fixture·오류 코드·진입점 guard·10초 반복 schema setup 문제와 최소
+보정은 계약 문서에 구분했다. Sol6.0은 실행/검색/TS6·회귀 검토에, Luna는 PR/CI
+증거 정리에 배정했다. Fake/구조 PASS를 실제 의미 품질이나 새로운 인증 Gold로
+보고하지 않는다. 마지막 결합 DB·게시 Gate를 진행 중이며 전체 VP 판정은
+**VP_FULL_IMPLEMENTATION_IN_PROGRESS / VP_FINAL_ACCEPTANCE_NOT_COMPLETE**다.
+
+### 2026-10-14 — PR #386 최초 CI와 추가 삭제 경계 보정
+
+이미지 격리 제품 연결은 Draft [PR #386](https://github.com/JasonCutter/shotgun/pull/386)으로 게시됐다. 최초 head `5fb47846afe667d674622c32d2b746ec88f4172d`의 [CI 38516187838](https://github.com/JasonCutter/shotgun/actions/runs/38516187838)는 Frontend SUCCESS, Quality/Required Gates FAILURE다. DB 739 PASS/3 FAIL/2 SKIP의 세 실패는 current inventory에 이미지 table/column을 등록하지 않은 것과 latest migration을 132로 가정한 테스트였다. 이전 통과 수치와 이 실패 기록을 대체하거나 실패를 PASS로 보고하지 않는다.
+
+T3의 현재 owner register와 exact TSV에 두 table/여섯 JSONB column을 명시해 212 table/174 column으로 정합화했다. 역사 001–130의 207/168 기준과 128→130→132 receipt 보존 assertion을 유지하며 후속 migration을 별도 검증한다. 최초 보정의 PostgreSQL 6건 및 unit 2건, typecheck·ESLint·format·v8 재현 검사가 통과했다.
+
+독립 Sol6 검토는 이미지-only Ask가 Source selection/citation/attempt Evidence 없이 남아 기존 T3 conversation 삭제 분류에서 빠지는 실제 결함도 발견했다. 기존 Ask owner의 Preview·fence·purge·readback 및 관련 command/connector Source-lineage 범위를 보완하며, 원본 migration 086/094/105는 수정하지 않는다. Source-derived 이미지 참조/context의 잘못된 lineage와 진행 중/UNKNOWN은 fail closed하고 다른 Project/독립 대화는 보존한다. 검증을 완화한 목록 갱신만으로 완료 판정하지 않는다.
+
+격리 테스트 transport가 executor URL의 role을 admin으로 덮어쓰던 문제도 운영 코드 밖의 test helper에서 바로잡았다. 허용 대상은 기존 owned container의 test/restore namespace로 유지하고 명시된 shotgun/shotgun_erasure_executor role만 보존한다. SQL 권한 검사는 완화하지 않는다. 새 head/CI 결과와 추가 regression은 후속 evidence에 기록하며 merge/운영 적용은 승인하지 않는다.
+
+최종 owner 보정은 migration138에서 기존 Ask/command/connector 권한·fence·승인·readback을 유지한다. 이미지-only statement/pinned context, invalid lineage, UNKNOWN 및 독립 Project 보존의 Ask PostgreSQL6/6이 통과했다. 최종138 migration backup 복원도136 integrity table/1 asset/137 contract file의 exact content 보존으로 PASS; dump digest `sha256:ed2e3b74710fdcb7328a2150d4820699398adfb49c3e43ed9995538d1280cef4`. 원본086/094/105 및 중간 backup 증거는 보존한다. 최종 결합 Gate와 새 exact-head CI는 별도 확인한다.
+
+2026-10-14 최종 보정 Gate: PostgreSQL17/17 (inventory/P0 migration/Ask/command/connector), unit2/2, TS6 50/50, v8 release/rebuild reproducibility, typecheck/ESLint/format/docs PASS. 역사086/094/105, frozenv2–v7, 동결평가79 files·13otherworktrees·stash/configuration은 보존한다. 이 결과는 최종 remote exact-head CI 이전의 로컬 증거다.
+
+### 2026-10-14 — staged-schema fixture correction
+
+CI38520171657 at headda5be2d3: Frontend SUCCESS, Quality/Required Gates FAILURE. Full DB740 PASS/5 FAIL/2 SKIP (747). All5 failures were in image-observation-t3-ownership.database.test.ts: the fixture intentionally installed136 then137 for the original rollback gate, but current impact inspection now requires138. The fixture keeps the137 rollback/apply assertions and adds138 rollback/readback plus twice-migrate single-registration before invoking current owner code. No production fallback, assertion removal, skip or timeout change. Initial CI38516187838 and this failed run remain preserved; pending-head results must not inherit earlier PASS.
+
+Staged-schema fixture correction final result: image-observation-t3-ownership PostgreSQL8/8 PASS, including independent137 and138 rollback/readback and repeated migration registration1. Typecheck/ESLint/docs/v8 reproducibility PASS. Existing assertions and timeout limits remain unchanged. Production bytes did not change in this correction; the final138 backup proof still covers the same migration bytes. Together with the unchanged focused17 cases,25 distinct relevant PostgreSQL cases have passed locally. New exact-head remote CI must be checked separately.

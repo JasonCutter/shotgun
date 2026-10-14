@@ -1108,3 +1108,20 @@ Shotgun은 **Contract First Modular Monolith**로 구현한다.
 - 측정 근거가 생길 때만 Worker와 Service로 분리한다.
 - Canonical, 승인, History, Action의 안전 경계는 기존 ADD를 유지한다.
 - 오픈소스 배정은 유연하지만 변경은 ADR과 Benchmark로 추적한다.
+
+## 27. 2026-10-14 승인된 이미지 격리 연결의 소유권
+
+사용자 승인 범위의 [이미지 제품 계약](../../implementation/vp-full-completion-2026-10-12/image-product-contract.md)은
+기존 Module 소유권을 유지한다. OriginalAsset/SourceVersion은 원본 bytes와 접근
+권위를, Transformation은 생성 annotation과 per-call 파생 revision을 소유한다.
+AI owner의 실행 Port는 고정된 call/attempt와 완료·거부·UNKNOWN 결과를 소유하며,
+VP Ledger의 관측 Port는 완료된 파생 증명을 검증해 `GENERATED_UNVERIFIED`만
+기록한다. Ask는 이 관측의 별도 참조와 고정된 문맥을 저장하며 원문 Evidence로
+바꾸지 않는다. Source Product는 별도 이미지 완료 상태를 소유한다.
+
+기존 reset receipt/actor/fence와 backup owner를 재사용하며 새로운 운영 권위나
+범용 실행 프레임워크를 도입하지 않는다. 의존성은 완료 증명·관측 조회 Port를
+통하고 PostgreSQL owner routine의 삭제 순서와 UNKNOWN 보존 계약을 검증한다.
+현재 활성화는 생성된 격리 test DB와 명시적 Fake HTTP의 `runtime-test`로 제한한다.
+운영 이미지/오디오/영상 활성화나 새 의미 정책 채택을 이 문서 변경으로 승인하지
+않는다. 이전 제26절 결정과 Canonical·Action·Evidence 경계는 유지한다.

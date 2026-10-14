@@ -18,6 +18,7 @@ import {
   type AskTransitionSeedPayload,
   type AskTransitionSeedView,
   type AskCitationView,
+  type AskGeneratedImageObservationReference,
   type AskCapability,
   type ExternalSourceFreshnessView,
   type AskProviderPolicyResolverPort,
@@ -63,6 +64,7 @@ export type AskKnowledgeSnapshot = {
 
 export type AskKnowledgeEvidenceSearchResult = AskKnowledgeSnapshot & {
   readonly evidenceIds: readonly string[];
+  readonly generatedObservations?: readonly AskExecutionGeneratedImageObservation[];
 };
 
 /** Minimal SQL boundary used to keep a VP freshness check in its caller's transaction. */
@@ -91,6 +93,7 @@ export type AskKnowledgeEvidenceSearchPort = {
     readonly authorizedSensitivities: readonly AskExecutionScope['sensitivityClearance'][];
     readonly snapshot: AskKnowledgeSnapshot;
     readonly evidenceIds: readonly string[];
+    readonly generatedObservationIds?: readonly string[];
     readonly limit: number;
     readonly queryExecutor?: AskKnowledgeQueryExecutor;
   }): Promise<boolean>;
@@ -107,7 +110,13 @@ export type AskExecutionSourceVersionContext = {
 };
 
 export type AskExecutionContextItem =
-  ({ readonly kind: 'EVIDENCE' } & AskExecutionEvidence) | AskExecutionSourceVersionContext;
+  | ({ readonly kind: 'EVIDENCE' } & AskExecutionEvidence)
+  | AskExecutionSourceVersionContext
+  | AskExecutionGeneratedImageObservation;
+
+export type AskExecutionGeneratedImageObservation = AskGeneratedImageObservationReference & {
+  readonly sensitivity: AskExecutionScope['sensitivityClearance'];
+};
 
 export type AskSourceVersionContextReaderPort = {
   resolve(input: {
@@ -142,6 +151,8 @@ export type AskAnswerProviderRequest = {
 export type AskAnswerProviderResult = {
   readonly answer: string;
   readonly citations: readonly AskAnswerProviderCitation[];
+  readonly generatedObservationReferences?: readonly { readonly observationId: string }[];
+  readonly answerSupportStatus?: 'SUPPORTED' | 'NO_SUPPORTED_ANSWER';
   readonly providerResponseId?: string;
   readonly provider: AskAnswerRunProvider;
   readonly usage?: AskAnswerRunUsage;
@@ -209,9 +220,15 @@ export const askSucceededCapabilitiesForContextStatus = (
 export const normalizeAskAnswerRunCapabilities = (
   snapshot: AskAnswerRunSnapshot,
   contextStatus: AskExecutionContextStatus,
+  hasGeneratedImageContext = false,
 ): AskAnswerRunSnapshot =>
   snapshot.state === 'SUCCEEDED'
-    ? { ...snapshot, capabilities: askSucceededCapabilitiesForContextStatus(contextStatus) }
+    ? {
+        ...snapshot,
+        capabilities: hasGeneratedImageContext
+          ? ['EXPORT']
+          : askSucceededCapabilitiesForContextStatus(contextStatus),
+      }
     : snapshot;
 
 export type AskExecutionRunContext = {
@@ -372,6 +389,8 @@ export type AskAnswerExecutionRepositoryPort = {
     readonly attemptNumber: number;
     readonly answer: string;
     readonly citations: readonly AskCitationView[];
+    readonly generatedObservationReferences?: readonly AskGeneratedImageObservationReference[];
+    readonly answerSupportStatus?: 'SUPPORTED' | 'NO_SUPPORTED_ANSWER';
     readonly provider: AskAnswerRunProvider;
     readonly providerResponseId?: string;
     readonly dataPolicyVersion?: string;
@@ -590,14 +609,31 @@ export const askExecutionContextDigest = (input: {
                 ? {}
                 : { externalSourceFreshness: item.externalSourceFreshness }),
             }
-          : {
-              kind: item.kind,
-              sourceId: item.sourceId,
-              sourceVersionId: item.sourceVersionId,
-              contentHash: item.contentHash,
-              mediaType: item.mediaType,
-              representationDigest: sha256Text(item.text),
-            },
+          : item.kind === 'GENERATED_IMAGE_OBSERVATION'
+            ? {
+                kind: item.kind,
+                observationId: item.observationId,
+                sourceId: item.sourceId,
+                sourceVersionId: item.sourceVersionId,
+                sourceContentHash: item.sourceContentHash,
+                derivationId: item.derivationId,
+                derivationDigest: item.derivationDigest,
+                providerExecutionId: item.providerExecutionId,
+                imageMediaType: item.imageMediaType,
+                imageWidth: item.imageWidth,
+                imageHeight: item.imageHeight,
+                region: item.region,
+                semanticStatus: item.semanticStatus,
+                representationDigest: sha256Text(item.observationText),
+              }
+            : {
+                kind: item.kind,
+                sourceId: item.sourceId,
+                sourceVersionId: item.sourceVersionId,
+                contentHash: item.contentHash,
+                mediaType: item.mediaType,
+                representationDigest: sha256Text(item.text),
+              },
       ),
     }),
   );
@@ -613,11 +649,20 @@ const markdownFor = (snapshot: AskAnswerRunSnapshot): string => {
         citation.pageNumbers ? ` (pages ${citation.pageNumbers.join(', ')})` : ''
       }${citation.exactQuote ? `: "${citation.exactQuote}"` : ''}`,
   );
+  const observationLines = snapshot.statements
+    .flatMap((statement) => statement.generatedObservationReferences ?? [])
+    .map(
+      (reference) =>
+        `- UNVERIFIED AI interpretation (not an original quote): ${reference.observationText}\n  SourceVersion: ${reference.sourceId}/${reference.sourceVersionId}; original hash: ${reference.sourceContentHash}; derivation: ${reference.derivationDigest}`,
+    );
   return [
     `# ${snapshot.question}`,
     '',
     buildAnswer(snapshot),
     ...(citationLines.length > 0 ? ['', '## Citations', ...citationLines] : []),
+    ...(observationLines.length > 0
+      ? ['', '## Unverified generated image observations', ...observationLines]
+      : []),
   ].join('\n');
 };
 
@@ -1107,12 +1152,18 @@ export class AskAnswerExecutionService {
         });
       }
       const citations = this.validateCitations(context, result.citations);
+      const generatedObservationReferences = this.validateGeneratedObservationReferences(
+        context,
+        result.generatedObservationReferences ?? [],
+      );
       return await this.repository.complete({
         scope,
         answerRunId: context.snapshot.answerRunId,
         attemptNumber: attempt.attemptNumber,
         answer: result.answer,
         citations,
+        ...(generatedObservationReferences.length ? { generatedObservationReferences } : {}),
+        ...(result.answerSupportStatus ? { answerSupportStatus: result.answerSupportStatus } : {}),
         provider: result.provider,
         ...(result.providerResponseId === undefined
           ? {}
@@ -1378,6 +1429,59 @@ export class AskAnswerExecutionService {
       retryable: false,
       outcomeUnknown: false,
     };
+  }
+
+  private validateGeneratedObservationReferences(
+    context: AskExecutionRunContext,
+    references: readonly { readonly observationId: string }[],
+  ): readonly AskGeneratedImageObservationReference[] {
+    if (!Array.isArray(references) || references.length > 12)
+      throw executionError(
+        'VALIDATION_ERROR',
+        'Invalid generated observation references.',
+        'validate-observation-references',
+      );
+    const selected = new Map(
+      context.context
+        .filter(
+          (item): item is AskExecutionGeneratedImageObservation =>
+            item.kind === 'GENERATED_IMAGE_OBSERVATION',
+        )
+        .map((item) => [item.observationId, item]),
+    );
+    const used = new Set<string>();
+    const validated: AskGeneratedImageObservationReference[] = [];
+    for (let index = 0; index < references.length; index += 1) {
+      const reference = references[index];
+      if (
+        !Object.hasOwn(references, index) ||
+        !reference ||
+        typeof reference !== 'object' ||
+        Object.keys(reference).length !== 1 ||
+        !Object.hasOwn(reference, 'observationId') ||
+        typeof reference.observationId !== 'string'
+      )
+        throw executionError(
+          'VALIDATION_ERROR',
+          'Invalid generated observation reference.',
+          'validate-observation-references',
+        );
+      const observation = selected.get(reference.observationId);
+      if (
+        !observation ||
+        observation.projectId !== context.snapshot.projectId ||
+        used.has(reference.observationId)
+      )
+        throw executionError(
+          'VALIDATION_ERROR',
+          'Generated observation is not authorized in this exact context.',
+          'validate-observation-references',
+        );
+      used.add(reference.observationId);
+      const { sensitivity: _sensitivity, ...view } = observation;
+      validated.push({ ...view, referenceId: `image-observation-reference-${randomUUID()}` });
+    }
+    return validated;
   }
 }
 

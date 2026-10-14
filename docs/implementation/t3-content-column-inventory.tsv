@@ -1,4 +1,5 @@
-# T3 content-column inventory; shotgun_test migration 077; 2026-09-23
+# Current T3 content-column inventory; isolated migration 001–138; 2026-10-14
+# Historical header: shotgun_test migration 077; 2026-09-23; previous 168 rows retained
 # column<TAB>postgres_type
 action.action_feedback_outbox.payload_json	jsonb
 action.approval_records.approval_json	jsonb
@@ -7,6 +8,9 @@ action.audit_events.event_json	jsonb
 action.candidates.candidate_json	jsonb
 action.executions.record_json	jsonb
 action.preview_snapshots.snapshot_json	jsonb
+ai.image_observation_executions.output_json	jsonb
+ai.image_observation_executions.record_json	jsonb
+ai.image_observation_executions.rejected_response_json	jsonb
 ai.provider_calls.call_json	jsonb
 ai.provider_calls.execution_identity	jsonb
 ai.provider_credentials.encrypted_secret	jsonb
@@ -28,8 +32,8 @@ canonical.revisions.revision_json	jsonb
 comparison.analysis_revisions_v2.analysis_json	jsonb
 comparison.analysis_revisions_v2.compared_resource_identities	jsonb
 comparison.relationships_v2.relationship_json	jsonb
-comparison.results_v2.result_json	jsonb
 comparison.results.result_json	jsonb
+comparison.results_v2.result_json	jsonb
 connector.dead_letters.envelope	jsonb
 connector.dead_letters.job	jsonb
 connector.dead_letters.safe_error	jsonb
@@ -63,6 +67,8 @@ evidence.spans.quote	jsonb
 evidence.spans.selectors	jsonb
 evidence.stage4_continuations.evidence_snapshot	jsonb
 frontend_activity.activity_index.snapshot	jsonb
+frontend_ask.answer_run_attempts.generated_image_context	jsonb
+frontend_ask.statements.generated_observation_references	jsonb
 frontend_ask.transition_seeds.payload	jsonb
 frontend_command.command_ledger.accepted_policy_context	jsonb
 frontend_command.command_ledger.accepted_principal_context	jsonb
@@ -134,11 +140,11 @@ projection.discovery_inferences.candidate	jsonb
 projection.semantic_items.provenance	jsonb
 review.approved_manifests_v2.manifest_json	jsonb
 review.change_set_revisions_v2.change_set_json	jsonb
-review.change_sets_v2.change_set_json	jsonb
 review.change_sets.change_set_json	jsonb
 review.change_sets.manifest_json	jsonb
-review.decisions_v2.decision_json	jsonb
+review.change_sets_v2.change_set_json	jsonb
 review.decisions.decision_json	jsonb
+review.decisions_v2.decision_json	jsonb
 review.operation_resolutions_v2.analysis_revision_ids	jsonb
 review.operation_resolutions_v2.candidate_evidence_ids	jsonb
 review.operation_resolutions_v2.relationship_ids	jsonb
@@ -167,4 +173,5 @@ source_product.url_provenance_receipts.response_metadata	jsonb
 transformation.revisions.document_ir	jsonb
 transformation.revisions.source_map	jsonb
 validation.results.dimensions	jsonb
+vp.image_observations.payload	jsonb
 vp.relation_provider_calls.output_json	jsonb

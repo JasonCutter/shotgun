@@ -18,6 +18,7 @@ const empty = {
   decisions: 0,
   events: 0,
   epochs: 0,
+  image_observations: 0,
 };
 const owner = (status: unknown) =>
   new PostgresVPKnowledgeResetOwner({
@@ -25,7 +26,7 @@ const owner = (status: unknown) =>
   } as unknown as Pool);
 
 describe('VP reset owner includes the current Frontier journal', () => {
-  it('accepts all nine owner counts and verifies an empty journal', async () => {
+  it('accepts every owner count and verifies an empty journal', async () => {
     const resetOwner = owner(empty);
     await expect(resetOwner.fence(context)).resolves.toBeUndefined();
     await expect(resetOwner.verify(context)).resolves.toEqual({
@@ -34,7 +35,7 @@ describe('VP reset owner includes the current Frontier journal', () => {
     });
   });
 
-  it.each(['frontiers', 'frontier_members'] as const)(
+  it.each(['frontiers', 'frontier_members', 'image_observations'] as const)(
     'does not verify erased knowledge while %s remains',
     async (key) => {
       await expect(owner({ ...empty, [key]: 1 }).verify(context)).resolves.toEqual({
@@ -44,7 +45,7 @@ describe('VP reset owner includes the current Frontier journal', () => {
     },
   );
 
-  it.each(['frontiers', 'frontier_members'] as const)(
+  it.each(['frontiers', 'frontier_members', 'image_observations'] as const)(
     'rejects a missing %s count rather than assuming it is zero',
     async (key) => {
       const incomplete: Record<string, number> = { ...empty };

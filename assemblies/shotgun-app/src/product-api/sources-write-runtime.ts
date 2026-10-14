@@ -6,6 +6,7 @@ export type SourcesWriteRuntime = {
   readonly commandGateway: FrontendCommandGatewayPort;
   readonly staging: SourcesStagingServicePort;
   readonly productService: SourcesProductWriteServicePort;
+  readonly imageObservationEnabled?: boolean;
 };
 
 let activeRuntime: SourcesWriteRuntime | undefined;

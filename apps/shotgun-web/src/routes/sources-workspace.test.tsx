@@ -409,6 +409,81 @@ describe('Sources Workspace', () => {
     expect(screen.queryByText('Summary')).toBeNull();
   });
 
+  it.each([
+    { title: 'absent', page: libraryPage, enabled: false },
+    {
+      title: 'disabled',
+      page: { ...libraryPage, intakeCapabilities: { imageObservationEnabled: false } },
+      enabled: false,
+    },
+    {
+      title: 'enabled',
+      page: { ...libraryPage, intakeCapabilities: { imageObservationEnabled: true } },
+      enabled: true,
+    },
+    {
+      title: 'wrong project',
+      page: {
+        ...libraryPage,
+        projectId: 'other',
+        intakeCapabilities: { imageObservationEnabled: true },
+      },
+      enabled: false,
+    },
+    {
+      title: 'wrong principal',
+      page: {
+        ...libraryPage,
+        principalId: 'other',
+        intakeCapabilities: { imageObservationEnabled: true },
+      },
+      enabled: false,
+    },
+    {
+      title: 'wrong session',
+      page: {
+        ...libraryPage,
+        sessionId: 'other',
+        intakeCapabilities: { imageObservationEnabled: true },
+      },
+      enabled: false,
+    },
+    {
+      title: 'stale',
+      page: { ...libraryPage, stale: true, intakeCapabilities: { imageObservationEnabled: true } },
+      enabled: false,
+    },
+  ])(
+    'image picker follows $title server capability without changing text formats',
+    async ({ page, enabled }) => {
+      const user = userEvent.setup();
+      const runtime = createRuntime(page);
+      const router = createMemoryRouter(
+        [
+          {
+            path: '/',
+            element: <ShellOutlet />,
+            children: [{ path: 'sources', element: <SourcesWorkspace /> }],
+          },
+        ],
+        { initialEntries: ['/sources?view=add'] },
+      );
+      render(
+        <AppProviders runtime={runtime}>
+          <RouterProvider router={router} />
+        </AppProviders>,
+      );
+      await screen.findByRole('heading', { name: 'Sources', level: 1 });
+      await waitFor(() => expect(runtime.apiClient.listSources).toHaveBeenCalled());
+      await user.selectOptions(screen.getByLabelText('Input type'), 'FILE');
+      const picker = screen.getByLabelText('File') as HTMLInputElement;
+      await waitFor(() => expect(picker.accept.includes('.png')).toBe(enabled));
+      expect(picker.accept.includes('.jpg')).toBe(enabled);
+      expect(picker.accept).toContain('.pdf');
+      expect(picker.accept).toContain('.pptx');
+    },
+  );
+
   it('renders server state, keeps search private, and enables one-step source submission', async () => {
     const user = userEvent.setup();
     const runtime = createRuntime();

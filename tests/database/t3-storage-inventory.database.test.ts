@@ -31,11 +31,13 @@ describe('T3 storage classification coverage', () => {
     );
     const expected = parseT3ExpectedTables(register);
     expect(expected.schemas).toEqual([...managedSchemas].sort());
-    expect(expected.tables).toHaveLength(210);
+    expect(expected.tables).toHaveLength(212);
     const currentAdditions = [
+      'ai.image_observation_executions',
       'source_product.url_refresh_jobs',
       'vp.candidate_frontier_members',
       'vp.candidate_frontiers',
+      'vp.image_observations',
     ];
     expect(expected.tables.filter((table) => currentAdditions.includes(table))).toEqual(
       currentAdditions,
@@ -44,6 +46,8 @@ describe('T3 storage classification coverage', () => {
     expect(register).toContain('migration 001–130의 207개 table');
     expect(register).toContain('`source_product.url_refresh_jobs`: D');
     expect(register).toContain('`vp.candidate_frontiers`와 `vp.candidate_frontier_members`: D+B');
+    expect(register).toContain('`vp.image_observations`: D');
+    expect(register).toContain('`ai.image_observation_executions`: C');
 
     const actual = await pool.query<{ schema_name: string; table_name: string }>(
       `SELECT table_schema AS schema_name, table_name
@@ -60,7 +64,23 @@ describe('T3 storage classification coverage', () => {
   it('matches every JSON, JSONB, and bytea column against the exact inventory', async () => {
     const inventory = await readFile('docs/implementation/t3-content-column-inventory.tsv', 'utf8');
     const expected = parseT3ExpectedContentColumns(inventory);
-    expect(expected).toHaveLength(168);
+    expect(expected).toHaveLength(174);
+    expect(
+      expected.filter(
+        (column) =>
+          column.startsWith('ai.image_observation_executions.') ||
+          column.startsWith('vp.image_observations.') ||
+          column.startsWith('frontend_ask.answer_run_attempts.generated_image_context\t') ||
+          column.startsWith('frontend_ask.statements.generated_observation_references\t'),
+      ),
+    ).toEqual([
+      'ai.image_observation_executions.output_json\tjsonb',
+      'ai.image_observation_executions.record_json\tjsonb',
+      'ai.image_observation_executions.rejected_response_json\tjsonb',
+      'frontend_ask.answer_run_attempts.generated_image_context\tjsonb',
+      'frontend_ask.statements.generated_observation_references\tjsonb',
+      'vp.image_observations.payload\tjsonb',
+    ]);
 
     const actual = await pool.query<{ qualified_column: string; postgres_type: string }>(
       `SELECT c.table_schema || '.' || c.table_name || '.' || c.column_name AS qualified_column,

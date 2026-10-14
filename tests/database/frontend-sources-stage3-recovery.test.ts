@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { SealedSourcesStagingService } from '../../adapters/frontend-sources-staging-sealed/src/index.js';
 import { PostgresSourcesProductService } from '../../adapters/frontend-sources-write-postgres/src/product-service.js';
@@ -222,9 +222,12 @@ afterAll(async () => {
 });
 
 describe.runIf(pool)('FE-P5-XP Sources Stage 3 failure recovery', () => {
-  beforeEach(async () => {
-    assetStorage = new InMemoryAssetStorage();
+  beforeAll(async () => {
     await recreateTestDatabaseSchemas(databaseUrl);
+  }, 60_000);
+
+  beforeEach(() => {
+    assetStorage = new InMemoryAssetStorage();
   });
 
   it('Stage3 first attempt throws → retry → same SourceId/SourceVersionId → Stage3 completes → Evidence exists → no duplicate SourceVersion', async () => {

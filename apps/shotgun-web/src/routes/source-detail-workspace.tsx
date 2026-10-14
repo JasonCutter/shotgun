@@ -800,7 +800,15 @@ export const SourceDetailWorkspace = () => {
           {preview.isPending ? <LoadingState message={t('source_detail.loading_preview')} /> : null}
           {preview.error ? <ErrorState error={preview.error} /> : null}
           {preview.data ? (
-            preview.data.text ? (
+            preview.data.image ? (
+              <img
+                className="source-preview"
+                src={preview.data.image.url}
+                width={preview.data.image.width}
+                height={preview.data.image.height}
+                alt={t('source_detail.original_image')}
+              />
+            ) : preview.data.text ? (
               <pre className="source-preview" tabIndex={0}>
                 {preview.data.text}
               </pre>
@@ -810,6 +818,15 @@ export const SourceDetailWorkspace = () => {
               </p>
             )
           ) : null}
+          {preview.data?.generatedObservationReferences?.map((reference) => (
+            <section
+              key={reference.observationId}
+              aria-label={t('ask.generated_image_observations')}
+            >
+              <h3>{t('ask.generated_image_observation_unverified')}</h3>
+              <p>{reference.observationText}</p>
+            </section>
+          ))}
         </section>
       ) : null}
 

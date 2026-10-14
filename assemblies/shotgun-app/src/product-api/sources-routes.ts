@@ -241,7 +241,12 @@ export const registerSourcesRoutes = (
     async (request) => {
       const scope = await buildScope(request.headers);
       return {
-        page: await coordinator.list(scope.read, decodeSourceLibraryQuery(request.body)),
+        page: {
+          ...(await coordinator.list(scope.read, decodeSourceLibraryQuery(request.body))),
+          intakeCapabilities: {
+            imageObservationEnabled: getSourcesWriteRuntime()?.imageObservationEnabled === true,
+          },
+        },
       };
     },
   );
@@ -776,6 +781,27 @@ export const registerSourcesRoutes = (
     if (!history) throw maskedNotFound();
     return { history };
   });
+
+  server.get<{
+    Params: { sourceId: string; sourceVersionId: string };
+    Headers: SecurityHeaders;
+  }>(
+    '/product-api/frontend/sources/:sourceId/versions/:sourceVersionId/image-original',
+    async (request, reply) => {
+      const scope = await buildScope(request.headers);
+      const image = await coordinator.originalImage(
+        scope.read,
+        requireParameter(request.params.sourceId, 'sourceId'),
+        requireParameter(request.params.sourceVersionId, 'sourceVersionId'),
+      );
+      if (!image) throw maskedNotFound();
+      return reply
+        .type(image.mediaType)
+        .header('Cache-Control', 'private, no-store')
+        .header('X-Content-Type-Options', 'nosniff')
+        .send(Buffer.from(image.bytes));
+    },
+  );
 
   server.get<{
     Params: { sourceId: string; sourceVersionId: string };

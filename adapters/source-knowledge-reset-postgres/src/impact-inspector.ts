@@ -8,11 +8,11 @@ import type {
   KnowledgeResetImpactPort,
 } from '../../../modules/source-knowledge-reset/src/index.js';
 
-const EXPECTED_TABLE_COUNT = 206;
-const EXPECTED_TABLE_DIGEST = 'b5408d14f5400ba945a2c1486cb0e0d9779f4789f24998dcb211300a93cde2c8';
-const EXPECTED_CONTENT_COLUMN_COUNT = 168;
+const EXPECTED_TABLE_COUNT = 208;
+const EXPECTED_TABLE_DIGEST = '57e56ff5d367b34063fbf5aa696c87aa2254835959b193113f095e907ab5a809';
+const EXPECTED_CONTENT_COLUMN_COUNT = 174;
 const EXPECTED_CONTENT_COLUMN_DIGEST =
-  'b4056141bd5994b1eafb7f537d854f529f815d17ae4e575c1a4c52c75777efcb';
+  '74d686c2d94777dfe5a968405156c86679617e049504b0bb5ceea07a9320cdaa';
 
 type ScopeRow = Readonly<{
   schema_name: string;
@@ -216,6 +216,7 @@ const REBUILD_SCHEMAS = new Set(['frontend_knowledge_graph']);
 const SOURCE_DERIVED_TABLE_OVERRIDES = new Set([
   'ai.provider_calls',
   'ai.provider_outputs',
+  'ai.image_observation_executions',
   'asset.sources',
   'asset.storage_receipts',
   'asset.staging_asset_leases',
@@ -479,6 +480,20 @@ const sourceAskSnapshot = async (pool: Pool, projectId: string) => {
          ON version.source_id = source.source_id
         AND version.source_version_id::text = evidence.source_version_id
        WHERE answer_run.project_id = $1
+       UNION
+       SELECT DISTINCT answer_run.conversation_id
+       FROM frontend_ask.answer_runs AS answer_run
+       WHERE answer_run.project_id = $1
+         AND (EXISTS (
+           SELECT 1 FROM frontend_ask.statements AS statement
+           WHERE statement.answer_run_id = answer_run.answer_run_id
+             AND statement.generated_observation_references <> '[]'::jsonb
+         ) OR EXISTS (
+           SELECT 1 FROM frontend_ask.answer_run_attempts AS attempt
+           WHERE attempt.answer_run_id = answer_run.answer_run_id
+             AND attempt.project_id = answer_run.project_id
+             AND attempt.generated_image_context <> '[]'::jsonb
+         ))
      ), affected_runs AS MATERIALIZED (
        SELECT answer_run.*
        FROM frontend_ask.answer_runs AS answer_run
@@ -557,7 +572,7 @@ const sourceAskSnapshot = async (pool: Pool, projectId: string) => {
            AND answer_run.project_id = attempt.project_id
          WHERE attempt.state IN ('RUNNING', 'CANCEL_REQUESTED', 'OUTCOME_UNKNOWN')
             OR attempt.lease_expires_at > clock_timestamp()) AS active_attempts,
-       (SELECT count(*)::text
+       ((SELECT count(*)
           FROM frontend_ask.answer_attempt_evidence AS evidence
           JOIN frontend_ask.answer_run_attempts AS attempt
             ON attempt.attempt_id = evidence.attempt_id
@@ -572,7 +587,7 @@ const sourceAskSnapshot = async (pool: Pool, projectId: string) => {
              WHERE source.project_id = $1
                AND source.source_id::text = evidence.source_id
                AND version.source_version_id::text = evidence.source_version_id
-           )) AS unresolved_evidence,
+           )) + frontend_ask.t3_unresolved_image_references($1))::text AS unresolved_evidence,
        (SELECT count(*)::text FROM scope_rows) AS derived_records,
        encode(pg_catalog.sha256(convert_to(COALESCE((
          SELECT string_agg(
@@ -1224,6 +1239,20 @@ export class PostgresKnowledgeResetImpactInspector implements KnowledgeResetImpa
     const assets = await sourceAssetSnapshot(this.pool, projectId);
     const ask = await sourceAskSnapshot(this.pool, projectId);
     const ai = await sourceAiSnapshot(this.pool, projectId);
+    const imageExecutions = await this.pool.query<{ active: string; unresolved: string }>(
+      `SELECT count(*) FILTER (WHERE execution.state NOT IN ('COMPLETED','OUTPUT_REJECTED'))::text AS active,
+         count(*) FILTER (WHERE source.source_id IS NULL OR
+           (execution.state='COMPLETED' AND revision.revision_id IS NULL))::text AS unresolved
+       FROM ai.image_observation_executions AS execution
+       LEFT JOIN asset.source_versions AS version ON version.source_version_id=execution.source_version_id
+       LEFT JOIN asset.sources AS source ON source.source_id=version.source_id AND source.project_id=execution.project_id
+       LEFT JOIN transformation.revisions AS revision ON revision.revision_id=execution.transformation_revision_id
+         AND revision.project_id=execution.project_id AND revision.source_version_id=execution.source_version_id
+       WHERE execution.project_id=$1`,
+      [projectId],
+    );
+    const imageActive = Number(imageExecutions.rows[0]?.active ?? 0);
+    const imageUnresolved = Number(imageExecutions.rows[0]?.unresolved ?? 0);
     const commands = await sourceCommandSnapshot(this.pool, projectId);
     const externalAction = await sourceExternalActionSnapshot(this.pool, projectId);
     const action = await sourceActionSnapshot(this.pool, projectId);
@@ -1244,6 +1273,7 @@ export class PostgresKnowledgeResetImpactInspector implements KnowledgeResetImpa
       ask.activeAnswerRunCount > 0 ||
       ask.activeAttemptCount > 0 ||
       ai.activeWorkCount > 0 ||
+      imageActive > 0 ||
       commands.activeCommands > 0 ||
       externalAction.activeActionCount > 0 ||
       action.activeActionCount > 0 ||
@@ -1265,6 +1295,7 @@ export class PostgresKnowledgeResetImpactInspector implements KnowledgeResetImpa
     if (
       ask.unresolvedEvidenceCount > 0 ||
       ai.unresolvedRecordCount > 0 ||
+      imageUnresolved > 0 ||
       commands.unclassifiedCommands > 0 ||
       externalAction.unclassifiedActionCount > 0 ||
       action.unclassifiedCandidateCount > 0 ||
@@ -1340,6 +1371,8 @@ export class PostgresKnowledgeResetImpactInspector implements KnowledgeResetImpa
         ask.unresolvedEvidenceCount +
         ai.activeWorkCount +
         ai.unresolvedRecordCount +
+        imageActive +
+        imageUnresolved +
         commands.activeCommands +
         commands.unclassifiedCommands +
         externalAction.activeActionCount +

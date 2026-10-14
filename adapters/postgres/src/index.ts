@@ -519,6 +519,8 @@ export class PostgresOriginalAssetRepository
       sensitivity: SourcesProjectionRecord['sensitivity'];
       created_at: Date;
       stage3_state: SourcesProjectionRecord['stage3State'] | null;
+      original_asset_id: string;
+      image_observation_id: string | null;
       active_indexing_result_id: string | null;
       active_revision_id: string | null;
       active_evidence_status: 'INDEXED' | 'NO_EVIDENCE' | null;
@@ -529,6 +531,7 @@ export class PostgresOriginalAssetRepository
       `SELECT source.project_id,
               source.source_id::text,
               version.source_version_id::text,
+              original.asset_id::text AS original_asset_id,
               version.version_number,
               version.media_type,
               original.content_hash,
@@ -540,6 +543,7 @@ export class PostgresOriginalAssetRepository
               version.sensitivity,
               version.created_at,
               progress.state AS stage3_state,
+              progress.image_observation_id::text,
               indexing.indexing_result_id::text AS active_indexing_result_id,
               indexing.revision_id::text AS active_revision_id,
               indexing.status AS active_evidence_status,
@@ -604,6 +608,7 @@ export class PostgresOriginalAssetRepository
       projectId: row.project_id,
       sourceId: row.source_id,
       sourceVersionId: row.source_version_id,
+      originalAssetId: row.original_asset_id,
       versionNumber: row.version_number,
       mediaType: row.media_type,
       contentHash: row.content_hash,
@@ -619,6 +624,7 @@ export class PostgresOriginalAssetRepository
         : { externalSourceLastCheckedAt: row.external_source_last_checked_at.toISOString() }),
       ...(row.external_source_refresh_failed ? { externalSourceRefreshFailed: true } : {}),
       ...(row.stage3_state === null ? {} : { stage3State: row.stage3_state }),
+      ...(row.image_observation_id == null ? {} : { imageObservationId: row.image_observation_id }),
       ...(row.active_indexing_result_id !== null &&
       row.active_revision_id !== null &&
       row.active_evidence_status !== null &&

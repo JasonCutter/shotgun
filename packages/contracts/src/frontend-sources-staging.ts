@@ -12,6 +12,8 @@ import {
 
 export type SourcesStagingInputKind = 'DIRECT_TEXT' | 'FILE' | 'URL';
 export type SourcesStagingMediaType =
+  | 'image/png'
+  | 'image/jpeg'
   | 'text/plain'
   | 'text/markdown'
   | 'text/html'
@@ -22,6 +24,8 @@ export type SourcesStagingMediaType =
   | 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 
 export const SOURCES_STAGING_MEDIA_TYPES: readonly SourcesStagingMediaType[] = [
+  'image/png',
+  'image/jpeg',
   'text/plain',
   'text/markdown',
   'text/html',

@@ -3,7 +3,7 @@
   "baseSha": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
   "derivedFrom": {
     "parentArtifact": "artifacts/ts6-phase-b-c2-r15/approved-regression-relations.v8.json",
-    "parentSha256": "373a329a73042922f0c5fa5ca7ea92e76caa1db5fa1cdf47e9237f38451e7470",
+    "parentSha256": "06996a827d64b9e6206248a38e35e7930190399cde8e0e2c9fcd219f9364a8e8",
     "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
     "authorityVersion": "ts6.phase-b.current-authority-manifest.v8"
   },
@@ -871,7 +871,7 @@
             "bindingPort": "AskAnswerExecutionRepositoryPort",
             "bindingVia": "field repository of AskAnswerExecutionService declared as AskAnswerExecutionRepositoryPort",
             "receiverType": "AskAnswerExecutionRepositoryPort",
-            "line": 763,
+            "line": 808,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -1447,7 +1447,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2288,
+            "line": 2290,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -1465,7 +1465,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2296,
+            "line": 2298,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -1496,7 +1496,7 @@
         "status": "TEST_ONLY_OR_DEAD",
         "callers": []
       },
-      "legacyRecordedCallers": 9,
+      "legacyRecordedCallers": 10,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -2869,7 +2869,7 @@
             "bindingPort": null,
             "bindingVia": "value of discoveryRuntimeRepository is the declared return type of a helper",
             "receiverType": "PostgresDiscoveryRuntimeRepository",
-            "line": 1022,
+            "line": 1090,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -2914,7 +2914,7 @@
             "bindingPort": null,
             "bindingVia": "value of discoveryRuntimeRepository is the declared return type of a helper",
             "receiverType": "PostgresDiscoveryRuntimeRepository",
-            "line": 1043,
+            "line": 1111,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -3154,7 +3154,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2238",
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2377",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "transaction",
@@ -3382,7 +3382,7 @@
             "bindingPort": "AskAnswerExecutionRepositoryPort",
             "bindingVia": "field repository of AskAnswerExecutionService declared as AskAnswerExecutionRepositoryPort",
             "receiverType": "AskAnswerExecutionRepositoryPort",
-            "line": 763,
+            "line": 808,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -3958,7 +3958,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2288,
+            "line": 2290,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -3976,7 +3976,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2296,
+            "line": 2298,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -3991,7 +3991,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2979",
+      "boundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "poolTransaction",
@@ -4021,7 +4021,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 619,
+            "line": 640,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -4039,7 +4039,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1168,
+            "line": 1196,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -4057,7 +4057,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1200,
+            "line": 1228,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -4075,7 +4075,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1360,
+            "line": 1437,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -4093,7 +4093,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1491,
+            "line": 1568,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -4111,7 +4111,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1569,
+            "line": 1648,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -4129,7 +4129,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 1745,
+            "line": 1884,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -4147,7 +4147,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 2297,
+            "line": 2436,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -4165,7 +4165,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 2496,
+            "line": 2635,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -4183,7 +4183,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskAnswerExecutionRepository",
             "receiverType": "PostgresAskAnswerExecutionRepository",
-            "line": 2518,
+            "line": 2657,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -4198,7 +4198,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:182",
+      "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:190",
       "file": "adapters/frontend-ask-write-postgres/src/index.ts",
       "symbol": "PostgresAskConversationRepository",
       "method": "transaction",
@@ -4426,7 +4426,7 @@
             "bindingPort": "AskAnswerExecutionRepositoryPort",
             "bindingVia": "field repository of AskAnswerExecutionService declared as AskAnswerExecutionRepositoryPort",
             "receiverType": "AskAnswerExecutionRepositoryPort",
-            "line": 763,
+            "line": 808,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -5002,7 +5002,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2288,
+            "line": 2290,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -5020,7 +5020,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2296,
+            "line": 2298,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -5035,7 +5035,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:674",
+      "boundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:749",
       "file": "adapters/frontend-ask-write-postgres/src/index.ts",
       "symbol": "PostgresAskWorkspaceProjection",
       "method": "loadConversation",
@@ -5065,7 +5065,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskWorkspaceProjection",
             "receiverType": "PostgresAskWorkspaceProjection",
-            "line": 545,
+            "line": 556,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -5083,7 +5083,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskWorkspaceProjection",
             "receiverType": "PostgresAskWorkspaceProjection",
-            "line": 591,
+            "line": 602,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -5101,7 +5101,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresAskWorkspaceProjection",
             "receiverType": "PostgresAskWorkspaceProjection",
-            "line": 617,
+            "line": 628,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -5479,7 +5479,7 @@
             "bindingPort": "FrontendCommandGatewayPort",
             "bindingVia": "field commandGateway of SourcesWriteRuntime declared as FrontendCommandGatewayPort",
             "receiverType": "FrontendCommandGatewayPort",
-            "line": 711,
+            "line": 716,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -5740,7 +5740,7 @@
             "bindingPort": "AskAnswerExecutionRepositoryPort",
             "bindingVia": "field repository of AskAnswerExecutionService declared as AskAnswerExecutionRepositoryPort",
             "receiverType": "AskAnswerExecutionRepositoryPort",
-            "line": 763,
+            "line": 808,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -6316,7 +6316,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2288,
+            "line": 2290,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -6334,7 +6334,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2296,
+            "line": 2298,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -6851,7 +6851,7 @@
             "bindingPort": "AskAnswerExecutionRepositoryPort",
             "bindingVia": "field repository of AskAnswerExecutionService declared as AskAnswerExecutionRepositoryPort",
             "receiverType": "AskAnswerExecutionRepositoryPort",
-            "line": 763,
+            "line": 808,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -7427,7 +7427,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2288,
+            "line": 2290,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -7445,7 +7445,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2296,
+            "line": 2298,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -7823,7 +7823,7 @@
             "bindingPort": "AskAnswerExecutionRepositoryPort",
             "bindingVia": "field repository of AskAnswerExecutionService declared as AskAnswerExecutionRepositoryPort",
             "receiverType": "AskAnswerExecutionRepositoryPort",
-            "line": 763,
+            "line": 808,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -8399,7 +8399,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2288,
+            "line": 2290,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -8417,7 +8417,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2296,
+            "line": 2298,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -8602,7 +8602,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 9,
+      "legacyRecordedCallers": 10,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -8771,7 +8771,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1075",
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1076",
       "file": "adapters/frontend-sources-write-postgres/src/product-service.ts",
       "symbol": "PostgresSourcesProductService",
       "method": "retry",
@@ -8801,7 +8801,7 @@
             "bindingPort": "SourcesProductWriteServicePort",
             "bindingVia": "field productService of SourcesWriteRuntime declared as SourcesProductWriteServicePort",
             "receiverType": "SourcesProductWriteServicePort",
-            "line": 569,
+            "line": 574,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -8816,7 +8816,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1705",
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1706",
       "file": "adapters/frontend-sources-write-postgres/src/product-service.ts",
       "symbol": "PostgresSourcesProductService",
       "method": "markStage3ItemsSucceeded",
@@ -8909,7 +8909,7 @@
             "bindingPort": "SourcesProductWriteServicePort",
             "bindingVia": "field productService of SourcesWriteRuntime declared as SourcesProductWriteServicePort",
             "receiverType": "SourcesProductWriteServicePort",
-            "line": 360,
+            "line": 365,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -8954,7 +8954,7 @@
             "bindingPort": null,
             "bindingVia": "value of sourcesProductService is the declared return type of a helper",
             "receiverType": "PostgresSourcesProductService",
-            "line": 1508,
+            "line": 1579,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -9077,7 +9077,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:885",
+      "boundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:886",
       "file": "adapters/frontend-sources-write-postgres/src/product-service.ts",
       "symbol": "PostgresSourcesProductService",
       "method": "resolveDuplicate",
@@ -9107,7 +9107,7 @@
             "bindingPort": "SourcesProductWriteServicePort",
             "bindingVia": "field productService of SourcesWriteRuntime declared as SourcesProductWriteServicePort",
             "receiverType": "SourcesProductWriteServicePort",
-            "line": 454,
+            "line": 459,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9475,7 +9475,7 @@
             "bindingPort": "TransformationRepositoryPort",
             "bindingVia": "field transformationRepository of SharedSourcesStage3PipelineDependencies declared as TransformationRepositoryPort",
             "receiverType": "TransformationRepositoryPort",
-            "line": 208,
+            "line": 247,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -9498,7 +9498,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 9,
+      "legacyRecordedCallers": 10,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -9538,7 +9538,7 @@
             "bindingPort": "EvidenceRepositoryPort",
             "bindingVia": "field evidenceRepository of SharedSourcesStage3PipelineDependencies declared as EvidenceRepositoryPort",
             "receiverType": "EvidenceRepositoryPort",
-            "line": 209,
+            "line": 248,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -9601,7 +9601,7 @@
             "bindingPort": "SourcesStage3ProgressPort",
             "bindingVia": "field progress of SharedSourcesStage3PipelineDependencies declared as SourcesStage3ProgressPort",
             "receiverType": "SourcesStage3ProgressPort",
-            "line": 103,
+            "line": 110,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9616,7 +9616,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:491",
+      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:590",
       "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
       "symbol": "PostgresSourcesStage3AtomicPersistence",
       "method": "persist",
@@ -9646,7 +9646,7 @@
             "bindingPort": "SourcesStage3AtomicPersistencePort",
             "bindingVia": "field atomicPersistence of SharedSourcesStage3PipelineDependencies declared as SourcesStage3AtomicPersistencePort",
             "receiverType": "SourcesStage3AtomicPersistencePort",
-            "line": 190,
+            "line": 229,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9661,7 +9661,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896",
+      "boundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:995",
       "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
       "symbol": "PostgresSourcesStage4ContinuationStore",
       "method": "claimNext",
@@ -9691,7 +9691,7 @@
             "bindingPort": "SourcesStage4ContinuationStorePort",
             "bindingVia": "field store of SourcesStage4ContinuationDispatcher declared as SourcesStage4ContinuationStorePort",
             "receiverType": "SourcesStage4ContinuationStorePort",
-            "line": 487,
+            "line": 537,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -9741,7 +9741,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 2,
+      "legacyRecordedCallers": 3,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -9831,7 +9831,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 3,
+      "legacyRecordedCallers": 4,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -10797,7 +10797,7 @@
             "bindingPort": "AskAnswerExecutionRepositoryPort",
             "bindingVia": "field repository of AskAnswerExecutionService declared as AskAnswerExecutionRepositoryPort",
             "receiverType": "AskAnswerExecutionRepositoryPort",
-            "line": 763,
+            "line": 808,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -11373,7 +11373,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2288,
+            "line": 2290,
             "evidenceGrade": "PORT_INFERRED"
           },
           {
@@ -11391,7 +11391,7 @@
             "bindingPort": "InMemoryFrontendReviewStore",
             "bindingVia": "value of frontendReviewStore is the declared return type of a helper",
             "receiverType": "InMemoryFrontendReviewStore",
-            "line": 2296,
+            "line": 2298,
             "evidenceGrade": "PORT_INFERRED"
           }
         ]
@@ -11451,7 +11451,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres/src/index.ts:1007",
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1013",
       "file": "adapters/postgres/src/index.ts",
       "symbol": "PostgresProjectAdministrationRepository",
       "method": "updateProject",
@@ -11496,7 +11496,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres/src/index.ts:1142",
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1148",
       "file": "adapters/postgres/src/index.ts",
       "symbol": "PostgresProjectAdministrationRepository",
       "method": "updateStatus",
@@ -11526,7 +11526,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresProjectAdministrationRepository",
             "receiverType": "PostgresProjectAdministrationRepository",
-            "line": 1126,
+            "line": 1132,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -11544,7 +11544,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresProjectAdministrationRepository",
             "receiverType": "PostgresProjectAdministrationRepository",
-            "line": 1130,
+            "line": 1136,
             "evidenceGrade": "DIRECT_CALLER"
           },
           {
@@ -11562,7 +11562,7 @@
             "bindingPort": null,
             "bindingVia": "this in PostgresProjectAdministrationRepository",
             "receiverType": "PostgresProjectAdministrationRepository",
-            "line": 1134,
+            "line": 1140,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -11577,7 +11577,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres/src/index.ts:1265",
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1271",
       "file": "adapters/postgres/src/index.ts",
       "symbol": "PostgresProjectBootstrapUnitOfWork",
       "method": "bootstrap",
@@ -11622,7 +11622,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres/src/index.ts:1536",
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1542",
       "file": "adapters/postgres/src/index.ts",
       "symbol": "PostgresSettingsRepository",
       "method": "updatePrincipalPreferences",
@@ -11667,7 +11667,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres/src/index.ts:1849",
+      "boundaryId": "safe:adapters/postgres/src/index.ts:1855",
       "file": "adapters/postgres/src/index.ts",
       "symbol": "PostgresSettingsRepository",
       "method": "applySettingsCommand",
@@ -11757,7 +11757,7 @@
       ]
     },
     {
-      "boundaryId": "safe:adapters/postgres/src/index.ts:854",
+      "boundaryId": "safe:adapters/postgres/src/index.ts:860",
       "file": "adapters/postgres/src/index.ts",
       "symbol": "PostgresProjectAdministrationRepository",
       "method": "createProject",
@@ -12156,7 +12156,7 @@
             "bindingPort": null,
             "bindingVia": "value of knowledgeResetPersistence is the declared return type of a helper",
             "receiverType": "PostgresKnowledgeResetPersistence",
-            "line": 1240,
+            "line": 1308,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -12296,13 +12296,58 @@
           }
         ]
       },
-      "legacyRecordedCallers": 2,
+      "legacyRecordedCallers": 3,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
       },
       "regressionEvidenceIds": [
         "test:tests/database/vp-candidate-frontier.database.test.ts:persists empty completeness instead of returning an unpersisted random identity:PostgresCandidateFrontier.ensure"
+      ]
+    },
+    {
+      "boundaryId": "safe:adapters/vp-knowledge-postgres/src/image-observations.ts:83",
+      "file": "adapters/vp-knowledge-postgres/src/image-observations.ts",
+      "symbol": "PostgresVPImageObservationLedger",
+      "method": "append",
+      "ownership": {
+        "kind": "SAFE_HELPER",
+        "primitive": "withSafePostgresTransaction"
+      },
+      "sourceEvidence": {
+        "declarationNeedle": "async append(",
+        "transactionNeedle": "withSafePostgresTransaction"
+      },
+      "productionReachability": {
+        "status": "PORT_INFERRED",
+        "callers": [
+          {
+            "file": "assemblies/shotgun-app/src/image-observation-runtime.ts",
+            "symbol": "ledger.append",
+            "callExpression": "ledger.append(...)",
+            "callNeedle": "ledger.append(",
+            "bindingEvidence": [
+              "async append("
+            ],
+            "regressionEvidenceIds": [
+              "test:tests/database/vp-image-observations.database.test.ts:concurrent finalizers and a restarted ledger reuse one observation and one epoch:PostgresVPImageObservationLedger.append"
+            ],
+            "bindingKind": "SOLE",
+            "bindingPort": "VPImageObservationLedgerPort",
+            "bindingVia": "file-scope declaration of ledger annotated VPImageObservationLedgerPort",
+            "receiverType": "VPImageObservationLedgerPort",
+            "line": 197,
+            "evidenceGrade": "PORT_INFERRED"
+          }
+        ]
+      },
+      "legacyRecordedCallers": 11,
+      "ackLossPolicy": {
+        "kind": "PROPAGATE_UNKNOWN",
+        "evidence": "existing safe transaction helper outcome contract"
+      },
+      "regressionEvidenceIds": [
+        "test:tests/database/vp-image-observations.database.test.ts:concurrent finalizers and a restarted ledger reuse one observation and one epoch:PostgresVPImageObservationLedger.append"
       ]
     },
     {
@@ -12395,7 +12440,7 @@
             "bindingPort": null,
             "bindingVia": "value of vpRelationJobs is the declared return type of a helper",
             "receiverType": "PostgresVPRelationJobs",
-            "line": 1541,
+            "line": 1612,
             "evidenceGrade": "DIRECT_CALLER"
           }
         ]
@@ -12557,7 +12602,7 @@
           }
         ]
       },
-      "legacyRecordedCallers": 3,
+      "legacyRecordedCallers": 4,
       "ackLossPolicy": {
         "kind": "PROPAGATE_UNKNOWN",
         "evidence": "existing safe transaction helper outcome contract"
@@ -12681,13 +12726,13 @@
   ],
   "transactionParticipants": [
     {
-      "participantId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2561",
+      "participantId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2700",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "<anonymous-function>",
       "transactionInput": "client supplied by enclosing poolTransaction callback",
       "ownedByBoundaryIds": [
-        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2979"
+        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123"
       ],
       "callerEvidence": [
         {
@@ -13587,7 +13632,7 @@
       "canonicalBoundaryId": "safe:adapters/frontend-activity-postgres/src/index.ts:91"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2238",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2377",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
@@ -13597,10 +13642,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2238"
+      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2377"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2979",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
@@ -13610,10 +13655,10 @@
       "productionReachable": true,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2979"
+      "canonicalBoundaryId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:182",
+      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:190",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/frontend-ask-write-postgres/src/index.ts",
@@ -13623,10 +13668,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:182"
+      "canonicalBoundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:190"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:674",
+      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:749",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
       "file": "adapters/frontend-ask-write-postgres/src/index.ts",
@@ -13636,7 +13681,7 @@
       "productionReachable": true,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:674"
+      "canonicalBoundaryId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:749"
     },
     {
       "candidateId": "safe:adapters/frontend-command-gateway-postgres/src/index.ts:110",
@@ -13860,7 +13905,7 @@
       "canonicalBoundaryId": "safe:adapters/frontend-sources-write-postgres/src/lifecycle.ts:201"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1075",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1076",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/frontend-sources-write-postgres/src/product-service.ts",
@@ -13870,10 +13915,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1075"
+      "canonicalBoundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1076"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1705",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1706",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
       "file": "adapters/frontend-sources-write-postgres/src/product-service.ts",
@@ -13883,7 +13928,7 @@
       "productionReachable": true,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1705"
+      "canonicalBoundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1706"
     },
     {
       "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:277",
@@ -13938,7 +13983,7 @@
       "canonicalBoundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:642"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:885",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:886",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/frontend-sources-write-postgres/src/product-service.ts",
@@ -13948,7 +13993,7 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:885"
+      "canonicalBoundaryId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:886"
     },
     {
       "candidateId": "safe:adapters/postgres-auth/src/index.ts:145",
@@ -14068,7 +14113,7 @@
       "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:491",
+      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:590",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
@@ -14078,10 +14123,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:491"
+      "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:590"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896",
+      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:995",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres-stage3/src/runtime-data-integrity.ts",
@@ -14091,7 +14136,7 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896"
+      "canonicalBoundaryId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:995"
     },
     {
       "candidateId": "safe:adapters/postgres-stage4/src/index.ts:346",
@@ -14354,7 +14399,7 @@
       "canonicalBoundaryId": "safe:adapters/postgres-stage9/src/typed-proposition-conflict.ts:221"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1007",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1013",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres/src/index.ts",
@@ -14364,10 +14409,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:1007"
+      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:1013"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1142",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1148",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "TX_BOUNDARY",
       "file": "adapters/postgres/src/index.ts",
@@ -14377,10 +14422,10 @@
       "productionReachable": true,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:1142"
+      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:1148"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1265",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1271",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres/src/index.ts",
@@ -14390,10 +14435,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:1265"
+      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:1271"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1536",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1542",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres/src/index.ts",
@@ -14403,10 +14448,10 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:1536"
+      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:1542"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1849",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1855",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres/src/index.ts",
@@ -14416,7 +14461,7 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:1849"
+      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:1855"
     },
     {
       "candidateId": "safe:adapters/postgres/src/index.ts:311",
@@ -14432,7 +14477,7 @@
       "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:311"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:854",
+      "candidateId": "safe:adapters/postgres/src/index.ts:860",
       "c2r1Classification": "SAFE_HELPER",
       "c2r2Classification": "PORT_INFERRED",
       "file": "adapters/postgres/src/index.ts",
@@ -14442,7 +14487,7 @@
       "productionReachable": false,
       "transactionOwner": true,
       "transactionParticipant": false,
-      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:854"
+      "canonicalBoundaryId": "safe:adapters/postgres/src/index.ts:860"
     },
     {
       "candidateId": "safe:adapters/project-standing-ai-policy-postgres/src/index.ts:75",
@@ -14573,6 +14618,19 @@
       "transactionOwner": true,
       "transactionParticipant": false,
       "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/frontier-store.ts:98"
+    },
+    {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/image-observations.ts:83",
+      "c2r1Classification": "SAFE_HELPER",
+      "c2r2Classification": "PORT_INFERRED",
+      "file": "adapters/vp-knowledge-postgres/src/image-observations.ts",
+      "symbol": "PostgresVPImageObservationLedger",
+      "method": "append",
+      "reason": "A production call site names a Port implemented by this boundary; composition binding is not proven.",
+      "productionReachable": false,
+      "transactionOwner": true,
+      "transactionParticipant": false,
+      "canonicalBoundaryId": "safe:adapters/vp-knowledge-postgres/src/image-observations.ts:83"
     },
     {
       "candidateId": "safe:adapters/vp-knowledge-postgres/src/index.ts:114",
@@ -15286,10 +15344,10 @@
   ],
   "rawTransactionSites": [
     {
-      "candidateId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2561",
+      "candidateId": "raw:adapters/frontend-ask-execution-postgres/src/index.ts:2700",
       "kind": "RAW",
       "file": "adapters/frontend-ask-execution-postgres/src/index.ts",
-      "line": 2561,
+      "line": 2700,
       "sourceNeedle": "await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);",
       "symbol": "PostgresAskAnswerExecutionRepository",
       "method": "<anonymous-function>",
@@ -15900,7 +15958,7 @@
       "file": "tests/database/frontend-phase-2-section-1-product-write.test.ts",
       "testName": "creates one Source, requires an exact-duplicate decision, and reuses the pinned Version",
       "covers": [
-        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:885"
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:886"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesProductService.resolveDuplicate",
@@ -15913,7 +15971,7 @@
       "file": "tests/database/frontend-sources-stage3-recovery.test.ts",
       "testName": "retries the outcome-indeterminate Sources item through the product service boundary",
       "covers": [
-        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1075"
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1076"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesProductService.retry",
@@ -15993,7 +16051,7 @@
       "testName": "rejects malformed lease inputs before opening a PostgreSQL transaction",
       "covers": [
         "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:122",
-        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896"
+        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:995"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesStage3ProgressRepository.claim",
@@ -16006,7 +16064,7 @@
       "file": "tests/database/post-tf-risk001a-proof-matrix.test.ts",
       "testName": "Stage 3 atomic persistence: reconciles all authorities after ACK loss",
       "covers": [
-        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:491"
+        "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:590"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSourcesStage3AtomicPersistence.persist",
@@ -16177,7 +16235,7 @@
       "file": "tests/database/frontend-section3-bootstrap-postgres.test.ts",
       "testName": "persists Project, one Owner, active Session, operation binding, and recoverable outcome",
       "covers": [
-        "safe:adapters/postgres/src/index.ts:1265"
+        "safe:adapters/postgres/src/index.ts:1271"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresProjectBootstrapUnitOfWork.bootstrap",
@@ -16190,7 +16248,7 @@
       "file": "tests/database/frontend-ask-uploaded-source-resolution.database.test.ts",
       "testName": "resolves bounded Evidence for the Browser source-only selection without calling the original reader",
       "covers": [
-        "safe:adapters/postgres/src/index.ts:854"
+        "safe:adapters/postgres/src/index.ts:860"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresProjectAdministrationRepository.createProject",
@@ -16317,7 +16375,7 @@
       "file": "tests/database/frontend-ask-write-postgres.database.test.ts",
       "testName": "commits aggregate and outcome atomically, recovers after restart, and serializes follow-ups",
       "covers": [
-        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2979"
+        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123"
       ],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "executionService.startWorker",
@@ -16348,7 +16406,7 @@
       "testName": "mixed submission (1 duplicate/action-required + 1 new item) Stage3 fail once → retryable → retry → same SourceVersion → Evidence exists → no duplicate → final PARTIAL",
       "covers": [
         "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:642",
-        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1705"
+        "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1706"
       ],
       "coverageKind": "OWNER_ATOMICITY",
       "entrySymbol": "mixedService.submit",
@@ -16392,7 +16450,7 @@
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "updates PostgreSQL project metadata through the transaction owner",
       "covers": [
-        "safe:adapters/postgres/src/index.ts:1007"
+        "safe:adapters/postgres/src/index.ts:1013"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "projectAdminRepo.updateProject",
@@ -16406,7 +16464,7 @@
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "updates PostgreSQL principal preferences through the transaction owner",
       "covers": [
-        "safe:adapters/postgres/src/index.ts:1536"
+        "safe:adapters/postgres/src/index.ts:1542"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "settingsRepo.updatePrincipalPreferences",
@@ -16599,7 +16657,7 @@
       "file": "tests/database/a9-final-closure-evidence.test.ts",
       "testName": "commits work performed through the Ask execution transaction boundary",
       "covers": [
-        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2238"
+        "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2377"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskAnswerExecutionRepository.transaction",
@@ -16612,7 +16670,7 @@
       "file": "tests/unit/frontend-ask-write-postgres.test.ts",
       "testName": "does not issue ROLLBACK after a Question Submit COMMIT acknowledgement error",
       "covers": [
-        "safe:adapters/frontend-ask-write-postgres/src/index.ts:182"
+        "safe:adapters/frontend-ask-write-postgres/src/index.ts:190"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresAskConversationRepository.transaction",
@@ -16746,7 +16804,7 @@
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "keeps PostgreSQL Project lifecycle status and active state in parity",
       "covers": [
-        "safe:adapters/postgres/src/index.ts:1142"
+        "safe:adapters/postgres/src/index.ts:1148"
       ],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "PostgresProjectAdministrationRepository.archiveProject",
@@ -16760,7 +16818,7 @@
       "file": "tests/database/section2-postgres.test.ts",
       "testName": "rolls back cleanly on transaction errors without leaving corrupted revisions",
       "covers": [
-        "safe:adapters/postgres/src/index.ts:1849"
+        "safe:adapters/postgres/src/index.ts:1855"
       ],
       "coverageKind": "DIRECT_BOUNDARY",
       "entrySymbol": "PostgresSettingsRepository.applySettingsCommand",
@@ -16812,7 +16870,7 @@
       "file": "tests/database/t3-product-acceptance.database.test.ts",
       "testName": "creates, cites, resets, restarts, preserves configuration, and accepts a fresh Source",
       "covers": [
-        "safe:adapters/frontend-ask-write-postgres/src/index.ts:674"
+        "safe:adapters/frontend-ask-write-postgres/src/index.ts:749"
       ],
       "coverageKind": "PUBLIC_PATH",
       "entrySymbol": "askForSource",
@@ -16886,6 +16944,19 @@
       "path": [
         "PostgresCandidateFrontier.status"
       ]
+    },
+    {
+      "testEvidenceId": "test:tests/database/vp-image-observations.database.test.ts:concurrent finalizers and a restarted ledger reuse one observation and one epoch:PostgresVPImageObservationLedger.append",
+      "file": "tests/database/vp-image-observations.database.test.ts",
+      "testName": "concurrent finalizers and a restarted ledger reuse one observation and one epoch",
+      "covers": [
+        "safe:adapters/vp-knowledge-postgres/src/image-observations.ts:83"
+      ],
+      "coverageKind": "DIRECT_BOUNDARY",
+      "entrySymbol": "PostgresVPImageObservationLedger.append",
+      "path": [
+        "PostgresVPImageObservationLedger.append"
+      ]
     }
   ],
   "historical": {
@@ -16895,15 +16966,15 @@
   },
   "summary": {
     "TX_BOUNDARY": 19,
-    "PORT_INFERRED": 92,
+    "PORT_INFERRED": 93,
     "TX_PARTICIPANT": 0,
     "TX_DELEGATE": 0,
     "NON_TX": 14,
     "TEST_ONLY_OR_DEAD": 18,
     "REVIEW_REQUIRED": 0,
-    "c2r1CandidateRecords": 143,
-    "uniqueCandidateIdentities": 143,
-    "reconciliationTotal": 143,
+    "c2r1CandidateRecords": 144,
+    "uniqueCandidateIdentities": 144,
+    "reconciliationTotal": 144,
     "historicalRows": 87,
     "historicalRowsExplained": 87,
     "historicalRowsUnexplained": 0

@@ -461,7 +461,7 @@ const errorFor = (
   });
 
 export class PythonDocumentFormatAdapter implements PlainTextTransformerPort {
-  readonly identity = { id: 'shotgun.document-formats', version: '1.13.0' } as const;
+  readonly identity = { id: 'shotgun.document-formats', version: '1.15.0' } as const;
   readonly #plainText = new LucasAugmentedPlainTextAdapter();
   readonly #pythonExecutable: string;
   readonly #workerPath: string;
@@ -481,6 +481,76 @@ export class PythonDocumentFormatAdapter implements PlainTextTransformerPort {
       options.workerPath ?? path.resolve('adapters/document-format-python/worker.py');
     this.#multimodal = options.multimodal;
     this.#workerOptions = options.workerOptions ?? {};
+  }
+
+  /** Complete local Pillow decode, with no model/description invocation.
+   * This separate preflight permits execution authorization only after pixels
+   * and immutable original bytes have passed the existing worker boundary. */
+  async preflightImage(input: {
+    readonly mediaType: 'image/png' | 'image/jpeg';
+    readonly contentBase64: string;
+    readonly sourceContentHash: string;
+  }): Promise<{
+    readonly width: number;
+    readonly height: number;
+    readonly pixels: number;
+    readonly contentHash: string;
+  }> {
+    const request = {
+      operation: 'image-preflight',
+      mediaType: input.mediaType,
+      contentBase64: input.contentBase64,
+      expectedContentHash: input.sourceContentHash,
+    };
+    if (
+      !['image/png', 'image/jpeg'].includes(request.mediaType) ||
+      typeof request.contentBase64 !== 'string' ||
+      !request.contentBase64 ||
+      request.contentBase64.length > 14_000_000 ||
+      !/^sha256:[a-f0-9]{64}$/u.test(request.expectedContentHash)
+    ) {
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'The image preflight input is invalid.',
+        module: 'stage8.document-format-python',
+        operation: 'preflight-image',
+        retryable: false,
+      });
+    }
+    const result = await runWorker(
+      this.#pythonExecutable,
+      this.#workerPath,
+      request,
+      this.#workerOptions,
+    );
+    if (result.status !== 'IMAGE_PREFLIGHT') {
+      if (result.status === 'OK')
+        throw new ShotgunError({
+          code: 'TERMINAL_FAILURE',
+          safeMessage: 'The image preflight returned an unexpected result.',
+          module: 'stage8.document-format-python',
+          operation: 'preflight-image',
+          retryable: false,
+        });
+      throw errorFor(result);
+    }
+    if (
+      result.contentHash !== request.expectedContentHash ||
+      result.format !== (request.mediaType === 'image/png' ? 'PNG' : 'JPEG')
+    )
+      throw new ShotgunError({
+        code: 'VALIDATION_ERROR',
+        safeMessage: 'The decoded image does not match its immutable input.',
+        module: 'stage8.document-format-python',
+        operation: 'preflight-image',
+        retryable: false,
+      });
+    return Object.freeze({
+      width: result.width,
+      height: result.height,
+      pixels: result.pixels,
+      contentHash: result.contentHash,
+    });
   }
 
   async transform(input: DocumentTransformationInput): Promise<PlainTextTransformationOutput> {

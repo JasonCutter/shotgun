@@ -1,4 +1,11 @@
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
+import {
+  askGeneratedImageObservationReferenceFor,
+  decodeAskGeneratedImageObservationReference,
+  type AskGeneratedImageObservationReference,
+} from '../../../packages/contracts/src/frontend-ask-image-observation.js';
+import { stableJson } from '../../../packages/contracts/src/document-evidence.js';
+import type { VPImageObservationLedgerPort } from '../../../modules/vp-knowledge-ledger/src/image-observations.js';
 
 import {
   ASK_SCHEMA_VERSION,
@@ -109,6 +116,7 @@ type StatementRow = QueryResultRow & {
   readonly answer_run_id: string;
   readonly ordinal: number;
   readonly text: string;
+  readonly generated_observation_references: unknown;
 };
 
 type CitationRow = QueryResultRow & {
@@ -505,7 +513,10 @@ export class PostgresAskSourceSelectionValidator implements AskSourceSelectionVa
 }
 
 export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPort {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly imageObservations?: Pick<VPImageObservationLedgerPort, 'findHistorical'>,
+  ) {}
 
   async getWorkspace(
     input: FrontendReadScope & { readonly conversationId?: string },
@@ -644,6 +655,69 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
     return input.accessibleProjects.some((project) => project.id === projectId);
   }
 
+  private async authorizeGeneratedReferences(
+    client: PoolClient,
+    statements: readonly StatementRow[],
+    projectId: string,
+    accessScope: readonly string[],
+    authorizedSensitivities: readonly (keyof typeof sensitivityRank)[],
+    answerRunId?: string,
+  ): Promise<
+    Map<
+      string,
+      {
+        readonly references: readonly AskGeneratedImageObservationReference[];
+        readonly stale: boolean;
+      }
+    >
+  > {
+    const result = new Map<
+      string,
+      {
+        readonly references: readonly AskGeneratedImageObservationReference[];
+        readonly stale: boolean;
+      }
+    >();
+    for (const statement of statements) {
+      if (answerRunId && statement.answer_run_id !== answerRunId) continue;
+      const raw = statement.generated_observation_references;
+      if (!Array.isArray(raw) || raw.length > 12) throw notFound('load-generated-image-reference');
+      if (raw.length === 0) continue;
+      if (!this.imageObservations) throw notFound('load-generated-image-reference');
+      const references: AskGeneratedImageObservationReference[] = [];
+      const identities = new Set<string>();
+      let stale = false;
+      for (const value of raw) {
+        const reference = decodeAskGeneratedImageObservationReference(value);
+        if (reference.projectId !== projectId || identities.has(reference.referenceId))
+          throw notFound('load-generated-image-reference');
+        identities.add(reference.referenceId);
+        const observation = await this.imageObservations.findHistorical(
+          { projectId, accessScope, authorizedSensitivities, queryExecutor: client },
+          reference.observationId,
+        );
+        if (
+          !observation ||
+          stableJson(
+            askGeneratedImageObservationReferenceFor(observation, reference.referenceId),
+          ) !== stableJson(reference)
+        )
+          throw notFound('load-generated-image-reference');
+        const current = await client.query<{ source_version_id: string }>(
+          `SELECT latest.source_version_id::text FROM asset.sources AS source
+           JOIN LATERAL (SELECT source_version_id,access_scope,sensitivity FROM asset.source_versions WHERE source_id=source.source_id ORDER BY version_number DESC LIMIT 1) AS latest ON true
+           WHERE source.project_id=$1 AND source.source_id=$2 AND latest.access_scope <@ $3::text[] AND latest.sensitivity=ANY($4::text[])`,
+          [projectId, reference.sourceId, accessScope, authorizedSensitivities],
+        );
+        if (!current.rows[0]) throw notFound('load-generated-image-reference');
+        stale ||= current.rows[0].source_version_id !== reference.sourceVersionId;
+        references.push(reference);
+      }
+      result.set(statement.statement_id, { references, stale });
+    }
+    return result;
+  }
+
   private async loadConversation(
     conversationId: string,
     projectId: string,
@@ -671,10 +745,11 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
       selectionsResult,
       statementsResult,
       citationsResult,
+      generatedReferences,
     ] = await withSafePostgresTransaction(
       this.pool,
-      async (client) =>
-        [
+      async (client) => {
+        const results = [
           await client.query<ConversationRow>(
             `SELECT * FROM frontend_ask.conversations
                WHERE conversation_id = $1 AND project_id = $2`,
@@ -694,7 +769,7 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
           ),
           await client.query<AnswerRunRow>(
             `SELECT run.*,
-                    attempt.context_supported AS latest_context_supported
+                    COALESCE(attempt.answer_supported, attempt.context_supported) AS latest_context_supported
                FROM frontend_ask.answer_runs AS run
                LEFT JOIN frontend_ask.answer_run_attempts AS attempt
                  ON attempt.answer_run_id = run.answer_run_id
@@ -722,7 +797,7 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
             [conversationId],
           ),
           await client.query<StatementRow>(
-            `SELECT statement_id, answer_run_id, ordinal, text
+            `SELECT statement_id, answer_run_id, ordinal, text, generated_observation_references
                FROM frontend_ask.statements
                WHERE answer_run_id IN (
                  SELECT answer_run_id FROM frontend_ask.answer_runs WHERE conversation_id = $1
@@ -779,7 +854,17 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
               ORDER BY citation.statement_id, citation.citation_ordinal`,
             [conversationId, projectId, accessScope, sensitivities, answerRunId ?? null],
           ),
-        ] as const,
+        ] as const;
+        const references = await this.authorizeGeneratedReferences(
+          client,
+          results[5].rows,
+          projectId,
+          accessScope,
+          sensitivities as readonly (keyof typeof sensitivityRank)[],
+          answerRunId,
+        );
+        return [...results, references] as const;
+      },
       {
         module: 'frontend-ask-write-postgres',
         operation: 'load-conversation',
@@ -812,6 +897,9 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
 
     const citationsByStatement = new Map<string, AskCitationView[]>();
     const staleStatements = new Set<string>();
+    for (const [statementId, item] of generatedReferences) {
+      if (item.stale) staleStatements.add(statementId);
+    }
     for (const row of citationsResult.rows) {
       if (!row.citation_authorized) throw notFound('load-conversation-citation');
       if (row.source_stale) staleStatements.add(row.statement_id);
@@ -845,6 +933,7 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
         readonly statementId: string;
         readonly text: string;
         readonly citations: readonly AskCitationView[];
+        readonly generatedObservationReferences?: readonly AskGeneratedImageObservationReference[];
       }[]
     >();
     for (const row of statementsResult.rows) {
@@ -853,6 +942,11 @@ export class PostgresAskWorkspaceProjection implements AskWorkspaceProjectionPor
         statementId: row.statement_id,
         text: row.text,
         citations: citationsByStatement.get(row.statement_id) ?? [],
+        ...(generatedReferences.get(row.statement_id)?.references.length
+          ? {
+              generatedObservationReferences: generatedReferences.get(row.statement_id)!.references,
+            }
+          : {}),
       });
       statementsByRun.set(row.answer_run_id, statements);
     }

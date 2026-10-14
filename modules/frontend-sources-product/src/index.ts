@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { askGeneratedImageObservationReferenceFor } from '../../../packages/contracts/src/frontend-ask-image-observation.js';
+import type { VPImageObservationV1 } from '../../../packages/contracts/src/vp-image-observation.js';
 
 import {
   decodeEvidenceListView,
@@ -26,6 +28,7 @@ export type SourcesProjectionRecord = {
   readonly projectId: string;
   readonly sourceId: string;
   readonly sourceVersionId: string;
+  readonly originalAssetId?: string;
   readonly versionNumber: number;
   readonly mediaType: string;
   readonly contentHash: string;
@@ -45,7 +48,9 @@ export type SourcesProjectionRecord = {
     | 'STAGE3_COMPLETED'
     | 'NO_EVIDENCE'
     | 'STAGE3_RETRYABLE'
-    | 'RECONCILIATION_REQUIRED';
+    | 'RECONCILIATION_REQUIRED'
+    | 'IMAGE_OBSERVATION_COMPLETED';
+  readonly imageObservationId?: string;
   /** Server-owned Stage 3 authority. Never infer this from evidence counts. */
   readonly activeEvidenceRevision?: {
     readonly indexingResultId: string;
@@ -71,6 +76,31 @@ export type SourcesProjectionRepositoryPort = {
 
 export type SourcesAssetReaderPort = {
   read(storageKey: string): Promise<Uint8Array | undefined>;
+};
+
+export type SourcesImageReadOptions = {
+  readonly imageValidator: {
+    preflightImage(input: {
+      readonly mediaType: 'image/png' | 'image/jpeg';
+      readonly contentBase64: string;
+      readonly sourceContentHash: string;
+    }): Promise<{
+      readonly width: number;
+      readonly height: number;
+      readonly pixels: number;
+      readonly contentHash: string;
+    }>;
+  };
+  readonly imageObservationLedger: {
+    findHistorical(
+      scope: {
+        readonly projectId: string;
+        readonly accessScope: readonly string[];
+        readonly authorizedSensitivities: readonly SourcesSensitivity[];
+      },
+      observationId: string,
+    ): Promise<VPImageObservationV1 | undefined>;
+  };
 };
 
 export type SourcesEvidenceReaderPort = {
@@ -151,6 +181,9 @@ const projectionRevision = (records: readonly SourcesProjectionRecord[]): string
         contentHash: record.contentHash,
         createdAt: record.createdAt,
         activeEvidenceRevision: record.activeEvidenceRevision,
+        ...(record.mediaType === 'image/png' || record.mediaType === 'image/jpeg'
+          ? { imageObservationId: record.imageObservationId, stage3State: record.stage3State }
+          : {}),
       })),
     ),
   );
@@ -199,11 +232,39 @@ const labelFor = (record: SourcesProjectionRecord): string =>
   record.displayLabel?.trim() ||
   record.originalFileName?.trim() ||
   (record.mediaType === 'text/plain' ? 'Untitled direct text' : 'Untitled source');
+const imageMediaType = (record: SourcesProjectionRecord): 'image/png' | 'image/jpeg' | undefined =>
+  record.mediaType === 'image/png' || record.mediaType === 'image/jpeg'
+    ? record.mediaType
+    : undefined;
+const askUsageFor = (record: SourcesProjectionRecord) =>
+  imageMediaType(record)
+    ? record.stage3State === 'IMAGE_OBSERVATION_COMPLETED'
+      ? ('IMAGE_OBSERVATION_COMPLETED' as const)
+      : record.stage3State === 'RECONCILIATION_REQUIRED'
+        ? ('ACTION_REQUIRED' as const)
+        : ('NOT_READY' as const)
+    : ('SOURCE_VERSION_READY' as const);
+const askExplanationFor = (record: SourcesProjectionRecord): string =>
+  imageMediaType(record)
+    ? record.stage3State === 'IMAGE_OBSERVATION_COMPLETED'
+      ? 'A generated, unverified image observation is available.'
+      : record.stage3State === 'RECONCILIATION_REQUIRED'
+        ? 'Image processing requires reconciliation. No observation is available for Ask.'
+        : 'Image processing has not produced an observation for Ask.'
+    : 'The immutable SourceVersion is available for selection.';
 
 const transformationStateFor = (
   stage3State: SourcesProjectionRecord['stage3State'],
   authority: SourcesProjectionRecord['activeEvidenceRevision'],
-): 'NOT_STARTED' | 'RUNNING' | 'RETRYING' | 'BLOCKED' | 'NO_EVIDENCE' | 'READY' => {
+):
+  | 'NOT_STARTED'
+  | 'RUNNING'
+  | 'RETRYING'
+  | 'BLOCKED'
+  | 'NO_EVIDENCE'
+  | 'READY'
+  | 'IMAGE_OBSERVATION_COMPLETED' => {
+  if (stage3State === 'IMAGE_OBSERVATION_COMPLETED') return 'IMAGE_OBSERVATION_COMPLETED';
   if (stage3State === 'STAGE3_RUNNING') return 'RUNNING';
   if (stage3State === 'STAGE3_RETRYABLE') return 'RETRYING';
   if (stage3State === 'RECONCILIATION_REQUIRED') return 'BLOCKED';
@@ -276,18 +337,71 @@ const sortLibrary = (
   });
 
 export class FrontendSourcesReadCoordinator {
+  private readonly imageRead?: SourcesImageReadOptions;
   constructor(
     private readonly sources: SourcesProjectionRepositoryPort,
     private readonly storage: SourcesAssetReaderPort,
     private readonly evidence: SourcesEvidenceReaderPort,
     private readonly candidates?: SourcesCandidateReaderPort,
     private readonly now: () => Date = () => new Date(),
-  ) {}
+    imageRead?: SourcesImageReadOptions,
+  ) {
+    this.imageRead = imageRead ? Object.freeze({ ...imageRead }) : undefined;
+  }
+
+  private async imageObservation(
+    record: SourcesProjectionRecord,
+    scope: ServerAuthorizedProjectSourcesReadScope,
+  ): Promise<VPImageObservationV1 | undefined> {
+    if (record.stage3State !== 'IMAGE_OBSERVATION_COMPLETED') return undefined;
+    const observation =
+      record.imageObservationId && this.imageRead
+        ? await this.imageRead.imageObservationLedger.findHistorical(
+            {
+              projectId: scope.authorizedProjectId,
+              accessScope: scope.accessScopes,
+              authorizedSensitivities: Object.keys(sensitivityRank).filter(
+                (sensitivity) =>
+                  sensitivityRank[sensitivity as SourcesSensitivity] <=
+                  sensitivityRank[scope.sensitivityClearance],
+              ) as SourcesSensitivity[],
+            },
+            record.imageObservationId,
+          )
+        : undefined;
+    if (
+      !observation ||
+      observation.sourceId !== record.sourceId ||
+      observation.sourceVersionId !== record.sourceVersionId ||
+      observation.projectId !== record.projectId ||
+      observation.originalAssetId !== record.originalAssetId ||
+      observation.sourceContentHash !== record.contentHash ||
+      observation.image.mediaType !== record.mediaType ||
+      record.activeEvidenceRevision
+    )
+      throw new ShotgunError({
+        code: 'REVISION_CONFLICT',
+        safeMessage: 'Image observation readiness authority is unavailable.',
+        module: 'frontend-sources-product',
+        operation: 'validate-image-observation',
+      });
+    return observation;
+  }
 
   private async authorizedRecords(scope: ServerAuthorizedProjectSourcesReadScope) {
-    const records = (
-      await this.sources.listProjectSourceVersions(scope.authorizedProjectId)
-    ).filter((record) => assertAuthorized(record, scope));
+    const raw = await this.sources.listProjectSourceVersions(scope.authorizedProjectId);
+    const latest = new Map(latestBySource(raw).map((record) => [record.sourceId, record]));
+    const records = raw.filter(
+      (record) =>
+        assertAuthorized(record, scope) &&
+        (!imageMediaType(record) ||
+          (latest.get(record.sourceId) && assertAuthorized(latest.get(record.sourceId)!, scope))),
+    );
+    await Promise.all(
+      records
+        .filter((record) => record.stage3State === 'IMAGE_OBSERVATION_COMPLETED')
+        .map((record) => this.imageObservation(record, scope)),
+    );
     if (this.sources.validateActiveEvidenceRevision) {
       await Promise.all(
         records
@@ -509,11 +623,11 @@ export class FrontendSourcesReadCoordinator {
       if (query.filters.lifecycle && !query.filters.lifecycle.includes('ACTIVE')) {
         return false;
       }
-      const askState = 'SOURCE_VERSION_READY' as const;
+      const askState = askUsageFor(record);
       if (query.filters.askUsageStates && !query.filters.askUsageStates.includes(askState)) {
         return false;
       }
-      return query.filters.attentionOnly !== true;
+      return query.filters.attentionOnly !== true || askState === 'ACTION_REQUIRED';
     });
     const sorted = sortLibrary(filtered, query.sort);
     const offset = cursor?.offset ?? 0;
@@ -531,9 +645,10 @@ export class FrontendSourcesReadCoordinator {
         label: labelFor(record),
         mediaType: record.mediaType,
         lifecycle: 'ACTIVE',
-        previewReadiness: record.activeEvidenceRevision ? 'READY' : 'NOT_READY',
-        askUsageState: 'SOURCE_VERSION_READY',
-        askUsageExplanation: 'The immutable SourceVersion is available for selection.',
+        previewReadiness:
+          record.activeEvidenceRevision || record.imageObservationId ? 'READY' : 'NOT_READY',
+        askUsageState: askUsageFor(record),
+        askUsageExplanation: askExplanationFor(record),
         selectedSourceVersionId: record.sourceVersionId,
         versionCount: records.filter((item) => item.sourceId === record.sourceId).length,
         capabilities: ['PREVIEW', 'DOWNLOAD_ORIGINAL', 'SELECT_FOR_ASK'],
@@ -594,9 +709,10 @@ export class FrontendSourcesReadCoordinator {
       sensitivity: latest.sensitivity,
       currentSourceVersionId: latest.sourceVersionId,
       versionCount: records.length,
-      previewReadiness: latest.activeEvidenceRevision ? 'READY' : 'NOT_READY',
-      askUsageState: 'SOURCE_VERSION_READY',
-      askUsageExplanation: 'The immutable SourceVersion is available for selection.',
+      previewReadiness:
+        latest.activeEvidenceRevision || latest.imageObservationId ? 'READY' : 'NOT_READY',
+      askUsageState: askUsageFor(latest),
+      askUsageExplanation: askExplanationFor(latest),
       capabilities: ['PREVIEW', 'DOWNLOAD_ORIGINAL', 'SELECT_FOR_ASK'],
       sourceRevision: projectionRevision(records),
       projectionRevision: projectionRevision(await this.authorizedRecords(scope)),
@@ -673,6 +789,93 @@ export class FrontendSourcesReadCoordinator {
     });
   }
 
+  async originalImage(
+    scope: ServerAuthorizedProjectSourcesReadScope,
+    sourceId: string,
+    sourceVersionId: string,
+  ): Promise<{
+    readonly bytes: Uint8Array;
+    readonly mediaType: 'image/png' | 'image/jpeg';
+    readonly contentHash: string;
+    readonly width: number;
+    readonly height: number;
+  } | null> {
+    if (!this.imageRead) return null;
+    const records = await this.sources.listProjectSourceVersions(scope.authorizedProjectId);
+    const record = records.find(
+      (item) => item.sourceId === sourceId && item.sourceVersionId === sourceVersionId,
+    );
+    const latest = latestBySource(records).find((item) => item.sourceId === sourceId);
+    if (
+      !record ||
+      !latest ||
+      !assertAuthorized(record, scope) ||
+      !assertAuthorized(latest, scope) ||
+      !imageMediaType(record)
+    )
+      return null;
+    const stored = await this.storage.read(record.storageKey);
+    if (
+      !stored ||
+      stored.length !== record.sizeBytes ||
+      stored.length < 1 ||
+      stored.length > 10 * 1024 * 1024
+    )
+      throw new ShotgunError({
+        code: 'REVISION_CONFLICT',
+        safeMessage: 'The original image bytes are unavailable.',
+        module: 'frontend-sources-product',
+        operation: 'read-original-image',
+      });
+    const bytes = Uint8Array.from(stored);
+    const contentHash = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+    if (contentHash !== record.contentHash)
+      throw new ShotgunError({
+        code: 'REVISION_CONFLICT',
+        safeMessage: 'The original image hash does not match its SourceVersion.',
+        module: 'frontend-sources-product',
+        operation: 'read-original-image',
+      });
+    const mediaType = imageMediaType(record)!;
+    const decoded = await this.imageRead.imageValidator.preflightImage({
+      mediaType,
+      contentBase64: Buffer.from(bytes).toString('base64'),
+      sourceContentHash: contentHash,
+    });
+    if (
+      decoded.contentHash !== contentHash ||
+      !Number.isSafeInteger(decoded.width) ||
+      !Number.isSafeInteger(decoded.height) ||
+      decoded.width < 1 ||
+      decoded.height < 1 ||
+      decoded.width > 30000 ||
+      decoded.height > 30000 ||
+      decoded.pixels !== decoded.width * decoded.height ||
+      decoded.pixels > 100000000
+    )
+      throw new ShotgunError({
+        code: 'REVISION_CONFLICT',
+        safeMessage: 'The original image decoding identity is invalid.',
+        module: 'frontend-sources-product',
+        operation: 'read-original-image',
+      });
+    const readback = await this.sources.listProjectSourceVersions(scope.authorizedProjectId);
+    const stillReadable = readback.find(
+      (item) => item.sourceId === sourceId && item.sourceVersionId === sourceVersionId,
+    );
+    const current = latestBySource(readback).find((item) => item.sourceId === sourceId);
+    if (
+      !stillReadable ||
+      !current ||
+      !assertAuthorized(stillReadable, scope) ||
+      !assertAuthorized(current, scope) ||
+      stillReadable.contentHash !== contentHash ||
+      stillReadable.mediaType !== mediaType
+    )
+      return null;
+    return { bytes, mediaType, contentHash, width: decoded.width, height: decoded.height };
+  }
+
   async preview(
     scope: ServerAuthorizedProjectSourcesReadScope,
     sourceId: string,
@@ -684,6 +887,48 @@ export class FrontendSourcesReadCoordinator {
         candidate.sourceId === sourceId && candidate.sourceVersionId === sourceVersionId,
     );
     if (!record) return null;
+    if (imageMediaType(record)) {
+      const original = await this.originalImage(scope, sourceId, sourceVersionId);
+      if (!original) return null;
+      const observation = await this.imageObservation(record, scope);
+      return decodeSourcePreviewView({
+        schemaVersion: '1.0.0',
+        sourceId,
+        sourceVersionId,
+        projectId: record.projectId,
+        mediaType: record.mediaType,
+        contentHash: record.contentHash,
+        mode,
+        readiness: mode === 'ORIGINAL' || observation ? 'READY' : 'NOT_READY',
+        ...(mode === 'ORIGINAL'
+          ? {
+              image: {
+                url: `/product-api/frontend/sources/${encodeURIComponent(sourceId)}/versions/${encodeURIComponent(sourceVersionId)}/image-original`,
+                mediaType: original.mediaType,
+                contentHash: original.contentHash,
+                width: original.width,
+                height: original.height,
+              },
+            }
+          : {}),
+        ...(observation
+          ? {
+              generatedObservationReferences: [
+                askGeneratedImageObservationReferenceFor(
+                  observation,
+                  `source-observation-${observation.observationId}`,
+                ),
+              ],
+            }
+          : {}),
+        locators: [],
+        capabilities: ['PREVIEW', 'DOWNLOAD_ORIGINAL'],
+        projectionRevision: projectionRevision([record]),
+        accessRevision: scope.accessRevision,
+        policyContextRevision: scope.policyContextRevision,
+        fetchedAt: this.now().toISOString(),
+      });
+    }
     const evidence =
       mode === 'TRANSFORMED'
         ? await this.activeEvidence(record)
@@ -724,7 +969,7 @@ export class FrontendSourcesReadCoordinator {
         candidate.sourceId === sourceId && candidate.sourceVersionId === sourceVersionId,
     );
     if (!record) return null;
-    const items = await this.activeEvidence(record);
+    const items = imageMediaType(record) ? [] : await this.activeEvidence(record);
     return decodeEvidenceListView({
       schemaVersion: '1.0.0',
       projectId: record.projectId,

@@ -61,6 +61,8 @@ const identity = (prefix: string): string =>
 
 const fileMediaType = (name: string): SourcesStagingMediaType => {
   const lower = name.toLowerCase();
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
   if (lower.endsWith('.pdf')) return 'application/pdf';
   if (lower.endsWith('.docx'))
     return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -258,6 +260,13 @@ export const SourcesWorkspace = () => {
     [appliedQuery],
   );
   const library = useQuery(sourcesLibraryQueryOptions(apiClient, shell, query));
+  const imageObservationEnabled =
+    isActiveProjectOwner &&
+    library.data?.projectId === projectId &&
+    library.data?.principalId === shell.principalId &&
+    library.data?.sessionId === shell.sessionId &&
+    library.data?.stale === false &&
+    library.data?.intakeCapabilities?.imageObservationEnabled === true;
   const monitoredSubmissionId = linkedSubmissionId ?? submission?.submissionId ?? null;
   const linkedSubmission = useQuery({
     ...sourceIntakeSubmissionQueryOptions(apiClient, shell, monitoredSubmissionId),
@@ -301,7 +310,9 @@ export const SourcesWorkspace = () => {
     typeof location.state === 'object' && location.state !== null
       ? (location.state as { readonly intakeDraftSeed?: unknown }).intakeDraftSeed
       : undefined;
-  const draftQueue = useSourceIntakeDraftQueue(shell.activeProject?.id ?? '', seed);
+  const draftQueue = useSourceIntakeDraftQueue(shell.activeProject?.id ?? '', seed, {
+    imageObservationEnabled,
+  });
   const hasUnsavedDraft = draftQueue.items.length > 0 || formHasUnsavedDraft;
   const draftNavigation = useBlocker(hasUnsavedDraft);
   useBeforeUnload((event) => {
@@ -440,7 +451,14 @@ export const SourcesWorkspace = () => {
         return;
       }
     }
-    if (file && !/\.(txt|md|pdf|html?|csv|docx|xlsx|pptx)$/i.test(file.name)) {
+    if (
+      file &&
+      !(
+        imageObservationEnabled
+          ? /\.(txt|md|pdf|html?|csv|docx|xlsx|pptx|png|jpe?g)$/i
+          : /\.(txt|md|pdf|html?|csv|docx|xlsx|pptx)$/i
+      ).test(file.name)
+    ) {
       setMutationError(t('sources.draft_message.file_unsupported'));
       return;
     }
@@ -602,7 +620,7 @@ export const SourcesWorkspace = () => {
             itemId: item.draftItemId,
             kind: 'FILE',
             label: item.label,
-            mediaType: item.file.type as 'text/plain' | 'text/markdown',
+            mediaType: item.file.type as SourcesStagingMediaType,
             fileName: item.file.name,
             bytes: new Uint8Array(await item.file.arrayBuffer()),
           });
@@ -611,7 +629,7 @@ export const SourcesWorkspace = () => {
             kind: 'FILE',
             label: item.label,
             fileName: item.file.name,
-            mediaType: item.file.type as 'text/plain' | 'text/markdown',
+            mediaType: item.file.type as SourcesStagingMediaType,
             stagingReference: receipt.stagingReference,
             requestedClassification: item.requestedClassification,
           });
@@ -870,7 +888,11 @@ export const SourcesWorkspace = () => {
                   ref={fileInputRef}
                   id="source-intake-file"
                   type="file"
-                  accept=".txt,.md,.pdf,.html,.htm,.csv,.docx,.xlsx,.pptx"
+                  accept={
+                    imageObservationEnabled
+                      ? '.txt,.md,.pdf,.html,.htm,.csv,.docx,.xlsx,.pptx,.png,.jpg,.jpeg'
+                      : '.txt,.md,.pdf,.html,.htm,.csv,.docx,.xlsx,.pptx'
+                  }
                   onChange={(event) => setSelectedFile(event.target.files?.[0])}
                 />
               </>

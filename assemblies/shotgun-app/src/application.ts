@@ -57,6 +57,12 @@ import { SealedSourcesStagingService } from '../../../adapters/frontend-sources-
 import { PostgresSourcesProductService } from '../../../adapters/frontend-sources-write-postgres/src/product-service.js';
 import { PostgresVPKnowledgeLedger } from '../../../adapters/vp-knowledge-postgres/src/index.js';
 import { PostgresVPAskEvidenceSearch } from '../../../adapters/vp-knowledge-postgres/src/ask-evidence-search.js';
+import { PostgresVPImageObservationLedger } from '../../../adapters/vp-knowledge-postgres/src/image-observations.js';
+import { PostgresImageObservationExecutionRepository } from '../../../adapters/image-observation-execution-postgres/src/index.js';
+import { createImageObservationRuntime } from './image-observation-runtime.js';
+import { createIsolatedFakeImageExecutionResolver } from './image-fake-execution-resolver.js';
+import { deriveAuthorizedSensitivities } from '../../../packages/contracts/src/index.js';
+import type { DeepSeekConnectivityAdapterOptions } from '../../../adapters/ai-provider-deepseek/src/index.js';
 import { PostgresVPRelationJobs } from '../../../adapters/vp-knowledge-postgres/src/relation-jobs.js';
 import { startVPCandidatePolicyRefreshWorker } from './vp-candidate-policy-refresh.js';
 import { GeneralAIVPDecisionAdapter } from '../../../adapters/vp-decision-general-ai/src/index.js';
@@ -275,6 +281,9 @@ import { AsyncCleanupStack } from './cleanup-stack.js';
 import { createMaintenanceSessionGuard } from './runtime-maintenance-session.js';
 import { assertNoUnresolvedProjectKnowledgeReset } from './runtime-knowledge-reset-readiness.js';
 export type StartShotgunApplicationOptions = {
+  /** Explicit isolated-test capability. No environment flag or production
+   * fallback can activate image execution. HTTP must be an injected Fake. */
+  readonly imageObservationFakeHttp?: NonNullable<DeepSeekConnectivityAdapterOptions['fetch']>;
   /** Override HOST (defaults to the `HOST` env or `127.0.0.1`). */
   readonly host?: string;
   /** Override PORT (defaults to the `PORT` env or `3000`). */
@@ -425,6 +434,18 @@ export const startShotgunApplication = async (
   const databaseUrl = configuration.databaseUrl as string;
   const stagingSecret = configuration.stagingSecret as string;
   const recoveryHarness = environmentProfile === 'recovery';
+  const imageFakeHttp = options.imageObservationFakeHttp;
+  const imageObservationEnabled = imageFakeHttp !== undefined;
+  if (
+    imageObservationEnabled &&
+    (environmentProfile !== 'runtime-test' ||
+      typeof imageFakeHttp !== 'function' ||
+      !/^\/shotgun_test_iso_[a-z0-9_]+$/u.test(new URL(databaseUrl).pathname))
+  ) {
+    throw new Error(
+      'Image observation requires an explicit Fake transport and isolated runtime-test database.',
+    );
+  }
 
   const cleanupStack = new AsyncCleanupStack();
   const pool = createPostgresPool(databaseUrl);
@@ -518,6 +539,7 @@ export const startShotgunApplication = async (
       stagingLeaseRepository,
       undefined,
       stagingLeaseRepository,
+      { imageObservationEnabled },
     );
     const plainTextAdapter = new LucasAugmentedPlainTextAdapter();
     // FE-P5-XP Correction C: Source Intake → Stage 3 Transformation/Evidence
@@ -529,6 +551,49 @@ export const startShotgunApplication = async (
     const stage3AtomicPersistence = new PostgresSourcesStage3AtomicPersistence(pool);
     const stage4ContinuationStore = new PostgresSourcesStage4ContinuationStore(pool);
     const transformer = new PythonDocumentFormatAdapter();
+    const imageExecutionRepository = imageObservationEnabled
+      ? new PostgresImageObservationExecutionRepository(pool)
+      : undefined;
+    const imageObservationLedger = imageExecutionRepository
+      ? new PostgresVPImageObservationLedger(pool, imageExecutionRepository)
+      : undefined;
+    const imageObservationPipeline =
+      imageObservationLedger && imageFakeHttp
+        ? createImageObservationRuntime({
+            runtimeProfile: environmentProfile,
+            pool,
+            storage: assetStorage,
+            transformationRepository,
+            ledger: imageObservationLedger,
+            authorizeSourceInput: async (input) => {
+              const security = await resolveOwnerDiscoverySecurity(input.projectId);
+              const policy = await standingPolicy.getCurrent(input.projectId);
+              if (
+                !security ||
+                !input.accessScope.every((scope) => security.accessScope.includes(scope)) ||
+                !deriveAuthorizedSensitivities(security.sensitivity).includes(input.sensitivity) ||
+                !policy?.enabled ||
+                policy.providerId !== 'deepseek'
+              )
+                throw new ShotgunError({
+                  code: 'POLICY_DENIED',
+                  safeMessage: 'Image Source execution authority unavailable.',
+                  module: 'shotgun-app',
+                  operation: 'authorize-image-source',
+                  retryable: false,
+                });
+            },
+            imageExecutionResolver: {
+              resolve: (snapshot) =>
+                createIsolatedFakeImageExecutionResolver({
+                  runtimeProfile: environmentProfile,
+                  executionResolver: stage4AIExecutionResolver,
+                  vault: credentialVault,
+                  fakeHttp: imageFakeHttp,
+                }).resolve(snapshot),
+            },
+          })
+        : undefined;
     const stage4Publisher: {
       current?: (input: SourcesStage3EvidenceIndexedInput) => Promise<void>;
     } = {};
@@ -549,6 +614,7 @@ export const startShotgunApplication = async (
       progress: stage3Progress,
       atomicPersistence: stage3AtomicPersistence,
       stage4: sourcesStage4Continuation,
+      ...(imageObservationPipeline ? { imageObservationPipeline } : {}),
     });
     const sourcesProductService = new PostgresSourcesProductService(
       pool,
@@ -565,6 +631,7 @@ export const startShotgunApplication = async (
           commandGateway,
           staging,
           productService: sourcesProductService,
+          imageObservationEnabled,
         });
     cleanupStack.add('Sources write runtime registration', removeSourcesWriteRuntime);
     const canonicalKnowledgeRepository = new PostgresCanonicalKnowledgeRepository(pool);
@@ -576,7 +643,7 @@ export const startShotgunApplication = async (
       semanticIndexRepository,
     );
     const askConversationRepository = new PostgresAskConversationRepository(pool);
-    const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool);
+    const askWorkspaceProjection = new PostgresAskWorkspaceProjection(pool, imageObservationLedger);
     const askSourceSelectionValidator = new PostgresAskSourceSelectionValidator(pool);
     const deploymentCeiling = parseProviderDeploymentCeiling({
       providerAllowlist: process.env.AI_PRIVATE_EGRESS_ALLOWED_PROVIDERS,
@@ -820,7 +887,8 @@ export const startShotgunApplication = async (
         askWorkspaceProjection,
         new OriginalAssetAskSourceVersionContextReader(originalAssetRepository, assetStorage),
         hybridRetrievalCoordinator,
-        new PostgresVPAskEvidenceSearch(pool),
+        new PostgresVPAskEvidenceSearch(pool, imageObservationLedger),
+        imageObservationLedger,
       ),
       askAnswerProvider,
       {
@@ -1315,6 +1383,9 @@ export const startShotgunApplication = async (
       intakeRepository: new PostgresIntakeRepository(pool),
       originalAssetRepository,
       assetStorage,
+      ...(imageObservationLedger
+        ? { sourcesImageRead: { imageValidator: transformer, imageObservationLedger } }
+        : {}),
       transformationRepository,
       evidenceRepository,
       aiProviderRepository: new PostgresAIProviderCallRepository(pool),

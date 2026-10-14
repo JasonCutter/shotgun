@@ -314,6 +314,9 @@ const enUS = {
   'ask.selected_conversation': 'Selected conversation',
   'ask.partial_answer': 'Partial answer',
   'ask.open_evidence': 'Open pinned Evidence',
+  'ask.generated_image_observations': 'Generated image observations',
+  'ask.generated_image_observation_unverified': 'AI image observation · Unverified',
+  'ask.open_original_image': 'Open original image',
   'ask.page': 'page',
   'ask.answer_status': 'Answer status',
   'ask.automatic_waiting':
@@ -512,6 +515,7 @@ const enUS = {
   'source_detail.preview': 'Preview',
   'source_detail.questions': 'Questions',
   'source_detail.original_preview': 'Original Preview',
+  'source_detail.original_image': 'Original uploaded image',
   'source_detail.loading_preview': 'Loading Preview…',
   'source_detail.preview_unsupported':
     'Original bytes are available, but inline Preview is not supported for this media type.',
@@ -814,6 +818,7 @@ const enUS = {
   'enum.source_preview.unknown': 'Preview status unavailable',
   'enum.source_ask.not_ready': 'Not yet available for questions',
   'enum.source_ask.source_version_ready': 'Available for questions',
+  'enum.source_ask.image_observation_completed': 'AI image observation ready · Unverified',
   'enum.source_ask.evidence_ready': 'Available with indexed evidence',
   'enum.source_ask.action_required': 'Needs attention before use',
   'enum.source_ask.failed': 'Unavailable for questions',
@@ -1195,6 +1200,9 @@ const koKR: Record<ProductMessageKey, string> = {
   'ask.selected_conversation': '선택한 대화',
   'ask.partial_answer': '부분 답변',
   'ask.open_evidence': '고정된 근거 열기',
+  'ask.generated_image_observations': '생성된 이미지 관측',
+  'ask.generated_image_observation_unverified': 'AI 이미지 관측 · 미검증',
+  'ask.open_original_image': '원본 이미지 열기',
   'ask.page': '페이지',
   'ask.answer_status': '답변 상태',
   'ask.automatic_waiting':
@@ -1389,6 +1397,7 @@ const koKR: Record<ProductMessageKey, string> = {
   'source_detail.preview': '미리보기',
   'source_detail.questions': '질문 사용',
   'source_detail.original_preview': '원본 미리보기',
+  'source_detail.original_image': '투입한 원본 이미지',
   'source_detail.loading_preview': '미리보기를 불러오는 중…',
   'source_detail.preview_unsupported':
     '원본 바이트는 사용할 수 있지만 이 미디어 형식은 인라인 미리보기를 지원하지 않습니다.',
@@ -1689,6 +1698,7 @@ const koKR: Record<ProductMessageKey, string> = {
   'enum.source_preview.unknown': '미리보기 상태를 확인할 수 없음',
   'enum.source_ask.not_ready': '아직 질문에 사용할 수 없음',
   'enum.source_ask.source_version_ready': '질문에 사용 가능',
+  'enum.source_ask.image_observation_completed': 'AI 이미지 관측 완료 · 미검증',
   'enum.source_ask.evidence_ready': '색인된 근거와 함께 사용 가능',
   'enum.source_ask.action_required': '사용 전 확인 필요',
   'enum.source_ask.failed': '질문에 사용할 수 없음',
@@ -1798,6 +1808,7 @@ const hfmOwnerLabelKeys: Readonly<
     ACCESS_RESTRICTED: 'enum.source_preview.access_restricted',
   },
   sourceAskUsage: {
+    IMAGE_OBSERVATION_COMPLETED: 'enum.source_ask.image_observation_completed',
     NOT_READY: 'enum.source_ask.not_ready',
     SOURCE_VERSION_READY: 'enum.source_ask.source_version_ready',
     EVIDENCE_READY: 'enum.source_ask.evidence_ready',
@@ -1854,6 +1865,7 @@ const hfmOwnerLabelKeys: Readonly<
     OUTCOME_UNKNOWN: 'enum.answer_run.outcome_unknown',
   },
   transformationState: {
+    IMAGE_OBSERVATION_COMPLETED: 'enum.source_ask.image_observation_completed',
     NOT_STARTED: 'enum.transformation.not_started',
     RUNNING: 'enum.transformation.running',
     RETRYING: 'enum.transformation.retrying',

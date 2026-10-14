@@ -39,6 +39,39 @@ describe('T3-1 current authority and v8 lineage', () => {
     expect(actual).toEqual(manifest.entries);
   }, 120_000);
 
+  it('records the image ledger append owner through its typed runtime Port and direct database test', () => {
+    const audit = buildAuditShape(ROOT);
+    const owner = audit.boundaries.find(
+      (boundary) =>
+        boundary.file === 'adapters/vp-knowledge-postgres/src/image-observations.ts' &&
+        boundary.symbol === 'PostgresVPImageObservationLedger' &&
+        boundary.method === 'append',
+    );
+    expect(owner).toBeDefined();
+    expect(owner?.ownership.kind).toBe('SAFE_HELPER');
+    expect(owner?.productionReachability.status).toBe('PORT_INFERRED');
+    expect(owner?.productionReachability.callers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          file: 'assemblies/shotgun-app/src/image-observation-runtime.ts',
+          bindingPort: 'VPImageObservationLedgerPort',
+          receiverType: 'VPImageObservationLedgerPort',
+          evidenceGrade: 'PORT_INFERRED',
+        }),
+      ]),
+    );
+    expect(
+      loadV8().regressionEvidence.some(
+        (record) =>
+          record.file === 'tests/database/vp-image-observations.database.test.ts' &&
+          record.testName ===
+            'concurrent finalizers and a restarted ledger reuse one observation and one epoch' &&
+          record.coverageKind === 'DIRECT_BOUNDARY' &&
+          record.covers.includes(owner!.boundaryId),
+      ),
+    ).toBe(true);
+  }, 120_000);
+
   it('validates the v8 lineage against live AST and regression evidence authorities', () => {
     const result = validateCorpus(loadV8(), ROOT);
     expect(result.valid).toBe(true);

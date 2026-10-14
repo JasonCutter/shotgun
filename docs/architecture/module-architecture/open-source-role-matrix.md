@@ -851,4 +851,24 @@ The [media preparation](../../implementation/vp-full-completion-2026-10-12/media
 - Existing DeepSeek adapter/protocol is `AUGMENT` for prepared, hash-pinned inline PNG/JPEG transport only. No new SDK, active model, credential/egress policy or runtime is adopted. The exact transport revision is `deepseek-inline-vision-v1`; its fake HTTP replacement contract preserves existing text payloads. Provider-native capability does not establish authorization or semantic accuracy.
 - FFmpeg upstream `n9.0.2` / commit `946fcce07b6dcd0331c8cc609192aeff5e1924f8` is `AUGMENT` **only for the isolated offline decoder prototype**. The exact GPLv3 supplier/archive/executable pins, resource bounds, actual PTS/frame proof, license/security caveats and rollback are in the [offline proof](../../implementation/vp-full-completion-2026-10-12/media-frame-offline-proof.md) and adapter runtime lock. No binary is shipped. Production FFmpeg remains `DEFER` under ADR-088; raw audio/video activation and transcription are not authorized by this prototype.
 
+### 2026-10-14 — approved isolated image product connection
+
+The [image product contract](../../implementation/vp-full-completion-2026-10-12/image-product-contract.md)
+extends the same reuse decisions. Pinned Pillow `12.3.0` / MIT-CMU remains
+`ADOPT`; adapter `1.15.0` is `AUGMENT` for UTF-8, complete bounded decoding and
+single-frame validation. DeepSeek inline transport remains `AUGMENT` behind the
+existing credential/execution Ports; only injected Fake HTTP is used here.
+PostgreSQL `16.15` and `pg_trgm` `1.6` remain the pinned existing persistence and
+query components. No new third-party dependency or runtime is adopted.
+
+Shotgun's existing Source pipeline, VP Ledger, AI execution owner, Ask and reset
+receipt/fence contracts are reused. `garrytan/gbrain` Job/replay patterns remain
+`REFERENCE_ONLY`; its runtime/DB cannot own Shotgun SourceVersion, ACL or
+credential-bound executions. The new typed owner methods and additive tables
+therefore implement Shotgun-specific authority using its existing adapters,
+not an OSS runtime. Replacement uses the same completed-derivation/read Ports
+and focused contract tests. Rollback keeps normal image activation OFF and
+restores the pre-migration isolated snapshot; historical rows are not rewritten.
+Raw audio/video and production FFmpeg remain `DEFER`, as previously recorded.
+
 Generated descriptions remain unverified derivatives and cannot become original quotations or Fact. Process-local one-use preparation is not durable cross-process execution authority. Production integration requires the existing authorization/ledger boundaries and separate contract review; these tests do not close final VP acceptance.

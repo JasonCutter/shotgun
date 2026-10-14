@@ -165,6 +165,7 @@ export type SourcesStage3ProgressState =
   | 'MATERIALIZED'
   | 'STAGE3_RUNNING'
   | 'STAGE3_COMPLETED'
+  | 'IMAGE_OBSERVATION_COMPLETED'
   | 'NO_EVIDENCE'
   | 'STAGE3_RETRYABLE'
   | 'RECONCILIATION_REQUIRED';
@@ -186,6 +187,12 @@ export type SourcesStage3ClaimResult =
       readonly indexingResultId: string;
       readonly evidenceCount: number;
       readonly reusedCount: number;
+    }
+  | {
+      readonly status: 'COMPLETED';
+      readonly state: 'IMAGE_OBSERVATION_COMPLETED';
+      readonly observationId: string;
+      readonly revisionId: string;
     }
   | { readonly status: 'DEFERRED'; readonly reason: 'ACTIVE_LEASE' | 'RETRY_NOT_DUE' }
   | {
@@ -233,6 +240,11 @@ export type SourcesStage3ProgressPort = {
     readonly lease: SourcesStage3ProgressLease;
     readonly state: 'STAGE3_COMPLETED' | 'NO_EVIDENCE';
     readonly indexingResultId: string;
+  }): Promise<void>;
+  finalizeImageObservation?(input: {
+    readonly lease: SourcesStage3ProgressLease;
+    readonly observationId: string;
+    readonly revisionId: string;
   }): Promise<void>;
   markRetryable(input: {
     readonly lease: SourcesStage3ProgressLease;
@@ -318,6 +330,14 @@ export type SourcesStage4ContinuationStorePort = {
  */
 export type SourcesStage3PipelineOutcome =
   | {
+      readonly status: 'IMAGE_OBSERVATION_COMPLETED';
+      readonly imageObservation: {
+        readonly observationId: string;
+        readonly revisionId: string;
+        readonly reused: boolean;
+      };
+    }
+  | {
       readonly status?: 'COMPLETED';
       readonly stage3: {
         readonly revisionId: string;
@@ -356,4 +376,16 @@ export type SourcesStage3EvidenceIndexedInput = {
 
 export type SourcesStage4ContinuationPort = {
   onEvidenceIndexed(input: SourcesStage3EvidenceIndexedInput): Promise<void>;
+};
+
+/** Image execution and typed VP publication remain owned by their existing
+ * modules. The Sources pipeline only owns its durable readiness lease. */
+export type SourcesImageObservationPipelinePort = {
+  runForSourceVersion(
+    input: Parameters<SourcesStage3PipelinePort['runForSourceVersion']>[0],
+  ): Promise<{
+    readonly observationId: string;
+    readonly revisionId: string;
+    readonly reused: boolean;
+  }>;
 };

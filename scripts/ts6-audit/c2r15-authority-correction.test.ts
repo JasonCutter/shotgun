@@ -67,7 +67,7 @@ describe('C2-R15 regression-evidence authority correction', () => {
   it('applies legacy method-name scoring to current code while preserving historical totals', () => {
     const audit = buildAuditShape(ROOT, { legacyAuthority: true });
     expect(audit.counts).toMatchObject({
-      TX_BOUNDARY: 116,
+      TX_BOUNDARY: 117,
       TX_PARTICIPANT: 0,
       TX_DELEGATE: 0,
       NON_TX: 14,
@@ -102,8 +102,8 @@ describe('C2-R15 regression-evidence authority correction', () => {
     expect(audit.counts).toMatchObject(expectedCounts);
     // The current audit includes reviewed VP-05 P0 transaction candidates; the
     // frozen v2 history above remains unchanged at its original inventory totals.
-    expect(audit.candidates).toHaveLength(143);
-    expect(audit.boundaries).toHaveLength(129);
+    expect(audit.candidates).toHaveLength(144);
+    expect(audit.boundaries).toHaveLength(130);
     expect(audit.rawTransactionSites).toHaveLength(21);
   }, 120_000);
 

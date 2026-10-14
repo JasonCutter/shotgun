@@ -22,6 +22,7 @@ const SOURCE_PREVIEW_LABELS = labels({
 });
 
 const SOURCE_ASK_USAGE_LABELS = labels({
+  IMAGE_OBSERVATION_COMPLETED: 'AI image observation ready · Unverified',
   NOT_READY: 'Not yet available for questions',
   SOURCE_VERSION_READY: 'Available for questions',
   EVIDENCE_READY: 'Available with indexed evidence',

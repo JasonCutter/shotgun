@@ -380,6 +380,82 @@ const LocalizedShellOutlet = () => (
 );
 
 describe('AskWorkspace', () => {
+  it('renders image observations as unverified generated references separately from literal Evidence', async () => {
+    const runtime = createRuntime();
+    const workspace = structuredClone(mockWorkspace);
+    const run = workspace.selectedConversation!.branches[0]!.turns[0]!.answerRun;
+    Object.defineProperty(run, 'statements', {
+      value: [
+        {
+          ...run.statements[0]!,
+          generatedObservationReferences: [
+            {
+              kind: 'GENERATED_IMAGE_OBSERVATION',
+              referenceId: 'reference-image',
+              observationId: 'observation-image',
+              projectId: 'project-1',
+              sourceId: 'image-source',
+              sourceVersionId: 'image-v1',
+              originalAssetId: 'original-image',
+              sourceContentHash: `sha256:${'a'.repeat(64)}`,
+              derivationId: 'derived-image',
+              derivationDigest: `sha256:${'b'.repeat(64)}`,
+              providerExecutionId: 'image-execution',
+              imageMediaType: 'image/png',
+              imageWidth: 320,
+              imageHeight: 180,
+              region: { x: 0, y: 0, width: 320, height: 180, unit: 'px' },
+              semanticStatus: 'UNVERIFIED',
+              observationText: '<img src=x onerror=alert(1)> AI sees a blue area.',
+            },
+          ],
+        },
+      ],
+    });
+    const mockClient: AskWorkspaceClient = {
+      getProviderEligibility: vi.fn().mockResolvedValue(eligibleProvider),
+      getWorkspace: vi.fn().mockResolvedValue(workspace),
+      getConversation: vi.fn().mockResolvedValue(workspace.selectedConversation!),
+      getConversationSourceContext: vi.fn(),
+      getBranch: vi.fn(),
+      getAnswerRun: vi.fn().mockResolvedValue(run),
+      getAnswerRunEvents: vi
+        .fn()
+        .mockResolvedValue({ schemaVersion: '1.0.0', answerRunId: 'run-1', events: [] }),
+      submitQuestion: vi.fn(),
+      getQuestionSubmissionByClientRequestId: vi.fn(),
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <LocalizedShellOutlet />,
+          children: [{ path: 'ask', element: <AskWorkspace client={mockClient} /> }],
+        },
+      ],
+      { initialEntries: ['/ask'] },
+    );
+    const { container } = render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+    expect(await screen.findByText('AI 이미지 관측 · 미검증')).toBeTruthy();
+    const generated = screen.getByRole('list', { name: '생성된 이미지 관측' });
+    expect(
+      within(generated).getByText('<img src=x onerror=alert(1)> AI sees a blue area.'),
+    ).toBeTruthy();
+    expect(container.querySelector('img[src="x"]')).toBeNull();
+    const link = within(generated).getByRole('link', { name: '원본 이미지 열기' });
+    expect(link.getAttribute('href')).toBe(
+      '/sources/image-source?version=image-v1&observationId=observation-image&view=preview',
+    );
+    expect(link.getAttribute('href')).not.toContain('evidence');
+    expect(screen.getByRole('link', { name: /고정된 근거 열기/ }).getAttribute('href')).toBe(
+      '/sources/src-1?version=ver-1',
+    );
+    expect(container.querySelector('#image-observation-reference-reference-image')).toBeTruthy();
+  });
   it('explains queued source work and continues polling the same question automatically', async () => {
     const runtime = createRuntime();
     const workspace = workspaceWithRunState('QUEUED');

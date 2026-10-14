@@ -17,6 +17,8 @@ export const KNOWLEDGE_RESET_OWNER_ORDER = [
   'review',
   'knowledge-draft',
   'comparison',
+  // Image readiness references the VP observation; erase intake progress first.
+  'source-product',
   'vp-ledger',
   'validation',
   'candidate',
@@ -28,7 +30,6 @@ export const KNOWLEDGE_RESET_OWNER_ORDER = [
   'canonical',
   'discovery',
   'knowledge',
-  'source-product',
   'intake',
   'evidence',
   'transformation',

@@ -20,6 +20,7 @@ export type {
   SourcesStage3TransformationInput,
   SourcesStage3TransformationRepositoryPort,
   SourcesStage3EvidenceRepositoryPort,
+  SourcesImageObservationPipelinePort,
   SourcesStage4ContinuationPort,
   SourcesStage4ContinuationStorePort,
 } from './stage3-pipeline.js';

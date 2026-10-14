@@ -95,3 +95,20 @@
 ## 2026-10-01 — VP-04 PDF physical-line preservation amendment
 
 The pinned `pdfplumber==0.11.10` remains the PDF layout owner. Its worker adapter preserves each physical line break and exact segment offset within a block while retaining the existing invariant `1 Python worker block == 1 DocumentIR paragraph`. This gives Candidate Generation's existing direct-claim splitter visible line boundaries for converter-merged lists. No dependency, PDFium behavior, SourceVersion contract, or selector type changes. `shotgun.document-formats` advances to `1.7.0`; old TransformationRevisions remain immutable. The Stage 8 worker unit test verifies line text/segment offset round-trip. The live DeepSeek ingestion/Ask/replay run and broad list-layout corpus remain open. Rollback restores space normalization and the previous transformation identity.
+
+## 2026-10-14 — approved isolated image observation follow-up
+
+The user's subsequent image-only contract/isolated implementation approval
+permits the existing VP Ledger to record typed `GENERATED_UNVERIFIED` image
+observations. Generated descriptions remain `annotation`, not original Evidence.
+The existing pinned Pillow adapter at `1.15.0` checks UTF-8, bounded complete
+pixel decoding and single-frame input. Derived transformation identity binds the
+completed call and output; historical transformation revisions remain unchanged.
+
+This local implementation is restricted to an explicit Fake transport and
+generated isolated test database. Normal application image execution stays OFF;
+raw audio/video and production decoder/AI activation remain excluded. The
+[image product contract](../../implementation/vp-full-completion-2026-10-12/image-product-contract.md)
+records the approved scope, execution/recovery, original preview, Ask references,
+OSS reuse, and remaining gates. The prior exclusions and evidence are retained
+as their historical decisions; this follow-up does not authorize live egress.

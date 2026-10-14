@@ -16,6 +16,7 @@ const KEYS = [
   'decisions',
   'events',
   'epochs',
+  'image_observations',
 ] as const;
 type Status = Readonly<Record<(typeof KEYS)[number], number>>;
 
@@ -76,6 +77,17 @@ export class PostgresVPKnowledgeResetOwner implements KnowledgeResetOwnerPort {
         context.requestId,
       ]);
     } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'constraint' in error &&
+        error.constraint === 'active_job_outcome_unknown'
+      ) {
+        throw new KnowledgeResetExecutionError(
+          'ACTIVE_JOB_OUTCOME_UNKNOWN',
+          'Image provider work has not reached a terminal outcome.',
+        );
+      }
       if (
         typeof error === 'object' &&
         error !== null &&

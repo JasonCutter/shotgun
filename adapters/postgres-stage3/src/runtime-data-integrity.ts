@@ -169,6 +169,33 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
               reusedCount: completed.reused_count,
             };
           }
+          if (current.state === 'IMAGE_OBSERVATION_COMPLETED') {
+            const result = await client.query<{ observation_id: string; revision_id: string }>(
+              `SELECT observation.observation_id::text,observation.transformation_revision_id::text AS revision_id
+                 FROM source_product.source_stage3_progress AS progress
+                 JOIN vp.image_observations AS observation ON observation.observation_id=progress.image_observation_id
+                  AND observation.project_id=progress.project_id AND observation.source_id=progress.source_id
+                  AND observation.source_version_id=progress.source_version_id
+                WHERE progress.project_id=$1 AND progress.source_id=$2 AND progress.source_version_id=$3
+                  AND progress.state='IMAGE_OBSERVATION_COMPLETED' AND progress.indexing_result_id IS NULL`,
+              [input.projectId, input.sourceId, input.sourceVersionId],
+            );
+            const completed = result.rows[0];
+            if (!completed)
+              throw new ShotgunError({
+                code: 'REVISION_CONFLICT',
+                safeMessage: 'Completed image readiness has no bound VP observation.',
+                module: 'postgres-stage3',
+                operation: 'claim-source-stage3',
+                retryable: false,
+              });
+            return {
+              status: 'COMPLETED' as const,
+              state: 'IMAGE_OBSERVATION_COMPLETED' as const,
+              observationId: completed.observation_id,
+              revisionId: completed.revision_id,
+            };
+          }
           if (current.state === 'RECONCILIATION_REQUIRED') {
             return {
               status: 'BLOCKED' as const,
@@ -376,6 +403,78 @@ export class PostgresSourcesStage3ProgressRepository implements SourcesStage3Pro
       return;
     }
     throw new Error('Stage 3 finalize lost its lease.');
+  }
+
+  async finalizeImageObservation(input: {
+    readonly lease: SourcesStage3ProgressLease;
+    readonly observationId: string;
+    readonly revisionId: string;
+  }): Promise<void> {
+    let uncertain: unknown;
+    try {
+      const result = await this.pool.query(
+        `UPDATE source_product.source_stage3_progress AS progress
+            SET state='IMAGE_OBSERVATION_COMPLETED',image_observation_id=$5,indexing_result_id=NULL,
+                lease_owner=NULL,lease_token=NULL,lease_acquired_at=NULL,lease_expires_at=NULL,
+                next_attempt_at=NULL,safe_failure_code=NULL,safe_failure_message=NULL
+          FROM vp.image_observations AS observation
+         WHERE progress.project_id=$1 AND progress.source_id=$2 AND progress.source_version_id=$3
+           AND progress.lease_token=$4 AND progress.fencing_token=$6 AND progress.state='STAGE3_RUNNING'
+           AND observation.observation_id=$5 AND observation.project_id=progress.project_id
+           AND observation.source_id=progress.source_id AND observation.source_version_id=progress.source_version_id
+           AND observation.transformation_revision_id=$7 AND observation.epistemic_status='GENERATED_UNVERIFIED'`,
+        [
+          input.lease.projectId,
+          input.lease.sourceId,
+          input.lease.sourceVersionId,
+          input.lease.leaseToken,
+          input.observationId,
+          input.lease.fencingToken,
+          input.revisionId,
+        ],
+      );
+      if (result.rowCount === 1) return;
+    } catch (error) {
+      uncertain = error;
+    }
+    try {
+      const result = await this.pool.query<{
+        state: SourcesStage3ProgressState;
+        image_observation_id: string | null;
+        revision_id: string;
+        fencing_token: string;
+      }>(
+        `SELECT progress.state,progress.image_observation_id::text,progress.fencing_token::text,
+                observation.transformation_revision_id::text AS revision_id
+           FROM source_product.source_stage3_progress AS progress
+           JOIN vp.image_observations AS observation ON observation.observation_id=progress.image_observation_id
+            AND observation.project_id=progress.project_id AND observation.source_id=progress.source_id
+            AND observation.source_version_id=progress.source_version_id
+          WHERE progress.project_id=$1 AND progress.source_id=$2 AND progress.source_version_id=$3
+            AND progress.indexing_result_id IS NULL`,
+        [input.lease.projectId, input.lease.sourceId, input.lease.sourceVersionId],
+      );
+      const row = result.rows[0];
+      if (
+        row?.state === 'IMAGE_OBSERVATION_COMPLETED' &&
+        row.image_observation_id === input.observationId &&
+        row.revision_id === input.revisionId &&
+        Number(row.fencing_token) === input.lease.fencingToken
+      )
+        return;
+    } catch (error) {
+      uncertain ??= error;
+    }
+    throw new ShotgunError({
+      code: uncertain ? 'OUTCOME_UNKNOWN' : 'CONFLICT',
+      safeMessage: uncertain
+        ? 'Image readiness completion could not be resolved by authoritative readback.'
+        : 'Image readiness completion lost its lease or exact observation binding.',
+      module: 'postgres-stage3',
+      operation: 'finalize-image-observation',
+      retryable: false,
+      cause: uncertain,
+    });
   }
 
   async markFailure(input: {

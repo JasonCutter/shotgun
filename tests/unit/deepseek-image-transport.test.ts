@@ -231,6 +231,61 @@ describe('prepared DeepSeek native inline image transport, fake HTTP only', () =
     expect(result.inputTokens).toBeUndefined();
     expect(result.outputTokens).toBeUndefined();
   });
+  it.each([
+    { model: 'deepseek-flash', choices: [{ message: { content: 'PRIVATE-SYNTHETIC-NON-JSON' } }] },
+    {
+      model: 'wrong-model',
+      choices: [{ message: { content: '{"observationText":"synthetic"}' } }],
+    },
+    { model: 'deepseek-flash', choices: [{ message: { content: '' } }] },
+  ])('retains an explicit observed image receipt before validation without retry', async (body) => {
+    const f = fixture(body);
+    const observe = vi.fn();
+    await expect(
+      f.adapter.generateImageStructured({ ...f.input, onObservedResponse: observe }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(observe.mock.calls[0]![0]).toMatchObject({
+      rawText: body.choices[0]!.message.content,
+      modelVersion: body.model,
+      imageContentHashes: [image.expectedContentHash],
+      imageRequestDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+    });
+    expect(Object.isFrozen(observe.mock.calls[0]![0])).toBe(true);
+    expect(f.fetch).toHaveBeenCalledTimes(1);
+  });
+  it('does not report an observed response when the transport fails before a response', async () => {
+    const f = fixture();
+    f.fetch.mockRejectedValueOnce(new Error('Synthetic connection loss'));
+    const observe = vi.fn();
+    await expect(
+      f.adapter.generateImageStructured({ ...f.input, onObservedResponse: observe }),
+    ).rejects.toThrow();
+    expect(observe).not.toHaveBeenCalled();
+    expect(f.fetch).toHaveBeenCalledTimes(1);
+  });
+  it('pins its private observer before transport and rejects invalid observers before egress', async () => {
+    const f = fixture();
+    const observe = vi.fn(),
+      substituted = vi.fn();
+    const input = { ...f.input, onObservedResponse: observe };
+    const fetch = f.fetch.getMockImplementation()!;
+    f.fetch.mockImplementation(async (...args) => {
+      input.onObservedResponse = substituted;
+      return fetch(...args);
+    });
+    await f.adapter.generateImageStructured(input);
+    expect(observe).toHaveBeenCalledTimes(1);
+    expect(substituted).not.toHaveBeenCalled();
+    f.fetch.mockClear();
+    await expect(
+      f.adapter.generateImageStructured({
+        ...f.input,
+        onObservedResponse: 'invalid' as unknown as typeof observe,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(f.fetch).not.toHaveBeenCalled();
+  });
   it('does not replace the captured model identity with a caller mutation during execution', async () => {
     const input = { ...fixture().input };
     const fetch = vi.fn(async () => {

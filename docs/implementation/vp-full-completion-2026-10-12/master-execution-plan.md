@@ -160,3 +160,18 @@ post-merge CI38394700999의 Quality·Frontend·Required Gates가 모두 성공�
 ### 2026-10-14 — 게시 및 CI 보정 진행
 
 위 절의 “아직 게시하지 않았다”는 작성 당시 이력이다. 이미지 제품 연결은 Draft PR #386으로 게시됐으며 최초 CI38516187838은 Frontend 성공, Quality/Required Gates 실패다. Current T3 목록과 historical migration gate를 최소 보정했고, 독립 검토에서 발견한 image-only Ask 삭제 분류 누락도 기존 owner 안에서 수정·검증한다. 이후 exact-head CI를 기준으로 게시 적격성을 판정한다. Merge·운영 활성화는 별도 승인 대상이며 VP 전체 완료는 아직 주장하지 않는다.
+
+### 2026-10-14 — PR #386 완료와 외부 Reference 증거 확보
+
+위 CI 진행 기록은 역사로 보존한다. 승인 head `dc782baa470afd4df7ec8d9573a067ace3469968`은
+PR #386으로 main `85e3a88a3be010c047fe32d6b917bcef70635837`에 병합됐다. 승인 코드와
+main tree는 `678640b5b7aae147f32edd736440475461292f37`로 같고 post-merge
+[CI 38525754140](https://github.com/JasonCutter/shotgun/actions/runs/38525754140)의
+Quality·Frontend·Required Gates가 성공했다. 운영 활성화는 수행하지 않았다.
+
+다음 우선순위인 VP-05 평가 신뢰성에서 공식 외부 원본 12건과 case별 annotation
+vote를 확보·대조했다. 원문/label 대응은 12/12 일치하지만 native task와 현재
+Shotgun v6 input/tuple/warrant의 독립 검증 범위가 다르므로 새 인증 정답은 0건이며
+품질 Gate는 미완료다. [외부 Reference 준비 결과](./external-reference-readiness.md)에
+확보/누락 증거, import DEFER, negative checks 및 후속 검증 조건을 기록한다.
+사용자에게 개별 Reference 검토·reviewer 지정 의무를 추가하지 않는다.

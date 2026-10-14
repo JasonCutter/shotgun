@@ -178,3 +178,19 @@ activation, live image budget/egress proof, independently validated image
 meaning quality and final installed Canonical identity remain unverified.
 Audio/video, frozen 72/432/B12 and remaining24, Gold-B-7, protected worktrees
 and stash remain unchanged. Whole VP completion is not claimed.
+
+## 2026-10-14 — Published Draft and erasure review correction
+
+Draft PR #386 initial head5fb47846, CI38516187838: Frontend SUCCESS, Quality/Required Gates FAILURE. Exact current T3 registration was missing two tables/six JSONB columns; historical migration checks assumed latest132. Corrected inventory preserves historical207/168 and the explicit128→130→132 gates, then tests subsequent migrations separately. Initial focused correction:6 PostgreSQL and2 unit PASS; typecheck/lint/format/v8 reproducibility PASS.
+
+Independent Sol6 review additionally found image-only Ask conversations were absent from T3 Source-derived closure. Existing owner classification, authorization, fence, purge and readback must cover both statement references and pinned attempt contexts, related command/connector copies, invalid lineage and active/unknown blockers. No new erasure authority; historical migrations stay unchanged. Until those tests and new exact-head CI pass, publication acceptance remains blocked. The earlier137-migration backup proof is historical evidence, not a claim that later migrations were restored.
+
+### Final owner correction evidence
+
+Migration138 retains the original086/094/105 files and replaces only their current owner routines to include image-only conversation closure in Ask status/purge, command impact/snapshot and Connector Source tokens. Existing session-user, approved reset receipt, epoch fence, terminal-state checks and whole-conversation purge/readback remain. Invalid/missing observation lineage increments the existing unresolved-evidence blocker; no new approval database or owner is introduced.
+
+The focused Ask PostgreSQL suite passed6/6: original text cleanup, unresolved Evidence and active run cases; new image-only statement/pinned context closure, invalid image SourceVersion lineage and OUTCOME_UNKNOWN cases. The positive image case also verifies command scrub, Connector token inclusion and independent same/other Project retention.
+
+Final frozen138 backup restored136 integrity tables/138 migrations/1 original asset and137 contract files. Dump digest `sha256:ed2e3b74710fdcb7328a2150d4820699398adfb49c3e43ed9995538d1280cef4`; exact observation/execution/readiness and original bytes preserved. Restored app remainedOFF, fake image1/live0. The earlier138 intermediate and137 backup artifacts are retained separately; final proof: image-backup-proof-138.json. Operating containers remainexited;79 protectedfiles/13otherworktrees/stash/configuration unchanged.
+
+2026-10-14 최종 보정 Gate: PostgreSQL17/17 (inventory/P0 migration/Ask/command/connector), unit2/2, TS6 50/50, v8 release/rebuild reproducibility, typecheck/ESLint/format/docs PASS. 역사086/094/105, frozenv2–v7, 동결평가79 files·13otherworktrees·stash/configuration은 보존한다. 이 결과는 최종 remote exact-head CI 이전의 로컬 증거다.

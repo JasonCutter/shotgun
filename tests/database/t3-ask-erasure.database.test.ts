@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgresAskKnowledgeResetOwner } from '../../adapters/source-knowledge-reset-postgres/src/ask-owner.js';
 import { PostgresKnowledgeResetImpactInspector } from '../../adapters/source-knowledge-reset-postgres/src/impact-inspector.js';
 import { createIsolatedPostgresTestDatabase } from '../helpers/isolated-postgres-test-database.js';
+import { imageObservationFixture } from '../helpers/vp-image-observation.js';
+import { askGeneratedImageObservationReferenceFor } from '../../packages/contracts/src/frontend-ask-image-observation.js';
 
 const literal = (value: string): string => `'${value.replaceAll("'", "''")}'`;
 const hash = (character: string): string => `sha256:${character.repeat(64)}`;
@@ -172,6 +174,81 @@ describe('ADR-171 Ask conversation erasure owner', () => {
         manifestDigest: hash('a') as `sha256:${string}`,
       },
     };
+  };
+
+  const insertImageObservation = async () => {
+    const observation = imageObservationFixture();
+    const now = new Date(observation.createdAt);
+    await adminPool.query(
+      "INSERT INTO project_admin.projects(id,name,status,active) VALUES($1,'Image Ask reset fixture','ACTIVE',true)",
+      [observation.projectId],
+    );
+    await adminPool.query(
+      'INSERT INTO asset.original_assets(asset_id,content_hash,size_bytes,storage_key,created_at) VALUES($1,$2,1,$3,$4)',
+      [
+        observation.originalAssetId,
+        `sha256:${observation.originalAssetId.replaceAll('-', '').padEnd(64, '0')}`,
+        `t3-image-${observation.originalAssetId}`,
+        now,
+      ],
+    );
+    await adminPool.query(
+      "INSERT INTO asset.sources(source_id,project_id,created_by_actor_id,created_at) VALUES($1,$2,'t3-image-ask', $3)",
+      [observation.sourceId, observation.projectId, now],
+    );
+    await adminPool.query(
+      "INSERT INTO asset.source_versions(source_version_id,source_id,version_number,original_asset_id,media_type,access_scope,sensitivity,created_at) VALUES($1,$2,1,$3,'image/png','{owner}','private',$4)",
+      [observation.sourceVersionId, observation.sourceId, observation.originalAssetId, now],
+    );
+    await adminPool.query(
+      `INSERT INTO transformation.revisions(revision_id,project_id,source_id,source_version_id,source_content_hash,
+        transformer_id,transformer_version,document_ir,source_map,document_hash,source_map_hash,access_scope,sensitivity,created_at)
+       VALUES($1,$2,$3,$4,$5,'t3-image-ask','1','{}','{}',$5,$5,'{owner}','private',$6)`,
+      [
+        observation.derivation.transformationRevisionId,
+        observation.projectId,
+        observation.sourceId,
+        observation.sourceVersionId,
+        observation.sourceContentHash,
+        now,
+      ],
+    );
+    await adminPool.query(
+      `INSERT INTO ai.image_observation_executions(call_id,project_id,request_id,source_version_id,state,attempt_id,
+        request_digest,record_json,output_json,transformation_revision_id,created_at)
+       VALUES($1,$2,$3,$4,'COMPLETED',$5,$6,'{}','{}',$7,$8)`,
+      [
+        observation.derivation.callId,
+        observation.projectId,
+        randomUUID(),
+        observation.sourceVersionId,
+        observation.derivation.attemptId,
+        observation.derivation.requestDigest,
+        observation.derivation.transformationRevisionId,
+        now,
+      ],
+    );
+    await adminPool.query(
+      `INSERT INTO vp.image_observations(observation_id,project_id,source_id,source_version_id,original_asset_id,
+        transformation_revision_id,call_id,attempt_id,source_content_hash,observation_text,epistemic_status,
+        access_scope,sensitivity,payload,created_at)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'GENERATED_UNVERIFIED','{owner}','private',$11::jsonb,$12)`,
+      [
+        observation.observationId,
+        observation.projectId,
+        observation.sourceId,
+        observation.sourceVersionId,
+        observation.originalAssetId,
+        observation.derivation.transformationRevisionId,
+        observation.derivation.callId,
+        observation.derivation.attemptId,
+        observation.sourceContentHash,
+        observation.text,
+        JSON.stringify(observation),
+        now,
+      ],
+    );
+    return observation;
   };
 
   it('erases the whole Source-linked conversation and retains independent Project conversations', async () => {
@@ -563,6 +640,223 @@ describe('ADR-171 Ask conversation erasure owner', () => {
       ]),
     ).rejects.toMatchObject({
       constraint: 't3_reset_request_not_authorized',
+    });
+  });
+
+  it('erases image-only statement and pinned-context conversations without explicit Source selections', async () => {
+    const observation = await insertImageObservation();
+    const now = new Date(observation.createdAt);
+    const statementConversation = await createConversation(observation.projectId, 1, now);
+    const contextConversation = await createConversation(observation.projectId, 1, now);
+    const independentConversation = await createConversation(observation.projectId, 1, now);
+    const otherProjectId = `t3-image-other-${randomUUID()}`;
+    await adminPool.query(
+      "INSERT INTO project_admin.projects(id,name,status,active) VALUES($1,'Other image Ask project','ACTIVE',true)",
+      [otherProjectId],
+    );
+    const otherConversation = await createConversation(otherProjectId, 1, now);
+    const runs = [
+      [statementConversation, observation.projectId],
+      [contextConversation, observation.projectId],
+      [independentConversation, observation.projectId],
+      [otherConversation, otherProjectId],
+    ] as const;
+    const runIds: string[] = [];
+    for (const [conversation, projectId] of runs) {
+      const answerRunId = `run-${randomUUID()}`;
+      runIds.push(answerRunId);
+      await insertAnswerRun({
+        answerRunId,
+        conversation,
+        projectId,
+        commandId: `command-${randomUUID()}`,
+        turnId: conversation.turnIds[0]!,
+        question: 'Question without a Source selection',
+        now,
+      });
+    }
+    await adminPool.query(
+      `UPDATE frontend_command.command_ledger AS command
+       SET command_type='SUBMIT_QUESTION', outcome_state='COMPLETED',
+           command_payload=jsonb_build_object('question',$2::text),
+           produced_resources=jsonb_build_array(jsonb_build_object('resourceId',$1::text))
+       FROM frontend_ask.answer_runs AS run
+       WHERE run.answer_run_id=$1 AND command.command_id=run.create_command_id`,
+      [runIds[0], observation.text],
+    );
+    const reference = askGeneratedImageObservationReferenceFor(observation, randomUUID());
+    await adminPool.query(
+      `INSERT INTO frontend_ask.statements(statement_id,answer_run_id,ordinal,text,statement_revision,
+        generated_observation_references) VALUES($1,$2,0,$3,'1',$4::jsonb)`,
+      [
+        `statement-${randomUUID()}`,
+        runIds[0],
+        `Derived ${observation.text}`,
+        JSON.stringify([reference]),
+      ],
+    );
+    await adminPool.query(
+      `INSERT INTO frontend_ask.answer_run_attempts(attempt_id,answer_run_id,project_id,
+        attempt_number,attempt_kind,state,access_revision,policy_context_revision,
+        generated_image_context,created_at,updated_at,completed_at)
+       VALUES($1,$2,$3,1,'INITIAL','SUCCEEDED','access-1','policy-1',$4::jsonb,$5,$5,$5)`,
+      [
+        `attempt-${randomUUID()}`,
+        runIds[1],
+        observation.projectId,
+        JSON.stringify([{ ...reference, sensitivity: observation.sensitivity }]),
+        now,
+      ],
+    );
+    const impact = await new PostgresKnowledgeResetImpactInspector(
+      adminPool,
+      true,
+    ).inspectProjectSourceKnowledge(observation.projectId);
+    expect(impact.blockers).not.toContain('UNCLASSIFIED_CONTENT');
+    expect(impact.blockers).not.toContain('ACTIVE_JOB_OUTCOME_UNKNOWN');
+    expect(JSON.stringify(impact)).not.toContain(observation.text);
+    const commandImpact = await adminPool.query<{ impact: { askCommands: number } }>(
+      'SELECT frontend_command.t3_project_source_command_impact($1) AS impact',
+      [observation.projectId],
+    );
+    expect(commandImpact.rows[0]?.impact.askCommands).toBeGreaterThanOrEqual(1);
+    const tokens = await adminPool.query<{ tokens: string[] }>(
+      'SELECT connector.t3_project_source_tokens($1) AS tokens',
+      [observation.projectId],
+    );
+    expect(tokens.rows[0]?.tokens).toEqual(expect.arrayContaining([runIds[0], runIds[1]]));
+    const { requestId, context } = await createResetRequest(observation.projectId);
+    const owner = new PostgresAskKnowledgeResetOwner(executorPool);
+    await owner.fence(context);
+    await executorPool.query(
+      'SELECT frontend_command.t3_snapshot_project_source_commands($1,$2::uuid)',
+      [observation.projectId, requestId],
+    );
+    await adminPool.query(
+      "UPDATE project_admin.project_knowledge_reset_requests SET state='PURGING' WHERE request_id=$1",
+      [requestId],
+    );
+    await executorPool.query(
+      'SELECT frontend_command.t3_erase_project_source_commands($1,$2::uuid)',
+      [observation.projectId, requestId],
+    );
+    expect(
+      (
+        await adminPool.query(
+          `SELECT command_payload FROM frontend_command.command_ledger
+       WHERE command_id=(SELECT create_command_id FROM frontend_ask.answer_runs WHERE answer_run_id=$1)`,
+          [runIds[0]],
+        )
+      ).rows[0].command_payload,
+    ).toEqual({});
+    await owner.purge(context);
+    await adminPool.query(
+      "UPDATE project_admin.project_knowledge_reset_requests SET state='VERIFYING' WHERE request_id=$1",
+      [requestId],
+    );
+    await expect(owner.verify(context)).resolves.toEqual({ verified: true, blockerCodes: [] });
+    const rows = (
+      await adminPool.query(
+        'SELECT conversation_id FROM frontend_ask.conversations WHERE conversation_id=ANY($1::text[]) ORDER BY conversation_id',
+        [
+          [
+            statementConversation.conversationId,
+            contextConversation.conversationId,
+            independentConversation.conversationId,
+            otherConversation.conversationId,
+          ],
+        ],
+      )
+    ).rows.map((row) => row.conversation_id);
+    expect(rows).toEqual(
+      [independentConversation.conversationId, otherConversation.conversationId].sort(),
+    );
+  });
+
+  it('blocks image references with missing or divergent observation lineage', async () => {
+    const observation = await insertImageObservation();
+    const now = new Date(observation.createdAt);
+    const conversation = await createConversation(observation.projectId, 1, now);
+    const answerRunId = `run-${randomUUID()}`;
+    await insertAnswerRun({
+      answerRunId,
+      conversation,
+      projectId: observation.projectId,
+      commandId: `command-${randomUUID()}`,
+      turnId: conversation.turnIds[0]!,
+      question: 'Image lineage question',
+      now,
+    });
+    const reference = askGeneratedImageObservationReferenceFor(observation, randomUUID());
+    await adminPool.query(
+      `INSERT INTO frontend_ask.statements(statement_id,answer_run_id,ordinal,text,statement_revision,
+        generated_observation_references) VALUES($1,$2,0,'Stale image text','1',$3::jsonb)`,
+      [
+        `statement-${randomUUID()}`,
+        answerRunId,
+        JSON.stringify([{ ...reference, sourceVersionId: randomUUID() }]),
+      ],
+    );
+    const impact = await new PostgresKnowledgeResetImpactInspector(
+      adminPool,
+      true,
+    ).inspectProjectSourceKnowledge(observation.projectId);
+    expect(impact.blockers).toContain('UNCLASSIFIED_CONTENT');
+    const { requestId, context } = await createResetRequest(observation.projectId);
+    const owner = new PostgresAskKnowledgeResetOwner(executorPool);
+    await expect(owner.fence(context)).rejects.toMatchObject({
+      blockerCode: 'UNCLASSIFIED_CONTENT',
+    });
+    await adminPool.query(
+      "UPDATE project_admin.project_knowledge_reset_requests SET state='PURGING' WHERE request_id=$1",
+      [requestId],
+    );
+    await expect(owner.purge(context)).rejects.toMatchObject({
+      blockerCode: 'UNCLASSIFIED_CONTENT',
+    });
+    expect(
+      (
+        await adminPool.query(
+          'SELECT count(*)::int AS n FROM frontend_ask.conversations WHERE conversation_id=$1',
+          [conversation.conversationId],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it('blocks an image-only conversation with an unknown AnswerRun outcome', async () => {
+    const observation = await insertImageObservation();
+    const now = new Date(observation.createdAt);
+    const conversation = await createConversation(observation.projectId, 1, now);
+    const answerRunId = `run-${randomUUID()}`;
+    await insertAnswerRun({
+      answerRunId,
+      conversation,
+      projectId: observation.projectId,
+      commandId: `command-${randomUUID()}`,
+      turnId: conversation.turnIds[0]!,
+      question: 'Unknown image Ask outcome',
+      now,
+    });
+    const reference = askGeneratedImageObservationReferenceFor(observation, randomUUID());
+    await adminPool.query(
+      `INSERT INTO frontend_ask.statements(statement_id,answer_run_id,ordinal,text,statement_revision,
+        generated_observation_references) VALUES($1,$2,0,'Unknown outcome','1',$3::jsonb)`,
+      [`statement-${randomUUID()}`, answerRunId, JSON.stringify([reference])],
+    );
+    await adminPool.query(
+      "UPDATE frontend_ask.answer_runs SET state='OUTCOME_UNKNOWN' WHERE answer_run_id=$1",
+      [answerRunId],
+    );
+    const impact = await new PostgresKnowledgeResetImpactInspector(
+      adminPool,
+      true,
+    ).inspectProjectSourceKnowledge(observation.projectId);
+    expect(impact.blockers).toContain('ACTIVE_JOB_OUTCOME_UNKNOWN');
+    const { context } = await createResetRequest(observation.projectId);
+    const owner = new PostgresAskKnowledgeResetOwner(executorPool);
+    await expect(owner.fence(context)).rejects.toMatchObject({
+      blockerCode: 'ACTIVE_JOB_OUTCOME_UNKNOWN',
     });
   });
 });

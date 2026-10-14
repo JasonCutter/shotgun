@@ -352,3 +352,17 @@ bytes 변경 시 재검사하며 기존 validator·5초 제한·동결 v2–v7�
 증거 정리에 배정했다. Fake/구조 PASS를 실제 의미 품질이나 새로운 인증 Gold로
 보고하지 않는다. 마지막 결합 DB·게시 Gate를 진행 중이며 전체 VP 판정은
 **VP_FULL_IMPLEMENTATION_IN_PROGRESS / VP_FINAL_ACCEPTANCE_NOT_COMPLETE**다.
+
+### 2026-10-14 — PR #386 최초 CI와 추가 삭제 경계 보정
+
+이미지 격리 제품 연결은 Draft [PR #386](https://github.com/JasonCutter/shotgun/pull/386)으로 게시됐다. 최초 head `5fb47846afe667d674622c32d2b746ec88f4172d`의 [CI 38516187838](https://github.com/JasonCutter/shotgun/actions/runs/38516187838)는 Frontend SUCCESS, Quality/Required Gates FAILURE다. DB 739 PASS/3 FAIL/2 SKIP의 세 실패는 current inventory에 이미지 table/column을 등록하지 않은 것과 latest migration을 132로 가정한 테스트였다. 이전 통과 수치와 이 실패 기록을 대체하거나 실패를 PASS로 보고하지 않는다.
+
+T3의 현재 owner register와 exact TSV에 두 table/여섯 JSONB column을 명시해 212 table/174 column으로 정합화했다. 역사 001–130의 207/168 기준과 128→130→132 receipt 보존 assertion을 유지하며 후속 migration을 별도 검증한다. 최초 보정의 PostgreSQL 6건 및 unit 2건, typecheck·ESLint·format·v8 재현 검사가 통과했다.
+
+독립 Sol6 검토는 이미지-only Ask가 Source selection/citation/attempt Evidence 없이 남아 기존 T3 conversation 삭제 분류에서 빠지는 실제 결함도 발견했다. 기존 Ask owner의 Preview·fence·purge·readback 및 관련 command/connector Source-lineage 범위를 보완하며, 원본 migration 086/094/105는 수정하지 않는다. Source-derived 이미지 참조/context의 잘못된 lineage와 진행 중/UNKNOWN은 fail closed하고 다른 Project/독립 대화는 보존한다. 검증을 완화한 목록 갱신만으로 완료 판정하지 않는다.
+
+격리 테스트 transport가 executor URL의 role을 admin으로 덮어쓰던 문제도 운영 코드 밖의 test helper에서 바로잡았다. 허용 대상은 기존 owned container의 test/restore namespace로 유지하고 명시된 shotgun/shotgun_erasure_executor role만 보존한다. SQL 권한 검사는 완화하지 않는다. 새 head/CI 결과와 추가 regression은 후속 evidence에 기록하며 merge/운영 적용은 승인하지 않는다.
+
+최종 owner 보정은 migration138에서 기존 Ask/command/connector 권한·fence·승인·readback을 유지한다. 이미지-only statement/pinned context, invalid lineage, UNKNOWN 및 독립 Project 보존의 Ask PostgreSQL6/6이 통과했다. 최종138 migration backup 복원도136 integrity table/1 asset/137 contract file의 exact content 보존으로 PASS; dump digest `sha256:ed2e3b74710fdcb7328a2150d4820699398adfb49c3e43ed9995538d1280cef4`. 원본086/094/105 및 중간 backup 증거는 보존한다. 최종 결합 Gate와 새 exact-head CI는 별도 확인한다.
+
+2026-10-14 최종 보정 Gate: PostgreSQL17/17 (inventory/P0 migration/Ask/command/connector), unit2/2, TS6 50/50, v8 release/rebuild reproducibility, typecheck/ESLint/format/docs PASS. 역사086/094/105, frozenv2–v7, 동결평가79 files·13otherworktrees·stash/configuration은 보존한다. 이 결과는 최종 remote exact-head CI 이전의 로컬 증거다.

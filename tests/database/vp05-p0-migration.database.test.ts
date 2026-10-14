@@ -103,8 +103,8 @@ it('upgrades main 128 additively, preserves a historical receipt, and resets an 
         .n,
     ).toBe(0);
     // Current URL/Frontier migrations are additive and must preserve the same frozen receipt.
-    await migrateUpTo(undefined, db.databaseUrl);
-    await migrateUpTo(undefined, db.databaseUrl);
+    await migrateUpTo('132_vp_candidate_frontier.sql', db.databaseUrl);
+    await migrateUpTo('132_vp_candidate_frontier.sql', db.databaseUrl);
     expect(
       (await pool.query('SELECT count(*)::int AS n FROM runtime.schema_migrations')).rows[0].n,
     ).toBe(before + 4);
@@ -158,6 +158,48 @@ it('upgrades main 128 additively, preserves a historical receipt, and resets an 
         )
       ).rows,
     ).toEqual([{ global_claim_id: null, semantic_attempt_id: null }]);
+    // Extend, rather than replace, the historical P0/URL/Frontier gates above.
+    // All image migrations remain additive to this unprovisioned workload copy.
+    await migrateUpTo(undefined, db.databaseUrl);
+    await migrateUpTo(undefined, db.databaseUrl);
+    expect(
+      (await pool.query('SELECT count(*)::int AS n FROM runtime.schema_migrations')).rows[0].n,
+    ).toBe(before + 10);
+    expect(
+      (
+        await pool.query(
+          `SELECT name FROM runtime.schema_migrations
+         WHERE name > '132_vp_candidate_frontier.sql' ORDER BY name`,
+        )
+      ).rows,
+    ).toEqual([
+      { name: '133_vp_image_observations.sql' },
+      { name: '134_image_observation_execution.sql' },
+      { name: '135_ask_generated_image_references.sql' },
+      { name: '136_source_image_observation_readiness.sql' },
+      { name: '137_image_observation_t3_ownership.sql' },
+      { name: '138_image_ask_t3_erasure.sql' },
+    ]);
+    expect(
+      (
+        await pool.query(
+          `SELECT job.attempt_count,call.call_id::text,call.state,call.request_digest,call.failure_code FROM vp.relation_jobs job JOIN vp.relation_provider_calls call USING(project_id,job_id) WHERE job.job_id=$1`,
+          [jobId],
+        )
+      ).rows,
+    ).toEqual(historical);
+    expect(
+      (
+        await pool.query(
+          `SELECT global_claim_id,semantic_attempt_id FROM vp.relation_provider_calls WHERE job_id=$1`,
+          [jobId],
+        )
+      ).rows,
+    ).toEqual([{ global_claim_id: null, semantic_attempt_id: null }]);
+    expect(
+      (await pool.query('SELECT count(*)::int AS n FROM vp_global_budget.authority_store')).rows[0]
+        .n,
+    ).toBe(0);
     await dropSchemas(db.databaseUrl);
     await migrateUpTo(undefined, db.databaseUrl);
     expect(

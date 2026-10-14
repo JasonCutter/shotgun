@@ -156,3 +156,7 @@ post-merge CI38394700999의 Quality·Frontend·Required Gates가 모두 성공�
 새 이미지 제품 코드는 이 병합 이후 별도 로컬 브랜치에 있으며 아직 게시하지
 않았다. Fake 구조·제품 통과를 실제 AI 의미 품질로 승격하지 않는다. 현재
 **VP_FULL_IMPLEMENTATION_IN_PROGRESS / VP_FINAL_ACCEPTANCE_NOT_COMPLETE**를 유지한다.
+
+### 2026-10-14 — 게시 및 CI 보정 진행
+
+위 절의 “아직 게시하지 않았다”는 작성 당시 이력이다. 이미지 제품 연결은 Draft PR #386으로 게시됐으며 최초 CI38516187838은 Frontend 성공, Quality/Required Gates 실패다. Current T3 목록과 historical migration gate를 최소 보정했고, 독립 검토에서 발견한 image-only Ask 삭제 분류 누락도 기존 owner 안에서 수정·검증한다. 이후 exact-head CI를 기준으로 게시 적격성을 판정한다. Merge·운영 활성화는 별도 승인 대상이며 VP 전체 완료는 아직 주장하지 않는다.

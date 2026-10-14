@@ -480,6 +480,20 @@ const sourceAskSnapshot = async (pool: Pool, projectId: string) => {
          ON version.source_id = source.source_id
         AND version.source_version_id::text = evidence.source_version_id
        WHERE answer_run.project_id = $1
+       UNION
+       SELECT DISTINCT answer_run.conversation_id
+       FROM frontend_ask.answer_runs AS answer_run
+       WHERE answer_run.project_id = $1
+         AND (EXISTS (
+           SELECT 1 FROM frontend_ask.statements AS statement
+           WHERE statement.answer_run_id = answer_run.answer_run_id
+             AND statement.generated_observation_references <> '[]'::jsonb
+         ) OR EXISTS (
+           SELECT 1 FROM frontend_ask.answer_run_attempts AS attempt
+           WHERE attempt.answer_run_id = answer_run.answer_run_id
+             AND attempt.project_id = answer_run.project_id
+             AND attempt.generated_image_context <> '[]'::jsonb
+         ))
      ), affected_runs AS MATERIALIZED (
        SELECT answer_run.*
        FROM frontend_ask.answer_runs AS answer_run
@@ -558,7 +572,7 @@ const sourceAskSnapshot = async (pool: Pool, projectId: string) => {
            AND answer_run.project_id = attempt.project_id
          WHERE attempt.state IN ('RUNNING', 'CANCEL_REQUESTED', 'OUTCOME_UNKNOWN')
             OR attempt.lease_expires_at > clock_timestamp()) AS active_attempts,
-       (SELECT count(*)::text
+       ((SELECT count(*)
           FROM frontend_ask.answer_attempt_evidence AS evidence
           JOIN frontend_ask.answer_run_attempts AS attempt
             ON attempt.attempt_id = evidence.attempt_id
@@ -573,7 +587,7 @@ const sourceAskSnapshot = async (pool: Pool, projectId: string) => {
              WHERE source.project_id = $1
                AND source.source_id::text = evidence.source_id
                AND version.source_version_id::text = evidence.source_version_id
-           )) AS unresolved_evidence,
+           )) + frontend_ask.t3_unresolved_image_references($1))::text AS unresolved_evidence,
        (SELECT count(*)::text FROM scope_rows) AS derived_records,
        encode(pg_catalog.sha256(convert_to(COALESCE((
          SELECT string_agg(

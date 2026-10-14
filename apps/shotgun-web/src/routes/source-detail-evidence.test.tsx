@@ -162,6 +162,85 @@ const createMockRuntime = (
 const ShellOutlet = () => <Outlet context={{ shell: baseShell }} />;
 
 describe('SourceDetailWorkspace Evidence Presentation HFM-S7-C8-D3', () => {
+  it('shows pinned original pixels and a separate unverified AI observation without an Evidence card', async () => {
+    const runtime = createMockRuntime([]);
+    const hash = `sha256:${'a'.repeat(64)}`;
+    vi.mocked(runtime.apiClient.getSourceDetail).mockResolvedValue({
+      ...detail,
+      mediaType: 'image/png',
+      askUsageState: 'IMAGE_OBSERVATION_COMPLETED',
+    });
+    vi.mocked(runtime.apiClient.getSourcePreview).mockResolvedValue({
+      schemaVersion: '1.0.0',
+      sourceId: 'source-1',
+      sourceVersionId: 'version-1',
+      projectId: 'project-1',
+      mediaType: 'image/png',
+      contentHash: hash,
+      mode: 'ORIGINAL',
+      readiness: 'READY',
+      image: {
+        url: '/product-api/frontend/sources/source-1/versions/version-1/image-original',
+        mediaType: 'image/png',
+        contentHash: hash,
+        width: 320,
+        height: 180,
+      },
+      generatedObservationReferences: [
+        {
+          kind: 'GENERATED_IMAGE_OBSERVATION',
+          referenceId: 'ref',
+          observationId: 'observation',
+          projectId: 'project-1',
+          sourceId: 'source-1',
+          sourceVersionId: 'version-1',
+          originalAssetId: 'asset',
+          sourceContentHash: hash,
+          derivationId: 'revision',
+          derivationDigest: hash,
+          providerExecutionId: 'call',
+          imageMediaType: 'image/png',
+          imageWidth: 320,
+          imageHeight: 180,
+          region: { x: 0, y: 0, width: 320, height: 180, unit: 'px' },
+          semanticStatus: 'UNVERIFIED',
+          observationText: 'An authored fake model description.',
+        },
+      ],
+      locators: [],
+      capabilities: ['PREVIEW'],
+      projectionRevision: '1',
+      accessRevision: 'a',
+      policyContextRevision: 'p',
+      fetchedAt: now,
+    });
+    const router = createMemoryRouter(
+      [
+        {
+          path: '/',
+          element: <ShellOutlet />,
+          children: [{ path: 'sources/:sourceId', element: <SourceDetailWorkspace /> }],
+        },
+      ],
+      { initialEntries: ['/sources/source-1?version=version-1&view=preview'] },
+    );
+    render(
+      <AppProviders runtime={runtime}>
+        <RouterProvider router={router} />
+      </AppProviders>,
+    );
+    const image = await screen.findByRole('img', { name: 'Original uploaded image' });
+    expect(image.getAttribute('src')).toBe(
+      '/product-api/frontend/sources/source-1/versions/version-1/image-original',
+    );
+    expect(image.getAttribute('width')).toBe('320');
+    expect(screen.getByRole('heading', { name: 'AI image observation · Unverified' })).toBeTruthy();
+    expect(screen.getByText('An authored fake model description.')).toBeTruthy();
+    expect(
+      screen.queryByText('An authored fake model description.', { selector: 'pre' }),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /Reprocess with AI/ })).toBeNull();
+  });
   beforeEach(() => {
     sessionStorage.clear();
   });

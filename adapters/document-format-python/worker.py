@@ -1141,14 +1141,22 @@ def image_preflight(data: bytes, media_type: str, expected_content_hash: str | N
                 if image.format != expected_format:
                     raise ValidationOverflow("FORMAT_CORRUPT: image media type does not match bytes")
                 width, height = image.size
+                pixels = width * height
+                if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION or pixels > MAX_IMAGE_PIXELS:
+                    raise ValidationOverflow("VALIDATION_ERROR: image dimensions exceed the safety budget")
+                if getattr(image, "n_frames", 1) != 1:
+                    raise NotImplementedError("ANIMATED_IMAGE_UNSUPPORTED")
                 image.verify()
+            # verify() checks structure/CRC and is a no-op for some JPEG
+            # decoders. Reopen and decode every pixel before provider egress.
+            with Image.open(io.BytesIO(data)) as decoded:
+                if decoded.size != (width, height) or getattr(decoded, "n_frames", 1) != 1:
+                    raise ValidationOverflow("FORMAT_CORRUPT: image decoding identity changed")
+                decoded.load()
     except (Image.DecompressionBombError, Image.DecompressionBombWarning) as error:
         raise ValidationOverflow("FORMAT_CORRUPT: image pixel budget exceeded") from error
     except (OSError, ValueError) as error:
         raise ValidationOverflow("FORMAT_CORRUPT: image bytes could not be verified") from error
-    pixels = width * height
-    if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION or pixels > MAX_IMAGE_PIXELS:
-        raise ValidationOverflow("VALIDATION_ERROR: image dimensions exceed the safety budget")
     return {"status": "IMAGE_PREFLIGHT", "format": expected_format, "width": width, "height": height, "pixels": pixels, "contentHash": digest}
 
 
@@ -1363,6 +1371,10 @@ def image_blocks(data: bytes, media_type: str, description: str | None, expected
 def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    # The Node adapter writes UTF-8 JSON on every OS. Windows locale stdin
+    # decoding can otherwise corrupt generated Korean/emoji descriptions.
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(encoding="utf-8", errors="strict")
     _apply_process_limits()
     request = json.load(sys.stdin)
     data = base64.b64decode(request["contentBase64"], validate=True)

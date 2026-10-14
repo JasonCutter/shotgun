@@ -541,7 +541,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
                        SELECT 1 FROM source_product.source_stage3_progress AS progress
                         WHERE progress.project_id = item.project_id
                           AND progress.source_version_id = item.produced_source_version_id
-                          AND progress.state IN ('STAGE3_COMPLETED', 'NO_EVIDENCE')
+                          AND progress.state IN ('STAGE3_COMPLETED', 'NO_EVIDENCE', 'IMAGE_OBSERVATION_COMPLETED')
                      )
                    )
               )
@@ -560,7 +560,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
                   SELECT 1 FROM source_product.source_stage3_progress AS progress
                    WHERE progress.project_id = item.project_id
                      AND progress.source_version_id = item.produced_source_version_id
-                     AND progress.state IN ('STAGE3_COMPLETED', 'NO_EVIDENCE')
+                     AND progress.state IN ('STAGE3_COMPLETED', 'NO_EVIDENCE', 'IMAGE_OBSERVATION_COMPLETED')
                 )`,
             [row.submission_id],
           );
@@ -619,7 +619,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
                 FROM source_product.source_stage3_progress AS progress
                WHERE progress.project_id = item.project_id
                  AND progress.source_version_id = item.produced_source_version_id
-                 AND progress.state NOT IN ('STAGE3_COMPLETED', 'NO_EVIDENCE')
+                 AND progress.state NOT IN ('STAGE3_COMPLETED', 'NO_EVIDENCE', 'IMAGE_OBSERVATION_COMPLETED')
             )`,
           [
             submissionId,
@@ -712,6 +712,7 @@ export class PostgresSourcesProductService implements SourcesProductWriteService
       const terminal =
         state === 'STAGE3_COMPLETED' ||
         state === 'NO_EVIDENCE' ||
+        state === 'IMAGE_OBSERVATION_COMPLETED' ||
         completedSourceVersionIds.includes(row.produced_source_version_id ?? '');
       if (!terminal) unfinishedCount += 1;
       const retryableReady =

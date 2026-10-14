@@ -17,6 +17,7 @@ import type {
   SourcesStage3ProgressPort,
   SourcesStage3RecoveryItem,
   SourcesStage4ContinuationPort,
+  SourcesImageObservationPipelinePort,
 } from '../../../modules/frontend-sources-write/src/index.js';
 import { classifySourcesStage3Failure } from '../../../modules/frontend-sources-write/src/index.js';
 import {
@@ -71,6 +72,7 @@ export type SharedSourcesStage3PipelineDependencies = {
   readonly progress?: SourcesStage3ProgressPort;
   readonly atomicPersistence?: SourcesStage3AtomicPersistencePort;
   readonly stage4?: SourcesStage4ContinuationPort;
+  readonly imageObservationPipeline?: SourcesImageObservationPipelinePort;
 };
 
 export type ProductionSourcesStage3PipelineDependencies = Omit<
@@ -90,8 +92,13 @@ class SourcesStage3PipelineRuntime implements SourcesStage3PipelinePort {
     input: Parameters<SourcesStage3PipelinePort['runForSourceVersion']>[0],
   ): Promise<SourcesStage3PipelineOutcome> {
     assertStage3Input(input);
+    input = Object.freeze({ ...input, accessScope: Object.freeze([...input.accessScope]) });
+    const isImage = input.mediaType === 'image/png' || input.mediaType === 'image/jpeg';
     const workerId = `sources-stage3:${process.pid}`;
-    const progressEnabled = Boolean(this.deps.progress && this.deps.atomicPersistence);
+    const progressEnabled = Boolean(
+      this.deps.progress &&
+      (this.deps.atomicPersistence || (isImage && this.deps.imageObservationPipeline)),
+    );
     let claim;
     if (progressEnabled) {
       try {
@@ -145,6 +152,15 @@ class SourcesStage3PipelineRuntime implements SourcesStage3PipelinePort {
       });
     }
     if (claim?.status === 'COMPLETED') {
+      if (claim.state === 'IMAGE_OBSERVATION_COMPLETED')
+        return {
+          status: 'IMAGE_OBSERVATION_COMPLETED',
+          imageObservation: {
+            observationId: claim.observationId,
+            revisionId: claim.revisionId,
+            reused: true,
+          },
+        };
       return {
         stage3: {
           revisionId: claim.revisionId,
@@ -159,6 +175,29 @@ class SourcesStage3PipelineRuntime implements SourcesStage3PipelinePort {
     let continuationId: string | undefined;
     let indexingResultId: string | undefined;
     try {
+      if (isImage) {
+        if (
+          !this.deps.imageObservationPipeline ||
+          !this.deps.progress?.finalizeImageObservation ||
+          claim?.status !== 'CLAIMED'
+        ) {
+          throw new ShotgunError({
+            code: 'AI_CAPABILITY_UNAVAILABLE',
+            safeMessage: 'Authorized durable image observation processing is not configured.',
+            module: 'sources-stage3-pipeline',
+            operation: 'image-observation',
+            retryable: false,
+          });
+        }
+        const imageObservation =
+          await this.deps.imageObservationPipeline.runForSourceVersion(input);
+        await this.deps.progress.finalizeImageObservation({
+          lease: claim.lease,
+          observationId: imageObservation.observationId,
+          revisionId: imageObservation.revisionId,
+        });
+        return { status: 'IMAGE_OBSERVATION_COMPLETED', imageObservation };
+      }
       const bytes = await this.deps.storage.read(input.storageKey);
       // TextDecoder's default UTF-8 mode consumes a leading BOM. The original
       // asset hash is byte-addressed, so dropping that character makes the
@@ -211,11 +250,22 @@ class SourcesStage3PipelineRuntime implements SourcesStage3PipelinePort {
         );
       }
     } catch (error) {
+      const imageUnknown = isImage && (error as { code?: unknown })?.code === 'OUTCOME_UNKNOWN';
+      const failureError = imageUnknown
+        ? new ShotgunError({
+            code: 'OUTCOME_UNKNOWN',
+            safeMessage: 'The image execution or completion outcome requires reconciliation.',
+            module: 'sources-stage3-pipeline',
+            operation: 'image-observation',
+            retryable: false,
+            cause: error,
+          })
+        : error;
       if (claim?.status === 'CLAIMED') {
-        const failure = classifySourcesStage3Failure(error);
+        const failure = classifySourcesStage3Failure(failureError);
         await this.deps.progress!.markFailure({ lease: claim.lease, ...failure });
       }
-      throw error;
+      throw failureError;
     }
     let stage4: { status: 'NOT_CONFIGURED' | 'PENDING' | 'SUCCEEDED' | 'FAILED' } = {
       status: 'NOT_CONFIGURED',

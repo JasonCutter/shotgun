@@ -434,6 +434,32 @@ export const ConversationPane = ({
                                 </li>
                               ))}
                             </ul>
+                            {(statement.generatedObservationReferences?.length ?? 0) > 0 ? (
+                              <ul
+                                className="ask-generated-image-reference-list"
+                                aria-label={t('ask.generated_image_observations')}
+                              >
+                                {statement.generatedObservationReferences!.map((reference) => (
+                                  <li
+                                    key={reference.referenceId}
+                                    id={`image-observation-reference-${reference.referenceId}`}
+                                    tabIndex={-1}
+                                  >
+                                    <p>
+                                      <strong>
+                                        {t('ask.generated_image_observation_unverified')}
+                                      </strong>
+                                    </p>
+                                    <p>{reference.observationText}</p>
+                                    <Link
+                                      to={`/sources/${encodeURIComponent(reference.sourceId)}?version=${encodeURIComponent(reference.sourceVersionId)}&observationId=${encodeURIComponent(reference.observationId)}&view=preview`}
+                                    >
+                                      {t('ask.open_original_image')}
+                                    </Link>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
                           </article>
                         ))}
                       </div>

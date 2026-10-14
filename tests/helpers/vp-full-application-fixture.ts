@@ -41,7 +41,17 @@ export const waitForProduct = async <T>(
 export const answerCitations = (run: AskAnswerRunSnapshot) =>
   run.statements.flatMap((s) => s.citations);
 
-export const createVPFullApplicationFixture = async (options: { sourceRefresh?: boolean } = {}) => {
+export const createVPFullApplicationFixture = async (
+  options: {
+    sourceRefresh?: boolean;
+    imageObservationFakeHttp?: NonNullable<
+      Parameters<typeof startShotgunApplication>[0]
+    >['imageObservationFakeHttp'];
+    answerFake?: (
+      request: Parameters<FakeAIProviderAdapter['generateStructured']>[0],
+    ) => Promise<Awaited<ReturnType<FakeAIProviderAdapter['generateStructured']>>>;
+  } = {},
+) => {
   for (const name of ['.env', '.env.test']) {
     if (existsSync(path.join(process.cwd(), name))) {
       throw new Error(
@@ -147,6 +157,7 @@ export const createVPFullApplicationFixture = async (options: { sourceRefresh?: 
           outputTokens: 10,
         };
       }
+      if (kind === 'answer' && options.answerFake) return options.answerFake(request);
       return {
         ...(await fake.generateStructured(request)),
         providerResponseId: `fake-vp-${kind}-${calls.length}`,
@@ -230,6 +241,9 @@ export const createVPFullApplicationFixture = async (options: { sourceRefresh?: 
       recoveryIntervalMs: false,
       actionFeedbackOutboxIntervalMs: false,
       aiDurableMaterializationRecoveryEnabled: false,
+      ...(options.imageObservationFakeHttp
+        ? { imageObservationFakeHttp: options.imageObservationFakeHttp }
+        : {}),
     });
     await app.listen();
     expect(app.askWorkerStarted).toBe(true);
@@ -376,6 +390,24 @@ export const createVPFullApplicationFixture = async (options: { sourceRefresh?: 
       authorityId,
       calls,
       request,
+      requestRaw: async (method: 'GET' | 'POST', url: string, payload?: Record<string, unknown>) =>
+        app!.server.inject({
+          method,
+          url,
+          headers: {
+            host: '127.0.0.1',
+            cookie,
+            ...(csrf ? { 'x-csrf-token': csrf } : {}),
+            'content-type': 'application/json',
+          },
+          ...(payload === undefined ? {} : { payload }),
+        }),
+      requestOriginalImage: async (sourceId: string, sourceVersionId: string) =>
+        app!.server.inject({
+          method: 'GET',
+          url: `/product-api/frontend/sources/${sourceId}/versions/${sourceVersionId}/image-original`,
+          headers: { host: '127.0.0.1', cookie },
+        }),
       command,
       submitStaged,
       submit,

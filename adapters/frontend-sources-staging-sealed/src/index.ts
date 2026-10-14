@@ -119,6 +119,7 @@ const isArtifact = (value: unknown): value is ResolvedSourcesStagingArtifact => 
 
 export class SealedSourcesStagingService implements SourcesStagingServicePort {
   private readonly key: Buffer;
+  private readonly imageObservationEnabled: boolean;
 
   constructor(
     private readonly storage: AssetStoragePort,
@@ -128,11 +129,13 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
     private readonly leasePersistence?: StagingAssetLeasePersistencePort,
     private readonly maintenanceBarrier?: MaintenanceBarrierPort,
     private readonly timeAuthority?: StagingTimeAuthorityPort,
+    imageIntakeCapability?: { readonly imageObservationEnabled: boolean },
   ) {
     if (secret.trim().length < 32) {
       throw new Error('SOURCES_STAGING_SECRET must contain at least 32 characters.');
     }
     this.key = createHash('sha256').update(secret).digest();
+    this.imageObservationEnabled = imageIntakeCapability?.imageObservationEnabled === true;
   }
 
   async stageBytes(input: {
@@ -148,6 +151,7 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
   }): Promise<SourcesStagingReceipt> {
     return this.withShared(async () => {
       this.assertCommon(input);
+      this.assertImageIntake(input.kind, input.mediaType);
       const maximumBytes = maxBytesForKind(input.kind);
       if (input.bytes.byteLength <= 0 || input.bytes.byteLength > maximumBytes) {
         return fail(
@@ -163,25 +167,43 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
       }
       if (input.kind === 'FILE') {
         const name = input.fileName ?? '';
-        const allowedTypes: readonly SourcesStagingMediaType[] = /\.pdf$/i.test(name)
-          ? ['application/pdf']
-          : /\.docx$/i.test(name)
-            ? ['application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-            : /\.xlsx$/i.test(name)
-              ? ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
-              : /\.pptx$/i.test(name)
-                ? ['application/vnd.openxmlformats-officedocument.presentationml.presentation']
-                : /\.html?$/i.test(name)
-                  ? ['text/html']
-                  : /\.csv$/i.test(name)
-                    ? ['text/csv']
-                    : /\.md$/i.test(name)
-                      ? ['text/plain', 'text/markdown']
-                      : /\.txt$/i.test(name)
-                        ? ['text/plain']
-                        : [];
+        const allowedTypes: readonly SourcesStagingMediaType[] = /\.png$/i.test(name)
+          ? ['image/png']
+          : /\.jpe?g$/i.test(name)
+            ? ['image/jpeg']
+            : /\.pdf$/i.test(name)
+              ? ['application/pdf']
+              : /\.docx$/i.test(name)
+                ? ['application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+                : /\.xlsx$/i.test(name)
+                  ? ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+                  : /\.pptx$/i.test(name)
+                    ? ['application/vnd.openxmlformats-officedocument.presentationml.presentation']
+                    : /\.html?$/i.test(name)
+                      ? ['text/html']
+                      : /\.csv$/i.test(name)
+                        ? ['text/csv']
+                        : /\.md$/i.test(name)
+                          ? ['text/plain', 'text/markdown']
+                          : /\.txt$/i.test(name)
+                            ? ['text/plain']
+                            : [];
         if (!allowedTypes.includes(input.mediaType)) {
           return fail('VALIDATION_ERROR', 'File extension and media type must match.');
+        }
+        if (
+          input.mediaType === 'image/png' &&
+          !Buffer.from(input.bytes.subarray(0, 8)).equals(
+            Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+          )
+        ) {
+          return fail('VALIDATION_ERROR', 'File does not have a PNG signature.');
+        }
+        if (
+          input.mediaType === 'image/jpeg' &&
+          !(input.bytes[0] === 255 && input.bytes[1] === 216 && input.bytes[2] === 255)
+        ) {
+          return fail('VALIDATION_ERROR', 'File does not have a JPEG signature.');
         }
         if (
           input.mediaType === 'application/pdf' &&
@@ -283,6 +305,7 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
     readonly kind: SourcesStagingInputKind;
   }): Promise<ResolvedSourcesStagingArtifact> {
     const artifact = this.open(input.stagingReference);
+    this.assertImageIntake(artifact.kind, artifact.mediaType);
     if (
       artifact.draftId !== input.draftId ||
       artifact.itemId !== input.itemId ||
@@ -299,6 +322,17 @@ export class SealedSourcesStagingService implements SourcesStagingServicePort {
       return fail('RETENTION_EXPIRED', 'The Sources staging reference has expired.');
     }
     return { ...artifact, stagingReference: input.stagingReference };
+  }
+
+  private assertImageIntake(
+    kind: SourcesStagingInputKind,
+    mediaType: SourcesStagingMediaType,
+  ): void {
+    if (mediaType === 'image/png' || mediaType === 'image/jpeg') {
+      if (!this.imageObservationEnabled || kind !== 'FILE') {
+        fail('VALIDATION_ERROR', 'Image observation intake is unavailable in this runtime.');
+      }
+    }
   }
 
   private assertCommon(input: {

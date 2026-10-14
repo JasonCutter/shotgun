@@ -30,7 +30,11 @@ import {
   type ExternalSourceFreshnessView,
   sha256Text,
   stableJson,
+  decodeAskGeneratedImageObservationReference,
+  askGeneratedImageObservationReferenceFor,
+  type AskGeneratedImageObservationReference,
 } from '../../../packages/contracts/src/index.js';
+import type { VPImageObservationLedgerPort } from '../../../modules/vp-knowledge-ledger/src/image-observations.js';
 import { withSafePostgresTransaction } from '../../../packages/postgres-transaction/src/index.js';
 import type {
   AskReadScope,
@@ -60,6 +64,7 @@ import type {
   AskKnowledgeEvidenceSearchPort,
   AskKnowledgeQueryExecutor,
   AskWorkerLeaseState,
+  AskExecutionGeneratedImageObservation,
 } from '../../../modules/frontend-ask-execution/src/index.js';
 
 type RunRow = QueryResultRow & {
@@ -187,6 +192,7 @@ const ASK_QUERY_PLAN_REVISION_VP2 = 'ask-query-plan-vp2';
 const ASK_QUERY_PLAN_REVISION_VP3 = 'ask-query-plan-vp3';
 const ASK_QUERY_PLAN_REVISION_VP4 = 'ask-query-plan-vp4';
 const ASK_QUERY_PLAN_REVISION_VP5 = 'ask-query-plan-vp5';
+const ASK_QUERY_PLAN_REVISION_VP_IMAGE1 = 'ask-query-plan-vp-image1';
 
 const isAskQueryPlanWithSourceReplay = (revision: string): boolean =>
   revision === 'ask-query-plan-v3' ||
@@ -198,12 +204,14 @@ const isAskQueryPlanWithSourceReplay = (revision: string): boolean =>
   revision === ASK_QUERY_PLAN_REVISION_VP2 ||
   revision === ASK_QUERY_PLAN_REVISION_VP3 ||
   revision === ASK_QUERY_PLAN_REVISION_VP4 ||
-  revision === ASK_QUERY_PLAN_REVISION_VP5;
+  revision === ASK_QUERY_PLAN_REVISION_VP5 ||
+  revision === ASK_QUERY_PLAN_REVISION_VP_IMAGE1;
 
 const hasAskQueryPlanPageLocations = (revision: string): boolean =>
   revision === ASK_QUERY_PLAN_REVISION_V6 ||
   revision === ASK_QUERY_PLAN_REVISION_V7 ||
-  revision === ASK_QUERY_PLAN_REVISION_VP5;
+  revision === ASK_QUERY_PLAN_REVISION_VP5 ||
+  revision === ASK_QUERY_PLAN_REVISION_VP_IMAGE1;
 
 const isAllowedSensitivity = (
   sensitivity: AskExecutionScope['sensitivityClearance'],
@@ -403,6 +411,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     private readonly sourceContextReader: AskSourceVersionContextReaderPort,
     private readonly hybridRetrieval?: HybridRetrievalCoordinatorPort,
     private readonly vpEvidenceSearch?: AskKnowledgeEvidenceSearchPort,
+    private readonly imageObservations?: Pick<VPImageObservationLedgerPort, 'findHistorical'>,
   ) {}
 
   async isProjectKnowledgePending(
@@ -545,16 +554,20 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       throw error;
     }
     const resolved = await this.resolveContext(scope, snapshot);
-    const contextStatus = await this.authoritativeContextStatus(
+    const authority = await this.authoritativeContextStatus(
       scope,
       snapshot,
       resolved.contextStatus,
     );
     const pin = await this.readExecutionPin(scope, answerRunId);
     return {
-      snapshot: normalizeAskAnswerRunCapabilities(snapshot, contextStatus),
+      snapshot: normalizeAskAnswerRunCapabilities(
+        snapshot,
+        authority.contextStatus,
+        authority.hasGeneratedImageContext,
+      ),
       ...resolved,
-      contextStatus,
+      contextStatus: authority.contextStatus,
       ...(pin ? { executionPin: pin } : {}),
     };
   }
@@ -575,20 +588,28 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     scope: AskExecutionScope,
     snapshot: AskAnswerRunSnapshot,
     resolvedStatus: AskExecutionRunContext['contextStatus'],
-  ): Promise<AskExecutionRunContext['contextStatus']> {
+  ): Promise<{
+    readonly contextStatus: AskExecutionRunContext['contextStatus'];
+    readonly hasGeneratedImageContext: boolean;
+  }> {
     if (snapshot.state !== 'SUCCEEDED' || snapshot.attemptNumber === undefined) {
-      return resolvedStatus;
+      return { contextStatus: resolvedStatus, hasGeneratedImageContext: false };
     }
-    const result = await this.pool.query<{ readonly context_supported: boolean }>(
-      `SELECT context_supported
+    const result = await this.pool.query<{
+      readonly context_supported: boolean;
+      readonly has_generated_images: boolean;
+    }>(
+      `SELECT COALESCE(answer_supported, context_supported) AS context_supported, generated_image_context <> '[]'::jsonb AS has_generated_images
        FROM frontend_ask.answer_run_attempts
        WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $3`,
       [snapshot.answerRunId, scope.projectId, snapshot.attemptNumber],
     );
     const persistedSupported = result.rows[0]?.context_supported === true;
-    return persistedSupported && resolvedStatus === 'SUPPORTED'
-      ? 'SUPPORTED'
-      : 'NO_SUPPORTED_ANSWER';
+    return {
+      contextStatus:
+        persistedSupported && resolvedStatus === 'SUPPORTED' ? 'SUPPORTED' : 'NO_SUPPORTED_ANSWER',
+      hasGeneratedImageContext: result.rows[0]?.has_generated_images === true,
+    };
   }
 
   async readExecutionPin(
@@ -895,6 +916,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       }
     }
     let vpEvidenceRows: readonly EvidenceRow[] | undefined;
+    let generatedObservations: readonly AskExecutionGeneratedImageObservation[] = [];
     let vpSnapshot:
       { readonly knowledgeEpoch: string; readonly sourceWatermark: string } | undefined;
     if (snapshot.mode === 'AUTO_PROJECT_KNOWLEDGE') {
@@ -957,12 +979,15 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           authorizedSensitivities: allowedSensitivities,
           snapshot: candidateSnapshot,
           evidenceIds: candidateRows.map((row) => row.evidence_id),
+          generatedObservationIds:
+            search.generatedObservations?.map((item) => item.observationId) ?? [],
           limit: 12,
           ...(queryExecutor ? { queryExecutor } : {}),
         });
         if (snapshotCurrent) {
           vpSnapshot = candidateSnapshot;
           vpEvidenceRows = candidateRows;
+          generatedObservations = search.generatedObservations ?? [];
           break;
         }
       }
@@ -1125,10 +1150,13 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     const context: AskExecutionContextItem[] = [
       ...evidence.map((item) => ({ kind: 'EVIDENCE' as const, ...item })),
       ...sourceVersions,
+      ...generatedObservations,
     ];
     const queryPlanRevision =
       snapshot.mode === 'AUTO_PROJECT_KNOWLEDGE'
-        ? ASK_QUERY_PLAN_REVISION_VP5
+        ? generatedObservations.length > 0
+          ? ASK_QUERY_PLAN_REVISION_VP_IMAGE1
+          : ASK_QUERY_PLAN_REVISION_VP5
         : useHybridCanonicalContext
           ? ASK_QUERY_PLAN_REVISION_V7
           : ASK_QUERY_PLAN_REVISION_V6;
@@ -1216,9 +1244,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       readonly query_plan_revision: string | null;
       readonly vp_knowledge_epoch: string | null;
       readonly vp_source_watermark: string | null;
+      readonly generated_image_context: unknown;
     }>(
       `SELECT context_supported, resolved_context_digest, query_plan_revision,
-              vp_knowledge_epoch, vp_source_watermark
+              vp_knowledge_epoch, vp_source_watermark, generated_image_context
        FROM frontend_ask.answer_run_attempts
        WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $3`,
       [snapshot.answerRunId, scope.projectId, attemptNumber],
@@ -1298,6 +1327,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     const context: AskExecutionContextItem[] = [
       ...mappedEvidence.map((item) => ({ kind: 'EVIDENCE' as const, ...item })),
       ...sourceVersions,
+      ...(await this.readPinnedImageContext(scope, row.generated_image_context)),
     ];
     if (isAskQueryPlanWithSourceReplay(queryPlanRevision)) {
       const currentDigest = askExecutionContextDigest({
@@ -1324,6 +1354,53 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       ...(row.vp_knowledge_epoch === null ? {} : { vpKnowledgeEpoch: row.vp_knowledge_epoch }),
       ...(row.vp_source_watermark === null ? {} : { vpSourceWatermark: row.vp_source_watermark }),
     };
+  }
+
+  private async readPinnedImageContext(
+    scope: AskExecutionScope,
+    raw: unknown,
+    queryExecutor?: AskKnowledgeQueryExecutor,
+  ): Promise<AskExecutionGeneratedImageObservation[]> {
+    if (!Array.isArray(raw) || raw.length > 12) throw staleContext();
+    const items: AskExecutionGeneratedImageObservation[] = [];
+    const seen = new Set<string>();
+    for (let index = 0; index < raw.length; index += 1) {
+      const stored = raw[index];
+      if (
+        !Object.hasOwn(raw, index) ||
+        !stored ||
+        typeof stored !== 'object' ||
+        Array.isArray(stored)
+      )
+        throw staleContext();
+      const { sensitivity, ...reference } = stored as Record<string, unknown>;
+      const decoded = decodeAskGeneratedImageObservationReference(reference);
+      if (
+        !this.imageObservations ||
+        decoded.projectId !== scope.projectId ||
+        seen.has(decoded.observationId)
+      )
+        throw staleContext();
+      seen.add(decoded.observationId);
+      const observation = await this.imageObservations.findHistorical(
+        {
+          projectId: scope.projectId,
+          accessScope: scope.accessScope ?? [],
+          authorizedSensitivities: deriveAuthorizedSensitivities(scope.sensitivityClearance),
+          ...(queryExecutor ? { queryExecutor } : {}),
+        },
+        decoded.observationId,
+      );
+      if (
+        !observation ||
+        observation.sensitivity !== sensitivity ||
+        stableJson(askGeneratedImageObservationReferenceFor(observation, decoded.referenceId)) !==
+          stableJson(decoded)
+      )
+        throw staleContext();
+      items.push({ ...decoded, sensitivity: observation.sensitivity });
+    }
+    return items;
   }
 
   private async retryAndClaimWithClient(
@@ -1558,6 +1635,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     readonly attemptNumber: number;
     readonly answer: string;
     readonly citations: readonly AskCitationView[];
+    readonly generatedObservationReferences?: readonly AskGeneratedImageObservationReference[];
+    readonly answerSupportStatus?: 'SUPPORTED' | 'NO_SUPPORTED_ANSWER';
     readonly provider: AskAnswerRunProvider;
     readonly providerResponseId?: string;
     readonly dataPolicyVersion?: string;
@@ -1583,7 +1662,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         return;
       if (
         input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP4 ||
-        input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP5
+        input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP5 ||
+        input.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP_IMAGE1
       ) {
         if (!this.vpEvidenceSearch) throw staleVPCompletion();
         await client.query(
@@ -1597,8 +1677,9 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           readonly attempt_id: string;
           readonly vp_knowledge_epoch: string | null;
           readonly vp_source_watermark: string | null;
+          readonly generated_image_context: unknown;
         }>(
-          `SELECT attempt_id, vp_knowledge_epoch, vp_source_watermark
+          `SELECT attempt_id, vp_knowledge_epoch, vp_source_watermark, generated_image_context
              FROM frontend_ask.answer_run_attempts
             WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $3`,
           [input.answerRunId, input.scope.projectId, input.attemptNumber],
@@ -1629,6 +1710,9 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
               sourceWatermark: pinned.vp_source_watermark,
             },
             evidenceIds: evidence.rows.map((item) => item.evidence_id),
+            generatedObservationIds: (
+              await this.readPinnedImageContext(input.scope, pinned.generated_image_context, client)
+            ).map((item) => item.observationId),
             limit: 12,
             queryExecutor: client,
           }))
@@ -1636,14 +1720,58 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           throw staleVPCompletion();
         }
       }
-      const contextResult = await client.query<{ readonly context_supported: boolean }>(
-        `SELECT context_supported
+      const contextResult = await client.query<{
+        readonly context_supported: boolean;
+        readonly generated_image_context: unknown;
+      }>(
+        `SELECT context_supported, generated_image_context
          FROM frontend_ask.answer_run_attempts
          WHERE attempt_id = $1 AND answer_run_id = $2 AND project_id = $3`,
         [attemptId, input.answerRunId, input.scope.projectId],
       );
+      const pinnedContext = await this.readPinnedImageContext(
+        input.scope,
+        contextResult.rows[0]?.generated_image_context ?? [],
+        client,
+      );
+      const references = input.generatedObservationReferences ?? [];
+      if (!Array.isArray(references) || references.length > 12)
+        throw invalid('Invalid image references.');
+      const seenReferences = new Set<string>();
+      const referenceIds = new Set<string>();
+      for (let index = 0; index < references.length; index += 1) {
+        if (!Object.hasOwn(references, index)) throw invalid('Invalid image reference slot.');
+        const reference = decodeAskGeneratedImageObservationReference(references[index]);
+        const pinned = pinnedContext.find((item) => item.observationId === reference.observationId);
+        if (
+          !pinned ||
+          seenReferences.has(reference.observationId) ||
+          referenceIds.has(reference.referenceId)
+        )
+          throw invalid('Image reference is outside the pinned Ask context.');
+        const { sensitivity: _sensitivity, ...expected } = pinned;
+        if (
+          stableJson({ ...expected, referenceId: reference.referenceId }) !== stableJson(reference)
+        )
+          throw invalid('Image reference lineage mismatch.');
+        seenReferences.add(reference.observationId);
+        referenceIds.add(reference.referenceId);
+      }
+      if (pinnedContext.length === 0 && input.answerSupportStatus !== undefined)
+        throw invalid('Image answer disposition requires a pinned image context.');
+      if (
+        pinnedContext.length > 0 &&
+        (!input.answerSupportStatus ||
+          (input.answerSupportStatus === 'NO_SUPPORTED_ANSWER'
+            ? input.citations.length + references.length !== 0
+            : input.citations.length + references.length === 0))
+      )
+        throw invalid('Image answer disposition conflicts with references.');
       const contextStatus =
-        contextResult.rows[0]?.context_supported === true ? 'SUPPORTED' : 'NO_SUPPORTED_ANSWER';
+        contextResult.rows[0]?.context_supported === true &&
+        input.answerSupportStatus !== 'NO_SUPPORTED_ANSWER'
+          ? 'SUPPORTED'
+          : 'NO_SUPPORTED_ANSWER';
       const completedAt = new Date().toISOString();
       const attemptUpdate = await client.query(
         `UPDATE frontend_ask.answer_run_attempts
@@ -1651,7 +1779,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
                 provider_adapter_version = $5, provider_response_id = $6,
                 data_policy_version = $7, resolved_context_digest = $8,
                 query_plan_revision = $9, lease_owner = NULL, lease_expires_at = NULL,
-                heartbeat_at = $10, updated_at = $10, completed_at = $10
+                heartbeat_at = $10, updated_at = $10, completed_at = $10,
+                answer_supported = $13
             WHERE answer_run_id = $1 AND project_id = $2 AND attempt_number = $11
               AND state = 'RUNNING' AND lease_owner = $12 AND lease_expires_at >= now()`,
         [
@@ -1667,15 +1796,22 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           completedAt,
           input.attemptNumber,
           input.workerId,
+          pinnedContext.length > 0 ? contextStatus === 'SUPPORTED' : null,
         ],
       );
       if ((attemptUpdate.rowCount ?? 0) !== 1) return;
       const statementId = `statement-${randomUUID()}`;
       await client.query(
         `INSERT INTO frontend_ask.statements (
-           statement_id, answer_run_id, ordinal, text, statement_revision
-         ) VALUES ($1, $2, 0, $3, $4)`,
-        [statementId, input.answerRunId, input.answer, `answer-${randomUUID()}`],
+           statement_id, answer_run_id, ordinal, text, statement_revision, generated_observation_references
+         ) VALUES ($1, $2, 0, $3, $4, $5::jsonb)`,
+        [
+          statementId,
+          input.answerRunId,
+          input.answer,
+          `answer-${randomUUID()}`,
+          stableJson(references),
+        ],
       );
       for (let index = 0; index < input.citations.length; index += 1) {
         const citation = input.citations[index];
@@ -1710,7 +1846,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
       const eventRevision = Number(row.event_revision) + 1;
       await this.updateRun(client, input.scope, input.answerRunId, {
         state: 'SUCCEEDED',
-        capabilities: askSucceededCapabilitiesForContextStatus(contextStatus),
+        capabilities:
+          pinnedContext.length > 0
+            ? ['EXPORT']
+            : askSucceededCapabilitiesForContextStatus(contextStatus),
         failure: null,
         partialText: null,
         provider: input.provider,
@@ -2003,7 +2142,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           readonly context_supported: boolean | null;
         }>(
           `SELECT run.state,
-                  attempt.context_supported
+                  (COALESCE(attempt.answer_supported, attempt.context_supported) AND attempt.generated_image_context = '[]'::jsonb) AS context_supported
            FROM frontend_ask.answer_runs AS run
            LEFT JOIN frontend_ask.answer_run_attempts AS attempt
              ON attempt.answer_run_id = run.answer_run_id
@@ -2017,7 +2156,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           readonly context_supported: boolean | null;
         }>(
           `SELECT run.state,
-                  attempt.context_supported
+                  (COALESCE(attempt.answer_supported, attempt.context_supported) AND attempt.generated_image_context = '[]'::jsonb) AS context_supported
            FROM frontend_ask.answer_runs AS run
            LEFT JOIN frontend_ask.answer_run_attempts AS attempt
              ON attempt.answer_run_id = run.answer_run_id
@@ -2609,7 +2748,8 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
     const pin = executionPin ?? context.executionPin;
     if (
       context.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP4 ||
-      context.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP5
+      context.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP5 ||
+      context.queryPlanRevision === ASK_QUERY_PLAN_REVISION_VP_IMAGE1
     ) {
       if (!context.vpKnowledgeEpoch || !context.vpSourceWatermark) {
         throw invalid('The VP knowledge snapshot is incomplete.');
@@ -2647,6 +2787,9 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
           sourceWatermark: refreshed.vpSourceWatermark,
         },
         evidenceIds: context.evidence.map((evidence) => evidence.evidenceId),
+        generatedObservationIds: context.context
+          .filter((item) => item.kind === 'GENERATED_IMAGE_OBSERVATION')
+          .map((item) => item.observationId),
         limit: 12,
         queryExecutor: client,
       });
@@ -2684,10 +2827,10 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
            effective_provider_policy_fingerprint,
            ai_execution_pin_created_at,
            created_at, updated_at,
-           started_at, heartbeat_at, lease_owner, lease_expires_at
+           started_at, heartbeat_at, lease_owner, lease_expires_at, generated_image_context
         ) VALUES ($1, $2, $3, $4, $5, 'RUNNING', $6, $7, $8, $9, $10, $11,
                   $12, $13, $14, $15, $16, $17, $18, $19, $19, $20,
-                  $21, $21, $21, $21, $22, $23)`,
+                  $21, $21, $21, $21, $22, $23, $24::jsonb)`,
       [
         attemptId,
         row.answer_run_id,
@@ -2712,6 +2855,7 @@ export class PostgresAskAnswerExecutionRepository implements AskAnswerExecutionR
         createdAt,
         workerId,
         new Date(Date.now() + 30_000).toISOString(),
+        stableJson(context.context.filter((item) => item.kind === 'GENERATED_IMAGE_OBSERVATION')),
       ],
     );
     for (let index = 0; index < context.evidence.length; index += 1) {

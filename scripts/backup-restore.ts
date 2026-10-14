@@ -182,6 +182,8 @@ const vpIntegrityTables: Readonly<Record<string, readonly string[]>> = {
   ],
   '131_source_url_refresh.sql': ['source_product.url_refresh_jobs'],
   '132_vp_candidate_frontier.sql': ['vp.candidate_frontiers', 'vp.candidate_frontier_members'],
+  '133_vp_image_observations.sql': ['vp.image_observations'],
+  '134_image_observation_execution.sql': ['ai.image_observation_executions'],
 };
 
 export const authoritativeIntegrityTablesForMigrations = (

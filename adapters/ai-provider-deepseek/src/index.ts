@@ -85,6 +85,16 @@ export type DeepSeekImageGenerationResponse = StructuredGenerationResponse & {
   readonly imageRequestDigest: string;
   readonly imageContentHashes: readonly string[];
 };
+/** Private execution-owner receipt for an actually decoded HTTP response.
+ * This callback runs before output validation and never grants retry/egress
+ * authority. Its unknown fields preserve observation without trusting them. */
+export type DeepSeekObservedImageResponse = {
+  readonly rawText: unknown;
+  readonly modelVersion: unknown;
+  readonly providerResponseId: unknown;
+  readonly imageRequestDigest: string;
+  readonly imageContentHashes: readonly string[];
+};
 
 const base64EnvelopeIsValid = (value: string): boolean => {
   if (!value.length || value.length % 4 !== 0) return false;
@@ -227,10 +237,14 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
   async generateImageStructured(
     input: Parameters<AIProviderConnectivityAdapter['generateStructured']>[0] & {
       readonly images: readonly DeepSeekInlineImage[];
+      readonly onObservedResponse?: (receipt: DeepSeekObservedImageResponse) => void;
     },
   ): Promise<DeepSeekImageGenerationResponse> {
     const modelId = input.modelId;
     const signal = input.signal;
+    const onObservedResponse = input.onObservedResponse;
+    if (onObservedResponse !== undefined && typeof onObservedResponse !== 'function')
+      throw errorFor('VALIDATION_ERROR', 'The image response observer is invalid.');
     if (signal?.aborted)
       throw errorFor('TERMINAL_FAILURE', 'The image request was cancelled before execution.');
     if (modelId !== 'deepseek-flash')
@@ -263,6 +277,23 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
         'The image request exceeds its configured envelope limit.',
       );
     const response = await this.request(input.apiKey, body, signal, this.generationTimeoutMs);
+    const provenance = Object.freeze({
+      imageRequestDigest: `sha256:${createHash('sha256').update(serializedBody).digest('hex')}`,
+      imageContentHashes: Object.freeze(
+        images.map((imagePart) => {
+          const data = imagePart.image_url.url.split(',')[1]!;
+          return `sha256:${createHash('sha256').update(Buffer.from(data, 'base64')).digest('hex')}`;
+        }),
+      ),
+    });
+    onObservedResponse?.(
+      Object.freeze({
+        rawText: response?.choices?.[0]?.message?.content,
+        modelVersion: response?.model,
+        providerResponseId: response?.id,
+        ...provenance,
+      }),
+    );
     if (!response || typeof response !== 'object' || response.model !== modelId)
       throw errorFor(
         'VALIDATION_ERROR',
@@ -271,13 +302,7 @@ export class DeepSeekConnectivityAdapter implements AIProviderConnectivityAdapte
     return Object.freeze({
       ...this.structuredResult(response, modelId),
       imageTransportRevision: DEEPSEEK_IMAGE_TRANSPORT_REVISION,
-      imageRequestDigest: `sha256:${createHash('sha256').update(serializedBody).digest('hex')}`,
-      imageContentHashes: Object.freeze(
-        images.map((imagePart) => {
-          const data = imagePart.image_url.url.split(',')[1]!;
-          return `sha256:${createHash('sha256').update(Buffer.from(data, 'base64')).digest('hex')}`;
-        }),
-      ),
+      ...provenance,
     });
   }
 

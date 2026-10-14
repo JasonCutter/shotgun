@@ -326,3 +326,29 @@ Native image의 sparse array가 `.map`에서 누락되어 null image block의 Fa
 모든 own slot을 검증해 호출 전에 거부하며 크기·hash·MIME 제한은 유지한다.
 native28+prepared26=54 PASS, 원본2 FAIL 로그를 보존한다. 이 후속 code를 포함한
 exact head CI로 최종 게시 적격성을 확인한다.
+
+## 2026-10-14 — PR #385 Canonical 완료 및 승인된 이미지 격리 제품 구현
+
+PR #385의 승인 head `88ec8dfd3aae71e6dd380e99effb495239e16c20`을
+main `3675a95961cfdbb28f992356a2968b4613e6f426`에 병합했다. 병합 tree는
+승인 tree `edba03800f32518682fe816411f1e31c7d37143d`와 동일하며,
+CI38372113568과 post-merge CI38394700999의 Quality·Frontend·Required Gates가
+모두 성공했다. 앞 절의 최초 실패·취소 이력은 원본대로 보존한다.
+
+후속 사용자 승인에 따라 별도 로컬 브랜치에서
+[이미지 제품 계약](./image-product-contract.md)을 구현했다. 기존 VP Ledger의
+미검증 관측, AI owner의 고정 call/attempt, Source의 별도 완료 상태, Ask의
+별도 생성 참조·기권·과거 최신성, 인가된 원본 preview, reset/backup 경계를
+연결했다. 운영 이미지 기능은 OFF이고 실제 AI 호출은0회다.
+
+실제 application의 이미지/텍스트/버전 변경·과거 stale와 대기/UNKNOWN 흐름,
+Edge+실제 SPA의 이미지 투입·Ask·고정 원본 열기, 영속 실행8건, VP 관측16건,
+reset 소유권7건 및 실제136-table 백업 복원이 통과했다. 전체 단위·계약2478건,
+Frontend405건, TS6감사50건이 통과했다. source-aware 반복 분석 재사용은 원본
+bytes 변경 시 재검사하며 기존 validator·5초 제한·동결 v2–v7을 유지한다.
+
+초기 test fixture·오류 코드·진입점 guard·10초 반복 schema setup 문제와 최소
+보정은 계약 문서에 구분했다. Sol6.0은 실행/검색/TS6·회귀 검토에, Luna는 PR/CI
+증거 정리에 배정했다. Fake/구조 PASS를 실제 의미 품질이나 새로운 인증 Gold로
+보고하지 않는다. 마지막 결합 DB·게시 Gate를 진행 중이며 전체 VP 판정은
+**VP_FULL_IMPLEMENTATION_IN_PROGRESS / VP_FINAL_ACCEPTANCE_NOT_COMPLETE**다.

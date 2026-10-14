@@ -40,6 +40,22 @@ const wrapper = ({ children }: { readonly children: ReactNode }) => (
 const renderHarness = () => render(<DraftQueueGuardHarness />, { wrapper });
 
 describe('useSourceIntakeDraftQueue Leave Guard', () => {
+  it('allows image drafts only with explicit capability and matching filename/MIME', () => {
+    const png = new File(['png bytes'], 'source.png', { type: 'image/png' });
+    const disabled = renderHook(() => useSourceIntakeDraftQueue('project-a'), { wrapper });
+    act(() => disabled.result.current.addFile('', png));
+    expect(disabled.result.current.items[0]?.validation).toBe('INVALID');
+    const enabled = renderHook(
+      () => useSourceIntakeDraftQueue('project-a', undefined, { imageObservationEnabled: true }),
+      { wrapper },
+    );
+    act(() => enabled.result.current.addFile('', png));
+    expect(enabled.result.current.items[0]?.validation).toBe('READY');
+    act(() =>
+      enabled.result.current.addFile('', new File(['image'], 'source.txt', { type: 'image/png' })),
+    );
+    expect(enabled.result.current.items[1]?.validation).toBe('INVALID');
+  });
   it('releases the Guard synchronously when the only draft is removed', async () => {
     renderHarness();
 

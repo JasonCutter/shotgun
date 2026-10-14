@@ -188,7 +188,11 @@ const decodeSeed = (
   }
 };
 
-export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: unknown) => {
+export const useSourceIntakeDraftQueue = (
+  activeProjectId: string,
+  seedInput?: unknown,
+  capability?: { readonly imageObservationEnabled: boolean },
+) => {
   const initial = useMemo(
     () => decodeSeed(seedInput, activeProjectId),
     [activeProjectId, seedInput],
@@ -260,7 +264,11 @@ export const useSourceIntakeDraftQueue = (activeProjectId: string, seedInput?: u
     file: File,
     requestedClassification: SourcesSensitivity = 'private',
   ) => {
-    const supported = supportedFileTypes.has(file.type);
+    const supported =
+      supportedFileTypes.has(file.type) ||
+      (capability?.imageObservationEnabled === true &&
+        ((file.type === 'image/png' && /\.png$/i.test(file.name)) ||
+          (file.type === 'image/jpeg' && /\.jpe?g$/i.test(file.name))));
     const sizeValid = file.size > 0 && file.size <= SOURCES_STAGING_MAX_FILE_BYTES;
     updateItems((current) => [
       ...current,

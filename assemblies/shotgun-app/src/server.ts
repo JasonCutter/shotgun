@@ -95,6 +95,7 @@ import type { AskAnswerExecutionService } from '../../../modules/frontend-ask-ex
 import {
   FrontendSourcesReadCoordinator,
   type SourcesProjectionRepositoryPort,
+  type SourcesImageReadOptions,
 } from '../../../modules/frontend-sources-product/src/index.js';
 import { InMemoryAskConversationRepository } from '../../../adapters/frontend-ask-write-in-memory/src/index.js';
 import type {
@@ -891,6 +892,7 @@ export type ApplicationOptions = {
   readonly askCommandCoordinator?: AskCommandCoordinator;
   readonly askAnswerExecution?: AskAnswerExecutionService;
   readonly sourcesProjectionRepository?: SourcesProjectionRepositoryPort;
+  readonly sourcesImageRead?: SourcesImageReadOptions;
   readonly activitySourcesRead?: SourcesActivityReadPort;
   readonly activityAskRead?: AskActivityReadPort;
   readonly activityDiscoveryRead?: DiscoveryActivityReadPort;
@@ -2460,6 +2462,8 @@ const createApplicationCore = async (
     assetStorage,
     evidenceRepository,
     candidateRepository,
+    undefined,
+    options.sourcesImageRead,
   );
   // FE-P5-S1 WP3: the Activity Product API observes the owning Domains through
   // their concrete Activity adapters (Sources/Ask/External Action) into the

@@ -26,6 +26,8 @@ describe('versioned VP backup integrity coverage', () => {
       '129_vp_global_relation_budget_authority.sql',
       '131_source_url_refresh.sql',
       '132_vp_candidate_frontier.sql',
+      '133_vp_image_observations.sql',
+      '134_image_observation_execution.sql',
     ];
     expect(
       authoritativeIntegrityTablesForMigrations(migrations, VP_BACKUP_INTEGRITY_PROFILE),
@@ -38,10 +40,15 @@ describe('versioned VP backup integrity coverage', () => {
         'vp_global_budget.claims',
         'source_product.url_refresh_jobs',
         'vp.candidate_frontier_members',
+        'vp.image_observations',
+        'ai.image_observation_executions',
       ]),
     );
     expect(authoritativeIntegrityTablesForMigrations(migrations, 'legacy-v1')).not.toContain(
       'vp.assertions',
+    );
+    expect(authoritativeIntegrityTablesForMigrations(migrations, 'legacy-v1')).not.toContain(
+      'vp.image_observations',
     );
     // Unversioned callers still construct the historical manifest shape.
     expect(authoritativeIntegrityTablesForMigrations(migrations)).toEqual(

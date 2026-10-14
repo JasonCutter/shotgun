@@ -142,3 +142,17 @@ Raw audio/video는 ADR-088의 명시적 제외 범위여서 prototype 성공을 
 활성화하지 않는다. Image의 다음 제품 연결은 생성된 관측과 원문 인용을
 구별하는 기존 권위 계약의 적격성 검토가 선행돼야 한다. 단순한 string descriptor,
 pixel 좌표 또는 높은 confidence로 이 경계를 우회하지 않는다.
+
+### 2026-10-14 — 승인된 이미지 격리 제품 연결
+
+후속 사용자 승인 “이미지 전용 계약·격리 구현 승인”에 따라 기존 VP Ledger의
+미검증 이미지 관측, 기존 AI 실행 소유자의 영속 call/attempt, Source 완료 상태,
+Ask의 별도 생성 관측 참조와 과거 최신성 표시를 연결했다. 생성 설명으로 원문
+Evidence나 Fact를 만들지 않는다. 상세 계약·보정·검증과 잔여 Gate는
+[이미지 제품 계약](./image-product-contract.md)에 기록한다.
+
+PR #385는 승인된 head88ec8df의 exact tree로 main3675a959에 병합됐고,
+post-merge CI38394700999의 Quality·Frontend·Required Gates가 모두 성공했다.
+새 이미지 제품 코드는 이 병합 이후 별도 로컬 브랜치에 있으며 아직 게시하지
+않았다. Fake 구조·제품 통과를 실제 AI 의미 품질로 승격하지 않는다. 현재
+**VP_FULL_IMPLEMENTATION_IN_PROGRESS / VP_FINAL_ACCEPTANCE_NOT_COMPLETE**를 유지한다.

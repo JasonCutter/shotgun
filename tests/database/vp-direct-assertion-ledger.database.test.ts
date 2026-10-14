@@ -828,6 +828,7 @@ describe('VP validated direct assertion ledger', () => {
         'events',
         'frontier_members',
         'frontiers',
+        'image_observations',
         'jobs',
         'provider_calls',
         'relations',
@@ -847,6 +848,7 @@ describe('VP validated direct assertion ledger', () => {
         epochs: 0,
         frontiers: 0,
         frontier_members: 0,
+        image_observations: 0,
       });
     } finally {
       if (resetAuthorization) await executor.query('RESET SESSION AUTHORIZATION');

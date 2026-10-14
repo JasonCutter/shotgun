@@ -50,7 +50,7 @@ import {
 const transformer = () =>
   new PythonDocumentFormatAdapter({
     pythonExecutable: process.env.PYTHON ?? 'python',
-    multimodal: { describe: async () => 'The model describes a blue image.' },
+    multimodal: { describe: async () => '모델이 파란 영역이라고 설명합니다. 😀' },
   });
 
 describe('generated image annotations do not become original quotation authority', () => {
@@ -74,9 +74,9 @@ describe('generated image annotations do not become original quotation authority
           documentRevisionQuery(command, result.sourceVersionId),
         )
       ).result.payload;
-      expect(revision.transformer.version).toBe('1.13.0');
+      expect(revision.transformer.version).toBe('1.15.0');
       expect(revision.documentIR.mediaType).toBe('image/png');
-      expect(revision.documentIR.blocks[0]?.text).toBe('The model describes a blue image.');
+      expect(revision.documentIR.blocks[0]?.text).toBe('모델이 파란 영역이라고 설명합니다. 😀');
       expect(revision.sourceMap.entries.map((entry) => entry.nodeKind)).toEqual(
         expect.arrayContaining(['document', 'paragraph', 'sentence']),
       );

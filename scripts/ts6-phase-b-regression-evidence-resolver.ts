@@ -114,6 +114,7 @@ export const clearResolverCaches = (): void => {
   sfCache.clear();
   definitionIndexCache = null;
   productionClassNamesCache = null;
+  testLocalCache.clear();
 };
 
 export const readSource = (root: string, file: string): string | undefined => {

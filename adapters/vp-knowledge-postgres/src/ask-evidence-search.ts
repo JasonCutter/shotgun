@@ -1,6 +1,11 @@
 import type { Pool } from 'pg';
 
-import { sha256Text, stableJson } from '../../../packages/contracts/src/index.js';
+import {
+  askGeneratedImageObservationReferenceFor,
+  sha256Text,
+  stableJson,
+} from '../../../packages/contracts/src/index.js';
+import type { VPImageObservationLedgerPort } from '../../../modules/vp-knowledge-ledger/src/image-observations.js';
 import type {
   AskKnowledgeEvidenceSearchPort,
   AskKnowledgeQueryExecutor,
@@ -80,7 +85,10 @@ const readSnapshot = async (
 
 /** VP assertions select the authoritative shortlist; Ask rechecks every Evidence ID. */
 export class PostgresVPAskEvidenceSearch implements AskKnowledgeEvidenceSearchPort {
-  constructor(private readonly pool: Pool) {}
+  constructor(
+    private readonly pool: Pool,
+    private readonly imageObservations?: VPImageObservationLedgerPort,
+  ) {}
 
   async search(
     input: Parameters<AskKnowledgeEvidenceSearchPort['search']>[0],
@@ -184,7 +192,44 @@ export class PostgresVPAskEvidenceSearch implements AskKnowledgeEvidenceSearchPo
         limit,
       ],
     );
-    return { ...snapshot, evidenceIds: result.rows.map((row) => row.evidence_id) };
+    const observations = this.imageObservations
+      ? await this.imageObservations.listCurrent({
+          projectId: input.projectId,
+          accessScope: input.accessScope,
+          authorizedSensitivities: input.authorizedSensitivities,
+          limit: 64,
+          question: input.question,
+          queryExecutor: executor,
+        })
+      : [];
+    const ready = observations.length
+      ? await executor.query<{ observation_id: string }>(
+          `SELECT progress.image_observation_id::text AS observation_id
+       FROM source_product.source_stage3_progress AS progress
+       WHERE progress.project_id=$1 AND progress.state='IMAGE_OBSERVATION_COMPLETED'
+         AND progress.image_observation_id::text=ANY($2::text[])`,
+          [input.projectId, observations.map((item) => item.observationId)],
+        )
+      : { rows: [] };
+    const readyIds = new Set(ready.rows.map((item) => item.observation_id));
+    const selectedObservations = observations
+      .filter((item) => readyIds.has(item.observationId))
+      .slice(0, limit);
+    return {
+      ...snapshot,
+      evidenceIds: result.rows.map((row) => row.evidence_id),
+      ...(selectedObservations.length
+        ? {
+            generatedObservations: selectedObservations.map((observation) => ({
+              ...askGeneratedImageObservationReferenceFor(
+                observation,
+                `observation:${observation.observationId}`,
+              ),
+              sensitivity: observation.sensitivity,
+            })),
+          }
+        : {}),
+    };
   }
 
   async isSnapshotCurrent(input: {
@@ -194,12 +239,17 @@ export class PostgresVPAskEvidenceSearch implements AskKnowledgeEvidenceSearchPo
     readonly authorizedSensitivities: readonly ('public' | 'internal' | 'private' | 'restricted')[];
     readonly snapshot: AskKnowledgeSnapshot;
     readonly evidenceIds: readonly string[];
+    readonly generatedObservationIds?: readonly string[];
     readonly limit: number;
     readonly queryExecutor?: AskKnowledgeQueryExecutor;
   }): Promise<boolean> {
     const current = await this.searchWithExecutor(input.queryExecutor ?? this.pool, input);
+    const observationIds = current.generatedObservations?.map((item) => item.observationId) ?? [];
+    const expectedObservationIds = input.generatedObservationIds ?? [];
     return (
       current.sourceWatermark === input.snapshot.sourceWatermark &&
+      observationIds.length === expectedObservationIds.length &&
+      observationIds.every((id, index) => id === expectedObservationIds[index]) &&
       current.evidenceIds.length === input.evidenceIds.length &&
       current.evidenceIds.every((evidenceId, index) => evidenceId === input.evidenceIds[index])
     );

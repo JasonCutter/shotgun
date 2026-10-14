@@ -102,3 +102,22 @@ The PostgreSQL Adapter performs the start and completion rechecks through the ca
 로컬 VP 개발 기준선의 CandidateFrontier/frozen Gold recall은 그 기준의 검증 상태와 실제 제공 입력 범위 안에서 증거를 해석해야 한다. 100.0% critical와 ≥99.0% overall candidate recall이라는 요구 자체는 변경하지 않으며, 후보 기준의 동결·재현 가능성만으로 독립 의미 승인을 주장하지 않는다. 기존 frozen scorer/결과는 보존하고 새 reference/metric 적용은 별도 versioned 계약으로 명시한다.
 
 Jev·SSC·모델 교체·질문 시 관계 평가는 필요한 제품 병목과 신뢰할 수 있는 비교 기준이 확인되기 전에는 보류된 대안이다. 질문 시 평가가 현행 자동 사전 관계 기록이나 Frontier completeness를 대체하도록 승인한 것은 아니다. 운영 정책·데이터 권위 변경과 VP-06 진입은 별도 사용자 결정이 필요하다. 로컬의 추가 Frontier/runtime 변경은 이 문서 PR에 포함하지 않으며 현재 main에 이미 통합됐다고 주장하지 않는다. 기존 main의 이전 amendment 원문을 보존한다.
+
+## 14. 2026-10-14 — user-approved isolated image observation contract
+
+The subsequent image-only contract/isolated implementation approval adds typed
+`GENERATED_UNVERIFIED` image observations to the existing VP Ledger. It creates
+no separate knowledge authority, original Evidence, certified Fact, relation
+policy, or user review step. Existing SourceVersion/OriginalAsset, ACL,
+sensitivity, epochs, AI owner and durable execution identities remain the
+boundaries. Ask uses separately typed generated-observation references and
+preserves historical answer content while deriving stale status at read time.
+Answers with generated image context are export-only and cannot seed governed
+knowledge/directive proposals.
+
+The [implementation contract](../../implementation/vp-full-completion-2026-10-12/image-product-contract.md)
+is local implementation evidence pending publication and complete gates.
+Only explicit Fake HTTP in `runtime-test` on a generated isolated database is
+enabled. Production/live image processing, raw audio/video, v11 activation,
+new model adoption, and certified semantic accuracy are not established by this
+approval or Fake tests. Earlier amendment text remains historical.

@@ -1,8 +1,10 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { checkRegressionEvidenceAuthority } from './ts6-phase-b-regression-evidence-authority.js';
+import { clearResolverCaches } from './ts6-phase-b-regression-evidence-resolver.js';
 import {
   buildReachIndex,
   classifyCallers,
@@ -639,7 +641,7 @@ const rawBoundary = (
       /\bBEGIN\b/i.test(other.text),
   );
 
-export const buildAuditShape = (
+const computeAuditShape = (
   root: string = ROOT,
   options: { readonly legacyAuthority?: boolean } = {},
 ) => {
@@ -826,6 +828,69 @@ export const buildAuditShape = (
     regressionEvidence,
     counts,
   };
+};
+
+type AuditShape = ReturnType<typeof computeAuditShape>;
+const auditCache = new Map<
+  string,
+  { fingerprint: string; qualified?: AuditShape; legacy?: AuditShape }
+>();
+let resolverRoot: string | undefined;
+
+// A cached audit is reusable only while every source read by its production
+// scanner, reachability resolver, or legacy test-evidence scan has identical
+// bytes. Paths are included so additions/removals also invalidate the audit.
+const auditSourceFingerprint = (root: string): string => {
+  const digest = createHash('sha256');
+  // The regression resolver can read explicitly linked TSX test blocks too.
+  // Include them in invalidation without broadening the production scanner.
+  const files: string[] = [];
+  const walk = (relative: string): void => {
+    const absolute = path.join(root, relative);
+    if (!fs.existsSync(absolute)) return;
+    for (const entry of fs.readdirSync(absolute, { withFileTypes: true })) {
+      const child = path.join(relative, entry.name);
+      if (entry.isDirectory() && !SKIP.has(entry.name)) walk(child);
+      else if (entry.isFile() && /\.tsx?$/u.test(child)) files.push(posix(child));
+    }
+  };
+  for (const scope of [...SCOPES, 'tests']) walk(scope);
+  files.sort();
+  for (const file of files) {
+    digest.update(file).update('\0');
+    digest.update(fs.readFileSync(path.join(root, file))).update('\0');
+  }
+  return digest.digest('hex');
+};
+
+export const buildAuditShape = (
+  root: string = ROOT,
+  options: { readonly legacyAuthority?: boolean } = {},
+): AuditShape => {
+  const resolvedRoot = path.resolve(root);
+  const fingerprint = auditSourceFingerprint(resolvedRoot);
+  const previous = auditCache.get(resolvedRoot);
+  if (resolverRoot !== resolvedRoot) {
+    clearResolverCaches();
+    resolverRoot = resolvedRoot;
+  }
+  if (previous?.fingerprint !== fingerprint) {
+    sourceCandidatesCache.delete(resolvedRoot);
+    rawSiteCache.delete(resolvedRoot);
+    callIndexCache.delete(resolvedRoot);
+    reachIndexCache.delete(resolvedRoot);
+    for (const key of testEvidenceCache.keys())
+      if (key.startsWith(`${resolvedRoot}:`)) testEvidenceCache.delete(key);
+    clearResolverCaches();
+    auditCache.delete(resolvedRoot);
+  }
+  const cached = auditCache.get(resolvedRoot);
+  const key = options.legacyAuthority ? 'legacy' : 'qualified';
+  if (cached?.[key]) return structuredClone(cached[key]);
+  const audit = computeAuditShape(resolvedRoot, options);
+  auditCache.set(resolvedRoot, { ...cached, fingerprint, [key]: audit });
+  // Callers receive detached data and cannot poison the reusable authority.
+  return structuredClone(audit);
 };
 
 const add = (issues: Issue[], code: string, message: string, boundaryId?: string): void => {

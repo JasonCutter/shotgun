@@ -57,7 +57,7 @@ describe('Stage 8 format Golden Corpus', () => {
   it('versions image annotation origin independently from prior format revisions', () => {
     const adapter = new PythonDocumentFormatAdapter({ pythonExecutable });
 
-    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.13.0' });
+    expect(adapter.identity).toEqual({ id: 'shotgun.document-formats', version: '1.15.0' });
   });
 
   it.each([

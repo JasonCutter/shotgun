@@ -4,6 +4,10 @@ import type {
   TextQuoteSelector,
 } from './document-evidence.js';
 import {
+  decodeAskGeneratedImageObservationReference,
+  type AskGeneratedImageObservationReference,
+} from './frontend-ask-image-observation.js';
+import {
   FrontendContractError,
   type FrontendCommandRequest,
   validateFrontendCommandRequest,
@@ -167,6 +171,7 @@ export type ExactDuplicateDecisionView = {
 };
 
 export type AskUsageState =
+  | 'IMAGE_OBSERVATION_COMPLETED'
   | 'NOT_READY'
   | 'SOURCE_VERSION_READY'
   | 'EVIDENCE_READY'
@@ -231,6 +236,8 @@ export type SourceLibraryPageView = {
   readonly policyContextRevision: string;
   readonly fetchedAt: string;
   readonly stale: boolean;
+  /** Server-owned availability. Missing means image intake is unavailable. */
+  readonly intakeCapabilities?: { readonly imageObservationEnabled: boolean };
 };
 
 export type SourceDetailView = {
@@ -264,7 +271,14 @@ export type SourceVersionHistoryItemView = {
   readonly sizeBytes: number;
   readonly createdAt: string;
   readonly transformationState:
-    'NOT_STARTED' | 'RUNNING' | 'RETRYING' | 'BLOCKED' | 'NO_EVIDENCE' | 'READY' | 'FAILED';
+    | 'NOT_STARTED'
+    | 'RUNNING'
+    | 'RETRYING'
+    | 'BLOCKED'
+    | 'NO_EVIDENCE'
+    | 'READY'
+    | 'FAILED'
+    | 'IMAGE_OBSERVATION_COMPLETED';
   readonly evidenceCount: number;
 };
 
@@ -293,6 +307,14 @@ export type SourcePreviewView = {
   readonly mode: 'ORIGINAL' | 'TRANSFORMED';
   readonly readiness: SourcePreviewReadiness;
   readonly text?: string;
+  readonly image?: {
+    readonly url: string;
+    readonly mediaType: 'image/png' | 'image/jpeg';
+    readonly contentHash: string;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly generatedObservationReferences?: readonly AskGeneratedImageObservationReference[];
   readonly locators: readonly PreviewLocatorView[];
   readonly capabilities: readonly SourcesCapability[];
   readonly projectionRevision: string;
@@ -586,6 +608,7 @@ const askUsageState = (value: unknown, path: string): AskUsageState =>
     value,
     [
       'NOT_READY',
+      'IMAGE_OBSERVATION_COMPLETED',
       'SOURCE_VERSION_READY',
       'EVIDENCE_READY',
       'ACTION_REQUIRED',
@@ -918,7 +941,7 @@ export const decodeSourceLibraryQuery = (input: unknown): SourceLibraryQuery => 
   const askUsageStates = optionalBoundedArray(
     filterValue['askUsageStates'],
     'SourceLibraryQuery.filters.askUsageStates',
-    6,
+    7,
   )?.map((entry, index) =>
     askUsageState(entry, `SourceLibraryQuery.filters.askUsageStates[${index}]`),
   );
@@ -956,6 +979,24 @@ export const decodeSourceLibraryPageView = (input: unknown): SourceLibraryPageVi
   const value = record(input, 'SourceLibraryPageView');
   schema(value, 'SourceLibraryPageView');
   const nextCursor = optionalString(value['nextCursor'], 'SourceLibraryPageView.nextCursor');
+  const intakeCapabilities =
+    value['intakeCapabilities'] === undefined
+      ? undefined
+      : (() => {
+          const capability = record(
+            value['intakeCapabilities'],
+            'SourceLibraryPageView.intakeCapabilities',
+          );
+          if (Object.keys(capability).some((key) => key !== 'imageObservationEnabled')) {
+            fail('SourceLibraryPageView.intakeCapabilities contains unsupported fields.');
+          }
+          return {
+            imageObservationEnabled: booleanValue(
+              capability['imageObservationEnabled'],
+              'SourceLibraryPageView.intakeCapabilities.imageObservationEnabled',
+            ),
+          };
+        })();
   return {
     schemaVersion: SOURCES_SCHEMA_VERSION,
     principalId: stringValue(value['principalId'], 'SourceLibraryPageView.principalId'),
@@ -977,6 +1018,7 @@ export const decodeSourceLibraryPageView = (input: unknown): SourceLibraryPageVi
     ),
     fetchedAt: timestamp(value['fetchedAt'], 'SourceLibraryPageView.fetchedAt'),
     stale: booleanValue(value['stale'], 'SourceLibraryPageView.stale'),
+    ...(intakeCapabilities ? { intakeCapabilities } : {}),
   };
 };
 
@@ -1125,7 +1167,16 @@ const decodeHistoryItem = (input: unknown, path: string): SourceVersionHistoryIt
     createdAt: timestamp(value['createdAt'], `${path}.createdAt`),
     transformationState: enumValue(
       value['transformationState'],
-      ['NOT_STARTED', 'RUNNING', 'RETRYING', 'BLOCKED', 'NO_EVIDENCE', 'READY', 'FAILED'],
+      [
+        'NOT_STARTED',
+        'RUNNING',
+        'RETRYING',
+        'BLOCKED',
+        'NO_EVIDENCE',
+        'READY',
+        'FAILED',
+        'IMAGE_OBSERVATION_COMPLETED',
+      ],
       `${path}.transformationState`,
     ),
     evidenceCount: integer(value['evidenceCount'], `${path}.evidenceCount`),
@@ -1238,16 +1289,81 @@ export const decodeSourcePreviewView = (input: unknown): SourcePreviewView => {
   const value = record(input, 'SourcePreviewView');
   schema(value, 'SourcePreviewView');
   const text = optionalString(value['text'], 'SourcePreviewView.text');
+  const sourceId = stringValue(value['sourceId'], 'SourcePreviewView.sourceId');
+  const sourceVersionId = stringValue(
+    value['sourceVersionId'],
+    'SourcePreviewView.sourceVersionId',
+  );
+  const contentHash = digest(value['contentHash'], 'SourcePreviewView.contentHash');
+  const image =
+    value['image'] === undefined
+      ? undefined
+      : (() => {
+          const row = record(value['image'], 'SourcePreviewView.image');
+          if (
+            Object.keys(row).some(
+              (key) => !['url', 'mediaType', 'contentHash', 'width', 'height'].includes(key),
+            )
+          )
+            fail('Invalid image preview fields.');
+          const mediaType = enumValue(
+            row['mediaType'],
+            ['image/png', 'image/jpeg'],
+            'SourcePreviewView.image.mediaType',
+          );
+          const width = integer(row['width'], 'SourcePreviewView.image.width', 1),
+            height = integer(row['height'], 'SourcePreviewView.image.height', 1);
+          const url = `/product-api/frontend/sources/${encodeURIComponent(sourceId)}/versions/${encodeURIComponent(sourceVersionId)}/image-original`;
+          if (
+            row['url'] !== url ||
+            row['contentHash'] !== contentHash ||
+            value['mediaType'] !== mediaType ||
+            value['mode'] !== 'ORIGINAL' ||
+            width > 30000 ||
+            height > 30000 ||
+            width * height > 100000000 ||
+            text !== undefined
+          )
+            fail('Image preview identity is invalid.');
+          return { url, mediaType, contentHash, width, height };
+        })();
+  const generatedObservationReferences =
+    value['generatedObservationReferences'] === undefined
+      ? undefined
+      : boundedArray(
+          value['generatedObservationReferences'],
+          'SourcePreviewView.generatedObservationReferences',
+          12,
+        ).map((item, index) =>
+          decodeAskGeneratedImageObservationReference(
+            item,
+            `SourcePreviewView.generatedObservationReferences[${index}]`,
+          ),
+        );
+  if (
+    generatedObservationReferences?.some(
+      (reference) =>
+        reference.sourceId !== sourceId ||
+        reference.sourceVersionId !== sourceVersionId ||
+        reference.projectId !== value['projectId'] ||
+        reference.sourceContentHash !== contentHash ||
+        reference.imageMediaType !== value['mediaType'] ||
+        (image && (reference.imageWidth !== image.width || reference.imageHeight !== image.height)),
+    )
+  )
+    fail('Image observation preview identity is invalid.');
   return {
     schemaVersion: SOURCES_SCHEMA_VERSION,
-    sourceId: stringValue(value['sourceId'], 'SourcePreviewView.sourceId'),
-    sourceVersionId: stringValue(value['sourceVersionId'], 'SourcePreviewView.sourceVersionId'),
+    sourceId,
+    sourceVersionId,
     projectId: stringValue(value['projectId'], 'SourcePreviewView.projectId'),
     mediaType: stringValue(value['mediaType'], 'SourcePreviewView.mediaType'),
-    contentHash: digest(value['contentHash'], 'SourcePreviewView.contentHash'),
+    contentHash,
     mode: enumValue(value['mode'], ['ORIGINAL', 'TRANSFORMED'], 'SourcePreviewView.mode'),
     readiness: previewReadiness(value['readiness'], 'SourcePreviewView.readiness'),
     ...(text === undefined ? {} : { text }),
+    ...(image ? { image } : {}),
+    ...(generatedObservationReferences ? { generatedObservationReferences } : {}),
     locators: boundedArray(value['locators'], 'SourcePreviewView.locators', 2_000).map(
       (entry, index) => decodeLocator(entry, `SourcePreviewView.locators[${index}]`),
     ),

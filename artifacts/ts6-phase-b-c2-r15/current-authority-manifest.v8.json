@@ -2,7 +2,7 @@
   "schemaVersion": "ts6.phase-b.current-authority-manifest.v8",
   "status": "FROZEN_BASELINE_EXPECTATIONS",
   "baseCommit": "a9ecb0eaa7de8cb107edde8ae76ed655ae3a4e43",
-  "reviewBasis": "Static expected classifications and reachability for the T3 source inventory, Source knowledge reset persistence, and Ask workspace read snapshot; source-coordinate updates require an audited function/method/classification/reachability match, and CI never rewrites this manifest. 2026-10-01 VP reconciliation: 11 inherited functions were matched to unchanged methods, classifications, and reachability; three added VP transaction candidates are recorded after auditing, with the claim/storeOutput closures inlined into owning Port methods. See docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md. 2026-10-02 URL freshness projection: ten existing candidate coordinates were remapped by functionKey after confirming unchanged owning methods, candidate kinds, classifications, and reachability; ten approved test relations were remapped to those same boundaries. No candidate was added or removed, and classification totals are unchanged. 2026-10-02 Ask page-location propagation moved four Ask adapter candidate coordinates; all four methods, classifications, and reachability grades were re-audited, with approved relation references updated. See the 2026-10-01 coordinate audit's 2026-10-02 addendum. 2026-10-12 VP full completion: 126 inherited owners retain qualified reachability and three actual new safe owners are inventoried; classifications derive as 19 TX_BOUNDARY, 92 PORT_INFERRED, 14 NON_TX, 18 TEST_ONLY_OR_DEAD. New direct PostgreSQL relations and current source coordinates are reviewed under delegated implementation authority. See docs/implementation/vp-full-completion-2026-10-12/reliability-ts6-coordinate-audit.md.",
+  "reviewBasis": "Static expected classifications and reachability for the T3 source inventory, Source knowledge reset persistence, and Ask workspace read snapshot; source-coordinate updates require an audited function/method/classification/reachability match, and CI never rewrites this manifest. 2026-10-01 VP reconciliation: 11 inherited functions were matched to unchanged methods, classifications, and reachability; three added VP transaction candidates are recorded after auditing, with the claim/storeOutput closures inlined into owning Port methods. See docs/implementation/ts6-current-authority-coordinate-audit-2026-10-01.md. 2026-10-02 URL freshness projection: ten existing candidate coordinates were remapped by functionKey after confirming unchanged owning methods, candidate kinds, classifications, and reachability; ten approved test relations were remapped to those same boundaries. No candidate was added or removed, and classification totals are unchanged. 2026-10-02 Ask page-location propagation moved four Ask adapter candidate coordinates; all four methods, classifications, and reachability grades were re-audited, with approved relation references updated. See the 2026-10-01 coordinate audit's 2026-10-02 addendum. 2026-10-12 VP full completion: 126 inherited owners retain qualified reachability and three actual new safe owners are inventoried; classifications derive as 19 TX_BOUNDARY, 92 PORT_INFERRED, 14 NON_TX, 18 TEST_ONLY_OR_DEAD. New direct PostgreSQL relations and current source coordinates are reviewed under delegated implementation authority. See docs/implementation/vp-full-completion-2026-10-12/reliability-ts6-coordinate-audit.md. 2026-10-14 image-isolated implementation: fifteen inherited SAFE_HELPER coordinates remapped by the same file/class/method/ownership with unchanged classification and qualified reachability. One new VP image-ledger append owner is PORT_INFERRED from the typed VPImageObservationLedgerPort caller in the runtime-test-only image assembly; this does not assert production activation. A directly constructed PostgreSQL ledger concurrency/restart test supplies the new regression relation. Frozen v2-v7 inputs, resolver rules and T3 base commit remain unchanged.",
   "entries": [
     {
       "candidateId": "raw:adapters/postgres-stage4/src/index.ts:574",
@@ -291,22 +291,22 @@
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2238",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2377",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:2979",
+      "candidateId": "safe:adapters/frontend-ask-execution-postgres/src/index.ts:3123",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:182",
+      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:190",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:674",
+      "candidateId": "safe:adapters/frontend-ask-write-postgres/src/index.ts:749",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
@@ -396,12 +396,12 @@
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1075",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1076",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1705",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:1706",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
@@ -426,7 +426,7 @@
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:885",
+      "candidateId": "safe:adapters/frontend-sources-write-postgres/src/product-service.ts:886",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
@@ -476,12 +476,12 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:491",
+      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:590",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:896",
+      "candidateId": "safe:adapters/postgres-stage3/src/runtime-data-integrity.ts:995",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
@@ -586,27 +586,27 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1007",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1013",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1142",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1148",
       "classification": "TX_BOUNDARY",
       "reachabilityStatus": "PROVEN"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1265",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1271",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1536",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1542",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:1849",
+      "candidateId": "safe:adapters/postgres/src/index.ts:1855",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
@@ -616,7 +616,7 @@
       "reachabilityStatus": "PORT_INFERRED"
     },
     {
-      "candidateId": "safe:adapters/postgres/src/index.ts:854",
+      "candidateId": "safe:adapters/postgres/src/index.ts:860",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
     },
@@ -671,6 +671,11 @@
       "reachabilityStatus": "PROVEN"
     },
     {
+      "candidateId": "safe:adapters/vp-knowledge-postgres/src/image-observations.ts:83",
+      "classification": "PORT_INFERRED",
+      "reachabilityStatus": "PORT_INFERRED"
+    },
+    {
       "candidateId": "safe:adapters/vp-knowledge-postgres/src/index.ts:114",
       "classification": "PORT_INFERRED",
       "reachabilityStatus": "PORT_INFERRED"
@@ -706,5 +711,5 @@
       "reachabilityStatus": "PORT_INFERRED"
     }
   ],
-  "auditNotes": " 2026-10-11 VP-05 P0: five existing VP method coordinates remapped with owning method/classification/reachability unchanged; eleven new source candidates audited (three global raw owners, seven lifecycle statements, one concrete expired-execution recovery owner). Added direct regression evidence for the new PROVEN recovery boundary. Validator rules and frozen v2-v7 inputs unchanged. See docs/implementation/vp05-p0-execution-authority-2026-10-11/ts6-coordinate-audit.md."
+  "auditNotes": " 2026-10-11 VP-05 P0: five existing VP method coordinates remapped with owning method/classification/reachability unchanged; eleven new source candidates audited (three global raw owners, seven lifecycle statements, one concrete expired-execution recovery owner). Added direct regression evidence for the new PROVEN recovery boundary. Validator rules and frozen v2-v7 inputs unchanged. See docs/implementation/vp05-p0-execution-authority-2026-10-11/ts6-coordinate-audit.md. 2026-10-14 image-isolated implementation: fifteen inherited SAFE_HELPER coordinates remapped by the same file/class/method/ownership with unchanged classification and qualified reachability. One new VP image-ledger append owner is PORT_INFERRED from the typed VPImageObservationLedgerPort caller in the runtime-test-only image assembly; this does not assert production activation. A directly constructed PostgreSQL ledger concurrency/restart test supplies the new regression relation. Frozen v2-v7 inputs, resolver rules and T3 base commit remain unchanged."
 }

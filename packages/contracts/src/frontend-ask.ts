@@ -1,5 +1,9 @@
 import { FrontendContractError } from './frontend-foundation.js';
 import {
+  decodeAskGeneratedImageObservationReference,
+  type AskGeneratedImageObservationReference,
+} from './frontend-ask-image-observation.js';
+import {
   decodeSourceLibraryPageView,
   decodeSourceLibraryQuery,
   type SourceLibraryItemView,
@@ -83,6 +87,7 @@ export type AskAnswerRunSnapshot = {
     readonly statementId: string;
     readonly text: string;
     readonly citations: readonly AskCitationView[];
+    readonly generatedObservationReferences?: readonly AskGeneratedImageObservationReference[];
   }[];
   readonly sourceSelections: readonly AskSourceSelectionView[];
   readonly capabilities: readonly AskCapability[];
@@ -771,7 +776,7 @@ export const decodeAskAnswerRunSnapshot = (
     statements: array(obj.statements, `${path}.statements`, (stmt, i) => {
       const stmtObj = strictObject(
         stmt,
-        ['statementId', 'text', 'citations'],
+        ['statementId', 'text', 'citations', 'generatedObservationReferences'],
         `${path}.statements[${i}]`,
       );
       return {
@@ -780,6 +785,19 @@ export const decodeAskAnswerRunSnapshot = (
         citations: array(stmtObj.citations, `${path}.statements[${i}].citations`, (cit, j) =>
           decodeAskCitationView(cit, `${path}.statements[${i}].citations[${j}]`),
         ),
+        ...(stmtObj.generatedObservationReferences === undefined
+          ? {}
+          : {
+              generatedObservationReferences: array(
+                stmtObj.generatedObservationReferences,
+                `${path}.statements[${i}].generatedObservationReferences`,
+                (reference, j) =>
+                  decodeAskGeneratedImageObservationReference(
+                    reference,
+                    `${path}.statements[${i}].generatedObservationReferences[${j}]`,
+                  ),
+              ),
+            }),
       };
     }),
     sourceSelections: array(obj.sourceSelections, `${path}.sourceSelections`, (sel, i) =>

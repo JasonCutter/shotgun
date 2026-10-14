@@ -71,6 +71,7 @@ const statusSnapshot = async (
 const activeWorkCount = (status: Readonly<Record<string, number>>): number =>
   (status.activeSubmissions ?? 0) +
   (status.activeAttempts ?? 0) +
+  (status.activeImageExecutions ?? 0) +
   (status.activeUrlAcquisitions ?? 0);
 
 const contentRowCount = (status: Readonly<Record<string, number>>): number =>

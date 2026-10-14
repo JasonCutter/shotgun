@@ -175,3 +175,17 @@ Shotgun v6 input/tuple/warrant의 독립 검증 범위가 다르므로 새 인�
 품질 Gate는 미완료다. [외부 Reference 준비 결과](./external-reference-readiness.md)에
 확보/누락 증거, import DEFER, negative checks 및 후속 검증 조건을 기록한다.
 사용자에게 개별 Reference 검토·reviewer 지정 의무를 추가하지 않는다.
+
+### 2026-10-14 — 실제 Canonical owner 아래 정상 Fake 및 재기동
+
+기존 synthetic distribution와 exact main의 별도 recovery/normal 경로 검증을
+재사용하고, 미입증 조합만 추가했다. Main85의 실제 `scripts/launch-local.ts` 아래
+normal app/worker가 A v1·B v1·A v2와 질문3을 처리했다. HTTP47, Fake7
+(추출3/답변3/관계1), project/Source/개별 review 선택0, runtime child3/owner2를
+관측했다. Completed rows와 call trace는 child 자동 재시작 및 owner 재-invocation
+후 동일했고, 격리 프로세스/DB를 정리했다. [exact 범위와 실패 이력](./canonical-owner-fake-proof.md).
+
+Untracked test injection과 합성 credential/authority를 사용한 로컬 증거다.
+운영 설치, Windows reboot, real AI 의미/청구와 parent 자동 부활을 인증하지 않는다.
+Run1의 health-label fixture 실패는 보존하고 Run2 PASS와 구분한다. 외부 Gold는
+여전히0이며 운영 변경·actual provider·동결 평가 실행은0이다.

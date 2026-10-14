@@ -53,6 +53,44 @@ describe('image derivative T3 erasure uses existing owner authorization and orig
     }
     await migrateUpTo('137_image_observation_t3_ownership.sql', database.databaseUrl);
   });
+  it('rolls back the image-only Ask owner migration and then applies the current owner schema', async () => {
+    const definitionQuery =
+      "SELECT pg_get_functiondef('frontend_ask.t3_project_ask_status(text,uuid)'::regprocedure) AS definition";
+    const before = (await pool.query(definitionQuery)).rows;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(await readFile('db/migrations/138_image_ask_t3_erasure.sql', 'utf8'));
+      expect(
+        (
+          await client.query(
+            "SELECT to_regprocedure('frontend_ask.t3_unresolved_image_references(text)')::text AS name",
+          )
+        ).rows[0].name,
+      ).not.toBeNull();
+      await client.query('ROLLBACK');
+      expect(
+        (
+          await client.query(
+            "SELECT to_regprocedure('frontend_ask.t3_unresolved_image_references(text)')::text AS name",
+          )
+        ).rows[0].name,
+      ).toBeNull();
+      expect((await client.query(definitionQuery)).rows).toEqual(before);
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+    await migrateUpTo('138_image_ask_t3_erasure.sql', database.databaseUrl);
+    await migrateUpTo('138_image_ask_t3_erasure.sql', database.databaseUrl);
+    expect(
+      (
+        await pool.query(
+          "SELECT count(*)::int AS n FROM runtime.schema_migrations WHERE name='138_image_ask_t3_erasure.sql'",
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
   async function fixture(state = 'COMPLETED') {
     const observation = imageObservationFixture();
     const { projectId, sourceId, sourceVersionId, originalAssetId, sourceContentHash } =

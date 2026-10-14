@@ -189,3 +189,12 @@ Untracked test injection과 합성 credential/authority를 사용한 로컬 증�
 운영 설치, Windows reboot, real AI 의미/청구와 parent 자동 부활을 인증하지 않는다.
 Run1의 health-label fixture 실패는 보존하고 Run2 PASS와 구분한다. 외부 Gold는
 여전히0이며 운영 변경·actual provider·동결 평가 실행은0이다.
+
+### 2026-10-14 — PR387 post-merge CI failure and bounded TS5 correction
+
+PR387은 승인 tree로 main `6dbc8af26297d29f3b900580e3a91fb028365426`에 병합됐지만
+post-merge CI38564365458은 기존 TS5 lock test의 연결 종료 직후 assertion에서
+실패했다. PostgreSQL745 PASS/1 FAIL/2 SKIP이며 Canonical 검증 완료를 선언하지
+않았다. 후속 사용자 “처리해”에 따라 실제 backend/lock 종료의 bounded readback을
+추가하고 원래 잠금 assertion을 보존했다. [원인·범위·격리 결과](./ts5-maintenance-backend-exit-correction.md).
+새 follow-up exact-head CI와 별도 merge 승인이 필요하며 운영 전환은 수행하지 않는다.

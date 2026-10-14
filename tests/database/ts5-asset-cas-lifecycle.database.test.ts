@@ -2,6 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { access, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { setTimeout as pause } from 'node:timers/promises';
+
+import type { PoolClient } from 'pg';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -16,6 +19,36 @@ import { isQuarantineRunId, runAssetCasGc } from '../../scripts/asset-cas-gc.js'
 
 const databaseUrl = await requireTestDatabaseTarget();
 const pool = databaseUrl ? createPostgresPool(databaseUrl) : undefined;
+
+const waitForMaintenanceBackendExit = async (
+  observer: Pick<PoolClient, 'query'>,
+  backendPid: number,
+  timeoutMilliseconds = 5_000,
+): Promise<void> => {
+  const deadline = performance.now() + timeoutMilliseconds;
+  for (;;) {
+    const result = await observer.query<{ backendPresent: boolean; advisoryLockPresent: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1) AS "backendPresent",
+              EXISTS (SELECT 1 FROM pg_locks WHERE pid = $1 AND locktype = 'advisory') AS "advisoryLockPresent"`,
+      [backendPid],
+    );
+    const state = result.rows[0];
+    if (
+      result.rows.length !== 1 ||
+      typeof state?.backendPresent !== 'boolean' ||
+      typeof state.advisoryLockPresent !== 'boolean'
+    ) {
+      throw new Error(`Invalid PostgreSQL maintenance backend observation for ${backendPid}.`);
+    }
+    if (!state.backendPresent && !state.advisoryLockPresent) return;
+    if (performance.now() >= deadline) {
+      throw new Error(
+        `PostgreSQL maintenance backend ${backendPid} did not exit: ${JSON.stringify(state)}`,
+      );
+    }
+    await pause(10);
+  }
+};
 
 describe.runIf(pool)('TS-5 migration and PostgreSQL maintenance barrier', () => {
   beforeAll(async () => {
@@ -153,7 +186,10 @@ describe.runIf(pool)('TS-5 migration and PostgreSQL maintenance barrier', () => 
       await releaseMaintenanceLock(gc, 'exclusive');
 
       expect(await acquireMaintenanceLock(runtime, 'shared')).toBe(true);
+      const runtimeBackend = await runtime.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
       runtime.release(true);
+      // Pool release requests destruction; only PostgreSQL can confirm session/lock teardown.
+      await waitForMaintenanceBackendExit(gc, runtimeBackend.rows[0]!.pid);
       expect(await acquireMaintenanceLock(gc, 'exclusive', true)).toBe(true);
       await releaseMaintenanceLock(gc, 'exclusive');
     } finally {
@@ -174,6 +210,29 @@ describe.runIf(pool)('TS-5 migration and PostgreSQL maintenance barrier', () => 
       }
       backup.release();
       gc.release();
+    }
+  });
+
+  it('rejects a live maintenance backend without unlocking or retrying exclusive acquisition', async () => {
+    const runtime = await pool!.connect();
+    let observer: PoolClient | undefined;
+    let sharedLockHeld = false;
+    try {
+      observer = await pool!.connect();
+      expect(await acquireMaintenanceLock(runtime, 'shared')).toBe(true);
+      sharedLockHeld = true;
+      const backend = await runtime.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+      await expect(
+        waitForMaintenanceBackendExit(observer, backend.rows[0]!.pid, 50),
+      ).rejects.toThrow(`PostgreSQL maintenance backend ${backend.rows[0]!.pid} did not exit`);
+      expect(await acquireMaintenanceLock(observer, 'exclusive', true)).toBe(false);
+    } finally {
+      try {
+        if (sharedLockHeld) await releaseMaintenanceLock(runtime, 'shared');
+      } finally {
+        runtime.release(true);
+        observer?.release();
+      }
     }
   });
 

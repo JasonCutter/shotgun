@@ -65,7 +65,7 @@ SNLI의 공식 dataset license는 CC BY-SA 4.0이다. e-SNLI 저장소의 MIT **
 - 운영 DB/authority/Vault/configuration/환경 변수, 앱/worker, 실제 credential은 변경하지 않았다. 동결 72/432/B12, B 잔여24, Gold-B-7을 읽거나 재실행하지 않았다. 보존 파일은 hash-only 검사한다.
 - `scripts/docs-validation.ts all`: 링크 746건, ADR 1–173, Canonical/evidence/generated registry, migration drift 및 completion/projection 검증 PASS. 변경 문서 4개의 Prettier check와 `git diff --check` PASS.
 - 보존 검사: 보호 파일 79개 bytes, 다른 worktree 13개의 HEAD/status, configuration bytes 및 stash 동일. 보호 운영 컨테이너 두 개는 기존 ID/mount로 `exited`. 모든 host의 quiescence 또는 정상 운영 설치 검증을 주장하지 않는다.
-- 이번 diff는 문서와 외부 증거 manifest뿐이다. 생산 코드/migration 변경이 없어 기존 main exact-tree CI38525754140을 코드 회귀 증거로 재사용했고 unit/database/브라우저 시험을 반복 실행하지 않았다. 새 local 문서의 검사와 이전 main CI를 구분한다.
+- 외부 Reference 작업 범위의 diff는 문서와 외부 증거 manifest뿐이다. 함께 게시하는 owner 검증은 별도 fixture 두 개와 실제 격리 실행을 포함하며 [해당 기록](./canonical-owner-fake-proof.md)에 구분한다. 생산 코드/migration 변경이 없어 기존 main exact-tree CI38525754140을 코드 회귀 증거로 재사용했고, 외부 Reference 작업에서 unit/database/브라우저 시험을 반복 실행하지 않았다. 새 local 문서의 검사와 이전 main CI를 구분한다.
 
 원본·script·결과·논문의 exact locator/size/digest는 [증거 manifest](./external-reference-readiness-manifest.json)에 기록한다. 외부 binary/라이선스 자료 보존과 Git 보고서의 Canonical 게시 상태는 별개다. Local 구현 문서는 merge 전 Canonical이 아니다.
 
